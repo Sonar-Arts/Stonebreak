@@ -30,6 +30,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class DiffusionTerrainClientTest {
 
+    /** Must track DiffusionTerrainClient's own constant, and terrain-bridge's. */
+    private static final int PROTOCOL_VERSION = 2;
+
     private HttpServer server;
     private DiffusionTerrainClient client;
 
@@ -53,6 +56,54 @@ class DiffusionTerrainClientTest {
         assertEquals(30, tile.heightAt(11, 20));
         assertEquals(40, tile.heightAt(11, 21));
         assertEquals(4, tile.biomeIdAt(11, 21));
+    }
+
+    @Test
+    void parsesTheWaterPlaneAsTheThirdPlane() throws IOException {
+        // Distinct values in all three planes: a slice-offset bug reads the biome plane
+        // as water, and a plane count of two reads half a plane of each.
+        server = startServer(exchange -> respondTile(exchange, 200, 2, 2, 0, 0, 10, 20, 12, 22,
+                new short[]{10, 20, 30, 40}, new short[]{1, 2, 3, 4},
+                new short[]{320, -1, 460, -1}, PROTOCOL_VERSION));
+
+        client = newClient(3);
+        TerrainTile tile = client.fetchTile(10, 20).join();
+
+        assertEquals(320, tile.waterLevelAt(10, 20));
+        assertEquals(460, tile.waterLevelAt(11, 20));
+        // The "no water" sentinel has to survive as a negative short, not as 65535.
+        assertEquals(TerrainTile.NO_WATER, tile.waterLevelAt(10, 21));
+    }
+
+    @Test
+    void rejectsABridgeSpeakingAnOlderProtocol() throws IOException {
+        // The body is bare concatenated planes with no header bytes of its own, so a v1
+        // bridge hands back something this build would slice into plausible garbage
+        // terrain rather than fail on. The version header is the only thing that is loud.
+        server = startServer(exchange -> respondTile(exchange, 200, 2, 2, 0, 0, 0, 0, 2, 2,
+                new short[]{1, 2, 3, 4}, new short[]{0, 0, 0, 0},
+                new short[]{-1, -1, -1, -1}, 1));
+
+        client = newClient(0);
+        CompletionException ex = assertThrows(CompletionException.class,
+                () -> client.fetchTile(0, 0).join());
+        assertInstanceOf(TerrainBridgeException.class, ex.getCause());
+        assertTrue(ex.getCause().getCause().getMessage().contains("protocol v1"),
+                "unexpected message: " + ex.getCause().getCause().getMessage());
+    }
+
+    @Test
+    void rejectsAResponseWithNoProtocolHeaderAtAll() throws IOException {
+        // Absent means "a bridge from before the header existed", which is by definition
+        // a version this build cannot read — not a reason to guess.
+        server = startServer(exchange -> respondTile(exchange, 200, 2, 2, 0, 0, 0, 0, 2, 2,
+                new short[]{1, 2, 3, 4}, new short[]{0, 0, 0, 0},
+                new short[]{-1, -1, -1, -1}, null));
+
+        client = newClient(0);
+        CompletionException ex = assertThrows(CompletionException.class,
+                () -> client.fetchTile(0, 0).join());
+        assertInstanceOf(TerrainBridgeException.class, ex.getCause());
     }
 
     @Test
@@ -100,6 +151,58 @@ class DiffusionTerrainClientTest {
     }
 
     @Test
+    void pollsThroughASolvingResponseInsteadOfExhaustingTheRetryLadder() throws Exception {
+        // The cold-start scenario (Rivers and lakes plan.md section 19): a cold hydrology solve
+        // can run for minutes, far longer than the fast maxRetries ladder was ever meant to
+        // cover. maxRetries is 0 here -- surviving repeated 503s must come from the dedicated
+        // solving budget, not from the normal retry count.
+        AtomicInteger attempts = new AtomicInteger();
+        server = startServer(exchange -> {
+            if (attempts.incrementAndGet() < 3) {
+                respondSolving(exchange, 1); // 1s is the smallest whole-second Retry-After
+                return;
+            }
+            respondTile(exchange, 200, 1, 1, 0, 0, 0, 0, 1, 1, new short[]{9}, new short[]{1});
+        });
+
+        client = newClient(server.getAddress().getPort(), 0, 5_000L, 5_000L, 50L);
+        TerrainTile tile = client.fetchTile(0, 0).join();
+
+        assertEquals(9, tile.heightAt(0, 0));
+        assertEquals(3, attempts.get());
+    }
+
+    @Test
+    void failsOnceTheSolvingGraceExpires() throws IOException {
+        // Never finishes: the wait is bounded even for a bridge that keeps answering "still
+        // working on it," so a pathological solve can never hang a chunk worker forever.
+        server = startServer(exchange -> respondSolving(exchange, 1));
+
+        client = newClient(server.getAddress().getPort(), 0, 5_000L, 150L, 20L);
+        CompletionException ex = assertThrows(CompletionException.class, () -> client.fetchTile(0, 0).join());
+        TerrainBridgeException failure = assertInstanceOf(TerrainBridgeException.class, ex.getCause());
+        assertTrue(failure.getMessage().contains("still solving hydrology"),
+                "unexpected message: " + failure.getMessage());
+    }
+
+    @Test
+    void a503WithNoRetryAfterStillUsesTheOrdinaryFastLadder() throws IOException {
+        // exhaustsRetriesAndFailsLoudly below covers this too, but states the reason
+        // explicitly: without Retry-After this must NOT be mistaken for "solving" and parked
+        // on the multi-minute grace budget -- it has to fail fast, on maxRetries, like any
+        // other unrecognized 5xx.
+        AtomicInteger attempts = new AtomicInteger();
+        server = startServer(exchange -> {
+            attempts.incrementAndGet();
+            respondError(exchange, 503);
+        });
+
+        client = newClient(server.getAddress().getPort(), 2, 5_000L, 60_000L, 50L);
+        assertThrows(CompletionException.class, () -> client.fetchTile(0, 0).join());
+        assertEquals(3, attempts.get()); // maxRetries=2 -> 3 attempts total, not parked for 60s
+    }
+
+    @Test
     void waitsOutServiceRestartInsteadOfFailing() throws Exception {
         // The real scenario: TerrainServiceProcessManager stopped both processes to re-pin a seed,
         // so the port refuses connections for a few seconds. maxRetries is 0 here — surviving this
@@ -134,9 +237,15 @@ class DiffusionTerrainClientTest {
     }
 
     private static DiffusionTerrainClient newClient(int port, int maxRetries, long unreachableGraceMs) {
+        return newClient(port, maxRetries, unreachableGraceMs, 5_000L, 50L);
+    }
+
+    private static DiffusionTerrainClient newClient(int port, int maxRetries, long unreachableGraceMs,
+                                                      long hydrologySolveGraceMs, long solvePollIntervalMs) {
         DiffusionBridgeConfig config = new DiffusionBridgeConfig(
                 "http://localhost:" + port,
-                256, 2000, 5000, maxRetries, 10, 50, 64, unreachableGraceMs);
+                256, 2000, 5000, maxRetries, 10, 50, 64, unreachableGraceMs,
+                hydrologySolveGraceMs, solvePollIntervalMs);
         return new DiffusionTerrainClient(config, 42L);
     }
 
@@ -159,6 +268,19 @@ class DiffusionTerrainClientTest {
         return port;
     }
 
+    /** The bridge's "still generating this tile" response: 503 + Retry-After (whole seconds). */
+    private static void respondSolving(com.sun.net.httpserver.HttpExchange exchange, int retryAfterSeconds) {
+        try {
+            byte[] body = "tile is still being generated, retry shortly".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Retry-After", String.valueOf(retryAfterSeconds));
+            exchange.sendResponseHeaders(503, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private static void respondError(com.sun.net.httpserver.HttpExchange exchange, int status) {
         try {
             byte[] body = "error".getBytes(StandardCharsets.UTF_8);
@@ -174,13 +296,29 @@ class DiffusionTerrainClientTest {
                                      int width, int height, int tileX, int tileZ,
                                      int i1, int j1, int i2, int j2,
                                      short[] blockHeights, short[] biomeIds) {
+        short[] water = new short[blockHeights.length];
+        java.util.Arrays.fill(water, TerrainTile.NO_WATER);
+        respondTile(exchange, status, width, height, tileX, tileZ, i1, j1, i2, j2,
+                blockHeights, biomeIds, water, PROTOCOL_VERSION);
+    }
+
+    private static void respondTile(com.sun.net.httpserver.HttpExchange exchange, int status,
+                                     int width, int height, int tileX, int tileZ,
+                                     int i1, int j1, int i2, int j2,
+                                     short[] blockHeights, short[] biomeIds, short[] waterLevels,
+                                     Integer protocolVersion) {
         try {
-            ByteBuffer buf = ByteBuffer.allocate((blockHeights.length + biomeIds.length) * 2)
+            ByteBuffer buf = ByteBuffer
+                    .allocate((blockHeights.length + biomeIds.length + waterLevels.length) * 2)
                     .order(ByteOrder.LITTLE_ENDIAN);
             for (short v : blockHeights) buf.putShort(v);
             for (short v : biomeIds) buf.putShort(v);
+            for (short v : waterLevels) buf.putShort(v);
             byte[] payload = buf.array();
 
+            if (protocolVersion != null) {
+                exchange.getResponseHeaders().add("X-Protocol-Version", protocolVersion.toString());
+            }
             exchange.getResponseHeaders().add("X-Height", String.valueOf(height));
             exchange.getResponseHeaders().add("X-Width", String.valueOf(width));
             exchange.getResponseHeaders().add("X-Tile-X", String.valueOf(tileX));

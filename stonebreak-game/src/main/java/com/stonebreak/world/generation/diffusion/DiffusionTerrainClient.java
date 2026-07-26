@@ -35,6 +35,16 @@ public class DiffusionTerrainClient {
 
     private static final Logger LOG = Logger.getLogger(DiffusionTerrainClient.class.getName());
 
+    /**
+     * Tile-body layout this build understands. Must match {@code PROTOCOL_VERSION} in
+     * terrain-bridge/bridge/main.py. v1 was (block height, biome); v2 adds the per-column
+     * water level.
+     */
+    private static final int PROTOCOL_VERSION = 2;
+
+    /** int16 planes in a v2 body, in order: block height, biome id, water level. */
+    private static final int PLANES = 3;
+
     private final DiffusionBridgeConfig config;
     private final long seed;
     private final HttpClient httpClient;
@@ -89,6 +99,10 @@ public class DiffusionTerrainClient {
         private boolean waiting;
         private int connectAttempts;
 
+        private long solvingExpiresAtNanos;
+        private boolean solvingWaiting;
+        private int solvingAttempts;
+
         /** True while connect failures should keep being retried rather than surfaced. */
         boolean tolerateUnreachable(int worldX, int worldZ) {
             long now = System.nanoTime();
@@ -121,6 +135,34 @@ public class DiffusionTerrainClient {
         int connectAttempts() {
             return connectAttempts;
         }
+
+        /**
+         * True while a "still solving" 503 (plan section 19) should keep being polled on its
+         * own patient budget, separate from both {@link #tolerateUnreachable} above and the
+         * ordinary {@code maxRetries} ladder: the bridge is up and answering, it just isn't
+         * done with a cold L0/L1 solve yet, which can take far longer than either of those
+         * budgets was ever meant to cover.
+         */
+        boolean tolerateSolving(int worldX, int worldZ) {
+            long now = System.nanoTime();
+            solvingAttempts++;
+            if (!solvingWaiting) {
+                solvingWaiting = true;
+                solvingExpiresAtNanos = now + config.hydrologySolveGraceMs() * 1_000_000L;
+                LOG.info(() -> "terrain bridge is still solving hydrology for tile (" + worldX + ","
+                        + worldZ + "); polling for up to " + config.hydrologySolveGraceMs() + "ms");
+                return true;
+            }
+            return now < solvingExpiresAtNanos;
+        }
+
+        boolean solvingWaited() {
+            return solvingWaiting;
+        }
+
+        int solvingAttempts() {
+            return solvingAttempts;
+        }
     }
 
     /** Fire-and-forget warm; failures are logged, never thrown — this is an optimization hint. */
@@ -151,6 +193,25 @@ public class DiffusionTerrainClient {
                         try {
                             if (response.statusCode() == 200) {
                                 result.complete(parseTile(response));
+                                return;
+                            }
+                            if (isSolvingStatus(response)) {
+                                // Doesn't touch attemptNumber: a cold solve isn't a transient
+                                // error to burn the fast ladder on, and isn't a dead connection
+                                // either — it gets its own patient, non-consuming budget.
+                                if (deadline.tolerateSolving(worldX, worldZ)) {
+                                    long retryAfterMs = parseRetryAfterMs(response, config.solvePollIntervalMs());
+                                    retryScheduler.schedule(
+                                            () -> attemptFetch(worldX, worldZ, attemptNumber, result, deadline),
+                                            retryAfterMs, TimeUnit.MILLISECONDS);
+                                    return;
+                                }
+                                result.completeExceptionally(new TerrainBridgeException(
+                                        "terrain bridge is still solving hydrology for (" + worldX + ","
+                                        + worldZ + ") after " + deadline.solvingAttempts() + " polls over "
+                                        + config.hydrologySolveGraceMs() + "ms — the bridge is reachable but"
+                                        + " a cold region/tile solve is taking longer than expected;"
+                                        + " check the bridge's own logs"));
                                 return;
                             }
                             if (!isRetryableStatus(response.statusCode())) {
@@ -227,6 +288,33 @@ public class DiffusionTerrainClient {
     }
 
     /**
+     * True for the bridge's "still generating this tile, come back later" response — a 503
+     * carrying {@code Retry-After}. Gated on the header, not the bare status code, because
+     * nothing else in {@code terrain-bridge/bridge/main.py} sends 503 at all today (its other
+     * failures are 502 for an unreachable upstream and 400 for a seed mismatch); keying on the
+     * header rather than assuming every future 503 means "solving" means a genuinely broken
+     * bridge that happens to answer 503 without one still gets the fast {@code maxRetries}
+     * ladder instead of a patient wait it never promised.
+     */
+    private static boolean isSolvingStatus(HttpResponse<byte[]> response) {
+        return response.statusCode() == 503 && response.headers().firstValue("Retry-After").isPresent();
+    }
+
+    /** Parses {@code Retry-After} as whole seconds (the only form the bridge sends); falls
+     * back to the configured poll interval if it's missing or malformed. */
+    private static long parseRetryAfterMs(HttpResponse<byte[]> response, long fallbackMs) {
+        return response.headers().firstValue("Retry-After")
+                .map(value -> {
+                    try {
+                        return Long.parseLong(value.trim()) * 1000L;
+                    } catch (NumberFormatException e) {
+                        return fallbackMs;
+                    }
+                })
+                .orElse(fallbackMs);
+    }
+
+    /**
      * True for the bridge's seed-pinning rejection. Keyed on the bare status code because
      * {@code _require_matching_seed} is the ONLY producer of 400 in
      * terrain-bridge/bridge/main.py — its other failures are 502 (upstream unreachable) and
@@ -256,6 +344,7 @@ public class DiffusionTerrainClient {
     }
 
     private TerrainTile parseTile(HttpResponse<byte[]> response) {
+        requireProtocolVersion(response);
         int height = requireHeader(response, "X-Height");
         int width = requireHeader(response, "X-Width");
         int tileX = requireHeader(response, "X-Tile-X");
@@ -267,23 +356,53 @@ public class DiffusionTerrainClient {
 
         byte[] body = response.body();
         int cells = height * width;
-        long expected = (long) cells * 2L * 2L; // block-height int16 + biome int16
+        long expected = (long) cells * 2L * PLANES; // block height + biome + water level
         if (body.length != expected) {
             throw new IllegalStateException("unexpected payload size for " + height + "x" + width +
                     ": got " + body.length + ", expected " + expected);
         }
 
         ByteBuffer buf = ByteBuffer.wrap(body).order(ByteOrder.LITTLE_ENDIAN);
-        short[] blockHeights = new short[cells];
-        for (int i = 0; i < cells; i++) {
-            blockHeights[i] = buf.getShort();
-        }
-        short[] biomeIds = new short[cells];
-        for (int i = 0; i < cells; i++) {
-            biomeIds[i] = buf.getShort();
-        }
+        short[] blockHeights = readPlane(buf, cells);
+        short[] biomeIds = readPlane(buf, cells);
+        short[] waterLevels = readPlane(buf, cells);
 
-        return new TerrainTile(tileX, tileZ, i1, j1, i2, j2, width, height, blockHeights, biomeIds);
+        return new TerrainTile(tileX, tileZ, i1, j1, i2, j2, width, height,
+                blockHeights, biomeIds, waterLevels);
+    }
+
+    private static short[] readPlane(ByteBuffer buf, int cells) {
+        short[] plane = new short[cells];
+        for (int i = 0; i < cells; i++) {
+            plane[i] = buf.getShort();
+        }
+        return plane;
+    }
+
+    /**
+     * Fails a response whose body layout this build cannot read.
+     *
+     * <p>Checked <em>here</em>, in the parse, and not merely logged at startup: the body
+     * is bare concatenated int16 planes with no header bytes of its own, so a bridge one
+     * version behind would hand back a buffer this code slices into plausible garbage
+     * terrain instead of an error. The size check above catches a plane-count change only
+     * by luck — three planes of a smaller tile can weigh the same as two of a larger one.
+     *
+     * <p>Missing, rather than mismatched, is treated the same way and for the same reason:
+     * every bridge that sends this header sends it always, so its absence means a bridge
+     * from before the header existed, which is by definition a version this build cannot
+     * read.
+     */
+    private static void requireProtocolVersion(HttpResponse<byte[]> response) {
+        int version = requireHeader(response, "X-Protocol-Version");
+        if (version != PROTOCOL_VERSION) {
+            throw new IllegalStateException(
+                    "terrain bridge speaks tile protocol v" + version + ", this build reads v"
+                    + PROTOCOL_VERSION + " — the bridge and the game are out of step. Restart"
+                    + " the terrain services (they are launched from this checkout by"
+                    + " TerrainServiceProcessManager, so a stale one is usually a leftover"
+                    + " process on the configured port).");
+        }
     }
 
     private static int requireHeader(HttpResponse<byte[]> response, String name) {

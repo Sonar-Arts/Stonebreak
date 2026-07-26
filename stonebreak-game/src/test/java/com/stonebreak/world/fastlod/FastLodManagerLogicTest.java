@@ -72,7 +72,7 @@ class FastLodManagerLogicTest {
             int count = inv.getArgument(2);
             int stride = inv.getArgument(3);
             int[] outHeights = inv.getArgument(4);
-            BlockType[] outSurface = inv.getArgument(5);
+            BlockType[] outSurface = inv.getArgument(6);
             for (int ix = 0; ix < count; ix++) {
                 for (int iz = 0; iz < count; iz++) {
                     int idx = ix * count + iz;
@@ -84,7 +84,7 @@ class FastLodManagerLogicTest {
                 }
             }
             return null;
-        }).when(terrain).sampleColumns(anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), any());
+        }).when(terrain).sampleColumns(anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), any(), any());
 
         BlockTextureArray textures = mock(BlockTextureArray.class);
         when(textures.getBlockFaceLayer(any(), anyInt())).thenReturn(7);
@@ -95,7 +95,12 @@ class FastLodManagerLogicTest {
             createdHandles.add(handle);
             return handle;
         };
-        manager = new FastLodManager(config, terrain, textures, null, executor, uploader);
+        // Generous upload budget: this test measures bookkeeping (which handles exist,
+        // in what order), not real GPU upload time — the mocked uploader returns
+        // instantly, so the production 3ms budget only measures cold-JIT noise here,
+        // not anything the test cares about.
+        manager = new FastLodManager(config, terrain, textures, null, executor, uploader,
+                java.util.concurrent.TimeUnit.SECONDS.toNanos(10));
     }
 
     @AfterEach

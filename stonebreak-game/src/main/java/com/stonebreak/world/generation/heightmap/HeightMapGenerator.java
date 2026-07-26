@@ -40,6 +40,11 @@ public class HeightMapGenerator {
         return clampToWorld(tileSource.getTile(x, z).heightAt(x, z));
     }
 
+    /** Water level at a column, or {@link TerrainTile#NO_WATER}. */
+    public int waterLevel(int x, int z) {
+        return tileSource.getTile(x, z).waterLevelAt(x, z);
+    }
+
     /**
      * Fills a 16x16 final-height grid for the given chunk, indexed [x*16+z].
      * A chunk (16 blocks) always fits inside a single bridge tile (256
@@ -47,12 +52,34 @@ public class HeightMapGenerator {
      * one tile for the whole chunk rather than one HTTP round trip per column.
      */
     public void populateChunkHeights(int chunkX, int chunkZ, int[] out) {
+        populateChunkHeights(chunkX, chunkZ, out, null);
+    }
+
+    /**
+     * As {@link #populateChunkHeights(int, int, int[])}, and fills the co-located water
+     * levels when {@code outWaterLevels} is non-null.
+     *
+     * <p>One method rather than two passes because the two planes come from the same
+     * resolved tile and must not be able to disagree about which tile that was — the
+     * same reason {@code BiomeManager.populateChunkBiomes} reuses the clamped heights
+     * rather than re-resolving them.
+     *
+     * <p>The water level is <em>not</em> clamped to the world column the way the height
+     * is: the bridge already emits it inside {@code [0, world_height)} or as
+     * {@link TerrainTile#NO_WATER}, and clamping a negative sentinel to 1 would turn
+     * "no water here" into "one block of water at bedrock".
+     */
+    public void populateChunkHeights(int chunkX, int chunkZ, int[] out, int[] outWaterLevels) {
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
         TerrainTile tile = tileSource.getTile(baseX, baseZ);
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
-                out[x * CHUNK_SIZE + z] = clampToWorld(tile.heightAt(baseX + x, baseZ + z));
+                int idx = x * CHUNK_SIZE + z;
+                out[idx] = clampToWorld(tile.heightAt(baseX + x, baseZ + z));
+                if (outWaterLevels != null) {
+                    outWaterLevels[idx] = tile.waterLevelAt(baseX + x, baseZ + z);
+                }
             }
         }
     }

@@ -5,7 +5,6 @@ import java.util.Random;
 import org.joml.Vector3f;
 
 import com.stonebreak.world.World;
-import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
  * Picks a deterministic-but-randomized safe surface spawn within a configurable
@@ -14,8 +13,11 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * chunks — this avoids contention with the save IO executor and keeps the
  * loading screen responsive.
  *
- * "Safe" means terrain height is at or above sea level, so the player isn't
- * placed on / under water.
+ * "Safe" means the column is dry — its water level (sea, river, or lake) does not
+ * stand above its terrain height, so the player isn't placed on / under water.
+ * Checking against a global sea level alone would place spawn underwater in a
+ * submerged inland column, or reject a perfectly dry column that merely sits at
+ * the old global threshold with no water anywhere nearby.
  */
 public final class SpawnLocator {
 
@@ -44,7 +46,7 @@ public final class SpawnLocator {
             int z = random.nextInt(2 * radius + 1) - radius;
 
             int height = world.getFinalTerrainHeightAt(x, z);
-            if (height < WorldConfiguration.SEA_LEVEL) continue;
+            if (world.getGeneratedWaterLevelAt(x, z) > height) continue;
 
             int standY = height + 1;
             System.out.println("[SPAWN] Selected safe surface spawn (" + x + ", " + standY + ", " + z

@@ -26,7 +26,7 @@ public class BiomeManager {
 
     public BiomeType getBiome(int x, int z) {
         TerrainTile tile = tileSource.getTile(x, z);
-        return DiffusionBiomeMapper.map(tile.biomeIdAt(x, z), tile.heightAt(x, z));
+        return DiffusionBiomeMapper.map(tile.biomeIdAt(x, z), tile.heightAt(x, z), nearbyWaterLevel(tile, x, z));
     }
 
     /**
@@ -44,8 +44,39 @@ public class BiomeManager {
                 int idx = x * CHUNK_SIZE + z;
                 int worldX = baseX + x;
                 int worldZ = baseZ + z;
-                out[idx] = DiffusionBiomeMapper.map(tile.biomeIdAt(worldX, worldZ), heights[idx]);
+                out[idx] = DiffusionBiomeMapper.map(tile.biomeIdAt(worldX, worldZ), heights[idx],
+                        nearbyWaterLevel(tile, worldX, worldZ));
             }
         }
+    }
+
+    /**
+     * Highest water level among {@code (worldX, worldZ)} and its 8 neighbours, or
+     * {@link TerrainTile#NO_WATER} if none of them hold water. A dry column's own
+     * water level is always {@code NO_WATER} — a lake or river reports its surface
+     * only for the columns it actually covers — so detecting "next to water" needs
+     * a neighbour's value, not the column's own.
+     *
+     * <p>A neighbour that falls outside this tile is skipped rather than resolved
+     * from a second tile: the shoreline test only needs to know water is nearby,
+     * and the miss is confined to columns exactly on a tile boundary (256 blocks
+     * apart by default).
+     */
+    private static short nearbyWaterLevel(TerrainTile tile, int worldX, int worldZ) {
+        short best = TerrainTile.NO_WATER;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                int nx = worldX + dx;
+                int nz = worldZ + dz;
+                if (nx < tile.worldI1() || nx >= tile.worldI2() || nz < tile.worldJ1() || nz >= tile.worldJ2()) {
+                    continue;
+                }
+                short level = tile.waterLevelAt(nx, nz);
+                if (level != TerrainTile.NO_WATER && level > best) {
+                    best = level;
+                }
+            }
+        }
+        return best;
     }
 }

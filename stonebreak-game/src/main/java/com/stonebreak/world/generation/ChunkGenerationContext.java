@@ -22,9 +22,11 @@ public final class ChunkGenerationContext {
 
     private final int[] heightMap;
     private final BiomeType[] biomeMap;
+    private final int[] waterLevelMap;
 
     public ChunkGenerationContext(World world, Chunk chunk, SnowLayerManager snowLayerManager,
-                                  int[] heightMap, BiomeType[] biomeMap, BiomeType dominantBiome) {
+                                  int[] heightMap, BiomeType[] biomeMap, int[] waterLevelMap,
+                                  BiomeType dominantBiome) {
         this.world = world;
         this.chunk = chunk;
         this.chunkX = chunk.getChunkX();
@@ -32,6 +34,7 @@ public final class ChunkGenerationContext {
         this.snowLayerManager = snowLayerManager;
         this.heightMap = heightMap;
         this.biomeMap = biomeMap;
+        this.waterLevelMap = waterLevelMap;
         this.dominantBiome = dominantBiome;
     }
 
@@ -41,6 +44,21 @@ public final class ChunkGenerationContext {
 
     public BiomeType biome(int localX, int localZ) {
         return biomeMap[localX * SIZE + localZ];
+    }
+
+    /**
+     * Water level at this column, or {@link
+     * com.stonebreak.world.generation.diffusion.TerrainTile#NO_WATER}. A column
+     * is submerged exactly when this exceeds {@link #height}, the same test
+     * {@code TerrainGenerationSystem.determineBlockType} places water by.
+     */
+    public int waterLevel(int localX, int localZ) {
+        return waterLevelMap[localX * SIZE + localZ];
+    }
+
+    /** True when the column has water standing above its terrain height. */
+    public boolean isSubmerged(int localX, int localZ) {
+        return waterLevel(localX, localZ) > height(localX, localZ);
     }
 
     public int worldX(int localX) {

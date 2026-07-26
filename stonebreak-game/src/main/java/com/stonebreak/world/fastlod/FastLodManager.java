@@ -58,6 +58,7 @@ public final class FastLodManager {
     private final ExecutorService executor;
     private final FastLodStore store;   // may be null when persistence is disabled
     private final Uploader uploader;
+    private final long uploadBudgetNanos;
 
     /** GL upload seam — injectable so manager bookkeeping is testable headlessly. */
     interface Uploader {
@@ -119,12 +120,31 @@ public final class FastLodManager {
                    FastLodStore store,
                    ExecutorService executor,
                    Uploader uploader) {
+        this(config, terrain, textureArray, store, executor, uploader, UPLOAD_BUDGET_NANOS);
+    }
+
+    /**
+     * As above, with the per-frame upload time budget also injectable. A headless test
+     * measures only CPU-side mesh packing against a mocked, instant-return uploader — no
+     * real GPU cost at all — so the production 3ms budget (sized for real upload work) can
+     * trip on nothing but cold-JIT interpreter overhead on the very first mesh. A large
+     * budget here removes that wall-clock noise from otherwise-deterministic bookkeeping
+     * assertions without changing the real per-frame budget used in production.
+     */
+    FastLodManager(WorldConfiguration config,
+                   TerrainGenerationSystem terrain,
+                   BlockTextureArray textureArray,
+                   FastLodStore store,
+                   ExecutorService executor,
+                   Uploader uploader,
+                   long uploadBudgetNanos) {
         this.config   = config;
         this.sampler  = new FastLodSampler(terrain);
         this.mesher   = new FastLodMesher(textureArray);
         this.store    = store;
         this.executor = executor;
         this.uploader = uploader;
+        this.uploadBudgetNanos = uploadBudgetNanos;
     }
 
     public void updateRing(int playerCx, int playerCz) {
@@ -236,7 +256,7 @@ public final class FastLodManager {
             // budget. The count cap is a safety belt; the time budget is what
             // usually binds, so a cold reveal drains as fast as the GPU allows
             // without a single frame spiking beyond ~3ms of upload work.
-            long deadline = System.nanoTime() + UPLOAD_BUDGET_NANOS;
+            long deadline = System.nanoTime() + uploadBudgetNanos;
             for (int i = 0; i < MAX_UPLOADS_PER_FRAME; i++) {
                 Ready r = readyToUpload.poll();
                 if (r == null) break;

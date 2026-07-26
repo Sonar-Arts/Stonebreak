@@ -38,17 +38,20 @@ public final class FastLodSampler {
         // per-point samples. Values are bit-identical to the per-point API.
         int origin = -cellSize + representativeOffset(cellSize);
         int[] heights = new int[level.heightCount()];
+        int[] gridWaterLevels = new int[level.heightCount()];
         BlockType[] gridSurface = new BlockType[stride * stride];
         TreeSample[] gridTrees  = level.emitsTrees() ? new TreeSample[stride * stride] : null;
         terrain.sampleColumns(baseX + origin, baseZ + origin, stride, cellSize,
-            heights, gridSurface, gridTrees);
+            heights, gridWaterLevels, gridSurface, gridTrees);
 
+        int[] waterLevels = new int[level.cellCount()];
         BlockType[] surface = new BlockType[level.cellCount()];
         TreeSample[] trees  = level.emitsTrees() ? new TreeSample[level.cellCount()] : null;
         for (int ix = 0; ix < cellsPerAxis; ix++) {
             for (int iz = 0; iz < cellsPerAxis; iz++) {
                 int idx = ix * cellsPerAxis + iz;
                 int gridIdx = (ix + 1) * stride + (iz + 1);
+                waterLevels[idx] = gridWaterLevels[gridIdx];
                 surface[idx] = gridSurface[gridIdx];
                 if (trees != null) {
                     trees[idx] = gridTrees[gridIdx];
@@ -56,7 +59,7 @@ public final class FastLodSampler {
             }
         }
 
-        return new FastLodChunkData(key, heights, surface, trees);
+        return new FastLodChunkData(key, heights, waterLevels, surface, trees);
     }
 
     /**

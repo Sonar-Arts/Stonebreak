@@ -41,22 +41,25 @@ import java.util.Arrays;
  * instead of showing sky through terrain that only exists as a surface sheet.
  *
  * <p><b>Water mesh.</b> One flat sheet quad per submerged cell at
- * {@code SEA_LEVEL - 0.125} — the same plane native water surfaces occupy.
- * Its vertex flags follow the water-mesh semantics documented in
- * {@code shaders/water/water.vert}: flags.x = surface-height fraction
- * (0.875), flags.y = falling (0), flags.w = light (1). Because the sheet is
- * rendered by the same water shader over a real LOD seabed, fresnel
- * transparency, waves, specular and fog are all continuous with native water.
+ * {@code waterLevel - 0.125} — the same plane native water surfaces occupy at
+ * that water level (sea, river or lake alike; the ocean is one case of a
+ * per-cell water level, not a separate rule). Its vertex flags follow the
+ * water-mesh semantics documented in {@code shaders/water/water.vert}:
+ * flags.x = surface-height fraction (0.875), flags.y = falling (0), flags.w =
+ * light (1). Because the sheet is rendered by the same water shader over a
+ * real LOD seabed, fresnel transparency, waves, specular and fog are all
+ * continuous with native water.
  */
 public final class FastLodMesher {
 
-    private static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
     /**
      * Native water tops sit at blockBase + 0.875 (see shaders/water/water.vert);
-     * worldgen fills water below {@code SEA_LEVEL}, so the visible surface is
-     * SEA_LEVEL - 1 + 0.875. The LOD sea sheet uses the same height.
+     * worldgen fills water below a column's water level, so the visible surface
+     * is {@code waterLevel - 1 + 0.875}. The LOD sheet uses the same height,
+     * per cell rather than a single global plane — see {@link
+     * FastLodChunkData#waterLevelAt}.
      */
-    private static final float SEA_SURFACE_Y = SEA_LEVEL - 0.125f;
+    private static final float WATER_SURFACE_OFFSET = -0.125f;
     /** Surface-height fraction baked into water sheet flags (water.vert). */
     private static final float WATER_SURFACE_FRACTION = 0.875f;
 
@@ -146,7 +149,8 @@ public final class FastLodMesher {
             for (int iz = 0; iz < cellsPerAxis; iz++) {
                 BlockType surface = data.surfaceAt(ix, iz);
                 int terrainH = data.heightAt(ix, iz);
-                boolean submerged = terrainH < SEA_LEVEL;
+                int waterLevel = data.waterLevelAt(ix, iz);
+                boolean submerged = waterLevel > terrainH;
 
                 float wx = baseX + ix * cellSize;
                 float wz = baseZ + iz * cellSize;
@@ -165,7 +169,8 @@ public final class FastLodMesher {
                 if (submerged) {
                     // Water sheet quad. Flag semantics per water.vert:
                     // x = surface-height fraction, y = falling, w = light.
-                    ww.topQuadFlat(wx, SEA_SURFACE_Y, wz, cellSize, 0, WATER_SURFACE_FRACTION);
+                    float waterSurfaceY = waterLevel + WATER_SURFACE_OFFSET;
+                    ww.topQuadFlat(wx, waterSurfaceY, wz, cellSize, 0, WATER_SURFACE_FRACTION);
                 }
 
                 if (level.emitsTrees() && !submerged) {

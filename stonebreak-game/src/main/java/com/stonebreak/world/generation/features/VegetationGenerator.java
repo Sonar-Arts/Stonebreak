@@ -12,8 +12,6 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * Plants trees and flowers on the surface column.
  */
 public class VegetationGenerator {
-    /** Columns at or below sea level are underwater; skip vegetation there. */
-    public static final int MIN_SURFACE_Y = WorldConfiguration.SEA_LEVEL;
     public static final float TREE_CHANCE = 0.01f;
     public static final float PINE_TREE_CHANCE = 0.015f;
     public static final float TAIGA_PINE_CHANCE = 0.03f;
@@ -92,7 +90,7 @@ public class VegetationGenerator {
         for (int x = 0; x < ChunkGenerationContext.SIZE; x++) {
             for (int z = 0; z < ChunkGenerationContext.SIZE; z++) {
                 int surface = ctx.height(x, z);
-                if (surface <= MIN_SURFACE_Y || surface >= WorldConfiguration.WORLD_HEIGHT) {
+                if (surface >= WorldConfiguration.WORLD_HEIGHT || ctx.isSubmerged(x, z)) {
                     continue;
                 }
                 int worldX = ctx.worldX(x);

@@ -91,11 +91,12 @@ class TerrainPreviewLoaderTest {
     }
 
     private static PreviewSnapshot snapshotFor(SampleRequest request, boolean complete) {
+        // A 1x1 opaque texel and one raw sample. `PreviewSnapshot.raw` is the pre-normalize
+        // float samples, not the packed bytes — nothing here reads either, this test is
+        // about which request a snapshot carries and when the loader publishes it.
         ImageInfo info = new ImageInfo(1, 1, ColorType.RGBA_8888, ColorAlphaType.OPAQUE, null);
-        byte[] bytes = new byte[FieldPacking.BYTES_PER_TEXEL];
-        FieldPacking.pack(bytes, 0, 400, 0);
-        Image field = Image.makeRasterFromBytes(info, bytes, 4);
-        return new PreviewSnapshot(request, field, bytes, 1, 1, complete);
+        Image field = Image.makeRasterFromBytes(info, new byte[]{0, 0, 0, (byte) 255}, 4);
+        return new PreviewSnapshot(request, field, new float[]{400f}, 1, 1, complete);
     }
 
     private final FakeSampler fake = new FakeSampler();

@@ -807,6 +807,17 @@ public class World {
         return terrainSystem.getFinalTerrainHeightAt(x, z);
     }
 
+    /**
+     * Generated water level at a column (sea, river, or lake surface), or
+     * {@link com.stonebreak.world.generation.diffusion.TerrainTile#NO_WATER}. Distinct
+     * from {@link #getWaterLevelAt(int, int, int)}, which reads a loaded chunk's runtime
+     * water-flow state — this reads the deterministic generator directly, without
+     * requiring the chunk to be loaded.
+     */
+    public int getGeneratedWaterLevelAt(int x, int z) {
+        return terrainSystem.getWaterLevelAt(x, z);
+    }
+
     public java.util.concurrent.CompletableFuture<Void> awaitPendingChunkLoads() {
         return chunkStore != null ? chunkStore.awaitPendingLoads() : java.util.concurrent.CompletableFuture.completedFuture(null);
     }

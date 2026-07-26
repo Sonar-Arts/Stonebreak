@@ -3,6 +3,7 @@ package com.stonebreak.ui.terrainMapper.visualization;
 import com.stonebreak.ui.terrainMapper.visualization.impl.BiomeVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.impl.HeightVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.impl.TopographyVisualizer;
+import com.stonebreak.ui.terrainMapper.visualization.impl.WaterVisualizer;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.diffusion.DiffusionBridgeConfig;
 import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
@@ -55,11 +56,12 @@ public final class VisualizerRegistry {
         HeightMapGenerator heightMap = new HeightMapGenerator(tileCache);
         BiomeManager biomes = new BiomeManager(tileCache);
 
-        // HEIGHT and TOPOGRAPHY deliberately share one HeightMapGenerator: they are two
-        // renderings of the same block heights, so a second generator would only double the
+        // HEIGHT, TOPOGRAPHY and WATER deliberately share one HeightMapGenerator: they are
+        // renderings of the same resolved tile, so a second generator would only double the
         // tile traffic to the bridge for identical data.
         visualizers.put(VisualizerKind.HEIGHT, new HeightVisualizer(heightMap));
         visualizers.put(VisualizerKind.TOPOGRAPHY, new TopographyVisualizer(heightMap));
         visualizers.put(VisualizerKind.BIOME, new BiomeVisualizer(biomes));
+        visualizers.put(VisualizerKind.WATER, new WaterVisualizer(heightMap));
     }
 }

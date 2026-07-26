@@ -12,6 +12,7 @@ import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.diffusion.DiffusionBridgeConfig;
 import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
+import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.diffusion.TerrainTileSource;
 import com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager;
 import com.stonebreak.world.generation.features.OreGenerator;
@@ -114,13 +115,21 @@ public class TerrainGenerationSystem {
         return heightMapGenerator.generateHeight(x, z);
     }
 
+    /** Water level as used by chunk generation, or {@link TerrainTile#NO_WATER}. */
+    public int getWaterLevelAt(int x, int z) {
+        return heightMapGenerator.waterLevel(x, z);
+    }
+
     /**
      * Returns the surface block a column places at its terrain top
      * ({@code y == height - 1}), derived from the same biome rules as
      * {@link #determineBlockType}. Submerged columns report their real seabed
      * block — {@code determineBlockType} places {@code surfaceBlock(biome)}
      * there just like on land — so coarse renderers (FastLOD) can draw the
-     * ocean floor; submergence itself is decided from {@code height < SEA_LEVEL}.
+     * ocean floor; submergence itself is decided per-column from
+     * {@code waterLevel > height} (see {@link HeightMapGenerator#waterLevel}),
+     * not from a global {@code SEA_LEVEL} — the ocean is one case of that,
+     * not a separate rule.
      */
     public BlockType getSurfaceBlockAt(int worldX, int worldZ) {
         return surfaceBlock(biomeManager.getBiome(worldX, worldZ));
@@ -138,7 +147,7 @@ public class TerrainGenerationSystem {
      */
     public com.stonebreak.world.generation.features.VegetationGenerator.TreeSample getTreeAt(int worldX, int worldZ) {
         int height = heightMapGenerator.generateHeight(worldX, worldZ);
-        if (height < SEA_LEVEL) return null;
+        if (heightMapGenerator.waterLevel(worldX, worldZ) > height) return null;
         BlockType surface = surfaceBlock(biomeManager.getBiome(worldX, worldZ));
         BiomeType biome = biomeManager.getBiome(worldX, worldZ);
         return com.stonebreak.world.generation.features.VegetationGenerator.probeTree(
@@ -158,14 +167,19 @@ public class TerrainGenerationSystem {
      * serves whole, so a straight per-column loop touches each tile once and
      * needs no separate grid-fill path.
      *
+     * @param outWaterLevels nullable; length count*count when present. Also filled
+     *                       internally (whether or not the caller wants it) when
+     *                       {@code outTrees} is present, since tree suppression needs it.
      * @param outSurface nullable; length count*count when present
      * @param outTrees   nullable; length count*count when present
      */
     public void sampleColumns(int worldX0, int worldZ0, int count, int stride,
                               int[] outHeights,
+                              int[] outWaterLevels,
                               BlockType[] outSurface,
                               com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees) {
         boolean needBiomes = outSurface != null || outTrees != null;
+        boolean needWater = outWaterLevels != null || outTrees != null;
         for (int ix = 0; ix < count; ix++) {
             for (int iz = 0; iz < count; iz++) {
                 int idx = ix * count + iz;
@@ -173,6 +187,10 @@ public class TerrainGenerationSystem {
                 int wz = worldZ0 + iz * stride;
                 int height = heightMapGenerator.generateHeight(wx, wz);
                 outHeights[idx] = height;
+                int waterLevel = needWater ? heightMapGenerator.waterLevel(wx, wz) : TerrainTile.NO_WATER;
+                if (outWaterLevels != null) {
+                    outWaterLevels[idx] = waterLevel;
+                }
                 if (!needBiomes) {
                     continue;
                 }
@@ -184,7 +202,7 @@ public class TerrainGenerationSystem {
                     outSurface[idx] = surface;
                 }
                 if (outTrees != null) {
-                    outTrees[idx] = (height < SEA_LEVEL) ? null
+                    outTrees[idx] = (waterLevel > height) ? null
                         : com.stonebreak.world.generation.features.VegetationGenerator.probeTree(
                             wx, wz, biome, surface, deterministicRandom);
                 }
@@ -207,17 +225,19 @@ public class TerrainGenerationSystem {
         updateLoadingProgress("Generating Base Terrain Shape");
 
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
+        int[] waterLevels = new int[CHUNK_SIZE * CHUNK_SIZE];
         BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
 
         // Shape first (noise-driven), then skin with biomes. Biomes do not influence shape.
-        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights);
+        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels);
         updateLoadingProgress("Determining Biomes");
         biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
 
         updateLoadingProgress("Applying Biome Materials");
-        BitSet wormMask = wormCarver.carveMaskForChunk(chunkX, chunkZ, heights);
-        CavernCarver.Result cavernResult = cavernCarver.buildForChunk(chunkX, chunkZ, heights);
-        MegaCavernCarver.Result megaCavernResult = megaCavernCarver.buildForChunk(chunkX, chunkZ, heights);
+        BitSet wormMask = wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
+        CavernCarver.Result cavernResult = cavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
+        MegaCavernCarver.Result megaCavernResult =
+                megaCavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
         BitSet caveMask = wormMask;
         caveMask.or(cavernResult.carveMask);
         caveMask.or(megaCavernResult.carveMask);
@@ -236,6 +256,7 @@ public class TerrainGenerationSystem {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 int idx = x * CHUNK_SIZE + z;
                 int height = heights[idx];
+                int waterLevel = waterLevels[idx];
                 BiomeType biome = biomes[idx];
                 int worldX = baseX + x;
                 int worldZ = baseZ + z;
@@ -247,7 +268,7 @@ public class TerrainGenerationSystem {
                     } else if (y > 0 && y < height && caveMask.get(bit)) {
                         continue; // carved to air — already the uniform fill
                     } else {
-                        block = determineBlockType(worldX, y, worldZ, height, biome);
+                        block = determineBlockType(worldX, y, worldZ, height, waterLevel, biome);
                     }
                     if (block != BlockType.AIR) {
                         storage.set(x, y, z, block);
@@ -261,7 +282,7 @@ public class TerrainGenerationSystem {
         // clears data-dirty for waterless chunks, exactly as before.
         chunk.getCcoDirtyTracker().markBlockChanged();
         chunk.setFeaturesPopulated(false);
-        return new TerrainResult(chunk, new ColumnProfile(heights, biomes));
+        return new TerrainResult(chunk, new ColumnProfile(heights, biomes, waterLevels));
     }
 
     /**
@@ -289,21 +310,26 @@ public class TerrainGenerationSystem {
 
         int[] heights;
         BiomeType[] biomes;
+        int[] waterLevels;
         if (profile != null) {
             // Reuse the profile computed during terrain generation — skips a
             // full noise resampling pass per chunk.
             heights = profile.heights();
             biomes = profile.biomes();
+            waterLevels = profile.waterLevels();
         } else {
+            // Chunk loaded from disk with no profile carried over — recompute
+            // both planes from the same resolved tile, same as terrain generation.
             heights = new int[CHUNK_SIZE * CHUNK_SIZE];
             biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
-            heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights);
+            waterLevels = new int[CHUNK_SIZE * CHUNK_SIZE];
+            heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels);
             biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
         }
         BiomeType dominantBiome = biomes[(CHUNK_SIZE / 2) * CHUNK_SIZE + (CHUNK_SIZE / 2)];
 
         ChunkGenerationContext ctx = new ChunkGenerationContext(
-            world, chunk, snowLayerManager, heights, biomes, dominantBiome);
+            world, chunk, snowLayerManager, heights, biomes, waterLevels, dominantBiome);
 
         oreGenerator.generate(ctx);
         vegetationGenerator.generate(ctx);
@@ -321,7 +347,12 @@ public class TerrainGenerationSystem {
         chunk.setFeaturesPopulated(true);
     }
 
-    private BlockType determineBlockType(int worldX, int y, int worldZ, int height, BiomeType biome) {
+    /**
+     * @param waterLevel first y that is not water in this column, or
+     *                   {@link com.stonebreak.world.generation.diffusion.TerrainTile#NO_WATER}
+     */
+    private BlockType determineBlockType(int worldX, int y, int worldZ, int height,
+                                         int waterLevel, BiomeType biome) {
         if (y == 0) {
             return BlockType.BEDROCK;
         }
@@ -341,10 +372,15 @@ public class TerrainGenerationSystem {
         if (y < height) {
             return surfaceBlock(biome);
         }
-        if (y < SEA_LEVEL) {
-            if (biome == BiomeType.RED_SAND_DESERT && height > SEA_LEVEL) {
-                return BlockType.AIR;
-            }
+        // Was `y < SEA_LEVEL`. The ocean is now one case of a per-column water surface
+        // rather than a global constant, so a river or a lake several hundred blocks up
+        // places water by exactly the same rule the sea always did.
+        //
+        // The old `RED_SAND_DESERT && height > SEA_LEVEL` branch that sat here is gone
+        // rather than ported: it was unreachable. Getting this far needs `y >= height`,
+        // since every earlier branch covers `y < height`; combined with `height > SEA_LEVEL`
+        // that gives `y >= height > SEA_LEVEL`, which contradicts `y < SEA_LEVEL`.
+        if (y < waterLevel) {
             return BlockType.WATER;
         }
         return BlockType.AIR;

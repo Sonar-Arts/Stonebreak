@@ -46,22 +46,63 @@ class UpstreamClient:
             "scale": self._cfg.scale,
             "noise": self._cfg.noise_scale,
         }
+        elev, biome = self._fetch(params, timeout=self._cfg.upstream_timeout_s)
+        if biome is None:
+            raise UpstreamError("upstream returned no biome plane")
+        return elev, biome
+
+    def fetch_native(
+        self, i1: int, j1: int, i2: int, j2: int, timeout_s: float | None = None
+    ) -> np.ndarray:
+        """Fetch elevation at the model's native resolution. Returns int16 metres, HxW.
+
+        Coordinates are in *native pixels*, not blocks: upstream's `/terrain` takes its
+        bounding box in target-resolution units and derives native ones by `i1 // scale`,
+        so at `scale=1` the two coincide. One native pixel is `native_resolution` metres
+        (30 m for the current model) against `native_resolution / scale` for a block.
+
+        Used for bulk regions rather than tiles, which is a different cost regime
+        entirely -- `Dev Working/Rivers and lakes plan.md` section 13.3 measures
+        contiguous native generation at ~480k px/s over HTTP against ~20k px/s through
+        the per-tile path, because a region pays the per-request overheads once.
+        `timeout_s` therefore defaults to a multiple of the tile timeout: a region strip
+        legitimately takes tens of seconds where a tile taking that long is a fault.
+
+        No `noise` parameter is sent, and none would do anything. Upstream adds its
+        slope-scaled Perlin inside `_get_upsampled`, to restore detail lost to the
+        bilinear upsample; `scale=1` routes to `_handle_1x`, which never calls it. So
+        native output *is* the smooth field section 4.3 wants to route on, for free.
+        """
+        params = {"i1": i1, "j1": j1, "i2": i2, "j2": j2, "scale": 1}
+        elev, _ = self._fetch(params, timeout=timeout_s or self._cfg.upstream_timeout_s * 20.0)
+        return elev
+
+    def _fetch(self, params: dict, timeout: float) -> tuple[np.ndarray, np.ndarray | None]:
         try:
             r = self._session.get(
-                f"{self._cfg.upstream_url}/terrain", params=params, timeout=self._cfg.upstream_timeout_s
+                f"{self._cfg.upstream_url}/terrain", params=params, timeout=timeout
             )
         except requests.RequestException as e:
             raise UpstreamError(f"could not reach upstream at {self._cfg.upstream_url}: {e}") from e
         if r.status_code != 200:
             raise UpstreamError(f"upstream /terrain returned {r.status_code}: {r.text[:200]}")
 
+        dtype = r.headers.get("X-Dtype", "int16-le")
+        if dtype != "int16-le":
+            # The body is two bare concatenated planes with no header bytes, so a
+            # width change would be sliced into garbage rather than rejected.
+            raise UpstreamError(f"upstream sent X-Dtype {dtype!r}, expected 'int16-le'")
         h = int(r.headers["X-Height"])
         w = int(r.headers["X-Width"])
         body = r.content
-        expected = h * w * 2 * 2  # elevation int16 + biome int16
-        if len(body) != expected:
-            raise UpstreamError(f"unexpected payload size for {h}x{w}: got {len(body)}, expected {expected}")
+        plane = h * w * 2
+        if len(body) not in (plane, plane * 2):
+            raise UpstreamError(
+                f"unexpected payload size for {h}x{w}: got {len(body)}, "
+                f"expected {plane} or {plane * 2}"
+            )
 
-        elev = np.frombuffer(body[: h * w * 2], dtype="<i2").reshape(h, w)
-        biome = np.frombuffer(body[h * w * 2 :], dtype="<i2").reshape(h, w)
-        return elev.copy(), biome.copy()
+        elev = np.frombuffer(body[:plane], dtype="<i2").reshape(h, w).copy()
+        if len(body) == plane:
+            return elev, None
+        return elev, np.frombuffer(body[plane:], dtype="<i2").reshape(h, w).copy()

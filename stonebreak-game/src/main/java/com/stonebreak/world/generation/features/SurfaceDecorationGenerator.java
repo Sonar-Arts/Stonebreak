@@ -14,8 +14,6 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * Surface decorations: gravel, ice, snow, clay - biome-specific overlays.
  */
 public class SurfaceDecorationGenerator {
-    /** Columns at or below sea level are underwater; skip surface decoration there. */
-    private static final int MIN_SURFACE_Y = WorldConfiguration.SEA_LEVEL;
     private static final float GRAVEL_CHANCE = 0.0015f;
     private static final float ICE_CHANCE = 0.03f;
     private static final float SNOW_CHANCE = 0.08f; // cumulative threshold (>= ICE_CHANCE)
@@ -44,7 +42,7 @@ public class SurfaceDecorationGenerator {
         for (int x = 0; x < ChunkGenerationContext.SIZE; x++) {
             for (int z = 0; z < ChunkGenerationContext.SIZE; z++) {
                 int surface = ctx.height(x, z);
-                if (surface <= MIN_SURFACE_Y || surface >= WorldConfiguration.WORLD_HEIGHT) {
+                if (surface >= WorldConfiguration.WORLD_HEIGHT || ctx.isSubmerged(x, z)) {
                     continue;
                 }
                 int worldX = ctx.worldX(x);

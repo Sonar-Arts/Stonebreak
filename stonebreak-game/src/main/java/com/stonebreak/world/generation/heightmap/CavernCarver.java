@@ -129,13 +129,21 @@ public final class CavernCarver {
      * Caller must apply formationMask as STONE before applying carveMask as AIR.
      */
     public Result buildForChunk(int chunkX, int chunkZ, int[] targetHeights) {
+        return buildForChunk(chunkX, chunkZ, targetHeights, null);
+    }
+
+    /**
+     * As {@link #buildForChunk(int, int, int[])}, keeping clear of the beds of wet
+     * columns — see {@link WaterGuard}. A null {@code waterLevels} suppresses nothing.
+     */
+    public Result buildForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels) {
         BitSet carve = new BitSet();
         for (int dcx = -SCAN_RADIUS; dcx <= SCAN_RADIUS; dcx++) {
             for (int dcz = -SCAN_RADIUS; dcz <= SCAN_RADIUS; dcz++) {
                 int srcCx = chunkX + dcx;
                 int srcCz = chunkZ + dcz;
                 if (!hasCavern(srcCx, srcCz)) continue;
-                carveCavern(srcCx, srcCz, chunkX, chunkZ, targetHeights, carve);
+                carveCavern(srcCx, srcCz, chunkX, chunkZ, targetHeights, waterLevels, carve);
             }
         }
         BitSet formations = carve.isEmpty() ? new BitSet() : buildFormations(chunkX, chunkZ, carve);
@@ -143,7 +151,7 @@ public final class CavernCarver {
     }
 
     private void carveCavern(int srcCx, int srcCz, int targetCx, int targetCz,
-                             int[] targetHeights, BitSet mask) {
+                             int[] targetHeights, int[] waterLevels, BitSet mask) {
         Random rng = new Random(cavernRngSeed(srcCx, srcCz));
         // First three draws must mirror computeCavernOrigin exactly.
         float ox = srcCx * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE);
@@ -156,12 +164,13 @@ public final class CavernCarver {
             float dy = (rng.nextFloat() - 0.5f) * 2f * (BLOB_OFFSET * 0.45f);
             float dz = (rng.nextFloat() - 0.5f) * 2f * BLOB_OFFSET;
             float r = BASE_RADIUS * (0.75f + rng.nextFloat() * 0.45f);
-            carveEllipsoid(ox + dx, oy + dy, oz + dz, r, targetCx, targetCz, targetHeights, mask);
+            carveEllipsoid(ox + dx, oy + dy, oz + dz, r, targetCx, targetCz,
+                    targetHeights, waterLevels, mask);
         }
     }
 
-    private void carveEllipsoid(float wx, float wy, float wz, float radius,
-                                int targetCx, int targetCz, int[] targetHeights, BitSet mask) {
+    private void carveEllipsoid(float wx, float wy, float wz, float radius, int targetCx,
+                                int targetCz, int[] targetHeights, int[] waterLevels, BitSet mask) {
         int targetBaseX = targetCx * CHUNK_SIZE;
         int targetBaseZ = targetCz * CHUNK_SIZE;
         int rxz = (int) Math.ceil(radius);
@@ -182,7 +191,8 @@ public final class CavernCarver {
             for (int oz = -rxz; oz <= rxz; oz++) {
                 int bz = wzi + oz - targetBaseZ;
                 if (bz < 0 || bz >= CHUNK_SIZE) continue;
-                int surface = targetHeights[bx * CHUNK_SIZE + bz];
+                int idx = bx * CHUNK_SIZE + bz;
+                int surface = targetHeights[idx];
                 if (surface <= SEA_LEVEL + WATER_CLEARANCE) continue;
                 float horizTerm = (ox * ox + oz * oz) * invRxz2;
                 if (horizTerm >= 1f) continue;
@@ -192,6 +202,7 @@ public final class CavernCarver {
                     int by = wyi + oy;
                     if (by < 1 || by >= WORLD_HEIGHT) continue;
                     if (by >= surface) continue;
+                    if (WaterGuard.sealsBed(waterLevels, idx, surface, by, WATER_CLEARANCE)) continue;
                     mask.set(LocalBlockKey.pack(bx, by, bz));
                 }
             }

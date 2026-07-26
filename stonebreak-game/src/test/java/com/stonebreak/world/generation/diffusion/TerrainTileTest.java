@@ -14,13 +14,19 @@ class TerrainTileTest {
         // row0 (x=10): z=20,21,22 -> 1,2,3   row1 (x=11): z=20,21,22 -> 4,5,6
         short[] heights = {1, 2, 3, 4, 5, 6};
         short[] biomes = {9, 9, 9, 9, 9, 9};
-        TerrainTile tile = new TerrainTile(0, 0, 10, 20, 12, 23, 3, 2, heights, biomes);
+        short[] water = {320, -1, 400, -1, -1, 320};
+        TerrainTile tile = new TerrainTile(0, 0, 10, 20, 12, 23, 3, 2, heights, biomes, water);
 
         assertEquals(1, tile.heightAt(10, 20));
         assertEquals(3, tile.heightAt(10, 22));
         assertEquals(4, tile.heightAt(11, 20));
         assertEquals(6, tile.heightAt(11, 22));
         assertEquals(9, tile.biomeIdAt(11, 21));
+        // The water plane indexes exactly as the other two do, and the -1 sentinel
+        // survives as a negative rather than as an unsigned 65535.
+        assertEquals(320, tile.waterLevelAt(10, 20));
+        assertEquals(400, tile.waterLevelAt(10, 22));
+        assertEquals(TerrainTile.NO_WATER, tile.waterLevelAt(11, 20));
     }
 
     /**
@@ -33,16 +39,21 @@ class TerrainTileTest {
         // 2x2 tile at origin: row-major {a, b, c, d} => (x=0,z=1) is b, (x=1,z=0) is c.
         short[] heights = {1, 2, 3, 4};
         short[] biomes = {0, 0, 0, 0};
-        TerrainTile tile = new TerrainTile(0, 0, 0, 0, 2, 2, 2, 2, heights, biomes);
+        short[] water = {5, 6, 7, 8};
+        TerrainTile tile = new TerrainTile(0, 0, 0, 0, 2, 2, 2, 2, heights, biomes, water);
 
         assertEquals(2, tile.heightAt(0, 1));
         assertEquals(3, tile.heightAt(1, 0));
+        assertEquals(6, tile.waterLevelAt(0, 1));
+        assertEquals(7, tile.waterLevelAt(1, 0));
     }
 
     @Test
     void throwsOnOutOfBoundsCoordinate() {
-        TerrainTile tile = new TerrainTile(0, 0, 0, 0, 1, 1, 1, 1, new short[]{1}, new short[]{0});
+        TerrainTile tile = new TerrainTile(0, 0, 0, 0, 1, 1, 1, 1,
+                new short[]{1}, new short[]{0}, new short[]{-1});
         assertThrows(IllegalStateException.class, () -> tile.heightAt(5, 5));
         assertThrows(IllegalStateException.class, () -> tile.heightAt(-1, 0));
+        assertThrows(IllegalStateException.class, () -> tile.waterLevelAt(5, 5));
     }
 }

@@ -10,9 +10,13 @@ import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
  * <ul>
  *   <li>{@code heights[stride²]} — terrain height per cell, one-cell margin on
  *   each side so the mesher can emit skirts without reading neighbours.</li>
+ *   <li>{@code waterLevels[cellsPerAxis²]} — per-cell water level, or {@link
+ *   com.stonebreak.world.generation.diffusion.TerrainTile#NO_WATER}; a cell is
+ *   submerged exactly when this exceeds its height, the same test native
+ *   generation places water by. No margin: skirts only compare terrain
+ *   heights, never water.</li>
  *   <li>{@code surface[cellsPerAxis²]} — representative surface block for each
- *   interior cell; for submerged cells (height below sea level) this is the
- *   real seabed block, submergence itself is height-derived.</li>
+ *   interior cell; for submerged cells this is the real seabed block.</li>
  *   <li>{@code trees[cellsPerAxis²]} — tree silhouettes, populated only at the
  *   finest level ({@link FastLodLevel#L0}); other levels leave this null.</li>
  * </ul>
@@ -21,15 +25,21 @@ public final class FastLodChunkData {
 
     private final FastLodKey key;
     private final int[] heights;
+    private final int[] waterLevels;
     private final BlockType[] surface;
     private final TreeSample[] trees;
 
-    public FastLodChunkData(FastLodKey key, int[] heights, BlockType[] surface, TreeSample[] trees) {
+    public FastLodChunkData(FastLodKey key, int[] heights, int[] waterLevels,
+                            BlockType[] surface, TreeSample[] trees) {
         if (key == null) throw new IllegalArgumentException("key");
         FastLodLevel level = key.level();
         if (heights.length != level.heightCount()) {
             throw new IllegalArgumentException("heights length " + heights.length
                     + " != expected " + level.heightCount() + " for " + level);
+        }
+        if (waterLevels.length != level.cellCount()) {
+            throw new IllegalArgumentException("waterLevels length " + waterLevels.length
+                    + " != expected " + level.cellCount() + " for " + level);
         }
         if (surface.length != level.cellCount()) {
             throw new IllegalArgumentException("surface length " + surface.length
@@ -41,6 +51,7 @@ public final class FastLodChunkData {
         }
         this.key = key;
         this.heights = heights;
+        this.waterLevels = waterLevels;
         this.surface = surface;
         this.trees = trees;
     }
@@ -56,6 +67,16 @@ public final class FastLodChunkData {
         return heights[(ix + 1) * stride + (iz + 1)];
     }
 
+    /**
+     * Water level at an interior cell, or {@link
+     * com.stonebreak.world.generation.diffusion.TerrainTile#NO_WATER}. No
+     * margin — unlike {@link #heightAt}, only {@code (ix, iz)} within
+     * {@code [0, cellsPerAxis)} are valid.
+     */
+    public int waterLevelAt(int ix, int iz) {
+        return waterLevels[ix * key.level().cellsPerAxis() + iz];
+    }
+
     public BlockType surfaceAt(int ix, int iz) {
         return surface[ix * key.level().cellsPerAxis() + iz];
     }
@@ -67,6 +88,7 @@ public final class FastLodChunkData {
 
     /** Direct access for the serializer; do not mutate. */
     public int[] rawHeights()          { return heights; }
+    public int[] rawWaterLevels()      { return waterLevels; }
     public BlockType[] rawSurface()    { return surface; }
     public TreeSample[] rawTrees()     { return trees; }
 }

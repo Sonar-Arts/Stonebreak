@@ -1,6 +1,7 @@
 package com.stonebreak.world.fastlod;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeKind;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,10 @@ class FastLodSerializerTest {
         for (int i = 0; i < heights.length; i++) {
             heights[i] = 40 + (i % 90) - 20;   // varied, in-short-range values incl. < SEA_LEVEL
         }
+        int[] waterLevels = new int[level.cellCount()];
+        for (int i = 0; i < waterLevels.length; i++) {
+            waterLevels[i] = (i % 3 == 0) ? TerrainTile.NO_WATER : 40 + (i % 50);   // mix of dry and wet
+        }
         BlockType[] surface = new BlockType[level.cellCount()];
         for (int i = 0; i < surface.length; i++) {
             surface[i] = switch (i % 3) {
@@ -43,7 +48,7 @@ class FastLodSerializerTest {
             trees[7] = new TreeSample(TreeKind.PINE, 9);
             trees[level.cellCount() - 1] = new TreeSample(TreeKind.ELM, 3);
         }
-        return new FastLodChunkData(key, heights, surface, trees);
+        return new FastLodChunkData(key, heights, waterLevels, surface, trees);
     }
 
     @Test
@@ -55,6 +60,7 @@ class FastLodSerializerTest {
         assertNotNull(restored);
         assertEquals(original.key(), restored.key());
         assertArrayEquals(original.rawHeights(), restored.rawHeights());
+        assertArrayEquals(original.rawWaterLevels(), restored.rawWaterLevels());
         assertArrayEquals(original.rawSurface(), restored.rawSurface());
 
         TreeSample[] origTrees = original.rawTrees();
@@ -74,6 +80,7 @@ class FastLodSerializerTest {
 
         assertNotNull(restored);
         assertArrayEquals(original.rawHeights(), restored.rawHeights());
+        assertArrayEquals(original.rawWaterLevels(), restored.rawWaterLevels());
         assertArrayEquals(original.rawSurface(), restored.rawSurface());
         assertNull(restored.rawTrees());
     }
@@ -132,12 +139,14 @@ class FastLodSerializerTest {
         FastLodLevel level = data.level();
 
         int heightsEnd = HEADER_SIZE + level.heightCount() * 2;
-        int surfaceEnd = heightsEnd + level.cellCount() * 2;
+        int waterLevelsEnd = heightsEnd + level.cellCount() * 2;
+        int surfaceEnd = waterLevelsEnd + level.cellCount() * 2;
         int treeFlagEnd = surfaceEnd + 1;
         int[] cuts = {
                 0, 4, 7,                    // shorter than the header
                 HEADER_SIZE,                // header only
                 heightsEnd - 3,             // mid-heights
+                waterLevelsEnd - 1,         // mid-water-levels
                 surfaceEnd - 1,             // mid-surface
                 treeFlagEnd,                // tree flag says trees follow, but they don't
                 treeFlagEnd + level.cellCount(),      // kinds present, trunk heights missing
@@ -154,7 +163,8 @@ class FastLodSerializerTest {
     void rejectsInvalidTreeKind() {
         FastLodChunkData data = makeData(FastLodLevel.L0, true);
         byte[] blob = FastLodSerializer.serialize(data);
-        int kindsStart = HEADER_SIZE + data.level().heightCount() * 2 + data.level().cellCount() * 2 + 1;
+        int kindsStart = HEADER_SIZE + data.level().heightCount() * 2 + data.level().cellCount() * 2
+                + data.level().cellCount() * 2 + 1;
         blob[kindsStart] = (byte) 200;   // ordinal 199 — far past TreeKind.values()
         assertNull(FastLodSerializer.deserialize(data.key(), blob));
     }

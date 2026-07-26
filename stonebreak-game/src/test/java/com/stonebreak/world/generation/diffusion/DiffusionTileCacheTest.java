@@ -22,7 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class DiffusionTileCacheTest {
 
     private static DiffusionBridgeConfig config(int tileSize, int maxCachedTiles) {
-        return new DiffusionBridgeConfig("http://unused", tileSize, 1000, 1000, 0, 10, 50, maxCachedTiles, 1000);
+        return new DiffusionBridgeConfig("http://unused", tileSize, 1000, 1000, 0, 10, 50, maxCachedTiles, 1000,
+                1000, 50);
     }
 
     private static TerrainTile stubTile(int tileX, int tileZ, int tileSize) {
@@ -30,7 +31,10 @@ class DiffusionTileCacheTest {
         int j1 = tileZ * tileSize;
         short[] h = new short[tileSize * tileSize];
         short[] b = new short[tileSize * tileSize];
-        return new TerrainTile(tileX, tileZ, i1, j1, i1 + tileSize, j1 + tileSize, tileSize, tileSize, h, b);
+        short[] w = new short[tileSize * tileSize];
+        java.util.Arrays.fill(w, TerrainTile.NO_WATER);
+        return new TerrainTile(tileX, tileZ, i1, j1, i1 + tileSize, j1 + tileSize,
+                tileSize, tileSize, h, b, w);
     }
 
     @Test

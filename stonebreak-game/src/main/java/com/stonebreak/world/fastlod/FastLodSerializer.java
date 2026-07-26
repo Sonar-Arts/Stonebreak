@@ -16,12 +16,14 @@ import java.nio.ByteOrder;
  * Wire layout (little-endian):
  * <pre>
  *   magic        u32  'FLOD' (0x444F4C46)
- *   version      u8   current = 2 (v2: submerged cells store the real seabed
- *                     block instead of WATER; submergence is height-derived)
+ *   version      u8   current = 3 (v3: adds the per-cell water-level plane;
+ *                     v2: submerged cells store the real seabed block instead
+ *                     of WATER)
  *   level        u8   0..FastLodLevel.count-1
  *   cellsPerAxis u8
  *   stride       u8
  *   heights      i16[stride*stride]       world Y (clamped to short range)
+ *   waterLevels  i16[cellsPerAxis²]       world Y, or TerrainTile.NO_WATER (-1)
  *   surface      u16[cellsPerAxis²]       BlockType.getId()
  *   treePresent  u8   0 = trees omitted, 1 = trees follow
  *   trees?       u8[cellsPerAxis²] kind   0 = none, else TreeKind.ordinal()+1
@@ -30,7 +32,7 @@ import java.nio.ByteOrder;
  */
 public final class FastLodSerializer {
 
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
 
     private FastLodSerializer() {}
@@ -45,6 +47,7 @@ public final class FastLodSerializer {
         int size = 4 + 1 + 1 + 1 + 1
                  + heightsLen * 2
                  + cellsLen   * 2
+                 + cellsLen   * 2
                  + 1
                  + (hasTrees ? cellsLen * 2 : 0);
 
@@ -58,6 +61,11 @@ public final class FastLodSerializer {
         int[] heights = data.rawHeights();
         for (int i = 0; i < heightsLen; i++) {
             buf.putShort((short) clampShort(heights[i]));
+        }
+
+        int[] waterLevels = data.rawWaterLevels();
+        for (int i = 0; i < cellsLen; i++) {
+            buf.putShort((short) clampShort(waterLevels[i]));
         }
 
         BlockType[] surface = data.rawSurface();
@@ -109,12 +117,17 @@ public final class FastLodSerializer {
 
         int heightsLen = level.heightCount();
         int cellsLen   = level.cellCount();
-        int needed = 8 + heightsLen * 2 + cellsLen * 2 + 1;
+        int needed = 8 + heightsLen * 2 + cellsLen * 2 + cellsLen * 2 + 1;
         if (buf.remaining() < needed - 8) return null;
 
         int[] heights = new int[heightsLen];
         for (int i = 0; i < heightsLen; i++) {
             heights[i] = buf.getShort();
+        }
+
+        int[] waterLevels = new int[cellsLen];
+        for (int i = 0; i < cellsLen; i++) {
+            waterLevels[i] = buf.getShort();
         }
 
         BlockType[] surface = new BlockType[cellsLen];
@@ -147,7 +160,7 @@ public final class FastLodSerializer {
         if (level.emitsTrees() && trees == null) return null;
         if (!level.emitsTrees() && trees != null) trees = null;
 
-        return new FastLodChunkData(expected, heights, surface, trees);
+        return new FastLodChunkData(expected, heights, waterLevels, surface, trees);
     }
 
     private static int clampShort(int v) {

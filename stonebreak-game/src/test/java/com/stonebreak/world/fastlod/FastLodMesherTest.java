@@ -3,6 +3,7 @@ package com.stonebreak.world.fastlod;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
+import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeKind;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -48,10 +49,15 @@ class FastLodMesherTest {
         mesher = new FastLodMesher(textures);
     }
 
-    /** L4 data: one cell, margin-extended 3x3 heights, single surface block. */
+    /** L4 data: one dry cell, margin-extended 3x3 heights, single surface block. */
     private static FastLodChunkData l4Data(int[] heights3x3, BlockType surface) {
+        return l4Data(heights3x3, surface, TerrainTile.NO_WATER);
+    }
+
+    /** As above, with an explicit water level for the one interior cell. */
+    private static FastLodChunkData l4Data(int[] heights3x3, BlockType surface, int waterLevel) {
         return new FastLodChunkData(FastLodKey.of(FastLodLevel.L4, 0, 0),
-                heights3x3, new BlockType[]{surface}, null);
+                heights3x3, new int[]{waterLevel}, new BlockType[]{surface}, null);
     }
 
     private static int[] filled(int len, int value) {
@@ -129,7 +135,7 @@ class FastLodMesherTest {
         // real height (textured with the sampled seabed block), and the water
         // surface is a separate translucent sheet mesh at the native water
         // plane, drawn by the dedicated water renderer.
-        FastLodMesher.Result result = mesher.build(l4Data(filled(9, 306), BlockType.SAND));
+        FastLodMesher.Result result = mesher.build(l4Data(filled(9, 306), BlockType.SAND, SEA_LEVEL));
 
         MmsMeshData terrain = result.mesh();
         assertEquals(20, terrain.getVertexCount(), "seabed top + 4 foundations, no skirts");
@@ -157,7 +163,7 @@ class FastLodMesherTest {
     void waterSheetFlagsFollowWaterVertContract() {
         // water.vert semantics: flags.x = surface-height fraction (0.875),
         // flags.y = falling (0), flags.w = light (1); normals straight up.
-        FastLodMesher.Result result = mesher.build(l4Data(filled(9, 296), BlockType.SAND));
+        FastLodMesher.Result result = mesher.build(l4Data(filled(9, 296), BlockType.SAND, SEA_LEVEL));
         MmsMeshData sheet = result.waterMesh();
         assertNotNull(sheet);
         for (float f : sheet.getWaterHeightFlags()) assertEquals(0.875f, f, EPS);
@@ -198,10 +204,11 @@ class FastLodMesherTest {
         // interior cell edges emit nothing.
         FastLodLevel level = FastLodLevel.L2;
         int[] heights = filled(level.heightCount(), 326);
+        int[] waterLevels = filled(level.cellCount(), TerrainTile.NO_WATER);
         BlockType[] surface = new BlockType[level.cellCount()];
         Arrays.fill(surface, BlockType.STONE);
         FastLodChunkData data = new FastLodChunkData(
-                FastLodKey.of(level, 0, 0), heights, surface, null);
+                FastLodKey.of(level, 0, 0), heights, waterLevels, surface, null);
 
         FastLodMesher.Result result = mesher.build(data);
         MmsMeshData mesh = result.mesh();
@@ -235,10 +242,11 @@ class FastLodMesherTest {
                 heights[hx * level.stride() + hz] = 336 + 4 * (hx - 1);
             }
         }
+        int[] waterLevels = filled(level.cellCount(), TerrainTile.NO_WATER);
         BlockType[] surface = new BlockType[level.cellCount()];
         Arrays.fill(surface, BlockType.STONE);
         FastLodChunkData data = new FastLodChunkData(
-                FastLodKey.of(level, 0, 0), heights, surface, null);
+                FastLodKey.of(level, 0, 0), heights, waterLevels, surface, null);
 
         MmsMeshData mesh = mesher.build(data).mesh();
         float expected = (float) (1.0 / Math.sqrt(2.0));
@@ -263,12 +271,13 @@ class FastLodMesherTest {
     void treeSilhouetteEmittedAndBoundsIncludeCanopy() {
         FastLodLevel level = FastLodLevel.L0;
         int[] heights = filled(level.heightCount(), 326);
+        int[] waterLevels = filled(level.cellCount(), TerrainTile.NO_WATER);
         BlockType[] surface = new BlockType[level.cellCount()];
         Arrays.fill(surface, BlockType.GRASS);
         TreeSample[] trees = new TreeSample[level.cellCount()];
         trees[2 * level.cellsPerAxis() + 3] = new TreeSample(TreeKind.OAK, 4);
         FastLodChunkData data = new FastLodChunkData(
-                FastLodKey.of(level, 0, 0), heights, surface, trees);
+                FastLodKey.of(level, 0, 0), heights, waterLevels, surface, trees);
 
         FastLodMesher.Result result = mesher.build(data);
         // 256 flat top quads + 9 tree quads (4 trunk + 5 canopy)
@@ -283,12 +292,13 @@ class FastLodMesherTest {
     void treeOnSubmergedCellIsSuppressed() {
         FastLodLevel level = FastLodLevel.L0;
         int[] heights = filled(level.heightCount(), 306);
+        int[] waterLevels = filled(level.cellCount(), SEA_LEVEL);
         BlockType[] surface = new BlockType[level.cellCount()];
         Arrays.fill(surface, BlockType.SAND);
         TreeSample[] trees = new TreeSample[level.cellCount()];
         trees[0] = new TreeSample(TreeKind.PINE, 6);
         FastLodChunkData data = new FastLodChunkData(
-                FastLodKey.of(level, 0, 0), heights, surface, trees);
+                FastLodKey.of(level, 0, 0), heights, waterLevels, surface, trees);
 
         FastLodMesher.Result result = mesher.build(data);
         assertEquals((256 + 64) * 4, result.mesh().getVertexCount(),
@@ -308,11 +318,14 @@ class FastLodMesherTest {
         // Interior cells: (0,0)=376, (1,1)=286, others 326.
         heights[(0 + 1) * 4 + (0 + 1)] = 376;
         heights[(1 + 1) * 4 + (1 + 1)] = 286;
+        int[] waterLevels = new int[]{
+                TerrainTile.NO_WATER, TerrainTile.NO_WATER,
+                TerrainTile.NO_WATER, SEA_LEVEL};
         BlockType[] surface = new BlockType[]{
                 BlockType.STONE, BlockType.STONE,
                 BlockType.STONE, BlockType.SAND};
         FastLodChunkData data = new FastLodChunkData(
-                FastLodKey.of(level, 0, 0), heights, surface, null);
+                FastLodKey.of(level, 0, 0), heights, waterLevels, surface, null);
 
         FastLodMesher.Result result = mesher.build(data);
         assertEquals(376f, result.maxY(), EPS);

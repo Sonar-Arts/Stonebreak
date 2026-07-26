@@ -173,13 +173,21 @@ public final class PerlinWormCarver {
      * by the caller (only when the block would otherwise be solid).
      */
     public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights) {
+        return carveMaskForChunk(chunkX, chunkZ, targetHeights, null);
+    }
+
+    /**
+     * As {@link #carveMaskForChunk(int, int, int[])}, keeping clear of the beds of wet
+     * columns — see {@link WaterGuard}. A null {@code waterLevels} suppresses nothing.
+     */
+    public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels) {
         BitSet mask = new BitSet();
         for (int dcx = -SCAN_RADIUS; dcx <= SCAN_RADIUS; dcx++) {
             for (int dcz = -SCAN_RADIUS; dcz <= SCAN_RADIUS; dcz++) {
                 int srcCx = chunkX + dcx;
                 int srcCz = chunkZ + dcz;
                 if (!hasWorm(srcCx, srcCz)) continue;
-                spawnCarvers(srcCx, srcCz, chunkX, chunkZ, targetHeights, mask);
+                spawnCarvers(srcCx, srcCz, chunkX, chunkZ, targetHeights, waterLevels, mask);
             }
         }
         return mask;
@@ -250,7 +258,7 @@ public final class PerlinWormCarver {
      * side of the spawn point continues out the other side.
      */
     private void spawnCarvers(int srcCx, int srcCz, int targetCx, int targetCz,
-                              int[] targetHeights, BitSet mask) {
+                              int[] targetHeights, int[] waterLevels, BitSet mask) {
         Random rng = new Random(chunkRngSeed(srcCx, srcCz));
         float ox = srcCx * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE);
         float oz = srcCz * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE);
@@ -282,7 +290,7 @@ public final class PerlinWormCarver {
         }
 
         while (!queue.isEmpty()) {
-            walkCarver(queue.pop(), queue, targetCx, targetCz, targetHeights, mask);
+            walkCarver(queue.pop(), queue, targetCx, targetCz, targetHeights, waterLevels, mask);
         }
     }
 
@@ -374,7 +382,8 @@ public final class PerlinWormCarver {
     }
 
     private void walkCarver(CarverSegment seg, Deque<CarverSegment> queue,
-                            int targetCx, int targetCz, int[] targetHeights, BitSet mask) {
+                            int targetCx, int targetCz, int[] targetHeights, int[] waterLevels,
+                            BitSet mask) {
         Random rng = new Random(seg.rngSeed);
         float x = seg.x, y = seg.y, z = seg.z, yaw = seg.yaw, pitch = seg.pitch;
         int branchesLeft = seg.branchesLeft;
@@ -418,7 +427,8 @@ public final class PerlinWormCarver {
 
             float radius = BASE_RADIUS + radiusNoise.noise3D(x * RADIUS_SCALE, y * RADIUS_SCALE, z * RADIUS_SCALE) * RADIUS_AMP;
             if (radius < MIN_RADIUS) radius = MIN_RADIUS;
-            carveEllipsoid(wxi, wyi, wzi, radius, targetCx, targetCz, targetHeights, mask);
+            carveEllipsoid(wxi, wyi, wzi, radius, targetCx, targetCz,
+                    targetHeights, waterLevels, mask);
 
             if (seg.target != null) {
                 float dx = seg.target[0] - x;
@@ -448,8 +458,8 @@ public final class PerlinWormCarver {
      * Y-axis squash gives tunnels their characteristic flatter cross-section.
      * Per-column water guard prevents exposing water-bearing terrain.
      */
-    private void carveEllipsoid(int wx, int wy, int wz, float radius,
-                                int targetCx, int targetCz, int[] targetHeights, BitSet mask) {
+    private void carveEllipsoid(int wx, int wy, int wz, float radius, int targetCx,
+                                int targetCz, int[] targetHeights, int[] waterLevels, BitSet mask) {
         int targetBaseX = targetCx * CHUNK_SIZE;
         int targetBaseZ = targetCz * CHUNK_SIZE;
         int rxz = (int) Math.ceil(radius);
@@ -468,7 +478,9 @@ public final class PerlinWormCarver {
             for (int oz = -rxz; oz <= rxz; oz++) {
                 int bz = wz + oz - targetBaseZ;
                 if (bz < 0 || bz >= CHUNK_SIZE) continue;
-                if (targetHeights[bx * CHUNK_SIZE + bz] <= SEA_LEVEL + 1) continue;
+                int idx = bx * CHUNK_SIZE + bz;
+                int surface = targetHeights[idx];
+                if (surface <= SEA_LEVEL + 1) continue;
                 float horizTerm = (ox * ox + oz * oz) * invRxz2;
                 if (horizTerm >= 1f) continue;
                 float maxOyTerm = 1f - horizTerm;
@@ -476,6 +488,7 @@ public final class PerlinWormCarver {
                     if ((oy * oy) * invRy2 >= maxOyTerm) continue;
                     int by = wy + oy;
                     if (by < 1 || by >= WORLD_HEIGHT) continue;
+                    if (WaterGuard.sealsBed(waterLevels, idx, surface, by, WATER_CLEARANCE)) continue;
                     mask.set(LocalBlockKey.pack(bx, by, bz));
                 }
             }

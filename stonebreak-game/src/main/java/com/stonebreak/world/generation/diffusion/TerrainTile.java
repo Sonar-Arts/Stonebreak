@@ -2,9 +2,10 @@ package com.stonebreak.world.generation.diffusion;
 
 /**
  * One decoded tile from the terrain bridge's {@code POST /generate_heightmap}
- * response: a {@code height x width} grid of already-mapped block heights
- * plus the co-located (still vanilla-Minecraft, unmapped — see plan.md Phase 4)
- * biome ids, row-major with row = worldX - worldI1, col = worldZ - worldJ1.
+ * response: a {@code height x width} grid of already-mapped block heights,
+ * the co-located (still vanilla-Minecraft, unmapped — see plan.md Phase 4)
+ * biome ids, and the per-column water level, row-major with
+ * row = worldX - worldI1, col = worldZ - worldJ1.
  *
  * <p>Upstream crops as {@code elev_up[crop_i1:crop_i2, crop_j1:crop_j2]} and
  * reports {@code h, w = elev.shape} (see minecraft_api.py {@code _get_upsampled}),
@@ -14,6 +15,9 @@ package com.stonebreak.world.generation.diffusion;
  * tile about its own diagonal; because tiles are square no length check ever
  * catches it, and the only symptom is tile-sized terrain patches that don't
  * line up at their seams.
+ *
+ * <p>Careful with the canonical constructor: it takes {@code width} <em>before</em>
+ * {@code height}, while the wire headers are read {@code X-Height} first.
  */
 public record TerrainTile(
         int tileX,
@@ -25,8 +29,20 @@ public record TerrainTile(
         int width,
         int height,
         short[] blockHeights,
-        short[] biomeIds
+        short[] biomeIds,
+        short[] waterLevels
 ) {
+
+    /**
+     * Water level for a column: the first y that is <em>not</em> water, so a column
+     * holds water for {@code height <= y < waterLevel}. {@link #NO_WATER} means the
+     * column holds none at all.
+     *
+     * <p>Ocean is one case of this and not a separate rule — a submerged column
+     * reports sea level, which is exactly what the old {@code y < SEA_LEVEL} test
+     * placed. Inland lakes and rivers report their own surface, which is higher.
+     */
+    public static final short NO_WATER = -1;
 
     public short heightAt(int worldX, int worldZ) {
         return blockHeights[indexOf(worldX, worldZ)];
@@ -34,6 +50,11 @@ public record TerrainTile(
 
     public short biomeIdAt(int worldX, int worldZ) {
         return biomeIds[indexOf(worldX, worldZ)];
+    }
+
+    /** @see #NO_WATER */
+    public short waterLevelAt(int worldX, int worldZ) {
+        return waterLevels[indexOf(worldX, worldZ)];
     }
 
     private int indexOf(int worldX, int worldZ) {

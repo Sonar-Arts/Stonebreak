@@ -1,6 +1,6 @@
 package com.stonebreak.world.generation.biomes;
 
-import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.generation.diffusion.TerrainTile;
 
 /**
  * Translates the vanilla-Minecraft biome ids baked into diffusion-bridge
@@ -22,28 +22,48 @@ import com.stonebreak.world.operations.WorldConfiguration;
 final class DiffusionBiomeMapper {
 
     /**
-     * Land columns within this many blocks above sea level get a shoreline
-     * override to BEACH. The classifier has no beach concept of its own
-     * (its land/ocean split is a hard elevation threshold) — this mirrors
-     * vanilla Minecraft's own approach of deriving beaches from height as a
-     * post-process rather than from climate.
+     * Land columns within this many blocks above a shoreline's water level get
+     * a shoreline override to BEACH. The classifier has no beach concept of
+     * its own (its land/ocean split is a hard elevation threshold) — this
+     * mirrors vanilla Minecraft's own approach of deriving beaches from height
+     * as a post-process rather than from climate.
+     *
+     * <p>Sized against the pre-Phase-5 15 m/block isotropy (3 blocks = 45 m of
+     * shoreline). The Phase 5 curve's shoreline blend runs 4-12 m/block near
+     * sea level (~6 m/block average, plan.md §10.6), so preserving the same
+     * physical band width needs more blocks: {@code 45 / 6 ≈ 8}.
      */
-    private static final int BEACH_BAND_BLOCKS = 3;
+    private static final int BEACH_BAND_BLOCKS = 8;
 
     private DiffusionBiomeMapper() {}
 
-    /** Maps one tile column's (biome id, final block height) to a Stonebreak biome. */
-    static BiomeType map(short vanillaBiomeId, int height) {
+    /**
+     * Maps one tile column's (biome id, final block height, nearby water level)
+     * to a Stonebreak biome.
+     *
+     * @param nearbyWaterLevel the highest water level among this column and its
+     *                         immediate neighbours, or {@link TerrainTile#NO_WATER}
+     *                         if none of them hold water. A dry column's own water
+     *                         level is always {@code NO_WATER} (a lake or river
+     *                         reports its surface only for the columns it actually
+     *                         covers), so the shoreline test needs a neighbour's
+     *                         value to know it is standing next to water at all —
+     *                         the ocean's included, since it is one case of the
+     *                         same per-column field rather than a separate rule.
+     */
+    static BiomeType map(short vanillaBiomeId, int height, int nearbyWaterLevel) {
         BiomeType biome = landBiomeFor(vanillaBiomeId);
-        if (isBeachEligible(biome) && isNearShore(height)) {
+        if (isBeachEligible(biome) && isNearShore(height, nearbyWaterLevel)) {
             return BiomeType.BEACH;
         }
         return biome;
     }
 
-    private static boolean isNearShore(int height) {
-        int seaLevel = WorldConfiguration.SEA_LEVEL;
-        return height >= seaLevel && height < seaLevel + BEACH_BAND_BLOCKS;
+    private static boolean isNearShore(int height, int nearbyWaterLevel) {
+        if (nearbyWaterLevel == TerrainTile.NO_WATER) {
+            return false;
+        }
+        return height >= nearbyWaterLevel && height < nearbyWaterLevel + BEACH_BAND_BLOCKS;
     }
 
     private static boolean isBeachEligible(BiomeType biome) {
