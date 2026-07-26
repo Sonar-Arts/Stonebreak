@@ -46,6 +46,8 @@ public class ActionHandler {
         switch (currentSetting) {
             case RESOLUTION -> stateManager.getResolutionButton().toggle();
             case VOLUME -> {} // Volume handled by mouse/keyboard interaction
+            case MUSIC_VOLUME -> {} // Music volume handled by mouse/keyboard interaction
+            case MUSIC_ENABLED -> toggleMusic();
             case ARM_MODEL -> stateManager.getArmModelButton().toggle();
             case CROSSHAIR_STYLE -> stateManager.getCrosshairStyleButton().toggle();
             case CROSSHAIR_SIZE -> {} // Crosshair size handled by mouse/keyboard interaction
@@ -197,7 +199,32 @@ public class ActionHandler {
     public void onVolumeChange(Float newVolume) {
         settings.setMasterVolume(newVolume);
     }
-    
+
+    /**
+     * Callback for when the music volume slider value changes. Applied live (unlike master
+     * volume, which waits for Apply) since music is audibly playing while the user drags it.
+     */
+    public void onMusicVolumeChange(Float newVolume) {
+        settings.setMusicVolume(newVolume);
+        com.stonebreak.audio.MusicManager musicManager = Game.getMusicManager();
+        if (musicManager != null) {
+            musicManager.setVolume(newVolume);
+        }
+    }
+
+    /**
+     * Toggles background music on/off, applying live so the change is heard immediately.
+     */
+    public void toggleMusic() {
+        boolean now = !settings.getMusicEnabled();
+        settings.setMusicEnabled(now);
+        com.stonebreak.audio.MusicManager musicManager = Game.getMusicManager();
+        if (musicManager != null) {
+            musicManager.setEnabled(now);
+        }
+        System.out.println("Music toggled to: " + (now ? "ON" : "OFF"));
+    }
+
     /**
      * Callback for when crosshair size slider value changes.
      */

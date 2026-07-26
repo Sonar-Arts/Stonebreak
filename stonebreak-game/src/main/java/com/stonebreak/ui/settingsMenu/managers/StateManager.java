@@ -33,6 +33,8 @@ public final class StateManager {
     private MDropdown armModelButton;
     private MDropdown crosshairStyleButton;
     private MSlider volumeSlider;
+    private MSlider musicVolumeSlider;
+    private MButton musicEnabledButton;
     private MSlider crosshairSizeSlider;
     private MButton playerNameTagsButton;
     private MButton leafTransparencyButton;
@@ -149,6 +151,13 @@ public final class StateManager {
                 .trackHeight(sh);
         volumeSlider.size(sw, sh);
 
+        musicVolumeSlider = new MSlider("Music Volume",
+                SettingsConfig.MIN_VOLUME, SettingsConfig.MAX_VOLUME, settings.getMusicVolume())
+                .trackHeight(sh);
+        musicVolumeSlider.size(sw, sh);
+
+        musicEnabledButton = new MButton(musicEnabledLabel()).size(bw, bh);
+
         crosshairSizeSlider = new MSlider("Crosshair Size",
                 SettingsConfig.MIN_CROSSHAIR_SIZE, SettingsConfig.MAX_CROSSHAIR_SIZE, settings.getCrosshairSize())
                 .trackHeight(sh);
@@ -206,7 +215,7 @@ public final class StateManager {
         // Text on every settings widget tracks the UI scale (opt-in; persists across resizeWidgets).
         for (MWidget w : new MWidget[]{
                 applyButton, backButton, resolutionButton, armModelButton, crosshairStyleButton,
-                volumeSlider, crosshairSizeSlider, playerNameTagsButton, leafTransparencyButton, waterShaderButton,
+                volumeSlider, musicVolumeSlider, musicEnabledButton, crosshairSizeSlider, playerNameTagsButton, leafTransparencyButton, waterShaderButton,
                 cloudsButton, godRaysButton, shadowsButton, shadowQualityButton, shadowDistanceSlider,
                 smoothLightingButton, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
                 vsyncButton, maxFpsSlider, uiScaleSlider, keepUiScaleButton, revertUiScaleButton}) {
@@ -233,6 +242,8 @@ public final class StateManager {
         armModelButton.size(bw, bh).itemHeight(dih);
         crosshairStyleButton.size(bw, bh).itemHeight(dih);
         volumeSlider.size(sw, sh);
+        musicVolumeSlider.size(sw, sh);
+        musicEnabledButton.size(bw, bh);
         crosshairSizeSlider.size(sw, sh);
         playerNameTagsButton.size(bw, bh);
         leafTransparencyButton.size(bw, bh);
@@ -263,6 +274,8 @@ public final class StateManager {
     public void setCallbacks(Runnable applyAction, Runnable backAction, Runnable resolutionAction,
                              Runnable armModelAction, Runnable crosshairStyleAction,
                              java.util.function.Consumer<Float> volumeAction,
+                             java.util.function.Consumer<Float> musicVolumeAction,
+                             Runnable musicEnabledAction,
                              java.util.function.Consumer<Float> crosshairSizeAction,
                              Runnable playerNameTagsAction,
                              Runnable leafTransparencyAction, Runnable waterShaderAction,
@@ -284,6 +297,8 @@ public final class StateManager {
         armModelButton.setOnSelectionChanged(armModelAction);
         crosshairStyleButton.setOnSelectionChanged(crosshairStyleAction);
         volumeSlider.setOnChange(volumeAction);
+        musicVolumeSlider.setOnChange(musicVolumeAction);
+        musicEnabledButton.setOnClick(musicEnabledAction);
         crosshairSizeSlider.setOnChange(crosshairSizeAction);
         playerNameTagsButton.setOnClick(playerNameTagsAction);
         leafTransparencyButton.setOnClick(leafTransparencyAction);
@@ -328,6 +343,8 @@ public final class StateManager {
         armModelButton.setSelected(false);
         crosshairStyleButton.setSelected(false);
         volumeSlider.setSelected(false);
+        musicVolumeSlider.setSelected(false);
+        musicEnabledButton.setSelected(false);
         crosshairSizeSlider.setSelected(false);
         playerNameTagsButton.setSelected(false);
         applyButton.setSelected(false);
@@ -393,6 +410,7 @@ public final class StateManager {
         resolutionButton.setText("Resolution: " + settings.getCurrentResolutionString());
         armModelButton.setText("Arm Model: " + SettingsConfig.ARM_MODEL_NAMES[selectedArmModelIndex]);
         crosshairStyleButton.setText("Crosshair: " + SettingsConfig.CROSSHAIR_STYLE_NAMES[selectedCrosshairStyleIndex]);
+        musicEnabledButton.setText(musicEnabledLabel());
         playerNameTagsButton.setText(playerNameTagsLabel());
         leafTransparencyButton.setText(leafTransparencyLabel());
         waterShaderButton.setText(waterShaderLabel());
@@ -408,6 +426,10 @@ public final class StateManager {
         vsyncButton.setText(vsyncLabel());
         maxFpsSlider.setLabel(maxFpsLabel());
         uiScaleSlider.setLabel(uiScaleLabel());
+    }
+
+    private String musicEnabledLabel() {
+        return "Music: " + (settings.getMusicEnabled() ? "ON" : "OFF");
     }
 
     private String playerNameTagsLabel() {
@@ -524,6 +546,8 @@ public final class StateManager {
     public MDropdown getArmModelButton() { return armModelButton; }
     public MDropdown getCrosshairStyleButton() { return crosshairStyleButton; }
     public MSlider getVolumeSlider() { return volumeSlider; }
+    public MSlider getMusicVolumeSlider() { return musicVolumeSlider; }
+    public MButton getMusicEnabledButton() { return musicEnabledButton; }
     public MSlider getCrosshairSizeSlider() { return crosshairSizeSlider; }
     public MButton getPlayerNameTagsButton() { return playerNameTagsButton; }
     public MButton getLeafTransparencyButton() { return leafTransparencyButton; }

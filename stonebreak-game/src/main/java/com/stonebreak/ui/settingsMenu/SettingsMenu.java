@@ -53,6 +53,8 @@ public final class SettingsMenu {
                 actionHandler::onArmModelChange,
                 actionHandler::onCrosshairStyleChange,
                 actionHandler::onVolumeChange,
+                actionHandler::onMusicVolumeChange,
+                actionHandler::toggleMusic,
                 actionHandler::onCrosshairSizeChange,
                 actionHandler::togglePlayerNameTags,
                 actionHandler::toggleLeafTransparency,

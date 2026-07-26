@@ -26,6 +26,11 @@ public class SettingsManager {
             soundSystem.setMasterVolume(settings.getMasterVolume());
             System.out.println("Applied master volume: " + settings.getMasterVolume());
         }
+        com.stonebreak.audio.MusicManager musicManager = Game.getMusicManager();
+        if (musicManager != null) {
+            musicManager.setVolume(settings.getMusicVolume());
+            musicManager.setEnabled(settings.getMusicEnabled());
+        }
     }
     
     /**
