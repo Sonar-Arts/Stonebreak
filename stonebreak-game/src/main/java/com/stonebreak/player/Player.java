@@ -202,6 +202,8 @@ public class Player {
 
         health.updateSpawnProtection(dt, state.isOnGround());
         swimming.updateWaterState();
+        Game.getSoundSystem().setEnvironmentGain(
+                swimming.isInWater() ? PlayerConstants.UNDERWATER_AUDIO_DUCK_GAIN : 1.0f);
         if (state.justEnteredWaterThisFrame()) {
             float impactSpeed = Math.max(0f, -state.getVelocity().y);
             splashParticles.burst(state.getPosition(), impactSpeed);
@@ -209,7 +211,9 @@ public class Player {
             rippleSpawnTimer = 0f;
         }
         splashParticles.update(dt);
-        if (state.isPhysicallyInWater()) {
+        // Ripples are a surface effect — suppress them once the player's eyes are
+        // submerged (fully underwater), not just "touching" water.
+        if (state.isPhysicallyInWater() && !swimming.isInWater()) {
             Vector3f vel = state.getVelocity();
             float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
             rippleSpawnTimer += dt;
@@ -339,10 +343,9 @@ public class Player {
     }
 
     public void processMovement(boolean forward, boolean backward, boolean left, boolean right,
-                                boolean jump, boolean shift) {
+                                boolean jump, boolean shift, boolean crouch) {
         boolean moving = forward || backward || left || right;
         boolean sprinting = shift && moving && !flight.isFlying()
-                            && !state.isPhysicallyInWater()
                             && stamina.hasStamina()
                             && !stealth.isSprintBlocked(); // cannot sprint while stealthed
         stamina.setSprinting(sprinting);
@@ -350,7 +353,7 @@ public class Player {
         float speedMultiplier = rangerAbilities.getSpeedMultiplier(this,
                 computeIntendedMoveDirection(forward, backward, left, right));
         speedMultiplier *= stealth.getMovementMultiplier(this); // stealth movement penalty
-        movement.processMovement(forward, backward, left, right, jump, shift, sprinting, speedMultiplier);
+        movement.processMovement(forward, backward, left, right, jump, shift, crouch, sprinting, speedMultiplier);
     }
 
     /**
@@ -534,9 +537,15 @@ public class Player {
      * keep walking mid-swing.
      */
     public com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState getBaseMovementState() {
-        if (!state.isOnGround()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.JUMPING;
         Vector3f vel = state.getVelocity();
         float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+        // Sprint-swimming: no dedicated clip is authored yet, so this reuses WALKING as a
+        // placeholder pose — state selection is correct now, the visual will follow once a
+        // real swim animation clip exists in the SB_Player.sbe asset.
+        if (state.isPhysicallyInWater() && stamina.isSprinting() && horizSpeed > WALK_SPEED_THRESHOLD) {
+            return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.WALKING;
+        }
+        if (!state.isOnGround()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.JUMPING;
         if (horizSpeed > WALK_SPEED_THRESHOLD) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.WALKING;
         return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.IDLE;
     }

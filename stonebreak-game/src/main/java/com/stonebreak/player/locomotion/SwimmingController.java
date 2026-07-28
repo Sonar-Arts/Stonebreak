@@ -2,6 +2,7 @@ package com.stonebreak.player.locomotion;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
+import com.stonebreak.blocks.waterSystem.WaterHeightUtil;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.world.World;
@@ -12,6 +13,12 @@ import static com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
 import static com.stonebreak.player.PlayerConstants.PLAYER_HEIGHT;
 import static com.stonebreak.player.PlayerConstants.PLAYER_WIDTH;
 import static com.stonebreak.player.PlayerConstants.WATER_EXIT_ANTI_FLOAT_DURATION;
+import static com.stonebreak.player.PlayerConstants.WATER_IDLE_BUOYANCY_ACCEL;
+import static com.stonebreak.player.PlayerConstants.WATER_IDLE_BUOYANCY_DRIFT_SPEED;
+import static com.stonebreak.player.PlayerConstants.WATER_SURFACE_BOB_AMPLITUDE;
+import static com.stonebreak.player.PlayerConstants.WATER_SURFACE_BOB_FRACTION;
+import static com.stonebreak.player.PlayerConstants.WATER_SURFACE_BOB_SPEED;
+import static com.stonebreak.player.PlayerConstants.WATER_SWIM_DOWN_ACCEL;
 
 /**
  * Tracks water-submersion state, applies buoyancy/flow forces, and enforces the
@@ -23,6 +30,8 @@ public class SwimmingController {
 
     private final PhysicsState state;
     private World world;
+    private float submersionFraction;
+    private float currentFlowStrength;
 
     public SwimmingController(PhysicsState state, World world) {
         this.state = state;
@@ -37,6 +46,7 @@ public class SwimmingController {
     public void updateWaterState() {
         boolean inWater = isPartiallyInWater();
         state.setPhysicallyInWater(inWater);
+        submersionFraction = computeSubmersionFraction();
 
         boolean justExited = state.wasInWaterLastFrame() && !inWater;
         state.setJustExitedWaterThisFrame(justExited);
@@ -81,9 +91,78 @@ public class SwimmingController {
 
     public void applyWaterFlow(boolean flying) {
         if (state.isPhysicallyInWater() && !flying) {
-            WaterFlowPhysics.applyWaterFlowForce(world, state.getPosition(), state.getVelocity(),
+            Vector3f flow = WaterFlowPhysics.applyWaterFlowForce(world, state.getPosition(), state.getVelocity(),
                     Game.getDeltaTime(), PLAYER_WIDTH, PLAYER_HEIGHT);
+            currentFlowStrength = flow.length();
+        } else {
+            currentFlowStrength = 0.0f;
         }
+    }
+
+    /**
+     * Ctrl-held swim-down / idle buoyancy. Jump-held swim-up is handled separately by
+     * {@link com.stonebreak.player.locomotion.JumpHandler} (which owns the jump key); this
+     * only fires when jump is NOT held, so the two never fight over vertical velocity. Ctrl
+     * is a dedicated sink key, independent of shift (sprint) — the two can be held together
+     * to sprint-swim while sinking. With no vertical input, the player drifts gently toward
+     * the surface rather than sinking or hanging perfectly still, plus a small
+     * treading-water bob once shallow.
+     */
+    public void applyVerticalSwimControl(boolean jump, boolean ctrl, boolean flying) {
+        if (flying || jump || !state.isPhysicallyInWater()) {
+            return;
+        }
+        Vector3f velocity = state.getVelocity();
+        float dt = Game.getDeltaTime();
+
+        if (ctrl) {
+            velocity.y -= WATER_SWIM_DOWN_ACCEL * dt;
+            return;
+        }
+
+        if (velocity.y < WATER_IDLE_BUOYANCY_DRIFT_SPEED) {
+            velocity.y = Math.min(WATER_IDLE_BUOYANCY_DRIFT_SPEED, velocity.y + WATER_IDLE_BUOYANCY_ACCEL * dt);
+        }
+        if (submersionFraction < WATER_SURFACE_BOB_FRACTION) {
+            float bob = (float) Math.sin(Game.getInstance().getTotalTimeElapsed() * WATER_SURFACE_BOB_SPEED) * WATER_SURFACE_BOB_AMPLITUDE;
+            velocity.y += bob * dt;
+        }
+    }
+
+    /** Magnitude of the current-flow force last applied to the player, 0 when not in flowing water. */
+    public float getCurrentFlowStrength() {
+        return currentFlowStrength;
+    }
+
+    /** Fraction (0..1) of the player's height currently submerged, smoothed across the surface boundary. */
+    public float getSubmersionFraction() {
+        return submersionFraction;
+    }
+
+    private float computeSubmersionFraction() {
+        Vector3f p = state.getPosition();
+        int bx = (int) Math.floor(p.x);
+        int bz = (int) Math.floor(p.z);
+        int feetBlockY = (int) Math.floor(p.y);
+        int headBlockY = (int) Math.floor(p.y + PLAYER_HEIGHT);
+
+        int topWaterY = Integer.MIN_VALUE;
+        for (int by = feetBlockY; by <= headBlockY + 1; by++) {
+            if (world.getBlockAt(bx, by, bz) == BlockType.WATER) {
+                topWaterY = by;
+            }
+        }
+        if (topWaterY == Integer.MIN_VALUE) {
+            return 0.0f;
+        }
+
+        float heightFraction = WaterHeightUtil.resolveSurfaceHeightFraction(world, bx, topWaterY, bz);
+        if (Float.isNaN(heightFraction)) {
+            heightFraction = WaterHeightUtil.MAX_WATER_HEIGHT;
+        }
+        float surfaceY = topWaterY + heightFraction;
+        float submergedDepth = Math.max(0.0f, Math.min(PLAYER_HEIGHT, surfaceY - p.y));
+        return submergedDepth / PLAYER_HEIGHT;
     }
 
     /** Eye-level water check — used by rendering overlays and public API. */
@@ -131,5 +210,7 @@ public class SwimmingController {
         state.setJustExitedWaterThisFrame(false);
         state.setJustEnteredWaterThisFrame(false);
         state.setWaterExitTime(0.0f);
+        submersionFraction = 0.0f;
+        currentFlowStrength = 0.0f;
     }
 }

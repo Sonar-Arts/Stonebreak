@@ -5,6 +5,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.ChunkWaterLayer;
 import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
+import com.stonebreak.blocks.waterSystem.WaterHeightUtil;
 
 /**
  * Mighty Mesh System - Water block geometry generator.
@@ -401,14 +402,7 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
      * steps down with its level. NaN when the position is not water.
      */
     private float resolveWaterHeight(int x, int y, int z) {
-        int value = world.getWaterLevelAt(x, y, z);
-        if (value < 0) {
-            return Float.NaN;
-        }
-        float height = (value == ChunkWaterLayer.SOURCE || value == ChunkWaterLayer.FALLING)
-            ? MAX_WATER_HEIGHT
-            : (8 - value) * MAX_WATER_HEIGHT / 8.0f;
-        return clampWaterHeight(height);
+        return WaterHeightUtil.resolveSurfaceHeightFraction(world, x, y, z);
     }
 
     /**

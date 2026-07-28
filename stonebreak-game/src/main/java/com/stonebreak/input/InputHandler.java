@@ -250,7 +250,7 @@ public class InputHandler {
                 // Shot-dash, which drive the player directly and would otherwise fight with normal
                 // input-driven movement)
                 if (!player.isAbilityMovementLocked()) {
-                    player.processMovement(moveForward, moveBackward, moveLeft, moveRight, jump, shift);
+                    player.processMovement(moveForward, moveBackward, moveLeft, moveRight, jump, shift, crouch);
                 }
                 
                 // Handle flight controls (Space for ascent, Ctrl for descent)

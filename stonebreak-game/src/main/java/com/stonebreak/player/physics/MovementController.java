@@ -9,13 +9,16 @@ import com.stonebreak.player.locomotion.SwimmingController;
 import com.stonebreak.player.state.PhysicsState;
 import org.joml.Vector3f;
 
+import static com.stonebreak.player.PlayerConstants.CURRENT_RESISTANCE_THRESHOLD;
 import static com.stonebreak.player.PlayerConstants.FLY_SPEED;
 import static com.stonebreak.player.PlayerConstants.GRAVITY;
+import static com.stonebreak.player.PlayerConstants.MIN_SWIM_CONTROL_AUTHORITY;
 import static com.stonebreak.player.PlayerConstants.MOVE_SPEED;
 import static com.stonebreak.player.PlayerConstants.NORMAL_JUMP_GRACE_PERIOD;
 import static com.stonebreak.player.PlayerConstants.SPRINT_MULTIPLIER;
 import static com.stonebreak.player.PlayerConstants.SWIM_SPEED;
 import static com.stonebreak.player.PlayerConstants.WATER_GRAVITY;
+import static com.stonebreak.player.PlayerConstants.WATER_HORIZONTAL_DRAG;
 
 /**
  * Integrates player velocity into position with collision resolution, applies gravity
@@ -48,8 +51,13 @@ public class MovementController {
         if (state.isOnGround() || flight.isFlying()) return;
         Vector3f velocity = state.getVelocity();
         float dt = Game.getDeltaTime();
-        if (state.isPhysicallyInWater()) {
-            velocity.y -= WATER_GRAVITY * dt;
+        float submersionFraction = swimming.getSubmersionFraction();
+        if (submersionFraction > 0.0f) {
+            // Blend smoothly from full air gravity to full water gravity across the surface
+            // boundary (both endpoints match the old binary switch's values exactly), instead
+            // of snapping instantly at the block boundary.
+            float effectiveGravity = GRAVITY + (WATER_GRAVITY - GRAVITY) * submersionFraction;
+            velocity.y -= effectiveGravity * dt;
         } else if (swimming.isInWaterExitAntiFloatPeriod()) {
             velocity.y -= GRAVITY * 2.0f * dt;
             if (velocity.y > 0.1f) velocity.y = 0.0f;
@@ -93,7 +101,14 @@ public class MovementController {
             return;
         }
 
-        float friction = (state.isOnGround() || state.isPhysicallyInWater()) ? 5.0f : 2.5f;
+        float friction;
+        if (state.isPhysicallyInWater()) {
+            friction = WATER_HORIZONTAL_DRAG;
+        } else if (state.isOnGround()) {
+            friction = 5.0f;
+        } else {
+            friction = 2.5f;
+        }
         float frictionFactor = (float) Math.exp(-friction * dt);
         velocity.x *= frictionFactor;
         velocity.z *= frictionFactor;
@@ -116,7 +131,7 @@ public class MovementController {
      * class ability buffs (e.g. the Ranger's Marked Prey chase) feed in through it.
      */
     public void processMovement(boolean forward, boolean backward, boolean left, boolean right,
-                                boolean jump, boolean shift, boolean sprinting, float speedMultiplier) {
+                                boolean jump, boolean shift, boolean crouch, boolean sprinting, float speedMultiplier) {
         Vector3f velocity = state.getVelocity();
         Vector3f front = camera.getFront();
         Vector3f rightVec = camera.getRight();
@@ -126,13 +141,21 @@ public class MovementController {
         float speed;
         if (flight.isFlying()) {
             speed = shift ? FLY_SPEED * 2.0f : FLY_SPEED;
+        } else if (state.isPhysicallyInWater()) {
+            speed = sprinting ? SWIM_SPEED * SPRINT_MULTIPLIER : SWIM_SPEED;
         } else if (state.isOnGround()) {
-            float base = state.isPhysicallyInWater() ? SWIM_SPEED : MOVE_SPEED;
-            speed = sprinting ? base * SPRINT_MULTIPLIER : base;
+            speed = sprinting ? MOVE_SPEED * SPRINT_MULTIPLIER : MOVE_SPEED;
         } else {
             speed = sprinting ? MOVE_SPEED * SPRINT_MULTIPLIER : MOVE_SPEED * 0.85f;
         }
         speed *= speedMultiplier;
+
+        if (state.isPhysicallyInWater() && !flight.isFlying()) {
+            float flowStrength = swimming.getCurrentFlowStrength();
+            float controlAuthority = Math.max(MIN_SWIM_CONTROL_AUTHORITY,
+                    1.0f - Math.min(1.0f, flowStrength / CURRENT_RESISTANCE_THRESHOLD));
+            speed *= controlAuthority;
+        }
 
         float dt = Game.getDeltaTime();
         if (forward) {
@@ -155,6 +178,7 @@ public class MovementController {
         boolean jumpPressed = jump && !jumpHandler.wasJumpPressed();
         boolean flightToggled = jumpPressed && !spectator.isActive() && flight.handleJumpPressForToggle();
         jumpHandler.processJumpInput(jump, flightToggled, flight.isFlying());
+        swimming.applyVerticalSwimControl(jump, crouch, flight.isFlying());
 
         // In-input anti-floating safety (mirror of the original Player.processMovement tail).
         float currentTime = Game.getInstance().getTotalTimeElapsed();
