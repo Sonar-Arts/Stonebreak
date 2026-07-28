@@ -27,6 +27,22 @@ out float vFalling;
 out float vSource;
 out float vSurfaceHeight;
 
+// Sum of directional sine waves (height-only — no horizontal displacement, since the
+// CPU-side corner-sewing in MmsWaterGenerator only guarantees adjacent blocks agree on
+// shared-corner *height*; per-vertex horizontal displacement here would reopen seams
+// between blocks). Each term has its own direction, wavelength, amplitude, and speed so
+// the surface doesn't read as obviously periodic/axis-aligned. Total amplitude is kept
+// close to the old 2-term wave's ~0.16 so it stays within MAX_WAVE_DELTA's clamp.
+float gerstnerHeight(vec2 xz, float t) {
+    float h = 0.0;
+    h += 0.055 * sin(dot(xz, vec2(0.800,  0.600)) * 0.45 + t * 1.20);
+    h += 0.040 * sin(dot(xz, vec2(-0.352, 0.936)) * 0.70 + t * 1.65);
+    h += 0.030 * sin(dot(xz, vec2(0.981, -0.196)) * 0.30 + t * 0.85);
+    h += 0.020 * sin(dot(xz, vec2(-0.555,-0.832)) * 1.10 + t * 2.10);
+    h += 0.015 * sin(dot(xz, vec2(0.148,  0.989)) * 1.60 + t * 2.60);
+    return h;
+}
+
 void main() {
     float surfH = aFlags.x;
     float falling = aFlags.y;
@@ -39,9 +55,7 @@ void main() {
     if (uWavesEnabled && falling < 0.5) {
         const float MIN_WATER_SURFACE = 0.125;
         const float MAX_WAVE_DELTA = 0.18;
-        float s = 0.50;
-        float wave = sin(pos.x * s + uTime * 1.5) * cos(pos.z * s * 0.8 + uTime * 1.35) * 0.12
-                   + sin((pos.x + pos.z) * s * 1.7 + uTime * 2.0) * 0.04;
+        float wave = gerstnerHeight(pos.xz, uTime);
 
         bool isTopFace = aNormal.y > 0.5;
         bool isBottomFace = aNormal.y < -0.5;

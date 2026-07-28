@@ -89,7 +89,7 @@ public class SoundSystem {
 
     /** Plays {@code name} on the dedicated music channel, replacing whatever was playing. */
     public void playMusic(String name) {
-        musicChannel.play(name, musicVolume * volumeController.getMasterVolume());
+        musicChannel.play(name, musicVolume * volumeController.getEffectiveVolume());
     }
 
     public void stopMusic() {
@@ -107,7 +107,7 @@ public class SoundSystem {
      */
     public void setMusicVolume(float volume) {
         this.musicVolume = Math.max(0f, Math.min(1f, volume));
-        musicChannel.setGain(this.musicVolume * volumeController.getMasterVolume());
+        musicChannel.setGain(this.musicVolume * volumeController.getEffectiveVolume());
     }
 
     public float getMusicVolume() {
@@ -290,7 +290,21 @@ public class SoundSystem {
      */
     public void setMasterVolume(float volume) {
         volumeController.setMasterVolume(volume);
-        musicChannel.setGain(musicVolume * volumeController.getMasterVolume());
+        musicChannel.setGain(musicVolume * volumeController.getEffectiveVolume());
+    }
+
+    /**
+     * Multiplicative ducking on top of the user's master volume — e.g. muffling audio while
+     * the listener is underwater. 1.0 = no ducking. Applies live to whatever music is playing;
+     * SFX volume is baked in at play-call time, so it takes effect on each sound's next play.
+     */
+    public void setEnvironmentGain(float gain) {
+        volumeController.setEnvironmentGain(gain);
+        musicChannel.setGain(musicVolume * volumeController.getEffectiveVolume());
+    }
+
+    public float getEnvironmentGain() {
+        return volumeController.getEnvironmentGain();
     }
 
     /**

@@ -166,21 +166,27 @@ public class WorldRenderer {
         // Atmospheric distance fog: fades world geometry into the sky color
         // from the native ring edge out to the LOD outer ring, so the distant
         // terrain dissolves at the horizon instead of ending in a hard edge.
-        // Disabled (fogEnd=0) when LOD is off or the camera is underwater —
-        // the underwater fog owns the look there.
+        // Underwater swaps this for a much shorter, murky-water-colored fog
+        // instead of disabling it — visibility is short underwater, and the
+        // full-screen blue tint overlay alone doesn't shrink view distance.
         com.stonebreak.config.Settings settings = com.stonebreak.config.Settings.getInstance();
         float fogStart = 0f, fogEnd = 0f;
+        Vector3f fogColor = skyColor;
         Vector3f cameraPos = player.getCamera().getPosition();
         boolean cameraUnderwater = world.isPositionUnderwater(
                 (int) Math.floor(cameraPos.x), (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z));
-        if (settings.getLodEnabled() && settings.getLodDistance() > 0 && !cameraUnderwater) {
+        if (cameraUnderwater) {
+            fogStart = 4.0f;
+            fogEnd = 20.0f;
+            fogColor = new Vector3f(0.05f, 0.2f, 0.35f);
+        } else if (settings.getLodEnabled() && settings.getLodDistance() > 0) {
             fogStart = settings.getRenderDistance() * (float) WorldConfiguration.CHUNK_SIZE;
             fogEnd = (settings.getRenderDistance() + settings.getLodDistance())
                     * (float) WorldConfiguration.CHUNK_SIZE;
         }
 
         // Set common uniforms for world rendering
-        setupWorldUniforms(player, skyColor, fogStart, fogEnd);
+        setupWorldUniforms(player, fogColor, fogStart, fogEnd);
         // Water animation setting — consumed by the dedicated water renderer
         // (waves + flow scroll) and the LOD sea-sheet drift (u_time).
         boolean waterAnimationEnabled = settings.getWaterShaderEnabled();
@@ -262,7 +268,7 @@ public class WorldRenderer {
         // them — physically correct compositing.
         waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
                 player.getCamera().getPosition(), totalTime, sunDirection,
-                ambientLightLevel, waterAnimationEnabled, skyColor, fogStart, fogEnd,
+                ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd,
                 reusableLodWater, lodRegionBatcher, lodStamp);
         checkGLError("After water pass");
 

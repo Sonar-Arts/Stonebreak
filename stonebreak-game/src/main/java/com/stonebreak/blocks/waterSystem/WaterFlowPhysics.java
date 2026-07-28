@@ -97,8 +97,9 @@ public final class WaterFlowPhysics {
      * @param deltaTime Time step for physics
      * @param width Entity width (for sampling multiple points)
      * @param height Entity height (for sampling multiple points)
+     * @return the flow vector that was applied (zero vector if no water was sampled)
      */
-    public static void applyWaterFlowForce(World world, Vector3f position, Vector3f velocity,
+    public static Vector3f applyWaterFlowForce(World world, Vector3f position, Vector3f velocity,
                                           float deltaTime, float width, float height) {
         // Sample water flow at multiple points within the entity's volume
         // This provides more accurate flow forces for larger entities
@@ -158,6 +159,9 @@ public final class WaterFlowPhysics {
             velocity.x += totalFlow.x * deltaTime;
             velocity.y += totalFlow.y * deltaTime;
             velocity.z += totalFlow.z * deltaTime;
+            return totalFlow;
         }
+
+        return new Vector3f(0, 0, 0);
     }
 }

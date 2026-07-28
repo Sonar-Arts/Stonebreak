@@ -6,7 +6,8 @@ import static com.stonebreak.player.PlayerConstants.HEALTH_PER_HEART;
 
 /**
  * Tracks the player's descent arc and applies damage on landing. No damage for falls
- * of 4 blocks or less; 1/4 heart per additional block. Respects spawn protection.
+ * of 4 blocks or less; 1/4 heart per additional block. No damage at all when landing
+ * in water. Respects spawn protection.
  */
 public class FallDamageHandler {
 
@@ -31,7 +32,7 @@ public class FallDamageHandler {
 
         if (state.isOnGround() && state.wasFalling()) {
             float fallDistance = state.getPreviousY() - state.getPosition().y;
-            if (fallDistance > 4.0f) {
+            if (fallDistance > 4.0f && !state.isPhysicallyInWater()) {
                 float damage = (fallDistance - 4.0f) * (HEALTH_PER_HEART * 0.25f);
                 health.damage(damage);
             }
