@@ -40,6 +40,7 @@ public class SwimmingController {
 
         boolean justExited = state.wasInWaterLastFrame() && !inWater;
         state.setJustExitedWaterThisFrame(justExited);
+        state.setJustEnteredWaterThisFrame(!state.wasInWaterLastFrame() && inWater);
 
         if (justExited && state.getVelocity().y > 0) {
             state.getVelocity().y = 0.0f;
@@ -128,6 +129,7 @@ public class SwimmingController {
         state.setPhysicallyInWater(false);
         state.setWasInWaterLastFrame(false);
         state.setJustExitedWaterThisFrame(false);
+        state.setJustEnteredWaterThisFrame(false);
         state.setWaterExitTime(0.0f);
     }
 }

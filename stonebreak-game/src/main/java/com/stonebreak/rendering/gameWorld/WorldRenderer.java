@@ -289,6 +289,12 @@ public class WorldRenderer {
         // Render Illusionist decoy smoke puffs
         renderIllusionSmoke();
 
+        // Render water entry splash droplets
+        renderWaterSplash(player);
+
+        // Render surface ripples trailing the player through water
+        renderWaterRipples(player);
+
         // Render through-terrain outlines for REVEALED enemies (Illusionist)
         renderRevealedOutlines(player);
 
@@ -745,6 +751,78 @@ public class WorldRenderer {
             glPointSize(p.getSize());
             glBegin(GL_POINTS);
             glVertex3f(p.getPosition().x, p.getPosition().y, p.getPosition().z);
+            glEnd();
+        }
+
+        glPointSize(1.0f);
+        glDepthMask(true);
+        glDisable(GL_BLEND);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.unbind();
+    }
+
+    /**
+     * Render the droplet burst emitted when the player enters water (e.g. jumping in).
+     */
+    private void renderWaterSplash(Player player) {
+        com.stonebreak.rendering.effects.WaterSplashParticles splash = player.getSplashParticles();
+        if (splash.isEmpty()) return;
+
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
+        shaderProgram.setUniform("u_useSolidColor", true);
+        shaderProgram.setUniform("u_isText", false);
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // straight alpha for pale water droplets
+        glDepthMask(false);
+
+        for (com.stonebreak.rendering.effects.WaterSplashParticles.SplashParticle p : splash.snapshot()) {
+            float opacity = p.getOpacity();
+            // Pale blue-white droplets, fading out.
+            shaderProgram.setUniform("u_color", new org.joml.Vector4f(0.8f, 0.9f, 1.0f, opacity * 0.9f));
+            glPointSize(p.getSize());
+            glBegin(GL_POINTS);
+            glVertex3f(p.getPosition().x, p.getPosition().y, p.getPosition().z);
+            glEnd();
+        }
+
+        glPointSize(1.0f);
+        glDepthMask(true);
+        glDisable(GL_BLEND);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.unbind();
+    }
+
+    /**
+     * Render the surface ripple rings trailing the player through water. Ring samples that have
+     * already been swept over by another ring's wavefront are omitted upstream (see
+     * {@link com.stonebreak.rendering.effects.WaterRippleParticles}), so overlapping ripples read
+     * as colliding/cancelling rather than passing through each other.
+     */
+    private void renderWaterRipples(Player player) {
+        com.stonebreak.rendering.effects.WaterRippleParticles ripples = player.getRippleParticles();
+        if (ripples.isEmpty()) return;
+
+        List<com.stonebreak.rendering.effects.WaterRippleParticles.RipplePoint> points = ripples.snapshotPoints();
+        if (points.isEmpty()) return;
+
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
+        shaderProgram.setUniform("u_useSolidColor", true);
+        shaderProgram.setUniform("u_isText", false);
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(false);
+        glPointSize(4.0f);
+
+        for (com.stonebreak.rendering.effects.WaterRippleParticles.RipplePoint p : points) {
+            shaderProgram.setUniform("u_color", new org.joml.Vector4f(0.85f, 0.92f, 1.0f, p.opacity() * 0.55f));
+            glBegin(GL_POINTS);
+            glVertex3f(p.x(), p.y() + 0.02f, p.z());
             glEnd();
         }
 
