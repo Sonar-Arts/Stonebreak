@@ -24,11 +24,6 @@ public class HotbarScreen {
     private static final float TOOLTIP_DISPLAY_DURATION = HotbarTheme.Animation.TOOLTIP_DISPLAY_DURATION;
     private static final float TOOLTIP_FADE_DURATION = HotbarTheme.Animation.TOOLTIP_FADE_DURATION;
 
-    // Delegate visual constants to the layout calculator for consistency
-    public static final int SLOT_SIZE = HotbarLayoutCalculator.getSlotSize();
-    public static final int SLOT_PADDING = HotbarLayoutCalculator.getSlotPadding();
-    public static final int HOTBAR_Y_OFFSET = HotbarLayoutCalculator.getHotbarYOffset();
-    
     public HotbarScreen(Inventory inventory) {
         this.inventory = inventory;
         this.selectedItemName = null;

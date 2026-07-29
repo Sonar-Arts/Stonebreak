@@ -60,33 +60,11 @@ public class MainMenu {
     }
     
     public void handleMouseMove(double mouseX, double mouseY, int windowWidth, int windowHeight) {
-        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
-        float bw = 400f * s;
-        float bh = 40f  * s;
-        float sp = 50f  * s;
-        float centerX = windowWidth / 2.0f;
-        float centerY = windowHeight / 2.0f;
-
-        if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s, bw, bh)) {
-            selectedButton = 0;
-        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s + sp, bw, bh)) {
-            selectedButton = 1;
-        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s + sp * 2f, bw, bh)) {
-            selectedButton = 2;
-        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s + sp * 3f, bw, bh)) {
-            selectedButton = 3;
-        } else {
-            selectedButton = -1;
-        }
+        selectedButton = buttonIndexAt((float) mouseX, (float) mouseY, windowWidth, windowHeight);
     }
 
     public void handleMouseClick(double mouseX, double mouseY, int windowWidth, int windowHeight) {
         float s = com.stonebreak.config.Settings.getInstance().getUiScale();
-        float bw = 400f * s;
-        float bh = 40f  * s;
-        float sp = 50f  * s;
-        float centerX = windowWidth / 2.0f;
-        float centerY = windowHeight / 2.0f;
 
         Rect logo = SkijaMainMenuRenderer.computeLogoRect(windowWidth, windowHeight, s);
         if (isMouseOverButton((float)mouseX, (float)mouseY, logo.getLeft(), logo.getTop(),
@@ -96,15 +74,31 @@ public class MainMenu {
             return;
         }
 
-        if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s, bw, bh)) {
-            selectedButton = 0; executeSelectedAction();
-        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s + sp, bw, bh)) {
-            selectedButton = 1; executeSelectedAction();
-        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s + sp * 2f, bw, bh)) {
-            selectedButton = 2; executeSelectedAction();
-        } else if (isMouseOverButton((float)mouseX, (float)mouseY, centerX - bw / 2f, centerY - 20f * s + sp * 3f, bw, bh)) {
-            selectedButton = 3; executeSelectedAction();
+        int index = buttonIndexAt((float) mouseX, (float) mouseY, windowWidth, windowHeight);
+        if (index >= 0) {
+            selectedButton = index;
+            executeSelectedAction();
         }
+    }
+
+    /**
+     * Index of the menu button under the cursor, or -1 if none. Single source of the button
+     * column's geometry — hover and click must never derive it independently.
+     */
+    static int buttonIndexAt(float mouseX, float mouseY, int windowWidth, int windowHeight) {
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+        float bw = 400f * s;
+        float bh = 40f  * s;
+        float sp = 50f  * s;
+        float x = windowWidth / 2.0f - bw / 2f;
+        float top = windowHeight / 2.0f - 20f * s;
+        for (int i = 0; i < BUTTON_COUNT; i++) {
+            float y = top + sp * i;
+            if (mouseX >= x && mouseX <= x + bw && mouseY >= y && mouseY <= y + bh) {
+                return i;
+            }
+        }
+        return -1;
     }
     
     private boolean isMouseOverButton(float mouseX, float mouseY, float buttonX, float buttonY, float buttonW, float buttonH) {
