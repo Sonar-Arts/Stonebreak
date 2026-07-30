@@ -17,6 +17,7 @@ networking	stonebreak-game	com/stonebreak/network/**/*Test
 mesh-editing	openmason-engine	com/openmason/engine/rendering/model/**/*Test
 cco	openmason-engine	com/openmason/engine/voxel/cco/**/*Test
 mms	openmason-engine	com/openmason/engine/voxel/mms/**/*Test
+engine-util	openmason-engine	com/openmason/engine/util/**/*Test
 
 # ---- game ----
 audio	stonebreak-game	com/stonebreak/audio/**/*Test
