@@ -1,0 +1,41 @@
+# Stonebreak test-system registry — single source of truth for `run-tests.sh`.
+#
+# Format (tab-separated):  system<TAB>module<TAB>pattern[,pattern...]
+#   - Patterns are paths relative to <module>/src/test/java, without the .java
+#     extension. `**` crosses directories, `*` stays within one segment.
+#   - A `!` prefix excludes; excludes are scoped to THIS line only.
+#   - A system may span modules (one line per module).
+# Every *Test.java in every module must map to exactly ONE system —
+# harness.py validates this on every run and aborts on drift.
+
+# ---- engine ----
+cenda	openmason-engine	com/openmason/engine/cenda/**/*Test
+cenda	stonebreak-game	com/stonebreak/world/chunk/api/mightyMesh/mmsIntegration/CendaMesherKernelTest,com/stonebreak/world/CendaChunkBenchmarkTest
+formats	openmason-engine	com/openmason/engine/format/**/*Test
+networking	openmason-engine	com/openmason/engine/net/**/*Test
+networking	stonebreak-game	com/stonebreak/network/**/*Test
+mesh-editing	openmason-engine	com/openmason/engine/rendering/model/**/*Test
+cco	openmason-engine	com/openmason/engine/voxel/cco/**/*Test
+mms	openmason-engine	com/openmason/engine/voxel/mms/**/*Test
+
+# ---- game ----
+audio	stonebreak-game	com/stonebreak/audio/**/*Test
+blocks	stonebreak-game	com/stonebreak/blocks/**/*Test,!com/stonebreak/blocks/waterSystem/**
+water	stonebreak-game	com/stonebreak/blocks/waterSystem/**/*Test,com/stonebreak/world/chunk/ChunkWaterLayerTest,com/stonebreak/world/chunk/WaterMeshSplitTest
+core	stonebreak-game	com/stonebreak/core/**/*Test,com/stonebreak/world/TimeOfDayTest
+items	stonebreak-game	com/stonebreak/items/**/*Test
+mobs	stonebreak-game	com/stonebreak/mobs/**/*Test,com/stonebreak/rendering/models/**/*Test
+player	stonebreak-game	com/stonebreak/player/**/*Test
+ui	stonebreak-game	com/stonebreak/ui/**/*Test,com/stonebreak/rendering/UI/**/*Test
+chunks	stonebreak-game	com/stonebreak/world/chunk/**/*Test,!com/stonebreak/world/chunk/api/**,!com/stonebreak/world/chunk/ChunkWaterLayerTest,!com/stonebreak/world/chunk/WaterMeshSplitTest,com/stonebreak/world/LoadingPerformanceIntegrationTest
+fastlod	stonebreak-game	com/stonebreak/world/fastlod/**/*Test,com/stonebreak/rendering/gameWorld/**/*Test
+terrain-gen	stonebreak-game	com/stonebreak/world/generation/**/*Test
+persistence	stonebreak-game	com/stonebreak/world/save/**/*Test
+
+# ---- tool ----
+mcp	openmason-tool	com/openmason/main/systems/mcp/**/*Test
+anim-editor	openmason-tool	com/openmason/main/systems/menus/animationEditor/**/*Test
+tool-ui	openmason-tool	com/openmason/main/systems/menus/dialogs/**/*Test,com/openmason/main/systems/menus/textureCreator/**/*Test,com/openmason/main/systems/mortar/**/*Test
+scripting	openmason-tool	com/openmason/main/systems/scripting/**/*Test
+viewport	openmason-tool	com/openmason/main/systems/viewport/**/*Test
+tool-model	openmason-tool	com/openmason/main/systems/skeleton/**/*Test,com/openmason/main/systems/rendering/**/*Test

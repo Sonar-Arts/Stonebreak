@@ -9,6 +9,7 @@ import com.openmason.main.systems.scripting.ScriptExecutor.RunOptions;
 import com.openmason.main.systems.scripting.ScriptExecutor.ScriptResult;
 import com.openmason.main.systems.scripting.ScriptExecutor.ScriptSource;
 import com.openmason.main.systems.scripting.doc.HeadlessModelDocument;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -27,6 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * End-to-end headless pipeline: JSON op batch → HeadlessModelDocument →
  * .omo on disk → OMODeserializer read-back. No GL context anywhere.
  */
+@Tag("integration")
+@Tag("regression")
 class HeadlessOmoRoundTripTest {
 
     private static final String CRAB_SCRIPT = """

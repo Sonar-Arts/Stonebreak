@@ -2,6 +2,7 @@ package com.stonebreak.network;
 
 import com.stonebreak.network.bridge.GameChunkMetaCodec;
 import com.stonebreak.world.chunk.utils.LocalBlockKey;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -12,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Round-trips for the game-side chunk metadata blob riding in ChunkDataS2C. */
+@Tag("regression")
 class GameChunkMetaCodecTest {
 
     @Test

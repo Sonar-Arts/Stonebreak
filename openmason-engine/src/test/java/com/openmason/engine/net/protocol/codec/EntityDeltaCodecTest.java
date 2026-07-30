@@ -1,5 +1,6 @@
 package com.openmason.engine.net.protocol.codec;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -9,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Quantization, clamping, and wrap behavior for {@link EntityDeltaCodec}.
  */
+@Tag("regression")
 class EntityDeltaCodecTest {
 
     /** One position quantum = 1/4096 block. */

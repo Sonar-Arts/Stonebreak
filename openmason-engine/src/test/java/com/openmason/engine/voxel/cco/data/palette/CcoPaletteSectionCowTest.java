@@ -1,5 +1,6 @@
 package com.openmason.engine.voxel.cco.data.palette;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -11,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
  * writes, and mutations on one side must never bleed into the other —
  * across all three storage tiers.
  */
+@Tag("regression")
 class CcoPaletteSectionCowTest {
 
     private static final int CELLS_PER_LAYER = 16 * 16;

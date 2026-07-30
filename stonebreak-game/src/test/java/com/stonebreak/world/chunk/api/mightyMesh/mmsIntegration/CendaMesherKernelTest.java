@@ -1,6 +1,7 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration;
 
 import com.openmason.engine.cenda.CendaKernels;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -17,6 +18,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * evaluated over identical snapshot arrays. Any divergence — culling rule,
  * face offsets, sky/AO math, float rounding — fails loudly here.
  */
+@Tag("regression")
 class CendaMesherKernelTest {
 
     private static final int AIR = 0, STONE = 1, LEAVES = 2, WATER = 3, ICE_LIKE = 4;

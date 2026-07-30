@@ -44,6 +44,7 @@ import com.stonebreak.network.packet.world.SnowLayerC2S;
 import com.stonebreak.network.packet.world.TimeSyncS2C;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static com.openmason.engine.net.protocol.PacketDirection.CLIENTBOUND;
@@ -57,6 +58,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * ids ↔ codecs without collisions. The "no leftover bytes" check catches field drift
  * between encode and decode.
  */
+@Tag("regression")
 class PacketRoundTripTest {
 
     private static <T extends Packet> T roundTrip(PacketCodec<T> codec, T value) {

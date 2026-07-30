@@ -281,8 +281,6 @@ class WorldStateManagerTest {
 
     @Test
     void anyDialogOpenReturnsTrueWhenEitherIsOpen() {
-        assertTrue(state.isAnyDialogOpen(), "no dialog open initially");
-        // Actually initially neither is open
         assertFalse(state.isAnyDialogOpen(), "no dialog open initially");
 
         state.openCreateDialog();

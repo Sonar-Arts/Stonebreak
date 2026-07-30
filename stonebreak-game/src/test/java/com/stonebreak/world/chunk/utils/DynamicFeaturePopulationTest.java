@@ -5,6 +5,7 @@ import com.stonebreak.world.TestWorld;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -16,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Unit tests for dynamic feature population limit adjustments.
  * Tests verify adaptive feature population based on frame time.
  */
+@Tag("integration")
 public class DynamicFeaturePopulationTest {
 
     private World world;

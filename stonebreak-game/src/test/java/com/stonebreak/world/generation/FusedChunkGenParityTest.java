@@ -6,6 +6,7 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.heightmap.CavernCarver;
 import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
 import com.stonebreak.world.generation.noise.TerrainNoise;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -27,6 +28,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * coordinates (found via the carvers' own hash predicates) so formations and
  * cavern connectors are exercised, not just plain terrain.
  */
+@Tag("regression")
 class FusedChunkGenParityTest {
 
     private static final long SEED = 424242L;

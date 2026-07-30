@@ -8,6 +8,7 @@ import com.openmason.main.systems.menus.animationEditor.data.Easing;
 import com.openmason.main.systems.menus.animationEditor.data.Keyframe;
 import com.openmason.main.systems.menus.animationEditor.data.Track;
 import org.joml.Vector3f;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -29,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * runtime reader, layer metadata included. Also pins v1.0 backward
  * compatibility (no {@code layer} block → full-body BASE defaults).
  */
+@Tag("regression")
 class OmaRoundTripTest {
 
     @TempDir

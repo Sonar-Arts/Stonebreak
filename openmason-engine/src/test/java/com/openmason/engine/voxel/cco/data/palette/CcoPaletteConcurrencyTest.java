@@ -1,6 +1,7 @@
 package com.openmason.engine.voxel.cco.data.palette;
 
 import com.openmason.engine.voxel.IBlockType;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
@@ -21,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Mirrors production: mesh worker threads read via {@code get} while the
  * main thread writes via {@code set}.
  */
+@Tag("regression")
 class CcoPaletteConcurrencyTest {
 
     private static final int CELLS_PER_LAYER = 16 * 16;

@@ -65,11 +65,13 @@ public final class ResolvedSoundEvents {
 
     /** True when at least one sample is bound to {@code event}. */
     public boolean has(String event) {
-        return byEvent.containsKey(event);
+        // Map.copyOf maps reject null lookups with an NPE.
+        return event != null && byEvent.containsKey(event);
     }
 
     /** A random sample for {@code event}, or null when the event is unbound. */
     public Entry pick(String event) {
+        if (event == null) return null;
         List<Entry> entries = byEvent.get(event);
         if (entries == null || entries.isEmpty()) return null;
         return entries.size() == 1

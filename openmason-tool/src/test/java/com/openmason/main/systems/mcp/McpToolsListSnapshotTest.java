@@ -3,6 +3,7 @@ package com.openmason.main.systems.mcp;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -27,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * but with a null {@code MainImGuiInterface} — service constructors only store
  * the reference; no tool handler is invoked here.
  */
+@Tag("regression")
 class McpToolsListSnapshotTest {
 
     /**

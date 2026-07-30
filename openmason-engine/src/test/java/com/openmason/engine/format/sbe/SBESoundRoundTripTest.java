@@ -2,6 +2,7 @@ package com.openmason.engine.format.sbe;
 
 import com.openmason.engine.format.sound.SoundDef;
 import com.openmason.engine.format.sound.SoundSpec;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * parser (unlike the SBO one) hard-verifies checksums on {@code parse()}, so
  * a full parse passing implicitly proves the embedded sample checksums.
  */
+@Tag("regression")
 class SBESoundRoundTripTest {
 
     @TempDir
