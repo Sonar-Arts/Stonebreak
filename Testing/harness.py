@@ -30,7 +30,7 @@ from datetime import date
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[1]
+ROOT = HERE.parent
 MODULES = ["openmason-engine", "stonebreak-game", "openmason-tool"]
 TAG_SCOPES = ("integration", "regression")
 REGISTRY = HERE / "systems.map"

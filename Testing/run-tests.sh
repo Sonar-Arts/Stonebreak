@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-HARNESS="$ROOT/scripts/test/harness.py"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/.." && pwd)"
+HARNESS="$HERE/harness.py"
 
 # ── Argument parsing ────────────────────────────────────────────────
 LIST=0
@@ -14,7 +15,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
       cat <<'EOF'
-Usage: scripts/test/run-tests.sh [--list] [--update-baseline] [--verbose]
+Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose]
                                  all | integration | regression | <system> [<system>...]
 EOF
       exit 2
@@ -25,7 +26,7 @@ EOF
     -*)
       echo "Unknown flag: $1" >&2
       cat >&2 <<'EOF'
-Usage: scripts/test/run-tests.sh [--list] [--update-baseline] [--verbose]
+Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose]
                                  all | integration | regression | <system> [<system>...]
 EOF
       exit 2
@@ -36,7 +37,7 @@ done
 
 if [[ "$LIST" -eq 0 && ${#SCOPE_WORDS[@]} -eq 0 ]]; then
   cat <<'EOF'
-Usage: scripts/test/run-tests.sh [--list] [--update-baseline] [--verbose]
+Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose]
                                  all | integration | regression | <system> [<system>...]
 EOF
   exit 2
