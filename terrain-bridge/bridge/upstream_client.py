@@ -72,8 +72,14 @@ class UpstreamClient:
         slope-scaled Perlin inside `_get_upsampled`, to restore detail lost to the
         bilinear upsample; `scale=1` routes to `_handle_1x`, which never calls it. So
         native output *is* the smooth field section 4.3 wants to route on, for free.
+
+        `elev_only=1` asks a patched upstream to skip the climate/biome work this caller
+        discards anyway (the padded second generation pass, climate derivation and the
+        biome classifier -- roughly half the request cost, measured 2026-08-01). The
+        elevation bytes are identical either way, and an unpatched upstream simply
+        ignores the parameter and returns both planes, which `_fetch` already handles.
         """
-        params = {"i1": i1, "j1": j1, "i2": i2, "j2": j2, "scale": 1}
+        params = {"i1": i1, "j1": j1, "i2": i2, "j2": j2, "scale": 1, "elev_only": 1}
         elev, _ = self._fetch(params, timeout=timeout_s or self._cfg.upstream_timeout_s * 20.0)
         return elev
 

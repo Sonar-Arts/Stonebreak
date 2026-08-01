@@ -177,17 +177,19 @@ public final class PerlinWormCarver {
     }
 
     /**
-     * As {@link #carveMaskForChunk(int, int, int[])}, keeping clear of the beds of wet
-     * columns — see {@link WaterGuard}. A null {@code waterLevels} suppresses nothing.
+     * As {@link #carveMaskForChunk(int, int, int[])}, keeping clear of the beds and bank
+     * walls of wet columns — see {@link WaterGuard}. A null {@code waterLevels}
+     * suppresses nothing.
      */
     public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels) {
+        int[] waterGuard = WaterGuard.guardPlane(targetHeights, waterLevels, heightMapGenerator, chunkX, chunkZ);
         BitSet mask = new BitSet();
         for (int dcx = -SCAN_RADIUS; dcx <= SCAN_RADIUS; dcx++) {
             for (int dcz = -SCAN_RADIUS; dcz <= SCAN_RADIUS; dcz++) {
                 int srcCx = chunkX + dcx;
                 int srcCz = chunkZ + dcz;
                 if (!hasWorm(srcCx, srcCz)) continue;
-                spawnCarvers(srcCx, srcCz, chunkX, chunkZ, targetHeights, waterLevels, mask);
+                spawnCarvers(srcCx, srcCz, chunkX, chunkZ, targetHeights, waterGuard, mask);
             }
         }
         return mask;
@@ -258,7 +260,7 @@ public final class PerlinWormCarver {
      * side of the spawn point continues out the other side.
      */
     private void spawnCarvers(int srcCx, int srcCz, int targetCx, int targetCz,
-                              int[] targetHeights, int[] waterLevels, BitSet mask) {
+                              int[] targetHeights, int[] waterGuard, BitSet mask) {
         Random rng = new Random(chunkRngSeed(srcCx, srcCz));
         float ox = srcCx * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE);
         float oz = srcCz * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE);
@@ -290,7 +292,7 @@ public final class PerlinWormCarver {
         }
 
         while (!queue.isEmpty()) {
-            walkCarver(queue.pop(), queue, targetCx, targetCz, targetHeights, waterLevels, mask);
+            walkCarver(queue.pop(), queue, targetCx, targetCz, targetHeights, waterGuard, mask);
         }
     }
 
@@ -382,7 +384,7 @@ public final class PerlinWormCarver {
     }
 
     private void walkCarver(CarverSegment seg, Deque<CarverSegment> queue,
-                            int targetCx, int targetCz, int[] targetHeights, int[] waterLevels,
+                            int targetCx, int targetCz, int[] targetHeights, int[] waterGuard,
                             BitSet mask) {
         Random rng = new Random(seg.rngSeed);
         float x = seg.x, y = seg.y, z = seg.z, yaw = seg.yaw, pitch = seg.pitch;
@@ -428,7 +430,7 @@ public final class PerlinWormCarver {
             float radius = BASE_RADIUS + radiusNoise.noise3D(x * RADIUS_SCALE, y * RADIUS_SCALE, z * RADIUS_SCALE) * RADIUS_AMP;
             if (radius < MIN_RADIUS) radius = MIN_RADIUS;
             carveEllipsoid(wxi, wyi, wzi, radius, targetCx, targetCz,
-                    targetHeights, waterLevels, mask);
+                    targetHeights, waterGuard, mask);
 
             if (seg.target != null) {
                 float dx = seg.target[0] - x;
@@ -459,7 +461,7 @@ public final class PerlinWormCarver {
      * Per-column water guard prevents exposing water-bearing terrain.
      */
     private void carveEllipsoid(int wx, int wy, int wz, float radius, int targetCx,
-                                int targetCz, int[] targetHeights, int[] waterLevels, BitSet mask) {
+                                int targetCz, int[] targetHeights, int[] waterGuard, BitSet mask) {
         int targetBaseX = targetCx * CHUNK_SIZE;
         int targetBaseZ = targetCz * CHUNK_SIZE;
         int rxz = (int) Math.ceil(radius);
@@ -488,7 +490,7 @@ public final class PerlinWormCarver {
                     if ((oy * oy) * invRy2 >= maxOyTerm) continue;
                     int by = wy + oy;
                     if (by < 1 || by >= WORLD_HEIGHT) continue;
-                    if (WaterGuard.sealsBed(waterLevels, idx, surface, by, WATER_CLEARANCE)) continue;
+                    if (WaterGuard.seals(waterGuard, idx, by, WATER_CLEARANCE)) continue;
                     mask.set(LocalBlockKey.pack(bx, by, bz));
                 }
             }

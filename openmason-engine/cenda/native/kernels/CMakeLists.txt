@@ -37,6 +37,7 @@ add_library(cenda_kernels SHARED
         src/mesher.cpp
         src/carver.cpp
         src/generator.cpp
+        src/water.cpp
         src/zstd_codec.cpp)
 
 target_include_directories(cenda_kernels PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

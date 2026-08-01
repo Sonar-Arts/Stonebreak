@@ -3,3 +3,9 @@ uvicorn[standard]>=0.30
 requests>=2.32
 numpy>=1.26
 pydantic>=2.7
+# Since Phase 8 the running service imports `hydrology` at startup whenever
+# TERRAIN_BRIDGE_HYDROLOGY is on (the default): bridge/water.py builds
+# HydrologyWater, which needs the solver stack. Set TERRAIN_BRIDGE_HYDROLOGY=0
+# to run a sea-level-only bridge without these two.
+numba>=0.59          # priority-flood fill; heap-driven, does not vectorise
+scipy>=1.11          # connected components + distance transforms in the solvers

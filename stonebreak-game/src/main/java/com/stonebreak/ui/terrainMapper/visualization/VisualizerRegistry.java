@@ -7,8 +7,10 @@ import com.stonebreak.ui.terrainMapper.visualization.impl.WaterVisualizer;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.diffusion.DiffusionBridgeConfig;
 import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
+import com.stonebreak.world.generation.diffusion.TerrainTileSource;
 import com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
+import com.stonebreak.world.generation.water.NativeWaterTiles;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -52,7 +54,15 @@ public final class VisualizerRegistry {
     /** Rebuild every visualizer against a fresh seed. Does not touch the services — see {@link #ensureServices()}. */
     public void rebuild(long newSeed) {
         this.seed = newSeed;
-        DiffusionTileCache tileCache = new DiffusionTileCache(DiffusionBridgeConfig.fromSystemProperties(), newSeed);
+        DiffusionBridgeConfig config = DiffusionBridgeConfig.fromSystemProperties();
+        // Same tile chain the world generator uses (TerrainGenerationSystem
+        // .productionTileSource): with the native water backend the preview
+        // must show the kernel-derived rivers/lakes, not the raw sea-level
+        // plane the bridge serves when its hydrology is off.
+        TerrainTileSource tileCache = new DiffusionTileCache(config, newSeed);
+        if (NativeWaterTiles.nativeBackendSelected()) {
+            tileCache = new NativeWaterTiles(tileCache, newSeed, config.tileSizeBlocks(), config.maxCachedTiles());
+        }
         HeightMapGenerator heightMap = new HeightMapGenerator(tileCache);
         BiomeManager biomes = new BiomeManager(tileCache);
 

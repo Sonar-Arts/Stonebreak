@@ -1,6 +1,7 @@
 package com.stonebreak.world.generation.biomes;
 
 import com.stonebreak.world.generation.diffusion.TerrainTile;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
  * Translates the vanilla-Minecraft biome ids baked into diffusion-bridge
@@ -61,6 +62,14 @@ final class DiffusionBiomeMapper {
 
     private static boolean isNearShore(int height, int nearbyWaterLevel) {
         if (nearbyWaterLevel == TerrainTile.NO_WATER) {
+            return false;
+        }
+        // Sea shorelines only. Inland water sits ABOVE sea level, and applying
+        // the beach band there turned every river bank, lake rim and — worst —
+        // every containment-repair wall into a strip or cliff of sand. Rivers
+        // and lakes keep their climate biome (grass banks etc.), which is also
+        // vanilla's behavior.
+        if (nearbyWaterLevel > WorldConfiguration.SEA_LEVEL) {
             return false;
         }
         return height >= nearbyWaterLevel && height < nearbyWaterLevel + BEACH_BAND_BLOCKS;

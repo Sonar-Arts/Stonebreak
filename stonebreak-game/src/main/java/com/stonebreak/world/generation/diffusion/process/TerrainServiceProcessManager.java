@@ -43,6 +43,7 @@ public final class TerrainServiceProcessManager {
     private final Path upstreamRepoDir;
     private final String model;
     private final String device;
+    private final String upstreamCacheSize;
     private final int upstreamPort;
     private final Path bridgePythonExe;
     private final Path bridgeDir;
@@ -65,6 +66,13 @@ public final class TerrainServiceProcessManager {
                 "Dev Working/terrain-diffusion-spike/repo");
         this.model = System.getProperty("stonebreak.terrainService.model", "xandergos/terrain-diffusion-30m");
         this.device = System.getProperty("stonebreak.terrainService.device", "cuda");
+        // In-memory generation-tile cache for the upstream pipeline (CPU RAM). The upstream
+        // default of 100 MB thrashes during the hydrology solvers' bulk native fetches — a
+        // single L0 macro-region sweeps a ~600 MB working set, and eviction re-runs UNet
+        // inference for ground generated seconds earlier (measured 2026-08-01: ~9 s/fetch
+        // thrashing vs ~3.4 s with a real cache, and repeat gets 3 s -> 0.02 s). 4G holds a
+        // whole region solve plus the L1/tile re-reads over the same ground.
+        this.upstreamCacheSize = System.getProperty("stonebreak.terrainService.cacheSize", "4G");
         this.upstreamPort = Integer.getInteger("stonebreak.terrainService.upstreamPort", 8010);
         this.bridgePythonExe = resolvePath(userDir, "stonebreak.terrainService.bridgePythonExe",
                 "terrain-bridge/venv/bin/python");
@@ -131,6 +139,7 @@ public final class TerrainServiceProcessManager {
                 model,
                 "--no-compile",
                 "--device", device,
+                "--cache-size", upstreamCacheSize,
                 "--port", String.valueOf(upstreamPort),
                 "--hdf5-file", "TEMP",
                 "--seed", String.valueOf(seed)
@@ -150,6 +159,16 @@ public final class TerrainServiceProcessManager {
         java.util.Map<String, String> env = new java.util.HashMap<>();
         env.put("TERRAIN_BRIDGE_SEED", String.valueOf(seed));
         env.put("TERRAIN_BRIDGE_UPSTREAM_URL", "http://localhost:" + upstreamPort);
+        // With the native water backend (the default), inland water is derived
+        // game-side by Cenda's ck_carve_water over raw tiles, so the bridge's
+        // hydrological L0/L1 solve — the ~90 s-per-region / ~20-min-worst-case
+        // cold-start cost — is switched off and tiles revert to sub-second
+        // sea-level-only generation. -Dstonebreak.water.backend=bridge restores
+        // the old solve (NativeWaterTiles reads the same property and then does
+        // not wrap the tile source).
+        if (com.stonebreak.world.generation.water.NativeWaterTiles.nativeBackendSelected()) {
+            env.put("TERRAIN_BRIDGE_HYDROLOGY", "0");
+        }
         LOG.info(() -> "Starting terrain-bridge (seed " + seed + "): " + command);
         bridgeProcess = startProcess(command, bridgeDir, logFile, env);
         waitForHealth("http://localhost:" + bridgePort + "/health", bridgeProcess, "terrain-bridge", logFile);

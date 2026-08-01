@@ -23,6 +23,7 @@ import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.heightmap.CavernCarver;
 import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
 import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
+import com.stonebreak.world.generation.water.NativeWaterTiles;
 
 import java.util.BitSet;
 import com.stonebreak.world.chunk.utils.LocalBlockKey;
@@ -55,7 +56,26 @@ public class TerrainGenerationSystem {
     private final Object animalRandomLock = new Object();
 
     public TerrainGenerationSystem(long seed) {
-        this(withServicesRunning(seed), new DiffusionTileCache(DiffusionBridgeConfig.fromSystemProperties(), seed));
+        this(withServicesRunning(seed), productionTileSource(seed));
+    }
+
+    /**
+     * The production tile chain: the HTTP-backed bridge cache, wrapped — when the
+     * native water backend is selected ({@code -Dstonebreak.water.backend=native},
+     * the default) — in {@link NativeWaterTiles}, which derives rivers and lakes
+     * per tile via Cenda's {@code ck_carve_water} kernel. With the wrapper active
+     * the bridge runs with its hydrological solve disabled (the process manager
+     * sets {@code TERRAIN_BRIDGE_HYDROLOGY=0} from the same property), so raw
+     * tiles carry sea-level-only water and cost sub-second GPU time instead of
+     * the L0/L1 macro-region solves.
+     */
+    private static TerrainTileSource productionTileSource(long seed) {
+        DiffusionBridgeConfig config = DiffusionBridgeConfig.fromSystemProperties();
+        DiffusionTileCache rawTiles = new DiffusionTileCache(config, seed);
+        if (!NativeWaterTiles.nativeBackendSelected()) {
+            return rawTiles;
+        }
+        return new NativeWaterTiles(rawTiles, seed, config.tileSizeBlocks(), config.maxCachedTiles());
     }
 
     /**

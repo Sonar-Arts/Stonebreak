@@ -29,7 +29,7 @@ import java.nio.file.Path;
 public final class CendaKernels {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CendaKernels.class);
-    private static final int EXPECTED_ABI = 2;
+    private static final int EXPECTED_ABI = 3;
 
     private static final boolean AVAILABLE;
     private static final String SIMD_LEVEL;
@@ -45,6 +45,7 @@ public final class CendaKernels {
     private static final MethodHandle CHUNKGEN_CREATE;
     private static final MethodHandle CHUNKGEN_DESTROY;
     private static final MethodHandle GENERATE_CHUNK;
+    private static final MethodHandle CARVE_WATER;
     private static final MethodHandle ZSTD_BOUND;
     private static final MethodHandle ZSTD_COMPRESS;
     private static final MethodHandle ZSTD_DECOMPRESS;
@@ -69,6 +70,7 @@ public final class CendaKernels {
         MethodHandle chunkGenCreate = null;
         MethodHandle chunkGenDestroy = null;
         MethodHandle generateChunk = null;
+        MethodHandle carveWater = null;
         MethodHandle zstdBound = null;
         MethodHandle zstdCompress = null;
         MethodHandle zstdDecompress = null;
@@ -170,6 +172,15 @@ public final class CendaKernels {
                         ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+                carveWater = linker.downcallHandle(
+                    find(lookup, "ck_carve_water"),
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS));
                 zstdBound = linker.downcallHandle(
                     find(lookup, "ck_zstd_bound"),
                     FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
@@ -215,6 +226,7 @@ public final class CendaKernels {
         CHUNKGEN_CREATE = chunkGenCreate;
         CHUNKGEN_DESTROY = chunkGenDestroy;
         GENERATE_CHUNK = generateChunk;
+        CARVE_WATER = carveWater;
         ZSTD_BOUND = zstdBound;
         ZSTD_COMPRESS = zstdCompress;
         ZSTD_DECOMPRESS = zstdDecompress;
@@ -669,6 +681,60 @@ public final class CendaKernels {
             return nonAir;
         } catch (Throwable t) {
             throw new IllegalStateException("ck_generate_chunk failed", t);
+        }
+    }
+
+    // ═══════════════════════ Water carve ═══════════════════════
+
+    /**
+     * Derives one terrain tile's rivers/lakes from raw block heights: input is
+     * a 3x3-tile window of heights (center tile plus a one-tile halo on every
+     * side, {@code (3*tileSize)^2} shorts, row-major with row = world X), and
+     * the outputs are the CENTER tile's carved heights and per-column water
+     * levels ({@code tileSize^2} each; water level -1 = dry column). Seam-free
+     * and deterministic per seed by construction — see cenda/kernels.h
+     * (ck_carve_water) for the layout and the optional params array.
+     *
+     * Returns 0 on success, a negative kernel error on bad arguments, or
+     * {@link Integer#MIN_VALUE} when the library is unavailable (callers fall
+     * back to the raw tile's own water plane).
+     */
+    public static int carveWater(long seed, int tileSize, int originX, int originZ,
+                                 short[] heights3x3, int seaLevel, int worldHeight,
+                                 float[] params,
+                                 short[] outHeights, short[] outWater) {
+        int window = 3 * tileSize;
+        if (heights3x3.length != window * window) {
+            throw new IllegalArgumentException("heights3x3 must be (3*tileSize)^2 = "
+                + (window * window) + " shorts, was " + heights3x3.length);
+        }
+        int tileArea = tileSize * tileSize;
+        if (outHeights.length != tileArea || outWater.length != tileArea) {
+            throw new IllegalArgumentException("outputs must be tileSize^2 = " + tileArea
+                + " shorts, were " + outHeights.length + " / " + outWater.length);
+        }
+        if (!AVAILABLE) {
+            return Integer.MIN_VALUE;
+        }
+        try {
+            MemorySegment heightsSeg = scratchFrom(0, heights3x3);
+            MemorySegment outHeightsSeg = scratch(1, (long) tileArea * Short.BYTES);
+            MemorySegment outWaterSeg = scratch(2, (long) tileArea * Short.BYTES);
+            MemorySegment paramsSeg = params == null || params.length == 0
+                ? MemorySegment.NULL : scratchFrom(3, params);
+            int nParams = params == null ? 0 : params.length;
+            int rc = (int) CARVE_WATER.invokeExact(
+                seed, tileSize, originX, originZ,
+                heightsSeg, seaLevel, worldHeight,
+                paramsSeg, nParams,
+                outHeightsSeg, outWaterSeg);
+            if (rc == 0) {
+                MemorySegment.copy(outHeightsSeg, ValueLayout.JAVA_SHORT, 0L, outHeights, 0, tileArea);
+                MemorySegment.copy(outWaterSeg, ValueLayout.JAVA_SHORT, 0L, outWater, 0, tileArea);
+            }
+            return rc;
+        } catch (Throwable t) {
+            throw new IllegalStateException("ck_carve_water failed", t);
         }
     }
 

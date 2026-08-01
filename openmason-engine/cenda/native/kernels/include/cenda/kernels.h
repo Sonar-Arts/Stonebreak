@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-#define CK_ABI_VERSION 2
+#define CK_ABI_VERSION 3
 
 /* ABI handshake — Java refuses to use the lib if this doesn't match. */
 int32_t ck_abi_version(void);
@@ -190,6 +190,58 @@ void ck_chunkgen_destroy(void* ctx);
 int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
                           const int32_t* heights, const int32_t* biomes,
                           int16_t* out_blocks, int32_t* out_heightmap);
+
+/* ════════════════════════ Water carve ════════════════════════
+ *
+ * Noise-derived rivers and lakes at block resolution — the native replacement
+ * for the terrain bridge's hydrological L0/L1 solve. Input is one terrain
+ * tile's raw block heights plus a one-tile halo on every side (a 3x3 tile
+ * window); output is the CENTER tile's carved heights and per-column water
+ * levels. Every emitted value is a pure function of (seed, column, raw
+ * heights within a bounded reach far below tile_size), so adjacent tiles
+ * agree over shared ground and the result is seam-free by construction —
+ * see water.cpp's canonicality notes.
+ *
+ * heights3x3: (3*tile_size)^2 int16, row-major with row = world X and
+ * col = world Z (the TerrainTile layout), covering world
+ * [origin_x, origin_x + 3*tile_size) x [origin_z, origin_z + 3*tile_size).
+ * The center tile is the middle third.
+ *
+ * out_heights/out_water: tile_size^2, same layout, center tile only.
+ * Water level w means the column holds water for height <= y < w; -1 = dry.
+ * Containment invariant (WaterSim): every wet column's 4-neighbors are wet
+ * or have terrain >= its level; worldgen water is source blocks, so a
+ * violation is a permanent spring.
+ *
+ * params (optional, NULL/0 = defaults): float array, prefix of
+ *   [0] channel_threshold   |C| below this is a river channel (0.045;
+ *                           0 disables rivers)
+ *   [1] river_depth_scale   extra centerline depth in blocks (3.0)
+ *   [2] surface_blur_radius box-blur radius for the water surface (24)
+ *   [3] lake_spacing        candidate lattice pitch in blocks (160;
+ *                           0 disables lakes)
+ *   [4] lake_keep_fraction  fraction of candidates that try to fill (0.35)
+ *   [5] lake_max_radius     bounded-flood box radius in blocks (72)
+ *   [6] alt_fade_start      blocks above sea where channels start thinning (25)
+ *   [7] alt_fade_end        blocks above sea where thinning bottoms out (70)
+ *   [8] slope_fade_start    surface gradient (blocks/block) where channels
+ *                           start fading off hillsides (0.35)
+ *   [9] slope_fade_end      gradient where channels are fully off (0.80)
+ *   [10] max_incision       ground this many blocks above the water surface
+ *                           interrupts the channel instead of being slotted (12)
+ *   [11] erode_radius       windowed-min radius flattening the water surface
+ *                           across a channel's width (16; 0 disables)
+ *
+ * Thread-safe and reentrant (per-thread scratch). Returns 0 on success,
+ * negative on bad arguments. */
+
+int32_t ck_carve_water(int64_t seed,
+                       int32_t tile_size,
+                       int32_t origin_x, int32_t origin_z,
+                       const int16_t* heights3x3,
+                       int32_t sea_level, int32_t world_height,
+                       const float* params, int32_t n_params,
+                       int16_t* out_heights, int16_t* out_water);
 
 /* ════════════════════════ zstd codec ════════════════════════ */
 

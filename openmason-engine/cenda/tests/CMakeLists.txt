@@ -12,4 +12,8 @@ if(CENDA_BUILD_KERNELS)
     add_executable(kernels_chunk kernels_chunk_test.cpp)
     target_link_libraries(kernels_chunk PRIVATE cenda_kernels cenda_warnings)
     add_test(NAME kernels_chunk COMMAND kernels_chunk)
+
+    add_executable(kernels_water kernels_water_test.cpp)
+    target_link_libraries(kernels_water PRIVATE cenda_kernels cenda_warnings)
+    add_test(NAME kernels_water COMMAND kernels_water)
 endif()
