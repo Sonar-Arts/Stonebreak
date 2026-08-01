@@ -1,7 +1,7 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import com.openmason.engine.format.sbe.SBEFormat;
-import imgui.ImColor;
+import com.openmason.main.systems.mortar.core.MortarRegionPool;
 import imgui.ImGui;
 import imgui.type.ImString;
 import org.slf4j.Logger;
@@ -23,10 +23,12 @@ import java.util.function.Consumer;
  *
  * <p>Variants are the identity axis (default/angus/highland/jersey...) — each
  * may carry its own OMO override or fall back to the base OMO. Mirrors
- * {@link SBEStatesEditor} structurally but exposes only the single model slot:
- * variants do not bind animation clips (clips live on states).
+ * {@link SBEStatesEditor} structurally (same card layout: Mortar
+ * {@link RowHeaderStrip} + ImGui slots + inline validation) but exposes only
+ * the single model slot: variants do not bind animation clips (clips live on
+ * states).
  */
-public final class SBEVariantsEditor {
+public final class SBEVariantsEditor implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(SBEVariantsEditor.class);
 
@@ -47,6 +49,8 @@ public final class SBEVariantsEditor {
     private final Consumer<Consumer<String>> omoPicker;
 
     private final List<Row> rows = new ArrayList<>();
+
+    private final MortarRegionPool headerPool = new MortarRegionPool();
 
     public SBEVariantsEditor(Runnable onDirty,
                               Consumer<Consumer<String>> omoPicker) {
@@ -112,14 +116,29 @@ public final class SBEVariantsEditor {
      * valid, otherwise a human-readable error message.
      */
     public String validate() {
-        Set<String> seen = new HashSet<>();
+        Set<String> duplicates = duplicateNames();
         for (int i = 0; i < rows.size(); i++) {
-            Row r = rows.get(i);
-            String name = r.name.get().trim();
-            if (name.isBlank()) return "Variant " + (i + 1) + " has no name.";
-            if (!seen.add(name)) return "Duplicate variant name: " + name;
+            String error = validateRow(rows.get(i), i, duplicates);
+            if (error != null) return error;
         }
         return null;
+    }
+
+    private static String validateRow(Row r, int index, Set<String> duplicates) {
+        String name = r.name.get().trim();
+        if (name.isBlank()) return "Variant " + (index + 1) + " has no name.";
+        if (duplicates.contains(name)) return "Duplicate variant name: " + name;
+        return null;
+    }
+
+    private Set<String> duplicateNames() {
+        Set<String> seen = new HashSet<>();
+        Set<String> duplicates = new HashSet<>();
+        for (Row r : rows) {
+            String name = r.name.get().trim();
+            if (!name.isBlank() && !seen.add(name)) duplicates.add(name);
+        }
+        return duplicates;
     }
 
     public boolean hasRows() { return !rows.isEmpty(); }
@@ -129,10 +148,12 @@ public final class SBEVariantsEditor {
     // ========================================================================
 
     public void render() {
+        boolean mortar = headerPool.isAvailable();
+
         if (rows.isEmpty()) {
             ImGui.textDisabled("No variants declared. Add one to attach a per-variant OMO override.");
         } else {
-            ImGui.text("Declared variants (" + rows.size() + "):");
+            ImGui.text("Declared variants (" + rows.size() + ")");
             ImGui.textDisabled("Per-variant model overrides fall back to the base OMO when unset.");
         }
 
@@ -140,28 +161,27 @@ public final class SBEVariantsEditor {
         ImGui.separator();
         ImGui.dummy(0, 4);
 
+        Set<String> duplicates = duplicateNames();
         int removeIndex = -1;
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
             ImGui.pushID("sbe_variant_row_" + i);
 
-            ImGui.pushItemWidth(180.0f);
-            if (ImGui.inputTextWithHint("##name", "variant name", row.name)) onDirty.run();
-            ImGui.popItemWidth();
+            boolean removeRequested = mortar
+                    ? renderRowHeaderMortar(i, row)
+                    : renderRowHeaderFallback(row);
+            if (removeRequested) removeIndex = i;
 
-            ImGui.sameLine();
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, ImColor.rgba(0.5f, 0.18f, 0.18f, 0.45f));
-            if (ImGui.button("Remove", 70.0f, 0.0f)) {
-                removeIndex = i;
-            }
-            ImGui.popStyleColor();
+            renderRowDetails(row);
 
-            renderAssetRow("Model:", row.modelSourceLabel, row.modelBytes,
-                    () -> pickModel(row), () -> clearModel(row));
+            String error = validateRow(row, i, duplicates);
+            if (error != null) EditorWidgets.inlineError(error);
 
-            ImGui.dummy(0, 6);
+            ImGui.dummy(0, 8);
             ImGui.popID();
         }
+
+        headerPool.trim(rows.size());
 
         if (removeIndex >= 0) {
             rows.remove(removeIndex);
@@ -174,30 +194,44 @@ public final class SBEVariantsEditor {
         }
     }
 
-    private void renderAssetRow(String label, String sourceLabel, byte[] bytes,
-                                 Runnable onPick, Runnable onClear) {
-        // Scope this slot's widget IDs by its label so multiple asset slots in a
-        // row never share button IDs (see SBEStatesEditor for the failure mode).
-        ImGui.pushID(label);
-        ImGui.indent(20.0f);
-        ImGui.textDisabled(label);
-        ImGui.sameLine(80.0f);
+    /** Mortar card header; returns true when remove was clicked. */
+    private boolean renderRowHeaderMortar(int i, Row row) {
+        String name = row.name.get().trim();
+        String detail = "model: " + (row.hasModel()
+                ? (row.modelSourceLabel != null ? row.modelSourceLabel : "(loaded)")
+                : "base OMO");
 
-        if (bytes != null) {
-            ImGui.text(sourceLabel != null ? sourceLabel : "(loaded)");
-            ImGui.sameLine();
-            ImGui.textDisabled("(" + humanBytes(bytes.length) + ")");
-            ImGui.sameLine();
-            if (ImGui.smallButton("Replace...")) onPick.run();
-            ImGui.sameLine();
-            if (ImGui.smallButton("Clear")) onClear.run();
-        } else {
-            ImGui.textDisabled("(unset)");
-            ImGui.sameLine();
-            if (ImGui.smallButton("Set...")) onPick.run();
+        RowHeaderStrip.Result result = RowHeaderStrip.render(
+                headerPool.get(i), "VARIANT", false,
+                name.isEmpty() ? "(unnamed)" : name, name.isEmpty(), detail,
+                List.of());
+
+        if ("remove".equals(result.hovered())) {
+            ImGui.setTooltip("Remove this variant");
         }
-        ImGui.unindent(20.0f);
-        ImGui.popID();
+        return result.removeClicked();
+    }
+
+    /** Plain-ImGui header for when no Skija context exists. */
+    private boolean renderRowHeaderFallback(Row row) {
+        ImGui.textDisabled("model: " + (row.hasModel()
+                ? (row.modelSourceLabel != null ? row.modelSourceLabel : "(loaded)")
+                : "base OMO"));
+        ImGui.sameLine();
+        return EditorWidgets.dangerButton("Remove", 70.0f);
+    }
+
+    /** Shared ImGui edit widgets under the header (both render paths). */
+    private void renderRowDetails(Row row) {
+        ImGui.dummy(0, 2);
+        ImGui.textDisabled("  ");
+        ImGui.sameLine();
+        ImGui.pushItemWidth(180.0f);
+        if (ImGui.inputTextWithHint("Name##variant", "variant name", row.name)) onDirty.run();
+        ImGui.popItemWidth();
+
+        EditorWidgets.assetSlot("Model:", row.modelSourceLabel, row.modelBytes,
+                () -> pickModel(row), () -> clearModel(row));
     }
 
     // ========================================================================
@@ -228,9 +262,9 @@ public final class SBEVariantsEditor {
         onDirty.run();
     }
 
-    private static String humanBytes(int n) {
-        if (n < 1024) return n + " B";
-        if (n < 1024 * 1024) return String.format("%.1f KB", n / 1024.0);
-        return String.format("%.1f MB", n / (1024.0 * 1024.0));
+    /** Release the pooled Mortar header regions before the SkijaContext closes. */
+    @Override
+    public void close() {
+        headerPool.close();
     }
 }

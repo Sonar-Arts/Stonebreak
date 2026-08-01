@@ -1,7 +1,7 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import com.openmason.engine.format.sbe.SBEFormat;
-import imgui.ImColor;
+import com.openmason.main.systems.mortar.core.MortarRegionPool;
 import imgui.ImGui;
 import imgui.type.ImString;
 import org.slf4j.Logger;
@@ -29,9 +29,11 @@ import java.util.function.Consumer;
  * {@link com.openmason.engine.format.sbe.SBESerializer#exportFromDocument} consumes.
  *
  * <p>Mirrors {@link SBOStatesEditor} structurally so the two formats share the
- * same authoring idioms.
+ * same authoring idioms: rows are cards with a Mortar {@link RowHeaderStrip}
+ * (STATE badge, name, model/clip summary, remove) over the ImGui name input
+ * and asset slots, with per-row inline validation and an ImGui fallback.
  */
-public final class SBEStatesEditor {
+public final class SBEStatesEditor implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(SBEStatesEditor.class);
 
@@ -57,6 +59,8 @@ public final class SBEStatesEditor {
     private final Consumer<Consumer<String>> omaPicker;
 
     private final List<Row> rows = new ArrayList<>();
+
+    private final MortarRegionPool headerPool = new MortarRegionPool();
 
     public SBEStatesEditor(Runnable onDirty,
                             Consumer<Consumer<String>> omoPicker,
@@ -140,14 +144,29 @@ public final class SBEStatesEditor {
      * valid, otherwise a human-readable error message.
      */
     public String validate() {
-        Set<String> seen = new HashSet<>();
+        Set<String> duplicates = duplicateNames();
         for (int i = 0; i < rows.size(); i++) {
-            Row r = rows.get(i);
-            String name = r.name.get().trim();
-            if (name.isBlank()) return "State " + (i + 1) + " has no name.";
-            if (!seen.add(name)) return "Duplicate state name: " + name;
+            String error = validateRow(rows.get(i), i, duplicates);
+            if (error != null) return error;
         }
         return null;
+    }
+
+    private static String validateRow(Row r, int index, Set<String> duplicates) {
+        String name = r.name.get().trim();
+        if (name.isBlank()) return "State " + (index + 1) + " has no name.";
+        if (duplicates.contains(name)) return "Duplicate state name: " + name;
+        return null;
+    }
+
+    private Set<String> duplicateNames() {
+        Set<String> seen = new HashSet<>();
+        Set<String> duplicates = new HashSet<>();
+        for (Row r : rows) {
+            String name = r.name.get().trim();
+            if (!name.isBlank() && !seen.add(name)) duplicates.add(name);
+        }
+        return duplicates;
     }
 
     public boolean hasRows() { return !rows.isEmpty(); }
@@ -157,10 +176,12 @@ public final class SBEStatesEditor {
     // ========================================================================
 
     public void render() {
+        boolean mortar = headerPool.isAvailable();
+
         if (rows.isEmpty()) {
             ImGui.textDisabled("No states declared. Add one to attach a per-state model override or animation clip.");
         } else {
-            ImGui.text("Declared states (" + rows.size() + "):");
+            ImGui.text("Declared states (" + rows.size() + ")");
             ImGui.textDisabled("Per-state model overrides fall back to the base OMO when unset.");
         }
 
@@ -168,30 +189,27 @@ public final class SBEStatesEditor {
         ImGui.separator();
         ImGui.dummy(0, 4);
 
+        Set<String> duplicates = duplicateNames();
         int removeIndex = -1;
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
             ImGui.pushID("sbe_state_row_" + i);
 
-            ImGui.pushItemWidth(180.0f);
-            if (ImGui.inputTextWithHint("##name", "state name", row.name)) onDirty.run();
-            ImGui.popItemWidth();
+            boolean removeRequested = mortar
+                    ? renderRowHeaderMortar(i, row)
+                    : renderRowHeaderFallback(row);
+            if (removeRequested) removeIndex = i;
 
-            ImGui.sameLine();
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, ImColor.rgba(0.5f, 0.18f, 0.18f, 0.45f));
-            if (ImGui.button("Remove", 70.0f, 0.0f)) {
-                removeIndex = i;
-            }
-            ImGui.popStyleColor();
+            renderRowDetails(row);
 
-            renderAssetRow("Model:", row.modelSourceLabel, row.modelBytes,
-                    () -> pickModel(row), () -> clearModel(row));
-            renderAssetRow("Clip:", row.clipSourceLabel, row.clipBytes,
-                    () -> pickClip(row), () -> clearClip(row));
+            String error = validateRow(row, i, duplicates);
+            if (error != null) EditorWidgets.inlineError(error);
 
-            ImGui.dummy(0, 6);
+            ImGui.dummy(0, 8);
             ImGui.popID();
         }
+
+        headerPool.trim(rows.size());
 
         if (removeIndex >= 0) {
             rows.remove(removeIndex);
@@ -204,32 +222,52 @@ public final class SBEStatesEditor {
         }
     }
 
-    private void renderAssetRow(String label, String sourceLabel, byte[] bytes,
-                                 Runnable onPick, Runnable onClear) {
-        // Scope this slot's widget IDs by its label so the Model and Clip slots in
-        // the same row don't share button IDs — otherwise ImGui flags conflicting
-        // IDs and routes every click to the first slot (the Clip "Replace..." would
-        // silently trigger the Model slot instead).
-        ImGui.pushID(label);
-        ImGui.indent(20.0f);
-        ImGui.textDisabled(label);
-        ImGui.sameLine(80.0f);
+    /** Mortar card header; returns true when remove was clicked. */
+    private boolean renderRowHeaderMortar(int i, Row row) {
+        String name = row.name.get().trim();
+        String detail = assetSummary(row);
 
-        if (bytes != null) {
-            ImGui.text(sourceLabel != null ? sourceLabel : "(loaded)");
-            ImGui.sameLine();
-            ImGui.textDisabled("(" + humanBytes(bytes.length) + ")");
-            ImGui.sameLine();
-            if (ImGui.smallButton("Replace...")) onPick.run();
-            ImGui.sameLine();
-            if (ImGui.smallButton("Clear")) onClear.run();
-        } else {
-            ImGui.textDisabled("(unset)");
-            ImGui.sameLine();
-            if (ImGui.smallButton("Set...")) onPick.run();
+        RowHeaderStrip.Result result = RowHeaderStrip.render(
+                headerPool.get(i), "STATE", false,
+                name.isEmpty() ? "(unnamed)" : name, name.isEmpty(), detail,
+                List.of());
+
+        if ("remove".equals(result.hovered())) {
+            ImGui.setTooltip("Remove this state");
         }
-        ImGui.unindent(20.0f);
-        ImGui.popID();
+        return result.removeClicked();
+    }
+
+    private static String assetSummary(Row row) {
+        String model = row.hasModel()
+                ? (row.modelSourceLabel != null ? row.modelSourceLabel : "(loaded)")
+                : "base OMO";
+        String clip = row.hasClip()
+                ? (row.clipSourceLabel != null ? row.clipSourceLabel : "(loaded)")
+                : "none";
+        return "model: " + model + "   clip: " + clip;
+    }
+
+    /** Plain-ImGui header for when no Skija context exists. */
+    private boolean renderRowHeaderFallback(Row row) {
+        ImGui.textDisabled(assetSummary(row));
+        ImGui.sameLine();
+        return EditorWidgets.dangerButton("Remove", 70.0f);
+    }
+
+    /** Shared ImGui edit widgets under the header (both render paths). */
+    private void renderRowDetails(Row row) {
+        ImGui.dummy(0, 2);
+        ImGui.textDisabled("  ");
+        ImGui.sameLine();
+        ImGui.pushItemWidth(180.0f);
+        if (ImGui.inputTextWithHint("Name##state", "state name", row.name)) onDirty.run();
+        ImGui.popItemWidth();
+
+        EditorWidgets.assetSlot("Model:", row.modelSourceLabel, row.modelBytes,
+                () -> pickModel(row), () -> clearModel(row));
+        EditorWidgets.assetSlot("Clip:", row.clipSourceLabel, row.clipBytes,
+                () -> pickClip(row), () -> clearClip(row));
     }
 
     // ========================================================================
@@ -277,9 +315,9 @@ public final class SBEStatesEditor {
         onDirty.run();
     }
 
-    private static String humanBytes(int n) {
-        if (n < 1024) return n + " B";
-        if (n < 1024 * 1024) return String.format("%.1f KB", n / 1024.0);
-        return String.format("%.1f MB", n / (1024.0 * 1024.0));
+    /** Release the pooled Mortar header regions before the SkijaContext closes. */
+    @Override
+    public void close() {
+        headerPool.close();
     }
 }

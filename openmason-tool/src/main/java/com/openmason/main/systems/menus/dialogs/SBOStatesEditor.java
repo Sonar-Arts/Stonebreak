@@ -1,7 +1,7 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import com.openmason.engine.format.sbo.SBOFormat;
-import imgui.ImColor;
+import com.openmason.main.systems.mortar.core.MortarRegionPool;
 import imgui.ImGui;
 import imgui.type.ImString;
 import org.slf4j.Logger;
@@ -11,9 +11,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -26,8 +28,13 @@ import java.util.function.Consumer;
  * save, the editor produces a {@link SBOFormat.StateEntry} list plus a name
  * map of bytes that {@link com.openmason.engine.format.sbo.SBOSerializer#exportFromDocument}
  * consumes directly.
+ *
+ * <p>Rows render as cards: a Mortar {@link RowHeaderStrip} (DEFAULT/STATE
+ * badge, state name, source summary, Make default / Replace asset pills,
+ * remove) over the ImGui edit widgets, with per-row inline validation. Plain
+ * ImGui fallback when no Skija context exists.
  */
-public final class SBOStatesEditor {
+public final class SBOStatesEditor implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(SBOStatesEditor.class);
 
@@ -59,6 +66,8 @@ public final class SBOStatesEditor {
     private final List<Row> rows = new ArrayList<>();
     private int defaultRowIndex = 0;
     private boolean modelKind = true;
+
+    private final MortarRegionPool headerPool = new MortarRegionPool();
 
     public SBOStatesEditor(Runnable onDirty,
                            Consumer<Consumer<String>> omoPicker,
@@ -167,15 +176,10 @@ public final class SBOStatesEditor {
      */
     public String validate() {
         if (rows.isEmpty()) return null;
-        java.util.Set<String> seen = new java.util.HashSet<>();
+        Set<String> duplicates = duplicateNames();
         for (int i = 0; i < rows.size(); i++) {
-            Row r = rows.get(i);
-            String name = r.name.get().trim();
-            if (name.isBlank()) return "State " + (i + 1) + " has no name.";
-            if (!seen.add(name)) return "Duplicate state name: " + name;
-            if (r.bytes == null || r.bytes.length == 0) {
-                return "State '" + name + "' has no asset bytes.";
-            }
+            String error = validateRow(rows.get(i), i, duplicates);
+            if (error != null) return error;
         }
         if (defaultRowIndex < 0 || defaultRowIndex >= rows.size()) {
             return "No default state selected.";
@@ -183,89 +187,64 @@ public final class SBOStatesEditor {
         return null;
     }
 
+    private static String validateRow(Row r, int index, Set<String> duplicates) {
+        String name = r.name.get().trim();
+        if (name.isBlank()) return "State " + (index + 1) + " has no name.";
+        if (duplicates.contains(name)) return "Duplicate state name: " + name;
+        if (r.bytes == null || r.bytes.length == 0) {
+            return "State '" + name + "' has no asset bytes.";
+        }
+        return null;
+    }
+
+    private Set<String> duplicateNames() {
+        Set<String> seen = new HashSet<>();
+        Set<String> duplicates = new HashSet<>();
+        for (Row r : rows) {
+            String name = r.name.get().trim();
+            if (!name.isBlank() && !seen.add(name)) duplicates.add(name);
+        }
+        return duplicates;
+    }
+
     public void render() {
+        boolean mortar = headerPool.isAvailable();
+
         if (rows.isEmpty()) {
             ImGui.textDisabled("No states declared. This SBO has a single embedded "
                     + (modelKind ? ".OMO model." : ".OMT texture."));
         } else {
-            ImGui.text("Declared states (" + rows.size() + "):");
+            ImGui.text("Declared states (" + rows.size() + ")");
             ImGui.textDisabled(modelKind
-                    ? "Each state carries its own .OMO model."
-                    : "Each state carries its own .OMT texture.");
+                    ? "Each state carries its own .OMO model. The DEFAULT state is what places."
+                    : "Each state carries its own .OMT texture. The DEFAULT state is what places.");
         }
 
         ImGui.dummy(0, 6);
         ImGui.separator();
         ImGui.dummy(0, 4);
 
+        Set<String> duplicates = duplicateNames();
         int removeIndex = -1;
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
             ImGui.pushID("sbo_state_row_" + i);
 
-            ImGui.pushItemWidth(160.0f);
-            if (ImGui.inputTextWithHint("##name", "state name", row.name)) onDirty.run();
-            ImGui.popItemWidth();
+            boolean removeRequested = mortar
+                    ? renderRowHeaderMortar(i, row)
+                    : renderRowHeaderFallback(i, row);
+            if (removeRequested) removeIndex = i;
 
-            ImGui.sameLine();
-            if (ImGui.radioButton("default", defaultRowIndex == i)) {
-                defaultRowIndex = i;
-                onDirty.run();
-            }
+            renderRowDetails(row);
 
-            ImGui.sameLine();
-            if (ImGui.button("Replace asset...")) {
-                pickAsset(row);
-            }
+            String error = validateRow(row, i, duplicates);
+            if (error != null) EditorWidgets.inlineError(error);
 
-            ImGui.sameLine();
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, ImColor.rgba(0.5f, 0.18f, 0.18f, 0.45f));
-            if (ImGui.button("Remove", 70.0f, 0.0f)) {
-                removeIndex = i;
-            }
-            ImGui.popStyleColor();
-
-            String size = row.bytes != null ? humanBytes(row.bytes.length) : "no bytes";
-            ImGui.textDisabled("  source: " + (row.sourceLabel != null ? row.sourceLabel : "?")
-                    + "  (" + size + ")");
-
-            // Animation clip line (1.6+, model SBOs only)
-            if (modelKind && clipPicker != null) {
-                if (row.hasClip()) {
-                    ImGui.text("  Clip: " + (row.clipLabel != null ? row.clipLabel : "?")
-                            + "  (" + humanBytes(row.clipBytes.length) + ")");
-                    ImGui.sameLine();
-                    boolean loopBefore = row.clipLoop;
-                    if (ImGui.radioButton("Loop##clip_loop", row.clipLoop)) row.clipLoop = true;
-                    ImGui.sameLine();
-                    if (ImGui.radioButton("Play once##clip_once", !row.clipLoop)) row.clipLoop = false;
-                    if (loopBefore != row.clipLoop) onDirty.run();
-                    if (ImGui.isItemHovered()) {
-                        ImGui.setTooltip("Play once: run through a single time and hold the final pose"
-                                + " (e.g. a door opening).");
-                    }
-                    ImGui.sameLine();
-                    if (ImGui.button("Replace clip...")) {
-                        pickClip(row);
-                    }
-                    ImGui.sameLine();
-                    if (ImGui.button("Clear clip")) {
-                        row.clipBytes = null;
-                        row.clipLabel = null;
-                        onDirty.run();
-                    }
-                } else {
-                    ImGui.textDisabled("  Clip: none");
-                    ImGui.sameLine();
-                    if (ImGui.button("Set clip...")) {
-                        pickClip(row);
-                    }
-                }
-            }
-
-            ImGui.dummy(0, 4);
+            ImGui.dummy(0, 8);
             ImGui.popID();
         }
+
+        headerPool.trim(rows.size());
 
         if (removeIndex >= 0) {
             rows.remove(removeIndex);
@@ -280,6 +259,110 @@ public final class SBOStatesEditor {
             if (rows.size() == 1) defaultRowIndex = 0;
             onDirty.run();
             pickAsset(added);
+        }
+    }
+
+    /** Mortar card header; returns true when remove was clicked. */
+    private boolean renderRowHeaderMortar(int i, Row row) {
+        String name = row.name.get().trim();
+        boolean isDefault = defaultRowIndex == i;
+        String size = row.bytes != null ? EditorWidgets.humanBytes(row.bytes.length) : "no bytes";
+        String detail = (row.sourceLabel != null ? row.sourceLabel : "?") + "  " + size;
+
+        RowHeaderStrip.Result result = RowHeaderStrip.render(
+                headerPool.get(i),
+                isDefault ? "DEFAULT" : "STATE", isDefault,
+                name.isEmpty() ? "(unnamed)" : name, name.isEmpty(), detail,
+                List.of(
+                        new RowHeaderStrip.Action("default", "Make default", !isDefault),
+                        new RowHeaderStrip.Action("asset", "Replace asset...", true)));
+
+        if (result.hovered() != null) {
+            switch (result.hovered()) {
+                case "default" -> ImGui.setTooltip(isDefault
+                        ? "This is the default state"
+                        : "The default state's asset is the block's placed/base look");
+                case "asset" -> ImGui.setTooltip(modelKind
+                        ? "Swap this state's embedded .OMO model"
+                        : "Swap this state's embedded .OMT texture");
+                case "remove" -> ImGui.setTooltip("Remove this state");
+                default -> { }
+            }
+        }
+        if (result.isClicked("default") && !isDefault) {
+            defaultRowIndex = i;
+            onDirty.run();
+        }
+        if (result.isClicked("asset")) {
+            pickAsset(row);
+        }
+        return result.removeClicked();
+    }
+
+    /** Plain-ImGui header for when no Skija context exists. */
+    private boolean renderRowHeaderFallback(int i, Row row) {
+        boolean remove = false;
+        if (ImGui.radioButton("default", defaultRowIndex == i)) {
+            defaultRowIndex = i;
+            onDirty.run();
+        }
+        ImGui.sameLine();
+        String size = row.bytes != null ? EditorWidgets.humanBytes(row.bytes.length) : "no bytes";
+        ImGui.textDisabled((row.sourceLabel != null ? row.sourceLabel : "?") + " (" + size + ")");
+        ImGui.sameLine();
+        if (ImGui.button("Replace asset...")) {
+            pickAsset(row);
+        }
+        ImGui.sameLine();
+        if (EditorWidgets.dangerButton("Remove", 70.0f)) {
+            remove = true;
+        }
+        return remove;
+    }
+
+    /** Shared ImGui edit widgets under the header (both render paths). */
+    private void renderRowDetails(Row row) {
+        ImGui.dummy(0, 2);
+        ImGui.textDisabled("  ");
+        ImGui.sameLine();
+        ImGui.pushItemWidth(160.0f);
+        if (ImGui.inputTextWithHint("Name##state", "state name", row.name)) onDirty.run();
+        ImGui.popItemWidth();
+
+        // Animation clip line (1.6+, model SBOs only)
+        if (modelKind && clipPicker != null) {
+            ImGui.textDisabled("  ");
+            ImGui.sameLine();
+            if (row.hasClip()) {
+                ImGui.text("Clip: " + (row.clipLabel != null ? row.clipLabel : "?")
+                        + "  (" + EditorWidgets.humanBytes(row.clipBytes.length) + ")");
+                ImGui.sameLine();
+                boolean loopBefore = row.clipLoop;
+                if (ImGui.radioButton("Loop##clip_loop", row.clipLoop)) row.clipLoop = true;
+                ImGui.sameLine();
+                if (ImGui.radioButton("Play once##clip_once", !row.clipLoop)) row.clipLoop = false;
+                if (loopBefore != row.clipLoop) onDirty.run();
+                if (ImGui.isItemHovered()) {
+                    ImGui.setTooltip("Play once: run through a single time and hold the final pose"
+                            + " (e.g. a door opening).");
+                }
+                ImGui.sameLine();
+                if (ImGui.smallButton("Replace clip...")) {
+                    pickClip(row);
+                }
+                ImGui.sameLine();
+                if (ImGui.smallButton("Clear clip")) {
+                    row.clipBytes = null;
+                    row.clipLabel = null;
+                    onDirty.run();
+                }
+            } else {
+                ImGui.textDisabled("Clip: none");
+                ImGui.sameLine();
+                if (ImGui.smallButton("Set clip...")) {
+                    pickClip(row);
+                }
+            }
         }
     }
 
@@ -315,9 +398,9 @@ public final class SBOStatesEditor {
         });
     }
 
-    private static String humanBytes(int n) {
-        if (n < 1024) return n + " B";
-        if (n < 1024 * 1024) return String.format("%.1f KB", n / 1024.0);
-        return String.format("%.1f MB", n / (1024.0 * 1024.0));
+    /** Release the pooled Mortar header regions before the SkijaContext closes. */
+    @Override
+    public void close() {
+        headerPool.close();
     }
 }
