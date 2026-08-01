@@ -1,1466 +1,258 @@
 package com.stonebreak.input;
 
-import java.util.Arrays;
-
-import com.stonebreak.ui.*;
-import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import org.joml.Vector2f;
-import org.joml.Vector3f;
-import org.joml.Vector3i;
 
-import com.stonebreak.blocks.BlockType;
-import com.stonebreak.ui.chat.ChatSystem;
-import com.stonebreak.ui.chat.emoji.ChatEmoji;
-import com.stonebreak.ui.chat.SkijaChatRenderer;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
-import com.stonebreak.items.Inventory;
-import com.stonebreak.mobs.entities.Entity;
-import com.stonebreak.mobs.entities.EntityManager;
-import com.stonebreak.mobs.entities.EntityType;
-import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.Player;
-import com.stonebreak.ui.inventoryScreen.InventoryScreen;
-import com.stonebreak.ui.PauseMenu;
-import com.stonebreak.ui.recipeScreen.RecipeScreen;
-import com.stonebreak.ui.settingsMenu.SettingsMenu;
-import com.stonebreak.rendering.UI.UIRenderer;
-import com.stonebreak.ui.workbench.WorkbenchScreen;
+import com.stonebreak.ui.characterScreen.CharacterScreen;
+import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.ui.furnace.FurnaceScreen;
-import com.openmason.engine.diagnostics.MemoryProfiler;
-import com.stonebreak.world.World;
+import com.stonebreak.ui.inventoryScreen.InventoryScreen;
+import com.stonebreak.ui.recipeScreen.RecipeScreen;
+import com.stonebreak.ui.workbench.WorkbenchScreen;
+import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 
-import static org.lwjgl.glfw.GLFW.*;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_F3;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_F4;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_F5;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_F6;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_F7;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_F8;
+import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
+import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
 
 /**
- * Handles player input for movement and interaction.
+ * Facade for player input. Owns the raw input state and delegates to focused
+ * collaborators; Main's GLFW callbacks and the game loop only talk to this
+ * class, and UI screens poll it for mouse/key state.
+ *
+ * Collaborators (all package-private, in this package):
+ * <ul>
+ *   <li>{@link MouseInputState} — button/cursor/scroll state</li>
+ *   <li>{@link KeyEdgeTracker} — polled key edge detection</li>
+ *   <li>{@link UiToggleKeyHandler} — Escape/E/C/T/Q UI toggles</li>
+ *   <li>{@link GameplayKeyHandler} — movement, flight, abilities, breaking, hotbar keys</li>
+ *   <li>{@link DebugKeyHandler} — F3–F8 development keys</li>
+ *   <li>{@link UiMouseRouter} — click/hover routing to active UI surfaces</li>
+ *   <li>{@link WorldMouseHandler} — attack/use clicks that reach the world</li>
+ *   <li>{@link ChatInputRouter} — everything routed to an open chat</li>
+ *   <li>{@link HotbarSelector} — hotbar slot selection (keys + scroll)</li>
+ * </ul>
  */
 public class InputHandler {
-    
-    private long window;
-    
-    // Mouse state for UI interactions only
-    private float currentMouseX = 0;
-    private float currentMouseY = 0;
 
-    // Mouse button states
-    private boolean[] mouseButtonDown = new boolean[GLFW_MOUSE_BUTTON_LAST + 1];
-    private boolean[] mouseButtonPressedThisFrame = new boolean[GLFW_MOUSE_BUTTON_LAST + 1];
-    
-    // Selected hotbar slot index
-    private int currentSelectedHotbarIndex = 0; // Tracks the desired index, 0-8
+    private final MouseInputState mouse = new MouseInputState();
+    private final KeyEdgeTracker keys;
+    private final HotbarSelector hotbar = new HotbarSelector();
+    private final UiToggleKeyHandler uiToggleKeys;
+    private final GameplayKeyHandler gameplayKeys;
+    private final DebugKeyHandler debugKeys;
+    private final ChatInputRouter chatRouter;
+    private final UiMouseRouter mouseRouter;
 
-    // Staff fire-bolt cast cooldown so right-click spam can't flood the world
-    // with projectiles. Minimum 0.4s between casts.
-    private static final long STAFF_CAST_COOLDOWN_NANOS = 400_000_000L;
-    private long lastFireBoltCastNanos = 0L;
-
-    // Resolves fishing catches (loot roll + drop spawn) when a bobber is reeled in.
-    private final com.stonebreak.mobs.entities.FishingManager fishingManager =
-            new com.stonebreak.mobs.entities.FishingManager();
-
-    // Key state tracking for toggle actions
-    private boolean escapeKeyPressed = false;
-    private boolean inventoryKeyPressed = false; // Added for inventory toggle
-    private boolean characterKeyPressed = false; // Added for character screen toggle
-    private boolean rampageKeyPressed = false; // Berserker: Rampage cast (R)
-    private boolean skullCrusherKeyPressed = false; // Berserker: Skull Crusher cast (F)
-    private boolean dodgeKeyPressed = false; // Universal: dodge dash (Left Alt)
-    private boolean stealthKeyPressed = false; // Universal: stealth toggle (Left Ctrl)
-    private boolean chatKeyPressed = false; // Added for chat toggle
-    private boolean qKeyPressed = false; // Added for item dropping
-    private boolean f3KeyPressed = false; // Added for debug info
-    private boolean f4KeyPressed = false; // Added for memory leak analysis
-    private boolean f5KeyPressed = false; // F5 = perspective toggle; Shift+F5 = memory profiling
-    private boolean f6KeyPressed = false; // Added for test cow spawning
-    private boolean f7KeyPressed = false; // Added for manual save
-    private boolean f8KeyPressed = false; // Added for save system diagnostic
-
-    // Cached objects to avoid allocations
-    private final Vector2f cachedMousePosition = new Vector2f();
-    
-    // Track which buttons were pressed to optimize clearing
-    private boolean[] buttonWasPressed = new boolean[GLFW_MOUSE_BUTTON_LAST + 1];
-    private double scrollYOffset = 0.0;
-    private boolean[] keyJustPressed = new boolean[512]; // Assuming a max key code for simplicity
-    private boolean[] keyPressedState = new boolean[512]; // Tracks current GLFW state
-    
     public InputHandler(long window) {
-        this.window = window;
-        Arrays.fill(mouseButtonDown, false);
-        Arrays.fill(mouseButtonPressedThisFrame, false);
-        
-        try {
-            // Don't set cursor mode here - let Game.setState handle it based on game state
-            // Note: Main.java handles cursor position callback for both UI and game mouse look
-            
-            // Setup mouse button callback (this will be called by Main)
-            // For now, we assume Main calls a method like `processMouseButton` in this class.
-            // If not, Main.java needs to be modified to call:
-            // Game.getInstance().getInputHandler().processMouseButton(button, action, mods);
-            
-            // Note: Scroll callback is now handled in Main.java to route to appropriate handlers
-        } catch (Exception e) {
-            System.err.println("Error setting up input handlers: " + e.getMessage());
-        }
+        this.keys = new KeyEdgeTracker(window);
+        this.uiToggleKeys = new UiToggleKeyHandler(keys);
+        this.gameplayKeys = new GameplayKeyHandler(window, keys, mouse, hotbar);
+        this.debugKeys = new DebugKeyHandler(keys);
+        this.chatRouter = new ChatInputRouter(keys, mouse);
+        this.mouseRouter = new UiMouseRouter(mouse, chatRouter, new WorldMouseHandler());
     }
-    
-    /**
-     * Call this at the START of each frame's input processing cycle.
-     */
+
+    /** Call at the START of each frame's input processing cycle. */
     public void prepareForNewFrame() {
-        // Clear "pressed this frame" states efficiently - only clear buttons that were actually pressed
-        for (int i = 0; i < buttonWasPressed.length; i++) {
-            if (buttonWasPressed[i]) {
-                mouseButtonPressedThisFrame[i] = false;
-                buttonWasPressed[i] = false;
-            }
-        }
-        Arrays.fill(keyJustPressed, false); // Clear just pressed state for keys
-
-        // Poll specific keys needed for game functionality
-        // Note: RecipeBookScreen input is now handled via callbacks to prevent double input
-        updateSpecificKeyState(GLFW_KEY_ESCAPE);
-        updateSpecificKeyState(GLFW_KEY_BACKSPACE);
-
+        mouse.beginFrame();
     }
 
-    private void updateSpecificKeyState(int key) {
-        boolean currentlyPressed = glfwGetKey(window, key) == GLFW_PRESS;
-        if (currentlyPressed && !keyPressedState[key]) {
-            keyJustPressed[key] = true;
-        }
-        keyPressedState[key] = currentlyPressed;
-    }
-
+    /** Per-frame polled input, called from the game loop after {@link #prepareForNewFrame()}. */
     public void handleInput(Player player) {
         if (player == null) {
             return;
         }
-        
-        // prepareForNewFrame() should be called by Game loop before this
-        
+
         try {
-            // Check if chat is open first - if so, only handle chat-related input
+            // An open chat owns all input; its own key/char callbacks handle everything.
             ChatSystem chatSystem = Game.getInstance().getChatSystem();
-            boolean isChatOpen = chatSystem != null && chatSystem.isOpen();
-            
-            if (isChatOpen) {
-                // Don't process any other input when chat is open
-                // Chat input is handled via the key callback methods
+            if (chatSystem != null && chatSystem.isOpen()) {
                 return;
             }
 
-            // Handle system-level toggles first, as they might change the active UI
-            handleEscapeKey();      // Toggles pauseMenu and game state transitions
-            handleInventoryKey();   // Toggles inventoryScreen and INVENTORY_UI state
-            handleCharacterKey();   // Toggles characterScreen and CHARACTER_SHEET_UI state
-            handleClassAbilityKeys(player); // Berserker R/F = Rampage/Skull Crusher; Ranger R/F = Snare/Culling Shot
-            handleChatKey();        // Opens chatSystem, sets cursor
-            handleDropKey();        // Drops selected item when Q is pressed
-            handleDebugKeys();      // Handle debug and memory profiling keys
+            // System-level toggles first, as they might change the active UI.
+            uiToggleKeys.pollEscape();
+            uiToggleKeys.pollInventoryToggle();
+            uiToggleKeys.pollCharacterToggle();
+            gameplayKeys.pollClassAbilityKeys(player);
+            uiToggleKeys.pollChatOpen();
+            uiToggleKeys.pollItemDrop();
+            debugKeys.poll();
 
-            // Now check which UI, if any, has primary input focus
-            GameState currentGameState = Game.getInstance().getState();
+            // Now check which UI, if any, has primary input focus.
+            Game game = Game.getInstance();
+            GameState state = game.getState();
 
-            // Cache expensive calls to avoid repeated method calls
-            Game gameInstance = Game.getInstance();
-            InventoryScreen inventoryScreen = gameInstance.getInventoryScreen();
-            WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
-            RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
-
-            // UI screens take precedence for input if active
-            if (currentGameState == GameState.RECIPE_BOOK_UI && recipeScreen != null && recipeScreen.isVisible()) {
+            RecipeScreen recipeScreen = game.getRecipeBookScreen();
+            if (state == GameState.RECIPE_BOOK_UI && recipeScreen != null && recipeScreen.isVisible()) {
                 recipeScreen.handleInput();
-                return; // Recipe Book UI has full input control
+                return;
             }
-            if (currentGameState == GameState.WORKBENCH_UI && workbenchScreen != null && workbenchScreen.isVisible()) {
+            WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
+            if (state == GameState.WORKBENCH_UI && workbenchScreen != null && workbenchScreen.isVisible()) {
                 workbenchScreen.handleInput(this);
-                return; // Workbench UI has full input control
+                return;
             }
-            if (currentGameState == GameState.FURNACE_UI) {
-                FurnaceScreen furnaceScreen = Game.getInstance().getFurnaceScreen();
+            if (state == GameState.FURNACE_UI) {
+                FurnaceScreen furnaceScreen = game.getFurnaceScreen();
                 if (furnaceScreen != null && furnaceScreen.isVisible()) {
                     furnaceScreen.handleInput(this);
-                    return; // Furnace UI has full input control
+                    return;
                 }
             }
-            // Handle inventory screen input when in INVENTORY_UI state
-            if (currentGameState == GameState.INVENTORY_UI && inventoryScreen != null && inventoryScreen.isVisible()) {
-                // Cache window dimensions to avoid repeated calls
-                int windowWidth = Game.getWindowWidth();
-                int windowHeight = Game.getWindowHeight();
-                inventoryScreen.handleMouseInput(windowWidth, windowHeight);
+            InventoryScreen inventoryScreen = game.getInventoryScreen();
+            if (state == GameState.INVENTORY_UI && inventoryScreen != null && inventoryScreen.isVisible()) {
+                inventoryScreen.handleMouseInput(Game.getWindowWidth(), Game.getWindowHeight());
             }
-
-            // Handle character sheet screen input when in CHARACTER_SHEET_UI state
-            if (currentGameState == GameState.CHARACTER_SHEET_UI) {
-                com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = gameInstance.getCharacterScreen();
+            if (state == GameState.CHARACTER_SHEET_UI) {
+                CharacterScreen characterScreen = game.getCharacterScreen();
                 if (characterScreen != null && characterScreen.isVisible()) {
-                    int windowWidth = Game.getWindowWidth();
-                    int windowHeight = Game.getWindowHeight();
-                    characterScreen.handleMouseInput(windowWidth, windowHeight);
+                    characterScreen.handleMouseInput(Game.getWindowWidth(), Game.getWindowHeight());
                 }
             }
 
-            // Only process movement in PLAYING state
-            // Block movement in UI states (PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, etc.)
-            if (currentGameState == GameState.PLAYING) {
-                // Process movement inputs
-                boolean moveForward = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
-                boolean moveBackward = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
-                boolean moveLeft = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
-                boolean moveRight = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
-                boolean jump = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
-                boolean shift = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
-                               glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
-                boolean crouch = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS || 
-                               glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
-                
-                // Universal dodge (all classes): edge-triggered dash on Left Alt. Read here, after
-                // the WASD state is captured this frame, so the dash follows live input rather than
-                // residual momentum. Fires independent of the movement-lock guard below.
-                boolean isDodgePressed = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS;
-                if (isDodgePressed && !dodgeKeyPressed) {
-                    dodgeKeyPressed = true;
-                    player.tryDodge(moveForward, moveBackward, moveLeft, moveRight);
-                } else if (!isDodgePressed) {
-                    dodgeKeyPressed = false;
-                }
-
-                // Universal stealth toggle (all classes): edge-triggered on Left Ctrl. Not while
-                // flying (Ctrl also drives flight descent), where stealth has no meaning.
-                boolean isStealthPressed = crouch;
-                if (isStealthPressed && !stealthKeyPressed) {
-                    stealthKeyPressed = true;
-                    if (!player.isFlying()) {
-                        player.getStealth().toggle(player);
-                    }
-                } else if (!isStealthPressed) {
-                    stealthKeyPressed = false;
-                }
-
-                // Handle movement (suppressed mid-Rampage / mid-Skull-Crusher-windup / mid-Culling-
-                // Shot-dash, which drive the player directly and would otherwise fight with normal
-                // input-driven movement)
-                if (!player.isAbilityMovementLocked()) {
-                    player.processMovement(moveForward, moveBackward, moveLeft, moveRight, jump, shift, crouch);
-                }
-                
-                // Handle flight controls (Space for ascent, Ctrl for descent)
-                if (player.isFlying()) {
-                    if (jump) {
-                        player.processFlightAscent(shift);
-                    }
-                    if (crouch) {
-                        player.processFlightDescent(shift);
-                    }
-                }
-                
-                // Handle continuous block breaking
-                if (isMouseButtonDown(GLFW_MOUSE_BUTTON_LEFT)) {
-                    player.startBreakingBlock();
-                } else {
-                    player.stopBreakingBlock();
-                }
-            }
-            
-            // Handle number keys for hotbar slot selection (only allow in PLAYING state)
-            if (currentGameState == GameState.PLAYING) {
-                for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) { // 0-8 for keys 1-9
-                    if (glfwGetKey(window, GLFW_KEY_1 + i) == GLFW_PRESS) {
-                        selectHotbarSlotByKey(i); // Renamed from setSelectedHotbarSlot for clarity of source
-                    }
-                }
+            // Movement and world actions only while actually playing.
+            if (state == GameState.PLAYING) {
+                gameplayKeys.processPlaying(player);
             }
         } catch (Exception e) {
             System.err.println("Error processing input: " + e.getMessage());
         }
     }
-      /**
-     * Handle the escape key for toggling the pause menu.
-     */
-    private void handleEscapeKey() {
-        boolean isEscapePressedNow = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
 
-        if (isEscapePressedNow && !escapeKeyPressed) {
-            escapeKeyPressed = true; // Mark as pressed to prevent repeated actions per frame
-
-            Game game = Game.getInstance();
-            ChatSystem chatSystem = game.getChatSystem();
-            RecipeScreen recipeScreen = game.getRecipeBookScreen();
-            WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
-            InventoryScreen inventoryScreen = game.getInventoryScreen();
-
-            // Priority:
-            // 1. Close Chat (already handled in its own key input)
-            if (chatSystem != null && chatSystem.isOpen()) {
-                // Chat's handleKeyInput calls chatSystem.closeChat() and handles cursor itself
-                // No further action here if chat handles escape.
-                return;
-            }
-
-            // 2. Close Recipe Book
-            if (recipeScreen != null && recipeScreen.isVisible() && game.getState() == GameState.RECIPE_BOOK_UI) {
-                game.closeRecipeBookScreen(); // This should set state and handle cursor via Game.setState
-                return; // Action taken
-            }
-
-            // 3. Close Workbench
-            if (workbenchScreen != null && workbenchScreen.isVisible() && game.getState() == GameState.WORKBENCH_UI) {
-                workbenchScreen.handleCloseRequest(); // Workbench handles its own close logic which calls game.closeWorkbenchScreen
-                return; // Action taken
-            }
-
-            // 3.5 Close Furnace
-            FurnaceScreen furnaceScreen = game.getFurnaceScreen();
-            if (furnaceScreen != null && furnaceScreen.isVisible() && game.getState() == GameState.FURNACE_UI) {
-                furnaceScreen.handleCloseRequest();
-                return; // Action taken
-            }
-
-            // 4. Close Inventory
-            if (game.getState() == GameState.INVENTORY_UI && inventoryScreen != null && inventoryScreen.isVisible()) {
-                // This covers case where Inventory is open directly, or under Recipe Book if Recipe Book was closed in a prior step this frame
-                game.toggleInventoryScreen(); // This toggles visibility and handles pause/cursor
-                return; // Action taken
-            }
-
-            // 4.5 Close Character Screen
-            com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = game.getCharacterScreen();
-            if (characterScreen != null && characterScreen.isVisible()) {
-                game.toggleCharacterScreen();
-                return; // Action taken
-            }
-
-            // 4.6 Close Statistics Screen
-            com.stonebreak.ui.statisticsScreen.StatisticsScreen statsScreen = game.getStatisticsScreen();
-            if (statsScreen != null && statsScreen.isVisible()) {
-                game.closeStatisticsScreen();
-                return; // Action taken
-            }
-
-            // 4.7 Close Glossary Screen
-            com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen = game.getGlossaryScreen();
-            if (glossaryScreen != null && glossaryScreen.isVisible()) {
-                game.closeGlossaryScreen();
-                return; // Action taken
-            }
-
-            // 5. Toggle Pause Menu (if no other screen was closed by Escape above)
-            // No specific UI screen active, so toggle the main pause menu
-            game.togglePauseMenu(); // This will manage paused state and PauseMenu visibility
-
-            // Cursor and game state for pause menu are handled in togglePauseMenu and/or setState
-            // No need for direct GLFW calls here, rely on game.setState and game.togglePauseMenu
-
-        } else if (!isEscapePressedNow) {
-            escapeKeyPressed = false; // Reset when key is released
-        }
-    }
-
-    private void handleInventoryKey() {
-        boolean isInventoryKeyPressed = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
-
-        if (isInventoryKeyPressed && !inventoryKeyPressed) {
-            inventoryKeyPressed = true;
-
-            // Check if inventory is already open (INVENTORY_UI state)
-            if (Game.getInstance().getState() == GameState.INVENTORY_UI) {
-                Game.getInstance().toggleInventoryScreen();
-                return;
-            }
-
-            // Don't open inventory if chat is open
-            ChatSystem chatSystem = Game.getInstance().getChatSystem();
-            if (chatSystem != null && chatSystem.isOpen()) {
-                return;
-            }
-
-            // Don't open inventory if workbench is open
-            WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
-            if (workbenchScreen != null && workbenchScreen.isVisible()) {
-                return;
-            }
-
-            // Don't open inventory if recipe book is open
-            RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
-            if (recipeScreen != null && recipeScreen.isVisible()) {
-                return;
-            }
-
-            // Don't open inventory if furnace is open
-            if (Game.getInstance().getState() == GameState.FURNACE_UI) {
-                return;
-            }
-
-            Game.getInstance().toggleInventoryScreen();
-            // Cursor state is handled by Game.toggleInventoryScreen()
-        } else if (!isInventoryKeyPressed) {
-            inventoryKeyPressed = false;
-        }
-    }
-    
-    private void handleCharacterKey() {
-        boolean isCharKeyPressed = glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS;
-
-        if (isCharKeyPressed && !characterKeyPressed) {
-            characterKeyPressed = true;
-
-            // If character screen is already open, close it
-            if (Game.getInstance().getState() == GameState.CHARACTER_SHEET_UI) {
-                Game.getInstance().toggleCharacterScreen();
-                return;
-            }
-
-            // Don't open if chat is open
-            ChatSystem chatSystem = Game.getInstance().getChatSystem();
-            if (chatSystem != null && chatSystem.isOpen()) return;
-
-            // Don't open if workbench is open
-            WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
-            if (workbenchScreen != null && workbenchScreen.isVisible()) return;
-
-            // Don't open if recipe book is open
-            RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
-            if (recipeScreen != null && recipeScreen.isVisible()) return;
-
-            // Don't open if furnace is open
-            if (Game.getInstance().getState() == GameState.FURNACE_UI) return;
-
-            // Don't open if in a non-game state
-            GameState state = Game.getInstance().getState();
-            if (state != GameState.PLAYING && state != GameState.INVENTORY_UI) return;
-
-            // If inventory is open, close it first then open character
-            InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
-            if (inventoryScreen != null && inventoryScreen.isVisible()) {
-                Game.getInstance().toggleInventoryScreen();
-            }
-
-            Game.getInstance().toggleCharacterScreen();
-        } else if (!isCharKeyPressed) {
-            characterKeyPressed = false;
-        }
-    }
-
-    /**
-     * Class ability casts on shared keys: R = Rampage (Berserker) / Snare (Ranger) /
-     * Leyline Breach (Arcanist) / Mirrored Deceit (Illusionist), F = Skull Crusher (Berserker) /
-     * Culling Shot (Ranger) / Null Spike (Arcanist) / Fracture (Illusionist). Every controller
-     * self-gates on the selected class and CP unlock, so each press acts through at most one class
-     * and is harmless for the others.
-     */
-    private void handleClassAbilityKeys(Player player) {
-        if (Game.getInstance().getState() != GameState.PLAYING) {
-            rampageKeyPressed = false;
-            skullCrusherKeyPressed = false;
-            return;
-        }
-
-        boolean isRampagePressed = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
-        if (isRampagePressed && !rampageKeyPressed) {
-            rampageKeyPressed = true;
-            player.getBerserkerAbilities().tryCastRampage(player);
-            player.getRangerAbilities().tryCastSnare(player);
-            player.getArcanistAbilities().tryCastLeylineBreach(player);
-            player.getIllusionistAbilities().tryCastMirroredDeceit(player);
-            player.getRogueAbilities().tryCastShadowStep(player);
-        } else if (!isRampagePressed) {
-            rampageKeyPressed = false;
-        }
-
-        boolean isSkullCrusherPressed = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
-        if (isSkullCrusherPressed && !skullCrusherKeyPressed) {
-            skullCrusherKeyPressed = true;
-            player.getBerserkerAbilities().tryCastSkullCrusher(player, player.getRaycastEngine());
-            player.getRangerAbilities().tryCastCullingShot(player);
-            player.getArcanistAbilities().tryCastNullSpike(player);
-            player.getIllusionistAbilities().tryCastFracture(player);
-            player.getRogueAbilities().tryCastCaltropScatter(player);
-        } else if (!isSkullCrusherPressed) {
-            skullCrusherKeyPressed = false;
-        }
-    }
-
-    private void handleChatKey() {
-        boolean isChatKeyPressed = glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS;
-        
-        if (isChatKeyPressed && !chatKeyPressed) {
-            chatKeyPressed = true;
-            
-            // Don't open chat if in states other than PLAYING, INVENTORY_UI, or RECIPE_BOOK_UI
-            GameState currentState = Game.getInstance().getState();
-            if (currentState != GameState.PLAYING && currentState != GameState.INVENTORY_UI && currentState != GameState.RECIPE_BOOK_UI) {
-                return;
-            }
-            
-            InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
-            if (inventoryScreen != null && inventoryScreen.isVisible()) {
-                return;
-            }
-            
-            ChatSystem chatSystem = Game.getInstance().getChatSystem();
-            if (chatSystem != null && !chatSystem.isOpen()) {
-                chatSystem.openChat();
-                
-            }
-        } else if (!isChatKeyPressed) {
-            chatKeyPressed = false;
-        }
-    }
-    
-    private void handleDropKey() {
-        boolean isQKeyPressed = glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS;
-        
-        if (isQKeyPressed && !qKeyPressed) {
-            qKeyPressed = true;
-            
-            // Only allow dropping items in PLAYING, INVENTORY_UI, and RECIPE_BOOK_UI states
-            GameState currentState = Game.getInstance().getState();
-            if (currentState != GameState.PLAYING && currentState != GameState.INVENTORY_UI && currentState != GameState.RECIPE_BOOK_UI) {
-                return;
-            }
-            
-            ChatSystem chatSystem = Game.getInstance().getChatSystem();
-            if (chatSystem != null && chatSystem.isOpen()) {
-                return;
-            }
-            
-            InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
-            if (inventoryScreen != null && inventoryScreen.isVisible()) {
-                return;
-            }
-            
-            // Drop the currently selected item
-            Player player = Game.getPlayer();
-            if (player != null) {
-                dropSelectedItem(player);
-            }
-        } else if (!isQKeyPressed) {
-            qKeyPressed = false;
-        }
-    }
-    
-    private void dropSelectedItem(Player player) {
-        // Use the new drop utility to drop a single item from selected slot
-        com.stonebreak.util.DropUtil.dropSingleItemFromPlayer(player);
-    }
- 
-    // private void handleRecipeBookKey() { ... } // Method removed
-    
-    private void handleDebugKeys() {
-        // F3 - Toggle debug overlay
-        boolean isF3Pressed = glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS;
-        if (isF3Pressed && !f3KeyPressed) {
-            f3KeyPressed = true;
-            Game.toggleDebugOverlay();
-        } else if (!isF3Pressed) {
-            f3KeyPressed = false;
-        }
-        
-        // F4 - Trigger memory leak analysis
-        boolean isF4Pressed = glfwGetKey(window, GLFW_KEY_F4) == GLFW_PRESS;
-        if (isF4Pressed && !f4KeyPressed) {
-            f4KeyPressed = true;
-            System.out.println("[DEBUG] Manual memory leak analysis triggered by F4 key...");
-            Game.triggerMemoryLeakAnalysis();
-        } else if (!isF4Pressed) {
-            f4KeyPressed = false;
-        }
-        
-        // F5 - Toggle perspective (first/third person); Shift+F5 - Detailed memory profiling
-        boolean isF5Pressed = glfwGetKey(window, GLFW_KEY_F5) == GLFW_PRESS;
-        if (isF5Pressed && !f5KeyPressed) {
-            f5KeyPressed = true;
-            boolean shiftHeld = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS
-                    || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
-            if (shiftHeld) {
-                System.out.println("[DEBUG] Detailed memory profiling triggered by Shift+F5...");
-                MemoryProfiler profiler = MemoryProfiler.getInstance();
-                profiler.takeSnapshot("manual_f5_" + System.currentTimeMillis());
-                profiler.reportDetailedMemoryStats();
-                Game.forceGCAndReport("Shift+F5 Manual GC");
-            } else {
-                com.stonebreak.player.Player p = Game.getPlayer();
-                if (p != null) {
-                    p.togglePerspective();
-                }
-            }
-        } else if (!isF5Pressed) {
-            f5KeyPressed = false;
-        }
-        
-        // F6 - Spawn test cow
-        boolean isF6Pressed = glfwGetKey(window, GLFW_KEY_F6) == GLFW_PRESS;
-        if (isF6Pressed && !f6KeyPressed) {
-            f6KeyPressed = true;
-            Player player = Game.getPlayer();
-            EntityManager entityManager = Game.getEntityManager();
-            if (player != null && entityManager != null) {
-                // Spawn cow 5 blocks in front of the player
-                Vector3f playerPos = player.getPosition();
-                Vector3f playerDir = player.getCamera().getFront();
-                Vector3f spawnPos = new Vector3f(
-                    playerPos.x + playerDir.x * 5.0f,
-                    playerPos.y,
-                    playerPos.z + playerDir.z * 5.0f
-                );
-                
-                // Find ground level at spawn position
-                int groundY = (int)playerPos.y;
-                for (int y = (int)playerPos.y + 10; y >= (int)playerPos.y - 10; y--) {
-                    BlockType block = Game.getWorld().getBlockAt((int)spawnPos.x, y, (int)spawnPos.z);
-                    if (block != null && block != BlockType.AIR) {
-                        groundY = y + 1;
-                        break;
-                    }
-                }
-                spawnPos.y = groundY;
-                
-                // Force spawn Angus cow for testing updated face texture
-                String textureVariant = "angus";
-                Entity cow = entityManager.spawnCowWithVariant(spawnPos, textureVariant);
-                if (cow != null) {
-                    System.out.println("[DEBUG] Spawned test Angus cow with new cute face at " + spawnPos);
-                } else {
-                    System.out.println("[DEBUG] Failed to spawn test Angus cow");
-                }
-            }
-        } else if (!isF6Pressed) {
-            f6KeyPressed = false;
-        }
-
-        // F7 - Manual save
-        boolean isF7Pressed = glfwGetKey(window, GLFW_KEY_F7) == GLFW_PRESS;
-        if (isF7Pressed && !f7KeyPressed) {
-            f7KeyPressed = true;
-
-            Game game = Game.getInstance();
-            if (game != null) {
-                com.stonebreak.world.save.SaveService saveService = game.getSaveService();
-                ChatSystem chatSystem = game.getChatSystem();
-
-                if (saveService != null) {
-                    try {
-                        System.out.println("[MANUAL-SAVE] Starting manual save...");
-
-                        // Show visual feedback in chat
-                        if (chatSystem != null) {
-                            chatSystem.addMessage("Saving world...", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
-                        }
-
-                        saveService.saveAll()
-                            .thenRun(() -> {
-                                System.out.println("[MANUAL-SAVE] Manual save completed successfully");
-                                if (chatSystem != null) {
-                                    chatSystem.addMessage("World saved successfully!", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
-                                }
-                            })
-                            .exceptionally(throwable -> {
-                                System.err.println("[MANUAL-SAVE] Manual save failed: " + throwable.getMessage());
-                                if (chatSystem != null) {
-                                    chatSystem.addMessage("Save failed: " + throwable.getMessage(), new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
-                                }
-                                return null;
-                            });
-                    } catch (Exception e) {
-                        System.err.println("[MANUAL-SAVE] Error during manual save: " + e.getMessage());
-                        e.printStackTrace();
-                        if (chatSystem != null) {
-                            chatSystem.addMessage("Save error: " + e.getMessage(), new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
-                        }
-                    }
-                } else {
-                    System.err.println("[MANUAL-SAVE] Save system not available - cannot save");
-                    if (chatSystem != null) {
-                        chatSystem.addMessage("Save system not available", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
-                    }
-                }
-            } else {
-                System.err.println("[MANUAL-SAVE] Game instance is null");
-            }
-        } else if (!isF7Pressed) {
-            f7KeyPressed = false;
-        }
-
-        // F8 - Save System Diagnostic
-        boolean isF8Pressed = glfwGetKey(window, GLFW_KEY_F8) == GLFW_PRESS;
-        if (isF8Pressed && !f8KeyPressed) {
-            f8KeyPressed = true;
-
-            Game game = Game.getInstance();
-            if (game != null) {
-                Player player = game.getPlayer();
-                ChatSystem chatSystem = game.getChatSystem();
-
-                if (player != null) {
-                    // Get player's current position
-                    Vector3f pos = player.getPosition();
-                    int worldX = (int) Math.floor(pos.x);
-                    int worldY = (int) Math.floor(pos.y);
-                    int worldZ = (int) Math.floor(pos.z);
-
-                    int chunkX = Math.floorDiv(worldX, 16);
-                    int chunkZ = Math.floorDiv(worldZ, 16);
-
-                    System.out.println("\n[F8-DIAGNOSTIC] Running save system diagnostic at player position...");
-                    System.out.println("[F8-DIAGNOSTIC] Player world pos: (" + worldX + ", " + worldY + ", " + worldZ + ")");
-                    System.out.println("[F8-DIAGNOSTIC] Chunk coords: (" + chunkX + ", " + chunkZ + ")");
-
-                    if (chatSystem != null) {
-                        chatSystem.addMessage("Running save diagnostic...", new float[]{1.0f, 1.0f, 0.0f, 1.0f}); // Yellow
-                    }
-
-                    // Run quick diagnostic
-                    com.stonebreak.world.save.diagnostics.SaveSystemDiagnostics.printDiagnostics();
-
-                    // Get current world name from save service
-                    String worldName = "unknown";
-                    var saveService = game.getSaveService();
-                    if (saveService != null) {
-                        String worldPath = saveService.getWorldPath();
-                        if (worldPath != null && !worldPath.isBlank()) {
-                            worldName = java.nio.file.Paths.get(worldPath).getFileName().toString();
-                        }
-                    }
-
-                    // Run comprehensive chunk diagnostic for current chunk
-                    com.stonebreak.world.save.diagnostics.SaveSystemDiagnostics.diagnoseChunkLoading(worldName, chunkX, chunkZ);
-
-                    if (chatSystem != null) {
-                        chatSystem.addMessage("Diagnostic complete - check console", new float[]{0.0f, 1.0f, 0.0f, 1.0f}); // Green
-                    }
-                } else {
-                    System.out.println("[F8-DIAGNOSTIC] Player is null");
-                    if (chatSystem != null) {
-                        chatSystem.addMessage("Diagnostic failed - no player", new float[]{1.0f, 0.0f, 0.0f, 1.0f}); // Red
-                    }
-                }
-            }
-        } else if (!isF8Pressed) {
-            f8KeyPressed = false;
-        }
-    }
-
-
-    /**
-     * Called by GLFW's mouse button callback (likely from Main.java).
-     * Updates internal mouse button states.
-     */
+    /** GLFW mouse button callback receiver (wired in Main). */
     public void processMouseButton(int button, int action, int mods) {
-        if (button >= 0 && button <= GLFW_MOUSE_BUTTON_LAST) {
-            if (action == GLFW_PRESS) {
-                mouseButtonDown[button] = true;
-                mouseButtonPressedThisFrame[button] = true; // Set pressed for this frame
-                buttonWasPressed[button] = true; // Track for efficient clearing
-            } else if (action == GLFW_RELEASE) {
-                mouseButtonDown[button] = false;
-                // mouseButtonPressedThisFrame is already false or will be cleared next frame
-            }
-        }
-
-        // Check if chat is open - if so, handle chat-specific interactions
-        ChatSystem chatSystem = Game.getInstance().getChatSystem();
-        if (chatSystem != null && chatSystem.isOpen()) {
-            if (button == GLFW_MOUSE_BUTTON_LEFT) {
-                if (action == GLFW_PRESS) {
-                    // Handle scrollbar clicks first
-                    UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-                    if (uiRenderer != null && uiRenderer.getSkijaChatRenderer() != null) {
-                        int windowWidth = Game.getWindowWidth();
-                        int windowHeight = Game.getWindowHeight();
-
-                        // Try chat scrollbar
-                        if (uiRenderer.getSkijaChatRenderer().handleChatScrollbarPress(
-                                chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight)) {
-                            return; // Handled by scrollbar
-                        }
-
-                        // Try commands scrollbar
-                        if (uiRenderer.getSkijaChatRenderer().handleCommandScrollbarPress(
-                                chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight)) {
-                            return; // Handled by scrollbar
-                        }
-                    }
-
-                    // If not scrollbar, handle tab switching and command button clicks
-                    handleChatClick(chatSystem);
-                } else if (action == GLFW_RELEASE) {
-                    // Handle scrollbar release
-                    UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-                    if (uiRenderer != null && uiRenderer.getSkijaChatRenderer() != null) {
-                        uiRenderer.getSkijaChatRenderer().handleScrollbarRelease();
-                    }
-                }
-            }
-            return;
-        }
-
-        // If a UI screen is active, it should handle its own mouse clicks.
-        // Prevent game world interactions if a UI is up.
-        // Note: handleInput methods for screens are responsible for their internal click logic using isMouseButtonPressed etc.
-        // This processMouseButton method updates the state for those checks.
-        // The 'return' here stops further processing for THIS mouse event in THIS method (e.g., world interaction).
-
-        RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
-        if (recipeScreen != null && recipeScreen.isVisible() && Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
-            // RecipeBookScreen.handleInput should manage its clicks. This prevents world clicks.
-            return;
-        }
-        
-        WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
-        if (workbenchScreen != null && workbenchScreen.isVisible() && Game.getInstance().getState() == GameState.WORKBENCH_UI) {
-            // WorkbenchScreen.handleInput should manage its clicks. This prevents world clicks.
-            return;
-        }
-
-        FurnaceScreen furnaceScreen = Game.getInstance().getFurnaceScreen();
-        if (furnaceScreen != null && furnaceScreen.isVisible() && Game.getInstance().getState() == GameState.FURNACE_UI) {
-            // FurnaceScreen.handleInput should manage its clicks. This prevents world clicks.
-            return;
-        }
-
-        InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
-        if (inventoryScreen != null && inventoryScreen.isVisible()) {
-            // InventoryScreen.handleMouseInput manages its clicks. This prevents world clicks.
-            return;
-        }
-
-        com.stonebreak.ui.characterScreen.CharacterScreen characterScreen = Game.getInstance().getCharacterScreen();
-        if (characterScreen != null && characterScreen.isVisible()) {
-            // CharacterScreen.handleMouseInput manages its clicks. This prevents world clicks.
-            return;
-        }
-
-        // If death menu is active, it handles clicks for respawn button
-        com.stonebreak.ui.DeathMenu deathMenu = Game.getInstance().getDeathMenu();
-        if (deathMenu != null && deathMenu.isVisible()) {
-            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-                int windowWidth = Game.getWindowWidth();
-                int windowHeight = Game.getWindowHeight();
-
-                if (deathMenu.isRespawnButtonClicked(currentMouseX, currentMouseY, windowWidth, windowHeight)) {
-                    // Respawn the player
-                    Player player = Game.getInstance().getPlayer();
-                    if (player != null) {
-                        player.respawn();
-                    }
-
-                    // Hide death menu
-                    deathMenu.setVisible(false);
-
-                    // Update mouse capture state (will recapture since death menu is now hidden)
-                    MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
-                    if (mouseCaptureManager != null) {
-                        mouseCaptureManager.updateCaptureState();
-                    }
-                }
-            }
-            return; // Don't process other inputs while death menu is visible
-        }
-
-        // If pause menu is active, it handles clicks for its buttons
-        PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
-        if (pauseMenu != null && pauseMenu.isVisible()) { // Main pause menu (Escape)
-            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-                int w = Game.getWindowWidth();
-                int h = Game.getWindowHeight();
-                if (pauseMenu.isResumeButtonClicked(currentMouseX, currentMouseY, w, h)) {
-                    Game.getInstance().togglePauseMenu(); // Resume the game
-                }
-                // Check statistics button
-                else if (pauseMenu.isStatisticsButtonClicked(currentMouseX, currentMouseY, w, h)) {
-                    Game.getInstance().openStatisticsScreen();
-                }
-                // Check glossary button
-                else if (pauseMenu.isGlossaryButtonClicked(currentMouseX, currentMouseY, w, h)) {
-                    Game.getInstance().openGlossaryScreen();
-                }
-                // Check settings button
-                else if (pauseMenu.isSettingsButtonClicked(currentMouseX, currentMouseY, w, h)) {
-                    // Go to settings menu, remember we came from the game
-                    SettingsMenu settingsMenu = Game.getInstance().getSettingsMenu();
-                    if (settingsMenu != null) {
-                        settingsMenu.setPreviousState(GameState.PLAYING);
-                    }
-                    // Mouse button states will be managed by the new state
-                    Game.getInstance().setState(GameState.SETTINGS);
-                    Game.getInstance().getPauseMenu().setVisible(false);
-                }
-                // Check resync button (multiplayer only)
-                else if (pauseMenu.isResyncButtonClicked(currentMouseX, currentMouseY, w, h)) {
-                    int audited = com.stonebreak.network.MultiplayerSession.requestFullResync();
-                    com.stonebreak.ui.chat.ChatSystem chat = Game.getInstance().getChatSystem();
-                    if (chat != null) {
-                        chat.addMessage(audited >= 0
-                            ? "Resyncing with server (" + audited + " chunks audited)..."
-                            : "Resync failed: not connected to a server.");
-                    }
-                    Game.getInstance().togglePauseMenu(); // resume so the re-stream is visible
-                }
-                // Check quit button
-                else if (pauseMenu.isQuitButtonClicked(currentMouseX, currentMouseY, w, h)) {
-                    // Clean up world state before returning to main menu
-                    Game.getInstance().resetWorld();
-                    // Return to main menu
-                    Game.getInstance().setState(GameState.MAIN_MENU);
-                    Game.getInstance().getPauseMenu().setVisible(false);
-                }
-            }
-            return; // Pause menu handled or ignored the click
-        }
-
-        // Statistics screen Back button
-        com.stonebreak.ui.statisticsScreen.StatisticsScreen statsScreen = Game.getInstance().getStatisticsScreen();
-        if (statsScreen != null && statsScreen.isVisible()) {
-            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-                int w = Game.getWindowWidth();
-                int h = Game.getWindowHeight();
-                if (statsScreen.isBackButtonClicked(currentMouseX, currentMouseY, w, h)) {
-                    Game.getInstance().closeStatisticsScreen();
-                }
-            }
-            return;
-        }
-
-        // Glossary screen Back button
-        com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen = Game.getInstance().getGlossaryScreen();
-        if (glossaryScreen != null && glossaryScreen.isVisible()) {
-            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-                int w = Game.getWindowWidth();
-                int h = Game.getWindowHeight();
-                // Variant cycler arrows take precedence over the Back button.
-                if (glossaryScreen.handleClick(currentMouseX, currentMouseY, w, h)) {
-                    return;
-                }
-                if (glossaryScreen.isBackButtonClicked(currentMouseX, currentMouseY, w, h)) {
-                    Game.getInstance().closeGlossaryScreen();
-                }
-            }
-            return;
-        }
-
-        // Only allow world interaction in PLAYING state
-        GameState currentState = Game.getInstance().getState();
-        if (currentState == GameState.PLAYING) {
-            if (action == GLFW_PRESS) { // Only react on initial press for world actions
-                Player player = Game.getPlayer();
-                if (player != null) {
-                    if (button == GLFW_MOUSE_BUTTON_LEFT) {
-                        player.startAttackAnimation();
-                        EntityManager em = Game.getEntityManager();
-                        if (em != null) {
-                            LivingEntity target = player.getRaycastEngine().raycastEntity(em.getLivingEntities());
-                            if (target != null) {
-                                player.attackEntity(target);
-                            }
-                        }
-                        // Block breaking is now handled continuously in handleInput
-                    } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
-
-                        // Bow + right-click press → start drawing (no attack swing)
-                        com.stonebreak.items.ItemStack bowPressCheck = player.getInventory().getSelectedHotbarSlot();
-                        if (!bowPressCheck.isEmpty() && bowPressCheck.getItem() == com.stonebreak.items.ItemType.BOW) {
-                            player.getBowController().startDrawing();
-                            return;
-                        }
-
-                        player.startAttackAnimation(); // Animate for interaction attempts as well
-
-                        // Staff + right-click → fire bolt spell (rate-limited)
-                        com.stonebreak.items.ItemStack staffCheck = player.getInventory().getSelectedHotbarSlot();
-                        if (!staffCheck.isEmpty() && staffCheck.getItem() == com.stonebreak.items.ItemType.STAFF) {
-                            long now = System.nanoTime();
-                            if (now - lastFireBoltCastNanos >= STAFF_CAST_COOLDOWN_NANOS) {
-                                org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
-                                org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
-                                // Server-authoritative spawn (replicated to all); local fallback
-                                // only when there is no session at all.
-                                if (!com.stonebreak.network.MultiplayerSession.sendProjectileSpawn(
-                                        com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_FIRE_BOLT,
-                                        spawnPos, dir)) {
-                                    com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
-                                    if (em != null) {
-                                        em.spawnFireBolt(spawnPos, dir);
-                                    }
-                                }
-                                lastFireBoltCastNanos = now;
-                            }
-                            return;
-                        }
-
-                        // Fishing rod + right-click → cast or recall bobber
-                        com.stonebreak.items.ItemStack rodCheck = player.getInventory().getSelectedHotbarSlot();
-                        if (!rodCheck.isEmpty() && rodCheck.getItem() == com.stonebreak.items.ItemType.FISHING_ROD) {
-                            com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
-                            if (em != null) {
-                                com.stonebreak.mobs.entities.FishingBobber existing = player.getActiveBobber();
-                                if (existing != null && existing.isAlive()) {
-                                    fishingManager.tryCatch(player, existing);
-                                    existing.setAlive(false);
-                                    player.setActiveBobber(null);
-                                    rodCheck.setState(com.stonebreak.items.ItemType.FISHING_ROD_STATE_REELED_IN);
-                                } else {
-                                    org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
-                                    org.joml.Vector3f pos = new org.joml.Vector3f(player.getCamera().getPosition());
-                                    com.stonebreak.mobs.entities.FishingBobber bobber = em.spawnBobber(pos, dir);
-                                    player.setActiveBobber(bobber);
-                                    rodCheck.setState(com.stonebreak.items.ItemType.FISHING_ROD_STATE_CAST);
-                                }
-                            }
-                            return;
-                        }
-
-                        // Food consumption takes priority over block placement
-                        com.stonebreak.items.ItemStack heldItem = player.getInventory().getSelectedHotbarSlot();
-                        if (!heldItem.isEmpty() && heldItem.isFood()) {
-                            com.stonebreak.items.ItemType foodType = heldItem.asItemType();
-                            if (foodType != null && foodType.getHealAmount() > 0) {
-                                player.heal(foodType.getHealAmount());
-                                heldItem.decrementCount(1);
-                                if (heldItem.getCount() <= 0) heldItem.clear();
-                                return;
-                            }
-                        }
-
-                        // Raycast to see what block is being targeted
-                        Vector3i targetedBlockPos = player.raycast();
-                        if (targetedBlockPos != null) {
-                            BlockType targetedBlockType = Game.getWorld().getBlockAt(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z);
-                            if (targetedBlockType == BlockType.WORKBENCH) {
-                                // Interacted with a Workbench
-                                System.out.println("Player right-clicked on a Workbench block."); // Keep for clarity
-                                Game.getInstance().openWorkbenchScreen();
-                            } else if (targetedBlockType == BlockType.FURNACE) {
-                                // Interacted with a Furnace
-                                Game.getInstance().openFurnaceScreen(
-                                        new com.openmason.engine.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
-                            } else if (targetedBlockType == BlockType.OAK_DOOR) {
-                                // Toggle the door open/closed — plays the target
-                                // state's one-shot clip and holds the final pose.
-                                com.stonebreak.blocks.door.DoorInteraction.toggle(
-                                        targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z);
-                            } else {
-                                // Not a workbench, proceed with normal block placement
-                                player.placeBlock();
-                            }
-                        } else {
-                            // Targeting air or out of range, try to place block (normal behavior)
-                            player.placeBlock();
-                        }
-                    }
-                }
-            } else if (action == GLFW_RELEASE) {
-                // Bow right-click release → fire arrow if drawn long enough
-                Player player = Game.getPlayer();
-                if (player != null && button == GLFW_MOUSE_BUTTON_RIGHT) {
-                    com.stonebreak.items.ItemStack bowReleaseCheck = player.getInventory().getSelectedHotbarSlot();
-                    if (!bowReleaseCheck.isEmpty() && bowReleaseCheck.getItem() == com.stonebreak.items.ItemType.BOW) {
-                        // Capture speed before releaseAndFire() resets state
-                        float arrowSpeed = player.getBowController().getArrowSpeed();
-                        if (player.getBowController().releaseAndFire()
-                                && player.getInventory().hasItem(com.stonebreak.items.ItemType.ARROW)) {
-                            player.getInventory().removeItem(com.stonebreak.items.ItemType.ARROW);
-                            org.joml.Vector3f dir = new org.joml.Vector3f(player.getCamera().getFront()).normalize();
-                            org.joml.Vector3f vel = new org.joml.Vector3f(dir).mul(arrowSpeed);
-                            org.joml.Vector3f spawnPos = new org.joml.Vector3f(player.getCamera().getPosition());
-                            // Server-authoritative spawn (replicated to all); local fallback
-                            // only when there is no session at all.
-                            if (!com.stonebreak.network.MultiplayerSession.sendProjectileSpawn(
-                                    com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_ARROW,
-                                    spawnPos, vel)) {
-                                com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
-                                if (em != null) {
-                                    em.spawnArrow(spawnPos, vel);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // Record raw state first so screens polling this frame see the event,
+        // then route it to whichever UI surface (or the world) should react.
+        mouse.onButtonEvent(button, action);
+        mouseRouter.route(button, action);
     }
 
-    // Renamed from handleMouseClick to avoid confusion, as this is the GLFW callback receiver
-    // public void handleMouseClick(int button, int action) { ... } // Old method removed/refactored into processMouseButton
-
+    /** GLFW scroll callback receiver: chat/screen scrolling first, else hotbar cycling. */
     public void handleScroll(double yOffset) {
-        // Store scroll offset for UI screens that need it (like RecipeBookScreen)
-        this.scrollYOffset = yOffset;
+        // Stored for UI screens that consume scroll via getAndResetScrollY (recipe book).
+        mouse.setScroll(yOffset);
 
-        // Handle chat scrolling if chat is open
-        ChatSystem chatSystem = Game.getInstance().getChatSystem();
+        Game game = Game.getInstance();
+        ChatSystem chatSystem = game.getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             chatSystem.handleScroll(yOffset);
             return;
         }
-        
-        // If recipe book is open, let it handle scrolling and don't process hotbar scroll
-        RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
+
+        RecipeScreen recipeScreen = game.getRecipeBookScreen();
         if (recipeScreen != null && recipeScreen.isVisible()) {
-            return; // RecipeBookScreen will use getAndResetScrollY()
+            return; // RecipeScreen consumes via getAndResetScrollY()
         }
-        
-        InventoryScreen inventoryScreen = Game.getInstance().getInventoryScreen();
-        WorkbenchScreen workbenchScreen = Game.getInstance().getWorkbenchScreen();
-
-        // Block hotbar scroll if inventory, workbench, or character screen is open
+        InventoryScreen inventoryScreen = game.getInventoryScreen();
         if (inventoryScreen != null && inventoryScreen.isVisible()) {
-            return; // Inventory screen is open, block hotbar selection
+            return;
         }
-
+        WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
         if (workbenchScreen != null && workbenchScreen.isVisible()) {
-            return; // Workbench screen is open, block hotbar selection
+            return;
+        }
+        CharacterScreen characterScreen = game.getCharacterScreen();
+        if (characterScreen != null && characterScreen.isVisible()) {
+            characterScreen.handleScroll((float) yOffset);
+            return;
         }
 
-        com.stonebreak.ui.characterScreen.CharacterScreen characterScreenScroll = Game.getInstance().getCharacterScreen();
-        if (characterScreenScroll != null && characterScreenScroll.isVisible()) {
-            characterScreenScroll.handleScroll((float) yOffset);
-            return; // Character screen is open, block hotbar selection
+        if (game.getState() != GameState.PLAYING) {
+            return;
         }
-
-        // Only allow hotbar scrolling in PLAYING state
-        GameState currentState = Game.getInstance().getState();
-        if (currentState != GameState.PLAYING) {
-            return; // Block hotbar scroll in UI states
-        }
-        
-        int newSelectedIndex = currentSelectedHotbarIndex;
-        if (yOffset > 0) { // Scrolled up (conventionally next item)
-            newSelectedIndex = (currentSelectedHotbarIndex + 1) % Inventory.HOTBAR_SIZE;
-        } else if (yOffset < 0) { // Scrolled down (conventionally previous item)
-            newSelectedIndex = (currentSelectedHotbarIndex - 1 + Inventory.HOTBAR_SIZE) % Inventory.HOTBAR_SIZE;
-        }
-        
-        setSelectedHotbarSlot(newSelectedIndex);
-        this.scrollYOffset = 0; // Reset scroll after handling hotbar selection
+        hotbar.cycle(yOffset);
+        mouse.resetScroll(); // consumed by hotbar selection
     }
 
     public double getAndResetScrollY() {
-        double offset = this.scrollYOffset;
-        this.scrollYOffset = 0.0;
-        return offset;
-    }
-    
-    // Renamed from selectBlockType and updated logic
-    private void selectHotbarSlotByKey(int slotIndex) { // slotIndex is 0-8 (for keys 1-9)
-        if (slotIndex >= 0 && slotIndex < Inventory.HOTBAR_SIZE) {
-            setSelectedHotbarSlot(slotIndex);
-        }
+        return mouse.getAndResetScroll();
     }
 
-    // Helper method to actually set the hotbar slot and update player
-    private void setSelectedHotbarSlot(int index) {
-        if (index >= 0 && index < Inventory.HOTBAR_SIZE) {
-            currentSelectedHotbarIndex = index;
-            Player player = Game.getPlayer();
-            if (player != null && player.getInventory() != null) {
-                player.getInventory().setSelectedHotbarSlotIndex(currentSelectedHotbarIndex);
-            }
-        }
-    }
-
-    /**
-     * Gets the block type ID from the currently selected hotbar slot.
-     * @return BlockType ID or AIR if empty/invalid.
-     */
-    public int getSelectedBlockTypeIdFromHotbar() {
-        Player player = Game.getPlayer();
-        if (player != null && player.getInventory() != null) {
-            return player.getInventory().getSelectedBlockTypeId(); // This method in Inventory gets from selected hotbar slot
-        }
-        return BlockType.AIR.getId(); // Default or error case
-    }
-    
-    // New methods for InventoryScreen - MOVED TO CLASS LEVEL
-    // public Vector2f getMousePosition() { ... } // Defined below
-    // public boolean isMouseButtonPressed(int button) { ... } // Defined below
-    // public boolean isMouseButtonDown(int button) { ... } // Defined below
-    // public void consumeMouseButtonPress(int button) { ... } // Defined below
-    
-    
-    /**
-     * Update mouse position for UI interactions (called from Main.java cursor callback)
-     */
+    /** Updates the UI-space cursor position and hover states (called from Main's cursor callback). */
     public void updateMousePosition(float xpos, float ypos) {
-        currentMouseX = xpos;
-        currentMouseY = ypos;
-
-        // Update UI hover states
-        com.stonebreak.ui.DeathMenu deathMenu = Game.getInstance().getDeathMenu();
-        if (deathMenu != null && deathMenu.isVisible()) {
-            deathMenu.updateHover(currentMouseX, currentMouseY, Game.getWindowWidth(), Game.getWindowHeight());
-        }
-
-        PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
-        if (pauseMenu != null && pauseMenu.isVisible()) {
-            pauseMenu.updateHover(currentMouseX, currentMouseY, Game.getWindowWidth(), Game.getWindowHeight());
-        }
-
-        com.stonebreak.ui.statisticsScreen.StatisticsScreen statsScreenHover = Game.getInstance().getStatisticsScreen();
-        if (statsScreenHover != null && statsScreenHover.isVisible()) {
-            statsScreenHover.updateHover(currentMouseX, currentMouseY, Game.getWindowWidth(), Game.getWindowHeight());
-        }
-
-        // Update chat renderer hover states and scrollbar dragging
-        ChatSystem chatSystem = Game.getInstance().getChatSystem();
-        if (chatSystem != null && chatSystem.isOpen()) {
-            UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-            if (uiRenderer != null && uiRenderer.getSkijaChatRenderer() != null) {
-                uiRenderer.getSkijaChatRenderer().updateMousePosition(currentMouseX, currentMouseY);
-
-                // Handle scrollbar dragging
-                if (uiRenderer.getSkijaChatRenderer().isDraggingScrollbar()) {
-                    uiRenderer.getSkijaChatRenderer().handleScrollbarDrag(chatSystem, currentMouseY, Game.getWindowHeight());
-                }
-            }
-        }
+        mouse.setPosition(xpos, ypos);
+        mouseRouter.onMouseMove();
     }
 
-    /**
-     * Handle chat click interactions (tab switching, emoji picker, and command buttons)
-     */
-    private void handleChatClick(ChatSystem chatSystem) {
-        int windowWidth = Game.getWindowWidth();
-        int windowHeight = Game.getWindowHeight();
+    // ── Mouse state polling (used by UI screens) ─────────────────────────
 
-        // ── Emoji button / picker ─────────────────────────────────────────
-        UIRenderer uiRendererEmoji = Game.getInstance().getUIRenderer();
-        if (uiRendererEmoji != null && uiRendererEmoji.getSkijaChatRenderer() != null) {
-            SkijaChatRenderer renderer = uiRendererEmoji.getSkijaChatRenderer();
-
-            // Toggle picker on emoji button click.
-            if (renderer.isEmojiButtonClicked(currentMouseX, currentMouseY, windowWidth, windowHeight)) {
-                chatSystem.toggleEmojiPicker();
-                return;
-            }
-
-            if (chatSystem.isEmojiPickerOpen()) {
-                // Star click → toggle favourite; emoji click → insert.
-                ChatEmoji starTarget = renderer.getPickerFavoriteStarClick(
-                        chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
-                if (starTarget != null) {
-                    chatSystem.getEmojiSystem().toggleFavorite(starTarget);
-                    return;
-                }
-
-                ChatEmoji emojiTarget = renderer.getPickerEmojiClick(
-                        chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
-                if (emojiTarget != null) {
-                    chatSystem.insertEmoji(emojiTarget);
-                    return;
-                }
-
-                // Click outside picker closes it and consumes the click.
-                chatSystem.closeEmojiPicker();
-                return;
-            }
-        }
-        // ─────────────────────────────────────────────────────────────────
-
-        // Calculate tab button areas (matching ChatRenderer folder-style tabs)
-        float backgroundPadding = 10;
-        float maxChatWidth = windowWidth * 0.4f;
-        float inputBoxHeight = 25;
-        float inputBoxMargin = 10;
-        float lineHeight = 20;
-        float chatAreaHeight = (10 * lineHeight) + inputBoxHeight + inputBoxMargin + (backgroundPadding * 2);
-
-        float backgroundY = windowHeight - chatAreaHeight;
-        float backgroundX = 20 - backgroundPadding;
-
-        // Tabs are positioned ABOVE the panel
-        float tabHeight = 22;
-        float tabSpacing = 2;
-        float tabY = backgroundY - tabHeight - tabSpacing;
-        float tabWidth = 70; // Compact tab width
-        float tabGap = 3; // Gap between tabs
-        float startX = backgroundX + 5; // Upper left corner offset
-
-        // Chat tab hitbox
-        float chatTabX = startX;
-        float chatTabY = tabY;
-        float chatTabEndX = chatTabX + tabWidth;
-        float chatTabEndY = chatTabY + tabHeight;
-
-        // Commands tab hitbox
-        float commandsTabX = startX + tabWidth + tabGap;
-        float commandsTabY = tabY;
-        float commandsTabEndX = commandsTabX + tabWidth;
-        float commandsTabEndY = commandsTabY + tabHeight;
-
-        // Check if clicked on Chat tab
-        if (currentMouseX >= chatTabX && currentMouseX <= chatTabEndX &&
-            currentMouseY >= chatTabY && currentMouseY <= chatTabEndY) {
-            chatSystem.setCurrentTab(ChatSystem.ChatTab.CHAT);
-            return;
-        }
-
-        // Check if clicked on Commands tab
-        if (currentMouseX >= commandsTabX && currentMouseX <= commandsTabEndX &&
-            currentMouseY >= commandsTabY && currentMouseY <= commandsTabEndY) {
-            chatSystem.setCurrentTab(ChatSystem.ChatTab.COMMANDS);
-            return;
-        }
-
-        // Check if clicked on a command button (only if Commands tab is active)
-        if (chatSystem.getCurrentTab() == ChatSystem.ChatTab.COMMANDS) {
-            UIRenderer uiRenderer = Game.getInstance().getUIRenderer();
-            if (uiRenderer != null && uiRenderer.getSkijaChatRenderer() != null) {
-                String clickedCommand = uiRenderer.getSkijaChatRenderer().getClickedCommand(
-                    chatSystem, currentMouseX, currentMouseY, windowWidth, windowHeight);
-
-                if (clickedCommand != null) {
-                    // Populate the chat input with the command instead of executing it
-                    chatSystem.setInput("/" + clickedCommand + " ");
-                    // Switch back to Chat tab to show the input
-                    chatSystem.setCurrentTab(ChatSystem.ChatTab.CHAT);
-                }
-            }
-        }
-    }
-
-    // Mouse helper methods for InventoryScreen - now correctly inside the InputHandler class
     public Vector2f getMousePosition() {
-        // Reuse cached vector to avoid allocation
-        return cachedMousePosition.set(currentMouseX, currentMouseY);
+        return mouse.position();
     }
 
     public boolean isMouseButtonPressed(int button) {
-        if (button >= 0 && button <= GLFW_MOUSE_BUTTON_LAST) {
-            return mouseButtonPressedThisFrame[button];
-        }
-        return false;
+        return mouse.isPressed(button);
     }
 
     public boolean isMouseButtonDown(int button) {
-        if (button >= 0 && button <= GLFW_MOUSE_BUTTON_LAST) {
-            return mouseButtonDown[button];
-        }
-        return false;
+        return mouse.isDown(button);
     }
 
     public void consumeMouseButtonPress(int button) {
-        if (button >= 0 && button <= GLFW_MOUSE_BUTTON_LAST) {
-            mouseButtonPressedThisFrame[button] = false;
-        }
+        mouse.consumePress(button);
     }
-    
+
     /**
-     * Handle character input for chat and recipe book search
+     * Forgets all held/pressed mouse button state. Called when the game state
+     * transitions back to PLAYING so clicks consumed by a menu (e.g. the pause
+     * menu's Resume button) don't leak into gameplay as attacks/block breaking.
      */
+    public void clearMouseButtonStates() {
+        mouse.clearAll();
+    }
+
+    // ── Key/char callback routing ────────────────────────────────────────
+
+    /** Routes character input to whichever text consumer is active (world select, chat, recipe search). */
     public void handleCharacterInput(char character) {
-        // Handle world select screen input FIRST - highest priority for input fields
-        WorldSelectScreen worldSelectScreen = Game.getInstance().getWorldSelectScreen();
-        if (worldSelectScreen != null && Game.getInstance().getState() == GameState.WORLD_SELECT) {
+        Game game = Game.getInstance();
+
+        WorldSelectScreen worldSelectScreen = game.getWorldSelectScreen();
+        if (worldSelectScreen != null && game.getState() == GameState.WORLD_SELECT) {
             worldSelectScreen.handleCharacterInput(character);
             return;
         }
 
-        ChatSystem chatSystem = Game.getInstance().getChatSystem();
+        ChatSystem chatSystem = game.getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             chatSystem.handleCharInput(character);
             return;
         }
-        
-        // Handle recipe book search input
-        RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
-        if (recipeScreen != null && recipeScreen.isVisible() &&
-            Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
+
+        RecipeScreen recipeScreen = game.getRecipeBookScreen();
+        if (recipeScreen != null && recipeScreen.isVisible() && game.getState() == GameState.RECIPE_BOOK_UI) {
             recipeScreen.handleCharacterInput(character);
         }
     }
-    
-    /**
-     * Handle keyboard input for chat and recipe book (backspace, enter, etc.)
-     */
+
+    /** Routes key events to whichever text consumer is active (world select, chat, recipe search). */
     public void handleKeyInput(int key, int action, int mods) {
-        // Handle world select screen input FIRST - highest priority for input fields
-        WorldSelectScreen worldSelectScreen = Game.getInstance().getWorldSelectScreen();
-        if (worldSelectScreen != null && Game.getInstance().getState() == GameState.WORLD_SELECT) {
+        Game game = Game.getInstance();
+
+        WorldSelectScreen worldSelectScreen = game.getWorldSelectScreen();
+        if (worldSelectScreen != null && game.getState() == GameState.WORLD_SELECT) {
             worldSelectScreen.handleKeyInput(key, action, mods);
             return;
         }
 
-        ChatSystem chatSystem = Game.getInstance().getChatSystem();
+        ChatSystem chatSystem = game.getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
-            // When chat is open, only process chat-related keys
-            if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-                switch (key) {
-                    case GLFW_KEY_BACKSPACE -> chatSystem.handleBackspace();
-                    case GLFW_KEY_ENTER -> {
-                        chatSystem.handleEnter();
-                    }
-                    case GLFW_KEY_ESCAPE -> {
-                        chatSystem.closeChat();
-                    }
-                    case GLFW_KEY_V -> {
-                        // Handle Ctrl+V for paste
-                        if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
-                            glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS) {
-                            chatSystem.handlePaste();
-                        }
-                    }
-                    case GLFW_KEY_C -> {
-                        // Handle Ctrl+C for copy
-                        if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
-                            glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS) {
-                            chatSystem.handleCopy();
-                        }
-                    }
-                    case GLFW_KEY_T -> {
-                        // T key does nothing when chat is already open
-                    }
-                    case GLFW_KEY_TAB -> {
-                        // Handle Tab for command autocomplete
-                        chatSystem.handleTab();
-                    }
-                }
-            }
-            return; // Block all other key processing when chat is open
+            chatRouter.handleKeyInput(chatSystem, key, action);
+            return; // chat blocks all other key processing
         }
-        
-        // Handle recipe book search input
-        RecipeScreen recipeScreen = Game.getInstance().getRecipeBookScreen();
-        if (recipeScreen != null && recipeScreen.isVisible() &&
-            Game.getInstance().getState() == GameState.RECIPE_BOOK_UI) {
-            if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-                recipeScreen.handleKeyInput(key, action);
-            }
+
+        RecipeScreen recipeScreen = game.getRecipeBookScreen();
+        if (recipeScreen != null && recipeScreen.isVisible() && game.getState() == GameState.RECIPE_BOOK_UI
+                && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+            recipeScreen.handleKeyInput(key, action);
         }
-        
-        // If chat, world select, and recipe book are not handling input, allow normal input handling to continue
     }
 
-    /**
-     * Checks if a key was just pressed in this frame (edge detection).
-     * Assumes prepareForNewFrame and updateSpecificKeyState (or a general key polling loop) has been called.
-     * @param key The GLFW key code.
-     * @return True if the key was pressed down in this frame, false otherwise.
-     */
-    public boolean isKeyPressedOnce(int key) {
-        if (key >= 0 && key < keyJustPressed.length) {
-            return keyJustPressed[key];
-        }
-        return false;
-    }
-     
-    /**
-     * Checks if a key is currently held down.
-     * @param key The GLFW key code.
-     * @return True if the key is currently pressed, false otherwise.
-     */
+    /** True while the key is physically held (direct GLFW query). */
     public boolean isKeyDown(int key) {
-        // For general "is down" state, direct GLFW query is fine,
-        // or use keyPressedState if already polling.
-        return glfwGetKey(window, key) == GLFW_PRESS;
+        return keys.isDown(key);
     }
-
-} // This is the final closing brace for the InputHandler class
+}

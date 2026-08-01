@@ -48,10 +48,19 @@ public final class GameStateController {
      * {@link GameState#MAIN_MENU}, and nudges mouse capture.
      */
     public void setState(GameState state) {
-        if (this.currentState != state && state != null) {
+        boolean stateChanged = this.currentState != state && state != null;
+        if (stateChanged) {
             this.previousGameState = this.currentState;
         }
         this.currentState = state;
+
+        // Entering gameplay from any menu/UI state: drop residual mouse button
+        // state so the click that closed the menu (or a release swallowed by a
+        // menu-routed callback) can't trigger attacks/block breaking on its own.
+        if (stateChanged && state == GameState.PLAYING
+                && game.getInputHandler() != null) {
+            game.getInputHandler().clearMouseButtonStates();
+        }
 
         MainMenu mainMenu = game.getMainMenu();
         if (state == GameState.MAIN_MENU && mainMenu != null) {
