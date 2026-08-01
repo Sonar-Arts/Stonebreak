@@ -138,7 +138,7 @@ class MovementControllerPhysicsTest {
 
     @Test
     void waterDragIsStrongerThanGroundFriction() {
-        // Water horizontal drag = 7.5 (stronger than ground's 5.0).
+        // Water horizontal drag = 6.5 (stronger than ground's 5.0).
         state.setPhysicallyInWater(true);
         state.getVelocity().set(10f, 0f, 10f);
         movement.applyDamping();

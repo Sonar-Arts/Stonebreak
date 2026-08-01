@@ -114,7 +114,7 @@ public class MovementController {
         velocity.z *= frictionFactor;
 
         if (state.isPhysicallyInWater()) {
-            float waterDamping = 2.0f;
+            float waterDamping = 1.6f;
             float waterFactor = (float) Math.exp(-waterDamping * dt);
             velocity.y *= waterFactor;
         } else if (velocity.y > 0) {
