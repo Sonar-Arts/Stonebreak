@@ -21,6 +21,7 @@ import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.ui.inventoryScreen.core.InventoryController;
 import com.stonebreak.ui.inventoryScreen.core.InventoryCraftingManager;
 import com.stonebreak.ui.inventoryScreen.core.InventoryInputManager;
+import com.stonebreak.ui.TabStripLayout;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
 import io.github.humbleui.skija.Canvas;
@@ -65,15 +66,10 @@ public class InventoryRenderCoordinator {
   // Semi-transparent panel fill
   private static final int PANEL_FILL_TRANS = 0xBF6B6B6B;
 
-  // Tab bar base constants (unscaled) — use the getScaledTab* methods for rendering/hit-testing
-  public static final int INV_TAB_WIDTH = 84;
-  public static final int INV_TAB_HEIGHT = 28;
-  public static final int INV_TAB_GAP = 4;
-
   // Equipment slot layout constants (unscaled)
-  private static final int EQUIP_SLOT_SIZE = 30;
+  private static final int EQUIP_SLOT_SIZE = 28;
   private static final int EQUIP_SLOT_COL_GAP = 8;
-  private static final int EQUIP_ROW_STRIDE = 50; // slot + label clearance + gap
+  private static final int EQUIP_ROW_STRIDE = 48; // slot + label clearance + gap
 
   // Vital bar row height (unscaled)
   private static final int VITAL_BAR_HEIGHT = 20;
@@ -97,18 +93,6 @@ public class InventoryRenderCoordinator {
     "Neck", "Ring 1", "Ring 2", "Brace",
     "Trnk 1", "Trnk 2"
   };
-
-  public static int getScaledTabWidth() {
-    return Math.round(INV_TAB_WIDTH * com.stonebreak.config.Settings.getInstance().getUiScale());
-  }
-
-  public static int getScaledTabHeight() {
-    return Math.round(INV_TAB_HEIGHT * com.stonebreak.config.Settings.getInstance().getUiScale());
-  }
-
-  public static int getScaledTabGap() {
-    return Math.round(INV_TAB_GAP * com.stonebreak.config.Settings.getInstance().getUiScale());
-  }
 
   public InventoryRenderCoordinator(UIRenderer uiRenderer,
                                     Renderer renderer,
@@ -160,7 +144,7 @@ public class InventoryRenderCoordinator {
     recipeButton.updateHover(mx, my);
     craftAllButton.updateHover(mx, my);
     sortButton.updateHover(mx, my);
-    updateTabBounds(layout3);
+    updateTabBounds(screenWidth, layout3);
     tabInventory.updateHover(mx, my);
     tabCharacter.updateHover(mx, my);
     tabClasses.updateHover(mx, my);
@@ -170,7 +154,7 @@ public class InventoryRenderCoordinator {
     // Phase A — Skija: all panel chrome + slot backgrounds + widgets
     if (ui.beginFrame(screenWidth, screenHeight, 1.0f)) {
       Canvas canvas = ui.canvas();
-      drawTabBar(canvas, layout3);
+      drawTabBar(canvas, screenWidth, layout3);
       drawFullPanel(canvas, layout3);
       drawLeftColumn(canvas, layout3, mx, my);
       drawCenterColumn(canvas, layout3, mx, my);
@@ -292,30 +276,32 @@ public class InventoryRenderCoordinator {
     float colW = layout3.leftColW;
     float padX = 12f * scale;
     float padY = 14f * scale;
+    float innerW = colW - padX * 2;
 
     float cursorY = colY + padY;
 
-    cursorY = drawLevelWidget(canvas, colX + padX, cursorY, colW - padX * 2, scale);
-    cursorY += 8f * scale;
+    cursorY = drawLevelWidget(canvas, colX + padX, cursorY, innerW, scale);
+    cursorY += 10f * scale;
 
-    cursorY = drawSectionHeader(canvas, "Equipment", colX + padX, cursorY, scale);
+    cursorY = drawSectionHeader(canvas, "Equipment", colX + padX, cursorY, innerW, scale);
 
     cursorY = drawEquipmentSlots(canvas, colX, cursorY, colW, padX, scale, mx, my);
 
     cursorY += 10f * scale;
-    cursorY = drawSectionHeader(canvas, "Vitals", colX + padX, cursorY, scale);
+    cursorY = drawSectionHeader(canvas, "Vitals", colX + padX, cursorY, innerW, scale);
 
-    cursorY = drawVitalBars(canvas, colX + padX, cursorY, colW - padX * 2, scale);
+    cursorY = drawVitalBars(canvas, colX + padX, cursorY, innerW, scale);
 
-    cursorY += 8f * scale;
-    drawStatusEffectSlots(canvas, colX + padX, cursorY, colW - padX * 2, scale, mx, my);
+    cursorY += 10f * scale;
+    cursorY = drawSectionHeader(canvas, "Status", colX + padX, cursorY, innerW, scale);
+    drawStatusEffectSlots(canvas, colX + padX, cursorY, innerW, scale, mx, my);
   }
 
   /** Draws the level label and XP progress bar; returns the Y position after the widget. */
   private float drawLevelWidget(Canvas canvas, float x, float y, float barW, float scale) {
-    Font labelFont = ui.fonts().get(MStyle.FONT_META);
+    Font labelFont = ui.fonts().getScaled(MStyle.FONT_META);
     String levelText = "Level " + stats.getLevel();
-    MPainter.drawStringWithShadow(canvas, levelText, x, y + MStyle.FONT_META * 0.85f,
+    MPainter.drawStringWithShadow(canvas, levelText, x, y + MStyle.FONT_META * 0.85f * scale,
         labelFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
 
     int xp    = stats.getXp();
@@ -323,7 +309,7 @@ public class InventoryRenderCoordinator {
     float fraction = xpMax > 0 ? Math.min(1f, (float) xp / xpMax) : 0f;
 
     float barH   = Math.round(10 * scale);
-    float barY   = y + MStyle.FONT_META + 4f * scale;
+    float barY   = y + MStyle.FONT_META * scale + 4f * scale;
 
     MPainter.fillRoundedRect(canvas, x, barY, barW, barH, 3f, 0xFF333333);
     if (fraction > 0f) {
@@ -339,13 +325,15 @@ public class InventoryRenderCoordinator {
     return barY + barH;
   }
 
-  /** Draws a small section header and returns the Y position after it. */
-  private float drawSectionHeader(Canvas canvas, String title, float x, float y, float scale) {
-    Font font = ui.fonts().get(MStyle.FONT_META);
-    MPainter.drawStringWithShadow(canvas, title.toUpperCase(), x, y + MStyle.FONT_META * 0.85f,
+  /** Draws a small section header with a full-width rule; returns the Y position after it. */
+  private float drawSectionHeader(Canvas canvas, String title, float x, float y, float w,
+                                  float scale) {
+    Font font = ui.fonts().getScaled(MStyle.FONT_META);
+    MPainter.drawStringWithShadow(canvas, title.toUpperCase(), x,
+        y + MStyle.FONT_META * 0.85f * scale,
         font, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
-    float ruleY = y + MStyle.FONT_META + 4f * scale;
-    MPainter.fillRoundedRect(canvas, x, ruleY, 120f * scale, 1f, 0f, 0x33FFFFFF);
+    float ruleY = y + MStyle.FONT_META * scale + 4f * scale;
+    MPainter.fillRoundedRect(canvas, x, ruleY, w, 1f, 0f, 0x33FFFFFF);
     return ruleY + 8f * scale;
   }
 
@@ -396,30 +384,29 @@ public class InventoryRenderCoordinator {
           .fillColor(colors[i])
           .bounds(x, cursorY, barW, barH)
           .render(ui);
-      cursorY += barH + gap;
+      cursorY += barH;
+      if (i < 2) {
+        cursorY += gap;
+      }
     }
     return cursorY;
   }
 
   private void drawStatusEffectSlots(Canvas canvas, float x, float y, float availW,
                                      float scale, float mx, float my) {
-    Font labelFont = ui.fonts().get(MStyle.FONT_META);
-    MPainter.drawStringWithShadow(canvas, "STATUS", x, y + MStyle.FONT_META * 0.85f,
-        labelFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-
-    int slotPx = Math.round(28 * scale);
     int slotGap = Math.round(4 * scale);
-    Font qFont = ui.fonts().get(MStyle.FONT_META);
-    float slotY = y + MStyle.FONT_META + 6f * scale;
+    // Fit all 6 slots inside the column width (capped at the nominal 28px size).
+    int slotPx = Math.min(Math.round(28 * scale), (int) ((availW - 5 * slotGap) / 6f));
+    Font qFont = ui.fonts().getScaled(MStyle.FONT_META);
 
     for (int i = 0; i < 6; i++) {
       float sx = x + i * (slotPx + slotGap);
-      MItemSlot slot = new MItemSlot().bounds(sx, slotY, slotPx, slotPx);
+      MItemSlot slot = new MItemSlot().bounds(sx, y, slotPx, slotPx);
       slot.updateHover(mx, my);
       slot.render(ui);
 
       float qX = sx + slotPx / 2f;
-      float qY = slotY + slotPx / 2f + MStyle.FONT_META * 0.35f;
+      float qY = y + slotPx / 2f + MStyle.FONT_META * 0.35f * scale;
       MPainter.drawCenteredStringWithShadow(canvas, "?", qX, qY, qFont,
           MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
     }
@@ -440,7 +427,7 @@ public class InventoryRenderCoordinator {
 
   private void drawTitles(Canvas canvas, InventoryLayoutCalculator.InventoryLayout center,
                           float scale) {
-    Font font = ui.fonts().get(MStyle.FONT_BUTTON);
+    Font font = ui.fonts().getScaled(MStyle.FONT_BUTTON);
     float centerX = center.panelStartX + center.inventoryPanelWidth / 2f;
 
         float craftY = center.panelStartY + 20 * scale + MStyle.FONT_BUTTON / 3f * scale;
@@ -541,7 +528,7 @@ public class InventoryRenderCoordinator {
 
     float cursorY = colY + padY;
 
-    cursorY = drawSectionHeader(canvas, "Core Attributes", colX + padX, cursorY, scale);
+    cursorY = drawSectionHeader(canvas, "Core Attributes", colX + padX, cursorY, rowW, scale);
 
     int[] scores = {
       stats.getStrength(), stats.getDexterity(), stats.getConstitution(),
@@ -560,8 +547,8 @@ public class InventoryRenderCoordinator {
       cursorY += rowH + 2f * scale;
     }
 
-    cursorY += 6f * scale;
-    cursorY = drawSectionHeader(canvas, "Resistances", colX + padX, cursorY, scale);
+    cursorY += 10f * scale;
+    cursorY = drawSectionHeader(canvas, "Resistances", colX + padX, cursorY, rowW, scale);
 
     String[] resistLabels = {"Fire", "Cold", "Lightning", "Physical", "Poison"};
     for (String label : resistLabels) {
@@ -573,13 +560,13 @@ public class InventoryRenderCoordinator {
       cursorY += rowH + 2f * scale;
     }
 
-    cursorY += 6f * scale;
-    cursorY = drawSectionHeader(canvas, "Offensive", colX + padX, cursorY, scale);
+    cursorY += 10f * scale;
+    cursorY = drawSectionHeader(canvas, "Offensive", colX + padX, cursorY, rowW, scale);
     cursorY = drawStubRow(canvas, "Attack", colX + padX, cursorY, rowW, rowH, scale);
     cursorY = drawStubRow(canvas, "Crit", colX + padX, cursorY, rowW, rowH, scale);
 
-    cursorY += 6f * scale;
-    cursorY = drawSectionHeader(canvas, "Defensive", colX + padX, cursorY, scale);
+    cursorY += 10f * scale;
+    cursorY = drawSectionHeader(canvas, "Defensive", colX + padX, cursorY, rowW, scale);
     cursorY = drawStubRow(canvas, "Armor", colX + padX, cursorY, rowW, rowH, scale);
     drawStubRow(canvas, "Block", colX + padX, cursorY, rowW, rowH, scale);
   }
@@ -704,13 +691,13 @@ public class InventoryRenderCoordinator {
 
   // ─── Tab bar ──────────────────────────────────────────────────────────────
 
-  private void updateTabBounds(InventoryLayoutCalculator.InventoryLayout3Col layout3) {
-    int tw = getScaledTabWidth();
-    int th = getScaledTabHeight();
-    int tg = getScaledTabGap();
-    float tabY = layout3.center.panelStartY - th;
-    float stride = tw + tg;
-    float startX = layout3.center.panelStartX;
+  private void updateTabBounds(int screenWidth,
+                               InventoryLayoutCalculator.InventoryLayout3Col layout3) {
+    int tw = TabStripLayout.tabWidth();
+    int th = TabStripLayout.tabHeight();
+    int tabY = TabStripLayout.tabY(layout3.panelStartY);
+    int stride = TabStripLayout.stride();
+    int startX = TabStripLayout.startX(screenWidth);
     tabInventory.bounds(startX, tabY, tw, th);
     tabCharacter.bounds(startX + stride, tabY, tw, th);
     tabClasses.bounds(startX + stride * 2, tabY, tw, th);
@@ -718,14 +705,13 @@ public class InventoryRenderCoordinator {
     tabFeats.bounds(startX + stride * 4, tabY, tw, th);
   }
 
-  private void drawTabBar(Canvas canvas,
+  private void drawTabBar(Canvas canvas, int screenWidth,
                           InventoryLayoutCalculator.InventoryLayout3Col layout3) {
-    int tw = getScaledTabWidth();
-    int th = getScaledTabHeight();
-    int tg = getScaledTabGap();
-    float tabY = layout3.center.panelStartY - th;
-    float stride = tw + tg;
-    float startX = layout3.center.panelStartX;
+    int tw = TabStripLayout.tabWidth();
+    int th = TabStripLayout.tabHeight();
+    int tabY = TabStripLayout.tabY(layout3.panelStartY);
+    int stride = TabStripLayout.stride();
+    int startX = TabStripLayout.startX(screenWidth);
     drawTab(canvas, startX, tabY, "Inventory", true, tabInventory.isHovered(), tw, th);
     drawTab(canvas, startX + stride, tabY, "Character", false, tabCharacter.isHovered(), tw, th);
     drawTab(canvas, startX + stride * 2, tabY, "Classes", false, tabClasses.isHovered(), tw, th);

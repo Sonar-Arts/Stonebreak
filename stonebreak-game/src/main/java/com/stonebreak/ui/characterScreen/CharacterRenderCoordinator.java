@@ -9,18 +9,32 @@ import com.stonebreak.rendering.UI.masonryUI.MItemSlot;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.stonebreak.mobs.entities.EntityType;
+import com.stonebreak.mobs.sbe.EntityAttachments;
+import com.stonebreak.mobs.sbe.SbeEntityAsset;
+import com.stonebreak.mobs.sbe.SbeEntityRegistry;
+import com.stonebreak.mobs.sbe.SbeModelGeometry;
+import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rpg.CharacterPanelTab;
+import com.stonebreak.ui.TabStripLayout;
 import com.stonebreak.ui.characterScreen.renderers.ClassesTabRenderer;
 import com.stonebreak.ui.characterScreen.renderers.FeatsTabRenderer;
 import com.stonebreak.ui.characterScreen.renderers.SkillsTabRenderer;
+import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.Path;
 import io.github.humbleui.skija.PathBuilder;
 import io.github.humbleui.skija.PaintMode;
+import io.github.humbleui.types.RRect;
 import io.github.humbleui.types.Rect;
+import org.joml.Matrix4f;
 import org.joml.Vector2f;
+import org.joml.Vector3f;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL30;
 
 import java.util.List;
 
@@ -37,13 +51,10 @@ import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_RIGHT;
 public class CharacterRenderCoordinator {
 
   // ─── Panel geometry ────────────────────────────────────────────────────────
+  // Width is the character sheet's own; top edge and height are anchored to the
+  // inventory screen's panel (InventoryLayoutCalculator) so the panel frame and
+  // tab strip stay pixel-identical when switching between the two screens.
   private static final int   PANEL_WIDTH  = 600;
-  private static final int   PANEL_HEIGHT = 480;
-  private static final float TAB_HEIGHT   = 28f;
-  private static final float TAB_WIDTH    = 84f;   // 5 tabs fit within 600px panel
-  private static final float TAB_GAP      = 4f;
-  /** Left offset so the 5-tab group is centered over the 600px panel. */
-  private static final float TAB_START_OFFSET = (PANEL_WIDTH - (5 * TAB_WIDTH + 4 * TAB_GAP)) / 2f;
   private static final int   SLOT_SIZE    = 34;
 
   // ─── Colors ────────────────────────────────────────────────────────────────
@@ -54,8 +65,9 @@ public class CharacterRenderCoordinator {
   private static final int COLOR_HEART      = 0xFFCC2222;
   private static final int COLOR_HEART_DIM  = 0xFF551111;
   private static final int COLOR_MANA_DIM   = 0xFF334466;
-  private static final int SILHOUETTE_FILL  = 0xFF4A4A4A;
-  private static final int SILHOUETTE_STROKE= 0xFF2A2A2A;
+  // Model preview inset — matches CharacterModelPreviewRenderer (creation screen)
+  private static final int PREVIEW_INSET_FILL   = 0xFF1E1E1E;
+  private static final int PREVIEW_INSET_BORDER = 0xFF0A0A0A;
 
   private static final String[] ABILITY_ABBREV = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
 
@@ -82,6 +94,20 @@ public class CharacterRenderCoordinator {
   private final MButton[] scorePlusButtons  = new MButton[6];
   private final MButton[] scoreMinusButtons = new MButton[6];
 
+  // Model preview rect (window pixels) captured during the Skija frame, then
+  // drawn into with raw GL after the frame closes. Null unless the Overview tab
+  // painted its inset this frame.
+  private PreviewRect previewRect;
+
+  // Cached player model AABB {minX,minY,minZ,maxX,maxY,maxZ}, lazily computed.
+  private float[] playerBounds;
+
+  /** Preview rect in window pixels. */
+  private record PreviewRect(float x, float y, float w, float h) {}
+
+  /** Panel rect in window pixels. */
+  private record PanelRect(float x, float y, float w, float h) {}
+
   // ─────────────────────────────────────────────────────────────────────────
 
   public CharacterRenderCoordinator(Renderer renderer, InputHandler inputHandler,
@@ -100,15 +126,17 @@ public class CharacterRenderCoordinator {
   // ─────────────────────────────────────────────── Public entry points
 
   public void render(int screenWidth, int screenHeight) {
+    previewRect = null;
     if (!ui.beginFrame(screenWidth, screenHeight, 1.0f)) {
       return;
     }
 
     float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
-    float scaledPW = PANEL_WIDTH  * scale;
-    float scaledPH = PANEL_HEIGHT * scale;
-    float px = (screenWidth  - scaledPW) / 2f;
-    float py = (screenHeight - scaledPH) / 2f;
+    PanelRect panel = panelRect(screenWidth, screenHeight, scale);
+    float px = panel.x();
+    float py = panel.y();
+    float scaledPW = panel.w();
+    float scaledPH = panel.h();
 
     Vector2f mouse = inputHandler.getMousePosition();
     float mx = mouse.x;
@@ -116,9 +144,9 @@ public class CharacterRenderCoordinator {
 
     Canvas canvas = ui.canvas();
 
-    updateTabBounds(px, py, scale, scaledPW);
+    updateTabBounds(screenWidth, py);
     updateTabHovers(mx, my);
-    drawTabBar(canvas, px, py, scale, scaledPW);
+    drawTabBar(canvas, screenWidth, py);
 
     MPainter.stoneSurface(canvas, px, py, scaledPW, scaledPH, MStyle.PANEL_RADIUS,
         PANEL_FILL_TRANS, MStyle.PANEL_BORDER,
@@ -136,6 +164,24 @@ public class CharacterRenderCoordinator {
 
     ui.renderOverlays();
     ui.endFrame();
+
+    // 3D player model: drawn with raw GL on top of the just-composited panel
+    // (the Skija surface wraps the default framebuffer), same pattern as the
+    // character creation screen's preview.
+    drawPlayerPreview(screenWidth, screenHeight);
+  }
+
+  /**
+   * Panel rect: width is this screen's own; top edge and height come from the
+   * inventory screen's panel so the frame and tab strip don't shift when
+   * switching between the inventory tab and the character-sheet tabs.
+   */
+  private PanelRect panelRect(int screenWidth, int screenHeight, float scale) {
+    InventoryLayoutCalculator.InventoryLayout anchor =
+        InventoryLayoutCalculator.calculateLayout(screenWidth, screenHeight);
+    int pw = Math.round(PANEL_WIDTH * scale);
+    int px = (screenWidth - pw) / 2;
+    return new PanelRect(px, anchor.panelStartY, pw, anchor.inventoryPanelHeight);
   }
 
   public void handleMouseInput(int screenWidth, int screenHeight) {
@@ -151,11 +197,10 @@ public class CharacterRenderCoordinator {
     }
 
     float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
-    float scaledPW = PANEL_WIDTH  * scale;
-    float scaledPH = PANEL_HEIGHT * scale;
-    float px = (screenWidth  - scaledPW) / 2f;
-    float py = (screenHeight - scaledPH) / 2f;
-    updateTabBounds(px, py, scale, scaledPW);
+    PanelRect panel = panelRect(screenWidth, screenHeight, scale);
+    float px = panel.x();
+    float py = panel.y();
+    updateTabBounds(screenWidth, py);
 
     if (leftClick) {
       // Inventory tab — close character screen, open inventory
@@ -228,8 +273,9 @@ public class CharacterRenderCoordinator {
     int screenW = Game.getWindowWidth();
     int screenH = Game.getWindowHeight();
     float scale  = com.stonebreak.config.Settings.getInstance().getUiScale();
-    float px = (screenW - PANEL_WIDTH  * scale) / 2f;
-    float py = (screenH - PANEL_HEIGHT * scale) / 2f;
+    PanelRect panel = panelRect(screenW, screenH, scale);
+    float px = panel.x();
+    float py = panel.y();
 
     switch (controller.getActiveTab()) {
       case CLASSES -> classesRenderer.handleScroll(deltaY, mouse.x, mouse.y, px, py, scale);
@@ -240,14 +286,12 @@ public class CharacterRenderCoordinator {
 
   // ─────────────────────────────────────────────── Tab bar
 
-  private void updateTabBounds(float px, float py, float scale, float scaledPW) {
-    float tabH = TAB_HEIGHT * scale;
-    float tabW = TAB_WIDTH  * scale;
-    float tabG = TAB_GAP    * scale;
-    float tabStartOffset = (scaledPW - (5 * tabW + 4 * tabG)) / 2f;
-    float tabY = py - tabH;
-    float startX = px + tabStartOffset;
-    float stride = tabW + tabG;
+  private void updateTabBounds(int screenWidth, float panelTopY) {
+    int tabW = TabStripLayout.tabWidth();
+    int tabH = TabStripLayout.tabHeight();
+    int tabY = TabStripLayout.tabY(Math.round(panelTopY));
+    int startX = TabStripLayout.startX(screenWidth);
+    int stride = TabStripLayout.stride();
     tabInventory.bounds(startX,              tabY, tabW, tabH);
     tabCharacter.bounds(startX + stride,     tabY, tabW, tabH);
     tabClasses  .bounds(startX + stride * 2, tabY, tabW, tabH);
@@ -263,15 +307,13 @@ public class CharacterRenderCoordinator {
     tabFeats    .updateHover(mx, my);
   }
 
-  private void drawTabBar(Canvas canvas, float px, float py, float scale, float scaledPW) {
+  private void drawTabBar(Canvas canvas, int screenWidth, float panelTopY) {
     CharacterPanelTab active = controller.getActiveTab();
-    float tabH = TAB_HEIGHT * scale;
-    float tabW = TAB_WIDTH  * scale;
-    float tabG = TAB_GAP    * scale;
-    float tabStartOffset = (scaledPW - (5 * tabW + 4 * tabG)) / 2f;
-    float tabY = py - tabH;
-    float startX = px + tabStartOffset;
-    float stride = tabW + tabG;
+    int tabW = TabStripLayout.tabWidth();
+    int tabH = TabStripLayout.tabHeight();
+    int tabY = TabStripLayout.tabY(Math.round(panelTopY));
+    int startX = TabStripLayout.startX(screenWidth);
+    int stride = TabStripLayout.stride();
     drawTab(canvas, startX,              tabY, "Inventory",
         false, tabInventory.isHovered(), tabW, tabH);
     drawTab(canvas, startX + stride,     tabY, "Character",
@@ -311,9 +353,9 @@ public class CharacterRenderCoordinator {
     float rightColW = scaledPW - leftColW - 44f * scale;
     float contentY  = py + 20f * scale;
 
-    drawCharacterSilhouette(canvas, leftColX, contentY, leftColW, scale);
-    drawClassAndFeats(canvas, leftColX, contentY + 162f * scale, leftColW, scale);
-    drawCurrencies(canvas, leftColX, contentY + 300f * scale, leftColW, scale);
+    previewRect = drawModelPreviewBox(canvas, leftColX, contentY, leftColW, 170f * scale);
+    drawClassAndFeats(canvas, leftColX, contentY + 182f * scale, leftColW, scale);
+    drawCurrencies(canvas, leftColX, contentY + 320f * scale, leftColW, scale);
 
     float abilitiesY = drawCharLevelWidget(canvas, rightColX, contentY, rightColW, scale);
     abilitiesY += 6f * scale;
@@ -337,38 +379,110 @@ public class CharacterRenderCoordinator {
 
   // ─────────────────────────────────────────────── Left column
 
-  private void drawCharacterSilhouette(Canvas canvas, float colX, float colY, float colW, float scale) {
-    float cx   = colX + colW / 2f;
-    float topY = colY + 16f * scale;
-
-    try (Paint fill   = new Paint().setColor(SILHOUETTE_FILL).setAntiAlias(true);
-         Paint stroke = new Paint().setColor(SILHOUETTE_STROKE)
-             .setMode(PaintMode.STROKE).setStrokeWidth(1.5f).setAntiAlias(true)) {
-
-      float headR  = 22f * scale;
-      float headCX = cx;
-      float headCY = topY + headR;
-      canvas.drawCircle(headCX, headCY, headR, fill);
-      canvas.drawCircle(headCX, headCY, headR, stroke);
-
-      float shoulderW = 52f * scale;
-      float waistW    = 34f * scale;
-      float bodyH     = 80f * scale;
-      float bodyTopY  = headCY + headR + 4f * scale;
-      float bodyBotY  = bodyTopY + bodyH;
-
-      try (PathBuilder bodyBuilder = new PathBuilder()) {
-        bodyBuilder.moveTo(cx - shoulderW / 2f, bodyTopY);
-        bodyBuilder.lineTo(cx + shoulderW / 2f, bodyTopY);
-        bodyBuilder.lineTo(cx + waistW    / 2f, bodyBotY);
-        bodyBuilder.lineTo(cx - waistW    / 2f, bodyBotY);
-        bodyBuilder.closePath();
-        try (Path body = bodyBuilder.build()) {
-          canvas.drawPath(body, fill);
-          canvas.drawPath(body, stroke);
-        }
-      }
+  /**
+   * Paints the inset frame the live 3D player model renders into (same styling
+   * as the character creation screen's preview box) and returns its rect.
+   * The model itself is drawn with raw GL after the Skija frame closes.
+   */
+  private PreviewRect drawModelPreviewBox(Canvas canvas, float x, float y, float w, float h) {
+    try (Paint fill = new Paint().setColor(PREVIEW_INSET_FILL).setAntiAlias(true)) {
+      canvas.drawRRect(RRect.makeXYWH(x, y, w, h, 4f), fill);
     }
+    try (Paint stroke = new Paint().setColor(PREVIEW_INSET_BORDER).setAntiAlias(true)
+        .setMode(PaintMode.STROKE).setStrokeWidth(1.5f)) {
+      canvas.drawRRect(RRect.makeXYWH(x + 0.5f, y + 0.5f, w - 1f, h - 1f, 4f), stroke);
+    }
+    return new PreviewRect(x, y, w, h);
+  }
+
+  // ─────────────────────────────────────────────── 3D player preview
+
+  /**
+   * Renders the player SBE model into the inset rect captured during the Skija
+   * frame. Mirrors SkijaCharacterCreationRenderer's preview pass: scissor +
+   * depth to the rect, orbit camera framed on the model AABB, then restore a
+   * clean GL baseline matching SkiaContext.restoreGLDefaults().
+   */
+  private void drawPlayerPreview(int windowWidth, int windowHeight) {
+    if (previewRect == null) return;
+    EntityRenderer entityRenderer = renderer.getEntityRenderer();
+    if (entityRenderer == null) return;
+
+    float[] b = playerBounds();
+    if (b == null) return;
+
+    int vx = Math.round(previewRect.x());
+    int vy = Math.round(windowHeight - (previewRect.y() + previewRect.h())); // GL origin bottom-left
+    int vw = Math.round(previewRect.w());
+    int vh = Math.round(previewRect.h());
+    if (vw <= 0 || vh <= 0) return;
+
+    float time = Game.getInstance().getTotalTimeElapsed();
+    float az = time * 0.6f;                       // slow orbit (rad/s)
+    float el = (float) Math.toRadians(12.0);      // camera elevation
+    float fov = (float) Math.toRadians(35.0);
+    float halfFovTan = (float) Math.tan(fov / 2f);
+
+    float ctrX = (b[0] + b[3]) / 2f, ctrY = (b[1] + b[4]) / 2f, ctrZ = (b[2] + b[5]) / 2f;
+    float ex = b[3] - b[0], ey = b[4] - b[1], ez = b[5] - b[2];
+    float radius = 0.5f * (float) Math.sqrt(ex * ex + ey * ey + ez * ez);
+    if (radius <= 0f) radius = 1f;
+
+    // Zoom out a little extra when a hat is mounted so it doesn't poke out of frame.
+    float margin = EntityAttachments.get(EntityAttachments.LOCAL_PLAYER).isEmpty()
+        ? 1.15f : 1.3f;
+    float dist = radius / halfFovTan * margin;
+    float horiz = dist * (float) Math.cos(el);
+    float eyeX = ctrX + horiz * (float) Math.sin(az);
+    float eyeZ = ctrZ + horiz * (float) Math.cos(az);
+    float eyeY = ctrY + dist * (float) Math.sin(el);
+
+    Matrix4f view = new Matrix4f().setLookAt(eyeX, eyeY, eyeZ, ctrX, ctrY, ctrZ, 0f, 1f, 0f);
+    Matrix4f proj = new Matrix4f().setPerspective(fov, (float) vw / vh, 0.05f, dist + radius * 4f);
+
+    GL11.glEnable(GL11.GL_SCISSOR_TEST);
+    GL11.glEnable(GL11.GL_DEPTH_TEST);
+    GL11.glDepthMask(true);
+    GL11.glViewport(vx, vy, vw, vh);
+    GL11.glScissor(vx, vy, vw, vh);
+    GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
+
+    // LOCAL_PLAYER as the attachment key so the equipped hat (Looks tab)
+    // shows on the preview model exactly as it does in-game.
+    entityRenderer.renderPlayerPreview(null, time, new Vector3f(0f, 0f, 0f), 0f,
+        new Vector3f(1f, 1f, 1f), view, proj, EntityAttachments.LOCAL_PLAYER);
+
+    // Restore a clean GL baseline matching SkiaContext.restoreGLDefaults().
+    GL11.glScissor(0, 0, windowWidth, windowHeight);
+    GL11.glDisable(GL11.GL_SCISSOR_TEST);
+    GL11.glDisable(GL11.GL_DEPTH_TEST);
+    GL11.glViewport(0, 0, windowWidth, windowHeight);
+    GL20.glUseProgram(0);
+    GL30.glBindVertexArray(0);
+    GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+    GL11.glEnable(GL11.GL_BLEND);
+    GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+  }
+
+  /** Player model AABB {minX,minY,minZ,maxX,maxY,maxZ}, cached; null if unavailable. */
+  private float[] playerBounds() {
+    if (playerBounds != null) return playerBounds;
+    SbeEntityAsset asset = SbeEntityRegistry.get(EntityType.REMOTE_PLAYER.getSbeObjectId());
+    if (asset == null) return null;
+    SbeModelGeometry geo = asset.geometryFor(SbeEntityAsset.DEFAULT_VARIANT);
+    if (geo == null) return null;
+    float[] v = geo.vertices();
+    if (v == null || v.length < 3) return null;
+
+    float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, minZ = Float.MAX_VALUE;
+    float maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE, maxZ = -Float.MAX_VALUE;
+    for (int i = 0; i + 2 < v.length; i += 3) {
+      minX = Math.min(minX, v[i]);     maxX = Math.max(maxX, v[i]);
+      minY = Math.min(minY, v[i + 1]); maxY = Math.max(maxY, v[i + 1]);
+      minZ = Math.min(minZ, v[i + 2]); maxZ = Math.max(maxZ, v[i + 2]);
+    }
+    playerBounds = new float[]{minX, minY, minZ, maxX, maxY, maxZ};
+    return playerBounds;
   }
 
   private void drawClassAndFeats(Canvas canvas, float colX, float colY, float colW, float scale) {
