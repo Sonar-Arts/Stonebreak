@@ -22,8 +22,14 @@ public class MobSounds {
     private final float stepVolume;
     private final boolean requireGround;
 
-    private float walkingSoundTimer;
-    private boolean wasMovingLastFrame;
+    /**
+     * Seconds since the last played step. Accumulates continuously (moving or
+     * not) and gates every play at {@link #stepInterval}, so on/off flicker in
+     * the moving state (hop-prone mobs briefly leaving the ground each waddle)
+     * can never fire steps faster than the mob's cadence. Primed to the
+     * interval so a mob that starts moving after a real pause steps at once.
+     */
+    private float timeSinceLastStep;
 
     /**
      * @param stepInterval  seconds between footsteps while moving
@@ -37,6 +43,7 @@ public class MobSounds {
         this.stepInterval = stepInterval;
         this.stepVolume = stepVolume;
         this.requireGround = requireGround;
+        this.timeSinceLastStep = stepInterval;
     }
 
     /**
@@ -44,27 +51,15 @@ public class MobSounds {
      * mob's update.
      */
     public void updateSounds(Vector3f position, Vector3f velocity, boolean onGround) {
+        timeSinceLastStep += Game.getDeltaTime();
+
         float horizontalSpeed = (float) Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
         boolean isMoving = horizontalSpeed > 0.5f && (!requireGround || onGround);
 
-        if (isMoving) {
-            // Play immediately on the first step, then at the mob's cadence.
-            if (!wasMovingLastFrame) {
-                playWalkingSound(position);
-                walkingSoundTimer = 0.0f;
-            } else {
-                walkingSoundTimer += Game.getDeltaTime();
-                if (walkingSoundTimer >= stepInterval) {
-                    playWalkingSound(position);
-                    walkingSoundTimer = 0.0f;
-                }
-            }
-        } else if (horizontalSpeed <= 0.1f) {
-            // Only reset when actually stopped, not on brief off-ground moments.
-            walkingSoundTimer = 0.0f;
+        if (isMoving && timeSinceLastStep >= stepInterval) {
+            playWalkingSound(position);
+            timeSinceLastStep = 0.0f;
         }
-
-        wasMovingLastFrame = isMoving;
     }
 
     private void playWalkingSound(Vector3f position) {
@@ -82,7 +77,6 @@ public class MobSounds {
 
     /** Resets the footstep state. Call when the mob is spawned or respawned. */
     public void reset() {
-        walkingSoundTimer = 0.0f;
-        wasMovingLastFrame = false;
+        timeSinceLastStep = stepInterval;
     }
 }
