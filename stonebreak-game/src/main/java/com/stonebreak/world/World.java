@@ -604,7 +604,16 @@ public class World {
         if (chunk == null) return;
         int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
+        String previous = chunk.getBlockState(localX, y, localZ);
         chunk.setBlockState(localX, y, localZ, state);
+        // The state picks which mesh variant a chunk-baked block draws (a lit
+        // furnace, a stair's facing), and marking the chunk dirty on its own
+        // never schedules anything. Placement writes the state right after the
+        // block, so the rebuild has to be queued again or it can race the build
+        // already in flight and bake the old variant.
+        if (com.stonebreak.blocks.BlockRenderState.affectsMesh(previous, state)) {
+            scheduleChunkRemeshAt(x, y, z);
+        }
     }
 
     // ===== Water state (chunk-owned water layer) =====

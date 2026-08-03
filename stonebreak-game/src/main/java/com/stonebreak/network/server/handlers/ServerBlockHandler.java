@@ -140,6 +140,16 @@ public final class ServerBlockHandler {
             pendingStateEchoes.add(new com.stonebreak.network.packet.world.BlockStateS2C(
                     c.x(), c.y(), c.z(), placed.toStateString()));
         }
+        // Stair placement: the facing is authoritative too — it decides the
+        // baked orientation every client meshes and the step profile every
+        // body collides with. Echoed on the same queued path as the door.
+        if (incoming != null && incoming.isStairs()) {
+            String placed = com.stonebreak.blocks.stairs.StairState
+                    .placedFromYaw(sp.yaw()).toStateString();
+            world.setBlockStateAt(c.x(), c.y(), c.z(), placed);
+            pendingStateEchoes.add(new com.stonebreak.network.packet.world.BlockStateS2C(
+                    c.x(), c.y(), c.z(), placed));
+        }
         // Snow layer bookkeeping derived from the block change (the SnowLayerC2S intent only
         // covers layer increments on an EXISTING snow block): a placed SNOW block starts at
         // 1 layer; a broken one drops its tracking. The manager's mutation listener then

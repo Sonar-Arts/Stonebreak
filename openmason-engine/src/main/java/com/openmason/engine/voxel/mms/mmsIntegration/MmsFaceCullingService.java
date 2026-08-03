@@ -6,6 +6,8 @@ import com.openmason.engine.voxel.VoxelWorldConfig;
 import com.openmason.engine.voxel.cco.core.CcoChunkData;
 import com.openmason.engine.voxel.cco.coordinates.CcoBounds;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOCullingPolicy;
+import com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions;
+import com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceOcclusionPolicy;
 
 import java.util.function.Predicate;
 
@@ -34,10 +36,14 @@ public class MmsFaceCullingService implements SBOCullingPolicy {
         @Override public boolean isAir() { return false; }
     };
 
+    /** Every block covers every side unless a shape-aware policy says otherwise. */
+    private static final SBOFaceOcclusionPolicy FULL_CUBE_OCCLUSION = (block, face) -> true;
+
     private IVoxelWorld world;
     private Predicate<IBlockType> translucencyPolicy = block -> false;
     private Predicate<IBlockType> crossBlockPolicy = block -> false;
     private Predicate<IBlockType> partialHeightPolicy = block -> false;
+    private SBOFaceOcclusionPolicy occlusionPolicy = FULL_CUBE_OCCLUSION;
 
     public MmsFaceCullingService() {
     }
@@ -86,6 +92,19 @@ public class MmsFaceCullingService implements SBOCullingPolicy {
     }
 
     /**
+     * Configure the shape-aware occlusion lookup: whether a block covers the
+     * whole of one of its six boundary planes. Non-cube shapes (stairs) leave
+     * some sides only partly covered, so a neighbour's face behind them stays
+     * visible and must not be culled. Defaults to "every block is a full cube",
+     * which reproduces the classic behaviour exactly.
+     *
+     * @param policy per (block, MMS face) occlusion test
+     */
+    public void setFaceOcclusionPolicy(SBOFaceOcclusionPolicy policy) {
+        this.occlusionPolicy = policy != null ? policy : FULL_CUBE_OCCLUSION;
+    }
+
+    /**
      * Set the world reference for cross-chunk neighbor lookups.
      *
      * @param world the voxel world
@@ -121,6 +140,21 @@ public class MmsFaceCullingService implements SBOCullingPolicy {
         // bounded to the shared edge.
         if (face >= 2 && partialHeightPolicy.test(blockType)
                 && adjacentBlock != null && partialHeightPolicy.test(adjacentBlock)) {
+            return true;
+        }
+
+        // A neighbour whose shape doesn't fill the shared plane (a stair's
+        // notched side) cannot hide this face. Deliberately one-way: the
+        // shaped block's OWN faces keep culling normally, so two adjacent
+        // stairs don't both emit coplanar geometry into the shared plane and
+        // z-fight. What that costs is a sliver of see-through where two
+        // differently-oriented shapes meet; what it buys is no flicker on the
+        // common case of a straight run of stairs.
+        // Neighbour first: it is a full cube almost always, which short-circuits
+        // the whole test to one lookup on the mesher's hottest path.
+        if (adjacentBlock != null
+                && !occlusionPolicy.occludesFace(adjacentBlock, SBOFaceConventions.opposite(face))
+                && occlusionPolicy.occludesFace(blockType, face)) {
             return true;
         }
 

@@ -46,7 +46,10 @@ public class CollisionHandler {
                 if (velocity.x < 0) {
                     float playerLeftEdge = position.x - halfWidth;
                     int blockToCheckX = (int) Math.floor(playerLeftEdge);
-                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi);
+                    // Sample at the leading edge: on a shaped block that is the
+                    // deepest the body reaches, so it meets one tread at a time.
+                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi,
+                            playerLeftEdge, checkMinZ, playerLeftEdge, checkMaxZ);
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         float stepUpNeeded = blockTop - position.y;
@@ -70,7 +73,8 @@ public class CollisionHandler {
                 } else if (velocity.x > 0) {
                     float playerRightEdge = position.x + halfWidth;
                     int blockToCheckX = (int) Math.floor(playerRightEdge);
-                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi);
+                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi,
+                            playerRightEdge, checkMinZ, playerRightEdge, checkMaxZ);
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         float stepUpNeeded = blockTop - position.y;
@@ -141,7 +145,10 @@ public class CollisionHandler {
             for (int zi = (int) Math.floor(playerMinZ); zi < (int) Math.ceil(playerMaxZ); zi++) {
                 if (velocity.y < 0) {
                     int blockToCheckY = (int) Math.floor(position.y);
-                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi);
+                    // Whole footprint: a body rests on the tallest step its box
+                    // overlaps, exactly as it would on a stack of solid boxes.
+                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi,
+                            playerMinX, playerMinZ, playerMaxX, playerMaxZ);
                     if (blockHeight > 0) {
                         float blockTop = blockToCheckY + blockHeight;
                         if (position.y < blockTop) {
@@ -154,7 +161,8 @@ public class CollisionHandler {
                     }
                 } else if (velocity.y > 0) {
                     int blockToCheckY = (int) Math.floor(position.y + PLAYER_HEIGHT);
-                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi);
+                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi,
+                            playerMinX, playerMinZ, playerMaxX, playerMaxZ);
                     if (blockHeight > 0) {
                         float potentialNewY = (float) blockToCheckY - PLAYER_HEIGHT;
                         if (!collisionOccurred || potentialNewY < correctedPositionY) {
@@ -223,7 +231,9 @@ public class CollisionHandler {
                 if (velocity.z < 0) {
                     float playerFrontEdge = position.z - halfWidth;
                     int blockToCheckZ = (int) Math.floor(playerFrontEdge);
-                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ);
+                    // Leading edge — see resolveX.
+                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ,
+                            checkMinX, playerFrontEdge, checkMaxX, playerFrontEdge);
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         float stepUpNeeded = blockTop - position.y;
@@ -247,7 +257,8 @@ public class CollisionHandler {
                 } else if (velocity.z > 0) {
                     float playerBackEdge = position.z + halfWidth;
                     int blockToCheckZ = (int) Math.floor(playerBackEdge);
-                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ);
+                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ,
+                            checkMinX, playerBackEdge, checkMaxX, playerBackEdge);
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         float stepUpNeeded = blockTop - position.y;
@@ -317,8 +328,12 @@ public class CollisionHandler {
             for (int y = minY; y < maxY; y++) {
                 for (int z = minZ; z < maxZ; z++) {
                     // Route through the position-aware height so state-aware
-                    // exceptions (doors, snow layers) agree with the sweep.
-                    if (getBlockCollisionHeight(x, y, z) > 0.0f) {
+                    // exceptions (doors, snow layers, stair steps) agree with
+                    // the sweep.
+                    float height = getBlockCollisionHeight(x, y, z,
+                            position.x - halfWidth, position.z - halfWidth,
+                            position.x + halfWidth, position.z + halfWidth);
+                    if (height > 0.0f && position.y < y + height) {
                         return true;
                     }
                 }
@@ -334,7 +349,25 @@ public class CollisionHandler {
         return false;
     }
 
+    /**
+     * Collision height of a cell, taking the tallest part of any shaped block
+     * in it. Conservative by design — callers that know which part of the cell
+     * they touch should use the footprint overload instead.
+     */
     public float getBlockCollisionHeight(int x, int y, int z) {
+        return getBlockCollisionHeight(x, y, z,
+                x, z, x + 1.0f, z + 1.0f);
+    }
+
+    /**
+     * Collision height of a cell under a world-space XZ footprint. Shaped
+     * blocks (stairs) answer with the tallest step the footprint overlaps, so
+     * a body rests on the step it is actually standing on and, when the
+     * footprint is the leading edge of a horizontal sweep, the step-up rules
+     * above lift it one tread at a time instead of walling it off.
+     */
+    public float getBlockCollisionHeight(int x, int y, int z,
+                                         float minX, float minZ, float maxX, float maxZ) {
         BlockType block = world.getBlockAt(x, y, z);
         if (block == BlockType.SNOW) {
             return world.getSnowHeight(x, y, z);
@@ -343,6 +376,10 @@ public class CollisionHandler {
             // Animated blocks (doors) never collide as cells — the panel AABB
             // pass below resolves against the actual posed model box.
             return 0.0f;
+        }
+        if (block.isStairs()) {
+            return com.stonebreak.blocks.stairs.StairShape
+                    .stepHeight(world, x, y, z, block, minX, minZ, maxX, maxZ);
         }
         return block.getCollisionHeight();
     }

@@ -50,6 +50,41 @@ public final class SBOFaceConventions {
     /** Total number of faces on a block. */
     public static final int FACE_COUNT = 6;
 
+    /** MMS face indexed by [axis][sign], axis 0=X 1=Y 2=Z, sign 0=negative 1=positive. */
+    private static final int[][] AXIS_TO_MMS = {
+            {MMS_WEST, MMS_EAST},    // X
+            {MMS_BOTTOM, MMS_TOP},   // Y
+            {MMS_NORTH, MMS_SOUTH}   // Z
+    };
+
+    /** The opposite face of every MMS face, indexed by MMS face id. */
+    private static final int[] MMS_OPPOSITE = {
+            MMS_BOTTOM, MMS_TOP, MMS_SOUTH, MMS_NORTH, MMS_WEST, MMS_EAST
+    };
+
+    /** The axis (0=X, 1=Y, 2=Z) each MMS face is perpendicular to. */
+    private static final int[] MMS_AXIS = {1, 1, 2, 2, 0, 0};
+
+    /**
+     * MMS face for an axis-aligned direction.
+     *
+     * @param axis     0=X, 1=Y, 2=Z
+     * @param positive true for the +axis direction
+     */
+    public static int mmsFaceForAxis(int axis, boolean positive) {
+        return AXIS_TO_MMS[Math.clamp(axis, 0, 2)][positive ? 1 : 0];
+    }
+
+    /** The face on the far side of the block from {@code mmsFaceId}. */
+    public static int opposite(int mmsFaceId) {
+        return MMS_OPPOSITE[Math.clamp(mmsFaceId, 0, 5)];
+    }
+
+    /** The axis (0=X, 1=Y, 2=Z) {@code mmsFaceId} is perpendicular to. */
+    public static int axisOf(int mmsFaceId) {
+        return MMS_AXIS[Math.clamp(mmsFaceId, 0, 5)];
+    }
+
     // ── Atlas Face Names ──
 
     public static final String ATLAS_TOP = "top";

@@ -729,15 +729,11 @@ public final class MmsAPI {
 
         @Override
         public String getBlockState(int x, int y, int z) {
-            String raw = chunk.getBlockState(x, y, z);
-            if (raw == null) return null;
-            int colon = raw.indexOf(':');
-            if (colon < 0) return raw;
-            int stateKey = raw.indexOf("state=", colon + 1);
-            if (stateKey < 0) return null;
-            int valueStart = stateKey + "state=".length();
-            int semi = raw.indexOf(';', valueStart);
-            return semi < 0 ? raw.substring(valueStart) : raw.substring(valueStart, semi);
+            // Projects the stored state down to the SBO stamp variant it names.
+            // Must stay the same rule the renderer registers variants under —
+            // a mismatch silently draws the block's default mesh.
+            return com.stonebreak.blocks.BlockRenderState.meshVariantKey(
+                    chunk.getBlockState(x, y, z));
         }
 
         @Override

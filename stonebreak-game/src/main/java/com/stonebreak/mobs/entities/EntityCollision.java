@@ -72,9 +72,24 @@ public class EntityCollision {
      * For snow blocks, this can be a partial height based on snow layers.
      */
     private float getBlockCollisionHeight(int x, int y, int z) {
+        return getBlockCollisionHeight(x, y, z, x, z, x + 1.0f, z + 1.0f);
+    }
+
+    /**
+     * Collision height of a cell under a world-space XZ footprint. Shaped
+     * blocks (stairs) report the tallest step the footprint overlaps, so mobs
+     * stand on the tread beneath them and climb a staircase with the same
+     * step-up rule they use for any low ledge.
+     */
+    private float getBlockCollisionHeight(int x, int y, int z,
+                                          float minX, float minZ, float maxX, float maxZ) {
         BlockType block = world.getBlockAt(x, y, z);
         if (block == BlockType.SNOW) {
             return world.getSnowHeight(x, y, z);
+        }
+        if (block.isStairs()) {
+            return com.stonebreak.blocks.stairs.StairShape
+                    .stepHeight(world, x, y, z, block, minX, minZ, maxX, maxZ);
         }
         return block.getCollisionHeight();
     }
@@ -109,7 +124,8 @@ public class EntityCollision {
                     float entityLeftEdge = position.x - halfWidth;
                     int blockToCheckX = (int)Math.floor(entityLeftEdge);
                     
-                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi);
+                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi,
+                        entityLeftEdge, checkMinZ, entityLeftEdge, checkMaxZ);
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         
@@ -134,7 +150,8 @@ public class EntityCollision {
                     float entityRightEdge = position.x + halfWidth;
                     int blockToCheckX = (int)Math.floor(entityRightEdge);
                     
-                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi);
+                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi,
+                        entityRightEdge, checkMinZ, entityRightEdge, checkMaxZ);
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         
@@ -194,7 +211,8 @@ public class EntityCollision {
             for (int zi = (int)Math.floor(entityMinZ); zi < (int)Math.ceil(entityMaxZ); zi++) {
                 if (velocity.y < 0) { // Moving down
                     int blockToCheckY = (int)Math.floor(checkBottomY);
-                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi);
+                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi,
+                        entityMinX, entityMinZ, entityMaxX, entityMaxZ);
                     if (blockHeight > 0) {
                         float blockTop = blockToCheckY + blockHeight;
                         if (checkBottomY < blockTop) {
@@ -211,7 +229,8 @@ public class EntityCollision {
                     }
                 } else if (velocity.y > 0) { // Moving up
                     int blockToCheckY = (int)Math.floor(position.y + entity.getHeight());
-                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi);
+                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi,
+                        entityMinX, entityMinZ, entityMaxX, entityMaxZ);
                     if (blockHeight > 0) {
                         float potentialNewY = (float)blockToCheckY - entity.getHeight();
                         if (!collisionOccurred || potentialNewY < correctedPositionY) {
@@ -264,7 +283,8 @@ public class EntityCollision {
                     float entityFrontEdge = position.z - halfLength;
                     int blockToCheckZ = (int)Math.floor(entityFrontEdge);
                     
-                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ);
+                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ,
+                        checkMinX, entityFrontEdge, checkMaxX, entityFrontEdge);
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         
@@ -289,7 +309,8 @@ public class EntityCollision {
                     float entityBackEdge = position.z + halfLength;
                     int blockToCheckZ = (int)Math.floor(entityBackEdge);
                     
-                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ);
+                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ,
+                        checkMinX, entityBackEdge, checkMaxX, entityBackEdge);
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         

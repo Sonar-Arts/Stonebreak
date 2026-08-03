@@ -144,13 +144,32 @@ public class RaycastEngine {
                     return d; // a door blocks line-of-sight exactly where its panel is
                 }
             }
-            BlockType bt = world.getBlockAt((int) Math.floor(p.x), (int) Math.floor(p.y), (int) Math.floor(p.z));
+            int bx = (int) Math.floor(p.x);
+            int by = (int) Math.floor(p.y);
+            int bz = (int) Math.floor(p.z);
+            BlockType bt = world.getBlockAt(bx, by, bz);
             if (bt != BlockType.AIR && bt != BlockType.WATER
-                    && !com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(bt)) {
+                    && !com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(bt)
+                    && fillsPoint(bt, p, bx, by, bz)) {
                 return d;
             }
         }
         return Float.MAX_VALUE;
+    }
+
+    /**
+     * Whether the block in a cell actually occupies the ray's sample point.
+     * Shaped blocks (stairs) leave part of their cell open, so a ray crossing
+     * the open part must carry on to whatever stands behind it — otherwise you
+     * would target, break and lose line of sight to a stair's empty corner.
+     */
+    private boolean fillsPoint(BlockType type, Vector3f p, int bx, int by, int bz) {
+        if (!type.isStairs()) {
+            return true;
+        }
+        float step = com.stonebreak.blocks.stairs.StairShape
+                .stepHeight(world, bx, by, bz, type, p.x, p.z, p.x, p.z);
+        return p.y - by <= step;
     }
 
     private float rayAABBIntersect(Vector3f origin, Vector3f dir, Entity.BoundingBox box) {
@@ -215,7 +234,8 @@ public class RaycastEngine {
             int bz = (int) Math.floor(p.z);
             BlockType bt = world.getBlockAt(bx, by, bz);
             if (bt != BlockType.AIR && bt != BlockType.WATER
-                    && !com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(bt)) {
+                    && !com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(bt)
+                    && fillsPoint(bt, p, bx, by, bz)) {
                 // Animated cells are never colliders themselves — the ray
                 // passes through an open doorway and hits what's behind.
                 return new Vector3i(bx, by, bz);
