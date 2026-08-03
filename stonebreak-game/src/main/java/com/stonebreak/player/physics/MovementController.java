@@ -19,6 +19,7 @@ import static com.stonebreak.player.PlayerConstants.SPRINT_MULTIPLIER;
 import static com.stonebreak.player.PlayerConstants.SWIM_SPEED;
 import static com.stonebreak.player.PlayerConstants.WATER_GRAVITY;
 import static com.stonebreak.player.PlayerConstants.WATER_HORIZONTAL_DRAG;
+import static com.stonebreak.player.PlayerConstants.WATER_VERTICAL_DRAG;
 
 /**
  * Integrates player velocity into position with collision resolution, applies gravity
@@ -114,8 +115,7 @@ public class MovementController {
         velocity.z *= frictionFactor;
 
         if (state.isPhysicallyInWater()) {
-            float waterDamping = 1.6f;
-            float waterFactor = (float) Math.exp(-waterDamping * dt);
+            float waterFactor = (float) Math.exp(-WATER_VERTICAL_DRAG * dt);
             velocity.y *= waterFactor;
         } else if (velocity.y > 0) {
             float airDamping = 0.1f;

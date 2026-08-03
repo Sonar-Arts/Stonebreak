@@ -2,6 +2,7 @@ package com.stonebreak.player.physics;
 
 import static com.stonebreak.player.PlayerConstants.GRAVITY;
 import static com.stonebreak.player.PlayerConstants.WATER_HORIZONTAL_DRAG;
+import static com.stonebreak.player.PlayerConstants.WATER_VERTICAL_DRAG;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -183,12 +184,12 @@ class MovementControllerPhysicsTest {
 
     @Test
     void waterDampsVerticalVelocity() {
-        // Water: vertical damping = 2.0 (applied regardless of direction).
+        // Water: vertical damping is applied regardless of direction.
         state.setPhysicallyInWater(true);
         state.getVelocity().y = 10f;
         movement.applyDamping();
 
-        float factor = (float) Math.exp(-2f * DT);
+        float factor = (float) Math.exp(-WATER_VERTICAL_DRAG * DT);
         assertEquals(10f * factor, state.getVelocity().y, 1e-4f);
     }
 

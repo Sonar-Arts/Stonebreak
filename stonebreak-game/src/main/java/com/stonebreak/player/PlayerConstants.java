@@ -20,6 +20,7 @@ public final class PlayerConstants {
     public static final float CURRENT_RESISTANCE_THRESHOLD = 3.0f; // flow magnitude at which swim control bottoms out
     public static final float MIN_SWIM_CONTROL_AUTHORITY = 0.35f;  // floor on swim-speed control against strong currents
     public static final float WATER_HORIZONTAL_DRAG = 6.5f;         // higher than ground(5.0)/air(2.5) friction — water resistance without feeling sluggish
+    public static final float WATER_VERTICAL_DRAG = 1.6f;           // vertical damping in water, applied regardless of direction
     public static final float WATER_SWIM_DOWN_ACCEL = 20.0f;        // shift-held downward swim acceleration
     public static final float WATER_IDLE_BUOYANCY_DRIFT_SPEED = 0.8f; // passive upward drift cap when no vertical input held
     public static final float WATER_IDLE_BUOYANCY_ACCEL = 3.0f;     // how fast idle drift ramps up to the cap
