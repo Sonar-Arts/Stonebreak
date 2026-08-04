@@ -20,5 +20,17 @@ public enum MobBehaviorState {
     /** Head down, eating — stationary. */
     GRAZING,
     /** Transient one-shot gesture (wing flap) played while idle. */
-    WING_FLAP
+    WING_FLAP,
+    /** Airborne. */
+    FLYING,
+    /** In water, under its own power — floating, paddling. */
+    SWIMMING;
+
+    /**
+     * Whether the state's clip plays through once rather than looping. One-shot clips are sampled
+     * from the state timer so they finish and hold, instead of looping a gesture forever.
+     */
+    public boolean isOneShot() {
+        return this == WING_FLAP;
+    }
 }

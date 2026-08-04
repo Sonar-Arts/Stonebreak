@@ -368,20 +368,12 @@ public class CollisionHandler {
      */
     public float getBlockCollisionHeight(int x, int y, int z,
                                          float minX, float minZ, float maxX, float maxZ) {
-        BlockType block = world.getBlockAt(x, y, z);
-        if (block == BlockType.SNOW) {
-            return world.getSnowHeight(x, y, z);
-        }
-        if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(block)) {
+        if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(world.getBlockAt(x, y, z))) {
             // Animated blocks (doors) never collide as cells — the panel AABB
             // pass below resolves against the actual posed model box.
             return 0.0f;
         }
-        if (block.isStairs()) {
-            return com.stonebreak.blocks.stairs.StairShape
-                    .stepHeight(world, x, y, z, block, minX, minZ, maxX, maxZ);
-        }
-        return block.getCollisionHeight();
+        return com.stonebreak.blocks.BlockShape.collisionHeight(world, x, y, z, minX, minZ, maxX, maxZ);
     }
 
     // ─── Animated-block collision (model-tied AABBs) ─────────────────────────

@@ -7,23 +7,22 @@ import com.stonebreak.rendering.Renderer;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.EntityType;
-import com.stonebreak.mobs.entities.ai.PassiveMobAI;
+import com.stonebreak.mobs.entities.ai.MobAI;
+import com.stonebreak.mobs.entities.ai.behavior.FleeBehavior;
+import com.stonebreak.mobs.entities.ai.behavior.StandStillBehavior;
+import com.stonebreak.mobs.entities.ai.behavior.WanderBehavior;
+import com.stonebreak.mobs.entities.ai.nav.Steering;
 
 /**
- * Sheep mob implementation. Behaviour comes entirely from the shared
- * {@link PassiveMobAI} framework with sheep tuning.
+ * Sheep mob implementation. Behaviour comes entirely from shared
+ * {@link com.stonebreak.mobs.entities.ai.behavior.Behavior}s with sheep tuning.
  */
 public class Sheep extends LivingEntity {
 
-    /** Sheep personality: slightly restless (more wandering, quicker turns); flees when hit. */
-    private static final PassiveMobAI.Config AI_CONFIG = new PassiveMobAI.Config(
-            2.5f, 7.0f,          // state duration min/max
-            3.0f, 8.0f,          // wander distance min/max
-            0.85f, 200.0f,       // move speed multiplier, rotation speed (deg/s)
-            0.35f, 0.45f, 0.2f,  // idle / wander / graze weights
-            0.0f, 0.0f,          // no wing-flap gesture
-            2.2f, 0.8f,          // hop boost: drive forward mid-air so the long body clears ledge edges
-            PassiveMobAI.DamageResponse.FLEE);
+    /** Quick turns, and the mid-air drive a long body needs to clear ledge edges. */
+    private static final float ROTATION_SPEED = 200.0f;
+    private static final float HOP_BOOST_SPEED = 2.2f;
+    private static final float HOP_DURATION = 0.8f;
 
     public Sheep(World world, Vector3f position) {
         this(world, position, "default");
@@ -32,7 +31,12 @@ public class Sheep extends LivingEntity {
     public Sheep(World world, Vector3f position, String textureVariant) {
         super(world, position, EntityType.SHEEP);
         this.textureVariant = textureVariant != null ? textureVariant : "default";
-        this.mobAI = new PassiveMobAI(this, AI_CONFIG);
+        // Sheep personality: slightly restless — more wandering than a cow, and it bolts when hit.
+        this.mobAI = new MobAI(this, new Steering(this, ROTATION_SPEED, HOP_BOOST_SPEED, HOP_DURATION),
+                new FleeBehavior(10.0f, 4.0f, 1.0f),
+                StandStillBehavior.idle(0.35f, 2.5f, 7.0f),
+                new WanderBehavior(0.45f, 3.0f, 8.0f, 0.85f),
+                StandStillBehavior.graze(0.2f, 2.5f, 7.0f));
         this.interactionRange = 2.5f;
         this.turnSpeed = 200.0f;
     }

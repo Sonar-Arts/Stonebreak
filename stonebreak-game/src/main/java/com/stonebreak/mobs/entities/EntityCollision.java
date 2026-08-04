@@ -72,7 +72,7 @@ public class EntityCollision {
      * For snow blocks, this can be a partial height based on snow layers.
      */
     private float getBlockCollisionHeight(int x, int y, int z) {
-        return getBlockCollisionHeight(x, y, z, x, z, x + 1.0f, z + 1.0f);
+        return com.stonebreak.blocks.BlockShape.collisionHeight(world, x, y, z);
     }
 
     /**
@@ -83,15 +83,7 @@ public class EntityCollision {
      */
     private float getBlockCollisionHeight(int x, int y, int z,
                                           float minX, float minZ, float maxX, float maxZ) {
-        BlockType block = world.getBlockAt(x, y, z);
-        if (block == BlockType.SNOW) {
-            return world.getSnowHeight(x, y, z);
-        }
-        if (block.isStairs()) {
-            return com.stonebreak.blocks.stairs.StairShape
-                    .stepHeight(world, x, y, z, block, minX, minZ, maxX, maxZ);
-        }
-        return block.getCollisionHeight();
+        return com.stonebreak.blocks.BlockShape.collisionHeight(world, x, y, z, minX, minZ, maxX, maxZ);
     }
     
     /**

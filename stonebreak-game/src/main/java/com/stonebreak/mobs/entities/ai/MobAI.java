@@ -1,90 +1,123 @@
 package com.stonebreak.mobs.entities.ai;
 
 import com.stonebreak.mobs.entities.LivingEntity;
-import org.joml.Vector3f;
+import com.stonebreak.mobs.entities.ai.behavior.AiContext;
+import com.stonebreak.mobs.entities.ai.behavior.Behavior;
+import com.stonebreak.mobs.entities.ai.behavior.BehaviorController;
+import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
+import com.stonebreak.mobs.entities.ai.nav.PathAgent;
+import com.stonebreak.mobs.entities.ai.nav.Steering;
 
 import java.util.List;
+import java.util.Random;
 
 /**
- * Base class for all mob AI controllers — the single source of truth for the
- * state-machine plumbing every mob shares: the current {@link MobBehaviorState},
- * state/state-change timers, and the hooks the rest of the engine talks to
- * (renderer clip timing, save/load, network shadows, debug overlay).
+ * A mob's brain: a list of {@link Behavior}s, a {@link BehaviorController} choosing between them,
+ * and a {@link PathAgent} carrying out whatever they decide.
  *
- * <p>Concrete behaviour lives in subclasses ({@link PassiveMobAI} for wandering
- * passive mobs; future hostile AIs extend this too). The owning
- * {@link LivingEntity} drives {@link #update} from its own update loop and
- * exposes the AI generically via {@code LivingEntity.getAI()}.
+ * <p>It is also the stable face the rest of the game talks to. The renderer asks for an animation
+ * state and a clip time, saves and network replication read and write that state by name, and
+ * client-side shadow mobs have theirs pushed in from the server — none of which care that the
+ * behaviour underneath became a set of small classes.
+ *
+ * <p>Concrete AI is composition now, not inheritance: a mob is assembled from behaviours instead of
+ * subclassing this. That is why the class is final — a mob needing new behaviour writes a
+ * {@link Behavior}, and every mob that shares it gets it too.
  */
-public abstract class MobAI {
+public final class MobAI {
 
-    protected final LivingEntity entity;
+    private final LivingEntity entity;
+    private final AiContext context;
+    private final BehaviorController controller;
+    private final PathAgent nav;
 
-    protected MobBehaviorState currentState = MobBehaviorState.IDLE;
-    protected float stateTimer;
-    protected float stateChangeTimer;
+    private MobBehaviorState currentState = MobBehaviorState.IDLE;
+    private float stateTimer;
 
-    protected MobAI(LivingEntity entity) {
-        this.entity = entity;
+    /** The usual case: reacts to the local player, seeded from the shared random. */
+    public MobAI(LivingEntity entity, Steering steering, Behavior... behaviors) {
+        this(entity, new PathAgent(entity, steering), PlayerLocator.LOCAL, new Random(),
+                List.of(behaviors));
     }
 
-    /** Runs one AI tick. Called by the owning entity while alive and not stunned. */
-    public abstract void update(float deltaTime);
+    /** Full form, for tests and for mobs that need a specific navigation profile. */
+    public MobAI(LivingEntity entity, PathAgent nav, PlayerLocator players, Random random,
+                 List<Behavior> behaviors) {
+        this.entity = entity;
+        this.nav = nav;
+        this.context = new AiContext(entity, nav, random, players);
+        this.controller = new BehaviorController(behaviors);
+    }
 
     /**
-     * Switches behaviour state, resetting the state timer. Also applied on
-     * clients when a replicated state arrives for a network-shadow mob.
+     * Runs one AI tick: behaviours decide, then navigation carries it out. The order matters —
+     * a behaviour that sets a destination this tick starts moving toward it in the same tick.
+     */
+    public void update(float deltaTime) {
+        if (!entity.isAlive()) {
+            return;
+        }
+        stateTimer += deltaTime;
+        controller.tick(context, deltaTime);
+        nav.tick(deltaTime);
+        setState(controller.animationState());
+    }
+
+    /**
+     * Switches the animation state, resetting the state clock. Called by the tick from whatever
+     * behaviour is running, and directly on clients when a replicated state arrives for a network
+     * shadow mob.
      */
     public void setState(MobBehaviorState newState) {
         if (newState != currentState) {
             currentState = newState;
             stateTimer = 0.0f;
-            onStateEntered(newState);
         }
     }
 
-    /** Hook invoked when {@link #setState} actually changes state. */
-    protected void onStateEntered(MobBehaviorState newState) {
+    public MobBehaviorState getCurrentState() {
+        return currentState;
     }
 
-    public MobBehaviorState getCurrentState() { return currentState; }
-
-    public float getStateTimer() { return stateTimer; }
+    public float getStateTimer() {
+        return stateTimer;
+    }
 
     /**
-     * Advances ONLY the state-timer clock, without running any AI decisions.
-     * Used on a client network shadow (whose AI is otherwise frozen) so
-     * one-shot clips sampled from {@link #getStateTimer()} play through after
-     * a replicated state change resets the timer via {@link #setState}.
+     * Advances ONLY the state clock, running no behaviour. Client shadow mobs are otherwise frozen,
+     * but their one-shot clips still need a clock to play through after a replicated state change.
      */
     public void advanceClientClock(float deltaTime) {
         stateTimer += deltaTime;
     }
 
     /**
-     * The clip time the renderer should sample the current state's animation
-     * at. Looping states use the entity's continuously advancing animation
-     * clock; one-shot states (wing flap) override this to return state-relative
-     * time so the clip plays through once instead of freezing on its last frame.
+     * The time the renderer should sample the current state's clip at. Looping states ride the
+     * entity's continuous animation clock; one-shot states use state-relative time so the clip
+     * plays through once and holds instead of restarting.
      */
     public float clipTime(float totalAnimationTime) {
-        return totalAnimationTime;
+        return currentState.isOneShot() ? stateTimer : totalAnimationTime;
     }
 
-    /** Damage response hook; default is no reaction. */
+    /** Damage hook — reaches every behaviour, so the one that reacts need not be running. */
     public void onDamaged(float damage) {
+        controller.onDamaged(context, damage);
     }
 
-    /** Debug path trail for the overlay; empty unless the AI navigates. */
-    public List<Vector3f> getPathPoints() {
-        return List.of();
+    /** This mob's navigation, for behaviours outside the controller and for the debug overlay. */
+    public PathAgent nav() {
+        return nav;
     }
 
-    /** Clears debug path visualization data. */
-    public void clearDebugPaths() {
+    /** Name of the behaviour currently in charge, for the debug overlay. */
+    public String activeBehaviorName() {
+        return controller.activeName();
     }
 
     /** Releases AI resources when the entity is removed. */
     public void cleanup() {
+        controller.stopAll(context);
+        nav.cleanup();
     }
 }

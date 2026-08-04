@@ -24,7 +24,8 @@ import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
-import com.stonebreak.mobs.goose.Goose;
+import com.stonebreak.mobs.entities.ai.nav.Path;
+import com.stonebreak.mobs.entities.ai.nav.PathAgent;
 import java.util.List;
 import java.util.ArrayDeque;
 
@@ -609,6 +610,7 @@ public class DebugOverlay {
                     lodBatcher.publishedCommands(), lodBatcher.publishedRegionDraws()));
             }
         }
+        panel.row("Nav", navigationSummary(world));
         com.stonebreak.world.TimeOfDay clock = Game.getTimeOfDay();
         if (clock != null) {
             panel.row("Time", clock.getTimeString());
@@ -696,15 +698,47 @@ public class DebugOverlay {
         return "Java (classic simplex)";
     }
 
-    /** AI-path line colour, shared across cows. */
+    /**
+     * Mob path-search load: how many searches are running, how many have run, how long they take,
+     * and how many came back partial.
+     *
+     * <p>Partials are the number worth watching: a few are normal (mobs do aim at spots they cannot
+     * reach), but a steady stream means either the expansion budget is too tight for the terrain or
+     * something is asking for routes that do not exist.
+     */
+    private static String navigationSummary(com.stonebreak.world.World world) {
+        com.stonebreak.mobs.entities.ai.nav.PathfindingService service = world.pathfinding();
+        if (service == null) {
+            return "off";
+        }
+        var stats = service.stats();
+        return String.format("%d searching / %d done @ %d µs / %d partial / %d rejected",
+                stats.inFlight(), stats.completed(), stats.averageMicros(),
+                stats.partial(), stats.rejected());
+    }
+
+    /** The route a mob still has to walk. */
     private static final Vector4f PATH_COLOR = new Vector4f(0.2f, 0.6f, 1.0f, 1.0f);
+    /** Where it is trying to get to. */
+    private static final Vector4f GOAL_COLOR = new Vector4f(1.0f, 0.25f, 0.85f, 1.0f);
+
+    /** Half-size of the cross drawn at a mob's destination. */
+    private static final float GOAL_MARKER_SIZE = 0.4f;
+
+    /** Reused between frames so the overlay does not allocate a list per mob per frame. */
+    private final List<Vector3f> pathScratch = new java.util.ArrayList<>();
 
     /**
      * Renders debug wireframes for entities (called after UI rendering).
      *
-     * <p>Each cow and chicken is outlined by re-drawing its actual model mesh as
-     * a see-through wireframe, so the overlay tracks the animated model exactly.
-     * AI path trails are drawn afterwards in a single batched line pass.
+     * <p>Each mob is outlined by re-drawing its actual model mesh as a see-through wireframe, so
+     * the overlay tracks the animated model exactly, coloured by what it is currently doing.
+     *
+     * <p>The lines show the route each mob has <em>planned</em> — the waypoints still ahead of it,
+     * and a marker at its destination. That is the useful view: it says where a mob has decided to
+     * go and how it intends to get there, so a mob pressed against a wall is immediately either a
+     * routing bug (no path, or a path through the wall) or a steering one (a sensible path it is
+     * failing to walk).
      */
     public void renderWireframes(Renderer renderer) {
         if (!visible) {
@@ -716,31 +750,26 @@ public class DebugOverlay {
             return;
         }
 
-        // Every AI-driven mob gets the same treatment — no per-mob code, and
-        // future mobs appear here automatically.
-        List<Entity> mobEntities = new java.util.ArrayList<>();
+        // Every AI-driven mob gets the same treatment — no per-mob code, and future mobs appear
+        // here automatically.
+        List<LivingEntity> mobs = new java.util.ArrayList<>();
         for (Entity entity : entityManager.getAllEntities()) {
-            if (entity instanceof LivingEntity mob && (mob.getAI() != null || mob instanceof Goose)) {
-                mobEntities.add(entity);
+            if (entity.isAlive() && entity instanceof LivingEntity mob && mob.getAI() != null) {
+                mobs.add(mob);
             }
         }
 
         // Model wireframe overlays — each call manages its own GL state.
-        for (Entity entity : mobEntities) {
-            if (entity.isAlive() && entity instanceof LivingEntity mob
-                    && (mob.getAI() != null || mob instanceof Goose)) {
-                renderer.renderEntityWireframe(mob, colorForState(mob));
-            }
+        for (LivingEntity mob : mobs) {
+            renderer.renderEntityWireframe(mob, colorForState(mob));
         }
 
-        // AI path trails — batched line drawing.
+        // Planned routes — batched line drawing.
         DebugRenderer debug = renderer.getDebugRenderer();
         debug.beginBatch();
         try {
-            for (Entity entity : mobEntities) {
-                if (entity.isAlive() && entity instanceof LivingEntity mob && mob.getAI() != null) {
-                    debug.drawPath(mob.getAI().getPathPoints(), PATH_COLOR);
-                }
+            for (LivingEntity mob : mobs) {
+                drawPlannedRoute(debug, mob.getAI().nav(), mob.getPosition());
             }
         } finally {
             debug.endBatch();
@@ -751,23 +780,47 @@ public class DebugOverlay {
     }
 
     /**
-     * Picks the wireframe colour for a mob's current AI state, so the overlay
-     * doubles as an at-a-glance behaviour readout. One palette for all mobs.
+     * Draws the waypoints a mob has left to walk, starting from the mob itself so the first leg
+     * shows which way it is actually heading, plus a cross at its destination.
+     */
+    private void drawPlannedRoute(DebugRenderer debug, PathAgent nav, Vector3f mobPosition) {
+        Path path = nav.path();
+        if (!path.isEmpty()) {
+            pathScratch.clear();
+            pathScratch.add(new Vector3f(mobPosition));
+            for (int i = nav.cursor(); i < path.size(); i++) {
+                pathScratch.add(path.waypoint(i, new Vector3f()));
+            }
+            debug.drawPath(pathScratch, PATH_COLOR);
+        }
+
+        if (nav.hasGoal()) {
+            Vector3f goal = nav.goal(new Vector3f());
+            pathScratch.clear();
+            pathScratch.add(new Vector3f(goal.x - GOAL_MARKER_SIZE, goal.y, goal.z));
+            pathScratch.add(new Vector3f(goal.x + GOAL_MARKER_SIZE, goal.y, goal.z));
+            debug.drawPath(pathScratch, GOAL_COLOR);
+
+            pathScratch.clear();
+            pathScratch.add(new Vector3f(goal.x, goal.y, goal.z - GOAL_MARKER_SIZE));
+            pathScratch.add(new Vector3f(goal.x, goal.y, goal.z + GOAL_MARKER_SIZE));
+            debug.drawPath(pathScratch, GOAL_COLOR);
+        }
+    }
+
+    /**
+     * Picks the wireframe colour for what a mob is currently doing, so the overlay doubles as an
+     * at-a-glance behaviour readout. One palette for every mob.
      */
     private Vector4f colorForState(LivingEntity mob) {
-        if (mob instanceof Goose goose) {
-            return switch (goose.getGooseAI().getCurrentState()) {
-                case IDLE, FLOATING                        -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
-                case WANDERING, FLEEING                    -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
-                case TAKEOFF, FORMATION, FREE_FLY, LANDING -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
-            };
-        }
         MobBehaviorState state = mob.getAI() != null
                 ? mob.getAI().getCurrentState() : MobBehaviorState.IDLE;
         return switch (state) {
             case IDLE                -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
             case WANDERING           -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
             case GRAZING, WING_FLAP  -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
+            case SWIMMING            -> new Vector4f(0.20f, 0.55f, 1.0f, 1.0f); // blue
+            case FLYING              -> new Vector4f(1.0f, 0.45f, 0.15f, 1.0f); // orange
         };
     }
 

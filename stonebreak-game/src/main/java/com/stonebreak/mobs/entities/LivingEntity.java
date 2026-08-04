@@ -181,9 +181,6 @@ public abstract class LivingEntity extends Entity {
     protected void updateAI(float deltaTime) {
         if (awareness != null) {
             awareness.update(deltaTime);
-            if (awareness.drive(deltaTime)) {
-                return;
-            }
         }
         if (mobAI != null) {
             mobAI.update(deltaTime);
@@ -201,7 +198,25 @@ public abstract class LivingEntity extends Entity {
             setOnGround(false);
         }
     }
-    
+
+    /**
+     * How high this mob's jump actually carries it, in blocks. Route planning derives its climb
+     * limit from this rather than from a constant, so a stronger jumper plans routes a weaker one
+     * will not — and the two can never disagree, because both read the same velocity.
+     */
+    public float getJumpApexHeight() {
+        return (jumpVelocity * jumpVelocity) / (2.0f * -GRAVITY);
+    }
+
+    /**
+     * Whether this mob is at home in deep water. Land mobs wade at most; a swimmer may plan routes
+     * that submerge it. Waterfowl override this.
+     */
+    public boolean canSwim() {
+        return false;
+    }
+
+
     /**
      * Handles damage to the living entity with invulnerability frames.
      */
@@ -462,24 +477,6 @@ public abstract class LivingEntity extends Entity {
     public LivingEntity getForcedAttackTarget() { return forcedAttackTarget; }
     
     /**
-     * Moves the entity toward a target position.
-     */
-    public void moveToward(Vector3f target, float deltaTime) {
-        if (!alive || isRooted()) return;
-
-        Vector3f direction = new Vector3f(target).sub(position).normalize();
-        direction.y = 0; // Don't move vertically through movement
-
-        // Apply movement velocity (Cripple slows, Root pins entirely above)
-        Vector3f movement = new Vector3f(direction).mul(moveSpeed * getMoveSpeedMultiplier() * deltaTime);
-        velocity.x = movement.x;
-        velocity.z = movement.z;
-        
-        // Face the movement direction
-        faceDirection(direction, deltaTime);
-    }
-    
-    /**
      * Makes the entity face a specific direction, honoring the entity type's
      * model yaw offset so all rotation paths (AI steering, awareness pursuit)
      * agree on which way the model points.
@@ -708,7 +705,7 @@ public abstract class LivingEntity extends Entity {
     @Override
     public void applyNetworkState(String sbeStateName) {
         if (mobAI != null) {
-            mobAI.setState(com.stonebreak.mobs.sbe.MobStateMapping.behaviorState(sbeStateName));
+            mobAI.setState(com.stonebreak.mobs.sbe.MobStateMapping.behaviorState(getType(), sbeStateName));
         }
     }
 

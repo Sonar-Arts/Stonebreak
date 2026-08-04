@@ -39,7 +39,17 @@ public class World {
     private final com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry;
     private final com.stonebreak.blocks.anim.AnimatedBlockRegistry animatedBlockRegistry =
             new com.stonebreak.blocks.anim.AnimatedBlockRegistry();
-    
+
+    /**
+     * Mob path searching for this world. Created on first use — a world that never holds a mob
+     * (thumbnail renders, tests) never starts the threads — and closed in {@link #cleanup()}.
+     */
+    private volatile com.stonebreak.mobs.entities.ai.nav.PathfindingService pathfinding;
+    private final Object pathfindingLock = new Object();
+    /** Set once {@link #cleanup()} has run, so a late caller cannot resurrect a torn-down world's service. */
+    private volatile boolean cleanedUp;
+
+
     // World spawn position
     private Vector3f spawnPosition = new Vector3f(0, 100, 0);
     
@@ -816,6 +826,16 @@ public class World {
      * Cleans up resources when the game exits.
      */
     public void cleanup() {
+        // First: cancel in-flight path searches. They read this world's chunks, so they must stop
+        // before the chunk store is torn down beneath them.
+        cleanedUp = true;
+        synchronized (pathfindingLock) {
+            if (pathfinding != null) {
+                pathfinding.close();
+                pathfinding = null;
+            }
+        }
+
         if (chunkManager != null) {
             chunkManager.shutdown();
         }
@@ -998,6 +1018,28 @@ public class World {
      */
     public SnowLayerManager getSnowLayerManager() {
         return snowLayerManager;
+    }
+
+    /**
+     * This world's mob path searching, started on first request.
+     *
+     * <p>Per world rather than global on purpose: a search reads the chunks of the world it was
+     * asked about, and {@link #cleanup()} closes the service before those chunks go away — so a
+     * world swap can never leave a worker planning routes through a world that no longer exists.
+     *
+     * @return the service, or null once this world has been cleaned up
+     */
+    public com.stonebreak.mobs.entities.ai.nav.PathfindingService pathfinding() {
+        com.stonebreak.mobs.entities.ai.nav.PathfindingService service = pathfinding;
+        if (service != null) {
+            return service;
+        }
+        synchronized (pathfindingLock) {
+            if (pathfinding == null && !cleanedUp) {
+                pathfinding = com.stonebreak.mobs.entities.ai.nav.PathfindingService.forWorld(this);
+            }
+            return pathfinding;
+        }
     }
     
     
