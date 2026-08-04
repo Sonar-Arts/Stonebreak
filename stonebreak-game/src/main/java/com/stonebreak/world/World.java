@@ -77,65 +77,14 @@ public class World {
     private volatile com.stonebreak.mobs.entities.EntityManager entityManager;
 
     /**
-     * Sink for authoritative SIMULATION block mutations (water flow, and any future server-side
-     * system that writes via {@code chunk.setBlock} instead of {@code setBlockAt}). Installed by
-     * the integrated server on the HEADLESS world only, so flowing water etc. replicates to
-     * clients live; null everywhere else (client render worlds must never feed it — that would
-     * loop server echoes back out).
+     * Authoritative simulation mutations reported for replication. Populated by the integrated
+     * server on the HEADLESS world only; every sink stays null on client render worlds.
      */
-    public interface ServerBlockMutationCallback {
-        void onServerBlockChange(int x, int y, int z, com.stonebreak.blocks.BlockType type);
-    }
+    private final ServerMutationSinks serverSinks = new ServerMutationSinks();
 
-    private volatile ServerBlockMutationCallback serverMutationCallback;
-
-    /** Install the server-side sim mutation sink (headless server world only). */
-    public void setServerMutationCallback(ServerBlockMutationCallback callback) {
-        this.serverMutationCallback = callback;
-    }
-
-    /** The sim mutation sink, or null on client/render worlds. */
-    public ServerBlockMutationCallback serverMutationCallback() {
-        return serverMutationCallback;
-    }
-
-    /**
-     * Sink for authoritative snow-layer mutations ({@code layers == 0} = removed), installed
-     * by the integrated server on the HEADLESS world only so layer changes replicate to
-     * clients as {@code BlockMetaS2C}. Null everywhere else.
-     */
-    public interface ServerSnowMutationCallback {
-        void onServerSnowChange(int x, int y, int z, int layers);
-    }
-
-    private volatile ServerSnowMutationCallback serverSnowCallback;
-
-    /** Install the server-side snow mutation sink (headless server world only). */
-    public void setServerSnowCallback(ServerSnowMutationCallback callback) {
-        this.serverSnowCallback = callback;
-    }
-
-    /**
-     * Sink for authoritative water-layer mutations (value = layer byte: 1..7 flowing,
-     * 8 falling, 0 = entry removed / became source), installed by the integrated server
-     * on the HEADLESS world only so flow levels replicate to clients as
-     * {@code BlockMetaS2C} (KIND_WATER_LEVEL). Null everywhere else. Fired from
-     * {@code WorldFlowWorld.markWaterChanged} on the server tick thread.
-     */
-    public interface ServerWaterMutationCallback {
-        void onServerWaterChange(int x, int y, int z, int value);
-    }
-
-    private volatile ServerWaterMutationCallback serverWaterCallback;
-
-    /** Install the server-side water mutation sink (headless server world only). */
-    public void setServerWaterCallback(ServerWaterMutationCallback callback) {
-        this.serverWaterCallback = callback;
-    }
-
-    /** The water mutation sink, or null on client/render worlds. */
-    public ServerWaterMutationCallback serverWaterCallback() {
-        return serverWaterCallback;
+    /** The replication sinks for this world. See {@link ServerMutationSinks}. */
+    public ServerMutationSinks serverSinks() {
+        return serverSinks;
     }
 
     public World() {
@@ -225,7 +174,7 @@ public class World {
             if (chunk != null) {
                 chunk.markDirty();
             }
-            ServerSnowMutationCallback sink = serverSnowCallback;
+            ServerMutationSinks.SnowSink sink = serverSinks.snow();
             if (sink != null) {
                 sink.onServerSnowChange(x, y, z, layers);
             }
@@ -803,40 +752,13 @@ public class World {
     /**
      * Gets the continentalness value at the specified world position.
      */
-    public float getContinentalnessAt(int x, int z) {
-        return terrainSystem.getContinentalnessAt(x, z);
-    }
-
-    public BiomeType getBiomeAt(int x, int z) {
-        return terrainSystem.getBiomeAt(x, z);
-    }
-
-    public float getMoistureAt(int x, int z) {
-        return terrainSystem.getMoistureAt(x, z);
-    }
-
-    public float getTemperatureAt(int x, int z) {
-        return terrainSystem.getTemperatureAt(x, z);
-    }
-
-    public float getErosionAt(int x, int z) {
-        return terrainSystem.getErosionAt(x, z);
-    }
-
-    public float getPeaksValleysAt(int x, int z) {
-        return terrainSystem.getPeaksValleysAt(x, z);
-    }
-
-    public int getBaseHeightAt(int x, int z) {
-        return terrainSystem.getBaseHeightAt(x, z);
-    }
-
-    public int getShapedHeightAt(int x, int z) {
-        return terrainSystem.getShapedHeightAt(x, z);
-    }
-
-    public int getFinalTerrainHeightAt(int x, int z) {
-        return terrainSystem.getFinalTerrainHeightAt(x, z);
+    /**
+     * The terrain generator backing this world — the source of every noise-derived sample
+     * (biome, climate, the height stages). Queried directly rather than mirrored here, so
+     * adding a terrain channel needs no change to this class.
+     */
+    public TerrainGenerationSystem terrain() {
+        return terrainSystem;
     }
 
     public java.util.concurrent.CompletableFuture<Void> awaitPendingChunkLoads() {
@@ -1136,69 +1058,19 @@ public class World {
      */
     public boolean installNetworkChunk(int chunkX, int chunkZ, byte[] payload, byte[] metaPayload) {
         com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage decoded =
-            decodeNetworkChunkBlocks(chunkX, chunkZ, payload);
+            com.stonebreak.network.client.NetworkChunkDecoder.decodeBlocks(chunkX, chunkZ, payload);
         if (decoded == null) {
             return false; // caller requests a resync — the server thinks this chunk was sent
         }
         return installDecodedNetworkChunk(chunkX, chunkZ, decoded,
-            computeNetworkChunkHeights(decoded), metaPayload);
-    }
-
-    /**
-     * Sky heightmap for a decoded (detached) storage, in {@link com.openmason.engine.voxel.lighting.ChunkHeightMap}
-     * layout/semantics ({@code [lz*16+lx]} = topOpaqueY+1, 0 = sky). Pure —
-     * runs on the decode worker so the main-thread install skips the ~1 ms
-     * per-chunk column rescan that was serializing install throughput.
-     */
-    public static int[] computeNetworkChunkHeights(
-            com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage decoded) {
-        int size = WorldConfiguration.CHUNK_SIZE;
-        int[] heights = new int[size * size];
-        for (int lz = 0; lz < size; lz++) {
-            for (int lx = 0; lx < size; lx++) {
-                int top = 0;
-                for (int y = WorldConfiguration.WORLD_HEIGHT - 1; y >= 0; y--) {
-                    if (com.stonebreak.world.lighting.BlockOpacity.isOpaque(
-                            (com.stonebreak.blocks.BlockType) decoded.get(lx, y, lz))) {
-                        top = y + 1;
-                        break;
-                    }
-                }
-                heights[lz * size + lx] = top;
-            }
-        }
-        return heights;
-    }
-
-    /**
-     * Pure decode half of {@link #installNetworkChunk}: wire payload → detached
-     * paletted storage. Touches no world state, so ClientChunkHandler runs it
-     * on a worker thread while the render thread only pays the install/swap.
-     * Returns null on decode failure (caller should request a resync).
-     */
-    public static com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage
-            decodeNetworkChunkBlocks(int chunkX, int chunkZ, byte[] payload) {
-        com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage decoded =
-            com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage.createEmpty(
-                WorldConfiguration.CHUNK_SIZE, WorldConfiguration.WORLD_HEIGHT,
-                WorldConfiguration.CHUNK_SIZE, com.stonebreak.blocks.BlockType.AIR);
-        try {
-            com.openmason.engine.net.protocol.codec.VoxelChunkCodec.decodeInto(
-                    payload,
-                    new com.stonebreak.network.bridge.StorageBlockSetter(decoded),
-                    com.stonebreak.network.bridge.GameBlockTypeResolver.INSTANCE);
-        } catch (Exception e) {
-            System.err.println("[NETWORK] Failed to decode chunk (" + chunkX + "," + chunkZ + "): " + e.getMessage());
-            return null;
-        }
-        return decoded;
+            com.stonebreak.network.client.NetworkChunkDecoder.computeSkyHeights(decoded), metaPayload);
     }
 
     /**
      * Install half of {@link #installNetworkChunk}: swaps pre-decoded storage
      * into the chunk slot and applies metadata + mesh scheduling. MUST run on
      * the main game thread. {@code heights} is the worker-precomputed sky
-     * heightmap ({@link #computeNetworkChunkHeights}); null falls back to a
+     * heightmap (see {@code NetworkChunkDecoder.computeSkyHeights}); null falls back to a
      * main-thread rescan.
      */
     public boolean installDecodedNetworkChunk(int chunkX, int chunkZ,

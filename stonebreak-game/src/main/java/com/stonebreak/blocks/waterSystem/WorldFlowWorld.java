@@ -63,7 +63,7 @@ public final class WorldFlowWorld implements FlowWorld {
         // Report the mutation to the integrated server's replication funnel
         // (installed on the headless server world only) so flow reaches clients
         // through the same per-section batches as player edits.
-        World.ServerBlockMutationCallback sink = world.serverMutationCallback();
+        com.stonebreak.world.ServerMutationSinks.BlockSink sink = world.serverSinks().blocks();
         if (sink != null) {
             sink.onServerBlockChange(x, y, z, type);
         }
@@ -107,7 +107,7 @@ public final class WorldFlowWorld implements FlowWorld {
         // Report the layer change to the integrated server's water replication funnel
         // (installed on the headless server world only) so clients receive live flow
         // levels as BlockMetaS2C (KIND_WATER_LEVEL). Value 0 = removed / became source.
-        World.ServerWaterMutationCallback sink = world.serverWaterCallback();
+        com.stonebreak.world.ServerMutationSinks.WaterSink sink = world.serverSinks().water();
         if (sink != null) {
             sink.onServerWaterChange(x, y, z, newValue);
         }

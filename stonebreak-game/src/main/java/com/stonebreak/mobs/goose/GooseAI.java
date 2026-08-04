@@ -7,6 +7,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
+import com.stonebreak.mobs.entities.ai.MobNavigator;
 import com.stonebreak.player.Player;
 
 /**
@@ -31,12 +32,15 @@ public class GooseAI {
     // ─── Ground behavior tuning ───────────────────────────────────────────────
     private static final float MIN_STATE_DURATION = 3.0f;
     private static final float MAX_STATE_DURATION = 7.0f;
+    private static final float WANDER_MIN_DISTANCE = 3.0f;
     private static final float WANDER_DISTANCE = 8.0f;
     private static final float WANDER_SPEED_MULT = 0.7f;
     private static final float FLEE_SPEED_MULT = 1.0f;
+    /** Paddling on water is a slow drift, not a walk. */
+    private static final float PADDLE_SPEED_MULT = 0.4f;
     private static final float ROTATION_SPEED = 200.0f;   // degrees/sec
-    private static final float JUMP_COOLDOWN = 1.0f;
-    private static final float OBSTACLE_CHECK_DISTANCE = 0.8f;
+    /** How close to a wander target counts as arrived. */
+    private static final float TARGET_ARRIVE_RADIUS = 1.5f;
 
     // ─── Flee tuning ──────────────────────────────────────────────────────────
     private static final float FLEE_WALK_RANGE = 5.0f;
@@ -97,9 +101,12 @@ public class GooseAI {
     private float stateTimer;
     private float stateChangeTimer;
 
-    private final Vector3f wanderTarget = new Vector3f();
-    private boolean hasWanderTarget;
-    private float jumpCooldownTimer;
+    /**
+     * Ground navigation — wander targets, steering, rotation and obstacle hops — comes from the
+     * shared mob navigator, the same one the cow, sheep and chicken use. Only the flight and
+     * flocking behaviour below is specific to the goose.
+     */
+    private final MobNavigator navigator;
 
     private GooseFlock flock;
     private final Vector3f flightDestination = new Vector3f();
@@ -129,6 +136,8 @@ public class GooseAI {
 
     public GooseAI(Goose goose) {
         this.goose = goose;
+        // No hop boost: a goose that meets a ledge it cannot clear takes off instead.
+        this.navigator = new MobNavigator(goose, ROTATION_SPEED, WANDER_SPEED_MULT, 0.0f, 0.0f);
         this.currentState = GooseBehaviorState.IDLE;
         this.stateChangeTimer = randomStateDuration();
         this.migrateCooldown = randomMigrateCooldown();
@@ -159,7 +168,7 @@ public class GooseAI {
 
         stateTimer += deltaTime;
         stateChangeTimer -= deltaTime;
-        jumpCooldownTimer -= deltaTime;
+        navigator.tick(deltaTime);
         migrateCooldown -= deltaTime;
         joinScanTimer -= deltaTime;
         settleCooldown -= deltaTime;
@@ -239,41 +248,40 @@ public class GooseAI {
     }
 
     private void handleWander(float deltaTime) {
-        if (!hasWanderTarget || goose.distanceTo(wanderTarget) < 1.5f) {
-            generateWanderTarget();
+        if (!navigator.hasTarget() || navigator.reachedTarget(TARGET_ARRIVE_RADIUS)) {
+            navigator.pickWanderTarget(WANDER_MIN_DISTANCE, WANDER_DISTANCE);
         }
-        if (hasWanderTarget) {
-            moveTowardGround(wanderTarget, WANDER_SPEED_MULT, deltaTime, true);
-        }
+        navigator.moveTowardTarget(deltaTime);
     }
 
     private void handleFloating(float deltaTime) {
-        // Spring the goose's feet toward the water surface so it rests on top.
         float surfaceY = findWaterSurface();
-        Vector3f v = goose.getVelocity();
-        if (surfaceY != Float.NEGATIVE_INFINITY) {
-            float diff = surfaceY - goose.getPosition().y;
-            v.y = Math.max(-1.5f, Math.min(1.5f, diff * 6.0f));
+
+        // Gentle paddling: drift slowly toward a nearby target now and then. Hops are suppressed —
+        // a floating goose has no ground to push off.
+        if (!navigator.hasTarget() || navigator.reachedTarget(TARGET_ARRIVE_RADIUS)) {
+            navigator.pickWanderTarget(WANDER_MIN_DISTANCE, WANDER_DISTANCE);
         }
-        // Gentle paddling: drift slowly toward a nearby target now and then.
-        if (!hasWanderTarget || goose.distanceTo(wanderTarget) < 1.5f) {
-            generateWanderTarget();
-        }
-        if (hasWanderTarget) {
-            Vector3f dir = new Vector3f(wanderTarget).sub(goose.getPosition());
-            dir.y = 0;
-            if (dir.lengthSquared() > 0.01f) {
-                dir.normalize();
-                faceHeading(dir, deltaTime, ROTATION_SPEED);
-                v.x = dir.x * goose.getMoveSpeed() * 0.4f;
-                v.z = dir.z * goose.getMoveSpeed() * 0.4f;
+        Vector3f paddleTarget = navigator.getTarget();
+        if (paddleTarget != null) {
+            Vector3f direction = paddleTarget.sub(goose.getPosition());
+            direction.y = 0;
+            if (direction.lengthSquared() > 0.01f) {
+                navigator.steerAlong(direction.normalize(), PADDLE_SPEED_MULT, deltaTime, false);
             }
         }
-        goose.setVelocity(v);
-        // Leave the water if it dried up beneath us.
+
+        // Leave the water if it dried up beneath us; otherwise spring the goose's feet
+        // toward the surface so it rests on top. Applied after the horizontal steering,
+        // which commits its own velocity.
         if (surfaceY == Float.NEGATIVE_INFINITY) {
             setState(GooseBehaviorState.IDLE);
+            return;
         }
+        Vector3f velocity = goose.getVelocity();
+        float toSurface = surfaceY - goose.getPosition().y;
+        velocity.y = Math.max(-1.5f, Math.min(1.5f, toSurface * 6.0f));
+        goose.setVelocity(velocity);
     }
 
     private void handleFleeing(float deltaTime) {
@@ -290,16 +298,9 @@ public class GooseAI {
         }
         fleeDir.normalize();
 
-        faceHeading(fleeDir, deltaTime, ROTATION_SPEED);
-        if (checkObstacleAhead(fleeDir) && goose.isOnGround() && jumpCooldownTimer <= 0) {
-            goose.jump();
-            jumpCooldownTimer = JUMP_COOLDOWN;
-        }
-
-        Vector3f v = goose.getVelocity();
-        v.x = fleeDir.x * goose.getMoveSpeed() * FLEE_SPEED_MULT;
-        v.z = fleeDir.z * goose.getMoveSpeed() * FLEE_SPEED_MULT;
-        goose.setVelocity(v);
+        // Steered continuously rather than toward a fixed point: a panicking goose keeps
+        // putting the player at its back even as the player moves.
+        navigator.steerAlong(fleeDir, FLEE_SPEED_MULT, deltaTime, true);
     }
 
     // ─── Airborne behavior ────────────────────────────────────────────────────
@@ -377,7 +378,7 @@ public class GooseAI {
         dir.y = 0;
         if (dir.lengthSquared() > 0.01f) {
             dir.normalize();
-            faceHeading(dir, deltaTime, FLIGHT_TURN_SPEED);
+            navigator.faceDirection(dir, FLIGHT_TURN_SPEED, deltaTime);
             v.x = dir.x * MAX_FLY_SPEED;
             v.z = dir.z * MAX_FLY_SPEED;
         }
@@ -437,7 +438,7 @@ public class GooseAI {
         Vector3f pos = goose.getPosition();
         Vector3f v = goose.getVelocity();
 
-        float groundY = findGroundLevel(pos.x, pos.z, pos.y);
+        float groundY = navigator.findGroundLevel(pos.x, pos.z, pos.y);
         float waterY = findWaterSurface();
         v.y = -DESCEND_SPEED;
         // Bleed off horizontal speed as we settle.
@@ -490,7 +491,7 @@ public class GooseAI {
         Vector3f horiz = new Vector3f(target.x - pos.x, 0, target.z - pos.z);
         if (horiz.lengthSquared() > 0.01f) {
             horiz.normalize();
-            faceHeading(horiz, deltaTime, FLIGHT_TURN_SPEED);
+            navigator.faceDirection(horiz, FLIGHT_TURN_SPEED, deltaTime);
             v.x = horiz.x * speed;
             v.z = horiz.z * speed;
         } else {
@@ -747,7 +748,7 @@ public class GooseAI {
 
     public void cleanup() {
         leaveFlock();
-        hasWanderTarget = false;
+        navigator.cleanup();
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -763,90 +764,6 @@ public class GooseAI {
             return dist <= FLEE_SAFE_RANGE ? trigger : 0;
         }
         return dist <= trigger ? trigger : 0;
-    }
-
-    private void generateWanderTarget() {
-        Vector3f pos = goose.getPosition();
-        for (int attempt = 0; attempt < 10; attempt++) {
-            double angle = Math.random() * Math.PI * 2;
-            float distance = 3.0f + (float) (Math.random() * (WANDER_DISTANCE - 3.0f));
-            float tx = pos.x + (float) Math.cos(angle) * distance;
-            float tz = pos.z + (float) Math.sin(angle) * distance;
-            int bx = (int) Math.floor(tx);
-            int bz = (int) Math.floor(tz);
-            float cx = bx + 0.5f;
-            float cz = bz + 0.5f;
-            float groundY = findGroundLevel(cx, cz, pos.y);
-            if (groundY != Float.NEGATIVE_INFINITY) {
-                wanderTarget.set(cx, groundY, cz);
-                hasWanderTarget = true;
-                return;
-            }
-        }
-        hasWanderTarget = false;
-    }
-
-    /** Moves the goose along the ground toward {@code target}, hopping over obstacles. */
-    private void moveTowardGround(Vector3f target, float speedMult, float deltaTime, boolean canJump) {
-        Vector3f pos = goose.getPosition();
-        Vector3f dir = new Vector3f(target).sub(pos);
-        dir.y = 0;
-        if (dir.lengthSquared() <= 0.01f) return;
-        dir.normalize();
-
-        faceHeading(dir, deltaTime, ROTATION_SPEED);
-        if (canJump && checkObstacleAhead(dir) && goose.isOnGround() && jumpCooldownTimer <= 0) {
-            goose.jump();
-            jumpCooldownTimer = JUMP_COOLDOWN;
-        }
-
-        Vector3f v = goose.getVelocity();
-        v.x = dir.x * goose.getMoveSpeed() * speedMult;
-        v.z = dir.z * goose.getMoveSpeed() * speedMult;
-        goose.setVelocity(v);
-    }
-
-    private void faceHeading(Vector3f horizontalDir, float deltaTime, float turnSpeed) {
-        // The SB_Goose.sbe model faces +Z (like the chicken, unlike the cow/sheep which
-        // face -Z), so no 180° offset is applied — the goose faces its travel direction.
-        float targetYaw = (float) Math.toDegrees(Math.atan2(horizontalDir.x, horizontalDir.z));
-        Vector3f rot = goose.getRotation();
-        float delta = targetYaw - rot.y;
-        while (delta > 180.0f) delta -= 360.0f;
-        while (delta < -180.0f) delta += 360.0f;
-        float maxStep = turnSpeed * deltaTime;
-        if (Math.abs(delta) > maxStep) {
-            delta = Math.signum(delta) * maxStep;
-        }
-        goose.setRotation(new Vector3f(rot.x, rot.y + delta, rot.z));
-    }
-
-    private boolean checkObstacleAhead(Vector3f direction) {
-        Vector3f pos = goose.getPosition();
-        int bx = (int) Math.floor(pos.x + direction.x * OBSTACLE_CHECK_DISTANCE);
-        int by = (int) Math.floor(pos.y);
-        int bz = (int) Math.floor(pos.z + direction.z * OBSTACLE_CHECK_DISTANCE);
-        BlockType foot = goose.getWorld().getBlockAt(bx, by, bz);
-        if (foot != null && foot.isSolid()) {
-            BlockType above1 = goose.getWorld().getBlockAt(bx, by + 1, bz);
-            BlockType above2 = goose.getWorld().getBlockAt(bx, by + 2, bz);
-            return (above1 == null || !above1.isSolid()) && (above2 == null || !above2.isSolid());
-        }
-        return false;
-    }
-
-    private float findGroundLevel(float x, float z, float startY) {
-        int bx = (int) Math.floor(x);
-        int bz = (int) Math.floor(z);
-        int startBlockY = (int) Math.floor(startY);
-        for (int y = startBlockY + 5; y >= startBlockY - 10; y--) {
-            BlockType block = goose.getWorld().getBlockAt(bx, y, bz);
-            BlockType above = goose.getWorld().getBlockAt(bx, y + 1, bz);
-            if (block != null && block.isSolid() && (above == null || !above.isSolid())) {
-                return y + 1.0f;
-            }
-        }
-        return Float.NEGATIVE_INFINITY;
     }
 
     /** Topmost water-surface Y at the goose's column near its feet, or NEGATIVE_INFINITY. */
@@ -882,7 +799,7 @@ public class GooseAI {
             currentState = newState;
             stateTimer = 0;
             if (newState == GooseBehaviorState.WANDERING || newState == GooseBehaviorState.FLOATING) {
-                hasWanderTarget = false;
+                navigator.clearTarget();
             }
             if (newState == GooseBehaviorState.TAKEOFF) {
                 takeoffNoClipTimer = TAKEOFF_NOCLIP_DURATION;

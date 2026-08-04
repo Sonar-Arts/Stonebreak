@@ -1,5 +1,7 @@
 package com.stonebreak.core;
 
+import com.stonebreak.core.window.DisplayBackend;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -22,7 +24,7 @@ class NvidiaDriverVersionTest {
                 "NVRM version: NVIDIA UNIX x86_64 Kernel Module  595.71.05  Wed Oct 15 12:00:00 UTC 2025",
                 "GCC version:  gcc version 14.2.1 20250101 (GCC)"
         );
-        assertEquals("595.71.05", Main.parseNvidiaDriverVersion(lines));
+        assertEquals("595.71.05", DisplayBackend.parseNvidiaDriverVersion(lines));
     }
 
     @Test
@@ -33,7 +35,7 @@ class NvidiaDriverVersionTest {
                 "NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  610.43.02  Release Build  (notroot@)  Mon Jun 29 14:55:45 UTC 2026",
                 "GCC version:  Selected multilib: .;@m64"
         );
-        assertEquals("610.43.02", Main.parseNvidiaDriverVersion(lines));
+        assertEquals("610.43.02", DisplayBackend.parseNvidiaDriverVersion(lines));
     }
 
     @Test
@@ -41,7 +43,7 @@ class NvidiaDriverVersionTest {
         List<String> lines = List.of(
                 "NVRM version: NVIDIA UNIX x86_64 Kernel Module  550.120  Tue Jan 01 00:00:00 UTC 2025"
         );
-        assertEquals("550.120", Main.parseNvidiaDriverVersion(lines));
+        assertEquals("550.120", DisplayBackend.parseNvidiaDriverVersion(lines));
     }
 
     @Test
@@ -50,7 +52,7 @@ class NvidiaDriverVersionTest {
         List<String> lines = List.of(
                 "GCC version:  gcc version 14.2.1 20250101 (GCC)"
         );
-        assertNull(Main.parseNvidiaDriverVersion(lines));
+        assertNull(DisplayBackend.parseNvidiaDriverVersion(lines));
     }
 
     @Test
@@ -59,11 +61,11 @@ class NvidiaDriverVersionTest {
                 "GCC version:  gcc version 14.2.1 20250101 (GCC)",
                 "some unrelated content"
         );
-        assertNull(Main.parseNvidiaDriverVersion(lines));
+        assertNull(DisplayBackend.parseNvidiaDriverVersion(lines));
     }
 
     @Test
     void returnsNullForEmptyInput() {
-        assertNull(Main.parseNvidiaDriverVersion(List.of()));
+        assertNull(DisplayBackend.parseNvidiaDriverVersion(List.of()));
     }
 }

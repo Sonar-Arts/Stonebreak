@@ -50,23 +50,12 @@ public class Game {
     private volatile World world;
     private volatile Player player;
     private Renderer renderer;
+    /** Every UI screen; see {@link com.stonebreak.core.screens.GameScreens}. */
+    private final com.stonebreak.core.screens.GameScreens screens =
+            new com.stonebreak.core.screens.GameScreens();
     private BlockTextureArray textureAtlas;
-    private PauseMenu pauseMenu;
-    private DeathMenu deathMenu;
-    private InventoryScreen inventoryScreen; // Added InventoryScreen
-    private CharacterScreen characterScreen; // Character stats screen
-    private com.stonebreak.ui.statisticsScreen.StatisticsScreen statisticsScreen; // Statistics screen
-    private com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen; // Entity Glossary screen
-    private WorkbenchScreen workbenchScreen; // Added WorkbenchScreen
-    private FurnaceScreen furnaceScreen; // Furnace smelting GUI
-    private RecipeScreen recipeScreen; // Added RecipeBookScreen
     private InputHandler inputHandler; // Added InputHandler field
     private MouseCaptureManager mouseCaptureManager; // Mouse capture system
-    private MainMenu mainMenu; // Main menu
-    private SettingsMenu settingsMenu; // Settings menu
-    private com.stonebreak.ui.multiplayerMenu.MultiplayerMenu multiplayerMenu;
-    private com.stonebreak.ui.multiplayerMenu.HostWorldScreen hostWorldScreen;
-    private com.stonebreak.ui.multiplayerMenu.JoinWorldScreen joinWorldScreen;
     private SoundSystem soundSystem; // Sound system (engine)
     private PlayerSounds playerSounds; // Game-side player footstep sound binding
     private ChatSystem chatSystem; // Chat system
@@ -76,11 +65,6 @@ public class Game {
     private com.stonebreak.audio.MusicManager musicManager; // Background music playback
     private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
     private DebugOverlay debugOverlay; // Debug overlay (F3)
-    private LoadingScreen loadingScreen; // Loading screen for world generation
-    private WorldSelectScreen worldSelectScreen; // World selection screen
-    private CharacterCreationScreen characterCreationScreen; // Character creation before terrain mapper
-    private TerrainMapperScreen terrainMapperScreen; // Terrain preview + world creation screen
-    private SonarArtsIntroScreen startupIntroScreen; // Boot-time Sonar Arts animation
     private SaveService saveService; // World save/load system
     private WorldData currentWorldData; // Current world metadata
     private String currentWorldName; // Current world name for save system initialization
@@ -108,8 +92,11 @@ public class Game {
             new com.stonebreak.core.loop.GameLoop(this, worldUpdateExecutor);
     private final com.stonebreak.core.world.WorldLifecycle worldLifecycle =
             new com.stonebreak.core.world.WorldLifecycle(this);
+    /** Builds the streamed client render world; see its docs for the generation-stamp rules. */
+    private final com.stonebreak.core.world.ClientWorldBuilder clientWorldBuilder =
+            new com.stonebreak.core.world.ClientWorldBuilder(this, worldLifecycle);
 
-    
+
     // Cheat system
     private boolean cheatsEnabled = false;
 
@@ -161,28 +148,17 @@ public class Game {
         this.inputHandler = inputHandler;
 
         this.mouseCaptureManager = new MouseCaptureManager(window);
-        this.pauseMenu = new PauseMenu(this.renderer.getSkijaBackend());
-        this.statisticsScreen = new com.stonebreak.ui.statisticsScreen.StatisticsScreen(this.renderer.getSkijaBackend());
-        this.glossaryScreen = new com.stonebreak.ui.glossaryScreen.GlossaryScreen(this.renderer.getSkijaBackend());
-        this.deathMenu = new DeathMenu(this.renderer.getSkijaBackend());
 
+        // Audio comes up BEFORE the screens: the startup intro registers its sonar sound from
+        // its constructor, and OpenAL calls made before the context exists abort with
+        // "No ALCapabilities instance has been set".
         this.soundSystem = SoundSystem.getInstance();
         com.stonebreak.core.bootstrap.GameBootstrap.configureSoundSystem(this.soundSystem);
-
         this.musicManager = new com.stonebreak.audio.MusicManager(this.soundSystem);
         this.musicManager.setVolume(com.stonebreak.config.Settings.getInstance().getMusicVolume());
         this.musicManager.setEnabled(com.stonebreak.config.Settings.getInstance().getMusicEnabled());
 
-        this.mainMenu = new MainMenu(this.renderer.getSkijaBackend());
-        this.settingsMenu = new SettingsMenu(this.renderer.getSkijaBackend());
-        this.multiplayerMenu = new com.stonebreak.ui.multiplayerMenu.MultiplayerMenu(this.renderer.getSkijaBackend());
-        this.hostWorldScreen = new com.stonebreak.ui.multiplayerMenu.HostWorldScreen(this.renderer.getSkijaBackend());
-        this.joinWorldScreen = new com.stonebreak.ui.multiplayerMenu.JoinWorldScreen(this.renderer.getSkijaBackend());
-        this.loadingScreen = new LoadingScreen(this.renderer.getSkijaBackend());
-        this.worldSelectScreen = new WorldSelectScreen(this.renderer.getSkijaBackend());
-        this.characterCreationScreen = new CharacterCreationScreen(this.renderer.getSkijaBackend());
-        this.terrainMapperScreen = new TerrainMapperScreen(this.renderer.getSkijaBackend());
-        this.startupIntroScreen = new SonarArtsIntroScreen(this.renderer.getSkijaBackend());
+        screens.createShellScreens(this.renderer);
 
         initializeCrosshairSettings();
 
@@ -225,8 +201,9 @@ public class Game {
         com.stonebreak.core.bootstrap.GameBootstrap.reinitializeSaveService(saveService, currentWorldData, player, world);
 
         // Apply character creation stats to the new player if a creation session was active.
-        if (characterCreationScreen != null) {
-            com.stonebreak.player.CharacterStats pending = characterCreationScreen.getCharacterStats();
+        CharacterCreationScreen creationScreen = screens.characterCreationScreen();
+        if (creationScreen != null) {
+            com.stonebreak.player.CharacterStats pending = creationScreen.getCharacterStats();
             com.stonebreak.player.CharacterStats live = player.getCharacterStats();
             live.restore(
                 pending.getSelectedClassId(),
@@ -261,46 +238,16 @@ public class Game {
         // For existing worlds: Loaded from save data in performWorldLoadingOrGeneration()
         // This ensures default time is only applied to NEW worlds, not existing ones
 
-        // Initialize InventoryScreen - requires Player, Renderer, BlockTextureArray, and InputHandler
-        if (renderer.getFont() != null && textureAtlas != null) {
-            this.inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(),
-                renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager,
-                player.getCharacterStats());
-            // Now that inventoryScreen is created, give the inventory a reference to it.
-            player.getInventory().setInventoryScreen(this.inventoryScreen);
-            // Trigger initial tooltip for the currently selected item
-            ItemStack initialSelectedItem = player.getInventory().getHotbarSlot(player.getInventory().getSelectedHotbarSlotIndex());
-            if (initialSelectedItem != null && !initialSelectedItem.isEmpty()) {
-                if (initialSelectedItem.getItem() instanceof BlockType blockType) {
-                    inventoryScreen.displayHotbarItemTooltip(blockType);
-                }
+        screens.createWorldScreens(this, player, renderer, this.inputHandler,
+                this.craftingManager, this.smeltingManager);
+        // Surface a tooltip for whatever is already selected in the hotbar.
+        InventoryScreen inventory = screens.inventoryScreen();
+        if (inventory != null) {
+            ItemStack selected = player.getInventory()
+                    .getHotbarSlot(player.getInventory().getSelectedHotbarSlotIndex());
+            if (selected != null && !selected.isEmpty() && selected.getItem() instanceof BlockType blockType) {
+                inventory.displayHotbarItemTooltip(blockType);
             }
-        } else {
-            System.err.println("Failed to initialize InventoryScreen due to null components (Player, Inventory, Renderer, Font, BlockTextureArray, InputHandler, or CraftingManager).");
-        }
-
-        // Initialize CharacterScreen
-        this.characterScreen = new CharacterScreen(player, renderer, this.inputHandler);
-
-        // Initialize WorkbenchScreen
-        if (this.renderer.getUIRenderer() != null) {
-            this.workbenchScreen = new WorkbenchScreen(this, player.getInventory(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.craftingManager);
-        } else {
-            System.err.println("Failed to initialize WorkbenchScreen due to null components.");
-        }
-
-        // Initialize FurnaceScreen
-        if (this.renderer.getUIRenderer() != null) {
-            this.furnaceScreen = new FurnaceScreen(this, player.getInventory(), renderer, this.renderer.getUIRenderer(), this.inputHandler, this.smeltingManager);
-        } else {
-            System.err.println("Failed to initialize FurnaceScreen due to null components.");
-        }
-
-        // Initialize RecipeBookScreen
-        if (this.renderer.getUIRenderer() != null && this.craftingManager != null && getFont() != null) {
-            this.recipeScreen = new RecipeScreen(this.renderer.getUIRenderer(), this.inputHandler, renderer);
-        } else {
-            System.err.println("Failed to initialize RecipeBookScreen due to null UIRenderer, CraftingManager, or Font.");
         }
 
         // Initialize player sounds (game-side binding over the engine SoundSystem)
@@ -472,43 +419,43 @@ public class Game {
      * Gets the pause menu.
      */
     public PauseMenu getPauseMenu() {
-        return pauseMenu;
+        return screens.pauseMenu();
     }
 
     public com.stonebreak.ui.statisticsScreen.StatisticsScreen getStatisticsScreen() {
-        return statisticsScreen;
+        return screens.statisticsScreen();
     }
 
     public com.stonebreak.ui.glossaryScreen.GlossaryScreen getGlossaryScreen() {
-        return glossaryScreen;
+        return screens.glossaryScreen();
     }
 
     /**
      * Gets the death menu.
      */
     public DeathMenu getDeathMenu() {
-        return deathMenu;
+        return screens.deathMenu();
     }
 
     /**
      * Gets the inventory screen.
      */
     public InventoryScreen getInventoryScreen() {
-        return inventoryScreen;
+        return screens.inventoryScreen();
     }
 
     /**
      * Gets the workbench screen.
      */
     public WorkbenchScreen getWorkbenchScreen() {
-        return workbenchScreen;
+        return screens.workbenchScreen();
     }
 
     /**
      * Gets the furnace screen.
      */
     public FurnaceScreen getFurnaceScreen() {
-        return furnaceScreen;
+        return screens.furnaceScreen();
     }
 
     /**
@@ -551,7 +498,7 @@ public class Game {
      * Gets the character screen.
      */
     public CharacterScreen getCharacterScreen() {
-        return characterScreen;
+        return screens.characterScreen();
     }
 
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#toggleCharacterScreen()}. */
@@ -583,33 +530,33 @@ public class Game {
      * Gets the recipe book screen.
      */
     public RecipeScreen getRecipeBookScreen() {
-        return recipeScreen;
+        return screens.recipeScreen();
     }
 
     /**
      * Gets the main menu.
      */
     public MainMenu getMainMenu() {
-        return mainMenu;
+        return screens.mainMenu();
     }
     
     /**
      * Gets the settings menu.
      */
     public SettingsMenu getSettingsMenu() {
-        return settingsMenu;
+        return screens.settingsMenu();
     }
 
     public com.stonebreak.ui.multiplayerMenu.MultiplayerMenu getMultiplayerMenu() {
-        return multiplayerMenu;
+        return screens.multiplayerMenu();
     }
 
     public com.stonebreak.ui.multiplayerMenu.HostWorldScreen getHostWorldScreen() {
-        return hostWorldScreen;
+        return screens.hostWorldScreen();
     }
 
     public com.stonebreak.ui.multiplayerMenu.JoinWorldScreen getJoinWorldScreen() {
-        return joinWorldScreen;
+        return screens.joinWorldScreen();
     }
     
     /**
@@ -810,35 +757,35 @@ public class Game {
      * Gets the loading screen.
      */
     public LoadingScreen getLoadingScreen() {
-        return loadingScreen;
+        return screens.loadingScreen();
     }
 
     /**
      * Gets the world select screen.
      */
     public WorldSelectScreen getWorldSelectScreen() {
-        return worldSelectScreen;
+        return screens.worldSelectScreen();
     }
 
     /**
      * Gets the character creation screen.
      */
     public CharacterCreationScreen getCharacterCreationScreen() {
-        return characterCreationScreen;
+        return screens.characterCreationScreen();
     }
 
     /**
      * Gets the terrain mapper screen (preview + world creation).
      */
     public TerrainMapperScreen getTerrainMapperScreen() {
-        return terrainMapperScreen;
+        return screens.terrainMapperScreen();
     }
 
     /**
      * Gets the boot-time Sonar Arts intro screen.
      */
     public SonarArtsIntroScreen getStartupIntroScreen() {
-        return startupIntroScreen;
+        return screens.startupIntroScreen();
     }
 
     /**
@@ -886,39 +833,9 @@ public class Game {
 
     // ---- World lifecycle (client render world) ----
 
-    /**
-     * Build the client RENDER world (two-world model): a {@code World.createClientView} world
-     * that generates no terrain and carries no {@link SaveService} — its chunks, entities, and
-     * blocks stream in from the authoritative server. Called from the client world view on
-     * {@code WelcomeS2C}. Shows the loading screen until the spawn chunk has streamed in, then
-     * enters play (the loading screen's hide() transitions to PLAYING).
-     */
-    /**
-     * Generation stamp for client-world builds. Bumped by every {@link #startClientWorld}
-     * and by {@link #cancelClientWorldBuild} (session teardown), so an in-flight
-     * "ClientWorld-Build" thread whose session died or was superseded detects it and aborts
-     * instead of (a) flipping the game back to PLAYING from the background after a
-     * disconnect returned to the menu, or (b) racing a second build's world swap.
-     */
-    private final java.util.concurrent.atomic.AtomicInteger clientWorldBuildGeneration =
-            new java.util.concurrent.atomic.AtomicInteger();
-    /** Serializes the world swap between competing build threads. */
-    private final Object clientWorldBuildLock = new Object();
-
-    /**
-     * True from {@link #startClientWorld} until the build thread has swapped the new world
-     * in via {@code replaceWorldInstance} (world + entity manager fully replaced). While
-     * pending, {@code Game.getWorld()}/{@code getEntityManager()} may still point at the
-     * PREVIOUS session's instances — applying inbound network state against them would
-     * orphan it (added to a world/manager that is about to be discarded). Client handlers
-     * gate on {@link #isClientWorldReady()} and buffer until the swap lands.
-     */
-    private volatile boolean clientWorldBuildPending = false;
-
     /** Invalidate any in-flight client-world build (called from session shutdown). */
     public void cancelClientWorldBuild() {
-        clientWorldBuildGeneration.incrementAndGet();
-        clientWorldBuildPending = false;
+        clientWorldBuilder.cancel();
     }
 
     /**
@@ -926,117 +843,15 @@ public class Game {
      * {@code Game.getEntityManager()}: both exist AND no client-world build is mid-swap.
      */
     public static boolean isClientWorldReady() {
-        Game g = instance;
-        return g != null && !g.clientWorldBuildPending
-                && g.world != null && g.entityManager != null;
+        Game game = instance;
+        return game != null && game.clientWorldBuilder.isReady();
     }
 
+    /**
+     * Builds the client render world for a joined session. See
+     * {@link com.stonebreak.core.world.ClientWorldBuilder}.
+     */
     public void startClientWorld(String worldName, long seed, org.joml.Vector3f spawn) {
-        // The client never persists — drop any save service so the chunk store stays read-only.
-        SaveService prev = this.saveService;
-        if (prev != null) {
-            try { prev.stopAutoSave(); prev.close(); } catch (Exception ignored) { }
-            this.saveService = null;
-        }
-        setCurrentWorldName(worldName);
-        setCurrentWorldSeed(seed);
-        setCurrentWorldData(null);
-
-        LoadingScreen ls = getLoadingScreen();
-        if (ls != null) {
-            ls.show();
-        }
-        final int generation = clientWorldBuildGeneration.incrementAndGet();
-        clientWorldBuildPending = true;
-        new Thread(() -> buildClientWorld(generation, seed, spawn), "ClientWorld-Build").start();
-    }
-
-    /** True while {@code generation} is still the latest build AND the session is alive. */
-    private boolean buildStillCurrent(int generation) {
-        return generation == clientWorldBuildGeneration.get()
-                && com.stonebreak.network.MultiplayerSession.isInWorld();
-    }
-
-    private void buildClientWorld(int generation, long seed, org.joml.Vector3f spawn) {
-        try {
-            World renderWorld = worldLifecycle.createClientWorldInstance(seed);
-            synchronized (clientWorldBuildLock) {
-                if (!buildStillCurrent(generation)) {
-                    System.out.println("[CLIENT-WORLD] Build superseded/cancelled before install — aborting.");
-                    try { renderWorld.cleanup(); } catch (Exception ignored) { }
-                    return;
-                }
-                worldLifecycle.replaceWorldInstance(renderWorld); // fresh player + world components
-                clientWorldBuildPending = false; // world + entity manager are now the new session's
-            }
-            renderWorld.setSpawnPosition(spawn);
-            Player p = Game.getPlayer();
-            if (p != null) {
-                p.setPosition(spawn);
-            }
-
-            // Restore the local player's saved data NOW, on this thread, applied to the player we
-            // just created (p). Doing it here — rather than from the main-thread tick reading
-            // Game.getPlayer() — avoids the re-open bug where the restore hit the previous
-            // session's stale player. For SP/host this is synchronous; for JOIN it's a no-op
-            // (the data arrives via PlayerDataS2C and is applied by the client view).
-            com.stonebreak.network.MultiplayerSession.restoreLocalPlayer(p);
-
-            // Client clock is server-authoritative. Seed from the TimeSyncS2C the server sends
-            // right after WelcomeS2C when it already arrived (buffered by the client view);
-            // otherwise start at NOON and let the first periodic sync snap it. Always replace —
-            // a leftover clock from a previous session belongs to a different world.
-            Long serverTicks = com.stonebreak.network.MultiplayerSession.pendingServerTimeTicks();
-            setTimeOfDay(new TimeOfDay(serverTicks != null ? serverTicks : TimeOfDay.NOON));
-
-            // Wait (bounded) for the spawn chunk to stream in so the player doesn't fall into
-            // void before terrain arrives. The client tick (which installs chunks) runs during
-            // LOADING because GameLoop pumps the network before routing state updates.
-            // Wait for two things before entering PLAY:
-            //  1. the spawn chunk is STREAMED IN (present) — not meshed; meshing happens in
-            //     PLAYING and the player physics guard holds the player until it renders.
-            //  2. the local player's saved data has been RESTORED — otherwise the player would
-            //     briefly appear with an empty inventory before the restore lands (visible
-            //     especially on a fast same-world re-open).
-            int scx = (int) Math.floor(spawn.x / 16.0);
-            int scz = (int) Math.floor(spawn.z / 16.0);
-            long deadline = System.currentTimeMillis() + 10_000L;
-            while (System.currentTimeMillis() < deadline
-                    && buildStillCurrent(generation)
-                    && (renderWorld.getChunkIfLoaded(scx, scz) == null
-                        || !com.stonebreak.network.MultiplayerSession.isLocalPlayerDataReady())) {
-                Thread.sleep(50);
-            }
-
-            // The session may have died (disconnect → menu) or been superseded while we
-            // waited: entering PLAYING from this stale thread would resurrect gameplay with
-            // no session (mode=MENU, client=null) — the crash-on-reconnect chain.
-            if (!buildStillCurrent(generation)) {
-                System.out.println("[CLIENT-WORLD] Build superseded/cancelled before enter-play — aborting.");
-                return;
-            }
-
-            LoadingScreen ls = getLoadingScreen();
-            if (ls != null) {
-                ls.hide(); // → GameState.PLAYING
-            }
-            if (mouseCaptureManager != null) {
-                mouseCaptureManager.forceUpdate();
-            }
-        } catch (Exception e) {
-            System.err.println("[CLIENT-WORLD] Failed to build render world: " + e.getMessage());
-            e.printStackTrace();
-            if (buildStillCurrent(generation)) {
-                // The render world is unusable and Game.getWorld() still points at the
-                // PREVIOUS session's world — clearing the pending flag here would let the
-                // client handlers drain buffered chunks/spawns into it. Tear the session
-                // down and return to the menu instead (mirrors the disconnect path; the
-                // session shutdown also clears clientWorldBuildPending).
-                runOnMainThread(() -> {
-                    com.stonebreak.network.MultiplayerSession.shutdown();
-                    setState(GameState.MAIN_MENU);
-                });
-            }
-        }
+        clientWorldBuilder.start(worldName, seed, spawn);
     }
 }

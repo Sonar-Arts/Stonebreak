@@ -175,9 +175,23 @@ public final class MobNavigator {
         if (direction.length() <= 0.1f) return;
         direction.normalize();
 
+        steerAlong(direction, moveSpeedMultiplier, deltaTime, true);
+    }
+
+    /**
+     * One tick of steering along an explicit heading: rotate toward it, optionally hop obstacles,
+     * and drive horizontal velocity. This is the primitive {@link #moveTowardTarget} is built from,
+     * exposed for behaviours that steer continuously rather than toward a fixed point — a mob
+     * running directly away from the player, or paddling across water where hopping makes no sense.
+     *
+     * @param direction        normalized horizontal heading
+     * @param speedMultiplier  scales the entity's base move speed for this behaviour
+     * @param allowJump        false to suppress the obstacle hop (e.g. while swimming)
+     */
+    public void steerAlong(Vector3f direction, float speedMultiplier, float deltaTime, boolean allowJump) {
         rotateToward(yawFor(direction), deltaTime);
 
-        if (entity.isOnGround() && jumpCooldownTimer <= 0 && shouldJumpObstacle(direction)) {
+        if (allowJump && entity.isOnGround() && jumpCooldownTimer <= 0 && shouldJumpObstacle(direction)) {
             entity.jump();
             jumpCooldownTimer = JUMP_COOLDOWN_SECONDS;
             if (hopBoostSpeed > 0) {
@@ -187,7 +201,7 @@ public final class MobNavigator {
 
         float speed = (hopTimer > 0.0f)
                 ? hopBoostSpeed
-                : entity.getMoveSpeed() * moveSpeedMultiplier * entity.getMoveSpeedMultiplier();
+                : entity.getMoveSpeed() * speedMultiplier * entity.getMoveSpeedMultiplier();
         Vector3f velocity = entity.getVelocity();
         velocity.x = direction.x * speed;
         velocity.z = direction.z * speed;
@@ -202,22 +216,36 @@ public final class MobNavigator {
         entity.setVelocity(velocity);
     }
 
+    /**
+     * Turns the entity toward {@code direction} at an explicit rate, without touching velocity.
+     * Behaviours that move outside the ground steering path (flight, for one) still get their
+     * facing from here, so the model-yaw-offset rule is applied in exactly one place.
+     */
+    public void faceDirection(Vector3f direction, float turnSpeedDegPerSec, float deltaTime) {
+        float maxStep = turnSpeedDegPerSec * deltaTime;
+        rotateTowardYaw(yawFor(direction), maxStep);
+    }
+
     /** World yaw (degrees) that points the entity's model along {@code direction}. */
     private float yawFor(Vector3f direction) {
         return (float) Math.toDegrees(Math.atan2(direction.x, direction.z))
                 + entity.getType().getModelYawOffsetDegrees();
     }
 
-    /** Smoothly rotates the entity toward {@code targetYaw} along the shortest arc. */
+    /** Smoothly rotates the entity toward {@code targetYaw} at the configured turn rate. */
     private void rotateToward(float targetYaw, float deltaTime) {
+        rotateTowardYaw(targetYaw, rotationSpeedDegPerSec * deltaTime);
+    }
+
+    /** Steps the entity's yaw toward {@code targetYaw} along the shortest arc, capped at {@code maxStep}. */
+    private void rotateTowardYaw(float targetYaw, float maxStep) {
         Vector3f rotation = entity.getRotation();
         float deltaYaw = targetYaw - rotation.y;
         while (deltaYaw > 180.0f) deltaYaw -= 360.0f;
         while (deltaYaw < -180.0f) deltaYaw += 360.0f;
 
-        float maxRotation = rotationSpeedDegPerSec * deltaTime;
-        if (Math.abs(deltaYaw) > maxRotation) {
-            deltaYaw = Math.signum(deltaYaw) * maxRotation;
+        if (Math.abs(deltaYaw) > maxStep) {
+            deltaYaw = Math.signum(deltaYaw) * maxStep;
         }
         entity.setRotation(new Vector3f(rotation.x, rotation.y + deltaYaw, rotation.z));
     }

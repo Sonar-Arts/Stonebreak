@@ -114,12 +114,12 @@ public final class IntegratedServer {
         // installed on the HEADLESS world only, so server-side chunk.setBlock writes reach
         // clients live instead of waiting for an accidental chunk re-stream. Runs on the
         // server tick thread inside level.tick(), before blockHandler.tick flushes — same-tick.
-        level.world().setServerMutationCallback(blockHandler::onServerBlockChange);
+        level.world().serverSinks().setBlockSink(blockHandler::onServerBlockChange);
         // Same funnel pattern for snow-layer mutations → BlockMetaS2C broadcasts.
-        level.world().setServerSnowCallback(blockHandler::onServerSnowChange);
+        level.world().serverSinks().setSnowSink(blockHandler::onServerSnowChange);
         // And for water flow-level mutations → BlockMetaS2C (KIND_WATER_LEVEL), so clients
         // render live flow heights instead of full-height columns.
-        level.world().setServerWaterCallback(blockHandler::onServerWaterChange);
+        level.world().serverSinks().setWaterSink(blockHandler::onServerWaterChange);
         // Furnace state-string changes (lit flips, contents, cook progress) → BlockStateS2C.
         // The registry dedups (fires only on actual string change), so idle furnaces are free.
         if (level.world().getFurnaceRegistry() != null) {

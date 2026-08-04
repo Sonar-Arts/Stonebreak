@@ -542,18 +542,18 @@ public class DebugOverlay {
         int chunkX = x >> 4;
         int chunkZ = z >> 4;
 
-        BiomeType biome = world.getBiomeAt(x, z);
+        BiomeType biome = world.terrain().getBiomeAt(x, z);
         String facing = getCardinalDirection(player.getCamera().getFront());
         BlockType blockBelow = world.getBlockAt(x, y - 1, z);
         String blockName = blockBelow != null ? blockBelow.name() : "Unknown";
 
         // Noise channels driving terrain shape
-        float continentalness = world.getContinentalnessAt(x, z);
-        float erosion = world.getErosionAt(x, z);
-        float peaksValleys = world.getPeaksValleysAt(x, z);
-        int baseHeight = world.getBaseHeightAt(x, z);
-        int shapedHeight = world.getShapedHeightAt(x, z);
-        int finalHeight = world.getFinalTerrainHeightAt(x, z);
+        float continentalness = world.terrain().getContinentalnessAt(x, z);
+        float erosion = world.terrain().getErosionAt(x, z);
+        float peaksValleys = world.terrain().getPeaksValleysAt(x, z);
+        int baseHeight = world.terrain().getBaseHeightAt(x, z);
+        int shapedHeight = world.terrain().getShapedHeightAt(x, z);
+        int finalHeight = world.terrain().getFinalTerrainHeightAt(x, z);
 
         // Targeted block info
         String targetedLine = getTargetedBlockSummary(player);
@@ -567,8 +567,8 @@ public class DebugOverlay {
         panel.row("Noise Backend", noiseBackendSummary());
         panel.row("Block Below", blockName);
         panel.row("Biome", biome.name());
-        panel.row("Temperature", String.format("%.3f", world.getTemperatureAt(x, z)));
-        panel.row("Moisture", String.format("%.3f", world.getMoistureAt(x, z)));
+        panel.row("Temperature", String.format("%.3f", world.terrain().getTemperatureAt(x, z)));
+        panel.row("Moisture", String.format("%.3f", world.terrain().getMoistureAt(x, z)));
         panel.row("Continentalness", String.format("%.3f", continentalness));
         panel.row("Erosion", String.format("%.3f", erosion));
         panel.row("Peaks/Valleys", String.format("%.3f", peaksValleys));
