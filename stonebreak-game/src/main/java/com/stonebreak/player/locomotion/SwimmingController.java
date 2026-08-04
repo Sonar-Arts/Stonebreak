@@ -2,7 +2,7 @@ package com.stonebreak.player.locomotion;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
-import com.stonebreak.blocks.waterSystem.WaterHeightUtil;
+import com.stonebreak.blocks.waterSystem.WaterSubmersion;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.world.World;
@@ -139,30 +139,13 @@ public class SwimmingController {
         return submersionFraction;
     }
 
+    /**
+     * Shared with every mob via {@link WaterSubmersion}, so a player and a cow standing in the same
+     * pond agree on where its surface is.
+     */
     private float computeSubmersionFraction() {
         Vector3f p = state.getPosition();
-        int bx = (int) Math.floor(p.x);
-        int bz = (int) Math.floor(p.z);
-        int feetBlockY = (int) Math.floor(p.y);
-        int headBlockY = (int) Math.floor(p.y + PLAYER_HEIGHT);
-
-        int topWaterY = Integer.MIN_VALUE;
-        for (int by = feetBlockY; by <= headBlockY + 1; by++) {
-            if (world.getBlockAt(bx, by, bz) == BlockType.WATER) {
-                topWaterY = by;
-            }
-        }
-        if (topWaterY == Integer.MIN_VALUE) {
-            return 0.0f;
-        }
-
-        float heightFraction = WaterHeightUtil.resolveSurfaceHeightFraction(world, bx, topWaterY, bz);
-        if (Float.isNaN(heightFraction)) {
-            heightFraction = WaterHeightUtil.MAX_WATER_HEIGHT;
-        }
-        float surfaceY = topWaterY + heightFraction;
-        float submergedDepth = Math.max(0.0f, Math.min(PLAYER_HEIGHT, surfaceY - p.y));
-        return submergedDepth / PLAYER_HEIGHT;
+        return WaterSubmersion.fractionAt(world, p.x, p.y, p.z, PLAYER_HEIGHT);
     }
 
     /** Eye-level water check — used by rendering overlays and public API. */

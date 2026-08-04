@@ -18,13 +18,18 @@ public interface NavVolume {
     int flags(int x, int y, int z);
 
     /**
-     * How much of the cell its solid part fills, measured from the cell's bottom: {@code 1.0} for a
-     * full block, {@code 0.5} for a half-height stair tread, {@code 0.125} for one snow layer.
+     * How much of the cell is filled from its bottom: {@code 1.0} for a full block, {@code 0.5} for
+     * a half-height stair tread, {@code 0.125} for one snow layer — and for a {@link NavCell#LIQUID}
+     * cell, the height of the liquid's own surface (a flowing block is shorter than a source).
      *
-     * <p>Only meaningful when {@link NavCell#SOLID} is set; other cells may return anything and
-     * callers must not consult it. This is what makes an agent stand at the right height on shaped
-     * blocks, and it must agree with whatever the game's collision uses — if the two disagree, mobs
-     * plan routes their own physics refuses to walk.
+     * <p>Meaningful for {@link NavCell#SOLID} and {@link NavCell#LIQUID}; other cells may return
+     * anything and callers must not consult it.
+     *
+     * <p>For solids this is what makes an agent stand at the right height on shaped blocks, and it
+     * must agree with whatever the game's collision uses — if the two disagree, mobs plan routes
+     * their own physics refuses to walk. For liquids it is what puts a swimmer's node at the
+     * waterline rather than on the bed a metre below, which is the difference between a shore
+     * reading as a step and reading as a wall.
      */
     float topSurface(int x, int y, int z);
 }

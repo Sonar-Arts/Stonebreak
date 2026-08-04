@@ -46,8 +46,24 @@ final class BoxNavVolume implements NavVolume {
         return set(x, y, z, NavCell.SOLID, top);
     }
 
+    /** Water fills most of its cell — a source block's surface sits a little below the top. */
+    static final float WATER_SURFACE_HEIGHT = 0.875f;
+
     BoxNavVolume water(int x, int y, int z) {
-        return set(x, y, z, NavCell.LIQUID, 0.0f);
+        return set(x, y, z, NavCell.LIQUID, WATER_SURFACE_HEIGHT);
+    }
+
+    /**
+     * Digs a column {@code depth} blocks into the ground and fills it with water, so the waterline
+     * sits just below the surrounding shore — the shape an actual pond has. Stacking water on top
+     * of the ground instead makes the "shore" lower than the water, which no terrain does and which
+     * makes wading in read as climbing up.
+     */
+    BoxNavVolume pond(int x, int z, int groundTopY, int depth) {
+        for (int y = groundTopY - depth + 1; y <= groundTopY; y++) {
+            water(x, y, z);
+        }
+        return this;
     }
 
     BoxNavVolume hazard(int x, int y, int z) {

@@ -61,7 +61,11 @@ public final class StandStillBehavior implements Behavior {
 
     @Override
     public boolean canStart(AiContext context) {
-        return weight > 0.0f;
+        // Standing about requires something to stand on. A mob afloat in deep water has only
+        // wandering left to choose, which is what sends it looking for a bank instead of treading
+        // water forever. (Wading in the shallows still counts as standing — it is on the ground.)
+        boolean afloat = context.entity().isInWater() && !context.entity().isOnGround();
+        return weight > 0.0f && !afloat;
     }
 
     @Override

@@ -80,7 +80,7 @@ public final class GroundNavDomain implements SearchDomain {
         if (Float.isNaN(fromSurface)) {
             return 0; // the world changed under the search, or the start was never standable
         }
-        boolean fromSubmerged = isLiquid(x, y, z) && isLiquid(x, y + 1, z);
+        boolean fromLiquid = isLiquid(x, y, z);
 
         int count = 0;
         for (int dir = 0; dir < DX.length; dir++) {
@@ -96,7 +96,7 @@ public final class GroundNavDomain implements SearchDomain {
             if (diagonal && !(columnClear(nx, z, fromSurface) && columnClear(x, nz, fromSurface))) {
                 continue; // would clip the corner block between the two columns
             }
-            if (!resolveLanding(nx, nz, y, fromSurface, fromSubmerged)) {
+            if (!resolveLanding(nx, nz, y, fromSurface, fromLiquid)) {
                 continue;
             }
 
@@ -172,21 +172,24 @@ public final class GroundNavDomain implements SearchDomain {
      * Resolves where an agent leaving {@code fromSurface} ends up in the target column, in the order
      * physics would: flat, then up, then down. Writes the landing into the out-parameter fields.
      */
-    private boolean resolveLanding(int nx, int nz, int fromY, float fromSurface, boolean fromSubmerged) {
+    private boolean resolveLanding(int nx, int nz, int fromY, float fromSurface, boolean fromLiquid) {
         float surface = standSurface(nx, fromY, nz);
-        if (!Float.isNaN(surface) && acceptLanding(nx, fromY, nz, surface, fromSurface, fromSubmerged)) {
+        if (!Float.isNaN(surface) && acceptLanding(nx, fromY, nz, surface, fromSurface, fromLiquid)) {
             return true;
         }
 
         // Up: the first standable cell above, if the climb is within reach. A surface inside cell cy
         // is never below cy, so once cy alone is out of reach nothing higher can be either.
-        for (int cy = fromY + 1; cy - fromSurface <= profile.maxClimb() + EPSILON; cy++) {
+        float reach = fromLiquid
+                ? Math.max(profile.maxClimb(), profile.waterEscapeClimb())
+                : profile.maxClimb();
+        for (int cy = fromY + 1; cy - fromSurface <= reach + EPSILON; cy++) {
             if (cy > NavNodes.MAX_Y) {
                 break;
             }
             surface = standSurface(nx, cy, nz);
             if (!Float.isNaN(surface)) {
-                return acceptLanding(nx, cy, nz, surface, fromSurface, fromSubmerged);
+                return acceptLanding(nx, cy, nz, surface, fromSurface, fromLiquid);
             }
         }
 
@@ -198,22 +201,32 @@ public final class GroundNavDomain implements SearchDomain {
             }
             surface = standSurface(nx, cy, nz);
             if (!Float.isNaN(surface)) {
-                return acceptLanding(nx, cy, nz, surface, fromSurface, fromSubmerged);
+                return acceptLanding(nx, cy, nz, surface, fromSurface, fromLiquid);
             }
         }
         return false;
     }
 
-    private boolean acceptLanding(int x, int y, int z, float surface, float fromSurface, boolean fromSubmerged) {
+    /**
+     * Whether a landing is reachable from {@code fromSurface}, and at what surcharge.
+     *
+     * <p>Rising out of deep water is allowed, and deliberately so: swimming <em>is</em> the ability
+     * to push upward without a floor. Refusing it looks reasonable — a swimmer has nothing to push
+     * off — but this domain has no vertical-only moves, so depth can only be changed by a move that
+     * also travels sideways. Forbidding those rises turns any water more than a body deep into a
+     * one-way trap: an agent that swims in can circle forever without a single successor that
+     * climbs back toward the shallows, which are its only route to shore.
+     */
+    private boolean acceptLanding(int x, int y, int z, float surface, float fromSurface,
+                                  boolean fromLiquid) {
         float delta = surface - fromSurface;
 
-        if (delta > profile.maxStepUp() + EPSILON) {
-            if (fromSubmerged) {
-                return false; // a swimming agent has nothing to push off
-            }
-            if (delta > profile.maxClimb() + EPSILON) {
-                return false;
-            }
+        // Leaving water is a swim stroke, not a standing jump, and reaches higher.
+        float climbLimit = fromLiquid
+                ? Math.max(profile.maxClimb(), profile.waterEscapeClimb())
+                : profile.maxClimb();
+        if (delta > climbLimit + EPSILON) {
+            return false;
         }
         if (-delta > profile.maxFall() + EPSILON) {
             return false;
@@ -228,8 +241,9 @@ public final class GroundNavDomain implements SearchDomain {
 
         landingY = y;
         landingSurcharge = surcharge;
+        // At a waterline: shallow enough to touch bottom is wading, water below it is swimming.
         landingWading = isLiquid(x, y, z);
-        landingSubmerged = landingWading && isLiquid(x, y + 1, z);
+        landingSubmerged = landingWading && isLiquid(x, y - 1, z);
         return true;
     }
 
@@ -253,15 +267,21 @@ public final class GroundNavDomain implements SearchDomain {
             }
             surface = y + top;
         } else if (NavCell.isLiquid(flags)) {
-            boolean submerged = isLiquid(x, y + 1, z);
-            if (submerged) {
-                if (!profile.canSwim()) {
-                    return Float.NaN;
-                }
-            } else if (!profile.canSwim() && !hasFullSupportBelow(x, y, z)) {
+            // A body in water floats at the waterline, so that — and only that — is where it
+            // stands. Cells further down are the same physical place to a floating agent, and
+            // making them nodes too would both duplicate the spot and, worse, model wading into a
+            // pond as climbing up onto its surface.
+            if (isLiquid(x, y + 1, z)) {
+                return Float.NaN; // not the waterline; the surface is somewhere above
+            }
+            boolean overDeepWater = isLiquid(x, y - 1, z);
+            if (overDeepWater && !profile.canSwim()) {
+                return Float.NaN; // out of its depth
+            }
+            if (!overDeepWater && !profile.canSwim() && !hasFullSupportBelow(x, y, z)) {
                 return Float.NaN; // wading needs a bed underfoot
             }
-            surface = y;
+            surface = y + Math.min(1.0f, volume.topSurface(x, y, z));
         } else {
             if (!hasFullSupportBelow(x, y, z)) {
                 return Float.NaN;

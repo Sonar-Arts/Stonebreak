@@ -1,13 +1,13 @@
 package com.stonebreak.mobs.entities;
 
 import org.joml.Vector3f;
+import com.stonebreak.audio.MobSounds;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.world.World;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
 import com.stonebreak.mobs.entities.ai.AwarenessController;
@@ -57,6 +57,13 @@ public abstract class LivingEntity extends Entity {
 
     /** Clip clock for SBE-driven rendering; ticked every update. */
     protected final AnimationController animationController;
+
+    /**
+     * Footsteps, sized from this mob's own dimensions. Lives here rather than in each mob class so
+     * that every mob has them and no mob has to remember to tick them; null for entities that
+     * make none.
+     */
+    protected final MobSounds footsteps;
 
     /** Appearance variant rendered from the SBE asset (case-insensitive). */
     protected String textureVariant = "Default";
@@ -116,6 +123,15 @@ public abstract class LivingEntity extends Entity {
         this.interactionRange = 3.0f;
         this.lastInteractionTime = 0;
         this.animationController = new AnimationController(this);
+        this.footsteps = hasFootsteps() ? MobSounds.forEntity(world, this) : null;
+    }
+
+    /**
+     * Whether this entity makes footstep noises as it walks. True for anything with feet; remote
+     * players are the exception — their sounds are their own client's business, not a mob's.
+     */
+    protected boolean hasFootsteps() {
+        return true;
     }
     
     /**
@@ -132,11 +148,8 @@ public abstract class LivingEntity extends Entity {
             }
         }
 
-        // Check if entity is in water and apply flow forces
-        if (isInWater()) {
-            WaterFlowPhysics.applyWaterFlowForce(world, position, velocity,
-                deltaTime, width, height);
-        }
+        // Water forces (buoyancy, drag, current) belong to the physics step, where they act on the
+        // velocity about to be integrated — see EntityWaterPhysics.
 
         // Update movement state
         isMoving = velocity.length() > 0.1f;
@@ -170,6 +183,10 @@ public abstract class LivingEntity extends Entity {
 
         // Advance the clip clock; SBE renderers sample animations from it.
         animationController.updateAnimations(deltaTime);
+
+        if (footsteps != null) {
+            footsteps.updateSounds(this);
+        }
     }
 
     /**
@@ -200,6 +217,31 @@ public abstract class LivingEntity extends Entity {
     }
 
     /**
+     * A swim stroke: pushes the mob up through the water it is in.
+     *
+     * <p>Distinct from {@link #jump()}, which needs ground to push off and so does nothing to a mob
+     * floating in a lake. This is what gets a mob over the lip of a bank and back onto land.
+     *
+     * <p>It uses the mob's <em>own jump strength</em>, and that is the whole reason it works. A mob
+     * floating at the surface is barely submerged, so it is fighting nearly full gravity: a gentle
+     * paddle lifts it a few centimetres and it stays pinned against the bank forever. A stroke as
+     * strong as its jump clears the same one-block ledge in water that it clears on land.
+     */
+    public void swimUp() {
+        if (isInWater()) {
+            velocity.y = Math.max(velocity.y,
+                    Math.max(jumpVelocity, EntityWaterPhysics.MIN_ESCAPE_STROKE));
+            setOnGround(false);
+        }
+    }
+
+    /** How high a swim stroke carries this mob, in blocks — what a shore must be within. */
+    public float getSwimStrokeReach() {
+        float stroke = Math.max(jumpVelocity, EntityWaterPhysics.MIN_ESCAPE_STROKE);
+        return (stroke * stroke) / (2.0f * -GRAVITY);
+    }
+
+    /**
      * How high this mob's jump actually carries it, in blocks. Route planning derives its climb
      * limit from this rather than from a constant, so a stronger jumper plans routes a weaker one
      * will not — and the two can never disagree, because both read the same velocity.
@@ -209,8 +251,12 @@ public abstract class LivingEntity extends Entity {
     }
 
     /**
-     * Whether this mob is at home in deep water. Land mobs wade at most; a swimmer may plan routes
-     * that submerge it. Waterfowl override this.
+     * Whether this mob is <em>at home</em> in water — not whether it can swim at all.
+     *
+     * <p>Every mob can swim: water holds them up and they can stroke their way to a bank, which is
+     * what stops a cow that fell in a lake from being stranded there. This flag is about
+     * preference: waterfowl route through water as readily as over grass and will happily settle
+     * on it, while everything else pays a steep cost to cross and never chooses to rest there.
      */
     public boolean canSwim() {
         return false;

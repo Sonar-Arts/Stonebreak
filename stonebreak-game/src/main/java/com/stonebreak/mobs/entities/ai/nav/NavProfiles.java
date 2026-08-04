@@ -53,18 +53,23 @@ public final class NavProfiles {
 
         float maxClimb = Math.max(MAX_STEP_UP,
                 Math.min(CLIMB_CEILING, entity.getJumpApexHeight() * USABLE_JUMP_FRACTION));
+        // Leaving water is a swim stroke, which reaches higher than a standing jump.
+        float waterEscapeClimb = Math.max(maxClimb,
+                entity.getSwimStrokeReach() * USABLE_JUMP_FRACTION);
 
         if (entity.canSwim()) {
             return new NavProfile(standingHeight, columnRadius,
-                    MAX_STEP_UP, maxClimb, SWIMMER_MAX_FALL,
+                    MAX_STEP_UP, maxClimb, waterEscapeClimb, SWIMMER_MAX_FALL,
                     true, 1.0f, 1.2f,
                     0.5f, 2.0f, 0.2f);
         }
-        // Land mobs will wade a puddle rather than walk right around a pond, but the multiplier is
-        // steep enough that any dry route of comparable length wins.
+        // Land mobs CAN swim — they just hate it. Marking deep water impassable instead would be
+        // worse than a preference: a cow that fell in a lake would have no route out at all, and
+        // would stand on the bottom until something else moved it. The multipliers are steep
+        // enough that any dry route of comparable length wins, so they still walk around ponds.
         return new NavProfile(standingHeight, columnRadius,
-                MAX_STEP_UP, maxClimb, WALKER_MAX_FALL,
-                false, 3.0f, 8.0f,
+                MAX_STEP_UP, maxClimb, waterEscapeClimb, WALKER_MAX_FALL,
+                true, 3.0f, 8.0f,
                 0.5f, 2.0f, 0.5f);
     }
 }

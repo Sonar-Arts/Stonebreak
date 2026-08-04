@@ -4,6 +4,7 @@ import com.openmason.engine.wayfind.voxel.NavCell;
 import com.openmason.engine.wayfind.voxel.NavVolume;
 import com.stonebreak.blocks.BlockShape;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.waterSystem.WaterHeightUtil;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -62,6 +63,11 @@ public final class WorldNavVolume implements NavVolume {
 
     @Override
     public float topSurface(int x, int y, int z) {
+        if (world.getBlockAt(x, y, z) == BlockType.WATER) {
+            // The waterline is where a body floats, and a flowing block sits lower than a source.
+            float height = WaterHeightUtil.resolveSurfaceHeightFraction(world, x, y, z);
+            return Float.isNaN(height) ? WaterHeightUtil.MAX_WATER_HEIGHT : height;
+        }
         return BlockShape.collisionHeight(world, x, y, z);
     }
 }

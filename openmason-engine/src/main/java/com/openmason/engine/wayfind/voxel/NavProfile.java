@@ -14,8 +14,12 @@ package com.openmason.engine.wayfind.voxel;
  *                           Deriving this from a collision width is game policy, not engine policy:
  *                           a 1.1-wide mob squeezing down a 1-wide corridor is a design call.
  * @param maxStepUp          rise the agent walks up without jumping (game physics auto-step)
- * @param maxClimb           greatest rise reachable at all, jumping included; below
+ * @param maxClimb           greatest rise reachable at all on land, jumping included; below
  *                           {@code maxStepUp} means the agent cannot jump
+ * @param waterEscapeClimb   greatest rise reachable when leaving water. Separate from
+ *                           {@code maxClimb} because pushing off water is not a standing jump —
+ *                           if the two are conflated, a mob whose land jump is a hair under the
+ *                           height of a bank is trapped in the pond beside it forever
  * @param maxFall            greatest drop the agent will take voluntarily
  * @param canSwim            whether the agent may enter water deep enough to submerge it
  * @param wadeCostMultiplier cost scale for water shallow enough to keep its head out
@@ -30,6 +34,7 @@ public record NavProfile(
         int columnRadius,
         float maxStepUp,
         float maxClimb,
+        float waterEscapeClimb,
         float maxFall,
         boolean canSwim,
         float wadeCostMultiplier,
@@ -45,7 +50,7 @@ public record NavProfile(
         if (columnRadius < 0) {
             throw new IllegalArgumentException("columnRadius must not be negative: " + columnRadius);
         }
-        if (maxStepUp < 0.0f || maxClimb < 0.0f || maxFall < 0.0f) {
+        if (maxStepUp < 0.0f || maxClimb < 0.0f || waterEscapeClimb < 0.0f || maxFall < 0.0f) {
             throw new IllegalArgumentException("climb and fall limits must not be negative");
         }
         // Cost multipliers below 1 would make the search's octile heuristic inadmissible, silently
@@ -64,7 +69,7 @@ public record NavProfile(
      */
     public static NavProfile walker(float height, int columnRadius) {
         return new NavProfile(height, columnRadius,
-                0.5f, 1.125f, 3.0f,
+                0.5f, 1.125f, 1.5f, 3.0f,
                 false, 3.0f, 8.0f,
                 0.5f, 2.0f, 0.5f);
     }
@@ -72,7 +77,7 @@ public record NavProfile(
     /** A walker equally at home in water — waterfowl, or anything amphibious. */
     public static NavProfile swimmer(float height, int columnRadius) {
         return new NavProfile(height, columnRadius,
-                0.5f, 1.125f, 5.0f,
+                0.5f, 1.125f, 1.5f, 5.0f,
                 true, 1.0f, 1.2f,
                 0.5f, 2.0f, 0.2f);
     }
@@ -83,12 +88,12 @@ public record NavProfile(
     }
 
     public NavProfile withSwimming(boolean swim) {
-        return new NavProfile(height, columnRadius, maxStepUp, maxClimb, maxFall, swim,
-                wadeCostMultiplier, swimCostMultiplier, stepCost, jumpCost, fallCostPerBlock);
+        return new NavProfile(height, columnRadius, maxStepUp, maxClimb, waterEscapeClimb, maxFall,
+                swim, wadeCostMultiplier, swimCostMultiplier, stepCost, jumpCost, fallCostPerBlock);
     }
 
     public NavProfile withMaxFall(float fall) {
-        return new NavProfile(height, columnRadius, maxStepUp, maxClimb, fall, canSwim,
-                wadeCostMultiplier, swimCostMultiplier, stepCost, jumpCost, fallCostPerBlock);
+        return new NavProfile(height, columnRadius, maxStepUp, maxClimb, waterEscapeClimb, fall,
+                canSwim, wadeCostMultiplier, swimCostMultiplier, stepCost, jumpCost, fallCostPerBlock);
     }
 }

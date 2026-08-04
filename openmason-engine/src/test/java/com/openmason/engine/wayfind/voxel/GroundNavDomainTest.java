@@ -25,6 +25,9 @@ class GroundNavDomainTest {
     private static final float EPSILON = 1e-3f;
     private static final float DIAGONAL = 1.4142135f;
 
+    /** Water's surface sits an eighth of a block below the top of its cell, so entering is a small drop. */
+    private static final float ENTRY_DROP = 1.0f - BoxNavVolume.WATER_SURFACE_HEIGHT;
+
     /** Short enough to need one cell of headroom, single-column footprint. */
     private static final NavProfile SHORT_WALKER = NavProfile.walker(0.9f, 0);
 
@@ -96,7 +99,7 @@ class GroundNavDomainTest {
 
     @Test
     void aNonJumperCannotEvenMountOneBlock() {
-        NavProfile stepper = new NavProfile(0.9f, 0, 0.5f, 0.5f, 3.0f, false,
+        NavProfile stepper = new NavProfile(0.9f, 0, 0.5f, 0.5f, 0.5f, 3.0f, false,
                 3.0f, 8.0f, 0.5f, 2.0f, 0.5f);
         BoxNavVolume world = BoxNavVolume.ground(9, 70, 9, GROUND_TOP).solid(5, STAND_Y, 4);
 
@@ -174,23 +177,89 @@ class GroundNavDomainTest {
 
     @Test
     void shallowWaterIsWadedAtAPenalty() {
-        BoxNavVolume world = BoxNavVolume.ground(9, 70, 9, GROUND_TOP).water(5, STAND_Y, 4);
+        BoxNavVolume world = BoxNavVolume.ground(9, 70, 9, GROUND_TOP).pond(5, 4, GROUND_TOP, 1);
         Moves moves = movesFrom(world, SHORT_WALKER, 4, STAND_Y, 4);
 
-        assertEquals(SHORT_WALKER.wadeCostMultiplier(), moves.costTo(5, STAND_Y, 4), EPSILON);
+        assertEquals(SHORT_WALKER.wadeCostMultiplier()
+                        + SHORT_WALKER.fallCostPerBlock() * ENTRY_DROP,
+                moves.costTo(5, GROUND_TOP, 4), EPSILON,
+                "the wading penalty, plus the eighth-block step down to the waterline");
     }
 
     @Test
     void deepWaterStopsANonSwimmerAndCarriesASwimmer() {
-        BoxNavVolume world = BoxNavVolume.ground(9, 70, 9, GROUND_TOP)
-                .water(5, STAND_Y, 4)
-                .water(5, STAND_Y + 1, 4);
+        BoxNavVolume world = BoxNavVolume.ground(9, 70, 9, GROUND_TOP).pond(5, 4, GROUND_TOP, 2);
 
-        assertFalse(movesFrom(world, SHORT_WALKER, 4, STAND_Y, 4).reachesColumn(5, 4));
+        assertFalse(movesFrom(world, SHORT_WALKER, 4, STAND_Y, 4).reachesColumn(5, 4),
+                "out of its depth");
 
         NavProfile swimmer = NavProfile.swimmer(0.9f, 0);
-        assertEquals(swimmer.swimCostMultiplier(),
-                movesFrom(world, swimmer, 4, STAND_Y, 4).costTo(5, STAND_Y, 4), EPSILON);
+        assertEquals(swimmer.swimCostMultiplier() + swimmer.fallCostPerBlock() * ENTRY_DROP,
+                movesFrom(world, swimmer, 4, STAND_Y, 4).costTo(5, GROUND_TOP, 4), EPSILON,
+                "the swimming penalty, plus the small step down to the waterline");
+    }
+
+    /**
+     * Deep water must not be a one-way trap.
+     *
+     * <p>A swimmer submerged in two-deep water has to be able to reach the one-deep shelf beside it
+     * — that shelf is the only route back to land. Refusing every rise from a submerged cell (on
+     * the grounds that a swimming agent has nothing to push off) leaves it circling the deep end
+     * with no path out, because this domain has no vertical-only moves either: depth can only be
+     * changed by a move that also goes sideways.
+     */
+    @Test
+    void aSwimmerCanClimbFromDeepWaterOntoTheShallowShelf() {
+        BoxNavVolume world = BoxNavVolume.ground(9, 70, 9, GROUND_TOP)
+                .pond(4, 4, GROUND_TOP, 2)   // two deep...
+                .pond(5, 4, GROUND_TOP, 1);  // ...beside a one-deep shelf
+
+        NavProfile swimmer = NavProfile.swimmer(0.9f, 0);
+        Moves moves = movesFrom(world, swimmer, 4, GROUND_TOP, 4); // afloat over the deep end
+
+        assertTrue(moves.reaches(5, GROUND_TOP, 4),
+                "a swimmer must be able to cross onto the shelf, or it can never leave");
+    }
+
+    /** And the same swimmer can then leave the shelf for dry land. */
+    @Test
+    void aSwimmerOnTheShelfCanStepOutOntoLand() {
+        BoxNavVolume world = BoxNavVolume.ground(9, 70, 9, GROUND_TOP)
+                .pond(5, 4, GROUND_TOP, 1)      // shelf water, waterline just below the shore
+                .solid(6, STAND_Y, 4);          // and a bank one block above that shore
+
+        Moves moves = movesFrom(world, NavProfile.swimmer(0.9f, 0), 5, GROUND_TOP, 4);
+
+        assertTrue(moves.reaches(6, STAND_Y + 1, 4), "and then out onto the bank");
+    }
+
+    /**
+     * A shore standing a block above the water is the shape that traps mobs, because it is two
+     * cells tall measured from a swimmer's dangling feet but only one block above the waterline it
+     * is actually floating at. A stroke reaches it, so a route has to be willing to plan it.
+     */
+    @Test
+    void aSwimmerCanPlanTheClimbOntoAShoreAboveTheWaterline() {
+        BoxNavVolume world = BoxNavVolume.ground(9, 70, 9, GROUND_TOP)
+                .pond(4, 4, GROUND_TOP, 2)
+                .solid(5, STAND_Y, 4); // shore one block proud of the water's own surface
+
+        Moves moves = movesFrom(world, NavProfile.swimmer(0.9f, 0), 4, GROUND_TOP, 4);
+
+        assertTrue(moves.reaches(5, STAND_Y + 1, 4),
+                "a stroke clears a one-block shore; refusing to plan it is what strands mobs");
+    }
+
+    /** But a wall it genuinely cannot stroke over is still a wall. */
+    @Test
+    void aSwimmerWillNotPlanAClimbBeyondItsStroke() {
+        BoxNavVolume world = BoxNavVolume.ground(9, 70, 9, GROUND_TOP)
+                .pond(4, 4, GROUND_TOP, 2)
+                .column(5, 4, STAND_Y, STAND_Y + 2); // three blocks of cliff
+
+        Moves moves = movesFrom(world, NavProfile.swimmer(0.9f, 0), 4, GROUND_TOP, 4);
+
+        assertFalse(moves.reachesColumn(5, 4), "a cliff is not an exit");
     }
 
     @Test

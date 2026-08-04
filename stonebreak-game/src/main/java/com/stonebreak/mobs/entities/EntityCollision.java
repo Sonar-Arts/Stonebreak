@@ -474,23 +474,10 @@ public class EntityCollision {
      * Checks if an entity is in water.
      */
     public boolean isInWater(Entity entity) {
-        Vector3f position = entity.getPosition();
-        
-        // For living entities, check water at their leg level
-        float checkY = position.y + entity.getHeight() / 2.0f;
-        if (entity instanceof LivingEntity livingEntity) {
-            // Check water at the middle of the entity's legs
-            checkY = position.y - livingEntity.getLegHeight() / 2.0f;
-        }
-        
-        int blockX = (int) Math.floor(position.x);
-        int blockY = (int) Math.floor(checkY);
-        int blockZ = (int) Math.floor(position.z);
-        
-        BlockType blockType = world.getBlockAt(blockX, blockY, blockZ);
-        return blockType == BlockType.WATER;
+        return EntityWaterPhysics.submersion(world, entity) > 0.0f;
     }
-    
+
+
     /**
      * Applies physics to an entity, including ground detection and water handling.
      * Now uses improved per-axis collision detection similar to Player class.
@@ -499,21 +486,20 @@ public class EntityCollision {
         Vector3f position = entity.getPosition();
         Vector3f velocity = entity.getVelocity();
         
-        // Check if entity is in water
-        boolean inWater = isInWater(entity);
-        entity.setInWater(inWater);
-        
-        // Apply gravity (skip for BlockDrop and ItemDrop as they have custom physics)
+        // How deep the entity is, not merely whether it is wet — buoyancy needs the difference.
+        float submersion = EntityWaterPhysics.submersion(world, entity);
+        entity.setSubmersion(submersion);
+
+        // Drops carry their own gravity, bounce and ground-snap in update().
         if (!(entity instanceof BlockDrop) && !(entity instanceof ItemDrop)) {
-            if (!entity.isOnGround() && !inWater) {
+            if (submersion > 0.0f) {
+                EntityWaterPhysics.apply(world, entity, submersion, deltaTime);
+                velocity.set(entity.getVelocity());
+            } else if (!entity.isOnGround()) {
                 velocity.y += Entity.GRAVITY * deltaTime;
-            } else if (inWater) {
-                // Buoyancy in water
-                velocity.y += Entity.GRAVITY * 0.3f * deltaTime; // Reduced gravity in water
-                velocity.mul(0.8f); // Water resistance
             }
         }
-        
+
         // Update entity velocity first
         entity.setVelocity(velocity);
         

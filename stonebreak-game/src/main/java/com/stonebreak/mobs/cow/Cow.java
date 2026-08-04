@@ -14,7 +14,6 @@ import com.stonebreak.mobs.entities.ai.behavior.FleeBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.StandStillBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.WanderBehavior;
 import com.stonebreak.mobs.entities.ai.nav.Steering;
-import com.stonebreak.audio.MobSounds;
 
 /**
  * Cow mob implementation - the first living entity in Stonebreak.
@@ -32,9 +31,6 @@ public class Cow extends LivingEntity {
     private boolean canBeMilked;
     private float milkRegenTimer;
     private static final float MILK_REGEN_TIME = 300.0f; // 5 minutes
-
-    // Footsteps: relaxed cadence, tolerant of brief off-ground moments
-    private final MobSounds mobSounds;
 
     /**
      * Creates a new cow at the specified position with default texture variant.
@@ -64,9 +60,6 @@ public class Cow extends LivingEntity {
                 new WanderBehavior(0.4f, 3.0f, 8.0f, 0.8f),
                 StandStillBehavior.graze(0.2f, 3.0f, 8.0f));
 
-        // Sound system
-        this.mobSounds = new MobSounds(world, 1.2f, 0.3f, false);
-
         // Set interaction range for cows
         this.interactionRange = 2.5f;
 
@@ -83,7 +76,6 @@ public class Cow extends LivingEntity {
         super.update(deltaTime);
 
         updateMilkSystem(deltaTime);
-        mobSounds.updateSounds(position, velocity, isOnGround());
     }
 
     /**
@@ -140,7 +132,6 @@ public class Cow extends LivingEntity {
     @Override
     protected void onDeath() {
         mobAI.cleanup();
-        mobSounds.reset();
         for (ItemStack drop : getDrops()) {
             DropUtil.createItemDrop(world, getPosition(), drop);
         }

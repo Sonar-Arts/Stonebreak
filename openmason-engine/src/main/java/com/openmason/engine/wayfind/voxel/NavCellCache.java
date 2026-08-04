@@ -62,7 +62,11 @@ public final class NavCellCache implements NavVolume {
         int packed = cells.get(key, MISS);
         if (packed == MISS) {
             int flags = delegate.flags(x, y, z);
-            float surface = NavCell.isSolid(flags) ? delegate.topSurface(x, y, z) : 0.0f;
+            // Liquids carry a surface height too — it is where a swimmer floats. Caching only the
+            // solid case reported every water cell as flat-bottomed, which put waterlines a whole
+            // block below where bodies actually sit.
+            boolean hasSurface = NavCell.isSolid(flags) || NavCell.isLiquid(flags);
+            float surface = hasSurface ? delegate.topSurface(x, y, z) : 0.0f;
             int quantised = Math.round(Math.min(1.0f, Math.max(0.0f, surface)) * SURFACE_QUANTUM);
             packed = (flags & FLAG_MASK) | (quantised << FLAG_BITS);
             cells.put(key, packed);

@@ -3,11 +3,8 @@ package com.stonebreak.mobs.entities.ai.nav;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
-import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.entities.EntityType;
-import com.stonebreak.mobs.entities.LivingEntity;
-import com.stonebreak.player.Player;
-import com.stonebreak.rendering.Renderer;
+import com.stonebreak.mobs.entities.StubMob;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -23,42 +20,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SteeringTest {
 
     private static final float EPS = 1e-4f;
-
-    /** Minimal concrete mob: steering only needs position, velocity, rotation and type. */
-    private static final class StubMob extends LivingEntity {
-        private final EntityType type;
-
-        StubMob(EntityType type) {
-            super(null, new Vector3f(0, 64, 0), type);
-            this.type = type;
-        }
-
-        @Override
-        public EntityType getType() {
-            return type;
-        }
-
-        @Override
-        public void render(Renderer renderer) {
-        }
-
-        @Override
-        public void onInteract(Player player) {
-        }
-
-        @Override
-        public void onDamage(float damage, LivingEntity.DamageSource source) {
-        }
-
-        @Override
-        protected void onDeath() {
-        }
-
-        @Override
-        public ItemStack[] getDrops() {
-            return new ItemStack[0];
-        }
-    }
 
     private static Steering steeringFor(StubMob mob, float rotationSpeed) {
         return new Steering(mob, rotationSpeed, 0.0f, 0.0f);
