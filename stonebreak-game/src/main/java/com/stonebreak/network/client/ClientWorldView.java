@@ -415,6 +415,7 @@ public final class ClientWorldView {
         byte flags = 0;
         if (p.isSprinting()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.SPRINTING;
         if (p.isInWater())   flags |= com.stonebreak.network.packet.player.PlayerStateFlags.SWIMMING;
+        if (p.isPhysicallyInWater()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.PARTIALLY_IN_WATER;
         if (!p.isOnGround()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.AIRBORNE;
         if (p.isOnGround())  flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ON_GROUND;
         if (p.isAttacking()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING;

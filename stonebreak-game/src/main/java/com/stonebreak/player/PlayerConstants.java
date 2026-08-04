@@ -27,6 +27,8 @@ public final class PlayerConstants {
     public static final float WATER_SURFACE_BOB_SPEED = 2.2f;
     public static final float WATER_SURFACE_BOB_AMPLITUDE = 0.35f;
     public static final float UNDERWATER_AUDIO_DUCK_GAIN = 0.35f; // muffling multiplier while eyes are submerged
+    public static final float WATER_RIPPLE_SPAWN_INTERVAL = 0.35f;
+    public static final float WATER_RIPPLE_SPEED_THRESHOLD = 0.5f; // blocks/sec horizontal, gates periodic surface ripples
 
     public static final float RAY_CAST_DISTANCE = 5.0f;
     public static final float ATTACK_ANIMATION_DURATION = 0.25f;

@@ -768,11 +768,18 @@ public class WorldRenderer {
     }
 
     /**
-     * Render the droplet burst emitted when the player enters water (e.g. jumping in).
+     * Render the droplet burst emitted when a player enters water (e.g. jumping in) — the local
+     * player plus every replicated remote player (see
+     * {@link com.stonebreak.mobs.entities.RemotePlayer#getSplashParticles()}).
      */
     private void renderWaterSplash(Player player) {
-        com.stonebreak.rendering.effects.WaterSplashParticles splash = player.getSplashParticles();
-        if (splash.isEmpty()) return;
+        List<com.stonebreak.mobs.entities.RemotePlayer> remotePlayers = collectRemotePlayersForWaterEffects();
+
+        boolean anyParticles = !player.getSplashParticles().isEmpty();
+        for (int i = 0; !anyParticles && i < remotePlayers.size(); i++) {
+            anyParticles = !remotePlayers.get(i).getSplashParticles().isEmpty();
+        }
+        if (!anyParticles) return;
 
         shaderProgram.bind();
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
@@ -784,14 +791,9 @@ public class WorldRenderer {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // straight alpha for pale water droplets
         glDepthMask(false);
 
-        for (com.stonebreak.rendering.effects.WaterSplashParticles.SplashParticle p : splash.snapshot()) {
-            float opacity = p.getOpacity();
-            // Pale blue-white droplets, fading out.
-            shaderProgram.setUniform("u_color", new org.joml.Vector4f(0.8f, 0.9f, 1.0f, opacity * 0.9f));
-            glPointSize(p.getSize());
-            glBegin(GL_POINTS);
-            glVertex3f(p.getPosition().x, p.getPosition().y, p.getPosition().z);
-            glEnd();
+        drawSplashParticles(player.getSplashParticles());
+        for (com.stonebreak.mobs.entities.RemotePlayer rp : remotePlayers) {
+            drawSplashParticles(rp.getSplashParticles());
         }
 
         glPointSize(1.0f);
@@ -801,6 +803,18 @@ public class WorldRenderer {
         shaderProgram.unbind();
     }
 
+    private void drawSplashParticles(com.stonebreak.rendering.effects.WaterSplashParticles splash) {
+        for (com.stonebreak.rendering.effects.WaterSplashParticles.SplashParticle p : splash.snapshot()) {
+            float opacity = p.getOpacity();
+            // Pale blue-white droplets, fading out.
+            shaderProgram.setUniform("u_color", new org.joml.Vector4f(0.8f, 0.9f, 1.0f, opacity * 0.9f));
+            glPointSize(p.getSize());
+            glBegin(GL_POINTS);
+            glVertex3f(p.getPosition().x, p.getPosition().y, p.getPosition().z);
+            glEnd();
+        }
+    }
+
     /**
      * Render the surface ripple rings trailing the player through water. Ring samples that have
      * already been swept over by another ring's wavefront are omitted upstream (see
@@ -808,10 +822,13 @@ public class WorldRenderer {
      * as colliding/cancelling rather than passing through each other.
      */
     private void renderWaterRipples(Player player) {
-        com.stonebreak.rendering.effects.WaterRippleParticles ripples = player.getRippleParticles();
-        if (ripples.isEmpty()) return;
+        List<com.stonebreak.mobs.entities.RemotePlayer> remotePlayers = collectRemotePlayersForWaterEffects();
 
-        List<com.stonebreak.rendering.effects.WaterRippleParticles.RipplePoint> points = ripples.snapshotPoints();
+        List<com.stonebreak.rendering.effects.WaterRippleParticles.RipplePoint> points =
+                new ArrayList<>(player.getRippleParticles().snapshotPoints());
+        for (com.stonebreak.mobs.entities.RemotePlayer rp : remotePlayers) {
+            points.addAll(rp.getRippleParticles().snapshotPoints());
+        }
         if (points.isEmpty()) return;
 
         shaderProgram.bind();
@@ -837,6 +854,19 @@ public class WorldRenderer {
         glDisable(GL_BLEND);
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.unbind();
+    }
+
+    /** Remote players to include in world-space cosmetic effects like water splash/ripple. */
+    private List<com.stonebreak.mobs.entities.RemotePlayer> collectRemotePlayersForWaterEffects() {
+        com.stonebreak.mobs.entities.EntityManager em = Game.getEntityManager();
+        List<com.stonebreak.mobs.entities.RemotePlayer> remotePlayers = new ArrayList<>();
+        if (em == null) return remotePlayers;
+        for (com.stonebreak.mobs.entities.LivingEntity entity : em.getLivingEntities()) {
+            if (entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp && rp.isAlive()) {
+                remotePlayers.add(rp);
+            }
+        }
+        return remotePlayers;
     }
 
     /**
