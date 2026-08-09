@@ -1,22 +1,32 @@
 package com.stonebreak.mobs.goose;
 
-import com.stonebreak.blocks.BlockType;
+import com.stonebreak.mobs.entities.ai.nav.AirPathAgent;
+import com.stonebreak.mobs.entities.ai.nav.AirProbe;
 import com.stonebreak.mobs.entities.ai.nav.Steering;
 import org.joml.Vector3f;
 
 /**
- * Flying, as opposed to routing: how an airborne goose holds a heading, clears terrain and gets
- * itself unstuck.
+ * Flying: how an airborne goose turns a route into motion, clears the terrain the route was too
+ * coarse to see, and gets itself unstuck.
  *
- * <p>Deliberately not a pathfinding domain. A migration crosses several hundred blocks of open sky
- * where the only obstacles are the occasional peak — searching a 3D graph for that would cost far
- * more than the look-ahead it replaces and produce the same straight line. What is worth having is
- * exactly what is here: a periodic probe of the corridor ahead that raises the cruise altitude over
- * hills, an arc around walls too tall to out-climb, and a recovery for a goose that flew into
- * something anyway.
+ * <p>Two layers, and the split between them is the whole design:
  *
- * <p>Ground movement, by contrast, does route — see {@code PathAgent}. The split is between an
- * environment that is mostly empty and one that is mostly not.
+ * <ul>
+ *   <li><b>The route</b> ({@link AirPathAgent}) decides <em>which way round the mountain</em>. It
+ *       is a real A* search over coarse air cells, re-planned to a moving horizon, and it is the
+ *       only thing here that can see an obstacle it would take ten seconds to fly past.</li>
+ *   <li><b>The look-ahead</b> below decides <em>what to do about the tree</em>. It probes a few
+ *       columns along the direction actually being flown and lifts the goose over anything the
+ *       route's four-block cells rounded away, without ever pulling it below the route.</li>
+ * </ul>
+ *
+ * <p>When there is no route — the first second of a flight, a saturated pathfinder, a search that
+ * came back empty — the look-ahead is also the whole avoidance, arcing around walls it cannot
+ * out-climb exactly as it did before routing existed. That fallback is why a goose never freezes
+ * waiting for a search.
+ *
+ * <p>Ground movement routes too, through a different domain — see {@code PathAgent}. The split
+ * between them is a graph of surfaces versus a graph of free space.
  */
 final class FlightSteering {
 
@@ -32,7 +42,6 @@ final class FlightSteering {
     private static final float LOOKAHEAD_DISTANCE = 28.0f;
     private static final int LOOKAHEAD_SAMPLES = 3;
     private static final float PATH_CLEARANCE = 6.0f;
-    private static final int CORRIDOR_SCAN_RANGE = 24;
     private static final float GO_AROUND_DEG = 25.0f;
     private static final float GO_AROUND_DURATION = 1.5f;
 
@@ -40,11 +49,33 @@ final class FlightSteering {
     private static final float STUCK_POP_THRESHOLD = 0.8f;
     private static final float STUCK_POP_SPEED = CLIMB_SPEED * 1.6f;
 
+    // ─── Formation slots ─────────────────────────────────────────────────────
+    /** Airspace a wingman needs to hold its slot without clipping anything. */
+    private static final float SLOT_CLEARANCE = 1.5f;
+
+    /**
+     * How far a blocked slot is pulled in toward the leader's own line, in order. The V narrows
+     * into an echelon and then into a column as the corridor tightens, which is the shape a
+     * formation has to take to get through a pass at all.
+     */
+    private static final float[] SLOT_COMPRESSION = {0.6f, 0.3f, 0.0f};
+
+    /** Lifts tried after compression fails — over a ridge the wing rides above the spine. */
+    private static final float[] SLOT_LIFTS = {2.0f, 4.0f, 7.0f};
+
     private final Goose goose;
     private final Steering steering;
+    private final AirPathAgent route;
 
     private float cruiseAltitude;
     private float steerAltitude;
+    /**
+     * Altitude the scanned terrain demands regardless of cruise, or {@link Float#NEGATIVE_INFINITY}
+     * when the corridor ahead is clear. Kept separate from {@link #steerAltitude} so that a route
+     * deliberately dipping through a pass is never yanked back up to cruise, while still being
+     * floored by the ridge the route's coarse cells could not see.
+     */
+    private float terrainFloor = Float.NEGATIVE_INFINITY;
     private float terrainScanTimer;
     private float lateralBiasTimer;
     private int lateralBiasSign;
@@ -52,19 +83,27 @@ final class FlightSteering {
 
     private final Vector3f heading = new Vector3f();
     private final Vector3f waypoint = new Vector3f();
+    private final Vector3f slotScratch = new Vector3f();
 
     FlightSteering(Goose goose, Steering steering) {
         this.goose = goose;
         this.steering = steering;
+        this.route = new AirPathAgent(goose);
     }
 
     void setCruiseAltitude(float altitude) {
         this.cruiseAltitude = altitude;
         this.steerAltitude = altitude;
+        route.setCruiseAltitude(altitude);
     }
 
     float cruiseAltitude() {
         return cruiseAltitude;
+    }
+
+    /** The planned route, for the debug overlay. */
+    AirPathAgent route() {
+        return route;
     }
 
     /** Clears the per-flight state so a new flight does not inherit the last one's detours. */
@@ -73,6 +112,13 @@ final class FlightSteering {
         lateralBiasTimer = 0.0f;
         lateralBiasSign = 0;
         stuckTimer = 0.0f;
+        terrainFloor = Float.NEGATIVE_INFINITY;
+        route.stop();
+    }
+
+    /** Releases the route when the goose lands. */
+    void releaseRoute() {
+        route.stop();
     }
 
     /**
@@ -100,33 +146,102 @@ final class FlightSteering {
     }
 
     /**
-     * Steers toward a destination like {@link #steerTo}, but periodically probes the terrain ahead
-     * and raises the flight altitude to clear peaks — or arcs around walls it cannot out-climb.
+     * Advances the route plan toward {@code destination} and writes the point to fly at into
+     * {@code out} — the next waypoint of a planned route, or the bearing to the destination while
+     * one is being searched for.
      *
-     * <p>Only a flock leader or a lone flyer does this; followers track the leader's slot, so the
-     * avoidance path propagates to the whole formation for free.
+     * <p>Called once per tick by whichever phase owns the goose, so takeoff climbs along the route
+     * rather than straight at a ridge it is about to have to go round.
      */
-    void steerToWithAvoidance(Vector3f destination, float speed, float deltaTime) {
+    Vector3f routeTarget(Vector3f destination, float deltaTime, Vector3f out) {
+        // Plan at the altitude the goose actually needs, not the one it set out at. Cruise is fixed
+        // at takeoff and stays an absolute Y for the whole flight, so over rising ground it can sit
+        // below the terrain — and a route planned at a buried altitude spends its search snapping
+        // the goal out of a hillside instead of finding the way past it.
+        route.setCruiseAltitude(terrainFloor == Float.NEGATIVE_INFINITY
+                ? cruiseAltitude
+                : Math.max(cruiseAltitude, terrainFloor));
+        route.moveTo(destination);
+        route.tick(deltaTime);
+        return route.steerTarget(out);
+    }
+
+    /**
+     * Cruises toward a destination along the planned route, with the terrain look-ahead layered
+     * underneath it.
+     *
+     * <p>Only a flock leader or a lone flyer does this; followers hold slots on the leader's trail,
+     * so the whole formation inherits the route without every goose paying for a search.
+     */
+    void steerAlongRoute(Vector3f destination, float speed, float deltaTime) {
+        routeTarget(destination, deltaTime, waypoint);
+
         terrainScanTimer -= deltaTime;
         lateralBiasTimer -= deltaTime;
+        boolean routing = route.isFollowing();
         if (terrainScanTimer <= 0.0f) {
             terrainScanTimer = TERRAIN_SCAN_INTERVAL;
-            scanAhead(destination, speed);
+            // Scan toward where the goose is actually going, not toward the far destination — during
+            // a detour those are different directions, and scanning the wrong one is scanning
+            // nothing.
+            scanAhead(waypoint, speed, routing);
         }
 
         Vector3f position = goose.getPosition();
-        waypoint.set(destination.x, steerAltitude, destination.z);
-        if (lateralBiasTimer > 0.0f) {
-            heading.set(destination.x - position.x, 0.0f, destination.z - position.z);
-            if (heading.lengthSquared() > 0.01f) {
-                heading.normalize();
-                rotateY(heading, GO_AROUND_DEG * lateralBiasSign);
-                waypoint.set(position.x + heading.x * LOOKAHEAD_DISTANCE,
-                        steerAltitude,
-                        position.z + heading.z * LOOKAHEAD_DISTANCE);
+        if (routing) {
+            // The route owns the line; the scan only ever raises the floor under it.
+            if (terrainFloor != Float.NEGATIVE_INFINITY) {
+                waypoint.y = Math.max(waypoint.y, terrainFloor);
+            }
+        } else {
+            waypoint.y = steerAltitude;
+            if (lateralBiasTimer > 0.0f) {
+                heading.set(waypoint.x - position.x, 0.0f, waypoint.z - position.z);
+                if (heading.lengthSquared() > 0.01f) {
+                    heading.normalize();
+                    rotateY(heading, GO_AROUND_DEG * lateralBiasSign);
+                    waypoint.set(position.x + heading.x * LOOKAHEAD_DISTANCE,
+                            steerAltitude,
+                            position.z + heading.z * LOOKAHEAD_DISTANCE);
+                }
             }
         }
         steerTo(waypoint, speed, deltaTime);
+    }
+
+    /**
+     * Resolves a wingman's formation slot against the terrain: the slot itself when the air there
+     * is clear, otherwise the formation compressed toward the leader's own line, otherwise the same
+     * line flown higher.
+     *
+     * <p>This is what lets a V get through a mountain pass. The leader's line is known-good — it is
+     * being flown — so collapsing toward it is always an improvement, and a formation that arrives
+     * at a gap as a V and leaves it as a column has done exactly the right thing.
+     *
+     * @param slot  the wingman's ideal position in the formation
+     * @param spine the point on the leader's trail the slot is offset from
+     * @return a point to fly at; never the inside of a hillside if any of the candidates is clear
+     */
+    Vector3f resolveFormationSlot(Vector3f slot, Vector3f spine) {
+        if (isSlotClear(slot)) {
+            return slot;
+        }
+
+        for (float keep : SLOT_COMPRESSION) {
+            slotScratch.set(spine).lerp(slot, keep);
+            if (isSlotClear(slotScratch)) {
+                return slotScratch;
+            }
+        }
+        for (float lift : SLOT_LIFTS) {
+            slotScratch.set(spine.x, spine.y + lift, spine.z);
+            if (isSlotClear(slotScratch)) {
+                return slotScratch;
+            }
+        }
+        // Nothing clear anywhere near: fly the spine regardless. It is where the leader is, and the
+        // leader is not inside a mountain.
+        return slotScratch.set(spine);
     }
 
     /**
@@ -134,6 +249,9 @@ final class FlightSteering {
      * slides along walls rather than stopping, so a goose can end up pinned: it climbs the face
      * (walls are finite and cruise leaves plenty of headroom), arcs toward the clearer side, and if
      * still pinned pops straight over — or backs out when a ceiling blocks the climb.
+     *
+     * <p>Hitting something is also proof the route was wrong about this bit of sky, so the first
+     * frame of contact throws the route away and asks for a new one.
      */
     void applyStuckRecovery(float deltaTime) {
         if (!goose.wasFlightBlockedHorizontally()) {
@@ -141,13 +259,17 @@ final class FlightSteering {
             return;
         }
 
+        if (stuckTimer == 0.0f) {
+            route.replan();
+        }
         stuckTimer += deltaTime;
         Vector3f position = goose.getPosition();
         Vector3f velocity = goose.getVelocity();
 
         velocity.y = Math.max(velocity.y, CLIMB_SPEED);
-        // Raise the steering altitude too, or the next periodic scan relaxes the climb away.
+        // Raise both altitude sources, or the next periodic scan relaxes the climb away.
         steerAltitude = Math.max(steerAltitude, position.y + PATH_CLEARANCE);
+        terrainFloor = Math.max(terrainFloor, position.y + PATH_CLEARANCE);
 
         if (lateralBiasTimer <= 0.0f) {
             heading.set(velocity.x, 0.0f, velocity.z);
@@ -168,36 +290,44 @@ final class FlightSteering {
     }
 
     /**
-     * Probes a few columns ahead, raising the flight altitude to clear the tallest peak found and
-     * arming a side-step when the nearest one cannot be out-climbed before the goose reaches it.
+     * Probes a few columns along the direction of travel, recording the altitude the terrain there
+     * demands and — when there is no route to trust — arming a side-step around anything that
+     * cannot be out-climbed before the goose reaches it.
      */
-    private void scanAhead(Vector3f destination, float speed) {
+    private void scanAhead(Vector3f target, float speed, boolean routing) {
         Vector3f position = goose.getPosition();
-        heading.set(destination.x - position.x, 0.0f, destination.z - position.z);
+        heading.set(target.x - position.x, 0.0f, target.z - position.z);
         if (heading.lengthSquared() < 0.01f) {
+            terrainFloor = Float.NEGATIVE_INFINITY;
             steerAltitude = cruiseAltitude;
             return;
         }
         heading.normalize();
 
-        float needed = cruiseAltitude;
+        float floor = Float.NEGATIVE_INFINITY;
         float nearestPeak = Float.NEGATIVE_INFINITY;
         float nearestDistance = 0.0f;
         for (int i = 1; i <= LOOKAHEAD_SAMPLES; i++) {
             float distance = LOOKAHEAD_DISTANCE * i / LOOKAHEAD_SAMPLES;
-            float peak = corridorPeakAt(position.x + heading.x * distance,
-                    position.z + heading.z * distance, position.y);
+            float peak = AirProbe.columnPeak(goose.getWorld(),
+                    position.x + heading.x * distance,
+                    position.z + heading.z * distance,
+                    position.y);
             if (peak != Float.NEGATIVE_INFINITY) {
-                needed = Math.max(needed, peak + PATH_CLEARANCE);
+                floor = Math.max(floor, peak + PATH_CLEARANCE);
                 if (nearestPeak == Float.NEGATIVE_INFINITY) {
                     nearestPeak = peak;
                     nearestDistance = distance;
                 }
             }
         }
-        steerAltitude = needed;
+        terrainFloor = floor;
+        steerAltitude = floor == Float.NEGATIVE_INFINITY ? cruiseAltitude
+                : Math.max(cruiseAltitude, floor);
 
-        if (nearestPeak != Float.NEGATIVE_INFINITY) {
+        // A route already knows how to get round this; a second opinion swerving at the same time
+        // would just fight it.
+        if (!routing && nearestPeak != Float.NEGATIVE_INFINITY) {
             // Climb capacity over the remaining gap ≈ distance × (climb rate / forward speed).
             float climbNeeded = (nearestPeak + PATH_CLEARANCE) - position.y;
             float climbBudget = nearestDistance * (CLIMB_SPEED / Math.max(0.1f, speed));
@@ -210,11 +340,13 @@ final class FlightSteering {
     /** Probes one column to each side and arms a side-step toward the clearer one. */
     private void armGoAround(Vector3f position, Vector3f forward) {
         Vector3f left = rotateY(new Vector3f(forward), GO_AROUND_DEG);
-        float leftPeak = corridorPeakAt(position.x + left.x * LOOKAHEAD_DISTANCE,
+        float leftPeak = AirProbe.columnPeak(goose.getWorld(),
+                position.x + left.x * LOOKAHEAD_DISTANCE,
                 position.z + left.z * LOOKAHEAD_DISTANCE, position.y);
 
         Vector3f right = rotateY(new Vector3f(forward), -GO_AROUND_DEG);
-        float rightPeak = corridorPeakAt(position.x + right.x * LOOKAHEAD_DISTANCE,
+        float rightPeak = AirProbe.columnPeak(goose.getWorld(),
+                position.x + right.x * LOOKAHEAD_DISTANCE,
                 position.z + right.z * LOOKAHEAD_DISTANCE, position.y);
 
         // The lower peak is the better side (NEGATIVE_INFINITY means clear); ties favour left.
@@ -222,25 +354,8 @@ final class FlightSteering {
         lateralBiasTimer = GO_AROUND_DURATION;
     }
 
-    /**
-     * Top face of the highest solid block within the scan range of {@code currentY} at a column, or
-     * {@link Float#NEGATIVE_INFINITY} when the corridor is clear.
-     */
-    private float corridorPeakAt(float x, float z, float currentY) {
-        if (goose.getWorld() == null) {
-            return Float.NEGATIVE_INFINITY;
-        }
-        int blockX = (int) Math.floor(x);
-        int blockZ = (int) Math.floor(z);
-        int top = (int) Math.floor(currentY) + CORRIDOR_SCAN_RANGE;
-        int bottom = (int) Math.floor(currentY) - CORRIDOR_SCAN_RANGE;
-        for (int y = top; y >= bottom; y--) {
-            BlockType block = goose.getWorld().getBlockAt(blockX, y, blockZ);
-            if (block != null && block.isSolid()) {
-                return y + 1.0f;
-            }
-        }
-        return Float.NEGATIVE_INFINITY;
+    private boolean isSlotClear(Vector3f slot) {
+        return AirProbe.isClear(goose.getWorld(), slot.x, slot.y, slot.z, SLOT_CLEARANCE);
     }
 
     /** Rotates a horizontal direction about Y, in place. */

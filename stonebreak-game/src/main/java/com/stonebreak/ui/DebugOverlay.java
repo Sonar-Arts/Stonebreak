@@ -25,7 +25,9 @@ import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.nav.Path;
+import com.stonebreak.mobs.entities.ai.nav.AirPathAgent;
 import com.stonebreak.mobs.entities.ai.nav.PathAgent;
+import com.stonebreak.mobs.goose.Goose;
 import java.util.List;
 import java.util.ArrayDeque;
 
@@ -770,6 +772,11 @@ public class DebugOverlay {
         try {
             for (LivingEntity mob : mobs) {
                 drawPlannedRoute(debug, mob.getAI().nav(), mob.getPosition());
+                // A flying goose routes through the air domain instead, which the ground agent
+                // knows nothing about — draw that too, or an airborne flock looks unnavigated.
+                if (mob instanceof Goose goose && goose.flight().isAirborne()) {
+                    drawAirRoute(debug, goose.flight().route(), goose.getPosition());
+                }
             }
         } finally {
             debug.endBatch();
@@ -783,6 +790,30 @@ public class DebugOverlay {
      * Draws the waypoints a mob has left to walk, starting from the mob itself so the first leg
      * shows which way it is actually heading, plus a cross at its destination.
      */
+    /**
+     * Draws a flying mob's air route the same way, so a leader steering round a peak shows the
+     * corridor it chose and the wingmen following it can be read against that line.
+     */
+    private void drawAirRoute(DebugRenderer debug, AirPathAgent route, Vector3f mobPosition) {
+        Path path = route.path();
+        if (!path.isEmpty()) {
+            pathScratch.clear();
+            pathScratch.add(new Vector3f(mobPosition));
+            for (int i = route.cursor(); i < path.size(); i++) {
+                pathScratch.add(path.waypoint(i, new Vector3f()));
+            }
+            debug.drawPath(pathScratch, PATH_COLOR);
+        }
+
+        if (route.hasGoal()) {
+            Vector3f goal = route.goal(new Vector3f());
+            pathScratch.clear();
+            pathScratch.add(new Vector3f(goal.x, goal.y - GOAL_MARKER_SIZE, goal.z));
+            pathScratch.add(new Vector3f(goal.x, goal.y + GOAL_MARKER_SIZE, goal.z));
+            debug.drawPath(pathScratch, GOAL_COLOR);
+        }
+    }
+
     private void drawPlannedRoute(DebugRenderer debug, PathAgent nav, Vector3f mobPosition) {
         Path path = nav.path();
         if (!path.isEmpty()) {

@@ -3,6 +3,8 @@ package com.stonebreak.mobs.entities.ai.nav;
 import com.openmason.engine.wayfind.AStar;
 import com.openmason.engine.wayfind.SearchLimits;
 import com.openmason.engine.wayfind.SearchResult;
+import com.openmason.engine.wayfind.voxel.AirNavDomain;
+import com.openmason.engine.wayfind.voxel.AirNavProfile;
 import com.openmason.engine.wayfind.voxel.GroundNavDomain;
 import com.openmason.engine.wayfind.voxel.NavCellCache;
 import com.openmason.engine.wayfind.voxel.NavNodes;
@@ -59,6 +61,13 @@ public final class PathfindingService implements AutoCloseable {
     /** How far up and down a start or goal position is snapped onto a standable surface. */
     private static final int SNAP_DOWN = 4;
     private static final int SNAP_UP = 2;
+
+    /**
+     * How far an air goal is nudged onto real airspace, in cells. Two cells is plenty to clear a
+     * hillside or a treetop the destination happened to land inside; further than that and the
+     * search would be answering a different question than the one it was asked.
+     */
+    private static final int AIR_GOAL_SNAP_CELLS = 2;
 
     private final NavVolume volume;
     private final Executor executor;
@@ -141,6 +150,91 @@ public final class PathfindingService implements AutoCloseable {
             rejected.incrementAndGet();
         }
         return request;
+    }
+
+    /**
+     * Queues an air search from {@code from} to {@code goal}, for something with wings.
+     *
+     * <p>Same contract as {@link #submit}: asynchronous, bounded, and never null-returning for any
+     * reason except a saturated or closed service. The differences are all in the domain — see
+     * {@link AirNavDomain} — plus the position, which is the flyer's origin rather than its feet,
+     * because nothing about an air route is measured from the ground.
+     *
+     * @return the request to poll, or {@code null} if the service is closed or already saturated
+     */
+    public PathRequest submitAir(Vector3f from, Vector3f goal, float goalRadius,
+                                 AirNavProfile profile, SearchLimits limits) {
+        if (closed || inFlight.size() >= maxInFlight) {
+            rejected.incrementAndGet();
+            return null;
+        }
+
+        PathRequest request = new PathRequest(goal, goalRadius);
+        int startX = (int) Math.floor(from.x);
+        int startY = (int) Math.floor(from.y);
+        int startZ = (int) Math.floor(from.z);
+        int goalX = (int) Math.floor(goal.x);
+        int goalY = (int) Math.floor(goal.y);
+        int goalZ = (int) Math.floor(goal.z);
+
+        if (!AirNavDomain.cellInRange(profile, startX, startY, startZ)
+                || !AirNavDomain.cellInRange(profile, goalX, goalY, goalZ)) {
+            request.publish(Path.EMPTY);
+            return request;
+        }
+
+        submitted.incrementAndGet();
+        inFlight.add(request);
+        try {
+            executor.execute(() -> runAirSearch(request, profile, limits,
+                    startX, startY, startZ, goalX, goalY, goalZ, goalRadius));
+        } catch (RuntimeException rejectedByExecutor) {
+            inFlight.remove(request);
+            request.publish(Path.EMPTY);
+            rejected.incrementAndGet();
+        }
+        return request;
+    }
+
+    private void runAirSearch(PathRequest request, AirNavProfile profile, SearchLimits limits,
+                              int startX, int startY, int startZ,
+                              int goalX, int goalY, int goalZ, float goalRadius) {
+        long began = System.nanoTime();
+        try {
+            if (closed || request.isCancelled()) {
+                request.publish(Path.EMPTY);
+                return;
+            }
+
+            // One block-level cache behind both domains, so snapping the goal does not re-read the
+            // world the second domain is about to read again.
+            NavCellCache cache = new NavCellCache(volume);
+
+            long rawGoal = AirNavDomain.cellOf(profile, goalX, goalY, goalZ);
+            AirNavDomain snapper = new AirNavDomain(cache, profile, rawGoal, goalRadius);
+            long snappedGoal = snapper.snapToFlyable(goalX, goalY, goalZ, AIR_GOAL_SNAP_CELLS);
+
+            AirNavDomain domain = (snappedGoal == AirNavDomain.NO_NODE || snappedGoal == rawGoal)
+                    ? snapper
+                    : new AirNavDomain(cache, profile, snappedGoal, goalRadius);
+
+            long start = AirNavDomain.cellOf(profile, startX, startY, startZ);
+            SearchResult result = solvers.get().search(domain, start, limits, request.cancelToken());
+            if (result.status() == SearchResult.Status.PARTIAL_BUDGET
+                    || result.status() == SearchResult.Status.PARTIAL_UNREACHABLE) {
+                partial.incrementAndGet();
+            }
+            request.publish(Path.ofCells(domain.stringPull(result.nodes()),
+                    profile.cellSize(), result.reachedGoal()));
+            completed.incrementAndGet();
+        } catch (Throwable failure) {
+            failed.incrementAndGet();
+            request.publish(Path.EMPTY);
+            LOGGER.warn("Air path search failed", failure);
+        } finally {
+            searchNanos.addAndGet(System.nanoTime() - began);
+            inFlight.remove(request);
+        }
     }
 
     private void runSearch(PathRequest request, NavProfile profile, SearchLimits limits,

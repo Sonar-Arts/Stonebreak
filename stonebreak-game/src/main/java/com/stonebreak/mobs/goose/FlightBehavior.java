@@ -6,6 +6,7 @@ import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
 import com.stonebreak.mobs.entities.ai.behavior.Behavior;
+import com.stonebreak.mobs.entities.ai.nav.AirPathAgent;
 import com.stonebreak.mobs.entities.ai.nav.GroundProbe;
 import org.joml.Vector3f;
 
@@ -85,6 +86,8 @@ public final class FlightBehavior implements Behavior {
     private GooseFlock pendingJoin;
 
     private final Vector3f destination = new Vector3f();
+    /** Scratch for the route's current waypoint; reused every tick. */
+    private final Vector3f routeTarget = new Vector3f();
     private float migrateCooldown;
     private float joinScanTimer;
     private float settleCooldown;
@@ -108,6 +111,14 @@ public final class FlightBehavior implements Behavior {
     /** Whether the goose is still in the post-takeoff window where it passes through terrain. */
     public boolean isTakeoffNoClipActive() {
         return takeoffNoClipTimer > 0.0f;
+    }
+
+    /**
+     * The air route this goose is flying, for the debug overlay. Only a flock leader or a lone
+     * flyer plans one; wingmen hold slots on the leader's trail and route implicitly through it.
+     */
+    public AirPathAgent route() {
+        return flight.route();
     }
 
     // ── Behavior ─────────────────────────────────────────────────────────────
@@ -200,6 +211,8 @@ public final class FlightBehavior implements Behavior {
     @Override
     public void stop(AiContext context) {
         leaveFlock();
+        // A landed goose has no business holding a search in flight, or a route through the sky.
+        flight.releaseRoute();
         airborne = false;
         takeoffNoClipTimer = 0.0f;
         migrateCooldown = randomMigrateCooldown(context);
@@ -221,13 +234,17 @@ public final class FlightBehavior implements Behavior {
         Vector3f velocity = goose.getVelocity();
         velocity.y = FlightSteering.CLIMB_SPEED;
 
-        // Cover ground while climbing rather than going straight up.
-        Vector3f toDestination = new Vector3f(destination).sub(position);
-        toDestination.y = 0.0f;
-        if (toDestination.lengthSquared() > 0.01f) {
-            toDestination.normalize();
-            velocity.x = toDestination.x * FlightSteering.MAX_FLY_SPEED;
-            velocity.z = toDestination.z * FlightSteering.MAX_FLY_SPEED;
+        // Cover ground while climbing rather than going straight up — and along the route rather
+        // than straight at the destination, so a goose launching at the foot of a ridge is already
+        // turning by the time it is airborne. The route is planned here even though nothing steers
+        // by it yet, which means it is ready the moment the climb ends.
+        Vector3f toTarget = new Vector3f(flight.routeTarget(destination, deltaTime, routeTarget))
+                .sub(position);
+        toTarget.y = 0.0f;
+        if (toTarget.lengthSquared() > 0.01f) {
+            toTarget.normalize();
+            velocity.x = toTarget.x * FlightSteering.MAX_FLY_SPEED;
+            velocity.z = toTarget.z * FlightSteering.MAX_FLY_SPEED;
         }
         goose.setVelocity(velocity);
 
@@ -235,6 +252,11 @@ public final class FlightBehavior implements Behavior {
         // horizontally instead of grinding up into the block.
         if (position.y >= flight.cruiseAltitude() || goose.wasFlightBlockedVertically()) {
             phase = flock != null ? Phase.FORMATION : Phase.FREE_FLY;
+            if (flock != null && !flock.isLeader(goose)) {
+                // A wingman routes through its leader's trail from here on, so it has no use for a
+                // route of its own — and holding one would keep a search in flight for nobody.
+                flight.releaseRoute();
+            }
         }
     }
 
@@ -245,8 +267,11 @@ public final class FlightBehavior implements Behavior {
         }
 
         if (flock.isLeader(goose)) {
+            // Lay down the trail first: the wingmen behind hold slots on the line actually flown,
+            // and this tick's position is the newest part of it.
+            flock.recordLeaderTrail(goose.getPosition());
             Vector3f target = flock.getDestination();
-            flight.steerToWithAvoidance(target, flock.getCruiseSpeed(), deltaTime);
+            flight.steerAlongRoute(target, flock.getCruiseSpeed(), deltaTime);
             if (horizontalDistance(goose.getPosition(), target) < DEST_ARRIVE_XZ) {
                 beginFlockLanding();
             }
@@ -255,7 +280,12 @@ public final class FlightBehavior implements Behavior {
 
         // Follower: sprint to close a big gap, ease toward cruise as the slot nears, and only match
         // the leader's speed once actually lined up — otherwise the gap never closes.
-        Vector3f slot = flock.slotTargetFor(goose);
+        //
+        // The slot is resolved against the terrain before it is flown at: in open sky it is the
+        // formation's V, and in a pass it collapses toward the leader's own trail, which is the one
+        // line through the gap that is known to be clear.
+        Vector3f slot = flight.resolveFormationSlot(
+                flock.slotTargetFor(goose), flock.spineTargetFor(goose));
         float distance = goose.distanceTo(slot);
         float cruise = flock.getCruiseSpeed();
         float speed;
@@ -271,7 +301,7 @@ public final class FlightBehavior implements Behavior {
     }
 
     private void tickFreeFly(float deltaTime) {
-        flight.steerToWithAvoidance(destination, FlightSteering.CRUISE_FLY_SPEED, deltaTime);
+        flight.steerAlongRoute(destination, FlightSteering.CRUISE_FLY_SPEED, deltaTime);
         if (horizontalDistance(goose.getPosition(), destination) < DEST_ARRIVE_XZ) {
             phase = Phase.LANDING;
         }
