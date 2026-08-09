@@ -36,6 +36,11 @@ final class FlightSteering {
     static final float CLIMB_SPEED = 4.5f;
     static final float DESCEND_SPEED = 3.5f;
     static final float FLIGHT_TURN_SPEED = 160.0f; // degrees/sec
+    /** Turn rate for the pre-takeoff pivot. Brisk enough to be a beat, slow enough to read as one. */
+    static final float GROUND_TURN_SPEED = 200.0f; // degrees/sec
+
+    /** Below this squared horizontal offset a target gives no usable heading. */
+    private static final float MIN_HEADING_SQUARED = 0.01f;
 
     // ─── Terrain look-ahead ──────────────────────────────────────────────────
     private static final float TERRAIN_SCAN_INTERVAL = 0.5f;
@@ -121,6 +126,24 @@ final class FlightSteering {
         route.stop();
     }
 
+    /** Kills horizontal drift, leaving gravity and rotation alone — the pre-takeoff pivot. */
+    void stopHorizontal() {
+        steering.stopMoving();
+    }
+
+    /**
+     * Turns the goose to face the way it is travelling, at flight turn rate.
+     *
+     * <p>For the phases that drive velocity themselves instead of going through {@link #steerTo} —
+     * the takeoff climb-out — which would otherwise hold the heading they launched with all the way
+     * up, and fly visibly sideways whenever the route curved during the climb.
+     *
+     * @param direction normalized horizontal travel direction
+     */
+    void faceTravel(Vector3f direction, float deltaTime) {
+        steering.faceDirection(direction, FLIGHT_TURN_SPEED, deltaTime);
+    }
+
     /**
      * Steers toward a 3D point at the given horizontal speed, matching its altitude with a clamped
      * vertical rate.
@@ -153,6 +176,38 @@ final class FlightSteering {
      * <p>Called once per tick by whichever phase owns the goose, so takeoff climbs along the route
      * rather than straight at a ridge it is about to have to go round.
      */
+    /**
+     * Turns the goose on the spot toward the way it is about to fly, and reports how far round it
+     * still has to go in degrees.
+     *
+     * <p>Called while it is still on the ground. A goose leaves the ground at nine blocks a second,
+     * and turning only once airborne means the first second of every flight is spent travelling
+     * sideways or backwards relative to its model — the turn belongs before the launch, not after.
+     *
+     * <p>It aims at the <em>route's</em> first leg rather than at the destination, which is the
+     * whole point of doing it here: a goose that has to go round a ridge should already be pointing
+     * at the way round it, not at the ridge.
+     */
+    float faceFlightDirection(Vector3f destination, float deltaTime) {
+        routeTarget(destination, deltaTime, waypoint);
+
+        Vector3f position = goose.getPosition();
+        heading.set(waypoint.x - position.x, 0.0f, waypoint.z - position.z);
+        if (heading.lengthSquared() < MIN_HEADING_SQUARED) {
+            // The first waypoint is straight overhead — normal, since the route starts by climbing
+            // out of the ground the goose is standing on. Fall back to the far destination, which
+            // is the direction the flight is ultimately going.
+            heading.set(destination.x - position.x, 0.0f, destination.z - position.z);
+        }
+        if (heading.lengthSquared() < MIN_HEADING_SQUARED) {
+            return 0.0f; // nowhere to point; nothing to wait for
+        }
+
+        heading.normalize();
+        steering.faceDirection(heading, GROUND_TURN_SPEED, deltaTime);
+        return steering.yawErrorTo(heading);
+    }
+
     Vector3f routeTarget(Vector3f destination, float deltaTime, Vector3f out) {
         // Plan at the altitude the goose actually needs, not the one it set out at. Cruise is fixed
         // at takeoff and stays an absolute Y for the whole flight, so over rising ground it can sit

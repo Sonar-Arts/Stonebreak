@@ -138,20 +138,19 @@ public class Goose extends LivingEntity {
      * terrain) but resolve world-block collision per axis so the goose can never phase through
      * solids — it slides along walls instead, and the AI's stuck-recovery steers it clear. On
      * the ground, defer to the standard mob physics so behavior matches the other passive mobs.
+     *
+     * <p><b>There is no exemption for takeoff.</b> A goose is a solid body for every frame it is in
+     * the air, launch included. Keeping the terrain honest at the launch point is what forces the
+     * launch itself to be correct — climbing clear before translating, and routing round the ground
+     * ahead rather than through it (see {@link FlightBehavior}).
      */
     @Override
     protected void applyPhysics(float deltaTime) {
         if (flight.isAirborne()) {
             age += deltaTime;
-            if (flight.isTakeoffNoClipActive()) {
-                position.fma(deltaTime, velocity); // free flight: lift clear of launch terrain
-                flightBlockedHoriz = false;
-                flightBlockedVert = false;
-            } else {
-                boolean[] blocked = flightCollision.moveAirborneWithCollision(this, deltaTime);
-                flightBlockedHoriz = blocked[0];
-                flightBlockedVert = blocked[1];
-            }
+            boolean[] blocked = flightCollision.moveAirborneWithCollision(this, deltaTime);
+            flightBlockedHoriz = blocked[0];
+            flightBlockedVert = blocked[1];
             velocity.mul(FLIGHT_AIR_DAMPING);
         } else {
             flightBlockedHoriz = false;
