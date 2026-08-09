@@ -9,6 +9,7 @@ import com.stonebreak.world.chunk.utils.ChunkManager;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -27,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * - Phase 3: Async entity loading
  * - Phase 4: Dynamic feature population
  */
+@Tag("integration")
 public class LoadingPerformanceIntegrationTest {
 
     private World world;

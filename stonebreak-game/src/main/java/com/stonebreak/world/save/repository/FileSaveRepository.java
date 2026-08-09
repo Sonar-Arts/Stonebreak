@@ -131,7 +131,12 @@ public class FileSaveRepository {
     }
 
     private void writeAtomic(Path target, byte[] payload) throws IOException {
-        Path temp = target.resolveSibling(target.getFileName() + ".tmp");
+        // Unique temp name per write — a fixed sibling name races when two
+        // threads write the same target concurrently (autosave + manual flush
+        // both writing metadata.json, or two saves of one named player).
+        Path temp = target.resolveSibling(target.getFileName() + "."
+            + Long.toUnsignedString(System.nanoTime(), 36)
+            + "-" + Thread.currentThread().threadId() + ".tmp");
         if (target.getParent() != null && !Files.exists(target.getParent())) {
             Files.createDirectories(target.getParent());
         }

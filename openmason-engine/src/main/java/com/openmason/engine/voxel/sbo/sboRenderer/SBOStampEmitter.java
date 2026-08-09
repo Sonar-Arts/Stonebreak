@@ -158,20 +158,6 @@ public class SBOStampEmitter {
         float baseTranslucentFlag = translucent ? 1.0f : 0.0f;
 
         for (int face = 0; face < SBOFaceConventions.FACE_COUNT; face++) {
-            if (!cullingPolicy.shouldRenderFace(blockType, lx, ly, lz, face, chunkData)) {
-                continue;
-            }
-
-            // Per-instance additional cull (e.g. cull ice top face when snow
-            // sits on it) — applied after the engine's standard culling.
-            if (instanceFaceCullPolicy != null
-                    && instanceFaceCullPolicy.shouldCullFace(blockType, lx, ly, lz, face, chunkData)) {
-                continue;
-            }
-
-            FaceStamp faceStamp = stamp.faces()[face];
-            if (faceStamp.vertexCount() == 0) continue;
-
             // Per-face translucency override: a translucent block can opt
             // individual faces into fully-opaque rendering (e.g. only the
             // ice faces that touch water). Forces both translucent and
@@ -185,7 +171,24 @@ public class SBOStampEmitter {
                 translucentFlag = 0.0f;
             }
 
-            emitFaceStamp(builder, faceStamp, worldX, worldY, worldZ, alphaFlag, translucentFlag, blockHeight, face, chunkData);
+            // Interior geometry (a stair's treads and risers) sits inside the
+            // cell, so no neighbour can hide it — emit before the cull checks.
+            emitFaceStamp(builder, stamp.interior()[face], worldX, worldY, worldZ,
+                    alphaFlag, translucentFlag, blockHeight, face, chunkData);
+
+            if (!cullingPolicy.shouldRenderFace(blockType, lx, ly, lz, face, chunkData)) {
+                continue;
+            }
+
+            // Per-instance additional cull (e.g. cull ice top face when snow
+            // sits on it) — applied after the engine's standard culling.
+            if (instanceFaceCullPolicy != null
+                    && instanceFaceCullPolicy.shouldCullFace(blockType, lx, ly, lz, face, chunkData)) {
+                continue;
+            }
+
+            emitFaceStamp(builder, stamp.faces()[face], worldX, worldY, worldZ,
+                    alphaFlag, translucentFlag, blockHeight, face, chunkData);
         }
     }
 
@@ -200,6 +203,8 @@ public class SBOStampEmitter {
                                float worldX, float worldY, float worldZ,
                                float alphaFlag, float translucentFlag, float blockHeight,
                                int face, CcoChunkData chunkData) {
+        if (faceStamp.vertexCount() == 0) return;
+
         float[] pos = faceStamp.positions();
         float[] nrm = faceStamp.normals();
         float[] uv = faceStamp.atlasUVs();

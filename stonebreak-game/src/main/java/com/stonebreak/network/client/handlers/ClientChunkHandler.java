@@ -113,9 +113,9 @@ public final class ClientChunkHandler {
         latestSeq.put(key(cd.chunkX(), cd.chunkZ()), seq);
         decodeExecutor.execute(() -> {
             CcoPalettedChunkStorage storage =
-                World.decodeNetworkChunkBlocks(cd.chunkX(), cd.chunkZ(), cd.payload());
+                com.stonebreak.network.client.NetworkChunkDecoder.decodeBlocks(cd.chunkX(), cd.chunkZ(), cd.payload());
             // Heightmap on the worker too — the install then only swaps storage.
-            int[] heights = storage == null ? null : World.computeNetworkChunkHeights(storage);
+            int[] heights = storage == null ? null : com.stonebreak.network.client.NetworkChunkDecoder.computeSkyHeights(storage);
             // storage == null → decode failed; carried through so the main
             // thread can request the resync (network calls stay off workers).
             ready.add(new DecodedChunk(cd.chunkX(), cd.chunkZ(), seq, storage, heights, cd.metaPayload()));

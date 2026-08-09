@@ -35,6 +35,8 @@ import com.stonebreak.player.physics.CollisionHandler;
 import com.stonebreak.player.physics.GroundChecker;
 import com.stonebreak.player.physics.MovementController;
 import com.stonebreak.player.state.PhysicsState;
+import com.stonebreak.rendering.effects.WaterRippleParticles;
+import com.stonebreak.rendering.effects.WaterSplashParticles;
 import com.stonebreak.world.World;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -112,6 +114,15 @@ public class Player {
 
     // Fishing
     private com.stonebreak.mobs.entities.FishingBobber activeBobber = null;
+
+    // Water entry splash particles
+    private final WaterSplashParticles splashParticles = new WaterSplashParticles();
+
+    // Water surface ripples that trail the player while swimming
+    private final WaterRippleParticles rippleParticles = new WaterRippleParticles();
+    private float rippleSpawnTimer = 0f;
+    private static final float RIPPLE_SPAWN_INTERVAL = 0.35f;
+    private static final float RIPPLE_SPEED_THRESHOLD = 0.5f; // blocks/sec horizontal
 
     // Third-person body model
     public enum Perspective { FIRST_PERSON, THIRD_PERSON }
@@ -191,6 +202,29 @@ public class Player {
 
         health.updateSpawnProtection(dt, state.isOnGround());
         swimming.updateWaterState();
+        Game.getSoundSystem().setEnvironmentGain(
+                swimming.isInWater() ? PlayerConstants.UNDERWATER_AUDIO_DUCK_GAIN : 1.0f);
+        if (state.justEnteredWaterThisFrame()) {
+            float impactSpeed = Math.max(0f, -state.getVelocity().y);
+            splashParticles.burst(state.getPosition(), impactSpeed);
+            rippleParticles.spawn(state.getPosition());
+            rippleSpawnTimer = 0f;
+        }
+        splashParticles.update(dt);
+        // Ripples are a surface effect — suppress them once the player's eyes are
+        // submerged (fully underwater), not just "touching" water.
+        if (state.isPhysicallyInWater() && !swimming.isInWater()) {
+            Vector3f vel = state.getVelocity();
+            float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+            rippleSpawnTimer += dt;
+            if (horizSpeed > RIPPLE_SPEED_THRESHOLD && rippleSpawnTimer >= RIPPLE_SPAWN_INTERVAL) {
+                rippleParticles.spawn(state.getPosition());
+                rippleSpawnTimer = 0f;
+            }
+        } else {
+            rippleSpawnTimer = 0f;
+        }
+        rippleParticles.update(dt);
         swimming.applyAntiFloatingPreIntegration(flight.isFlying(),
                 jumpHandler.getLastNormalJumpTime(), jumpHandler.getNormalJumpGracePeriod());
         swimming.applyWaterFlow(flight.isFlying());
@@ -309,10 +343,9 @@ public class Player {
     }
 
     public void processMovement(boolean forward, boolean backward, boolean left, boolean right,
-                                boolean jump, boolean shift) {
+                                boolean jump, boolean shift, boolean crouch) {
         boolean moving = forward || backward || left || right;
         boolean sprinting = shift && moving && !flight.isFlying()
-                            && !state.isPhysicallyInWater()
                             && stamina.hasStamina()
                             && !stealth.isSprintBlocked(); // cannot sprint while stealthed
         stamina.setSprinting(sprinting);
@@ -320,7 +353,7 @@ public class Player {
         float speedMultiplier = rangerAbilities.getSpeedMultiplier(this,
                 computeIntendedMoveDirection(forward, backward, left, right));
         speedMultiplier *= stealth.getMovementMultiplier(this); // stealth movement penalty
-        movement.processMovement(forward, backward, left, right, jump, shift, sprinting, speedMultiplier);
+        movement.processMovement(forward, backward, left, right, jump, shift, crouch, sprinting, speedMultiplier);
     }
 
     /**
@@ -447,6 +480,7 @@ public class Player {
 
     // Water
     public boolean isInWater() { return swimming.isInWater(); }
+    public boolean justEnteredWaterThisFrame() { return state.justEnteredWaterThisFrame(); }
 
     public RaycastEngine getRaycastEngine() { return raycastEngine; }
 
@@ -503,9 +537,15 @@ public class Player {
      * keep walking mid-swing.
      */
     public com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState getBaseMovementState() {
-        if (!state.isOnGround()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.JUMPING;
         Vector3f vel = state.getVelocity();
         float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+        // Sprint-swimming: no dedicated clip is authored yet, so this reuses WALKING as a
+        // placeholder pose — state selection is correct now, the visual will follow once a
+        // real swim animation clip exists in the SB_Player.sbe asset.
+        if (state.isPhysicallyInWater() && stamina.isSprinting() && horizSpeed > WALK_SPEED_THRESHOLD) {
+            return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.WALKING;
+        }
+        if (!state.isOnGround()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.JUMPING;
         if (horizSpeed > WALK_SPEED_THRESHOLD) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.WALKING;
         return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.IDLE;
     }
@@ -587,6 +627,12 @@ public class Player {
 
     // Illusionist
     public IllusionistAbilityController getIllusionistAbilities() { return illusionistAbilities; }
+
+    // Water splash particles
+    public WaterSplashParticles getSplashParticles() { return splashParticles; }
+
+    // Water surface ripples
+    public WaterRippleParticles getRippleParticles() { return rippleParticles; }
 
     // Rogue
     public RogueAbilityController getRogueAbilities() { return rogueAbilities; }

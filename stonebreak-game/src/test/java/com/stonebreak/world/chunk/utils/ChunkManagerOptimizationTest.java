@@ -5,6 +5,7 @@ import com.stonebreak.world.TestWorld;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * - Distance-based priority
  * - Adaptive GL batch sizing
  */
+@Tag("integration")
 public class ChunkManagerOptimizationTest {
 
     @BeforeEach

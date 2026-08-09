@@ -3,6 +3,7 @@ package com.openmason.engine.format.sbo;
 import com.openmason.engine.format.sound.SoundData;
 import com.openmason.engine.format.sound.SoundDef;
 import com.openmason.engine.format.sound.SoundSpec;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * embedded and resource-referenced defs, re-parse, editor-style re-save, and
  * back-compat for soundless files. Mirrors {@link SBOAnimationRoundTripTest}.
  */
+@Tag("regression")
 class SBOSoundRoundTripTest {
 
     @TempDir

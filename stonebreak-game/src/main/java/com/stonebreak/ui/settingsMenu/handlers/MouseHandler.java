@@ -34,6 +34,7 @@ public final class MouseHandler {
         updateHoverStates((float) mouseX, (float) mouseY);
         if (scrollableContainer != null) scrollableContainer.handleMouseDrag((float) mouseY);
         stateManager.getVolumeSlider().handleDrag((float) mouseX);
+        stateManager.getMusicVolumeSlider().handleDrag((float) mouseX);
         stateManager.getCrosshairSizeSlider().handleDrag((float) mouseX);
         stateManager.getShadowDistanceSlider().handleDrag((float) mouseX);
         stateManager.getRenderDistanceSlider().handleDrag((float) mouseX);
@@ -48,6 +49,7 @@ public final class MouseHandler {
         } else if (action == GLFW_RELEASE) {
             if (scrollableContainer != null) scrollableContainer.handleMouseRelease();
             stateManager.getVolumeSlider().stopDragging();
+            stateManager.getMusicVolumeSlider().stopDragging();
             stateManager.getCrosshairSizeSlider().stopDragging();
             stateManager.getShadowDistanceSlider().stopDragging();
             stateManager.getRenderDistanceSlider().stopDragging();
@@ -83,6 +85,8 @@ public final class MouseHandler {
         stateManager.getApplyButton().updateHover(mouseX, mouseY);
         stateManager.getBackButton().updateHover(mouseX, mouseY);
         stateManager.getVolumeSlider().updateHover(mouseX, mouseY);
+        stateManager.getMusicVolumeSlider().updateHover(mouseX, mouseY);
+        stateManager.getMusicEnabledButton().updateHover(mouseX, mouseY);
         stateManager.getCrosshairSizeSlider().updateHover(mouseX, mouseY);
         stateManager.getRenderDistanceSlider().updateHover(mouseX, mouseY);
         stateManager.getLodDistanceSlider().updateHover(mouseX, mouseY);
@@ -150,6 +154,8 @@ public final class MouseHandler {
         return switch (type) {
             case RESOLUTION        -> stateManager.getResolutionButton().handleClick(mouseX, mouseY);
             case VOLUME            -> stateManager.getVolumeSlider().handleClick(mouseX, mouseY);
+            case MUSIC_VOLUME      -> stateManager.getMusicVolumeSlider().handleClick(mouseX, mouseY);
+            case MUSIC_ENABLED     -> stateManager.getMusicEnabledButton().handleClick(mouseX, mouseY);
             case ARM_MODEL         -> stateManager.getArmModelButton().handleClick(mouseX, mouseY);
             case CROSSHAIR_STYLE   -> stateManager.getCrosshairStyleButton().handleClick(mouseX, mouseY);
             case CROSSHAIR_SIZE    -> stateManager.getCrosshairSizeSlider().handleClick(mouseX, mouseY);

@@ -103,6 +103,10 @@ module openmason.engine {
     // Export shared utilities (pure value/math types)
     exports com.openmason.engine.util;
 
+    // Export Wayfind: the generic A* core and the voxel navigation rules built on it
+    exports com.openmason.engine.wayfind;
+    exports com.openmason.engine.wayfind.voxel;
+
     // Export low-level GL helpers (error handling, state save/restore, projection config)
     exports com.openmason.engine.rendering.gl;
 

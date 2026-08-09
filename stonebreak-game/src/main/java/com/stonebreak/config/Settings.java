@@ -1,18 +1,34 @@
 package com.stonebreak.config;
 
-import java.io.*;
+import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 public class Settings {
+    private static final Logger logger = LoggerFactory.getLogger(Settings.class);
+
     private static Settings instance;
-    private static final String SETTINGS_FILE = "settings.json";
+    private static final Path SETTINGS_FILE = Paths.get("settings.json");
+    private static final ObjectMapper MAPPER = new ObjectMapper();
     
     // Default settings
     private int windowWidth = 1280;
     private int windowHeight = 720;
     private float masterVolume = 1.0f;
-    
+    private float musicVolume = 0.6f;
+    private boolean musicEnabled = true;
+
     // Player model settings
     private String armModelType = "REGULAR"; // "REGULAR" or "SLIM"
 
@@ -88,349 +104,155 @@ public class Settings {
         {3840, 2160}     // 8,294,400 pixels
     };
     
-    private Settings() {
-        loadSettingsInternal();
+    /** Package-private so tests can build a defaults-only instance without touching disk. */
+    Settings() {
     }
-    
+
     // No synchronization needed: getInstance() is always called from the main thread during startup,
     // before any background threads are spawned. Post-init access is read-only.
     public static Settings getInstance() {
         if (instance == null) {
             instance = new Settings();
+            instance.loadSettingsInternal();
         }
         return instance;
     }
     
-    public void saveSettings() {
-        try {
-            StringBuilder json = new StringBuilder();
-            json.append("{\n");
-            json.append("  \"windowWidth\": ").append(windowWidth).append(",\n");
-            json.append("  \"windowHeight\": ").append(windowHeight).append(",\n");
-            json.append("  \"masterVolume\": ").append(masterVolume).append(",\n");
-            json.append("  \"armModelType\": \"").append(armModelType).append("\",\n");
-            json.append("  \"selectedHat\": \"").append(selectedHat).append("\",\n");
-            json.append("  \"crosshairStyle\": \"").append(crosshairStyle).append("\",\n");
-            json.append("  \"crosshairSize\": ").append(crosshairSize).append(",\n");
-            json.append("  \"crosshairThickness\": ").append(crosshairThickness).append(",\n");
-            json.append("  \"crosshairGap\": ").append(crosshairGap).append(",\n");
-            json.append("  \"crosshairOpacity\": ").append(crosshairOpacity).append(",\n");
-            json.append("  \"crosshairColorR\": ").append(crosshairColorR).append(",\n");
-            json.append("  \"crosshairColorG\": ").append(crosshairColorG).append(",\n");
-            json.append("  \"crosshairColorB\": ").append(crosshairColorB).append(",\n");
-            json.append("  \"crosshairOutline\": ").append(crosshairOutline).append(",\n");
-            json.append("  \"leafTransparency\": ").append(leafTransparency).append(",\n");
-            json.append("  \"waterShaderEnabled\": ").append(waterShaderEnabled).append(",\n");
-            json.append("  \"cloudsEnabled\": ").append(cloudsEnabled).append(",\n");
-            json.append("  \"godRaysEnabled\": ").append(godRaysEnabled).append(",\n");
-            json.append("  \"shadowsEnabled\": ").append(shadowsEnabled).append(",\n");
-            json.append("  \"playerNameTagsEnabled\": ").append(playerNameTagsEnabled).append(",\n");
-            json.append("  \"shadowQuality\": \"").append(shadowQuality).append("\",\n");
-            json.append("  \"shadowDistance\": ").append(shadowDistance).append(",\n");
-            json.append("  \"smoothLightingEnabled\": ").append(smoothLightingEnabled).append(",\n");
-            json.append("  \"renderDistance\": ").append(renderDistance).append(",\n");
-            json.append("  \"lodDistance\": ").append(lodDistance).append(",\n");
-            json.append("  \"lodEnabled\": ").append(lodEnabled).append(",\n");
-            json.append("  \"vsyncEnabled\": ").append(vsyncEnabled).append(",\n");
-            json.append("  \"maxFps\": ").append(maxFps).append(",\n");
-            json.append("  \"multiplayerPort\": ").append(multiplayerPort).append(",\n");
-            json.append("  \"lastJoinHost\": \"").append(lastJoinHost).append("\",\n");
-            json.append("  \"multiplayerUsername\": \"").append(multiplayerUsername).append("\",\n");
-            json.append("  \"uiScale\": ").append(uiScale).append("\n");
-            json.append("}");
-            
-            Files.write(Paths.get(SETTINGS_FILE), json.toString().getBytes());
-            System.out.println("Settings saved to " + SETTINGS_FILE);
-        } catch (IOException e) {
-            System.err.println("Failed to save settings: " + e.getMessage());
+    // ─── Persistence ──────────────────────────────────────────────────────────
+    //
+    // One declarative table drives both save and load, so adding a setting means
+    // adding exactly one row. Reads route through the setters wherever one
+    // exists, so a hand-edited file gets the same clamping, validation and side
+    // effects as a change made through the settings menu.
+
+    private record Field(String key,
+                         BiConsumer<Settings, ObjectNode> write,
+                         BiConsumer<Settings, JsonNode> read) {}
+
+    private static final List<Field> PERSISTED = List.of(
+            intField("windowWidth", s -> s.windowWidth, (s, v) -> s.windowWidth = v),
+            intField("windowHeight", s -> s.windowHeight, (s, v) -> s.windowHeight = v),
+            floatField("masterVolume", Settings::getMasterVolume, Settings::setMasterVolume),
+            floatField("musicVolume", Settings::getMusicVolume, Settings::setMusicVolume),
+            boolField("musicEnabled", Settings::getMusicEnabled, Settings::setMusicEnabled),
+            stringField("armModelType", Settings::getArmModelType, Settings::setArmModelType),
+            stringField("selectedHat", Settings::getSelectedHat, Settings::setSelectedHat),
+            stringField("crosshairStyle", Settings::getCrosshairStyle, Settings::setCrosshairStyle),
+            floatField("crosshairSize", Settings::getCrosshairSize, Settings::setCrosshairSize),
+            floatField("crosshairThickness", Settings::getCrosshairThickness, Settings::setCrosshairThickness),
+            floatField("crosshairGap", Settings::getCrosshairGap, Settings::setCrosshairGap),
+            floatField("crosshairOpacity", Settings::getCrosshairOpacity, Settings::setCrosshairOpacity),
+            floatField("crosshairColorR", s -> s.crosshairColorR, (s, v) -> s.crosshairColorR = v),
+            floatField("crosshairColorG", s -> s.crosshairColorG, (s, v) -> s.crosshairColorG = v),
+            floatField("crosshairColorB", s -> s.crosshairColorB, (s, v) -> s.crosshairColorB = v),
+            boolField("crosshairOutline", Settings::getCrosshairOutline, Settings::setCrosshairOutline),
+            boolField("leafTransparency", Settings::getLeafTransparency, Settings::setLeafTransparency),
+            boolField("waterShaderEnabled", Settings::getWaterShaderEnabled, Settings::setWaterShaderEnabled),
+            boolField("cloudsEnabled", Settings::getCloudsEnabled, Settings::setCloudsEnabled),
+            boolField("godRaysEnabled", Settings::getGodRaysEnabled, Settings::setGodRaysEnabled),
+            boolField("shadowsEnabled", Settings::getShadowsEnabled, Settings::setShadowsEnabled),
+            boolField("playerNameTagsEnabled", Settings::getPlayerNameTagsEnabled, Settings::setPlayerNameTagsEnabled),
+            stringField("shadowQuality", Settings::getShadowQuality, Settings::setShadowQuality),
+            intField("shadowDistance", Settings::getShadowDistance, Settings::setShadowDistance),
+            boolField("smoothLightingEnabled", Settings::getSmoothLightingEnabled, Settings::setSmoothLightingEnabled),
+            intField("renderDistance", Settings::getRenderDistance, Settings::setRenderDistance),
+            intField("lodDistance", Settings::getLodDistance, Settings::setLodDistance),
+            boolField("lodEnabled", Settings::getLodEnabled, Settings::setLodEnabled),
+            boolField("vsyncEnabled", Settings::isVsyncEnabled, Settings::setVsyncEnabled),
+            intField("maxFps", Settings::getMaxFps, Settings::setMaxFps),
+            intField("multiplayerPort", Settings::getMultiplayerPort, Settings::setMultiplayerPort),
+            stringField("lastJoinHost", Settings::getLastJoinHost, Settings::setLastJoinHost),
+            stringField("multiplayerUsername", Settings::getMultiplayerUsername, Settings::setMultiplayerUsername),
+            floatField("uiScale", Settings::getUiScale, Settings::setUiScale));
+
+    private static Field intField(String key, Function<Settings, Integer> get, BiConsumer<Settings, Integer> set) {
+        return new Field(key, (s, node) -> node.put(key, get.apply(s)),
+                reader(key, n -> n.canConvertToInt() ? n.intValue() : null, set));
+    }
+
+    private static Field floatField(String key, Function<Settings, Float> get, BiConsumer<Settings, Float> set) {
+        return new Field(key, (s, node) -> node.put(key, get.apply(s)),
+                reader(key, n -> n.isNumber() ? n.floatValue() : null, set));
+    }
+
+    private static Field boolField(String key, Function<Settings, Boolean> get, BiConsumer<Settings, Boolean> set) {
+        return new Field(key, (s, node) -> node.put(key, get.apply(s)),
+                reader(key, n -> n.isBoolean() ? n.booleanValue() : null, set));
+    }
+
+    private static Field stringField(String key, Function<Settings, String> get, BiConsumer<Settings, String> set) {
+        return new Field(key, (s, node) -> node.put(key, get.apply(s)),
+                reader(key, n -> n.isTextual() ? n.textValue() : null, set));
+    }
+
+    /** Wraps a typed parse + setter pair, skipping (and reporting) values of the wrong JSON type. */
+    private static <T> BiConsumer<Settings, JsonNode> reader(String key,
+                                                             Function<JsonNode, T> parse,
+                                                             BiConsumer<Settings, T> set) {
+        return (settings, node) -> {
+            T value = parse.apply(node);
+            if (value == null) {
+                logger.warn("Ignoring invalid value for setting '{}': {}", key, node);
+            } else {
+                set.accept(settings, value);
+            }
+        };
+    }
+
+    /** Serialises the current values — exactly what {@link #saveSettings()} writes to disk. */
+    ObjectNode toJson() {
+        ObjectNode root = MAPPER.createObjectNode();
+        PERSISTED.forEach(field -> field.write().accept(this, root));
+        return root;
+    }
+
+    /** Applies every recognised key present in {@code root}; absent and unknown keys are left alone. */
+    void apply(JsonNode root) {
+        if (root == null || !root.isObject()) {
+            logger.warn("Settings file is not a JSON object; keeping defaults");
+            return;
+        }
+        for (Field field : PERSISTED) {
+            JsonNode node = root.get(field.key());
+            if (node != null && !node.isNull()) {
+                field.read().accept(this, node);
+            }
         }
     }
-    
+
+    public void saveSettings() {
+        try {
+            MAPPER.writerWithDefaultPrettyPrinter().writeValue(SETTINGS_FILE.toFile(), toJson());
+            logger.info("Settings saved to {}", SETTINGS_FILE);
+        } catch (IOException e) {
+            logger.error("Failed to save settings to {}", SETTINGS_FILE, e);
+        }
+    }
+
     public void loadSettings() {
         loadSettingsInternal();
     }
-    
+
     private void loadSettingsInternal() {
+        if (!Files.exists(SETTINGS_FILE)) {
+            logger.info("Settings file not found, using defaults");
+            return;
+        }
         try {
-            if (!Files.exists(Paths.get(SETTINGS_FILE))) {
-                System.out.println("Settings file not found, using defaults");
-                return;
-            }
-            
-            String content = new String(Files.readAllBytes(Paths.get(SETTINGS_FILE)));
-            parseSettings(content);
-            System.out.println("Settings loaded from " + SETTINGS_FILE);
+            apply(MAPPER.readTree(SETTINGS_FILE.toFile()));
+            logger.info("Settings loaded from {}", SETTINGS_FILE);
         } catch (IOException e) {
-            System.err.println("Failed to load settings: " + e.getMessage());
+            logger.error("Failed to load settings from {}; keeping defaults", SETTINGS_FILE, e);
         }
     }
-    
-    private void parseSettings(String json) {
-        // Simple JSON parsing for our specific format
-        String[] lines = json.split("\n");
-        for (String line : lines) {
-            line = line.trim();
-            if (line.contains("windowWidth")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        windowWidth = Integer.parseInt(value);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid windowWidth value: " + value);
-                    }
-                }
-            } else if (line.contains("windowHeight")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        windowHeight = Integer.parseInt(value);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid windowHeight value: " + value);
-                    }
-                }
-            } else if (line.contains("masterVolume")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        masterVolume = Float.parseFloat(value);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid masterVolume value: " + value);
-                    }
-                }
-            } else if (line.contains("armModelType")) {
-                String value = extractStringValue(line);
-                if (value != null) {
-                    armModelType = value;
-                }
-            } else if (line.contains("selectedHat")) {
-                String value = extractStringValue(line);
-                if (value != null) {
-                    selectedHat = value;
-                }
-            } else if (line.contains("crosshairStyle")) {
-                String value = extractStringValue(line);
-                if (value != null) {
-                    crosshairStyle = value;
-                }
-            } else if (line.contains("crosshairSize")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        crosshairSize = Float.parseFloat(value);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid crosshairSize value: " + value);
-                    }
-                }
-            } else if (line.contains("crosshairThickness")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        crosshairThickness = Float.parseFloat(value);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid crosshairThickness value: " + value);
-                    }
-                }
-            } else if (line.contains("crosshairGap")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        crosshairGap = Float.parseFloat(value);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid crosshairGap value: " + value);
-                    }
-                }
-            } else if (line.contains("crosshairOpacity")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        crosshairOpacity = Float.parseFloat(value);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid crosshairOpacity value: " + value);
-                    }
-                }
-            } else if (line.contains("crosshairColorR")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        crosshairColorR = Float.parseFloat(value);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid crosshairColorR value: " + value);
-                    }
-                }
-            } else if (line.contains("crosshairColorG")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        crosshairColorG = Float.parseFloat(value);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid crosshairColorG value: " + value);
-                    }
-                }
-            } else if (line.contains("crosshairColorB")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        crosshairColorB = Float.parseFloat(value);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid crosshairColorB value: " + value);
-                    }
-                }
-            } else if (line.contains("crosshairOutline")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        crosshairOutline = Boolean.parseBoolean(value);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid crosshairOutline value: " + value);
-                    }
-                }
-            } else if (line.contains("leafTransparency")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        leafTransparency = Boolean.parseBoolean(value);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid leafTransparency value: " + value);
-                    }
-                }
-            } else if (line.contains("waterShaderEnabled")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        waterShaderEnabled = Boolean.parseBoolean(value);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid waterShaderEnabled value: " + value);
-                    }
-                }
-            } else if (line.contains("cloudsEnabled")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    cloudsEnabled = Boolean.parseBoolean(value);
-                }
-            } else if (line.contains("godRaysEnabled")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    godRaysEnabled = Boolean.parseBoolean(value);
-                }
-            } else if (line.contains("shadowsEnabled")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    shadowsEnabled = Boolean.parseBoolean(value);
-                }
-            } else if (line.contains("playerNameTagsEnabled")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    playerNameTagsEnabled = Boolean.parseBoolean(value);
-                }
-            } else if (line.contains("shadowQuality")) {
-                String value = extractStringValue(line);
-                if (value != null) {
-                    setShadowQuality(value);
-                }
-            } else if (line.contains("shadowDistance")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        setShadowDistance(Integer.parseInt(value));
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid shadowDistance value: " + value);
-                    }
-                }
-            } else if (line.contains("smoothLightingEnabled")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    setSmoothLightingEnabled(Boolean.parseBoolean(value));
-                }
-            } else if (line.contains("renderDistance")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        setRenderDistance(Integer.parseInt(value));
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid renderDistance value: " + value);
-                    }
-                }
-            } else if (line.contains("lodDistance")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        setLodDistance(Integer.parseInt(value));
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid lodDistance value: " + value);
-                    }
-                }
-            } else if (line.contains("lodEnabled")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    lodEnabled = Boolean.parseBoolean(value);
-                }
-            } else if (line.contains("vsyncEnabled")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    vsyncEnabled = Boolean.parseBoolean(value);
-                }
-            } else if (line.contains("maxFps")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        // Route through the setter so hand-edited / out-of-range
-                        // values are clamped to the supported range.
-                        setMaxFps(Integer.parseInt(value));
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid maxFps value: " + value);
-                    }
-                }
-            } else if (line.contains("multiplayerPort")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try { multiplayerPort = Integer.parseInt(value); }
-                    catch (NumberFormatException e) { System.err.println("Invalid multiplayerPort: " + value); }
-                }
-            } else if (line.contains("lastJoinHost")) {
-                String value = extractStringValue(line);
-                if (value != null) lastJoinHost = value;
-            } else if (line.contains("multiplayerUsername")) {
-                String value = extractStringValue(line);
-                if (value != null) multiplayerUsername = value;
-            } else if (line.contains("uiScale")) {
-                String value = extractValue(line);
-                if (value != null) {
-                    try {
-                        // Route through the setter so out-of-range or hand-edited
-                        // values are clamped to the supported [0.5, 2.0] range.
-                        setUiScale(Float.parseFloat(value));
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid uiScale value: " + value);
-                    }
-                }
-            }
-        }
-    }
-    
-    private String extractValue(String line) {
-        int colonIndex = line.indexOf(':');
-        if (colonIndex == -1) return null;
-        
-        String value = line.substring(colonIndex + 1).trim();
-        value = value.replaceAll("[,}]", "").trim();
-        return value;
-    }
-    
-    private String extractStringValue(String line) {
-        int colonIndex = line.indexOf(':');
-        if (colonIndex == -1) return null;
-        
-        String value = line.substring(colonIndex + 1).trim();
-        value = value.replaceAll("[,}]", "").trim();
-        value = value.replaceAll("\"", "").trim();
-        return value;
-    }
-    
+
     // Getters
     public int getWindowWidth() { return windowWidth; }
     public int getWindowHeight() { return windowHeight; }
     public float getMasterVolume() { return masterVolume; }
-    
+    public float getMusicVolume() { return musicVolume; }
+    public boolean getMusicEnabled() { return musicEnabled; }
+
     // Player model getters
     public String getArmModelType() { return armModelType; }
     public boolean isSlimArms() { return "SLIM".equals(armModelType); }
@@ -483,13 +305,21 @@ public class Settings {
     public void setMasterVolume(float volume) {
         this.masterVolume = Math.max(0.0f, Math.min(1.0f, volume));
     }
-    
+
+    public void setMusicVolume(float volume) {
+        this.musicVolume = Math.max(0.0f, Math.min(1.0f, volume));
+    }
+
+    public void setMusicEnabled(boolean enabled) {
+        this.musicEnabled = enabled;
+    }
+
     // Player model setters
     public void setArmModelType(String armModelType) {
         if ("REGULAR".equals(armModelType) || "SLIM".equals(armModelType)) {
             this.armModelType = armModelType;
         } else {
-            System.err.println("Invalid arm model type: " + armModelType + ". Defaulting to REGULAR.");
+            logger.warn("Invalid arm model type '{}'; defaulting to REGULAR", armModelType);
             this.armModelType = "REGULAR";
         }
     }
@@ -563,7 +393,7 @@ public class Settings {
         if ("LOW".equals(quality) || "MEDIUM".equals(quality) || "HIGH".equals(quality)) {
             this.shadowQuality = quality;
         } else {
-            System.err.println("Invalid shadow quality: " + quality + ". Defaulting to MEDIUM.");
+            logger.warn("Invalid shadow quality '{}'; defaulting to MEDIUM", quality);
             this.shadowQuality = "MEDIUM";
         }
     }

@@ -44,15 +44,19 @@ class McpRequestRouterTest {
         return router.handle(new McpJsonRpc.Request("2.0", 1, "tools/call", params));
     }
 
+    // tools/call results are ObjectNode, initialize results are Map — normalize both.
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> content(McpJsonRpc.Response response) {
-        Map<String, Object> result = (Map<String, Object>) response.result();
-        return (Map<String, Object>) ((List<?>) result.get("content")).get(0);
+    private Map<String, Object> resultMap(McpJsonRpc.Response response) {
+        return mapper.convertValue(response.result(), Map.class);
     }
 
     @SuppressWarnings("unchecked")
-    private static boolean isError(McpJsonRpc.Response response) {
-        return Boolean.TRUE.equals(((Map<String, Object>) response.result()).get("isError"));
+    private Map<String, Object> content(McpJsonRpc.Response response) {
+        return (Map<String, Object>) ((List<?>) resultMap(response).get("content")).get(0);
+    }
+
+    private boolean isError(McpJsonRpc.Response response) {
+        return Boolean.TRUE.equals(resultMap(response).get("isError"));
     }
 
     @Test

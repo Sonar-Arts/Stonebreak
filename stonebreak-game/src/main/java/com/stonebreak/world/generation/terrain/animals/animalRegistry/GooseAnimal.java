@@ -15,8 +15,9 @@ import com.stonebreak.world.World;
 /**
  * Goose animal implementation for world generation spawning.
  *
- * <p>Geese spawn grounded on grass in small flocks; the {@link com.stonebreak.mobs.goose.GooseAI}
- * handles takeoff and V-formation flight afterwards. Unlike the cow there are no appearance
+ * <p>Geese spawn grounded on grass in small flocks;
+ * {@link com.stonebreak.mobs.goose.FlightBehavior} handles takeoff and V-formation flight
+ * afterwards. Unlike the cow there are no appearance
  * variants, so spawning routes through the generic {@code EntityManager.spawnEntity} path.
  */
 public class GooseAnimal implements Animal {

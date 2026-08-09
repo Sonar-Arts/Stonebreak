@@ -164,8 +164,13 @@ public class MmsSBOBlockProvider implements MmsBlockGeometryProvider {
         SBOMeshProcessor.BlockStamp stamp = meshProcessor.getBlockStamp(blockType);
         if (stamp == null) return;
 
+        // Boundary-flush geometry culls against neighbours; interior geometry
+        // (stair treads and the like) is always drawn. Bucket index mirrors
+        // SBOStampEmitter: 0 = flush, 1 = interior.
+        for (int bucket = 0; bucket < 2; bucket++) {
         for (int face = 0; face < 6; face++) {
-            SBOMeshProcessor.FaceStamp faceStamp = stamp.faces()[face];
+            SBOMeshProcessor.FaceStamp faceStamp =
+                    bucket == 0 ? stamp.faces()[face] : stamp.interior()[face];
             if (faceStamp.vertexCount() == 0) continue;
 
             float[] pos = faceStamp.positions();
@@ -180,7 +185,7 @@ public class MmsSBOBlockProvider implements MmsBlockGeometryProvider {
                 int ly = blocks.data[base + 1];
                 int lz = blocks.data[base + 2];
 
-                if (cullingService != null &&
+                if (bucket == 0 && cullingService != null &&
                     !cullingService.shouldRenderFace(blockType, lx, ly, lz, face, chunkData)) {
                     continue;
                 }
@@ -212,6 +217,7 @@ public class MmsSBOBlockProvider implements MmsBlockGeometryProvider {
                     atlasBuilder.addIndex(baseVertex + 2);
                 }
             }
+        }
         }
     }
 

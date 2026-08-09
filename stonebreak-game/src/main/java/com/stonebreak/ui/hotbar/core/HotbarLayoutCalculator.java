@@ -11,8 +11,6 @@ import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 public class HotbarLayoutCalculator {
 
     // Use consistent slot sizing with inventory system
-    private static final int SLOT_SIZE = InventoryLayoutCalculator.getSlotSize(); // 40px
-    private static final int SLOT_PADDING = InventoryLayoutCalculator.getSlotPadding(); // 8px
     private static final int HOTBAR_Y_OFFSET = HotbarTheme.Measurements.HOTBAR_Y_OFFSET; // 50px
 
     /**
@@ -60,14 +58,14 @@ public class HotbarLayoutCalculator {
      */
     public static HotbarLayout calculateLayout(int screenWidth, int screenHeight) {
         float uiScale = com.stonebreak.config.Settings.getInstance().getUiScale();
-        int scaledSlotSize = Math.round(SLOT_SIZE * uiScale);
-        int scaledSlotPadding = Math.round(SLOT_PADDING * uiScale);
         int scaledHotbarYOffset = Math.round(HOTBAR_Y_OFFSET * uiScale);
+        int slotSize = InventoryLayoutCalculator.getSlotSize();
+        int slotPadding = InventoryLayoutCalculator.getSlotPadding();
 
         // Calculate hotbar dimensions
         int slotCount = Inventory.HOTBAR_SIZE;
-        int hotbarContentWidth = slotCount * scaledSlotSize + (slotCount - 1) * scaledSlotPadding;
-        int hotbarContentHeight = scaledSlotSize;
+        int hotbarContentWidth = slotCount * slotSize + (slotCount - 1) * slotPadding;
+        int hotbarContentHeight = slotSize;
 
         // Calculate background dimensions with padding
         int backgroundPadding = Math.round(HotbarTheme.Measurements.PADDING_SMALL * uiScale);
@@ -97,14 +95,13 @@ public class HotbarLayoutCalculator {
             throw new IllegalArgumentException("Slot index out of bounds: " + slotIndex);
         }
 
-        float uiScale = com.stonebreak.config.Settings.getInstance().getUiScale();
-        int scaledSlotSize = Math.round(SLOT_SIZE * uiScale);
-        int scaledSlotPadding = Math.round(SLOT_PADDING * uiScale);
+        int slotSize = InventoryLayoutCalculator.getSlotSize();
+        int slotPadding = InventoryLayoutCalculator.getSlotPadding();
 
-        int slotX = layout.startX + slotIndex * (scaledSlotSize + scaledSlotPadding);
+        int slotX = layout.startX + slotIndex * (slotSize + slotPadding);
         int slotY = layout.startY;
 
-        return new SlotPosition(slotX, slotY, scaledSlotSize, scaledSlotSize);
+        return new SlotPosition(slotX, slotY, slotSize, slotSize);
     }
 
     /**
@@ -168,11 +165,11 @@ public class HotbarLayoutCalculator {
     // ==================== GETTER METHODS ====================
 
     public static int getSlotSize() {
-        return SLOT_SIZE;
+        return InventoryLayoutCalculator.getSlotSize();
     }
 
     public static int getSlotPadding() {
-        return SLOT_PADDING;
+        return InventoryLayoutCalculator.getSlotPadding();
     }
 
     public static int getHotbarYOffset() {
@@ -183,7 +180,7 @@ public class HotbarLayoutCalculator {
      * Calculates the minimum screen width required for optimal hotbar display.
      */
     public static int getMinimumRecommendedWidth() {
-        return Inventory.HOTBAR_SIZE * (SLOT_SIZE + SLOT_PADDING) +
+        return Inventory.HOTBAR_SIZE * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) +
                (int)(HotbarTheme.Measurements.PADDING_LARGE * 4);
     }
 
@@ -191,7 +188,7 @@ public class HotbarLayoutCalculator {
      * Calculates the minimum screen height required for optimal hotbar display.
      */
     public static int getMinimumRecommendedHeight() {
-        return SLOT_SIZE + HOTBAR_Y_OFFSET + (int)(HotbarTheme.Measurements.PADDING_LARGE * 2);
+        return InventoryLayoutCalculator.getSlotSize() + HOTBAR_Y_OFFSET + (int)(HotbarTheme.Measurements.PADDING_LARGE * 2);
     }
 
     /**
@@ -226,18 +223,16 @@ public class HotbarLayoutCalculator {
      * Calculates item icon size based on slot size and padding.
      */
     public static int calculateIconSize() {
-        float uiScale = com.stonebreak.config.Settings.getInstance().getUiScale();
-        int scaledSlotSize = Math.round(SLOT_SIZE * uiScale);
-        int iconPadding = Math.max(2, scaledSlotSize / 12);
-        return scaledSlotSize - (iconPadding * 2);
+        int slotSize = InventoryLayoutCalculator.getSlotSize();
+        int iconPadding = Math.max(2, slotSize / 12);
+        return slotSize - (iconPadding * 2);
     }
 
     /**
      * Calculates item icon padding for consistent positioning.
      */
     public static int calculateIconPadding() {
-        float uiScale = com.stonebreak.config.Settings.getInstance().getUiScale();
-        int scaledSlotSize = Math.round(SLOT_SIZE * uiScale);
-        return Math.max(2, scaledSlotSize / 12);
+        int slotSize = InventoryLayoutCalculator.getSlotSize();
+        return Math.max(2, slotSize / 12);
     }
 }

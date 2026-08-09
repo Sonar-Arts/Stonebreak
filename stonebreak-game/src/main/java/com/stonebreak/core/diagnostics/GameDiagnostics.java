@@ -1,7 +1,6 @@
 package com.stonebreak.core.diagnostics;
 
 import com.stonebreak.core.Game;
-import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.ui.DebugOverlay;
 import com.stonebreak.util.MemoryLeakDetector;
 import com.openmason.engine.diagnostics.MemoryProfiler;
@@ -94,7 +93,13 @@ public final class GameDiagnostics {
         }
     }
 
-    /** Toggles the F3 debug overlay and clears cow-path debug data when hiding. */
+    /**
+     * Toggles the F3 debug overlay.
+     *
+     * <p>Nothing to clean up on hide: the overlay draws each mob's live planned route, which the
+     * mob owns and would have whether anyone was looking or not. The old overlay accumulated a
+     * breadcrumb trail of where mobs had been, and that did need clearing.
+     */
     public static void toggleDebugOverlay() {
         DebugOverlay overlay = Game.getDebugOverlay();
         if (overlay == null) {
@@ -102,12 +107,5 @@ public final class GameDiagnostics {
         }
         overlay.toggleVisibility();
         logger.debug("Debug overlay {}", overlay.isVisible() ? "enabled" : "disabled");
-
-        if (!overlay.isVisible()) {
-            EntityManager entityManager = Game.getEntityManager();
-            if (entityManager != null) {
-                entityManager.clearAllCowPaths();
-            }
-        }
     }
 }

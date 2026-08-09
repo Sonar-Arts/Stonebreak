@@ -1,11 +1,9 @@
 package com.stonebreak.rendering.gameWorld.water;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import com.openmason.engine.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.world.chunk.Chunk;
 import org.joml.Matrix4f;
@@ -76,8 +74,8 @@ public class WaterRenderer {
     public WaterRenderer() {
         shader = new ShaderProgram();
         try {
-            shader.createVertexShader(loadShaderSource("/shaders/water/water.vert"));
-            shader.createFragmentShader(loadShaderSource("/shaders/water/water.frag"));
+            shader.createVertexShader(loadWaterShader("/shaders/water/water.vert"));
+            shader.createFragmentShader(loadWaterShader("/shaders/water/water.frag"));
             shader.link();
 
             shader.createUniform("uProjection");
@@ -96,13 +94,9 @@ public class WaterRenderer {
         }
     }
 
-    private String loadShaderSource(String resourcePath) throws IOException {
-        try (InputStream in = getClass().getResourceAsStream(resourcePath)) {
-            if (in == null) {
-                throw new IOException("Shader resource not found: " + resourcePath);
-            }
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
+    /** Lambda (not a method reference) so the caller-sensitive lookup happens in this module. */
+    private static String loadWaterShader(String resourcePath) {
+        return ShaderResourceLoader.load(resourcePath, path -> WaterRenderer.class.getResourceAsStream(path));
     }
 
     /**

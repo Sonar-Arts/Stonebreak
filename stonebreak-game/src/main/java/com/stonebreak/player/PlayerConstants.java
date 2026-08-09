@@ -11,12 +11,23 @@ public final class PlayerConstants {
     public static final float PLAYER_WIDTH = 0.6f;
 
     public static final float MOVE_SPEED = 20.0f;
-    public static final float SWIM_SPEED = 11.5f;
+    public static final float SWIM_SPEED = 13.0f;
     public static final float JUMP_FORCE = 8.5f;
     public static final float GRAVITY = 35.0f;
-    public static final float WATER_GRAVITY = 12.0f;
+    public static final float WATER_GRAVITY = 4.0f;
     public static final float WATER_BUOYANCY = 25.0f;
     public static final float WATER_JUMP_BOOST = 5.0f;
+    public static final float CURRENT_RESISTANCE_THRESHOLD = 3.0f; // flow magnitude at which swim control bottoms out
+    public static final float MIN_SWIM_CONTROL_AUTHORITY = 0.35f;  // floor on swim-speed control against strong currents
+    public static final float WATER_HORIZONTAL_DRAG = 6.5f;         // higher than ground(5.0)/air(2.5) friction — water resistance without feeling sluggish
+    public static final float WATER_VERTICAL_DRAG = 1.6f;           // vertical damping in water, applied regardless of direction
+    public static final float WATER_SWIM_DOWN_ACCEL = 20.0f;        // shift-held downward swim acceleration
+    public static final float WATER_IDLE_BUOYANCY_DRIFT_SPEED = 0.8f; // passive upward drift cap when no vertical input held
+    public static final float WATER_IDLE_BUOYANCY_ACCEL = 3.0f;     // how fast idle drift ramps up to the cap
+    public static final float WATER_SURFACE_BOB_FRACTION = 0.3f;    // apply treading-water bob once this shallow or less submerged
+    public static final float WATER_SURFACE_BOB_SPEED = 2.2f;
+    public static final float WATER_SURFACE_BOB_AMPLITUDE = 0.35f;
+    public static final float UNDERWATER_AUDIO_DUCK_GAIN = 0.35f; // muffling multiplier while eyes are submerged
 
     public static final float RAY_CAST_DISTANCE = 5.0f;
     public static final float ATTACK_ANIMATION_DURATION = 0.25f;

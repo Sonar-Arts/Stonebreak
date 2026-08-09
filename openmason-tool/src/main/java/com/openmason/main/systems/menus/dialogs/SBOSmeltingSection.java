@@ -84,22 +84,16 @@ public class SBOSmeltingSection {
     }
 
     public void render() {
-        ImGui.text("Smelting Recipes");
-        ImGui.sameLine();
-        ImGui.textDisabled("(this SBO is the output; input is referenced by objectId)");
-
-        if (ImGui.button("+ Add Smelting Recipe")) {
-            recipes.add(new EditableSmeltingEntry());
-            onDirty.run();
-        }
-
         if (recipes.isEmpty()) {
-            ImGui.textDisabled("No smelting recipes - click + Add Smelting Recipe to create one.");
-            picker.render();
-            return;
+            ImGui.textDisabled("No smelting recipes - this object cannot be smelted into.");
+        } else {
+            ImGui.text("Smelting recipes (" + recipes.size() + ")");
         }
+        ImGui.textDisabled("This SBO is the output; each input is referenced by objectId.");
 
         ImGui.dummy(0, 6);
+        ImGui.separator();
+        ImGui.dummy(0, 4);
 
         int removeIndex = -1;
         for (int i = 0; i < recipes.size(); i++) {
@@ -159,20 +153,23 @@ public class SBOSmeltingSection {
             ImGui.popItemWidth();
 
             ImGui.sameLine();
-            if (ImGui.smallButton("Delete")) {
+            if (EditorWidgets.dangerButton("Remove", 0f)) {
                 removeIndex = i;
             }
 
             imgui.ImGui.popStyleVar();
 
-            ImGui.dummy(0, 4);
-            ImGui.separator();
-            ImGui.dummy(0, 4);
+            ImGui.dummy(0, 6);
             ImGui.popID();
         }
 
         if (removeIndex >= 0) {
             recipes.remove(removeIndex);
+            onDirty.run();
+        }
+
+        if (ImGui.button("+ Add smelting recipe")) {
+            recipes.add(new EditableSmeltingEntry());
             onDirty.run();
         }
 

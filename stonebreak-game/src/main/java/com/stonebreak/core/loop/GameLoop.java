@@ -1,5 +1,7 @@
 package com.stonebreak.core.loop;
 
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 
 import com.stonebreak.core.Game;
@@ -24,6 +26,21 @@ import com.stonebreak.world.World;
  */
 public final class GameLoop {
 
+    // Pre-game / menu screens where background music plays: the main menu itself, singleplayer
+    // world select + new-world creation flow, the multiplayer menu tree, and settings (however
+    // it was reached). Excludes LOADING, PLAYING, and every in-game overlay (PAUSED, inventory,
+    // workbench, etc.) so music stops the moment a world actually starts.
+    private static final Set<GameState> MUSIC_ACTIVE_STATES = EnumSet.of(
+            GameState.MAIN_MENU,
+            GameState.WORLD_SELECT,
+            GameState.CHARACTER_CREATION,
+            GameState.TERRAIN_MAPPER,
+            GameState.MULTIPLAYER_MENU,
+            GameState.HOST_WORLD_SELECT,
+            GameState.JOIN_WORLD_SCREEN,
+            GameState.SETTINGS
+    );
+
     private final Game game;
     private final ExecutorService worldUpdateExecutor;
 
@@ -44,10 +61,29 @@ public final class GameLoop {
         // chunks/joins/disconnects keep flowing during loading screens too.
         com.stonebreak.network.MultiplayerSession.tick();
 
+        // Background music runs every frame (not just PLAYING states) so it starts/stops
+        // immediately on state transitions instead of lagging behind.
+        com.stonebreak.audio.MusicManager musicManager = Game.getMusicManager();
+        if (musicManager != null) {
+            musicManager.update(deltaTime, isMusicActive());
+        }
+
         if (!routeStateUpdate(deltaTime)) {
             return;
         }
         updateGameWorld(deltaTime);
+    }
+
+    /**
+     * True while a menu screen where music should play is active. SETTINGS is excluded once a
+     * world is loaded (paused mid-game, opened from the pause menu) — only settings reached
+     * before starting/joining a world (still {@code Game.getWorld() == null}) gets music.
+     */
+    private boolean isMusicActive() {
+        GameState state = game.getState();
+        if (!MUSIC_ACTIVE_STATES.contains(state)) return false;
+        if (state == GameState.SETTINGS && Game.getWorld() != null) return false;
+        return true;
     }
 
     private boolean routeStateUpdate(float deltaTime) {

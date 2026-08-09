@@ -33,4 +33,17 @@ public final class GameSoundLoader {
         // The engine handles a null stream (logs + skips) and closes the stream after decoding.
         soundSystem.loadSound(name, stream);
     }
+
+    /**
+     * Same resource-resolution trick as {@link #load}, but registers the track with the engine's
+     * music channel ({@link SoundSystem#loadMusic}) instead of the pooled SFX sources — see
+     * {@code /songs/} for the game module's background-music assets.
+     */
+    public static void loadMusic(SoundSystem soundSystem, String name, String resourcePath) {
+        InputStream stream = GameSoundLoader.class.getResourceAsStream(resourcePath);
+        if (stream == null) {
+            System.err.println("[GameSoundLoader] Music resource not found in game module: " + resourcePath);
+        }
+        soundSystem.loadMusic(name, stream);
+    }
 }

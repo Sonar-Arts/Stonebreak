@@ -8,7 +8,7 @@ import com.stonebreak.world.World;
 
 /**
  * Picks a deterministic-but-randomized safe surface spawn within a configurable
- * radius of world origin. Uses {@link World#getFinalTerrainHeightAt} so the
+ * radius of world origin. Uses {@code World.terrain().getFinalTerrainHeightAt} so the
  * height is queried from the terrain noise functions without loading any
  * chunks — this avoids contention with the save IO executor and keeps the
  * loading screen responsive.
@@ -45,7 +45,7 @@ public final class SpawnLocator {
             int x = random.nextInt(2 * radius + 1) - radius;
             int z = random.nextInt(2 * radius + 1) - radius;
 
-            int height = world.getFinalTerrainHeightAt(x, z);
+            int height = world.terrain().getFinalTerrainHeightAt(x, z);
             if (world.getGeneratedWaterLevelAt(x, z) > height) continue;
 
             int standY = height + 1;

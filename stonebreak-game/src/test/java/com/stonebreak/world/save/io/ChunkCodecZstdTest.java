@@ -5,6 +5,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.save.model.ChunkData;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * zstd chunk payload round-trip: real generated terrain in, identical
  * blocks out, header bytes confirm the zstd path was actually taken.
  */
+@Tag("regression")
 class ChunkCodecZstdTest {
 
     @Test

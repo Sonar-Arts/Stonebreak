@@ -8,7 +8,6 @@ import com.openmason.main.systems.menus.dialogs.validation.NumericIdValidator;
 import com.openmason.main.systems.menus.dialogs.validation.TakenIdsPopup;
 import com.openmason.main.systems.services.StatusService;
 import imgui.ImGui;
-import imgui.flag.ImGuiTabBarFlags;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
@@ -88,6 +87,13 @@ public class SBOEditorWindow {
             "block", "item", "entity", "decoration", "particle", "other"
     };
     private static final String[] RENDER_LAYER_LABELS = { "OPAQUE", "CUTOUT", "TRANSLUCENT" };
+    private static final String[] TAB_LABELS = {
+            "Metadata", "Game Properties", "States", "Recipes", "Smelting", "Sounds"
+    };
+
+    /** Mortar window chrome (action bar + tab strip); ImGui fallback inside. */
+    private final EditorChrome chrome = new EditorChrome("sbo");
+    private int selectedTab;
 
     public SBOEditorWindow(FileDialogService fileDialogService, StatusService statusService) {
         this.visible = new ImBoolean(false);
@@ -192,64 +198,29 @@ public class SBOEditorWindow {
                 + (dirty ? " *" : "")
                 + "###sbo_editor";
         if (ImGui.begin(title, visible, flags)) {
-            renderToolbar();
-            ImGui.separator();
-            if (loadedManifest == null) {
+            boolean loaded = loadedManifest != null;
+            selectedTab = chrome.render(loaded, loaded && dirty, dirty,
+                    currentPath != null ? currentPath.getFileName().toString() : "",
+                    "Open Different SBO...", TAB_LABELS, selectedTab,
+                    this::saveInPlace, this::saveAs, this::openWithDialog);
+            ImGui.dummy(0, 6);
+            if (!loaded) {
                 ImGui.textDisabled("No SBO loaded. Use File > Open... or Tools > SBO Editor.");
             } else {
-                renderTabs();
+                switch (selectedTab) {
+                    case 0 -> renderMetadataTab();
+                    case 1 -> renderGamePropertiesTab();
+                    case 2 -> renderStatesTab();
+                    case 3 -> recipeSection.render();
+                    case 4 -> smeltingSection.render();
+                    case 5 -> soundsEditor.render();
+                    default -> { }
+                }
             }
             conflictPopup.render();
             takenIdsPopup.render();
         }
         ImGui.end();
-    }
-
-    private void renderToolbar() {
-        boolean canSave = loadedManifest != null && dirty;
-        if (!canSave) ImGui.beginDisabled();
-        if (ImGui.button("Save")) {
-            saveInPlace();
-        }
-        if (!canSave) ImGui.endDisabled();
-        ImGui.sameLine();
-        if (ImGui.button("Save As...")) {
-            saveAs();
-        }
-        ImGui.sameLine();
-        if (ImGui.button("Open Different SBO...")) {
-            openWithDialog();
-        }
-    }
-
-    private void renderTabs() {
-        if (ImGui.beginTabBar("##sbo_editor_tabs", ImGuiTabBarFlags.Reorderable)) {
-            if (ImGui.beginTabItem("Metadata")) {
-                renderMetadataTab();
-                ImGui.endTabItem();
-            }
-            if (ImGui.beginTabItem("Game Properties")) {
-                renderGamePropertiesTab();
-                ImGui.endTabItem();
-            }
-            if (ImGui.beginTabItem("States")) {
-                renderStatesTab();
-                ImGui.endTabItem();
-            }
-            if (ImGui.beginTabItem("Recipes")) {
-                recipeSection.render();
-                ImGui.endTabItem();
-            }
-            if (ImGui.beginTabItem("Smelting")) {
-                smeltingSection.render();
-                ImGui.endTabItem();
-            }
-            if (ImGui.beginTabItem("Sounds")) {
-                soundsEditor.render();
-                ImGui.endTabItem();
-            }
-            ImGui.endTabBar();
-        }
     }
 
     private void renderMetadataTab() {
@@ -263,36 +234,57 @@ public class SBOEditorWindow {
     }
 
     private void renderGamePropertiesTab() {
-        renderFuelControls();
-        ImGui.separator();
-        ImGui.dummy(0, 4);
-
         if (ImGui.checkbox("Has gameProperties block", new ImBoolean(hasGameProperties))) {
             hasGameProperties = !hasGameProperties;
             dirty = true;
         }
         if (!hasGameProperties) {
             ImGui.textDisabled("This SBO has no gameProperties block (legacy 1.0).");
+            ImGui.dummy(0, 4);
+            renderFuelControls();
             return;
         }
+
+        EditorWidgets.sectionLabel("Identity");
+        ImGui.pushItemWidth(140);
         if (ImGui.inputInt("Numeric ID", numericId))         dirty = true;
+        ImGui.popItemWidth();
         ImGui.sameLine();
         if (ImGui.smallButton("Taken IDs...##editor_taken")) {
             takenIdsPopup.open(currentDomain());
         }
         renderConflictHint();
+
+        EditorWidgets.sectionLabel("World");
+        ImGui.pushItemWidth(140);
         if (ImGui.inputFloat("Hardness", hardness))          dirty = true;
+        ImGui.popItemWidth();
         if (ImGui.checkbox("Solid", solid))                  dirty = true;
+        ImGui.sameLine(160);
         if (ImGui.checkbox("Breakable", breakable))          dirty = true;
+        ImGui.sameLine(320);
+        if (ImGui.checkbox("Placeable", placeable))          dirty = true;
+
+        EditorWidgets.sectionLabel("Rendering");
+        ImGui.pushItemWidth(140);
         if (ImGui.inputInt("Atlas X", atlasX))               dirty = true;
+        ImGui.sameLine(240);
         if (ImGui.inputInt("Atlas Y", atlasY))               dirty = true;
         if (ImGui.combo("Render Layer", renderLayerIndex, RENDER_LAYER_LABELS)) dirty = true;
+        ImGui.popItemWidth();
         if (ImGui.checkbox("Transparent", transparent))      dirty = true;
+        ImGui.sameLine(160);
         if (ImGui.checkbox("Flower", flower))                dirty = true;
+
+        EditorWidgets.sectionLabel("Item");
         if (ImGui.checkbox("Stackable", stackable))          dirty = true;
+        ImGui.sameLine(160);
+        ImGui.pushItemWidth(140);
         if (ImGui.inputInt("Max Stack Size", maxStackSize))  dirty = true;
         if (ImGui.inputText("Category", category))           dirty = true;
-        if (ImGui.checkbox("Placeable", placeable))          dirty = true;
+        ImGui.popItemWidth();
+        ImGui.dummy(0, 4);
+        renderFuelControls();
     }
 
     private void renderFuelControls() {
@@ -438,12 +430,15 @@ public class SBOEditorWindow {
     }
 
     /**
-     * Release GPU-backed resources (recipe Mortar regions, ingredient icon
-     * textures). Must run with a current GL context, before the SkijaContext
-     * closes.
+     * Release GPU-backed resources (chrome/recipe/sounds Mortar regions,
+     * ingredient icon textures). Must run with a current GL context, before
+     * the SkijaContext closes.
      */
     public void close() {
+        chrome.close();
         recipeSection.close();
+        statesEditor.close();
+        soundsEditor.close();
         SBOIngredientIcons.clear();
     }
 }

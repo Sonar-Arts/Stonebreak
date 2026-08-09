@@ -20,6 +20,12 @@ import java.util.Map;
 public class SBOStampCache {
 
     private final Map<Integer, Map<String, BlockStamp>> stamps = new HashMap<>();
+    /**
+     * Per-block occlusion mask, folded across every registered state as stamps
+     * arrive. Precomputed because the chunk mesher asks per face of per block:
+     * see {@link #occludesFace}.
+     */
+    private final Map<Integer, boolean[]> occlusion = new HashMap<>();
 
     /** Store the default (no-state) block stamp. */
     public void put(IBlockType blockType, BlockStamp stamp) {
@@ -30,6 +36,11 @@ public class SBOStampCache {
      *  to mean "default state". */
     public void put(IBlockType blockType, String stateName, BlockStamp stamp) {
         stamps.computeIfAbsent(blockType.getId(), k -> new HashMap<>()).put(stateName, stamp);
+        boolean[] mask = occlusion.computeIfAbsent(blockType.getId(),
+                k -> new boolean[]{true, true, true, true, true, true});
+        for (int face = 0; face < SBOFaceConventions.FACE_COUNT; face++) {
+            mask[face] &= stamp.occludesFace()[face];
+        }
     }
 
     /** Get the default (no-state) stamp for a block type. */
@@ -53,6 +64,23 @@ public class SBOStampCache {
     public boolean has(IBlockType blockType) {
         Map<String, BlockStamp> byState = stamps.get(blockType.getId());
         return byState != null && !byState.isEmpty();
+    }
+
+    /**
+     * Whether this block type hides a neighbour's facing side, for every state
+     * it can be in. Answers conservatively: a face counts as occluding only
+     * when <em>all</em> registered variants fill that boundary plane, so a
+     * rotatable shape (stairs) never claims to cover a side that one of its
+     * rotations leaves open. Types with no stamp at all (AIR, WATER, animated
+     * blocks) report {@code true} — they are governed by transparency rules
+     * elsewhere and must keep their existing culling behaviour.
+     */
+    public boolean occludesFace(IBlockType blockType, int mmsFace) {
+        if (blockType == null || mmsFace < 0 || mmsFace >= SBOFaceConventions.FACE_COUNT) {
+            return true;
+        }
+        boolean[] mask = occlusion.get(blockType.getId());
+        return mask == null || mask[mmsFace];
     }
 
     /** Number of distinct (block, state) entries cached. */

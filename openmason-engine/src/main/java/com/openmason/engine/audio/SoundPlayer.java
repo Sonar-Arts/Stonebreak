@@ -31,7 +31,7 @@ public class SoundPlayer {
 
             int source = soundSources[currentIndex];
 
-            float finalVolume = volume * volumeController.getMasterVolume();
+            float finalVolume = volume * volumeController.getEffectiveVolume();
             alSourcef(source, AL_GAIN, finalVolume);
 
             // For regular (non-3D) sounds, make them relative to the listener
@@ -66,7 +66,7 @@ public class SoundPlayer {
 
             int source = soundSources[currentIndex];
 
-            float finalVolume = volume * volumeController.getMasterVolume();
+            float finalVolume = volume * volumeController.getEffectiveVolume();
             alSourcef(source, AL_GAIN, finalVolume);
             alSourcef(source, AL_PITCH, pitch);
 
@@ -98,7 +98,7 @@ public class SoundPlayer {
             // Create slight pitch variation (0.9 to 1.1, so ±10% variation)
             float pitchVariation = 0.9f + (float)(Math.random() * 0.2f);
 
-            float finalVolume = volume * volumeController.getMasterVolume();
+            float finalVolume = volume * volumeController.getEffectiveVolume();
             alSourcef(source, AL_GAIN, finalVolume);
             alSourcef(source, AL_PITCH, pitchVariation);
 
@@ -153,7 +153,7 @@ public class SoundPlayer {
             alSource3f(source, AL_VELOCITY, 0.0f, 0.0f, 0.0f);
 
             // For 3D audio, use the master volume and let OpenAL handle distance attenuation
-            float baseVolume = volume * volumeController.getMasterVolume();
+            float baseVolume = volume * volumeController.getEffectiveVolume();
             alSourcef(source, AL_GAIN, baseVolume);
 
             alSourcePlay(source);
@@ -188,7 +188,7 @@ public class SoundPlayer {
             alSource3f(source, AL_VELOCITY, 0.0f, 0.0f, 0.0f);
             alSourcef(source, AL_PITCH, pitch);
 
-            float baseVolume = volume * volumeController.getMasterVolume();
+            float baseVolume = volume * volumeController.getEffectiveVolume();
             alSourcef(source, AL_GAIN, baseVolume);
 
             alSourcePlay(source);
@@ -242,7 +242,7 @@ public class SoundPlayer {
             alSourcef(source, AL_PITCH, pitchVariation);
 
             // For 3D audio, use the master volume and let OpenAL handle distance attenuation
-            float baseVolume = volume * volumeController.getMasterVolume();
+            float baseVolume = volume * volumeController.getEffectiveVolume();
             alSourcef(source, AL_GAIN, baseVolume);
 
             alSourcePlay(source);

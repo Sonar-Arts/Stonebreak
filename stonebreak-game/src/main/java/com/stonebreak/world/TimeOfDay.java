@@ -36,9 +36,10 @@ public class TimeOfDay {
     // Current time in ticks
     private long ticks = DAWN;
 
-    // Fractional-tick carry between updates. Without it, per-frame updates (ticksToAdd < 1)
-    // truncate to zero and time never advances at frame rates above the tick rate; the
-    // 20 Hz server (exactly 1.0 tick/step) is unaffected.
+    // Fractional-tick carry between updates. Without it, sub-tick updates (ticksToAdd < 1,
+    // i.e. any step shorter than 1/tick-rate seconds — every frame, and the 20 Hz server
+    // step since the day was lengthened past 20 ticks/s) truncate to zero and time never
+    // advances.
     private float subTick = 0.0f;
 
     // Time progression speed multiplier (1.0 = normal speed)

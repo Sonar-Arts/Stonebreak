@@ -242,7 +242,7 @@ public final class ChunkCodec {
                 int rawLen = in.readInt();
                 int compLen = in.readInt();
                 if (rawLen <= 0 || rawLen > MAX_RAW_BYTES || compLen <= 0
-                        || HEADER_BYTES + 9 + compLen > payload.length) {
+                        || HEADER_BYTES + 9 + (long) compLen > payload.length) {
                     throw new IOException("Block section stream lengths invalid: raw="
                         + rawLen + ", compressed=" + compLen);
                 }

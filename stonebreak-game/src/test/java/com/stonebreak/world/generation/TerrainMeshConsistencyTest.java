@@ -13,6 +13,7 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration.MmsCcoAdapter;
 import com.stonebreak.world.generation.diffusion.FakeTerrainTileSource;
 import com.stonebreak.world.operations.WorldConfiguration;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -50,6 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * but excluded from the strict cube assertion. Terrain-only generation places no flowers/ores, so
  * the chunk is bedrock/stone/dirt/sand/grass + water.
  */
+@Tag("regression")
 public class TerrainMeshConsistencyTest {
 
     /** Fixed seed so the run is reproducible. */

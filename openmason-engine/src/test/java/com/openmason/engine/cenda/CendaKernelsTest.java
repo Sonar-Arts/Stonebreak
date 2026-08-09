@@ -1,5 +1,6 @@
 package com.openmason.engine.cenda;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -14,6 +15,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * libcenda_kernels.so hasn't been built (cmake --preset release && cmake
  * --build --preset release in openmason-engine/cenda).
  */
+@Tag("regression")
 class CendaKernelsTest {
 
     @Test

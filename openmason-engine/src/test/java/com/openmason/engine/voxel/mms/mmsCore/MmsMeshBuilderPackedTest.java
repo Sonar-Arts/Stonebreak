@@ -25,8 +25,8 @@ class MmsMeshBuilderPackedTest {
         builder.beginFace();
         builder.addVertex(0, 10, 0, 0, 0, 0, 1, 0, 0.875f, 0f, 0f, 0.5f, 3f);
         builder.addVertex(1, 10, 0, 1, 0, 0, 1, 0, 0.875f, 0f, 0f, 0.5f, 3f);
-        builder.addVertex(1, 10, 1, 1, 1, 0, 1, 0, 0.875f, 1f, 0f, 0.5f, 3f);
-        builder.addVertex(0, 10, 1, 0, 1, 0, 1, 0, 0.875f, 1f, 0f, 0.5f, 3f);
+        builder.addVertex(1, 10, 1, 1, 1, 0, 1, 0, 0.875f, 0f, 0f, 0.5f, 3f);
+        builder.addVertex(0, 10, 1, 0, 1, 0, 1, 0, 0.875f, 0f, 0f, 0.5f, 3f);
         builder.endFace();
         return builder;
     }

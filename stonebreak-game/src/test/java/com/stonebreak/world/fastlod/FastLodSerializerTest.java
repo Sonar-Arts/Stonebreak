@@ -4,6 +4,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeKind;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * return null (never throw) — the store treats null as a cache miss and falls
  * back to live terrain sampling.
  */
+@Tag("regression")
 class FastLodSerializerTest {
 
     /** Header layout: magic u32, version u8, level u8, cellsPerAxis u8, stride u8. */

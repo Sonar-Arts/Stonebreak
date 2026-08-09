@@ -9,31 +9,26 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.mobs.entities.EntityType;
-import com.stonebreak.mobs.entities.ai.PassiveMobAI;
+import com.stonebreak.mobs.entities.ai.MobAI;
+import com.stonebreak.mobs.entities.ai.behavior.StandStillBehavior;
+import com.stonebreak.mobs.entities.ai.behavior.StartleBehavior;
+import com.stonebreak.mobs.entities.ai.behavior.WanderBehavior;
+import com.stonebreak.mobs.entities.ai.behavior.WingFlapBehavior;
+import com.stonebreak.mobs.entities.ai.nav.Steering;
 
 /**
  * Chicken mob implementation.
  *
- * <p>A small passive mob driven by the shared {@link PassiveMobAI} framework:
- * it wanders and idles (never grazes — graze weight 0), occasionally flapping
- * its wings while idle. The obstacle-hop boost keeps the airborne chicken
- * driving forward so its footprint fully clears ledge edges before descending.
+ * <p>A small passive mob assembled from shared behaviours: it wanders and idles (it is simply
+ * never given a grazing behaviour), occasionally flapping its wings. The obstacle-hop boost keeps
+ * the airborne chicken driving forward so its footprint fully clears ledge edges before descending.
  */
 public class Chicken extends LivingEntity {
 
-    /**
-     * Chicken personality: half idle / half wander, no grazing, occasional
-     * wing flaps (1.2s matches the SB_Chicken.sbe Wingflap clip), hop boost
-     * while airborne over obstacles; startles (freezes) when hit.
-     */
-    private static final PassiveMobAI.Config AI_CONFIG = new PassiveMobAI.Config(
-            3.0f, 8.0f,          // state duration min/max
-            3.0f, 8.0f,          // wander distance min/max
-            0.8f, 180.0f,        // move speed multiplier, rotation speed (deg/s)
-            0.5f, 0.5f, 0.0f,    // idle / wander weights; chickens never graze
-            0.15f, 1.2f,         // wing-flap chance per second, flap duration
-            2.2f, 0.8f,          // hop boost speed, hop duration cap
-            PassiveMobAI.DamageResponse.STARTLE);
+    /** Turn rate, plus the hop boost that keeps an airborne chicken driving over ledges. */
+    private static final float ROTATION_SPEED = 180.0f;
+    private static final float HOP_BOOST_SPEED = 2.2f;
+    private static final float HOP_DURATION = 0.8f;
 
     // Apex = v²/80 blocks under entity gravity: 12.0 reaches ~1.8 blocks
     // (vs the 10.5/~1.38 LivingEntity default), giving the chicken ample
@@ -46,7 +41,13 @@ public class Chicken extends LivingEntity {
     public Chicken(World world, Vector3f position) {
         super(world, position, EntityType.CHICKEN);
 
-        this.mobAI = new PassiveMobAI(this, AI_CONFIG);
+        // Chicken personality: half idle / half wander, never grazes, the occasional wing flap
+        // (1.2s matches the SB_Chicken.sbe Wingflap clip), and it freezes rather than bolts.
+        this.mobAI = new MobAI(this, new Steering(this, ROTATION_SPEED, HOP_BOOST_SPEED, HOP_DURATION),
+                new StartleBehavior(2.0f),
+                new WingFlapBehavior(0.15f, 1.2f),
+                StandStillBehavior.idle(0.5f, 3.0f, 8.0f),
+                new WanderBehavior(0.5f, 3.0f, 8.0f, 0.8f));
         this.jumpVelocity = JUMP_VELOCITY;
 
         // Smaller interaction range than a cow; faster turning for a light mob.

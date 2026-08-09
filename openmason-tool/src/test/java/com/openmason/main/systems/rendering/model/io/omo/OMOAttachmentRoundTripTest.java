@@ -4,6 +4,7 @@ import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.engine.format.omo.OMOReader;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.rendering.model.editable.CubeGeometry;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -22,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * plus a cross-check through the engine {@link OMOReader} so the JSON field
  * names the tool writes are exactly what the runtime reads (the contract test).
  */
+@Tag("regression")
 class OMOAttachmentRoundTripTest {
 
     @TempDir

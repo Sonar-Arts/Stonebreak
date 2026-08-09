@@ -22,6 +22,7 @@ public class PhysicsState {
     private boolean physicallyInWater;
     private boolean wasInWaterLastFrame;
     private boolean justExitedWaterThisFrame;
+    private boolean justEnteredWaterThisFrame;
     private float waterExitTime;
 
     public Vector3f getPosition() { return position; }
@@ -44,6 +45,9 @@ public class PhysicsState {
 
     public boolean justExitedWaterThisFrame() { return justExitedWaterThisFrame; }
     public void setJustExitedWaterThisFrame(boolean exited) { this.justExitedWaterThisFrame = exited; }
+
+    public boolean justEnteredWaterThisFrame() { return justEnteredWaterThisFrame; }
+    public void setJustEnteredWaterThisFrame(boolean entered) { this.justEnteredWaterThisFrame = entered; }
 
     public float getWaterExitTime() { return waterExitTime; }
     public void setWaterExitTime(float t) { this.waterExitTime = t; }

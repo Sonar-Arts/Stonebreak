@@ -3,6 +3,8 @@ package com.stonebreak.items;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 
+import java.util.Objects;
+
 
 /**
  * Represents the player's inventory of blocks using fixed slots.
@@ -690,5 +692,46 @@ public class Inventory {
         for (int i = 0; i < MAIN_INVENTORY_SIZE; i++) {
             mainInventorySlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
         }
+    }
+
+    /**
+     * Sorts the hotbar independently of the main inventory. If the currently
+     * selected slot held an item, the resulting slot holding that same item
+     * type + state is reselected afterward, so the player doesn't silently
+     * end up holding something else. Matching is by item type + state
+     * rather than object identity, since sorting can merge stacks into new
+     * ItemStack instances.
+     */
+    public void sortHotbar() {
+        ItemStack selectedBefore = hotbarSlots[selectedHotbarSlotIndex];
+        Item selectedItem = selectedBefore.getItem();
+        String selectedState = selectedBefore.getState();
+        boolean hadSelectedItem = !selectedBefore.isEmpty();
+
+        InventorySorter.sortRegion(hotbarSlots);
+
+        if (hadSelectedItem) {
+            for (int i = 0; i < HOTBAR_SIZE; i++) {
+                ItemStack stack = hotbarSlots[i];
+                if (!stack.isEmpty() && stack.getItem().isSameType(selectedItem)
+                        && Objects.equals(stack.getState(), selectedState)) {
+                    if (i != selectedHotbarSlotIndex) {
+                        setSelectedHotbarSlotIndex(i);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    /** Sorts the main inventory independently of the hotbar. */
+    public void sortMainInventory() {
+        InventorySorter.sortRegion(mainInventorySlots);
+    }
+
+    /** Sorts both regions independently; items never move between hotbar and main inventory. */
+    public void sortInventory() {
+        sortHotbar();
+        sortMainInventory();
     }
 }

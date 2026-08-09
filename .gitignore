@@ -159,3 +159,6 @@ QWEN.md
 # Dev Working/terrain-diffusion-spike/ (checkout + venv + global rasters, ~7.5 GB);
 # no rule needed here, /Dev Working/ above already covers it. Setup steps are in
 # that directory's README.md.
+
+# Stray mirror of the absolute repo path (tool writing absolute paths as relative)
+/mnt/

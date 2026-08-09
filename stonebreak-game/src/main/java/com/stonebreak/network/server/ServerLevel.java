@@ -138,7 +138,7 @@ public final class ServerLevel {
             Vector3f saved = worldData.getSpawnPosition();
             int x = Math.round(saved.x);
             int z = Math.round(saved.z);
-            int height = world.getFinalTerrainHeightAt(x, z);
+            int height = world.terrain().getFinalTerrainHeightAt(x, z);
             return new Vector3f(x, height + 1, z);
         }
         return new SpawnLocator(world).findSafeSurfaceSpawn();
