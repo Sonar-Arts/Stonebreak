@@ -19,9 +19,24 @@ public class UndoRedoRecorder {
     /** Never null, so the change-detection path needs no guard. */
     private TransformUndoSink undoSink = TransformUndoSink.NONE;
 
+    /**
+     * Whether drags of an <em>active</em> target are reported.
+     *
+     * <p>Off by default, because in the model editor an active target means a part, and
+     * part edits are undone by the part system — reporting them too would produce two
+     * undo entries for one drag. A host whose targets have no other undo mechanism (a
+     * scene, whose targets are placed instances) turns this on.
+     */
+    private boolean recordActiveTargets = false;
+
     /** Null resets to {@link TransformUndoSink#NONE}, i.e. recording disabled. */
     public void setUndoSink(TransformUndoSink undoSink) {
         this.undoSink = undoSink != null ? undoSink : TransformUndoSink.NONE;
+    }
+
+    /** See {@link #recordActiveTargets}. */
+    public void setRecordActiveTargets(boolean recordActiveTargets) {
+        this.recordActiveTargets = recordActiveTargets;
     }
 
     /**
@@ -34,9 +49,9 @@ public class UndoRedoRecorder {
      */
     public void recordIfChanged(GizmoState gizmoState, ITransformTarget activeTarget,
                                 TransformState transformState) {
-        // Part-level drags are undone by the part system, so there is nothing to report
-        // and no need to read any values.
-        if (activeTarget != null) {
+        if (activeTarget != null && !recordActiveTargets) {
+            // Part-level drags are undone by the part system; reporting them here as well
+            // would give one drag two undo entries.
             return;
         }
 
@@ -44,21 +59,31 @@ public class UndoRedoRecorder {
         Vector3f oldRot = gizmoState.getDragStartObjectRotation();
         Vector3f oldScale = gizmoState.getDragStartObjectScale();
 
-        Vector3f newPos = new Vector3f(
-                transformState.getPositionX(),
-                transformState.getPositionY(),
-                transformState.getPositionZ()
-        );
-        Vector3f newRot = new Vector3f(
-                transformState.getRotationX(),
-                transformState.getRotationY(),
-                transformState.getRotationZ()
-        );
-        Vector3f newScale = new Vector3f(
-                transformState.getScaleX(),
-                transformState.getScaleY(),
-                transformState.getScaleZ()
-        );
+        // Read the result from whatever actually moved.
+        Vector3f newPos;
+        Vector3f newRot;
+        Vector3f newScale;
+        if (activeTarget != null) {
+            newPos = activeTarget.getPosition();
+            newRot = activeTarget.getRotation();
+            newScale = activeTarget.getScale();
+        } else {
+            newPos = new Vector3f(
+                    transformState.getPositionX(),
+                    transformState.getPositionY(),
+                    transformState.getPositionZ()
+            );
+            newRot = new Vector3f(
+                    transformState.getRotationX(),
+                    transformState.getRotationY(),
+                    transformState.getRotationZ()
+            );
+            newScale = new Vector3f(
+                    transformState.getScaleX(),
+                    transformState.getScaleY(),
+                    transformState.getScaleZ()
+            );
+        }
 
         boolean changed = !oldPos.equals(newPos, 0.0001f)
                 || !oldRot.equals(newRot, 0.0001f)

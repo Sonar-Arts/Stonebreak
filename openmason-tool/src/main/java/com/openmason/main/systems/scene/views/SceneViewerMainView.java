@@ -32,6 +32,7 @@ public class SceneViewerMainView {
     private final SceneDocument document;
     private final SceneSelectionState selection;
     private final SceneToolbarRenderer toolbar;
+    private final com.openmason.main.systems.scene.SceneViewerActions actions;
 
     /** Invoked with (absolute .omo path, drop position) when a model is dragged in. */
     private BiConsumer<String, float[]> onModelDropped = (path, pos) -> { };
@@ -40,7 +41,9 @@ public class SceneViewerMainView {
 
     public SceneViewerMainView(SceneViewerUIState state, SceneViewerController controller,
                                SceneDocument document, SceneSelectionState selection,
-                               SceneToolbarRenderer toolbar) {
+                               SceneToolbarRenderer toolbar,
+                               com.openmason.main.systems.scene.SceneViewerActions actions) {
+        this.actions = actions;
         this.state = state;
         this.controller = controller;
         this.document = document;
@@ -55,6 +58,7 @@ public class SceneViewerMainView {
     public void render() {
         if (ImGui.begin(WINDOW_TITLE, ImGuiWindowFlags.NoNavInputs)) {
             state.setSceneViewFocused(ImGui.isWindowFocused());
+            handleShortcuts();
             toolbar.render();
             ImGui.separator();
             renderViewport();
@@ -62,6 +66,26 @@ public class SceneViewerMainView {
             state.setSceneViewFocused(false);
         }
         ImGui.end();
+    }
+
+    /**
+     * Undo/redo for scene edits. Gated on this window being focused so the same chord
+     * cannot drive both the scene's history and the model editor's in one keypress.
+     */
+    private void handleShortcuts() {
+        if (!ImGui.isWindowFocused(imgui.flag.ImGuiFocusedFlags.RootAndChildWindows)) {
+            return;
+        }
+        if (!ImGui.getIO().getKeyCtrl()) {
+            return;
+        }
+        boolean redoChord = ImGui.isKeyPressed(imgui.flag.ImGuiKey.Y)
+                || (ImGui.getIO().getKeyShift() && ImGui.isKeyPressed(imgui.flag.ImGuiKey.Z));
+        if (redoChord) {
+            actions.redo();
+        } else if (ImGui.isKeyPressed(imgui.flag.ImGuiKey.Z)) {
+            actions.undo();
+        }
     }
 
     private void renderViewport() {

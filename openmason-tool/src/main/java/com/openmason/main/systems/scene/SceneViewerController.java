@@ -48,6 +48,10 @@ public class SceneViewerController {
     private final ScenePicker picker = new ScenePicker();
     private final SceneViewportInput viewportInput;
 
+    /** The scene's own undo stack — separate from the model editor's. */
+    private final com.openmason.main.systems.services.commands.ModelCommandHistory commandHistory =
+            new com.openmason.main.systems.services.commands.ModelCommandHistory();
+
     private boolean glInitialized = false;
 
     public SceneViewerController(SceneDocument document, SceneViewerUIState uiState) {
@@ -60,6 +64,12 @@ public class SceneViewerController {
         this.gizmoRenderer.setTransformTarget(transformTarget);
         this.viewportInput = new SceneViewportInput(viewer.camera());
         this.viewportInput.setGizmoRenderer(gizmoRenderer);
+
+        // Scene instances have no other undo mechanism (unlike the editor's parts), so
+        // the gizmo must report drags of its active target here.
+        this.gizmoRenderer.setUndoSink(
+                new SceneGizmoUndoBridge(commandHistory, transformTarget::instance));
+        this.gizmoRenderer.setRecordActiveTargets(true);
     }
 
     // ------------------------------------------------------------- lifecycle
@@ -167,6 +177,9 @@ public class SceneViewerController {
     // ------------------------------------------------------------- accessors
 
     public SceneViewportInput viewportInput() { return viewportInput; }
+    public com.openmason.main.systems.services.commands.ModelCommandHistory commandHistory() {
+        return commandHistory;
+    }
     public ViewerCamera camera() { return viewer.camera(); }
     public ModelViewer viewer() { return viewer; }
     public GizmoState gizmoState() { return gizmoState; }

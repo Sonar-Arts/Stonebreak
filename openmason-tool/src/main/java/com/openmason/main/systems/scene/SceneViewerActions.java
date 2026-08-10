@@ -157,6 +157,33 @@ public class SceneViewerActions {
         controller.gizmoState().setCurrentMode(mode);
     }
 
+    public boolean canUndo() {
+        return controller.commandHistory().canUndo();
+    }
+
+    public boolean canRedo() {
+        return controller.commandHistory().canRedo();
+    }
+
+    /** Undo the last gizmo transform in this scene. */
+    public void undo() {
+        if (!canUndo()) {
+            return;
+        }
+        controller.commandHistory().undo();
+        syncGizmoToSelection();
+        markDirty();
+    }
+
+    public void redo() {
+        if (!canRedo()) {
+            return;
+        }
+        controller.commandHistory().redo();
+        syncGizmoToSelection();
+        markDirty();
+    }
+
     public void markDirty() {
         sceneService.markDirty();
     }

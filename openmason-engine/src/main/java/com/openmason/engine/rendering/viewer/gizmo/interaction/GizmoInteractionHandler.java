@@ -61,6 +61,11 @@ public class GizmoInteractionHandler {
         undoRedoRecorder.setUndoSink(undoSink);
     }
 
+    /** Report drags of an active target too — for hosts whose targets have no other undo. */
+    public void setRecordActiveTargets(boolean record) {
+        undoRedoRecorder.setRecordActiveTargets(record);
+    }
+
     /**
      * Set the transform target for gizmo operations.
      */

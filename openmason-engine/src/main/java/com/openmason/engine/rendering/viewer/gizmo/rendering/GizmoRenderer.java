@@ -254,6 +254,11 @@ public class GizmoRenderer {
         interactionHandler.setUndoSink(undoSink);
     }
 
+    /** Report drags of an active target too — for hosts whose targets have no other undo. */
+    public void setRecordActiveTargets(boolean record) {
+        interactionHandler.setRecordActiveTargets(record);
+    }
+
     /**
      * Updates viewport state for grid snapping configuration.
      */

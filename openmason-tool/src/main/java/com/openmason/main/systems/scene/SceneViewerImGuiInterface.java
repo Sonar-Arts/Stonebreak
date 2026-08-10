@@ -62,7 +62,7 @@ public class SceneViewerImGuiInterface {
         this.actions = new SceneViewerActions(sceneService, document, selection, controller);
 
         SceneToolbarRenderer toolbar = new SceneToolbarRenderer(uiState, actions);
-        this.mainView = new SceneViewerMainView(uiState, controller, document, selection, toolbar);
+        this.mainView = new SceneViewerMainView(uiState, controller, document, selection, toolbar, actions);
         this.outliner = new SceneOutlinerImGui(document, selection, actions,
                 uiVisibility.getShowSceneOutliner());
         this.inspector = new SceneInspectorImGui(document, selection, actions,
