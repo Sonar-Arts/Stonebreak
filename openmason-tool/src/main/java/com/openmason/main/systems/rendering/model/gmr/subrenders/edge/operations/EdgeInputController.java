@@ -11,7 +11,7 @@ import com.openmason.main.systems.viewport.input.InputContext;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.util.EdgeCutMath;
-import com.openmason.main.systems.viewport.util.SnappingUtil;
+import com.openmason.engine.rendering.viewer.math.SnappingUtil;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeHoverDetector;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
@@ -47,7 +47,7 @@ public class EdgeInputController {
     private EdgeRenderer edgeRenderer = null;
     private EdgeSelectionState edgeSelectionState = null;
     private TranslationCoordinator translationCoordinator = null;
-    private com.openmason.main.systems.viewport.state.TransformState transformState = null;
+    private com.openmason.engine.rendering.viewer.transform.TransformState transformState = null;
     private VertexRenderer vertexRenderer = null; // For priority check!
     private GenericModelRenderer modelRenderer = null; // For Ctrl+Click vertex insertion
     private com.openmason.main.systems.viewport.ViewportUIState viewportState = null; // Grid snapping
@@ -84,7 +84,7 @@ public class EdgeInputController {
     /**
      * Set the transform state for model matrix access.
      */
-    public void setTransformState(com.openmason.main.systems.viewport.state.TransformState transformState) {
+    public void setTransformState(com.openmason.engine.rendering.viewer.transform.TransformState transformState) {
         this.transformState = transformState;
         logger.debug("Transform state set in EdgeInputController");
     }

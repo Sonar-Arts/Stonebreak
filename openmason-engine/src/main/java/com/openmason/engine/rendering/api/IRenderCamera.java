@@ -8,7 +8,7 @@ import org.joml.Matrix4f;
  *
  * <p>Implementations:
  * <ul>
- *   <li>Open Mason: Wraps ViewportCamera (arcball/first-person)</li>
+ *   <li>Open Mason: implemented by ViewerCamera (arcball/first-person)</li>
  *   <li>Stonebreak: Wraps game Camera + projection matrix</li>
  * </ul>
  */

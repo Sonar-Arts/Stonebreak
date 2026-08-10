@@ -1,10 +1,12 @@
 package com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction;
 
+import com.openmason.engine.rendering.viewer.gizmo.interaction.ITransformTarget;
+
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
 import com.openmason.engine.rendering.model.gmr.parts.PartMeshRebuilder;
 import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
-import com.openmason.main.systems.viewport.state.TransformState;
+import com.openmason.engine.rendering.viewer.transform.TransformState;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
@@ -218,10 +220,20 @@ public class PartTransformTarget implements ITransformTarget {
     }
 
     /**
+     * Parts are the one target that absorbs a model-level drag: with nothing selected,
+     * dragging the gizmo moves every unlocked part rather than the model transform.
+     */
+    @Override
+    public boolean supportsGroupFallback() {
+        return true;
+    }
+
+    /**
      * Check if all currently selected parts are locked.
      * Used to prevent gizmo drags on fully-locked selections.
      */
-    public boolean areAllSelectedPartsLocked() {
+    @Override
+    public boolean isLocked() {
         List<ModelPartDescriptor> selected = getSelectedParts();
         if (selected.isEmpty()) return false;
         return selected.stream().allMatch(ModelPartDescriptor::locked);
@@ -234,7 +246,8 @@ public class PartTransformTarget implements ITransformTarget {
      * Snapshot all parts' transforms at the start of a model-level drag.
      * Called when no part is selected and the user starts dragging the gizmo.
      */
-    public void snapshotAllPartsForModelDrag() {
+    @Override
+    public void beginGroupDrag() {
         modelDragSnapshots.clear();
         for (ModelPartDescriptor part : partManager.getAllParts()) {
             modelDragSnapshots.put(part.id(), part.transform());
@@ -244,7 +257,8 @@ public class PartTransformTarget implements ITransformTarget {
     /**
      * Apply a translation delta to all unlocked parts relative to their drag-start positions.
      */
-    public void applyTranslationDeltaToUnlocked(Vector3f delta) {
+    @Override
+    public void applyGroupTranslationDelta(Vector3f delta) {
         for (ModelPartDescriptor part : partManager.getAllParts()) {
             if (part.locked()) continue;
             PartTransform snap = modelDragSnapshots.get(part.id());
@@ -262,7 +276,8 @@ public class PartTransformTarget implements ITransformTarget {
     /**
      * Apply a rotation to all unlocked parts.
      */
-    public void applyRotationToUnlocked(Vector3f rotation) {
+    @Override
+    public void applyGroupRotation(Vector3f rotation) {
         for (ModelPartDescriptor part : partManager.getAllParts()) {
             if (part.locked()) continue;
             PartTransform snap = modelDragSnapshots.get(part.id());
@@ -280,7 +295,8 @@ public class PartTransformTarget implements ITransformTarget {
     /**
      * Apply a scale to all unlocked parts.
      */
-    public void applyScaleToUnlocked(float sx, float sy, float sz) {
+    @Override
+    public void applyGroupScale(float sx, float sy, float sz) {
         for (ModelPartDescriptor part : partManager.getAllParts()) {
             if (part.locked()) continue;
             PartTransform snap = modelDragSnapshots.get(part.id());
@@ -312,7 +328,8 @@ public class PartTransformTarget implements ITransformTarget {
      * Must be called at drag start so multi-part transforms can compute
      * relative deltas correctly.
      */
-    public void snapshotDragStart() {
+    @Override
+    public void beginDrag() {
         dragSnapshots.clear();
         for (ModelPartDescriptor part : getSelectedParts()) {
             dragSnapshots.add(new PartDragSnapshot(
@@ -327,7 +344,8 @@ public class PartTransformTarget implements ITransformTarget {
     /**
      * Clear drag snapshots. Called when drag ends to avoid stale data.
      */
-    public void clearDragSnapshots() {
+    @Override
+    public void endDrag() {
         dragSnapshots.clear();
     }
 
@@ -335,7 +353,7 @@ public class PartTransformTarget implements ITransformTarget {
 
     private void applyMultiPartTranslation(List<ModelPartDescriptor> selected, float newX, float newY, float newZ) {
         if (dragSnapshots.isEmpty()) {
-            snapshotDragStart();
+            beginDrag();
         }
 
         // The gizmo reports the new "group average" position.
@@ -359,7 +377,7 @@ public class PartTransformTarget implements ITransformTarget {
 
     private void applyMultiPartRotation(List<ModelPartDescriptor> selected, float newX, float newY, float newZ) {
         if (dragSnapshots.isEmpty()) {
-            snapshotDragStart();
+            beginDrag();
         }
 
         Vector3f startAvg = computeSnapshotAverageRotation();
@@ -381,7 +399,7 @@ public class PartTransformTarget implements ITransformTarget {
 
     private void applyMultiPartScale(List<ModelPartDescriptor> selected, float newX, float newY, float newZ) {
         if (dragSnapshots.isEmpty()) {
-            snapshotDragStart();
+            beginDrag();
         }
 
         Vector3f startAvg = computeSnapshotAverageScale();

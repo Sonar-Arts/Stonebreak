@@ -103,6 +103,23 @@ public class FileMenuHandler {
     /**
      * Set project service for project-level save/load operations.
      */
+    // Scene actions, supplied by the app so this handler need not know the scene layer.
+    private Runnable onNewScene;
+    private Runnable onOpenScene;
+    private Runnable onSaveScene;
+    private Runnable onSaveSceneAs;
+    private java.util.function.BooleanSupplier sceneDirtySupplier;
+
+    public void setSceneActions(Runnable newScene, Runnable openScene,
+                                Runnable saveScene, Runnable saveSceneAs,
+                                java.util.function.BooleanSupplier sceneDirty) {
+        this.onNewScene = newScene;
+        this.onOpenScene = openScene;
+        this.onSaveScene = saveScene;
+        this.onSaveSceneAs = saveSceneAs;
+        this.sceneDirtySupplier = sceneDirty;
+    }
+
     public void setProjectService(ProjectService projectService) {
         this.projectService = projectService;
     }
@@ -175,6 +192,26 @@ public class FileMenuHandler {
         boolean canSaveAs = modelState.canSaveModel();
         if (ImGui.menuItem("Save Model As...", "", false, canSaveAs)) {
             modelOperations.saveModelAs();
+        }
+
+        ImGui.separator();
+
+        // --- Scene ---
+        if (ImGui.menuItem("New Scene")) {
+            if (onNewScene != null) onNewScene.run();
+        }
+
+        if (ImGui.menuItem("Open Scene...")) {
+            if (onOpenScene != null) onOpenScene.run();
+        }
+
+        boolean sceneDirty = sceneDirtySupplier != null && sceneDirtySupplier.getAsBoolean();
+        if (ImGui.menuItem("Save Scene", "", false, sceneDirty)) {
+            if (onSaveScene != null) onSaveScene.run();
+        }
+
+        if (ImGui.menuItem("Save Scene As...")) {
+            if (onSaveSceneAs != null) onSaveSceneAs.run();
         }
 
         ImGui.separator();

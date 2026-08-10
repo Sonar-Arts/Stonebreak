@@ -28,6 +28,12 @@ import org.slf4j.LoggerFactory;
  */
 public class PropertyPanelImGui {
 
+    /**
+     * ImGui window title. Also the key DockBuilder docks this pane by, so it must
+     * match the string passed to {@code dockBuilderDockWindow} exactly.
+     */
+    public static final String WINDOW_TITLE = "Model Properties";
+
     private static final Logger logger = LoggerFactory.getLogger(PropertyPanelImGui.class);
 
     // Dependencies (injected)
@@ -132,7 +138,7 @@ public class PropertyPanelImGui {
         // The child region will handle scrolling instead (like TextureEditorWindow)
         int windowFlags = ImGuiWindowFlags.NoScrollbar;
 
-        if (ImGui.begin("Model Properties", windowFlags)) {
+        if (ImGui.begin(WINDOW_TITLE, windowFlags)) {
             // Create bounded child region to prevent infinite scrolling headers
             // Matches the pattern used in ColorPanel (texture editor)
             ImGui.beginChild("##properties_content", 0, 0, false);

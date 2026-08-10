@@ -7,7 +7,7 @@ import com.openmason.main.systems.services.commands.RendererSynchronizer;
 import com.openmason.main.systems.services.commands.SnapshotCommand;
 import com.openmason.main.systems.services.commands.VertexMoveCommand;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
-import com.openmason.main.systems.viewport.state.TransformState;
+import com.openmason.engine.rendering.viewer.transform.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;

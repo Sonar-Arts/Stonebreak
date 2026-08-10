@@ -495,4 +495,14 @@ public class PreferencesWindow {
     public void setTextureCreatorImGui(TextureCreatorImGui textureCreatorImGui) {
         pageRenderer.setTextureCreatorImGui(textureCreatorImGui);
     }
+
+    /**
+     * Route camera-sensitivity changes to the Scene Viewer's camera as well.
+     *
+     * <p>These are user preferences, so they belong to every 3D surface — this renderer
+     * only knew about the model editor's viewport because it predates the second one.
+     */
+    public void setSceneCameraSink(java.util.function.BiConsumer<Float, Float> sink) {
+        pageRenderer.setSceneCameraSink(sink);
+    }
 }

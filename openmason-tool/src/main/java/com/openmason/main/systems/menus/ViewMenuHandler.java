@@ -85,6 +85,18 @@ public class ViewMenuHandler {
             uiState.toggleRiggingPane();
         }
 
+        if (ImGui.menuItem("Scene Viewer", "", uiState.getShowSceneViewer().get())) {
+            uiState.toggleSceneViewer();
+        }
+
+        if (ImGui.menuItem("Scene Outliner", "", uiState.getShowSceneOutliner().get())) {
+            uiState.toggleSceneOutliner();
+        }
+
+        if (ImGui.menuItem("Scene Inspector", "", uiState.getShowSceneInspector().get())) {
+            uiState.toggleSceneInspector();
+        }
+
         if (ImGui.menuItem("Toolbar", "", uiState.getShowToolbar().get())) {
             uiState.toggleToolbar();
         }

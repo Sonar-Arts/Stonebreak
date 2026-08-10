@@ -9,18 +9,18 @@ import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.services.commands.RendererSynchronizer;
-import com.openmason.main.systems.viewport.ViewportCamera;
+import com.openmason.engine.rendering.viewer.camera.ViewerCamera;
 import com.openmason.main.systems.viewport.ViewportInputHandler;
 import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline;
-import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
+import com.openmason.engine.rendering.viewer.gizmo.rendering.GizmoRenderer;
+import com.openmason.engine.rendering.viewer.gizmo.GizmoState;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
-import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
+import com.openmason.engine.rendering.viewer.ViewerRenderContext;
+import com.openmason.engine.rendering.viewer.ViewerFramebuffer;
 import com.openmason.engine.rendering.shaders.ShaderManager;
 import com.openmason.main.systems.viewport.state.RenderingState;
-import com.openmason.main.systems.viewport.state.TransformState;
+import com.openmason.engine.rendering.viewer.transform.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
 import com.openmason.main.systems.viewport.state.EditMode;
@@ -48,9 +48,12 @@ public class ViewportController {
 
     // ========== Core Components ==========
     private final ShaderManager shaderManager;
-    private final ViewportResourceManager resourceManager;
-    private final ViewportCamera viewportCamera;
-    private final RenderContext renderContext;
+    /** Owns the framebuffer, camera and the ordered pass list for this viewport. */
+    private final com.openmason.engine.rendering.viewer.ModelViewer modelViewer;
+    /** ImGui-free mirror of {@link #viewportState}, pushed into the viewer each frame. */
+    private final com.openmason.engine.rendering.viewer.ViewerSettings viewerSettings;
+    private final ViewerCamera viewportCamera;
+    private final ViewerRenderContext renderContext;
     private ViewportRenderPipeline viewportRenderPipeline;
 
     // ========== State ==========
@@ -69,6 +72,8 @@ public class ViewportController {
     // ========== Gizmo ==========
     private final GizmoState gizmoState;
     private final GizmoRenderer gizmoRenderer;
+    /** Adapts finished gizmo drags into this editor's undo history. */
+    private final com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoUndoBridge gizmoUndoBridge;
 
     // ========== Skeleton ==========
     private final com.openmason.main.systems.skeleton.BoneStore boneStore =
@@ -97,12 +102,50 @@ public class ViewportController {
     // ========== Services ==========
     private com.openmason.main.systems.services.EdgeOperationService edgeOperationService;
 
+    /**
+     * Whether this viewport's OpenGL resources (shaders, framebuffer, renderers, render
+     * pipeline) have been created.
+     *
+     * <p>Deliberately private and NOT {@code ViewportUIState.isInitialized()}: that flag
+     * is also written by {@link com.openmason.main.systems.viewport.ViewportImGuiInterface}
+     * to mean "the MVC components are wired", which happens BEFORE this viewport's GL init.
+     * While the two classes held separate state objects the meanings never collided; once
+     * the state became shared, borrowing that flag made {@link #initialize()} early-return
+     * and left {@code viewportRenderPipeline} null.
+     */
+    private boolean glInitialized = false;
+
+    /**
+     * Fixed per-frame delta handed to the viewer, preserving the pipeline's original
+     * hardcoded ~60fps assumption. Camera interpolation is also driven by the real
+     * delta via {@link #update(float)}, so this only affects the viewer's own tick.
+     */
+    private static final float FRAME_DELTA_SECONDS = 0.016f;
+
     // ========== Constructor ==========
 
+    /**
+     * Convenience constructor that creates its own {@link ViewportUIState}.
+     *
+     * <p>Prefer {@link #ViewportController(ViewportUIState)}: the UI state must be a
+     * single shared instance, otherwise menu toggles and the render pipeline read
+     * different objects (this is how "Show Bones" silently stopped working).
+     */
     public ViewportController() {
+        this(new ViewportUIState());
+    }
+
+    /**
+     * Create a viewport bound to the caller's {@link ViewportUIState}.
+     *
+     * <p>The state is owned by the UI shell and shared with the menu handlers, the
+     * operation services and this viewport's render pipeline — there must be exactly
+     * one instance per viewport.
+     */
+    public ViewportController(ViewportUIState viewportState) {
         logger.info("Creating viewport with modular architecture");
 
-        this.viewportState = new ViewportUIState();
+        this.viewportState = java.util.Objects.requireNonNull(viewportState, "viewportState");
         this.renderingState = new RenderingState();
         this.transformState = new TransformState();
         this.vertexSelectionState = new VertexSelectionState();
@@ -111,12 +154,17 @@ public class ViewportController {
 
         this.gizmoState = new GizmoState();
         this.gizmoRenderer = new GizmoRenderer(gizmoState, transformState, viewportState);
+        this.gizmoUndoBridge =
+                new com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoUndoBridge(transformState);
 
         this.shaderManager = new ShaderManager();
-        this.resourceManager = new ViewportResourceManager();
-
-        this.viewportCamera = new ViewportCamera();
-        this.renderContext = new RenderContext(viewportCamera);
+        this.viewerSettings = new com.openmason.engine.rendering.viewer.ViewerSettings();
+        // The viewer owns the camera and render context so a second viewport gets its
+        // own without any shared state; this controller just borrows the references.
+        this.modelViewer = new com.openmason.engine.rendering.viewer.ModelViewer(
+                shaderManager, /* ownsShaders */ false, viewerSettings);
+        this.viewportCamera = modelViewer.camera();
+        this.renderContext = modelViewer.context();
 
         this.inputHandler = new ViewportInputHandler(viewportCamera);
 
@@ -212,7 +260,7 @@ public class ViewportController {
      * Initialize OpenGL resources. Idempotent - safe to call multiple times.
      */
     public void initialize() {
-        if (viewportState.isInitialized()) {
+        if (glInitialized) {
             logger.debug("Viewport already initialized");
             return;
         }
@@ -221,7 +269,7 @@ public class ViewportController {
             logger.info("Initializing viewport modules...");
 
             shaderManager.initialize();
-            resourceManager.initialize(viewportState.getWidth(), viewportState.getHeight());
+            modelViewer.initialize(viewportState.getWidth(), viewportState.getHeight());
 
             if (!BlockManager.isInitialized()) BlockManager.initialize();
             blockRenderer.initialize();
@@ -233,20 +281,28 @@ public class ViewportController {
             gizmoRenderer.initialize();
 
             inputHandler.setGizmoRenderer(gizmoRenderer);
-            gizmoRenderer.updateViewportState(viewportState);
+            gizmoRenderer.setSnapSettings(viewportState);
 
             // In auto-show mode, start with gizmo hidden (nothing selected yet)
             // In manual mode, start with gizmo enabled (user controls visibility)
             boolean initiallyEnabled = gizmoState.getDisplayMode() !=
-                    com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT;
+                    com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT;
             gizmoState.setEnabled(initiallyEnabled);
             transformState.setGizmoEnabled(initiallyEnabled);
 
             this.viewportRenderPipeline = new ViewportRenderPipeline(
-                renderContext, resourceManager, shaderManager,
+                shaderManager,
                 blockRenderer, itemRenderer,
-                    modelRenderer, gizmoRenderer
+                modelRenderer, gizmoRenderer,
+                viewportState, renderingState, transformState
             );
+
+            // Two passes: the shared engine grid, then everything the editor draws.
+            // Registered in this order so the grid is the backdrop; the editor pass
+            // keeps its own internal tier sequence (content -> sockets -> mesh
+            // overlays -> gizmo -> rigging) exactly as before.
+            modelViewer.addPass(new com.openmason.engine.rendering.viewer.passes.GridPass());
+            modelViewer.addPass(this.viewportRenderPipeline);
             this.viewportRenderPipeline.setBoneStore(boneStore);
             this.viewportRenderPipeline.setAttachmentStore(attachmentStore);
             this.viewportRenderPipeline.setAttachmentPreviewStore(attachmentPreviewStore);
@@ -386,7 +442,10 @@ public class ViewportController {
                     edgeOperationService.setCommandHistory(commandHistory, synchronizer);
                 }
                 inputHandler.setCommandHistory(commandHistory, synchronizer);
-                gizmoRenderer.setCommandHistory(commandHistory);
+                // The gizmo reports finished drags; the bridge turns them into this
+                // editor's undo entries. Keeps ModelCommandHistory out of the widget.
+                gizmoUndoBridge.setCommandHistory(commandHistory);
+                gizmoRenderer.setUndoSink(gizmoUndoBridge);
                 logger.debug("Undo/redo command history wired to all handlers");
 
                 // Connect selection components to EditModeManager for clearing on mode switch
@@ -401,7 +460,7 @@ public class ViewportController {
                 logger.debug("Selection components connected to EditModeManager");
             }
 
-            viewportState.setViewportInitialized(true);
+            glInitialized = true;
             logger.info("Viewport initialized successfully");
 
         } catch (Exception e) {
@@ -429,10 +488,10 @@ public class ViewportController {
             catch (Exception e) { logger.error("Error cleaning up render pipeline", e); }
         }
 
-        resourceManager.close();
+        modelViewer.close();
         shaderManager.cleanup();
 
-        viewportState.setViewportInitialized(false);
+        glInitialized = false;
         logger.info("Viewport cleanup complete");
     }
 
@@ -451,12 +510,20 @@ public class ViewportController {
      * Render viewport content to framebuffer.
      */
     public void render() {
-        if (!viewportState.isInitialized()) {
+        if (!glInitialized) {
             logger.debug("Viewport not initialized, initializing now...");
             initialize();
         }
 
-        viewportRenderPipeline.render(viewportState, renderingState, transformState);
+        // Push the ImGui-backed UI state into the viewer's plain settings object. Done
+        // per frame because the user can toggle these at any time.
+        viewerSettings.setGridVisible(viewportState.getGridVisible().get());
+        viewerSettings.setUnrendered(viewportState.getUnrenderedMode().get());
+        viewerSettings.setSnapEnabled(viewportState.getGridSnappingEnabled().get());
+        viewerSettings.setSnapIncrement(viewportState.getGridSnappingIncrement().get());
+        viewerSettings.setSize(viewportState.getWidth(), viewportState.getHeight());
+
+        modelViewer.render(FRAME_DELTA_SECONDS);
     }
 
     /**
@@ -469,8 +536,8 @@ public class ViewportController {
 
         viewportState.setDimensions(width, height);
 
-        if (viewportState.isInitialized()) {
-            resourceManager.resizeFramebuffer(width, height);
+        if (glInitialized) {
+            modelViewer.resize(width, height);
         }
 
         viewportCamera.setAspectRatio(viewportState.getAspectRatio());
@@ -661,14 +728,14 @@ public class ViewportController {
     public void setGridSnappingEnabled(boolean enabled) {
         viewportState.getGridSnappingEnabled().set(enabled);
         if (gizmoRenderer != null) {
-            gizmoRenderer.updateViewportState(viewportState);
+            gizmoRenderer.setSnapSettings(viewportState);
         }
     }
 
     public void setGridSnappingIncrement(float increment) {
         viewportState.getGridSnappingIncrement().set(increment);
         if (gizmoRenderer != null) {
-            gizmoRenderer.updateViewportState(viewportState);
+            gizmoRenderer.setSnapSettings(viewportState);
         }
         logger.debug("Grid snapping increment: {}", increment);
     }
@@ -725,7 +792,7 @@ public class ViewportController {
 
     // ========== Component Accessors ==========
 
-    public ViewportCamera getCamera() { return viewportCamera; }
+    public ViewerCamera getCamera() { return viewportCamera; }
     public ViewportInputHandler getInputHandler() { return inputHandler; }
     public FaceSelectionState getFaceSelectionState() { return faceSelectionState; }
     public GenericModelRenderer getModelRenderer() { return modelRenderer; }
@@ -923,10 +990,10 @@ public class ViewportController {
 
     // ========== State Accessors ==========
 
-    public int getColorTexture() { return resourceManager.getFramebuffer().getColorTextureId(); }
-    public int getFramebufferWidth() { return resourceManager.getFramebuffer().getWidth(); }
-    public int getFramebufferHeight() { return resourceManager.getFramebuffer().getHeight(); }
-    public boolean isInitialized() { return viewportState.isInitialized(); }
+    public int getColorTexture() { return modelViewer.colorTexture(); }
+    public int getFramebufferWidth() { return modelViewer.framebufferWidth(); }
+    public int getFramebufferHeight() { return modelViewer.framebufferHeight(); }
+    public boolean isInitialized() { return glInitialized; }
 
     public float getModelPositionX() { return transformState.getPositionX(); }
     public float getModelPositionY() { return transformState.getPositionY(); }
@@ -959,7 +1026,7 @@ public class ViewportController {
      * @param hasSelectedParts whether any model parts are currently selected
      */
     public void updateGizmoVisibilityForSelection(boolean hasSelectedParts) {
-        if (gizmoState.getDisplayMode() == com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT
+        if (gizmoState.getDisplayMode() == com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT
                 && !gizmoState.isManualOverrideActive()) {
             setGizmoEnabled(hasSelectedParts);
         }
@@ -969,7 +1036,7 @@ public class ViewportController {
     /**
      * Returns the gizmo state for direct access by actions and preferences.
      */
-    public com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState getGizmoState() {
+    public com.openmason.engine.rendering.viewer.gizmo.GizmoState getGizmoState() {
         return gizmoState;
     }
 

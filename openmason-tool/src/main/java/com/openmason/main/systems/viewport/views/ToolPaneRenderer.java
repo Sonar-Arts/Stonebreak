@@ -7,7 +7,7 @@ import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
 import com.openmason.main.systems.viewport.ViewportActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.themes.utils.TransformGroupWidget;
-import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
+import com.openmason.engine.rendering.viewer.gizmo.GizmoState;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
@@ -224,9 +224,9 @@ public class ToolPaneRenderer {
 
     private void renderTransformPane() {
         boolean gizmoEnabled = viewport.isGizmoEnabled();
-        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode displayMode =
+        com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode displayMode =
                 viewport.getGizmoState().getDisplayMode();
-        boolean isAutoMode = displayMode == com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT;
+        boolean isAutoMode = displayMode == com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT;
 
         if (isAutoMode) {
             // In auto mode, show disabled checkbox with "(Auto)" label

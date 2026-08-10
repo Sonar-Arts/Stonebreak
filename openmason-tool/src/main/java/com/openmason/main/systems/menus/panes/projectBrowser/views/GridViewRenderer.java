@@ -66,7 +66,9 @@ public class GridViewRenderer implements ViewRenderer {
             ImGui.dummy(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
         }
 
-        if (ImGui.isItemClicked()) {
+        boolean dragging = ProjectBrowserDragSource.emit(item);
+
+        if (ImGui.isItemClicked() && !dragging) {
             controller.selectAsset(item);
         }
         if (ImGui.isItemHovered()) {
@@ -107,6 +109,9 @@ public class GridViewRenderer implements ViewRenderer {
         return switch (item.type()) {
             case OMO -> modelRenderer.getThumbnail(item, THUMBNAIL_SIZE);
             case OMT -> omtRenderer.getThumbnail(item, THUMBNAIL_SIZE);
+            // Scenes have no thumbnail yet; every view already falls back to a
+            // placeholder when the texture id is <= 0.
+            case OMSC -> 0;
         };
     }
 

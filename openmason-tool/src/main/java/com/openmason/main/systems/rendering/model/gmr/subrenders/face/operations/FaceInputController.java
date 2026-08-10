@@ -44,7 +44,7 @@ public class FaceInputController {
     private FaceRenderer faceRenderer = null;
     private FaceSelectionState faceSelectionState = null;
     private TranslationCoordinator translationCoordinator = null;
-    private com.openmason.main.systems.viewport.state.TransformState transformState = null;
+    private com.openmason.engine.rendering.viewer.transform.TransformState transformState = null;
     private VertexRenderer vertexRenderer = null; // For priority check!
     private EdgeRenderer edgeRenderer = null; // For priority check!
     private GenericModelRenderer modelRenderer = null;
@@ -81,7 +81,7 @@ public class FaceInputController {
     /**
      * Set the transform state for model matrix access.
      */
-    public void setTransformState(com.openmason.main.systems.viewport.state.TransformState transformState) {
+    public void setTransformState(com.openmason.engine.rendering.viewer.transform.TransformState transformState) {
         this.transformState = transformState;
         logger.debug("Transform state set in FaceInputController");
     }

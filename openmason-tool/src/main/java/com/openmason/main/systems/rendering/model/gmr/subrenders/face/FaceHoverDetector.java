@@ -1,6 +1,6 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.face;
 
-import com.openmason.main.systems.viewport.coordinates.CoordinateSystem;
+import com.openmason.engine.rendering.viewer.math.CoordinateSystem;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.slf4j.Logger;

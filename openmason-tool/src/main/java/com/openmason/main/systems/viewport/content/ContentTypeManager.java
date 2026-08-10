@@ -2,7 +2,7 @@ package com.openmason.main.systems.viewport.content;
 
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.viewport.state.RenderingState;
-import com.openmason.main.systems.viewport.state.TransformState;
+import com.openmason.engine.rendering.viewer.transform.TransformState;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;

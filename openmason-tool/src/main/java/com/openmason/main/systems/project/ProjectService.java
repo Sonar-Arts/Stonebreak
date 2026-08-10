@@ -4,11 +4,11 @@ import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.stateHandling.UIVisibilityState;
-import com.openmason.main.systems.viewport.ViewportCamera;
+import com.openmason.engine.rendering.viewer.camera.ViewerCamera;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.state.RenderingMode;
 import com.openmason.main.systems.viewport.state.RenderingState;
-import com.openmason.main.systems.viewport.state.TransformState;
+import com.openmason.engine.rendering.viewer.transform.TransformState;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
@@ -47,7 +47,7 @@ public class ProjectService {
      */
     public OMPFormat.Document extractState(ViewportController viewport, ModelState modelState,
                                             UIVisibilityState uiState, String projectName) {
-        ViewportCamera camera = viewport.getCamera();
+        ViewerCamera camera = viewport.getCamera();
         ViewportUIState viewportUIState = viewport.getViewportUIState();
         TransformState transformState = viewport.getTransformState();
         RenderingState renderingState = viewport.getRenderingState();
@@ -122,9 +122,9 @@ public class ProjectService {
                               ModelOperationService modelOperations) {
         // Restore camera
         if (document.camera() != null) {
-            ViewportCamera camera = viewport.getCamera();
+            ViewerCamera camera = viewport.getCamera();
             try {
-                ViewportCamera.CameraMode mode = ViewportCamera.CameraMode.valueOf(document.camera().mode());
+                ViewerCamera.CameraMode mode = ViewerCamera.CameraMode.valueOf(document.camera().mode());
                 camera.setCameraMode(mode);
             } catch (IllegalArgumentException e) {
                 logger.warn("Unknown camera mode '{}', keeping current", document.camera().mode());
@@ -288,6 +288,9 @@ public class ProjectService {
         this.currentProjectPath = filePath;
         this.currentProjectName = document.projectName();
         this.createdAt = document.createdAt();
+
+        // Idempotent: this is how projects created before scenes existed gain the folder.
+        ProjectLayout.ensureScaffold(ProjectLayout.projectRoot(filePath));
 
         restoreState(document, viewport, modelState, uiState, modelOperations);
         dirty = false;

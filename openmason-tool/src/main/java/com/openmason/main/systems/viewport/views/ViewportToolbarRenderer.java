@@ -4,7 +4,7 @@ import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.menus.toolbars.BaseToolbarRenderer;
 import com.openmason.main.systems.viewport.ViewportActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
-import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
+import com.openmason.engine.rendering.viewer.gizmo.GizmoState;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;

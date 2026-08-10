@@ -1,6 +1,6 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.edge;
 
-import com.openmason.main.systems.viewport.util.ScreenProjectionUtil;
+import com.openmason.engine.rendering.viewer.math.ScreenProjectionUtil;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
