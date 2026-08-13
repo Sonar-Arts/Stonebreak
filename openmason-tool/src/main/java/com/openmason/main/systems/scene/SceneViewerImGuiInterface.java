@@ -62,7 +62,7 @@ public class SceneViewerImGuiInterface {
         this.actions = new SceneViewerActions(sceneService, document, selection, controller);
 
         SceneToolbarRenderer toolbar = new SceneToolbarRenderer(uiState, actions);
-        this.mainView = new SceneViewerMainView(uiState, controller, document, selection, toolbar, actions);
+        this.mainView = new SceneViewerMainView(uiState, controller, document, selection, toolbar);
         this.outliner = new SceneOutlinerImGui(document, selection, actions,
                 uiVisibility.getShowSceneOutliner());
         this.inspector = new SceneInspectorImGui(document, selection, actions,
@@ -72,7 +72,15 @@ public class SceneViewerImGuiInterface {
         // A scene swap (new / open / project change) invalidates any selection: the ids
         // it holds refer to instances that no longer exist.
         this.sceneService.setOnSceneChanged(this::dropStaleSelection);
+        // A swap also invalidates the undo history — its entries refer to the previous
+        // scene's instances, and undoing them would silently mark the fresh scene dirty.
+        this.sceneService.setOnSceneReplaced(() -> controller.commandHistory().clear());
         this.actions.setProjectRootSupplier(() -> projectRootSupplier.get());
+
+        // Scene undo/redo go through the central registry so they are rebindable and
+        // scoped to their own "scene" context (peer of "viewport" and "texture").
+        SceneKeybindActions.registerAll(
+                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance(), actions);
 
         // Camera navigation follows the same preferences as the model editor.
         var prefs = com.openmason.main.systems.menus.preferences.PreferencesManager.getInstance();

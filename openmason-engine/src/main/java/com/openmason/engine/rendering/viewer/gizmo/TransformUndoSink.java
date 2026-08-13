@@ -11,7 +11,9 @@ import org.joml.Vector3f;
  * lets the host decide whether that is undoable and how — the scene viewer will record
  * instance moves in its own history.
  *
- * <p>Only model-level drags are reported; part-level undo is handled by the part system.
+ * <p>Model-level drags are always reported. Drags of an active target are reported only
+ * when the target opts in via
+ * {@code ITransformTarget.recordsDragsForUndo()} (e.g. a scene's instance target).
  */
 @FunctionalInterface
 public interface TransformUndoSink {

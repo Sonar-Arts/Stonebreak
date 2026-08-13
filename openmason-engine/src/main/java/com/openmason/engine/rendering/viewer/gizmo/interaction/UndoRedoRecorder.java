@@ -9,49 +9,40 @@ import org.joml.Vector3f;
  * Detects whether a gizmo drag actually changed anything and, if so, reports it to a
  * {@link TransformUndoSink}.
  *
- * <p>Only model-level transforms are reported; part-level undo is handled separately by
- * the ModelPartManager system. Building the actual undo command is the host's job (see
- * {@code GizmoUndoBridge}) — this class deliberately no longer knows what an undo entry
- * is, so the gizmo can be reused by a host with a different history.
+ * <p>Model-level drags (no active target) are always reported. Drags of an active
+ * {@link ITransformTarget} are reported only when the target opts in via
+ * {@link ITransformTarget#recordsDragsForUndo()} — a per-target property, because one
+ * gizmo swaps between targets whose undo stories differ: a scene's instance target has no
+ * other undo mechanism and wants its drags recorded, while the editor's part/bone/socket
+ * targets must not be reported to a sink that writes the model-level transform. Building
+ * the actual undo command is the host's job (see {@code GizmoUndoBridge}) — this class
+ * deliberately no longer knows what an undo entry is, so the gizmo can be reused by a
+ * host with a different history.
  */
 public class UndoRedoRecorder {
 
     /** Never null, so the change-detection path needs no guard. */
     private TransformUndoSink undoSink = TransformUndoSink.NONE;
 
-    /**
-     * Whether drags of an <em>active</em> target are reported.
-     *
-     * <p>Off by default, because in the model editor an active target means a part, and
-     * part edits are undone by the part system — reporting them too would produce two
-     * undo entries for one drag. A host whose targets have no other undo mechanism (a
-     * scene, whose targets are placed instances) turns this on.
-     */
-    private boolean recordActiveTargets = false;
-
     /** Null resets to {@link TransformUndoSink#NONE}, i.e. recording disabled. */
     public void setUndoSink(TransformUndoSink undoSink) {
         this.undoSink = undoSink != null ? undoSink : TransformUndoSink.NONE;
     }
 
-    /** See {@link #recordActiveTargets}. */
-    public void setRecordActiveTargets(boolean recordActiveTargets) {
-        this.recordActiveTargets = recordActiveTargets;
-    }
-
     /**
      * Records a transform operation if the values changed during the drag.
-     * Only records for model-level transforms (when activeTarget is null).
+     * Model-level drags are always considered; active-target drags only when the target
+     * opts in via {@link ITransformTarget#recordsDragsForUndo()}.
      *
      * @param gizmoState     The gizmo state containing drag start snapshots
-     * @param activeTarget   The active part target (null = model-level)
+     * @param activeTarget   The active transform target (null = model-level)
      * @param transformState The transform state for reading current model values
      */
     public void recordIfChanged(GizmoState gizmoState, ITransformTarget activeTarget,
                                 TransformState transformState) {
-        if (activeTarget != null && !recordActiveTargets) {
-            // Part-level drags are undone by the part system; reporting them here as well
-            // would give one drag two undo entries.
+        if (activeTarget != null && !activeTarget.recordsDragsForUndo()) {
+            // This target's drags are not undoable through the host's sink — reporting
+            // them would record into a transform the drag never touched.
             return;
         }
 

@@ -66,10 +66,12 @@ public class SceneViewerController {
         this.viewportInput.setGizmoRenderer(gizmoRenderer);
 
         // Scene instances have no other undo mechanism (unlike the editor's parts), so
-        // the gizmo must report drags of its active target here.
-        this.gizmoRenderer.setUndoSink(
-                new SceneGizmoUndoBridge(commandHistory, transformTarget::instance));
-        this.gizmoRenderer.setRecordActiveTargets(true);
+        // InstanceTransformTarget opts into drag recording (recordsDragsForUndo) and the
+        // gizmo reports finished drags here. The bridge also marks the scene dirty —
+        // commit is the only point that observes a drag ending.
+        this.gizmoRenderer.setUndoSink(new SceneGizmoUndoBridge(
+                commandHistory, transformTarget::instance,
+                document.scene()::byId, document::markDirty));
     }
 
     // ------------------------------------------------------------- lifecycle

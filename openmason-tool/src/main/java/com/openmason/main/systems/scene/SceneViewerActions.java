@@ -104,13 +104,22 @@ public class SceneViewerActions {
         if (targets.isEmpty()) {
             return;
         }
+        java.util.Set<String> removedIds = new java.util.HashSet<>();
         for (ModelInstance instance : targets) {
             if (instance.isLocked()) {
                 continue; // a locked instance is protected from deletion too
             }
             document.removeInstance(instance);
             selection.remove(instance.id());
+            removedIds.add(instance.id());
         }
+        if (removedIds.isEmpty()) {
+            return; // everything selected was locked — nothing changed
+        }
+        // A deleted instance's transform history is meaningless; leaving the entries
+        // would hand out Ctrl+Z steps that visibly do nothing.
+        controller.commandHistory().removeIf(cmd ->
+                cmd instanceof SceneInstanceTransformCommand c && removedIds.contains(c.instanceId()));
         syncGizmoToSelection();
         markDirty();
     }

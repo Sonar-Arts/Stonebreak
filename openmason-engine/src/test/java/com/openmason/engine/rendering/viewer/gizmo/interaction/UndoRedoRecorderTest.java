@@ -17,9 +17,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Which gizmo drags become undo entries.
  *
- * <p>The distinction matters in both directions: reporting an active target in the model
- * editor would give one part drag two undo entries (the part system already records it),
- * while <em>not</em> reporting one in a scene would leave instance moves un-undoable.
+ * <p>The decision is per-target ({@link ITransformTarget#recordsDragsForUndo()}): one
+ * gizmo swaps between targets whose undo stories differ. Reporting an editor part/bone/
+ * socket target to a sink that writes the model-level transform would undo the wrong
+ * thing, while <em>not</em> reporting a scene's instance target would leave instance
+ * moves un-undoable.
  */
 class UndoRedoRecorderTest {
 
@@ -39,11 +41,18 @@ class UndoRedoRecorderTest {
     /** Minimal target that reports a fixed transform. */
     private static final class StubTarget implements ITransformTarget {
         private final Vector3f position;
+        private final boolean recordsDrags;
 
         StubTarget(Vector3f position) {
-            this.position = position;
+            this(position, false);
         }
 
+        StubTarget(Vector3f position, boolean recordsDrags) {
+            this.position = position;
+            this.recordsDrags = recordsDrags;
+        }
+
+        @Override public boolean recordsDragsForUndo() { return recordsDrags; }
         @Override public Vector3f getPosition() { return new Vector3f(position); }
         @Override public Vector3f getRotation() { return new Vector3f(); }
         @Override public Vector3f getScale() { return new Vector3f(1, 1, 1); }
@@ -66,8 +75,8 @@ class UndoRedoRecorderTest {
     }
 
     @Test
-    @DisplayName("by default an active target is NOT reported — the part system already records it")
-    void activeTargetSkippedByDefault() {
+    @DisplayName("a target that does not opt in is NOT reported — the editor part/bone/socket case")
+    void nonOptingTargetSkipped() {
         UndoRedoRecorder recorder = new UndoRedoRecorder();
         CapturingSink sink = new CapturingSink();
         recorder.setUndoSink(sink);
@@ -75,19 +84,19 @@ class UndoRedoRecorderTest {
         recorder.recordIfChanged(draggedFromOrigin(),
                 new StubTarget(new Vector3f(5, 0, 0)), new TransformState());
 
-        assertTrue(sink.commits.isEmpty(), "reporting here would double up with part-level undo");
+        assertTrue(sink.commits.isEmpty(),
+                "reporting would record into a transform the drag never touched");
     }
 
     @Test
-    @DisplayName("with the policy on, an active target's drag IS reported — the scene case")
-    void activeTargetReportedWhenEnabled() {
+    @DisplayName("a target that opts in via recordsDragsForUndo IS reported — the scene case")
+    void optingTargetReported() {
         UndoRedoRecorder recorder = new UndoRedoRecorder();
         CapturingSink sink = new CapturingSink();
         recorder.setUndoSink(sink);
-        recorder.setRecordActiveTargets(true);
 
         recorder.recordIfChanged(draggedFromOrigin(),
-                new StubTarget(new Vector3f(5, 0, 0)), new TransformState());
+                new StubTarget(new Vector3f(5, 0, 0), true), new TransformState());
 
         assertEquals(1, sink.commits.size());
         assertEquals(new Vector3f(5, 0, 0), sink.commits.getFirst().newPos(),
@@ -95,7 +104,7 @@ class UndoRedoRecorderTest {
     }
 
     @Test
-    @DisplayName("a model-level drag is reported regardless of the policy")
+    @DisplayName("a model-level drag (no active target) is always reported")
     void modelLevelAlwaysReported() {
         UndoRedoRecorder recorder = new UndoRedoRecorder();
         CapturingSink sink = new CapturingSink();
@@ -116,10 +125,10 @@ class UndoRedoRecorderTest {
         UndoRedoRecorder recorder = new UndoRedoRecorder();
         CapturingSink sink = new CapturingSink();
         recorder.setUndoSink(sink);
-        recorder.setRecordActiveTargets(true);
 
         // Target still sits where the drag started.
-        recorder.recordIfChanged(draggedFromOrigin(), new StubTarget(new Vector3f()), new TransformState());
+        recorder.recordIfChanged(draggedFromOrigin(),
+                new StubTarget(new Vector3f(), true), new TransformState());
 
         assertTrue(sink.commits.isEmpty(), "a click without movement must not create an undo entry");
     }
@@ -128,10 +137,9 @@ class UndoRedoRecorderTest {
     @DisplayName("no sink means no work and no crash")
     void withoutSinkIsSafe() {
         UndoRedoRecorder recorder = new UndoRedoRecorder();
-        recorder.setRecordActiveTargets(true);
         recorder.setUndoSink(null);
 
         recorder.recordIfChanged(draggedFromOrigin(),
-                new StubTarget(new Vector3f(5, 0, 0)), new TransformState());
+                new StubTarget(new Vector3f(5, 0, 0), true), new TransformState());
     }
 }

@@ -114,6 +114,23 @@ public interface ITransformTarget {
         return false;
     }
 
+    /**
+     * Whether a finished gizmo drag of this target should be reported to the host's
+     * {@code TransformUndoSink} for undo recording.
+     *
+     * <p>Per-target rather than per-host, because a single gizmo swaps between targets
+     * whose undo stories differ: a scene's instance target opts in (a placed instance has
+     * no other undo mechanism), while the editor's part/bone/socket targets stay out —
+     * the editor's sink records into the <em>model-level</em> transform, so reporting
+     * their drags there would make undo move the whole model. If one of those targets
+     * later gains its own drag undo, it opts in here without touching the others.
+     *
+     * @return true to report finished drags of this target; default false
+     */
+    default boolean recordsDragsForUndo() {
+        return false;
+    }
+
     /** Called when a drag begins, so the target can snapshot state for undo/multi-select. */
     default void beginDrag() {
         // no-op by default

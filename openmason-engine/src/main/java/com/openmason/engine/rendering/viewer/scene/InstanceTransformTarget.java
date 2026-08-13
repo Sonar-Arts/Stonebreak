@@ -82,6 +82,12 @@ public final class InstanceTransformTarget implements ITransformTarget {
         return instance != null && instance.isLocked();
     }
 
+    /** A placed instance has no other undo mechanism, so its drags must be reported. */
+    @Override
+    public boolean recordsDragsForUndo() {
+        return true;
+    }
+
     @Override
     public String getTargetName() {
         return instance == null ? "No selection" : instance.name();

@@ -32,7 +32,8 @@ public class SceneViewerMainView {
     private final SceneDocument document;
     private final SceneSelectionState selection;
     private final SceneToolbarRenderer toolbar;
-    private final com.openmason.main.systems.scene.SceneViewerActions actions;
+    private final com.openmason.main.systems.keybinds.KeybindRegistry keybinds =
+            com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
 
     /** Invoked with (absolute .omo path, drop position) when a model is dragged in. */
     private BiConsumer<String, float[]> onModelDropped = (path, pos) -> { };
@@ -41,9 +42,7 @@ public class SceneViewerMainView {
 
     public SceneViewerMainView(SceneViewerUIState state, SceneViewerController controller,
                                SceneDocument document, SceneSelectionState selection,
-                               SceneToolbarRenderer toolbar,
-                               com.openmason.main.systems.scene.SceneViewerActions actions) {
-        this.actions = actions;
+                               SceneToolbarRenderer toolbar) {
         this.state = state;
         this.controller = controller;
         this.document = document;
@@ -71,22 +70,32 @@ public class SceneViewerMainView {
     }
 
     /**
-     * Undo/redo for scene edits. Gated on this window being focused so the same chord
-     * cannot drive both the scene's history and the model editor's in one keypress.
+     * Scene shortcuts, dispatched through the central keybind registry (context "scene",
+     * see {@code SceneKeybindActions}) so they are rebindable, match modifiers exactly
+     * ({@code ShortcutKey.isPressed} — Ctrl+Alt+Z / AltGr chords do not fire undo), and
+     * cannot drive the model editor's identical chords in the same keypress (focus gate).
+     *
+     * <p>Further guards: never while the user is typing in a text field — the toolbar's
+     * snap-increment field becomes an InputText with its own built-in Ctrl+Z — and never
+     * mid-gizmo-drag, where an undo is invisibly stomped by the next drag frame and the
+     * release would clear the redo stack, silently destroying the entry. Keys are polled
+     * without auto-repeat so holding the chord fires once instead of draining history.
      */
     private void handleShortcuts() {
         if (!ImGui.isWindowFocused(imgui.flag.ImGuiFocusedFlags.RootAndChildWindows)) {
             return;
         }
-        if (!ImGui.getIO().getKeyCtrl()) {
+        if (!com.openmason.main.systems.viewport.ViewportKeyboardShortcuts.shouldProcessShortcuts()) {
             return;
         }
-        boolean redoChord = ImGui.isKeyPressed(imgui.flag.ImGuiKey.Y)
-                || (ImGui.getIO().getKeyShift() && ImGui.isKeyPressed(imgui.flag.ImGuiKey.Z));
-        if (redoChord) {
-            actions.redo();
-        } else if (ImGui.isKeyPressed(imgui.flag.ImGuiKey.Z)) {
-            actions.undo();
+        if (controller.gizmoRenderer().isDragging()) {
+            return;
+        }
+        for (com.openmason.main.systems.keybinds.KeybindAction action : keybinds.getActionsByContext("scene")) {
+            if (keybinds.getKeybind(action.getId()).isPressed(false)) {
+                action.execute();
+                return; // only execute the first matching shortcut
+            }
         }
     }
 

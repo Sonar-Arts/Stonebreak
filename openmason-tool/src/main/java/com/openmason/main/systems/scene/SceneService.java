@@ -42,6 +42,7 @@ public class SceneService {
     private final OMSCParser parser = new OMSCParser();
 
     private Runnable onSceneChanged = () -> { };
+    private Runnable onSceneReplaced = () -> { };
 
     public SceneService(ModelCache modelCache) {
         this.modelCache = java.util.Objects.requireNonNull(modelCache, "modelCache");
@@ -57,9 +58,23 @@ public class SceneService {
         this.onSceneChanged = callback != null ? callback : () -> { };
     }
 
+    /**
+     * Invoked when the open scene is <em>replaced</em> — new, open, or project change —
+     * rather than merely edited. This is the signal to drop per-scene state such as the
+     * undo history; deliberately separate from {@link #setOnSceneChanged}, which also
+     * fires on every ordinary edit.
+     */
+    public void setOnSceneReplaced(Runnable callback) {
+        this.onSceneReplaced = callback != null ? callback : () -> { };
+    }
+
     private void changed() {
         document.markDirty();
         onSceneChanged.run();
+    }
+
+    private void sceneReplaced() {
+        onSceneReplaced.run();
     }
 
     // ------------------------------------------------------------------ new
@@ -67,6 +82,7 @@ public class SceneService {
     public void newScene(String sceneName) {
         releaseAllModels();
         document.clear();
+        sceneReplaced();
         document.setSceneName(sceneName != null && !sceneName.isBlank() ? sceneName : "Untitled Scene");
         document.setCreatedAt(LocalDateTime.now().format(TIMESTAMP));
         onSceneChanged.run();
@@ -89,6 +105,7 @@ public class SceneService {
 
         releaseAllModels();
         document.clear();
+        sceneReplaced();
         document.setSceneName(parsed.sceneName());
         document.setCurrentScenePath(filePath);
         document.setCreatedAt(parsed.manifest().createdAt());
@@ -316,6 +333,7 @@ public class SceneService {
     public void clearCurrentScene() {
         releaseAllModels();
         document.clear();
+        sceneReplaced();
         onSceneChanged.run();
     }
 
