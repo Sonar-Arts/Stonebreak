@@ -193,10 +193,12 @@ public final class OMPFormat {
     /**
      * The project's active scene and which centre tab was last in front (v1.2+).
      *
-     * <p>Optional: the whole node is omitted when a project has no scene, so a
-     * scene-less project's JSON is unchanged apart from the version string. That absence
-     * is also the discriminator for an upgrading user — no node resolves to
-     * {@code MODEL_EDITOR}, so their layout does not shift under them.
+     * <p>Optional at the format level: a null reference emits no node at all, which is
+     * what every pre-1.2 file looks like — that absence is the discriminator for an
+     * upgrading user (no node resolves to {@code MODEL_EDITOR}, so their layout does not
+     * shift under them). Saves from scene-aware builds always write the node, with
+     * {@code sceneFilePath} omitted when no scene is open, so the centre-tab choice is
+     * recorded either way.
      *
      * @param sceneFilePath  project-root-relative path to the .omsc, or null
      * @param activeCenterTab "SCENE_VIEWER" or "MODEL_EDITOR"; blank defaults to the latter

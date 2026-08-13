@@ -5,6 +5,7 @@ import com.openmason.engine.rendering.viewer.scene.ModelHandle;
 import com.openmason.engine.rendering.viewer.scene.ModelInstance;
 import com.openmason.engine.rendering.viewer.scene.ModelScene;
 import com.openmason.main.systems.layout.CenterTab;
+import com.openmason.main.systems.layout.CenterTabTracker;
 import com.openmason.main.systems.layout.LayoutRebuildDecision;
 import com.openmason.main.systems.scene.dnd.SceneDropResolver;
 import com.openmason.main.systems.scene.dnd.ScenePayloads;
@@ -169,6 +170,40 @@ class SceneUiLogicTest {
     void tabsNameWindows() {
         assertEquals("Scene Viewer", CenterTab.SCENE_VIEWER.windowTitle());
         assertEquals("Model Editor", CenterTab.MODEL_EDITOR.windowTitle());
+    }
+
+    @Test
+    @DisplayName("the tracker follows whichever centre tab is drawn in front")
+    void trackerFollowsVisibleTab() {
+        CenterTabTracker tracker = new CenterTabTracker();
+        // Before any frame: the default layout focuses the Scene Viewer.
+        assertEquals(CenterTab.SCENE_VIEWER, tracker.activeTab());
+
+        // Tabbed dock: exactly one centre window is drawn per frame.
+        tracker.noteFrame(false, false, true, false);
+        assertEquals(CenterTab.MODEL_EDITOR, tracker.activeTab());
+        tracker.noteFrame(true, false, false, false);
+        assertEquals(CenterTab.SCENE_VIEWER, tracker.activeTab());
+    }
+
+    @Test
+    @DisplayName("focus beats visibility, and ambiguity keeps the last answer")
+    void trackerFocusAndAmbiguity() {
+        CenterTabTracker tracker = new CenterTabTracker();
+
+        // Split dock: both drawn — the focused one wins.
+        tracker.noteFrame(true, false, true, true);
+        assertEquals(CenterTab.MODEL_EDITOR, tracker.activeTab());
+        tracker.noteFrame(true, true, true, false);
+        assertEquals(CenterTab.SCENE_VIEWER, tracker.activeTab());
+
+        // Both drawn, neither focused (user in a side panel): last answer stands.
+        tracker.noteFrame(true, false, true, false);
+        assertEquals(CenterTab.SCENE_VIEWER, tracker.activeTab());
+
+        // Neither drawn (hub in front): last answer stands too.
+        tracker.noteFrame(false, false, false, false);
+        assertEquals(CenterTab.SCENE_VIEWER, tracker.activeTab());
     }
 
     // ----------------------------------------------------------------- drop

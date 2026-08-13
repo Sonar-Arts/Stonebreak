@@ -63,6 +63,9 @@ public class ViewportUIState
     // Focus tracking for input isolation (e.g., Tab key should only cycle edit modes when viewport is focused)
     private boolean viewportFocused = false;
 
+    // Whether the Model Editor window was actually drawn this frame (false = background dock tab)
+    private boolean viewportWindowVisible = false;
+
     // Resize threshold to prevent excessive resizing from small ImGui layout fluctuations
     private static final int RESIZE_THRESHOLD = 5;
 
@@ -276,6 +279,9 @@ public class ViewportUIState
     // Focus state accessors
     public boolean isViewportFocused() { return viewportFocused; }
     public void setViewportFocused(boolean focused) { this.viewportFocused = focused; }
+
+    public boolean isViewportWindowVisible() { return viewportWindowVisible; }
+    public void setViewportWindowVisible(boolean visible) { this.viewportWindowVisible = visible; }
 
     @Override
     public String toString() {

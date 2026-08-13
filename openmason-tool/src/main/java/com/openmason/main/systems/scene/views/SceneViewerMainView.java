@@ -57,12 +57,14 @@ public class SceneViewerMainView {
 
     public void render() {
         if (ImGui.begin(WINDOW_TITLE, ImGuiWindowFlags.NoNavInputs)) {
+            state.setSceneViewVisible(true);
             state.setSceneViewFocused(ImGui.isWindowFocused());
             handleShortcuts();
             toolbar.render();
             ImGui.separator();
             renderViewport();
         } else {
+            state.setSceneViewVisible(false);
             state.setSceneViewFocused(false);
         }
         ImGui.end();

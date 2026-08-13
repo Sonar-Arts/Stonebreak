@@ -201,10 +201,11 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         fileMenuHandler.setThemeManager(themeManager);
         fileMenuHandler.setProjectService(projectService);
         fileMenuHandler.setUIVisibilityState(uiVisibilityState);
-        fileMenuHandler.setOnProjectPathChanged(() -> {
-            notifyProjectSessionReset();
-            refreshProjectBrowserRoot();
-        });
+        // A session boundary (File > Open Project) drops the outgoing scene BEFORE the new
+        // project loads, so openProject can restore the incoming one. Save As is only a
+        // path change: the session continues, the scene stays, the browser re-roots.
+        fileMenuHandler.setOnProjectSessionBoundary(this::notifyProjectSessionReset);
+        fileMenuHandler.setOnProjectPathChanged(this::refreshProjectBrowserRoot);
         editMenu.setViewport(viewport3D);
         viewMenu.setViewport(viewport3D);
         toolbarRenderer.setViewport(viewport3D);
@@ -455,7 +456,12 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         ImGuiViewport mainViewport = ImGui.getMainViewport();
         if (mainLayoutBuilder.applyIfNeeded(dockspaceId,
                 mainViewport.getWorkSizeX(), mainViewport.getWorkSizeY())) {
-            centerTabFocus.request(mainLayoutBuilder.takePendingFocusWindow());
+            // A rebuild's focus is only a fallback: a project's recorded centre tab
+            // (already pending from the restore hook) must win over it.
+            String rebuildFocus = mainLayoutBuilder.takePendingFocusWindow();
+            if (!centerTabFocus.isPending()) {
+                centerTabFocus.request(rebuildFocus);
+            }
         }
 
         ImGui.popStyleVar(1);
@@ -590,6 +596,27 @@ public class MainImGuiInterface implements ProjectBrowserListener {
                                 java.util.function.BooleanSupplier sceneDirty) {
         if (fileMenuHandler != null) {
             fileMenuHandler.setSceneActions(newScene, openScene, saveScene, saveSceneAs, sceneDirty);
+        }
+    }
+
+    /**
+     * Wire the project file's scene node to the scene layer: {@code saveSupplier} is read
+     * on every project save (which scene is open + which centre tab is in front), and
+     * {@code restoreHook} runs after a project opens (null reference = pre-1.2 file).
+     */
+    public void setSceneSessionHooks(
+            java.util.function.Supplier<com.openmason.main.systems.project.OMPFormat.SceneReference> saveSupplier,
+            java.util.function.Consumer<com.openmason.main.systems.project.OMPFormat.SceneReference> restoreHook) {
+        if (projectService != null) {
+            projectService.setSceneStateSupplier(saveSupplier);
+            projectService.setSceneRestoreHook(restoreHook);
+        }
+    }
+
+    /** Forwards "save the open scene alongside the project" to the app-supplied handler. */
+    public void setSaveOpenSceneAction(Runnable action) {
+        if (fileMenuHandler != null) {
+            fileMenuHandler.setOnSaveOpenScene(action);
         }
     }
 

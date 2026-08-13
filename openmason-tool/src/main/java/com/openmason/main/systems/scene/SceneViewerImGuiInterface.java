@@ -100,6 +100,10 @@ public class SceneViewerImGuiInterface {
     public void render() {
         if (uiVisibility.getShowSceneViewer().get()) {
             mainView.render();
+        } else {
+            // Not submitted at all this frame: the view can't clear its own flags.
+            uiState.setSceneViewVisible(false);
+            uiState.setSceneViewFocused(false);
         }
         outliner.render();
         inspector.render();
@@ -168,6 +172,7 @@ public class SceneViewerImGuiInterface {
     }
 
     public SceneService getSceneService() { return sceneService; }
+    public SceneViewerUIState getUIState() { return uiState; }
     public SceneViewerController getController() { return controller; }
     public SceneSelectionState getSelection() { return selection; }
     public SceneViewerActions getActions() { return actions; }

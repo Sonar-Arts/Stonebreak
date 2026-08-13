@@ -55,11 +55,13 @@ public class ViewportMainView {
      */
     public void render() {
         if (ImGui.begin(WINDOW_TITLE, ImGuiWindowFlags.NoNavInputs)) {
+            state.setViewportWindowVisible(true);
             state.setViewportFocused(ImGui.isWindowFocused());
             renderToolbar();
             ImGui.separator();
             renderViewport3D();
         } else {
+            state.setViewportWindowVisible(false);
             state.setViewportFocused(false);
         }
 

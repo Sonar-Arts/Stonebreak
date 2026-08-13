@@ -36,6 +36,7 @@ player	stonebreak-game	com/stonebreak/player/**/*Test
 ui	stonebreak-game	com/stonebreak/ui/**/*Test,com/stonebreak/rendering/UI/**/*Test
 chunks	stonebreak-game	com/stonebreak/world/chunk/**/*Test,!com/stonebreak/world/chunk/api/**,!com/stonebreak/world/chunk/ChunkWaterLayerTest,!com/stonebreak/world/chunk/WaterMeshSplitTest,com/stonebreak/world/LoadingPerformanceIntegrationTest
 fastlod	stonebreak-game	com/stonebreak/world/fastlod/**/*Test,com/stonebreak/rendering/gameWorld/**/*Test
+leaves	stonebreak-game	com/stonebreak/world/leaves/**/*Test
 terrain-gen	stonebreak-game	com/stonebreak/world/generation/**/*Test
 persistence	stonebreak-game	com/stonebreak/world/save/**/*Test
 

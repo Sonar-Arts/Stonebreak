@@ -20,6 +20,7 @@ public class SceneViewerUIState {
     private int width = 800;
     private int height = 600;
     private boolean sceneViewFocused;
+    private boolean sceneViewVisible;
 
     public ImBoolean getGridVisible() { return gridVisible; }
     public ImBoolean getAxesVisible() { return axesVisible; }
@@ -41,4 +42,8 @@ public class SceneViewerUIState {
     /** Whether the Scene Viewer has keyboard focus, so shortcuts do not fire in both surfaces. */
     public boolean isSceneViewFocused() { return sceneViewFocused; }
     public void setSceneViewFocused(boolean focused) { this.sceneViewFocused = focused; }
+
+    /** Whether the window was actually drawn this frame (false = background dock tab or hidden). */
+    public boolean isSceneViewVisible() { return sceneViewVisible; }
+    public void setSceneViewVisible(boolean visible) { this.sceneViewVisible = visible; }
 }

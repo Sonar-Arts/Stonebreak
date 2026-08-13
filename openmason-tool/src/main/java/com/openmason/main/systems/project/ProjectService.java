@@ -37,9 +37,32 @@ public class ProjectService {
     private String createdAt;
     private boolean dirty;
 
+    /**
+     * Supplies the scene node written on save (v1.2): which .omsc is open and which
+     * centre tab is in front. Injected because the project layer must not depend on the
+     * scene layer directly (same seam as the session-reset callback).
+     */
+    private java.util.function.Supplier<OMPFormat.SceneReference> sceneStateSupplier;
+
+    /**
+     * Invoked after {@link #openProject} restores a document, with its scene reference —
+     * null for a pre-1.2 project, which the hook must treat as "no recorded choice".
+     */
+    private java.util.function.Consumer<OMPFormat.SceneReference> sceneRestoreHook;
+
     public ProjectService() {
         this.serializer = new OMPSerializer();
         this.deserializer = new OMPDeserializer();
+    }
+
+    /** Wire the save-side scene state supplier (see field docs). */
+    public void setSceneStateSupplier(java.util.function.Supplier<OMPFormat.SceneReference> supplier) {
+        this.sceneStateSupplier = supplier;
+    }
+
+    /** Wire the restore-side scene hook (see field docs). */
+    public void setSceneRestoreHook(java.util.function.Consumer<OMPFormat.SceneReference> hook) {
+        this.sceneRestoreHook = hook;
     }
 
     /**
@@ -98,6 +121,9 @@ public class ProjectService {
                 uiState.getShowToolbar().get()
         );
 
+        // Scene reference (v1.2): the open scene + active centre tab, if anyone supplies it
+        OMPFormat.SceneReference scene = sceneStateSupplier != null ? sceneStateSupplier.get() : null;
+
         // Part transforms are owned by the .OMO file, not the project
         String now = LocalDateTime.now().format(TIMESTAMP_FORMAT);
         return new OMPFormat.Document(
@@ -110,7 +136,8 @@ public class ProjectService {
                 transformData,
                 modelRef,
                 ui,
-                null
+                null,
+                scene
         );
     }
 
@@ -294,6 +321,13 @@ public class ProjectService {
 
         restoreState(document, viewport, modelState, uiState, modelOperations);
         dirty = false;
+
+        // Re-open the scene the project recorded as open (and its centre tab). After the
+        // dirty reset: restoring the scene is part of the load, not an edit. Callers must
+        // have dropped the previous project's scene BEFORE this method runs.
+        if (sceneRestoreHook != null) {
+            sceneRestoreHook.accept(document.scene());
+        }
 
         logger.info("Project opened: {} ({})", currentProjectName, filePath);
         return true;
