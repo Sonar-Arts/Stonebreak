@@ -60,10 +60,6 @@ final class FakeLeafWorld implements LeafWorld {
         }
     }
 
-    @Override
-    public void markChanged(int x, int y, int z, BlockType type) {
-    }
-
     // ===== Test helpers =====
 
     /** Mirrors World.setBlockAt: writes the block and feeds the sim funnel. */

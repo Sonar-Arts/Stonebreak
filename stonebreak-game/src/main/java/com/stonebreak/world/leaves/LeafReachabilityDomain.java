@@ -34,7 +34,7 @@ final class LeafReachabilityDomain implements SearchDomain {
 
     private final LeafWorld world;
     private final Set<Long> reachedLeaves = new HashSet<>();
-    private boolean reachedLog;
+    private final Set<Long> reachedLogs = new HashSet<>();
 
     LeafReachabilityDomain(LeafWorld world) {
         this.world = world;
@@ -45,9 +45,14 @@ final class LeafReachabilityDomain implements SearchDomain {
         return reachedLeaves;
     }
 
+    /** Every log cell the flood reached — the anchor set of the flooded region. */
+    Set<Long> reachedLogs() {
+        return reachedLogs;
+    }
+
     /** Whether the flood entered a log cell (the start itself counts if it is a log). */
     boolean reachedLog() {
-        return reachedLog;
+        return !reachedLogs.isEmpty();
     }
 
     @Override
@@ -60,7 +65,7 @@ final class LeafReachabilityDomain implements SearchDomain {
         if (isLeaves(current)) {
             reachedLeaves.add(node);
         } else if (isLog(current)) {
-            reachedLog = true;
+            reachedLogs.add(node);
         }
 
         int count = 0;

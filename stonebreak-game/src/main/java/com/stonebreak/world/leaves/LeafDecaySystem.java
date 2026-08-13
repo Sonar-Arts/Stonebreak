@@ -25,13 +25,23 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * player watches the canopy visibly collapse instead of vanishing instantly.
  *
  * <p><b>Event-driven.</b> Reachability is only ever re-evaluated on a block
- * update that can change support: a log removed, or a leaf placed detached
+ * update that can change support: a log removed, a leaf removed (it may have
+ * been the bridge holding the rest of a canopy), or a leaf placed detached
  * (hand-placed floating leaf). Each such update schedules one delayed
  * reachability pass at that position; the pass uses the engine's A* core as a
  * bounded flood ({@link LeafReachabilityDomain}) to find the candidate leaves
  * and the remaining log anchors that still hold them. This is the "check that
  * only fires once upon block updates" the feature asks for — idle worlds spend
- * nothing.
+ * nothing. The one non-event entry point is {@link #onChunkLoaded}: pending
+ * work is dropped on chunk unload (and lost on quit), so a chunk becoming
+ * resident is rescanned once per residency for leaves that cannot reach a log,
+ * resuming any collapse that was interrupted mid-cascade.
+ *
+ * <p><b>Never decides on partial information.</b> Unloaded chunks read as AIR,
+ * which would make a log just across an evicted seam look absent — so
+ * {@link #decayLeaf} refuses to remove a leaf unless every chunk column its
+ * anchor flood can touch is resident. A recompute may run with partial
+ * information (it only schedules); the final check is always complete.
  *
  * <p><b>Runs only on authoritative worlds.</b> Render-only (multiplayer client)
  * worlds never tick this engine or feed it block changes; they display the
@@ -42,7 +52,12 @@ public final class LeafDecaySystem {
     /** Farthest a leaf may be from a log and still be anchored (vanilla leaf distance). */
     public static final int DECAY_RADIUS = 4;
 
-    /** How wide the box around a trigger is scanned for remaining log anchors. */
+    /**
+     * How far the anchor flood reaches from a trigger. Any log that can support
+     * any candidate is within this: a candidate is at most {@link #DECAY_RADIUS}
+     * flood-steps from the trigger, and its anchor at most {@link #DECAY_RADIUS}
+     * more, and flood paths concatenate.
+     */
     private static final int ANCHOR_SCAN_RADIUS = DECAY_RADIUS * 2;
 
     /** Hard cap on expanded nodes per A* flood — a radius-4 ball easily fits. */
@@ -72,15 +87,19 @@ public final class LeafDecaySystem {
     private final LeafWorld world;
     private final AStar solver = new AStar();
     private final SearchLimits limits = new SearchLimits(SEARCH_EXPANSION_LIMIT, DECAY_RADIUS, 1.0f);
+    private final SearchLimits anchorLimits = new SearchLimits(SEARCH_EXPANSION_LIMIT, ANCHOR_SCAN_RADIUS, 1.0f);
 
-    // Delayed reachability re-evaluations, keyed by position (deduped; a newer
-    // schedule supersedes an older one for the same cell).
+    // Delayed reachability re-evaluations, keyed by position (deduped; the
+    // earliest due tick wins — a later schedule for the same cell is dropped).
     private final PriorityQueue<ScheduledUpdate> pendingRecomputes = new PriorityQueue<>(SCHEDULER);
     private final Map<Long, Long> scheduledRecomputes = new ConcurrentHashMap<>();
 
     // Leaves waiting to disappear (staggered within the decay window).
     private final PriorityQueue<ScheduledUpdate> pendingDecays = new PriorityQueue<>(SCHEDULER);
     private final Map<Long, Long> scheduledDecays = new ConcurrentHashMap<>();
+
+    // Chunks rescanned this residency (mirrors WaterSim.scannedChunks).
+    private final Set<Long> scannedChunks = new HashSet<>();
 
     private float tickAccumulator;
     private long logicalTick;
@@ -129,9 +148,11 @@ public final class LeafDecaySystem {
 
     /**
      * The single block-change funnel (called from World.setBlockAt, authoritative
-     * worlds only). Fires only on the two updates that can change leaf support:
-     * a log removed, or a leaf placed detached. Log placement and every other
-     * change are ignored — the idle cost is zero.
+     * worlds only). Fires only on the three updates that can change leaf support:
+     * a log removed, a leaf removed (support routes <em>through</em> foliage, so
+     * a broken leaf may have been the bridge holding the rest of a canopy), or a
+     * leaf placed detached. Log placement and every other change are ignored —
+     * the idle cost is zero.
      */
     public void onBlockChanged(int x, int y, int z, BlockType previous, BlockType next) {
         if (previous != null && previous.isLog()) {
@@ -141,16 +162,103 @@ public final class LeafDecaySystem {
             scheduleRecompute(x, y, z); // log gone — its former canopy is suspect
             return;
         }
-        if (next != null && next.isLeaves()) {
-            if (previous != null && previous.isLeaves()) {
+        if (previous != null && previous.isLeaves()) {
+            if (next != null && next.isLeaves()) {
                 return; // leaf swapped for a leaf — support unchanged
             }
+            scheduleRecompute(x, y, z); // leaf gone — anything it bridged is suspect
+            return;
+        }
+        if (next != null && next.isLeaves()) {
             scheduleRecompute(x, y, z); // hand-placed/detached leaf — verify it is anchored
+        }
+    }
+
+    /**
+     * Rescan of a chunk that just became resident (authoritative worlds; called
+     * once per residency, guarded like WaterSim's scannedChunks). Pending work
+     * is dropped on unload and lost on quit, so a collapse interrupted
+     * mid-cascade would otherwise freeze forever — this pass schedules a
+     * reachability recompute for every in-chunk leaf that cannot reach a log
+     * through in-chunk foliage. Cheap where it matters: freshly generated
+     * chunks have no trees yet at listener time (features populate later), and
+     * a healthy tree's leaves all reach their own trunk, scheduling nothing.
+     * Seam-supported leaves (trunk in the neighbor chunk) do get scheduled, and
+     * their recompute — which floods across the seam — finds the trunk and
+     * decays nothing.
+     */
+    public void onChunkLoaded(int chunkX, int chunkZ) {
+        if (!scannedChunks.add(chunkKey(chunkX, chunkZ))) {
+            return;
+        }
+        int baseX = chunkX * WorldConfiguration.CHUNK_SIZE;
+        int baseZ = chunkZ * WorldConfiguration.CHUNK_SIZE;
+
+        // One pass over the chunk: the passable network (leaves + logs) and the
+        // BFS sources (logs).
+        Set<Long> foliage = new HashSet<>();
+        Set<Long> leaves = new HashSet<>();
+        java.util.ArrayDeque<Long> frontier = new java.util.ArrayDeque<>();
+        for (int lx = 0; lx < WorldConfiguration.CHUNK_SIZE; lx++) {
+            for (int lz = 0; lz < WorldConfiguration.CHUNK_SIZE; lz++) {
+                for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
+                    int x = baseX + lx;
+                    int z = baseZ + lz;
+                    BlockType block = world.getBlock(x, y, z);
+                    if (block == null || !NavNodes.inRange(x, y, z)) {
+                        continue;
+                    }
+                    if (block.isLeaves()) {
+                        long key = NavNodes.pack(x, y, z);
+                        foliage.add(key);
+                        leaves.add(key);
+                    } else if (block.isLog()) {
+                        long key = NavNodes.pack(x, y, z);
+                        foliage.add(key);
+                        frontier.add(key);
+                    }
+                }
+            }
+        }
+        if (leaves.isEmpty()) {
+            return;
+        }
+
+        // Multi-source BFS from the logs, depth-capped at the decay radius,
+        // confined to the in-chunk network by construction (the foliage set
+        // only holds in-chunk cells). Leaves it reaches are provably supported.
+        Set<Long> reached = new HashSet<>(frontier);
+        for (int depth = 0; depth < DECAY_RADIUS && !frontier.isEmpty(); depth++) {
+            int layer = frontier.size();
+            for (int i = 0; i < layer; i++) {
+                long node = frontier.poll();
+                int x = NavNodes.x(node);
+                int y = NavNodes.y(node);
+                int z = NavNodes.z(node);
+                for (int[] dir : ORTHOGONALS) {
+                    int ny = y + dir[1];
+                    if (ny < 0 || ny >= WorldConfiguration.WORLD_HEIGHT
+                        || !NavNodes.inRange(x + dir[0], ny, z + dir[2])) {
+                        continue;
+                    }
+                    long neighbor = NavNodes.pack(x + dir[0], ny, z + dir[2]);
+                    if (foliage.contains(neighbor) && reached.add(neighbor)) {
+                        frontier.add(neighbor);
+                    }
+                }
+            }
+        }
+
+        for (long leaf : leaves) {
+            if (!reached.contains(leaf)) {
+                enqueue(pendingRecomputes, scheduledRecomputes, leaf, EVICT_DELAY_TICKS);
+            }
         }
     }
 
     /** Drops pending work for an unloading chunk (mirrors WaterSim.onChunkUnloaded). */
     public void onChunkUnloaded(int chunkX, int chunkZ) {
+        scannedChunks.remove(chunkKey(chunkX, chunkZ));
         purgeChunk(pendingRecomputes, scheduledRecomputes, chunkX, chunkZ);
         purgeChunk(pendingDecays, scheduledDecays, chunkX, chunkZ);
         world.onChunkUnloaded(chunkX, chunkZ);
@@ -227,12 +335,13 @@ public final class LeafDecaySystem {
      * One reachability pass over the foliage region a trigger touched.
      *
      * <ol>
-     *   <li><b>Candidates</b> — A* flood from the trigger through open air/foliage,
+     *   <li><b>Candidates</b> — A* flood from the trigger through foliage,
      *       radius {@link #DECAY_RADIUS}; every leaf reached depends on whatever
      *       used to sit at the trigger cell.</li>
-     *   <li><b>Anchors</b> — every remaining log within {@link #ANCHOR_SCAN_RADIUS}
-     *       of the trigger. Any candidate that can still reach an anchor within the
-     *       radius is still supported.</li>
+     *   <li><b>Anchors</b> — every log a radius-{@link #ANCHOR_SCAN_RADIUS} flood
+     *       from the trigger reaches. Complete by path concatenation: a log that
+     *       supports any candidate is within candidate-distance + support-distance
+     *       ≤ 2×{@link #DECAY_RADIUS} flood-steps of the trigger.</li>
      *   <li><b>Supported</b> — one flood per anchor (bounded by
      *       {@link #MAX_ANCHOR_FLOODS}, with a Manhattan fallback past that) marks
      *       the leaves the anchors still hold.</li>
@@ -247,7 +356,7 @@ public final class LeafDecaySystem {
             return;
         }
 
-        long[] anchors = scanAnchors(NavNodes.x(posKey), NavNodes.y(posKey), NavNodes.z(posKey));
+        long[] anchors = scanAnchors(posKey);
         Set<Long> supported = new HashSet<>();
 
         if (anchors.length == 0) {
@@ -288,20 +397,18 @@ public final class LeafDecaySystem {
         return domain.reachedLeaves();
     }
 
-    /** Logs remaining within the anchor scan box around the trigger. */
-    private long[] scanAnchors(int x, int y, int z) {
-        Set<Long> anchors = new HashSet<>();
-        for (int dx = -ANCHOR_SCAN_RADIUS; dx <= ANCHOR_SCAN_RADIUS; dx++) {
-            for (int dy = -ANCHOR_SCAN_RADIUS; dy <= ANCHOR_SCAN_RADIUS; dy++) {
-                for (int dz = -ANCHOR_SCAN_RADIUS; dz <= ANCHOR_SCAN_RADIUS; dz++) {
-                    BlockType block = world.getBlock(x + dx, y + dy, z + dz);
-                    if (block != null && block.isLog()
-                        && NavNodes.inRange(x + dx, y + dy, z + dz)) {
-                        anchors.add(NavNodes.pack(x + dx, y + dy, z + dz));
-                    }
-                }
-            }
-        }
+    /**
+     * Logs that can still support the trigger's region: one radius-
+     * {@link #ANCHOR_SCAN_RADIUS} flood from the trigger, collecting every log
+     * it touches. Replaces the old 17³ brute-force box scan — an order of
+     * magnitude fewer world reads, and strictly fewer useless anchors (a log
+     * separated from the region by solid blocks can support nothing in it and
+     * is no longer collected).
+     */
+    private long[] scanAnchors(long trigger) {
+        LeafReachabilityDomain domain = new LeafReachabilityDomain(world);
+        solver.search(domain, trigger, anchorLimits, CancelToken.NEVER);
+        Set<Long> anchors = domain.reachedLogs();
         long[] result = new long[anchors.size()];
         int i = 0;
         for (long anchor : anchors) {
@@ -338,6 +445,14 @@ public final class LeafDecaySystem {
         if (!world.isLoaded(x, y, z)) {
             return;
         }
+        if (!decayNeighborhoodLoaded(x, y, z)) {
+            // A chunk the anchor flood could reach is not resident, and unloaded
+            // cells read as AIR — a log just across the evicted seam would look
+            // absent. Never remove a block on partial information; the leaf
+            // stays, and the neighbor's own load rescan resumes the collapse if
+            // it really is orphaned.
+            return;
+        }
         BlockType block = world.getBlock(x, y, z);
         if (!isLeaves(block)) {
             return; // already gone or replaced
@@ -348,6 +463,22 @@ public final class LeafDecaySystem {
 
         world.setBlock(x, y, z, BlockType.AIR);
         scheduleRecompute(x, y, z); // cascade holds up leaves that depended on this one
+    }
+
+    /**
+     * Whether every chunk column the leaf's anchor flood can touch is resident.
+     * The flood reaches at most {@link #DECAY_RADIUS} cells from the leaf, so
+     * the four corners of that box cover every chunk column it can enter
+     * (the radius is smaller than a chunk, so the box spans at most 2×2
+     * columns). With this true, {@link #isAnchored} decides on complete
+     * information — the earlier recompute may have run with less, but it only
+     * schedules; this is the last word before a block is destroyed.
+     */
+    private boolean decayNeighborhoodLoaded(int x, int y, int z) {
+        return world.isLoaded(x - DECAY_RADIUS, y, z - DECAY_RADIUS)
+            && world.isLoaded(x - DECAY_RADIUS, y, z + DECAY_RADIUS)
+            && world.isLoaded(x + DECAY_RADIUS, y, z - DECAY_RADIUS)
+            && world.isLoaded(x + DECAY_RADIUS, y, z + DECAY_RADIUS);
     }
 
     /**
@@ -386,6 +517,15 @@ public final class LeafDecaySystem {
         return Math.floorDiv(NavNodes.x(posKey), WorldConfiguration.CHUNK_SIZE) == chunkX
             && Math.floorDiv(NavNodes.z(posKey), WorldConfiguration.CHUNK_SIZE) == chunkZ;
     }
+
+    private static long chunkKey(int chunkX, int chunkZ) {
+        return (((long) chunkX) << 32) ^ (chunkZ & 0xFFFFFFFFL);
+    }
+
+    /** Six orthogonal neighbors (the same connectivity the flood uses). */
+    private static final int[][] ORTHOGONALS = {
+        {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}
+    };
 
     private record ScheduledUpdate(long posKey, long dueTick, long sequence) {
     }

@@ -1,53 +1,42 @@
 package com.stonebreak.blocks.waterSystem;
 
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
-import com.openmason.engine.voxel.cco.operations.CcoBlockReader;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.handlers.FlowBlockInteraction;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.utils.CachedChunkAccess;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
- * Production {@link FlowWorld} over a {@link World}: CCO block access with a
- * per-chunk reader cache, chunk-owned water-layer state, batched mesh
- * dirtying (flushed once per logical tick, spilling to border neighbors so
- * corner-sewn water heights stay seamless), and the server replication funnel
- * for sim-driven block mutations.
+ * Production {@link FlowWorld} over a {@link World}: CCO block reads through
+ * the shared {@link CachedChunkAccess} plumbing, chunk-owned water-layer state,
+ * batched mesh dirtying (flushed once per logical tick, spilling to border
+ * neighbors so corner-sewn water heights stay seamless), and the server
+ * replication funnel for sim-driven block mutations.
  */
 public final class WorldFlowWorld implements FlowWorld {
 
     private final World world;
-    private final Map<Long, CcoBlockReader> readerCache = new ConcurrentHashMap<>();
+    private final CachedChunkAccess access;
     private final Set<Long> dirtyChunks = new HashSet<>();
 
     public WorldFlowWorld(World world) {
         this.world = Objects.requireNonNull(world, "world");
+        this.access = new CachedChunkAccess(world);
     }
 
     @Override
     public BlockType getBlock(int x, int y, int z) {
-        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
-            return BlockType.AIR;
-        }
-        CcoBlockReader reader = readerFor(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
-                                          Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE));
-        if (reader == null) {
-            return BlockType.AIR;
-        }
-        return (BlockType) reader.get(Math.floorMod(x, WorldConfiguration.CHUNK_SIZE), y,
-                                      Math.floorMod(z, WorldConfiguration.CHUNK_SIZE));
+        return access.getBlock(x, y, z);
     }
 
     @Override
     public boolean isLoaded(int x, int y, int z) {
-        return y >= 0 && y < WorldConfiguration.WORLD_HEIGHT
-            && chunkAt(x, z) != null;
+        return access.isLoaded(x, y, z);
     }
 
     @Override
@@ -136,7 +125,7 @@ public final class WorldFlowWorld implements FlowWorld {
 
     @Override
     public void onChunkUnloaded(int chunkX, int chunkZ) {
-        readerCache.remove(chunkKey(chunkX, chunkZ));
+        access.onChunkUnloaded(chunkX, chunkZ);
     }
 
     /**
@@ -164,24 +153,10 @@ public final class WorldFlowWorld implements FlowWorld {
     }
 
     private Chunk chunkAt(int x, int z) {
-        return world.getChunkIfLoaded(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
-                                      Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE));
-    }
-
-    private CcoBlockReader readerFor(int chunkX, int chunkZ) {
-        long key = chunkKey(chunkX, chunkZ);
-        CcoBlockReader reader = readerCache.get(key);
-        if (reader == null) {
-            Chunk chunk = world.getChunkIfLoaded(chunkX, chunkZ);
-            if (chunk != null) {
-                reader = chunk.getBlockReader();
-                readerCache.put(key, reader);
-            }
-        }
-        return reader;
+        return access.chunkAt(x, z);
     }
 
     private static long chunkKey(int chunkX, int chunkZ) {
-        return (((long) chunkX) << 32) ^ (chunkZ & 0xFFFFFFFFL);
+        return CachedChunkAccess.chunkKey(chunkX, chunkZ);
     }
 }

@@ -242,7 +242,111 @@ class LeafDecaySystemTest {
         assertEquals(0, world.removals.size(), "no support-changing update happened");
     }
 
-    // ===== 8. Unloading a chunk purges its pending work =====
+    // ===== 8. Breaking a leaf can orphan the canopy it bridged =====
+
+    @Test
+    void breakingBridgeLeafDecaysTheRestOfTheCanopy() {
+        FakeLeafWorld world = new FakeLeafWorld(21, 24, 21);
+        LeafDecaySystem sim = new LeafDecaySystem(world);
+
+        // Support routes THROUGH foliage: (12..13) only reach the log via (11).
+        world.setBlock(10, 10, 10, BlockType.WOOD);
+        world.setBlock(11, 10, 10, BlockType.LEAVES);
+        world.setBlock(12, 10, 10, BlockType.LEAVES);
+        world.setBlock(13, 10, 10, BlockType.LEAVES);
+
+        // The player breaks the bridge leaf, not a log.
+        world.placeBlock(sim, 11, 10, 10, BlockType.AIR);
+        sim.advanceTicks(SETTLE_TICKS);
+
+        assertFalse(world.isLeaf(12, 10, 10), "leaves cut off by a broken leaf must decay");
+        assertFalse(world.isLeaf(13, 10, 10), "leaves cut off by a broken leaf must decay");
+        assertTrue(world.isLog(10, 10, 10), "the log itself is untouched");
+    }
+
+    // ===== 9. Chunk-load rescan resumes an interrupted collapse =====
+
+    @Test
+    void chunkLoadRescanResumesInterruptedCollapse() {
+        FakeLeafWorld world = new FakeLeafWorld(25, 25, 25);
+        LeafDecaySystem sim = new LeafDecaySystem(world);
+
+        // State as if a collapse was interrupted by eviction/quit: orphaned
+        // leaves already in the blocks, with no pending work (direct setBlock —
+        // the funnel never saw these).
+        world.setBlock(5, 10, 5, BlockType.LEAVES);
+        world.setBlock(5, 11, 5, BlockType.LEAVES);
+        world.setBlock(6, 10, 5, BlockType.LEAVES);
+        // A healthy tree in the same chunk must not be disturbed.
+        world.setBlock(10, 10, 10, BlockType.WOOD);
+        world.setBlock(10, 11, 10, BlockType.LEAVES);
+        world.setBlock(10, 12, 10, BlockType.LEAVES);
+
+        sim.onChunkLoaded(0, 0); // (5,5) and (10,10) both live in chunk (0,0)
+        sim.advanceTicks(SETTLE_TICKS);
+
+        assertFalse(world.isLeaf(5, 10, 5), "orphaned leaves must decay after the rescan");
+        assertFalse(world.isLeaf(5, 11, 5), "orphaned leaves must decay after the rescan");
+        assertFalse(world.isLeaf(6, 10, 5), "orphaned leaves must decay after the rescan");
+        assertTrue(world.isLeaf(10, 11, 10), "the healthy tree must survive the rescan");
+        assertTrue(world.isLeaf(10, 12, 10), "the healthy tree must survive the rescan");
+        assertEquals(3, world.removals.size());
+    }
+
+    @Test
+    void chunkLoadRescanTrustsCrossSeamSupport() {
+        FakeLeafWorld world = new FakeLeafWorld(25, 25, 25);
+        LeafDecaySystem sim = new LeafDecaySystem(world);
+
+        // Trunk in chunk (1,0); part of its canopy hangs into chunk (0,0). The
+        // rescan of (0,0) sees no in-chunk log for these leaves and schedules
+        // recomputes — whose cross-seam flood must find the trunk and keep them.
+        world.setBlock(16, 10, 10, BlockType.WOOD);
+        world.setBlock(15, 10, 10, BlockType.LEAVES);
+        world.setBlock(14, 10, 10, BlockType.LEAVES);
+
+        sim.onChunkLoaded(0, 0);
+        sim.advanceTicks(SETTLE_TICKS);
+
+        assertTrue(world.isLeaf(15, 10, 10), "seam-supported leaves must survive the rescan");
+        assertTrue(world.isLeaf(14, 10, 10), "seam-supported leaves must survive the rescan");
+        assertEquals(0, world.removals.size());
+    }
+
+    @Test
+    void rescanOfLeaflessChunkSchedulesNothing() {
+        FakeLeafWorld world = new FakeLeafWorld(25, 25, 25);
+        LeafDecaySystem sim = new LeafDecaySystem(world);
+
+        world.setBlock(3, 10, 3, BlockType.STONE);
+        world.setBlock(4, 10, 3, BlockType.WOOD); // a log alone schedules nothing either
+
+        sim.onChunkLoaded(0, 0);
+
+        assertEquals(0, sim.getQueuedRecomputeCount());
+        assertEquals(0, sim.getQueuedDecayCount());
+    }
+
+    // ===== 10. Partial information never destroys a block =====
+
+    @Test
+    void decayRefusesToActBesideUnloadedChunks() {
+        FakeLeafWorld world = new FakeLeafWorld(25, 25, 25);
+        LeafDecaySystem sim = new LeafDecaySystem(world);
+
+        // Detached leaf whose radius-4 anchor neighborhood pokes outside the
+        // loaded region (x-4 = -2): a log could be sitting in that unloaded
+        // space, so the decay must refuse rather than guess.
+        world.placeBlock(sim, 2, 10, 10, BlockType.LEAVES);
+        sim.advanceTicks(SETTLE_TICKS);
+
+        assertTrue(world.isLeaf(2, 10, 10),
+            "a leaf must never decay while part of its anchor range is unloaded");
+        assertEquals(0, world.removals.size());
+        assertEquals(0, sim.getQueuedDecayCount(), "the refused decay is consumed, not retried");
+    }
+
+    // ===== 11. Unloading a chunk purges its pending work =====
 
     @Test
     void chunkUnloadPurgesPendingWork() {
@@ -260,7 +364,7 @@ class LeafDecaySystemTest {
         assertEquals(0, sim.getQueuedRecomputeCount());
     }
 
-    // ===== 9. The reachability flood never descends below the world floor =====
+    // ===== 12. The reachability flood never descends below the world floor =====
 
     @Test
     void floodDoesNotDescendBelowWorldFloor() {

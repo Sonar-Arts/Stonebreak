@@ -254,6 +254,13 @@ public class World {
         this.chunkStore.setChunkListeners(chunk -> {
             if (!renderOnly) {
                 waterSim.onChunkLoaded(chunk);
+                // Leaf-decay rescan resumes collapses interrupted by eviction or
+                // quit. Only for chunks that already have their features: a
+                // freshly generated chunk has no trees yet at listener time
+                // (they populate later), so scanning it would find nothing.
+                if (chunk.areFeaturesPopulated()) {
+                    leafDecay.onChunkLoaded(chunk.getChunkX(), chunk.getChunkZ());
+                }
             }
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkLoaded(chunk);

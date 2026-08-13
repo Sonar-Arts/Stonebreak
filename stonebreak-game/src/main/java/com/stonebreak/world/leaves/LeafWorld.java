@@ -17,14 +17,13 @@ public interface LeafWorld {
     /** Whether the position is inside the world and its chunk is resident. */
     boolean isLoaded(int x, int y, int z);
 
-    /** Writes a block (AIR when a leaf decays). */
-    void setBlock(int x, int y, int z, BlockType type);
-
     /**
-     * Notifies that the visible block at a position changed. Adapters use it for
-     * mesh dirtying and replication; called on the sim tick thread.
+     * Writes a block (AIR when a leaf decays). The production adapter routes
+     * this through the world's block-change funnel, so co-simulations (water),
+     * meshing and replication all observe the removal; called on the sim tick
+     * thread.
      */
-    void markChanged(int x, int y, int z, BlockType type);
+    void setBlock(int x, int y, int z, BlockType type);
 
     /** Called once after each logical sim tick — adapters flush batched work here. */
     default void onTickComplete() {
