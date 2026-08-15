@@ -6,6 +6,7 @@ import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.ui.worldSelect.WorldSelectLayout;
 import com.stonebreak.ui.worldSelect.handlers.WorldInputHandler;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
+import com.stonebreak.ui.worldSelect.managers.WorldSizeService;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
 import com.stonebreak.world.save.model.WorldData;
 import io.github.humbleui.skija.Canvas;
@@ -232,6 +233,15 @@ public final class SkijaWorldSelectRenderer {
         String meta = formatMeta(data);
         if (meta != null) {
             drawString(canvas, meta, nameX, y + 46f, fontMeta, COLOR_TEXT_SECONDARY);
+        }
+        // On-disk size, right-aligned on the name row. Blank until the background
+        // scan for this world finishes, then it stays cached.
+        long sizeBytes = discoveryManager.getWorldSizeBytes(name);
+        if (sizeBytes >= 0) {
+            String size = WorldSizeService.formatSize(sizeBytes);
+            float sizeX = x + layout.listWidth - 18f - measureWidthSafe(fontMeta, size);
+            drawString(canvas, size, sizeX + 1, nameY + 1, fontMeta, COLOR_TEXT_SHADOW);
+            drawString(canvas, size, sizeX, nameY, fontMeta, COLOR_TEXT_SECONDARY);
         }
     }
 

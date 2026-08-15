@@ -158,6 +158,7 @@ public class WorldSelectScreen {
 
     public void dispose() {
         if (skijaRenderer != null) skijaRenderer.dispose();
+        if (discoveryManager != null) discoveryManager.dispose();
     }
 
     // ===== PUBLIC API (COMPATIBILITY) =====
