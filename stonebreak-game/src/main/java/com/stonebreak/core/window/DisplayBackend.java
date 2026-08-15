@@ -39,7 +39,8 @@ public final class DisplayBackend {
      * the X11 (XWayland) backend instead. Every other driver stays on native Wayland.
      */
     private static final Set<String> WAYLAND_BLOCKED_NVIDIA_DRIVERS = Set.of(
-            "595.71.05"
+            "595.71.05",
+            "595.84"
     );
 
     /**
