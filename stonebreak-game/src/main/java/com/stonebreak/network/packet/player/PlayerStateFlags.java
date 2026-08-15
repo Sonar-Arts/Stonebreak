@@ -15,6 +15,8 @@ public final class PlayerStateFlags {
     public static final int AIRBORNE = 1 << 3;
     public static final int ON_GROUND = 1 << 4;
     public static final int ATTACKING = 1 << 5;
+    /** Body touching water (not just eyes) — drives remote splash/ripple triggering. */
+    public static final int PARTIALLY_IN_WATER = 1 << 6;
 
     private PlayerStateFlags() {}
 

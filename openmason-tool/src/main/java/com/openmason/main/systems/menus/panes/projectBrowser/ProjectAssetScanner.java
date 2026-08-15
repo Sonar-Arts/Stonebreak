@@ -23,7 +23,8 @@ public class ProjectAssetScanner {
     /** Asset kinds the browser understands. */
     public enum AssetType {
         OMO(".OMO Model", ".omo"),
-        OMT(".OMT Texture", ".omt");
+        OMT(".OMT Texture", ".omt"),
+        OMSC(".OMSC Scene", ".omsc");
 
         private final String label;
         private final String extension;
@@ -79,6 +80,7 @@ public class ProjectAssetScanner {
             return List.of();
         }
         List<AssetEntry> entries = new ArrayList<>();
+        // Models and textures stay flat at the project root, exactly as before.
         try (Stream<Path> files = Files.list(root)) {
             files.filter(Files::isRegularFile).forEach(file -> {
                 AssetEntry entry = toEntry(file);
@@ -86,10 +88,28 @@ public class ProjectAssetScanner {
                     entries.add(entry);
                 }
             });
-            logger.debug("Scanned {} asset(s) in project folder {}", entries.size(), root);
         } catch (IOException e) {
             logger.warn("Failed to scan project folder: {}", root, e);
         }
+
+        // Scenes live one level down. Deliberately a second targeted pass rather than a
+        // recursive walk: walking would start surfacing .omo files nested in subfolders,
+        // which changes what the browser has always listed.
+        Path scenesDir = root.resolve(com.openmason.main.systems.project.ProjectLayout.SCENES_DIR);
+        if (Files.isDirectory(scenesDir)) {
+            try (Stream<Path> files = Files.list(scenesDir)) {
+                files.filter(Files::isRegularFile).forEach(file -> {
+                    AssetEntry entry = toEntry(file);
+                    if (entry != null && entry.type() == AssetType.OMSC) {
+                        entries.add(entry);
+                    }
+                });
+            } catch (IOException e) {
+                logger.warn("Failed to scan the Scenes folder: {}", scenesDir, e);
+            }
+        }
+
+        logger.debug("Scanned {} asset(s) for project folder {}", entries.size(), root);
         return entries;
     }
 

@@ -182,12 +182,44 @@ public class omConfig {
      * layouts from before the Model Browser rename lack the window entirely,
      * so the first launch after the rename rebuilds the default layout once.
      */
+    @Deprecated
     public boolean isProjectBrowserLayoutMigrated() {
         return Boolean.parseBoolean(properties.getProperty("ui.layout.projectbrowser.migrated", "false"));
     }
 
+    @Deprecated
     public void setProjectBrowserLayoutMigrated(boolean migrated) {
         properties.setProperty("ui.layout.projectbrowser.migrated", String.valueOf(migrated));
+    }
+
+    /** Persisted key for the main dockspace layout version. */
+    private static final String KEY_MAIN_LAYOUT_VERSION = "ui.layout.main.version";
+
+    /**
+     * Which generation of the default dock layout this user has been given.
+     *
+     * <p>0 means "never built". A version number rather than the old boolean because each
+     * release that adds a docked window needs exactly one more forced rebuild, and a
+     * boolean can only ever express the first one.
+     *
+     * <p>Seeded from the legacy flag so a user who already took the Project Browser
+     * migration counts as version 1 and is not rebuilt for it twice.
+     */
+    public int getMainLayoutVersion() {
+        String raw = properties.getProperty(KEY_MAIN_LAYOUT_VERSION);
+        if (raw != null) {
+            try {
+                return Integer.parseInt(raw.trim());
+            } catch (NumberFormatException e) {
+                // Hand-edited or corrupt: fall through to the legacy seed rather than
+                // throwing during startup.
+            }
+        }
+        return isProjectBrowserLayoutMigrated() ? 1 : 0;
+    }
+
+    public void setMainLayoutVersion(int version) {
+        properties.setProperty(KEY_MAIN_LAYOUT_VERSION, String.valueOf(version));
     }
 
     public String getLastOpenedProjectPath() {

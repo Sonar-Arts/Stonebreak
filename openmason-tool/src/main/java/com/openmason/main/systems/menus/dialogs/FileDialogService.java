@@ -421,6 +421,34 @@ public class FileDialogService {
                 "model.omo", projectDirectoryOrNull(), "Save OMO to file", callback::onSave);
     }
 
+    /** Scene dialogs default into the project's Scenes folder. */
+    private String scenesDirectoryOrNull() {
+        String projectDir = projectDirectoryOrNull();
+        if (projectDir == null) {
+            return null;
+        }
+        java.nio.file.Path scenes = com.openmason.main.systems.project.ProjectLayout.scenesDir(
+                java.nio.file.Path.of(projectDir));
+        return scenes != null && java.nio.file.Files.isDirectory(scenes) ? scenes.toString() : projectDir;
+    }
+
+    /** Open a .OMSC scene, starting in the project's Scenes folder. */
+    public void showOpenOMSCDialog(OpenCallback callback) {
+        showNFDOpenDialog("Opening scene...", "Open Mason Scene", "omsc",
+                scenesDirectoryOrNull(), "Selected scene file", callback);
+    }
+
+    /** Save a .OMSC scene, defaulting into the project's Scenes folder. */
+    public void showSaveOMSCDialog(SaveOMSCCallback callback) {
+        showNFDSaveDialog("Saving scene...", "Open Mason Scene", "omsc",
+                "scene.omsc", scenesDirectoryOrNull(), "Save scene to file", callback::onSave);
+    }
+
+    /** Callback interface for scene save operations. */
+    public interface SaveOMSCCallback {
+        void onSave(String filePath);
+    }
+
     /**
      * Callback interface for OMO save operations.
      */

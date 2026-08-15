@@ -1,13 +1,16 @@
 package com.openmason.main.systems.viewport.viewportRendering;
 
+import com.openmason.engine.rendering.viewer.ViewerRenderContext;
+import com.openmason.engine.rendering.viewer.ViewerFrame;
+import com.openmason.engine.rendering.viewer.ViewerPass;
+import com.openmason.engine.rendering.viewer.ViewerPassOrder;
 import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.rendering.core.SBTRenderer;
-import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
+import com.openmason.engine.rendering.viewer.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.bones.BoneGizmoRenderer;
 import com.openmason.main.systems.skeleton.BoneStore;
-import com.openmason.main.systems.viewport.resources.ViewportResourceManager;
 import com.openmason.engine.rendering.shaders.ShaderManager;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderType;
@@ -15,7 +18,7 @@ import com.openmason.main.systems.viewport.state.EditMode;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.state.RenderingMode;
 import com.openmason.main.systems.viewport.state.RenderingState;
-import com.openmason.main.systems.viewport.state.TransformState;
+import com.openmason.engine.rendering.viewer.transform.TransformState;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.KnifePreviewRenderer;
@@ -42,30 +45,27 @@ import static org.lwjgl.opengl.GL11.*;
  *   <li><b>UI Pass</b> - Gizmo overlays ({@link GizmoRenderer})</li>
  * </ol>
  *
- * <h2>Unified Rendering API Integration</h2>
- * <p>This class will be enhanced to use the new unified rendering API:
- * <ul>
- *   <li>{@link com.openmason.main.systems.rendering.api.RenderingController} - Master coordinator</li>
- *   <li>{@link com.openmason.main.systems.rendering.api.IRenderer} - Renderer interface</li>
- *   <li>{@link com.openmason.main.systems.rendering.api.RenderPass} - Pass ordering</li>
- * </ul>
+ * <p>The pass sequence is hardcoded rather than registry-driven. The engine's
+ * {@code rendering.api.RenderingController}/{@code RenderPass} pair looks like a fit but
+ * is not: it forces one shared model matrix across all renderers and its five-value
+ * enum cannot express the six steps above (note the 2.5 tier).
  *
- * <p>New renderers should implement {@link com.openmason.main.systems.rendering.api.IRenderer}
- * or extend {@link com.openmason.main.systems.rendering.api.BaseRenderer}.
- *
- * @see com.openmason.main.systems.rendering.api.RenderingController
  * @see com.openmason.engine.rendering.model.GenericModelRenderer
  */
-public class ViewportRenderPipeline {
+public class ViewportRenderPipeline implements ViewerPass {
 
     private static final Logger logger = LoggerFactory.getLogger(ViewportRenderPipeline.class);
 
-    private final RenderContext context;
-    private final ViewportResourceManager resources;
+    /** Set from the ViewerFrame at the top of each render; never null while a pass runs. */
+    private ViewerRenderContext context;
     private final ShaderManager shaderManager;
 
+    // Session state this pass draws from, owned by the ViewportController.
+    private final ViewportUIState viewportState;
+    private final RenderingState renderingState;
+    private final TransformState transformState;
+
     // Specialized renderers
-    private final GridRenderer gridRenderer;
     private final VertexRenderer vertexRenderer;
     private final EdgeRenderer edgeRenderer;
     private final FaceRenderer faceRenderer;
@@ -119,14 +119,17 @@ public class ViewportRenderPipeline {
     /**
      * Create render pipeline with all required dependencies.
      */
-    public ViewportRenderPipeline(RenderContext context, ViewportResourceManager resources, ShaderManager shaderManager,
+    public ViewportRenderPipeline(ShaderManager shaderManager,
                                   BlockRenderer blockRenderer, ItemRenderer itemRenderer,
                                   GenericModelRenderer modelRenderer,
-                                  GizmoRenderer gizmoRenderer) {
-        this.context = context;
-        this.resources = resources;
+                                  GizmoRenderer gizmoRenderer,
+                                  ViewportUIState viewportState,
+                                  RenderingState renderingState,
+                                  TransformState transformState) {
         this.shaderManager = shaderManager;
-        this.gridRenderer = new GridRenderer();
+        this.viewportState = viewportState;
+        this.renderingState = renderingState;
+        this.transformState = transformState;
         this.vertexRenderer = new VertexRenderer();
         this.edgeRenderer = new EdgeRenderer();
         this.faceRenderer = new FaceRenderer();
@@ -181,109 +184,71 @@ public class ViewportRenderPipeline {
     }
 
     /**
-     * Execute complete render pipeline.
+     * The model editor's contribution to a {@link ModelViewer} frame.
+     *
+     * <p>Runs the editor-only tiers in their historical order: content, socket previews,
+     * mesh overlays, gizmo, then the x-ray rigging overlay. The grid is no longer here —
+     * it is a shared engine pass registered ahead of this one — and the framebuffer,
+     * clear and GL state are the viewer's job.
      */
-    public void render(ViewportUIState viewportState, RenderingState renderingState, TransformState transformState) {
-        try {
-            // Update camera animation
-            context.getCamera().update(0.016f); // Assuming ~60fps (16ms frame time)
-            context.getCamera().updateMatrices(); // Force matrix update
+    @Override
+    public void render(ViewerFrame frame) {
+        // The private pass helpers below all read `context`; take it from the frame so
+        // they need no signature changes.
+        this.context = frame.context();
 
-            // Update render context
-            context.update(viewportState.getWidth(), viewportState.getHeight(), viewportState.getUnrenderedMode().get());
+        // PASS 2: Render content (block/item/model)
+        renderContent(viewportState, renderingState, transformState);
 
-            // Bind framebuffer
-            resources.getFramebuffer().bind();
+        // PASS 2.5: Socket test models — accessory previews posed at their
+        // socket's world frame (normal depth-tested geometry, not overlay)
+        if (renderingState.getMode() == RenderingMode.BLOCK_MODEL
+                && attachmentPreviewStore != null && !attachmentPreviewStore.isEmpty()
+                && attachmentStore != null) {
+            renderAttachmentPreviews(transformState);
+        }
 
-            // Clear background
-            glClearColor(0.2f, 0.2f, 0.3f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-            // Configure pipeline-level OpenGL state (set once per frame)
-            glEnable(GL_DEPTH_TEST);
-            glDepthFunc(GL_LESS);
-            glDepthMask(true);
-            glDisable(GL_CULL_FACE);  // Show all cube faces
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-            // Always render filled polygons (wireframe mode removed)
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
-            // PASS 1: Render grid (if enabled)
-            if (viewportState.getGridVisible().get()) {
-                renderGrid();
+        // PASS 3: Render mesh (vertices + edges + faces, debug overlay, Blender-style)
+        // Element visibility follows Blender's edit modes: vertex mode shows dots +
+        // wire, edge mode shows wire only, face mode shows wire + fills + face dots.
+        if (viewportState.getShowVertices().get()) {
+            EditMode editMode = EditModeManager.getInstance().getCurrentMode();
+            // Always runs the mesh-data sync/wiring; skips the dots in EDGE/FACE modes
+            renderVertices(renderingState, transformState,
+                    editMode == EditMode.NONE || editMode == EditMode.VERTEX);
+            renderEdges(renderingState, transformState);
+            renderKnifePreview(transformState);  // Render knife preview after edges, before faces
+            renderToolPreview(transformState);   // Render inset/extrude preview alongside the knife overlay
+            if (editMode == EditMode.NONE || editMode == EditMode.FACE) {
+                renderFaces(renderingState, transformState);  // Render face overlays LAST for proper blending
             }
+        }
 
-            // PASS 2: Render content (model/block/item)
-            renderContent(viewportState, renderingState, transformState);
+        // PASS 4: Render gizmo (after content, always in fill mode)
+        if (gizmoRenderer != null && gizmoRenderer.isInitialized()) {
+            renderGizmo();
+        }
 
-            // PASS 2.5: Socket test models — accessory previews posed at their
-            // socket's world frame (normal depth-tested geometry, not overlay)
-            if (renderingState.getMode() == RenderingMode.BLOCK_MODEL
-                    && attachmentPreviewStore != null && !attachmentPreviewStore.isEmpty()
-                    && attachmentStore != null) {
-                renderAttachmentPreviews(transformState);
+        // PASS 5: Bone gizmos + attachment point markers (editor-only overlay, x-ray)
+        if (viewportState.getShowBones().get()
+                && renderingState.getMode() == RenderingMode.BLOCK_MODEL) {
+            if (boneStore != null && !boneStore.isEmpty()) {
+                renderBoneGizmos(transformState);
             }
-
-            // (polygon mode is always GL_FILL)
-
-            // PASS 3: Render mesh (vertices + edges + faces, debug overlay, Blender-style)
-            // Element visibility follows Blender's edit modes: vertex mode shows dots +
-            // wire, edge mode shows wire only, face mode shows wire + fills + face dots.
-            if (viewportState.getShowVertices().get()) {
-                EditMode editMode = EditModeManager.getInstance().getCurrentMode();
-                // Always runs the mesh-data sync/wiring; skips the dots in EDGE/FACE modes
-                renderVertices(renderingState, transformState,
-                        editMode == EditMode.NONE || editMode == EditMode.VERTEX);
-                renderEdges(renderingState, transformState);
-                renderKnifePreview(transformState);  // Render knife preview after edges, before faces
-                renderToolPreview(transformState);   // Render inset/extrude preview alongside the knife overlay
-                if (editMode == EditMode.NONE || editMode == EditMode.FACE) {
-                    renderFaces(renderingState, transformState);  // Render face overlays LAST for proper blending
-                }
+            if (attachmentStore != null && !attachmentStore.isEmpty()) {
+                renderAttachmentGizmos(transformState);
             }
-
-            // PASS 4: Render gizmo (after content, always in fill mode)
-            if (gizmoRenderer != null && gizmoRenderer.isInitialized()) {
-                renderGizmo();
-            }
-
-            // PASS 5: Bone gizmos + attachment point markers (editor-only overlay, x-ray)
-            if (viewportState.getShowBones().get()
-                    && renderingState.getMode() == RenderingMode.BLOCK_MODEL) {
-                if (boneStore != null && !boneStore.isEmpty()) {
-                    renderBoneGizmos(transformState);
-                }
-                if (attachmentStore != null && !attachmentStore.isEmpty()) {
-                    renderAttachmentGizmos(transformState);
-                }
-            }
-
-            // Unbind framebuffer
-            resources.getFramebuffer().unbind();
-
-        } catch (Exception e) {
-            logger.error("Error in render pipeline", e);
         }
     }
 
-    /**
-     * Render grid pass.
-     */
-    private void renderGrid() {
-        try {
-            // Initialize infinite grid renderer if needed
-            if (!gridRenderer.isInitialized()) {
-                gridRenderer.initialize();
-            }
+    @Override
+    public int order() {
+        return ViewerPassOrder.CONTENT;
+    }
 
-            // Use infinite grid shader
-            ShaderProgram infiniteGridShader = shaderManager.getShaderProgram(ShaderType.INFINITE_GRID);
-            gridRenderer.render(infiniteGridShader, context);
-        } catch (Exception e) {
-            logger.error("Error rendering infinite grid", e);
-        }
+    @Override
+    public String name() {
+        return "model-editor";
     }
 
     /**
@@ -861,9 +826,6 @@ public class ViewportRenderPipeline {
      * Clean up all render pipeline resources.
      */
     public void cleanup() {
-        if (gridRenderer.isInitialized()) {
-            gridRenderer.cleanup();
-        }
         if (vertexRenderer.isInitialized()) {
             vertexRenderer.cleanup();
         }

@@ -15,6 +15,7 @@ import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.FireBolt;
 import com.stonebreak.mobs.entities.LivingEntity;
+import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.effects.FireTrailParticles;
@@ -48,6 +49,9 @@ public final class WorldEffectsRenderer {
 
     /** Scratch list for the revealed-entity sweep, reused so the effect pass allocates nothing. */
     private final List<LivingEntity> revealedScratch = new ArrayList<>();
+
+    /** Scratch list of remote players included in the water effects, refilled per effect. */
+    private final List<RemotePlayer> remotePlayerScratch = new ArrayList<>();
 
     public WorldEffectsRenderer(ShaderProgram shaderProgram, Matrix4f projectionMatrix,
                                 EntityRenderer entityRenderer) {
@@ -139,20 +143,37 @@ public final class WorldEffectsRenderer {
         });
     }
 
-    /** The droplet burst thrown up when the player enters water. */
+    /**
+     * The droplet burst thrown up when a player enters water — the local player plus every
+     * replicated remote player, whose splash is driven off the same water state sent over the wire.
+     */
     private void renderWaterSplash(Player player) {
-        WaterSplashParticles splash = player.getSplashParticles();
-        if (splash.isEmpty()) {
+        collectRemotePlayersForWaterEffects();
+
+        WaterSplashParticles localSplash = player.getSplashParticles();
+        boolean anyParticles = !localSplash.isEmpty();
+        for (int i = 0; !anyParticles && i < remotePlayerScratch.size(); i++) {
+            anyParticles = !remotePlayerScratch.get(i).getSplashParticles().isEmpty();
+        }
+        if (!anyParticles) {
             return;
         }
+
         drawPointSprites(player.getViewMatrix(), GL_ONE_MINUS_SRC_ALPHA, emit -> {
-            for (WaterSplashParticles.SplashParticle particle : splash.snapshot()) {
-                Vector3f position = particle.getPosition();
-                // Pale blue-white droplets, fading out.
-                emit.point(position.x, position.y, position.z, particle.getSize(),
-                        0.8f, 0.9f, 1.0f, particle.getOpacity() * 0.9f);
+            emitSplash(localSplash, emit);
+            for (RemotePlayer remote : remotePlayerScratch) {
+                emitSplash(remote.getSplashParticles(), emit);
             }
         });
+    }
+
+    private static void emitSplash(WaterSplashParticles splash, PointEmitter emit) {
+        for (WaterSplashParticles.SplashParticle particle : splash.snapshot()) {
+            Vector3f position = particle.getPosition();
+            // Pale blue-white droplets, fading out.
+            emit.point(position.x, position.y, position.z, particle.getSize(),
+                    0.8f, 0.9f, 1.0f, particle.getOpacity() * 0.9f);
+        }
     }
 
     /**
@@ -161,11 +182,13 @@ public final class WorldEffectsRenderer {
      * overlapping ripples read as colliding rather than passing through each other.
      */
     private void renderWaterRipples(Player player) {
-        WaterRippleParticles ripples = player.getRippleParticles();
-        if (ripples.isEmpty()) {
-            return;
+        collectRemotePlayersForWaterEffects();
+
+        List<WaterRippleParticles.RipplePoint> points =
+                new ArrayList<>(player.getRippleParticles().snapshotPoints());
+        for (RemotePlayer remote : remotePlayerScratch) {
+            points.addAll(remote.getRippleParticles().snapshotPoints());
         }
-        List<WaterRippleParticles.RipplePoint> points = ripples.snapshotPoints();
         if (points.isEmpty()) {
             return;
         }
@@ -179,6 +202,24 @@ public final class WorldEffectsRenderer {
     }
 
     private static final float RIPPLE_POINT_SIZE = 4.0f;
+
+    /**
+     * Refills {@link #remotePlayerScratch} with the live remote players whose world-space water
+     * cosmetics this pass should draw. Called by each water effect immediately before it reads the
+     * list, so the two never share a stale sweep.
+     */
+    private void collectRemotePlayersForWaterEffects() {
+        remotePlayerScratch.clear();
+        EntityManager entities = Game.getEntityManager();
+        if (entities == null) {
+            return;
+        }
+        for (LivingEntity entity : entities.getLivingEntities()) {
+            if (entity instanceof RemotePlayer remote && remote.isAlive()) {
+                remotePlayerScratch.add(remote);
+            }
+        }
+    }
 
     /**
      * A through-terrain wireframe box around every living entity carrying the REVEALED status

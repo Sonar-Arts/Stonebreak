@@ -58,6 +58,31 @@ public final class Path {
         return new Path(points, complete);
     }
 
+    /**
+     * Converts an air search's chain of coarse cells into world-space waypoints at their centres.
+     *
+     * <p>No collinear collapse here: {@code AirNavDomain.stringPull} has already reduced the chain
+     * to the corners a flyer actually turns at, and it does a better job than a direction test
+     * because it knows which shortcuts are clear.
+     *
+     * @param complete whether the chain reaches the goal, as opposed to being the best effort
+     *                 toward one that could not be reached
+     */
+    public static Path ofCells(long[] nodes, int cellSize, boolean complete) {
+        if (nodes.length == 0) {
+            return EMPTY;
+        }
+        float half = cellSize * 0.5f;
+        float[] points = new float[nodes.length * 3];
+        for (int i = 0; i < nodes.length; i++) {
+            long node = nodes[i];
+            points[i * 3] = NavNodes.x(node) * cellSize + half;
+            points[i * 3 + 1] = NavNodes.y(node) * cellSize + half;
+            points[i * 3 + 2] = NavNodes.z(node) * cellSize + half;
+        }
+        return new Path(points, complete);
+    }
+
     public int size() {
         return points.length / 3;
     }

@@ -108,6 +108,15 @@ public class OMPSerializer {
             root.set("viewport", viewport);
         }
 
+        if (doc.scene() != null) {
+            ObjectNode scene = objectMapper.createObjectNode();
+            if (doc.scene().sceneFilePath() != null) {
+                scene.put("sceneFilePath", doc.scene().sceneFilePath());
+            }
+            scene.put("activeCenterTab", doc.scene().activeCenterTab());
+            root.set("scene", scene);
+        }
+
         if (doc.transform() != null) {
             ObjectNode transform = objectMapper.createObjectNode();
             transform.put("positionX", doc.transform().positionX());

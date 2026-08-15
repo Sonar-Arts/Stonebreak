@@ -4,7 +4,7 @@ import com.openmason.engine.rendering.model.MeshChangeListener;
 import com.openmason.engine.rendering.model.gmr.topology.MeshTopology;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.MeshOverlayTheme;
 import com.openmason.main.systems.viewport.state.EditModeManager;
-import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
+import com.openmason.engine.rendering.viewer.ViewerRenderContext;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.model.GenericModelRenderer;
 import org.joml.Matrix4f;
@@ -624,7 +624,7 @@ public class FaceRenderer implements MeshChangeListener {
      * @param pointShader VERTEX point shader for face dots
      */
     public void render(ShaderProgram lineShader, ShaderProgram fillShader, ShaderProgram pointShader,
-                       RenderContext context, Matrix4f modelMatrix) {
+                       ViewerRenderContext context, Matrix4f modelMatrix) {
         if (!initialized || !enabled || faceCount == 0) {
             return;
         }

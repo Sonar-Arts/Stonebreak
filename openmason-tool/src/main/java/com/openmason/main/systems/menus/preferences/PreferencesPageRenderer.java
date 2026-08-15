@@ -9,7 +9,7 @@ import com.openmason.main.systems.themes.core.ThemeDefinition;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.themes.utils.ImGuiComponents;
 import com.openmason.main.systems.ViewportController;
-import com.openmason.main.systems.viewport.util.SnappingUtil;
+import com.openmason.engine.rendering.viewer.math.SnappingUtil;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
@@ -68,12 +68,12 @@ public class PreferencesPageRenderer {
     private final ImInt gizmoDisplayModeIndex = new ImInt();
 
     private static final String[] GIZMO_DISPLAY_MODE_NAMES = {
-        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.MANUAL_TOGGLE.getDisplayName(),
-        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT.getDisplayName()
+        com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode.MANUAL_TOGGLE.getDisplayName(),
+        com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT.getDisplayName()
     };
-    private static final com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode[] GIZMO_DISPLAY_MODE_VALUES = {
-        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.MANUAL_TOGGLE,
-        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT
+    private static final com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode[] GIZMO_DISPLAY_MODE_VALUES = {
+        com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode.MANUAL_TOGGLE,
+        com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT
     };
 
     // Texture Editor ImGui state holders
@@ -310,6 +310,28 @@ public class PreferencesPageRenderer {
         );
     }
 
+    /**
+     * Camera sensitivities are user preferences, so they must reach every 3D surface —
+     * not just the model editor's viewport. Supplied by the shell because this renderer
+     * predates there being a second one.
+     */
+    private java.util.function.BiConsumer<Float, Float> sceneCameraSink;
+
+    public void setSceneCameraSink(java.util.function.BiConsumer<Float, Float> sink) {
+        this.sceneCameraSink = sink;
+    }
+
+    private void applyToSceneCamera(float orbitSpeed, float panSpeed) {
+        if (sceneCameraSink != null) {
+            sceneCameraSink.accept(orbitSpeed, panSpeed);
+        }
+    }
+
+    private float panSensitivityValue() {
+        return Math.max(MIN_PAN_SENSITIVITY,
+                Math.min(MAX_PAN_SENSITIVITY, cameraPanSensitivity.get()));
+    }
+
     private void applyModelEditorSettings() {
         // Camera orbit speed
         float orbitSpeed = Math.max(MIN_CAMERA_SENSITIVITY,
@@ -318,6 +340,7 @@ public class PreferencesPageRenderer {
         if (viewport != null && viewport.getCamera() != null) {
             viewport.getCamera().setMouseSensitivity(orbitSpeed);
         }
+        applyToSceneCamera(orbitSpeed, panSensitivityValue());
 
         // Camera pan speed
         float panSpeed = Math.max(MIN_PAN_SENSITIVITY,
@@ -326,6 +349,7 @@ public class PreferencesPageRenderer {
         if (viewport != null && viewport.getCamera() != null) {
             viewport.getCamera().setPanSensitivity(panSpeed);
         }
+        applyToSceneCamera(orbitSpeed, panSpeed);
 
         // Grid snapping increment
         int snapIndex = gridSnappingIncrementIndex.get();
@@ -354,7 +378,7 @@ public class PreferencesPageRenderer {
         // Gizmo display mode
         int modeIndex = gizmoDisplayModeIndex.get();
         if (modeIndex >= 0 && modeIndex < GIZMO_DISPLAY_MODE_VALUES.length) {
-            com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode mode =
+            com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode mode =
                     GIZMO_DISPLAY_MODE_VALUES[modeIndex];
             preferencesManager.setGizmoDisplayMode(mode);
             if (viewport != null) {
@@ -375,7 +399,7 @@ public class PreferencesPageRenderer {
         gridSnappingIncrementIndex.set(findGridSnappingIncrementIndex(0.0625f));
         vertexPointSize.set(5.0f);
         gizmoDisplayModeIndex.set(findGizmoDisplayModeIndex(
-                com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT));
+                com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT));
         logger.debug("Model Editor preferences reset to defaults (pending Apply)");
     }
 
@@ -395,13 +419,13 @@ public class PreferencesPageRenderer {
         }
 
         // Sync gizmo display mode
-        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode currentMode =
+        com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode currentMode =
                 preferencesManager.getGizmoDisplayMode();
         gizmoDisplayModeIndex.set(findGizmoDisplayModeIndex(currentMode));
     }
 
     private int findGizmoDisplayModeIndex(
-            com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode mode) {
+            com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode mode) {
         for (int i = 0; i < GIZMO_DISPLAY_MODE_VALUES.length; i++) {
             if (GIZMO_DISPLAY_MODE_VALUES[i] == mode) {
                 return i;

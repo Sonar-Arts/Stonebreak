@@ -74,8 +74,20 @@ public final class KeyCodeTranslator {
      * @return true if the key was pressed this frame
      */
     public static boolean isKeyPressed(int glfwKeyCode) {
+        return isKeyPressed(glfwKeyCode, true);
+    }
+
+    /**
+     * Variant with explicit auto-repeat control: {@code repeat = false} reports only the
+     * initial press of a held key, never the OS-repeat re-fires.
+     *
+     * @param glfwKeyCode the GLFW key code
+     * @param repeat      whether a held key re-fires at the key-repeat rate
+     * @return true if the key was pressed this frame
+     */
+    public static boolean isKeyPressed(int glfwKeyCode, boolean repeat) {
         int imguiKey = toImGuiKey(glfwKeyCode);
-        return imguiKey != ImGuiKey.None && imgui.ImGui.isKeyPressed(imguiKey);
+        return imguiKey != ImGuiKey.None && imgui.ImGui.isKeyPressed(imguiKey, repeat);
     }
 
     /**

@@ -65,9 +65,35 @@ public class RemotePlayer extends LivingEntity {
     private final com.stonebreak.mobs.sbe.OverlayAnimState attackOverlay =
         new com.stonebreak.mobs.sbe.OverlayAnimState();
 
-    public void setStateFlags(byte flags) { this.stateFlags = flags; }
+    /**
+     * Splash/ripple state mirrors {@link Player}'s (same particle classes), but is driven from
+     * the replicated {@code PARTIALLY_IN_WATER}/{@code SWIMMING} flags and position deltas
+     * instead of local block queries — a remote player has no water physics of its own.
+     */
+    private final com.stonebreak.rendering.effects.WaterSplashParticles splashParticles =
+        new com.stonebreak.rendering.effects.WaterSplashParticles();
+    private final com.stonebreak.rendering.effects.WaterRippleParticles rippleParticles =
+        new com.stonebreak.rendering.effects.WaterRippleParticles();
+    private boolean wasPartiallyInWaterLastFrame;
+    private boolean waterStateInitialized;
+    private float rippleSpawnTimer;
+    /**
+     * Set by the network thread the moment any real state packet lands; read by the render
+     * thread in {@link #updateWaterEffects} to distinguish "just entered water" from "this
+     * player was already in water before we ever saw them" (e.g. joining mid-swim) — until this
+     * is true, {@code stateFlags} is still its unset default and must not be edge-detected
+     * against.
+     */
+    private volatile boolean receivedFirstState;
+
+    public void setStateFlags(byte flags) {
+        this.stateFlags = flags;
+        receivedFirstState = true;
+    }
     public byte getStateFlags() { return stateFlags; }
     public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return attackOverlay; }
+    public com.stonebreak.rendering.effects.WaterSplashParticles getSplashParticles() { return splashParticles; }
+    public com.stonebreak.rendering.effects.WaterRippleParticles getRippleParticles() { return rippleParticles; }
 
     public RemotePlayer(World world, Vector3f position, int playerId, String username) {
         super(world, position, EntityType.REMOTE_PLAYER);
@@ -145,10 +171,13 @@ public class RemotePlayer extends LivingEntity {
      */
     protected void updateMovementAnimation(float deltaTime) {
         float dx = position.x - prevPosition.x;
+        float dy = position.y - prevPosition.y;
         float dz = position.z - prevPosition.z;
         float horizDist = (float) Math.sqrt(dx * dx + dz * dz);
         boolean moving = horizDist > WALK_THRESHOLD;
         prevPosition.set(position);
+
+        updateWaterEffects(deltaTime, dx, dy, dz);
 
         // Convert the replicated camera yaw to model space and drive the body/head
         // orientation from it plus the displacement-estimated velocity. Renderers read
@@ -181,6 +210,52 @@ public class RemotePlayer extends LivingEntity {
                 flags, com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING));
 
         animationController.updateAnimations(deltaTime);
+    }
+
+    /**
+     * Mirrors {@link Player}'s splash-on-entry / periodic-surface-ripple triggering
+     * ({@code Player.update}), but reads the replicated water flags and derives velocity from
+     * position deltas instead of local block queries.
+     */
+    private void updateWaterEffects(float deltaTime, float dx, float dy, float dz) {
+        byte flags = stateFlags;
+        boolean partiallyInWater = com.stonebreak.network.packet.player.PlayerStateFlags.has(
+                flags, com.stonebreak.network.packet.player.PlayerStateFlags.PARTIALLY_IN_WATER);
+        boolean eyesInWater = com.stonebreak.network.packet.player.PlayerStateFlags.has(
+                flags, com.stonebreak.network.packet.player.PlayerStateFlags.SWIMMING);
+
+        if (!waterStateInitialized) {
+            // First real state observed for this player: adopt it as the baseline instead of
+            // treating the unset-default→actual jump as an entry edge (avoids a spurious splash
+            // when joining/rendering a player who was already in water).
+            if (receivedFirstState) {
+                waterStateInitialized = true;
+                wasPartiallyInWaterLastFrame = partiallyInWater;
+            }
+        } else if (partiallyInWater && !wasPartiallyInWaterLastFrame && deltaTime > 0f) {
+            float impactSpeed = Math.max(0f, -dy / deltaTime);
+            splashParticles.burst(position, impactSpeed);
+            rippleParticles.spawn(position);
+            rippleSpawnTimer = 0f;
+        }
+        if (waterStateInitialized) {
+            wasPartiallyInWaterLastFrame = partiallyInWater;
+        }
+        splashParticles.update(deltaTime);
+
+        // Surface ripples while touching water but not submerged, same as Player.update.
+        if (partiallyInWater && !eyesInWater) {
+            float horizSpeed = deltaTime > 0f ? (float) Math.sqrt(dx * dx + dz * dz) / deltaTime : 0f;
+            rippleSpawnTimer += deltaTime;
+            if (horizSpeed > com.stonebreak.player.PlayerConstants.WATER_RIPPLE_SPEED_THRESHOLD
+                    && rippleSpawnTimer >= com.stonebreak.player.PlayerConstants.WATER_RIPPLE_SPAWN_INTERVAL) {
+                rippleParticles.spawn(position);
+                rippleSpawnTimer = 0f;
+            }
+        } else {
+            rippleSpawnTimer = 0f;
+        }
+        rippleParticles.update(deltaTime);
     }
 
     @Override

@@ -44,6 +44,18 @@ module openmason.engine {
     exports com.openmason.engine.rendering.shadow;
     exports com.openmason.engine.rendering.postfx;
     exports com.openmason.engine.rendering.postfx.effects;
+    exports com.openmason.engine.rendering.viewer;
+    exports com.openmason.engine.rendering.viewer.camera;
+    exports com.openmason.engine.rendering.viewer.gizmo;
+    exports com.openmason.engine.rendering.viewer.passes;
+    exports com.openmason.engine.rendering.viewer.scene;
+    exports com.openmason.engine.rendering.viewer.picking;
+    exports com.openmason.engine.rendering.viewer.gizmo.geometry;
+    exports com.openmason.engine.rendering.viewer.gizmo.interaction;
+    exports com.openmason.engine.rendering.viewer.gizmo.modes;
+    exports com.openmason.engine.rendering.viewer.gizmo.rendering;
+    exports com.openmason.engine.rendering.viewer.math;
+    exports com.openmason.engine.rendering.viewer.transform;
     exports com.openmason.engine.rendering.model;
     exports com.openmason.engine.rendering.model.gmr;
     exports com.openmason.engine.rendering.model.gmr.core;
@@ -120,6 +132,7 @@ module openmason.engine {
     exports com.openmason.engine.format.sbe;
     exports com.openmason.engine.format.sbt;
     exports com.openmason.engine.format.omo;
+    exports com.openmason.engine.format.omsc;
     exports com.openmason.engine.format.omt;
     exports com.openmason.engine.format.oma;
     exports com.openmason.engine.format.mesh;

@@ -121,8 +121,6 @@ public class Player {
     // Water surface ripples that trail the player while swimming
     private final WaterRippleParticles rippleParticles = new WaterRippleParticles();
     private float rippleSpawnTimer = 0f;
-    private static final float RIPPLE_SPAWN_INTERVAL = 0.35f;
-    private static final float RIPPLE_SPEED_THRESHOLD = 0.5f; // blocks/sec horizontal
 
     // Third-person body model
     public enum Perspective { FIRST_PERSON, THIRD_PERSON }
@@ -217,7 +215,8 @@ public class Player {
             Vector3f vel = state.getVelocity();
             float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
             rippleSpawnTimer += dt;
-            if (horizSpeed > RIPPLE_SPEED_THRESHOLD && rippleSpawnTimer >= RIPPLE_SPAWN_INTERVAL) {
+            if (horizSpeed > PlayerConstants.WATER_RIPPLE_SPEED_THRESHOLD
+                    && rippleSpawnTimer >= PlayerConstants.WATER_RIPPLE_SPAWN_INTERVAL) {
                 rippleParticles.spawn(state.getPosition());
                 rippleSpawnTimer = 0f;
             }
@@ -480,6 +479,8 @@ public class Player {
 
     // Water
     public boolean isInWater() { return swimming.isInWater(); }
+    /** Body touching water, even if eyes aren't submerged — replicated for remote splash/ripple triggering. */
+    public boolean isPhysicallyInWater() { return state.isPhysicallyInWater(); }
     public boolean justEnteredWaterThisFrame() { return state.justEnteredWaterThisFrame(); }
 
     public RaycastEngine getRaycastEngine() { return raycastEngine; }

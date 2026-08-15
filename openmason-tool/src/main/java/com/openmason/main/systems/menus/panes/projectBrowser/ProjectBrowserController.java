@@ -3,6 +3,7 @@ package com.openmason.main.systems.menus.panes.projectBrowser;
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry;
 import com.openmason.main.systems.menus.panes.projectBrowser.events.ModelSelectedEvent;
 import com.openmason.main.systems.menus.panes.projectBrowser.events.ProjectBrowserListener;
+import com.openmason.main.systems.menus.panes.projectBrowser.events.SceneSelectedEvent;
 import com.openmason.main.systems.menus.panes.projectBrowser.events.TextureSelectedEvent;
 import com.openmason.main.systems.menus.panes.projectBrowser.sorting.SortBy;
 import com.openmason.main.systems.menus.panes.projectBrowser.sorting.SortOrder;
@@ -127,6 +128,7 @@ public class ProjectBrowserController {
         switch (entry.type()) {
             case OMO -> selectModel(entry);
             case OMT -> selectTexture(entry);
+            case OMSC -> selectScene(entry);
         }
     }
 
@@ -146,6 +148,21 @@ public class ProjectBrowserController {
         } catch (Exception e) {
             logger.error("Failed to load .OMO file: {}", entry.name(), e);
             statusService.updateStatus("Error loading .OMO model: " + e.getMessage());
+        }
+    }
+
+    private void selectScene(AssetEntry entry) {
+        try {
+            state.setSelectedAssetInfo("Selected: " + entry.name() + " (" + entry.type().label() + ")");
+            statusService.updateStatus("Opening scene: " + entry.name());
+
+            SceneSelectedEvent event = new SceneSelectedEvent(entry);
+            for (ProjectBrowserListener l : listeners) {
+                l.onSceneSelected(event);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to handle .OMSC file: {}", entry.name(), e);
+            statusService.updateStatus("Error handling scene: " + e.getMessage());
         }
     }
 

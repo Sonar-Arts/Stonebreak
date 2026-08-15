@@ -100,6 +100,46 @@ class SteeringTest {
         assertEquals(-170.0f, normalizeDegrees(mob.getRotation().y), 0.1f);
     }
 
+    /**
+     * The signal a behaviour waits on before committing to a heading — a goose finishing its turn
+     * before it leaves the ground. It must agree with {@code faceDirection} about where "facing
+     * that way" is, offset included, or the wait either never ends or ends pointing wrong.
+     */
+    @Test
+    void yawErrorReportsHowFarIsLeftToTurn() {
+        StubMob mob = new StubMob(EntityType.GOOSE);
+        Steering steering = steeringFor(mob, 200.0f);
+
+        assertEquals(90.0f, steering.yawErrorTo(new Vector3f(1, 0, 0)), 1e-3f,
+                "a goose facing +Z is a quarter turn from +X");
+
+        steering.faceDirection(new Vector3f(1, 0, 0), 3600.0f, 1.0f);
+
+        assertEquals(0.0f, steering.yawErrorTo(new Vector3f(1, 0, 0)), 1e-3f,
+                "once turned, nothing is left to turn");
+    }
+
+    @Test
+    void yawErrorIsTheShortestArcAndNeverNegative() {
+        StubMob mob = new StubMob(EntityType.GOOSE);
+        Steering steering = steeringFor(mob, 200.0f);
+        mob.setRotation(new Vector3f(0, 170.0f, 0));
+
+        // Target yaw is -170: twenty degrees the short way, three hundred and forty the long way.
+        assertEquals(20.0f, steering.yawErrorTo(new Vector3f(-0.17365f, 0, -0.98481f)), 0.1f);
+    }
+
+    /** The offset lives in one place; the error query has to read it from there too. */
+    @Test
+    void yawErrorAccountsForTheModelYawOffset() {
+        StubMob cow = new StubMob(EntityType.COW);
+        Steering steering = steeringFor(cow, 200.0f);
+
+        // A cow model is authored facing −Z, so a cow at yaw 0 is already pointing along −Z.
+        assertEquals(0.0f, steering.yawErrorTo(new Vector3f(0, 0, -1)), 1e-3f);
+        assertEquals(180.0f, steering.yawErrorTo(new Vector3f(0, 0, 1)), 1e-3f);
+    }
+
     /** A crippled mob steers slower without every behaviour having to remember to ask. */
     @Test
     void statusEffectsScaleSteeringSpeed() {

@@ -22,6 +22,8 @@ import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.fastlod.FastLodManager;
 import com.stonebreak.world.fastlod.FastLodStore;
+import com.stonebreak.world.leaves.LeafDecaySystem;
+import com.stonebreak.world.leaves.WorldLeafWorld;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.nio.file.Path;
@@ -59,6 +61,7 @@ public class World {
     private final MmsMeshPipeline meshPipeline;
     private final ChunkErrorReporter errorReporter;
     private final WaterSim waterSim;
+    private final LeafDecaySystem leafDecay;
     private final com.stonebreak.world.generation.features.FeatureQueue featureQueue;
 
     // Lazily constructed once the render-thread hands us a texture atlas.
@@ -217,6 +220,7 @@ public class World {
             // Test mode: Minimal initialization for save/load testing
             this.neighborCoordinator = null;
             this.waterSim = new WaterSim(new WorldFlowWorld(this));
+            this.leafDecay = new LeafDecaySystem(new WorldLeafWorld(this));
             this.chunkManager = null;
             System.out.println("[TEST MODE] World created with seed: " + terrainSystem.getSeed() + " (rendering disabled)");
         } else {
@@ -235,6 +239,7 @@ public class World {
             }, config);
 
             this.waterSim = new WaterSim(new WorldFlowWorld(this));
+            this.leafDecay = new LeafDecaySystem(new WorldLeafWorld(this));
             this.chunkManager = new ChunkManager(this, config.getRenderDistance());
 
             System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + config.getChunkBuildThreads() + " mesh builder threads.");
@@ -249,6 +254,13 @@ public class World {
         this.chunkStore.setChunkListeners(chunk -> {
             if (!renderOnly) {
                 waterSim.onChunkLoaded(chunk);
+                // Leaf-decay rescan resumes collapses interrupted by eviction or
+                // quit. Only for chunks that already have their features: a
+                // freshly generated chunk has no trees yet at listener time
+                // (they populate later), so scanning it would find nothing.
+                if (chunk.areFeaturesPopulated()) {
+                    leafDecay.onChunkLoaded(chunk.getChunkX(), chunk.getChunkZ());
+                }
             }
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkLoaded(chunk);
@@ -272,6 +284,7 @@ public class World {
             // world-global map and must still purge everywhere (render-only clients
             // included) or they grow unbounded as streamed chunks come and go.
             waterSim.onChunkUnloaded(chunk);
+            leafDecay.onChunkUnloaded(chunk.getChunkX(), chunk.getChunkZ());
             snowLayerManager.onChunkUnloaded(chunk.getChunkX(), chunk.getChunkZ());
         });
     }
@@ -291,6 +304,7 @@ public class World {
         if (meshPipeline == null) return; // Test mode - skip rendering updates
 
         waterSim.tick(Game.getDeltaTime());
+        leafDecay.tick(Game.getDeltaTime());
         com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
         if (fr != null) fr.tick(this, Game.getDeltaTime());
         meshPipeline.requeueFailedChunks();
@@ -316,6 +330,7 @@ public class World {
     public void updateSimulation(float deltaTime) {
         long tickStart = System.nanoTime();
         waterSim.tick(deltaTime);
+        leafDecay.tick(deltaTime);
         com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
         if (fr != null) fr.tick(this, deltaTime);
         if (chunkStore != null) {
@@ -690,6 +705,7 @@ public class World {
         // streamed changes must not queue sim work (its layer is display-only).
         if (!renderOnly) {
             waterSim.onBlockChanged(x, y, z, previous, blockType);
+            leafDecay.onBlockChanged(x, y, z, previous, blockType);
         }
         animatedBlockRegistry.onBlockChanged(x, y, z, previous, blockType);
 
@@ -709,6 +725,11 @@ public class World {
     /** The water flow simulation engine (debug/inspection; state lives in the chunks). */
     public WaterSim getWaterSim() {
         return waterSim;
+    }
+
+    /** The leaf-decay simulation engine (debug/inspection). */
+    public LeafDecaySystem getLeafDecay() {
+        return leafDecay;
     }
 
     /** Per-world save service, or null if this world is not persisted (e.g. a client view). */

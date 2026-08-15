@@ -1,6 +1,6 @@
 package com.openmason.main.systems.viewport.input;
 
-import com.openmason.main.systems.viewport.ViewportCamera;
+import com.openmason.engine.rendering.viewer.camera.ViewerCamera;
 import com.openmason.main.systems.menus.textureCreator.keyboard.KeyCodeTranslator;
 import imgui.ImGui;
 import org.lwjgl.glfw.GLFW;
@@ -15,25 +15,25 @@ import org.slf4j.LoggerFactory;
  * - Camera panning via middle mouse button dragging (with mouse capture)
  * - Camera zooming via mouse wheel
  * - Keyboard movement (WASD, Space, Ctrl) for first-person mode
- * - Delegates camera operations to ViewportCamera
+ * - Delegates camera operations to ViewerCamera
  * - Uses MouseCaptureManager for endless dragging
  *
  * Design:
  * - Single Responsibility: Camera input only
- * - Delegation: ViewportCamera for camera operations, MouseCaptureManager for cursor
+ * - Delegation: ViewerCamera for camera operations, MouseCaptureManager for cursor
  * - Returns false always (camera never blocks input, lowest priority)
  */
 public class CameraInputController {
 
     private static final Logger logger = LoggerFactory.getLogger(CameraInputController.class);
 
-    private final ViewportCamera viewportCamera;
+    private final ViewerCamera viewportCamera;
     private final MouseCaptureManager mouseCaptureManager;
 
     private boolean isDragging = false;
     private boolean isPanning = false;
 
-    public CameraInputController(ViewportCamera viewportCamera, MouseCaptureManager mouseCaptureManager) {
+    public CameraInputController(ViewerCamera viewportCamera, MouseCaptureManager mouseCaptureManager) {
         this.viewportCamera = viewportCamera;
         this.mouseCaptureManager = mouseCaptureManager;
     }
@@ -96,7 +96,7 @@ public class CameraInputController {
      * @param deltaTime Time delta for frame-rate independent movement
      */
     public void handleKeyboardInput(float deltaTime) {
-        if (viewportCamera == null || viewportCamera.getCameraMode() != ViewportCamera.CameraMode.FIRST_PERSON) {
+        if (viewportCamera == null || viewportCamera.getCameraMode() != ViewerCamera.CameraMode.FIRST_PERSON) {
             return;
         }
 

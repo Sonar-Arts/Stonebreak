@@ -7,7 +7,7 @@ import com.openmason.main.systems.rendering.model.gmr.subrenders.MeshOverlayThem
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
 import com.openmason.engine.rendering.model.gmr.topology.MeshEdge;
 import com.openmason.engine.rendering.model.gmr.topology.MeshTopology;
-import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
+import com.openmason.engine.rendering.viewer.ViewerRenderContext;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.operations.EdgeSelectionManager;
 import com.openmason.engine.rendering.model.gmr.mesh.edgeOperations.MeshEdgeBufferUpdater;
 import com.openmason.engine.rendering.model.gmr.mesh.edgeOperations.MeshEdgeGeometryQuery;
@@ -337,7 +337,7 @@ public class EdgeRenderer implements MeshChangeListener {
      * @param context the render context containing camera matrices
      * @param modelMatrix the model transformation matrix (for gizmo transforms)
      */
-    public void render(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
+    public void render(ShaderProgram shader, ViewerRenderContext context, Matrix4f modelMatrix) {
         if (!initialized || !enabled || edgeCount == 0) {
             return;
         }

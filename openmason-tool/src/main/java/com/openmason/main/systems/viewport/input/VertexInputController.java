@@ -42,7 +42,7 @@ public class VertexInputController {
     private VertexRenderer vertexRenderer = null;
     private VertexSelectionState vertexSelectionState = null;
     private TranslationCoordinator translationCoordinator = null;
-    private com.openmason.main.systems.viewport.state.TransformState transformState = null;
+    private com.openmason.engine.rendering.viewer.transform.TransformState transformState = null;
     private GenericModelRenderer modelRenderer = null;
 
     // Undo/redo support
@@ -77,7 +77,7 @@ public class VertexInputController {
     /**
      * Set the transform state for model matrix access.
      */
-    public void setTransformState(com.openmason.main.systems.viewport.state.TransformState transformState) {
+    public void setTransformState(com.openmason.engine.rendering.viewer.transform.TransformState transformState) {
         this.transformState = transformState;
         logger.debug("Transform state set in VertexInputController");
     }

@@ -15,6 +15,7 @@ formats	openmason-engine	com/openmason/engine/format/**/*Test
 networking	openmason-engine	com/openmason/engine/net/**/*Test
 networking	stonebreak-game	com/stonebreak/network/**/*Test
 mesh-editing	openmason-engine	com/openmason/engine/rendering/model/**/*Test
+viewer	openmason-engine	com/openmason/engine/rendering/viewer/**/*Test
 cco	openmason-engine	com/openmason/engine/voxel/cco/**/*Test
 mms	openmason-engine	com/openmason/engine/voxel/mms/**/*Test
 sbo	openmason-engine	com/openmason/engine/voxel/sbo/**/*Test
@@ -35,6 +36,7 @@ player	stonebreak-game	com/stonebreak/player/**/*Test
 ui	stonebreak-game	com/stonebreak/ui/**/*Test,com/stonebreak/rendering/UI/**/*Test
 chunks	stonebreak-game	com/stonebreak/world/chunk/**/*Test,!com/stonebreak/world/chunk/api/**,!com/stonebreak/world/chunk/ChunkWaterLayerTest,!com/stonebreak/world/chunk/WaterMeshSplitTest,com/stonebreak/world/LoadingPerformanceIntegrationTest
 fastlod	stonebreak-game	com/stonebreak/world/fastlod/**/*Test,com/stonebreak/rendering/gameWorld/**/*Test
+leaves	stonebreak-game	com/stonebreak/world/leaves/**/*Test
 terrain-gen	stonebreak-game	com/stonebreak/world/generation/**/*Test
 persistence	stonebreak-game	com/stonebreak/world/save/**/*Test
 
@@ -44,4 +46,5 @@ anim-editor	openmason-tool	com/openmason/main/systems/menus/animationEditor/**/*
 tool-ui	openmason-tool	com/openmason/main/systems/menus/dialogs/**/*Test,com/openmason/main/systems/menus/textureCreator/**/*Test,com/openmason/main/systems/mortar/**/*Test
 scripting	openmason-tool	com/openmason/main/systems/scripting/**/*Test
 viewport	openmason-tool	com/openmason/main/systems/viewport/**/*Test
+scene	openmason-tool	com/openmason/main/systems/scene/**/*Test,com/openmason/main/systems/project/**/*Test
 tool-model	openmason-tool	com/openmason/main/systems/skeleton/**/*Test,com/openmason/main/systems/rendering/**/*Test

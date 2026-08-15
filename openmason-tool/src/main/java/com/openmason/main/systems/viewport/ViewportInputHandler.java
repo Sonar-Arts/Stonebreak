@@ -1,16 +1,17 @@
 package com.openmason.main.systems.viewport;
 
+import com.openmason.engine.rendering.viewer.camera.ViewerCamera;
 import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.KnifePreviewRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.ToolPreviewRenderer;
 import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.services.commands.RendererSynchronizer;
-import com.openmason.main.systems.viewport.viewportRendering.gizmo.rendering.GizmoRenderer;
+import com.openmason.engine.rendering.viewer.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.input.*;
 import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
-import com.openmason.main.systems.viewport.state.TransformState;
+import com.openmason.engine.rendering.viewer.transform.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.operations.EdgeInputController;
@@ -32,7 +33,7 @@ public class ViewportInputHandler {
     private static final Logger logger = LoggerFactory.getLogger(ViewportInputHandler.class);
 
     // Camera reference (legacy for compatibility)
-    private final ViewportCamera viewportCamera;
+    private final ViewerCamera viewportCamera;
 
     // Sub-controllers
     private final MouseCaptureManager mouseCaptureManager;
@@ -58,7 +59,7 @@ public class ViewportInputHandler {
     // hover/focus queries are invalid — prevents keyboard (e.g. WASD) bleed when another window has focus.
     private boolean lastViewportHovered = false;
 
-    public ViewportInputHandler(ViewportCamera viewportCamera) {
+    public ViewportInputHandler(ViewerCamera viewportCamera) {
         this.viewportCamera = viewportCamera;
 
         // Initialize sub-controllers

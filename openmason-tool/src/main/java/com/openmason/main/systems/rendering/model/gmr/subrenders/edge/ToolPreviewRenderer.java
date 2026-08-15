@@ -1,7 +1,7 @@
 package com.openmason.main.systems.rendering.model.gmr.subrenders.edge;
 
 import com.openmason.engine.rendering.shaders.ShaderProgram;
-import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
+import com.openmason.engine.rendering.viewer.ViewerRenderContext;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
@@ -127,7 +127,7 @@ public class ToolPreviewRenderer {
      * @param context Render context with camera matrices
      * @param modelMatrix Model transformation matrix
      */
-    public void render(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
+    public void render(ShaderProgram shader, ViewerRenderContext context, Matrix4f modelMatrix) {
         if (!initialized || !isActive()) {
             return;
         }

@@ -80,6 +80,12 @@ public class mainOpenMason {
     private ProjectHubScreen projectHubScreen;
     private MainImGuiInterface mainInterface;
     private ViewportImGuiInterface viewportInterface;
+    /** Second 3D surface: shares the centre dock node with the model editor's viewport. */
+    private com.openmason.main.systems.scene.SceneViewerImGuiInterface sceneViewerInterface;
+
+    /** Which centre tab is in front, recorded into the project file on save. */
+    private final com.openmason.main.systems.layout.CenterTabTracker centerTabTracker =
+            new com.openmason.main.systems.layout.CenterTabTracker();
     private TextureCreatorImGui textureCreatorInterface;
     private TextureEditorWindow textureEditorWindow;
     private AnimationEditorImGui animationEditor;
@@ -619,6 +625,88 @@ public class mainOpenMason {
             viewportInterface = new ViewportImGuiInterface(themeManager, new PreferencesManager());
             viewportInterface.setViewport3D(mainInterface.getViewport3D());
 
+            // Scene Viewer: peer of the model editor's viewport, with its own ModelViewer.
+            sceneViewerInterface = new com.openmason.main.systems.scene.SceneViewerImGuiInterface(
+                    mainInterface.getUIVisibilityState());
+            // A scene belongs to its project: drop it whenever the session changes.
+            mainInterface.setOnProjectSessionReset(
+                    () -> sceneViewerInterface.getSceneService().clearCurrentScene());
+
+            // Camera sensitivities are user preferences: apply them to both surfaces.
+            mainInterface.setSceneCameraPreferenceSink(
+                    (orbit, pan) -> sceneViewerInterface.applyCameraPreferences(orbit, pan));
+
+            sceneViewerInterface.setProjectRootSupplier(() -> {
+                String dir = mainInterface.getProjectDirectorySupplier().get();
+                return dir == null ? null : java.nio.file.Path.of(dir);
+            });
+            sceneViewerInterface.setOnEditModelRequested(omoPath -> {
+                mainInterface.getModelOperations().loadOMOModel(omoPath);
+                mainInterface.requestCenterTab(
+                        com.openmason.main.systems.viewport.views.ViewportMainView.WINDOW_TITLE);
+            });
+            // Scene open/save, routed through the shell so the project root is applied.
+            java.util.function.Supplier<java.nio.file.Path> sceneRoot = () -> {
+                String dir = mainInterface.getProjectDirectorySupplier().get();
+                return dir == null ? null : java.nio.file.Path.of(dir);
+            };
+            mainInterface.setOpenSceneCallback(path ->
+                    sceneViewerInterface.getSceneService().openScene(path.toString(), sceneRoot.get()));
+            mainInterface.setSceneActions(
+                    () -> sceneViewerInterface.getSceneService().newScene("Untitled Scene"),
+                    () -> mainInterface.getFileDialogService().showOpenOMSCDialog(path ->
+                            sceneViewerInterface.getSceneService().openScene(path, sceneRoot.get())),
+                    () -> {
+                        var svc = sceneViewerInterface.getSceneService();
+                        if (svc.hasCurrentScene()) {
+                            svc.saveScene(sceneRoot.get());
+                        } else {
+                            mainInterface.getFileDialogService().showSaveOMSCDialog(path ->
+                                    svc.saveSceneAs(path, sceneRoot.get()));
+                        }
+                    },
+                    () -> mainInterface.getFileDialogService().showSaveOMSCDialog(path ->
+                            sceneViewerInterface.getSceneService().saveSceneAs(path, sceneRoot.get())),
+                    () -> sceneViewerInterface.getSceneService().hasUnsavedChanges());
+
+            // Projects re-open the scene that was open when they were saved. Save side:
+            // record the open .omsc (project-relative) + the front centre tab into the
+            // .omp's scene node. Restore side: openProject hands the node back and the
+            // scene and tab come back. A dirty, already-saved scene is also written out
+            // alongside the project, the same way the active model is.
+            mainInterface.setSceneSessionHooks(
+                    () -> {
+                        var svc = sceneViewerInterface.getSceneService();
+                        java.nio.file.Path root = sceneRoot.get();
+                        String stored = svc.hasCurrentScene()
+                                ? com.openmason.main.systems.project.ProjectPaths
+                                        .relativize(root, svc.getCurrentScenePath())
+                                : null;
+                        return new com.openmason.main.systems.project.OMPFormat.SceneReference(
+                                stored, centerTabTracker.activeTab().name());
+                    },
+                    this::restoreSceneSession);
+            mainInterface.setSaveOpenSceneAction(() -> {
+                var svc = sceneViewerInterface.getSceneService();
+                if (svc.hasCurrentScene() && svc.hasUnsavedChanges()) {
+                    svc.saveScene(sceneRoot.get());
+                }
+            });
+
+            sceneViewerInterface.setOnAddModelRequested(() ->
+                    mainInterface.getFileDialogService().showOpenOMOInProjectDialog(path -> {
+                        try {
+                            var svc = sceneViewerInterface.getSceneService();
+                            var ref = svc.addModelFromFile(java.nio.file.Path.of(path), sceneRoot.get());
+                            String name = ref.sourceName() != null
+                                    ? ref.sourceName().replaceFirst("(?i)\\.omo$", "")
+                                    : "Instance";
+                            sceneViewerInterface.getActions().place(ref, name, 0, 0, 0);
+                        } catch (Exception e) {
+                            logger.error("Could not add model {}: {}", path, e.getMessage());
+                        }
+                    }));
+
             // Wire slideouts: rigging pane ↔ viewport tool pane (Add Part, Part Transform)
             if (mainInterface.getRiggingPane() != null) {
                 mainInterface.getRiggingPane().wireSlideouts(
@@ -806,6 +894,17 @@ public class mainOpenMason {
         if (showModelEditor) {
             renderComponent(mainInterface, deltaTime, "Main Interface");
             renderComponent(viewportInterface, deltaTime, "Viewport");
+            renderComponent(sceneViewerInterface, deltaTime, "Scene Viewer");
+
+            // Both centre views have reported visibility/focus by now; remember which
+            // tab is in front so a project save can record it.
+            if (viewportInterface != null && sceneViewerInterface != null) {
+                var sceneState = sceneViewerInterface.getUIState();
+                var modelState = viewportInterface.getViewportUIState();
+                centerTabTracker.noteFrame(
+                        sceneState.isSceneViewVisible(), sceneState.isSceneViewFocused(),
+                        modelState.isViewportWindowVisible(), modelState.isViewportFocused());
+            }
         }
 
         if (showTextureEditor) {
@@ -894,6 +993,9 @@ public class mainOpenMason {
             } else if (component instanceof ViewportImGuiInterface viewport) {
                 viewport.render();
                 viewport.update(deltaTime);
+            } else if (component instanceof com.openmason.main.systems.scene.SceneViewerImGuiInterface scene) {
+                scene.render();
+                scene.update(deltaTime);
             }
         }, name);
     }
@@ -953,6 +1055,9 @@ public class mainOpenMason {
         // First use of the base folder (or a per-project subfolder) — make sure
         // the directory chain exists before the pre-save writes the .omp.
         AppPaths.ensureDir(java.nio.file.Path.of(directory));
+        // Scenes live in their own subfolder; create it up front so the Scene Viewer's
+        // save dialog has somewhere sensible to default to.
+        com.openmason.main.systems.project.ProjectLayout.ensureScaffold(java.nio.file.Path.of(directory));
 
         transitionToMainInterface();
         boolean saved = mainInterface.saveNewProject(safeName, path);
@@ -974,6 +1079,38 @@ public class mainOpenMason {
             mainInterface.openProjectFromHub(project.getPath());
             logger.info("Opening project from hub: {}", project.getPath());
         }
+    }
+
+    /**
+     * Re-open the scene a project recorded as open, and put the centre tab back where the
+     * user left it. Runs from {@code ProjectService.openProject} after the document is
+     * restored; the outgoing project's scene was already dropped at the session boundary.
+     *
+     * <p>A null reference is a pre-1.2 project: the (already cleared) scene stays empty
+     * and the tabs are not moved, so upgrading users see no change.
+     */
+    private void restoreSceneSession(com.openmason.main.systems.project.OMPFormat.SceneReference ref) {
+        if (ref == null) {
+            return;
+        }
+        if (ref.sceneFilePath() != null && !ref.sceneFilePath().isBlank()) {
+            String dir = mainInterface.getProjectDirectorySupplier().get();
+            java.nio.file.Path root = dir == null ? null : java.nio.file.Path.of(dir);
+            String scenePath = com.openmason.main.systems.project.ProjectPaths
+                    .resolve(root, ref.sceneFilePath());
+            if (scenePath != null && java.nio.file.Files.exists(java.nio.file.Path.of(scenePath))) {
+                if (!sceneViewerInterface.getSceneService().openScene(scenePath, root)) {
+                    logger.warn("Could not re-open the project's scene: {}", scenePath);
+                }
+            } else {
+                logger.warn("Project references a scene that no longer exists: {} (resolved: {})",
+                        ref.sceneFilePath(), scenePath);
+            }
+        }
+        mainInterface.requestCenterTab(
+                com.openmason.main.systems.layout.CenterTab.resolve(
+                        ref.activeCenterTab(),
+                        com.openmason.main.systems.layout.CenterTab.MODEL_EDITOR).windowTitle());
     }
 
     /**
@@ -1108,6 +1245,7 @@ public class mainOpenMason {
         if (resource == null) return;
         try {
             if (resource instanceof ViewportImGuiInterface v) v.dispose();
+            else if (resource instanceof com.openmason.main.systems.scene.SceneViewerImGuiInterface s) s.dispose();
             else if (resource instanceof TextureCreatorImGui t) t.dispose();
             else if (resource instanceof ThemeManager tm) tm.dispose();
         } catch (Exception e) {

@@ -374,6 +374,21 @@ public final class BlockType implements Item, IBlockType {
     }
 
     /**
+     * True for log/trunk blocks — the blocks that anchor leaf canopies. A leaf is
+     * "supported" (won't decay) while it remains connected to one of these.
+     */
+    public boolean isLog() {
+        return this == WOOD || this == PINE || this == ELM_WOOD_LOG;
+    }
+
+    /**
+     * True for foliage blocks subject to decay when detached from a log.
+     */
+    public boolean isLeaves() {
+        return this == LEAVES || this == PINE_LEAVES || this == ELM_LEAVES;
+    }
+
+    /**
      * Texture atlas coordinates for the given face. Hardcoded for the legacy
      * 35 blocks; returns the default atlas coords for SBO-only blocks (the
      * SBO/CBR system handles per-face texturing for those).

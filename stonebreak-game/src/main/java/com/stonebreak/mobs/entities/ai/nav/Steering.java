@@ -148,6 +148,22 @@ public final class Steering {
         rotateTowardYaw(yawFor(direction), turnSpeedDegPerSec * deltaTime);
     }
 
+    /**
+     * How far the entity still has to turn to face {@code direction}, in degrees along the shortest
+     * arc. Always non-negative.
+     *
+     * <p>Exists so a behaviour can wait until a mob is actually pointing somewhere before acting —
+     * a goose finishing its turn before it leaves the ground — without re-deriving the target yaw
+     * itself. That derivation includes the model-yaw offset, which must stay in exactly one place:
+     * a second copy is how a mob ends up visually flying backwards.
+     */
+    public float yawErrorTo(Vector3f direction) {
+        float delta = yawFor(direction) - entity.getRotation().y;
+        while (delta > 180.0f) delta -= 360.0f;
+        while (delta < -180.0f) delta += 360.0f;
+        return Math.abs(delta);
+    }
+
     /** World yaw (degrees) that points the entity's model along {@code direction}. */
     private float yawFor(Vector3f direction) {
         return (float) Math.toDegrees(Math.atan2(direction.x, direction.z))

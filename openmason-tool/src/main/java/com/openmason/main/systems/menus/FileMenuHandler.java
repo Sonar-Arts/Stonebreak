@@ -103,6 +103,41 @@ public class FileMenuHandler {
     /**
      * Set project service for project-level save/load operations.
      */
+    // Scene actions, supplied by the app so this handler need not know the scene layer.
+    private Runnable onNewScene;
+    private Runnable onOpenScene;
+    private Runnable onSaveScene;
+    private Runnable onSaveSceneAs;
+    private java.util.function.BooleanSupplier sceneDirtySupplier;
+
+    /**
+     * Fired just before a different project is opened, so the scene layer can drop the
+     * outgoing project's scene. Separate from {@link #onProjectPathChanged}: that one
+     * also fires on Save As, where the session continues and the scene must survive.
+     */
+    private Runnable onProjectSessionBoundary;
+
+    /** Saves the open scene alongside the project, the way {@link #saveActiveModel} saves the model. */
+    private Runnable onSaveOpenScene;
+
+    public void setSceneActions(Runnable newScene, Runnable openScene,
+                                Runnable saveScene, Runnable saveSceneAs,
+                                java.util.function.BooleanSupplier sceneDirty) {
+        this.onNewScene = newScene;
+        this.onOpenScene = openScene;
+        this.onSaveScene = saveScene;
+        this.onSaveSceneAs = saveSceneAs;
+        this.sceneDirtySupplier = sceneDirty;
+    }
+
+    public void setOnProjectSessionBoundary(Runnable callback) {
+        this.onProjectSessionBoundary = callback;
+    }
+
+    public void setOnSaveOpenScene(Runnable callback) {
+        this.onSaveOpenScene = callback;
+    }
+
     public void setProjectService(ProjectService projectService) {
         this.projectService = projectService;
     }
@@ -179,6 +214,26 @@ public class FileMenuHandler {
 
         ImGui.separator();
 
+        // --- Scene ---
+        if (ImGui.menuItem("New Scene")) {
+            if (onNewScene != null) onNewScene.run();
+        }
+
+        if (ImGui.menuItem("Open Scene...")) {
+            if (onOpenScene != null) onOpenScene.run();
+        }
+
+        boolean sceneDirty = sceneDirtySupplier != null && sceneDirtySupplier.getAsBoolean();
+        if (ImGui.menuItem("Save Scene", "", false, sceneDirty)) {
+            if (onSaveScene != null) onSaveScene.run();
+        }
+
+        if (ImGui.menuItem("Save Scene As...")) {
+            if (onSaveSceneAs != null) onSaveSceneAs.run();
+        }
+
+        ImGui.separator();
+
         // --- Save (Project) ---
         boolean hasProject = projectService != null && projectService.hasCurrentProject();
         if (ImGui.menuItem("Save Project", "", false, hasProject)) {
@@ -226,6 +281,11 @@ public class FileMenuHandler {
         }
 
         fileDialogService.showOpenOMPDialog(filePath -> {
+            // Drop the outgoing project's scene BEFORE opening: its models resolve
+            // against the old root, and openProject restores the new project's own scene.
+            if (onProjectSessionBoundary != null) {
+                onProjectSessionBoundary.run();
+            }
             boolean success = projectService.openProject(filePath, viewport, modelState,
                     uiVisibilityState, modelOperations);
             if (success) {
@@ -248,8 +308,9 @@ public class FileMenuHandler {
             return;
         }
 
-        // Save the active .OMO model alongside the project
+        // Save the active .OMO model and the open scene alongside the project
         saveActiveModel();
+        saveOpenScene();
 
         boolean success = projectService.saveProject(viewport, modelState, uiVisibilityState);
         if (success) {
@@ -271,8 +332,9 @@ public class FileMenuHandler {
         }
 
         fileDialogService.showSaveOMPDialog(filePath -> {
-            // Save the active .OMO model alongside the project
+            // Save the active .OMO model and the open scene alongside the project
             saveActiveModel();
+            saveOpenScene();
 
             boolean success = projectService.saveProjectAs(filePath, viewport, modelState,
                     uiVisibilityState, null);
@@ -294,6 +356,17 @@ public class FileMenuHandler {
         if (modelOperations != null && modelState.canSaveModel()) {
             modelOperations.saveModel();
             logger.debug("Active model saved alongside project");
+        }
+    }
+
+    /**
+     * Save the open scene if the app wired a handler for it. The handler decides whether
+     * there is anything to save (a dirty scene that already has a file); a never-saved
+     * scene is left alone rather than interrupting the project save with a dialog.
+     */
+    private void saveOpenScene() {
+        if (onSaveOpenScene != null) {
+            onSaveOpenScene.run();
         }
     }
 

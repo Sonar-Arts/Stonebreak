@@ -16,6 +16,8 @@ import java.nio.file.Paths;
  */
 public class LayoutService {
 
+    private com.openmason.main.systems.layout.MainLayoutBuilder layoutBuilder;
+
     private static final Logger logger = LoggerFactory.getLogger(LayoutService.class);
 
     private final UIVisibilityState uiState;
@@ -36,18 +38,21 @@ public class LayoutService {
 
         uiState.resetToDefault();
 
-        // Reset ImGui docking layout by deleting imgui.ini
-        try {
-            Path iniPath = Paths.get("openmason-tool/imgui.ini");
-            if (Files.exists(iniPath)) {
-                Files.delete(iniPath);
-                logger.info("Deleted ImGui layout configuration for reset");
-            }
-            statusService.updateStatus("Layout reset - restart application to see changes");
-        } catch (Exception e) {
-            logger.error("Failed to reset layout", e);
-            statusService.updateStatus("Failed to reset layout: " + e.getMessage());
+        // Rebuild the dock layout on the next frame rather than deleting imgui.ini.
+        // Deleting it did not actually work: ImGui rewrites the file from its in-memory
+        // state on exit, so the layout came back — and it forced a restart for no reason.
+        if (layoutBuilder != null) {
+            layoutBuilder.requestReset();
+            statusService.updateStatus("Layout reset to default");
+        } else {
+            logger.warn("No layout builder wired; cannot reset the dock layout");
+            statusService.updateStatus("Layout reset unavailable");
         }
+    }
+
+    /** Supplied by the shell so a reset can rebuild the dockspace in place. */
+    public void setLayoutBuilder(com.openmason.main.systems.layout.MainLayoutBuilder builder) {
+        this.layoutBuilder = builder;
     }
 
     /**

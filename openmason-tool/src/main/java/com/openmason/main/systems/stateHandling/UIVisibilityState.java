@@ -10,6 +10,13 @@ import imgui.type.ImBoolean;
 public class UIVisibilityState implements HelpWindowVisibilityState {
 
     private final ImBoolean showModelBrowser = new ImBoolean(true);
+
+    // Scene Viewer surfaces. showSceneViewer has a flag (unlike the 3D Viewport) so the
+    // View menu can hide it, but fullscreen-viewport deliberately leaves it alone —
+    // hiding both centre tabs would strand the central dock node empty.
+    private final ImBoolean showSceneViewer = new ImBoolean(true);
+    private final ImBoolean showSceneOutliner = new ImBoolean(true);
+    private final ImBoolean showSceneInspector = new ImBoolean(true);
     private final ImBoolean showPropertyPanel = new ImBoolean(true);
     private final ImBoolean showRiggingPane = new ImBoolean(true);
     private final ImBoolean showToolbar = new ImBoolean(true);
@@ -128,4 +135,12 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
             showToolbar.set(true);
         }
     }
+
+    public ImBoolean getShowSceneViewer() { return showSceneViewer; }
+    public ImBoolean getShowSceneOutliner() { return showSceneOutliner; }
+    public ImBoolean getShowSceneInspector() { return showSceneInspector; }
+
+    public void toggleSceneViewer() { showSceneViewer.set(!showSceneViewer.get()); }
+    public void toggleSceneOutliner() { showSceneOutliner.set(!showSceneOutliner.get()); }
+    public void toggleSceneInspector() { showSceneInspector.set(!showSceneInspector.get()); }
 }

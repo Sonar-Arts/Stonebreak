@@ -243,7 +243,7 @@ public class ModelOperationService {
 
             // Extract and set model-level transform (v1.4+)
             if (viewport != null) {
-                com.openmason.main.systems.viewport.state.TransformState ts = viewport.getTransformState();
+                com.openmason.engine.rendering.viewer.transform.TransformState ts = viewport.getTransformState();
                 OMOFormat.ModelTransform modelTransform = new OMOFormat.ModelTransform(
                         ts.getPositionX(), ts.getPositionY(), ts.getPositionZ(),
                         ts.getRotationX(), ts.getRotationY(), ts.getRotationZ(),
@@ -405,7 +405,7 @@ public class ModelOperationService {
                 // Restore model-level transform (v1.4+)
                 OMOFormat.ModelTransform modelTransform = omoDeserializer.getLastLoadedModelTransform();
                 if (modelTransform != null && viewport != null) {
-                    com.openmason.main.systems.viewport.state.TransformState ts = viewport.getTransformState();
+                    com.openmason.engine.rendering.viewer.transform.TransformState ts = viewport.getTransformState();
                     ts.setPosition(modelTransform.posX(), modelTransform.posY(), modelTransform.posZ());
                     ts.setRotation(modelTransform.rotX(), modelTransform.rotY(), modelTransform.rotZ());
                     ts.setScale(modelTransform.scaleX(), modelTransform.scaleY(), modelTransform.scaleZ());
