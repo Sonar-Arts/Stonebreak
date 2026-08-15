@@ -31,38 +31,55 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * still reach the surface, still count toward cave volume. Only their variety would be gone,
  * and variety is not something a volume metric can see.
  *
- * <p>Method: find ravines with no other ravine near enough to overlap them, carve each one on
- * its own, and reduce it to three shape descriptors that are independent of how big it is.
- * The assertion is on the <em>spread</em> of each descriptor across the sample — a coefficient
- * of variation — because that is the property being defended. A generator making one shape at
- * many sizes scores near zero on all three.
+ * <p>Method: carve ravines one at a time through
+ * {@link RavineCarver#carveMaskForChunkFrom}, and reduce each to four shape descriptors that
+ * are independent of how big it is. The assertion is on the <em>spread</em> of each descriptor
+ * across the sample — a coefficient of variation — because that is the property being
+ * defended. A generator making one shape at many sizes scores near zero on all four.
+ *
+ * <p>Carving each ravine by name, rather than picking ones that happen to have no neighbour
+ * within reach and carving the neighbourhood wholesale, is not a convenience. Ravines are rare
+ * and reach {@link RavineCarver#SCAN_RADIUS} chunks, so "no other ravine in range" is a
+ * coincidence that a sweep of any practical size no longer turns up even once.
  */
 public class RavineShapeVarietyTest {
 
     private static final long SEED = 12345L;
     private static final int CHUNK = WorldConfiguration.CHUNK_SIZE;
 
-    /** How far the search sweeps, and how many isolated ravines it needs to find. */
-    private static final int SEARCH_CHUNKS = 300;
-    private static final int MIN_SAMPLES = 5;
+    /** How far the search sweeps, and how many ravines it needs to find. */
+    private static final int SEARCH_CHUNKS = 400;
+    private static final int MIN_SAMPLES = 10;
 
-    /**
-     * Chunk radius that must be free of other ravines for a sample to count, and the radius
-     * carved around it. A ravine reaches at most {@link RavineCarver#SCAN_RADIUS} chunks, so
-     * this keeps a sample's voxels its own.
-     */
-    private static final int ISOLATION_CHUNKS = 10;
+    /** Radius carved around a sample's anchor: everything the ravine can possibly reach. */
+    private static final int MEASURE_CHUNKS = RavineCarver.SCAN_RADIUS;
 
     /**
      * Minimum coefficient of variation (stddev / mean) per descriptor.
      *
      * <p>Set well under what the current draws produce — this is a floor against the
      * mechanism being switched off, not a target to tune against. Measured at the time of
-     * writing: depth 0.16, elongation 0.32, wall profile 0.21.
+     * writing: depth 0.49, elongation 0.43, wall profile 0.16, lean 1.17.
      */
     private static final double MIN_DEPTH_CV = 0.10;
     private static final double MIN_ELONGATION_CV = 0.20;
     private static final double MIN_WALL_PROFILE_CV = 0.10;
+    private static final double MIN_LEAN_CV = 0.30;
+
+    /**
+     * At least one sample must lean this far — {@code cot(dip)}, so 0.30 is a dip of 73&deg;.
+     *
+     * <p>The CV above catches the dip draw being collapsed to a constant, but not the case
+     * that matters most: every sample coming out near-vertical with only noise between them,
+     * which is what a retune that quietly raised the floor of the dip range would produce.
+     * The spread would survive; the feature would not.
+     *
+     * <p>Measured 0.71 (a 54&deg; dip) at the time of writing. Note that the draw is biased
+     * hard toward vertical, so the shallowest few degrees of the range are not expected to
+     * show up in a sample this size — this is a floor on "some ravine visibly slants", not on
+     * reaching {@code DIP_MIN_DEG}.
+     */
+    private static final double MIN_PEAK_LEAN = 0.30;
 
     @Test
     public void ravinesDifferInShapeAndNotOnlyInSize() {
@@ -70,9 +87,9 @@ public class RavineShapeVarietyTest {
         RavineCarver carver = new RavineCarver(SEED, new HeightMapGenerator(src));
 
         List<Shape> shapes = new ArrayList<>();
-        for (int cx = 0; cx < SEARCH_CHUNKS && shapes.size() < MIN_SAMPLES + 3; cx++) {
-            for (int cz = 0; cz < SEARCH_CHUNKS && shapes.size() < MIN_SAMPLES + 3; cz++) {
-                if (!carver.hasRavine(cx, cz) || !isIsolated(carver, cx, cz)) {
+        for (int cx = 0; cx < SEARCH_CHUNKS && shapes.size() < MIN_SAMPLES; cx++) {
+            for (int cz = 0; cz < SEARCH_CHUNKS && shapes.size() < MIN_SAMPLES; cz++) {
+                if (!carver.hasRavine(cx, cz)) {
                     continue;
                 }
                 Shape shape = measure(carver, cx, cz);
@@ -83,19 +100,31 @@ public class RavineShapeVarietyTest {
         }
 
         assertTrue(shapes.size() >= MIN_SAMPLES, "found only " + shapes.size()
-                + " isolated ravines to measure; needed " + MIN_SAMPLES);
+                + " ravines to measure; needed " + MIN_SAMPLES);
 
         System.out.println("[ravines] shape descriptors per sample:");
         for (Shape s : shapes) {
-            System.out.printf("  depth %.1f  elongation %.2f  wall profile %.2f  (%d voxels)%n",
-                    s.depth, s.elongation, s.wallProfile, s.voxels);
+            System.out.printf("  depth %.1f  elongation %.2f  wall profile %.2f  lean %.2f "
+                            + "(dip %.0f deg)  (%d voxels)%n",
+                    s.depth, s.elongation, s.wallProfile, s.lean,
+                    Math.toDegrees(Math.atan2(1.0, s.lean)), s.voxels);
         }
 
         double depthCv = cv(shapes.stream().mapToDouble(s -> s.depth).toArray());
         double elongationCv = cv(shapes.stream().mapToDouble(s -> s.elongation).toArray());
         double wallProfileCv = cv(shapes.stream().mapToDouble(s -> s.wallProfile).toArray());
+        double leanCv = cv(shapes.stream().mapToDouble(s -> s.lean).toArray());
+        double peakLean = shapes.stream().mapToDouble(s -> s.lean).max().orElse(0);
         System.out.printf("[ravines] spread over %d samples: depth %.2f, elongation %.2f, "
-                + "wall profile %.2f%n", shapes.size(), depthCv, elongationCv, wallProfileCv);
+                        + "wall profile %.2f, lean %.2f (peak lean %.2f)%n",
+                shapes.size(), depthCv, elongationCv, wallProfileCv, leanCv, peakLean);
+
+        assertTrue(leanCv >= MIN_LEAN_CV, String.format(
+                "ravine lean varies by only %.2f (need %.2f) — they are all driving into the "
+                        + "ground at the same angle", leanCv, MIN_LEAN_CV));
+        assertTrue(peakLean >= MIN_PEAK_LEAN, String.format(
+                "the most slanted ravine in the sample leans only %.2f (need %.2f) — every one "
+                        + "of them is cutting essentially straight down", peakLean, MIN_PEAK_LEAN));
 
         assertTrue(depthCv >= MIN_DEPTH_CV, String.format(
                 "ravine depth profiles vary by only %.2f (need %.2f) — every ravine is cutting "
@@ -109,26 +138,22 @@ public class RavineShapeVarietyTest {
                 MIN_WALL_PROFILE_CV));
     }
 
-    private static boolean isIsolated(RavineCarver carver, int cx, int cz) {
-        for (int dx = -ISOLATION_CHUNKS; dx <= ISOLATION_CHUNKS; dx++) {
-            for (int dz = -ISOLATION_CHUNKS; dz <= ISOLATION_CHUNKS; dz++) {
-                if ((dx != 0 || dz != 0) && carver.hasRavine(cx + dx, cz + dz)) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
     /** Carves one ravine alone and reduces it to scale-free shape descriptors. */
     private static Shape measure(RavineCarver carver, int scx, int scz) {
-        int r = ISOLATION_CHUNKS;
+        int r = MEASURE_CHUNKS;
         int size = (2 * r + 1) * CHUNK;
         int[] minY = new int[size * size];
         int[] maxY = new int[size * size];
         Arrays.fill(minY, Integer.MAX_VALUE);
         Arrays.fill(maxY, -1);
         long voxels = 0;
+
+        // Per-level voxel moments, for the lean descriptor. Slicing the solid by height and
+        // keeping only sums is what lets a whole ravine be measured without ever holding one.
+        int[] levelCount = new int[WorldConfiguration.WORLD_HEIGHT];
+        double[] levelX = new double[WorldConfiguration.WORLD_HEIGHT];
+        double[] levelZ = new double[WorldConfiguration.WORLD_HEIGHT];
+        double sumX = 0, sumZ = 0, sumXX = 0, sumXZ = 0, sumZZ = 0;
 
         int[] heights = new int[CHUNK * CHUNK];
         int[] water = new int[CHUNK * CHUNK];
@@ -144,7 +169,7 @@ public class RavineShapeVarietyTest {
                                 DryHillsTileSource.height(cx * CHUNK + lx, cz * CHUNK + lz);
                     }
                 }
-                BitSet mask = carver.carveMaskForChunk(cx, cz, heights, water);
+                BitSet mask = carver.carveMaskForChunkFrom(scx, scz, cx, cz, heights, water);
                 for (int b = mask.nextSetBit(0); b >= 0; b = mask.nextSetBit(b + 1)) {
                     int gx = (dcx + r) * CHUNK + LocalBlockKey.x(b);
                     int gz = (dcz + r) * CHUNK + LocalBlockKey.z(b);
@@ -152,6 +177,13 @@ public class RavineShapeVarietyTest {
                     int y = LocalBlockKey.y(b);
                     minY[i] = Math.min(minY[i], y);
                     maxY[i] = Math.max(maxY[i], y);
+                    levelCount[y]++;
+                    levelX[y] += gx;
+                    levelZ[y] += gz;
+                    sumX += gx; sumZ += gz;
+                    sumXX += (double) gx * gx;
+                    sumXZ += (double) gx * gz;
+                    sumZZ += (double) gz * gz;
                     voxels++;
                 }
             }
@@ -202,8 +234,69 @@ public class RavineShapeVarietyTest {
         shape.depth = meanDepth;
         shape.elongation = Math.max(spanX, spanZ) / (double) Math.min(spanX, spanZ);
         shape.wallProfile = Math.sqrt(depthVariance) / meanDepth;
+        shape.lean = lean(levelCount, levelX, levelZ, voxels,
+                sumX, sumZ, sumXX, sumXZ, sumZZ);
         shape.voxels = voxels;
         return shape;
+    }
+
+    /**
+     * How far the cut travels sideways per block it rises — {@code cot(dip)}, 0 for the
+     * straight-down chasm the carver used to make exclusively.
+     *
+     * <p>Measured as the horizontal offset between the centroid of the lowest quarter of the
+     * ravine's voxels and that of the highest quarter, over their vertical separation.
+     *
+     * <p>The projection onto the footprint's <em>minor</em> axis is the part that has to be
+     * right. A ravine is long, and two mechanisms already push its deep end along its length:
+     * the arm split and the floor {@code tilt}. Both act along the major axis, so an
+     * unprojected offset would read them as lean and this would score high on a perfectly
+     * vertical ravine. The lean is perpendicular to the path by construction, which is the
+     * minor axis — so projecting there keeps the two apart.
+     */
+    private static double lean(int[] levelCount, double[] levelX, double[] levelZ, long voxels,
+                               double sumX, double sumZ,
+                               double sumXX, double sumXZ, double sumZZ) {
+        double n = voxels;
+        double cxx = sumXX / n - (sumX / n) * (sumX / n);
+        double czz = sumZZ / n - (sumZ / n) * (sumZ / n);
+        double cxz = sumXZ / n - (sumX / n) * (sumZ / n);
+        // Major axis of the footprint; the minor is its perpendicular.
+        double major = 0.5 * Math.atan2(2 * cxz, cxx - czz);
+        double mx = -Math.sin(major);
+        double mz = Math.cos(major);
+
+        long quarter = Math.max(1, voxels / 4);
+        double[] low = quartileCentroid(levelCount, levelX, levelZ, quarter, true);
+        double[] high = quartileCentroid(levelCount, levelX, levelZ, quarter, false);
+        double dy = high[2] - low[2];
+        if (dy < 1e-6) {
+            return 0;
+        }
+        return Math.abs((high[0] - low[0]) * mx + (high[1] - low[1]) * mz) / dy;
+    }
+
+    /** Centroid {x, z, y} of the lowest or highest {@code want} voxels, by level. */
+    private static double[] quartileCentroid(int[] levelCount, double[] levelX, double[] levelZ,
+                                             long want, boolean fromBottom) {
+        double ax = 0, az = 0, ay = 0;
+        long taken = 0;
+        for (int i = 0; i < levelCount.length && taken < want; i++) {
+            int y = fromBottom ? i : levelCount.length - 1 - i;
+            int available = levelCount[y];
+            if (available == 0) {
+                continue;
+            }
+            // Levels are taken whole until the last one, which is prorated so the split lands
+            // exactly on the quartile rather than on whichever level happens to straddle it.
+            double share = Math.min(available, want - taken) / (double) available;
+            ax += levelX[y] * share;
+            az += levelZ[y] * share;
+            ay += (double) y * available * share;
+            taken += Math.min(available, want - taken);
+        }
+        return taken == 0 ? new double[] {0, 0, 0}
+                : new double[] {ax / taken, az / taken, ay / taken};
     }
 
     private static double cv(double[] values) {
@@ -224,6 +317,8 @@ public class RavineShapeVarietyTest {
         double elongation;
         /** Within-ravine spread of column depth — sheer slot versus flared, tapering V. */
         double wallProfile;
+        /** Sideways travel per block of rise — {@code cot(dip)}. 0 is a vertical cut. */
+        double lean;
         long voxels;
     }
 }

@@ -31,11 +31,17 @@ public class CaveReachabilityTest {
     /**
      * Region swept, in chunks per side.
      *
-     * <p>Sized by the rarest feature, not by convenience. Ravines spawn 1-in-110 chunks and
-     * reach only ~65 blocks from their anchor, so a 4x4 region contains one well under half
+     * <p>Sized by the rarest feature, not by convenience. That used to be the ravine, at
+     * 1-in-110 chunks and ~65 blocks of reach, which a 4x4 region contained well under half
      * the time — and a reachability number that depends on whether a ravine happened to land
-     * is not a measurement, it is a coin flip. 10x10 makes it ~1 expected inside the region
-     * and more within reach of its edges.
+     * is not a measurement, it is a coin flip.
+     *
+     * <p>Ravines are now 1-in-450, so no region of any practical size reliably contains one,
+     * and this is deliberately no longer sized for them. What makes that acceptable is that
+     * they stopped being load-bearing here: they can drive into the ground at an angle, and a
+     * slanted ravine breaks the surface along a long stripe rather than a single mouth, so the
+     * surface-opening rate went *up* across this change (3.0% to 5.3% of columns) even as the
+     * count went down. The region is sized for the sinkhole and worm population instead.
      */
     private static final int REGION = 10;
 
