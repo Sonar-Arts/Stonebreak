@@ -39,6 +39,9 @@ public final class TerrainFooterRenderer {
         drawStatusText(canvas, ui, footer);
     }
 
+    /** Number of buttons anchored to the footer's left edge (Back, Character). */
+    private static final int LEFT_BUTTON_COUNT = 2;
+
     private void positionButtons(Rect footer) {
         float y = footer.y() + (footer.height() - TerrainMapperConfig.FOOTER_BUTTON_HEIGHT) / 2f;
         float right = footer.right() - TerrainMapperConfig.FOOTER_BUTTON_GAP;
@@ -58,8 +61,10 @@ public final class TerrainFooterRenderer {
         float textY = footer.y() + footer.height() / 2f + 4f;
 
         String modeLabel = "Mode: " + state.getActiveVisualizer().displayName();
-        float modeX = footer.x() + TerrainMapperConfig.FOOTER_BUTTON_WIDTH
-                + TerrainMapperConfig.FOOTER_BUTTON_GAP * 2f;
+        // Start past every left-anchored button so the text never overlaps them.
+        float modeX = footer.x() + TerrainMapperConfig.FOOTER_BUTTON_GAP
+                + LEFT_BUTTON_COUNT * (TerrainMapperConfig.FOOTER_BUTTON_WIDTH
+                        + TerrainMapperConfig.FOOTER_BUTTON_GAP);
         MPainter.drawString(canvas, modeLabel, modeX, textY - 10f, meta, MStyle.TEXT_SECONDARY);
 
         if (state.hasHoverValue()) {

@@ -23,6 +23,9 @@ import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.heightmap.CavernCarver;
 import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
 import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
+import com.stonebreak.world.generation.heightmap.RavineCarver;
+import com.stonebreak.world.generation.heightmap.SinkholeCarver;
+import com.stonebreak.world.generation.noise.TerrainNoise;
 import com.stonebreak.world.generation.water.NativeWaterTiles;
 
 import java.util.BitSet;
@@ -51,6 +54,8 @@ public class TerrainGenerationSystem {
     private final PerlinWormCarver wormCarver;
     private final CavernCarver cavernCarver;
     private final MegaCavernCarver megaCavernCarver;
+    private final RavineCarver ravineCarver;
+    private final SinkholeCarver sinkholeCarver;
 
     private final Random animalRandom = new Random();
     private final Object animalRandomLock = new Object();
@@ -104,12 +109,16 @@ public class TerrainGenerationSystem {
         this.oreGenerator = new OreGenerator(deterministicRandom);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
         this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, seed);
-        this.density3D = new Density3D(seed);
+        this.density3D = new Density3D(seed, heightMapGenerator);
         this.wormCarver = new PerlinWormCarver(seed, heightMapGenerator);
         this.cavernCarver = new CavernCarver(seed, heightMapGenerator);
         this.megaCavernCarver = new MegaCavernCarver(seed, heightMapGenerator);
+        this.ravineCarver = new RavineCarver(seed, heightMapGenerator);
+        this.sinkholeCarver = new SinkholeCarver(seed, heightMapGenerator);
         this.wormCarver.setCavernCarver(cavernCarver);
         this.wormCarver.setMegaCavernCarver(megaCavernCarver);
+        // Lets a sinkhole cut to exactly the depth that opens into a real tunnel.
+        this.sinkholeCarver.setWormCarver(wormCarver);
     }
 
     public long getSeed() {
@@ -242,6 +251,20 @@ public class TerrainGenerationSystem {
      * once neighbor chunks exist (prevents recursive generation across chunk borders).
      */
     public TerrainResult generateTerrainOnly(int chunkX, int chunkZ) {
+        long startNanos = System.nanoTime();
+        try {
+            return generateTerrainOnlyTimed(chunkX, chunkZ);
+        } finally {
+            // The F3 terrain counter had been dead since the diffusion rewrite dropped
+            // this call — every cave tuning decision below is measured against it.
+            TerrainGenStats.record(System.nanoTime() - startNanos,
+                TerrainNoise.backend() == TerrainNoise.Backend.NATIVE
+                    ? TerrainGenStats.Mode.MIXED
+                    : TerrainGenStats.Mode.JAVA);
+        }
+    }
+
+    private TerrainResult generateTerrainOnlyTimed(int chunkX, int chunkZ) {
         updateLoadingProgress("Generating Base Terrain Shape");
 
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
@@ -261,6 +284,10 @@ public class TerrainGenerationSystem {
         BitSet caveMask = wormMask;
         caveMask.or(cavernResult.carveMask);
         caveMask.or(megaCavernResult.carveMask);
+        // Entrances. Unlike the carvers above, these two are anchored to the surface and cut
+        // downward, so they open the network to the sky by construction rather than by luck.
+        caveMask.or(ravineCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels));
+        caveMask.or(sinkholeCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels));
         BitSet formationMask = cavernResult.formationMask;
         formationMask.or(megaCavernResult.formationMask);
 
@@ -272,6 +299,11 @@ public class TerrainGenerationSystem {
         CcoBlockStorage storage = CcoFactory.createEmptyStorage(BlockType.AIR);
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
+        // Three SIMD volume fills instead of a per-block simplex sample per solid cell. With
+        // a surface near y=400 the per-point path costs ~100k Java noise samples per chunk;
+        // this path was written for exactly that and had simply never been called. Null on
+        // the Java backend, where determineBlockType falls back to per-point isSolid.
+        Density3D.Field densityField = density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels);
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 int idx = x * CHUNK_SIZE + z;
@@ -288,7 +320,8 @@ public class TerrainGenerationSystem {
                     } else if (y > 0 && y < height && caveMask.get(bit)) {
                         continue; // carved to air — already the uniform fill
                     } else {
-                        block = determineBlockType(worldX, y, worldZ, height, waterLevel, biome);
+                        block = determineBlockType(worldX, y, worldZ, height, waterLevel, biome,
+                                densityField, x, z);
                     }
                     if (block != BlockType.AIR) {
                         storage.set(x, y, z, block);
@@ -372,11 +405,15 @@ public class TerrainGenerationSystem {
      *                   {@link com.stonebreak.world.generation.diffusion.TerrainTile#NO_WATER}
      */
     private BlockType determineBlockType(int worldX, int y, int worldZ, int height,
-                                         int waterLevel, BiomeType biome) {
+                                         int waterLevel, BiomeType biome,
+                                         Density3D.Field densityField, int localX, int localZ) {
         if (y == 0) {
             return BlockType.BEDROCK;
         }
-        if (y < height && !density3D.isSolid(worldX, y, worldZ, height, biome)) {
+        boolean carved = densityField != null
+                ? !densityField.isSolid(localX, y, localZ, height, biome)
+                : !density3D.isSolid(worldX, y, worldZ, height, biome);
+        if (y < height && carved) {
             return BlockType.AIR;
         }
         if (y < height - 4) {
