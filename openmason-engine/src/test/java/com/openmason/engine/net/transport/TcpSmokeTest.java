@@ -13,6 +13,7 @@ import com.openmason.engine.net.server.NetworkServer;
 import com.openmason.engine.net.server.ServerConnection;
 import com.openmason.engine.net.server.ServerInboundQueue;
 import io.netty.buffer.ByteBuf;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -28,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * round-trip a chunk-sized packet in both directions. Exercises the full remote pipeline —
  * length framing, the packet encoder/decoder, and {@link ByteBufIO} bounds.
  */
+@Tag("integration")
 @Timeout(5)
 class TcpSmokeTest {
 

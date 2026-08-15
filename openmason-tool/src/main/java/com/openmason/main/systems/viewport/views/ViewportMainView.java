@@ -17,6 +17,14 @@ import imgui.flag.ImGuiWindowFlags;
  */
 public class ViewportMainView {
 
+    /**
+     * ImGui window title. Also the key DockBuilder docks this window by, AND the key
+     * imgui.ini stores its dock position under — so renaming it orphans the saved entry
+     * and the window would reopen floating. Any change here must bump
+     * {@code MainLayoutBuilder.LAYOUT_VERSION} to force a re-dock.
+     */
+    public static final String WINDOW_TITLE = "Model Editor";
+
     private final ViewportUIState state;
     private final ViewportActions actions;
     private final ViewportController viewport;
@@ -46,12 +54,14 @@ public class ViewportMainView {
      * interfering with viewport shortcuts like Tab for edit mode cycling.
      */
     public void render() {
-        if (ImGui.begin("3D Viewport", ImGuiWindowFlags.NoNavInputs)) {
+        if (ImGui.begin(WINDOW_TITLE, ImGuiWindowFlags.NoNavInputs)) {
+            state.setViewportWindowVisible(true);
             state.setViewportFocused(ImGui.isWindowFocused());
             renderToolbar();
             ImGui.separator();
             renderViewport3D();
         } else {
+            state.setViewportWindowVisible(false);
             state.setViewportFocused(false);
         }
 

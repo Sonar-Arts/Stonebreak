@@ -86,8 +86,14 @@ public class GenericModelRenderer extends BaseRenderer {
     // When true, doRender skips texture binding and forces solid gray color
     private boolean forceUnrendered = false;
 
-    // Engine-level material ID counter (replaces editor-specific FaceMaterialSection.allocateNextMaterialId)
-    private static final java.util.concurrent.atomic.AtomicInteger materialIdCounter =
+    // Engine-level material ID counter (replaces editor-specific FaceMaterialSection.allocateNextMaterialId).
+    //
+    // Per-instance, NOT static: ids only have to be unique within one model's
+    // FaceTextureManager, and allocateMaterialId() already self-heals against this
+    // renderer's own highest existing id. A shared counter meant that merely loading
+    // other models (a scene full of them) inflated the ids the editor then wrote into
+    // saved .omo files.
+    private final java.util.concurrent.atomic.AtomicInteger materialIdCounter =
             new java.util.concurrent.atomic.AtomicInteger(100);
 
     // Cached identity matrix to avoid per-frame allocation in setUniforms

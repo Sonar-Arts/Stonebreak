@@ -105,6 +105,12 @@ public final class BlockType implements Item, IBlockType {
     // Animated door (SBO 1.6 per-state clips); interaction special-cased in
     // InputHandler, rendered dynamically by AnimatedBlockRenderer.
     public static final BlockType OAK_DOOR = fromRegistry("stonebreak:oak_door", "OAK_DOOR");
+    // Stairs: non-cube SBO models, oriented at placement (see
+    // com.stonebreak.blocks.stairs.StairState) and baked into the chunk mesh
+    // from a pre-rotated stamp per facing.
+    public static final BlockType OAK_STAIRS = fromRegistry("stonebreak:oak_stairs", "OAK_STAIRS");
+    public static final BlockType ELM_STAIRS = fromRegistry("stonebreak:elm_stairs", "ELM_STAIRS");
+    public static final BlockType PINE_STAIRS = fromRegistry("stonebreak:pine_stairs", "PINE_STAIRS");
 
     // ----- Promote any SBO entries that didn't match a static-final field
     //       above. New SBOs dropped into sbo/blocks/ become BlockType
@@ -356,6 +362,30 @@ public final class BlockType implements Item, IBlockType {
 
     public boolean isFlower() {
         return this == ROSE || this == DANDELION || this == WILDGRASS;
+    }
+
+    /**
+     * True for stair blocks: shaped (non-cube) SBO models that carry a facing
+     * in their per-block state string and collide as a stepped profile rather
+     * than a full cell.
+     */
+    public boolean isStairs() {
+        return this == OAK_STAIRS || this == ELM_STAIRS || this == PINE_STAIRS;
+    }
+
+    /**
+     * True for log/trunk blocks — the blocks that anchor leaf canopies. A leaf is
+     * "supported" (won't decay) while it remains connected to one of these.
+     */
+    public boolean isLog() {
+        return this == WOOD || this == PINE || this == ELM_WOOD_LOG;
+    }
+
+    /**
+     * True for foliage blocks subject to decay when detached from a log.
+     */
+    public boolean isLeaves() {
+        return this == LEAVES || this == PINE_LEAVES || this == ELM_LEAVES;
     }
 
     /**

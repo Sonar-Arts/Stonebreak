@@ -1,6 +1,7 @@
 package com.stonebreak.world.generation.noise;
 
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -16,6 +17,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * native backend they prove the integer-position/DomainScale design holds
  * through the whole stack.
  */
+@Tag("regression")
 class TerrainNoiseParityTest {
 
     private static final long SEED = 987654321L;

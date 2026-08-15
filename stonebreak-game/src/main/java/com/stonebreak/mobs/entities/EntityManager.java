@@ -716,17 +716,6 @@ public class EntityManager {
     }
     
     /**
-     * Clears all mob AI path data for debug visualization.
-     */
-    public void clearAllCowPaths() {
-        for (Entity entity : entities) {
-            if (entity instanceof LivingEntity mob && mob.getAI() != null) {
-                mob.getAI().clearDebugPaths();
-            }
-        }
-    }
-    
-    /**
      * Gets all entities in a specific chunk as serialized EntityData.
      * Used for saving chunk entity state.
      */

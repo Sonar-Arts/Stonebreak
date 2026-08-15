@@ -60,9 +60,21 @@ public class ShortcutKey {
      * @return true if the exact combination is pressed
      */
     public boolean isPressed() {
+        return isPressed(true);
+    }
+
+    /**
+     * Check if this shortcut is currently pressed, with explicit control over key
+     * auto-repeat. Discrete chords (undo/redo) pass {@code repeat = false} so holding
+     * the key fires the action once rather than at the OS repeat rate.
+     *
+     * @param repeat whether a held key re-fires at the key-repeat rate
+     * @return true if the exact combination is pressed
+     */
+    public boolean isPressed(boolean repeat) {
         // imgui 1.92 dropped user key indices: isKeyPressed() requires an
         // ImGuiKey value, not a raw GLFW key code. Translate before querying.
-        if (!KeyCodeTranslator.isKeyPressed(keyCode)) {
+        if (!KeyCodeTranslator.isKeyPressed(keyCode, repeat)) {
             return false;
         }
 

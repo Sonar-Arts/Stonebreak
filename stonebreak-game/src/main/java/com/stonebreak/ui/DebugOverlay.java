@@ -24,7 +24,12 @@ import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
+import com.stonebreak.mobs.entities.ai.nav.Path;
+import com.stonebreak.mobs.entities.ai.nav.AirPathAgent;
+import com.stonebreak.mobs.entities.ai.nav.PathAgent;
 import com.stonebreak.mobs.goose.Goose;
+import com.stonebreak.network.MultiplayerSession;
+import com.stonebreak.network.server.IntegratedServer;
 import java.util.List;
 import java.util.ArrayDeque;
 
@@ -542,18 +547,18 @@ public class DebugOverlay {
         int chunkX = x >> 4;
         int chunkZ = z >> 4;
 
-        BiomeType biome = world.getBiomeAt(x, z);
+        BiomeType biome = world.terrain().getBiomeAt(x, z);
         String facing = getCardinalDirection(player.getCamera().getFront());
         BlockType blockBelow = world.getBlockAt(x, y - 1, z);
         String blockName = blockBelow != null ? blockBelow.name() : "Unknown";
 
         // Noise channels driving terrain shape
-        float continentalness = world.getContinentalnessAt(x, z);
-        float erosion = world.getErosionAt(x, z);
-        float peaksValleys = world.getPeaksValleysAt(x, z);
-        int baseHeight = world.getBaseHeightAt(x, z);
-        int shapedHeight = world.getShapedHeightAt(x, z);
-        int finalHeight = world.getFinalTerrainHeightAt(x, z);
+        float continentalness = world.terrain().getContinentalnessAt(x, z);
+        float erosion = world.terrain().getErosionAt(x, z);
+        float peaksValleys = world.terrain().getPeaksValleysAt(x, z);
+        int baseHeight = world.terrain().getBaseHeightAt(x, z);
+        int shapedHeight = world.terrain().getShapedHeightAt(x, z);
+        int finalHeight = world.terrain().getFinalTerrainHeightAt(x, z);
 
         // Targeted block info
         String targetedLine = getTargetedBlockSummary(player);
@@ -567,8 +572,8 @@ public class DebugOverlay {
         panel.row("Noise Backend", noiseBackendSummary());
         panel.row("Block Below", blockName);
         panel.row("Biome", biome.name());
-        panel.row("Temperature", String.format("%.3f", world.getTemperatureAt(x, z)));
-        panel.row("Moisture", String.format("%.3f", world.getMoistureAt(x, z)));
+        panel.row("Temperature", String.format("%.3f", world.terrain().getTemperatureAt(x, z)));
+        panel.row("Moisture", String.format("%.3f", world.terrain().getMoistureAt(x, z)));
         panel.row("Continentalness", String.format("%.3f", continentalness));
         panel.row("Erosion", String.format("%.3f", erosion));
         panel.row("Peaks/Valleys", String.format("%.3f", peaksValleys));
@@ -609,6 +614,7 @@ public class DebugOverlay {
                     lodBatcher.publishedCommands(), lodBatcher.publishedRegionDraws()));
             }
         }
+        panel.row("Nav", navigationSummary(world));
         com.stonebreak.world.TimeOfDay clock = Game.getTimeOfDay();
         if (clock != null) {
             panel.row("Time", clock.getTimeString());
@@ -696,51 +702,106 @@ public class DebugOverlay {
         return "Java (classic simplex)";
     }
 
-    /** AI-path line colour, shared across cows. */
+    /**
+     * Mob path-search load: how many searches are running, how many have run, how long they take,
+     * and how many came back partial.
+     *
+     * <p>Partials are the number worth watching: a few are normal (mobs do aim at spots they cannot
+     * reach), but a steady stream means either the expansion budget is too tight for the terrain or
+     * something is asking for routes that do not exist.
+     */
+    private static String navigationSummary(com.stonebreak.world.World world) {
+        // The searches happen on the authoritative world, alongside the AI that asks for them —
+        // the render world's own service sits at zero forever. See navigationEntitySource().
+        com.stonebreak.world.World searching = navigationWorld(world);
+        com.stonebreak.mobs.entities.ai.nav.PathfindingService service = searching.pathfinding();
+        if (service == null) {
+            return "off";
+        }
+        var stats = service.stats();
+        return String.format("%d searching / %d done @ %d µs / %d partial / %d rejected",
+                stats.inFlight(), stats.completed(), stats.averageMicros(),
+                stats.partial(), stats.rejected());
+    }
+
+    /** The world whose pathfinder the mobs actually use; falls back to the rendered one. */
+    private static com.stonebreak.world.World navigationWorld(com.stonebreak.world.World rendered) {
+        if (MultiplayerSession.hasIntegratedServer()) {
+            IntegratedServer server = MultiplayerSession.getServer();
+            if (server != null) {
+                com.stonebreak.world.World authoritative = server.worldContext().world();
+                if (authoritative != null) {
+                    return authoritative;
+                }
+            }
+        }
+        return rendered;
+    }
+
+    /** The route a mob still has to walk. */
     private static final Vector4f PATH_COLOR = new Vector4f(0.2f, 0.6f, 1.0f, 1.0f);
+    /** Where it is trying to get to. */
+    private static final Vector4f GOAL_COLOR = new Vector4f(1.0f, 0.25f, 0.85f, 1.0f);
+
+    /** Half-size of the cross drawn at a mob's destination. */
+    private static final float GOAL_MARKER_SIZE = 0.4f;
+
+    /**
+     * How far a ground route is lifted off the surface for drawing.
+     *
+     * <p>A waypoint sits at exactly the height the mob's feet will rest — the top face of the block
+     * it stands on. Drawn there, with the depth test on, the line is coplanar with that face and
+     * z-fights it into invisibility, which is why ground routes never appeared while the geese's
+     * mid-air ones did. Small enough that the line still reads as being on the ground.
+     */
+    private static final float ROUTE_GROUND_LIFT = 0.25f;
+
+    /** Reused between frames so the overlay does not allocate a list per mob per frame. */
+    private final List<Vector3f> pathScratch = new java.util.ArrayList<>();
 
     /**
      * Renders debug wireframes for entities (called after UI rendering).
      *
-     * <p>Each cow and chicken is outlined by re-drawing its actual model mesh as
-     * a see-through wireframe, so the overlay tracks the animated model exactly.
-     * AI path trails are drawn afterwards in a single batched line pass.
+     * <p>Each mob is outlined by re-drawing its actual model mesh as a see-through wireframe, so
+     * the overlay tracks the animated model exactly, coloured by what it is currently doing.
+     *
+     * <p>The lines show the route each mob has <em>planned</em> — the waypoints still ahead of it,
+     * and a marker at its destination. That is the useful view: it says where a mob has decided to
+     * go and how it intends to get there, so a mob pressed against a wall is immediately either a
+     * routing bug (no path, or a path through the wall) or a steering one (a sensible path it is
+     * failing to walk).
      */
     public void renderWireframes(Renderer renderer) {
         if (!visible) {
             return;
         }
 
-        EntityManager entityManager = Game.getEntityManager();
-        if (entityManager == null) {
+        EntityManager rendered = Game.getEntityManager();
+        if (rendered == null) {
             return;
         }
 
-        // Every AI-driven mob gets the same treatment — no per-mob code, and
-        // future mobs appear here automatically.
-        List<Entity> mobEntities = new java.util.ArrayList<>();
-        for (Entity entity : entityManager.getAllEntities()) {
-            if (entity instanceof LivingEntity mob && (mob.getAI() != null || mob instanceof Goose)) {
-                mobEntities.add(entity);
-            }
+        // Wireframes go on the mobs actually on screen — the client's shadows.
+        List<LivingEntity> renderedMobs = aiMobsOf(rendered);
+        for (LivingEntity mob : renderedMobs) {
+            renderer.renderEntityWireframe(mob, colorForState(mob));
         }
 
-        // Model wireframe overlays — each call manages its own GL state.
-        for (Entity entity : mobEntities) {
-            if (entity.isAlive() && entity instanceof LivingEntity mob
-                    && (mob.getAI() != null || mob instanceof Goose)) {
-                renderer.renderEntityWireframe(mob, colorForState(mob));
-            }
-        }
-
-        // AI path trails — batched line drawing.
+        // Planned routes — batched line drawing. Every AI-driven mob gets the same treatment, so
+        // there is no per-mob code here and a future mob appears automatically.
+        //
+        // Both managers are drawn, rather than picking one. A mob's AI runs in exactly one of them
+        // and contributes nothing from the other — a network shadow's route is permanently empty
+        // because its AI is never ticked — so the union costs an empty pass and cannot silently
+        // drop a source. Picking one would: replicated mobs navigate server-side, while
+        // owner-local entities (the types that do not replicate) navigate here.
         DebugRenderer debug = renderer.getDebugRenderer();
         debug.beginBatch();
         try {
-            for (Entity entity : mobEntities) {
-                if (entity.isAlive() && entity instanceof LivingEntity mob && mob.getAI() != null) {
-                    debug.drawPath(mob.getAI().getPathPoints(), PATH_COLOR);
-                }
+            drawRoutesOf(debug, renderedMobs);
+            EntityManager authoritative = authoritativeEntitySource();
+            if (authoritative != null && authoritative != rendered) {
+                drawRoutesOf(debug, aiMobsOf(authoritative));
             }
         } finally {
             debug.endBatch();
@@ -750,24 +811,126 @@ public class DebugOverlay {
         renderer.renderSoundEmitters(true);
     }
 
+    /** The AI-driven living mobs of one manager. */
+    private static List<LivingEntity> aiMobsOf(EntityManager manager) {
+        List<LivingEntity> mobs = new java.util.ArrayList<>();
+        for (Entity entity : manager.getAllEntities()) {
+            if (entity.isAlive() && entity instanceof LivingEntity mob && mob.getAI() != null) {
+                mobs.add(mob);
+            }
+        }
+        return mobs;
+    }
+
+    private void drawRoutesOf(DebugRenderer debug, List<LivingEntity> mobs) {
+        for (LivingEntity mob : mobs) {
+            drawPlannedRoute(debug, mob);
+            // A flying goose routes through the air domain instead, which the ground agent knows
+            // nothing about — draw that too, or an airborne flock looks unnavigated.
+            if (mob instanceof Goose goose && goose.flight().isAirborne()) {
+                drawAirRoute(debug, goose.flight().route(), goose.getPosition());
+            }
+        }
+    }
+
     /**
-     * Picks the wireframe colour for a mob's current AI state, so the overlay
-     * doubles as an at-a-glance behaviour readout. One palette for all mobs.
+     * The authoritative server's entity manager, or {@code null} when this JVM has none.
+     *
+     * <p>Replicated mobs are simulated on the authoritative server world; what a client renders are
+     * interpolated network shadows. A shadow is a real {@code Cow} or {@code Goose} and so builds a
+     * {@code MobAI} in its constructor — which is why every {@code getAI() != null} guard passes —
+     * but {@code EntityManager.update} skips AI for shadows, so its route is permanently empty and
+     * its goose never leaves the ground. The state-coloured wireframes do work on shadows, because
+     * behaviour state arrives over the wire; only the routes are missing.
+     *
+     * <p>Single-player and hosting clients run that server in this same JVM, so the real mobs are
+     * reachable. A remote client has no access to them and honestly draws no routes for replicated
+     * mobs; that is the same gap the server-side footstep sounds have.
+     *
+     * <p>The entity list is a {@code CopyOnWriteArrayList} handed out as a copy, so iterating it
+     * off the server tick is safe. The per-agent fields read from it are not synchronised — a
+     * marker may lag a frame or land between two updates, which for a debug overlay is the right
+     * trade against putting a lock in the navigation hot path.
+     */
+    private static EntityManager authoritativeEntitySource() {
+        if (!MultiplayerSession.hasIntegratedServer()) {
+            return null;
+        }
+        IntegratedServer server = MultiplayerSession.getServer();
+        return server == null ? null : server.worldContext().entityManager();
+    }
+
+    /**
+     * Draws a flying mob's air route the same way, so a leader steering round a peak shows the
+     * corridor it chose and the wingmen following it can be read against that line.
+     */
+    private void drawAirRoute(DebugRenderer debug, AirPathAgent route, Vector3f mobPosition) {
+        Path path = route.path();
+        if (!path.isEmpty()) {
+            pathScratch.clear();
+            pathScratch.add(new Vector3f(mobPosition));
+            for (int i = route.cursor(); i < path.size(); i++) {
+                pathScratch.add(path.waypoint(i, new Vector3f()));
+            }
+            debug.drawPath(pathScratch, PATH_COLOR);
+        }
+
+        if (route.hasGoal()) {
+            Vector3f goal = route.goal(new Vector3f());
+            pathScratch.clear();
+            pathScratch.add(new Vector3f(goal.x, goal.y - GOAL_MARKER_SIZE, goal.z));
+            pathScratch.add(new Vector3f(goal.x, goal.y + GOAL_MARKER_SIZE, goal.z));
+            debug.drawPath(pathScratch, GOAL_COLOR);
+        }
+    }
+
+    private void drawPlannedRoute(DebugRenderer debug, LivingEntity mob) {
+        PathAgent nav = mob.getAI().nav();
+        Vector3f position = mob.getPosition();
+        Path path = nav.path();
+
+        if (!path.isEmpty()) {
+            pathScratch.clear();
+            // Start at the mob's feet — where its route is measured from — rather than its origin,
+            // which sits a leg-length higher and made the first leg dive into the ground.
+            pathScratch.add(new Vector3f(position.x,
+                    position.y - mob.getLegHeight() + ROUTE_GROUND_LIFT, position.z));
+            for (int i = nav.cursor(); i < path.size(); i++) {
+                Vector3f waypoint = path.waypoint(i, new Vector3f());
+                waypoint.y += ROUTE_GROUND_LIFT;
+                pathScratch.add(waypoint);
+            }
+            debug.drawPath(pathScratch, PATH_COLOR);
+        }
+
+        if (nav.hasGoal()) {
+            Vector3f goal = nav.goal(new Vector3f());
+            float y = goal.y + ROUTE_GROUND_LIFT;
+            pathScratch.clear();
+            pathScratch.add(new Vector3f(goal.x - GOAL_MARKER_SIZE, y, goal.z));
+            pathScratch.add(new Vector3f(goal.x + GOAL_MARKER_SIZE, y, goal.z));
+            debug.drawPath(pathScratch, GOAL_COLOR);
+
+            pathScratch.clear();
+            pathScratch.add(new Vector3f(goal.x, y, goal.z - GOAL_MARKER_SIZE));
+            pathScratch.add(new Vector3f(goal.x, y, goal.z + GOAL_MARKER_SIZE));
+            debug.drawPath(pathScratch, GOAL_COLOR);
+        }
+    }
+
+    /**
+     * Picks the wireframe colour for what a mob is currently doing, so the overlay doubles as an
+     * at-a-glance behaviour readout. One palette for every mob.
      */
     private Vector4f colorForState(LivingEntity mob) {
-        if (mob instanceof Goose goose) {
-            return switch (goose.getGooseAI().getCurrentState()) {
-                case IDLE, FLOATING                        -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
-                case WANDERING, FLEEING                    -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
-                case TAKEOFF, FORMATION, FREE_FLY, LANDING -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
-            };
-        }
         MobBehaviorState state = mob.getAI() != null
                 ? mob.getAI().getCurrentState() : MobBehaviorState.IDLE;
         return switch (state) {
             case IDLE                -> new Vector4f(0.25f, 0.85f, 1.0f, 1.0f); // cyan
             case WANDERING           -> new Vector4f(0.30f, 1.0f, 0.35f, 1.0f); // green
             case GRAZING, WING_FLAP  -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
+            case SWIMMING            -> new Vector4f(0.20f, 0.55f, 1.0f, 1.0f); // blue
+            case FLYING              -> new Vector4f(1.0f, 0.45f, 0.15f, 1.0f); // orange
         };
     }
 

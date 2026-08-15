@@ -468,3 +468,6 @@ QWEN.md
 /terrain-bridge/tile_cache/df27340a8b39/s-5200047468796883050_x-3_z3_sc2.bin
 /terrain-bridge/tile_cache/df27340a8b39/s-5200047468796883050_x-3_z-3_sc2.bin
 /terrain-bridge/tile_cache/df27340a8b39/s-5200047468796883050_x-4_z-1_sc2.bin
+
+# Stray mirror of the absolute repo path (tool writing absolute paths as relative)
+/mnt/

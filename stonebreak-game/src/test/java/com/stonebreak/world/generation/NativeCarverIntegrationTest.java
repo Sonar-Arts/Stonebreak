@@ -3,6 +3,7 @@ package com.stonebreak.world.generation;
 import com.openmason.engine.cenda.CendaKernels;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.generation.noise.TerrainNoise;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,6 +18,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * carver in one sweep — if any of them were nondeterministic or disagreed
  * across instances, blocks would diverge.
  */
+@Tag("integration")
 class NativeCarverIntegrationTest {
 
     private static final long SEED = 424242L;

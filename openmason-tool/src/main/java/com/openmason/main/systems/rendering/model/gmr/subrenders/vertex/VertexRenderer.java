@@ -4,7 +4,7 @@ import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.engine.rendering.model.MeshChangeListener;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.MeshOverlayTheme;
 import com.openmason.main.systems.viewport.state.EditModeManager;
-import com.openmason.main.systems.viewport.viewportRendering.RenderContext;
+import com.openmason.engine.rendering.viewer.ViewerRenderContext;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -255,7 +255,7 @@ public class VertexRenderer implements MeshChangeListener {
      * @param context The render context
      * @param modelMatrix The model transformation matrix (for gizmo transforms)
      */
-    public void render(ShaderProgram shader, RenderContext context, Matrix4f modelMatrix) {
+    public void render(ShaderProgram shader, ViewerRenderContext context, Matrix4f modelMatrix) {
         if (!initialized) {
             logger.warn("VertexRenderer not initialized");
             return;

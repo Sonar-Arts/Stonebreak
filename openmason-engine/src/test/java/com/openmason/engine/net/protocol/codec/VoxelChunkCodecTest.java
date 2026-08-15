@@ -4,6 +4,7 @@ import com.openmason.engine.net.replication.BlockSetter;
 import com.openmason.engine.net.replication.IBlockTypeResolver;
 import com.openmason.engine.voxel.IBlockType;
 import com.openmason.engine.voxel.IVoxelChunkData;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Random;
@@ -16,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * (SINGLE, PALETTED, DIRECT) plus a mixed chunk, asserting block-by-block id equality
  * through a fake {@link IVoxelChunkData} source and a capturing {@link BlockSetter} sink.
  */
+@Tag("regression")
 class VoxelChunkCodecTest {
 
     private static final int W = VoxelChunkCodec.CHUNK_W;   // 16

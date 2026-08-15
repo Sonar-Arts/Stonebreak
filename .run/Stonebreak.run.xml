@@ -5,6 +5,7 @@
     <option name="VM_PARAMETERS" value="-XX:+UseZGC -Xms2g -Xmx8g -XX:+UseStringDeduplication -XX:+UseTLAB -XX:+ResizeTLAB --enable-native-access=ALL-UNNAMED --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java.base/sun.security.util=ALL-UNNAMED" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <method v="2">
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="Cenda Kernels" run_configuration_type="ShConfigurationType" />
       <option name="Make" enabled="true" />
     </method>
   </configuration>

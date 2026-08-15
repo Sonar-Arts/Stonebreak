@@ -1,5 +1,6 @@
 package com.openmason.engine.format.omo;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * OMO 1.7 attachment points: manifest parsing, model-root vs part-bound
  * sockets, missing-field defaults, and pre-1.7 backward compatibility.
  */
+@Tag("regression")
 class OMOAttachmentPointReadTest {
 
     private static final String MANIFEST_HEADER = """

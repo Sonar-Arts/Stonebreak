@@ -16,6 +16,12 @@ import org.joml.Vector3f;
  */
 public class RemotePlayer extends LivingEntity {
 
+    /** A remote player's footsteps are their own client's business, not this shadow's. */
+    @Override
+    protected boolean hasFootsteps() {
+        return false;
+    }
+
     private static final float WALK_THRESHOLD = 0.05f; // blocks/frame to count as walking
 
     private final int playerId;

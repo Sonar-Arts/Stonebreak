@@ -194,11 +194,10 @@ public final class ClientBlockHandler {
                 com.stonebreak.world.chunk.utils.LocalBlockKey.pack(
                     Math.floorMod(s.x(), 16), s.y(), Math.floorMod(s.z(), 16)));
             chunk.setBlockState(Math.floorMod(s.x(), 16), s.y(), Math.floorMod(s.z(), 16), s.state());
-            // Remesh only on a render-state flip (lit↔unlit) — contents/progress changes
-            // arrive every cook tick and must not re-mesh the chunk each time.
-            String prevRender = com.stonebreak.blocks.furnace.FurnaceState.extractRenderState(prev);
-            String newRender = com.stonebreak.blocks.furnace.FurnaceState.extractRenderState(s.state());
-            if (!java.util.Objects.equals(prevRender, newRender)) {
+            // Remesh only when the drawn variant actually changes — a furnace's
+            // contents/progress arrive every cook tick, a stair's facing lands
+            // once at placement.
+            if (com.stonebreak.blocks.BlockRenderState.affectsMesh(prev, s.state())) {
                 world.scheduleChunkRemeshAt(s.x(), s.y(), s.z());
             }
         }

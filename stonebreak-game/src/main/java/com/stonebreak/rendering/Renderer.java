@@ -223,8 +223,22 @@ public class Renderer {
                     int processed = sboRendererAPI.initialize(sboBlockMap, arrayAdapter, arrayAdapter);
 
                     if (processed > 0) {
+                        // Stairs are orientable: bake one stamp per facing under
+                        // that facing's state string, so the mesher's existing
+                        // "block state selects a mesh variant" path draws them
+                        // turned with no per-instance work.
+                        registerStairRotations(sboRendererAPI.getStampCache(), sboBlockMap.keySet());
+
                         // Create deferred emitter with face culling (world set later in applySBODispatcher)
                         sboCullingService = new MmsFaceCullingService();
+
+                        // Shape-aware occlusion, read straight off the baked
+                        // stamps: a block only hides a neighbour's face when
+                        // its model actually fills that boundary plane. Keeps
+                        // the open side of a stair from cutting a hole in the
+                        // block behind it.
+                        sboCullingService.setFaceOcclusionPolicy(
+                                sboRendererAPI.getStampCache()::occludesFace);
 
                         // Translucency policy: consult the CBR block registry
                         // (populated after this method returns) for the block's
@@ -282,6 +296,39 @@ public class Renderer {
             }
         } catch (Exception e) {
             logger.error("[Renderer] SBO initialization failed (non-fatal)", e);
+        }
+    }
+
+    /**
+     * Registers a pre-rotated stamp for each stair facing. Rotating once at
+     * startup (four cheap array copies per stair type) keeps the per-chunk mesh
+     * path exactly as it was — look the stamp up by state name and copy it.
+     *
+     * <p>The key is the state string {@code StairState} writes at placement,
+     * run through the same {@code BlockRenderState.meshVariantKey} projection
+     * the mesher applies when it reads the state back. Deriving both ends from
+     * one rule is what stops a stair from silently meshing un-rotated.
+     */
+    private static void registerStairRotations(
+            com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache cache,
+            java.util.Collection<com.stonebreak.blocks.BlockType> types) {
+        for (com.stonebreak.blocks.BlockType type : types) {
+            if (!type.isStairs()) {
+                continue;
+            }
+            com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp base = cache.get(type);
+            if (base == null) {
+                continue;
+            }
+            for (com.stonebreak.blocks.stairs.StairState.Facing facing
+                    : com.stonebreak.blocks.stairs.StairState.Facing.values()) {
+                String key = com.stonebreak.blocks.BlockRenderState.meshVariantKey(
+                        com.stonebreak.blocks.stairs.StairState.stateStringFor(facing));
+                cache.put(type, key,
+                        com.openmason.engine.voxel.sbo.SBOStampRotator.rotateY(base, facing.quarterTurns()));
+            }
+            logger.debug("[Renderer] Registered {} stair orientations for {}",
+                    com.stonebreak.blocks.stairs.StairState.Facing.values().length, type.name());
         }
     }
 

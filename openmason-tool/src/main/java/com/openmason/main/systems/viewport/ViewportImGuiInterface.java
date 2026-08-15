@@ -14,8 +14,12 @@ public class ViewportImGuiInterface {
 
     private static final Logger logger = LoggerFactory.getLogger(ViewportImGuiInterface.class);
 
-    // MVC Components
-    private final ViewportUIState state;
+    // MVC Components.
+    // `state` is NOT owned here — it is adopted from the ViewportController in
+    // setViewport3D() so the menus, the operation services, this interface's views
+    // and the render pipeline all read and write one object. It starts as a private
+    // placeholder only so the field is never null before a viewport is injected.
+    private ViewportUIState state;
     private ViewportActions actions;
     private ViewportKeyboardShortcuts keyboardShortcuts;
 
@@ -124,6 +128,13 @@ public class ViewportImGuiInterface {
         this.viewport3D = viewport;
         logger.info("Shared Viewport injected into ViewportImGuiInterface: {}",
                    viewport != null ? System.identityHashCode(viewport) : "NULL");
+
+        // Adopt the viewport's UI state BEFORE building the components — every view,
+        // action and shortcut handler below captures this reference, so swapping it
+        // afterwards would leave them pointing at the discarded placeholder.
+        if (viewport != null) {
+            this.state = viewport.getViewportUIState();
+        }
 
         // Initialize components now that viewport is available
         initializeComponents();

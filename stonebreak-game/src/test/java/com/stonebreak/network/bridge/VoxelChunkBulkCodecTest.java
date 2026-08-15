@@ -8,6 +8,7 @@ import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.api.voxel.ChunkDataAdapter;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * byte-identical on encode and cell-identical on decode versus the legacy
  * per-cell paths — old and new builds must interoperate on the wire.
  */
+@Tag("regression")
 class VoxelChunkBulkCodecTest {
 
     @Test

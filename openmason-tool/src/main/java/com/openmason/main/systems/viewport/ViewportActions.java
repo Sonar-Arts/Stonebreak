@@ -1,10 +1,11 @@
 package com.openmason.main.systems.viewport;
 
+import com.openmason.engine.rendering.viewer.camera.ViewerCamera;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import com.openmason.main.systems.services.commands.ModelCommandHistory;
 import com.openmason.main.systems.viewport.state.EditModeManager;
-import com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState;
+import com.openmason.engine.rendering.viewer.gizmo.GizmoState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,7 +55,7 @@ public class ViewportActions {
 
     public void updateViewMode() {
         String viewMode = state.getCurrentViewMode();
-        ViewportCamera viewportCamera = viewport.getCamera();
+        ViewerCamera viewportCamera = viewport.getCamera();
 
         switch (viewMode.toLowerCase()) {
             case "front" -> {
@@ -194,11 +195,11 @@ public class ViewportActions {
 
     public void updateCameraMode() {
         String cameraMode = state.getCurrentCameraMode();
-        ViewportCamera camera = viewport.getCamera();
+        ViewerCamera camera = viewport.getCamera();
 
         switch (cameraMode.toLowerCase()) {
-            case "arcball" -> camera.setCameraMode(ViewportCamera.CameraMode.ARCBALL);
-            case "first-person" -> camera.setCameraMode(ViewportCamera.CameraMode.FIRST_PERSON);
+            case "arcball" -> camera.setCameraMode(ViewerCamera.CameraMode.ARCBALL);
+            case "first-person" -> camera.setCameraMode(ViewerCamera.CameraMode.FIRST_PERSON);
             default -> logger.warn("Unknown camera mode: {}", cameraMode);
         }
     }
@@ -235,7 +236,7 @@ public class ViewportActions {
 
     public void updateCameraStateFromViewport() {
         // Sync UI state with actual camera state
-        ViewportCamera viewportCamera = viewport.getCamera();
+        ViewerCamera viewportCamera = viewport.getCamera();
         state.updateCameraState(
             viewportCamera.getDistance(),
             viewportCamera.getPitch(),
@@ -251,8 +252,8 @@ public class ViewportActions {
         boolean newState = !currentState;
 
         // In auto-show mode, Ctrl+T acts as a temporary override
-        com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoState gizmoState = viewport.getGizmoState();
-        if (gizmoState.getDisplayMode() == com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT) {
+        com.openmason.engine.rendering.viewer.gizmo.GizmoState gizmoState = viewport.getGizmoState();
+        if (gizmoState.getDisplayMode() == com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode.AUTO_SHOW_ON_SELECT) {
             gizmoState.setManualOverrideActive(true);
         }
 

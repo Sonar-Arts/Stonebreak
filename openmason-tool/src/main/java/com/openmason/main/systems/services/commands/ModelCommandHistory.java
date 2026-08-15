@@ -111,6 +111,23 @@ public final class ModelCommandHistory {
     }
 
     /**
+     * Drop every command matching the predicate from both stacks.
+     *
+     * <p>For hosts whose commands can be invalidated externally — e.g. deleting a scene
+     * instance makes its transform history meaningless, and leaving the entries would
+     * hand out undo steps that visibly do nothing. Fires the change callback only when
+     * something was actually removed.
+     */
+    public void removeIf(java.util.function.Predicate<ModelCommand> filter) {
+        boolean removed = undoStack.removeIf(filter);
+        removed |= redoStack.removeIf(filter);
+        if (removed) {
+            fireHistoryChange();
+            logger.debug("Purged invalidated commands from history");
+        }
+    }
+
+    /**
      * Clear all history (e.g. when loading a new model).
      */
     public void clear() {

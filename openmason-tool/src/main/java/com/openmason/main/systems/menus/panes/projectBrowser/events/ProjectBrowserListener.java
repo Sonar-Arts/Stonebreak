@@ -11,4 +11,10 @@ public interface ProjectBrowserListener {
 
     /** A .OMT texture was selected. */
     void onTextureSelected(TextureSelectedEvent event);
+
+    /**
+     * A scene was selected. Opening it is the shell's job, not the controller's — it has
+     * to run the unsaved-scene check first.
+     */
+    void onSceneSelected(SceneSelectedEvent event);
 }

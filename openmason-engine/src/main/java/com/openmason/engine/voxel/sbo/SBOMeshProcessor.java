@@ -32,7 +32,10 @@ public class SBOMeshProcessor {
 
     private static final Logger logger = LoggerFactory.getLogger(SBOMeshProcessor.class);
 
-    // Face ID convention mapping now provided by SBOFaceConventions.gmrToMms()
+    /** Area of one whole cell boundary plane — a full cube face. */
+    private static final float FULL_FACE_AREA = 1.0f;
+    /** Slack on the covered-area test, so float accumulation can't unset a full face. */
+    private static final float AREA_EPSILON = 1e-3f;
 
     /**
      * Pre-baked vertex data for one face of an SBO block type.
@@ -48,9 +51,23 @@ public class SBOMeshProcessor {
                             float[] layers, int vertexCount) {}
 
     /**
-     * All 6 face stamps for one SBO block type. faces[0..5] indexed by MMS face ID.
+     * Pre-baked geometry for one SBO block type, split by whether a neighbour
+     * can hide it.
+     *
+     * <p>A cube's geometry is entirely {@code faces}: every triangle sits on a
+     * cell boundary plane, so the usual neighbour cull applies. A shaped block
+     * (stairs, slabs) also carries {@code interior} geometry — treads, risers —
+     * that lives inside the cell and is therefore <em>never</em> culled.
+     *
+     * @param faces        boundary-flush geometry, indexed by MMS face id; cullable
+     * @param interior     in-cell geometry, indexed by the MMS face it points along;
+     *                     always emitted. The index still selects the face's texture
+     *                     layer, UV rectangle and light-sampling direction.
+     * @param occludesFace per MMS face, true when the flush geometry fully covers
+     *                     that boundary plane — i.e. the block can hide a
+     *                     neighbour's facing side
      */
-    public record BlockStamp(FaceStamp[] faces) {}
+    public record BlockStamp(FaceStamp[] faces, FaceStamp[] interior, boolean[] occludesFace) {}
 
     /** Cached block stamps keyed by block type ID. */
     private final Map<Integer, BlockStamp> stampCache = new HashMap<>();
@@ -114,9 +131,11 @@ public class SBOMeshProcessor {
         }
 
         int totalVerts = 0;
+        int interiorVerts = 0;
         for (FaceStamp face : defaultStamp.faces()) totalVerts += face.vertexCount();
-        logger.info("Processed SBO stamp for {}: {} default-state vertices across 6 faces, {} state variants",
-                blockType.getName(), totalVerts, variantCount);
+        for (FaceStamp face : defaultStamp.interior()) interiorVerts += face.vertexCount();
+        logger.info("Processed SBO stamp for {}: {} boundary + {} interior default-state vertices, {} state variants",
+                blockType.getName(), totalVerts, interiorVerts, variantCount);
 
         return true;
     }
@@ -127,122 +146,136 @@ public class SBOMeshProcessor {
                                    ITextureCoordProvider uvProvider, ILayerIndexProvider layerProvider) {
         if (meshData == null || !meshData.hasGeometry()) return null;
 
+        // Face assignment comes from the geometry, not the authored GMR face id:
+        // that id only spans 0..5 and cannot describe a model with more faces
+        // (a stair has ten), so anything past the sixth face used to be clamped
+        // into the bottom bucket and culled away by the block underneath.
         SBONormalComputer.ProcessedMesh processed = SBONormalComputer.compute(
                 meshData.vertices(),
                 meshData.texCoords(),
                 meshData.indices()
         );
 
-        int[] remappedFaceIds = null;
-        if (meshData.triangleToFaceId() != null) {
-            int[] originalFaceIds = meshData.triangleToFaceId();
-            remappedFaceIds = new int[originalFaceIds.length];
-            for (int i = 0; i < originalFaceIds.length; i++) {
-                remappedFaceIds[i] = SBOFaceConventions.gmrToMms(originalFaceIds[i]);
-            }
-        }
-
-        return buildBlockStamp(blockType, stateName, processed, remappedFaceIds, uvProvider, layerProvider);
+        return buildBlockStamp(blockType, stateName, processed, uvProvider, layerProvider);
     }
 
     /**
      * Build a BlockStamp by bucketing triangles per face and remapping UVs to atlas space.
+     * Boundary-flush and interior triangles go to separate bucket sets so the emitter can
+     * cull the former and always draw the latter.
      */
     private BlockStamp buildBlockStamp(IBlockType blockType, String stateName,
                                         SBONormalComputer.ProcessedMesh mesh,
-                                        int[] faceIds, ITextureCoordProvider uvProvider,
+                                        ITextureCoordProvider uvProvider,
                                         ILayerIndexProvider layerProvider) {
         float[] verts = mesh.vertices();
         float[] norms = mesh.normals();
         float[] uvs = mesh.texCoords();
+        int[] triFaces = mesh.triangleFaces();
+        boolean[] triFlush = mesh.triangleFlush();
         int triangleCount = mesh.triangleCount();
 
-        // Count triangles per face
-        int[] faceCounts = new int[6];
+        // Bucket index: [0] = boundary-flush (cullable), [1] = interior (always drawn).
+        int[][] counts = new int[2][6];
         for (int tri = 0; tri < triangleCount; tri++) {
-            int faceId = (faceIds != null && tri < faceIds.length) ? faceIds[tri] : 0;
-            if (faceId < 0 || faceId >= 6) faceId = 0;
-            faceCounts[faceId]++;
+            counts[triFlush[tri] ? 0 : 1][triFaces[tri]]++;
         }
 
-        // Allocate per-face arrays
-        float[][] facePositions = new float[6][];
-        float[][] faceNormals = new float[6][];
-        float[][] faceUVs = new float[6][];
-        float[][] faceLayers = new float[6][];
-        int[] faceInsert = new int[6]; // insertion cursor per face
+        float[][][] positions = new float[2][6][];
+        float[][][] normals = new float[2][6][];
+        float[][][] texCoords = new float[2][6][];
+        float[][][] layers = new float[2][6][];
+        int[][] insert = new int[2][6];
 
-        for (int f = 0; f < 6; f++) {
-            int vertCount = faceCounts[f] * 3; // 3 verts per triangle
-            facePositions[f] = new float[vertCount * 3];
-            faceNormals[f] = new float[vertCount * 3];
-            faceUVs[f] = new float[vertCount * 2];
-            faceLayers[f] = new float[vertCount];
-            // Every vertex of a face shares the same texture-array layer.
-            // State-aware lookup resolves to the variant's texture set when
-            // {@code stateName} is non-null; falls back to base layer otherwise.
-            float layer = layerProvider.getBlockFaceLayer(blockType, stateName, f);
-            java.util.Arrays.fill(faceLayers[f], layer);
-        }
-
-        // Get atlas UV bounds per face: [u1, v1, u2, v2]
+        // Per-face texture-array layer and atlas UV rectangle. State-aware layer
+        // lookup resolves to the variant's texture set when stateName is non-null.
+        float[] faceLayer = new float[6];
         float[][] atlasUVBounds = new float[6][];
         for (int f = 0; f < 6; f++) {
+            faceLayer[f] = layerProvider.getBlockFaceLayer(blockType, stateName, f);
             atlasUVBounds[f] = uvProvider.getBlockFaceUVs(blockType, f);
             if (atlasUVBounds[f] == null || atlasUVBounds[f].length < 4) {
                 // Fallback to full UV range if no atlas entry
                 atlasUVBounds[f] = new float[]{0f, 0f, 1f, 1f};
                 logger.warn("No atlas UVs for {} face {}, using full range", blockType.getName(), f);
             }
+            for (int bucket = 0; bucket < 2; bucket++) {
+                int vertCount = counts[bucket][f] * 3;
+                positions[bucket][f] = new float[vertCount * 3];
+                normals[bucket][f] = new float[vertCount * 3];
+                texCoords[bucket][f] = new float[vertCount * 2];
+                layers[bucket][f] = new float[vertCount];
+                java.util.Arrays.fill(layers[bucket][f], faceLayer[f]);
+            }
         }
 
-        // Fill per-face arrays with position/normal/remapped-UV data
-        for (int tri = 0; tri < triangleCount; tri++) {
-            int faceId = (faceIds != null && tri < faceIds.length) ? faceIds[tri] : 0;
-            if (faceId < 0 || faceId >= 6) faceId = 0;
+        // Flush geometry also decides whether this block can hide a neighbour:
+        // sum the boundary-plane area each face covers (the projected triangle
+        // area) and call the face occluding once it fills the whole unit square.
+        float[] coveredArea = new float[6];
 
-            float au1 = atlasUVBounds[faceId][0];
-            float av1 = atlasUVBounds[faceId][1];
-            float au2 = atlasUVBounds[faceId][2];
-            float av2 = atlasUVBounds[faceId][3];
+        for (int tri = 0; tri < triangleCount; tri++) {
+            int face = triFaces[tri];
+            int bucket = triFlush[tri] ? 0 : 1;
+
+            float au1 = atlasUVBounds[face][0];
+            float av1 = atlasUVBounds[face][1];
+            float au2 = atlasUVBounds[face][2];
+            float av2 = atlasUVBounds[face][3];
+
+            if (bucket == 0) {
+                coveredArea[face] += planeArea(verts, tri, SBOFaceConventions.axisOf(face));
+            }
 
             for (int v = 0; v < 3; v++) {
                 int srcIdx = tri * 3 + v;
                 int pOff = srcIdx * 3;
                 int tOff = srcIdx * 2;
 
-                int dstVert = faceInsert[faceId];
+                int dstVert = insert[bucket][face];
                 int dstPOff = dstVert * 3;
                 int dstTOff = dstVert * 2;
 
-                // Copy positions (relative to origin)
-                facePositions[faceId][dstPOff] = verts[pOff];
-                facePositions[faceId][dstPOff + 1] = verts[pOff + 1];
-                facePositions[faceId][dstPOff + 2] = verts[pOff + 2];
+                positions[bucket][face][dstPOff] = verts[pOff];
+                positions[bucket][face][dstPOff + 1] = verts[pOff + 1];
+                positions[bucket][face][dstPOff + 2] = verts[pOff + 2];
 
-                // Copy normals
-                faceNormals[faceId][dstPOff] = norms[pOff];
-                faceNormals[faceId][dstPOff + 1] = norms[pOff + 1];
-                faceNormals[faceId][dstPOff + 2] = norms[pOff + 2];
+                normals[bucket][face][dstPOff] = norms[pOff];
+                normals[bucket][face][dstPOff + 1] = norms[pOff + 1];
+                normals[bucket][face][dstPOff + 2] = norms[pOff + 2];
 
                 // Remap UVs from SBO [0,1] to atlas bounds
-                float uSbo = uvs[tOff];
-                float vSbo = uvs[tOff + 1];
-                faceUVs[faceId][dstTOff] = au1 + uSbo * (au2 - au1);
-                faceUVs[faceId][dstTOff + 1] = av1 + vSbo * (av2 - av1);
+                texCoords[bucket][face][dstTOff] = au1 + uvs[tOff] * (au2 - au1);
+                texCoords[bucket][face][dstTOff + 1] = av1 + uvs[tOff + 1] * (av2 - av1);
 
-                faceInsert[faceId]++;
+                insert[bucket][face]++;
             }
         }
 
-        // Build FaceStamp records
-        FaceStamp[] stamps = new FaceStamp[6];
+        FaceStamp[] flushStamps = new FaceStamp[6];
+        FaceStamp[] interiorStamps = new FaceStamp[6];
+        boolean[] occludes = new boolean[6];
         for (int f = 0; f < 6; f++) {
-            stamps[f] = new FaceStamp(facePositions[f], faceNormals[f], faceUVs[f],
-                    faceLayers[f], faceCounts[f] * 3);
+            flushStamps[f] = new FaceStamp(positions[0][f], normals[0][f], texCoords[0][f],
+                    layers[0][f], counts[0][f] * 3);
+            interiorStamps[f] = new FaceStamp(positions[1][f], normals[1][f], texCoords[1][f],
+                    layers[1][f], counts[1][f] * 3);
+            occludes[f] = coveredArea[f] >= FULL_FACE_AREA - AREA_EPSILON;
         }
 
-        return new BlockStamp(stamps);
+        return new BlockStamp(flushStamps, interiorStamps, occludes);
+    }
+
+    /** Area of a de-indexed triangle projected onto the plane perpendicular to {@code axis}. */
+    private static float planeArea(float[] verts, int tri, int axis) {
+        int base = tri * 9;
+        int u = axis == 0 ? 1 : 0;
+        int v = axis == 2 ? 1 : 2;
+        float ux = verts[base + 3 + u] - verts[base + u];
+        float uy = verts[base + 3 + v] - verts[base + v];
+        float vx = verts[base + 6 + u] - verts[base + u];
+        float vy = verts[base + 6 + v] - verts[base + v];
+        return Math.abs(ux * vy - uy * vx) * 0.5f;
     }
 
     /**

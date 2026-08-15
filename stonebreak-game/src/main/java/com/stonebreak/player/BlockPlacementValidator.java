@@ -258,11 +258,7 @@ public class BlockPlacementValidator implements IBlockPlacementService {
      * Gets the effective collision height of a block at the given position.
      */
     private float getBlockCollisionHeight(int x, int y, int z) {
-        BlockType block = world.getBlockAt(x, y, z);
-        if (block == BlockType.SNOW) {
-            return world.getSnowHeight(x, y, z);
-        }
-        return block.getCollisionHeight();
+        return com.stonebreak.blocks.BlockShape.collisionHeight(world, x, y, z);
     }
 
     /**

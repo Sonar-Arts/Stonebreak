@@ -15,7 +15,8 @@ import java.util.function.Supplier;
  * Consolidates all viewport-related state from multiple legacy state classes.
  * Follows Single Responsibility Principle - only manages viewport state.
  */
-public class ViewportUIState {
+public class ViewportUIState
+        implements com.openmason.engine.rendering.viewer.gizmo.SnapSettings {
 
     // Viewport dimensions
     private int width = 800;
@@ -61,6 +62,9 @@ public class ViewportUIState {
 
     // Focus tracking for input isolation (e.g., Tab key should only cycle edit modes when viewport is focused)
     private boolean viewportFocused = false;
+
+    // Whether the Model Editor window was actually drawn this frame (false = background dock tab)
+    private boolean viewportWindowVisible = false;
 
     // Resize threshold to prevent excessive resizing from small ImGui layout fluctuations
     private static final int RESIZE_THRESHOLD = 5;
@@ -174,6 +178,15 @@ public class ViewportUIState {
     // Getters for grid snapping
     public ImFloat getGridSnappingIncrement() { return gridSnappingIncrement; }
 
+    // --- SnapSettings: the ImGui-free view of the two fields above, so the gizmo can
+    // --- read snapping without depending on this class (or on ImGui).
+
+    @Override
+    public boolean isSnapEnabled() { return gridSnappingEnabled.get(); }
+
+    @Override
+    public float getSnapIncrement() { return gridSnappingIncrement.get(); }
+
     // Initialization state
     public void setViewportInitialized(boolean initialized) { this.viewportInitialized = initialized; }
 
@@ -251,6 +264,14 @@ public class ViewportUIState {
         gridSnappingEnabled.set(!gridSnappingEnabled.get());
     }
 
+    /**
+     * Whether the viewport's ImGui/MVC components (actions, shortcuts, views) are wired.
+     *
+     * <p>This is <b>not</b> a GL-readiness flag. {@code ViewportController} tracks its own
+     * OpenGL initialization separately — this state object is shared between the shell and
+     * the viewport, so a single flag cannot carry both meanings (they fire at different
+     * times, and conflating them leaves the render pipeline unbuilt).
+     */
     public boolean isInitialized() {
         return viewportInitialized;
     }
@@ -258,6 +279,9 @@ public class ViewportUIState {
     // Focus state accessors
     public boolean isViewportFocused() { return viewportFocused; }
     public void setViewportFocused(boolean focused) { this.viewportFocused = focused; }
+
+    public boolean isViewportWindowVisible() { return viewportWindowVisible; }
+    public void setViewportWindowVisible(boolean visible) { this.viewportWindowVisible = visible; }
 
     @Override
     public String toString() {

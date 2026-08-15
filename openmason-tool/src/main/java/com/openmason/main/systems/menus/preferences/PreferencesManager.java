@@ -1,6 +1,6 @@
 package com.openmason.main.systems.menus.preferences;
 
-import com.openmason.main.systems.viewport.util.SnappingUtil;
+import com.openmason.engine.rendering.viewer.math.SnappingUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -265,15 +265,15 @@ public class PreferencesManager {
     /**
      * Get gizmo display mode (MANUAL_TOGGLE or AUTO_SHOW_ON_SELECT).
      */
-    public com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode getGizmoDisplayMode() {
+    public com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode getGizmoDisplayMode() {
         String value = properties.getProperty(GIZMO_DISPLAY_MODE_KEY);
-        return com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode.fromString(value);
+        return com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode.fromString(value);
     }
 
     /**
      * Set gizmo display mode.
      */
-    public void setGizmoDisplayMode(com.openmason.main.systems.viewport.viewportRendering.gizmo.GizmoDisplayMode mode) {
+    public void setGizmoDisplayMode(com.openmason.engine.rendering.viewer.gizmo.GizmoDisplayMode mode) {
         properties.setProperty(GIZMO_DISPLAY_MODE_KEY, mode.name());
         savePreferences();
     }

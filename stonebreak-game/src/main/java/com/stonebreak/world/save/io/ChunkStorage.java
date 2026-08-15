@@ -47,7 +47,12 @@ public final class ChunkStorage {
         ensureParentExists(target);
 
         byte[] payload = ChunkCodec.encode(chunk);
-        Path temp = target.resolveSibling(target.getFileName() + ".tmp");
+        // Unique temp name per write: a fixed sibling name races when two
+        // threads save the same chunk concurrently (the loser's move throws
+        // NoSuchFileException after the winner consumed the shared temp file).
+        Path temp = target.resolveSibling(target.getFileName() + "."
+            + Long.toUnsignedString(System.nanoTime(), 36)
+            + "-" + Thread.currentThread().threadId() + ".tmp");
 
         Files.write(temp, payload);
         try {

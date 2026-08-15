@@ -10,12 +10,15 @@ import java.util.List;
  * <ul>
  *   <li>1.0 - Initial format with camera, viewport, transform, model reference, and UI state</li>
  *   <li>1.1 - Added model parts list for multi-part models (part transforms, visibility, lock)</li>
+ *   <li>1.2 - Added the optional scene reference (active .omsc + which centre tab was
+ *       last active). Absent in 1.0/1.1 files, which is exactly how an upgrading user is
+ *       recognised: no node means "Model Editor", so nothing changes for them.</li>
  * </ul>
  */
 public final class OMPFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.1";
+    public static final String FORMAT_VERSION = "1.2";
 
     /** File extension for OMP files */
     public static final String FILE_EXTENSION = ".omp";
@@ -66,7 +69,8 @@ public final class OMPFormat {
             TransformData transform,
             ModelReference model,
             UIState ui,
-            List<PartData> parts
+            List<PartData> parts,
+            SceneReference scene
     ) {
         public Document {
             if (version == null || version.isBlank()) {
@@ -83,7 +87,14 @@ public final class OMPFormat {
         public Document(String version, String projectName, String createdAt, String lastSavedAt,
                          CameraState camera, ViewportState viewport, TransformData transform,
                          ModelReference model, UIState ui) {
-            this(version, projectName, createdAt, lastSavedAt, camera, viewport, transform, model, ui, null);
+            this(version, projectName, createdAt, lastSavedAt, camera, viewport, transform, model, ui, null, null);
+        }
+
+        /** Backward-compatible constructor for pre-1.2 call sites (no scene reference). */
+        public Document(String version, String projectName, String createdAt, String lastSavedAt,
+                         CameraState camera, ViewportState viewport, TransformData transform,
+                         ModelReference model, UIState ui, List<PartData> parts) {
+            this(version, projectName, createdAt, lastSavedAt, camera, viewport, transform, model, ui, parts, null);
         }
     }
 
@@ -178,6 +189,27 @@ public final class OMPFormat {
             boolean showPropertyPanel,
             boolean showToolbar
     ) {}
+
+    /**
+     * The project's active scene and which centre tab was last in front (v1.2+).
+     *
+     * <p>Optional at the format level: a null reference emits no node at all, which is
+     * what every pre-1.2 file looks like — that absence is the discriminator for an
+     * upgrading user (no node resolves to {@code MODEL_EDITOR}, so their layout does not
+     * shift under them). Saves from scene-aware builds always write the node, with
+     * {@code sceneFilePath} omitted when no scene is open, so the centre-tab choice is
+     * recorded either way.
+     *
+     * @param sceneFilePath  project-root-relative path to the .omsc, or null
+     * @param activeCenterTab "SCENE_VIEWER" or "MODEL_EDITOR"; blank defaults to the latter
+     */
+    public record SceneReference(String sceneFilePath, String activeCenterTab) {
+        public SceneReference {
+            if (activeCenterTab == null || activeCenterTab.isBlank()) {
+                activeCenterTab = "MODEL_EDITOR";
+            }
+        }
+    }
 
     /**
      * Model part data for multi-part models (v1.1+).

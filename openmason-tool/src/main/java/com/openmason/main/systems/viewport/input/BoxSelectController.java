@@ -9,7 +9,7 @@ import com.openmason.main.systems.viewport.state.EdgeSelectionState;
 import com.openmason.main.systems.viewport.state.EditMode;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import com.openmason.main.systems.viewport.state.FaceSelectionState;
-import com.openmason.main.systems.viewport.state.TransformState;
+import com.openmason.engine.rendering.viewer.transform.TransformState;
 import com.openmason.main.systems.viewport.state.VertexSelectionState;
 import com.openmason.main.systems.viewport.util.BoxSelectMath;
 import org.joml.Matrix4f;

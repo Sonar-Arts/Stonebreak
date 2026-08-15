@@ -78,7 +78,8 @@ public class OMPDeserializer {
                 parseTransformData(root.get("transform")),
                 parseModelReference(root.get("model")),
                 parseUIState(root.get("ui")),
-                parsePartsList(root.get("parts"))
+                parsePartsList(root.get("parts")),
+                parseSceneReference(root.get("scene"))
         );
     }
 
@@ -143,6 +144,16 @@ public class OMPDeserializer {
                 text(node, "modelSource", "NONE"),
                 text(node, "modelFilePath", null)
         );
+    }
+
+    /** Absent node -> null, which is what a pre-1.2 project looks like. */
+    private OMPFormat.SceneReference parseSceneReference(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return new OMPFormat.SceneReference(
+                text(node, "sceneFilePath", null),
+                text(node, "activeCenterTab", "MODEL_EDITOR"));
     }
 
     private OMPFormat.UIState parseUIState(JsonNode node) {

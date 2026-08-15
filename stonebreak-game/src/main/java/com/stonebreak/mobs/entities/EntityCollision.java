@@ -72,11 +72,18 @@ public class EntityCollision {
      * For snow blocks, this can be a partial height based on snow layers.
      */
     private float getBlockCollisionHeight(int x, int y, int z) {
-        BlockType block = world.getBlockAt(x, y, z);
-        if (block == BlockType.SNOW) {
-            return world.getSnowHeight(x, y, z);
-        }
-        return block.getCollisionHeight();
+        return com.stonebreak.blocks.BlockShape.collisionHeight(world, x, y, z);
+    }
+
+    /**
+     * Collision height of a cell under a world-space XZ footprint. Shaped
+     * blocks (stairs) report the tallest step the footprint overlaps, so mobs
+     * stand on the tread beneath them and climb a staircase with the same
+     * step-up rule they use for any low ledge.
+     */
+    private float getBlockCollisionHeight(int x, int y, int z,
+                                          float minX, float minZ, float maxX, float maxZ) {
+        return com.stonebreak.blocks.BlockShape.collisionHeight(world, x, y, z, minX, minZ, maxX, maxZ);
     }
     
     /**
@@ -109,7 +116,8 @@ public class EntityCollision {
                     float entityLeftEdge = position.x - halfWidth;
                     int blockToCheckX = (int)Math.floor(entityLeftEdge);
                     
-                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi);
+                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi,
+                        entityLeftEdge, checkMinZ, entityLeftEdge, checkMaxZ);
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         
@@ -134,7 +142,8 @@ public class EntityCollision {
                     float entityRightEdge = position.x + halfWidth;
                     int blockToCheckX = (int)Math.floor(entityRightEdge);
                     
-                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi);
+                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi,
+                        entityRightEdge, checkMinZ, entityRightEdge, checkMaxZ);
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         
@@ -194,7 +203,8 @@ public class EntityCollision {
             for (int zi = (int)Math.floor(entityMinZ); zi < (int)Math.ceil(entityMaxZ); zi++) {
                 if (velocity.y < 0) { // Moving down
                     int blockToCheckY = (int)Math.floor(checkBottomY);
-                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi);
+                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi,
+                        entityMinX, entityMinZ, entityMaxX, entityMaxZ);
                     if (blockHeight > 0) {
                         float blockTop = blockToCheckY + blockHeight;
                         if (checkBottomY < blockTop) {
@@ -211,7 +221,8 @@ public class EntityCollision {
                     }
                 } else if (velocity.y > 0) { // Moving up
                     int blockToCheckY = (int)Math.floor(position.y + entity.getHeight());
-                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi);
+                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi,
+                        entityMinX, entityMinZ, entityMaxX, entityMaxZ);
                     if (blockHeight > 0) {
                         float potentialNewY = (float)blockToCheckY - entity.getHeight();
                         if (!collisionOccurred || potentialNewY < correctedPositionY) {
@@ -264,7 +275,8 @@ public class EntityCollision {
                     float entityFrontEdge = position.z - halfLength;
                     int blockToCheckZ = (int)Math.floor(entityFrontEdge);
                     
-                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ);
+                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ,
+                        checkMinX, entityFrontEdge, checkMaxX, entityFrontEdge);
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         
@@ -289,7 +301,8 @@ public class EntityCollision {
                     float entityBackEdge = position.z + halfLength;
                     int blockToCheckZ = (int)Math.floor(entityBackEdge);
                     
-                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ);
+                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ,
+                        checkMinX, entityBackEdge, checkMaxX, entityBackEdge);
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         
@@ -461,23 +474,10 @@ public class EntityCollision {
      * Checks if an entity is in water.
      */
     public boolean isInWater(Entity entity) {
-        Vector3f position = entity.getPosition();
-        
-        // For living entities, check water at their leg level
-        float checkY = position.y + entity.getHeight() / 2.0f;
-        if (entity instanceof LivingEntity livingEntity) {
-            // Check water at the middle of the entity's legs
-            checkY = position.y - livingEntity.getLegHeight() / 2.0f;
-        }
-        
-        int blockX = (int) Math.floor(position.x);
-        int blockY = (int) Math.floor(checkY);
-        int blockZ = (int) Math.floor(position.z);
-        
-        BlockType blockType = world.getBlockAt(blockX, blockY, blockZ);
-        return blockType == BlockType.WATER;
+        return EntityWaterPhysics.submersion(world, entity) > 0.0f;
     }
-    
+
+
     /**
      * Applies physics to an entity, including ground detection and water handling.
      * Now uses improved per-axis collision detection similar to Player class.
@@ -486,21 +486,20 @@ public class EntityCollision {
         Vector3f position = entity.getPosition();
         Vector3f velocity = entity.getVelocity();
         
-        // Check if entity is in water
-        boolean inWater = isInWater(entity);
-        entity.setInWater(inWater);
-        
-        // Apply gravity (skip for BlockDrop and ItemDrop as they have custom physics)
+        // How deep the entity is, not merely whether it is wet — buoyancy needs the difference.
+        float submersion = EntityWaterPhysics.submersion(world, entity);
+        entity.setSubmersion(submersion);
+
+        // Drops carry their own gravity, bounce and ground-snap in update().
         if (!(entity instanceof BlockDrop) && !(entity instanceof ItemDrop)) {
-            if (!entity.isOnGround() && !inWater) {
+            if (submersion > 0.0f) {
+                EntityWaterPhysics.apply(world, entity, submersion, deltaTime);
+                velocity.set(entity.getVelocity());
+            } else if (!entity.isOnGround()) {
                 velocity.y += Entity.GRAVITY * deltaTime;
-            } else if (inWater) {
-                // Buoyancy in water
-                velocity.y += Entity.GRAVITY * 0.3f * deltaTime; // Reduced gravity in water
-                velocity.mul(0.8f); // Water resistance
             }
         }
-        
+
         // Update entity velocity first
         entity.setVelocity(velocity);
         

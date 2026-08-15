@@ -34,8 +34,10 @@ import static org.mockito.Mockito.when;
  * full eviction. No GL — uploads return Mockito handles.
  *
  * <p>Config: renderDistance=1, lodRange=2 → ring covers Chebyshev 1..3
- * (48 columns: d≤2 → L0 incl. preload, d=3 → L1), small enough that a single
- * {@code applyGLUpdates} call (48-upload cap) drains everything.
+ * (48 columns: d≤2 → L0 incl. preload, d=3 → L1). {@code applyGLUpdates} may
+ * stop early on its 3 ms wall-clock budget under load, so tests drain it in a
+ * loop ({@link #drainGLUpdates()}) — each call is guaranteed ≥1 item of
+ * progress, never a single call.
  */
 class FastLodManagerLogicTest {
 
@@ -104,7 +106,19 @@ class FastLodManagerLogicTest {
     private void tick(int playerCx, int playerCz) {
         manager.updateRing(playerCx, playerCz);
         executor.runAll();
-        manager.applyGLUpdates();
+        drainGLUpdates();
+    }
+
+    /**
+     * applyGLUpdates caps work at 48 uploads OR a 3 ms wall-clock budget per
+     * call; under a loaded machine the budget can bind first. Each call still
+     * makes ≥1 item of progress (the deadline check sits at the loop bottom),
+     * so a bounded loop drains deterministically.
+     */
+    private void drainGLUpdates() {
+        for (int i = 0; i <= RING_NODES + 8; i++) {
+            manager.applyGLUpdates();
+        }
     }
 
     private MmsRenderableHandle handleFor(FastLodKey key) {
@@ -152,7 +166,7 @@ class FastLodManagerLogicTest {
         executor.runAll();
         assertNotNull(handleFor(oldKey), "generation done but not uploaded — still no retire");
 
-        manager.applyGLUpdates();
+        drainGLUpdates();
         assertNull(handleFor(oldKey), "retired atomically with the replacement upload");
         assertNotNull(handleFor(FastLodKey.of(FastLodLevel.L0, 3, 0)));
         verify(oldHandle).close();
@@ -195,7 +209,7 @@ class FastLodManagerLogicTest {
         manager.updateRing(100, 100);
         // Run only the upload drain — the new ring's jobs stay queued so any
         // upload we see must come from the stale origin meshes.
-        manager.applyGLUpdates();
+        drainGLUpdates();
         assertEquals(0, createdHandles.size(), "no stale mesh may reach the uploader");
         assertTrue(manager.visibleHandles().isEmpty());
     }
@@ -205,7 +219,7 @@ class FastLodManagerLogicTest {
         manager.updateRing(0, 0);      // queues 48 jobs, none run yet
         manager.updateRing(100, 100);  // cancels all of them, queues 48 new ones
         executor.runAll();
-        manager.applyGLUpdates();
+        drainGLUpdates();
 
         assertEquals(RING_NODES, manager.visibleHandles().size());
         for (FastLodManager.Entry e : manager.visibleHandles()) {

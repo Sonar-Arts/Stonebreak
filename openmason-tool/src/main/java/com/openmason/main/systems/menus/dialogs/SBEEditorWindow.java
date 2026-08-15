@@ -6,7 +6,6 @@ import com.openmason.engine.format.sbe.SBESerializer;
 import com.openmason.main.systems.services.StatusService;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
-import imgui.flag.ImGuiTabBarFlags;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 import imgui.type.ImInt;
@@ -37,6 +36,7 @@ public class SBEEditorWindow {
     private static final String[] ENTITY_TYPE_LABELS = {
             "Mob", "NPC", "Projectile", "Vehicle", "Other"
     };
+    private static final String[] TAB_LABELS = { "Metadata", "States", "Variants", "Sounds" };
 
     private final ImBoolean visible = new ImBoolean(false);
     private final FileDialogService fileDialogService;
@@ -49,6 +49,10 @@ public class SBEEditorWindow {
 
     /** Popup listing already-registered SBE object ids. */
     private final SBEObjectIndexPopup objectIndexPopup = new SBEObjectIndexPopup();
+
+    /** Mortar window chrome (action bar + tab strip); ImGui fallback inside. */
+    private final EditorChrome chrome = new EditorChrome("sbe");
+    private int selectedTab;
 
     // Loaded document state
     private Path currentPath;
@@ -152,55 +156,26 @@ public class SBEEditorWindow {
                 + (dirty ? " *" : "")
                 + "###sbe_editor";
         if (ImGui.begin(title, visible, flags)) {
-            renderToolbar();
-            ImGui.separator();
-            if (loadedManifest == null) {
+            boolean loaded = loadedManifest != null;
+            selectedTab = chrome.render(loaded, loaded && dirty, dirty,
+                    currentPath != null ? currentPath.getFileName().toString() : "",
+                    "Open Different SBE...", TAB_LABELS, selectedTab,
+                    this::saveInPlace, this::saveAs, this::openWithDialog);
+            ImGui.dummy(0, 6);
+            if (!loaded) {
                 ImGui.textDisabled("No SBE loaded. Use Tools > SBE Editor...");
             } else {
-                renderTabs();
+                switch (selectedTab) {
+                    case 0 -> renderMetadataTab();
+                    case 1 -> statesEditor.render();
+                    case 2 -> variantsEditor.render();
+                    case 3 -> soundsEditor.render();
+                    default -> { }
+                }
             }
             objectIndexPopup.render();
         }
         ImGui.end();
-    }
-
-    private void renderToolbar() {
-        boolean canSave = loadedManifest != null && dirty;
-        if (!canSave) ImGui.beginDisabled();
-        if (ImGui.button("Save")) {
-            saveInPlace();
-        }
-        if (!canSave) ImGui.endDisabled();
-        ImGui.sameLine();
-        if (ImGui.button("Save As...")) {
-            saveAs();
-        }
-        ImGui.sameLine();
-        if (ImGui.button("Open Different SBE...")) {
-            openWithDialog();
-        }
-    }
-
-    private void renderTabs() {
-        if (ImGui.beginTabBar("##sbe_editor_tabs", ImGuiTabBarFlags.Reorderable)) {
-            if (ImGui.beginTabItem("Metadata")) {
-                renderMetadataTab();
-                ImGui.endTabItem();
-            }
-            if (ImGui.beginTabItem("States")) {
-                statesEditor.render();
-                ImGui.endTabItem();
-            }
-            if (ImGui.beginTabItem("Variants")) {
-                variantsEditor.render();
-                ImGui.endTabItem();
-            }
-            if (ImGui.beginTabItem("Sounds")) {
-                soundsEditor.render();
-                ImGui.endTabItem();
-            }
-            ImGui.endTabBar();
-        }
     }
 
     private void renderMetadataTab() {
@@ -234,7 +209,7 @@ public class SBEEditorWindow {
         if (loadedOmoBytes != null) {
             ImGui.text(baseModelLabel != null ? baseModelLabel : "(loaded)");
             ImGui.sameLine();
-            ImGui.textDisabled("(" + humanBytes(loadedOmoBytes.length) + ")");
+            ImGui.textDisabled("(" + EditorWidgets.humanBytes(loadedOmoBytes.length) + ")");
         } else {
             ImGui.textDisabled("(none)");
         }
@@ -261,12 +236,6 @@ public class SBEEditorWindow {
             logger.error("Failed to read OMO {}", picked, e);
             if (statusService != null) statusService.updateStatus("Failed to read OMO file");
         }
-    }
-
-    private static String humanBytes(int n) {
-        if (n < 1024) return n + " B";
-        if (n < 1024 * 1024) return String.format("%.1f KB", n / 1024.0);
-        return String.format("%.1f MB", n / (1024.0 * 1024.0));
     }
 
     // ========================================================================
@@ -350,5 +319,16 @@ public class SBEEditorWindow {
             if (arr[i].equalsIgnoreCase(value)) return i;
         }
         return 0;
+    }
+
+    /**
+     * Release GPU-backed resources (chrome + sounds Mortar regions). Must run
+     * with a current GL context, before the SkijaContext closes.
+     */
+    public void close() {
+        chrome.close();
+        statesEditor.close();
+        variantsEditor.close();
+        soundsEditor.close();
     }
 }

@@ -12,25 +12,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class TimeOfDayTest {
 
+    /** Ticks per real-time second at timeSpeed 1.0, derived from the day-length knob. */
+    private static final float TICK_RATE = TimeOfDay.TICKS_PER_DAY / TimeOfDay.DAY_LENGTH_SECONDS;
+
     @Test
     void updateAccumulatesFractionalTicks() {
         TimeOfDay t = new TimeOfDay(0);
-        // 60 fps: each update adds 20/60 ≈ 0.333 ticks — pre-fix this truncated to zero forever.
+        // 60 fps: each update adds TICK_RATE/60 (< 1) ticks — pre-fix this truncated to zero forever.
         for (int i = 0; i < 60; i++) {
             t.update(1f / 60f);
         }
-        // One second of updates ⇒ ~20 ticks (allow float slack).
-        assertTrue(t.getTicks() >= 19 && t.getTicks() <= 21,
-            "expected ~20 ticks after 1 s of 60 fps updates, got " + t.getTicks());
+        // One second of updates ⇒ ~TICK_RATE ticks (allow float slack).
+        assertTrue(t.getTicks() >= TICK_RATE - 1 && t.getTicks() <= TICK_RATE + 1,
+            "expected ~" + TICK_RATE + " ticks after 1 s of 60 fps updates, got " + t.getTicks());
     }
 
     @Test
-    void serverStyleWholeTickUpdatesUnchanged() {
+    void serverStyleFixedStepsAccumulateExactly() {
         TimeOfDay t = new TimeOfDay(100);
         for (int i = 0; i < 40; i++) {
-            t.update(0.05f); // 20 Hz server step = exactly 1 tick
+            t.update(0.05f); // 20 Hz server step
         }
-        assertEquals(140, t.getTicks());
+        // 2 s of exact fixed steps ⇒ exactly 2·TICK_RATE ticks, carry leaves no residue.
+        assertEquals(100 + (long) (2 * TICK_RATE), t.getTicks());
     }
 
     @Test

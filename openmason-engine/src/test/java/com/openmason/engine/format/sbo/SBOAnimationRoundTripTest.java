@@ -2,6 +2,7 @@ package com.openmason.engine.format.sbo;
 
 import com.openmason.engine.format.oma.OMAReader;
 import com.openmason.engine.format.oma.ParsedAnimClip;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -27,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * (clip default / forced loop / play-once), manifest round-trip, and the
  * editor re-save path preserving the authored loop flag.
  */
+@Tag("regression")
 class SBOAnimationRoundTripTest {
 
     @TempDir

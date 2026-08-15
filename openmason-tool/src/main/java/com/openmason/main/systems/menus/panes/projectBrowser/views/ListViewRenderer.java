@@ -65,7 +65,9 @@ public class ListViewRenderer implements ViewRenderer {
                 }
 
                 ImGui.tableSetColumnIndex(1);
-                if (ImGui.selectable(item.name() + "##" + item.pathString(), false, 0, 0, 0)) {
+                boolean clicked = ImGui.selectable(item.name() + "##" + item.pathString(), false, 0, 0, 0);
+                boolean dragging = ProjectBrowserDragSource.emit(item);
+                if (clicked && !dragging) {
                     controller.selectAsset(item);
                 }
 
@@ -84,6 +86,9 @@ public class ListViewRenderer implements ViewRenderer {
         return switch (item.type()) {
             case OMO -> modelRenderer.getThumbnail(item, THUMBNAIL_SIZE);
             case OMT -> omtRenderer.getThumbnail(item, THUMBNAIL_SIZE);
+            // Scenes have no thumbnail yet; every view already falls back to a
+            // placeholder when the texture id is <= 0.
+            case OMSC -> 0;
         };
     }
 }

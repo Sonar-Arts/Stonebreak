@@ -1,0 +1,12 @@
+# Test classes whose skips are environment-gated (JUnit Assumptions), not
+# regressions: they skip on machines without the native Cenda kernels
+# (libcenda_kernels.so), without the NATIVE noise backend, or without the
+# manual benchmark gate (-Dcenda.bench=true). The baseline diff in
+# harness.py ignores NEWLY SKIPPED entries for these classes.
+com.openmason.engine.cenda.CendaKernelsTest
+com.stonebreak.world.CendaChunkBenchmarkTest
+com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration.CendaMesherKernelTest
+com.stonebreak.world.generation.FusedChunkGenParityTest
+com.stonebreak.world.generation.NativeCarverIntegrationTest
+com.stonebreak.world.generation.noise.TerrainNoiseParityTest
+com.stonebreak.world.save.io.ChunkCodecZstdTest

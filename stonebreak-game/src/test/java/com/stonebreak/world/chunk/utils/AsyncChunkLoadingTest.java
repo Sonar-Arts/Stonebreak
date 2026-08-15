@@ -5,6 +5,7 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Unit tests for async chunk loading optimizations in WorldChunkStore.
  * Tests verify non-blocking behavior, duplicate prevention, and proper finalization.
  */
+@Tag("integration")
 public class AsyncChunkLoadingTest {
 
     private World world;

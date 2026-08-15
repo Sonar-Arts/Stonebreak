@@ -20,6 +20,12 @@ public abstract class Entity {
     protected float maxHealth;
     protected boolean onGround;
     protected boolean inWater;
+    /**
+     * How much of the entity is under water, 0..1. Measured once per physics step and read by
+     * everything that cares (buoyancy, steering speed, footsteps) rather than each of them
+     * re-scanning the water column for itself.
+     */
+    protected float submersion;
     protected boolean alive;
     protected float age;
     
@@ -190,6 +196,9 @@ public abstract class Entity {
     public float getMaxHealth() { return maxHealth; }
     public boolean isOnGround() { return onGround; }
     public boolean isInWater() { return inWater; }
+
+    /** How much of the entity is under water, 0..1, as of the last physics step. */
+    public float getSubmersion() { return submersion; }
     public boolean isAlive() { return alive; }
     public float getAge() { return age; }
     public World getWorld() { return world; }
@@ -220,7 +229,14 @@ public abstract class Entity {
     public void setHealth(float health) { this.health = Math.min(health, maxHealth); }
     public void setMaxHealth(float maxHealth) { this.maxHealth = maxHealth; }
     public void setOnGround(boolean onGround) { this.onGround = onGround; }
-    public void setInWater(boolean inWater) { this.inWater = inWater; }
+    /**
+     * Records how deep the entity is; {@link #isInWater()} follows from it, so the two can never
+     * disagree.
+     */
+    public void setSubmersion(float submersion) {
+        this.submersion = submersion;
+        this.inWater = submersion > 0.0f;
+    }
     public void setAlive(boolean alive) { this.alive = alive; }
 
     public int getNetworkId() { return networkId; }

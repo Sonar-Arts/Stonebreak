@@ -9,33 +9,28 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.EntityType;
-import com.stonebreak.mobs.entities.ai.PassiveMobAI;
-import com.stonebreak.audio.MobSounds;
+import com.stonebreak.mobs.entities.ai.MobAI;
+import com.stonebreak.mobs.entities.ai.behavior.FleeBehavior;
+import com.stonebreak.mobs.entities.ai.behavior.StandStillBehavior;
+import com.stonebreak.mobs.entities.ai.behavior.WanderBehavior;
+import com.stonebreak.mobs.entities.ai.nav.Steering;
 
 /**
  * Cow mob implementation - the first living entity in Stonebreak.
- * Behaviour comes from the shared {@link PassiveMobAI} framework; this class
- * adds the cow-specific content: milk system, sounds, and stealth awareness.
+ * Behaviour is assembled from shared {@link com.stonebreak.mobs.entities.ai.behavior.Behavior}s;
+ * this class adds the cow-specific content: milk system and sounds.
  */
 public class Cow extends LivingEntity {
 
-    /** Cow personality: even idle/wander split with occasional grazing; flees when hit. */
-    private static final PassiveMobAI.Config AI_CONFIG = new PassiveMobAI.Config(
-            3.0f, 8.0f,          // state duration min/max
-            3.0f, 8.0f,          // wander distance min/max
-            0.8f, 180.0f,        // move speed multiplier, rotation speed (deg/s)
-            0.4f, 0.4f, 0.2f,    // idle / wander / graze weights
-            0.0f, 0.0f,          // no wing-flap gesture
-            2.2f, 0.8f,          // hop boost: the slow, long-bodied cow needs the mid-air drive to land ledges from a standstill
-            PassiveMobAI.DamageResponse.FLEE);
+    /** Turn rate and the mid-air drive the slow, long-bodied cow needs to land ledges. */
+    private static final float ROTATION_SPEED = 180.0f;
+    private static final float HOP_BOOST_SPEED = 2.2f;
+    private static final float HOP_DURATION = 0.8f;
 
     // Milk system (basic implementation)
     private boolean canBeMilked;
     private float milkRegenTimer;
     private static final float MILK_REGEN_TIME = 300.0f; // 5 minutes
-
-    // Footsteps: relaxed cadence, tolerant of brief off-ground moments
-    private final MobSounds mobSounds;
 
     /**
      * Creates a new cow at the specified position with default texture variant.
@@ -56,13 +51,14 @@ public class Cow extends LivingEntity {
         this.canBeMilked = true;
         this.milkRegenTimer = 0.0f;
 
-        // Shared passive-mob AI with cow tuning. (No AwarenessController: the
-        // investigate/pursue drive made cows slowly gravitate toward the player;
-        // awareness stays reserved for hostile mobs.)
-        this.mobAI = new PassiveMobAI(this, AI_CONFIG);
-
-        // Sound system
-        this.mobSounds = new MobSounds(world, 1.2f, 0.3f, false);
+        // Cow personality: an even idle/wander split with occasional grazing, and a bolt for it
+        // when hit. (No AwarenessController: the investigate/pursue drive made cows slowly
+        // gravitate toward the player; awareness stays reserved for hostile mobs.)
+        this.mobAI = new MobAI(this, new Steering(this, ROTATION_SPEED, HOP_BOOST_SPEED, HOP_DURATION),
+                new FleeBehavior(10.0f, 4.0f, 1.0f),
+                StandStillBehavior.idle(0.4f, 3.0f, 8.0f),
+                new WanderBehavior(0.4f, 3.0f, 8.0f, 0.8f),
+                StandStillBehavior.graze(0.2f, 3.0f, 8.0f));
 
         // Set interaction range for cows
         this.interactionRange = 2.5f;
@@ -80,7 +76,6 @@ public class Cow extends LivingEntity {
         super.update(deltaTime);
 
         updateMilkSystem(deltaTime);
-        mobSounds.updateSounds(position, velocity, isOnGround());
     }
 
     /**
@@ -137,7 +132,6 @@ public class Cow extends LivingEntity {
     @Override
     protected void onDeath() {
         mobAI.cleanup();
-        mobSounds.reset();
         for (ItemStack drop : getDrops()) {
             DropUtil.createItemDrop(world, getPosition(), drop);
         }

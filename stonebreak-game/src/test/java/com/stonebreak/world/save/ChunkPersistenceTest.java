@@ -9,6 +9,7 @@ import com.stonebreak.world.save.io.ChunkStorage;
 import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.EntityData;
 import org.joml.Vector3f;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -26,6 +27,7 @@ import java.util.Random;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@Tag("regression")
 class ChunkPersistenceTest {
 
     @Test

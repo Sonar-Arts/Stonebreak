@@ -250,15 +250,15 @@ public class InventoryInputManager {
     }
 
     private void updateCharTabBounds(InventoryLayoutCalculator.InventoryLayout layout) {
-        charTabWidth  = com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.getScaledTabWidth();
-        charTabHeight = com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.getScaledTabHeight();
-        int stride = com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.getScaledTabWidth()
-            + com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator.getScaledTabGap();
-        charTabX    = layout.panelStartX + stride;
-        charTabY    = layout.panelStartY - charTabHeight;
-        classesTabX = layout.panelStartX + stride * 2;
-        skillsTabX  = layout.panelStartX + stride * 3;
-        featsTabX   = layout.panelStartX + stride * 4;
+        charTabWidth  = com.stonebreak.ui.TabStripLayout.tabWidth();
+        charTabHeight = com.stonebreak.ui.TabStripLayout.tabHeight();
+        int stride = com.stonebreak.ui.TabStripLayout.stride();
+        int startX = com.stonebreak.ui.TabStripLayout.startX(lastScreenWidth);
+        charTabX    = startX + stride;
+        charTabY    = com.stonebreak.ui.TabStripLayout.tabY(layout.panelStartY);
+        classesTabX = startX + stride * 2;
+        skillsTabX  = startX + stride * 3;
+        featsTabX   = startX + stride * 4;
     }
 
     private boolean isClassesTabClicked(float mouseX, float mouseY,

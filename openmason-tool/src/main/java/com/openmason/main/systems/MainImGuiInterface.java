@@ -53,6 +53,13 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     private final ModelState modelState;
     private final UIVisibilityState uiVisibilityState;
 
+    /**
+     * The one and only {@link ViewportUIState}. Owned here, handed to the menu
+     * handlers and operation services below, and passed into {@link ViewportController}
+     * so the render pipeline reads the same object the UI writes.
+     */
+    private final ViewportUIState viewportState;
+
     // Services
     private final StatusService statusService;
     private final ModelOperationService modelOperations;
@@ -68,6 +75,17 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
     /** Invoked with a .OMT file path to open it in the texture editor (wired in mainOpenMason). */
     private java.util.function.Consumer<java.nio.file.Path> openTextureInEditorCallback;
+
+    /** Invoked with a .OMSC path to open it in the Scene Viewer (wired in mainOpenMason). */
+    private java.util.function.Consumer<java.nio.file.Path> openSceneCallback;
+
+    /**
+     * Invoked whenever the project session changes (new, open, or return to the hub).
+     * The Scene Viewer uses it to drop the open scene — a scene references models by
+     * project-relative path, so carrying one into a different project would leave it
+     * pointing at files that are not there.
+     */
+    private Runnable onProjectSessionReset;
 
     private PreferencesWindow preferencesWindow; // Initialized after components
     private SBOExportWindow sboExportWindow; // Initialized after components
@@ -101,8 +119,10 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     // Window Configurations
     private final WindowConfig propertiesConfig = WindowConfig.forProperties();
 
-    // Layout initialization tracking
-    private boolean defaultLayoutBuilt = false;
+    // Dock layout: versioned so each release adding a window forces exactly one rebuild.
+    private final com.openmason.main.systems.layout.MainLayoutBuilder mainLayoutBuilder;
+    private final com.openmason.main.systems.layout.CenterTabFocusRequest centerTabFocus =
+            new com.openmason.main.systems.layout.CenterTabFocusRequest();
 
     // Camera settings loaded from preferences on startup
     private float initialCameraOrbitSpeed;
@@ -120,7 +140,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
         // Initialize state objects
         this.modelState = new ModelState();
-        ViewportUIState viewportState = new ViewportUIState();
+        this.viewportState = new ViewportUIState();
         this.uiVisibilityState = new UIVisibilityState();
 
         // Initialize services
@@ -144,6 +164,8 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
         // Initialize project service
         this.projectService = new ProjectService();
+        this.mainLayoutBuilder = new com.openmason.main.systems.layout.MainLayoutBuilder(new com.openmason.main.omConfig());
+        layoutService.setLayoutBuilder(this.mainLayoutBuilder);
 
         // Model-save dialogs start in the open project's folder (.OMP location)
         fileDialogService.setProjectDirectorySupplier(getProjectDirectorySupplier());
@@ -179,6 +201,10 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         fileMenuHandler.setThemeManager(themeManager);
         fileMenuHandler.setProjectService(projectService);
         fileMenuHandler.setUIVisibilityState(uiVisibilityState);
+        // A session boundary (File > Open Project) drops the outgoing scene BEFORE the new
+        // project loads, so openProject can restore the incoming one. Save As is only a
+        // path change: the session continues, the scene stays, the browser re-roots.
+        fileMenuHandler.setOnProjectSessionBoundary(this::notifyProjectSessionReset);
         fileMenuHandler.setOnProjectPathChanged(this::refreshProjectBrowserRoot);
         editMenu.setViewport(viewport3D);
         viewMenu.setViewport(viewport3D);
@@ -286,7 +312,11 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      */
     private void setupViewport() {
         try {
-            viewport3D = new ViewportController();
+            // The viewport shares this shell's ViewportUIState — the same object the
+            // View menu and the operation services already hold. Giving the viewport
+            // its own copy is what used to make menu toggles (e.g. Show Bones) write
+            // to a state the render pipeline never reads.
+            viewport3D = new ViewportController(viewportState);
 
             if (viewport3D.getCamera() != null) {
                 viewport3D.getCamera().setMouseSensitivity(initialCameraOrbitSpeed);
@@ -378,6 +408,10 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
         aboutDialog.render();
 
+        // Runs after every window has been submitted, which is what makes focusing a
+        // freshly docked tab actually take effect.
+        centerTabFocus.tick();
+
         // Render home screen dialog if open
         if (fileMenuHandler != null && fileMenuHandler.getHomeScreenDialog() != null) {
             fileMenuHandler.getHomeScreenDialog().render();
@@ -419,68 +453,20 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         int dockspaceId = ImGui.getID("OpenMasonDockSpace");
         ImGui.dockSpace(dockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.PassthruCentralNode);
 
-        // Build default layout on first frame if no saved layout exists
-        if (!defaultLayoutBuilt) {
-            defaultLayoutBuilt = true;
-            buildDefaultLayout(dockspaceId);
+        ImGuiViewport mainViewport = ImGui.getMainViewport();
+        if (mainLayoutBuilder.applyIfNeeded(dockspaceId,
+                mainViewport.getWorkSizeX(), mainViewport.getWorkSizeY())) {
+            // A rebuild's focus is only a fallback: a project's recorded centre tab
+            // (already pending from the restore hook) must win over it.
+            String rebuildFocus = mainLayoutBuilder.takePendingFocusWindow();
+            if (!centerTabFocus.isPending()) {
+                centerTabFocus.request(rebuildFocus);
+            }
         }
 
         ImGui.popStyleVar(1);
 
         ImGui.end();
-    }
-
-    /**
-     * Build the default docking layout programmatically using DockBuilder.
-     * This creates the standard layout: Properties (left), 3D Viewport (center), Model Browser (bottom).
-     * Only applies when no saved imgui.ini layout exists for this dockspace.
-     */
-    private void buildDefaultLayout(int dockspaceId) {
-        var node = imgui.internal.ImGui.dockBuilderGetNode(dockspaceId);
-        boolean hasSavedLayout = node != null && node.isSplitNode();
-
-        com.openmason.main.omConfig config = new com.openmason.main.omConfig();
-        if (hasSavedLayout && config.isProjectBrowserLayoutMigrated()) {
-            // Dockspace already has a saved layout from imgui.ini — don't override
-            return;
-        }
-
-        if (hasSavedLayout) {
-            // Saved layout predates the Model Browser → Project Browser rename,
-            // so it has no dock slot for the new window. Rebuild the default
-            // layout once so the browser lands in its bottom grid position.
-            logger.info("Migrating saved layout: rebuilding default so Project Browser docks at the bottom");
-        } else {
-            logger.info("No saved layout found — building default docking layout");
-        }
-        config.setProjectBrowserLayoutMigrated(true);
-        config.saveConfiguration();
-
-        imgui.internal.ImGui.dockBuilderRemoveNode(dockspaceId);
-        imgui.internal.ImGui.dockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags.PassthruCentralNode);
-
-        ImGuiViewport viewport = ImGui.getMainViewport();
-        imgui.internal.ImGui.dockBuilderSetNodeSize(dockspaceId, viewport.getWorkSizeX(), viewport.getWorkSizeY());
-
-        // Split bottom for Model Browser (~37% of height)
-        ImInt dockTop = new ImInt();
-        ImInt dockBottom = new ImInt();
-        imgui.internal.ImGui.dockBuilderSplitNode(dockspaceId, ImGuiDir.Down, 0.37f, dockBottom, dockTop);
-
-        // Split left for Model Properties panel (~20% of remaining width)
-        ImInt dockLeft = new ImInt();
-        ImInt dockCenter = new ImInt();
-        imgui.internal.ImGui.dockBuilderSplitNode(dockTop.get(), ImGuiDir.Left, 0.20f, dockLeft, dockCenter);
-
-        // Dock windows into their respective nodes
-        imgui.internal.ImGui.dockBuilderDockWindow("Model Properties", dockLeft.get());
-        imgui.internal.ImGui.dockBuilderDockWindow(RiggingPaneImGui.WINDOW_TITLE, dockLeft.get());
-        imgui.internal.ImGui.dockBuilderDockWindow("3D Viewport", dockCenter.get());
-        imgui.internal.ImGui.dockBuilderDockWindow(ProjectBrowserImGui.WINDOW_TITLE, dockBottom.get());
-
-        imgui.internal.ImGui.dockBuilderFinish(dockspaceId);
-
-        logger.info("Default docking layout built successfully");
     }
 
     /**
@@ -516,6 +502,21 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         }
     }
 
+    /** A scene was clicked in the browser; the app-level handler opens it. */
+    @Override
+    public void onSceneSelected(com.openmason.main.systems.menus.panes.projectBrowser.events.SceneSelectedEvent event) {
+        if (openSceneCallback != null) {
+            openSceneCallback.accept(event.entry().path());
+        } else {
+            logger.warn("No scene-open callback wired; cannot open {}", event.entry().name());
+        }
+    }
+
+    /** Set by the app: opens a .omsc in the Scene Viewer. */
+    public void setOpenSceneCallback(java.util.function.Consumer<java.nio.file.Path> callback) {
+        this.openSceneCallback = callback;
+    }
+
     /**
      * Render property panel.
      */
@@ -543,7 +544,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     private void renderPropertyPanelFallback() {
         ImGuiHelpers.configureWindowConstraints(propertiesConfig);
 
-        if (ImGui.begin("Model Properties", uiVisibilityState.getShowPropertyPanel())) {
+        if (ImGui.begin(PropertyPanelImGui.WINDOW_TITLE, uiVisibilityState.getShowPropertyPanel())) {
             ImGuiHelpers.configureWindowSize(propertiesConfig);
             ImGuiHelpers.configureWindowPosition(propertiesConfig);
             ImGui.textDisabled("Property panel not initialized");
@@ -586,6 +587,57 @@ public class MainImGuiInterface implements ProjectBrowserListener {
             java.nio.file.Path parent = java.nio.file.Path.of(ompPath).getParent();
             return parent != null ? parent.toString() : null;
         };
+    }
+
+    /** The shared UI visibility flags, needed by the Scene Viewer's windows. */
+    /** Forwards the File menu's Scene group to the app-supplied handlers. */
+    public void setSceneActions(Runnable newScene, Runnable openScene,
+                                Runnable saveScene, Runnable saveSceneAs,
+                                java.util.function.BooleanSupplier sceneDirty) {
+        if (fileMenuHandler != null) {
+            fileMenuHandler.setSceneActions(newScene, openScene, saveScene, saveSceneAs, sceneDirty);
+        }
+    }
+
+    /**
+     * Wire the project file's scene node to the scene layer: {@code saveSupplier} is read
+     * on every project save (which scene is open + which centre tab is in front), and
+     * {@code restoreHook} runs after a project opens (null reference = pre-1.2 file).
+     */
+    public void setSceneSessionHooks(
+            java.util.function.Supplier<com.openmason.main.systems.project.OMPFormat.SceneReference> saveSupplier,
+            java.util.function.Consumer<com.openmason.main.systems.project.OMPFormat.SceneReference> restoreHook) {
+        if (projectService != null) {
+            projectService.setSceneStateSupplier(saveSupplier);
+            projectService.setSceneRestoreHook(restoreHook);
+        }
+    }
+
+    /** Forwards "save the open scene alongside the project" to the app-supplied handler. */
+    public void setSaveOpenSceneAction(Runnable action) {
+        if (fileMenuHandler != null) {
+            fileMenuHandler.setOnSaveOpenScene(action);
+        }
+    }
+
+    /** Forwards live camera-preference changes to the Scene Viewer. */
+    public void setSceneCameraPreferenceSink(java.util.function.BiConsumer<Float, Float> sink) {
+        if (preferencesWindow != null) {
+            preferencesWindow.setSceneCameraSink(sink);
+        }
+    }
+
+    public UIVisibilityState getUIVisibilityState() {
+        return uiVisibilityState;
+    }
+
+    /**
+     * Bring a centre-dock tab to the front (Scene Viewer or 3D Viewport).
+     * Deferred by a few frames, because focusing a window ImGui has not submitted yet
+     * silently does nothing.
+     */
+    public void requestCenterTab(String windowTitle) {
+        centerTabFocus.request(windowTitle);
     }
 
     public PropertyPanelImGui getPropertyPanel() {
@@ -825,6 +877,17 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      * Reset all editor state to defaults for a fresh session.
      * Called when creating a new blank project from the hub.
      */
+    public void setOnProjectSessionReset(Runnable callback) {
+        this.onProjectSessionReset = callback;
+    }
+
+    /** Fired on every project-session boundary. */
+    private void notifyProjectSessionReset() {
+        if (onProjectSessionReset != null) {
+            onProjectSessionReset.run();
+        }
+    }
+
     public void resetEditorState() {
         if (viewport3D != null) {
             viewport3D.resetCamera();
@@ -837,6 +900,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         if (projectService != null) {
             projectService.clearCurrentProject();
         }
+        notifyProjectSessionReset();
         refreshProjectBrowserRoot();
 
         logger.info("Editor state reset to defaults for new project");
@@ -878,6 +942,10 @@ public class MainImGuiInterface implements ProjectBrowserListener {
             return;
         }
 
+        // Drop the previous project's scene first: its models are resolved against the
+        // old project root and would otherwise linger, referencing files that are gone.
+        notifyProjectSessionReset();
+
         boolean success = projectService.openProject(ompFilePath, viewport3D, modelState,
                 uiVisibilityState, modelOperations);
         if (success) {
@@ -911,5 +979,10 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         if (sboEditorWindow != null) {
             sboEditorWindow.close();
         }
+        if (sbeEditorWindow != null) {
+            sbeEditorWindow.close();
+        }
+        // Audio audition engine (OpenAL, lazily started by the Sounds tabs).
+        com.openmason.main.systems.menus.dialogs.SoundPreviewService.shutdown();
     }
 }

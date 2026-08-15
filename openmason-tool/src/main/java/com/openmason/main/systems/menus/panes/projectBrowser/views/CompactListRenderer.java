@@ -47,7 +47,9 @@ public class CompactListRenderer implements ViewRenderer {
                 ImGui.dummy(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
             }
             ImGui.sameLine(0, ICON_TEXT_SPACING);
-            if (ImGui.selectable(item.name() + "##" + item.pathString(), false)) {
+            boolean clicked = ImGui.selectable(item.name() + "##" + item.pathString(), false);
+            boolean dragging = ProjectBrowserDragSource.emit(item);
+            if (clicked && !dragging) {
                 controller.selectAsset(item);
             }
             if (ImGui.isItemHovered()) ImGui.setTooltip(item.pathString());
@@ -59,6 +61,9 @@ public class CompactListRenderer implements ViewRenderer {
         return switch (item.type()) {
             case OMO -> modelRenderer.getThumbnail(item, THUMBNAIL_SIZE);
             case OMT -> omtRenderer.getThumbnail(item, THUMBNAIL_SIZE);
+            // Scenes have no thumbnail yet; every view already falls back to a
+            // placeholder when the texture id is <= 0.
+            case OMSC -> 0;
         };
     }
 }

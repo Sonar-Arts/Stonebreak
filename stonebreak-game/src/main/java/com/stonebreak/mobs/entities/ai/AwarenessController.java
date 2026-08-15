@@ -76,7 +76,7 @@ public class AwarenessController {
         toPlayer.normalize();
 
         // Forward from yaw, honoring the entity type's model yaw offset
-        // (matches LivingEntity.faceDirection and MobNavigator steering).
+        // (matches LivingEntity.faceDirection and Steering).
         Vector3f forward = self.getForwardDirection();
 
         float halfAngleCos = (float) Math.cos(Math.toRadians(PlayerConstants.ENEMY_SIGHT_ANGLE_DEG * 0.5f));
@@ -120,42 +120,17 @@ public class AwarenessController {
         }
     }
 
-    // ── Behaviour ─────────────────────────────────────────────────────────────
+    // ── Memory ────────────────────────────────────────────────────────────────
 
     /**
-     * Drives movement for the current awareness state, returning true when it took control (so the
-     * owner should skip its passive AI this frame). SUSPICIOUS investigates the last known position;
-     * ALERTED pursues the player. UNAWARE yields control back to the owner.
+     * Where the player was last detected, or {@code null} if this mob has never noticed one.
+     *
+     * <p>Acting on it belongs to
+     * {@link com.stonebreak.mobs.entities.ai.behavior.PursuePlayerBehavior}: this class decides
+     * <em>whether</em> the mob has noticed the player, the behaviour decides what to do about it,
+     * and navigation works out how to get there.
      */
-    public boolean drive(float deltaTime) {
-        if (!self.isAlive()) return false;
-        switch (state) {
-            case SUSPICIOUS -> {
-                if (hasLastKnown) {
-                    self.moveToward(lastKnownPos, deltaTime);
-                }
-                return true;
-            }
-            case ALERTED -> {
-                Player player = Game.getPlayer();
-                if (player != null && !player.isDead()) {
-                    self.moveToward(player.getPosition(), deltaTime);
-                    attackPlayerStub(player);
-                }
-                return true;
-            }
-            case UNAWARE -> {
-                return false;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Placeholder for the ALERTED melee attack. No mob→player damage exists in the game yet, so
-     * this intentionally does nothing; wire actual contact damage here once that system lands.
-     */
-    private void attackPlayerStub(Player player) {
-        // TODO: deal contact damage to the player when within reach (no mob attack system yet).
+    public Vector3f lastKnownPlayerPosition(Vector3f out) {
+        return hasLastKnown ? out.set(lastKnownPos) : null;
     }
 }

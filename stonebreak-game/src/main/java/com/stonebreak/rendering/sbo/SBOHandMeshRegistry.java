@@ -62,7 +62,9 @@ public class SBOHandMeshRegistry {
 
         for (BlockType type : BlockType.values()) {
             boolean animated = com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(type);
-            if (!type.isFlower() && !animated) continue;
+            // Multi-face models: doors and stairs both need per-triangle layers.
+            boolean multiFace = animated || type.isStairs();
+            if (!type.isFlower() && !multiFace) continue;
             if (!bridge.isSBOBlock(type)) continue;
 
             SBOParseResult sbo = bridge.getSBODefinition(type);
@@ -74,9 +76,8 @@ public class SBOHandMeshRegistry {
 
             String name = "sbo_hand_" + type.name().toLowerCase();
             MeshManager.MeshResource resource;
-            if (animated && mesh.triangleToFaceId() != null
-                    && mesh.triangleToFaceId().length * 3 == mesh.indices().length) {
-                // Multi-face model (door): per-triangle texture layers.
+            if (multiFace) {
+                // Multi-face model (door, stairs): per-triangle texture layers.
                 resource = meshManager.createCustomLayeredMesh(name,
                         buildInterleavedPerFace(type, mesh), sequentialIndices(mesh.indices().length));
             } else {
@@ -167,9 +168,7 @@ public class SBOHandMeshRegistry {
      */
     private float[] buildInterleavedPerFace(BlockType type, ParsedMeshData mesh) {
         float[] verts = mesh.vertices();
-        float[] uvs = mesh.texCoords();
         int[] indices = mesh.indices();
-        int[] triFace = mesh.triangleToFaceId();
         int vCount = mesh.getVertexCount();
 
         float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY, minZ = Float.POSITIVE_INFINITY;
@@ -192,21 +191,30 @@ public class SBOHandMeshRegistry {
         float cy = (minY + maxY) * 0.5f;
         float cz = (minZ + maxZ) * 0.5f;
 
+        // Face-per-triangle comes from the same geometric classification the
+        // chunk mesher uses, so a model with more than six faces (a stair has
+        // ten) picks the right layer per triangle instead of clamping the
+        // authored GMR id into the bottom face.
+        com.openmason.engine.voxel.sbo.SBONormalComputer.ProcessedMesh processed =
+                com.openmason.engine.voxel.sbo.SBONormalComputer.compute(
+                        verts, mesh.texCoords(), indices);
+        float[] deVerts = processed.vertices();
+        float[] deUvs = processed.texCoords();
+        int[] triFaces = processed.triangleFaces();
+
         float[] out = new float[indices.length * 6];
-        for (int tri = 0; tri < triFace.length; tri++) {
-            int mmsFace = com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions
-                    .gmrToMms(triFace[tri]);
-            float layer = textureArray.getBlockFaceLayer(type, mmsFace);
+        for (int tri = 0; tri < triFaces.length; tri++) {
+            float layer = textureArray.getBlockFaceLayer(type, triFaces[tri]);
             for (int corner = 0; corner < 3; corner++) {
-                int vi = indices[tri * 3 + corner];
+                int vi = tri * 3 + corner;
                 int s = vi * 3;
                 int t = vi * 2;
-                int d = (tri * 3 + corner) * 6;
-                out[d]     = (verts[s]     - cx) * scale;
-                out[d + 1] = (verts[s + 1] - cy) * scale;
-                out[d + 2] = (verts[s + 2] - cz) * scale;
-                out[d + 3] = (uvs != null && t     < uvs.length) ? uvs[t]     : 0f;
-                out[d + 4] = (uvs != null && t + 1 < uvs.length) ? uvs[t + 1] : 0f;
+                int d = vi * 6;
+                out[d]     = (deVerts[s]     - cx) * scale;
+                out[d + 1] = (deVerts[s + 1] - cy) * scale;
+                out[d + 2] = (deVerts[s + 2] - cz) * scale;
+                out[d + 3] = deUvs[t];
+                out[d + 4] = deUvs[t + 1];
                 out[d + 5] = layer;
             }
         }

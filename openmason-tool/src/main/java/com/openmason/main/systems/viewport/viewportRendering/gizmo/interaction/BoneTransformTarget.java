@@ -1,8 +1,10 @@
 package com.openmason.main.systems.viewport.viewportRendering.gizmo.interaction;
 
+import com.openmason.engine.rendering.viewer.gizmo.interaction.ITransformTarget;
+
 import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.main.systems.skeleton.BoneStore;
-import com.openmason.main.systems.viewport.state.TransformState;
+import com.openmason.engine.rendering.viewer.transform.TransformState;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
