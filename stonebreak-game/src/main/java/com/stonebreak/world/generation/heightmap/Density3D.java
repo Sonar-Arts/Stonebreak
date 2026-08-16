@@ -48,6 +48,16 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * column, where carving is a surface-appearance decision (cliffs, hoodoos) and genuinely is
  * the biome's business. Below that, depth decides.
  *
+ * <h2>Why the band is a union and not a branch</h2>
+ *
+ * <p>That top band used to <em>replace</em> the cave test rather than add to it, which made it
+ * a lid: no chamber or tunnel could exist in the top 16 blocks, so a carved cliff opening had
+ * nothing behind it but the depth 10-35 shell the two shallow gates leave solid. Openings read
+ * as 2-4 block pockets with a wall at the back. The band now carves <em>or</em> the cave test
+ * does, and both gates are interpolated toward a shallower pair by {@link CliffExposure} where
+ * the terrain is steep — so an opening deepens into the network instead of dead-ending, while
+ * flat ground, at exposure 0, generates exactly as it did before.
+ *
  * <p>Backends: on the native (FastNoise2) backend the chunk pipeline calls
  * {@link #prepareChunk} once and queries the returned {@link Field} — three SIMD volume fills
  * replace hundreds of thousands of per-block samples. Per-point {@link #isSolid} remains the
@@ -97,6 +107,17 @@ public final class Density3D {
     /** Tunnels fade in over this depth range so they do not shred the surface. */
     private static final int SPAG_FADE_START = 10;
     private static final int SPAG_FADE_END = 34;
+    /**
+     * The same ramp behind a steep face, where the surface that must not be shredded is a
+     * cliff the player is looking at from outside rather than ground they are standing on.
+     *
+     * <p>Interpolated toward by {@link CliffExposure}, so flat terrain keeps 10/34 exactly.
+     * Pulling the ramp in to 2/12 is what puts full-thickness tunnels in the rock immediately
+     * behind a carved opening — without it that rock is the depth 10-35 shell and the opening
+     * dead-ends after a few blocks.
+     */
+    private static final int SPAG_FADE_START_EXPOSED = 2;
+    private static final int SPAG_FADE_END_EXPOSED = 12;
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
@@ -110,12 +131,22 @@ public final class Density3D {
     private final int spag1Seed;
     private final int spag2Seed;
     private final CaveWaterTable waterTable;
+    private final CliffExposure cliffExposure;
 
     /**
      * Cheese carve threshold as a function of depth below the local surface. Above the first
      * knot nothing carves, which is what keeps chambers from opening onto the sky.
      */
     private final SplineInterpolator cheeseThreshold;
+
+    /**
+     * The same curve for rock behind a steep face, interpolated toward by {@link CliffExposure}.
+     *
+     * <p>Separate spline rather than an offset on the first so both curves stay readable as
+     * what they are: the shallow knots differ, the deep ones are shared, and the depth-0 knot
+     * is 2.0 on both so the surface layer itself is never carved either way.
+     */
+    private final SplineInterpolator cheeseThresholdExposed;
 
     public Density3D(long seed, HeightMapGenerator heightMapGenerator) {
         this.cheeseJava = new NoiseGenerator(seed + 17, 2, 0.5, 2.0);
@@ -131,6 +162,7 @@ public final class Density3D {
         TerrainNoise.destroyOnCollect(this, spag1Node);
         TerrainNoise.destroyOnCollect(this, spag2Node);
         this.waterTable = new CaveWaterTable(seed, heightMapGenerator);
+        this.cliffExposure = new CliffExposure(heightMapGenerator);
 
         this.cheeseThreshold = new SplineInterpolator();
         // Lowering a knot widens the chambers at that depth. The 0 and 18 knots are left
@@ -142,6 +174,24 @@ public final class Density3D {
         this.cheeseThreshold.addPoint(120, 0.55);
         this.cheeseThreshold.addPoint(320, 0.47);
         this.cheeseThreshold.addPoint(900, 0.44);
+
+        // Behind a face the shallow knots come down hard — 0.72 at depth 4 and 0.58 at 14 are
+        // reachable values, where the flat curve's 0.90 at depth 18 is not, so chambers form in
+        // the rock an opening actually leads into.
+        //
+        // The two curves converge at 120, not at 45: depth 45 is 0.55 here against the flat
+        // curve's 0.68, so a face carves somewhat more down to that point too. That is wanted
+        // — it is the taper that stops the shallow opening ending in a flat ceiling — but it
+        // does mean this curve is not purely a near-surface change. Below 120 the curves are
+        // identical and the deep cave system is untouched.
+        this.cheeseThresholdExposed = new SplineInterpolator();
+        this.cheeseThresholdExposed.addPoint(0, 2.0);   // still never carve at the surface
+        this.cheeseThresholdExposed.addPoint(4, 0.72);
+        this.cheeseThresholdExposed.addPoint(14, 0.58);
+        this.cheeseThresholdExposed.addPoint(45, 0.55);
+        this.cheeseThresholdExposed.addPoint(120, 0.55);
+        this.cheeseThresholdExposed.addPoint(320, 0.47);
+        this.cheeseThresholdExposed.addPoint(900, 0.44);
     }
 
     /**
@@ -152,18 +202,18 @@ public final class Density3D {
         if (y < CAVE_FLOOR || y >= surfaceHeight) {
             return true;
         }
-        if (y >= surfaceHeight - OVERHANG_DEPTH) {
-            return solidInOverhangBand(cheeseJava.noise3D(
-                worldX * CHEESE_SCALE, y * CHEESE_Y_SQUASH * CHEESE_SCALE, worldZ * CHEESE_SCALE), biome);
-        }
         float cheese = cheeseJava.noise3D(
             worldX * CHEESE_SCALE, y * CHEESE_Y_SQUASH * CHEESE_SCALE, worldZ * CHEESE_SCALE);
+        if (y >= surfaceHeight - OVERHANG_DEPTH && !solidInOverhangBand(cheese, biome)) {
+            return false;
+        }
         float s1 = spag1Java.noise3D(
             worldX * SPAG_SCALE, y * SPAG_Y_SQUASH * SPAG_SCALE, worldZ * SPAG_SCALE);
         float s2 = spag2Java.noise3D(
             worldX * SPAG_SCALE, y * SPAG_Y_SQUASH * SPAG_SCALE, worldZ * SPAG_SCALE);
         int table = waterTable.tableAt(worldX, worldZ);
-        return solidAt(cheese, s1, s2, y, surfaceHeight, table);
+        float exposure = cliffExposure.exposureAt(worldX, worldZ);
+        return solidAt(cheese, s1, s2, y, surfaceHeight, table, exposure);
     }
 
     /**
@@ -190,7 +240,9 @@ public final class Density3D {
         float[] spag1 = fill(spag1Node, spag1Seed, SPAG_Y_SQUASH, chunkX, chunkZ, yCount);
         float[] spag2 = fill(spag2Node, spag2Seed, SPAG_Y_SQUASH, chunkX, chunkZ, yCount);
         int[] table = waterTable.tableForChunk(chunkX, chunkZ, heights, waterLevels);
-        return new Field(this, cheese, spag1, spag2, table, yCount);
+        // Per-column arithmetic over heights, not a fourth volume fill — this stays at three.
+        float[] exposure = cliffExposure.exposureForChunk(chunkX, chunkZ, heights);
+        return new Field(this, cheese, spag1, spag2, table, exposure, yCount);
     }
 
     private float[] fill(long node, int seed, float ySquash, int chunkX, int chunkZ, int yCount) {
@@ -214,29 +266,61 @@ public final class Density3D {
      *
      * @param table this column's cave water table (see {@link CaveWaterTable})
      */
-    private boolean solidAt(float cheese, float s1, float s2, int y, int surfaceHeight, int table) {
+    private boolean solidAt(float cheese, float s1, float s2, int y, int surfaceHeight, int table,
+                            float exposure) {
         int depth = surfaceHeight - y;
-        if (cheese > cheeseThreshold.interpolate(depth)) {
+        double threshold = lerp(cheeseThreshold.interpolate(depth),
+            cheeseThresholdExposed.interpolate(depth), exposure);
+        if (cheese > threshold) {
             return false;
         }
         // Two noise sheets intersect in a curve: this is the tube test.
         float thickness = (SPAG_THICKNESS + SPAG_GALLERY_BONUS * CaveWaterTable.galleryWeight(table, y))
-            * spaghettiFade(depth);
+            * spaghettiFade(depth, exposure);
         if (thickness > 0f && Math.abs(s1) < thickness && Math.abs(s2) < thickness) {
             return false;
         }
         return true;
     }
 
-    /** Tunnels ramp in with depth so they do not open the surface into a lattice of holes. */
-    private static float spaghettiFade(int depth) {
-        if (depth <= SPAG_FADE_START) {
+    /**
+     * Tunnels ramp in with depth so they do not open the surface into a lattice of holes.
+     *
+     * <p>The ramp is pulled in toward {@link #SPAG_FADE_START_EXPOSED}/{@link #SPAG_FADE_END_EXPOSED}
+     * by exposure. On a cliff the rock behind the face is not surface the ramp is protecting —
+     * it is exactly where a tunnel needs to be for a carved opening to lead anywhere.
+     */
+    private static float spaghettiFade(int depth, float exposure) {
+        float start = lerp(SPAG_FADE_START, SPAG_FADE_START_EXPOSED, exposure);
+        float end = lerp(SPAG_FADE_END, SPAG_FADE_END_EXPOSED, exposure);
+        if (depth <= start) {
             return 0f;
         }
-        if (depth >= SPAG_FADE_END) {
+        if (depth >= end) {
             return 1f;
         }
-        return (depth - SPAG_FADE_START) / (float) (SPAG_FADE_END - SPAG_FADE_START);
+        return (depth - start) / (end - start);
+    }
+
+    /**
+     * Blend between the flat-ground value and the behind-a-face one.
+     *
+     * <p>Written so that {@code exposure == 0} returns {@code flat} <em>bit-for-bit</em>
+     * ({@code flat + 0}), which is what lets the whole change claim that terrain below
+     * {@link CliffExposure}'s slope floor generates exactly as it did before rather than
+     * approximately so.
+     *
+     * <p>The double overload is not redundant with the float one: {@link SplineInterpolator}
+     * returns double, and narrowing before the blend would move the carve threshold by a float
+     * ulp and break that exactness for the one gate where it is hardest to notice.
+     */
+    private static float lerp(float flat, float exposed, float exposure) {
+        return flat + (exposed - flat) * exposure;
+    }
+
+    /** @see #lerp(float, float, float) */
+    private static double lerp(double flat, double exposed, float exposure) {
+        return flat + (exposed - flat) * exposure;
     }
 
     /**
@@ -260,15 +344,17 @@ public final class Density3D {
         private final float[] spag1;
         private final float[] spag2;
         private final int[] table;
+        private final float[] exposure;
         private final int yCount;
 
         private Field(Density3D owner, float[] cheese, float[] spag1, float[] spag2,
-                      int[] table, int yCount) {
+                      int[] table, float[] exposure, int yCount) {
             this.owner = owner;
             this.cheese = cheese;
             this.spag1 = spag1;
             this.spag2 = spag2;
             this.table = table;
+            this.exposure = exposure;
             this.yCount = yCount;
         }
 
@@ -282,11 +368,12 @@ public final class Density3D {
                 return true;
             }
             int i = (yIndex * CHUNK_SIZE + localX) * CHUNK_SIZE + localZ;
-            if (y >= surfaceHeight - OVERHANG_DEPTH) {
-                return solidInOverhangBand(cheese[i], biome);
+            if (y >= surfaceHeight - OVERHANG_DEPTH && !solidInOverhangBand(cheese[i], biome)) {
+                return false;
             }
+            int column = localX * CHUNK_SIZE + localZ;
             return owner.solidAt(cheese[i], spag1[i], spag2[i], y, surfaceHeight,
-                table[localX * CHUNK_SIZE + localZ]);
+                table[column], exposure[column]);
         }
     }
 }

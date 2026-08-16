@@ -84,6 +84,31 @@ public class HeightMapGenerator {
         }
     }
 
+    /**
+     * Fills an arbitrary rectangle of final heights, indexed {@code [(x-minX)*sizeZ + (z-minZ)]}.
+     *
+     * <p>Unlike {@link #populateChunkHeights} this may span tiles, so it holds the last tile it
+     * resolved and re-resolves only when a column falls outside it. That is the whole point of
+     * the method: {@code getTile} on the production cache is a concurrent-map lookup plus LRU
+     * bookkeeping per call, and a caller that needs a haloed patch around a chunk would
+     * otherwise pay it thousands of times per chunk on the generation threads instead of once
+     * per tile the patch actually touches.
+     */
+    public void populateHeightPatch(int minX, int minZ, int sizeX, int sizeZ, int[] out) {
+        TerrainTile tile = null;
+        for (int x = 0; x < sizeX; x++) {
+            int worldX = minX + x;
+            for (int z = 0; z < sizeZ; z++) {
+                int worldZ = minZ + z;
+                if (tile == null || worldX < tile.worldI1() || worldX >= tile.worldI2()
+                        || worldZ < tile.worldJ1() || worldZ >= tile.worldJ2()) {
+                    tile = tileSource.getTile(worldX, worldZ);
+                }
+                out[x * sizeZ + z] = clampToWorld(tile.heightAt(worldX, worldZ));
+            }
+        }
+    }
+
     private static int clampToWorld(int height) {
         return Math.max(1, Math.min(height, WORLD_HEIGHT - 1));
     }
