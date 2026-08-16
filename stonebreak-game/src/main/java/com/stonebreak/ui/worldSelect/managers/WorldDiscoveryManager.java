@@ -21,6 +21,7 @@ public class WorldDiscoveryManager {
     private static final String WORLD_DATA_FILENAME = "world.json";
 
     private final ObjectMapper objectMapper;
+    private final WorldSizeService sizeService = new WorldSizeService();
 
     // Cache for world data to avoid repeated file reads
     private final Map<String, WorldData> worldDataCache = new HashMap<>();
@@ -196,6 +197,24 @@ public class WorldDiscoveryManager {
     public void clearCache() {
         worldDataCache.clear();
         lastScanTime = 0;
+        sizeService.invalidateAll();
+    }
+
+    // ===== WORLD SIZE =====
+
+    /**
+     * On-disk size of a world in bytes, or {@link WorldSizeService#PENDING} while it is
+     * still being measured in the background.
+     */
+    public long getWorldSizeBytes(String worldName) {
+        return sizeService.getSizeBytes(worldName);
+    }
+
+    /**
+     * Releases background resources. Call when the world select screen is disposed.
+     */
+    public void dispose() {
+        sizeService.shutdown();
     }
 
     // ===== WORLD CREATION VALIDATION =====
