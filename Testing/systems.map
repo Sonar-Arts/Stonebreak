@@ -19,6 +19,7 @@ viewer	openmason-engine	com/openmason/engine/rendering/viewer/**/*Test
 cco	openmason-engine	com/openmason/engine/voxel/cco/**/*Test
 mms	openmason-engine	com/openmason/engine/voxel/mms/**/*Test
 sbo	openmason-engine	com/openmason/engine/voxel/sbo/**/*Test
+lighting	openmason-engine	com/openmason/engine/voxel/lighting/**/*Test
 engine-util	openmason-engine	com/openmason/engine/util/**/*Test
 wayfind	openmason-engine	com/openmason/engine/wayfind/**/*Test
 shaders	openmason-engine	com/openmason/engine/rendering/shaders/**/*Test
