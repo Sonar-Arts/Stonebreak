@@ -74,8 +74,8 @@ public final class MmsAPI {
     private final MmsAsyncUploader asyncUploader;
     private MmsMeshPipeline meshPipeline;
 
-    // Configuration
-    private boolean greedyMeshingEnabled = true;
+    // Configuration (greedy meshing lives on the CCO adapter, which owns the
+    // cube emission pipeline; the setter/getter below delegate)
     private boolean lodSystemEnabled = true;
     private boolean meshCachingEnabled = true;
     private boolean bufferPoolingEnabled = true;
@@ -112,7 +112,7 @@ public final class MmsAPI {
         this.initialized = true;
 
         logger.debug("[MmsAPI] Initialized Mighty Mesh System v1.1 (greedyMeshing={}, lod={}, meshCaching={}, bufferPooling={}, asyncUpload={})",
-                greedyMeshingEnabled, lodSystemEnabled, meshCachingEnabled, bufferPoolingEnabled, asyncUploadEnabled);
+                ccoAdapter.isGreedyMeshingEnabled(), lodSystemEnabled, meshCachingEnabled, bufferPoolingEnabled, asyncUploadEnabled);
     }
 
     /**
@@ -365,13 +365,15 @@ public final class MmsAPI {
     // === Configuration Methods ===
 
     /**
-     * Enables or disables greedy meshing.
+     * Enables or disables greedy cube-face merging for subsequent mesh builds
+     * (already-built meshes keep their geometry until remeshed). Defaults to
+     * the {@code stonebreak.mesher.greedy} system property (on unless "off").
      *
      * @param enabled true to enable
      * @return this API instance
      */
     public MmsAPI setGreedyMeshingEnabled(boolean enabled) {
-        this.greedyMeshingEnabled = enabled;
+        ccoAdapter.setGreedyMeshingEnabled(enabled);
         logger.debug("[MmsAPI] Greedy meshing {}", enabled ? "enabled" : "disabled");
         return this;
     }
@@ -425,12 +427,12 @@ public final class MmsAPI {
     }
 
     /**
-     * Checks if greedy meshing is enabled.
+     * Checks if greedy cube-face merging is enabled.
      *
      * @return true if enabled
      */
     public boolean isGreedyMeshingEnabled() {
-        return greedyMeshingEnabled;
+        return ccoAdapter.isGreedyMeshingEnabled();
     }
 
     /**

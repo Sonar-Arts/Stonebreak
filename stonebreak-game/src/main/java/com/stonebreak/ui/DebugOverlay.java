@@ -641,6 +641,12 @@ public class DebugOverlay {
         } catch (Exception ignored) {
             // MMS not initialized yet — row simply absent.
         }
+        long greedyIn = com.openmason.engine.voxel.mms.mmsGeometry.MmsGreedyMesher.quadsIn();
+        if (greedyIn > 0) {
+            long greedyOut = com.openmason.engine.voxel.mms.mmsGeometry.MmsGreedyMesher.quadsOut();
+            panel.row("Greedy Mesh", String.format("%,d -> %,d quads (-%.0f%%)",
+                greedyIn, greedyOut, 100.0 * (greedyIn - greedyOut) / greedyIn));
+        }
         if (com.stonebreak.world.generation.TerrainGenStats.chunkCount() > 0) {
             panel.row("Terrain Gen", String.format("%.0f us avg (%d chunks, %s)",
                 com.stonebreak.world.generation.TerrainGenStats.averageMicros(),

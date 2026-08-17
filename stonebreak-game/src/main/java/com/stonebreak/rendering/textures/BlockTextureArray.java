@@ -345,12 +345,16 @@ public class BlockTextureArray {
                 GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, data);
 
         // Mipmaps + anisotropic filtering: crisp NEAREST magnification, smooth
-        // minification — distant terrain stops shimmering, no atlas bleed.
+        // minification — distant terrain stops shimmering. REPEAT wrap lets
+        // greedy-merged faces tile their layer with UVs 0..w; each block face
+        // owns a full layer, so wrapping cannot bleed into other textures
+        // (that was only ever an atlas hazard), and NEAREST sampling keeps
+        // sub-[0,1] consumers (icons, drops, held items) pixel-identical.
         GL30.glGenerateMipmap(GL30.GL_TEXTURE_2D_ARRAY);
         GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_MIN_FILTER, GL14.GL_NEAREST_MIPMAP_LINEAR);
         GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
-        GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-        GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+        GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
+        GL11.glTexParameteri(GL30.GL_TEXTURE_2D_ARRAY, GL11.GL_TEXTURE_WRAP_T, GL11.GL_REPEAT);
         try {
             float maxAniso = GL11.glGetFloat(GL46.GL_MAX_TEXTURE_MAX_ANISOTROPY);
             GL11.glTexParameterf(GL30.GL_TEXTURE_2D_ARRAY, GL46.GL_TEXTURE_MAX_ANISOTROPY,

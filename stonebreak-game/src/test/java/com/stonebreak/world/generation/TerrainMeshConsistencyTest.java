@@ -184,9 +184,11 @@ public class TerrainMeshConsistencyTest {
 
     /**
      * Reconstructs the set of unit cube faces emitted by the mesh, keyed by world block.
-     * Faces are emitted as contiguous groups of 4 vertices; cube faces are integer-aligned unit
-     * quads with axis-aligned normals. Cross (diagonal normal) and water (fractional height) faces
-     * fail the integer-unit-quad test and are skipped.
+     * Faces are emitted as contiguous groups of 4 vertices; cube faces are integer-aligned
+     * rectangles with axis-aligned normals — the greedy mesher merges coplanar same-block
+     * same-light runs, so a rectangle spanning w×h blocks stands for w·h unit faces and is
+     * expanded back into them here. Cross (diagonal normal) and water (fractional height) faces
+     * fail the integer-rect test and are skipped.
      */
     private Map<Long, Set<Integer>> reconstructFaces(MmsMeshData mesh, int cx, int cz) {
         Map<Long, Set<Integer>> out = new HashMap<>();
@@ -212,33 +214,44 @@ public class TerrainMeshConsistencyTest {
                 minY = Math.min(minY, y); maxY = Math.max(maxY, y);
                 minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
             }
-            if (!isIntegerUnitQuad(face, minX, maxX, minY, maxY, minZ, maxZ)) {
-                continue; // water / non-unit geometry — out of scope for the cube assertion
+            if (!isIntegerRectQuad(face, minX, maxX, minY, maxY, minZ, maxZ)) {
+                continue; // water / non-integer geometry — out of scope for the cube assertion
             }
 
-            // Map the face plane back to its owning block. For a positive-facing normal the plane
-            // sits at block+1 along that axis; for a negative-facing normal it sits at block.
-            int bx = (face == 4) ? round(minX) - 1 : (face == 5) ? round(minX) : round(minX);
-            int by = (face == 0) ? round(minY) - 1 : (face == 1) ? round(minY) : round(minY);
-            int bz = (face == 3) ? round(minZ) - 1 : (face == 2) ? round(minZ) : round(minZ);
-
-            out.computeIfAbsent(key3(bx, by, bz), k -> new LinkedHashSet<>()).add(face);
+            // Expand the rectangle into unit faces and map each face plane back to its owning
+            // block. For a positive-facing normal the plane sits at block+1 along that axis;
+            // for a negative-facing normal it sits at block.
+            int spanX = Math.max(1, round(maxX - minX));
+            int spanY = Math.max(1, round(maxY - minY));
+            int spanZ = Math.max(1, round(maxZ - minZ));
+            for (int dz = 0; dz < spanZ; dz++) {
+                for (int dy = 0; dy < spanY; dy++) {
+                    for (int dx = 0; dx < spanX; dx++) {
+                        int bx = round(minX) + dx - (face == 4 ? 1 : 0);
+                        int by = round(minY) + dy - (face == 0 ? 1 : 0);
+                        int bz = round(minZ) + dz - (face == 3 ? 1 : 0);
+                        out.computeIfAbsent(key3(bx, by, bz), k -> new LinkedHashSet<>()).add(face);
+                    }
+                }
+            }
         }
         return out;
     }
 
-    private static boolean isIntegerUnitQuad(int face,
+    private static boolean isIntegerRectQuad(int face,
                                              float minX, float maxX, float minY, float maxY,
                                              float minZ, float maxZ) {
         // The normal axis must be flat (min==max) and integer; the two tangent axes must span
-        // exactly one integer unit.
+        // a whole number (>= 1) of integer units from an integer origin.
         boolean flatX = approxEqual(minX, maxX), flatY = approxEqual(minY, maxY), flatZ = approxEqual(minZ, maxZ);
-        boolean unitX = approxEqual(maxX - minX, 1f), unitY = approxEqual(maxY - minY, 1f), unitZ = approxEqual(maxZ - minZ, 1f);
+        boolean spanX = maxX - minX >= 0.5f && isInt(maxX - minX);
+        boolean spanY = maxY - minY >= 0.5f && isInt(maxY - minY);
+        boolean spanZ = maxZ - minZ >= 0.5f && isInt(maxZ - minZ);
         boolean intX = isInt(minX), intY = isInt(minY), intZ = isInt(minZ);
         return switch (face) {
-            case 0, 1 -> flatY && intY && unitX && unitZ && intX && intZ; // Y faces
-            case 2, 3 -> flatZ && intZ && unitX && unitY && intX && intY; // Z faces
-            case 4, 5 -> flatX && intX && unitY && unitZ && intY && intZ; // X faces
+            case 0, 1 -> flatY && intY && spanX && spanZ && intX && intZ; // Y faces
+            case 2, 3 -> flatZ && intZ && spanX && spanY && intX && intY; // Z faces
+            case 4, 5 -> flatX && intX && spanY && spanZ && intY && intZ; // X faces
             default -> false;
         };
     }
