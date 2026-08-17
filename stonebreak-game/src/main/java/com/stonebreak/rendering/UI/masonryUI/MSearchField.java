@@ -64,13 +64,19 @@ public final class MSearchField extends MWidget {
         String display = empty ? placeholder : text;
         int textColor  = empty ? MStyle.TEXT_DISABLED : MStyle.TEXT_PRIMARY;
 
+        // Leading magnifier icon — the universal "this is a search box" cue.
+        float iconSize = Math.min(height - 8f, fontSize);
+        MSymbol.MAGNIFIER.draw(canvas, x + PAD_X - 3f, y + (height - iconSize) / 2f,
+                iconSize, iconSize, empty ? MStyle.TEXT_DISABLED : MStyle.TEXT_SECONDARY);
+        float textX = x + PAD_X + iconSize + 4f;
+
         // Vertically center cap-height inside the field.
         float baseline = y + height / 2f + fontSize * 0.35f;
-        MPainter.drawString(canvas, display, x + PAD_X, baseline, font, textColor);
+        MPainter.drawString(canvas, display, textX, baseline, font, textColor);
 
         // Caret blink at 2 Hz when focused.
         if (active && (System.currentTimeMillis() / 500L) % 2L == 0L) {
-            float caretX = x + PAD_X + MPainter.measureWidth(font, text) + 1f;
+            float caretX = textX + MPainter.measureWidth(font, text) + 1f;
             float caretTop    = y + 6f;
             float caretBottom = y + height - 6f;
             try (Paint p = new Paint().setColor(CARET_COLOR).setStrokeWidth(1.5f)

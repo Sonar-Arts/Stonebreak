@@ -44,6 +44,20 @@ public final class MPainter {
         }
     }
 
+    /**
+     * Anti-aliased rounded-rect outline, inset half a stroke so the line sits
+     * fully inside the given bounds (the same convention as the stone-surface
+     * border).
+     */
+    public static void strokeRoundedRect(Canvas canvas, float x, float y, float w, float h,
+                                         float r, int color, float width) {
+        try (Paint p = new Paint().setColor(color).setAntiAlias(true)
+                .setMode(PaintMode.STROKE).setStrokeWidth(width)) {
+            float half = width / 2f;
+            canvas.drawRRect(RRect.makeXYWH(x + half, y + half, w - width, h - width, r), p);
+        }
+    }
+
     // ─────────────────────────────────────────────── Panel
 
     /**

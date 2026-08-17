@@ -462,48 +462,9 @@ public final class MTextField extends MWidget {
             canvas.drawCircle(cx, cy, size / 2f, fill);
         }
 
-        // Checkmark or X
-        try (Paint stroke = new Paint().setColor(0xFFFFFFFF).setStrokeWidth(1.5f)
-                .setMode(PaintMode.STROKE).setAntiAlias(true)) {
-            // We draw lines manually — Skija Canvas has no built-in path for simple lines
-            // Approximate with thin rects
-            if (valid) {
-                // Checkmark: two segments
-                // Segment 1: (cx-size/4, cy) -> (cx-size/8, cy+size/8)
-                drawLine(canvas, cx - size / 4f, cy, cx - size / 8f, cy + size / 8f, stroke);
-                // Segment 2: (cx-size/8, cy+size/8) -> (cx+size/4, cy-size/4)
-                drawLine(canvas, cx - size / 8f, cy + size / 8f, cx + size / 4f, cy - size / 4f, stroke);
-            } else {
-                // X mark
-                drawLine(canvas, cx - size / 4f, cy - size / 4f, cx + size / 4f, cy + size / 4f, stroke);
-                drawLine(canvas, cx + size / 4f, cy - size / 4f, cx - size / 4f, cy + size / 4f, stroke);
-            }
-        }
-    }
-
-    /** Draw a thin line as a rotated rect approximation. */
-    private void drawLine(Canvas canvas, float x1, float y1, float x2, float y2, Paint paint) {
-        float dx = x2 - x1;
-        float dy = y2 - y1;
-        float len = (float) Math.sqrt(dx * dx + dy * dy);
-        if (len < 0.5f) return;
-
-        // Draw as a thin rect from (x1,y1) to (x2,y2)
-        float angle = (float) Math.atan2(dy, dx);
-        float cos = (float) Math.cos(angle);
-        float sin = (float) Math.sin(angle);
-        float hw = paint.getStrokeWidth() / 2f;
-
-        // Four corners of the line rect
-        float ax = x1 + cos * (-hw) - sin * (-hw);
-        float ay = y1 + sin * (-hw) + cos * (-hw);
-        float bx = x2 + cos * (-hw) - sin * (-hw);
-        float by = y2 + sin * (-hw) + cos * (-hw);
-        float cx1 = x2 + cos *  hw - sin *  hw;
-        float cy1 = y2 + sin *  hw + cos *  hw;
-        float dx1 = x1 + cos *  hw - sin *  hw;
-        float dy1 = y1 + sin *  hw + cos *  hw;
-
-        canvas.drawLine(ax, ay, bx, by, paint);
+        // Check / X mark inside the circle
+        float mark = size * 0.7f;
+        (valid ? MSymbol.CHECK : MSymbol.CROSS)
+                .draw(canvas, cx - mark / 2f, cy - mark / 2f, mark, mark, 0xFFFFFFFF);
     }
 }
