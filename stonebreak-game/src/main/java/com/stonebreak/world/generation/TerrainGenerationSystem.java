@@ -106,7 +106,7 @@ public class TerrainGenerationSystem {
         this.deterministicRandom = new DeterministicRandom(seed);
         this.heightMapGenerator = new HeightMapGenerator(tileSource);
         this.biomeManager = new BiomeManager(tileSource);
-        this.oreGenerator = new OreGenerator(deterministicRandom);
+        this.oreGenerator = new OreGenerator(deterministicRandom, heightMapGenerator, seed);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
         this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, seed);
         this.density3D = new Density3D(seed, heightMapGenerator);

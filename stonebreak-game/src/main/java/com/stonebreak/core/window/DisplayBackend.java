@@ -41,7 +41,9 @@ public final class DisplayBackend {
     private static final Set<String> WAYLAND_BLOCKED_NVIDIA_DRIVERS = Set.of(
             "595.71.05",
             // Open Kernel Module build; same libEGL_nvidia SIGSEGV as 595.71.05.
-            "595.84"
+            "595.84",
+            // Open Kernel Module build; still unfixed on the 595 branch.
+            "595.91.07"
     );
 
     /**
