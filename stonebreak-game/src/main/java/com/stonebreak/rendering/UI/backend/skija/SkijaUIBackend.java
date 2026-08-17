@@ -15,7 +15,11 @@ import java.io.InputStream;
  * active {@link Canvas} plus shared assets (typeface, dirt texture) that the
  * Stonebreak menus reuse across frames.
  */
-public final class SkijaUIBackend implements UIBackend {
+/*
+ * Not final: headless widget tests substitute a CPU-raster canvas by overriding
+ * getCanvas()/isAvailable()/getMinecraftTypeface() without ever calling initialize().
+ */
+public class SkijaUIBackend implements UIBackend {
 
     private final SkiaContext context = new SkiaContext();
 
