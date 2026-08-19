@@ -92,6 +92,27 @@ class MPainterRasterTest {
     }
 
     @Test
+    void theCraftingArrowHeadPointsRightAsASingleTip() {
+        clear();
+        MPainter.craftingArrow(canvas, 16, 24, 32, 16, RED);
+
+        assertEquals(RED, bitmap.getColor(24, 32), "the shaft carries the fill colour");
+        assertTrue(bitmap.getColor(47, 32) != BACKGROUND,
+            "the arrow tip must touch the right edge (anti-aliased near the vertex)");
+        assertEquals(BACKGROUND, bitmap.getColor(47, 29),
+            "the head must taper above the tip (a triangle, not a diamond)");
+        assertEquals(BACKGROUND, bitmap.getColor(47, 35),
+            "the head must taper below the tip (a triangle, not a diamond)");
+    }
+
+    @Test
+    void craftingArrowPlacementCentresBetweenGridAndOutputSlot() {
+        float[] corner = MPainter.craftingArrowPlacement(100f, 156f, 100f, 40f, 20f);
+        assertEquals(118f, corner[0], 0.001f, "horizontally centred in the 56px gap");
+        assertEquals(110f, corner[1], 0.001f, "vertically centred on the output slot");
+    }
+
+    @Test
     void aPanelRendersOpaquelyWithinItsBounds() {
         clear();
         MPainter.panel(canvas, 8, 8, 48, 48);
