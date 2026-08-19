@@ -23,7 +23,7 @@ public class MToggle extends MButton {
 
     private static final int CHECK_OFF        = 0xFF6B6B6B;
     private static final int CHECK_ON         = MStyle.TEXT_ACCENT;
-    private static final int CHECK_INNER_FILL = 0xB4FFFFFF;
+    private static final int CHECK_MARK       = 0xFF2B2317; // dark mark on the gold box
     private static final float CHECK_SIZE     = 14f;
     private static final float CHECK_PAD      = 6f;
 
@@ -93,9 +93,9 @@ public class MToggle extends MButton {
         MPainter.fillRect(canvas, checkX, checkY, CHECK_SIZE, CHECK_SIZE, checkColor);
         MPainter.strokeRect(canvas, checkX, checkY, CHECK_SIZE, CHECK_SIZE, MStyle.BUTTON_BORDER, 1f);
 
-        // Inner check fill (slightly lighter solid when on)
+        // Actual check mark when on (was a plain lighter inner square)
         if (checked) {
-            MPainter.fillRect(canvas, checkX + 2f, checkY + 2f, CHECK_SIZE - 4f, CHECK_SIZE - 4f, CHECK_INNER_FILL);
+            MSymbol.CHECK.draw(canvas, checkX + 1f, checkY + 1f, CHECK_SIZE - 2f, CHECK_SIZE - 2f, CHECK_MARK);
         }
 
         // Label text

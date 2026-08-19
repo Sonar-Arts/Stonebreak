@@ -78,11 +78,15 @@ public class RemotePlayer extends LivingEntity {
     private boolean waterStateInitialized;
     private float rippleSpawnTimer;
     /**
-     * Set by the network thread the moment any real state packet lands; read by the render
-     * thread in {@link #updateWaterEffects} to distinguish "just entered water" from "this
-     * player was already in water before we ever saw them" (e.g. joining mid-swim) — until this
-     * is true, {@code stateFlags} is still its unset default and must not be edge-detected
-     * against.
+     * True once any real state packet has landed (both {@link #setStateFlags} and
+     * {@link #updateWaterEffects} run on the game thread — packets are drained by the
+     * per-frame pump in {@code ClientWorldView}, not a network thread). Lets
+     * {@link #updateWaterEffects} distinguish "just entered water" from "this player was
+     * already in water before we ever saw them" (e.g. joining mid-swim) — until this is
+     * true, {@code stateFlags} is still its unset default and must not be edge-detected
+     * against. Volatile only for consistency with the other replicated fields; read it
+     * BEFORE {@code stateFlags} so the pair stays correct even if packet application ever
+     * moves off-thread.
      */
     private volatile boolean receivedFirstState;
 
@@ -218,6 +222,9 @@ public class RemotePlayer extends LivingEntity {
      * position deltas instead of local block queries.
      */
     private void updateWaterEffects(float deltaTime, float dx, float dy, float dz) {
+        // Read order matters: receivedFirstState before stateFlags, so a true here always
+        // pairs with the flags of a real packet (see the field's doc).
+        boolean hasState = receivedFirstState;
         byte flags = stateFlags;
         boolean partiallyInWater = com.stonebreak.network.packet.player.PlayerStateFlags.has(
                 flags, com.stonebreak.network.packet.player.PlayerStateFlags.PARTIALLY_IN_WATER);
@@ -228,7 +235,7 @@ public class RemotePlayer extends LivingEntity {
             // First real state observed for this player: adopt it as the baseline instead of
             // treating the unset-default→actual jump as an entry edge (avoids a spurious splash
             // when joining/rendering a player who was already in water).
-            if (receivedFirstState) {
+            if (hasState) {
                 waterStateInitialized = true;
                 wasPartiallyInWaterLastFrame = partiallyInWater;
             }

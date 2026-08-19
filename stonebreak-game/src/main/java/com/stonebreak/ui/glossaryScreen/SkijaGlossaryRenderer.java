@@ -12,14 +12,19 @@ import com.stonebreak.player.Player;
 import com.stonebreak.player.PlayerStats;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
+import com.stonebreak.rendering.UI.masonryUI.MBadge;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
+import com.stonebreak.rendering.UI.masonryUI.MProgressBar;
+import com.stonebreak.rendering.UI.masonryUI.MSectionHeader;
+import com.stonebreak.rendering.UI.masonryUI.MStatRow;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.stonebreak.rendering.UI.masonryUI.MSymbol;
+import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.PaintMode;
-import io.github.humbleui.skija.Typeface;
 import io.github.humbleui.types.RRect;
 import io.github.humbleui.types.Rect;
 import org.joml.Matrix4f;
@@ -36,57 +41,45 @@ import java.util.Map;
 /**
  * Skija/MasonryUI renderer for the Entity Glossary screen.
  *
- * <p>Presents one "entity card" per glossary mob type in a fixed 3-column
- * layout. Each card flows top-to-bottom through a running cursor (so sections
- * never overlap), shows a live 3D model preview at the top with a discovered-
- * only variant cycler, and wraps long descriptions inside the card.
+ * <p>Master–detail layout (see {@link GlossaryLayout}): an entity list
+ * sidebar on the left — one row per glossary mob, with discovery status —
+ * and a single large detail pane on the right for the selected entity: a big
+ * live 3D preview with a variant cycler, then an attributes column (score
+ * bars) beside a weakness/abilities column. Both panes are hard-clipped to
+ * their rects, so nothing can bleed outside them regardless of content.
  *
- * <p>The 3D preview is drawn with raw GL <em>after</em> the Skija frame closes:
- * the Skija surface wraps the default framebuffer, so a scissored viewport draw
- * lands on top of the cards in the same presented frame.
+ * <p>The 3D preview is drawn with raw GL <em>after</em> the Skija frame
+ * closes: the Skija surface wraps the default framebuffer, so a scissored
+ * viewport draw lands on top of the composited panel in the same presented
+ * frame.
  */
 public final class SkijaGlossaryRenderer {
 
-    public static final float BUTTON_WIDTH  = 360f;
-    public static final float BUTTON_HEIGHT = 50f;
-    public static final float PANEL_HEIGHT  = 680f;
-    public static final float BACK_BUTTON_BOTTOM_MARGIN = 30f;
+    // Base font sizes (scaled via MFonts.getScaled).
+    private static final float FS_TITLE     = 32f;
+    private static final float FS_NAME      = 24f;
+    private static final float FS_ROW       = 16f;
+    private static final float FS_HEADER    = 14f;
+    private static final float FS_STAT      = 13f;
+    private static final float FS_BUTTON    = 20f;
 
-    private static final float BASE_PANEL_WIDTH  = 1000f;
-    private static final float BASE_PANEL_HEIGHT = PANEL_HEIGHT;
-
-    private static final float CARD_WIDTH  = 300f;
-    private static final float CARD_HEIGHT = 490f;
-    private static final float CARD_GAP    = 16f;
-
-    // Card-relative layout constants (unscaled). Shared with GlossaryScreen for
-    // hit-testing via the public static rect helpers below.
-    private static final float CARDS_TOP   = 84f;  // first card top, relative to panel top
-    private static final float CONTENT_PAD = 14f;  // inner horizontal padding
-    private static final float CYCLER_TOP  = 40f;  // cycler row top, relative to card top
-    private static final float ARROW_SIZE  = 28f;  // variant arrow button size
-    private static final float PREVIEW_H    = 96f; // 3D preview viewport height
-    private static final float ATTR_ROW_H   = 15f; // per-attribute row height
-
-    private static final float BASE_TITLE_SIZE    = 36f;
-    private static final float BASE_CARD_TITLE    = 22f;
-    private static final float BASE_HEADER_SIZE   = 14f;
-    private static final float BASE_STAT_SIZE     = 13f;
-    private static final float BASE_BUTTON_SIZE   = 20f;
-
-    private static final int COLOR_OVERLAY = 0x78000000;
+    private static final int COLOR_OVERLAY      = 0x78000000;
     private static final int COLOR_INSET_FILL   = 0xFF1E1E1E;
     private static final int COLOR_INSET_BORDER = 0xFF0A0A0A;
-    private static final int COLOR_SEPARATOR    = 0x33FFFFFF;
+    private static final int COLOR_ROW_HOVER    = 0x1EFFFFFF;
+    private static final int COLOR_CHIP_FILL    = 0xB4000000;
+    private static final int COLOR_BADGE_DIM    = 0xFF474747;
+
+    private static final String[] ATTR_NAMES = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
 
     private final SkijaUIBackend backend;
+    private final MasonryUI mui;
 
-    private Font fontTitle;
-    private Font fontCardTitle;
-    private Font fontHeader;
-    private Font fontStat;
-    private Font fontButton;
-    private float lastFontScale = -1f;
+    // Reusable MasonryUI components, re-configured fluently each frame.
+    private final MSectionHeader sectionHeader = new MSectionHeader("");
+    private final MBadge badge = new MBadge("");
+    private final MProgressBar discoveryBar = new MProgressBar();
+    private final MStatRow statRow = new MStatRow();
 
     /** Cached model AABBs keyed by "objectId/variant" → {minX,minY,minZ,maxX,maxY,maxZ}. */
     private final Map<String, float[]> boundsCache = new HashMap<>();
@@ -96,193 +89,292 @@ public final class SkijaGlossaryRenderer {
 
     public SkijaGlossaryRenderer(SkijaUIBackend backend) {
         this.backend = backend;
+        this.mui = new MasonryUI(backend);
+        sectionHeader.scaleText(true);
+        badge.scaleText(true);
+        discoveryBar.scaleText(true);
+        statRow.scaleText(true);
     }
 
-    public void render(int windowWidth, int windowHeight, boolean backHovered, GlossaryScreen screen) {
+    public void render(int windowWidth, int windowHeight, GlossaryScreen screen) {
         if (backend == null || !backend.isAvailable()) return;
         float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
-        ensureFonts(scale);
 
-        float panelW = BASE_PANEL_WIDTH  * scale;
-        float panelH = BASE_PANEL_HEIGHT * scale;
-        float bw     = BUTTON_WIDTH  * scale;
-        float bh     = BUTTON_HEIGHT * scale;
-
-        List<PreviewSlot> previews = new ArrayList<>();
+        PreviewSlot preview = null;
 
         backend.beginFrame(windowWidth, windowHeight, 1.0f);
         try {
             Canvas canvas = backend.getCanvas();
 
-            // Dark overlay
+            // Dark overlay behind the panel
             try (Paint p = new Paint().setColor(COLOR_OVERLAY)) {
                 canvas.drawRect(Rect.makeXYWH(0, 0, windowWidth, windowHeight), p);
             }
 
-            float cx = windowWidth  / 2f;
-            float cy = windowHeight / 2f;
-            float panelX = cx - panelW / 2f;
-            float panelY = cy - panelH / 2f;
-
-            // Main panel background
-            MPainter.panel(canvas, panelX, panelY, panelW, panelH);
-
-            // Title
-            drawTitle(canvas, cx, panelY + 56f * scale);
+            float[] panel = GlossaryLayout.panelRect(windowWidth, windowHeight, scale);
+            MPainter.panel(canvas, panel[0], panel[1], panel[2], panel[3]);
 
             Player player = Game.getPlayer();
             EntityDiscoveries discoveries = (player != null) ? player.getEntityDiscoveries() : null;
             PlayerStats stats = (player != null) ? player.getStats() : null;
 
-            for (int i = 0; i < EntityType.GLOSSARY_TYPES.length; i++) {
-                EntityType type = EntityType.GLOSSARY_TYPES[i];
-                float[] c = cardBounds(i, windowWidth, windowHeight, scale);
-                PreviewSlot slot = drawCard(canvas, c[0], c[1], c[2], c[3], type, discoveries, stats, screen);
-                if (slot != null) previews.add(slot);
-            }
-
-            // Back button
-            float panelBottom = panelY + panelH;
-            float backBtnY = panelBottom - BACK_BUTTON_BOTTOM_MARGIN * scale - bh;
-            float backBtnX = cx - bw / 2f;
-            int fill = backHovered ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
-            MPainter.stoneSurface(canvas, backBtnX, backBtnY, bw, bh, MStyle.BUTTON_RADIUS,
-                    fill, MStyle.BUTTON_BORDER,
-                    MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, MStyle.BUTTON_DROP_SHADOW,
-                    MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
-            int btnTextColor = backHovered ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
-            MPainter.drawCenteredStringWithShadow(canvas, "Back", backBtnX + bw / 2f,
-                    backBtnY + bh / 2f + 7f * scale, fontButton, btnTextColor, MStyle.TEXT_SHADOW);
+            drawHeader(canvas, panel, discoveries, scale);
+            drawSidebar(canvas, windowWidth, windowHeight, scale, discoveries, screen);
+            preview = drawDetail(canvas, windowWidth, windowHeight, scale, discoveries, stats, screen);
+            drawBackButton(canvas, windowWidth, windowHeight, scale, screen);
         } finally {
             backend.endFrame();
         }
 
-        // 3D model previews: drawn with GL on top of the just-composited cards.
-        drawEntityPreviews(previews, windowWidth, windowHeight);
+        // 3D model preview: drawn with GL on top of the just-composited panel.
+        if (preview != null) drawEntityPreview(preview, windowWidth, windowHeight);
     }
 
-    // ─────────────────────────────────────────────── Card
+    // ─────────────────────────────────────────────── Header strip
 
-    private PreviewSlot drawCard(Canvas canvas, float cardX, float cardY, float w, float h,
-                                 EntityType type, EntityDiscoveries discoveries,
-                                 PlayerStats stats, GlossaryScreen screen) {
-        float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
-        float pad = CONTENT_PAD * scale;
-        float contentX = cardX + pad;
-        float contentW = w - 2f * pad;
-        float cxCard = cardX + w / 2f;
+    private void drawHeader(Canvas canvas, float[] panel, EntityDiscoveries discoveries, float scale) {
+        float cx = panel[0] + panel[2] / 2f;
+        drawTitle(canvas, cx, panel[1] + 40f * scale, mui.fonts().getScaled(FS_TITLE));
 
-        // Card background
-        MPainter.stoneSurface(canvas, cardX, cardY, w, h, MStyle.BUTTON_RADIUS,
-                MStyle.BUTTON_FILL, MStyle.BUTTON_BORDER,
-                MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, MStyle.BUTTON_DROP_SHADOW,
-                MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
+        // Discovery progress: how many glossary entities have been observed.
+        int total = GlossaryLayout.rowCount();
+        int seen = 0;
+        for (EntityType type : EntityType.GLOSSARY_TYPES) {
+            if (!discoveredVariants(type, discoveries).isEmpty()) seen++;
+        }
+        Font fStat = mui.fonts().getScaled(FS_STAT);
+        String label = seen + " / " + total + " observed";
+        float barW = 200f * scale;
+        float barH = 8f * scale;
+        float labelW = MPainter.measureWidth(fStat, label);
+        float groupW = barW + 10f * scale + labelW;
+        float barX = cx - groupW / 2f;
+        float barY = panel[1] + 56f * scale;
+        discoveryBar.fraction(total > 0 ? (float) seen / total : 0f)
+                .fillColor(MStyle.TEXT_ACCENT).trackColor(MStyle.SLIDER_TRACK)
+                .bounds(barX, barY, barW, barH);
+        discoveryBar.render(mui);
+        MPainter.drawStringWithShadow(canvas, label, barX + barW + 10f * scale,
+                barY + barH / 2f + FS_STAT * scale * 0.38f, fStat,
+                MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+    }
 
-        // Clip all card internals to the card rect: a hard backstop so nothing
-        // can ever bleed into a neighbouring card.
+    private void drawTitle(Canvas canvas, float cx, float cy, Font font) {
+        for (int i = 4; i >= 0; i--) {
+            int color;
+            switch (i) {
+                case 0 -> color = 0xFFFFDC64;
+                case 1 -> color = 0xFFDCB450;
+                default -> {
+                    int v = Math.max(30, 100 - i * 20);
+                    color = (0xC8 << 24) | (v << 16) | (v << 8) | v;
+                }
+            }
+            float offset = i * 2.0f;
+            MPainter.drawCenteredString(canvas, "ENTITY GLOSSARY", cx + offset, cy + offset, font, color);
+        }
+    }
+
+    // ─────────────────────────────────────────────── Sidebar (entity list)
+
+    private void drawSidebar(Canvas canvas, int ww, int wh, float scale,
+                             EntityDiscoveries discoveries, GlossaryScreen screen) {
+        float[] sb = GlossaryLayout.sidebarRect(ww, wh, scale);
+        drawInset(canvas, sb[0], sb[1], sb[2], sb[3]);
+
+        Font fRow = mui.fonts().getScaled(FS_ROW);
+        Font fStat = mui.fonts().getScaled(FS_STAT);
+
         canvas.save();
-        canvas.clipRect(Rect.makeXYWH(cardX, cardY, w, h));
+        canvas.clipRect(Rect.makeXYWH(sb[0], sb[1], sb[2], sb[3]));
         try {
-            // Title
-            MPainter.drawCenteredStringWithShadow(canvas, type.getDisplayName(), cxCard,
-                    cardY + 24f * scale, fontCardTitle, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+            for (int i = 0; i < GlossaryLayout.rowCount(); i++) {
+                EntityType type = EntityType.GLOSSARY_TYPES[i];
+                float[] r = GlossaryLayout.listRowRect(i, ww, wh, scale);
+                boolean sel = i == screen.getSelectedEntityIndex();
+                boolean hov = i == screen.getHoveredRowIndex();
 
-            // Variant cycler (discovered-only)
-            List<String> discovered = discoveredVariants(type, discoveries);
-            int count = discovered.size();
-            int idx = (screen != null) ? screen.getSelectedVariantIndex(type, count) : 0;
-            String variantName = count > 0 ? discovered.get(idx) : null;
+                if (sel) {
+                    MPainter.fillRoundedRect(canvas, r[0], r[1], r[2], r[3], 3f,
+                            MStyle.DROPDOWN_ITEM_CURRENT);
+                    MPainter.fillRoundedRect(canvas, r[0], r[1], 3f * scale, r[3], 1.5f,
+                            MStyle.TEXT_ACCENT);
+                } else if (hov) {
+                    MPainter.fillRoundedRect(canvas, r[0], r[1], r[2], r[3], 3f, COLOR_ROW_HOVER);
+                }
 
-            float cyclerTop = cardY + CYCLER_TOP * scale;
-            float arrow = ARROW_SIZE * scale;
-            if (count > 1) {
-                drawArrowButton(canvas, contentX, cyclerTop, arrow, "<", scale);
-                drawArrowButton(canvas, cardX + w - pad - arrow, cyclerTop, arrow, ">", scale);
+                List<String> seen = discoveredVariants(type, discoveries);
+                String[] all = type.getTextureVariants();
+                int totalVariants = all != null ? all.length : 0;
+                boolean observed = !seen.isEmpty();
+
+                float tx = r[0] + 12f * scale;
+                int nameColor = sel ? MStyle.TEXT_ACCENT
+                        : observed ? MStyle.TEXT_PRIMARY : MStyle.TEXT_SECONDARY;
+                MPainter.drawStringWithShadow(canvas, type.getDisplayName(), tx,
+                        r[1] + r[3] * 0.42f + FS_ROW * scale * 0.35f, fRow,
+                        nameColor, MStyle.TEXT_SHADOW);
+
+                String sub = observed
+                        ? seen.size() + "/" + totalVariants + " variants"
+                        : "Not yet observed";
+                MPainter.drawStringWithShadow(canvas, sub, tx,
+                        r[1] + r[3] * 0.82f, fStat,
+                        observed ? MStyle.TEXT_SECONDARY : MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
+
+                // Status icon on the right edge: lock (unseen) / check (complete).
+                float icon = 14f * scale;
+                float ix = r[0] + r[2] - icon - 10f * scale;
+                float iy = r[1] + (r[3] - icon) / 2f;
+                if (!observed) {
+                    MSymbol.LOCK.drawWithShadow(canvas, ix, iy, icon, icon,
+                            MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
+                } else if (seen.size() >= totalVariants && totalVariants > 0) {
+                    MSymbol.CHECK.drawWithShadow(canvas, ix, iy, icon, icon,
+                            MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+                }
             }
-            MPainter.drawCenteredStringWithShadow(canvas, count > 0 ? variantName : "—",
-                    cxCard, cyclerTop + 13f * scale, fontHeader,
-                    count > 0 ? MStyle.TEXT_PRIMARY : MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-            if (count > 1) {
-                MPainter.drawCenteredStringWithShadow(canvas, (idx + 1) + " / " + count,
-                        cxCard, cyclerTop + 26f * scale, fontStat, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-            }
-
-            // Preview frame (the 3D model is rendered into this rect after the frame)
-            float previewTop = cyclerTop + arrow + 8f * scale;
-            float previewH = PREVIEW_H * scale;
-            drawInset(canvas, contentX, previewTop, contentW, previewH);
-            PreviewSlot slot;
-            if (count > 0) {
-                slot = new PreviewSlot(type, variantName, contentX, previewTop, contentW, previewH);
-            } else {
-                slot = null;
-                MPainter.drawCenteredStringWithShadow(canvas, "Observe in the world",
-                        cxCard, previewTop + previewH / 2f + 4f * scale, fontStat,
-                        MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-            }
-
-            float cy = previewTop + previewH + 12f * scale;
-
-            // Kill count
-            separator(canvas, cardX, cy, w, scale);
-            cy += 14f * scale;
-            long kills = stats != null ? stats.getKillsByType().getOrDefault(type, 0L) : 0L;
-            String killsLabel = kills > 0 ? formatLong(kills) + " defeated" : "Not yet defeated";
-            MPainter.drawCenteredStringWithShadow(canvas, killsLabel, cxCard, cy, fontStat,
-                    kills > 0 ? MStyle.TEXT_ACCENT : MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-            cy += 8f * scale;
-
-            // Attributes
-            separator(canvas, cardX, cy, w, scale);
-            cy += 14f * scale;
-            cy += drawAttributes(canvas, contentX, cy, contentW, type.getAttributes(), kills > 0, scale);
-            cy += 6f * scale;
-
-            // Weakness
-            separator(canvas, cardX, cy, w, scale);
-            cy += 14f * scale;
-            cy += drawWeakness(canvas, contentX, cy, contentW, type, discoveries, scale);
-            cy += 6f * scale;
-
-            // Abilities
-            separator(canvas, cardX, cy, w, scale);
-            cy += 14f * scale;
-            drawAbilities(canvas, contentX, cy, contentW, type, scale);
-
-            return slot;
         } finally {
             canvas.restore();
         }
     }
 
-    private float drawAttributes(Canvas canvas, float x, float y, float w,
-                                 EntityAttributes attrs, boolean unlocked, float scale) {
-        float rowH = ATTR_ROW_H * scale;
-        String[] names = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
+    // ─────────────────────────────────────────────── Detail pane
+
+    private PreviewSlot drawDetail(Canvas canvas, int ww, int wh, float scale,
+                                   EntityDiscoveries discoveries, PlayerStats stats,
+                                   GlossaryScreen screen) {
+        float[] d = GlossaryLayout.detailRect(ww, wh, scale);
+        if (d[2] <= 0f || d[3] <= 0f) return null;
+
+        EntityType type = EntityType.GLOSSARY_TYPES[screen.getSelectedEntityIndex()];
+        long kills = stats != null ? stats.getKillsByType().getOrDefault(type, 0L) : 0L;
+
+        PreviewSlot slot;
+        canvas.save();
+        canvas.clipRect(Rect.makeXYWH(d[0], d[1], d[2], d[3]));
+        try {
+            // Header row: entity name + kill badge
+            Font fName = mui.fonts().getScaled(FS_NAME);
+            MPainter.drawStringWithShadow(canvas, type.getDisplayName(), d[0],
+                    d[1] + 22f * scale, fName, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+
+            float badgeH = 20f * scale;
+            badge.text(kills > 0 ? formatLong(kills) + " defeated" : "Undefeated")
+                    .fillColor(kills > 0 ? MStyle.TEXT_ACCENT : COLOR_BADGE_DIM)
+                    .textColor(kills > 0 ? 0xFF2B2317 : MStyle.TEXT_SECONDARY)
+                    .size(0f, badgeH);
+            float badgeW = badge.preferredWidth(mui);
+            badge.bounds(d[0] + d[2] - badgeW, d[1] + 6f * scale, badgeW, badgeH);
+            badge.render(mui);
+
+            // Preview inset + variant cycler
+            float[] pv = GlossaryLayout.previewRect(ww, wh, scale);
+            drawInset(canvas, pv[0], pv[1], pv[2], pv[3]);
+            slot = drawPreviewChrome(canvas, pv, ww, wh, type, discoveries, screen, scale);
+
+            // Two content columns below the preview
+            float colTop = pv[1] + pv[3] + 14f * scale;
+            float colGap = 20f * scale;
+            float leftW = (d[2] - colGap) * 0.46f;
+            float rightX = d[0] + leftW + colGap;
+            float rightW = d[2] - leftW - colGap;
+
+            drawAttributesColumn(canvas, d[0], colTop, leftW, type.getAttributes(), kills > 0, scale);
+            drawLoreColumn(canvas, rightX, colTop, rightW, type, discoveries, scale);
+        } finally {
+            canvas.restore();
+        }
+        return slot;
+    }
+
+    /** Cycler arrows + variant chip inside the preview rect; returns the GL slot (or null). */
+    private PreviewSlot drawPreviewChrome(Canvas canvas, float[] pv, int ww, int wh,
+                                          EntityType type, EntityDiscoveries discoveries,
+                                          GlossaryScreen screen, float scale) {
+        List<String> discovered = discoveredVariants(type, discoveries);
+        int count = discovered.size();
+        float pcx = pv[0] + pv[2] / 2f;
+
+        if (count == 0) {
+            float icon = 36f * scale;
+            MSymbol.LOCK.drawWithShadow(canvas, pcx - icon / 2f, pv[1] + pv[3] / 2f - icon * 0.8f,
+                    icon, icon, MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
+            MPainter.drawCenteredStringWithShadow(canvas, "Observe one in the world to unlock",
+                    pcx, pv[1] + pv[3] / 2f + 16f * scale, mui.fonts().getScaled(FS_STAT),
+                    MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
+            return null;
+        }
+
+        int idx = screen.getSelectedVariantIndex(type, count);
+        String variant = discovered.get(idx);
+
+        // Variant chip pinned to the preview's bottom edge
+        Font fStat = mui.fonts().getScaled(FS_STAT);
+        String chip = count > 1 ? variant + "  " + (idx + 1) + "/" + count : variant;
+        float chipW = MPainter.measureWidth(fStat, chip) + 20f * scale;
+        float chipH = 18f * scale;
+        float chipY = pv[1] + pv[3] - chipH - 6f * scale;
+        MPainter.fillRoundedRect(canvas, pcx - chipW / 2f, chipY, chipW, chipH, chipH / 2f, COLOR_CHIP_FILL);
+        MPainter.drawCenteredString(canvas, chip, pcx, chipY + chipH / 2f + FS_STAT * scale * 0.38f,
+                fStat, MStyle.TEXT_PRIMARY);
+
+        float sideInset = 8f * scale;
+        if (count > 1) {
+            float[] la = GlossaryLayout.leftArrowRect(ww, wh, scale);
+            drawArrowButton(canvas, la, true, screen.isLeftArrowHovered());
+            drawArrowButton(canvas, GlossaryLayout.rightArrowRect(ww, wh, scale), false,
+                    screen.isRightArrowHovered());
+            sideInset = (la[0] + la[2] - pv[0]) + 6f * scale;
+        }
+
+        // The GL viewport stays clear of the arrows and the chip: the model is
+        // drawn after the Skija frame and would otherwise paint over them.
+        float bottomInset = chipH + 12f * scale;
+        return new PreviewSlot(type, variant,
+                pv[0] + sideInset, pv[1] + 6f * scale,
+                pv[2] - 2f * sideInset, pv[3] - bottomInset - 6f * scale);
+    }
+
+    private void drawAttributesColumn(Canvas canvas, float x, float y, float w,
+                                      EntityAttributes attrs, boolean unlocked, float scale) {
+        sectionHeader.label("ATTRIBUTES").bounds(x, y, w, 16f * scale);
+        sectionHeader.render(mui);
+        y += 24f * scale;
+
+        float rowH = 18f * scale;
+        float rowStep = rowH + 2f * scale;
 
         if (!unlocked || attrs == null) {
-            for (int i = 0; i < 6; i++) {
-                float by = y + i * rowH + 12f * scale;
-                MPainter.drawStringWithShadow(canvas, names[i], x, by, fontStat,
-                        MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-                drawRightAligned(canvas, "???", x, by, w, fontStat, MStyle.TEXT_SHADOW);
+            for (String name : ATTR_NAMES) {
+                statRow.label(name).value("???").bar(0, 0f).bounds(x, y, w, rowH);
+                statRow.render(mui);
+                y += rowStep;
             }
-            float msgY = y + 6 * rowH + 16f * scale;
-            MPainter.drawCenteredStringWithShadow(canvas, "Defeat one to reveal", x + w / 2f, msgY,
-                    fontStat, MStyle.TEXT_SHADOW, MStyle.TEXT_SHADOW);
-            return 6 * rowH + 24f * scale;
+            y += 8f * scale;
+            float icon = 12f * scale;
+            String hint = "Defeat one to reveal";
+            Font fStat = mui.fonts().getScaled(FS_STAT);
+            float hintW = MPainter.measureWidth(fStat, hint);
+            float hx = x + (w - icon - 6f * scale - hintW) / 2f;
+            MSymbol.LOCK.drawWithShadow(canvas, hx, y - icon + 3f * scale, icon, icon,
+                    MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
+            MPainter.drawStringWithShadow(canvas, hint, hx + icon + 6f * scale, y, fStat,
+                    MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
+            return;
         }
 
         int[] scores = {attrs.str(), attrs.dex(), attrs.con(), attrs.intel(), attrs.wis(), attrs.cha()};
         for (int i = 0; i < 6; i++) {
-            float by = y + i * rowH + 12f * scale;
-            MPainter.drawStringWithShadow(canvas, names[i], x, by, fontStat,
-                    MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-            String val = scores[i] + " (" + modifierStr(scores[i]) + ")";
-            drawRightAligned(canvas, val, x, by, w, fontStat, MStyle.TEXT_PRIMARY);
+            statRow.label(ATTR_NAMES[i])
+                    .value(scores[i] + " (" + modifierStr(scores[i]) + ")")
+                    .bar(MStyle.TEXT_ACCENT, scores[i] / 20f)
+                    .bounds(x, y, w, rowH);
+            statRow.render(mui);
+            y += rowStep;
         }
 
-        // Derived stats
+        y += 8f * scale;
         String[] derivedNames = {"HP", "SPD", "ATK"};
         String[] derivedVals = {
                 String.format("%.0f", attrs.deriveMaxHealth()),
@@ -290,66 +382,100 @@ public final class SkijaGlossaryRenderer {
                 String.valueOf(attrs.deriveMeleeDamage())
         };
         for (int i = 0; i < 3; i++) {
-            float by = y + (6 + i) * rowH + 12f * scale;
-            MPainter.drawStringWithShadow(canvas, derivedNames[i], x, by, fontStat,
-                    MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-            drawRightAligned(canvas, derivedVals[i], x, by, w, fontStat, MStyle.TEXT_PRIMARY);
+            statRow.label(derivedNames[i]).value(derivedVals[i]).bar(0, 0f).bounds(x, y, w, rowH);
+            statRow.render(mui);
+            y += rowStep;
         }
-        return 9 * rowH + 4f * scale;
     }
 
-    private float drawWeakness(Canvas canvas, float x, float y, float w,
-                               EntityType type, EntityDiscoveries discoveries, float scale) {
-        float by = y + 12f * scale;
-        MPainter.drawStringWithShadow(canvas, "Weakness", x, by, fontHeader,
-                MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
-        by += 16f * scale;
+    private void drawLoreColumn(Canvas canvas, float x, float y, float w,
+                                EntityType type, EntityDiscoveries discoveries, float scale) {
+        Font fStat = mui.fonts().getScaled(FS_STAT);
+        Font fHeader = mui.fonts().getScaled(FS_HEADER);
+        float lineH = 14f * scale;
+
+        // Weakness
+        sectionHeader.label("WEAKNESS").bounds(x, y, w, 16f * scale);
+        sectionHeader.render(mui);
+        y += 24f * scale;
 
         boolean discovered = discoveries != null && discoveries.isWeaknessDiscovered(type);
         if (discovered) {
             LivingEntity.DamageSource weakness = type.getWeakness();
+            float icon = 13f * scale;
+            MSymbol.WARNING.drawWithShadow(canvas, x, y - icon + 2f * scale, icon, icon,
+                    MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
             MPainter.drawStringWithShadow(canvas, weakness != null ? weakness.name() : "None",
-                    x, by, fontStat, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
-            by += 15f * scale;
-            for (String line : wrapText(fontStat, type.getWeaknessDescription(), w)) {
-                MPainter.drawStringWithShadow(canvas, line, x, by, fontStat,
+                    x + icon + 6f * scale, y, fHeader, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
+            y += 18f * scale;
+            for (String line : wrapText(fStat, type.getWeaknessDescription(), w)) {
+                MPainter.drawStringWithShadow(canvas, line, x, y, fStat,
                         MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
-                by += 13f * scale;
+                y += lineH;
             }
         } else {
-            for (String line : wrapText(fontStat, "??? — Study as Quarry (Ranger) to reveal", w)) {
-                MPainter.drawStringWithShadow(canvas, line, x, by, fontStat,
-                        MStyle.TEXT_SHADOW, MStyle.TEXT_SHADOW);
-                by += 13f * scale;
+            float icon = 12f * scale;
+            MSymbol.LOCK.drawWithShadow(canvas, x, y - icon + 2f * scale, icon, icon,
+                    MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
+            MPainter.drawStringWithShadow(canvas, "Unknown", x + icon + 6f * scale, y, fHeader,
+                    MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
+            y += 18f * scale;
+            for (String line : wrapText(fStat, "Study as Quarry (Ranger) to reveal", w)) {
+                MPainter.drawStringWithShadow(canvas, line, x, y, fStat,
+                        MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
+                y += lineH;
             }
         }
-        return by - y;
-    }
+        y += 12f * scale;
 
-    private void drawAbilities(Canvas canvas, float x, float y, float w, EntityType type, float scale) {
-        float by = y + 12f * scale;
-        MPainter.drawStringWithShadow(canvas, "Abilities", x, by, fontHeader,
-                MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
-        by += 16f * scale;
+        // Abilities
+        sectionHeader.label("ABILITIES").bounds(x, y, w, 16f * scale);
+        sectionHeader.render(mui);
+        y += 24f * scale;
+
         String[] abilities = type.getSpecialAbilities();
         if (abilities != null && abilities.length > 0) {
-            for (String a : abilities) {
-                for (String line : wrapText(fontStat, a, w)) {
-                    MPainter.drawStringWithShadow(canvas, line, x, by, fontStat,
+            float bullet = 9f * scale;
+            float indent = bullet + 7f * scale;
+            for (String ability : abilities) {
+                boolean first = true;
+                for (String line : wrapText(fStat, ability, w - indent)) {
+                    if (first) {
+                        MSymbol.STAR.draw(canvas, x, y - bullet + 1f * scale, bullet, bullet,
+                                MStyle.TEXT_ACCENT);
+                        first = false;
+                    }
+                    MPainter.drawStringWithShadow(canvas, line, x + indent, y, fStat,
                             MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
-                    by += 13f * scale;
+                    y += lineH;
                 }
+                y += 3f * scale;
             }
         } else {
-            MPainter.drawStringWithShadow(canvas, "None known", x, by, fontStat,
-                    MStyle.TEXT_SHADOW, MStyle.TEXT_SHADOW);
+            MPainter.drawStringWithShadow(canvas, "None known", x, y, fStat,
+                    MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
         }
+    }
+
+    // ─────────────────────────────────────────────── Back button
+
+    private void drawBackButton(Canvas canvas, int ww, int wh, float scale, GlossaryScreen screen) {
+        float[] b = GlossaryLayout.backButtonRect(ww, wh, scale);
+        boolean hovered = screen.isBackButtonHovered();
+        int fill = hovered ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
+        MPainter.stoneSurface(canvas, b[0], b[1], b[2], b[3], MStyle.BUTTON_RADIUS,
+                fill, MStyle.BUTTON_BORDER,
+                MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, MStyle.BUTTON_DROP_SHADOW,
+                MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
+        int color = hovered ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
+        MPainter.drawCenteredStringWithShadow(canvas, "Back", b[0] + b[2] / 2f,
+                b[1] + b[3] / 2f + 7f * scale, mui.fonts().getScaled(FS_BUTTON),
+                color, MStyle.TEXT_SHADOW);
     }
 
     // ─────────────────────────────────────────────── 3D preview pass
 
-    private void drawEntityPreviews(List<PreviewSlot> slots, int windowWidth, int windowHeight) {
-        if (slots.isEmpty()) return;
+    private void drawEntityPreview(PreviewSlot s, int windowWidth, int windowHeight) {
         Renderer renderer = Game.getRenderer();
         if (renderer == null) return;
         EntityRenderer entityRenderer = renderer.getEntityRenderer();
@@ -361,41 +487,39 @@ public final class SkijaGlossaryRenderer {
         float fov = (float) Math.toRadians(35.0);
         float halfFovTan = (float) Math.tan(fov / 2f);
 
+        int vx = Math.round(s.x());
+        int vy = Math.round(windowHeight - (s.y() + s.h()));   // GL origin is bottom-left
+        int vw = Math.round(s.w());
+        int vh = Math.round(s.h());
+        if (vw <= 0 || vh <= 0) return;
+
+        float[] b = boundsFor(s.type(), s.variant());
+        if (b == null) return;
+
         GL11.glEnable(GL11.GL_SCISSOR_TEST);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
         GL11.glDepthMask(true);
 
-        for (PreviewSlot s : slots) {
-            int vx = Math.round(s.x());
-            int vy = Math.round(windowHeight - (s.y() + s.h()));   // GL origin is bottom-left
-            int vw = Math.round(s.w());
-            int vh = Math.round(s.h());
-            if (vw <= 0 || vh <= 0) continue;
+        GL11.glViewport(vx, vy, vw, vh);
+        GL11.glScissor(vx, vy, vw, vh);
+        GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
 
-            float[] b = boundsFor(s.type(), s.variant());
-            if (b == null) continue;
+        float ctrX = (b[0] + b[3]) / 2f, ctrY = (b[1] + b[4]) / 2f, ctrZ = (b[2] + b[5]) / 2f;
+        float ex = b[3] - b[0], ey = b[4] - b[1], ez = b[5] - b[2];
+        float radius = 0.5f * (float) Math.sqrt(ex * ex + ey * ey + ez * ez);
+        if (radius <= 0f) radius = 0.5f;
 
-            GL11.glViewport(vx, vy, vw, vh);
-            GL11.glScissor(vx, vy, vw, vh);
-            GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
+        float dist = radius / halfFovTan * 1.25f;
+        float horiz = dist * (float) Math.cos(el);
+        float eyeX = ctrX + horiz * (float) Math.sin(az);
+        float eyeZ = ctrZ + horiz * (float) Math.cos(az);
+        float eyeY = ctrY + dist * (float) Math.sin(el);
 
-            float ctrX = (b[0] + b[3]) / 2f, ctrY = (b[1] + b[4]) / 2f, ctrZ = (b[2] + b[5]) / 2f;
-            float ex = b[3] - b[0], ey = b[4] - b[1], ez = b[5] - b[2];
-            float radius = 0.5f * (float) Math.sqrt(ex * ex + ey * ey + ez * ez);
-            if (radius <= 0f) radius = 0.5f;
+        Matrix4f view = new Matrix4f().setLookAt(eyeX, eyeY, eyeZ, ctrX, ctrY, ctrZ, 0f, 1f, 0f);
+        Matrix4f proj = new Matrix4f().setPerspective(fov, (float) vw / vh, 0.05f, dist + radius * 4f);
 
-            float dist = radius / halfFovTan * 1.25f;
-            float horiz = dist * (float) Math.cos(el);
-            float eyeX = ctrX + horiz * (float) Math.sin(az);
-            float eyeZ = ctrZ + horiz * (float) Math.cos(az);
-            float eyeY = ctrY + dist * (float) Math.sin(el);
-
-            Matrix4f view = new Matrix4f().setLookAt(eyeX, eyeY, eyeZ, ctrX, ctrY, ctrZ, 0f, 1f, 0f);
-            Matrix4f proj = new Matrix4f().setPerspective(fov, (float) vw / vh, 0.05f, dist + radius * 4f);
-
-            entityRenderer.renderEntityPreview(s.type(), s.variant(), "Idle", time,
-                    new Vector3f(0f, 0f, 0f), 0f, new Vector3f(1f, 1f, 1f), view, proj);
-        }
+        entityRenderer.renderEntityPreview(s.type(), s.variant(), "Idle", time,
+                new Vector3f(0f, 0f, 0f), 0f, new Vector3f(1f, 1f, 1f), view, proj);
 
         // Restore a clean GL baseline matching SkiaContext.restoreGLDefaults().
         GL11.glScissor(0, 0, windowWidth, windowHeight);
@@ -436,13 +560,17 @@ public final class SkijaGlossaryRenderer {
 
     // ─────────────────────────────────────────────── Small drawing helpers
 
-    private void drawArrowButton(Canvas canvas, float x, float y, float size, String glyph, float scale) {
-        MPainter.stoneSurface(canvas, x, y, size, size, MStyle.BUTTON_RADIUS,
-                MStyle.BUTTON_FILL, MStyle.BUTTON_BORDER,
+    private void drawArrowButton(Canvas canvas, float[] r, boolean pointLeft, boolean hovered) {
+        int fill = hovered ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
+        MPainter.stoneSurface(canvas, r[0], r[1], r[2], r[3], MStyle.BUTTON_RADIUS,
+                fill, MStyle.BUTTON_BORDER,
                 MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, MStyle.BUTTON_DROP_SHADOW,
                 MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
-        MPainter.drawCenteredStringWithShadow(canvas, glyph, x + size / 2f, y + size / 2f + 5f * scale,
-                fontHeader, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+        float icon = r[2] * 0.6f;
+        int color = hovered ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
+        (pointLeft ? MSymbol.CHEVRON_LEFT : MSymbol.CHEVRON_RIGHT).drawWithShadow(canvas,
+                r[0] + (r[2] - icon) / 2f, r[1] + (r[3] - icon) / 2f, icon, icon,
+                color, MStyle.TEXT_SHADOW);
     }
 
     private static void drawInset(Canvas canvas, float x, float y, float w, float h) {
@@ -453,18 +581,6 @@ public final class SkijaGlossaryRenderer {
                 .setMode(PaintMode.STROKE).setStrokeWidth(1.5f)) {
             canvas.drawRRect(RRect.makeXYWH(x + 0.5f, y + 0.5f, w - 1f, h - 1f, 3f), p);
         }
-    }
-
-    private static void separator(Canvas canvas, float cardX, float y, float w, float scale) {
-        try (Paint p = new Paint().setColor(COLOR_SEPARATOR)) {
-            canvas.drawRect(Rect.makeXYWH(cardX + 12f * scale, y, w - 24f * scale, 1f), p);
-        }
-    }
-
-    private static void drawRightAligned(Canvas canvas, String text, float x, float baseline,
-                                         float w, Font font, int color) {
-        float valX = x + w - MPainter.measureWidth(font, text);
-        MPainter.drawStringWithShadow(canvas, text, valX, baseline, font, color, MStyle.TEXT_SHADOW);
     }
 
     /** Greedy word-wrap that keeps every line within {@code maxWidth}. */
@@ -488,37 +604,7 @@ public final class SkijaGlossaryRenderer {
         return lines;
     }
 
-    // ─────────────────────────────────────────────── Shared layout (hit-testing)
-
-    /** {@code {x,y,w,h}} of the glossary card at {@code index}, in screen pixels. */
-    public static float[] cardBounds(int index, int windowWidth, int windowHeight, float scale) {
-        float panelH = BASE_PANEL_HEIGHT * scale;
-        float cx = windowWidth / 2f;
-        float panelY = windowHeight / 2f - panelH / 2f;
-        float cardW = CARD_WIDTH * scale;
-        float cardH = CARD_HEIGHT * scale;
-        float gap = CARD_GAP * scale;
-        float total = 3f * cardW + 2f * gap;
-        float startX = cx - total / 2f;
-        float cardsY = panelY + CARDS_TOP * scale;
-        return new float[]{startX + index * (cardW + gap), cardsY, cardW, cardH};
-    }
-
-    /** {@code {x,y,w,h}} of the left variant arrow on card {@code index}. */
-    public static float[] leftArrowRect(int index, int windowWidth, int windowHeight, float scale) {
-        float[] c = cardBounds(index, windowWidth, windowHeight, scale);
-        float pad = CONTENT_PAD * scale;
-        float arrow = ARROW_SIZE * scale;
-        return new float[]{c[0] + pad, c[1] + CYCLER_TOP * scale, arrow, arrow};
-    }
-
-    /** {@code {x,y,w,h}} of the right variant arrow on card {@code index}. */
-    public static float[] rightArrowRect(int index, int windowWidth, int windowHeight, float scale) {
-        float[] c = cardBounds(index, windowWidth, windowHeight, scale);
-        float pad = CONTENT_PAD * scale;
-        float arrow = ARROW_SIZE * scale;
-        return new float[]{c[0] + c[2] - pad - arrow, c[1] + CYCLER_TOP * scale, arrow, arrow};
-    }
+    // ─────────────────────────────────────────────── Shared queries
 
     /** Variants of {@code type} the player has discovered, in declaration order. */
     public static List<String> discoveredVariants(EntityType type, EntityDiscoveries discoveries) {
@@ -531,44 +617,6 @@ public final class SkijaGlossaryRenderer {
         return out;
     }
 
-    // ─────────────────────────────────────────────── Fonts / misc
-
-    private void ensureFonts(float scale) {
-        if (fontTitle != null && scale == lastFontScale) return;
-        disposeFonts();
-        lastFontScale = scale;
-        Typeface tf = backend.getMinecraftTypeface();
-        fontTitle     = new Font(tf, BASE_TITLE_SIZE  * scale);
-        fontCardTitle = new Font(tf, BASE_CARD_TITLE  * scale);
-        fontHeader    = new Font(tf, BASE_HEADER_SIZE * scale);
-        fontStat      = new Font(tf, BASE_STAT_SIZE   * scale);
-        fontButton    = new Font(tf, BASE_BUTTON_SIZE * scale);
-    }
-
-    private void disposeFonts() {
-        if (fontTitle     != null) { fontTitle.close();     fontTitle     = null; }
-        if (fontCardTitle != null) { fontCardTitle.close(); fontCardTitle = null; }
-        if (fontHeader    != null) { fontHeader.close();    fontHeader    = null; }
-        if (fontStat      != null) { fontStat.close();      fontStat      = null; }
-        if (fontButton    != null) { fontButton.close();    fontButton    = null; }
-    }
-
-    private void drawTitle(Canvas canvas, float cx, float cy) {
-        for (int i = 4; i >= 0; i--) {
-            int color;
-            switch (i) {
-                case 0 -> color = 0xFFFFDC64;
-                case 1 -> color = 0xFFDCB450;
-                default -> {
-                    int v = Math.max(30, 100 - i * 20);
-                    color = (0xC8 << 24) | (v << 16) | (v << 8) | v;
-                }
-            }
-            float offset = i * 2.0f;
-            MPainter.drawCenteredString(canvas, "ENTITY GLOSSARY", cx + offset, cy + offset, fontTitle, color);
-        }
-    }
-
     private static String formatLong(long v) {
         return String.format("%,d", v);
     }
@@ -579,6 +627,6 @@ public final class SkijaGlossaryRenderer {
     }
 
     public void dispose() {
-        disposeFonts();
+        mui.dispose();
     }
 }

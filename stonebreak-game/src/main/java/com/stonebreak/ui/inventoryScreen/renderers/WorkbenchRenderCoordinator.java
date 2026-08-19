@@ -220,12 +220,12 @@ public class WorkbenchRenderCoordinator {
             checkHover(craftingInput[i], sx, sy, slotSize, mouseX, mouseY);
         }
 
-        // Arrow
+        // Arrow — auto-aligned between the grid and the output slot
         int arrowSize = Math.round(20 * com.stonebreak.config.Settings.getInstance().getUiScale());
-        float arrowX = layout.craftingElementsStartX + layout.craftInputGridVisualWidth
-                + slotPadding + (slotSize - arrowSize) / 2f;
-        float arrowY = layout.craftingGridStartY + (slotSize - arrowSize) / 2f;
-        MPainter.craftingArrow(canvas, arrowX, arrowY, arrowSize, arrowSize, ARROW_FILL);
+        float gridRightX = layout.craftingElementsStartX + layout.craftInputGridVisualWidth;
+        float[] arrow = MPainter.craftingArrowPlacement(
+                gridRightX, layout.outputSlotX, layout.outputSlotY, slotSize, arrowSize);
+        MPainter.craftingArrow(canvas, arrow[0], arrow[1], arrowSize, arrowSize, ARROW_FILL);
 
         // Output slot
         float ox = layout.outputSlotX;

@@ -11,7 +11,7 @@ public final class StatusEffect {
 
     private final StatusEffectType type;
     private float remainingDuration;
-    private final float magnitude;
+    private float magnitude;
     private float tickAccumulator;
 
     public StatusEffect(StatusEffectType type, float duration, float magnitude) {
@@ -25,8 +25,15 @@ public final class StatusEffect {
     public float getMagnitude() { return magnitude; }
     public boolean isExpired() { return remainingDuration <= 0f; }
 
-    public void refresh(float duration) {
+    /**
+     * Reapplies this effect: the remaining duration is extended (never shortened) and the
+     * magnitude is replaced with the provided value ({@code LivingEntity} decides whether the
+     * caller's magnitude or the stronger of the two should win). Same-type effects are
+     * refreshed rather than stacked.
+     */
+    public void refresh(float duration, float magnitude) {
         this.remainingDuration = Math.max(this.remainingDuration, duration);
+        this.magnitude = magnitude;
     }
 
     /** Advances the effect's clock. Returns true once per elapsed DOT tick interval (for DOT effects). */

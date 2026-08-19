@@ -50,7 +50,11 @@ public final class WorldEffectsRenderer {
     /** Scratch list for the revealed-entity sweep, reused so the effect pass allocates nothing. */
     private final List<LivingEntity> revealedScratch = new ArrayList<>();
 
-    /** Scratch list of remote players included in the water effects, refilled per effect. */
+    /**
+     * Scratch list of remote players included in the water effects, filled once per frame in
+     * {@link #renderAll} and cleared again after the water passes so it never retains entities
+     * (and through them a torn-down World) across a return to the menu.
+     */
     private final List<RemotePlayer> remotePlayerScratch = new ArrayList<>();
 
     public WorldEffectsRenderer(ShaderProgram shaderProgram, Matrix4f projectionMatrix,
@@ -65,8 +69,13 @@ public final class WorldEffectsRenderer {
         renderFireBoltCores(player);
         renderFireBoltParticles(player);
         renderIllusionSmoke(player);
+        // One remote-player sweep serves both water effects: they run back to back on the
+        // render thread and entity membership only changes in the update tick, so the two
+        // can never observe different sets.
+        collectRemotePlayersForWaterEffects();
         renderWaterSplash(player);
         renderWaterRipples(player);
+        remotePlayerScratch.clear();
         renderRevealedOutlines(player);
     }
 
@@ -148,8 +157,6 @@ public final class WorldEffectsRenderer {
      * replicated remote player, whose splash is driven off the same water state sent over the wire.
      */
     private void renderWaterSplash(Player player) {
-        collectRemotePlayersForWaterEffects();
-
         WaterSplashParticles localSplash = player.getSplashParticles();
         boolean anyParticles = !localSplash.isEmpty();
         for (int i = 0; !anyParticles && i < remotePlayerScratch.size(); i++) {
@@ -182,10 +189,18 @@ public final class WorldEffectsRenderer {
      * overlapping ripples read as colliding rather than passing through each other.
      */
     private void renderWaterRipples(Player player) {
-        collectRemotePlayersForWaterEffects();
+        // Cheap emptiness check before any snapshotting so the idle path allocates nothing.
+        boolean anyRipples = !player.getRippleParticles().isEmpty();
+        for (int i = 0; !anyRipples && i < remotePlayerScratch.size(); i++) {
+            anyRipples = !remotePlayerScratch.get(i).getRippleParticles().isEmpty();
+        }
+        if (!anyRipples) {
+            return;
+        }
 
-        List<WaterRippleParticles.RipplePoint> points =
-                new ArrayList<>(player.getRippleParticles().snapshotPoints());
+        // snapshotPoints() returns a fresh mutable copy, so the first snapshot doubles as
+        // the accumulator for the remote players' points.
+        List<WaterRippleParticles.RipplePoint> points = player.getRippleParticles().snapshotPoints();
         for (RemotePlayer remote : remotePlayerScratch) {
             points.addAll(remote.getRippleParticles().snapshotPoints());
         }
@@ -205,8 +220,8 @@ public final class WorldEffectsRenderer {
 
     /**
      * Refills {@link #remotePlayerScratch} with the live remote players whose world-space water
-     * cosmetics this pass should draw. Called by each water effect immediately before it reads the
-     * list, so the two never share a stale sweep.
+     * cosmetics this pass should draw. Called once per frame from {@link #renderAll} before the
+     * water effects; the caller clears the list again after they run.
      */
     private void collectRemotePlayersForWaterEffects() {
         remotePlayerScratch.clear();

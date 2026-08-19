@@ -15,7 +15,7 @@ import com.openmason.engine.voxel.mms.mmsIntegration.MmsBlockGeometryDispatcher;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsSBOBlockProvider;
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator;
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsCrossGenerator;
-import com.openmason.engine.voxel.mms.mmsGeometry.MmsGeometryService;
+import com.openmason.engine.voxel.mms.mmsGeometry.MmsGreedyMesher;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsWaterGenerator;
 import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
@@ -40,13 +40,85 @@ public class MmsCcoAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(MmsCcoAdapter.class);
 
-    private final MmsGeometryService cuboidGenerator;
+    private final MmsCuboidGenerator cuboidGenerator;
     private final MmsCrossGenerator crossGenerator;
     private final MmsTextureMapper textureMapper;
     private MmsWaterGenerator waterGenerator; // Created when world is set
     private World world; // Not final - can be set after construction
     private com.stonebreak.world.lighting.WorldLightingContext shadowContext; // Built when world is set
     private SBOStampEmitter sboStampEmitter; // SBO block stamp emission via SBORendererAPI
+
+    /**
+     * Greedy merging of coplanar same-block/same-light cube faces (both the
+     * native quad stream and the classic Java path run through it). Default on;
+     * {@code -Dstonebreak.mesher.greedy=off} or
+     * {@code MmsAPI.setGreedyMeshingEnabled(false)} reverts to per-face quads.
+     */
+    private volatile boolean greedyMeshingEnabled =
+        !"off".equalsIgnoreCase(System.getProperty("stonebreak.mesher.greedy", "on"));
+
+    /**
+     * Per-face corner indices at in-plane (width, height) positions (0,0),
+     * (1,0) and (0,1) — the three reference corners the affine UV scaling
+     * needs. Derived from the cuboid generator's winding table so texture
+     * orientation can never drift from geometry.
+     */
+    private static final int[] UV_C00 = new int[6];
+    private static final int[] UV_C10 = new int[6];
+    private static final int[] UV_C01 = new int[6];
+
+    static {
+        for (int face = 0; face < 6; face++) {
+            int uAxis = MmsCuboidGenerator.uAxis(face);
+            int vAxis = MmsCuboidGenerator.vAxis(face);
+            for (int corner = 0; corner < 4; corner++) {
+                int a = (int) MmsCuboidGenerator.cornerOffset(face, corner, uAxis);
+                int b = (int) MmsCuboidGenerator.cornerOffset(face, corner, vAxis);
+                if (a == 0 && b == 0) {
+                    UV_C00[face] = corner;
+                } else if (a == 1 && b == 0) {
+                    UV_C10[face] = corner;
+                } else if (a == 0 && b == 1) {
+                    UV_C01[face] = corner;
+                }
+            }
+        }
+    }
+
+    /**
+     * Growable per-thread collector for the classic (non-native) cube path,
+     * building the same 9-float quad records the Cenda kernel emits so both
+     * backends share one merge + emission pipeline.
+     */
+    private static final class QuadSink {
+        float[] quads = new float[MmsGreedyMesher.IN_STRIDE * 4096];
+        int count;
+
+        void reset() {
+            count = 0;
+        }
+
+        void add(int lx, int ly, int lz, int face, int id,
+                 float l0, float l1, float l2, float l3) {
+            int base = count * MmsGreedyMesher.IN_STRIDE;
+            if (base + MmsGreedyMesher.IN_STRIDE > quads.length) {
+                quads = java.util.Arrays.copyOf(quads, quads.length + (quads.length >> 1));
+            }
+            quads[base] = lx;
+            quads[base + 1] = ly;
+            quads[base + 2] = lz;
+            quads[base + 3] = face;
+            quads[base + 4] = id;
+            quads[base + 5] = l0;
+            quads[base + 6] = l1;
+            quads[base + 7] = l2;
+            quads[base + 8] = l3;
+            count++;
+        }
+    }
+
+    private static final ThreadLocal<QuadSink> CLASSIC_SINK = ThreadLocal.withInitial(QuadSink::new);
+    private static final ThreadLocal<float[][]> MERGE_HOLDER = ThreadLocal.withInitial(() -> new float[1][]);
 
     /**
      * Creates a CCO adapter with the specified services.
@@ -104,6 +176,16 @@ public class MmsCcoAdapter {
         // emitter owns so it leaves those cells to the Java pass.
         CendaMesher.rebuildClassTable(type -> emitter.hasBlock(type));
         logger.debug("[MmsCcoAdapter] SBO stamp emitter set ({} stamp types)", emitter.getCache().size());
+    }
+
+    /** Enables or disables greedy cube-face merging for subsequent mesh builds. */
+    public void setGreedyMeshingEnabled(boolean enabled) {
+        this.greedyMeshingEnabled = enabled;
+    }
+
+    /** Whether greedy cube-face merging is active. */
+    public boolean isGreedyMeshingEnabled() {
+        return greedyMeshingEnabled;
     }
 
     /**
@@ -174,11 +256,20 @@ public class MmsCcoAdapter {
                         com.openmason.engine.voxel.lighting.VertexLightSampler.isSmoothLightingEnabled(),
                         quadHolder);
                     if (quadCount >= 0) {
-                        emitNativeQuads(atlasBuilder, quadHolder[0], quadCount, chunkX, chunkZ);
+                        emitCubeQuadStream(atlasBuilder, quadHolder[0], quadCount, chunkX, chunkZ);
                         emitSpecialCells(atlasBuilder, waterBuilder, snap, chunkData, chunkX, chunkZ);
                         nativeDone = true;
                     }
                 }
+            }
+
+            // Classic path: cube faces are collected as kernel-format quad
+            // records so they run through the same greedy merge + emission as
+            // the native stream; special blocks keep their per-cell emitters.
+            QuadSink classicSink = null;
+            if (!nativeDone) {
+                classicSink = CLASSIC_SINK.get();
+                classicSink.reset();
             }
 
             // Iterate through all blocks in the chunk
@@ -234,9 +325,13 @@ public class MmsCcoAdapter {
                         }
 
                         // Handle standard cube blocks with face culling
-                        addCubeBlockWithCulling(atlasBuilder, blockType, lx, ly, lz, chunkX, chunkZ, chunkData);
+                        collectCubeQuads(classicSink, blockType, lx, ly, lz, chunkX, chunkZ, chunkData);
                     }
                 }
+            }
+
+            if (classicSink != null && classicSink.count > 0) {
+                emitCubeQuadStream(atlasBuilder, classicSink.quads, classicSink.count, chunkX, chunkZ);
             }
 
             // Build final meshes (solids in the atlas mesh, water in its own)
@@ -265,44 +360,118 @@ public class MmsCcoAdapter {
 
 
     /**
-     * Emits the native kernel's cube quads. Geometry/texture/flag emission is
-     * identical to {@link #addCubeBlockWithCulling}; culling and per-corner
-     * lights were already computed by the kernel (bit-identical semantics).
+     * Emits a cube-face quad stream (the kernel's 9-float records — the
+     * classic path collects the identical format) into the atlas builder,
+     * greedily merging coplanar same-block/same-light runs first when enabled.
+     * Culling and per-corner lights were already computed upstream.
      */
-    private void emitNativeQuads(MmsMeshBuilder builder, float[] quads, int quadCount,
-                                 int chunkX, int chunkZ) {
-        for (int q = 0; q < quadCount; q++) {
-            int base = q * 9;
-            int lx = (int) quads[base];
-            int ly = (int) quads[base + 1];
-            int lz = (int) quads[base + 2];
-            int face = (int) quads[base + 3];
-            BlockType blockType = BlockType.getById((int) quads[base + 4]);
-            if (blockType == null) {
+    private void emitCubeQuadStream(MmsMeshBuilder builder, float[] quads, int quadCount,
+                                    int chunkX, int chunkZ) {
+        if (greedyMeshingEnabled) {
+            float[][] holder = MERGE_HOLDER.get();
+            int mergedCount = MmsGreedyMesher.merge(quads, quadCount, holder);
+            float[] merged = holder[0];
+            for (int q = 0; q < mergedCount; q++) {
+                int base = q * MmsGreedyMesher.OUT_STRIDE;
+                emitCubeQuad(builder,
+                    (int) merged[base], (int) merged[base + 1], (int) merged[base + 2],
+                    (int) merged[base + 3], (int) merged[base + 4],
+                    (int) merged[base + 5], (int) merged[base + 6],
+                    merged[base + 7], merged[base + 8], merged[base + 9], merged[base + 10],
+                    chunkX, chunkZ);
+            }
+        } else {
+            for (int q = 0; q < quadCount; q++) {
+                int base = q * MmsGreedyMesher.IN_STRIDE;
+                emitCubeQuad(builder,
+                    (int) quads[base], (int) quads[base + 1], (int) quads[base + 2],
+                    (int) quads[base + 3], (int) quads[base + 4], 1, 1,
+                    quads[base + 5], quads[base + 6], quads[base + 7], quads[base + 8],
+                    chunkX, chunkZ);
+            }
+        }
+    }
+
+    /**
+     * Emits one cube-face rectangle spanning {@code w}×{@code h} blocks
+     * (1×1 = the classic unit face, bit-identical to the pre-greedy output).
+     * Texture coordinates scale affinely from the mapper's base corners, so a
+     * merged face tiles its array layer 0..w / 0..h — this is what requires
+     * {@code GL_REPEAT} on the block texture array.
+     */
+    private void emitCubeQuad(MmsMeshBuilder builder, int lx, int ly, int lz,
+                              int face, int id, int w, int h,
+                              float l0, float l1, float l2, float l3,
+                              int chunkX, int chunkZ) {
+        BlockType blockType = BlockType.getById(id);
+        if (blockType == null) {
+            return;
+        }
+        float worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
+        float worldY = ly;
+        float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
+
+        float[] vertices = cuboidGenerator.generateScaledFaceVertices(face, worldX, worldY, worldZ, w, h);
+        float[] normals = cuboidGenerator.generateFaceNormals(face);
+        float[] texCoords = textureMapper.generateFaceTextureCoordinates(blockType, face);
+        float[] alphaFlags = textureMapper.generateAlphaFlags(blockType);
+        float[] layers = textureMapper.generateFaceLayers(blockType, face);
+
+        // Affine UV frame from the mapper's unit-square corners: any authored
+        // rotation/flip is preserved, unit rectangles reproduce the base
+        // coordinates exactly.
+        int uAxis = MmsCuboidGenerator.uAxis(face);
+        int vAxis = MmsCuboidGenerator.vAxis(face);
+        float u00 = texCoords[UV_C00[face] * 2];
+        float v00 = texCoords[UV_C00[face] * 2 + 1];
+        float duU = texCoords[UV_C10[face] * 2] - u00;
+        float duV = texCoords[UV_C10[face] * 2 + 1] - v00;
+        float dvU = texCoords[UV_C01[face] * 2] - u00;
+        float dvV = texCoords[UV_C01[face] * 2 + 1] - v00;
+
+        float[] lights = {l0, l1, l2, l3};
+
+        builder.beginFace();
+        for (int i = 0; i < 4; i++) {
+            int vIdx = i * 3;
+            float a = MmsCuboidGenerator.cornerOffset(face, i, uAxis) * w;
+            float b = MmsCuboidGenerator.cornerOffset(face, i, vAxis) * h;
+            builder.addVertex(
+                vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
+                u00 + a * duU + b * dvU, v00 + a * duV + b * dvV,
+                normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
+                0.0f, alphaFlags[i], 0.0f, lights[i], layers[i]
+            );
+        }
+        builder.endFace();
+    }
+
+    /**
+     * Classic-path cube handler: applies the same face culling as before and
+     * collects surviving faces as kernel-format quad records (per-corner
+     * lights sampled at the face's unit corners) for the shared merge +
+     * emission pipeline.
+     */
+    private void collectCubeQuads(QuadSink sink, BlockType blockType,
+                                  int lx, int ly, int lz, int chunkX, int chunkZ,
+                                  CcoChunkData chunkData) {
+        float worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
+        float worldY = ly;
+        float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
+        int id = blockType.getId();
+
+        for (int face = 0; face < 6; face++) {
+            if (!shouldRenderFace(blockType, lx, ly, lz, face, chunkData)) {
                 continue;
             }
-            float worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
-            float worldY = ly;
-            float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
-
-            float[] vertices = cuboidGenerator.generateFaceVertices(face, worldX, worldY, worldZ);
-            float[] normals = cuboidGenerator.generateFaceNormals(face);
-            float[] texCoords = textureMapper.generateFaceTextureCoordinates(blockType, face);
-            float[] alphaFlags = textureMapper.generateAlphaFlags(blockType);
-            float[] layers = textureMapper.generateFaceLayers(blockType, face);
-
-            builder.beginFace();
+            float[] corners = new float[4];
             for (int i = 0; i < 4; i++) {
-                int vIdx = i * 3;
-                int tIdx = i * 2;
-                builder.addVertex(
-                    vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
-                    texCoords[tIdx], texCoords[tIdx + 1],
-                    normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                    0.0f, alphaFlags[i], 0.0f, quads[base + 5 + i], layers[i]
-                );
+                float vx = worldX + MmsCuboidGenerator.cornerOffset(face, i, 0);
+                float vy = worldY + MmsCuboidGenerator.cornerOffset(face, i, 1);
+                float vz = worldZ + MmsCuboidGenerator.cornerOffset(face, i, 2);
+                corners[i] = sampleVertexLight(vx, vy, vz, face);
             }
-            builder.endFace();
+            sink.add(lx, ly, lz, face, id, corners[0], corners[1], corners[2], corners[3]);
         }
     }
 

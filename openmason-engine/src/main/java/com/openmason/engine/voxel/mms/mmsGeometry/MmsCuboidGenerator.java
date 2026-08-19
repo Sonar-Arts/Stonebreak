@@ -96,23 +96,75 @@ public class MmsCuboidGenerator implements MmsGeometryService {
 
     @Override
     public float[] generateFaceVertices(int face, float worldX, float worldY, float worldZ) {
+        return generateScaledFaceVertices(face, worldX, worldY, worldZ, 1.0f, 1.0f);
+    }
+
+    /**
+     * Face vertices for a greedy-merged rectangle spanning {@code uScale}
+     * blocks along the face's width axis ({@link #uAxis}) and {@code vScale}
+     * blocks along its height axis ({@link #vAxis}). Unit scales reproduce
+     * {@link #generateFaceVertices} exactly (0/1 offsets times 1.0f are
+     * bit-identical), so the two paths cannot drift.
+     *
+     * @return per-thread scratch array (12 floats) — consume before the next call
+     */
+    public float[] generateScaledFaceVertices(int face, float worldX, float worldY, float worldZ,
+                                              float uScale, float vScale) {
         if (face < 0 || face >= 6) {
             throw new IllegalArgumentException("Invalid face index: " + face);
         }
 
         float[] vertices = SCRATCH_VERTICES.get();
         float[][] offsets = FACE_VERTEX_OFFSETS[face];
+        int uAxis = uAxis(face);
+        int vAxis = vAxis(face);
 
         for (int i = 0; i < MmsBufferLayout.VERTICES_PER_QUAD; i++) {
             int baseIdx = i * MmsBufferLayout.POSITION_SIZE;
+            float ox = offsets[i][0];
+            float oy = offsets[i][1];
+            float oz = offsets[i][2];
+            if (uAxis == 0) {
+                ox *= uScale;
+            } else if (uAxis == 2) {
+                oz *= uScale;
+            }
+            if (vAxis == 1) {
+                oy *= vScale;
+            } else if (vAxis == 2) {
+                oz *= vScale;
+            }
 
-            // Calculate vertex position (standard 1x1x1 cube)
-            vertices[baseIdx] = worldX + offsets[i][0];
-            vertices[baseIdx + 1] = worldY + offsets[i][1];
-            vertices[baseIdx + 2] = worldZ + offsets[i][2];
+            vertices[baseIdx] = worldX + ox;
+            vertices[baseIdx + 1] = worldY + oy;
+            vertices[baseIdx + 2] = worldZ + oz;
         }
 
         return vertices;
+    }
+
+    /**
+     * The in-plane axis (0=x, 1=y, 2=z) a merged quad's width spans:
+     * x for the ±Y and ±Z faces, z for the ±X faces. Matches the
+     * {@code MmsGreedyMesher} run-extension axes.
+     */
+    public static int uAxis(int face) {
+        return face >= 4 ? 2 : 0;
+    }
+
+    /** The in-plane axis a merged quad's height spans: z for ±Y faces, else y. */
+    public static int vAxis(int face) {
+        return face <= 1 ? 2 : 1;
+    }
+
+    /**
+     * The authored 0/1 offset of a face corner along an axis — the single
+     * source of truth for face winding, exposed so texture-coordinate scaling
+     * can map corners to their in-plane (width, height) position without a
+     * second copy of the offsets table.
+     */
+    public static float cornerOffset(int face, int corner, int axis) {
+        return FACE_VERTEX_OFFSETS[face][corner][axis];
     }
 
     @Override

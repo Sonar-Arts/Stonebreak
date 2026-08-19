@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
+import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator.InventoryLayout;
 import com.stonebreak.ui.support.Resolutions;
 import com.stonebreak.ui.support.UiLayoutAssert;
@@ -165,5 +166,30 @@ class InventoryLayoutCalculatorTest {
         float tiny = InventoryLayoutCalculator.calculateScaleFactor(64, 64);
         assertTrue(tiny >= 0.7f && tiny <= 1.0f,
             "scale factor must stay within [0.7, 1.0] but was " + tiny);
+    }
+
+    @Test
+    void craftingArrowAutoAlignsWithTheOutputSlot() {
+        for (Resolutions.Size size : Resolutions.ALL) {
+            int arrowSize = Math.round(20f * com.stonebreak.config.Settings.getInstance().getUiScale());
+
+            InventoryLayout regular = InventoryLayoutCalculator.calculateLayout(size.width(), size.height());
+            assertArrowAligned(regular, arrowSize, size.toString());
+
+            InventoryLayout workbench = InventoryLayoutCalculator.calculateWorkbenchLayout(size.width(), size.height());
+            assertArrowAligned(workbench, arrowSize, size.toString());
+        }
+    }
+
+    private void assertArrowAligned(InventoryLayout layout, int arrowSize, String label) {
+        float gridRight = layout.craftingElementsStartX + layout.craftInputGridVisualWidth;
+        float[] arrow = MPainter.craftingArrowPlacement(
+                gridRight, layout.outputSlotX, layout.outputSlotY, slotSize(), arrowSize);
+
+        assertEquals(layout.outputSlotY + slotSize() / 2f, arrow[1] + arrowSize / 2f, 0.001f,
+            label + ": arrow must be vertically centred on the output slot");
+        assertTrue(arrow[0] >= gridRight, label + ": arrow must start after the input grid");
+        assertTrue(arrow[0] + arrowSize <= layout.outputSlotX,
+            label + ": arrow must not overlap the output slot");
     }
 }

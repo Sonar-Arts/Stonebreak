@@ -103,35 +103,32 @@ public class InventoryCraftingManager {
     }
 
     /**
-     * Attempts to craft as many items as possible from the current crafting grid.
-     * Returns the number of items crafted.
+     * Crafts a single batch from the current grid: consumes one recipe's worth of
+     * ingredients and recomputes the output slot. Returns the freshly crafted stack
+     * (a copy), or {@code null} if the output slot is empty (no recipe matches or
+     * the ingredients for another batch are exhausted).
      */
-    public int craftAll() {
-        int craftedCount = 0;
-
-        // Keep crafting while we have materials and a valid recipe
-        while (!craftingOutputSlot.isEmpty()) {
-            // Check if we have enough materials for one more craft
-            boolean canCraft = true;
-            for (ItemStack inputSlot : craftingInputSlots) {
-                if (inputSlot != null && !inputSlot.isEmpty() && inputSlot.getCount() < 1) {
-                    canCraft = false;
-                    break;
-                }
-            }
-
-            if (!canCraft) {
-                break;
-            }
-
-            // Consume ingredients and craft
-            consumeCraftingIngredients();
-            craftedCount += craftingOutputSlot.getCount();
-
-            // Update output for next iteration
-            updateCraftingOutput();
+    public ItemStack takeCraftBatch() {
+        if (craftingOutputSlot == null || craftingOutputSlot.isEmpty()) {
+            return null;
         }
+        ItemStack batch = craftingOutputSlot.copy();
+        consumeCraftingIngredients();
+        updateCraftingOutput();
+        return batch;
+    }
 
-        return craftedCount;
+    /**
+     * Crafts as many batches as the current grid allows, in craft order, until the
+     * ingredients run out. The grid is left converted into its outputs: every
+     * possible batch is consumed and the output slot no longer matches a recipe.
+     */
+    public List<ItemStack> craftAll() {
+        List<ItemStack> crafted = new ArrayList<>();
+        ItemStack batch;
+        while ((batch = takeCraftBatch()) != null) {
+            crafted.add(batch);
+        }
+        return crafted;
     }
 }

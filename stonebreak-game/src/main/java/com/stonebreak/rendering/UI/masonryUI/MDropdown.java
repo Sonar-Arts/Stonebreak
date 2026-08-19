@@ -143,20 +143,10 @@ public class MDropdown extends MButton {
     }
 
     private void drawArrow(Canvas canvas) {
-        float cx = x + width - 16f;
-        float cy = y + height / 2f;
-        // Small triangle pointing down (or up when open)
-        float s = 5f;
         int color = hovered || selected ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
-        if (open) {
-            MPainter.fillRect(canvas, cx - s, cy - 1f, s * 2f, 2f, color);
-            MPainter.fillRect(canvas, cx - s + 2f, cy - 3f, s * 2f - 4f, 2f, color);
-            MPainter.fillRect(canvas, cx - 1f, cy - 5f, 2f, 2f, color);
-        } else {
-            MPainter.fillRect(canvas, cx - s, cy - 3f, s * 2f, 2f, color);
-            MPainter.fillRect(canvas, cx - s + 2f, cy - 1f, s * 2f - 4f, 2f, color);
-            MPainter.fillRect(canvas, cx - 1f, cy + 1f, 2f, 2f, color);
-        }
+        float s = 12f;
+        MSymbol symbol = open ? MSymbol.CHEVRON_UP : MSymbol.CHEVRON_DOWN;
+        symbol.draw(canvas, x + width - 16f - s / 2f, y + (height - s) / 2f, s, s, color);
     }
 
     private void renderOverlay(MasonryUI ui) {

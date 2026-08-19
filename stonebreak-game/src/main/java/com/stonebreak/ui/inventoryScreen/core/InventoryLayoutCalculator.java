@@ -305,13 +305,11 @@ public class InventoryLayoutCalculator {
         int craftingGridStartY = panelStartY + panelPadding + titleHeight + sectionSpacing;
         int craftingElementsStartX = panelStartX + panelPadding + (inventoryPanelWidth - craftingSectionWidth - (panelPadding * 2)) / 2;
 
-        // Arrow position centered with improved alignment
-        int arrowX = craftingElementsStartX + craftingGridVisualWidth + slotPadding;
-        int arrowY = craftingGridStartY + (WORKBENCH_CRAFTING_GRID_SIZE * (slotSize + slotPadding) - slotPadding - slotSize) / 2;
-
-        // Output slot position aligned with arrow
-        int outputSlotX = arrowX + slotSize + slotPadding;
-        int outputSlotY = arrowY;
+        // Output slot position: right of the arrow gap, vertically centred on the
+        // full 3×3 grid. (The arrow itself is auto-aligned at render time by
+        // MPainter.craftingArrowPlacement, so no arrow coords are stored here.)
+        int outputSlotX = craftingElementsStartX + craftingGridVisualWidth + slotPadding + slotSize + slotPadding;
+        int outputSlotY = craftingGridStartY + (WORKBENCH_CRAFTING_GRID_SIZE * (slotSize + slotPadding) - slotPadding - slotSize) / 2;
 
         // Player inventory area with better section separation
         int playerInvTitleY = craftingGridStartY + craftingGridActualHeight + sectionSpacing + (titleHeight / 2);

@@ -40,8 +40,8 @@ public class MStatRow extends MWidget {
       return;
     }
 
-    Font font = ui.fonts().get(MStyle.FONT_META);
-    float baseline = y + height * 0.5f + MStyle.FONT_META * 0.38f;
+    Font font = fontFor(ui, MStyle.FONT_META);
+    float baseline = y + height * 0.5f + MStyle.FONT_META * textScale() * 0.38f;
 
     MPainter.drawStringWithShadow(canvas, label, x, baseline, font,
         MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);

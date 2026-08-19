@@ -1,366 +1,270 @@
 package com.openmason.engine.voxel.mms.mmsGeometry;
 
-import com.openmason.engine.voxel.IBlockType;
-import com.openmason.engine.voxel.cco.core.CcoChunkData;
-import com.openmason.engine.voxel.cco.coordinates.CcoBounds;
-import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilder;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
- * Mighty Mesh System - Greedy meshing algorithm implementation.
+ * Mighty Mesh System - greedy merging over cube-face quad streams.
  *
- * Reduces triangle count by merging adjacent faces with the same texture
- * and visual properties. This dramatically improves rendering performance.
+ * <p>Operates on the flat quad records the cube meshing paths produce (the
+ * native {@code ck_mesh_chunk} kernel and the Java fallback emit the same
+ * format): {@code [x, y, z, face, blockId, l0, l1, l2, l3]} per quad, where
+ * {@code l0..l3} are the per-corner light values in face-corner order. Axis
+ * ranges are chunk-local: x/z in [0,16), y in [0,256).
  *
- * Design Philosophy:
- * - Performance: Minimize draw calls and vertex count
- * - Correctness: Never merge faces that would produce visual artifacts
- * - KISS: Simple algorithm, easy to understand and maintain
+ * <p>Adjacent coplanar quads merge into one rectangle when they have the same
+ * block id and ALL EIGHT corner lights are one identical value. That is the
+ * exact condition under which the merged rectangle rasterizes pixel-identically
+ * to its constituents (per-vertex light interpolates, so anything short of a
+ * constant field would shift gradients). Quads with non-uniform corner light
+ * pass through verbatim — near walls and on sky-lit cliff sides merging simply
+ * doesn't happen, while flat terrain tops and everything with sky factor 0
+ * (cave interiors, ocean floors) collapse dramatically.
  *
- * Algorithm:
- * 1. For each axis direction (X, Y, Z):
- *    - Scan through chunk in slices perpendicular to axis
- *    - Build 2D mask of visible faces in current slice
- *    - Greedily merge adjacent faces with same properties
- *    - Generate merged quad geometry
+ * <p>Merged rectangles carry unit-per-block texture extents (UV 0..w / 0..h),
+ * which requires the block texture array to sample with {@code GL_REPEAT} —
+ * each block face owns a full array layer, so tiling cannot bleed into other
+ * textures.
  *
- * Performance:
- * - Typical reduction: 50-70% fewer triangles vs naive meshing
- * - Time complexity: O(n³) where n = chunk size (16)
- * - Memory: O(n²) for face mask arrays
+ * <p>Deterministic: quads are processed per face direction in stream order and
+ * extended width-first then height-first, so identical input always produces
+ * identical output — host and client meshes stay in agreement.
  *
- * @since MMS 1.1
+ * <p>Thread-safe: all working state is per-thread scratch, reused across
+ * calls. Consume the returned array before the next merge on the same thread.
+ *
+ * @since MMS 2.1
  */
 public final class MmsGreedyMesher {
 
-    // Face direction constants
-    private static final int DIR_POS_X = 0;
-    private static final int DIR_NEG_X = 1;
-    private static final int DIR_POS_Y = 2;
-    private static final int DIR_NEG_Y = 3;
-    private static final int DIR_POS_Z = 4;
-    private static final int DIR_NEG_Z = 5;
+    /** Floats per input quad record: x, y, z, face, id, l0..l3. */
+    public static final int IN_STRIDE = 9;
 
-    // Immutable per-direction lookup tables — callers only read these, so the
-    // per-call array allocations they replace were pure garbage churn.
-    private static final int[][] DIRECTION_OFFSETS = {
-        {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}
-    };
-    private static final float[][] DIRECTION_NORMALS = {
-        {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}
-    };
+    /** Floats per output record: x, y, z, face, id, w, h, l0..l3. */
+    public static final int OUT_STRIDE = 11;
 
-    // Per-thread scratch for the meshing hot path (multiple mesh worker
-    // threads share this stateless class). Contents are fully consumed
-    // before the next call on the same thread — same pattern as
-    // MmsCuboidGenerator's SCRATCH_VERTICES. No per-world state is retained.
-    private static final ThreadLocal<int[]> SCRATCH_WORLD_COORDS =
-        ThreadLocal.withInitial(() -> new int[3]);
-    private static final ThreadLocal<float[]> SCRATCH_QUAD_VERTICES =
-        ThreadLocal.withInitial(() -> new float[12]);
+    private static final int CS = 16;   // chunk size (matches ck_mesh_chunk)
+    private static final int WH = 256;  // world height
+    private static final int CELLS = CS * CS * WH;
+
+    // Cumulative effectiveness counters (read by debug overlays).
+    private static final LongAdder QUADS_IN = new LongAdder();
+    private static final LongAdder QUADS_OUT = new LongAdder();
 
     /**
-     * Face mask entry representing a visible face.
-     * Contains block type and texture coordinates for merging decisions.
+     * Per-thread working state. The grid stores quadIndex+1 per occupied cell
+     * (0 = empty); only cells actually touched by the current call are written
+     * and re-cleared, so the 256 KB array is never bulk-reset.
      */
-    private static class FaceMask {
-        IBlockType blockType;
-        float texU, texV;
-        boolean alphaTest;
+    private static final class Scratch {
+        final int[] grid = new int[CELLS];
+        final int[][] dirQuads = new int[6][];
+        final int[] dirCounts = new int[6];
+        float[] out = new float[OUT_STRIDE * 4096];
 
-        FaceMask() {
-            blockType = null;
-        }
-
-        boolean isEmpty() {
-            return blockType == null;
-        }
-
-        boolean canMergeWith(FaceMask other) {
-            if (isEmpty() || other.isEmpty()) {
-                return false;
+        Scratch() {
+            for (int d = 0; d < 6; d++) {
+                dirQuads[d] = new int[1024];
             }
-            return blockType == other.blockType &&
-                   texU == other.texU &&
-                   texV == other.texV &&
-                   alphaTest == other.alphaTest;
         }
+    }
 
-        void set(IBlockType type, float u, float v, boolean alpha) {
-            this.blockType = type;
-            this.texU = u;
-            this.texV = v;
-            this.alphaTest = alpha;
-        }
+    private static final ThreadLocal<Scratch> SCRATCH = ThreadLocal.withInitial(Scratch::new);
 
-        void clear() {
-            this.blockType = null;
-        }
+    private MmsGreedyMesher() {
+    }
+
+    /** Total cube quads fed into the merger since startup. */
+    public static long quadsIn() {
+        return QUADS_IN.sum();
+    }
+
+    /** Total quads emitted after merging since startup. */
+    public static long quadsOut() {
+        return QUADS_OUT.sum();
     }
 
     /**
-     * Generates an optimized mesh using greedy meshing algorithm.
-     *
-     * @param chunkData Chunk data to mesh
-     * @param builder Mesh builder to append geometry to
-     * @return Number of faces generated
+     * Grid cell for a quad of the given face direction. The in-plane "width"
+     * axis (x, or z for the ±X faces) is the innermost index (+1 per step) and
+     * the "height" axis strides by {@link #CS}, so run extension is pointer
+     * arithmetic. All three layouts address the same 65536-cell space.
      */
-    public static int generateGreedyMesh(CcoChunkData chunkData, MmsMeshBuilder builder) {
-        if (chunkData == null || builder == null) {
-            throw new IllegalArgumentException("ChunkData and builder cannot be null");
-        }
-
-        int totalFaces = 0;
-
-        // Process each axis direction
-        totalFaces += generateAxisMesh(chunkData, builder, DIR_POS_X);
-        totalFaces += generateAxisMesh(chunkData, builder, DIR_NEG_X);
-        totalFaces += generateAxisMesh(chunkData, builder, DIR_POS_Y);
-        totalFaces += generateAxisMesh(chunkData, builder, DIR_NEG_Y);
-        totalFaces += generateAxisMesh(chunkData, builder, DIR_POS_Z);
-        totalFaces += generateAxisMesh(chunkData, builder, DIR_NEG_Z);
-
-        return totalFaces;
-    }
-
-    private static int generateAxisMesh(CcoChunkData chunkData, MmsMeshBuilder builder, int direction) {
-        int faceCount = 0;
-
-        int[] dims = getAxisDimensions(direction);
-        int width = dims[0];
-        int height = dims[1];
-        int depth = dims[2];
-
-        FaceMask[][] mask = new FaceMask[width][height];
-        for (int x = 0; x < width; x++) {
-            for (int y = 0; y < height; y++) {
-                mask[x][y] = new FaceMask();
-            }
-        }
-
-        for (int d = 0; d < depth; d++) {
-            for (int x = 0; x < width; x++) {
-                for (int y = 0; y < height; y++) {
-                    mask[x][y].clear();
-                }
-            }
-
-            buildFaceMask(chunkData, mask, direction, d, width, height);
-            faceCount += generateMergedQuads(mask, builder, direction, d, width, height);
-        }
-
-        return faceCount;
-    }
-
-    private static int[] getAxisDimensions(int direction) {
-        int cs = CcoBounds.getConfig().chunkSize();
-        int ch = CcoBounds.getConfig().worldHeight();
-        return switch (direction) {
-            case DIR_POS_X, DIR_NEG_X -> new int[]{cs, ch, cs};
-            case DIR_POS_Y, DIR_NEG_Y -> new int[]{cs, cs, ch};
-            case DIR_POS_Z, DIR_NEG_Z -> new int[]{cs, ch, cs};
-            default -> throw new IllegalArgumentException("Invalid direction: " + direction);
+    private static int cellIndex(int face, int x, int y, int z) {
+        return switch (face) {
+            case 0, 1 -> (y * CS + z) * CS + x;  // width x, height z, plane y
+            case 2, 3 -> (z * WH + y) * CS + x;  // width x, height y, plane z
+            default -> (x * WH + y) * CS + z;    // width z, height y, plane x
         };
     }
 
-    private static void buildFaceMask(CcoChunkData chunkData, FaceMask[][] mask,
-                                      int direction, int depth, int width, int height) {
-        for (int x = 0; x < width; x++) {
-            for (int y = 0; y < height; y++) {
-                int[] worldPos = maskToWorldCoords(direction, x, y, depth);
-                int wx = worldPos[0];
-                int wy = worldPos[1];
-                int wz = worldPos[2];
+    /** Width-axis coordinate of a quad (x, or z for ±X faces). */
+    private static int uCoord(int face, int x, int z) {
+        return face >= 4 ? z : x;
+    }
 
-                if (!isFaceVisible(chunkData, wx, wy, wz, direction)) {
-                    continue;
-                }
+    /** Height-axis coordinate of a quad (z for ±Y faces, else y). */
+    private static int vCoord(int face, int y, int z) {
+        return face <= 1 ? z : y;
+    }
 
-                IBlockType block = chunkData.getBlock(wx, wy, wz);
-                if (block == null || block.isAir()) {
-                    continue;
-                }
+    private static int vLimit(int face) {
+        return face <= 1 ? CS : WH;
+    }
 
-                float texU = 0.0f;
-                float texV = 0.0f;
-                boolean alphaTest = block.isTransparent() && !block.isAir();
+    /**
+     * Merges a cube-face quad stream. Returns the merged record count and the
+     * per-thread output array via {@code outHolder[0]} (11 floats per record,
+     * see {@link #OUT_STRIDE}). Unmergeable quads are passed through with
+     * {@code w = h = 1} and their original corner lights.
+     *
+     * @param quads     input records, {@link #IN_STRIDE} floats each
+     * @param quadCount number of input records
+     * @param outHolder length-1 array receiving the output buffer
+     * @return number of output records
+     */
+    public static int merge(float[] quads, int quadCount, float[][] outHolder) {
+        Scratch s = SCRATCH.get();
+        int required = quadCount * OUT_STRIDE;
+        if (s.out.length < required) {
+            s.out = new float[Math.max(required, s.out.length + (s.out.length >> 1))];
+        }
+        float[] out = s.out;
+        int outCount = 0;
 
-                mask[x][y].set(block, texU, texV, alphaTest);
+        // Bucket quads by face direction, preserving stream order; anything
+        // outside the addressable volume passes straight through (defensive —
+        // the meshers never emit such coords).
+        int[] counts = s.dirCounts;
+        java.util.Arrays.fill(counts, 0);
+        for (int qi = 0; qi < quadCount; qi++) {
+            int base = qi * IN_STRIDE;
+            int x = (int) quads[base];
+            int y = (int) quads[base + 1];
+            int z = (int) quads[base + 2];
+            int face = (int) quads[base + 3];
+            if (face < 0 || face >= 6
+                || x < 0 || x >= CS || z < 0 || z >= CS || y < 0 || y >= WH) {
+                outCount = emit(out, outCount, quads, base, 1, 1);
+                continue;
             }
-        }
-    }
-
-    /** Returns a per-thread scratch array — consume before the next call on this thread. */
-    private static int[] maskToWorldCoords(int direction, int x, int y, int depth) {
-        int[] coords = SCRATCH_WORLD_COORDS.get();
-        switch (direction) {
-            case DIR_POS_X, DIR_NEG_X -> { coords[0] = depth; coords[1] = y; coords[2] = x; }
-            case DIR_POS_Y, DIR_NEG_Y -> { coords[0] = x; coords[1] = depth; coords[2] = y; }
-            case DIR_POS_Z, DIR_NEG_Z -> { coords[0] = x; coords[1] = y; coords[2] = depth; }
-            default -> throw new IllegalArgumentException("Invalid direction");
-        }
-        return coords;
-    }
-
-    private static boolean isFaceVisible(CcoChunkData chunkData, int x, int y, int z, int direction) {
-        IBlockType current = chunkData.getBlock(x, y, z);
-        if (current == null || current.isAir()) {
-            return false;
+            int[] list = s.dirQuads[face];
+            if (counts[face] == list.length) {
+                list = java.util.Arrays.copyOf(list, list.length * 2);
+                s.dirQuads[face] = list;
+            }
+            list[counts[face]++] = qi;
         }
 
-        int[] offset = getDirectionOffset(direction);
-        int nx = x + offset[0];
-        int ny = y + offset[1];
-        int nz = z + offset[2];
+        int[] grid = s.grid;
+        for (int face = 0; face < 6; face++) {
+            int[] list = s.dirQuads[face];
+            int n = counts[face];
+            if (n == 0) {
+                continue;
+            }
 
-        if (!chunkData.isInBounds(nx, ny, nz)) {
-            return true;
-        }
+            // Index this direction's quads into the plane grid.
+            for (int i = 0; i < n; i++) {
+                int base = list[i] * IN_STRIDE;
+                grid[cellIndex(face, (int) quads[base], (int) quads[base + 1],
+                    (int) quads[base + 2])] = list[i] + 1;
+            }
 
-        IBlockType neighbor = chunkData.getBlock(nx, ny, nz);
-        if (neighbor == null || neighbor.isAir()) {
-            return true;
-        }
+            int vMax = vLimit(face);
+            for (int i = 0; i < n; i++) {
+                int qi = list[i];
+                int base = qi * IN_STRIDE;
+                int x = (int) quads[base];
+                int y = (int) quads[base + 1];
+                int z = (int) quads[base + 2];
+                int cell = cellIndex(face, x, y, z);
+                if (grid[cell] != qi + 1) {
+                    continue; // consumed by an earlier rectangle
+                }
 
-        // Transparent blocks render faces against any different block type
-        if (current.isTransparent()) {
-            return current != neighbor;
-        }
-
-        // Opaque blocks render faces against transparent blocks
-        return neighbor.isTransparent();
-    }
-
-    private static int[] getDirectionOffset(int direction) {
-        return DIRECTION_OFFSETS[direction];
-    }
-
-    private static int generateMergedQuads(FaceMask[][] mask, MmsMeshBuilder builder,
-                                           int direction, int depth, int width, int height) {
-        int quadCount = 0;
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width;) {
-                if (mask[x][y].isEmpty()) {
-                    x++;
+                float id = quads[base + 4];
+                float l0 = quads[base + 5];
+                boolean uniform = l0 == quads[base + 6]
+                    && l0 == quads[base + 7]
+                    && l0 == quads[base + 8];
+                if (!uniform) {
+                    grid[cell] = 0;
+                    outCount = emit(out, outCount, quads, base, 1, 1);
                     continue;
                 }
 
+                int u = uCoord(face, x, z);
+                int v = vCoord(face, y, z);
+
+                // Extend along the width axis.
                 int w = 1;
-                while (x + w < width && mask[x][y].canMergeWith(mask[x + w][y])) {
+                while (u + w < CS && matches(quads, grid[cell + w], id, l0)) {
                     w++;
                 }
 
+                // Extend along the height axis: the whole width row must match.
                 int h = 1;
-                boolean canExpandHeight = true;
-                while (y + h < height && canExpandHeight) {
-                    for (int dx = 0; dx < w; dx++) {
-                        if (!mask[x][y].canMergeWith(mask[x + dx][y + h])) {
-                            canExpandHeight = false;
-                            break;
+                height:
+                while (v + h < vMax) {
+                    int rowBase = cell + h * CS;
+                    for (int k = 0; k < w; k++) {
+                        if (!matches(quads, grid[rowBase + k], id, l0)) {
+                            break height;
                         }
                     }
-                    if (canExpandHeight) {
-                        h++;
-                    }
+                    h++;
                 }
 
-                generateMergedQuad(builder, mask[x][y], direction, depth, x, y, w, h);
-                quadCount++;
-
-                for (int dy = 0; dy < h; dy++) {
-                    for (int dx = 0; dx < w; dx++) {
-                        mask[x + dx][y + dy].clear();
+                // Consume the rectangle.
+                for (int r = 0; r < h; r++) {
+                    int rowBase = cell + r * CS;
+                    for (int k = 0; k < w; k++) {
+                        grid[rowBase + k] = 0;
                     }
                 }
+                outCount = emit(out, outCount, quads, base, w, h);
+            }
 
-                x += w;
+            // Re-clear any cells left occupied (idempotent for consumed ones).
+            for (int i = 0; i < n; i++) {
+                int base = list[i] * IN_STRIDE;
+                grid[cellIndex(face, (int) quads[base], (int) quads[base + 1],
+                    (int) quads[base + 2])] = 0;
             }
         }
 
-        return quadCount;
+        QUADS_IN.add(quadCount);
+        QUADS_OUT.add(outCount);
+        outHolder[0] = out;
+        return outCount;
     }
 
-    private static void generateMergedQuad(MmsMeshBuilder builder, FaceMask face,
-                                           int direction, int depth,
-                                           int x, int y, int width, int height) {
-        int[] worldStart = maskToWorldCoords(direction, x, y, depth);
-        float wx = worldStart[0];
-        float wy = worldStart[1];
-        float wz = worldStart[2];
-
-        float[] vertices = generateQuadVertices(direction, wx, wy, wz, width, height);
-        float[] normal = getDirectionNormal(direction);
-        float alphaFlag = face.alphaTest ? 1.0f : 0.0f;
-        float waterFlag = 0.0f; // Water flag handled by specific water provider
-
-        builder.beginFace()
-            .addVertex(vertices[0], vertices[1], vertices[2],
-                      face.texU, face.texV,
-                      normal[0], normal[1], normal[2],
-                      waterFlag, alphaFlag)
-            .addVertex(vertices[3], vertices[4], vertices[5],
-                      face.texU + width, face.texV,
-                      normal[0], normal[1], normal[2],
-                      waterFlag, alphaFlag)
-            .addVertex(vertices[6], vertices[7], vertices[8],
-                      face.texU + width, face.texV + height,
-                      normal[0], normal[1], normal[2],
-                      waterFlag, alphaFlag)
-            .addVertex(vertices[9], vertices[10], vertices[11],
-                      face.texU, face.texV + height,
-                      normal[0], normal[1], normal[2],
-                      waterFlag, alphaFlag)
-            .endFace();
-    }
-
-    /** Returns a per-thread scratch array — consume before the next call on this thread. */
-    private static float[] generateQuadVertices(int direction, float x, float y, float z,
-                                                int width, int height) {
-        float[] vertices = SCRATCH_QUAD_VERTICES.get();
-
-        switch (direction) {
-            case DIR_POS_Y:
-                vertices[0] = x; vertices[1] = y + 1; vertices[2] = z;
-                vertices[3] = x + width; vertices[4] = y + 1; vertices[5] = z;
-                vertices[6] = x + width; vertices[7] = y + 1; vertices[8] = z + height;
-                vertices[9] = x; vertices[10] = y + 1; vertices[11] = z + height;
-                break;
-            case DIR_NEG_Y:
-                vertices[0] = x; vertices[1] = y; vertices[2] = z;
-                vertices[3] = x + width; vertices[4] = y; vertices[5] = z;
-                vertices[6] = x + width; vertices[7] = y; vertices[8] = z + height;
-                vertices[9] = x; vertices[10] = y; vertices[11] = z + height;
-                break;
-            case DIR_POS_X:
-                vertices[0] = x + 1; vertices[1] = y; vertices[2] = z;
-                vertices[3] = x + 1; vertices[4] = y; vertices[5] = z + width;
-                vertices[6] = x + 1; vertices[7] = y + height; vertices[8] = z + width;
-                vertices[9] = x + 1; vertices[10] = y + height; vertices[11] = z;
-                break;
-            case DIR_NEG_X:
-                vertices[0] = x; vertices[1] = y; vertices[2] = z;
-                vertices[3] = x; vertices[4] = y; vertices[5] = z + width;
-                vertices[6] = x; vertices[7] = y + height; vertices[8] = z + width;
-                vertices[9] = x; vertices[10] = y + height; vertices[11] = z;
-                break;
-            case DIR_POS_Z:
-                vertices[0] = x; vertices[1] = y; vertices[2] = z + 1;
-                vertices[3] = x + width; vertices[4] = y; vertices[5] = z + 1;
-                vertices[6] = x + width; vertices[7] = y + height; vertices[8] = z + 1;
-                vertices[9] = x; vertices[10] = y + height; vertices[11] = z + 1;
-                break;
-            case DIR_NEG_Z:
-                vertices[0] = x; vertices[1] = y; vertices[2] = z;
-                vertices[3] = x + width; vertices[4] = y; vertices[5] = z;
-                vertices[6] = x + width; vertices[7] = y + height; vertices[8] = z;
-                vertices[9] = x; vertices[10] = y + height; vertices[11] = z;
-                break;
+    /** Candidate-cell predicate for run extension. */
+    private static boolean matches(float[] quads, int gridValue, float id, float light) {
+        if (gridValue == 0) {
+            return false;
         }
-
-        return vertices;
+        int base = (gridValue - 1) * IN_STRIDE;
+        return quads[base + 4] == id
+            && quads[base + 5] == light
+            && quads[base + 6] == light
+            && quads[base + 7] == light
+            && quads[base + 8] == light;
     }
 
-    private static float[] getDirectionNormal(int direction) {
-        return DIRECTION_NORMALS[direction];
+    private static int emit(float[] out, int outCount, float[] quads, int inBase, int w, int h) {
+        int o = outCount * OUT_STRIDE;
+        out[o] = quads[inBase];
+        out[o + 1] = quads[inBase + 1];
+        out[o + 2] = quads[inBase + 2];
+        out[o + 3] = quads[inBase + 3];
+        out[o + 4] = quads[inBase + 4];
+        out[o + 5] = w;
+        out[o + 6] = h;
+        out[o + 7] = quads[inBase + 5];
+        out[o + 8] = quads[inBase + 6];
+        out[o + 9] = quads[inBase + 7];
+        out[o + 10] = quads[inBase + 8];
+        return outCount + 1;
     }
 }

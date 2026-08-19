@@ -103,45 +103,121 @@ public class InventorySlotManager {
         return false;
     }
 
-    public boolean tryPickUpFromCraftingOutput(float mouseX, float mouseY,
-                                              InventoryLayoutCalculator.InventoryLayout layout,
-                                              InventoryDragDropHandler.DragState dragState) {
-        if (isMouseOverSlot(mouseX, mouseY, layout.outputSlotX, layout.outputSlotY)) {
-            ItemStack craftingOutputSlot = craftingManager.getCraftingOutputSlot();
-            if (craftingOutputSlot != null && !craftingOutputSlot.isEmpty()) {
-                dragState.draggedItemStack = craftingOutputSlot.copy();
-                craftingManager.setCraftingOutputSlot(new ItemStack(BlockType.AIR.getId(), 0));
-                dragState.draggedItemOriginalSlotIndex = InventoryDragDropHandler.getCraftingOutputSlotIndex();
-                dragState.dragSource = InventoryDragDropHandler.DragSource.NONE;
+    public boolean isMouseOverCraftingOutput(float mouseX, float mouseY,
+                                             InventoryLayoutCalculator.InventoryLayout layout) {
+        return isMouseOverSlot(mouseX, mouseY, layout.outputSlotX, layout.outputSlotY);
+    }
+
+    /**
+     * Middle-click on a crafting input cell: redistributes the clicked item evenly
+     * across every cell holding the same item, so a recipe spanning several cells
+     * (e.g. log + log -> sticks) is satisfied from one dropped stack. Returns true
+     * when the click landed on a crafting input cell (even if nothing needed
+     * balancing); false when it did not.
+     */
+    public boolean tryBalanceCraftingSlot(float mouseX, float mouseY,
+                                          InventoryLayoutCalculator.InventoryLayout layout) {
+        ItemStack[] slots = craftingManager.getCraftingInputSlots();
+        int gridSize = craftingManager.getCraftingGridSize();
+        int slotCount = gridSize * gridSize;
+
+        for (int i = 0; i < slotCount; i++) {
+            int r = i / gridSize;
+            int c = i % gridSize;
+            int slotX = layout.craftingElementsStartX +
+                       c * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+            int slotY = layout.craftingGridStartY +
+                       r * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+
+            if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
+                balanceCraftingCells(slots, i);
                 return true;
             }
         }
         return false;
     }
 
-    public boolean tryShiftClickCraftingOutput(float mouseX, float mouseY,
-                                              InventoryLayoutCalculator.InventoryLayout layout) {
-        if (isMouseOverSlot(mouseX, mouseY, layout.outputSlotX, layout.outputSlotY)) {
-            ItemStack craftingOutputSlot = craftingManager.getCraftingOutputSlot();
-            if (craftingOutputSlot != null && !craftingOutputSlot.isEmpty()) {
-                ItemStack itemsInOutput = craftingOutputSlot.copy();
+    /**
+     * Evens out the counts of the item in {@code clickedIndex} across all cells
+     * holding the same item + state. The total count is preserved; each matching
+     * cell gets floor(total / n), with the remainder spread one-at-a-time to the
+     * first cells. Cells of any other item are never touched.
+     */
+    private void balanceCraftingCells(ItemStack[] slots, int clickedIndex) {
+        ItemStack clicked = slots[clickedIndex];
+        if (clicked == null || clicked.isEmpty()) {
+            return;
+        }
+        Item clickedItem = clicked.getItem();
+        String clickedState = clicked.getState();
 
-                boolean wasAdded = inventory.addItem(itemsInOutput);
-                if (wasAdded) {
-                    craftingManager.setCraftingOutputSlot(new ItemStack(BlockType.AIR.getId(), 0));
-                    return true;
-                } else {
-                    // Inventory is full - drop the item
-                    Player player = Game.getPlayer();
-                    if (player != null) {
-                        com.stonebreak.util.DropUtil.dropItemFromPlayer(player, itemsInOutput);
-                        craftingManager.setCraftingOutputSlot(new ItemStack(BlockType.AIR.getId(), 0));
-                        return true;
-                    }
-                }
+        java.util.List<Integer> matching = new java.util.ArrayList<>();
+        int total = 0;
+        for (int i = 0; i < slots.length; i++) {
+            ItemStack slot = slots[i];
+            if (slot != null && !slot.isEmpty()
+                    && slot.getItem().isSameType(clickedItem)
+                    && java.util.Objects.equals(slot.getState(), clickedState)) {
+                matching.add(i);
+                total += slot.getCount();
             }
         }
-        return false;
+
+        int n = matching.size();
+        if (n <= 1) {
+            return;
+        }
+        int base = total / n;
+        int remainder = total % n;
+        for (int k = 0; k < n; k++) {
+            slots[matching.get(k)].setCount(base + (k < remainder ? 1 : 0));
+        }
+    }
+
+    /**
+     * Starts a drag from the crafting output with a freshly taken craft batch.
+     * The batch was produced by {@link InventoryCraftingManager#takeCraftBatch()}
+     * and is already detached from the output slot.
+     */
+    public void startDragFromCraftingOutput(ItemStack batch,
+                                            InventoryDragDropHandler.DragState dragState) {
+        if (batch == null || batch.isEmpty()) {
+            return;
+        }
+        dragState.draggedItemStack = batch;
+        dragState.draggedItemOriginalSlotIndex = InventoryDragDropHandler.getCraftingOutputSlotIndex();
+        dragState.dragSource = InventoryDragDropHandler.DragSource.NONE;
+    }
+
+    public boolean tryShiftClickCraftingOutput(float mouseX, float mouseY,
+                                              InventoryLayoutCalculator.InventoryLayout layout) {
+        if (!isMouseOverCraftingOutput(mouseX, mouseY, layout)) {
+            return false;
+        }
+        ItemStack craftingOutputSlot = craftingManager.getCraftingOutputSlot();
+        if (craftingOutputSlot == null || craftingOutputSlot.isEmpty()) {
+            return false;
+        }
+        // Shift-clicking the result crafts as many batches as the inputs allow
+        // and deposits them all (dropping whatever the inventory cannot hold).
+        depositCraftedStacks(craftingManager.craftAll());
+        return true;
+    }
+
+    /**
+     * Adds every crafted stack to the player inventory, dropping (into the world)
+     * whatever does not fit, so no crafted items are ever lost.
+     */
+    void depositCraftedStacks(java.util.List<ItemStack> crafted) {
+        Player player = Game.getPlayer();
+        for (ItemStack stack : crafted) {
+            int added = inventory.addItemAndReturnCount(stack);
+            int remainder = stack.getCount() - added;
+            if (remainder > 0 && player != null) {
+                com.stonebreak.util.DropUtil.dropItemFromPlayer(player,
+                    new ItemStack(stack.getItem(), remainder, stack.getState()));
+            }
+        }
     }
 
     public boolean tryShiftClickCraftingInput(float mouseX, float mouseY,
