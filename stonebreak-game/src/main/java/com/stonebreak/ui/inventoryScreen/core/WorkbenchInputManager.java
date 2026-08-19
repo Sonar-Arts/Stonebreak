@@ -37,10 +37,21 @@ public class WorkbenchInputManager extends InventoryInputManager {
         boolean rightMouseButtonPressed = super.inputHandler.isMouseButtonPressed(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_RIGHT);
 
         if (leftMouseButtonPressed) {
-            // Single-click drag: if dragging, place the item (use workbench handler, not parent)
+            // Single-click drag: if dragging, try to craft another batch onto the
+            // cursor when aiming at the output slot, otherwise place the item
+            // (use workbench handler, not parent). Shift-click while dragging still
+            // routes to the shared shift logic (craft-all, input return, transfer)
+            // so the workbench matches the inventory screen.
             if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
-                placeWorkbenchDraggedItem(lastScreenWidth, lastScreenHeight, layout);
-                super.inputHandler.consumeMouseButtonPress(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                if (shiftDown) {
+                    handleLeftClick(mouseX, mouseY, true, layout);
+                    super.inputHandler.consumeMouseButtonPress(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                } else if (tryCraftOntoDraggedStack(mouseX, mouseY, layout)) {
+                    super.inputHandler.consumeMouseButtonPress(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                } else {
+                    placeWorkbenchDraggedItem(lastScreenWidth, lastScreenHeight, layout);
+                    super.inputHandler.consumeMouseButtonPress(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                }
             } else {
                 handleLeftClick(mouseX, mouseY, shiftDown, layout);
             }

@@ -2,6 +2,7 @@ package com.stonebreak.ui.inventoryScreen.core;
 
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
+import com.stonebreak.items.ItemStack;
 import com.stonebreak.core.Game;
 import com.stonebreak.rpg.CharacterPanelTab;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
@@ -99,8 +100,13 @@ public class InventoryInputManager {
             return;
         }
 
-        // If dragging, check for double-click gather before placing
+        // If dragging, craft another batch onto the cursor when aiming at the
+        // output slot, then check for double-click gather before placing.
         if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
+            if (tryCraftOntoDraggedStack(mouseX, mouseY, layout)) {
+                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                return;
+            }
             if (isDoubleClick(mouseX, mouseY)) {
                 handleDoubleClickGather();
                 recordClick(mouseX, mouseY);
@@ -283,48 +289,11 @@ public class InventoryInputManager {
     }
 
     private void handleCraftAll() {
-        if (craftingManager.getCraftingOutputSlot() != null &&
-            !craftingManager.getCraftingOutputSlot().isEmpty()) {
-
-            // Store all crafted items temporarily
-            java.util.List<com.stonebreak.items.ItemStack> craftedItems = new java.util.ArrayList<>();
-
-            // Craft as many as possible
-            while (!craftingManager.getCraftingOutputSlot().isEmpty()) {
-                // Store the output before consuming
-                com.stonebreak.items.ItemStack output = craftingManager.getCraftingOutputSlot().copy();
-
-                // Check if we still have materials
-                boolean canCraft = true;
-                for (com.stonebreak.items.ItemStack inputSlot : craftingManager.getCraftingInputSlots()) {
-                    if (inputSlot != null && !inputSlot.isEmpty() && inputSlot.getCount() < 1) {
-                        canCraft = false;
-                        break;
-                    }
-                }
-
-                if (!canCraft) {
-                    break;
-                }
-
-                // Consume ingredients
-                craftingManager.consumeCraftingIngredients();
-                craftedItems.add(output);
-
-                // Update output for next iteration
-                craftingManager.updateCraftingOutput();
-            }
-
-            // Try to add all crafted items to inventory
-            for (com.stonebreak.items.ItemStack stack : craftedItems) {
-                if (!inventory.addItem(stack)) {
-                    // If inventory is full, drop remaining items
-                    if (Game.getPlayer() != null) {
-                        com.stonebreak.util.DropUtil.dropItemFromPlayer(Game.getPlayer(), stack);
-                    }
-                }
-            }
+        if (craftingManager.getCraftingOutputSlot() == null ||
+            craftingManager.getCraftingOutputSlot().isEmpty()) {
+            return;
         }
+        slotManager.depositCraftedStacks(craftingManager.craftAll());
     }
 
     private void handleSort() {
@@ -346,22 +315,54 @@ public class InventoryInputManager {
             return true;
         }
 
-        // Try crafting output slot
-        if (slotManager.tryPickUpFromCraftingOutput(mouseX, mouseY, layout, dragState)) {
-            craftingManager.consumeCraftingIngredients();
-            craftingManager.updateCraftingOutput();
-            return true;
+        // Try crafting output slot: take one batch onto the cursor
+        if (slotManager.isMouseOverCraftingOutput(mouseX, mouseY, layout)) {
+            ItemStack batch = craftingManager.takeCraftBatch();
+            if (batch != null) {
+                slotManager.startDragFromCraftingOutput(batch, dragState);
+                return true;
+            }
         }
 
         return false;
     }
 
+    /**
+     * Clicking the output slot while dragging a compatible stack crafts another
+     * batch and accumulates it onto the cursor (up to the stack limit), instead
+     * of placing the held stack. Returns true when another batch was crafted.
+     */
+    protected boolean tryCraftOntoDraggedStack(float mouseX, float mouseY,
+                                               InventoryLayoutCalculator.InventoryLayout layout) {
+        if (dragState.draggedItemStack == null || dragState.draggedItemStack.isEmpty()) {
+            return false;
+        }
+        if (!slotManager.isMouseOverCraftingOutput(mouseX, mouseY, layout)) {
+            return false;
+        }
+        ItemStack dragged = dragState.draggedItemStack;
+        ItemStack output = craftingManager.getCraftingOutputSlot();
+        if (output == null || output.isEmpty()) {
+            return false;
+        }
+        if (!dragged.canStackWith(output)) {
+            return false;
+        }
+        if (dragged.getCount() + output.getCount() > dragged.getMaxStackSize()) {
+            return false;
+        }
+        ItemStack batch = craftingManager.takeCraftBatch();
+        if (batch == null) {
+            return false;
+        }
+        dragged.incrementCount(batch.getCount());
+        return true;
+    }
+
     private void handleShiftClickTransfer(float mouseX, float mouseY,
                                          InventoryLayoutCalculator.InventoryLayout layout) {
-        // Check crafting output slot first
+        // Check crafting output slot first — shift-clicking it crafts all possible
         if (slotManager.tryShiftClickCraftingOutput(mouseX, mouseY, layout)) {
-            craftingManager.consumeCraftingIngredients();
-            craftingManager.updateCraftingOutput();
             return;
         }
 

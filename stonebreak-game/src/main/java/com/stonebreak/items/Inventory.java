@@ -168,6 +168,18 @@ public class Inventory {
         if (itemStack == null || itemStack.isEmpty()) {
             return true; // Adding nothing is success
         }
+        return addItemAndReturnCount(itemStack) == itemStack.getCount();
+    }
+
+    /**
+     * Adds an ItemStack to the inventory without mutating it, returning the number
+     * of items actually added (partial fills are possible when there is no room).
+     * Stacks with existing items first (state must match), then fills empty slots.
+     */
+    public int addItemAndReturnCount(ItemStack itemStack) {
+        if (itemStack == null || itemStack.isEmpty()) {
+            return 0;
+        }
         
         int remainingCount = itemStack.getCount();
         Item item = itemStack.getItem();
@@ -223,7 +235,7 @@ public class Inventory {
             }
         }
         
-        return remainingCount == 0; // Return true if all items were added
+        return itemStack.getCount() - remainingCount;
     }
 
     /**

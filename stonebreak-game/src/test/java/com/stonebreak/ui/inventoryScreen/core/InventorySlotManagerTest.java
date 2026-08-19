@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -13,8 +14,10 @@ import org.junit.jupiter.api.Test;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.crafting.CraftingManager;
+import com.stonebreak.crafting.Recipe;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemType;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator.InventoryLayout;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler.DragSource;
@@ -95,6 +98,11 @@ class InventorySlotManagerTest {
         int x = layout.craftingElementsStartX + c * stride();
         int y = layout.craftingGridStartY + r * stride();
         return center(x, y);
+    }
+
+    /** Center of the crafting output slot. */
+    private float[] craftingOutputCenter() {
+        return center(layout.outputSlotX, layout.outputSlotY);
     }
 
     private static float[] center(int x, int y) {
@@ -260,6 +268,34 @@ class InventorySlotManagerTest {
         assertTrue(crafting.getCraftingInputSlot(0).isEmpty(),
             "the crafting cell must be cleared once its contents are absorbed");
         assertEquals(6, totalDirt(), "the ingredients must reappear in the inventory");
+    }
+
+    @Test
+    void shiftClickingTheCraftingOutputCraftsEveryPossibleBatch() {
+        CraftingManager cm = new CraftingManager();
+        cm.registerRecipe(new Recipe("dirtToSticks",
+            List.of(List.of(new ItemStack(BlockType.DIRT, 1))),
+            new ItemStack(ItemType.STICK, 4)));
+        InventoryCraftingManager crafting = new InventoryCraftingManager(cm);
+        InventorySlotManager slots = new InventorySlotManager(inventory, crafting);
+        crafting.setCraftingInputSlot(0, new ItemStack(BlockType.DIRT, 3));
+        crafting.updateCraftingOutput();
+
+        float[] p = craftingOutputCenter();
+        assertTrue(slots.tryShiftClickCraftingOutput(p[0], p[1], layout));
+
+        assertTrue(crafting.getCraftingInputSlot(0).isEmpty(),
+            "shift-clicking the result must consume every ingredient");
+        assertTrue(crafting.getCraftingOutputSlot().isEmpty(), "the output must be spent");
+        assertEquals(12, inventory.getItemCount(ItemType.STICK),
+            "all three batches land in the inventory (3 ingredients x 4 sticks)");
+    }
+
+    @Test
+    void shiftClickingAnEmptyCraftingOutputDoesNothing() {
+        float[] p = craftingOutputCenter();
+        assertFalse(slots.tryShiftClickCraftingOutput(p[0], p[1], layout),
+            "an empty result slot must not report a craft");
     }
 
     // ---- single-item deposit -------------------------------------------------------------------
