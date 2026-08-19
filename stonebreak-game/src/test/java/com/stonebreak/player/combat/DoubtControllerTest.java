@@ -2,12 +2,14 @@ package com.stonebreak.player.combat;
 
 import static com.stonebreak.player.PlayerConstants.ILLUSIONIST_DOUBT_DECAY_TIMEOUT;
 import static com.stonebreak.player.PlayerConstants.ILLUSIONIST_DOUBT_MAX_STACKS;
+import static com.stonebreak.player.PlayerConstants.ILLUSIONIST_SHAKEN_ATTACK_DELAY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.StubMob;
+import com.stonebreak.mobs.entities.status.StatusEffectType;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -40,6 +42,22 @@ class DoubtControllerTest {
         assertTrue(doubt.isBewildered(first));
         assertEquals(1, doubt.getStacks(second), "each enemy keeps its own ledger");
         assertFalse(doubt.isBewildered(second));
+    }
+
+    @Test
+    void shakenHesitationScalesWithStacksUntilBewildered() {
+        StubMob target = enemy();
+
+        doubt.addStack(target);
+        assertEquals(1f * ILLUSIONIST_SHAKEN_ATTACK_DELAY,
+                target.getStatusEffectMagnitude(StatusEffectType.SHAKEN), 1e-6f);
+
+        doubt.addStack(target);
+        doubt.addStack(target);
+        assertEquals(3f * ILLUSIONIST_SHAKEN_ATTACK_DELAY,
+                target.getStatusEffectMagnitude(StatusEffectType.SHAKEN), 1e-6f,
+                "each stack must re-apply the SHAKEN magnitude, not freeze at the first "
+                + "stack's hesitation (issue #232)");
     }
 
     @Test

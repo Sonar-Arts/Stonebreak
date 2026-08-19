@@ -54,13 +54,13 @@ class StatusEffectTest {
     void refreshExtendsButNeverShortens() {
         StatusEffect effect = new StatusEffect(StatusEffectType.SHAKEN, 5f, 0.15f);
 
-        effect.refresh(2f);
+        effect.refresh(2f, effect.getMagnitude());
         effect.tick(3f);
 
         assertFalse(effect.isExpired(),
                 "a shorter re-application must not cut an effect's remaining time");
 
-        effect.refresh(10f);
+        effect.refresh(10f, effect.getMagnitude());
         effect.tick(9f);
         assertFalse(effect.isExpired(), "a longer re-application extends it");
         effect.tick(1.1f);
@@ -68,13 +68,13 @@ class StatusEffectTest {
     }
 
     @Test
-    void magnitudeAndTypeAreFixedAtCreation() {
-        StatusEffect effect = new StatusEffect(StatusEffectType.BLEED, 4f, 1.5f);
+    void refreshReplacesMagnitudeWithTheLatestApplication() {
+        StatusEffect effect = new StatusEffect(StatusEffectType.SHAKEN, 4f, 0.15f);
 
-        assertEquals(StatusEffectType.BLEED, effect.getType());
-        assertEquals(1.5f, effect.getMagnitude(), 1e-6f);
-        effect.refresh(20f);
-        assertEquals(1.5f, effect.getMagnitude(), 1e-6f,
-                "refresh is duration-only — magnitude never changes (see issue #232)");
+        effect.refresh(4f, 0.45f);
+
+        assertEquals(0.45f, effect.getMagnitude(), 1e-6f,
+                "a reapplication must adopt the latest magnitude (issue #232) — an "
+                + "Illusionist's hesitation must rise to 3 stacks, not stay at one");
     }
 }

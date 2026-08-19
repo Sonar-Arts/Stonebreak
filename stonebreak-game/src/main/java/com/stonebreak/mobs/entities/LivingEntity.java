@@ -349,18 +349,34 @@ public abstract class LivingEntity extends Entity {
         if (!alive) return;
         for (StatusEffect existing : statusEffects) {
             if (existing.getType() == type) {
-                existing.refresh(duration);
+                existing.refresh(duration, resolveRefreshMagnitude(existing, magnitude));
                 return;
             }
         }
         statusEffects.add(new StatusEffect(type, duration, magnitude));
     }
 
-    private void updateStatusEffects(float deltaTime) {
+    /**
+     * The magnitude an existing effect should carry after a re-application. DOTs and SHAKEN
+     * adopt the latest application's value, so their strength tracks the most recent
+     * application — e.g. an Illusionist's SHAKEN hesitation grows as Doubt stacks rise
+     * (issue #232) and a re-applied burn ticks at its own rate. Potency bonuses are
+     * strongest-wins, so re-applying with a weaker source can never weaken an active debuff.
+     */
+    private static float resolveRefreshMagnitude(StatusEffect existing, float magnitude) {
+        return switch (existing.getType()) {
+            case ARMOR_BREAK, AMPLIFIED, CRIPPLE, EXPOSED ->
+                Math.max(existing.getMagnitude(), magnitude);
+            default -> magnitude;
+        };
+    }
+
+    // Tick and prune first so damage()/onDamage() (which may itself touch statusEffects,
+    // e.g. via applyStatusEffect) never runs while we're iterating the live list.
+    // Package-private so tests can advance the DOT clock directly without a full update().
+    void updateStatusEffects(float deltaTime) {
         if (statusEffects.isEmpty()) return;
 
-        // Tick and prune first so damage()/onDamage() (which may itself touch statusEffects,
-        // e.g. via applyStatusEffect) never runs while we're iterating the live list.
         float burningTickDamage = 0f;
         float bleedTickDamage = 0f;
         Iterator<StatusEffect> it = statusEffects.iterator();
@@ -407,6 +423,16 @@ public abstract class LivingEntity extends Entity {
             }
         }
         return false;
+    }
+
+    /** Magnitude of the active effect of the given type, or {@code 0f} if none is active. */
+    public float getStatusEffectMagnitude(StatusEffectType type) {
+        for (StatusEffect effect : statusEffects) {
+            if (effect.getType() == type) {
+                return effect.getMagnitude();
+            }
+        }
+        return 0f;
     }
 
     /** True while any STUNNED effect is active — suppresses AI updates. */
