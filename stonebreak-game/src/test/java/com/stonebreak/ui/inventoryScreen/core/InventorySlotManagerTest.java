@@ -114,6 +114,18 @@ class InventorySlotManagerTest {
         return UiTestFixtures.countOf(inventory, BlockType.DIRT);
     }
 
+    /** Total DIRT across the crafting input cells (the balance logic works on the grid, not the inventory). */
+    private int craftingDirtTotal() {
+        int total = 0;
+        for (int i = 0; i < 4; i++) {
+            ItemStack slot = crafting.getCraftingInputSlot(i);
+            if (slot.getBlockTypeId() == BlockType.DIRT.getId()) {
+                total += slot.getCount();
+            }
+        }
+        return total;
+    }
+
     // ---- pick-up ------------------------------------------------------------------------------
 
     @Test
@@ -296,6 +308,79 @@ class InventorySlotManagerTest {
         float[] p = craftingOutputCenter();
         assertFalse(slots.tryShiftClickCraftingOutput(p[0], p[1], layout),
             "an empty result slot must not report a craft");
+    }
+
+    // ---- middle-click balancing ---------------------------------------------------------------
+
+    @Test
+    void middleClickBalancesUnevenStacksAcrossMatchingCraftingCells() {
+        crafting.setCraftingInputSlot(0, new ItemStack(BlockType.DIRT, 3));
+        crafting.setCraftingInputSlot(1, new ItemStack(BlockType.DIRT, 1));
+        float[] p = craftingSlotCenter(0);
+
+        assertTrue(slots.tryBalanceCraftingSlot(p[0], p[1], layout),
+            "a click on a crafting cell is a balance target");
+        assertEquals(2, crafting.getCraftingInputSlot(0).getCount());
+        assertEquals(2, crafting.getCraftingInputSlot(1).getCount());
+        assertEquals(4, craftingDirtTotal(), "balancing must conserve item count");
+    }
+
+    @Test
+    void middleClickBalanceSpreadsTheRemainderAcrossCells() {
+        // 5 DIRT across two cells: floor(5/2) = 2 each, leaving 1 on the first cell.
+        crafting.setCraftingInputSlot(0, new ItemStack(BlockType.DIRT, 4));
+        crafting.setCraftingInputSlot(1, new ItemStack(BlockType.DIRT, 1));
+        float[] p = craftingSlotCenter(0);
+
+        slots.tryBalanceCraftingSlot(p[0], p[1], layout);
+
+        assertEquals(3, crafting.getCraftingInputSlot(0).getCount(),
+            "the first cell receives the remainder");
+        assertEquals(2, crafting.getCraftingInputSlot(1).getCount());
+        assertEquals(5, craftingDirtTotal(), "balancing must conserve item count");
+    }
+
+    @Test
+    void middleClickBalanceLeavesCellsOfADifferentItemUntouched() {
+        crafting.setCraftingInputSlot(0, new ItemStack(BlockType.DIRT, 3));
+        crafting.setCraftingInputSlot(1, new ItemStack(BlockType.DIRT, 1));
+        crafting.setCraftingInputSlot(2, new ItemStack(BlockType.STONE, 9));
+        float[] p = craftingSlotCenter(0);
+
+        slots.tryBalanceCraftingSlot(p[0], p[1], layout);
+
+        assertEquals(2, crafting.getCraftingInputSlot(0).getCount());
+        assertEquals(2, crafting.getCraftingInputSlot(1).getCount());
+        assertEquals(9, crafting.getCraftingInputSlot(2).getCount(),
+            "balancing one item must never touch another item's cells");
+    }
+
+    @Test
+    void middleClickBalanceOnASingleMatchingCellChangesNothing() {
+        crafting.setCraftingInputSlot(0, new ItemStack(BlockType.DIRT, 5));
+        crafting.setCraftingInputSlot(1, new ItemStack(BlockType.STONE, 2));
+        float[] p = craftingSlotCenter(0);
+
+        assertTrue(slots.tryBalanceCraftingSlot(p[0], p[1], layout));
+        assertEquals(5, crafting.getCraftingInputSlot(0).getCount(),
+            "with nothing to share with, a single stack stays put");
+    }
+
+    @Test
+    void middleClickOnAnEmptyCraftingCellIsHandledButChangesNothing() {
+        float[] p = craftingSlotCenter(2);
+        assertTrue(slots.tryBalanceCraftingSlot(p[0], p[1], layout),
+            "an empty crafting cell is still a crafting-cell hit (no sort)");
+        for (int i = 0; i < 4; i++) {
+            assertTrue(crafting.getCraftingInputSlot(i).isEmpty());
+        }
+    }
+
+    @Test
+    void middleClickOutsideTheCraftingGridIsNotABalanceTarget() {
+        float[] p = mainSlotCenter(0);
+        assertFalse(slots.tryBalanceCraftingSlot(p[0], p[1], layout),
+            "a click outside the grid must fall through to sorting");
     }
 
     // ---- single-item deposit -------------------------------------------------------------------

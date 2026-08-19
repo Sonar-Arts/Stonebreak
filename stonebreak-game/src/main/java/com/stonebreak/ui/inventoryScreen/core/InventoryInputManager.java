@@ -77,6 +77,11 @@ public class InventoryInputManager {
         boolean rightMouseButtonPressed = inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
         boolean rightMouseButtonDown = inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
 
+        // Middle click: balance the crafting grid when aimed at a cell, otherwise sort.
+        if (tryHandleMiddleClick(mouseX, mouseY, layout)) {
+            return;
+        }
+
         if (leftMouseButtonPressed) {
             handleLeftClick(mouseX, mouseY, shiftDown, layout);
         } else if (rightMouseButtonDown && dragState.isDragging()) {
@@ -89,6 +94,33 @@ public class InventoryInputManager {
 
         if (!rightMouseButtonDown) {
             clearRightDrag();
+        }
+    }
+
+    /**
+     * Middle-click helper shared by the inventory and workbench screens: balances
+     * the crafting grid when aimed at a cell, otherwise sorts the inventory.
+     * Consumes the press so it does not leak into further handling. Returns true
+     * when a middle-click was processed.
+     */
+    protected boolean tryHandleMiddleClick(float mouseX, float mouseY,
+                                           InventoryLayoutCalculator.InventoryLayout layout) {
+        if (!inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)) {
+            return false;
+        }
+        handleMiddleClick(mouseX, mouseY, layout);
+        inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_MIDDLE);
+        return true;
+    }
+
+    private void handleMiddleClick(float mouseX, float mouseY,
+                                   InventoryLayoutCalculator.InventoryLayout layout) {
+        if (slotManager.tryBalanceCraftingSlot(mouseX, mouseY, layout)) {
+            craftingManager.updateCraftingOutput();
+        } else if (!dragState.isDragging()) {
+            // Never sort mid-drag: it re-populates the drag's source slot and
+            // corrupts the later swap-by-index placement.
+            inventory.sortInventory();
         }
     }
 

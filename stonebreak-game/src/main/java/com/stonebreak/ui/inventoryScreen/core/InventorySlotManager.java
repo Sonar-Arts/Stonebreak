@@ -109,6 +109,72 @@ public class InventorySlotManager {
     }
 
     /**
+     * Middle-click on a crafting input cell: redistributes the clicked item evenly
+     * across every cell holding the same item, so a recipe spanning several cells
+     * (e.g. log + log -> sticks) is satisfied from one dropped stack. Returns true
+     * when the click landed on a crafting input cell (even if nothing needed
+     * balancing); false when it did not.
+     */
+    public boolean tryBalanceCraftingSlot(float mouseX, float mouseY,
+                                          InventoryLayoutCalculator.InventoryLayout layout) {
+        ItemStack[] slots = craftingManager.getCraftingInputSlots();
+        int gridSize = craftingManager.getCraftingGridSize();
+        int slotCount = gridSize * gridSize;
+
+        for (int i = 0; i < slotCount; i++) {
+            int r = i / gridSize;
+            int c = i % gridSize;
+            int slotX = layout.craftingElementsStartX +
+                       c * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+            int slotY = layout.craftingGridStartY +
+                       r * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
+
+            if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
+                balanceCraftingCells(slots, i);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Evens out the counts of the item in {@code clickedIndex} across all cells
+     * holding the same item + state. The total count is preserved; each matching
+     * cell gets floor(total / n), with the remainder spread one-at-a-time to the
+     * first cells. Cells of any other item are never touched.
+     */
+    private void balanceCraftingCells(ItemStack[] slots, int clickedIndex) {
+        ItemStack clicked = slots[clickedIndex];
+        if (clicked == null || clicked.isEmpty()) {
+            return;
+        }
+        Item clickedItem = clicked.getItem();
+        String clickedState = clicked.getState();
+
+        java.util.List<Integer> matching = new java.util.ArrayList<>();
+        int total = 0;
+        for (int i = 0; i < slots.length; i++) {
+            ItemStack slot = slots[i];
+            if (slot != null && !slot.isEmpty()
+                    && slot.getItem().isSameType(clickedItem)
+                    && java.util.Objects.equals(slot.getState(), clickedState)) {
+                matching.add(i);
+                total += slot.getCount();
+            }
+        }
+
+        int n = matching.size();
+        if (n <= 1) {
+            return;
+        }
+        int base = total / n;
+        int remainder = total % n;
+        for (int k = 0; k < n; k++) {
+            slots[matching.get(k)].setCount(base + (k < remainder ? 1 : 0));
+        }
+    }
+
+    /**
      * Starts a drag from the crafting output with a freshly taken craft batch.
      * The batch was produced by {@link InventoryCraftingManager#takeCraftBatch()}
      * and is already detached from the output slot.

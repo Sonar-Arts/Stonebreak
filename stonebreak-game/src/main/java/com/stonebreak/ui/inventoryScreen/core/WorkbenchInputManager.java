@@ -36,6 +36,11 @@ public class WorkbenchInputManager extends InventoryInputManager {
         boolean leftMouseButtonPressed = super.inputHandler.isMouseButtonPressed(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT);
         boolean rightMouseButtonPressed = super.inputHandler.isMouseButtonPressed(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_RIGHT);
 
+        // Middle click: balance the crafting grid when aimed at a cell, otherwise sort.
+        if (tryHandleMiddleClick(mouseX, mouseY, layout)) {
+            return;
+        }
+
         if (leftMouseButtonPressed) {
             // Single-click drag: if dragging, try to craft another batch onto the
             // cursor when aiming at the output slot, otherwise place the item

@@ -17,6 +17,7 @@ import com.stonebreak.network.packet.entity.ProjectileSpawnC2S;
 import com.stonebreak.player.Player;
 
 import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT;
+import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_MIDDLE;
 import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_RIGHT;
 import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
 import static org.lwjgl.glfw.GLFW.GLFW_RELEASE;
@@ -48,6 +49,9 @@ final class WorldMouseHandler {
                 handleAttack(player);
             } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
                 handleUse(player);
+            } else if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
+                // Inventory Tweaks-style: sort the inventory anywhere, even mid-world.
+                player.getInventory().sortInventory();
             }
         } else if (action == GLFW_RELEASE && button == GLFW_MOUSE_BUTTON_RIGHT) {
             handleBowRelease(player);
