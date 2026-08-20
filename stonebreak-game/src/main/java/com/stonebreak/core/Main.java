@@ -16,6 +16,7 @@ import com.stonebreak.input.MenuInputRouter;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
 import com.stonebreak.rendering.textures.BlockTextureArray;
+import com.stonebreak.rendering.vram.CearlBootstrap;
 import com.stonebreak.world.World;
 
 import static org.lwjgl.glfw.GLFW.*;
@@ -83,6 +84,10 @@ public class Main {
 
         window.create(WINDOW_TITLE);
         installCallbacks();
+        // Compile the CEARL program and install its VRAM plan BEFORE any
+        // renderer exists: region arenas and the staging ring read the plan
+        // when they are created. Needs the GL context (VRAM detection).
+        CearlBootstrap.install();
         initializeGameComponents();
     }
 

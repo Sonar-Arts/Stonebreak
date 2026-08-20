@@ -1,21 +1,36 @@
 package com.openmason.engine.voxel.mms.mmsRegion;
 
+import com.openmason.engine.cearl.CearlCompiler;
+import com.openmason.engine.cearl.CearlDispatcher;
+import com.openmason.engine.cearl.CearlKernel;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL40;
 import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GL43;
 
+import java.util.Map;
+
 /**
- * GPU-driven per-mesh culling for region rendering (GL 4.3+): a tiny compute
- * shader frustum-tests every live mesh in a region against six caller-supplied
+ * GPU-driven per-mesh culling for region rendering (GL 4.3+): a compute
+ * kernel frustum-tests every live mesh in a region against six caller-supplied
  * planes and writes a {@code DrawElementsIndirectCommand} per mesh (culled
  * meshes get {@code instanceCount = 0}); the region then draws with ONE
  * {@code glMultiDrawElementsIndirect} — no per-chunk CPU visibility work, no
  * per-command CPU packing.
+ *
+ * <p>The kernel is authored in <b>CEARL</b> ({@code cearl/engine/culling.CEARL}, an
+ * engine resource — device code lives with its owner, not in the game's plan
+ * file) and runs
+ * through {@link CearlDispatcher} — the first production compute shader the
+ * language owns, replacing the hand-written GLSL string this class shipped
+ * with. The generated source is semantically identical: same std430 layouts
+ * (48-byte mesh metadata, 20-byte tightly packed commands), same
+ * positive-vertex plane test, same uniforms. {@code mesh_count} stays a
+ * uniform on purpose — the metadata SSBO is pow2-overallocated, so the
+ * buffer's own length lies about the live count.
  *
  * <p>Pass shape (all GL-thread): {@link #beginPass} once with the pass's
  * frustum planes, {@link #cull} per region (dispatches the compute),
@@ -31,59 +46,32 @@ import org.lwjgl.opengl.GL43;
  */
 public final class MmsGpuCuller implements AutoCloseable {
 
-    private static final int WORKGROUP_SIZE = 64;
+    /**
+     * Classpath location of the kernel source. Module-namespaced deliberately:
+     * resource directories are JPMS packages, and two modules with files in
+     * the same directory (the game plan lives in the game's {@code cearl/})
+     * split the package and kill the boot layer — each module keeps its CEARL
+     * under {@code cearl/<module>/}.
+     */
+    static final String CULL_RESOURCE = "/cearl/engine/culling.CEARL";
 
-    private static final String CULL_COMPUTE_SOURCE = """
-            #version 430 core
-            layout(local_size_x = 64) in;
-
-            struct MeshMeta {
-                vec4 minB;   // xyz = AABB min
-                vec4 maxB;   // xyz = AABB max
-                uvec4 draw;  // x = indexCount, y = firstIndex, z = baseVertex
-            };
-            layout(std430, binding = 0) readonly restrict buffer MeshMetaBuf {
-                MeshMeta meshes[];
-            };
-
-            struct DrawCmd {
-                uint count;
-                uint instanceCount;
-                uint firstIndex;
-                uint baseVertex;
-                uint baseInstance;
-            };
-            layout(std430, binding = 1) writeonly restrict buffer DrawCmdBuf {
-                DrawCmd cmds[];
-            };
-
-            uniform vec4 u_planes[6];
-            uniform uint u_meshCount;
-
-            void main() {
-                uint i = gl_GlobalInvocationID.x;
-                if (i >= u_meshCount) {
-                    return;
-                }
-                MeshMeta m = meshes[i];
-                bool visible = true;
-                for (int p = 0; p < 6 && visible; ++p) {
-                    vec4 pl = u_planes[p];
-                    // Positive vertex: the AABB corner farthest along the
-                    // plane normal — if even it is behind the plane, the whole
-                    // box is out.
-                    vec3 v = vec3(pl.x > 0.0 ? m.maxB.x : m.minB.x,
-                                  pl.y > 0.0 ? m.maxB.y : m.minB.y,
-                                  pl.z > 0.0 ? m.maxB.z : m.minB.z);
-                    visible = dot(pl.xyz, v) + pl.w >= 0.0;
-                }
-                cmds[i].count = m.draw.x;
-                cmds[i].instanceCount = visible ? 1u : 0u;
-                cmds[i].firstIndex = m.draw.y;
-                cmds[i].baseVertex = m.draw.z;
-                cmds[i].baseInstance = 0u;
+    /**
+     * Compiles the kernel from its resource file (no GL needed) — exposed so
+     * the headless tests can pin the kernel's shape without a context.
+     */
+    public static CearlKernel compileKernel() {
+        String source;
+        try (java.io.InputStream in = MmsGpuCuller.class.getResourceAsStream(CULL_RESOURCE)) {
+            if (in == null) {
+                throw new IllegalStateException(CULL_RESOURCE + " missing from the engine jar");
             }
-            """;
+            source = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("cannot read " + CULL_RESOURCE, e);
+        }
+        return CearlCompiler.compile(source, "cearl/engine/culling.CEARL", Map.of())
+            .kernel("cull_commands");
+    }
 
     /** Whether the current context can run the GPU-cull path. */
     public static boolean isSupported() {
@@ -94,33 +82,12 @@ public final class MmsGpuCuller implements AutoCloseable {
         }
     }
 
-    private final int programId;
-    private final int planesLocation;
-    private final int meshCountLocation;
-    private int savedProgramId;
+    private final CearlDispatcher dispatcher;
     private boolean closed;
 
-    /** Compiles the cull program. Throws when compilation/linking fails. */
+    /** Compiles and links the cull kernel. Throws when the driver rejects it. */
     public MmsGpuCuller() {
-        int shader = GL20.glCreateShader(GL43.GL_COMPUTE_SHADER);
-        GL20.glShaderSource(shader, CULL_COMPUTE_SOURCE);
-        GL20.glCompileShader(shader);
-        if (GL20.glGetShaderi(shader, GL20.GL_COMPILE_STATUS) == GL11.GL_FALSE) {
-            String log = GL20.glGetShaderInfoLog(shader);
-            GL20.glDeleteShader(shader);
-            throw new IllegalStateException("Cull compute shader failed to compile: " + log);
-        }
-        programId = GL20.glCreateProgram();
-        GL20.glAttachShader(programId, shader);
-        GL20.glLinkProgram(programId);
-        GL20.glDeleteShader(shader);
-        if (GL20.glGetProgrami(programId, GL20.GL_LINK_STATUS) == GL11.GL_FALSE) {
-            String log = GL20.glGetProgramInfoLog(programId);
-            GL20.glDeleteProgram(programId);
-            throw new IllegalStateException("Cull compute program failed to link: " + log);
-        }
-        planesLocation = GL20.glGetUniformLocation(programId, "u_planes");
-        meshCountLocation = GL20.glGetUniformLocation(programId, "u_meshCount");
+        this.dispatcher = CearlDispatcher.create(compileKernel());
     }
 
     /**
@@ -130,9 +97,8 @@ public final class MmsGpuCuller implements AutoCloseable {
      * {@link #endCull} so the indirect draws render with it.
      */
     public void beginPass(float[] planes) {
-        savedProgramId = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
-        GL20.glUseProgram(programId);
-        GL20.glUniform4fv(planesLocation, planes);
+        dispatcher.begin();
+        dispatcher.uniform4fv("planes", planes);
     }
 
     /**
@@ -144,10 +110,10 @@ public final class MmsGpuCuller implements AutoCloseable {
         if (count == 0) {
             return 0;
         }
-        GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, 0, region.gpuMetaBuffer());
-        GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, 1, region.gpuIndirectBuffer());
-        GL30.glUniform1ui(meshCountLocation, count);
-        GL43.glDispatchCompute((count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
+        dispatcher.bindBuffer("meshes", region.gpuMetaBuffer());
+        dispatcher.bindBuffer("cmds", region.gpuIndirectBuffer());
+        dispatcher.uniform1u("mesh_count", count);
+        dispatcher.dispatch(count);
         return count;
     }
 
@@ -157,7 +123,7 @@ public final class MmsGpuCuller implements AutoCloseable {
      * draws that follow.
      */
     public void endCull() {
-        GL20.glUseProgram(savedProgramId);
+        dispatcher.end();
         GL42.glMemoryBarrier(GL42.GL_COMMAND_BARRIER_BIT);
     }
 
@@ -188,6 +154,6 @@ public final class MmsGpuCuller implements AutoCloseable {
             return;
         }
         closed = true;
-        GL20.glDeleteProgram(programId);
+        dispatcher.close();
     }
 }

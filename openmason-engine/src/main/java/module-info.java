@@ -109,6 +109,10 @@ module openmason.engine {
     // Export diagnostics (GPU memory tracker, etc.)
     exports com.openmason.engine.diagnostics;
 
+    // CEARL language + VRAM plan runtime
+    exports com.openmason.engine.cearl;
+    exports com.openmason.engine.vram;
+
     // Export audio subsystem (game-agnostic OpenAL sound system)
     exports com.openmason.engine.audio;
 

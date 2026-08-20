@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>The CEARL Squirrel (icon)</title>
+  <desc>Mascot logo for CEARL (Compute Efficient All-purpose Resource Language):
+  a Japanese dwarf flying squirrel in side profile, hoarding an acorn —
+  resources cached, nothing wasted — over the CRL monogram.</desc>
+
+  <!-- Badge -->
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="#242C38"/>
+  <rect x="14" y="14" width="484" height="484" rx="100" fill="none"
+        stroke="#39465A" stroke-width="3" opacity="0.6"/>
+
+  <g transform="translate(6,10)">
+    <!-- Ground shadow -->
+    <ellipse cx="250" cy="426" rx="128" ry="11" fill="#000000" opacity="0.16"/>
+
+    <!-- Tail: the C-sweep, flat and soft like a flying squirrel's -->
+    <path d="M 330 372 C 452 340, 470 160, 358 116 C 304 100, 258 142, 280 198"
+          fill="none" stroke="#8E96A4" stroke-width="50" stroke-linecap="round"/>
+    <path d="M 336 352 C 428 322, 440 184, 356 140"
+          fill="none" stroke="#B9BFC9" stroke-width="15" stroke-linecap="round"/>
+
+    <!-- Body: one round momonga mass -->
+    <ellipse cx="278" cy="330" rx="100" ry="95" fill="#A7ABB3"/>
+    <ellipse cx="235" cy="268" rx="75" ry="95" fill="#A7ABB3" transform="rotate(-15 235 268)"/>
+    <circle cx="196" cy="208" r="78" fill="#A7ABB3"/>
+    <ellipse cx="246" cy="188" rx="44" ry="42" fill="#A7ABB3"/>
+    <circle cx="138" cy="238" r="22" fill="#A7ABB3"/>
+
+    <!-- Ear -->
+    <circle cx="150" cy="132" r="17" fill="#A7ABB3"/>
+    <circle cx="152" cy="136" r="8" fill="#838B99"/>
+
+    <!-- White chin, cheek and chest -->
+    <ellipse cx="162" cy="258" rx="34" ry="30" fill="#F5F2EA"/>
+    <ellipse cx="218" cy="302" rx="52" ry="78" fill="#F5F2EA" transform="rotate(-8 218 302)"/>
+
+    <!-- The eye: enormous, glassy -->
+    <circle cx="168" cy="200" r="37" fill="#E9E7E0"/>
+    <circle cx="168" cy="200" r="30" fill="#171A20"/>
+    <circle cx="159" cy="190" r="9.5" fill="#FFFFFF" opacity="0.95"/>
+    <circle cx="178" cy="210" r="4" fill="#FFFFFF" opacity="0.35"/>
+
+    <!-- Nose and whiskers -->
+    <ellipse cx="118" cy="236" rx="7" ry="6" fill="#C48E8C"/>
+    <g fill="none" stroke="#D9DCE1" stroke-width="2.5" stroke-linecap="round" opacity="0.65">
+      <path d="M 130 236 C 102 228, 80 226, 62 228"/>
+      <path d="M 130 244 C 100 240, 78 242, 60 248"/>
+      <path d="M 132 252 C 104 254, 84 260, 66 268"/>
+    </g>
+
+    <!-- Hind foot -->
+    <ellipse cx="238" cy="416" rx="40" ry="13" fill="#B9BFC9"/>
+
+    <!-- Acorn, held tight -->
+    <rect x="175" y="269" width="6" height="11" rx="3" fill="#7A4E2A"/>
+    <ellipse cx="178" cy="296" rx="20" ry="22" fill="#C98A4B"/>
+    <path d="M 156 292 A 22 18 0 0 1 200 292 Z" fill="#7A4E2A"/>
+    <circle cx="158" cy="296" r="11" fill="#B9BFC9"/>
+    <circle cx="198" cy="296" r="11" fill="#B9BFC9"/>
+  </g>
+
+</svg>

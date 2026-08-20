@@ -136,21 +136,18 @@ elif [[ "$LINE_KIND" == "TESTS" ]]; then
   fi
 fi
 
-# ── Post-Maven: check for reports ───────────────────────────────────
+# ── Post-Maven: a failed build must never summarize as PASS ─────────
+# Test failures do NOT fail maven (-Dmaven.test.failure.ignore=true), so a
+# non-zero exit here is always a build/infra failure: a compile error or a
+# test JVM that never booted (e.g. a JPMS split package). Continuing would
+# summarize whichever modules DID produce reports — possibly stale ones —
+# and a run missing whole modules can masquerade as green (seen 2026-08-19:
+# the game module's boot layer died and 540 engine tests printed PASS).
 if [[ "$MVN_EXIT" -ne 0 ]]; then
-  FOUND_REPORT=false
-  for m in "${MODULES[@]}"; do
-    if [[ -d "$ROOT/$m/target/surefire-reports" ]] && ls "$ROOT/$m/target/surefire-reports/TEST-"*.xml &>/dev/null; then
-      FOUND_REPORT=true
-      break
-    fi
-  done
-
-  if [[ "$FOUND_REPORT" == false ]]; then
-    tail -n 40 "$MVN_LOG"
-    echo "build/infra failure — full log: $MVN_LOG"
-    exit 2
-  fi
+  tail -n 40 "$MVN_LOG"
+  echo "build/infra failure (mvn exit $MVN_EXIT) — full log: $MVN_LOG"
+  echo "RESULT: FAIL"
+  exit 2
 fi
 
 # ── Hand off to summarizer ──────────────────────────────────────────

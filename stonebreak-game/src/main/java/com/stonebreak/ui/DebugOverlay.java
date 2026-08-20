@@ -1,6 +1,8 @@
 package com.stonebreak.ui;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
+import com.openmason.engine.vram.VramPlan;
+import com.openmason.engine.vram.VramPlans;
 import com.stonebreak.rendering.UI.masonryUI.MStatPanel;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import java.lang.management.BufferPoolMXBean;
@@ -473,6 +475,19 @@ public class DebugOverlay {
                 systemTotalBytes > 0
                     ? formatBytes(trackedTotal) + " / " + formatBytes(systemTotalBytes)
                     : formatBytes(trackedTotal));
+
+        // The active CEARL plan's pressure reading (only when it has a budget).
+        VramPlan plan = VramPlans.active();
+        long softBudget = plan.softBudgetBytes();
+        if (softBudget > 0) {
+            double pressure = (double) trackedTotal / softBudget;
+            panel.row("Plan '" + plan.name() + "'",
+                String.format("%.0f%% of %s", pressure * 100.0, formatBytes(softBudget)));
+            var shed = plan.shedAt(pressure);
+            if (!shed.isEmpty()) {
+                panel.row("Pressure", "shed: " + String.join(", ", shed));
+            }
+        }
 
         panel.section("By Category");
         boolean anyCategory = false;
