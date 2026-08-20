@@ -1,6 +1,7 @@
 package com.openmason.engine.voxel.mms.mmsCore;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
+import com.openmason.engine.vram.VramPlans;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
@@ -63,9 +64,10 @@ public final class MmsStagingRing implements AutoCloseable {
             sharedDecided = true;
             if (capable) {
                 try {
-                    shared = new MmsStagingRing(DEFAULT_CAPACITY);
+                    long capacity = ringCapacity();
+                    shared = new MmsStagingRing(capacity);
                     System.out.println("[MmsStagingRing] Persistent-mapped staging ENABLED ("
-                            + (DEFAULT_CAPACITY >> 20) + " MiB ring)");
+                            + (capacity >> 20) + " MiB ring, plan pool 'staging')");
                 } catch (RuntimeException e) {
                     System.err.println("[MmsStagingRing] Init failed, falling back to glBufferSubData: "
                             + e.getMessage());
@@ -77,6 +79,19 @@ public final class MmsStagingRing implements AutoCloseable {
             }
         }
         return shared;
+    }
+
+    /**
+     * Ring capacity from the active VRAM plan's {@code staging} pool budget
+     * (default 8 MiB). The ring's mechanics need whole equal slices with
+     * 4-byte-aligned copies, so the budget is clamped to [1 MiB, 256 MiB]
+     * and rounded down to whole 4-KiB slices.
+     */
+    private static long ringCapacity() {
+        long bytes = VramPlans.budgetBytes(VramPlans.POOL_STAGING, DEFAULT_CAPACITY);
+        bytes = Math.clamp(bytes, 1L << 20, 256L << 20);
+        long slice = bytes / SLICES / 4096 * 4096;
+        return slice * SLICES;
     }
 
     private final int bufferId;

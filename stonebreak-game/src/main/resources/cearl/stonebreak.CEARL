@@ -1,0 +1,103 @@
+~ stonebreak.CEARL — Stonebreak's VRAM program, written in CEARL
+~ (Compute Efficient All-purpose Resource Language).
+~
+~ Compiled once at startup by CearlBootstrap. This file is the PLAN — the
+~ resource policy driving the real allocators: chunk-region arena sizes,
+~ growth and trim, the LOD region batcher's pools, and the persistent-mapped
+~ staging ring. Device code (kernels) lives with its owning system instead:
+~ the GPU culler's kernel is the engine's cearl/engine/culling.CEARL. One concern
+~ per file.
+~
+~ Tuning without a rebuild: copy this file, edit it, and launch with
+~   -Dstonebreak.cearl=/path/to/your.CEARL      (or =off for builtin defaults)
+~ A plan that fails to compile logs the error and falls back to builtins —
+~ it can never brick a launch.
+
+~ The min-spec card this game is validated against. The budget is DERIVED
+~ from the real machine, never hardcoded: a budget is a ceiling for
+~ accountability, not a goal to fill — the posture everywhere below is
+~ "allocate the least that loses nothing".
+pin FLOOR: i64 = 6 GiB
+
+plan stonebreak
+
+    device
+        ~ ~75% of the card belongs to the game; the rest is the OS,
+        ~ compositor, and driver. 'vram' is detected dedicated VRAM in bytes
+        ~ (0 on drivers that can't report it) — 'otherwise' falls back to the
+        ~ min-spec assumption. On the 6 GiB floor this is a 4.5 GiB ceiling.
+        budget (vram otherwise FLOOR) * 3 / 4
+        headroom 10%       ~ keep a slice free: pressure hits 100% before the budget does
+    end
+
+    ~ The native chunk renderer's 8x8-column region arenas. Initial sizes are
+    ~ the proven pre-CEARL constants; growth is tightened from the old
+    ~ x1.75/25% (≈35% average slack over live bytes) to x1.5/12.5% (≈20%) —
+    ~ the cost is roughly one extra grow per region lifetime. 'trim' is the
+    ~ counterpart: an arena whose live bytes fall under 40% of capacity is
+    ~ repacked into a right-sized buffer, so crossing one dense area no
+    ~ longer ratchets the region to that high-water mark forever.
+    ~ 'grow sparse' (Phase 3): arenas reserve virtual address space once and
+    ~ commit physical pages only under actual meshes — growth stops being
+    ~ allocate-a-second-buffer-and-copy (the transient ~2.5x region spike is
+    ~ gone, offsets never move), and trim becomes a free page decommit.
+    ~ Falls back to copy growth on drivers without ARB_sparse_buffer; kill
+    ~ switch: -Dstonebreak.sparse=off (watch the console for
+    ~ "[MmsChunkRegion] Sparse arenas ENABLED/unavailable").
+    pool chunk_mesh
+        category CHUNK_MESH
+        budget 45%
+        priority 100               ~ last to give ground under pressure
+        grow sparse
+        arena
+            vertex 640 KiB         ~ 16384 vertices at the 40-byte stride
+            index 48 KiB           ~ 24576 u16 indices
+            growth 1.5             ~ grown arenas multiply capacity by this
+            reserve 12.5%          ~ ...and keep this much slack over the need
+            align 4                ~ element alignment keeps quad math tidy
+            trim 40%               ~ shrink when live bytes fall under this share
+        end
+    end
+
+    ~ LOD regions inherit chunk_mesh's growth/trim policy and category,
+    ~ overriding only what differs — 16x16-column LOD regions start much
+    ~ larger so the initial ring fill doesn't grow-and-compact repeatedly.
+    ~ Trim matters most here: the LOD ring crosses the widest terrain variety.
+    pool lod_terrain from chunk_mesh
+        budget 20%
+        priority 60
+        arena
+            vertex 5 MiB
+            index 384 KiB
+        end
+    end
+
+    pool lod_water from lod_terrain
+        budget 2%
+        arena
+            vertex 1280 KiB
+            index 96 KiB
+        end
+    end
+
+    ~ The persistent-mapped upload ring (GL 4.4 path). Its budget IS the ring
+    ~ size — the one pool whose budget is enforced, not just accounted.
+    pool staging
+        category OTHER
+        budget 8 MiB
+        priority 10
+        storage persistent
+    end
+
+    ~ Below the min-spec floor, shrink the LOD ring's claim further.
+    when vram > 0 and vram < 6 GiB
+        pool lod_terrain
+            budget 10%
+        end
+    end
+
+    ~ Under pressure, distant terrain is the first thing worth giving back.
+    on pressure > 85%
+        shed lod_water, lod_terrain
+    end
+end

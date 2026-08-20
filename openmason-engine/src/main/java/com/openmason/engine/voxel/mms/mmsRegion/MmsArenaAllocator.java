@@ -49,6 +49,12 @@ public final class MmsArenaAllocator {
     /** A pending GPU copy produced by compaction (element units). */
     public record Move(int from, int to, int length) {}
 
+    /** Visitor for {@link #forEachLive} — offset/length in elements. */
+    @FunctionalInterface
+    public interface LiveVisitor {
+        void accept(int offset, int length);
+    }
+
     private Segment head;
     private long capacity;
     private long used;
@@ -122,6 +128,47 @@ public final class MmsArenaAllocator {
         Segment prev = segment.prev;
         if (prev != null && prev.free) {
             mergeInto(prev, segment);
+        }
+    }
+
+    /**
+     * Extends the arena's capacity in place — new free space appears at the
+     * tail, nothing moves, outstanding segments keep their offsets. This is
+     * the growth path for sparse-buffer arenas, where extra capacity is a
+     * page commitment rather than a new buffer plus copies.
+     */
+    public void extendTo(long newCapacity) {
+        if (newCapacity < capacity) {
+            throw new IllegalArgumentException("extendTo cannot shrink (capacity "
+                + capacity + " -> " + newCapacity + ")");
+        }
+        if (newCapacity > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("Arena capacity limit exceeded: " + newCapacity);
+        }
+        if (newCapacity == capacity) {
+            return;
+        }
+        int added = (int) (newCapacity - capacity);
+        Segment tail = head;
+        while (tail.next != null) {
+            tail = tail.next;
+        }
+        if (tail.free) {
+            tail.length += added;
+        } else {
+            Segment span = new Segment((int) capacity, added, true);
+            tail.next = span;
+            span.prev = tail;
+        }
+        capacity = newCapacity;
+    }
+
+    /** Visits every live (allocated) segment in offset order. */
+    public void forEachLive(LiveVisitor visitor) {
+        for (Segment s = head; s != null; s = s.next) {
+            if (!s.free) {
+                visitor.accept(s.offset, s.length);
+            }
         }
     }
 

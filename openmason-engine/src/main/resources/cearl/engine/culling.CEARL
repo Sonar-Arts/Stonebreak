@@ -1,0 +1,53 @@
+~ culling.CEARL — GPU frustum culling into indirect draw commands.
+~
+~ Owned by MmsGpuCuller (one responsibility per file: this is device code;
+~ resource policy lives in the game's plan file). One thread per mesh; the
+~ std430 layouts are a hard contract with MmsChunkRegion's GPU buffers:
+~ 48-byte MeshMeta records, 20-byte tightly packed DrawElementsIndirectCommand.
+~ Pinned headlessly by MmsGpuCullerKernelTest.
+
+form MeshMeta
+    minb: vec4     ~ xyz = AABB min
+    maxb: vec4     ~ xyz = AABB max
+    draw: uvec4    ~ x = indexCount, y = firstIndex, z = baseVertex
+end
+
+form DrawCmd       ~ DrawElementsIndirectCommand: five tightly packed uints
+    index_count: u32
+    instance_count: u32
+    first_index: u32
+    base_vertex: u32
+    base_instance: u32
+end
+
+~ mesh_count stays a uniform on purpose: the metadata SSBO is pow2-
+~ overallocated, so count(meshes) would report capacity, not liveness.
+kernel cull_commands(64)
+    take meshes: MeshMeta[] in
+    take cmds: DrawCmd[] out
+    take planes: vec4[6]
+    take mesh_count: u32
+
+    fix i = gid.x
+    if i >= mesh_count
+        give
+    end
+    fix m = meshes[i]
+    flux visible = true
+    for p in 0..6
+        fix pl = planes[p]
+        ~ Positive vertex: the AABB corner farthest along the plane normal —
+        ~ if even it is behind the plane, the whole box is out.
+        fix v = vec3(pick(pl.x > 0.0, m.maxb.x, m.minb.x),
+                     pick(pl.y > 0.0, m.maxb.y, m.minb.y),
+                     pick(pl.z > 0.0, m.maxb.z, m.minb.z))
+        if dot(pl.xyz, v) + pl.w < 0.0
+            visible = false
+        end
+    end
+    cmds[i].index_count = m.draw.x
+    cmds[i].instance_count = u32(visible)
+    cmds[i].first_index = m.draw.y
+    cmds[i].base_vertex = m.draw.z
+    cmds[i].base_instance = 0
+end

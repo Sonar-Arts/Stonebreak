@@ -2,6 +2,7 @@ package com.stonebreak.rendering.gameWorld.fastlod;
 
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion;
+import com.openmason.engine.vram.VramPlans;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsMultiDrawBatch;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle;
 import org.lwjgl.opengl.GL11;
@@ -85,13 +86,15 @@ public final class FastLodRegionBatcher {
         }
         long key = regionKey(chunkX >> LOD_REGION_SHIFT, chunkZ >> LOD_REGION_SHIFT);
         Map<Long, MmsChunkRegion> regions = layer == LAYER_WATER ? waterRegions : terrainRegions;
-        // 256 columns per LOD region (vs the native renderer's 64): start the
-        // arenas larger so the initial ring fill doesn't grow-and-compact
-        // repeatedly. Water sheets are tiny (≤1 quad per cell).
+        // 256 columns per LOD region (vs the native renderer's 64): the plan's
+        // LOD pools start the arenas larger so the initial ring fill doesn't
+        // grow-and-compact repeatedly. Water sheets are tiny (≤1 quad per
+        // cell). Sizes/growth come from the active CEARL plan (builtin
+        // defaults match the pre-CEARL constants exactly).
         MmsChunkRegion region = regions.computeIfAbsent(key,
             k -> layer == LAYER_WATER
-                ? new MmsChunkRegion(32 * 1024, 48 * 1024)
-                : new MmsChunkRegion(128 * 1024, 192 * 1024));
+                ? new MmsChunkRegion(VramPlans.arena(VramPlans.POOL_LOD_WATER))
+                : new MmsChunkRegion(VramPlans.arena(VramPlans.POOL_LOD_TERRAIN)));
         return region.upload(mesh.getPackedVertexData(), mesh.getPackedIndexData(),
             mesh.getVertexCount(), mesh.getIndexCount(),
             minX, minY, minZ, maxX, maxY, maxZ);
@@ -109,9 +112,21 @@ public final class FastLodRegionBatcher {
         frameCommands = 0;
         pruneEmpty(terrainRegions);
         pruneEmpty(waterRegions);
+        // Plan-driven arena trim: LOD arenas otherwise ratchet to the densest
+        // terrain the ring ever crossed. One GPU-side repack per map per frame.
+        trimOne(terrainRegions);
+        trimOne(waterRegions);
         touchedTerrain.clear();
         touchedWater.clear();
         return ++cycleCounter;
+    }
+
+    private static void trimOne(Map<Long, MmsChunkRegion> regions) {
+        for (MmsChunkRegion region : regions.values()) {
+            if (region.maybeTrim()) {
+                return;
+            }
+        }
     }
 
     /** Buckets one visible fully-faded node mesh for this cycle's multidraws. */

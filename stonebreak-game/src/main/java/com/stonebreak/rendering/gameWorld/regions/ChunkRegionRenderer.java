@@ -188,6 +188,18 @@ public final class ChunkRegionRenderer {
         frameGpuPreCulledRegions = 0;
         pruneEmpty(atlasRegions);
         pruneEmpty(waterRegions);
+        // Plan-driven arena trim: give back the high-water capacity of
+        // underused regions, at most one GPU-side repack per map per frame.
+        trimOne(atlasRegions);
+        trimOne(waterRegions);
+    }
+
+    private static void trimOne(Map<Long, MmsChunkRegion> regions) {
+        for (MmsChunkRegion region : regions.values()) {
+            if (region.maybeTrim()) {
+                return;
+            }
+        }
     }
 
     public int publishedRegionDraws() {
