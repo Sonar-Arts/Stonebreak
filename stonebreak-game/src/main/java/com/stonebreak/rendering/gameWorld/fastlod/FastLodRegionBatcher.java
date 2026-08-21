@@ -47,6 +47,24 @@ public final class FastLodRegionBatcher {
     /** LOD regions span 16x16 chunk columns (shift 4). */
     public static final int LOD_REGION_SHIFT = 4;
 
+    /** Tracked GPU bytes of all live LOD regions in one layer (debug/telemetry). */
+    public long layerBytes(int layer) {
+        long total = 0;
+        for (MmsChunkRegion r : (layer == LAYER_WATER ? waterRegions : terrainRegions).values()) {
+            total += r.capacityBytes();
+        }
+        return total;
+    }
+
+    /** Live LOD meshes in one layer (debug/telemetry). */
+    public int layerMeshes(int layer) {
+        int n = 0;
+        for (MmsChunkRegion r : (layer == LAYER_WATER ? waterRegions : terrainRegions).values()) {
+            n += r.gpuCommandCount();
+        }
+        return n;
+    }
+
     /** World-space origin of the LOD region containing chunk column {@code (chunkX, chunkZ)}. */
     public static float regionOrigin(int chunkCoord) {
         return (float) (((chunkCoord >> LOD_REGION_SHIFT) << LOD_REGION_SHIFT)
@@ -99,7 +117,9 @@ public final class FastLodRegionBatcher {
         // cell). Sizes/growth come from the active CEARL plan (builtin
         // defaults match the pre-CEARL constants exactly).
         MmsChunkRegion region = regions.computeIfAbsent(key,
-            k -> new MmsChunkRegion(MmsVertexFormat.active().stampFormat(), // LOD meshes are per-vertex
+            k -> new MmsChunkRegion(layer == LAYER_WATER
+                    ? MmsVertexFormat.active().stampFormat()   // water sheets stay per-vertex
+                    : MmsVertexFormat.active().lodFormat(),    // terrain: pulled LOD quads when pulling
                 VramPlans.arena(layer == LAYER_WATER ? VramPlans.POOL_LOD_WATER : VramPlans.POOL_LOD_TERRAIN)));
         return region.upload(mesh, minX, minY, minZ, maxX, maxY, maxZ);
     }

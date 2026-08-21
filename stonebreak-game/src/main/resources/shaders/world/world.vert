@@ -83,13 +83,63 @@ void pullQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, out 
     layer = float((w1 >> 9u) & 65535u);
 }
 
+// FastLOD pulled quads (MmsLodQuadCodec): aOrigin.w < -1.5. Same corner tables;
+// half-block y/w/h, unit UVs, and four octahedral corner normals when smooth.
+vec3 lodOctDecode(uint p) {
+    vec2 e = vec2(float(p & 255u), float((p >> 8u) & 255u)) / 254.0 * 2.0 - 1.0;
+    vec3 n = vec3(e.x, 1.0 - abs(e.x) - abs(e.y), e.y);
+    if (n.y < 0.0) {
+        vec2 s = vec2(n.x >= 0.0 ? 1.0 : -1.0, n.z >= 0.0 ? 1.0 : -1.0);
+        n.xz = (1.0 - abs(n.zx)) * s;
+    }
+    return normalize(n);
+}
+
+void pullLodQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, out float layer) {
+    int qi = gl_VertexID >> 2;
+    int corner = gl_VertexID & 3;
+    uvec4 q = texelFetch(u_quads, qi);
+    uint w0 = q.x;
+    uint w1 = q.y;
+    float x = float(w0 & 511u) - 8.0;
+    float z = float((w0 >> 9u) & 511u) - 8.0;
+    float y = float((w0 >> 18u) & 511u) * 0.5;
+    int face = int((w0 >> 27u) & 7u);
+    bool smoothNormals = ((w0 >> 30u) & 1u) != 0u;
+    float light = float(w0 >> 31u);
+    float w = float(w1 & 63u) * 0.5;
+    float h = float((w1 >> 6u) & 1023u) * 0.5;
+    layer = float((w1 >> 16u) & 32767u);
+    float alpha = float(w1 >> 31u);
+    vec3 c = QUAD_CORNER[face * 4 + corner];
+    int ua = QUAD_UAXIS[face];
+    int va = QUAD_VAXIS[face];
+    float a = c[ua];
+    float b = c[va];
+    vec3 off = vec3(0.0); // LOD records hold the plane coordinate: no normal-axis offset
+    off[ua] = a * w;
+    off[va] = b * h;
+    localPos = vec3(x, y, z) + off;
+    uv = vec2(a, b);
+    if (smoothNormals) {
+        uint pairWord = corner < 2 ? q.z : q.w;
+        nrm = lodOctDecode((pairWord >> (uint(corner & 1) * 16u)) & 65535u);
+    } else {
+        nrm = QUAD_NORMAL[face];
+    }
+    flags = vec4(0.0, alpha, 0.0, light);
+}
+
 void main() {
     vec3 localPos;
     vec2 uv;
     vec3 nrm;
     vec4 flags;
     float layer;
-    if (aOrigin.w < 0.0) {
+    if (aOrigin.w < -1.5) {
+        pullLodQuad(localPos, uv, nrm, flags, layer);
+        localPos += aOrigin.xyz;
+    } else if (aOrigin.w < 0.0) {
         pullQuad(localPos, uv, nrm, flags, layer);
         localPos += aOrigin.xyz;
     } else {

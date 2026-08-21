@@ -19,9 +19,36 @@ public final class MmsQuadMeshBuilder {
     private int[] words;
     private int quadCount;
     private float originX, originY, originZ;
+    private final MmsVertexFormat format;
 
     public MmsQuadMeshBuilder(int estimatedQuads) {
+        this(estimatedQuads, MmsVertexFormat.QUAD16);
+    }
+
+    /** @param format the pulled format whose records this builder collects (QUAD16 or LODQUAD16) */
+    public MmsQuadMeshBuilder(int estimatedQuads, MmsVertexFormat format) {
+        if (!format.pulled()) {
+            throw new IllegalArgumentException(format + " is not a pulled format");
+        }
+        this.format = format;
         this.words = new int[Math.max(16, estimatedQuads) * 4];
+    }
+
+    /** Appends one pre-packed 16-byte record (any pulled format). */
+    public boolean addWords(int w0, int w1, int w2, int w3) {
+        if (quadCount >= MmsQuadCodec.MAX_QUADS_PER_DRAW) {
+            return false;
+        }
+        int base = quadCount * 4;
+        if (base + 4 > words.length) {
+            words = Arrays.copyOf(words, words.length + (words.length >> 1) + 4);
+        }
+        words[base] = w0;
+        words[base + 1] = w1;
+        words[base + 2] = w2;
+        words[base + 3] = w3;
+        quadCount++;
+        return true;
     }
 
     /** World-space origin the quad positions are relative to (the region origin for arena uploads). */
@@ -97,7 +124,7 @@ public final class MmsQuadMeshBuilder {
         byte[] bytes = new byte[quadCount * MmsQuadCodec.QUAD_BYTES];
         ByteBuffer.wrap(bytes).order(ByteOrder.nativeOrder()).asIntBuffer().put(words, 0, quadCount * 4);
         return MmsMeshData.fromPacked(bytes, NO_INDICES, true, quadCount * 4, quadCount * 6,
-            MmsVertexFormat.QUAD16, originX, originY, originZ);
+            format, originX, originY, originZ);
     }
 
     public MmsMeshData buildAndReset() {

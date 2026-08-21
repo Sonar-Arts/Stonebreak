@@ -244,12 +244,14 @@ class FastLodMesherTest {
         // The slope makes every cell emit a -x skirt too; skirt and foundation
         // normals are axis-aligned so they never match the gradient normal.
         // Count the gradient-normal verts: exactly the 4 corners of every top quad.
+        // Tolerance 1e-2: the pulled LOD format stores normals as 8+8-bit
+        // octahedral (≈0.005 per component), the per-vertex path is exact.
         int gradientVerts = 0;
         for (int v = 0; v < mesh.getVertexCount(); v++) {
             float nx = normals[v * 3], ny = normals[v * 3 + 1], nz = normals[v * 3 + 2];
-            if (Math.abs(ny - expected) < 1e-3f) {
-                assertEquals(-expected, nx, 1e-3f);
-                assertEquals(0f, nz, 1e-3f);
+            if (Math.abs(ny - expected) < 1e-2f) {
+                assertEquals(-expected, nx, 1e-2f);
+                assertEquals(0f, nz, 1e-2f);
                 gradientVerts++;
             }
         }

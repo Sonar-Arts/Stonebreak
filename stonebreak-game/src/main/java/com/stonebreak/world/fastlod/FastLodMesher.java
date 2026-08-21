@@ -1,6 +1,9 @@
 package com.stonebreak.world.fastlod;
 
+import com.openmason.engine.voxel.mms.mmsCore.MmsLodQuadCodec;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
+import com.openmason.engine.voxel.mms.mmsCore.MmsQuadMeshBuilder;
+import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
@@ -136,6 +139,18 @@ public final class FastLodMesher {
         QuadWriter ww = new QuadWriter(wPositions, wTexCoords, wNormals,
                 wSurfaceFlags, wFallingFlags, wSourceFlags, wLight, wLayers, wIndices);
 
+        // Pulled LOD quads: 16 bytes per quad relative to the LOD region origin
+        // (MmsLodQuadCodec) instead of 4 × 20-byte vertices + indices. The
+        // per-vertex writer stays for legacy/compact formats and for water.
+        LodQuadWriter pulled = MmsVertexFormat.active().pulled()
+            ? new LodQuadWriter(maxQuads,
+                com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.regionOrigin(data.chunkX()),
+                com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.regionOrigin(data.chunkZ()))
+            : null;
+        if (pulled != null) {
+            w = pulled;
+        }
+
         // Height-gradient normals shared at cell corners ((cellsPerAxis+1)² grid).
         float[] cornerNormals = computeCornerNormals(data, cellsPerAxis, cellSize);
 
@@ -179,6 +194,28 @@ public final class FastLodMesher {
 
         if (w.idxCount == 0 && ww.idxCount == 0) {
             return Result.empty();
+        }
+        if (pulled != null) {
+            MmsMeshData pulledMesh = pulled.build();
+            MmsMeshData pulledWater = null;
+            float pMinY = pulled.minY, pMaxY = pulled.maxY;
+            if (ww.idxCount > 0) {
+                pulledWater = new MmsMeshData(
+                        Arrays.copyOf(wPositions, ww.vertCount * 3),
+                        Arrays.copyOf(wTexCoords, ww.vertCount * 2),
+                        Arrays.copyOf(wNormals, ww.vertCount * 3),
+                        Arrays.copyOf(wSurfaceFlags, ww.vertCount),
+                        Arrays.copyOf(wFallingFlags, ww.vertCount),
+                        Arrays.copyOf(wSourceFlags, ww.vertCount),
+                        Arrays.copyOf(wLight, ww.vertCount),
+                        Arrays.copyOf(wLayers, ww.vertCount),
+                        Arrays.copyOf(wIndices, ww.idxCount),
+                        ww.idxCount
+                );
+                pMinY = Math.min(pMinY, ww.minY);
+                pMaxY = Math.max(pMaxY, ww.maxY);
+            }
+            return new Result(pulledMesh, pulledWater, pMinY, pMaxY);
         }
 
         MmsMeshData mesh = new MmsMeshData(
@@ -345,7 +382,99 @@ public final class FastLodMesher {
      * as (water, alphaTest, translucent, light) and the water-sheet writer as
      * (surfaceHeight, falling, source, light) per the water.vert contract.
      */
-    private static final class QuadWriter {
+    /**
+     * Pulled-quad twin of {@link QuadWriter}: the same three terrain emitters,
+     * but each rectangle becomes one {@link MmsLodQuadCodec} record. Counts
+     * {@code idxCount} so the caller's emptiness check keeps working.
+     */
+    private static final class LodQuadWriter extends QuadWriter {
+        private final MmsQuadMeshBuilder quads;
+        private final float originX, originZ;
+
+        LodQuadWriter(int estimatedQuads, float originX, float originZ) {
+            super(null, null, null, null, null, null, null, null, null);
+            this.quads = new MmsQuadMeshBuilder(estimatedQuads, MmsVertexFormat.LODQUAD16)
+                .setOrigin(originX, 0f, originZ);
+            this.originX = originX;
+            this.originZ = originZ;
+        }
+
+        MmsMeshData build() {
+            return quads.build();
+        }
+
+        private void record(int face, float x, float yMin, float z, float w, float h,
+                            int layer, boolean smooth, boolean lit, boolean alpha,
+                            int nPair01, int nPair23) {
+            int rx = Math.round(x - originX);
+            int rz = Math.round(z - originZ);
+            int yHalf = Math.round(yMin * 2f);
+            int wHalf = Math.max(1, Math.round(w * 2f));
+            int hHalf = Math.max(1, Math.round(h * 2f));
+            if (yHalf < 0 || yHalf > 511 || hHalf > 1023 || wHalf > 63) {
+                return; // outside the representable band (never for WORLD_HEIGHT 256)
+            }
+            if (!quads.addWords(
+                    MmsLodQuadCodec.word0(rx, rz, yHalf, face, smooth, lit),
+                    MmsLodQuadCodec.word1(wHalf, hHalf, layer, alpha),
+                    nPair01, nPair23)) {
+                return; // per-draw quad cap (never reached by a single LOD node)
+            }
+            idxCount += 6;
+            vertCount += 4;
+            if (yMin < minY) minY = yMin;
+            float yMax = yMin + (face <= 1 ? 0f : h);
+            if (yMax > maxY) maxY = yMax;
+        }
+
+        @Override
+        void topQuadSmooth(float wx, float y, float wz, int cellSize, int layer,
+                           float[] cornerNormals, int ix, int iz, int cellsPerAxis) {
+            int cpa = cellsPerAxis + 1;
+            int n00 = (ix       * cpa + iz)     * 3;
+            int n10 = ((ix + 1) * cpa + iz)     * 3;
+            int n11 = ((ix + 1) * cpa + iz + 1) * 3;
+            int n01 = (ix       * cpa + iz + 1) * 3;
+            // Top-face corner order (FACE_VERTEX_OFFSETS): (0,·,1),(1,·,1),(1,·,0),(0,·,0)
+            int pair01 = MmsLodQuadCodec.normalPair(
+                cornerNormals[n01], cornerNormals[n01 + 1], cornerNormals[n01 + 2],
+                cornerNormals[n11], cornerNormals[n11 + 1], cornerNormals[n11 + 2]);
+            int pair23 = MmsLodQuadCodec.normalPair(
+                cornerNormals[n10], cornerNormals[n10 + 1], cornerNormals[n10 + 2],
+                cornerNormals[n00], cornerNormals[n00 + 1], cornerNormals[n00 + 2]);
+            record(0, wx, y, wz, cellSize, cellSize, layer, true, true, false, pair01, pair23);
+        }
+
+        @Override
+        void skirtQuad(float wx, float wz, int cellSize,
+                       int dx, int dz, float fTop, float fBot, int layer, float lightVal) {
+            int face = dx > 0 ? 4 : dx < 0 ? 5 : dz > 0 ? 3 : 2;
+            float x = dx > 0 ? wx + cellSize : wx;
+            float z = dz > 0 ? wz + cellSize : wz;
+            record(face, x, fBot, z, cellSize, fTop - fBot, layer, false, lightVal > 0.5f, false, 0, 0);
+        }
+
+        @Override
+        void axisAlignedQuad(float x0, float y0, float z0,
+                             float x1, float y1, float z1,
+                             float x2, float y2, float z2,
+                             float x3, float y3, float z3,
+                             float nx, float ny, float nz, int layer, float alphaFlag) {
+            float minX = Math.min(Math.min(x0, x1), Math.min(x2, x3));
+            float maxX = Math.max(Math.max(x0, x1), Math.max(x2, x3));
+            float lo = Math.min(Math.min(y0, y1), Math.min(y2, y3));
+            float hi = Math.max(Math.max(y0, y1), Math.max(y2, y3));
+            float minZ = Math.min(Math.min(z0, z1), Math.min(z2, z3));
+            float maxZ = Math.max(Math.max(z0, z1), Math.max(z2, z3));
+            int face = ny > 0.5f ? 0 : ny < -0.5f ? 1 : nz < -0.5f ? 2 : nz > 0.5f ? 3 : nx > 0.5f ? 4 : 5;
+            // u axis: x for ±Y/±Z faces, z for ±X; v axis: z for ±Y, else y.
+            float w = face >= 4 ? maxZ - minZ : maxX - minX;
+            float h = face <= 1 ? maxZ - minZ : hi - lo;
+            record(face, minX, lo, minZ, w, h, layer, false, true, alphaFlag > 0.5f, 0, 0);
+        }
+    }
+
+    private static class QuadWriter {
         final float[] pos, tex, nrm, flagX, flagY, flagZ, flagW, layers;
         final int[] idx;
         int vertCount = 0;

@@ -56,7 +56,15 @@ public enum MmsVertexFormat {
      * The origin attribute carries {@code w = -1} so the shared shaders
      * detect pull mode per VAO without any per-draw uniform.
      */
-    QUAD16(4, true, -1f);
+    QUAD16(4, true, -1f),
+
+    /**
+     * Vertex pulling for FastLOD terrain: 16 bytes per cell/skirt/tree quad
+     * ({@link MmsLodQuadCodec}) with four octahedral corner normals, half-block
+     * Y and tall spans. Origin attribute {@code w = -2} selects the LOD decoder
+     * in the shared shaders. Produced only by the FastLOD mesher.
+     */
+    LODQUAD16(4, true, -2f);
 
     /** Attribute location of the per-mesh origin {@code vec4(ox, oy, oz, scale)}. */
     public static final int ORIGIN_LOCATION = 5;
@@ -99,7 +107,15 @@ public enum MmsVertexFormat {
 
     /** True for vertex-pulling formats (per-quad records, no per-mesh indices). */
     public boolean pulled() {
-        return this == QUAD16;
+        return this == QUAD16 || this == LODQUAD16;
+    }
+
+    /**
+     * The pulled format FastLOD terrain uses when this format is active:
+     * {@link #LODQUAD16} under any pulled format, else this format (per-vertex).
+     */
+    public MmsVertexFormat lodFormat() {
+        return pulled() ? LODQUAD16 : this;
     }
 
     /** Bytes per index element in a mesh/arena of this format (0 when pulled). */
@@ -173,8 +189,8 @@ public enum MmsVertexFormat {
                 dst.putInt(MmsBufferLayout.packFlags(water, alpha, translucent, light));
                 dst.putFloat(layer);
             }
-            case QUAD16 -> throw new UnsupportedOperationException(
-                "QUAD16 meshes are built per quad via MmsQuadMeshBuilder");
+            case QUAD16, LODQUAD16 -> throw new UnsupportedOperationException(
+                "pulled meshes are built per quad via MmsQuadMeshBuilder");
             case COMPACT20 -> {
                 dst.putShort(fixed16(x - originX, "x"));
                 dst.putShort(fixed16(y - originY, "y"));
@@ -212,6 +228,7 @@ public enum MmsVertexFormat {
             case COMPACT20 -> src.getShort(base + c * 2) * positionScale
                 + (c == 0 ? originX : c == 1 ? originY : originZ);
             case QUAD16 -> MmsQuadCodec.position(src, i >> 2, i & 3, c, originX, originY, originZ);
+            case LODQUAD16 -> MmsLodQuadCodec.position(src, i >> 2, i & 3, c, originX, originY, originZ);
         };
     }
 
@@ -221,6 +238,7 @@ public enum MmsVertexFormat {
             case LEGACY40 -> src.getFloat(base + 12 + c * 4);
             case COMPACT20 -> Float.float16ToFloat(src.getShort(base + 6 + c * 2));
             case QUAD16 -> MmsQuadCodec.texCoord(src, i >> 2, i & 3, c);
+            case LODQUAD16 -> MmsLodQuadCodec.texCoord(src, i >> 2, i & 3, c);
         };
     }
 
@@ -230,6 +248,7 @@ public enum MmsVertexFormat {
             case LEGACY40 -> src.getFloat(base + 20 + c * 4);
             case COMPACT20 -> Math.max(-1f, src.get(base + 10 + c) / 127f);
             case QUAD16 -> MmsQuadCodec.normal(src, i >> 2, c);
+            case LODQUAD16 -> MmsLodQuadCodec.normal(src, i >> 2, i & 3, c);
         };
     }
 
@@ -237,6 +256,9 @@ public enum MmsVertexFormat {
     public int flags(ByteBuffer src, int i) {
         if (this == QUAD16) {
             return MmsQuadCodec.flags(src, i >> 2, i & 3);
+        }
+        if (this == LODQUAD16) {
+            return MmsLodQuadCodec.flags(src, i >> 2);
         }
         return src.getInt(i * stride + flagsOffset());
     }
@@ -247,6 +269,7 @@ public enum MmsVertexFormat {
             case LEGACY40 -> src.getFloat(base + 36);
             case COMPACT20 -> src.getShort(base + 14) & 0xFFFF;
             case QUAD16 -> MmsQuadCodec.layer(src, i >> 2);
+            case LODQUAD16 -> MmsLodQuadCodec.layer(src, i >> 2);
         };
     }
 
@@ -255,7 +278,7 @@ public enum MmsVertexFormat {
         return switch (this) {
             case LEGACY40 -> (int) MmsBufferLayout.FLAGS_OFFSET;
             case COMPACT20 -> 16;
-            case QUAD16 -> -1; // no per-vertex flags word; see MmsQuadCodec.flags
+            case QUAD16, LODQUAD16 -> -1; // no per-vertex flags word; see the codecs' flags()
         };
     }
 
@@ -276,7 +299,7 @@ public enum MmsVertexFormat {
                 attrib(MmsBufferLayout.FLAGS_LOCATION, 4, GL15.GL_UNSIGNED_BYTE, true, 32);
                 attrib(MmsBufferLayout.LAYER_LOCATION, 1, GL15.GL_FLOAT, false, 36);
             }
-            case QUAD16 -> {
+            case QUAD16, LODQUAD16 -> {
                 // Pulled: no per-vertex attributes; the shader reads the quad
                 // buffer texture by gl_VertexID. Disable the five slots so a
                 // VAO reused across formats can't leave stale pointers.

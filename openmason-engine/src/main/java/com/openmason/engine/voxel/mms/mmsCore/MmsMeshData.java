@@ -198,10 +198,12 @@ public final class MmsMeshData {
         boolean translucent = false;
         if (format.pulled()) {
             ByteBuffer quads = ByteBuffer.wrap(packedVertexData).order(ByteOrder.nativeOrder());
-            for (int q = 0; q < vertexCount / 4; q++) {
-                if (MmsQuadCodec.translucent(quads.getInt(q * MmsQuadCodec.QUAD_BYTES + 4))) {
-                    translucent = true;
-                    break;
+            if (format == MmsVertexFormat.QUAD16) { // LOD quads are never translucent
+                for (int q = 0; q < vertexCount / 4; q++) {
+                    if (MmsQuadCodec.translucent(quads.getInt(q * MmsQuadCodec.QUAD_BYTES + 4))) {
+                        translucent = true;
+                        break;
+                    }
                 }
             }
         } else {

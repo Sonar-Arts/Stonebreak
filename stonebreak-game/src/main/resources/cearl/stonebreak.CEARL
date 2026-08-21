@@ -93,20 +93,26 @@ plan stonebreak
     ~ overriding only what differs — 16x16-column LOD regions start much
     ~ larger so the initial ring fill doesn't grow-and-compact repeatedly.
     ~ Trim matters most here: the LOD ring crosses the widest terrain variety.
+    ~ Re-derived 2026-08-20 for the pulled LOD format (LODQUAD16, 16 bytes per
+    ~ cell/skirt quad): a full 16x16-column LOD region holds ~350 KiB of quads,
+    ~ so the old 5 MiB first allocation (sized for 40-byte vertices) would waste
+    ~ ~4.5 MiB per region on copy-growth cards. Index bytes are unused by
+    ~ pulled regions and kept only for the legacy/compact formats.
     pool lod_terrain from chunk_mesh
         budget 20%
         priority 60
         arena
-            vertex 5 MiB
-            index 384 KiB
+            vertex 512 KiB
+            index 48 KiB
         end
     end
 
+    ~ LOD water sheets stay per-vertex (COMPACT20): ~170 KiB per region.
     pool lod_water from lod_terrain
         budget 2%
         arena
-            vertex 1280 KiB
-            index 96 KiB
+            vertex 320 KiB
+            index 24 KiB
         end
     end
 

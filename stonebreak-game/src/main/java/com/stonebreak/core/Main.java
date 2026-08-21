@@ -294,6 +294,11 @@ public class Main {
                 + " stamp=" + (rr.layerBytes(2) >> 10) + "KiB/" + rr.layerMeshes(2)
                 + " format=" + com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.active());
         }
+        var lod = com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.active();
+        if (lod != null) {
+            System.out.println("[autoscreenshot] lod terrain=" + (lod.layerBytes(0) >> 10) + "KiB/"
+                + lod.layerMeshes(0) + " water=" + (lod.layerBytes(1) >> 10) + "KiB/" + lod.layerMeshes(1));
+        }
         String file = parts.length > 1 ? parts[1] : "autoscreenshot.png";
         int w = window.width();
         int h = window.height();
