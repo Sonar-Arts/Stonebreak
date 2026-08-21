@@ -297,7 +297,9 @@ public class Main {
         var lod = com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.active();
         if (lod != null) {
             System.out.println("[autoscreenshot] lod terrain=" + (lod.layerBytes(0) >> 10) + "KiB/"
-                + lod.layerMeshes(0) + " water=" + (lod.layerBytes(1) >> 10) + "KiB/" + lod.layerMeshes(1));
+                + lod.layerMeshes(0) + " nodes/" + lod.layerQuads(0) + " quads"
+                + " water=" + (lod.layerBytes(1) >> 10) + "KiB/" + lod.layerMeshes(1) + " nodes/"
+                + lod.layerQuads(1) + " quads");
         }
         String file = parts.length > 1 ? parts[1] : "autoscreenshot.png";
         int w = window.width();

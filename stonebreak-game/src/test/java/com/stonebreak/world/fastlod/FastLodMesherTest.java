@@ -41,8 +41,18 @@ class FastLodMesherTest {
 
     private FastLodMesher mesher;
 
+    // These tests pin the per-vertex writer's exact quad structure; the pulled
+    // LOD format greedy-merges flat cells and is covered by FastLodPulledParityTest.
+    @org.junit.jupiter.api.AfterEach
+    void restoreFormat() {
+        com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.override(
+            com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.DEFAULT);
+    }
+
     @BeforeEach
     void setUp() {
+        com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.override(
+            com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.LEGACY40);
         BlockTextureArray textures = mock(BlockTextureArray.class);
         when(textures.getBlockFaceLayer(any(), anyInt())).thenReturn(7);
         mesher = new FastLodMesher(textures);

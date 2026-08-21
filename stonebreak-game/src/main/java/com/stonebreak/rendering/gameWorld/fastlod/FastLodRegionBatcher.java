@@ -56,6 +56,15 @@ public final class FastLodRegionBatcher {
         return total;
     }
 
+    /** Live quads (indices / 6) in one layer (debug/telemetry). */
+    public long layerQuads(int layer) {
+        long n = 0;
+        for (MmsChunkRegion r : (layer == LAYER_WATER ? waterRegions : terrainRegions).values()) {
+            n += r.liveIndexCount();
+        }
+        return n / 6;
+    }
+
     /** Live LOD meshes in one layer (debug/telemetry). */
     public int layerMeshes(int layer) {
         int n = 0;

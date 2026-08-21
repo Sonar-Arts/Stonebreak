@@ -544,6 +544,15 @@ public final class MmsChunkRegion {
         return gpuIndirectBufferId;
     }
 
+    /** Sum of live meshes' index counts (6 per quad) — a page-independent size measure. */
+    public long liveIndexCount() {
+        long n = 0;
+        for (MmsRegionMeshHandle h : liveHandles) {
+            n += h.getIndexCount();
+        }
+        return n;
+    }
+
     /** Command count currently laid out in the indirect buffer. */
     public int gpuCommandCount() {
         return liveHandles.size();
