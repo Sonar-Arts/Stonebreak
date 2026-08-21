@@ -15,7 +15,9 @@ import java.nio.ByteBuffer;
  * word0: x:8 | y:9 | z:8 | face:3 | (w-1):4        positions relative to the mesh origin, whole blocks
  * word1: (h-1):4 | orient:3 | alpha:1 | translucent:1 | layer:16 | spare:7
  * word2: light0:8 | light1:8 | light2:8 | light3:8 per-corner light (0..1 → 0..255)
- * word3: spare (reserved: per-quad tint / water)
+ * word3: topLower:4 | sideHeight:4 | spare   partial-height cubes (snow layers):
+ *        the top face sits topLower/8 below the cell top; side faces span
+ *        sideHeight/8 from the cell base (0 = full). Zero for ordinary quads.
  * </pre>
  *
  * Corner geometry, winding, in-plane axes and normals come from
@@ -60,6 +62,25 @@ public final class MmsQuadCodec {
     public static int word2(float l0, float l1, float l2, float l3) {
         return MmsBufferLayout.toUnsignedByte(l0) | (MmsBufferLayout.toUnsignedByte(l1) << 8)
             | (MmsBufferLayout.toUnsignedByte(l2) << 16) | (MmsBufferLayout.toUnsignedByte(l3) << 24);
+    }
+
+    /**
+     * Partial-height word for a cube of {@code heightEighths}/8 blocks (1..8):
+     * lowers the top face and shortens the side faces. 0 for full cubes.
+     */
+    public static int word3(int heightEighths) {
+        check(heightEighths, 1, 8, "height/8");
+        return heightEighths == 8 ? 0 : (8 - heightEighths) | (heightEighths << 4);
+    }
+
+    /** Eighths the top face is lowered by (0..7). */
+    public static int topLower(int w3) {
+        return w3 & 0xF;
+    }
+
+    /** Side-face height in eighths (0 = full block). */
+    public static int sideHeight(int w3) {
+        return (w3 >>> 4) & 0xF;
     }
 
     private static void check(int v, int lo, int hi, String what) {
@@ -187,12 +208,20 @@ public final class MmsQuadCodec {
                                  float originX, float originY, float originZ) {
         int w0 = quads.getInt(q * QUAD_BYTES);
         int w1 = quads.getInt(q * QUAD_BYTES + 4);
+        int w3 = quads.getInt(q * QUAD_BYTES + 12);
         int face = face(w0);
         float off = MmsCuboidGenerator.cornerOffset(face, corner, axis);
         if (axis == MmsCuboidGenerator.uAxis(face)) {
             off *= width(w0);
         } else if (axis == MmsCuboidGenerator.vAxis(face)) {
             off *= height(w1);
+        }
+        if (axis == 1) {
+            if (face == 0) {
+                off -= topLower(w3) / 8f;
+            } else if (face >= 2 && sideHeight(w3) != 0) {
+                off *= sideHeight(w3) / 8f;
+            }
         }
         return switch (axis) {
             case 0 -> originX + x(w0) + off;

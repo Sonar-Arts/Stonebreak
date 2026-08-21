@@ -82,6 +82,13 @@ public final class MmsQuadMeshBuilder {
     public boolean addQuad(int x, int y, int z, int face, int w, int h, int orientation,
                            boolean alpha, boolean translucent, int layer,
                            float l0, float l1, float l2, float l3) {
+        return addQuad(x, y, z, face, w, h, orientation, alpha, translucent, layer, l0, l1, l2, l3, 8);
+    }
+
+    /** As {@link #addQuad} for a partial-height cube ({@code heightEighths}/8, snow layers). */
+    public boolean addQuad(int x, int y, int z, int face, int w, int h, int orientation,
+                           boolean alpha, boolean translucent, int layer,
+                           float l0, float l1, float l2, float l3, int heightEighths) {
         if (quadCount >= MmsQuadCodec.MAX_QUADS_PER_DRAW) {
             return false; // u16 shared index buffer: caller routes the rest elsewhere
         }
@@ -92,7 +99,7 @@ public final class MmsQuadMeshBuilder {
         words[base] = MmsQuadCodec.word0(x, y, z, face, w);
         words[base + 1] = MmsQuadCodec.word1(h, orientation, alpha, translucent, layer);
         words[base + 2] = MmsQuadCodec.word2(l0, l1, l2, l3);
-        words[base + 3] = 0;
+        words[base + 3] = MmsQuadCodec.word3(heightEighths);
         quadCount++;
         return true;
     }

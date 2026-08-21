@@ -28,7 +28,13 @@ public final class SboCubeFaces {
     /** Per block id, per face: texture-array layer. */
     private final float[][] layers;
     private final boolean[] cube;
-    private final boolean[] shaped; // SBO block that is NOT a cube (stairs, slabs, snow…)
+    /**
+     * Unit-cube stamps that need per-cell decisions (translucent blocks with
+     * face overrides, height-scaled snow layers): not greedy-mergeable, but
+     * emitted as individual pulled quads instead of raw triangles.
+     */
+    private final boolean[] perCell;
+    private final boolean[] shaped; // SBO block that is NOT a cube (stairs, slabs, crosses…)
 
     public SboCubeFaces(SBOStampEmitter emitter) {
         int maxId = 0;
@@ -38,6 +44,7 @@ public final class SboCubeFaces {
         texCoords = new float[maxId + 1][][];
         layers = new float[maxId + 1][];
         cube = new boolean[maxId + 1];
+        perCell = new boolean[maxId + 1];
         shaped = new boolean[maxId + 1];
         for (BlockType type : BlockType.values()) {
             if (!emitter.hasBlock(type)) {
@@ -51,10 +58,12 @@ public final class SboCubeFaces {
     }
 
     private boolean tryBuildCube(SBOStampEmitter emitter, BlockType type, int id) {
-        if (emitter.getCache().variantCount(type) != 1 || emitter.isTranslucent(type)
-                || type == BlockType.SNOW) { // snow layers scale by height per cell
+        if (emitter.getCache().variantCount(type) != 1) {
             return false;
         }
+        // Translucent blocks (per-face opacity overrides) and snow layers
+        // (per-cell height) stay per-cell but still pull as quads.
+        boolean needsPerCell = emitter.isTranslucent(type) || type == BlockType.SNOW;
         BlockStamp stamp = emitter.getCache().get(type);
         if (stamp == null || stamp.faces() == null || stamp.faces().length != 6) {
             return false;
@@ -79,8 +88,18 @@ public final class SboCubeFaces {
         }
         texCoords[id] = uv;
         layers[id] = layer;
-        cube[id] = true;
+        if (needsPerCell) {
+            perCell[id] = true;
+        } else {
+            cube[id] = true;
+        }
         return true;
+    }
+
+    /** True for unit-cube stamps emitted per cell as pulled quads (snow layers, ice). */
+    public boolean isPerCellCube(BlockType type) {
+        int id = type.getId();
+        return id < perCell.length && perCell[id];
     }
 
     /**

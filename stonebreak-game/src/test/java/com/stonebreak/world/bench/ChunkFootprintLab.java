@@ -356,6 +356,7 @@ public final class ChunkFootprintLab {
         out.put("vertexStrideBytes", vertexStride);
         out.put("indexStrideBytes", atlasFmt.indexStride());
         out.put("stampFormat", stampFmt.name());
+        out.put("waterFormat", atlasFmt.waterFormat().name());
         out.put("chunkArenaPolicy", policy(plan.chunkArena()));
         out.put("waterArenaPolicy", policy(plan.waterArena()));
         out.put("stampArenaPolicy", policy(plan.stampArena()));
@@ -388,7 +389,8 @@ public final class ChunkFootprintLab {
                 // Up to three layer regions per 8×8 block of columns (atlas, water,
                 // stamp), exactly like ChunkRegionRenderer.
                 MmsArenaSim atlas = new MmsArenaSim(plan.chunkArena(), vertexStride, atlasFmt.indexStride(), sparse, 65536);
-                MmsArenaSim water = new MmsArenaSim(plan.waterArena(), stampFmt.stride(), Short.BYTES, sparse, 65536);
+                MmsVertexFormat waterFmt = atlasFmt.waterFormat();
+                MmsArenaSim water = new MmsArenaSim(plan.waterArena(), waterFmt.stride(), waterFmt.indexStride(), sparse, 65536);
                 MmsArenaSim stampSim = new MmsArenaSim(plan.stampArena(), stampFmt.stride(), Short.BYTES, sparse, 65536);
                 boolean anyWater = false, anyStamp = false;
                 for (ChunkSample s : e.getValue()) {

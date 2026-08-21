@@ -254,7 +254,8 @@ public final class ChunkRegionRenderer {
         // geometry is per-vertex and lives in stamp-format regions.
         MmsChunkRegion region = regions.computeIfAbsent(key, k -> layer == LAYER_ATLAS
             ? new MmsChunkRegion()
-            : new MmsChunkRegion(MmsVertexFormat.active().stampFormat(),
+            : new MmsChunkRegion(layer == LAYER_WATER
+                    ? MmsVertexFormat.active().waterFormat() : MmsVertexFormat.active().stampFormat(),
                 VramPlans.arena(layer == LAYER_WATER
                     ? VramPlans.POOL_CHUNK_WATER : VramPlans.POOL_CHUNK_STAMP)));
         // World-space chunk box for the GPU cull (full height, matching the

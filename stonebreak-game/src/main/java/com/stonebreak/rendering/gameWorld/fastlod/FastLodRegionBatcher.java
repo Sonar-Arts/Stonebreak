@@ -118,7 +118,7 @@ public final class FastLodRegionBatcher {
         // defaults match the pre-CEARL constants exactly).
         MmsChunkRegion region = regions.computeIfAbsent(key,
             k -> new MmsChunkRegion(layer == LAYER_WATER
-                    ? MmsVertexFormat.active().stampFormat()   // water sheets stay per-vertex
+                    ? MmsVertexFormat.active().waterFormat()   // sea sheets: pulled water quads when pulling
                     : MmsVertexFormat.active().lodFormat(),    // terrain: pulled LOD quads when pulling
                 VramPlans.arena(layer == LAYER_WATER ? VramPlans.POOL_LOD_WATER : VramPlans.POOL_LOD_TERRAIN)));
         return region.upload(mesh, minX, minY, minZ, maxX, maxY, maxZ);

@@ -64,7 +64,15 @@ public enum MmsVertexFormat {
      * Y and tall spans. Origin attribute {@code w = -2} selects the LOD decoder
      * in the shared shaders. Produced only by the FastLOD mesher.
      */
-    LODQUAD16(4, true, -2f);
+    LODQUAD16(4, true, -2f),
+
+    /**
+     * Vertex pulling for water: 16 bytes per cell face / LOD sea sheet
+     * ({@link MmsWaterQuadCodec}) with four u8 vertex heights and four u8
+     * surface flags. Origin attribute {@code w = -3}; decoded in
+     * {@code water.vert}.
+     */
+    WATERQUAD16(4, true, -3f);
 
     /** Attribute location of the per-mesh origin {@code vec4(ox, oy, oz, scale)}. */
     public static final int ORIGIN_LOCATION = 5;
@@ -107,7 +115,12 @@ public enum MmsVertexFormat {
 
     /** True for vertex-pulling formats (per-quad records, no per-mesh indices). */
     public boolean pulled() {
-        return this == QUAD16 || this == LODQUAD16;
+        return this == QUAD16 || this == LODQUAD16 || this == WATERQUAD16;
+    }
+
+    /** The format water meshes use when this format is active: {@link #WATERQUAD16} under pulling. */
+    public MmsVertexFormat waterFormat() {
+        return pulled() ? WATERQUAD16 : this;
     }
 
     /**
@@ -189,7 +202,7 @@ public enum MmsVertexFormat {
                 dst.putInt(MmsBufferLayout.packFlags(water, alpha, translucent, light));
                 dst.putFloat(layer);
             }
-            case QUAD16, LODQUAD16 -> throw new UnsupportedOperationException(
+            case QUAD16, LODQUAD16, WATERQUAD16 -> throw new UnsupportedOperationException(
                 "pulled meshes are built per quad via MmsQuadMeshBuilder");
             case COMPACT20 -> {
                 dst.putShort(fixed16(x - originX, "x"));
@@ -229,6 +242,7 @@ public enum MmsVertexFormat {
                 + (c == 0 ? originX : c == 1 ? originY : originZ);
             case QUAD16 -> MmsQuadCodec.position(src, i >> 2, i & 3, c, originX, originY, originZ);
             case LODQUAD16 -> MmsLodQuadCodec.position(src, i >> 2, i & 3, c, originX, originY, originZ);
+            case WATERQUAD16 -> MmsWaterQuadCodec.position(src, i >> 2, i & 3, c, originX, originY, originZ);
         };
     }
 
@@ -239,6 +253,7 @@ public enum MmsVertexFormat {
             case COMPACT20 -> Float.float16ToFloat(src.getShort(base + 6 + c * 2));
             case QUAD16 -> MmsQuadCodec.texCoord(src, i >> 2, i & 3, c);
             case LODQUAD16 -> MmsLodQuadCodec.texCoord(src, i >> 2, i & 3, c);
+            case WATERQUAD16 -> MmsWaterQuadCodec.texCoord(src, i >> 2, i & 3, c);
         };
     }
 
@@ -249,6 +264,7 @@ public enum MmsVertexFormat {
             case COMPACT20 -> Math.max(-1f, src.get(base + 10 + c) / 127f);
             case QUAD16 -> MmsQuadCodec.normal(src, i >> 2, c);
             case LODQUAD16 -> MmsLodQuadCodec.normal(src, i >> 2, i & 3, c);
+            case WATERQUAD16 -> MmsWaterQuadCodec.normal(src, i >> 2, c);
         };
     }
 
@@ -260,6 +276,9 @@ public enum MmsVertexFormat {
         if (this == LODQUAD16) {
             return MmsLodQuadCodec.flags(src, i >> 2);
         }
+        if (this == WATERQUAD16) {
+            return MmsWaterQuadCodec.flags(src, i >> 2, i & 3);
+        }
         return src.getInt(i * stride + flagsOffset());
     }
 
@@ -270,6 +289,7 @@ public enum MmsVertexFormat {
             case COMPACT20 -> src.getShort(base + 14) & 0xFFFF;
             case QUAD16 -> MmsQuadCodec.layer(src, i >> 2);
             case LODQUAD16 -> MmsLodQuadCodec.layer(src, i >> 2);
+            case WATERQUAD16 -> 0f;
         };
     }
 
@@ -278,7 +298,7 @@ public enum MmsVertexFormat {
         return switch (this) {
             case LEGACY40 -> (int) MmsBufferLayout.FLAGS_OFFSET;
             case COMPACT20 -> 16;
-            case QUAD16, LODQUAD16 -> -1; // no per-vertex flags word; see the codecs' flags()
+            case QUAD16, LODQUAD16, WATERQUAD16 -> -1; // no per-vertex flags word; see the codecs' flags()
         };
     }
 
@@ -299,7 +319,7 @@ public enum MmsVertexFormat {
                 attrib(MmsBufferLayout.FLAGS_LOCATION, 4, GL15.GL_UNSIGNED_BYTE, true, 32);
                 attrib(MmsBufferLayout.LAYER_LOCATION, 1, GL15.GL_FLOAT, false, 36);
             }
-            case QUAD16, LODQUAD16 -> {
+            case QUAD16, LODQUAD16, WATERQUAD16 -> {
                 // Pulled: no per-vertex attributes; the shader reads the quad
                 // buffer texture by gl_VertexID. Disable the five slots so a
                 // VAO reused across formats can't leave stale pointers.

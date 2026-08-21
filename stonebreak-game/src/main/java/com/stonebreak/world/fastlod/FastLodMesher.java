@@ -4,6 +4,7 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsLodQuadCodec;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsQuadMeshBuilder;
 import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
+import com.openmason.engine.voxel.mms.mmsCore.MmsWaterQuadCodec;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
@@ -147,8 +148,13 @@ public final class FastLodMesher {
                 com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.regionOrigin(data.chunkX()),
                 com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.regionOrigin(data.chunkZ()))
             : null;
+        LodWaterWriter pulledWater = null;
         if (pulled != null) {
             w = pulled;
+            pulledWater = new LodWaterWriter(maxWaterQuads,
+                com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.regionOrigin(data.chunkX()),
+                com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.regionOrigin(data.chunkZ()));
+            ww = pulledWater;
         }
 
         // Height-gradient normals shared at cell corners ((cellsPerAxis+1)² grid).
@@ -197,25 +203,14 @@ public final class FastLodMesher {
         }
         if (pulled != null) {
             MmsMeshData pulledMesh = pulled.build();
-            MmsMeshData pulledWater = null;
+            MmsMeshData waterOut = null;
             float pMinY = pulled.minY, pMaxY = pulled.maxY;
-            if (ww.idxCount > 0) {
-                pulledWater = new MmsMeshData(
-                        Arrays.copyOf(wPositions, ww.vertCount * 3),
-                        Arrays.copyOf(wTexCoords, ww.vertCount * 2),
-                        Arrays.copyOf(wNormals, ww.vertCount * 3),
-                        Arrays.copyOf(wSurfaceFlags, ww.vertCount),
-                        Arrays.copyOf(wFallingFlags, ww.vertCount),
-                        Arrays.copyOf(wSourceFlags, ww.vertCount),
-                        Arrays.copyOf(wLight, ww.vertCount),
-                        Arrays.copyOf(wLayers, ww.vertCount),
-                        Arrays.copyOf(wIndices, ww.idxCount),
-                        ww.idxCount
-                );
-                pMinY = Math.min(pMinY, ww.minY);
-                pMaxY = Math.max(pMaxY, ww.maxY);
+            if (pulledWater.idxCount > 0) {
+                waterOut = pulledWater.build();
+                pMinY = Math.min(pMinY, pulledWater.minY);
+                pMaxY = Math.max(pMaxY, pulledWater.maxY);
             }
-            return new Result(pulledMesh, pulledWater, pMinY, pMaxY);
+            return new Result(pulledMesh, waterOut, pMinY, pMaxY);
         }
 
         MmsMeshData mesh = new MmsMeshData(
@@ -471,6 +466,45 @@ public final class FastLodMesher {
             float w = face >= 4 ? maxZ - minZ : maxX - minX;
             float h = face <= 1 ? maxZ - minZ : hi - lo;
             record(face, minX, lo, minZ, w, h, layer, false, true, alphaFlag > 0.5f, 0, 0);
+        }
+    }
+
+    /** Pulled twin of the water {@link QuadWriter}: one WATERQUAD16 record per flat sea-sheet cell. */
+    private static final class LodWaterWriter extends QuadWriter {
+        private final MmsQuadMeshBuilder quads;
+        private final float originX, originZ;
+
+        LodWaterWriter(int estimatedQuads, float originX, float originZ) {
+            super(null, null, null, null, null, null, null, null, null);
+            this.quads = new MmsQuadMeshBuilder(estimatedQuads, MmsVertexFormat.WATERQUAD16)
+                .setOrigin(originX, 0f, originZ);
+            this.originX = originX;
+            this.originZ = originZ;
+        }
+
+        MmsMeshData build() {
+            return quads.build();
+        }
+
+        @Override
+        void topQuadFlat(float wx, float y, float wz, int cellSize, int layer, float xFlag) {
+            int cellY = (int) Math.floor(y) + 1; // sheet sits 0.125 below the cell's top: cell = SEA_LEVEL
+            int qx = Math.round(wx - originX);
+            int qz = Math.round(wz - originZ);
+            if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || cellY < 0 || cellY > 511 || cellSize > 16) {
+                return;
+            }
+            if (!quads.addWords(
+                    MmsWaterQuadCodec.word0(qx, cellY, qz, 0, false, false),
+                    MmsWaterQuadCodec.word1(cellY, y, y, y, y),
+                    MmsWaterQuadCodec.word2(xFlag, xFlag, xFlag, xFlag),
+                    MmsWaterQuadCodec.word3(cellSize, cellSize))) {
+                return;
+            }
+            idxCount += 6;
+            vertCount += 4;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
         }
     }
 

@@ -79,6 +79,10 @@ public class WaterRenderer {
             shader.link();
 
             shader.createUniform("uProjection");
+            shader.createUniform("u_quads");
+            shader.bind();
+            shader.setUniform("u_quads", com.openmason.engine.voxel.mms.mmsCore.MmsQuadCodec.QUAD_TEXTURE_UNIT);
+            shader.unbind();
             shader.createUniform("uView");
             shader.createUniform("uTime");
             shader.createUniform("uWavesEnabled");

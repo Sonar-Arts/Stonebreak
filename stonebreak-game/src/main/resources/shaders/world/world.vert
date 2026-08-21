@@ -70,6 +70,13 @@ void pullQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, out 
     vec3 off = c;
     off[ua] = a;
     off[va] = b;
+    // Partial-height cubes (snow layers): word3 lowers the top / shortens the sides.
+    uint w3 = q.w;
+    if (face == 0) {
+        off.y -= float(w3 & 15u) / 8.0;
+    } else if (face >= 2 && (w3 & 240u) != 0u) {
+        off.y *= float((w3 >> 4u) & 15u) / 8.0;
+    }
     localPos = vec3(float(w0 & 255u), float((w0 >> 8u) & 511u), float((w0 >> 17u) & 255u)) + off;
     float u0 = float(orient & 1);
     float v0 = float((orient >> 1) & 1);

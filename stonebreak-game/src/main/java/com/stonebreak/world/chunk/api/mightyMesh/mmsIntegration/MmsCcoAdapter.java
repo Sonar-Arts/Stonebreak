@@ -11,6 +11,7 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilder;
 import com.openmason.engine.voxel.mms.mmsCore.MmsQuadCodec;
 import com.openmason.engine.voxel.mms.mmsCore.MmsQuadMeshBuilder;
+import com.openmason.engine.voxel.mms.mmsCore.MmsWaterQuadCodec;
 import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilderPool;
@@ -56,6 +57,10 @@ public class MmsCcoAdapter {
      * worker.
      */
     private static final ThreadLocal<MmsQuadMeshBuilder> ACTIVE_QUAD_BUILDER = new ThreadLocal<>();
+    /** Per-thread pulled water-quad builder (WATERQUAD16) and its per-build activation. */
+    private static final ThreadLocal<MmsQuadMeshBuilder> WATER_QUAD_BUILDER =
+        ThreadLocal.withInitial(() -> new MmsQuadMeshBuilder(512, MmsVertexFormat.WATERQUAD16));
+    private static final ThreadLocal<MmsQuadMeshBuilder> ACTIVE_WATER_QUADS = new ThreadLocal<>();
     /** SBO blocks that are exact unit cubes (cube path) — null until an emitter is wired. */
     private volatile SboCubeFaces sboCubes;
     private static final boolean MESH_DEBUG = Boolean.getBoolean("stonebreak.mesh.debug");
@@ -281,6 +286,9 @@ public class MmsCcoAdapter {
             MmsQuadMeshBuilder quadBuilder = MmsVertexFormat.active().pulled()
                 ? QUAD_BUILDER.get().reset().setOrigin(regionOriginX, 0f, regionOriginZ) : null;
             ACTIVE_QUAD_BUILDER.set(quadBuilder);
+            MmsQuadMeshBuilder waterQuads = MmsVertexFormat.active().pulled()
+                ? WATER_QUAD_BUILDER.get().reset().setOrigin(regionOriginX, 0f, regionOriginZ) : null;
+            ACTIVE_WATER_QUADS.set(waterQuads);
 
             // Skip the empty air space above the terrain — paletted storage
             // knows the highest non-air Y cheaply (uniform-air sections skip
@@ -352,6 +360,9 @@ public class MmsCcoAdapter {
                                 blockHeight = Math.min(1.0f, Math.max(0.125f, layers * 0.125f));
                             }
 
+                            if (emitPerCellCube(blockType, lx, ly, lz, chunkX, chunkZ, chunkData, blockHeight)) {
+                                continue;
+                            }
                             String stateName = chunkData.getBlockState(lx, ly, lz);
                             sboStampEmitter.emitBlock(atlasBuilder, blockType, lx, ly, lz,
                                     worldX, worldY, worldZ, chunkData, blockHeight, stateName);
@@ -381,7 +392,7 @@ public class MmsCcoAdapter {
             }
 
             // Build final meshes (solids in the atlas mesh, water in its own)
-            MmsMeshData waterMesh = waterBuilder.build();
+            MmsMeshData waterMesh = waterQuads != null ? waterQuads.build() : waterBuilder.build();
             MmsMeshData atlasMesh;
             MmsMeshData stampMesh = null;
             if (quadBuilder != null) {
@@ -412,6 +423,7 @@ public class MmsCcoAdapter {
         } finally {
             // Builders' data has been copied out by build(); safe to recycle.
             ACTIVE_QUAD_BUILDER.remove();
+            ACTIVE_WATER_QUADS.remove();
             builderPool.release(atlasBuilder);
             builderPool.release(waterBuilder);
         }
@@ -604,6 +616,9 @@ public class MmsCcoAdapter {
                     int layers = world.getSnowLayers(wx, ly, wz);
                     blockHeight = Math.min(1.0f, Math.max(0.125f, layers * 0.125f));
                 }
+                if (emitPerCellCube(blockType, lx, ly, lz, chunkX, chunkZ, chunkData, blockHeight)) {
+                    continue;
+                }
                 String stateName = chunkData.getBlockState(lx, ly, lz);
                 sboStampEmitter.emitBlock(atlasBuilder, blockType, lx, ly, lz,
                         worldX, worldY, worldZ, chunkData, blockHeight, stateName);
@@ -729,6 +744,23 @@ public class MmsCcoAdapter {
             // generateWaterFlags ignores its blockHeight parameter; one call is sufficient.
             // Returns a per-thread scratch array — read it before the next call.
             float[] waterFlags = waterGenerator.generateWaterFlags(face, blockX, blockY, blockZ, 0.0f);
+
+            MmsQuadMeshBuilder waterQuads = ACTIVE_WATER_QUADS.get();
+            if (waterQuads != null) {
+                // Pulled water: one 16-byte record per face. The generator's vertex
+                // order is the cuboid corner order, so corner i = vertex i.
+                int qx = blockX - (int) waterQuads.originX();
+                int qz = blockZ - (int) waterQuads.originZ();
+                if (qx >= 0 && qx <= 255 && qz >= 0 && qz <= 255 && blockY >= 0 && blockY <= 511
+                        && waterQuads.addWords(
+                            MmsWaterQuadCodec.word0(qx, blockY, qz, face, fallingFlag > 0.5f, sourceFlag > 0.5f),
+                            MmsWaterQuadCodec.word1(blockY, vertices[1], vertices[4], vertices[7], vertices[10]),
+                            MmsWaterQuadCodec.word2(waterFlags[0], waterFlags[1], waterFlags[2], waterFlags[3]),
+                            MmsWaterQuadCodec.word3(1, 1))) {
+                    continue;
+                }
+                // Out of range / full: fall back to the per-vertex water mesh below.
+            }
 
             // Add face to builder
             builder.beginFace();
@@ -976,6 +1008,65 @@ public class MmsCcoAdapter {
     /**
      * Checks if a block type is a cross-section block.
      */
+    /**
+     * Unit-cube SBO blocks that need per-cell decisions (snow layers: height;
+     * translucent blocks: per-face opacity overrides) as individual pulled
+     * quads — the stamp emitter's own culling, translucency and light rules,
+     * 16 bytes per face instead of six 20-byte vertices. Returns false when
+     * not applicable (no pulling, not such a block, quad cap hit before the
+     * first face) so the caller falls back to the stamp emitter.
+     */
+    private boolean emitPerCellCube(BlockType blockType, int lx, int ly, int lz, int chunkX, int chunkZ,
+                                    CcoChunkData chunkData, float blockHeight) {
+        MmsQuadMeshBuilder quads = ACTIVE_QUAD_BUILDER.get();
+        SboCubeFaces cubes = sboCubes;
+        SBOStampEmitter emitter = sboStampEmitter;
+        if (quads == null || cubes == null || emitter == null || !cubes.isPerCellCube(blockType)
+                || quads.isFull()) {
+            return false;
+        }
+        int qx = lx + chunkX * WorldConfiguration.CHUNK_SIZE - (int) quads.originX();
+        int qz = lz + chunkZ * WorldConfiguration.CHUNK_SIZE - (int) quads.originZ();
+        if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || ly < 0 || ly > 511) {
+            return false;
+        }
+        boolean translucent = emitter.isTranslucent(blockType);
+        boolean baseAlpha = !translucent && blockType.isTransparent();
+        int heightEighths = Math.clamp(Math.round(blockHeight * 8f), 1, 8);
+        float height = heightEighths / 8f;
+        float wx0 = lx + chunkX * WorldConfiguration.CHUNK_SIZE;
+        float wz0 = lz + chunkZ * WorldConfiguration.CHUNK_SIZE;
+        for (int face = 0; face < 6; face++) {
+            if (!emitter.isFaceVisible(blockType, lx, ly, lz, face, chunkData)) {
+                continue;
+            }
+            boolean forcedOpaque = translucent && emitter.isFaceForcedOpaque(blockType, lx, ly, lz, face, chunkData);
+            boolean alpha = forcedOpaque ? false : baseAlpha;
+            boolean transl = forcedOpaque ? false : translucent;
+            float[] tc = cubes.texCoords(blockType, face);
+            float u00 = tc[UV_C00[face] * 2], v00 = tc[UV_C00[face] * 2 + 1];
+            int orient = MmsQuadCodec.orientation(u00, v00,
+                tc[UV_C10[face] * 2] - u00, tc[UV_C10[face] * 2 + 1] - v00,
+                tc[UV_C01[face] * 2] - u00, tc[UV_C01[face] * 2 + 1] - v00);
+            if (orient < 0) {
+                return false; // exotic frame: whole block goes to the stamp emitter
+            }
+            int layer = Math.round(cubes.layer(blockType, face));
+            float[] l = SBO_CUBE_SCRATCH.get()[0];
+            for (int c = 0; c < 4; c++) {
+                float cx = MmsCuboidGenerator.cornerOffset(face, c, 0);
+                float cy = MmsCuboidGenerator.cornerOffset(face, c, 1) * height;
+                float cz = MmsCuboidGenerator.cornerOffset(face, c, 2);
+                l[c] = emitter.sampleLight(face, wx0 + cx, ly + cy, wz0 + cz, chunkData);
+            }
+            if (!quads.addQuad(qx, ly, qz, face, 1, 1, orient, alpha, transl, layer,
+                    l[0], l[1], l[2], l[3], heightEighths)) {
+                return face > 0; // cap mid-block: keep what was emitted (never in practice)
+            }
+        }
+        return true;
+    }
+
     /** True when the block must be emitted by the SBO stamp emitter (shaped SBO geometry). */
     private boolean isStampBlock(BlockType blockType) {
         if (sboStampEmitter == null || !sboStampEmitter.hasBlock(blockType)) {

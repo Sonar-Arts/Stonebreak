@@ -250,6 +250,30 @@ public class SBOStampEmitter {
      * @param blockType the block type to check
      * @return true if the cache contains a stamp for this type
      */
+    /**
+     * The per-cell face decisions {@link #emitBlock} makes, exposed so a caller
+     * that emits a unit-cube stamp as pulled quads applies exactly the same
+     * culling and translucency rules. {@code face} uses MMS face ids.
+     */
+    public boolean isFaceVisible(IBlockType blockType, int lx, int ly, int lz, int face, CcoChunkData chunkData) {
+        if (!cullingPolicy.shouldRenderFace(blockType, lx, ly, lz, face, chunkData)) {
+            return false;
+        }
+        return instanceFaceCullPolicy == null
+            || !instanceFaceCullPolicy.shouldCullFace(blockType, lx, ly, lz, face, chunkData);
+    }
+
+    /** True when a translucent block's face is forced opaque for this cell (e.g. ice touching water). */
+    public boolean isFaceForcedOpaque(IBlockType blockType, int lx, int ly, int lz, int face, CcoChunkData chunkData) {
+        return translucencyOverride != null
+            && translucencyOverride.shouldRenderFaceAsOpaque(blockType, lx, ly, lz, face, chunkData);
+    }
+
+    /** Per-vertex light exactly as {@link #emitBlock} samples it. */
+    public float sampleLight(int face, float wx, float wy, float wz, CcoChunkData chunkData) {
+        return lightSampler.sampleVertexLight(face, wx, wy, wz, chunkData);
+    }
+
     /** Whether the translucency policy routes this block to alpha-blended rendering. */
     public boolean isTranslucent(IBlockType blockType) {
         return translucencyPolicy.test(blockType);

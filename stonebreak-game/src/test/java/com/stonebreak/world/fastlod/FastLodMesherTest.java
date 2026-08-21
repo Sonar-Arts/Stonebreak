@@ -158,7 +158,8 @@ class FastLodMesherTest {
         FastLodMesher.Result result = mesher.build(l4Data(filled(9, 40), BlockType.SAND));
         MmsMeshData sheet = result.waterMesh();
         assertNotNull(sheet);
-        for (float f : sheet.getWaterHeightFlags()) assertEquals(0.875f, f, EPS);
+        // 1/255 tolerance: the flag is a u8 on the GPU in every packed format.
+        for (float f : sheet.getWaterHeightFlags()) assertEquals(0.875f, f, 1f / 255f);
         for (float f : sheet.getAlphaTestFlags()) assertEquals(0f, f, EPS);
         for (float f : sheet.getLightValues()) assertEquals(1f, f, EPS);
         float[] normals = sheet.getVertexNormals();

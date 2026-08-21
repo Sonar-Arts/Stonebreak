@@ -434,4 +434,56 @@ public class WaterMeshSplitTest {
             return chunk.getHighestNonAirY();
         }
     }
+
+    /**
+     * The pulled water format (WATERQUAD16) must reproduce the per-vertex water
+     * mesh: every face's corner positions (within the 1/128-block height
+     * quantization) and its surface/falling/source flags (within 1/255).
+     */
+    @Test
+    void pulledWaterQuadsMatchThePerVertexWaterMesh() {
+        com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.override(
+            com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.LEGACY40);
+        MmsMeshData ref;
+        MmsMeshData pulled;
+        try {
+            ref = buildMesh().waterMesh();
+            com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.override(
+                com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.QUAD16);
+            pulled = buildMesh().waterMesh();
+        } finally {
+            com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.override(
+                com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.DEFAULT);
+        }
+        assertEquals(com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.WATERQUAD16, pulled.getFormat());
+        assertEquals(ref.getVertexCount(), pulled.getVertexCount(), "same number of water faces");
+        java.util.List<String> a = waterSignatures(ref);
+        java.util.List<String> b = waterSignatures(pulled);
+        java.util.List<String> missing = new java.util.ArrayList<>(a);
+        missing.removeAll(b);
+        java.util.List<String> extra = new java.util.ArrayList<>(b);
+        extra.removeAll(a);
+        assertEquals(java.util.List.of(), missing, "water faces missing from the pulled mesh; extra=" + extra);
+    }
+
+    /** Per face: corner positions to 1/64 block, flags to 1/64 — coarser than either quantization. */
+    private static java.util.List<String> waterSignatures(MmsMeshData mesh) {
+        float[] p = mesh.getVertexPositions();
+        float[] fx = mesh.getWaterHeightFlags();
+        float[] fy = mesh.getAlphaTestFlags();   // falling rides the alpha slot
+        float[] fz = mesh.getTranslucentFlags(); // source rides the translucent slot
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (int q = 0; q < mesh.getVertexCount() / 4; q++) {
+            StringBuilder sb = new StringBuilder();
+            for (int c = 0; c < 4; c++) {
+                int v = q * 4 + c;
+                sb.append(String.format(java.util.Locale.ROOT, "(%.0f,%.0f,%.0f|%.0f,%.0f,%.0f)",
+                    p[v * 3] * 64, p[v * 3 + 1] * 64, p[v * 3 + 2] * 64,
+                    fx[v] * 64, fy[v], fz[v]));
+            }
+            out.add(sb.toString());
+        }
+        java.util.Collections.sort(out);
+        return out;
+    }
 }
