@@ -68,6 +68,13 @@ public class Chunk {
     // remain only for the rare mesh that can't join a region).
     private com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionAtlasHandle;
     private com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionWaterHandle;
+    /**
+     * Non-quad atlas geometry (SBO stamps, crosses) under a pulled vertex
+     * format — drawn in the atlas pass from its own per-vertex mesh. Null
+     * when the active format isn't pulled (everything rides the atlas mesh).
+     */
+    private MmsRenderableHandle stampRenderableHandle;
+    private com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionStampHandle;
     // Whether the current atlas mesh contains any translucent (ice) geometry —
     // lets the transparent pass skip chunks that would contribute nothing.
     private boolean atlasHasTranslucent;
@@ -320,6 +327,9 @@ public class Chunk {
                     }
                     meshGenerated = true;
                 }
+                // A pulled-format chunk may be stamp-only (e.g. just snow layers).
+                uploadStampMesh(pendingChunkMeshResult,
+                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled());
                 stateManager.removeState(CcoChunkState.MESH_CPU_READY);
                 stateManager.addState(CcoChunkState.BLOCKS_POPULATED);
                 return;
@@ -349,6 +359,7 @@ public class Chunk {
             }
             atlasHasTranslucent = pendingMmsMeshData.hasTranslucentGeometry();
             meshGenerated = true;
+            uploadStampMesh(pendingChunkMeshResult, regionRenderer != null);
 
             // Upload the water mesh; clear the handle when this rebuild
             // produced no water so drained water can't ghost.
@@ -413,18 +424,70 @@ public class Chunk {
             debugRenderCallCount++;
         }
 
-        if (!stateManager.isRenderable() || !meshGenerated || renderableHandle == null) {
+        if (!stateManager.isRenderable() || !meshGenerated) {
             return;
         }
-
-        // Debug first few successful renders
-        if (debugRenderSuccessCount < 3) {
-            System.out.println("[Chunk.render] SUCCESS: Rendering chunk at (" + x + "," + z + ") with " +
-                renderableHandle.getIndexCount() + " indices");
-            debugRenderSuccessCount++;
+        if (renderableHandle != null) {
+            // Debug first few successful renders
+            if (debugRenderSuccessCount < 3) {
+                System.out.println("[Chunk.render] SUCCESS: Rendering chunk at (" + x + "," + z + ") with " +
+                    renderableHandle.getIndexCount() + " indices");
+                debugRenderSuccessCount++;
+            }
+            renderableHandle.render();
         }
+        // Legacy stamp geometry draws with the atlas (same shader/pass). Region-
+        // resident stamps are drawn by ChunkRegionRenderer's stamp pass instead.
+        if (stampRenderableHandle != null) {
+            stampRenderableHandle.render();
+        }
+    }
 
-        renderableHandle.render();
+    /** Region-mode stamp geometry handle, or null. */
+    public com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle getRegionStampHandle() {
+        return regionStampHandle;
+    }
+
+    public void setRegionStampHandle(com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle handle) {
+        this.regionStampHandle = handle;
+        if (handle != null) {
+            this.meshGenerated = true;
+        }
+    }
+
+    /** Legacy per-chunk stamp geometry handle, or null. */
+    public MmsRenderableHandle getStampRenderableHandle() {
+        return stampRenderableHandle;
+    }
+
+    public void setStampRenderableHandle(MmsRenderableHandle handle) {
+        this.stampRenderableHandle = handle;
+        if (handle != null) {
+            this.meshGenerated = true;
+        }
+    }
+
+    /** Uploads (or clears) the stamp mesh of a pending result. GL thread. */
+    private void uploadStampMesh(ChunkMeshResult result, boolean regionMode) {
+        if (stampRenderableHandle != null) {
+            stampRenderableHandle.close();
+            stampRenderableHandle = null;
+        }
+        if (regionStampHandle != null) {
+            regionStampHandle.close();
+            regionStampHandle = null;
+        }
+        if (result == null || !result.hasStampMesh()) {
+            return;
+        }
+        if (regionMode) {
+            regionStampHandle = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance().upload(com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_STAMP, x, z, result.stampMesh());
+        }
+        if (regionStampHandle == null) {
+            stampRenderableHandle = MmsAPI.getInstance().uploadMeshToGPU(result.stampMesh());
+        }
+        atlasHasTranslucent |= result.stampMesh().hasTranslucentGeometry();
+        meshGenerated = true;
     }
 
     /** Whether this chunk currently has uploaded water geometry. */
@@ -843,6 +906,14 @@ public class Chunk {
         if (regionWaterHandle != null) {
             regionWaterHandle.close();
             regionWaterHandle = null;
+        }
+        if (stampRenderableHandle != null) {
+            stampRenderableHandle.close();
+            stampRenderableHandle = null;
+        }
+        if (regionStampHandle != null) {
+            regionStampHandle.close();
+            regionStampHandle = null;
         }
         atlasHasTranslucent = false;
         closeSBORenderData();

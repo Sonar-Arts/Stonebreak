@@ -14,6 +14,8 @@ layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec2 aUV;
 layout (location = 2) in vec3 aNormal;
 layout (location = 3) in vec4 aFlags;
+// Per-mesh origin + position scale (compact vertex formats; identity otherwise).
+layout (location = 5) in vec4 aOrigin;
 
 uniform mat4 uProjection;
 uniform mat4 uView;
@@ -46,7 +48,7 @@ float gerstnerHeight(vec2 xz, float t) {
 void main() {
     float surfH = aFlags.x;
     float falling = aFlags.y;
-    vec3 pos = aPos;
+    vec3 pos = aOrigin.xyz + aPos * aOrigin.w;
 
     // GPU-side wave displacement (no remesh for waves). World-space seamless
     // functions; constants ported verbatim from the old world-shader water

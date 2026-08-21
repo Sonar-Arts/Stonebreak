@@ -1,5 +1,8 @@
 package com.stonebreak.world.fastlod;
 
+import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
+import com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher;
+
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.rendering.textures.BlockTextureArray;
@@ -427,8 +430,13 @@ public final class FastLodManager {
             // Pack to the interleaved GPU layout here on the worker: the GL
             // upload becomes a bulk copy and the meshes qualify for the shared
             // region arenas (multidraw batching) instead of per-node VAOs.
-            readyToUpload.offer(new Ready(key, result.mesh().toPacked(),
-                    result.waterMesh() != null ? result.waterMesh().toPacked() : null,
+            // Local-position formats encode against the 16×16-chunk LOD REGION origin
+            // so every node in a FastLodRegionBatcher arena shares one origin.
+            MmsVertexFormat fmt = MmsVertexFormat.active();
+            float ox = FastLodRegionBatcher.regionOrigin(key.chunkX());
+            float oz = FastLodRegionBatcher.regionOrigin(key.chunkZ());
+            readyToUpload.offer(new Ready(key, result.mesh().toPacked(fmt, ox, 0f, oz),
+                    result.waterMesh() != null ? result.waterMesh().toPacked(fmt, ox, 0f, oz) : null,
                     result.minY(), result.maxY()));
         } catch (Exception e) {
             inFlight.remove(key);

@@ -151,6 +151,10 @@ public final class CendaChunkGenerator {
             CHUNK_SIZE, WORLD_HEIGHT, CHUNK_SIZE, BlockType.AIR);
         short airId = (short) BlockType.AIR.getId();
         short[] paletteIds = new short[16];
+        // Small-palette sections pack into the nibble tier, which copies — so the
+        // byte index array can be one reusable scratch instead of 4 KiB garbage
+        // per section. Wider palettes hand the array over (ownership transfer).
+        byte[] scratch = null;
         for (int section = 0; section < SECTION_COUNT; section++) {
             int base = section * SECTION_VOLUME;
             short first = blocks[base];
@@ -171,7 +175,10 @@ public final class CendaChunkGenerator {
             // Terrain emits at most ~13 distinct ids per chunk — linear palette
             // scan beats any map here.
             int paletteSize = 0;
-            byte[] indices = new byte[SECTION_VOLUME];
+            if (scratch == null) {
+                scratch = new byte[SECTION_VOLUME];
+            }
+            byte[] indices = scratch;
             for (int i = 0; i < SECTION_VOLUME; i++) {
                 short id = blocks[base + i];
                 int idx = -1;
@@ -198,6 +205,9 @@ public final class CendaChunkGenerator {
             }
             storage.replaceSection(section,
                 CcoPaletteSection.fromPaletteData(CHUNK_SIZE * CHUNK_SIZE, palette, indices));
+            if (!CcoPaletteSection.packsToNibbles(paletteSize)) {
+                scratch = null; // the section kept this array; next one needs a fresh one
+            }
         }
         return storage;
     }

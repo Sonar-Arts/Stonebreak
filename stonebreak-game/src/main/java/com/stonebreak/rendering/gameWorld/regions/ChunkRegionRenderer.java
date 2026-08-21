@@ -1,6 +1,8 @@
 package com.stonebreak.rendering.gameWorld.regions;
 
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
+import com.openmason.engine.vram.VramPlans;
+import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsGpuCuller;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsMultiDrawBatch;
@@ -51,6 +53,12 @@ public final class ChunkRegionRenderer {
 
     public static final int LAYER_ATLAS = 0;
     public static final int LAYER_WATER = 1;
+    /**
+     * Non-quad atlas geometry under a pulled vertex format (SBO stamps,
+     * crosses). Drawn as part of the atlas pass — callers never name this
+     * layer when drawing, only when uploading.
+     */
+    public static final int LAYER_STAMP = 2;
 
     private static volatile ChunkRegionRenderer instance;
     private static volatile Boolean enabled;
@@ -137,6 +145,7 @@ public final class ChunkRegionRenderer {
 
     private final Map<Long, MmsChunkRegion> atlasRegions = new HashMap<>();
     private final Map<Long, MmsChunkRegion> waterRegions = new HashMap<>();
+    private final Map<Long, MmsChunkRegion> stampRegions = new HashMap<>();
     private final MmsMultiDrawBatch batch = new MmsMultiDrawBatch(256);
     private final List<MmsChunkRegion> touchedRegions = new ArrayList<>();
     private final List<Chunk> legacyFallback = new ArrayList<>();
@@ -150,6 +159,7 @@ public final class ChunkRegionRenderer {
     private final Vector4f gpuPlaneTmp = new Vector4f();
     private final FrustumIntersection gpuPreCull = new FrustumIntersection();
     private final List<MmsChunkRegion> gpuVisibleRegions = new ArrayList<>();
+    private final List<Map.Entry<Long, MmsChunkRegion>> gpuCullCandidates = new ArrayList<>();
 
     // Frame stats for the debug overlay (written on the GL thread,
     // read by the overlay on the same thread).
@@ -188,10 +198,12 @@ public final class ChunkRegionRenderer {
         frameGpuPreCulledRegions = 0;
         pruneEmpty(atlasRegions);
         pruneEmpty(waterRegions);
+        pruneEmpty(stampRegions);
         // Plan-driven arena trim: give back the high-water capacity of
         // underused regions, at most one GPU-side repack per map per frame.
         trimOne(atlasRegions);
         trimOne(waterRegions);
+        trimOne(stampRegions);
     }
 
     private static void trimOne(Map<Long, MmsChunkRegion> regions) {
@@ -237,14 +249,19 @@ public final class ChunkRegionRenderer {
         }
         long key = regionKey(chunkX >> MmsChunkRegion.REGION_SHIFT,
             chunkZ >> MmsChunkRegion.REGION_SHIFT);
-        Map<Long, MmsChunkRegion> regions = layer == LAYER_WATER ? waterRegions : atlasRegions;
-        MmsChunkRegion region = regions.computeIfAbsent(key, k -> new MmsChunkRegion());
+        Map<Long, MmsChunkRegion> regions = regionsFor(layer);
+        // Atlas regions use the active format (possibly pulled); water and stamp
+        // geometry is per-vertex and lives in stamp-format regions.
+        MmsChunkRegion region = regions.computeIfAbsent(key, k -> layer == LAYER_ATLAS
+            ? new MmsChunkRegion()
+            : new MmsChunkRegion(MmsVertexFormat.active().stampFormat(),
+                VramPlans.arena(layer == LAYER_WATER
+                    ? VramPlans.POOL_CHUNK_WATER : VramPlans.POOL_CHUNK_STAMP)));
         // World-space chunk box for the GPU cull (full height, matching the
         // CPU chunk frustum test's quality).
         float minX = chunkX * (float) WorldConfiguration.CHUNK_SIZE;
         float minZ = chunkZ * (float) WorldConfiguration.CHUNK_SIZE;
-        return region.upload(mesh.getPackedVertexData(), mesh.getPackedIndexData(),
-            mesh.getVertexCount(), mesh.getIndexCount(),
+        return region.upload(mesh,
             minX, 0f, minZ,
             minX + WorldConfiguration.CHUNK_SIZE, WorldConfiguration.WORLD_HEIGHT,
             minZ + WorldConfiguration.CHUNK_SIZE);
@@ -257,6 +274,29 @@ public final class ChunkRegionRenderer {
      * afterwards. The caller owns all shader/state setup.
      */
     public void drawChunks(List<Chunk> chunks, int layer) {
+        drawLayer(chunks, layer);
+        if (layer == LAYER_ATLAS && !stampRegions.isEmpty()) {
+            drawLayer(chunks, LAYER_STAMP);
+        }
+    }
+
+    private static MmsRegionMeshHandle regionHandle(Chunk chunk, int layer) {
+        return switch (layer) {
+            case LAYER_WATER -> chunk.getRegionWaterHandle();
+            case LAYER_STAMP -> chunk.getRegionStampHandle();
+            default -> chunk.getRegionAtlasHandle();
+        };
+    }
+
+    private Map<Long, MmsChunkRegion> regionsFor(int layer) {
+        return switch (layer) {
+            case LAYER_WATER -> waterRegions;
+            case LAYER_STAMP -> stampRegions;
+            default -> atlasRegions;
+        };
+    }
+
+    private void drawLayer(List<Chunk> chunks, int layer) {
         int stamp = ++cycleCounter;
         touchedRegions.clear();
         legacyFallback.clear();
@@ -266,8 +306,7 @@ public final class ChunkRegionRenderer {
             if (!chunk.getCcoStateManager().isRenderable()) {
                 continue;
             }
-            MmsRegionMeshHandle handle = layer == LAYER_WATER
-                ? chunk.getRegionWaterHandle() : chunk.getRegionAtlasHandle();
+            MmsRegionMeshHandle handle = regionHandle(chunk, layer);
             if (handle != null && (handle.isClosed() || handle.region().isDeleted())) {
                 // Defensive: a handle whose region was torn down (or that was
                 // closed without the chunk field being cleared yet) must never
@@ -275,9 +314,12 @@ public final class ChunkRegionRenderer {
                 handle = null;
             }
             if (handle == null) {
+                // Legacy stamp handles are drawn by chunk.render() with the atlas.
                 boolean hasLegacy = layer == LAYER_WATER
                     ? chunk.getWaterRenderableHandle() != null
-                    : chunk.getMmsRenderableHandle() != null;
+                    : layer == LAYER_ATLAS
+                        && (chunk.getMmsRenderableHandle() != null
+                            || chunk.getStampRenderableHandle() != null);
                 if (hasLegacy) {
                     legacyFallback.add(chunk);
                 }
@@ -348,8 +390,8 @@ public final class ChunkRegionRenderer {
             }
         }
 
-        Map<Long, MmsChunkRegion> regions = layer == LAYER_WATER ? waterRegions : atlasRegions;
-        if (regions.isEmpty()) {
+        Map<Long, MmsChunkRegion> regions = regionsFor(layer);
+        if (regions.isEmpty() && (layer != LAYER_ATLAS || stampRegions.isEmpty())) {
             return true;
         }
 
@@ -358,7 +400,12 @@ public final class ChunkRegionRenderer {
         gpuPreCull.set(viewProj);
         float regionBlocks = MmsChunkRegion.REGION_SPAN * (float) WorldConfiguration.CHUNK_SIZE;
         gpuVisibleRegions.clear();
-        for (Map.Entry<Long, MmsChunkRegion> entry : regions.entrySet()) {
+        gpuCullCandidates.clear();
+        gpuCullCandidates.addAll(regions.entrySet());
+        if (layer == LAYER_ATLAS) {
+            gpuCullCandidates.addAll(stampRegions.entrySet()); // stamps ride the atlas pass
+        }
+        for (Map.Entry<Long, MmsChunkRegion> entry : gpuCullCandidates) {
             MmsChunkRegion region = entry.getValue();
             if (region.isDeleted() || region.isEmpty()) {
                 continue;
@@ -412,8 +459,7 @@ public final class ChunkRegionRenderer {
             if (!chunk.getCcoStateManager().isRenderable()) {
                 continue;
             }
-            MmsRegionMeshHandle handle = layer == LAYER_WATER
-                ? chunk.getRegionWaterHandle() : chunk.getRegionAtlasHandle();
+            MmsRegionMeshHandle handle = regionHandle(chunk, layer);
             if (handle != null && !handle.isClosed() && !handle.region().isDeleted()) {
                 continue; // Drawn by the region path.
             }
@@ -422,7 +468,8 @@ public final class ChunkRegionRenderer {
                     chunk.renderWater();
                     frameLegacyDraws++;
                 }
-            } else if (chunk.getMmsRenderableHandle() != null) {
+            } else if (chunk.getMmsRenderableHandle() != null
+                    || chunk.getStampRenderableHandle() != null) {
                 chunk.render();
                 frameLegacyDraws++;
             }
@@ -430,9 +477,28 @@ public final class ChunkRegionRenderer {
     }
 
     /** Deletes every region (world unload / renderer shutdown). GL thread. */
+    /** Tracked GPU bytes of all live regions in one layer (debug/telemetry). */
+    public long layerBytes(int layer) {
+        long total = 0;
+        for (MmsChunkRegion r : regionsFor(layer).values()) {
+            total += r.capacityBytes();
+        }
+        return total;
+    }
+
+    /** Live mesh count in one layer (debug/telemetry). */
+    public int layerMeshes(int layer) {
+        int n = 0;
+        for (MmsChunkRegion r : regionsFor(layer).values()) {
+            n += r.gpuCommandCount();
+        }
+        return n;
+    }
+
     public void reset() {
         deleteAll(atlasRegions);
         deleteAll(waterRegions);
+        deleteAll(stampRegions);
     }
 
     private static void deleteAll(Map<Long, MmsChunkRegion> regions) {

@@ -129,6 +129,11 @@ public final class GameWindow {
         // context current on this thread, creates GLCapabilities and makes the bindings usable.
         GL.createCapabilities();
         glReady = true;
+        if (Boolean.getBoolean("stonebreak.gldebug")) {
+            // Dev: route driver debug messages (errors, perf warnings) to stderr.
+            org.lwjgl.opengl.GLUtil.setupDebugMessageCallback(System.err);
+            org.lwjgl.opengl.GL11.glEnable(org.lwjgl.opengl.GL43.GL_DEBUG_OUTPUT_SYNCHRONOUS);
+        }
 
         adoptActualFramebufferSize();
         updateCursorScale();

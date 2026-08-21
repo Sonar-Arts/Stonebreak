@@ -23,6 +23,10 @@ import java.util.Map;
 public final class VramPlans {
 
     public static final String POOL_CHUNK_MESH = "chunk_mesh";
+    /** Near-chunk water regions (falls back to chunk_mesh's policy when a plan doesn't name it). */
+    public static final String POOL_CHUNK_WATER = "chunk_water";
+    /** Near-chunk stamp regions — non-cube SBO geometry under a pulled atlas format. */
+    public static final String POOL_CHUNK_STAMP = "chunk_stamp";
     public static final String POOL_LOD_TERRAIN = "lod_terrain";
     public static final String POOL_LOD_WATER = "lod_water";
     public static final String POOL_STAGING = "staging";

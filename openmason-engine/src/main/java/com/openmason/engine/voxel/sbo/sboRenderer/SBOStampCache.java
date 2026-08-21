@@ -60,6 +60,12 @@ public class SBOStampCache {
         return byState.get(null);
     }
 
+    /** Number of state variants registered for a block type (0 when none). */
+    public int variantCount(IBlockType blockType) {
+        Map<String, BlockStamp> byState = stamps.get(blockType.getId());
+        return byState == null ? 0 : byState.size();
+    }
+
     /** True if any stamp (default or variant) exists for this block type. */
     public boolean has(IBlockType blockType) {
         Map<String, BlockStamp> byState = stamps.get(blockType.getId());

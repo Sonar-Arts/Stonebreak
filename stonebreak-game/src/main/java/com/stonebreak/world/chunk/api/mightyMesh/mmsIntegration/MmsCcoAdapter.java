@@ -9,6 +9,10 @@ import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
 import com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult;
 import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilder;
+import com.openmason.engine.voxel.mms.mmsCore.MmsQuadCodec;
+import com.openmason.engine.voxel.mms.mmsCore.MmsQuadMeshBuilder;
+import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
+import com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilderPool;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsBlockGeometryDispatcher;
@@ -46,6 +50,19 @@ public class MmsCcoAdapter {
     private MmsWaterGenerator waterGenerator; // Created when world is set
     private World world; // Not final - can be set after construction
     private com.stonebreak.world.lighting.WorldLightingContext shadowContext; // Built when world is set
+    /**
+     * The pulled-quad builder for the build in progress on THIS thread (null
+     * when not pulling). Thread-local because one adapter serves every mesh
+     * worker.
+     */
+    private static final ThreadLocal<MmsQuadMeshBuilder> ACTIVE_QUAD_BUILDER = new ThreadLocal<>();
+    /** SBO blocks that are exact unit cubes (cube path) — null until an emitter is wired. */
+    private volatile SboCubeFaces sboCubes;
+    private static final boolean MESH_DEBUG = Boolean.getBoolean("stonebreak.mesh.debug");
+    private static final java.util.concurrent.atomic.AtomicInteger debugLogged =
+        new java.util.concurrent.atomic.AtomicInteger();
+    private static final java.util.concurrent.atomic.AtomicInteger debugFallbacks =
+        new java.util.concurrent.atomic.AtomicInteger();
     private SBOStampEmitter sboStampEmitter; // SBO block stamp emission via SBORendererAPI
 
     /**
@@ -118,7 +135,12 @@ public class MmsCcoAdapter {
     }
 
     private static final ThreadLocal<QuadSink> CLASSIC_SINK = ThreadLocal.withInitial(QuadSink::new);
+    /** Per-thread pulled-quad builder (QUAD16): cube faces bypass the per-vertex builder entirely. */
+    private static final ThreadLocal<MmsQuadMeshBuilder> QUAD_BUILDER =
+        ThreadLocal.withInitial(() -> new MmsQuadMeshBuilder(4096));
     private static final ThreadLocal<float[][]> MERGE_HOLDER = ThreadLocal.withInitial(() -> new float[1][]);
+    private static final ThreadLocal<float[][]> SBO_CUBE_SCRATCH =
+        ThreadLocal.withInitial(() -> new float[][]{new float[4], new float[4]});
 
     /**
      * Creates a CCO adapter with the specified services.
@@ -172,10 +194,17 @@ public class MmsCcoAdapter {
         // Deterministic at first mesh build; no seed races, no stale data.
         emitter.setLightSampler((face, vx, vy, vz, data) ->
             com.openmason.engine.voxel.lighting.VertexLightSampler.sampleCombined(shadowContext, vx, vy, vz, face));
-        // The native mesher's per-id class table must know which ids the SBO
-        // emitter owns so it leaves those cells to the Java pass.
-        CendaMesher.rebuildClassTable(type -> emitter.hasBlock(type));
-        logger.debug("[MmsCcoAdapter] SBO stamp emitter set ({} stamp types)", emitter.getCache().size());
+        // SBO blocks that are exact unit cubes take the cube path (kernel, greedy
+        // merge, pulled quads) with their stamp's textures; only shaped stamps
+        // stay on the per-triangle emitter. The native mesher's per-id class
+        // table must know which ids the emitter keeps so it leaves those cells
+        // to the Java pass, and which shaped ids can't occlude a cube face.
+        SboCubeFaces cubes = new SboCubeFaces(emitter);
+        this.sboCubes = cubes;
+        CendaMesher.rebuildClassTable(type -> emitter.hasBlock(type) && !cubes.isCube(type),
+            cubes::isShaped);
+        logger.debug("[MmsCcoAdapter] SBO stamp emitter set ({} stamp types, {} as cubes)",
+            emitter.getCache().size(), cubes.cubeCount());
     }
 
     /** Enables or disables greedy cube-face merging for subsequent mesh builds. */
@@ -233,8 +262,25 @@ public class MmsCcoAdapter {
         );
 
         try {
+            // Compact vertex formats store positions relative to the 8×8-chunk REGION
+            // origin so every mesh in a region arena shares one origin attribute
+            // (ChunkRegionRenderer groups by MmsChunkRegion.REGION_SHIFT). Legacy
+            // per-chunk handles carry the same origin in their own VAO, so the value
+            // is correct on both draw paths. Ignored by absolute-position formats.
+            float regionOriginX = (float) (((chunkData.getChunkX() >> MmsChunkRegion.REGION_SHIFT)
+                << MmsChunkRegion.REGION_SHIFT) * WorldConfiguration.CHUNK_SIZE);
+            float regionOriginZ = (float) (((chunkData.getChunkZ() >> MmsChunkRegion.REGION_SHIFT)
+                << MmsChunkRegion.REGION_SHIFT) * WorldConfiguration.CHUNK_SIZE);
+            atlasBuilder.setOrigin(regionOriginX, 0f, regionOriginZ);
+            waterBuilder.setOrigin(regionOriginX, 0f, regionOriginZ);
             int chunkX = chunkData.getChunkX();
             int chunkZ = chunkData.getChunkZ();
+            // Vertex pulling: greedy cube faces go to the 16-byte quad builder;
+            // atlasBuilder then only receives the non-quad "stamp" geometry
+            // (SBO stamps, crosses), which becomes ChunkMeshResult.stampMesh.
+            MmsQuadMeshBuilder quadBuilder = MmsVertexFormat.active().pulled()
+                ? QUAD_BUILDER.get().reset().setOrigin(regionOriginX, 0f, regionOriginZ) : null;
+            ACTIVE_QUAD_BUILDER.set(quadBuilder);
 
             // Skip the empty air space above the terrain — paletted storage
             // knows the highest non-air Y cheaply (uniform-air sections skip
@@ -292,7 +338,7 @@ public class MmsCcoAdapter {
                         }
 
                         // Handle SBO blocks via stamp emitter
-                        if (sboStampEmitter != null && sboStampEmitter.hasBlock(blockType)) {
+                        if (isStampBlock(blockType)) {
                             float worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE + 0.5f;
                             float worldY = ly + 0.5f;
                             float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE + 0.5f;
@@ -335,9 +381,21 @@ public class MmsCcoAdapter {
             }
 
             // Build final meshes (solids in the atlas mesh, water in its own)
-            MmsMeshData atlasMesh = atlasBuilder.build();
             MmsMeshData waterMesh = waterBuilder.build();
-            ChunkMeshResult meshResult = new ChunkMeshResult(atlasMesh, waterMesh, null);
+            MmsMeshData atlasMesh;
+            MmsMeshData stampMesh = null;
+            if (quadBuilder != null) {
+                atlasMesh = quadBuilder.build();
+                stampMesh = atlasBuilder.build();
+                if (MESH_DEBUG && debugLogged.incrementAndGet() <= 8) {
+                    System.out.println("[MmsCcoAdapter] chunk (" + chunkX + "," + chunkZ + ") pulled quads="
+                        + quadBuilder.getQuadCount() + " stampVerts=" + stampMesh.getVertexCount()
+                        + " origin=(" + quadBuilder.originX() + "," + quadBuilder.originZ() + ")");
+                }
+            } else {
+                atlasMesh = atlasBuilder.build();
+            }
+            ChunkMeshResult meshResult = new ChunkMeshResult(atlasMesh, waterMesh, null, stampMesh);
 
             // Update CCO state
             stateManager.removeState(CcoChunkState.MESH_GENERATING);
@@ -353,6 +411,7 @@ public class MmsCcoAdapter {
                 chunkData.getChunkX() + ", " + chunkData.getChunkZ() + ")", e);
         } finally {
             // Builders' data has been copied out by build(); safe to recycle.
+            ACTIVE_QUAD_BUILDER.remove();
             builderPool.release(atlasBuilder);
             builderPool.release(waterBuilder);
         }
@@ -413,9 +472,26 @@ public class MmsCcoAdapter {
 
         float[] vertices = cuboidGenerator.generateScaledFaceVertices(face, worldX, worldY, worldZ, w, h);
         float[] normals = cuboidGenerator.generateFaceNormals(face);
-        float[] texCoords = textureMapper.generateFaceTextureCoordinates(blockType, face);
-        float[] alphaFlags = textureMapper.generateAlphaFlags(blockType);
-        float[] layers = textureMapper.generateFaceLayers(blockType, face);
+        float[] texCoords;
+        float[] alphaFlags;
+        float[] layers;
+        SboCubeFaces cubes = sboCubes;
+        if (cubes != null && cubes.isCube(blockType)) {
+            // SBO unit cube: texture frame + layer from its stamp; alpha test for
+            // cutout cubes (leaves) as the stamp emitter would set it.
+            texCoords = cubes.texCoords(blockType, face);
+            float layer = cubes.layer(blockType, face);
+            float alpha = blockType.isTransparent() ? 1f : 0f;
+            float[][] scratch = SBO_CUBE_SCRATCH.get();
+            layers = scratch[0];
+            alphaFlags = scratch[1];
+            java.util.Arrays.fill(layers, layer);
+            java.util.Arrays.fill(alphaFlags, alpha);
+        } else {
+            texCoords = textureMapper.generateFaceTextureCoordinates(blockType, face);
+            alphaFlags = textureMapper.generateAlphaFlags(blockType);
+            layers = textureMapper.generateFaceLayers(blockType, face);
+        }
 
         // Affine UV frame from the mapper's unit-square corners: any authored
         // rotation/flip is preserved, unit rectangles reproduce the base
@@ -428,6 +504,28 @@ public class MmsCcoAdapter {
         float duV = texCoords[UV_C10[face] * 2 + 1] - v00;
         float dvU = texCoords[UV_C01[face] * 2] - u00;
         float dvV = texCoords[UV_C01[face] * 2 + 1] - v00;
+
+        MmsQuadMeshBuilder quads = ACTIVE_QUAD_BUILDER.get();
+        if (quads != null) {
+            int orient = MmsQuadCodec.orientation(u00, v00, duU, duV, dvU, dvV);
+            int layer = Math.round(layers[0]);
+            int qx = lx + chunkX * WorldConfiguration.CHUNK_SIZE - (int) quads.originX();
+            int qz = lz + chunkZ * WorldConfiguration.CHUNK_SIZE - (int) quads.originZ();
+            if (orient >= 0 && layer >= 0 && layer <= 65535
+                    && qx >= 0 && qx <= 255 && qz >= 0 && qz <= 255 && ly >= 0 && ly <= 511
+                    && w >= 1 && w <= 16 && h >= 1 && h <= 16
+                    && quads.addQuad(qx, ly, qz, face, w, h, orient, alphaFlags[0] != 0f, false, layer,
+                        l0, l1, l2, l3)) {
+                return;
+            }
+            // Not expressible as a pulled quad (exotic UV frame / oversize) —
+            // fall through to the per-vertex stamp mesh so nothing disappears.
+            if (MESH_DEBUG && debugFallbacks.incrementAndGet() <= 8) {
+                System.out.printf("[MmsCcoAdapter] quad fallback: orient=%d layer=%d qx=%d qz=%d ly=%d w=%d h=%d "
+                    + "uv00=(%.3f,%.3f) du=(%.3f,%.3f) dv=(%.3f,%.3f)%n", orient, layer, qx, qz, ly, w, h,
+                    u00, v00, duU, duV, dvU, dvV);
+            }
+        }
 
         float[] lights = {l0, l1, l2, l3};
 
@@ -495,7 +593,7 @@ public class MmsCcoAdapter {
             if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(blockType)) {
                 continue;
             }
-            if (sboStampEmitter != null && sboStampEmitter.hasBlock(blockType)) {
+            if (isStampBlock(blockType)) {
                 float worldX = lx + chunkX * WorldConfiguration.CHUNK_SIZE + 0.5f;
                 float worldY = ly + 0.5f;
                 float worldZ = lz + chunkZ * WorldConfiguration.CHUNK_SIZE + 0.5f;
@@ -671,13 +769,19 @@ public class MmsCcoAdapter {
             float[] normals = cuboidGenerator.generateFaceNormals(face);
 
             // Generate texture coordinates
-            float[] texCoords = textureMapper.generateFaceTextureCoordinates(blockType, face);
+            float[] texCoords = (sboCubes != null && sboCubes.isCube(blockType))
+                ? sboCubes.texCoords(blockType, face)
+                : textureMapper.generateFaceTextureCoordinates(blockType, face);
 
             // Generate alpha flags
             float[] alphaFlags = textureMapper.generateAlphaFlags(blockType);
 
             // Generate texture-array layer indices
             float[] layers = textureMapper.generateFaceLayers(blockType, face);
+            if (sboCubes != null && sboCubes.isCube(blockType)) {
+                layers = layers.clone();
+                java.util.Arrays.fill(layers, sboCubes.layer(blockType, face));
+            }
 
             // Per-vertex smooth lighting — each vertex averages the 4 air-side
             // cells it touches. Gives gradient shadow transitions across faces.
@@ -872,6 +976,15 @@ public class MmsCcoAdapter {
     /**
      * Checks if a block type is a cross-section block.
      */
+    /** True when the block must be emitted by the SBO stamp emitter (shaped SBO geometry). */
+    private boolean isStampBlock(BlockType blockType) {
+        if (sboStampEmitter == null || !sboStampEmitter.hasBlock(blockType)) {
+            return false;
+        }
+        SboCubeFaces cubes = sboCubes;
+        return cubes == null || !cubes.isCube(blockType);
+    }
+
     private boolean isCrossBlock(BlockType blockType) {
         return blockType == BlockType.ROSE || blockType == BlockType.DANDELION || blockType == BlockType.WILDGRASS;
     }

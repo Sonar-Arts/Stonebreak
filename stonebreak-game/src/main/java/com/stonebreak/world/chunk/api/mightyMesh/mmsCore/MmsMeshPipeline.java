@@ -350,7 +350,8 @@ public final class MmsMeshPipeline {
             // stale handle for that part gets cleared.
             boolean hasGeometry = (meshData != null && !meshData.isEmpty())
                 || meshResult.hasWaterMesh()
-                || meshResult.hasSBOMesh();
+                || meshResult.hasSBOMesh()
+                || meshResult.hasStampMesh();
 
             if (hasGeometry) {
                 // Store the full mesh result on the chunk so SBO mesh also gets uploaded
@@ -565,6 +566,36 @@ public final class MmsMeshPipeline {
                     }
                     task.chunk.setWaterRenderableHandle(newWater);
                     task.chunk.setRegionWaterHandle(newRegionWater);
+
+                    // Stamp mesh (pulled formats: non-quad atlas geometry) — swapped
+                    // in the same block for the same reason as water.
+                    MmsRenderableHandle oldStamp = task.chunk.getStampRenderableHandle();
+                    if (oldStamp != null) {
+                        handlesPendingGpuCleanup.offer(oldStamp);
+                    }
+                    com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle oldRegionStamp =
+                        task.chunk.getRegionStampHandle();
+                    if (oldRegionStamp != null) {
+                        handlesPendingGpuCleanup.offer(oldRegionStamp);
+                    }
+                    com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle newRegionStamp = null;
+                    MmsRenderableHandle newStamp = null;
+                    if (meshResult != null && meshResult.hasStampMesh()) {
+                        if (regionMode) {
+                            newRegionStamp = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer
+                                .getInstance().upload(
+                                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_STAMP,
+                                    task.chunk.getChunkX(), task.chunk.getChunkZ(), meshResult.stampMesh());
+                        }
+                        if (newRegionStamp == null) {
+                            newStamp = MmsAPI.getInstance().uploadMeshToGPU(meshResult.stampMesh());
+                        }
+                        if (meshResult.stampMesh().hasTranslucentGeometry()) {
+                            task.chunk.setAtlasHasTranslucent(true);
+                        }
+                    }
+                    task.chunk.setStampRenderableHandle(newStamp);
+                    task.chunk.setRegionStampHandle(newRegionStamp);
 
                     // Upload SBO meshes if the chunk has any (one per block type)
                     if (meshResult != null && meshResult.hasSBOMesh()) {

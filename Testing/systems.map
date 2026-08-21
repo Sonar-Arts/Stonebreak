@@ -44,6 +44,7 @@ fastlod	stonebreak-game	com/stonebreak/world/fastlod/**/*Test,com/stonebreak/ren
 leaves	stonebreak-game	com/stonebreak/world/leaves/**/*Test
 terrain-gen	stonebreak-game	com/stonebreak/world/generation/**/*Test
 persistence	stonebreak-game	com/stonebreak/world/save/**/*Test
+bench	stonebreak-game	com/stonebreak/world/bench/**/*Test
 
 # ---- tool ----
 mcp	openmason-tool	com/openmason/main/systems/mcp/**/*Test

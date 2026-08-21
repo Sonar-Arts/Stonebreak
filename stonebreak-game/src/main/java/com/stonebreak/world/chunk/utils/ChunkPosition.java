@@ -51,7 +51,9 @@ public class ChunkPosition {
     
     @Override
     public int hashCode() {
-        return Objects.hash(x, z);
+        // Same value Objects.hash(x, z) produced (31·(31+x)+z) without the
+        // varargs Object[] + boxing it allocated on every chunk-map lookup.
+        return 31 * (31 + x) + z;
     }
     
     @Override

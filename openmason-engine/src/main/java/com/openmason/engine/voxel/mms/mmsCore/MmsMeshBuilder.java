@@ -62,6 +62,14 @@ public final class MmsMeshBuilder {
     private boolean validateOnBuild = true;
 
     /**
+     * World-space origin the packed positions are encoded relative to under
+     * {@link MmsVertexFormat#localPositions() local-position} formats. Arena
+     * uploads need every mesh in a region to share the REGION origin; the
+     * default (0,0,0) is only valid for meshes within ±512 blocks of it.
+     */
+    private float originX, originY, originZ;
+
+    /**
      * Creates a new mesh builder with default capacity.
      */
     private MmsMeshBuilder() {
@@ -114,6 +122,14 @@ public final class MmsMeshBuilder {
      */
     public MmsMeshBuilder setValidateOnBuild(boolean validate) {
         this.validateOnBuild = validate;
+        return this;
+    }
+
+    /** Sets the world-space origin local-position formats encode against (see field doc). */
+    public MmsMeshBuilder setOrigin(float x, float y, float z) {
+        this.originX = x;
+        this.originY = y;
+        this.originZ = z;
         return this;
     }
 
@@ -316,6 +332,7 @@ public final class MmsMeshBuilder {
         indexSize = 0;
         currentFaceVertexStart = -1;
         totalVertices = 0;
+        originX = originY = originZ = 0f;
         return this;
     }
 
@@ -380,7 +397,13 @@ public final class MmsMeshBuilder {
         }
 
         int vertexCount = totalVertices;
-        byte[] vertexBytes = new byte[vertexCount * MmsBufferLayout.VERTEX_STRIDE_BYTES];
+        // Per-vertex builders never produce pulled meshes: under QUAD16 this
+        // builder carries the stamp/water/LOD geometry in the stamp format.
+        MmsVertexFormat fmt = MmsVertexFormat.active().stampFormat();
+        float ox = fmt.localPositions() ? originX : 0f;
+        float oy = fmt.localPositions() ? originY : 0f;
+        float oz = fmt.localPositions() ? originZ : 0f;
+        byte[] vertexBytes = new byte[vertexCount * fmt.stride()];
         ByteBuffer vertexBuf = ByteBuffer.wrap(vertexBytes).order(ByteOrder.nativeOrder());
         for (int i = 0; i < vertexCount; i++) {
             float x = positions[i * 3];
@@ -390,12 +413,10 @@ public final class MmsMeshBuilder {
                 throw new IllegalArgumentException(
                     "Mesh validation failed: non-finite vertex position at vertex " + i);
             }
-            vertexBuf.putFloat(x).putFloat(y).putFloat(z);
-            vertexBuf.putFloat(texCoords[i * 2]).putFloat(texCoords[i * 2 + 1]);
-            vertexBuf.putFloat(normals[i * 3]).putFloat(normals[i * 3 + 1]).putFloat(normals[i * 3 + 2]);
-            vertexBuf.putInt(MmsBufferLayout.packFlags(
-                waterFlags[i], alphaFlags[i], translucentFlags[i], lightValues[i]));
-            vertexBuf.putFloat(layerIndices[i]);
+            fmt.encode(vertexBuf, x, y, z, texCoords[i * 2], texCoords[i * 2 + 1],
+                normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2],
+                waterFlags[i], alphaFlags[i], translucentFlags[i], lightValues[i], layerIndices[i],
+                ox, oy, oz);
         }
 
         boolean shortIndices = vertexCount <= 65536;
@@ -415,7 +436,8 @@ public final class MmsMeshBuilder {
             }
         }
 
-        return MmsMeshData.fromPacked(vertexBytes, indexBytes, shortIndices, vertexCount, indexSize);
+        return MmsMeshData.fromPacked(vertexBytes, indexBytes, shortIndices, vertexCount, indexSize,
+            fmt, ox, oy, oz);
     }
 
     /**

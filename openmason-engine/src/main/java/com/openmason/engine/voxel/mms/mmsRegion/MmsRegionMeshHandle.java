@@ -57,7 +57,7 @@ public final class MmsRegionMeshHandle implements AutoCloseable {
 
     /** Byte offset of the mesh's indices in the region index buffer. */
     public long indexOffsetBytes() {
-        return (long) indexSegment.offset() * Short.BYTES;
+        return indexSegment == null ? 0L : (long) indexSegment.offset() * Short.BYTES;
     }
 
     public boolean isClosed() {

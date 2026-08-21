@@ -58,6 +58,10 @@ public final class MmsMeshData {
     private final byte[] packedVertexData;     // interleaved MmsBufferLayout stride, native order
     private final byte[] packedIndexData;      // u16 or u32 indices, native order
     private final boolean shortIndices;
+    /** Byte layout of {@link #packedVertexData} (LEGACY40 for SoA meshes). */
+    private final MmsVertexFormat format;
+    /** World-space origin the packed positions are relative to (0 for LEGACY40 / SoA). */
+    private final float originX, originY, originZ;
 
     // Metadata
     private final int vertexCount;
@@ -131,6 +135,10 @@ public final class MmsMeshData {
         this.packedVertexData = null;
         this.packedIndexData = null;
         this.shortIndices = false;
+        this.format = MmsVertexFormat.LEGACY40;
+        this.originX = 0f;
+        this.originY = 0f;
+        this.originZ = 0f;
 
         // Validate index count
         if (indexCount < 0 || indexCount > indices.length) {
@@ -163,7 +171,12 @@ public final class MmsMeshData {
 
     /** Packed-representation constructor; see {@link #fromPacked}. */
     private MmsMeshData(byte[] packedVertexData, byte[] packedIndexData, boolean shortIndices,
-                        int vertexCount, int indexCount) {
+                        int vertexCount, int indexCount, MmsVertexFormat format,
+                        float originX, float originY, float originZ) {
+        this.format = format;
+        this.originX = originX;
+        this.originY = originY;
+        this.originZ = originZ;
         this.vertexPositions = null;
         this.textureCoordinates = null;
         this.vertexNormals = null;
@@ -183,12 +196,22 @@ public final class MmsMeshData {
 
         // Translucent flag = byte 2 of the packed flags word per vertex.
         boolean translucent = false;
-        int stride = MmsBufferLayout.VERTEX_STRIDE_BYTES;
-        int flagByte = (int) MmsBufferLayout.FLAGS_OFFSET + 2;
-        for (int i = 0; i < vertexCount; i++) {
-            if (packedVertexData[i * stride + flagByte] != 0) {
-                translucent = true;
-                break;
+        if (format.pulled()) {
+            ByteBuffer quads = ByteBuffer.wrap(packedVertexData).order(ByteOrder.nativeOrder());
+            for (int q = 0; q < vertexCount / 4; q++) {
+                if (MmsQuadCodec.translucent(quads.getInt(q * MmsQuadCodec.QUAD_BYTES + 4))) {
+                    translucent = true;
+                    break;
+                }
+            }
+        } else {
+            int stride = format.stride();
+            int flagByte = format.flagsOffset() + 2;
+            for (int i = 0; i < vertexCount; i++) {
+                if (packedVertexData[i * stride + flagByte] != 0) {
+                    translucent = true;
+                    break;
+                }
             }
         }
         this.hasTranslucent = translucent;
@@ -206,18 +229,38 @@ public final class MmsMeshData {
      */
     public static MmsMeshData fromPacked(byte[] packedVertexData, byte[] packedIndexData,
                                          boolean shortIndices, int vertexCount, int indexCount) {
+        return fromPacked(packedVertexData, packedIndexData, shortIndices, vertexCount, indexCount,
+            MmsVertexFormat.LEGACY40, 0f, 0f, 0f);
+    }
+
+    /**
+     * Wraps packed bytes in the given {@link MmsVertexFormat}. For formats with
+     * local positions, {@code origin*} is the world-space point the stored
+     * positions are relative to (the region origin for arena uploads).
+     */
+    public static MmsMeshData fromPacked(byte[] packedVertexData, byte[] packedIndexData,
+                                         boolean shortIndices, int vertexCount, int indexCount,
+                                         MmsVertexFormat format,
+                                         float originX, float originY, float originZ) {
         Objects.requireNonNull(packedVertexData, "packedVertexData cannot be null");
         Objects.requireNonNull(packedIndexData, "packedIndexData cannot be null");
+        Objects.requireNonNull(format, "format cannot be null");
         if (vertexCount <= 0 || indexCount <= 0) {
             throw new IllegalArgumentException("Packed meshes cannot be empty; use empty()");
         }
-        if (packedVertexData.length != vertexCount * MmsBufferLayout.VERTEX_STRIDE_BYTES) {
+        if (packedVertexData.length != vertexCount * format.stride()) {
             throw new IllegalArgumentException(String.format(
                 "Packed vertex data size mismatch: expected %d bytes, got %d",
-                vertexCount * MmsBufferLayout.VERTEX_STRIDE_BYTES, packedVertexData.length));
+                vertexCount * format.stride(), packedVertexData.length));
         }
         int bytesPerIndex = shortIndices ? Short.BYTES : Integer.BYTES;
-        if (packedIndexData.length != indexCount * bytesPerIndex) {
+        if (format.pulled()) {
+            if (packedIndexData.length != 0 || !shortIndices || vertexCount % 4 != 0
+                    || indexCount != vertexCount / 4 * 6) {
+                throw new IllegalArgumentException("Pulled meshes carry no index data: "
+                    + "vertexCount must be 4×quads and indexCount 6×quads");
+            }
+        } else if (packedIndexData.length != indexCount * bytesPerIndex) {
             throw new IllegalArgumentException(String.format(
                 "Packed index data size mismatch: expected %d bytes, got %d",
                 indexCount * bytesPerIndex, packedIndexData.length));
@@ -231,7 +274,7 @@ public final class MmsMeshData {
                 "u16 indices cannot address " + vertexCount + " vertices");
         }
         return new MmsMeshData(packedVertexData, packedIndexData, shortIndices,
-            vertexCount, indexCount);
+            vertexCount, indexCount, format, originX, originY, originZ);
     }
 
     /**
@@ -250,20 +293,44 @@ public final class MmsMeshData {
         if (isPacked() || isEmpty()) {
             return this;
         }
-        byte[] vertexBytes = new byte[vertexCount * MmsBufferLayout.VERTEX_STRIDE_BYTES];
+        MmsVertexFormat fmt = MmsVertexFormat.active().stampFormat();
+        if (!fmt.localPositions()) {
+            return toPacked(fmt, 0f, 0f, 0f);
+        }
+        // Self-contained origin: the integer floor of the mesh's minimum corner.
+        // Good for stand-alone handles; arena uploads must pass the REGION origin
+        // via toPacked(format, ox, oy, oz) so every mesh in the region agrees.
+        float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY, minZ = Float.POSITIVE_INFINITY;
+        for (int i = 0; i < vertexCount; i++) {
+            minX = Math.min(minX, vertexPositions[i * 3]);
+            minY = Math.min(minY, vertexPositions[i * 3 + 1]);
+            minZ = Math.min(minZ, vertexPositions[i * 3 + 2]);
+        }
+        return toPacked(fmt, (float) Math.floor(minX), (float) Math.floor(minY), (float) Math.floor(minZ));
+    }
+
+    /**
+     * Packs this SoA mesh in {@code fmt} with positions relative to the given
+     * world-space origin (ignored by formats with absolute positions).
+     */
+    public MmsMeshData toPacked(MmsVertexFormat fmt, float originX, float originY, float originZ) {
+        if (isPacked() || isEmpty()) {
+            return this;
+        }
+        fmt = fmt.stampFormat(); // SoA geometry can never be pulled
+        if (!fmt.localPositions()) {
+            originX = originY = originZ = 0f;
+        }
+        byte[] vertexBytes = new byte[vertexCount * fmt.stride()];
         ByteBuffer vertexBuf = ByteBuffer.wrap(vertexBytes).order(ByteOrder.nativeOrder());
         for (int i = 0; i < vertexCount; i++) {
             int p3 = i * 3, p2 = i * 2;
-            vertexBuf.putFloat(vertexPositions[p3])
-                     .putFloat(vertexPositions[p3 + 1])
-                     .putFloat(vertexPositions[p3 + 2]);
-            vertexBuf.putFloat(textureCoordinates[p2]).putFloat(textureCoordinates[p2 + 1]);
-            vertexBuf.putFloat(vertexNormals[p3])
-                     .putFloat(vertexNormals[p3 + 1])
-                     .putFloat(vertexNormals[p3 + 2]);
-            vertexBuf.putInt(MmsBufferLayout.packFlags(
-                waterHeightFlags[i], alphaTestFlags[i], translucentFlags[i], lightValues[i]));
-            vertexBuf.putFloat(layerIndices[i]);
+            fmt.encode(vertexBuf,
+                vertexPositions[p3], vertexPositions[p3 + 1], vertexPositions[p3 + 2],
+                textureCoordinates[p2], textureCoordinates[p2 + 1],
+                vertexNormals[p3], vertexNormals[p3 + 1], vertexNormals[p3 + 2],
+                waterHeightFlags[i], alphaTestFlags[i], translucentFlags[i], lightValues[i],
+                layerIndices[i], originX, originY, originZ);
         }
         boolean shortIdx = vertexCount <= 65536;
         byte[] indexBytes = new byte[indexCount * (shortIdx ? Short.BYTES : Integer.BYTES)];
@@ -277,7 +344,8 @@ public final class MmsMeshData {
                 indexBuf.putInt(indices[i]);
             }
         }
-        return fromPacked(vertexBytes, indexBytes, shortIdx, vertexCount, indexCount);
+        return fromPacked(vertexBytes, indexBytes, shortIdx, vertexCount, indexCount,
+            fmt, originX, originY, originZ);
     }
 
     /**
@@ -405,6 +473,24 @@ public final class MmsMeshData {
         return shortIndices;
     }
 
+    /** Byte layout of the packed vertex data ({@link MmsVertexFormat#LEGACY40} for SoA meshes). */
+    public MmsVertexFormat getFormat() {
+        return format;
+    }
+
+    /** World-space X the packed positions are relative to (0 unless the format has local positions). */
+    public float getOriginX() {
+        return originX;
+    }
+
+    public float getOriginY() {
+        return originY;
+    }
+
+    public float getOriginZ() {
+        return originZ;
+    }
+
     /**
      * True when any vertex carries a non-zero translucent flag (ice). Lets
      * the transparent render pass skip meshes that would contribute nothing —
@@ -426,7 +512,7 @@ public final class MmsMeshData {
      */
     public float[] getVertexPositions() {
         if (packedVertexData != null) {
-            return materializeFloats(0, 3);
+            return materializePositions();
         }
         return vertexPositions;
     }
@@ -436,7 +522,7 @@ public final class MmsMeshData {
      */
     public float[] getTextureCoordinates() {
         if (packedVertexData != null) {
-            return materializeFloats((int) MmsBufferLayout.TEXTURE_OFFSET, 2);
+            return materialize(2, (buf, i, c) -> format.texCoord(buf, i, c));
         }
         return textureCoordinates;
     }
@@ -446,7 +532,7 @@ public final class MmsMeshData {
      */
     public float[] getVertexNormals() {
         if (packedVertexData != null) {
-            return materializeFloats((int) MmsBufferLayout.NORMAL_OFFSET, 3);
+            return materialize(3, (buf, i, c) -> format.normal(buf, i, c));
         }
         return vertexNormals;
     }
@@ -496,7 +582,7 @@ public final class MmsMeshData {
      */
     public float[] getLayerIndices() {
         if (packedVertexData != null) {
-            return materializeFloats((int) MmsBufferLayout.LAYER_OFFSET, 1);
+            return materialize(1, (buf, i, c) -> format.layer(buf, i));
         }
         return layerIndices;
     }
@@ -505,6 +591,20 @@ public final class MmsMeshData {
      * Gets index data.
      */
     public int[] getIndices() {
+        if (format.pulled()) {
+            // Shared quad pattern (b, b+2, b+1, b, b+3, b+2) — what the shared EBO draws.
+            int[] out = new int[indexCount];
+            for (int q = 0, i = 0; q < vertexCount / 4; q++) {
+                int b = q * 4;
+                out[i++] = b;
+                out[i++] = b + 2;
+                out[i++] = b + 1;
+                out[i++] = b;
+                out[i++] = b + 3;
+                out[i++] = b + 2;
+            }
+            return out;
+        }
         if (packedIndexData != null) {
             int[] out = new int[indexCount];
             java.nio.ByteBuffer buf =
@@ -524,28 +624,32 @@ public final class MmsMeshData {
     }
 
     /** Decodes {@code components} floats per vertex starting at a stride offset. */
-    private float[] materializeFloats(int byteOffset, int components) {
+    private interface Component {
+        float read(java.nio.ByteBuffer buf, int vertex, int component);
+    }
+
+    private float[] materialize(int components, Component reader) {
         float[] out = new float[vertexCount * components];
         java.nio.ByteBuffer buf =
             java.nio.ByteBuffer.wrap(packedVertexData).order(java.nio.ByteOrder.nativeOrder());
-        int stride = MmsBufferLayout.VERTEX_STRIDE_BYTES;
         for (int i = 0; i < vertexCount; i++) {
-            int base = i * stride + byteOffset;
             for (int c = 0; c < components; c++) {
-                out[i * components + c] = buf.getFloat(base + c * Float.BYTES);
+                out[i * components + c] = reader.read(buf, i, c);
             }
         }
         return out;
     }
 
-    /** Decodes one packed flag byte per vertex back to a [0,1] float. */
+    private float[] materializePositions() {
+        return materialize(3, (buf, i, c) -> format.position(buf, i, c, originX, originY, originZ));
+    }
+
     private float[] materializeFlagBytes(int flagByte) {
         float[] out = new float[vertexCount];
-        int stride = MmsBufferLayout.VERTEX_STRIDE_BYTES;
         java.nio.ByteBuffer buf =
             java.nio.ByteBuffer.wrap(packedVertexData).order(java.nio.ByteOrder.nativeOrder());
         for (int i = 0; i < vertexCount; i++) {
-            int packed = buf.getInt(i * stride + (int) MmsBufferLayout.FLAGS_OFFSET);
+            int packed = format.flags(buf, i);
             out[i] = ((packed >>> (flagByte * 8)) & 0xFF) / 255.0f;
         }
         return out;

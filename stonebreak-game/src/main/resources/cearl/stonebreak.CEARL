@@ -44,18 +44,48 @@ plan stonebreak
     ~ Falls back to copy growth on drivers without ARB_sparse_buffer; kill
     ~ switch: -Dstonebreak.sparse=off (watch the console for
     ~ "[MmsChunkRegion] Sparse arenas ENABLED/unavailable").
+    ~ Arena sizes were re-derived with the chunk footprint lab
+    ~ (Testing/chunk-lab.sh, 2026-08-20) once the atlas moved to the pulled
+    ~ 16-byte quad format: a dense 8x8 region's atlas is ~1.3 MiB of quads, so
+    ~ it starts at 1280 KiB (two fewer copy-grows on cards without sparse
+    ~ buffers); water and stamp geometry get their own, smaller pools below
+    ~ instead of inheriting an atlas-sized first allocation they never fill.
     pool chunk_mesh
         category CHUNK_MESH
-        budget 45%
+        budget 35%
         priority 100               ~ last to give ground under pressure
         grow sparse
         arena
-            vertex 640 KiB         ~ 16384 vertices at the 40-byte stride
-            index 48 KiB           ~ 24576 u16 indices
+            vertex 1280 KiB        ~ 81920 pulled quads (16 B) per 8x8 region
+            index 48 KiB           ~ 24576 u16 indices (unused by pulled regions)
             growth 1.5             ~ grown arenas multiply capacity by this
             reserve 12.5%          ~ ...and keep this much slack over the need
             align 4                ~ element alignment keeps quad math tidy
             trim 40%               ~ shrink when live bytes fall under this share
+        end
+    end
+
+    ~ Near-water regions: a 64-column region carries 0.3–1.3 MiB of 20-byte
+    ~ water vertices (lab tiers 8/16), so the first allocation is a quarter of
+    ~ the old shared size.
+    pool chunk_water from chunk_mesh
+        budget 2%
+        priority 90
+        arena
+            vertex 320 KiB
+            index 24 KiB
+        end
+    end
+
+    ~ Stamp regions: SBO geometry that isn't a unit cube (snow layers, stairs,
+    ~ slabs, crosses) — ~45 KiB per chunk in a tundra, so a dense region sits
+    ~ around 3 MiB; start at 1 MiB and let growth/trim follow the biome.
+    pool chunk_stamp from chunk_mesh
+        budget 8%
+        priority 95
+        arena
+            vertex 1 MiB
+            index 64 KiB
         end
     end
 

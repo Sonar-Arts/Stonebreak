@@ -4,12 +4,17 @@ import com.openmason.engine.diagnostics.GpuMemoryTracker;
 import com.openmason.engine.vram.VramArenaPolicy;
 import com.openmason.engine.vram.VramPlans;
 import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
+import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
+import com.openmason.engine.voxel.mms.mmsCore.MmsQuadCodec;
+import com.openmason.engine.voxel.mms.mmsCore.MmsSharedQuadIndexBuffer;
+import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.openmason.engine.voxel.mms.mmsCore.MmsStagingRing;
 import com.openmason.engine.voxel.mms.mmsCore.MmsUploadBufferPool;
 import org.lwjgl.opengl.ARBSparseBuffer;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL31;
@@ -68,6 +73,16 @@ public final class MmsChunkRegion {
     private final MmsArenaAllocator indexAlloc;
 
     // Sparse mode (null/0 when running the classic copy path).
+    /** Packed vertex layout every mesh in this region must use (fixed at creation). */
+    private final MmsVertexFormat format;
+    private final int vertexStride;
+    /** Vertex pulling: no index arena (shared EBO), quads read via a buffer texture. */
+    private final boolean pulled;
+    private int quadTextureId;
+    /** World-space origin shared by every mesh in the region (local-position formats). */
+    private float originX, originY, originZ;
+    private boolean originSet;
+    private int originBufferId;
     private final boolean sparse;
     private final long pageSize;
     private final BitSet vertexPages;
@@ -105,8 +120,13 @@ public final class MmsChunkRegion {
      * the index arena by 2.
      */
     public MmsChunkRegion(VramArenaPolicy policy) {
-        this(elementCount(policy.vertexInitialBytes(), MmsBufferLayout.VERTEX_STRIDE_BYTES),
-            elementCount(policy.indexInitialBytes(), Short.BYTES), policy);
+        this(MmsVertexFormat.active(), policy);
+    }
+
+    /** Creates a region holding meshes of an explicit format (stamp regions use {@code stampFormat()}). */
+    public MmsChunkRegion(MmsVertexFormat format, VramArenaPolicy policy) {
+        this(elementCount(policy.vertexInitialBytes(), format.stride()),
+            format.pulled() ? 0 : elementCount(policy.indexInitialBytes(), Short.BYTES), policy, format);
     }
 
     /**
@@ -117,19 +137,28 @@ public final class MmsChunkRegion {
      * builtin default policy.
      */
     public MmsChunkRegion(int initialVertexCapacity, int initialIndexCapacity) {
-        this(initialVertexCapacity, initialIndexCapacity, VramPlans.defaultArena());
+        this(initialVertexCapacity, initialIndexCapacity, VramPlans.defaultArena(),
+            MmsVertexFormat.active());
     }
 
     private MmsChunkRegion(int initialVertexCapacity, int initialIndexCapacity,
-                           VramArenaPolicy policy) {
+                           VramArenaPolicy policy, MmsVertexFormat format) {
+        this.format = format;
+        this.vertexStride = format.stride();
+        this.pulled = format.pulled();
+        if (pulled) {
+            initialIndexCapacity = 0;
+        }
         this.growthFactor = policy.growthFactor();
         this.growthReserve = policy.growthReserve();
-        this.alignElements = policy.alignElements();
+        // Pulled arenas must stay quad-aligned (one quad = 4 "vertex" elements
+        // = one RGBA32UI texel): never let a plan's align drop below 4.
+        this.alignElements = pulled ? Math.max(4, policy.alignElements()) : policy.alignElements();
         this.trimFraction = policy.trimFraction();
         this.initialVertexCapacity = initialVertexCapacity;
         this.initialIndexCapacity = initialIndexCapacity;
         this.vertexAlloc = new MmsArenaAllocator(initialVertexCapacity);
-        this.indexAlloc = new MmsArenaAllocator(initialIndexCapacity);
+        this.indexAlloc = pulled ? null : new MmsArenaAllocator(initialIndexCapacity);
 
         this.sparse = policy.sparseGrowth() && sparseSupported();
         if (sparse) {
@@ -138,11 +167,11 @@ public final class MmsChunkRegion {
             this.vertexPages = new BitSet();
             this.indexPages = new BitSet();
             this.vertexVirtualBytes = virtualBytes(
-                (long) initialVertexCapacity * MmsBufferLayout.VERTEX_STRIDE_BYTES, pageSize);
-            this.indexVirtualBytes = virtualBytes(
+                (long) initialVertexCapacity * vertexStride, pageSize);
+            this.indexVirtualBytes = pulled ? 0 : virtualBytes(
                 (long) initialIndexCapacity * Short.BYTES, pageSize);
             this.vertexBufferId = createSparseBuffer(vertexVirtualBytes);
-            this.indexBufferId = createSparseBuffer(indexVirtualBytes);
+            this.indexBufferId = pulled ? MmsSharedQuadIndexBuffer.id() : createSparseBuffer(indexVirtualBytes);
             // Physical pages commit on demand under the first uploads — an
             // empty sparse region costs (almost) nothing.
             trackedBytes = 0;
@@ -153,17 +182,25 @@ public final class MmsChunkRegion {
             this.vertexBufferId = GL15.glGenBuffers();
             GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, vertexBufferId);
             GL15.glBufferData(GL31.GL_COPY_WRITE_BUFFER,
-                (long) initialVertexCapacity * MmsBufferLayout.VERTEX_STRIDE_BYTES,
+                (long) initialVertexCapacity * vertexStride,
                 GL15.GL_STATIC_DRAW);
-            this.indexBufferId = GL15.glGenBuffers();
-            GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, indexBufferId);
-            GL15.glBufferData(GL31.GL_COPY_WRITE_BUFFER,
-                (long) initialIndexCapacity * Short.BYTES, GL15.GL_STATIC_DRAW);
+            if (pulled) {
+                this.indexBufferId = MmsSharedQuadIndexBuffer.id();
+            } else {
+                this.indexBufferId = GL15.glGenBuffers();
+                GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, indexBufferId);
+                GL15.glBufferData(GL31.GL_COPY_WRITE_BUFFER,
+                    (long) initialIndexCapacity * Short.BYTES, GL15.GL_STATIC_DRAW);
+            }
             GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, 0);
-            trackedBytes = (long) initialVertexCapacity * MmsBufferLayout.VERTEX_STRIDE_BYTES
+            trackedBytes = (long) initialVertexCapacity * vertexStride
                 + (long) initialIndexCapacity * Short.BYTES;
         }
 
+        if (pulled) {
+            this.quadTextureId = GL11.glGenTextures();
+            attachQuadTexture();
+        }
         this.vaoId = GL30.glGenVertexArrays();
         rebuildVao();
         GpuMemoryTracker.getInstance().track(GpuMemoryTracker.Category.CHUNK_MESH, trackedBytes);
@@ -262,29 +299,77 @@ public final class MmsChunkRegion {
                                       int vertexCount, int indexCount,
                                       float minX, float minY, float minZ,
                                       float maxX, float maxY, float maxZ) {
+        return upload(vertexBytes, indexBytes, vertexCount, indexCount,
+            MmsVertexFormat.LEGACY40, 0f, 0f, 0f, minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    /** Uploads a packed mesh: its format must match the region's; all meshes share one origin. */
+    public MmsRegionMeshHandle upload(MmsMeshData mesh, float minX, float minY, float minZ,
+                                      float maxX, float maxY, float maxZ) {
+        return upload(mesh.getPackedVertexData(), mesh.getPackedIndexData(),
+            mesh.getVertexCount(), mesh.getIndexCount(), mesh.getFormat(),
+            mesh.getOriginX(), mesh.getOriginY(), mesh.getOriginZ(),
+            minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    /**
+     * @param meshFormat layout of {@code vertexBytes} — must equal this region's format
+     * @param originX    world origin the mesh positions are relative to (local formats);
+     *                   the first upload fixes the region origin, later ones must agree
+     */
+    public MmsRegionMeshHandle upload(byte[] vertexBytes, byte[] indexBytes,
+                                      int vertexCount, int indexCount,
+                                      MmsVertexFormat meshFormat,
+                                      float originX, float originY, float originZ,
+                                      float minX, float minY, float minZ,
+                                      float maxX, float maxY, float maxZ) {
         ensureNotDeleted();
+        if (meshFormat != format) {
+            throw new IllegalArgumentException("Mesh format " + meshFormat
+                + " cannot join a " + format + " region");
+        }
+        if (format.localPositions()) {
+            if (!originSet) {
+                this.originX = originX;
+                this.originY = originY;
+                this.originZ = originZ;
+                this.originSet = true;
+                this.originBufferId = format.createOriginBuffer(originX, originY, originZ);
+                rebuildVao();
+            } else if (originX != this.originX || originY != this.originY || originZ != this.originZ) {
+                throw new IllegalArgumentException(String.format(
+                    "Mesh origin (%.1f,%.1f,%.1f) differs from region origin (%.1f,%.1f,%.1f)",
+                    originX, originY, originZ, this.originX, this.originY, this.originZ));
+            }
+        }
         MmsArenaAllocator.Segment vertexSeg = allocOrGrow(vertexAlloc, vertexCount, true);
-        MmsArenaAllocator.Segment indexSeg;
-        try {
-            indexSeg = allocOrGrow(indexAlloc, indexCount, false);
-        } catch (RuntimeException e) {
-            // Don't strand the vertex segment if the index arena can't grow.
-            vertexAlloc.free(vertexSeg);
-            throw e;
+        MmsArenaAllocator.Segment indexSeg = null;
+        if (!pulled) {
+            try {
+                indexSeg = allocOrGrow(indexAlloc, indexCount, false);
+            } catch (RuntimeException e) {
+                // Don't strand the vertex segment if the index arena can't grow.
+                vertexAlloc.free(vertexSeg);
+                throw e;
+            }
         }
 
         if (sparse) {
             // Physical pages materialize exactly where meshes land.
             ensureCommitted(true,
-                (long) vertexSeg.offset() * MmsBufferLayout.VERTEX_STRIDE_BYTES,
-                (long) (vertexSeg.offset() + vertexSeg.length()) * MmsBufferLayout.VERTEX_STRIDE_BYTES);
-            ensureCommitted(false,
-                (long) indexSeg.offset() * Short.BYTES,
-                (long) (indexSeg.offset() + indexSeg.length()) * Short.BYTES);
+                (long) vertexSeg.offset() * vertexStride,
+                (long) (vertexSeg.offset() + vertexSeg.length()) * vertexStride);
+            if (indexSeg != null) {
+                ensureCommitted(false,
+                    (long) indexSeg.offset() * Short.BYTES,
+                    (long) (indexSeg.offset() + indexSeg.length()) * Short.BYTES);
+            }
         }
-        uploadBytes(vertexBufferId, (long) vertexSeg.offset() * MmsBufferLayout.VERTEX_STRIDE_BYTES,
+        uploadBytes(vertexBufferId, (long) vertexSeg.offset() * vertexStride,
             vertexBytes);
-        uploadBytes(indexBufferId, (long) indexSeg.offset() * Short.BYTES, indexBytes);
+        if (indexSeg != null) {
+            uploadBytes(indexBufferId, (long) indexSeg.offset() * Short.BYTES, indexBytes);
+        }
 
         MmsRegionMeshHandle handle = new MmsRegionMeshHandle(this, vertexSeg, indexSeg, indexCount,
             minX, minY, minZ, maxX, maxY, maxZ);
@@ -300,7 +385,9 @@ public final class MmsChunkRegion {
             return; // Region already torn down wholesale.
         }
         vertexAlloc.free(handle.vertexSegment);
-        indexAlloc.free(handle.indexSegment);
+        if (indexAlloc != null && handle.indexSegment != null) {
+            indexAlloc.free(handle.indexSegment);
+        }
         MmsRegionMeshHandle last = liveHandles.removeLast();
         if (last != handle) {
             liveHandles.set(handle.liveIndex, last);
@@ -323,6 +410,50 @@ public final class MmsChunkRegion {
     public void bind() {
         ensureNotDeleted();
         GL30.glBindVertexArray(vaoId);
+        if (pulled) {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0 + MmsQuadCodec.QUAD_TEXTURE_UNIT);
+            GL11.glBindTexture(GL31.GL_TEXTURE_BUFFER, quadTextureId);
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        }
+    }
+
+    /** (Re)points the quad buffer texture at the current vertex buffer (pulled regions). */
+    private void attachQuadTexture() {
+        GL11.glBindTexture(GL31.GL_TEXTURE_BUFFER, quadTextureId);
+        GL31.glTexBuffer(GL31.GL_TEXTURE_BUFFER, GL30.GL_RGBA32UI, vertexBufferId);
+        GL11.glBindTexture(GL31.GL_TEXTURE_BUFFER, 0);
+    }
+
+    /** The packed vertex layout this region's arenas hold. */
+    public MmsVertexFormat format() {
+        return format;
+    }
+
+    /** Bytes per vertex in this region's vertex arena. */
+    public int vertexStride() {
+        return vertexStride;
+    }
+
+    public float originX() {
+        return originX;
+    }
+
+    public float originY() {
+        return originY;
+    }
+
+    public float originZ() {
+        return originZ;
+    }
+
+    /** True when this region grows by sparse page commitment rather than copy. */
+    public boolean isSparse() {
+        return sparse;
+    }
+
+    /** Sparse page size in bytes (0 in copy mode). */
+    public long pageSize() {
+        return pageSize;
     }
 
     /** GPU bytes currently reserved by this region's buffers. */
@@ -390,7 +521,8 @@ public final class MmsChunkRegion {
                 MmsRegionMeshHandle h = liveHandles.get(i);
                 meta.putFloat(h.minX).putFloat(h.minY).putFloat(h.minZ).putFloat(0f);
                 meta.putFloat(h.maxX).putFloat(h.maxY).putFloat(h.maxZ).putFloat(0f);
-                meta.putInt(h.getIndexCount()).putInt(h.indexSegment.offset())
+                meta.putInt(h.getIndexCount())
+                    .putInt(h.indexSegment == null ? 0 : h.indexSegment.offset())
                     .putInt(h.baseVertex()).putInt(0);
             }
             meta.flip();
@@ -427,7 +559,7 @@ public final class MmsChunkRegion {
         }
         long grown = nextCapacity(alloc.used() + length, alloc.capacity(),
             growthFactor, growthReserve, alignElements);
-        long elementBytes = vertex ? MmsBufferLayout.VERTEX_STRIDE_BYTES : Short.BYTES;
+        long elementBytes = vertex ? vertexStride : Short.BYTES;
         if (sparse) {
             // Sparse growth: pure bookkeeping — capacity extends in place,
             // offsets never move, pages commit under the upload that follows.
@@ -510,7 +642,7 @@ public final class MmsChunkRegion {
         if (sparse) {
             // Copy-free: decommit every committed page no live segment
             // touches. Cheap enough to sweep both arenas each call.
-            acted = sweepDecommit(true) | sweepDecommit(false);
+            acted = sweepDecommit(true) | (!pulled && sweepDecommit(false));
         } else {
             acted = false;
             long vertexTarget = trimTarget(vertexAlloc.used(), vertexAlloc.capacity(),
@@ -518,7 +650,7 @@ public final class MmsChunkRegion {
             if (vertexTarget > 0) {
                 resizeArena(vertexAlloc, vertexTarget, true);
                 acted = true;
-            } else {
+            } else if (!pulled) {
                 long indexTarget = trimTarget(indexAlloc.used(), indexAlloc.capacity(),
                     initialIndexCapacity, trimFraction, growthReserve, alignElements);
                 if (indexTarget > 0) {
@@ -543,7 +675,7 @@ public final class MmsChunkRegion {
         }
         BitSet pages = vertex ? vertexPages : indexPages;
         MmsArenaAllocator alloc = vertex ? vertexAlloc : indexAlloc;
-        long elementBytes = vertex ? MmsBufferLayout.VERTEX_STRIDE_BYTES : Short.BYTES;
+        long elementBytes = vertex ? vertexStride : Short.BYTES;
         long committed = (long) pages.cardinality() * pageSize;
         if (committed == 0) {
             return false;
@@ -634,7 +766,7 @@ public final class MmsChunkRegion {
      * re-pointed at the new buffer.
      */
     private void resizeArena(MmsArenaAllocator alloc, long newCapacity, boolean vertex) {
-        int elementBytes = vertex ? MmsBufferLayout.VERTEX_STRIDE_BYTES : Short.BYTES;
+        int elementBytes = vertex ? vertexStride : Short.BYTES;
         long newBytes = newCapacity * elementBytes;
         // Captured BEFORE compaction mutates the allocator's capacity.
         long oldBytes = sparse
@@ -683,6 +815,9 @@ public final class MmsChunkRegion {
 
         if (vertex) {
             vertexBufferId = newBuffer;
+            if (pulled) {
+                attachQuadTexture();
+            }
         } else {
             indexBufferId = newBuffer;
         }
@@ -709,7 +844,10 @@ public final class MmsChunkRegion {
     private void rebuildVao() {
         GL30.glBindVertexArray(vaoId);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vertexBufferId);
-        MmsRenderableHandle.setupVertexAttributes();
+        format.setupVertexAttributes();
+        if (originBufferId != 0) {
+            format.setupOriginAttribute(originBufferId);
+        }
         GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, indexBufferId);
         GL30.glBindVertexArray(0);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
@@ -745,8 +883,18 @@ public final class MmsChunkRegion {
         }
         deleted = true;
         GL30.glDeleteVertexArrays(vaoId);
+        if (originBufferId != 0) {
+            GL15.glDeleteBuffers(originBufferId);
+            originBufferId = 0;
+        }
         GL15.glDeleteBuffers(vertexBufferId);
-        GL15.glDeleteBuffers(indexBufferId);
+        if (!pulled) {
+            GL15.glDeleteBuffers(indexBufferId); // pulled regions share the quad EBO
+        }
+        if (quadTextureId != 0) {
+            GL11.glDeleteTextures(quadTextureId);
+            quadTextureId = 0;
+        }
         if (gpuMetaBufferId != 0) {
             GL15.glDeleteBuffers(gpuMetaBufferId);
             GL15.glDeleteBuffers(gpuIndirectBufferId);

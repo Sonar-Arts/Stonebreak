@@ -174,12 +174,28 @@ public class TerrainMeshConsistencyTest {
     // Mesh build + reconstruction
     // ------------------------------------------------------------------------------------------
 
-    private MmsMeshData buildMesh(Chunk center) {
+    private List<MmsMeshData> buildMesh(Chunk center) {
         ChunkMeshResult result = adapter.generateChunkMesh(
                 new ChunkDataView(center),
                 center.getCcoStateManager(),
                 center.getCcoDirtyTracker());
-        return result.atlasMesh();
+        // Under a pulled vertex format the atlas geometry is split into the quad
+        // mesh and the per-vertex stamp mesh; both are "what the GPU draws".
+        List<MmsMeshData> parts = new ArrayList<>();
+        parts.add(result.atlasMesh());
+        if (result.hasStampMesh()) {
+            parts.add(result.stampMesh());
+        }
+        return parts;
+    }
+
+    private Map<Long, Set<Integer>> reconstructFaces(List<MmsMeshData> meshes, int cx, int cz) {
+        Map<Long, Set<Integer>> out = new HashMap<>();
+        for (MmsMeshData mesh : meshes) {
+            reconstructFaces(mesh, cx, cz).forEach((k, v) ->
+                out.computeIfAbsent(k, kk -> new LinkedHashSet<>()).addAll(v));
+        }
+        return out;
     }
 
     /**
@@ -416,7 +432,15 @@ public class TerrainMeshConsistencyTest {
     private static final class StubTextureMapper implements MmsTextureMapper {
         @Override
         public float[] generateFaceTextureCoordinates(IBlockType blockType, int face) {
-            return new float[MmsBufferLayout.TEXTURE_SIZE * MmsBufferLayout.VERTICES_PER_QUAD];
+            // Identity unit-square frame per face (the shape the real mapper produces).
+            float[] uv = new float[MmsBufferLayout.TEXTURE_SIZE * MmsBufferLayout.VERTICES_PER_QUAD];
+            int ua = com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator.uAxis(face);
+            int va = com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator.vAxis(face);
+            for (int c = 0; c < 4; c++) {
+                uv[c * 2] = com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator.cornerOffset(face, c, ua);
+                uv[c * 2 + 1] = com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator.cornerOffset(face, c, va);
+            }
+            return uv;
         }
 
         @Override

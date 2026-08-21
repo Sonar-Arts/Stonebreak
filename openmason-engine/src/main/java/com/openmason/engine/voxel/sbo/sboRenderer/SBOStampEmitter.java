@@ -250,6 +250,16 @@ public class SBOStampEmitter {
      * @param blockType the block type to check
      * @return true if the cache contains a stamp for this type
      */
+    /** Whether the translucency policy routes this block to alpha-blended rendering. */
+    public boolean isTranslucent(IBlockType blockType) {
+        return translucencyPolicy.test(blockType);
+    }
+
+    /** True when an instance-level override/cull policy can change this block's faces per cell. */
+    public boolean hasInstancePolicies() {
+        return translucencyOverride != null || instanceFaceCullPolicy != null;
+    }
+
     public boolean hasBlock(IBlockType blockType) {
         return cache.has(blockType);
     }
