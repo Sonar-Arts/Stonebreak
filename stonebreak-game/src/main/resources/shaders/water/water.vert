@@ -30,7 +30,7 @@ const vec3 QUAD_NORMAL[6] = vec3[6](
 const int QUAD_UAXIS[6] = int[6](0, 0, 0, 0, 2, 2);
 const int QUAD_VAXIS[6] = int[6](2, 2, 1, 1, 1, 1);
 
-void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags) {
+void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, out bool sheet) {
     int qi = gl_VertexID >> 2;
     int corner = gl_VertexID & 3;
     uvec4 q = texelFetch(u_quads, qi);
@@ -38,6 +38,7 @@ void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags)
     int face = int((w0 >> 25u) & 7u);
     float falling = float((w0 >> 28u) & 1u);
     float source = float((w0 >> 29u) & 1u);
+    sheet = ((w0 >> 30u) & 1u) != 0u;
     float w = float(q.w & 15u) + 1.0;
     float h = float((q.w >> 4u) & 15u) + 1.0;
     vec3 c = QUAD_CORNER[face * 4 + corner];
@@ -61,6 +62,10 @@ uniform mat4 uProjection;
 uniform mat4 uView;
 uniform float uTime;
 uniform bool uWavesEnabled;
+// Distance (blocks) at which the wave amplitude reaches zero — the near-chunk
+// range edge, where flat FastLOD sea sheets take over. Fades in over the outer 40%.
+uniform float uWaveFadeEnd;
+uniform vec3 uCameraPos;
 
 out vec3 vWorldPos;
 out vec3 vNormal;
@@ -90,8 +95,9 @@ void main() {
     vec2 uvIn;
     vec3 nrmIn;
     vec4 flagsIn;
+    bool sheet = false;
     if (aOrigin.w < -2.5) {
-        pullWaterQuad(pos, uvIn, nrmIn, flagsIn);
+        pullWaterQuad(pos, uvIn, nrmIn, flagsIn, sheet);
         pos += aOrigin.xyz;
     } else {
         pos = aOrigin.xyz + aPos * aOrigin.w;
@@ -106,10 +112,16 @@ void main() {
     // functions; constants ported verbatim from the old world-shader water
     // block so seam behavior is unchanged. Falling columns are full-height
     // sheets — they skip the vertical wave.
-    if (uWavesEnabled && falling < 0.5) {
+    // LOD sea sheets skip the displacement: merged rectangles of different sizes
+    // would interpolate the wave differently along a shared edge and open seams.
+    if (uWavesEnabled && falling < 0.5 && !sheet) {
         const float MIN_WATER_SURFACE = 0.125;
         const float MAX_WAVE_DELTA = 0.18;
         float wave = gerstnerHeight(pos.xz, uTime);
+        if (uWaveFadeEnd > 0.0) {
+            float dist = length(pos.xz - uCameraPos.xz);
+            wave *= 1.0 - smoothstep(uWaveFadeEnd * 0.6, uWaveFadeEnd, dist);
+        }
 
         bool isTopFace = nrmIn.y > 0.5;
         bool isBottomFace = nrmIn.y < -0.5;

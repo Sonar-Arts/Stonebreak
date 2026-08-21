@@ -733,7 +733,7 @@ public final class FastLodMesher {
                 return;
             }
             if (!quads.addWords(
-                    MmsWaterQuadCodec.word0(qx, cellY, qz, 0, false, false),
+                    MmsWaterQuadCodec.word0(qx, cellY, qz, 0, false, false, true),
                     MmsWaterQuadCodec.word1(cellY, y, y, y, y),
                     MmsWaterQuadCodec.word2(sheetFlag, sheetFlag, sheetFlag, sheetFlag),
                     MmsWaterQuadCodec.word3(w, h))) {

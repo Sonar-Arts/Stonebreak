@@ -86,6 +86,7 @@ public class WaterRenderer {
             shader.createUniform("uView");
             shader.createUniform("uTime");
             shader.createUniform("uWavesEnabled");
+            shader.createUniform("uWaveFadeEnd");
             shader.createUniform("uSunDirection");
             shader.createUniform("uAmbientLight");
             shader.createUniform("uCameraPos");
@@ -166,6 +167,11 @@ public class WaterRenderer {
         shader.setUniform("uView", view);
         shader.setUniform("uTime", time);
         shader.setUniform("uWavesEnabled", wavesEnabled);
+        // Waves fade to zero at the edge of the near-chunk range so wavy near water
+        // meets the flat FastLOD sea sheets (which carry no displacement) seamlessly.
+        shader.setUniform("uWaveFadeEnd",
+            com.stonebreak.config.Settings.getInstance().getRenderDistance()
+                * (float) com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE);
         shader.setUniform("uSunDirection", sunDirection);
         shader.setUniform("uAmbientLight", ambientLight);
         shader.setUniform("uCameraPos", cameraPos);

@@ -11,7 +11,8 @@ import java.nio.ByteBuffer;
  * sheets (flat, up to 16×16 blocks).
  *
  * <pre>
- * word0: x:8 | y:9 | z:8 | face:3 | falling:1 | source:1 | spare:2
+ * word0: x:8 | y:9 | z:8 | face:3 | falling:1 | source:1 | sheet:1 | spare:1
+ *        sheet = FastLOD sea sheet: no wave displacement in the shader
  *        cell relative to the region origin (y = the water cell's block Y)
  * word1: 4 × u8 vertex Y offsets from (y − 1) in 1/128 block, corner order =
  *        MmsCuboidGenerator.FACE_VERTEX_OFFSETS (the water generator's order)
@@ -35,11 +36,26 @@ public final class MmsWaterQuadCodec {
     }
 
     public static int word0(int x, int y, int z, int face, boolean falling, boolean source) {
+        return word0(x, y, z, face, falling, source, false);
+    }
+
+    /**
+     * @param sheet true for FastLOD sea sheets: the shader skips the per-vertex
+     *              wave displacement. Merged rectangles of different sizes would
+     *              otherwise interpolate the wave differently along a shared
+     *              edge and open visible seams; distant water needs no waves.
+     */
+    public static int word0(int x, int y, int z, int face, boolean falling, boolean source, boolean sheet) {
         check(x, 0, 255, "x");
         check(y, 0, 511, "y");
         check(z, 0, 255, "z");
         check(face, 0, 5, "face");
-        return x | (y << 8) | (z << 17) | (face << 25) | ((falling ? 1 : 0) << 28) | ((source ? 1 : 0) << 29);
+        return x | (y << 8) | (z << 17) | (face << 25) | ((falling ? 1 : 0) << 28) | ((source ? 1 : 0) << 29)
+            | ((sheet ? 1 : 0) << 30);
+    }
+
+    public static boolean sheet(int w0) {
+        return ((w0 >>> 30) & 1) != 0;
     }
 
     /** Packs four vertex Y values (world units, {@code cellY - 1 ≤ vy < cellY + 1}) into 1/128 steps. */
