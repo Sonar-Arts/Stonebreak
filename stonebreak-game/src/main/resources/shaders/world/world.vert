@@ -102,6 +102,16 @@ vec3 lodOctDecode(uint p) {
     return normalize(n);
 }
 
+// Far LOD skirts: bend the normal toward up with distance so their diffuse term
+// approaches the top face's. Texture and material stay; only the lighting step
+// between terrace tops and sides softens where it would alias into moiré.
+// u_lodSkirtSoften = strength 0..1 (0 disables). Starts at the LOD boundary
+// (u_fogStart), full at the midpoint of the fog range.
+uniform float u_lodSkirtSoften;
+uniform vec3 u_viewPos;
+uniform float u_fogStart;
+uniform float u_fogEnd;
+
 void pullLodQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, out float layer) {
     int qi = gl_VertexID >> 2;
     int corner = gl_VertexID & 3;
@@ -146,6 +156,11 @@ void main() {
     if (aOrigin.w < -1.5) {
         pullLodQuad(localPos, uv, nrm, flags, layer);
         localPos += aOrigin.xyz;
+        if (u_lodSkirtSoften > 0.0 && u_fogEnd > u_fogStart && abs(nrm.y) < 0.5 && flags.w > 0.5) {
+            float d = length(localPos.xz - u_viewPos.xz);
+            float k = u_lodSkirtSoften * smoothstep(u_fogStart, mix(u_fogStart, u_fogEnd, 0.5), d);
+            nrm = normalize(mix(nrm, vec3(0.0, 1.0, 0.0), k));
+        }
     } else if (aOrigin.w < 0.0) {
         pullQuad(localPos, uv, nrm, flags, layer);
         localPos += aOrigin.xyz;

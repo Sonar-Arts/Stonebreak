@@ -5,6 +5,7 @@ import com.stonebreak.rendering.gameWorld.ChunkFrustumCuller;
 import com.stonebreak.rendering.gameWorld.water.WaterRenderer;
 import com.stonebreak.world.fastlod.FastLodManager;
 import com.stonebreak.world.operations.WorldConfiguration;
+import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
 import java.util.ArrayList;
@@ -120,6 +121,55 @@ public final class FastLodRenderPass {
         shader.setUniform("u_renderPass", 0);
         float boundFade = 1.0f;
         fadingRegionNodes.clear();
+        // Distant terrain minifies the block textures far below one texel per
+        // pixel; the array's NEAREST-within-mip filter keeps near blocks crisp
+        // but shimmers out here. Bind a trilinear + anisotropic sampler object
+        // on the block-array unit for this pass only (sampler objects override
+        // the texture's own parameters without touching them).
+        bindLodSampler();
+        try {
+            return renderNodes(shader, manager, playerChunkX, playerChunkZ, culler, nativeChunks,
+                batcher, lodWaterOut, entries, dt, inner, stamp, boundFade);
+        } finally {
+            org.lwjgl.opengl.GL33.glBindSampler(BLOCK_ARRAY_UNIT, 0);
+        }
+    }
+
+    private static final int BLOCK_ARRAY_UNIT = 1;
+    private int lodSampler;
+
+    private void bindLodSampler() {
+        if (!lodSamplerEnabled()) {
+            return;
+        }
+        if (lodSampler == 0) {
+            lodSampler = org.lwjgl.opengl.GL33.glGenSamplers();
+            org.lwjgl.opengl.GL33.glSamplerParameteri(lodSampler, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR_MIPMAP_LINEAR);
+            org.lwjgl.opengl.GL33.glSamplerParameteri(lodSampler, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+            org.lwjgl.opengl.GL33.glSamplerParameteri(lodSampler, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
+            org.lwjgl.opengl.GL33.glSamplerParameteri(lodSampler, GL11.GL_TEXTURE_WRAP_T, GL11.GL_REPEAT);
+            try {
+                float maxAniso = GL11.glGetFloat(org.lwjgl.opengl.GL46.GL_MAX_TEXTURE_MAX_ANISOTROPY);
+                org.lwjgl.opengl.GL33.glSamplerParameterf(lodSampler,
+                    org.lwjgl.opengl.GL46.GL_TEXTURE_MAX_ANISOTROPY, Math.min(16.0f, maxAniso));
+            } catch (Throwable ignored) {
+                // anisotropy unavailable — trilinear alone still removes most shimmer
+            }
+        }
+        org.lwjgl.opengl.GL33.glBindSampler(BLOCK_ARRAY_UNIT, lodSampler);
+    }
+
+    /** Kill switch: {@code -Dstonebreak.lod.trilinear=off}. */
+    private static boolean lodSamplerEnabled() {
+        return !"off".equalsIgnoreCase(System.getProperty("stonebreak.lod.trilinear", "on"));
+    }
+
+    private int renderNodes(ShaderProgram shader, FastLodManager manager,
+                            int playerChunkX, int playerChunkZ, ChunkFrustumCuller culler,
+                            NativeChunkTest nativeChunks, FastLodRegionBatcher batcher,
+                            List<WaterRenderer.LodWaterNode> lodWaterOut,
+                            java.util.Collection<FastLodManager.Entry> entries, float dt, int inner,
+                            int stamp, float boundFade) {
 
         for (FastLodManager.Entry entry : entries) {
             int dx = Math.abs(entry.key.chunkX() - playerChunkX);
