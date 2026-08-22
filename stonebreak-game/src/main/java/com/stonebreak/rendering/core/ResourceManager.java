@@ -94,22 +94,6 @@ public class ResourceManager {
         // pass sets it per node and restores 1.0 before the next pass.
         shaderProgram.createUniform("u_lodFade");
         shaderProgram.setUniform("u_lodFade", 1.0f);
-        // Far-LOD skirt lighting softening (see world.vert); -Dstonebreak.lod.skirtsoften=off|0..1
-        shaderProgram.createUniform("u_lodSkirtSoften");
-        String soften = System.getProperty("stonebreak.lod.skirtsoften", "on");
-        float softenAmount;
-        if ("off".equalsIgnoreCase(soften)) {
-            softenAmount = 0f;
-        } else if ("on".equalsIgnoreCase(soften)) {
-            softenAmount = 0.8f;
-        } else {
-            try {
-                softenAmount = Math.clamp(Float.parseFloat(soften), 0f, 1f);
-            } catch (NumberFormatException e) {
-                softenAmount = 0.8f;
-            }
-        }
-        shaderProgram.setUniform("u_lodSkirtSoften", softenAmount);
         // Atmospheric distance fog — fogEnd <= fogStart disables; WorldRenderer
         // sets these per frame (sky color + LOD ring bounds).
         shaderProgram.createUniform("u_fogColor");
