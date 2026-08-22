@@ -141,8 +141,11 @@ public final class SbeEntityRenderer {
                 vec3 lit = texColor.rgb * min(brightness, 1.0);
                 // Dynamic point lights (torches) and the model's own glow (a
                 // torch is lit by its flame) add on top of the sky/sun term.
-                lit += texColor.rgb * (pointLightContribution(FragWorldPos, normal)
-                        * pointLightWeight(u_ambientLight, u_entityLight) + u_selfGlow);
+                // Torchlight + the model's own glow, capped so overlapping
+                // lights fill the texture up to full brightness, never past it.
+                vec3 torch = pointLightContribution(FragWorldPos, normal)
+                        * pointLightWeight(u_ambientLight, u_entityLight) + vec3(u_selfGlow);
+                lit = applyPointLight(lit, texColor.rgb, torch);
 
                 if (underwaterFogDensity > 0.0) {
                     float dist = length(FragWorldPos - cameraPos);

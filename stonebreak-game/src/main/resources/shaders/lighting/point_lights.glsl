@@ -18,6 +18,27 @@ float pointLightWeight(float ambient, float skyExposure) {
     return 1.0 - daylight * clamp(skyExposure, 0.0, 1.0);
 }
 
+// Upper bound on the torchlight a surface can receive, as a multiple of its
+// albedo. Several overlapping torches approach this smoothly instead of
+// stacking linearly (which bleaches textures to white/yellow).
+#define POINT_LIGHT_MAX 0.95
+
+// Soft-knee saturation of a summed radiance: linear for small values, asymptotic
+// to POINT_LIGHT_MAX. Per channel, so the warm tint survives saturation.
+vec3 pointLightSoftCap(vec3 radiance) {
+    return POINT_LIGHT_MAX * (vec3(1.0) - exp(-radiance / POINT_LIGHT_MAX));
+}
+
+// Fold torchlight into an already-lit colour: it can only raise the surface
+// up to albedo * POINT_LIGHT_MAX (a fully torch-lit texel is the texture at
+// full brightness, never brighter). Surfaces the sun already lit past that
+// keep their sun result untouched — torches never stack on top of daylight.
+vec3 applyPointLight(vec3 lit, vec3 albedo, vec3 torch) {
+    vec3 capped = pointLightSoftCap(torch);
+    vec3 ceiling = max(lit, albedo * POINT_LIGHT_MAX);
+    return min(lit + albedo * capped, ceiling);
+}
+
 vec3 pointLightContribution(vec3 worldPos, vec3 normal) {
     vec3 sum = vec3(0.0);
     for (int i = 0; i < MAX_POINT_LIGHTS; i++) {

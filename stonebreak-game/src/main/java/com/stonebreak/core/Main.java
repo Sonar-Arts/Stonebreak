@@ -235,7 +235,7 @@ public class Main {
         com.stonebreak.network.MultiplayerSession.startSingleplayer(name, seed);
     }
 
-    // ─── Dev: -Dstonebreak.autotorch=<seconds>[:night] ───────────────────────
+    // ─── Dev: -Dstonebreak.autotorch=<seconds>[:night][:cluster] ─────────────
 
     private long autoTorchDeadlineNanos = -1;
     private boolean autoTorchDone;
@@ -321,6 +321,14 @@ public class Main {
         String side = com.stonebreak.blocks.torch.TorchState
                 .side(com.stonebreak.blocks.torch.TorchState.Facing.EAST).toStateString();
         boolean w = world.setBlockAt(px + 6, py + 1, pz + 1, torchBlock, true, side);
+        // ":cluster" — a ring of ground torches around the first one, to check
+        // that overlapping lights saturate gracefully instead of bleaching.
+        if (java.util.Arrays.asList(parts).contains("cluster")) {
+            int[][] ring = {{2, -2}, {4, -2}, {2, 1}, {4, 1}, {5, -1}, {3, 2}, {1, -1}, {5, 2}};
+            for (int[] o : ring) {
+                world.setBlockAt(px + o[0], py, pz + o[1], torchBlock, true, ground);
+            }
+        }
         // Hand the player torches and select them.
         var inv = player.getInventory();
         inv.addItem(new com.stonebreak.items.ItemStack(torchItem, 16));
@@ -329,7 +337,7 @@ public class Main {
             var sel = inv.getSelectedHotbarSlot();
             if (sel != null && !sel.isEmpty() && sel.getItem() == torchItem) break;
         }
-        if (parts.length > 1 && "night".equalsIgnoreCase(parts[1])) {
+        if (java.util.Arrays.asList(parts).contains("night")) {
             // The integrated server owns the clock (TimeSyncS2C snaps the client
             // back), so route through the same path as /timeset.
             com.stonebreak.network.MultiplayerSession.requestServerTimeSet(18000L);

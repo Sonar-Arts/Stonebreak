@@ -150,8 +150,9 @@ void main() {
         // they light caves and night. Player-held geometry has no world-space
         // fragPos; it is lit through u_playerLight instead.
         if (u_playerLight < 0.0) {
-            result += textureColor.rgb * pointLightContribution(fragPos, norm)
+            vec3 torch = pointLightContribution(fragPos, norm)
                     * pointLightWeight(u_ambientLight, worldLight);
+            result = applyPointLight(result, textureColor.rgb, torch);
         }
 
         if (v_isAlphaTested > 0.5) {

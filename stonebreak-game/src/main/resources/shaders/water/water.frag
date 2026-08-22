@@ -139,7 +139,8 @@ void main() {
 
     vec3 color = baseColor * (ambient + diffuse) + vec3(1.0) * spec + vec3(streaks);
     // Torchlight on the water surface.
-    color += baseColor * pointLightContribution(vWorldPos, N) * pointLightWeight(uAmbientLight, 1.0);
+    color = applyPointLight(color, baseColor,
+            pointLightContribution(vWorldPos, N) * pointLightWeight(uAmbientLight, 1.0));
 
     // Distance fog toward the sky color (horizontal distance, matching the
     // world shader) — alpha untouched so the blend over terrain stays correct.
