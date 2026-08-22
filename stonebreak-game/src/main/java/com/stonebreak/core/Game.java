@@ -6,6 +6,9 @@ import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.audio.*;
 import com.stonebreak.blocks.*;
+import com.stonebreak.core.cheats.CheatState;
+import com.stonebreak.core.services.GameServices;
+import com.stonebreak.core.world.WorldSession;
 import com.stonebreak.crafting.*;
 import com.stonebreak.input.*;
 import com.stonebreak.items.*;
@@ -43,44 +46,19 @@ public class Game {
     private static Game instance;
     
     // Game components
-    // world/player/entityManager are volatile: the "ClientWorld-Build" thread swaps them
-    // (replaceWorldInstance) while the main thread, render path, and worldUpdateExecutor
-    // read them — without safe publication a reader could observe a torn mix of the old
-    // session's manager with the new session's world during a reconnect.
-    private volatile World world;
-    private volatile Player player;
-    private Renderer renderer;
+    /** Subsystem registry backing every {@code getX()} accessor; see {@link GameServices}. */
+    private final GameServices services = new GameServices();
+    /** Current world name/seed/data/save-service bookkeeping; see {@link WorldSession}. */
+    private final WorldSession worldSession = new WorldSession();
     /** Every UI screen; see {@link com.stonebreak.core.screens.GameScreens}. */
     private final com.stonebreak.core.screens.GameScreens screens =
             new com.stonebreak.core.screens.GameScreens();
-    private BlockTextureArray textureAtlas;
-    private InputHandler inputHandler; // Added InputHandler field
-    private MouseCaptureManager mouseCaptureManager; // Mouse capture system
-    private SoundSystem soundSystem; // Sound system (engine)
-    private PlayerSounds playerSounds; // Game-side player footstep sound binding
-    private ChatSystem chatSystem; // Chat system
-    private CraftingManager craftingManager; // Crafting manager
-    private SmeltingManager smeltingManager; // Smelting manager for furnace
-    private com.stonebreak.audio.emitters.SoundEmitterManager soundEmitterManager; // Sound emitter management
-    private com.stonebreak.audio.MusicManager musicManager; // Background music playback
-    private MemoryLeakDetector memoryLeakDetector; // Memory leak detection system
-    private DebugOverlay debugOverlay; // Debug overlay (F3)
-    private SaveService saveService; // World save/load system
-    private WorldData currentWorldData; // Current world metadata
-    private String currentWorldName; // Current world name for save system initialization
-    private long currentWorldSeed; // Current world seed for save system initialization
     private final ExecutorService worldUpdateExecutor = Executors.newSingleThreadExecutor();
     private final Thread mainThread = Thread.currentThread();
     private final java.util.Queue<Runnable> mainThreadTasks = new java.util.concurrent.ConcurrentLinkedQueue<>();
-    
-    // Entity system components
-    private volatile com.stonebreak.mobs.entities.EntityManager entityManager; // Entity management system
+
     // NOTE: mob spawning is server-authoritative — the sole EntitySpawner lives on the
     // ServerLevel (two-world model). The local client world is render-only and never spawns.
-
-
-    // Time of day system
-    private TimeOfDay timeOfDay; // Day/night cycle system
 
     // Game state
     private final com.stonebreak.core.state.GameStateController stateController =
@@ -98,7 +76,7 @@ public class Game {
 
 
     // Cheat system
-    private boolean cheatsEnabled = false;
+    private final CheatState cheats = new CheatState(services, worldSession);
 
     // Window dimensions and handle
     private long window;
@@ -143,39 +121,42 @@ public class Game {
      */
     public void initCoreComponents(Renderer renderer, BlockTextureArray textureAtlas, InputHandler inputHandler, long window) {
         this.window = window;
-        this.renderer = renderer;
-        this.textureAtlas = textureAtlas;
-        this.inputHandler = inputHandler;
+        services.setRenderer(renderer);
+        services.setTextureAtlas(textureAtlas);
+        services.setInputHandler(inputHandler);
 
-        this.mouseCaptureManager = new MouseCaptureManager(window);
+        services.setMouseCaptureManager(new MouseCaptureManager(window));
 
         // Audio comes up BEFORE the screens: the startup intro registers its sonar sound from
         // its constructor, and OpenAL calls made before the context exists abort with
         // "No ALCapabilities instance has been set".
-        this.soundSystem = SoundSystem.getInstance();
-        com.stonebreak.core.bootstrap.GameBootstrap.configureSoundSystem(this.soundSystem);
-        this.musicManager = new com.stonebreak.audio.MusicManager(this.soundSystem);
-        this.musicManager.setVolume(com.stonebreak.config.Settings.getInstance().getMusicVolume());
-        this.musicManager.setEnabled(com.stonebreak.config.Settings.getInstance().getMusicEnabled());
+        SoundSystem soundSystem = SoundSystem.getInstance();
+        services.setSoundSystem(soundSystem);
+        com.stonebreak.core.bootstrap.GameBootstrap.configureSoundSystem(soundSystem);
+        com.stonebreak.audio.MusicManager musicManager = new com.stonebreak.audio.MusicManager(soundSystem);
+        musicManager.setVolume(com.stonebreak.config.Settings.getInstance().getMusicVolume());
+        musicManager.setEnabled(com.stonebreak.config.Settings.getInstance().getMusicEnabled());
+        services.setMusicManager(musicManager);
 
-        screens.createShellScreens(this.renderer);
+        screens.createShellScreens(renderer);
 
         initializeCrosshairSettings();
 
-        this.craftingManager = new CraftingManager();
-        this.smeltingManager = new SmeltingManager();
+        services.setCraftingManager(new CraftingManager());
+        services.setSmeltingManager(new SmeltingManager());
         initializeSmeltingRecipes();
         initializeCraftingRecipes();
         // Furnace registries are PER-WORLD now (each World constructs its own with this
         // smelting manager); getFurnaceRegistry() delegates to the current world.
 
-        this.chatSystem = new ChatSystem();
-        this.chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f});
+        ChatSystem chatSystem = new ChatSystem();
+        chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f});
+        services.setChatSystem(chatSystem);
 
-        this.soundEmitterManager = new com.stonebreak.audio.emitters.SoundEmitterManager();
+        services.setSoundEmitterManager(new com.stonebreak.audio.emitters.SoundEmitterManager());
 
-        this.memoryLeakDetector = com.stonebreak.core.bootstrap.GameBootstrap.startMemoryLeakDetection();
-        this.debugOverlay = com.stonebreak.core.bootstrap.GameBootstrap.createDebugOverlay();
+        services.setMemoryLeakDetector(com.stonebreak.core.bootstrap.GameBootstrap.startMemoryLeakDetection());
+        services.setDebugOverlay(com.stonebreak.core.bootstrap.GameBootstrap.createDebugOverlay());
         com.stonebreak.core.bootstrap.GameBootstrap.initializeEntityAssets();
         com.stonebreak.core.bootstrap.GameBootstrap.configureEngine(renderer.getBlockTextureArray(), renderer);
 
@@ -194,11 +175,13 @@ public class Game {
      * NOTE: World reference is automatically set in MmsAPI during World construction via createMeshPipeline().
      */
     public void initWorldComponents(World world, Player player) {
-        this.world = world;
-        this.player = player;
+        services.setWorld(world);
+        services.setPlayer(player);
 
+        Renderer renderer = services.renderer();
         com.stonebreak.core.bootstrap.GameBootstrap.ensureMmsApiInitialized(renderer.getBlockTextureArray(), world);
-        com.stonebreak.core.bootstrap.GameBootstrap.reinitializeSaveService(saveService, currentWorldData, player, world);
+        com.stonebreak.core.bootstrap.GameBootstrap.reinitializeSaveService(
+                worldSession.saveService(), worldSession.currentWorldData(), player, world);
 
         // Apply character creation stats to the new player if a creation session was active.
         CharacterCreationScreen creationScreen = screens.characterCreationScreen();
@@ -222,6 +205,7 @@ public class Game {
         }
 
         // Set camera for mouse capture system
+        MouseCaptureManager mouseCaptureManager = services.mouseCaptureManager();
         if (mouseCaptureManager != null && player != null) {
             mouseCaptureManager.setCamera(player.getCamera());
         }
@@ -229,8 +213,10 @@ public class Game {
         // Initialize the client-side entity system. This EntityManager holds network-shadow
         // entities streamed from the server; it owns no spawner (spawning is server-authoritative,
         // driven by ServerLevel's EntitySpawner — the single source of truth).
-        this.entityManager = new com.stonebreak.mobs.entities.EntityManager(world);
-        world.setEntityManager(this.entityManager);
+        com.stonebreak.mobs.entities.EntityManager entityManager =
+                new com.stonebreak.mobs.entities.EntityManager(world);
+        services.setEntityManager(entityManager);
+        world.setEntityManager(entityManager);
         System.out.println("Client entity system initialized (network shadows).");
 
         // Note: TimeOfDay initialization is handled during world loading/generation
@@ -238,8 +224,8 @@ public class Game {
         // For existing worlds: Loaded from save data in performWorldLoadingOrGeneration()
         // This ensures default time is only applied to NEW worlds, not existing ones
 
-        screens.createWorldScreens(this, player, renderer, this.inputHandler,
-                this.craftingManager, this.smeltingManager);
+        screens.createWorldScreens(this, player, renderer, services.inputHandler(),
+                services.craftingManager(), services.smeltingManager());
         // Surface a tooltip for whatever is already selected in the hotbar.
         InventoryScreen inventory = screens.inventoryScreen();
         if (inventory != null) {
@@ -251,7 +237,7 @@ public class Game {
         }
 
         // Initialize player sounds (game-side binding over the engine SoundSystem)
-        this.playerSounds = new PlayerSounds(world);
+        services.setPlayerSounds(new PlayerSounds(world));
         System.out.println("Player sound system initialized");
 
         System.out.println("[WORLD-CREATION] World components initialized for new world");
@@ -261,7 +247,7 @@ public class Game {
      * Initializes all crafting recipes by harvesting them from registered SBO files.
      */
     private void initializeCraftingRecipes() {
-        com.stonebreak.crafting.RecipeLoader.loadFromSBOs(this.craftingManager);
+        com.stonebreak.crafting.RecipeLoader.loadFromSBOs(services.craftingManager());
     }
 
     /**
@@ -269,7 +255,7 @@ public class Game {
      * registered SBO files. Mirrors {@link #initializeCraftingRecipes()}.
      */
     private void initializeSmeltingRecipes() {
-        com.stonebreak.crafting.SmeltingRecipeLoader.loadFromSBOs(this.smeltingManager);
+        com.stonebreak.crafting.SmeltingRecipeLoader.loadFromSBOs(services.smeltingManager());
     }
 
 
@@ -279,7 +265,7 @@ public class Game {
      * {@link com.stonebreak.core.bootstrap.CrosshairConfigurator}.
      */
     private void initializeCrosshairSettings() {
-        com.stonebreak.core.bootstrap.CrosshairConfigurator.apply(this.renderer);
+        com.stonebreak.core.bootstrap.CrosshairConfigurator.apply(services.renderer());
     }
 
     /**
@@ -366,28 +352,28 @@ public class Game {
      * Gets the world.
      */
     public static World getWorld() {
-        return getInstance().world;
+        return getInstance().services.world();
     }
     
     /**
      * Gets the player.
      */
     public static Player getPlayer() {
-        return getInstance().player;
+        return getInstance().services.player();
     }
     
     /**
      * Gets the renderer.
      */
     public static Renderer getRenderer() {
-        return getInstance().renderer;
+        return getInstance().services.renderer();
     }
     
     /**
      * Gets the entity manager.
      */
     public static com.stonebreak.mobs.entities.EntityManager getEntityManager() {
-        return getInstance().entityManager;
+        return getInstance().services.entityManager();
     }
 
 
@@ -395,7 +381,7 @@ public class Game {
      * Gets the time of day system.
      */
     public static TimeOfDay getTimeOfDay() {
-        return getInstance().timeOfDay;
+        return getInstance().services.timeOfDay();
     }
 
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#togglePauseMenu()}. */
@@ -462,7 +448,7 @@ public class Game {
      * Gets the smelting manager.
      */
     public SmeltingManager getSmeltingManager() {
-        return smeltingManager;
+        return services.smeltingManager();
     }
 
     /**
@@ -479,14 +465,14 @@ public class Game {
      * Gets the input handler.
      */
     public InputHandler getInputHandler() {
-       return this.inputHandler; // Return the stored instance
+       return services.inputHandler();
    }
 
    /**
      * Gets the mouse capture manager.
      */
     public MouseCaptureManager getMouseCaptureManager() {
-        return this.mouseCaptureManager;
+        return services.mouseCaptureManager();
     }
 
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#toggleInventoryScreen()}. */
@@ -563,6 +549,7 @@ public class Game {
      * Gets the UI renderer.
      */
     public com.stonebreak.rendering.UI.UIRenderer getUIRenderer() {
+        Renderer renderer = services.renderer();
         return renderer != null ? renderer.getUIRenderer() : null;
     }
     
@@ -570,42 +557,42 @@ public class Game {
      * Gets the sound system.
      */
     public static SoundSystem getSoundSystem() {
-        return getInstance().soundSystem;
+        return getInstance().services.soundSystem();
     }
 
     /**
      * Gets the player sound binding (footstep selection). May be null before a world is loaded.
      */
     public static PlayerSounds getPlayerSounds() {
-        return getInstance().playerSounds;
+        return getInstance().services.playerSounds();
     }
 
     /**
      * Gets the chat system.
      */
     public ChatSystem getChatSystem() {
-        return chatSystem;
+        return services.chatSystem();
     }
 
     /**
      * Gets the crafting manager.
      */
     public static CraftingManager getCraftingManager() {
-        return getInstance().craftingManager;
+        return getInstance().services.craftingManager();
     }
 
     /**
      * Gets the sound emitter manager.
      */
     public static com.stonebreak.audio.emitters.SoundEmitterManager getSoundEmitterManager() {
-        return getInstance().soundEmitterManager;
+        return getInstance().services.soundEmitterManager();
     }
 
     /**
      * Gets the background music manager.
      */
     public static com.stonebreak.audio.MusicManager getMusicManager() {
-        return getInstance().musicManager;
+        return getInstance().services.musicManager();
     }
 
     /**
@@ -614,8 +601,9 @@ public class Game {
      * @return The Font object, or null if not available.
      */
     public Font getFont() {
-        if (this.renderer != null) {
-            return this.renderer.getFont();
+        Renderer renderer = services.renderer();
+        if (renderer != null) {
+            return renderer.getFont();
         }
         return null;
     }
@@ -626,7 +614,7 @@ public class Game {
      * @return The BlockTextureArray object, or null if not available.
      */
     public BlockTextureArray getBlockTextureArray() {
-        return this.textureAtlas;
+        return services.textureAtlas();
     }
 
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#openWorkbenchScreen()}. */
@@ -697,43 +685,26 @@ public class Game {
         com.stonebreak.core.diagnostics.GameDiagnostics.printDetailedMemoryProfile();
     }
     
-    /**
-     * Sets the runtime cheats flag. Does not modify any world's persisted
-     * cheats state — use {@link #applyCheatsToCurrentWorld(boolean)} when
-     * the user toggles cheats from inside a world session.
-     */
+    /** Delegates to {@link CheatState#setEnabled(boolean)}. */
     public void setCheatsEnabled(boolean enabled) {
-        this.cheatsEnabled = enabled;
+        cheats.setEnabled(enabled);
     }
 
-    /**
-     * Toggles cheats for the active world: updates the runtime flag, the
-     * in-memory {@link WorldData}, and the {@link com.stonebreak.world.save.SaveService}
-     * so the change persists on the next save. No-op when no world is loaded.
-     */
+    /** Delegates to {@link CheatState#applyToCurrentWorld(boolean)}. */
     public void applyCheatsToCurrentWorld(boolean enabled) {
-        this.cheatsEnabled = enabled;
-        if (currentWorldData != null) {
-            WorldData updated = currentWorldData.withCheatsEnabled(enabled);
-            this.currentWorldData = updated;
-            if (saveService != null && player != null && world != null) {
-                saveService.initialize(updated, player, world);
-            }
-        }
+        cheats.applyToCurrentWorld(enabled);
     }
 
-    /**
-     * Returns whether cheats are enabled.
-     */
+    /** Delegates to {@link CheatState#isEnabled()}. */
     public boolean isCheatsEnabled() {
-        return cheatsEnabled;
+        return cheats.isEnabled();
     }
     
     /**
      * Gets the memory leak detector.
      */
     public static MemoryLeakDetector getMemoryLeakDetector() {
-        return getInstance().memoryLeakDetector;
+        return getInstance().services.memoryLeakDetector();
     }
     
     /** Delegates to {@link com.stonebreak.core.diagnostics.GameDiagnostics#triggerMemoryLeakAnalysis()}. */
@@ -745,7 +716,7 @@ public class Game {
      * Gets the debug overlay.
      */
     public static DebugOverlay getDebugOverlay() {
-        return getInstance().debugOverlay;
+        return getInstance().services.debugOverlay();
     }
     
     /** Delegates to {@link com.stonebreak.core.diagnostics.GameDiagnostics#toggleDebugOverlay()}. */
@@ -792,7 +763,7 @@ public class Game {
      * Gets the world save system for manual save operations.
      */
     public SaveService getSaveService() {
-        return saveService;
+        return worldSession.saveService();
     }
 
     // ---- World-metadata setters / getters ----
@@ -800,35 +771,35 @@ public class Game {
     // whose public API (getters above) lives on Game.
 
     public void setSaveService(SaveService saveService) {
-        this.saveService = saveService;
+        worldSession.setSaveService(saveService);
     }
 
     public WorldData getCurrentWorldData() {
-        return currentWorldData;
+        return worldSession.currentWorldData();
     }
 
     public void setCurrentWorldData(WorldData currentWorldData) {
-        this.currentWorldData = currentWorldData;
+        worldSession.setCurrentWorldData(currentWorldData);
     }
 
     public String getCurrentWorldName() {
-        return currentWorldName;
+        return worldSession.currentWorldName();
     }
 
     public void setCurrentWorldName(String currentWorldName) {
-        this.currentWorldName = currentWorldName;
+        worldSession.setCurrentWorldName(currentWorldName);
     }
 
     public long getCurrentWorldSeed() {
-        return currentWorldSeed;
+        return worldSession.currentWorldSeed();
     }
 
     public void setCurrentWorldSeed(long currentWorldSeed) {
-        this.currentWorldSeed = currentWorldSeed;
+        worldSession.setCurrentWorldSeed(currentWorldSeed);
     }
 
     public void setTimeOfDay(TimeOfDay timeOfDay) {
-        this.timeOfDay = timeOfDay;
+        services.setTimeOfDay(timeOfDay);
     }
 
     // ---- World lifecycle (client render world) ----

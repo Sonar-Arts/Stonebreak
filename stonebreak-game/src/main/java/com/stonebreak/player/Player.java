@@ -1,17 +1,11 @@
 package com.stonebreak.player;
 
-import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
-import com.stonebreak.player.combat.AttackController;
 import com.stonebreak.player.combat.BowController;
-import com.stonebreak.player.combat.DeathHandler;
-import com.stonebreak.player.combat.FallDamageHandler;
-import com.stonebreak.player.combat.HealthController;
 import com.stonebreak.player.combat.ManaController;
 import com.stonebreak.player.combat.RageTier;
-import com.stonebreak.player.combat.StaminaController;
 import com.stonebreak.player.combat.arcanist.ArcanistAbilityController;
 import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
 import com.stonebreak.player.combat.dodge.DodgeController;
@@ -22,18 +16,7 @@ import com.stonebreak.player.combat.stealth.StealthController;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
-import com.stonebreak.player.interaction.BlockBreaker;
-import com.stonebreak.player.interaction.BlockPlacer;
-import com.stonebreak.player.interaction.ItemDropInteraction;
 import com.stonebreak.player.interaction.RaycastEngine;
-import com.stonebreak.player.lifecycle.PlayerSpawnService;
-import com.stonebreak.player.locomotion.FlightController;
-import com.stonebreak.player.locomotion.JumpHandler;
-import com.stonebreak.player.locomotion.SpectatorController;
-import com.stonebreak.player.locomotion.SwimmingController;
-import com.stonebreak.player.physics.CollisionHandler;
-import com.stonebreak.player.physics.GroundChecker;
-import com.stonebreak.player.physics.MovementController;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.rendering.effects.WaterRippleParticles;
 import com.stonebreak.rendering.effects.WaterSplashParticles;
@@ -44,7 +27,6 @@ import org.joml.Vector3i;
 
 import static com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
 import static com.stonebreak.player.PlayerConstants.RAGE_T1_DAMAGE_BONUS;
-import static com.stonebreak.player.PlayerConstants.RAGE_T2_ATTACK_SPEED_BONUS;
 import static com.stonebreak.player.PlayerConstants.RAGE_T3_LIFESTEAL_PCT;
 import static com.stonebreak.player.PlayerConstants.SPAWN_X;
 import static com.stonebreak.player.PlayerConstants.SPAWN_Y;
@@ -55,6 +37,8 @@ import static com.stonebreak.player.PlayerConstants.SPAWN_Z;
  * the inventory, and a suite of focused subsystems that each handle one concern
  * (physics, locomotion, combat, interaction, lifecycle). Every publicly-callable
  * behavior on the old monolithic Player class is preserved here as a thin delegate.
+ * Controller wiring lives in {@link PlayerControllers}; the per-tick sequencing in
+ * {@link PlayerUpdatePipeline}.
  */
 public class Player {
 
@@ -62,46 +46,13 @@ public class Player {
     private final Camera camera;
     private final Inventory inventory;
 
-    // Physics
-    private final CollisionHandler collisionHandler;
-    private final GroundChecker groundChecker;
-    private final MovementController movement;
+    // Wired controller suite (physics, locomotion, combat, interaction, lifecycle, RPG)
+    private final PlayerControllers c;
 
-    // Locomotion
-    private final SwimmingController swimming;
-    private final FlightController flight;
-    private final JumpHandler jumpHandler;
-    private final SpectatorController spectator;
+    // Per-tick orchestration
+    private final PlayerUpdatePipeline updatePipeline;
 
-    // Combat
-    private final AttackController attack;
-    private final BowController bow;
-    private final HealthController health;
-    private final StaminaController stamina;
-    private final ManaController mana;
-    private final FallDamageHandler fallDamage;
-    private final DeathHandler deathHandler;
-    private final BerserkerAbilityController berserkerAbilities;
-    private final RangerAbilityController rangerAbilities;
-    private final ArcanistAbilityController arcanistAbilities;
-    private final IllusionistAbilityController illusionistAbilities;
-    private final RogueAbilityController rogueAbilities;
-    private final DodgeController dodge;
-    private final StealthController stealth = new StealthController();
     private final java.util.Random critRandom = new java.util.Random();
-    private float lastHealthForStealth; // tracks health between frames to detect any damage taken
-
-    // Interaction
-    private final RaycastEngine raycastEngine;
-    private final BlockBreaker blockBreaker;
-    private final BlockPlacer blockPlacer;
-    private final ItemDropInteraction itemDropInteraction;
-
-    // Lifecycle
-    private final PlayerSpawnService spawnService;
-
-    // RPG
-    private final CharacterStats characterStats;
 
     // Statistics
     private final PlayerStats stats = new PlayerStats();
@@ -115,250 +66,50 @@ public class Player {
     // Fishing
     private com.stonebreak.mobs.entities.FishingBobber activeBobber = null;
 
-    // Water entry splash particles
-    private final WaterSplashParticles splashParticles = new WaterSplashParticles();
-
-    // Water surface ripples that trail the player while swimming
-    private final WaterRippleParticles rippleParticles = new WaterRippleParticles();
-    private float rippleSpawnTimer = 0f;
+    // Water entry splash + surface ripple particles
+    private final PlayerWaterEffects waterEffects = new PlayerWaterEffects();
 
     // Third-person body model
     public enum Perspective { FIRST_PERSON, THIRD_PERSON }
     private Perspective perspective = Perspective.FIRST_PERSON;
-    private float bodyAnimationTime = 0f;
-    private float attackEventTime = 0f;  // seconds since attack animation started
-    private float jumpEventTime = 0f;    // seconds since jump started
-    private final com.stonebreak.mobs.sbe.OverlayAnimState attackOverlay =
-            new com.stonebreak.mobs.sbe.OverlayAnimState();
+    private final PlayerBodyAnimation bodyAnimation = new PlayerBodyAnimation();
     private static final float WALK_SPEED_THRESHOLD = 0.5f; // blocks/frame
-    // Third-person body facing + head look angles. Decoupled from the first-person
-    // camera: the camera only supplies a look yaw/pitch; this component decides how
-    // the body turns to follow movement and the look direction.
-    private final PlayerBodyOrientation bodyOrientation = new PlayerBodyOrientation();
 
     public Player(World world) {
-        IBlockPlacementService blockPlacementService = new BlockPlacementValidator(world);
         this.state = new PhysicsState();
         this.state.getPosition().set(SPAWN_X, SPAWN_Y, SPAWN_Z);
         this.state.setPreviousY(SPAWN_Y);
         this.camera = new Camera();
         this.inventory = new Inventory();
 
-        this.collisionHandler = new CollisionHandler(state, world);
-        this.groundChecker = new GroundChecker(state, collisionHandler);
-        this.swimming = new SwimmingController(state, world);
-        this.flight = new FlightController(state);
-        this.jumpHandler = new JumpHandler(state);
-
-        this.attack = new AttackController();
-        this.bow = new BowController();
-        this.health = new HealthController();
-        this.stamina = new StaminaController(0);
-        this.mana = new ManaController(0, 0);
-        this.spectator = new SpectatorController(state, flight, health);
-        this.movement = new MovementController(state, camera, collisionHandler, flight, swimming, jumpHandler, spectator);
-        this.fallDamage = new FallDamageHandler(state, health);
-        this.deathHandler = new DeathHandler(state, health, inventory, camera, world);
-        this.berserkerAbilities = new BerserkerAbilityController();
-        this.rangerAbilities = new RangerAbilityController();
-        this.arcanistAbilities = new ArcanistAbilityController();
-        this.illusionistAbilities = new IllusionistAbilityController();
-        this.rogueAbilities = new RogueAbilityController();
-        this.dodge = new DodgeController();
-        // Momentum passive: a successful dodge grants the Rogue a stack (self-gated on class).
-        this.dodge.addDodgeListener(rogueAbilities::onDodgeSuccess);
-
-        this.raycastEngine = new RaycastEngine(state, camera, world);
-        this.blockBreaker = new BlockBreaker(raycastEngine, inventory, attack, world);
-        this.blockPlacer = new BlockPlacer(state, raycastEngine, inventory, blockPlacementService, world);
-        this.itemDropInteraction = new ItemDropInteraction(state, camera, blockPlacementService, world);
-
-        this.characterStats = new CharacterStats(this);
-        this.spawnService = new PlayerSpawnService(state, camera, inventory, health, attack,
-                blockBreaker, flight, jumpHandler, swimming, characterStats);
+        this.c = new PlayerControllers(this, world, state, camera, inventory);
+        this.updatePipeline = new PlayerUpdatePipeline(this, c, state, camera, stats, waterEffects, bodyAnimation);
 
         updateDerivedStats();
     }
 
     public void update() {
-        if (health.isDead()) {
-            deathHandler.processDeathIfNeeded();
-            return;
-        }
-
-        float dt = Game.getDeltaTime();
-
-        // Don't fall through terrain that hasn't streamed in yet (async client render world). If
-        // the chunk under us isn't rendered — an empty placeholder, or not arrived — hold
-        // position instead of dropping into the void. Flight/spectator move freely (no fall).
-        if (!flight.isFlying() && !spectator.isActive() && !isGroundChunkReady()) {
-            state.getVelocity().set(0f, 0f, 0f);
-            Vector3f hp = state.getPosition();
-            camera.setPosition(hp.x, hp.y + CAMERA_EYE_OFFSET, hp.z);
-            return;
-        }
-
-        health.updateSpawnProtection(dt, state.isOnGround());
-        swimming.updateWaterState();
-        Game.getSoundSystem().setEnvironmentGain(
-                swimming.isInWater() ? PlayerConstants.UNDERWATER_AUDIO_DUCK_GAIN : 1.0f);
-        if (state.justEnteredWaterThisFrame()) {
-            float impactSpeed = Math.max(0f, -state.getVelocity().y);
-            splashParticles.burst(state.getPosition(), impactSpeed);
-            rippleParticles.spawn(state.getPosition());
-            rippleSpawnTimer = 0f;
-        }
-        splashParticles.update(dt);
-        // Ripples are a surface effect — suppress them once the player's eyes are
-        // submerged (fully underwater), not just "touching" water.
-        if (state.isPhysicallyInWater() && !swimming.isInWater()) {
-            Vector3f vel = state.getVelocity();
-            float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-            rippleSpawnTimer += dt;
-            if (horizSpeed > PlayerConstants.WATER_RIPPLE_SPEED_THRESHOLD
-                    && rippleSpawnTimer >= PlayerConstants.WATER_RIPPLE_SPAWN_INTERVAL) {
-                rippleParticles.spawn(state.getPosition());
-                rippleSpawnTimer = 0f;
-            }
-        } else {
-            rippleSpawnTimer = 0f;
-        }
-        rippleParticles.update(dt);
-        swimming.applyAntiFloatingPreIntegration(flight.isFlying(),
-                jumpHandler.getLastNormalJumpTime(), jumpHandler.getNormalJumpGracePeriod());
-        swimming.applyWaterFlow(flight.isFlying());
-
-        movement.applyGravity();
-        Vector3f posBeforeIntegrate = state.getPosition();
-        float prevX = posBeforeIntegrate.x;
-        float prevZ = posBeforeIntegrate.z;
-        boolean wasOnGround = state.isOnGround();
-        boolean wasSprinting = stamina.isSprinting();
-        movement.integrateAndCollide();
-        float dx = posBeforeIntegrate.x - prevX;
-        float dz = posBeforeIntegrate.z - prevZ;
-        float horizDist = (float) Math.sqrt(dx * dx + dz * dz);
-        if (horizDist > 0f) {
-            stats.addTotalDistance(horizDist);
-            if (wasOnGround && wasSprinting) {
-                stats.addDistanceSprinted(horizDist);
-            } else if (wasOnGround) {
-                stats.addDistanceWalked(horizDist);
-            } else {
-                stats.addDistanceInAir(horizDist);
-            }
-        }
-        if (!wasOnGround) {
-            stats.addTimeInAir(dt);
-        }
-        if (spectator.isActive()) {
-            state.setOnGround(false);
-        } else {
-            groundChecker.check();
-        }
-        movement.applyDamping();
-
-        Vector3f p = state.getPosition();
-        if (perspective == Perspective.THIRD_PERSON) {
-            // Pull camera back behind and slightly above the player, but stop short of
-            // any solid terrain in the way so it never clips through walls/cliffs.
-            Vector3f pivot = new Vector3f(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
-            Vector3f offset = new Vector3f(camera.getFront()).mul(-4.0f).add(0f, 0.5f, 0f);
-            float desired = offset.length();
-            Vector3f dir = offset.normalize(new Vector3f());
-            float hit = raycastEngine.distanceToFirstSolid(pivot, dir, desired);
-            float dist = (hit == Float.MAX_VALUE) ? desired : Math.max(0.5f, hit - 0.3f);
-            camera.setPosition(
-                    pivot.x + dir.x * dist,
-                    pivot.y + dir.y * dist,
-                    pivot.z + dir.z * dist);
-        } else {
-            camera.setPosition(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
-        }
-
-        berserkerAbilities.update(dt, this);
-        rangerAbilities.update(dt, this);
-        arcanistAbilities.update(dt, this);
-        illusionistAbilities.update(dt, this);
-        rogueAbilities.update(dt, this);
-        dodge.update(dt, this);
-        stealth.update(dt, this);
-        // Any health decrease (combat, fall, drowning) cancels stealth entry / breaks stealth.
-        float currentHealth = health.getHealth();
-        if (currentHealth < lastHealthForStealth - 0.001f) {
-            stealth.onDamageTaken(this);
-        }
-        lastHealthForStealth = currentHealth;
-        RageTier rageTier = berserkerAbilities.getRage().getTier();
-        attack.setAnimationSpeedMultiplier(rageTier.atLeast(RageTier.T2)
-            ? 1f + RAGE_T2_ATTACK_SPEED_BONUS
-            : 1f);
-        attack.update(dt);
-        bow.update(dt);
-        stamina.update(dt);
-        mana.update(dt);
-        blockBreaker.update();
-
-        com.stonebreak.audio.PlayerSounds playerSounds = Game.getPlayerSounds();
-        if (playerSounds != null) {
-            playerSounds.updateWalkingSounds(p, state.getVelocity(), state.isOnGround(), state.isPhysicallyInWater());
-        }
-        if (Game.getWorld() != null) {
-            Game.getSoundSystem().setListenerFromCamera(p, camera.getFront(), camera.getUp());
-        }
-
-        fallDamage.update(flight.isFlying());
-        deathHandler.processDeathIfNeeded();
-
-        // Advance body animation clocks (used by third-person renderer).
-        bodyAnimationTime += dt;
-        if (attack.isAttacking()) attackEventTime += dt; else attackEventTime = 0f;
-        if (!state.isOnGround()) jumpEventTime += dt; else jumpEventTime = 0f;
-        // Attack overlay envelope: attack plays on top of the locomotion clip,
-        // masked to the parts the attack clip owns, with fade in/out.
-        attackOverlay.update(dt, attack.isAttacking());
-
-        // Third-person body faces movement / look direction; the camera only
-        // supplies the look yaw, converted from its front vector into model space.
-        Vector3f front = camera.getFront();
-        float lookModelYaw = PlayerBodyOrientation.modelYawFromDirection(front.x, front.z);
-        bodyOrientation.update(dt, state.getVelocity(), lookModelYaw);
-    }
-
-    /**
-     * True when the chunk under the player is resident AND rendered (filled with streamed data
-     * + meshed). On the client render world an unfilled placeholder reports false, so physics
-     * holds the player until real terrain arrives rather than dropping them through it.
-     */
-    private boolean isGroundChunkReady() {
-        World w = Game.getWorld();
-        if (w == null) {
-            return false;
-        }
-        Vector3f p = state.getPosition();
-        int cx = Math.floorDiv((int) Math.floor(p.x), 16);
-        int cz = Math.floorDiv((int) Math.floor(p.z), 16);
-        return w.isChunkRenderableAt(cx, cz);
+        updatePipeline.update();
     }
 
     public void processMovement(boolean forward, boolean backward, boolean left, boolean right,
                                 boolean jump, boolean shift, boolean crouch) {
         boolean moving = forward || backward || left || right;
-        boolean sprinting = shift && moving && !flight.isFlying()
-                            && stamina.hasStamina()
-                            && !stealth.isSprintBlocked(); // cannot sprint while stealthed
-        stamina.setSprinting(sprinting);
-        jumpHandler.setCanDoubleJump(characterStats.hasFeat("double_jump"));
-        float speedMultiplier = rangerAbilities.getSpeedMultiplier(this,
+        boolean sprinting = shift && moving && !c.flight.isFlying()
+                            && c.stamina.hasStamina()
+                            && !c.stealth.isSprintBlocked(); // cannot sprint while stealthed
+        c.stamina.setSprinting(sprinting);
+        c.jumpHandler.setCanDoubleJump(c.characterStats.hasFeat("double_jump"));
+        float speedMultiplier = c.rangerAbilities.getSpeedMultiplier(this,
                 computeIntendedMoveDirection(forward, backward, left, right));
-        speedMultiplier *= stealth.getMovementMultiplier(this); // stealth movement penalty
-        movement.processMovement(forward, backward, left, right, jump, shift, crouch, sprinting, speedMultiplier);
+        speedMultiplier *= c.stealth.getMovementMultiplier(this); // stealth movement penalty
+        c.movement.processMovement(forward, backward, left, right, jump, shift, crouch, sprinting, speedMultiplier);
     }
 
     /**
      * Horizontal direction the WASD input is asking for (same camera math as
-     * {@link MovementController}), normalized, or the zero vector when no movement
-     * keys are held or the inputs cancel out.
+     * {@link com.stonebreak.player.physics.MovementController}), normalized, or the zero
+     * vector when no movement keys are held or the inputs cancel out.
      */
     private Vector3f computeIntendedMoveDirection(boolean forward, boolean backward,
                                                   boolean left, boolean right) {
@@ -380,18 +131,18 @@ public class Player {
     }
 
     public void updateDerivedStats() {
-        health.applyNewMaxHealth(characterStats.computeMaxHealth());
-        stamina.setMaxStamina(characterStats.computeMaxStamina());
-        mana.setMaxMana(characterStats.computeMaxMana());
-        mana.setRegenRate(characterStats.computeManaRegen());
+        c.health.applyNewMaxHealth(c.characterStats.computeMaxHealth());
+        c.stamina.setMaxStamina(c.characterStats.computeMaxStamina());
+        c.mana.setMaxMana(c.characterStats.computeMaxMana());
+        c.mana.setRegenRate(c.characterStats.computeManaRegen());
     }
 
     public void processMouseLook(float xOffset, float yOffset) {
         camera.processMouseMovement(xOffset, yOffset);
     }
 
-    public void processFlightAscent(boolean shift) { flight.processAscent(shift); }
-    public void processFlightDescent(boolean shift) { flight.processDescent(shift); }
+    public void processFlightAscent(boolean shift) { c.flight.processAscent(shift); }
+    public void processFlightDescent(boolean shift) { c.flight.processDescent(shift); }
 
     // Position / state
     public Vector3f getPosition() { return state.getPosition(); }
@@ -419,7 +170,7 @@ public class Player {
     public void setActiveBobber(com.stonebreak.mobs.entities.FishingBobber b) { activeBobber = b; }
 
     // RPG
-    public CharacterStats getCharacterStats() { return characterStats; }
+    public CharacterStats getCharacterStats() { return c.characterStats; }
 
     // Statistics
     public PlayerStats getStats() { return stats; }
@@ -429,61 +180,61 @@ public class Player {
     public EntitySightingTracker getEntitySightingTracker() { return sightingTracker; }
 
     // Stamina / mana
-    public boolean isSprinting() { return stamina.isSprinting(); }
-    public float getStamina()    { return stamina.getStamina(); }
-    public float getMaxStamina() { return stamina.getMaxStamina(); }
-    public boolean canAffordStamina(float amount) { return stamina.canAfford(amount); }
-    public boolean consumeStamina(float amount)   { return stamina.consume(amount); }
-    public float getMana()       { return mana.getMana(); }
-    public float getMaxMana()    { return mana.getMaxMana(); }
-    public ManaController getManaController() { return mana; }
+    public boolean isSprinting() { return c.stamina.isSprinting(); }
+    public float getStamina()    { return c.stamina.getStamina(); }
+    public float getMaxStamina() { return c.stamina.getMaxStamina(); }
+    public boolean canAffordStamina(float amount) { return c.stamina.canAfford(amount); }
+    public boolean consumeStamina(float amount)   { return c.stamina.consume(amount); }
+    public float getMana()       { return c.mana.getMana(); }
+    public float getMaxMana()    { return c.mana.getMaxMana(); }
+    public ManaController getManaController() { return c.mana; }
 
     // Health / death
-    public float getHealth() { return health.getHealth(); }
-    public float getMaxHealth() { return health.getMaxHealth(); }
-    public boolean isDead() { return health.isDead(); }
-    public int getHearts() { return health.getHearts(); }
-    public void setHealth(float h) { health.setHealth(h); }
+    public float getHealth() { return c.health.getHealth(); }
+    public float getMaxHealth() { return c.health.getMaxHealth(); }
+    public boolean isDead() { return c.health.isDead(); }
+    public int getHearts() { return c.health.getHearts(); }
+    public void setHealth(float h) { c.health.setHealth(h); }
     public void damage(float amount) {
-        if (dodge.isInvincible()) return;   // dodge i-frames negate combat damage
-        berserkerAbilities.getRage().onHitReceived();
-        health.damage(amount);
+        if (c.dodge.isInvincible()) return;   // dodge i-frames negate combat damage
+        c.berserkerAbilities.getRage().onHitReceived();
+        c.health.damage(amount);
         // Stealth break on damage is handled centrally in update() by watching health decrease,
         // so environmental sources (fall, drowning) that call health.damage() directly count too.
     }
-    public void heal(float amount) { health.heal(amount); }
-    public void respawn() { deathHandler.respawn(); }
+    public void heal(float amount) { c.health.heal(amount); }
+    public void respawn() { c.deathHandler.respawn(); }
 
     // Attack animation
-    public boolean isAttacking() { return attack.isAttacking(); }
-    public void startAttackAnimation() { attack.startAttackAnimation(); }
-    public float getAttackAnimationProgress() { return attack.getAnimationProgress(); }
-    public float getRawAttackAnimationProgress() { return attack.getRawAnimationProgress(); }
+    public boolean isAttacking() { return c.attack.isAttacking(); }
+    public void startAttackAnimation() { c.attack.startAttackAnimation(); }
+    public float getAttackAnimationProgress() { return c.attack.getAnimationProgress(); }
+    public float getRawAttackAnimationProgress() { return c.attack.getRawAnimationProgress(); }
 
     // Bow draw
-    public BowController getBowController() { return bow; }
-    public boolean isDrawingBow() { return bow.isDrawing(); }
-    public float getBowDrawProgress() { return bow.getDrawProgress(); }
-    public String getBowSboState() { return bow.getBowSboState(); }
+    public BowController getBowController() { return c.bow; }
+    public boolean isDrawingBow() { return c.bow.isDrawing(); }
+    public float getBowDrawProgress() { return c.bow.getDrawProgress(); }
+    public String getBowSboState() { return c.bow.getBowSboState(); }
 
     // Flight
-    public boolean isFlying() { return flight.isFlying(); }
-    public void setFlying(boolean flying) { flight.setFlying(flying); }
-    public boolean isFlightEnabled() { return flight.isFlightEnabled(); }
-    public void setFlightEnabled(boolean enabled) { flight.setFlightEnabled(enabled); }
+    public boolean isFlying() { return c.flight.isFlying(); }
+    public void setFlying(boolean flying) { c.flight.setFlying(flying); }
+    public boolean isFlightEnabled() { return c.flight.isFlightEnabled(); }
+    public void setFlightEnabled(boolean enabled) { c.flight.setFlightEnabled(enabled); }
 
     // Spectator
-    public boolean isSpectator() { return spectator.isActive(); }
-    public void setSpectator(boolean active) { spectator.setActive(active); }
-    public boolean isPlayerInsideSolidBlock() { return collisionHandler.isPlayerInsideSolidBlock(); }
+    public boolean isSpectator() { return c.spectator.isActive(); }
+    public void setSpectator(boolean active) { c.spectator.setActive(active); }
+    public boolean isPlayerInsideSolidBlock() { return c.collisionHandler.isPlayerInsideSolidBlock(); }
 
     // Water
-    public boolean isInWater() { return swimming.isInWater(); }
+    public boolean isInWater() { return c.swimming.isInWater(); }
     /** Body touching water, even if eyes aren't submerged — replicated for remote splash/ripple triggering. */
     public boolean isPhysicallyInWater() { return state.isPhysicallyInWater(); }
     public boolean justEnteredWaterThisFrame() { return state.justEnteredWaterThisFrame(); }
 
-    public RaycastEngine getRaycastEngine() { return raycastEngine; }
+    public RaycastEngine getRaycastEngine() { return c.raycastEngine; }
 
     // Third-person / body animation
     public Perspective getPerspective() { return perspective; }
@@ -501,12 +252,13 @@ public class Player {
      * {@link PlayerBodyOrientation#modelYawFromDirection}. Tracks movement / look
      * direction, smoothed; the base yaw for the third-person body model.
      */
-    public float getBodyYaw() { return bodyOrientation.getBodyYaw(); }
+    public float getBodyYaw() { return bodyAnimation.getBodyOrientation().getBodyYaw(); }
 
     /** Third-person head yaw relative to the body, clamped to its swivel range. */
     public float getThirdPersonHeadYaw() {
         Vector3f front = camera.getFront();
-        return bodyOrientation.getHeadYaw(PlayerBodyOrientation.modelYawFromDirection(front.x, front.z));
+        return bodyAnimation.getBodyOrientation()
+                .getHeadYaw(PlayerBodyOrientation.modelYawFromDirection(front.x, front.z));
     }
 
     /**
@@ -517,10 +269,10 @@ public class Player {
      * head bone's local X axis — so {@code rotateX(cameraPitch)} already tilts
      * the head the same way the camera looks (up→up, down→down).
      */
-    public float getThirdPersonHeadPitch() { return bodyOrientation.getHeadPitch(camera.getPitch()); }
+    public float getThirdPersonHeadPitch() { return bodyAnimation.getBodyOrientation().getHeadPitch(camera.getPitch()); }
 
     /** Continuously advancing animation clock for the body model (Walking). */
-    public float getBodyAnimationTime() { return bodyAnimationTime; }
+    public float getBodyAnimationTime() { return bodyAnimation.getBodyAnimationTime(); }
 
     /**
      * Animation time to feed for one-shot BASE clips (Jumping). Attack is no
@@ -528,8 +280,8 @@ public class Player {
      * clock (see {@link #getAttackOverlay()}).
      */
     public float getBodyEventTime() {
-        if (!state.isOnGround()) return jumpEventTime;
-        return bodyAnimationTime;
+        if (!state.isOnGround()) return bodyAnimation.getJumpEventTime();
+        return bodyAnimation.getBodyAnimationTime();
     }
 
     /**
@@ -543,7 +295,7 @@ public class Player {
         // Sprint-swimming: no dedicated clip is authored yet, so this reuses WALKING as a
         // placeholder pose — state selection is correct now, the visual will follow once a
         // real swim animation clip exists in the SB_Player.sbe asset.
-        if (state.isPhysicallyInWater() && stamina.isSprinting() && horizSpeed > WALK_SPEED_THRESHOLD) {
+        if (state.isPhysicallyInWater() && c.stamina.isSprinting() && horizSpeed > WALK_SPEED_THRESHOLD) {
             return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.WALKING;
         }
         if (!state.isOnGround()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.JUMPING;
@@ -556,12 +308,12 @@ public class Player {
      * (attack still wins here).
      */
     public com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState getMovementState() {
-        if (attack.isAttacking()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.ATTACKING;
+        if (c.attack.isAttacking()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.ATTACKING;
         return getBaseMovementState();
     }
 
     /** Envelope tracker for the attack overlay animation (time + fade weight). */
-    public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return attackOverlay; }
+    public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return bodyAnimation.getAttackOverlay(); }
 
     /** Returns the melee damage for the player's currently held item (1.0 for bare fist). */
     public float getAttackDamage() {
@@ -574,7 +326,7 @@ public class Player {
 
     /** Multiplier applied to melee damage from the Berserker's Rage tier (T1+ grants increased damage). */
     public float getMeleeDamageMultiplier() {
-        RageTier tier = berserkerAbilities.getRage().getTier();
+        RageTier tier = c.berserkerAbilities.getRage().getTier();
         return tier.atLeast(RageTier.T1)
             ? 1f + RAGE_T1_DAMAGE_BONUS
             : 1f;
@@ -594,60 +346,60 @@ public class Player {
         if (awareness != null
                 && awareness.getState() == AwarenessController.AwarenessState.UNAWARE) {
             target.applyStatusEffect(StatusEffectType.FLAT_FOOTED,
-                    stealth.getFlatFootedDuration(this), 0f);
+                    c.stealth.getFlatFootedDuration(this), 0f);
         }
 
         // Crit-chance roll. Base chance is 0 today; a flat-footed target adds the class crit bonus
         // (Rogue = 1.0 → guaranteed). On a crit, scale by the generic crit multiplier, then let the
         // Rogue's Momentum (if any) amplify it further and apply its tier debuff.
         float critChance = target.hasStatusEffect(StatusEffectType.FLAT_FOOTED)
-                ? stealth.getFlatFootedCritBonus(this) : 0f;
+                ? c.stealth.getFlatFootedCritBonus(this) : 0f;
         if (critChance > 0f && critRandom.nextFloat() < critChance) {
             damageDealt *= PlayerConstants.PLAYER_CRIT_MULTIPLIER;
-            damageDealt *= rogueAbilities.onCritLanded(this, target);
+            damageDealt *= c.rogueAbilities.onCritLanded(this, target);
         }
 
         target.damage(damageDealt, LivingEntity.DamageSource.PLAYER);
-        berserkerAbilities.getRage().onMeleeHitDealt();
-        rangerAbilities.onPlayerMeleeHit(this, target);
-        stealth.onAttack(this); // attacking breaks stealth instantly
+        c.berserkerAbilities.getRage().onMeleeHitDealt();
+        c.rangerAbilities.onPlayerMeleeHit(this, target);
+        c.stealth.onAttack(this); // attacking breaks stealth instantly
 
-        if (berserkerAbilities.getRage().getTier().atLeast(RageTier.T3)) {
+        if (c.berserkerAbilities.getRage().getTier().atLeast(RageTier.T3)) {
             heal(damageDealt * RAGE_T3_LIFESTEAL_PCT);
         }
     }
 
     // Berserker
-    public BerserkerAbilityController getBerserkerAbilities() { return berserkerAbilities; }
+    public BerserkerAbilityController getBerserkerAbilities() { return c.berserkerAbilities; }
 
     // Ranger
-    public RangerAbilityController getRangerAbilities() { return rangerAbilities; }
+    public RangerAbilityController getRangerAbilities() { return c.rangerAbilities; }
 
     // Arcanist
-    public ArcanistAbilityController getArcanistAbilities() { return arcanistAbilities; }
+    public ArcanistAbilityController getArcanistAbilities() { return c.arcanistAbilities; }
 
     // Illusionist
-    public IllusionistAbilityController getIllusionistAbilities() { return illusionistAbilities; }
+    public IllusionistAbilityController getIllusionistAbilities() { return c.illusionistAbilities; }
 
     // Water splash particles
-    public WaterSplashParticles getSplashParticles() { return splashParticles; }
+    public WaterSplashParticles getSplashParticles() { return waterEffects.getSplashParticles(); }
 
     // Water surface ripples
-    public WaterRippleParticles getRippleParticles() { return rippleParticles; }
+    public WaterRippleParticles getRippleParticles() { return waterEffects.getRippleParticles(); }
 
     // Rogue
-    public RogueAbilityController getRogueAbilities() { return rogueAbilities; }
-    public boolean tryCastMirroredDeceit() { return illusionistAbilities.tryCastMirroredDeceit(this); }
-    public boolean tryCastFracture() { return illusionistAbilities.tryCastFracture(this); }
+    public RogueAbilityController getRogueAbilities() { return c.rogueAbilities; }
+    public boolean tryCastMirroredDeceit() { return c.illusionistAbilities.tryCastMirroredDeceit(this); }
+    public boolean tryCastFracture() { return c.illusionistAbilities.tryCastFracture(this); }
 
     /** True while any class ability is driving the player and movement input should be suppressed. */
     public boolean isAbilityMovementLocked() {
-        return berserkerAbilities.isMovementLocked() || rangerAbilities.isMovementLocked()
-            || dodge.isMovementLocked();
+        return c.berserkerAbilities.isMovementLocked() || c.rangerAbilities.isMovementLocked()
+            || c.dodge.isMovementLocked();
     }
 
     // Dodge (universal)
-    public DodgeController getDodge() { return dodge; }
+    public DodgeController getDodge() { return c.dodge; }
 
     /**
      * Triggers a dodge dash in the direction the WASD input is currently asking for (or backward
@@ -655,48 +407,34 @@ public class Player {
      * math as movement so the dash follows live input, not residual momentum.
      */
     public boolean tryDodge(boolean forward, boolean backward, boolean left, boolean right) {
-        return dodge.tryDodge(this, computeIntendedMoveDirection(forward, backward, left, right));
+        return c.dodge.tryDodge(this, computeIntendedMoveDirection(forward, backward, left, right));
     }
 
     /** Noise radius (blocks) spiked by a recent dodge; 0 when not spiked. Read by the stealth system. */
-    public float getDodgeNoiseRadius() { return dodge.getCurrentNoiseRadius(); }
+    public float getDodgeNoiseRadius() { return c.dodge.getCurrentNoiseRadius(); }
 
     // Stealth (universal)
-    public StealthController getStealth() { return stealth; }
+    public StealthController getStealth() { return c.stealth; }
 
     /** Current player noise radius (blocks) for enemy sound detection (movement state + dodge spike). */
-    public float getCurrentNoiseRadius() { return stealth.getNoiseRadius(this); }
+    public float getCurrentNoiseRadius() { return c.stealth.getNoiseRadius(this); }
 
     // Block interaction
-    public Vector3i raycast() { return raycastEngine.raycast(); }
-    public void placeBlock() { blockPlacer.placeBlock(); }
-    public void startBreakingBlock() { blockBreaker.startBreaking(); }
-    public void stopBreakingBlock() { blockBreaker.stopBreaking(); }
-    public Vector3i getBreakingBlock() { return blockBreaker.getBreakingBlock(); }
-    public float getBreakingProgress() { return blockBreaker.getBreakingProgress(); }
+    public Vector3i raycast() { return c.raycastEngine.raycast(); }
+    public void placeBlock() { c.blockPlacer.placeBlock(); }
+    public void startBreakingBlock() { c.blockBreaker.startBreaking(); }
+    public void stopBreakingBlock() { c.blockBreaker.stopBreaking(); }
+    public Vector3i getBreakingBlock() { return c.blockBreaker.getBreakingBlock(); }
+    public float getBreakingProgress() { return c.blockBreaker.getBreakingProgress(); }
     public boolean attemptDropItemInFront(ItemStack itemToDrop) {
-        return itemDropInteraction.attemptDropItemInFront(itemToDrop);
+        return c.itemDropInteraction.attemptDropItemInFront(itemToDrop);
     }
 
     // Lifecycle
-    public void giveStartingItems() { spawnService.giveStartingItems(); }
-    public void setLoadedFromSave(boolean loaded) { spawnService.setLoadedFromSave(loaded); }
+    public void giveStartingItems() { c.spawnService.giveStartingItems(); }
+    public void setLoadedFromSave(boolean loaded) { c.spawnService.setLoadedFromSave(loaded); }
 
     public void setWorld(World world) {
-        collisionHandler.setWorld(world);
-        swimming.setWorld(world);
-        raycastEngine.setWorld(world);
-        blockBreaker.setWorld(world);
-        blockPlacer.setWorld(world);
-        itemDropInteraction.setWorld(world);
-        deathHandler.setWorld(world);
-        // Quarry mark, trap, and ability state reference entities from the old world
-        rangerAbilities.reset();
-        // Resonance is a combat-only resource; spawned zones/projectiles are gone with the old world
-        arcanistAbilities.reset();
-        // Doubt tracks entities from the old world; decoys are gone with it
-        illusionistAbilities.reset();
-        // Momentum and ability cooldowns reset; caltrop entities are gone with the old world
-        rogueAbilities.reset();
+        c.setWorld(world);
     }
 }

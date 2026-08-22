@@ -108,6 +108,15 @@ public class SBEEditorWindow {
         return visible.get();
     }
 
+    /**
+     * Open a freshly written SBE without prompting — the exporter hands the
+     * just-exported file straight to this editor so the export form acts as
+     * the "start screen" and the full editor carries on from there.
+     */
+    public void openFile(String pathStr) {
+        loadFile(pathStr);
+    }
+
     private void loadFile(String pathStr) {
         try {
             Path path = Path.of(pathStr);

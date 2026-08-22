@@ -135,11 +135,15 @@ public class SBTExportWindow {
         if (!iniFileSet) {
             ImGui.setNextWindowSize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT);
 
+            // Center on the app's main viewport (absolute screen coords under
+            // multi-viewport) — size-only math would land on the primary monitor.
             float screenW = ImGui.getMainViewport().getSizeX();
             float screenH = ImGui.getMainViewport().getSizeY();
+            float originX = ImGui.getMainViewport().getPosX();
+            float originY = ImGui.getMainViewport().getPosY();
             ImGui.setNextWindowPos(
-                    (screenW - MIN_WINDOW_WIDTH) * 0.5f,
-                    (screenH - MIN_WINDOW_HEIGHT) * 0.5f
+                    originX + (screenW - MIN_WINDOW_WIDTH) * 0.5f,
+                    originY + (screenH - MIN_WINDOW_HEIGHT) * 0.5f
             );
             iniFileSet = true;
         }

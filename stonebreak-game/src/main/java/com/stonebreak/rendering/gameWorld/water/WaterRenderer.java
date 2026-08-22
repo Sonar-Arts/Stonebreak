@@ -174,6 +174,7 @@ public class WaterRenderer {
                 * (float) com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE);
         shader.setUniform("uSunDirection", sunDirection);
         shader.setUniform("uAmbientLight", ambientLight);
+        com.stonebreak.rendering.lighting.DynamicLights.applyTo(shader);
         shader.setUniform("uCameraPos", cameraPos);
         shader.setUniform("uFogColor", fogColor);
         shader.setUniform("uFogStart", fogStart);

@@ -179,6 +179,11 @@ public final class MmsArenaAllocator {
      * {@code to} offsets to the new one). Live segments' offsets are updated
      * in place; adjacent already-packed segments are merged into one Move.
      *
+     * <p>A run whose new offset equals its old one is still returned: the
+     * caller copies from the OLD buffer into a FRESH one, so "already in
+     * place" is never a no-op — skipping it would leave that segment
+     * uninitialized in the new buffer (garbage pulled quads, permanently).
+     *
      * @param newCapacity must be &gt;= {@link #used()}
      */
     public List<Move> compactTo(long newCapacity) {
@@ -209,11 +214,8 @@ public final class MmsArenaAllocator {
             if (runLength > 0 && from == runFrom + runLength && writeOffset == runTo + runLength) {
                 runLength += s.length;
             } else {
-                if (runLength > 0 && (runFrom != runTo)) {
+                if (runLength > 0) {
                     moves.add(new Move(runFrom, runTo, runLength));
-                }
-                if (runLength > 0 && runFrom == runTo) {
-                    // No-op run (already in place) — drop it.
                 }
                 runFrom = from;
                 runTo = writeOffset;
@@ -222,7 +224,7 @@ public final class MmsArenaAllocator {
             s.offset = writeOffset;
             writeOffset += s.length;
         }
-        if (runLength > 0 && runFrom != runTo) {
+        if (runLength > 0) {
             moves.add(new Move(runFrom, runTo, runLength));
         }
 

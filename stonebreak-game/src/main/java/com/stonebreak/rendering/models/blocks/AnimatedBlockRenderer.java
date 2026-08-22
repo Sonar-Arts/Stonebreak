@@ -131,12 +131,22 @@ public final class AnimatedBlockRenderer {
             float yaw;
             float anchorX;
             float anchorZ;
+            boolean torch = com.stonebreak.blocks.torch.TorchBlock.isTorch(type);
             if (type == BlockType.OAK_DOOR || DoorState.isDoorState(raw)) {
                 DoorState door = DoorState.parse(raw);
                 renderState = door.renderState();
                 yaw = door.facing().yawDegrees();
                 anchorX = door.facing().anchorOffsetX();
                 anchorZ = door.facing().anchorOffsetZ();
+            } else if (torch) {
+                // Torch models are authored centered on the cell axis, so the
+                // facing is a pure yaw about the cell center (anchor +0.5).
+                com.stonebreak.blocks.torch.TorchState state =
+                        com.stonebreak.blocks.torch.TorchState.parse(raw);
+                renderState = state.renderState();
+                yaw = state.yawDegrees();
+                anchorX = 0.5f;
+                anchorZ = 0.5f;
             } else {
                 renderState = raw != null && !raw.isBlank() ? raw : defaultStateOf(type);
                 yaw = 0f;
@@ -145,23 +155,51 @@ public final class AnimatedBlockRenderer {
             }
 
             Playback playback = playbacks.get(pos);
+            ParsedAnimClip clip = asset.clipFor(renderState);
+            boolean looping = clip != null && clip.loop();
             if (playback == null) {
                 playback = new Playback();
                 playback.renderState = renderState;
-                // Discovered mid-pose: hold the settled end pose, don't replay.
-                playback.startTime = totalTime - clipDuration(asset, renderState) - 1f;
+                playback.startTime = looping
+                        // Looping clips run on the shared world clock with a
+                        // per-position phase so neighbours don't pulse in
+                        // lockstep — the same phase the torch light uses.
+                        ? -loopPhaseOffset(pos, clip.duration())
+                        // Discovered mid-pose: hold the settled end pose, don't replay.
+                        : totalTime - clipDuration(asset, renderState) - 1f;
                 playbacks.put(pos, playback);
             } else if (!playback.renderState.equals(renderState)) {
                 playback.renderState = renderState;
-                playback.startTime = totalTime;
+                playback.startTime = looping ? -loopPhaseOffset(pos, clip.duration()) : totalTime;
             }
             float elapsed = totalTime - playback.startTime;
 
             reusablePosition.set(pos.x() + anchorX, pos.y(), pos.z() + anchorZ);
+            // A torch is its own light source: it never reads as unlit.
+            sbeRenderer.setSelfGlow(torch ? TORCH_SELF_GLOW : 0f);
             sbeRenderer.render(asset, SbeEntityAsset.DEFAULT_VARIANT,
                     AnimState.single(renderState, elapsed), reusablePosition, yaw, unitScale,
                     viewMatrix, projectionMatrix, world, cameraPos, 0f, 0f);
         }
+        sbeRenderer.setSelfGlow(0f);
+    }
+
+    /** Extra flat brightness a torch model draws with (it is lit by its own flame). */
+    private static final float TORCH_SELF_GLOW = 0.55f;
+
+    /**
+     * Phase offset, in seconds within {@code [0, duration)}, that a looping clip
+     * at {@code pos} runs ahead of the world clock: its elapsed time is
+     * {@code totalTime + loopPhaseOffset(pos, duration)}. Deterministic per
+     * position so the renderer and the torch light agree on the flicker phase.
+     */
+    public static float loopPhaseOffset(BlockPos pos, float duration) {
+        if (duration <= 0f) return 0f;
+        int h = pos.x() * 73856093 ^ pos.y() * 19349663 ^ pos.z() * 83492791;
+        h ^= (h >>> 13);
+        h *= 0x5bd1e995;
+        h ^= (h >>> 15);
+        return ((h & 0xffff) / 65536f) * duration;
     }
 
     private String defaultStateOf(BlockType type) {

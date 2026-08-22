@@ -54,8 +54,10 @@ public class BlockPlacementValidator implements IBlockPlacementService {
         }
 
 
-        // Check if block would intersect with player
-        if (wouldIntersectWithPlayer(blockPos, playerPos, blockType, playerOnGround)) {
+        // Check if block would intersect with player. Collision-free blocks
+        // (torches) may be placed in the player's own cell, like in Minecraft.
+        boolean collides = !com.stonebreak.blocks.torch.TorchBlock.isTorch(blockType);
+        if (collides && wouldIntersectWithPlayer(blockPos, playerPos, blockType, playerOnGround)) {
             return new PlacementValidationResult(false, PlacementValidationResult.FailureReason.PLAYER_COLLISION);
         }
 

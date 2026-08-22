@@ -30,10 +30,15 @@ Sessionless (open/commit are gone) — each call edits the GPU texture directly.
 3. `model_face_get_region` (flat RGBA read), `model_face_set_pixels`
    (flat [x,y,r,g,b,a,...]), `model_face_fill` (whole texture or rect),
    `model_face_resize_texture`.
+4. Text pixel art: `model_face_describe` (glyph grid + legend + bounds,
+   symmetry, orphan pixels — cheap, vision-free) and `model_face_paint_grid`
+   (rows + legend → pixels). Describe, edit the text, paint it back.
 
 ## Tips
 - Colors are `[r,g,b,a]` 0..255. Batch pixel writes.
 - Undo: model domain — a whole script run is ONE entry (painted pixels
   included; failure rolls back everything), each one-shot tool call one step.
 - The texture editor canvas is a separate surface: `om.canvas`/`canvas_*` +
-  the `tex_*` tools, with its own history (`undo` domain:"texture").
+  the `tex_*` tools, with its own history (`undo` domain:"texture"). You can
+  summon it for a face with `tex_open_editor {face_id}` — layers, noise,
+  outline, selection, symmetry; see topic `texture_editor`.

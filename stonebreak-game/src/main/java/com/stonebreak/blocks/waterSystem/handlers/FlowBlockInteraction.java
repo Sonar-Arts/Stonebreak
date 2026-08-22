@@ -29,7 +29,8 @@ public final class FlowBlockInteraction {
     }
 
     public static boolean isFragile(BlockType blockType) {
-        return blockType != null && blockType.isFlower();
+        return blockType != null
+                && (blockType.isFlower() || com.stonebreak.blocks.torch.TorchBlock.isTorch(blockType));
     }
 
     public static void dropFragile(World world, int x, int y, int z, BlockType blockType) {
@@ -37,6 +38,11 @@ public final class FlowBlockInteraction {
             return;
         }
         Vector3f dropPosition = new Vector3f(x + 0.5f, y + 0.1f, z + 0.5f);
+        if (com.stonebreak.blocks.torch.TorchBlock.isTorch(blockType)) {
+            // The torch drops its ITEM (SBO drops table), not the placed block.
+            DropUtil.handleBlockBroken(world, dropPosition, blockType);
+            return;
+        }
         DropUtil.createBlockDrop(world, dropPosition, blockType);
     }
 

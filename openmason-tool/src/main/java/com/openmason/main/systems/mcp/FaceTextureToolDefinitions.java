@@ -67,7 +67,42 @@ public final class FaceTextureToolDefinitions {
                         reqInt(args, "x"), reqInt(args, "y"),
                         reqInt(args, "w"), reqInt(args, "h"))));
 
+        registry.register(new McpTool(
+                "model_face_describe",
+                "Read a face's texture as TEXT for models without vision (no editor session): "
+                        + "glyph grid with rulers ('.' = transparent), legend (glyph → hex, colour "
+                        + "name, count/%), opaque bounds, mirror-symmetry scores, orphan pixels and "
+                        + "optional per-row run-lengths. tolerance merges near shades; max_colors "
+                        + "caps glyphs. Far cheaper than model_face_get_region.",
+                TextureToolDefinitions.describeSchema(schema())
+                        .intg("face_id", "Face identifier")
+                        .required("face_id")
+                        .build(),
+                args -> editor.describe(reqInt(args, "face_id"),
+                        McpArgs.optIntArray(args, "rect"),
+                        TextureToolDefinitions.describeOptions(args))));
+
         // ---------- One-shot mutations (sessionless) ----------
+
+        registry.register(new McpTool(
+                "model_face_paint_grid",
+                "Paint pixel art from text straight onto a face texture (no editor session): "
+                        + "'rows' are equal-length glyph strings, 'legend' maps glyph → colour "
+                        + "('#rrggbb', '#rrggbbaa' or 'r,g,b[,a]'); '.' skips (or clears with "
+                        + "clear_dots), ' ' always skips; top-left at (x,y). Inverse of "
+                        + "model_face_describe. One undo step.",
+                schema()
+                        .intg("face_id", "Face identifier")
+                        .strArray("rows", "Glyph rows, top to bottom")
+                        .strMap("legend", "glyph → colour")
+                        .intg("x", "Left edge (default 0)").intg("y", "Top edge (default 0)")
+                        .bool("clear_dots", "'.' writes transparent (default false)")
+                        .required("face_id", "rows", "legend")
+                        .build(),
+                args -> editor.paintGrid(reqInt(args, "face_id"),
+                        McpArgs.optStringList(args, "rows"), McpArgs.optStringMap(args, "legend"),
+                        McpArgs.optInt(args, "x", 0), McpArgs.optInt(args, "y", 0),
+                        McpArgs.optBool(args, "clear_dots", false))));
 
         registry.register(new McpTool(
                 "model_face_set_pixels",

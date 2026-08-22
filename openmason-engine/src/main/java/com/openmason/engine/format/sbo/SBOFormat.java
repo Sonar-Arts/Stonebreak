@@ -66,12 +66,20 @@ import java.util.Objects;
  *       one shipped sample), plus volume and a random pitch range. Multiple
  *       entries per event give playback variation. Older readers ignore the
  *       field and any {@code sounds/} entries.</li>
+ *   <li>1.8 - Optional {@code drops} block (see {@link DropData}). Declares
+ *       what a block yields when broken: a default drop list (each entry an
+ *       item/block {@code objectId} with an inclusive count range and a
+ *       chance) plus per-tool overrides keyed by the breaking tool's
+ *       {@code objectId}. When the section is present it is authoritative —
+ *       an empty default list means the block drops nothing; when absent the
+ *       game falls back to its built-in rule (a block drops itself). Manifest
+ *       only, no ZIP payload; older readers ignore the field.</li>
  * </ul>
  */
 public final class SBOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.7";
+    public static final String FORMAT_VERSION = "1.8";
 
     /** File extension for SBO files */
     public static final String FILE_EXTENSION = ".sbo";
@@ -322,6 +330,9 @@ public final class SBOFormat {
      * @param sounds           optional sound bindings (1.7+): event name → audio
      *                         sample (embedded or resource-referenced).
      *                         {@code null} means the object declares no sounds.
+     * @param drops            optional drop table (1.8+): what breaking this
+     *                         block yields, with per-tool overrides.
+     *                         {@code null} means "use the game's default rule".
      */
     public record Document(
             String version,
@@ -341,7 +352,8 @@ public final class SBOFormat {
             RecipeData recipes,
             SmeltingRecipeData smeltingRecipes,
             FuelData fuel,
-            com.openmason.engine.format.sound.SoundData sounds
+            com.openmason.engine.format.sound.SoundData sounds,
+            DropData drops
     ) {
         public Document {
             Objects.requireNonNull(version, "version cannot be null");
@@ -430,6 +442,124 @@ public final class SBOFormat {
         /** True when this SBO declares one or more sound bindings (1.7+). */
         public boolean hasSounds() {
             return sounds != null && !sounds.isEmpty();
+        }
+
+        /**
+         * True when this SBO carries a drop table (1.8+). Note that a present
+         * but empty table is meaningful ("drops nothing"), so this is a
+         * presence check, not an emptiness check.
+         */
+        public boolean hasDrops() {
+            return drops != null;
+        }
+    }
+
+    /**
+     * Optional drop table embedded in a block SBO manifest (format version 1.8+).
+     *
+     * <p>Describes what the block yields when broken. {@code drops} is the
+     * default list, used whenever no tool override matches the breaking tool
+     * (including breaking by hand). {@code toolOverrides} replace — not
+     * augment — the default list when the breaking tool's {@code objectId}
+     * matches; the first matching override wins.
+     *
+     * <p>Presence of this section is authoritative: an empty {@code drops} list
+     * means the block drops nothing. Blocks whose manifest has no section fall
+     * back to the game's built-in rule.
+     *
+     * @param drops         default drop entries; never null but may be empty
+     * @param toolOverrides per-tool replacement lists; never null but may be empty
+     */
+    public record DropData(List<DropEntry> drops, List<ToolDropOverride> toolOverrides) {
+        public DropData {
+            drops = drops == null ? Collections.emptyList() : List.copyOf(drops);
+            toolOverrides = toolOverrides == null ? Collections.emptyList() : List.copyOf(toolOverrides);
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (ToolDropOverride o : toolOverrides) {
+                if (!seen.add(o.toolObjectId())) {
+                    throw new IllegalArgumentException("duplicate tool override: " + o.toolObjectId());
+                }
+            }
+        }
+
+        /** Convenience: an explicitly empty table ("drops nothing"). */
+        public static DropData nothing() {
+            return new DropData(Collections.emptyList(), Collections.emptyList());
+        }
+
+        /**
+         * Resolves the drop list that applies when the block is broken with the
+         * given tool: the matching override's list, or the default list when
+         * {@code toolObjectId} is null or has no override.
+         */
+        public List<DropEntry> dropsFor(String toolObjectId) {
+            if (toolObjectId != null) {
+                for (ToolDropOverride o : toolOverrides) {
+                    if (o.toolObjectId().equals(toolObjectId)) return o.drops();
+                }
+            }
+            return drops;
+        }
+
+        /** True when both the default list and every override are empty. */
+        public boolean isEmpty() {
+            if (!drops.isEmpty()) return false;
+            for (ToolDropOverride o : toolOverrides) {
+                if (!o.drops().isEmpty()) return false;
+            }
+            return true;
+        }
+    }
+
+    /**
+     * One drop line (1.8+): an item or block, an inclusive count range and a
+     * probability that the line yields anything at all.
+     *
+     * @param objectId SBO {@code objectId} of the dropped item or block
+     *                 (e.g. {@code "stonebreak:clay_chunk"})
+     * @param minCount minimum count when the line fires (>= 0)
+     * @param maxCount maximum count when the line fires (>= minCount)
+     * @param chance   probability in {@code [0, 1]} that the line fires
+     */
+    public record DropEntry(String objectId, int minCount, int maxCount, float chance) {
+        public DropEntry {
+            Objects.requireNonNull(objectId, "objectId cannot be null");
+            if (objectId.isBlank()) {
+                throw new IllegalArgumentException("objectId cannot be blank");
+            }
+            if (minCount < 0) {
+                throw new IllegalArgumentException("minCount must be >= 0, got " + minCount);
+            }
+            if (maxCount < minCount) {
+                throw new IllegalArgumentException(
+                        "maxCount must be >= minCount, got " + maxCount + " < " + minCount);
+            }
+            if (Float.isNaN(chance) || chance < 0f || chance > 1f) {
+                throw new IllegalArgumentException("chance must be in [0,1], got " + chance);
+            }
+        }
+
+        /** A guaranteed drop of exactly {@code count}. */
+        public static DropEntry of(String objectId, int count) {
+            return new DropEntry(objectId, count, count, 1f);
+        }
+    }
+
+    /**
+     * A per-tool replacement for the default drop list (1.8+).
+     *
+     * @param toolObjectId SBO {@code objectId} of the breaking tool
+     *                     (e.g. {@code "stonebreak:stone_shovel"})
+     * @param drops        drop lines used instead of the defaults; never null,
+     *                     may be empty (= this tool yields nothing)
+     */
+    public record ToolDropOverride(String toolObjectId, List<DropEntry> drops) {
+        public ToolDropOverride {
+            Objects.requireNonNull(toolObjectId, "toolObjectId cannot be null");
+            if (toolObjectId.isBlank()) {
+                throw new IllegalArgumentException("toolObjectId cannot be blank");
+            }
+            drops = drops == null ? Collections.emptyList() : List.copyOf(drops);
         }
     }
 
@@ -665,6 +795,7 @@ public final class SBOFormat {
         private SmeltingRecipeData smeltingRecipes;
         private FuelData fuel;
         private final List<com.openmason.engine.format.sound.SoundSpec> sounds = new ArrayList<>();
+        private DropData drops;
 
         public ExportParameters() {}
 
@@ -715,6 +846,9 @@ public final class SBOFormat {
             sounds.clear();
             if (newSounds != null) sounds.addAll(newSounds);
         }
+
+        public DropData getDrops() { return drops; }
+        public void setDrops(DropData drops) { this.drops = drops; }
 
         /**
          * Validates that all required fields are populated.

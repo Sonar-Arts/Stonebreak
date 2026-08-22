@@ -554,6 +554,32 @@ public class TextureCreatorImGui {
         return controller;
     }
 
+    /** Names of every tool on the toolbar, in toolbar order (e.g. "Pencil", "Eraser"). */
+    public java.util.List<String> getToolNames() {
+        return toolbarPanel.getTools().stream().map(t -> t.getName()).toList();
+    }
+
+    /** Name of the tool the user currently has selected, or null. */
+    public String getCurrentToolName() {
+        var t = state.getCurrentTool();
+        return t != null ? t.getName() : null;
+    }
+
+    /**
+     * Select a toolbar tool by (case-insensitive) name — the same path as
+     * clicking it on the toolbar. Returns false when no such tool exists.
+     */
+    public boolean selectToolByName(String name) {
+        if (name == null) return false;
+        for (var t : toolbarPanel.getTools()) {
+            if (t.getName().equalsIgnoreCase(name.trim())) {
+                toolCoordinator.switchToTool(t);
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** The file dialog service used by this editor's save/open dialogs. */
     public FileDialogService getFileDialogService() {
         return fileOperations.getFileDialogService();

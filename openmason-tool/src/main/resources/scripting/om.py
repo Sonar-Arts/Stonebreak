@@ -481,6 +481,55 @@ class _Canvas:
                           float(opacity) if opacity is not None else None)
         return self
 
+    def ellipse(self, x, y, w, h, color, filled=True):
+        """Ellipse inscribed in (x, y, w, h) — filled, or a 1px ring."""
+        _b.canvasEllipse([int(x), int(y), int(w), int(h)], _rgba(color), bool(filled))
+        return self
+
+    def outline(self, inside=False, color=None):
+        """Auto-outline the active layer's silhouette: outer 1px border, or the
+        edge row with inside=True. No color => darker, cooler shade of the
+        neighbour (never flat black)."""
+        _b.canvasOutline(bool(inside), _rgba(color) if color is not None else None)
+        return self
+
+    def paint_grid(self, rows, legend, x=0, y=0, clear_dots=False):
+        """Pixel art from text: rows = ["..AA..", ".ABBA."], legend = {"A": "#3a2a1a",
+        "B": (210, 160, 90)}. '.' skips (clears with clear_dots), ' ' always skips."""
+        leg = {}
+        for k, v in dict(legend).items():
+            if isinstance(v, str):
+                leg[str(k)] = v
+            else:
+                c = _rgba(v)
+                leg[str(k)] = "%d,%d,%d,%d" % (c[0], c[1], c[2], c[3])
+        _b.canvasPaintGrid(_json.dumps([str(r) for r in rows]), _json.dumps(leg),
+                           int(x), int(y), bool(clear_dots))
+        return self
+
+    def move_layer(self, index, to):
+        """Reorder: move layer `index` to position `to` (0 = bottom)."""
+        _b.canvasMoveLayer(int(index), int(to))
+        return self
+
+    def duplicate_layer(self, index):
+        """Duplicate a layer; the copy sits above it and becomes active."""
+        _b.canvasDuplicateLayer(int(index))
+        return self
+
+    def merge_down(self, index):
+        """Merge layer `index` onto the one below (alpha-over at its opacity) and remove it."""
+        _b.canvasMergeDown(int(index))
+        return self
+
+    def describe(self, layer=None, rect=None, tolerance=0, max_colors=72, rle=False, hex=False):
+        """Vision-free read: {'grid' (glyph rows with rulers), 'rows', 'legend',
+        'opaqueBounds', 'symmetry', 'orphanPixels', 'rle', 'hexRows', ...}.
+        layer=None -> active, -1 -> visible composite. tolerance merges near shades."""
+        r = [int(v) for v in rect] if rect is not None else []
+        return _json.loads(_b.canvasDescribeJson(-2 if layer is None else int(layer), r,
+                                                 int(tolerance), int(max_colors), bool(rle), bool(hex)))
+
     def export(self, path):
         """Queue a PNG export of the flattened visible layers (absolute path;
         written only when the whole script succeeds)."""
@@ -618,8 +667,11 @@ Texture:  t = om.tex.create(p.faces(facing="+z"), size=(16,16), color=(200,120,6
           t.fill(c, rect=(x,y,w,h)); t.rect(x,y,w,h,c,filled=True); t.line(x0,y0,x1,y1,c)
           t.flood(x,y,c); t.set_pixels([(x,y,(r,g,b,a)),...]); t.noise("simplex", seed=7)
           t.resize(32,32); t.get_region(0,0,4,4); om.tex.of(p, 3)   # live viewport only
-Canvas:   om.canvas.fill(c); om.canvas.rect/line/flood/set_pixels/noise(...)  # texture editor
+Canvas:   om.canvas.fill(c); om.canvas.rect/ellipse/line/flood/set_pixels/noise/outline(...)  # texture editor
+          om.canvas.paint_grid(["..AA..", ".ABBA."], {"A": "#3a2a1a", "B": (210,160,90)}, x=4, y=2)
           om.canvas.add_layer("shade"); om.canvas.set_layer(1, active=True, opacity=0.5)
+          om.canvas.duplicate_layer(1); om.canvas.move_layer(2, 0); om.canvas.merge_down(1)
+          om.canvas.describe(layer=-1, tolerance=24)["grid"]   # glyph grid + legend, no vision needed
           om.canvas.layers(); om.canvas.info(); om.canvas.export("/abs/out.png")
 Query:    om.summary()  ->  {"totals": {...}, "bbox": [[..],[..]], "parts": [...]}
 Animate:  c = om.anim.clip("idle", duration=2.0, fps=30, loop=True)

@@ -347,6 +347,8 @@ public class SBOParser {
 
         SoundData sounds = SoundJson.read(root);
 
+        SBOFormat.DropData drops = parseDrops(root);
+
         return new SBOFormat.Document(
                 root.get("version").asText(),
                 root.get("objectId").asText(),
@@ -365,8 +367,59 @@ public class SBOParser {
                 recipes,
                 smeltingRecipes,
                 fuel,
-                sounds
+                sounds,
+                drops
         );
+    }
+
+    /**
+     * Reads the optional 1.8+ {@code drops} section. Returns {@code null} when
+     * the key is absent (or not an object) so older manifests keep the game's
+     * default rule; a present section always yields a {@link SBOFormat.DropData},
+     * even an empty one ("drops nothing"). Invalid lines are skipped with a warning.
+     */
+    static SBOFormat.DropData parseDrops(com.fasterxml.jackson.databind.JsonNode root) {
+        if (!root.has("drops") || root.get("drops").isNull() || !root.get("drops").isObject()) {
+            return null;
+        }
+        var dropsNode = root.get("drops");
+        List<SBOFormat.DropEntry> defaults = readDropEntries(dropsNode.get("default"), "default");
+        List<SBOFormat.ToolDropOverride> overrides = new ArrayList<>();
+        if (dropsNode.has("byTool") && dropsNode.get("byTool").isArray()) {
+            for (var oNode : dropsNode.get("byTool")) {
+                String tool = oNode.has("tool") ? oNode.get("tool").asText() : "";
+                List<SBOFormat.DropEntry> lines = readDropEntries(oNode.get("drops"), "byTool[" + tool + "]");
+                try {
+                    overrides.add(new SBOFormat.ToolDropOverride(tool, lines));
+                } catch (IllegalArgumentException ex) {
+                    logger.warn("Skipping invalid tool drop override in manifest: {}", ex.getMessage());
+                }
+            }
+        }
+        try {
+            return new SBOFormat.DropData(defaults, overrides);
+        } catch (IllegalArgumentException ex) {
+            logger.warn("Ignoring invalid drops block in manifest: {}", ex.getMessage());
+            return null;
+        }
+    }
+
+    private static List<SBOFormat.DropEntry> readDropEntries(
+            com.fasterxml.jackson.databind.JsonNode arr, String where) {
+        List<SBOFormat.DropEntry> out = new ArrayList<>();
+        if (arr == null || !arr.isArray()) return out;
+        for (var dNode : arr) {
+            String objectId = dNode.has("objectId") ? dNode.get("objectId").asText() : "";
+            int min = dNode.has("min") ? dNode.get("min").asInt() : 1;
+            int max = dNode.has("max") ? dNode.get("max").asInt() : min;
+            float chance = dNode.has("chance") ? (float) dNode.get("chance").asDouble() : 1f;
+            try {
+                out.add(new SBOFormat.DropEntry(objectId, min, max, chance));
+            } catch (IllegalArgumentException ex) {
+                logger.warn("Skipping invalid drop entry ({}) in manifest: {}", where, ex.getMessage());
+            }
+        }
+        return out;
     }
 
     private static String nullIfBlank(String s) {

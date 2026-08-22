@@ -22,6 +22,8 @@ textures. Optional **bones** (animation skeleton) and **attachment sockets**
 3. Single tweaks: the per-domain tools (`part_transform`, `scale_faces`, ...).
    Mutations return terse acks; pass `verbose:true` when you need full state.
 4. `viewport_capture` — see the model (select a part first to frame it).
+   No vision? `model_face_describe` / `tex_describe` render pixels as a
+   glyph grid with legend + symmetry/orphan stats.
 
 ## Undo domains
 `undo` / `redo` take a `domain`: model (default — parts, geometry, face
@@ -29,4 +31,6 @@ textures; a whole script run is one step), texture (texture editor), bone,
 attach (sockets), anim. The five histories are separate.
 
 ## Topics
-`parts`, `face_textures`, `bones`, `attachments`, `animation`, `scripting`, `recipes`
+`parts`, `face_textures`, `bones`, `attachments`, `animation`, `scripting`,
+`texture_editor` (summon/drive the layered editor; text pixel art via
+`tex_describe`/`tex_paint_grid` for vision-less reading), `recipes`

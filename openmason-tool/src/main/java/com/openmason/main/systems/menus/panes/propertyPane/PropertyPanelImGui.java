@@ -277,6 +277,16 @@ public class PropertyPanelImGui {
     }
 
     /**
+     * Open a face in the texture editor programmatically — the same flow as
+     * the face material section's "Edit Texture" button (MCP entry point).
+     *
+     * @return true if the face region was opened
+     */
+    public boolean openFaceTextureEditor(int faceId) {
+        return faceMaterialSection.openFaceForEditing(faceId);
+    }
+
+    /**
      * Clear the editing face highlight in the viewport overlay.
      * Should be called when the texture editor window closes.
      */

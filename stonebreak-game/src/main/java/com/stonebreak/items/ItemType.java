@@ -84,6 +84,7 @@ public final class ItemType implements Item {
     public static final ItemType LEATHER = fromRegistry("stonebreak:leather", "LEATHER");
     public static final ItemType BOW = fromRegistry("stonebreak:bow", "BOW");
     public static final ItemType ARROW = fromRegistry("stonebreak:arrow", "ARROW");
+    public static final ItemType CLAY_CHUNK = fromRegistry("stonebreak:clay_chunk", "CLAY_CHUNK");
 
     // ----- SBO state name constants for the wooden bucket. ----------------
 

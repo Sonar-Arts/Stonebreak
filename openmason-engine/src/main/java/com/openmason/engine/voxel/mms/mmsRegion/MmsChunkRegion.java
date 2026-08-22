@@ -774,8 +774,16 @@ public final class MmsChunkRegion {
      * packing every live segment to the tail, old buffer deleted, VAO
      * re-pointed at the new buffer.
      */
+    private static final boolean ARENA_DEBUG = Boolean.getBoolean("stonebreak.arena.debug");
+
     private void resizeArena(MmsArenaAllocator alloc, long newCapacity, boolean vertex) {
         int elementBytes = vertex ? vertexStride : Short.BYTES;
+        if (ARENA_DEBUG) {
+            System.out.println("[arena] " + format + (vertex ? " vertex" : " index")
+                + (newCapacity < alloc.capacity() ? " TRIM " : " GROW ")
+                + alloc.capacity() + " -> " + newCapacity + " (used " + alloc.used()
+                + ", live " + liveHandles.size() + ", sparse " + sparse + ")");
+        }
         long newBytes = newCapacity * elementBytes;
         // Captured BEFORE compaction mutates the allocator's capacity.
         long oldBytes = sparse

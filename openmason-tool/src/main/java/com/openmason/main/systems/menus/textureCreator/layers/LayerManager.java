@@ -149,6 +149,36 @@ public class LayerManager {
     }
 
     /**
+     * Merge the layer at {@code index} onto the layer below it — alpha-over at
+     * the upper layer's opacity — and remove it. The lower layer keeps its name,
+     * visibility and opacity and becomes active.
+     *
+     * @param index layer index (must be >= 1)
+     */
+    public void mergeLayerDown(int index) {
+        if (index < 1 || index >= layers.size()) {
+            throw new IndexOutOfBoundsException("Invalid merge index (needs a layer below): " + index);
+        }
+        Layer top = layers.get(index);
+        Layer bottom = layers.get(index - 1);
+        int[] dst = bottom.getCanvas().getPixels();
+        int[] src = top.getCanvas().getPixels();
+        float opacity = top.getOpacity();
+        for (int i = 0; i < dst.length; i++) {
+            int[] s = PixelCanvas.unpackRGBA(src[i]);
+            int a = Math.round(s[3] * opacity);
+            if (a == 0) continue;
+            dst[i] = PixelCanvas.blendColors(PixelCanvas.packRGBA(s[0], s[1], s[2], a), dst[i]);
+        }
+        bottom.getCanvas().notifyFullCanvasDirty();
+        layers.remove(index);
+        activeLayerIndex = index - 1;
+
+        compositeCacheDirty = true;
+        logger.debug("Merged layer '{}' down onto '{}'", top.getName(), bottom.getName());
+    }
+
+    /**
      * Set layer visibility.
      *
      * @param index layer index

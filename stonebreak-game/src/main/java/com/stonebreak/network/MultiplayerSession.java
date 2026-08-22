@@ -389,9 +389,15 @@ public final class MultiplayerSession {
      * lag behind under load).
      */
     public static void onLocalBlockChange(int x, int y, int z, BlockType type, BlockType prevType) {
+        onLocalBlockChange(x, y, z, type, prevType, null);
+    }
+
+    /** Same, carrying an optional client-proposed placement state (torches). */
+    public static void onLocalBlockChange(int x, int y, int z, BlockType type, BlockType prevType,
+                                          String placementState) {
         ClientWorldView c = client;
         if (c != null) {
-            c.onLocalBlockChange(x, y, z, type, prevType);
+            c.onLocalBlockChange(x, y, z, type, prevType, placementState);
         }
     }
 

@@ -197,6 +197,9 @@ public final class FurnaceState {
      * identity, so an open furnace UI bound to this state sees the update live.
      */
     public void applyStateString(String raw) {
+        // Remember what the slots looked like before this echo clobbers them, so an open UI
+        // can tell its own un-sent edits apart from the server's corrections.
+        if (preEchoSlots == null) preEchoSlots = encodeSlots();
         FurnaceState parsed = fromStateString(pos, raw);
         this.ingredient = parsed.ingredient;
         this.fuel = parsed.fuel;
@@ -205,6 +208,21 @@ public final class FurnaceState {
         this.currentBurnUnitTotal = parsed.currentBurnUnitTotal;
         this.cookProgress = parsed.cookProgress;
         this.cooking = parsed.cookProgress > 0;
+    }
+
+    /** Slot snapshot taken just before the first server echo since the last poll; null if none. */
+    private String preEchoSlots;
+
+    /**
+     * Returns the slot snapshot from immediately before the first server echo applied since
+     * the previous call (null if no echo landed), and resets it. Lets the furnace UI detect
+     * that an echo overwrote the slots so it re-baselines instead of re-sending the echoed
+     * contents as a fresh edit (which duplicated shift-clicked output).
+     */
+    public String consumePreEchoSlots() {
+        String s = preEchoSlots;
+        preEchoSlots = null;
+        return s;
     }
 
     /** Encodes only the three slots ({@code ing|fuel|out}), for the client slot intent. */
