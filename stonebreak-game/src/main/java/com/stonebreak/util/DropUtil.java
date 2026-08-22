@@ -24,6 +24,11 @@ public class DropUtil {
     private static final float DROP_VELOCITY_MIN = 1.0f;
     private static final float DROP_VELOCITY_MAX = 3.0f;
     private static final float DROP_HEIGHT_OFFSET = 0.5f;
+
+    // Clay never drops itself — mining it yields a randomized handful of clay
+    // chunks (inclusive range), which craft back into a clay block 4-at-a-time.
+    private static final int CLAY_CHUNK_DROP_MIN = 3;
+    private static final int CLAY_CHUNK_DROP_MAX = 4;
     
     /**
      * Creates a block drop at the specified position.
@@ -235,6 +240,15 @@ public class DropUtil {
     }
     
     /**
+     * Rolls how many clay chunks a broken clay block yields — a uniform value
+     * in {@code [CLAY_CHUNK_DROP_MIN, CLAY_CHUNK_DROP_MAX]}, both inclusive.
+     */
+    public static int rollClayChunkDropCount() {
+        int span = CLAY_CHUNK_DROP_MAX - CLAY_CHUNK_DROP_MIN + 1;
+        return CLAY_CHUNK_DROP_MIN + (int) (Math.random() * span);
+    }
+
+    /**
      * Gets the appropriate drop for a broken block.
      * Some blocks may drop different items than themselves (e.g., stone drops cobblestone).
      */
@@ -293,6 +307,12 @@ public class DropUtil {
                     createBlockDrops(world, position, BlockType.SNOW, layers);
                 }
             }
+            return;
+        }
+
+        // Clay drops chunks, not the block itself.
+        if (brokenBlock == BlockType.CLAY) {
+            createItemDrop(world, position, ItemType.CLAY_CHUNK, rollClayChunkDropCount());
             return;
         }
 
