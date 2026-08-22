@@ -136,6 +136,16 @@ public final class McpArgs {
     }
 
     /** Optional string-array argument; empty list when absent (blank entries dropped). */
+    /** Optional JSON object of string → string (e.g. a glyph legend). */
+    public static java.util.Map<String, String> optStringMap(JsonNode args, String key) {
+        JsonNode n = args.get(key);
+        if (n == null || n.isNull()) return null;
+        if (!n.isObject()) throw new IllegalArgumentException("'" + key + "' must be an object");
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        n.fields().forEachRemaining(e -> out.put(e.getKey(), e.getValue().asText()));
+        return out;
+    }
+
     public static List<String> optStringList(JsonNode args, String key) {
         List<String> out = new ArrayList<>();
         JsonNode n = args.get(key);

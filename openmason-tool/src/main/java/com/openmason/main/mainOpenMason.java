@@ -194,6 +194,32 @@ public class mainOpenMason {
             animationEditor = composition.animationEditor();
             texturePreviewPipeline = composition.texturePreviewPipeline();
         }
+        if (mainInterface != null && textureEditorWindow != null) {
+            mainInterface.setTextureEditorPresenter(new MainImGuiInterface.TextureEditorPresenter() {
+                @Override
+                public void show() {
+                    showTextureEditor = true;
+                    textureEditorWindow.show();
+                }
+
+                @Override
+                public void close() {
+                    closeTextureEditor();
+                }
+
+                @Override
+                public boolean isVisible() {
+                    return showTextureEditor && textureEditorWindow.isVisible();
+                }
+
+                @Override
+                public void flush() {
+                    if (texturePreviewPipeline != null) {
+                        texturePreviewPipeline.flush();
+                    }
+                }
+            });
+        }
     }
 
     /**
@@ -225,25 +251,9 @@ public class mainOpenMason {
         if (showTextureEditor) {
             safeRender(() -> {
                 textureEditorWindow.render();
-                boolean stillVisible = textureEditorWindow.isVisible();
-                if (!stillVisible) {
-                    boolean wasFaceEdit = textureCreatorInterface.getController().isFaceRegionActive();
-
-                    // Flush pending canvas edits to the face's GPU texture BEFORE
-                    // closing the region — closeFaceRegion clears the material ID,
-                    // so a later flush would target the wrong texture.
-                    if (texturePreviewPipeline != null) {
-                        texturePreviewPipeline.flush();
-                    }
-                    textureCreatorInterface.getController().closeFaceRegion();
-                    mainInterface.getPropertyPanel().clearEditingFace();
-
-                    // Auto-save the .OMO so per-face texture edits are persisted
-                    if (wasFaceEdit && mainInterface.getModelOperations() != null) {
-                        mainInterface.getModelOperations().saveModel();
-                    }
+                if (!textureEditorWindow.isVisible()) {
+                    onTextureEditorClosed();
                 }
-                showTextureEditor = stillVisible;
             }, "Texture Editor");
         }
 
@@ -426,6 +436,36 @@ public class mainOpenMason {
                 com.openmason.main.systems.layout.CenterTab.resolve(
                         ref.activeCenterTab(),
                         com.openmason.main.systems.layout.CenterTab.MODEL_EDITOR).windowTitle());
+    }
+
+    /**
+     * Tear-down that runs once the texture editor window has gone away — either
+     * the user closed it or {@link #closeTextureEditor()} was called. Flushes
+     * pending canvas edits to the face's GPU texture BEFORE closing the region
+     * (closeFaceRegion clears the material ID, so a later flush would target
+     * the wrong texture), clears the viewport highlight and auto-saves the
+     * .OMO so per-face texture edits are persisted.
+     */
+    private void onTextureEditorClosed() {
+        showTextureEditor = false;
+        boolean wasFaceEdit = textureCreatorInterface.getController().isFaceRegionActive();
+        if (texturePreviewPipeline != null) {
+            texturePreviewPipeline.flush();
+        }
+        textureCreatorInterface.getController().closeFaceRegion();
+        mainInterface.getPropertyPanel().clearEditingFace();
+        if (wasFaceEdit && mainInterface.getModelOperations() != null) {
+            mainInterface.getModelOperations().saveModel();
+        }
+    }
+
+    /** Programmatic close of the texture editor (MCP): same path as the window's X. */
+    private void closeTextureEditor() {
+        if (!showTextureEditor) {
+            return;
+        }
+        textureEditorWindow.hide();
+        onTextureEditorClosed();
     }
 
     /**

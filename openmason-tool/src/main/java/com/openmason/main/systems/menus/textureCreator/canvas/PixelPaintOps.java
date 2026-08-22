@@ -26,6 +26,94 @@ public final class PixelPaintOps {
     private PixelPaintOps() {
     }
 
+    /**
+     * Ellipse inscribed in the box (x,y,w,h) — filled, or a 1px ring (pixels
+     * inside the ellipse with a 4-neighbour outside it). Returns pixels changed.
+     */
+    public static int ellipse(PixelWriter writer, int x, int y, int w, int h, int color, boolean filled) {
+        if (w <= 0 || h <= 0) return 0;
+        double cx = x + w / 2.0, cy = y + h / 2.0, rx = w / 2.0, ry = h / 2.0;
+        int changed = 0;
+        for (int py = y; py < y + h; py++) {
+            for (int px = x; px < x + w; px++) {
+                if (!insideEllipse(px, py, cx, cy, rx, ry)) continue;
+                if (!filled
+                        && insideEllipse(px + 1, py, cx, cy, rx, ry)
+                        && insideEllipse(px - 1, py, cx, cy, rx, ry)
+                        && insideEllipse(px, py + 1, cx, cy, rx, ry)
+                        && insideEllipse(px, py - 1, cx, cy, rx, ry)) {
+                    continue;
+                }
+                changed += writer.write(px, py, color);
+            }
+        }
+        return changed;
+    }
+
+    private static boolean insideEllipse(int px, int py, double cx, double cy, double rx, double ry) {
+        double nx = (px + 0.5 - cx) / rx, ny = (py + 0.5 - cy) / ry;
+        return nx * nx + ny * ny <= 1.0;
+    }
+
+    /**
+     * Auto-outline an opaque silhouette. {@code inside=false} grows a 1px border
+     * into transparent 4-neighbours; {@code inside=true} recolours the
+     * silhouette's own edge row. {@code fixedColor} null ⇒ each outline pixel is
+     * {@link #outlineOf} its neighbour (darker, cooler, never flat black).
+     * Reads from a snapshot ({@code src}, {@link PixelCanvas}-packed, row-major) so writes do
+     * not feed back into the pass. Returns pixels changed.
+     */
+    public static int outline(PixelWriter writer, int[] src, int w, int h, boolean inside, Integer fixedColor) {
+        int[][] n4 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        int changed = 0;
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int self = src[y * w + x];
+                boolean opaque = alphaOf(self) != 0;
+                if (inside) {
+                    if (!opaque) continue;
+                    boolean edge = false;
+                    for (int[] o : n4) {
+                        int nx = x + o[0], ny = y + o[1];
+                        if (nx < 0 || ny < 0 || nx >= w || ny >= h || alphaOf(src[ny * w + nx]) == 0) {
+                            edge = true;
+                            break;
+                        }
+                    }
+                    if (edge) changed += writer.write(x, y, fixedColor != null ? fixedColor : outlineOf(self));
+                } else {
+                    if (opaque) continue;
+                    int neighbour = 0;
+                    for (int[] o : n4) {
+                        int nx = x + o[0], ny = y + o[1];
+                        if (nx >= 0 && ny >= 0 && nx < w && ny < h && alphaOf(src[ny * w + nx]) != 0) {
+                            neighbour = src[ny * w + nx];
+                            break;
+                        }
+                    }
+                    if (neighbour != 0) {
+                        changed += writer.write(x, y, fixedColor != null ? fixedColor : outlineOf(neighbour));
+                    }
+                }
+            }
+        }
+        return changed;
+    }
+
+    /** Darker, cooler, never black — the pixel-art outline rule (packed RGBA in/out). */
+    public static int outlineOf(int packed) {
+        int[] c = PixelCanvas.unpackRGBA(packed);
+        return PixelCanvas.packRGBA(clamp8(c[0] * 0.42 + 8), clamp8(c[1] * 0.38 + 6), clamp8(c[2] * 0.48 + 22), 255);
+    }
+
+    private static int alphaOf(int packed) {
+        return (packed >>> 24) & 0xFF;
+    }
+
+    private static int clamp8(double v) {
+        return (int) Math.max(0, Math.min(255, Math.round(v)));
+    }
+
     /** Rectangle at (x,y) size w×h — filled, or a 1px outline. Returns pixels changed. */
     public static int rect(PixelWriter writer, int x, int y, int w, int h, int color, boolean filled) {
         if (w <= 0 || h <= 0) return 0;

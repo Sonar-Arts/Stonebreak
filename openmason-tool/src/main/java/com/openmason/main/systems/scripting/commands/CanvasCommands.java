@@ -12,12 +12,14 @@ import com.openmason.main.systems.menus.textureCreator.filters.noise.ValueNoiseG
 import com.openmason.main.systems.menus.textureCreator.filters.noise.WhiteNoiseGenerator;
 import com.openmason.main.systems.menus.textureCreator.layers.Layer;
 import com.openmason.main.systems.menus.textureCreator.layers.LayerManager;
+import com.openmason.main.systems.mcp.PixelTextCodec;
 import com.openmason.main.systems.scripting.doc.CanvasSurface;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -119,6 +121,74 @@ public final class CanvasCommands {
                 (canvas, writer) -> PixelPaintOps.rect(writer, r[0], r[1], r[2], r[3], color, filled));
     }
 
+    /** Ellipse inscribed in [x,y,w,h] — filled, or a 1px ring. */
+    public int ellipse(int[] rect, int[] rgba, boolean filled) {
+        int color = packColor(rgba);
+        int[] r = validateRect(rect);
+        if (r == null) {
+            throw new CommandException("rect is required: [x,y,w,h]");
+        }
+        return paint("canvas_ellipse",
+                op -> {
+                    op.set("rect", intArrayNode(op, r));
+                    op.set("color", intArrayNode(op, rgba));
+                    if (filled) op.put("filled", true);
+                },
+                (canvas, writer) -> PixelPaintOps.ellipse(writer, r[0], r[1], r[2], r[3], color, filled));
+    }
+
+    /**
+     * Auto-outline the active layer's silhouette: outer 1px border (default) or
+     * the edge row with {@code inside}; {@code rgbaOrNull} null ⇒ each outline
+     * pixel is a darker, cooler shade of its neighbour (never flat black).
+     */
+    public int outline(boolean inside, int[] rgbaOrNull) {
+        Integer fixed = rgbaOrNull == null ? null : packColor(rgbaOrNull);
+        return paint("canvas_outline",
+                op -> {
+                    if (inside) op.put("inside", true);
+                    if (rgbaOrNull != null) op.set("color", intArrayNode(op, rgbaOrNull));
+                },
+                (canvas, writer) -> PixelPaintOps.outline(writer, canvas.getPixels().clone(),
+                        canvas.getWidth(), canvas.getHeight(), inside, fixed));
+    }
+
+    /**
+     * Paint a glyph grid: {@code rows} of equal-length strings, {@code legend}
+     * glyph → "#rrggbb[aa]" | "r,g,b[,a]"; '.' skips (or clears with
+     * {@code clearDots}), ' ' always skips; top-left at (x,y).
+     */
+    public int paintGrid(List<String> rows, Map<String, String> legend, int x, int y, boolean clearDots) {
+        if (rows == null || rows.isEmpty()) throw new CommandException("rows must be a non-empty list of strings");
+        if (legend == null) throw new CommandException("legend is required: {glyph: color}");
+        int[] writes;
+        try {
+            writes = PixelTextCodec.parseGrid(rows, PixelTextCodec.legendFrom(legend), x, y, clearDots);
+        } catch (IllegalArgumentException e) {
+            throw new CommandException(e.getMessage());
+        }
+        return paint("canvas_paint_grid",
+                op -> {
+                    ArrayNode r = op.arrayNode();
+                    rows.forEach(r::add);
+                    op.set("rows", r);
+                    ObjectNode l = op.objectNode();
+                    legend.forEach(l::put);
+                    op.set("legend", l);
+                    if (x != 0) op.put("x", x);
+                    if (y != 0) op.put("y", y);
+                    if (clearDots) op.put("clear_dots", true);
+                },
+                (canvas, writer) -> {
+                    int changed = 0;
+                    for (int i = 0; i < writes.length; i += 6) {
+                        changed += writer.write(writes[i], writes[i + 1], PixelCanvas.packRGBA(
+                                writes[i + 2], writes[i + 3], writes[i + 4], writes[i + 5]));
+                    }
+                    return changed;
+                });
+    }
+
     /** 1-pixel line from [x0,y0] to [x1,y1]. */
     public int line(int x0, int y0, int x1, int y1, int[] rgba) {
         int color = packColor(rgba);
@@ -203,6 +273,46 @@ public final class CanvasCommands {
         lm.removeLayer(index);
         surface.notifyModified();
         tracer.trace("canvas_remove_layer", op -> op.put("index", index));
+    }
+
+    /** Reorder: move the layer at {@code from} to position {@code to} (0 = bottom). */
+    public void moveLayer(int from, int to) {
+        LayerManager lm = requireSurface().layers();
+        requireLayerIndex(lm, from);
+        requireLayerIndex(lm, to);
+        surface.beginMutation();
+        lm.moveLayer(from, to);
+        surface.notifyModified();
+        tracer.trace("canvas_move_layer", op -> {
+            op.put("from", from);
+            op.put("to", to);
+        });
+    }
+
+    /** Duplicate the layer at {@code index}; the copy sits above it and becomes active. */
+    public LayerInfo duplicateLayer(int index) {
+        LayerManager lm = requireSurface().layers();
+        requireLayerIndex(lm, index);
+        surface.beginMutation();
+        lm.duplicateLayer(index);
+        surface.notifyModified();
+        tracer.trace("canvas_duplicate_layer", op -> op.put("index", index));
+        int idx = lm.getActiveLayerIndex();
+        Layer layer = lm.getLayer(idx);
+        return new LayerInfo(idx, layer.getName(), layer.isVisible(), layer.getOpacity(), true);
+    }
+
+    /** Merge the layer at {@code index} onto the one below (alpha-over at its opacity) and remove it. */
+    public void mergeLayerDown(int index) {
+        LayerManager lm = requireSurface().layers();
+        requireLayerIndex(lm, index);
+        if (index == 0) {
+            throw new CommandException("layer 0 has nothing below it to merge onto");
+        }
+        surface.beginMutation();
+        lm.mergeLayerDown(index);
+        surface.notifyModified();
+        tracer.trace("canvas_merge_down", op -> op.put("index", index));
     }
 
     /** Update any subset of a layer's name/visibility/opacity/active flag. */
@@ -295,6 +405,38 @@ public final class CanvasCommands {
                     i == lm.getActiveLayerIndex()));
         }
         return out;
+    }
+
+    /**
+     * Text rendering for vision-less readers (see {@link PixelTextCodec}):
+     * {@code layer} null = active, -1 = visible composite; {@code rect} null = whole canvas.
+     */
+    public PixelTextCodec.Result describe(Integer layer, int[] rect, int tolerance, int maxColors,
+                                          boolean rle, boolean hex) {
+        LayerManager lm = requireSurface().layers();
+        PixelCanvas canvas;
+        if (layer == null) {
+            canvas = requireActiveCanvas();
+        } else if (layer < 0) {
+            canvas = lm.compositeLayersToCanvas();
+        } else {
+            requireLayerIndex(lm, layer);
+            canvas = lm.getLayer(layer).getCanvas();
+        }
+        int w = canvas.getWidth(), h = canvas.getHeight();
+        int[] r = validateRect(rect);
+        int x = r != null ? r[0] : 0, y = r != null ? r[1] : 0;
+        int rw = r != null ? r[2] : w, rh = r != null ? r[3] : h;
+        if (x < 0 || y < 0 || x + rw > w || y + rh > h) {
+            throw new CommandException("rect " + rw + "x" + rh + " at (" + x + "," + y
+                    + ") exceeds the " + w + "x" + h + " canvas");
+        }
+        try {
+            return PixelTextCodec.describe(canvas.getPixels(), w, x, y, rw, rh,
+                    new PixelTextCodec.Options(tolerance, maxColors, 8, rle, true, hex));
+        } catch (IllegalArgumentException e) {
+            throw new CommandException(e.getMessage());
+        }
     }
 
     /** Read a rectangular region of the ACTIVE layer as flat [r,g,b,a, ...]. */

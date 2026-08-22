@@ -709,6 +709,45 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     }
 
     /**
+     * Window-level control of the texture editor (show / hide / visibility),
+     * owned by the application shell. Lets external drivers such as the MCP
+     * server summon or dismiss the editor exactly as the Tools menu and the
+     * property panel's "Edit Texture" button do.
+     */
+    public interface TextureEditorPresenter {
+        /** Show the texture editor window (no-op if already visible). */
+        void show();
+
+        /**
+         * Close the texture editor window, flushing pending canvas edits to the
+         * face texture, closing any active face region and auto-saving the
+         * model — the same path the window's own close button takes.
+         */
+        void close();
+
+        /** Whether the texture editor window is currently shown. */
+        boolean isVisible();
+
+        /**
+         * Push pending canvas edits to the face's GPU texture without closing
+         * the editor (no-op when no face session is active).
+         */
+        void flush();
+    }
+
+    private TextureEditorPresenter textureEditorPresenter;
+
+    /** Install the shell's texture editor window control. */
+    public void setTextureEditorPresenter(TextureEditorPresenter presenter) {
+        this.textureEditorPresenter = presenter;
+    }
+
+    /** @return the texture editor window control, or null before the shell wires it */
+    public TextureEditorPresenter getTextureEditorPresenter() {
+        return textureEditorPresenter;
+    }
+
+    /**
      * Get the animation editor interface, or null if not yet wired.
      */
     public com.openmason.main.systems.menus.animationEditor.AnimationEditorImGui getAnimationEditor() {

@@ -54,7 +54,9 @@ public final class MetaToolDefinitions {
                 "Compact modeling guide (markdown). Topics: overview (default — conventions: "
                         + "Y-up, degrees, part origins, id-or-name addressing, undo domains), parts, "
                         + "face_textures, bones, attachments, animation, scripting (the Python om "
-                        + "cheatsheet), recipes (workflows like 'build a quadruped mob'). Read "
+                        + "cheatsheet), texture_editor (summoning the editor, layers, noise, "
+                        + "tex_describe/tex_paint_grid text pixel art), recipes (workflows like "
+                        + "'build a quadruped mob'). Read "
                         + "overview once per session; other topics on demand.",
                 McpSchema.of(mapper)
                         .enumStr("topic", "Guide topic (default overview)",
