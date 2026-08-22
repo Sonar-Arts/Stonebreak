@@ -222,4 +222,29 @@ class FastLodPulledParityTest {
             assertEquals(ref.waterMesh() == null, pulled.waterMesh() == null, level + " water presence");
         }
     }
+    /**
+     * Regression: a node that is flat across its whole width merges into a
+     * rectangle wider than the codec's 63 half-block u extent. The writer must
+     * split the run instead of dropping the record — a dropped top exposes the
+     * foundation walls below as bare "spires" (seen in-game 2026-08-21).
+     */
+    @Test
+    void wideFlatPlateauKeepsEveryTopTile() {
+        for (FastLodLevel level : FastLodLevel.values()) {
+            int stride = level.stride();
+            int[] heights = new int[stride * stride];
+            java.util.Arrays.fill(heights, 80);
+            BlockType[] surface = new BlockType[level.cellCount()];
+            java.util.Arrays.fill(surface, BlockType.STONE);
+            TreeSample[] trees = level.emitsTrees() ? new TreeSample[level.cellCount()] : null;
+            FastLodChunkData d = new FastLodChunkData(FastLodKey.of(level, 3, 4), heights, surface, trees);
+
+            MmsVertexFormat.override(MmsVertexFormat.LEGACY40);
+            FastLodMesher.Result ref = mesher().build(d);
+            MmsVertexFormat.override(MmsVertexFormat.QUAD16);
+            FastLodMesher.Result pulled = mesher().build(d);
+
+            assertEquals(tiles(ref.mesh()), tiles(pulled.mesh()), level + " flat plateau covered tiles");
+        }
+    }
 }

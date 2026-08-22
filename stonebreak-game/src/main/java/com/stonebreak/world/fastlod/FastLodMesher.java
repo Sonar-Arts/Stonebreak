@@ -527,6 +527,7 @@ public final class FastLodMesher {
                 return;
             }
             boolean[] done = new boolean[n * n];
+            int maxUCells = maxUCells();
             for (int ix = 0; ix < n; ix++) {
                 for (int iz = 0; iz < n; iz++) {
                     int cell = ix * n + iz;
@@ -542,13 +543,14 @@ public final class FastLodMesher {
                         continue;
                     }
                     // Greedy rectangle: extend along z, then along x while every row matches.
+                    // x is the record's u axis, whose extent is capped by the codec (see maxUCells).
                     int dz = 1;
                     while (iz + dz < n && !done[cell + dz] && sameTop(cell, cell + dz)) {
                         dz++;
                     }
                     int dx = 1;
                     outer:
-                    while (ix + dx < n) {
+                    while (ix + dx < n && dx < maxUCells) {
                         for (int k = 0; k < dz; k++) {
                             int c = (ix + dx) * n + iz + k;
                             if (done[c] || !sameTop(cell, c)) {
@@ -567,6 +569,16 @@ public final class FastLodMesher {
                         true, true, false, topNormalPair01[cell], topNormalPair23[cell]);
                 }
             }
+        }
+
+        /**
+         * Longest merged run along a record's u axis that the codec can hold:
+         * {@code w} is 6 bits of half blocks (≤ 63 → 31 whole blocks). Longer
+         * rectangles would be rejected by {@link #record} and vanish, leaving
+         * the foundation walls below visible as bare "spires".
+         */
+        private int maxUCells() {
+            return Math.max(1, 63 / (2 * cellSize));
         }
 
         private static int dirIndex(int dx, int dz) {
@@ -600,6 +612,7 @@ public final class FastLodMesher {
         }
 
         private void flushSkirts() {
+            int maxUCells = maxUCells();
             for (int dir = 0; dir < 4; dir++) {
                 boolean alongZ = dir < 2; // ±x faces run along z; ±z faces run along x
                 int face = dir == 0 ? 4 : dir == 1 ? 5 : dir == 2 ? 3 : 2;
@@ -614,7 +627,7 @@ public final class FastLodMesher {
                                 continue;
                             }
                             int run = 1;
-                            while (pos + run < n) {
+                            while (pos + run < n && run < maxUCells) {
                                 int c = alongZ ? ix * n + iz + run : (ix + run) * n + iz;
                                 if (done[c] || !sameSkirt(dir, kind, cell, c)) {
                                     break;
