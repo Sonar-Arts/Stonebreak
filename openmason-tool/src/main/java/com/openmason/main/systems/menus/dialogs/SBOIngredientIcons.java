@@ -26,9 +26,11 @@ import java.util.Map;
 
 /**
  * Lazy per-objectId icon cache for SBO ingredients. Each icon is the "primary"
- * texture PNG of the object's embedded OMO model (first face-0 material, then
- * any material, then the default OMT's first visible layer — the same
- * resolution order the Project Browser thumbnails use), served in two forms:
+ * texture PNG of the object: for model-bearing SBOs (blocks) the embedded OMO's
+ * first face-0 material, then any material, then the default OMT's first
+ * visible layer (the same resolution order the Project Browser thumbnails
+ * use); for texture-only SBOs (sprite items) the embedded OMT's first visible
+ * layer — i.e. the item sprite itself. Served in two forms:
  *
  * <ul>
  *   <li>{@link #glIcon(String)} — a square GL texture for plain ImGui widgets
@@ -116,9 +118,15 @@ public final class SBOIngredientIcons {
         if (!Files.exists(sboPath)) return null;
         try {
             SBOParser.RawParse raw = new SBOParser().parseRaw(sboPath);
-            byte[] omoBytes = raw.defaultBytes();
-            if (omoBytes == null || omoBytes.length == 0) return null;
-            try (InputStream in = new ByteArrayInputStream(omoBytes)) {
+            byte[] bytes = raw.defaultBytes();
+            if (bytes == null || bytes.length == 0) return null;
+            // Texture-only SBOs (sprite items: manifest + texture.omt, no model)
+            // carry the OMT archive itself as the default payload — the sprite
+            // is its first visible layer.
+            if (raw.manifest().isTextureOnly()) {
+                return firstVisibleLayer(new OMTReader().read(bytes));
+            }
+            try (InputStream in = new ByteArrayInputStream(bytes)) {
                 return pickPrimaryPng(new OMOReader().read(in));
             }
         } catch (Exception e) {
@@ -157,15 +165,19 @@ public final class SBOIngredientIcons {
             }
         }
         if (result.defaultTextureBytes() != null && result.defaultTextureBytes().length > 0) {
-            OMTArchive archive = new OMTReader().read(result.defaultTextureBytes());
-            for (OMTArchive.Layer layer : archive.layers()) {
-                if (layer.visible() && layer.pngBytes() != null && layer.pngBytes().length > 0) {
-                    return layer.pngBytes();
-                }
-            }
-            return archive.layers().isEmpty() ? null : archive.layers().get(0).pngBytes();
+            return firstVisibleLayer(new OMTReader().read(result.defaultTextureBytes()));
         }
         return null;
+    }
+
+    /** First visible layer's PNG of an OMT archive, else its first layer, else null. */
+    private static byte[] firstVisibleLayer(OMTArchive archive) {
+        for (OMTArchive.Layer layer : archive.layers()) {
+            if (layer.visible() && layer.pngBytes() != null && layer.pngBytes().length > 0) {
+                return layer.pngBytes();
+            }
+        }
+        return archive.layers().isEmpty() ? null : archive.layers().get(0).pngBytes();
     }
 
     // ---- GL upload ---------------------------------------------------------
