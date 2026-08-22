@@ -284,6 +284,11 @@ public class MainImGuiInterface implements ProjectBrowserListener {
             this.sbeEditorWindow = new SBEEditorWindow(fileDialogService, statusService);
             toolsMenuHandler.setSBEEditorWindow(sbeEditorWindow);
 
+            // Export windows act as "start screens": a successful export opens
+            // the new file straight in the matching editor.
+            sboExportWindow.setOnExported(sboEditorWindow::openFile);
+            sbeExportWindow.setOnExported(sbeEditorWindow::openFile);
+
             toolsMenuHandler.setModelState(modelState);
             toolsMenuHandler.setStatusService(statusService);
             toolsMenuHandler.setModelOperations(modelOperations);
@@ -856,6 +861,12 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         }
         if (sbeEditorWindow != null) {
             sbeEditorWindow.close();
+        }
+        if (sboExportWindow != null) {
+            sboExportWindow.close();
+        }
+        if (sbeExportWindow != null) {
+            sbeExportWindow.close();
         }
         // Audio audition engine (OpenAL, lazily started by the Sounds tabs).
         com.openmason.main.systems.menus.dialogs.SoundPreviewService.shutdown();

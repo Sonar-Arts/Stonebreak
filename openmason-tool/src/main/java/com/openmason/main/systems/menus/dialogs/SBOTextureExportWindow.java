@@ -161,9 +161,13 @@ public class SBOTextureExportWindow {
 
         if (!iniFileSet) {
             ImGui.setNextWindowSize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT);
+            // Center on the app's main viewport (absolute screen coords under
+            // multi-viewport) — size-only math would land on the primary monitor.
             float screenW = ImGui.getMainViewport().getSizeX();
             float screenH = ImGui.getMainViewport().getSizeY();
-            ImGui.setNextWindowPos((screenW - MIN_WINDOW_WIDTH) * 0.5f, (screenH - MIN_WINDOW_HEIGHT) * 0.5f);
+            float originX = ImGui.getMainViewport().getPosX();
+            float originY = ImGui.getMainViewport().getPosY();
+            ImGui.setNextWindowPos(originX + (screenW - MIN_WINDOW_WIDTH) * 0.5f, originY + (screenH - MIN_WINDOW_HEIGHT) * 0.5f);
             iniFileSet = true;
         }
 
@@ -525,7 +529,9 @@ public class SBOTextureExportWindow {
 
         Path omtPath = Path.of(omtPathStr);
 
-        fileDialogService.showSaveSBODialog(filePath -> {
+        String targetDir = GameResourceDirs.sboFolderFor(OBJECT_TYPE_LABELS[objectTypeIndex.get()]);
+        String fileName = GameResourceDirs.suggestedFileName(objectName.get(), "sbo", "object.sbo");
+        fileDialogService.showSaveSBODialog(fileName, targetDir, filePath -> {
             boolean success = serializer.exportTexture(params, omtPath, filePath);
             if (success) {
                 statusService.updateStatus("Exported SBO: " + Path.of(filePath).getFileName());

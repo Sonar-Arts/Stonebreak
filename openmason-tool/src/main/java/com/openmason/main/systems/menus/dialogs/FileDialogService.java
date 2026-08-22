@@ -553,16 +553,41 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSaveSBODialog(SaveSBOCallback callback) {
+        showSaveSBODialog("object.sbo", GameResourceDirs.sboBlocks(), callback);
+    }
+
+    /**
+     * Save-SBO dialog that opens directly in the folder the object belongs in
+     * (e.g. {@code sbo/blocks} or {@code sbo/items}) with a suggested file
+     * name, so an export needs no navigation. A null {@code preferredDirectory}
+     * falls back to the last directory used for {@code .sbo} files.
+     */
+    public void showSaveSBODialog(String defaultFileName, String preferredDirectory, SaveSBOCallback callback) {
         showNFDSaveDialog("Exporting SBO file...", "Stonebreak Object", "sbo",
-                "object.sbo", "Export SBO to file", callback::onSave);
+                defaultFileName, preferredDirectory, "Export SBO to file", callback::onSave);
     }
 
     /**
      * Show open SBO (Stonebreak Object) dialog using native file dialog.
+     * Starts in the last {@code .sbo} folder the user visited as long as it
+     * lies inside the game resources, otherwise in {@code sbo/blocks}.
      */
     public void showOpenSBODialog(OpenCallback callback) {
         showNFDOpenDialog("Opening SBO file...", "Stonebreak Object", "sbo",
-                "Selected SBO file", callback);
+                repoDirectoryFor("sbo", GameResourceDirs.sboBlocks()), "Selected SBO file", callback);
+    }
+
+    /**
+     * Repo-routed starting directory for a file type: the last directory used
+     * for that type if it is inside the game resources tree, else the given
+     * canonical folder (may be null → NFD default).
+     */
+    private String repoDirectoryFor(String filterSpec, String canonicalDirectory) {
+        String last = resolveDefaultDirectory(new String[]{filterSpec});
+        if (last != null && GameResourceDirs.isInsideResources(last)) {
+            return last;
+        }
+        return canonicalDirectory;
     }
 
     /**
@@ -577,16 +602,27 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSaveSBEDialog(SaveSBECallback callback) {
+        showSaveSBEDialog("entity.sbe", GameResourceDirs.sbeRoot(), callback);
+    }
+
+    /**
+     * Save-SBE dialog that opens directly in the folder the entity belongs in
+     * (e.g. {@code sbe/Mobs}) with a suggested file name. A null
+     * {@code preferredDirectory} falls back to the last {@code .sbe} folder.
+     */
+    public void showSaveSBEDialog(String defaultFileName, String preferredDirectory, SaveSBECallback callback) {
         showNFDSaveDialog("Exporting SBE file...", "Stonebreak Entity", "sbe",
-                "entity.sbe", "Export SBE to file", callback::onSave);
+                defaultFileName, preferredDirectory, "Export SBE to file", callback::onSave);
     }
 
     /**
      * Show open SBE (Stonebreak Entity) dialog using native file dialog.
+     * Starts in the last {@code .sbe} folder the user visited as long as it
+     * lies inside the game resources, otherwise in the {@code sbe} root.
      */
     public void showOpenSBEDialog(OpenCallback callback) {
         showNFDOpenDialog("Opening SBE file...", "Stonebreak Entity", "sbe",
-                "Selected SBE file", callback);
+                repoDirectoryFor("sbe", GameResourceDirs.sbeRoot()), "Selected SBE file", callback);
     }
 
     /**

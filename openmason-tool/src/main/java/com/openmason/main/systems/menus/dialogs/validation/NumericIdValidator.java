@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.dialogs.validation;
 
+import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.registry.BlockRegistry;
 import com.stonebreak.items.registry.ItemRegistry;
 
@@ -62,6 +63,11 @@ public final class NumericIdValidator {
     private static Result validateBlock(int numericId, String candidateObjectId) {
         BlockRegistry registry = BlockRegistry.getInstance();
         registry.ensureLoaded();
+        for (TakenId sentinel : sentinelBlockIds(registry)) {
+            if (sentinel.numericId() == numericId) {
+                return new Result.Conflict(numericId, sentinel.objectId(), sentinel.displayName());
+            }
+        }
         return registry.getById(numericId)
                 .<Result>map(entry -> sameObjectId(entry.objectId(), candidateObjectId)
                         ? new Result.Ok()
@@ -76,6 +82,23 @@ public final class NumericIdValidator {
                         ? new Result.Ok()
                         : new Result.Conflict(numericId, entry.objectId(), entry.displayName()))
                 .orElseGet(Result.Ok::new);
+    }
+
+    /**
+     * Numeric IDs held by engine-defined sentinel {@link BlockType}s that have
+     * no backing SBO and therefore never appear in the {@link BlockRegistry}
+     * — {@code AIR} (0) and {@code WATER} (8). Without this the validator
+     * would happily suggest ID 8 for a new block and the game would collide
+     * with water in chunk saves.
+     */
+    private static List<TakenId> sentinelBlockIds(BlockRegistry registry) {
+        List<TakenId> out = new ArrayList<>();
+        for (BlockType bt : BlockType.values()) {
+            if (registry.getById(bt.getId()).isEmpty()) {
+                out.add(new TakenId(bt.getId(), "builtin:" + bt.name().toLowerCase(), bt.getName() + " (engine sentinel)"));
+            }
+        }
+        return out;
     }
 
     private static boolean sameObjectId(String a, String b) {
@@ -93,6 +116,7 @@ public final class NumericIdValidator {
             case BLOCK -> {
                 BlockRegistry r = BlockRegistry.getInstance();
                 r.ensureLoaded();
+                out.addAll(sentinelBlockIds(r));
                 for (BlockRegistry.BlockEntry e : r.all()) {
                     if (e.numericId() >= 0) {
                         out.add(new TakenId(e.numericId(), e.objectId(), e.displayName()));
