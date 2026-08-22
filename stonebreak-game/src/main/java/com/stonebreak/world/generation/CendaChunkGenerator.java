@@ -39,6 +39,8 @@ public final class CendaChunkGenerator {
     /** Kernel biome-flag bits (lockstep with cenda/kernels.h). */
     private static final byte FLAG_MAGMA = 1;
     private static final byte FLAG_DRY_BELOW_SEA = 2;
+    /** Biome reads the crag channel in the overhang band — see BiomeSurfaceConfig.Entry. */
+    private static final byte FLAG_CRAG_SURFACE = 4;
 
     private static final ThreadLocal<short[]> BLOCKS_SCRATCH =
         ThreadLocal.withInitial(() -> new short[CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT]);
@@ -107,6 +109,9 @@ public final class CendaChunkGenerator {
             overhangIntensity[i] = cfg.overhangIntensity;
             if (biomes[i] == BiomeType.RED_SAND_DESERT) {
                 flags[i] = FLAG_MAGMA | FLAG_DRY_BELOW_SEA;
+            }
+            if (cfg.cragSurface) {
+                flags[i] |= FLAG_CRAG_SURFACE;
             }
         }
 

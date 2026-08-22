@@ -197,6 +197,7 @@ void* ck_chunkgen_create(
 
 #define CK_BIOME_MAGMA 1u          /* biome hosts deep magma pockets            */
 #define CK_BIOME_DRY_BELOW_SEA 2u  /* suppress sub-sea WATER when surface > sea */
+#define CK_BIOME_CRAG_SURFACE 4u   /* overhang band reads the crag channel      */
 
 void ck_chunkgen_destroy(void* ctx);
 

@@ -38,7 +38,19 @@ constexpr int CAVERN_CONNECTOR_RADIUS = 5;
 constexpr int DENSITY_CAVE_FLOOR = 8;
 constexpr int DENSITY_OVERHANG_DEPTH = 16;
 
+/* Density3D.PEAK_DAMP_* — the altitude taper on the overhang band. That band is a
+ * silhouette decision rather than a depth one, so unlike everything else here it is
+ * keyed on absolute Y: an intensity that undercuts a cliff at y=100 eats through a
+ * summit at y=145, where the band IS the skyline. See the Java for the full note and
+ * for where the knots come from. */
+constexpr int DENSITY_PEAK_DAMP_START = 100;
+constexpr int DENSITY_PEAK_DAMP_END = 145;
+constexpr float DENSITY_PEAK_DAMP_FLOOR = 0.55f;
+
 constexpr float CHEESE_Y_SQUASH = 1.6f;
+/* Density3D.CRAG_Y_SQUASH — the overhang band's own channel, for biomes flagged
+ * CK_BIOME_CRAG_SURFACE. Frequency arrives from Java in density_freq[3]. */
+constexpr float CRAG_Y_SQUASH = 1.8f;
 constexpr float SPAG_Y_SQUASH = 1.08f;
 constexpr float SPAG_THICKNESS = 0.085f;
 constexpr float SPAG_GALLERY_BONUS = 0.070f;
@@ -399,10 +411,10 @@ bool magmaAt(int64_t worldSeed, int x, int y, int z, int32_t featureHash, float 
 
 struct ChunkGenCtx {
     TerrainCtx* terrain = nullptr; /* owned */
-    /* [0] cheese, [1] spaghetti 1, [2] spaghetti 2 — Density3D's fill order. */
-    FastNoise::SmartNode<> densityNode[3];
-    int32_t densitySeed[3] = {};
-    float densityYSquash[3] = {CHEESE_Y_SQUASH, SPAG_Y_SQUASH, SPAG_Y_SQUASH};
+    /* [0] cheese, [1] spaghetti 1, [2] spaghetti 2, [3] crag — Density3D's fill order. */
+    FastNoise::SmartNode<> densityNode[4];
+    int32_t densitySeed[4] = {};
+    float densityYSquash[4] = {CHEESE_Y_SQUASH, SPAG_Y_SQUASH, SPAG_Y_SQUASH, CRAG_Y_SQUASH};
     SplineLinear cheeseThreshold;
     int64_t seed = 0;
 
@@ -464,16 +476,36 @@ struct NativeAnchorSource final : AnchorSource {
     }
 };
 
+/* Density3D.peakDamp — how much of the biome's surface-carve intensity survives at this
+ * column's altitude. Written operand for operand as the Java is: the kernels build with
+ * -ffp-contract=off (see native/kernels/CMakeLists.txt) so that an identically-ordered
+ * float expression is bit-identical across the backends, which is what
+ * FusedChunkGenParityTest asserts. Reassociating this breaks that test. */
+float densityPeakDamp(int surfaceHeight) {
+    if (surfaceHeight <= DENSITY_PEAK_DAMP_START) {
+        return 1.0f;
+    }
+    if (surfaceHeight >= DENSITY_PEAK_DAMP_END) {
+        return DENSITY_PEAK_DAMP_FLOOR;
+    }
+    const float t = static_cast<float>(surfaceHeight - DENSITY_PEAK_DAMP_START)
+        / static_cast<float>(DENSITY_PEAK_DAMP_END - DENSITY_PEAK_DAMP_START);
+    return 1.0f - (1.0f - DENSITY_PEAK_DAMP_FLOOR) * t;
+}
+
 /* Density3D.solidInOverhangBand — the biome rule, now a UNION with the cave test
- * rather than a branch that short-circuits it. */
-bool solidInOverhangBand(const ChunkGenCtx& c, float cheese, int biomeIdx) {
-    const float intensity = c.biomeOverhang[static_cast<size_t>(biomeIdx)];
+ * rather than a branch that short-circuits it. `n` is the channel the biome selected:
+ * crag when it is flagged CK_BIOME_CRAG_SURFACE, cheese otherwise. The caller picks,
+ * so each backend samples its own way. */
+bool solidInOverhangBand(const ChunkGenCtx& c, float n, int biomeIdx, int surfaceHeight) {
+    const float intensity = c.biomeOverhang[static_cast<size_t>(biomeIdx)]
+        * densityPeakDamp(surfaceHeight);
     if (intensity <= 0.0f) {
         return true;
     }
     /* CAUTION: Java's helper is NAMED carve() but the caller RETURNS IT DIRECTLY —
      * `n < 1 - 2*intensity` is the SOLID predicate (air on the high-noise tail). */
-    return cheese < (1.0f - 2.0f * intensity);
+    return n < (1.0f - 2.0f * intensity);
 }
 
 /* Density3D.solidAt — the carve decision, shared by both backends. */
@@ -498,8 +530,8 @@ bool densitySolidAt(const ChunkGenCtx& c, float cheese, float s1, float s2,
  * whole chunk is below the cave floor (prepareChunk returned null): solid. */
 bool densitySolid(const ChunkGenCtx& c, int localX, int y, int localZ,
                   int surfaceHeight, int biomeIdx, const float* cheeseVol,
-                  const float* spag1Vol, const float* spag2Vol, int yCount,
-                  const int32_t* table) {
+                  const float* spag1Vol, const float* spag2Vol, const float* cragVol,
+                  int yCount, const int32_t* table) {
     if (y < DENSITY_CAVE_FLOOR || y >= surfaceHeight) {
         return true;
     }
@@ -513,8 +545,15 @@ bool densitySolid(const ChunkGenCtx& c, int localX, int y, int localZ,
     const int i = (yIndex * CHUNK_SIZE + localX) * CHUNK_SIZE + localZ;
     const int col = localX * CHUNK_SIZE + localZ;
     const float cheese = cheeseVol[i];
-    if (y >= surfaceHeight - DENSITY_OVERHANG_DEPTH && !solidInOverhangBand(c, cheese, biomeIdx)) {
-        return false;
+    if (y >= surfaceHeight - DENSITY_OVERHANG_DEPTH) {
+        /* cragVol is non-null whenever any column in the chunk is flagged, and only a
+         * flagged column can reach this branch wanting it. */
+        const bool crag =
+            (c.biomeFlags[static_cast<size_t>(biomeIdx)] & CK_BIOME_CRAG_SURFACE) != 0
+            && cragVol != nullptr;
+        if (!solidInOverhangBand(c, crag ? cragVol[i] : cheese, biomeIdx, surfaceHeight)) {
+            return false;
+        }
     }
     return densitySolidAt(c, cheese, spag1Vol[i], spag2Vol[i], y, surfaceHeight, table[col]);
 }
@@ -549,13 +588,13 @@ void pruneUnsupportedFormations(uint64_t* formations, SupportFn&& solidAt) {
 /* TerrainGenerationSystem.determineBlockType, exact branch order. */
 int16_t determineBlock(const ChunkGenCtx& c, int worldX, int y, int worldZ,
                        int height, int biomeIdx, const float* cheeseVol,
-                       const float* spag1Vol, const float* spag2Vol, int yCount,
-                       const int32_t* table, int localX, int localZ) {
+                       const float* spag1Vol, const float* spag2Vol, const float* cragVol,
+                       int yCount, const int32_t* table, int localX, int localZ) {
     if (y == 0) {
         return c.bedrockId;
     }
     if (y < height && !densitySolid(c, localX, y, localZ, height, biomeIdx,
-                                    cheeseVol, spag1Vol, spag2Vol, yCount, table)) {
+                                    cheeseVol, spag1Vol, spag2Vol, cragVol, yCount, table)) {
         return c.airId;
     }
     const uint8_t flags = c.biomeFlags[static_cast<size_t>(biomeIdx)];
@@ -620,8 +659,8 @@ void* ck_chunkgen_create(
     if (terrain == nullptr) {
         return nullptr;
     }
-    FastNoise::SmartNode<> densityNodes[3];
-    for (int n = 0; n < 3; n++) {
+    FastNoise::SmartNode<> densityNodes[4];
+    for (int n = 0; n < 4; n++) {
         densityNodes[n] = cenda::makeSimplexFbm(density_octaves[n], density_lacunarity[n],
                                                 density_gain[n], density_freq[n]);
         if (!densityNodes[n]) {
@@ -632,7 +671,7 @@ void* ck_chunkgen_create(
 
     auto* ctx = new ChunkGenCtx();
     ctx->terrain = terrain;
-    for (int n = 0; n < 3; n++) {
+    for (int n = 0; n < 4; n++) {
         ctx->densityNode[n] = std::move(densityNodes[n]);
         ctx->densitySeed[n] = density_seeds[n];
     }
@@ -732,12 +771,25 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
      * rows are fully overwritten by GenUniformGrid3D; vol is null when this
      * call generated no rows, so stale data from a previous chunk is never
      * read. */
-    thread_local std::vector<float> volume[3];
+    thread_local std::vector<float> volume[4];
+    /* Density3D.needsCrag — the crag channel is filled only when some column in the chunk
+     * belongs to a biome that reads it. Most chunks contain none, so the fourth fill costs
+     * nothing in the common case; where it is skipped, no column can ask for it either. */
+    bool needsCrag = false;
+    for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE; i++) {
+        const int b = biomes[i];
+        if (b >= 0 && b < ctx->nBiomes
+                && (ctx->biomeFlags[static_cast<size_t>(b)] & CK_BIOME_CRAG_SURFACE) != 0) {
+            needsCrag = true;
+            break;
+        }
+    }
+    const int nVolumes = needsCrag ? 4 : 3;
     int yCount = 0;
     if (maxSurface > DENSITY_CAVE_FLOOR) {
         yCount = maxSurface - DENSITY_CAVE_FLOOR;
         const size_t need = static_cast<size_t>(yCount) * CHUNK_SIZE * CHUNK_SIZE;
-        for (int n = 0; n < 3; n++) {
+        for (int n = 0; n < nVolumes; n++) {
             if (volume[n].size() < need) {
                 volume[n].resize(need);
             }
@@ -754,6 +806,7 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
     const float* cheeseVol = yCount > 0 ? volume[0].data() : nullptr;
     const float* spag1Vol = yCount > 0 ? volume[1].data() : nullptr;
     const float* spag2Vol = yCount > 0 ? volume[2].data() : nullptr;
+    const float* cragVol = (yCount > 0 && needsCrag) ? volume[3].data() : nullptr;
 
     /* CaveWaterTable.tableForChunk — one batched wobble fill, then resolve per column. */
     float wobble[CHUNK_SIZE * CHUNK_SIZE];
@@ -778,7 +831,7 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
             if (ly >= h) return false; /* sky or open water above the surface */
             if (testBit(caveMask, (lx << 12) | (ly << 4) | lz)) return false;
             return densitySolid(*ctx, lx, ly, lz, h, biomes[col],
-                                cheeseVol, spag1Vol, spag2Vol, yCount, table);
+                                cheeseVol, spag1Vol, spag2Vol, cragVol, yCount, table);
         });
     }
 
@@ -803,7 +856,7 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
                     continue; /* carved to air — already the fill value */
                 } else {
                     block = determineBlock(*ctx, worldX, y, worldZ, height, biomeIdx,
-                                           cheeseVol, spag1Vol, spag2Vol, yCount,
+                                           cheeseVol, spag1Vol, spag2Vol, cragVol, yCount,
                                            table, x, z);
                 }
                 if (block != ctx->airId) {

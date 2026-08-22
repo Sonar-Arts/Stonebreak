@@ -435,7 +435,7 @@ public class TerrainGenerationSystem {
 
         // Native backend: one SIMD volume fill replaces per-block cave-noise
         // sampling in determineBlockType. Null on the Java backend.
-        Density3D.Field densityField = density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels);
+        Density3D.Field densityField = density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels, biomes);
 
         // Write terrain into paletted storage directly instead of 65k
         // chunk.setBlock calls (each of which churns dirty flags, per-block
