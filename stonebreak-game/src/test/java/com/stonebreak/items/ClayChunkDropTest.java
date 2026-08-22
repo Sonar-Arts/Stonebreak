@@ -1,8 +1,12 @@
 package com.stonebreak.items;
 
+import com.openmason.engine.format.sbo.SBOFormat;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.util.DropUtil;
+import com.stonebreak.blocks.drops.BlockDropTables;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -10,10 +14,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Clay is mined into clay chunks (3-4) rather than dropping the block itself.
- * These guard the two ways that quietly breaks: the SBO drifting back into
+ * Clay is mined into clay chunks (3-4) rather than dropping the block itself —
+ * authored as the {@code drops} table in {@code SB_Clay.sbo}, not in code.
+ * These guard the ways that quietly breaks: the chunk SBO drifting back into
  * {@code sbo/blocks/} (where it would register as a block and never exist as
- * an item), and an off-by-one that clips the top of the drop range.
+ * an item), the clay SBO losing its table (it would drop itself again), and
+ * an off-by-one that clips the top of the drop range.
  */
 class ClayChunkDropTest {
 
@@ -34,11 +40,24 @@ class ClayChunkDropTest {
     }
 
     @Test
+    void claySboCarriesTheChunkDropTable() {
+        SBOFormat.DropData table = BlockDropTables.tableFor(BlockType.CLAY);
+        assertNotNull(table, "SB_Clay.sbo must declare a drops table");
+        assertEquals(List.of(new SBOFormat.DropEntry("stonebreak:clay_chunk", 3, 4, 1f)),
+                table.dropsFor(null));
+    }
+
+    @Test
     void dropCountStaysWithinThreeToFourInclusive() {
+        Random random = new Random(1234);
         boolean sawMin = false;
         boolean sawMax = false;
         for (int i = 0; i < 5000; i++) {
-            int count = DropUtil.rollClayChunkDropCount();
+            List<BlockDropTables.RolledDrop> rolled = BlockDropTables.roll(BlockType.CLAY, null, random);
+            assertNotNull(rolled);
+            assertEquals(1, rolled.size(), "exactly one clay-chunk stack per break");
+            assertEquals(ItemType.CLAY_CHUNK, rolled.get(0).item());
+            int count = rolled.get(0).count();
             assertTrue(count >= 3 && count <= 4, "clay chunk drop count out of range: " + count);
             if (count == 3) sawMin = true;
             if (count == 4) sawMax = true;

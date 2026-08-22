@@ -121,7 +121,11 @@ public final class ServerBlockHandler {
                 world.getFurnaceRegistry().onBlockBroken(world, c.x(), c.y(), c.z());
             }
             Vector3f dropPos = new Vector3f(c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f);
-            com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev);
+            // The breaker's last-reported held item selects per-tool drop overrides
+            // (SBO `drops.byTool`). Block ids and item ids never collide, so a held
+            // block simply resolves to no tool.
+            com.stonebreak.items.ItemType tool = com.stonebreak.items.ItemType.getById(sp.heldItemId());
+            com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev, tool);
         }
         // Furnace placement: register the authoritative state (Unlit, empty). The client's
         // own BlockPlacer only touched ITS display registry.

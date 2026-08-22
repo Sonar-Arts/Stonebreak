@@ -260,7 +260,8 @@ public class SBOSerializer {
                 params.getRecipes(),
                 params.getSmeltingRecipes(),
                 params.getFuel(),
-                sounds.data()
+                sounds.data(),
+                params.getDrops()
         );
 
         Path tempFile = Files.createTempFile("sbo_export_", ".tmp");
@@ -436,7 +437,8 @@ public class SBOSerializer {
                 document.recipes(),
                 document.smeltingRecipes(),
                 document.fuel(),
-                rebuiltSounds.data()
+                rebuiltSounds.data(),
+                document.drops()
         );
 
         outputPath = SBOFormat.ensureExtension(outputPath);
@@ -708,6 +710,7 @@ public class SBOSerializer {
         public SmeltingRecipeDataDTO smeltingRecipes;
         public FuelDataDTO fuel;
         public List<SoundJson.SoundDefDTO> sounds;
+        public DropDataDTO drops;
 
         public ManifestDTO(SBOFormat.Document doc) {
             this.version = doc.version();
@@ -741,6 +744,52 @@ public class SBOSerializer {
                     : null;
             this.fuel = doc.hasFuel() ? new FuelDataDTO(doc.fuel()) : null;
             this.sounds = SoundJson.toDto(doc.sounds());
+            // Presence is meaningful (empty = drops nothing), so write whenever set.
+            this.drops = doc.hasDrops() ? new DropDataDTO(doc.drops()) : null;
+        }
+    }
+
+    private static class DropDataDTO {
+        @com.fasterxml.jackson.annotation.JsonProperty("default")
+        public List<DropEntryDTO> defaultDrops;
+        public List<ToolDropOverrideDTO> byTool;
+
+        public DropDataDTO(SBOFormat.DropData data) {
+            this.defaultDrops = toDtos(data.drops());
+            this.byTool = new ArrayList<>(data.toolOverrides().size());
+            for (SBOFormat.ToolDropOverride o : data.toolOverrides()) {
+                this.byTool.add(new ToolDropOverrideDTO(o));
+            }
+        }
+
+        static List<DropEntryDTO> toDtos(List<SBOFormat.DropEntry> entries) {
+            List<DropEntryDTO> out = new ArrayList<>(entries.size());
+            for (SBOFormat.DropEntry e : entries) out.add(new DropEntryDTO(e));
+            return out;
+        }
+    }
+
+    private static class ToolDropOverrideDTO {
+        public String tool;
+        public List<DropEntryDTO> drops;
+
+        public ToolDropOverrideDTO(SBOFormat.ToolDropOverride o) {
+            this.tool = o.toolObjectId();
+            this.drops = DropDataDTO.toDtos(o.drops());
+        }
+    }
+
+    private static class DropEntryDTO {
+        public String objectId;
+        public int min;
+        public int max;
+        public float chance;
+
+        public DropEntryDTO(SBOFormat.DropEntry e) {
+            this.objectId = e.objectId();
+            this.min = e.minCount();
+            this.max = e.maxCount();
+            this.chance = e.chance();
         }
     }
 

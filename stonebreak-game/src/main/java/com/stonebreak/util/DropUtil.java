@@ -1,6 +1,7 @@
 package com.stonebreak.util;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.drops.BlockDropTables;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
@@ -24,11 +25,6 @@ public class DropUtil {
     private static final float DROP_VELOCITY_MIN = 1.0f;
     private static final float DROP_VELOCITY_MAX = 3.0f;
     private static final float DROP_HEIGHT_OFFSET = 0.5f;
-
-    // Clay never drops itself — mining it yields a randomized handful of clay
-    // chunks (inclusive range), which craft back into a clay block 4-at-a-time.
-    private static final int CLAY_CHUNK_DROP_MIN = 3;
-    private static final int CLAY_CHUNK_DROP_MAX = 4;
     
     /**
      * Creates a block drop at the specified position.
@@ -239,18 +235,22 @@ public class DropUtil {
         selectedSlot.clear();
     }
     
-    /**
-     * Rolls how many clay chunks a broken clay block yields — a uniform value
-     * in {@code [CLAY_CHUNK_DROP_MIN, CLAY_CHUNK_DROP_MAX]}, both inclusive.
-     */
-    public static int rollClayChunkDropCount() {
-        int span = CLAY_CHUNK_DROP_MAX - CLAY_CHUNK_DROP_MIN + 1;
-        return CLAY_CHUNK_DROP_MIN + (int) (Math.random() * span);
+    /** Spawns each rolled line: blocks as block drops, everything else as item stacks. */
+    private static void spawnRolledDrops(World world, Vector3f position,
+                                         java.util.List<BlockDropTables.RolledDrop> rolled) {
+        for (BlockDropTables.RolledDrop r : rolled) {
+            if (r.item() instanceof BlockType bt) {
+                createBlockDrops(world, position, bt, r.count());
+            } else {
+                createItemDrop(world, position, new ItemStack(r.item(), r.count()));
+            }
+        }
     }
 
     /**
-     * Gets the appropriate drop for a broken block.
-     * Some blocks may drop different items than themselves (e.g., stone drops cobblestone).
+     * Built-in fallback drop for a block whose SBO carries no {@code drops} table.
+     * Some blocks drop something other than themselves (e.g., stone drops cobblestone).
+     * Prefer authoring a drop table in Open Mason over extending this method.
      */
     public static BlockType getBlockDrop(BlockType brokenBlock) {
         if (brokenBlock == null) {
@@ -297,6 +297,18 @@ public class DropUtil {
             return;
         }
 
+        // Data-driven path first: a block whose SBO carries a `drops` table
+        // (authored in Open Mason) is governed entirely by that table — the
+        // tool selects a per-tool override, otherwise the default list rolls.
+        // An empty table means "drops nothing". Blocks without a table fall
+        // through to the built-in rules below.
+        java.util.List<BlockDropTables.RolledDrop> rolled =
+                BlockDropTables.roll(brokenBlock, toolItem, java.util.concurrent.ThreadLocalRandom.current());
+        if (rolled != null) {
+            spawnRolledDrops(world, position, rolled);
+            return;
+        }
+
         // Special handling for snow blocks
         if (brokenBlock == BlockType.SNOW) {
             int layers = snowLayers > 0 ? snowLayers : world.getSnowLayers((int)position.x, (int)position.y, (int)position.z);
@@ -307,12 +319,6 @@ public class DropUtil {
                     createBlockDrops(world, position, BlockType.SNOW, layers);
                 }
             }
-            return;
-        }
-
-        // Clay drops chunks, not the block itself.
-        if (brokenBlock == BlockType.CLAY) {
-            createItemDrop(world, position, ItemType.CLAY_CHUNK, rollClayChunkDropCount());
             return;
         }
 

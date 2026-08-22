@@ -42,6 +42,7 @@ public class SBOEditorWindow {
     private final SBOSmeltingSection smeltingSection;
     private final SBOStatesEditor statesEditor;
     private final SoundsEditor soundsEditor;
+    private final SBODropsSection dropsSection;
     private final NumericIdConflictPopup conflictPopup = new NumericIdConflictPopup();
     private final TakenIdsPopup takenIdsPopup = new TakenIdsPopup();
 
@@ -88,7 +89,7 @@ public class SBOEditorWindow {
     };
     private static final String[] RENDER_LAYER_LABELS = { "OPAQUE", "CUTOUT", "TRANSLUCENT" };
     private static final String[] TAB_LABELS = {
-            "Metadata", "Game Properties", "States", "Recipes", "Smelting", "Sounds"
+            "Metadata", "Game Properties", "States", "Recipes", "Smelting", "Sounds", "Drops"
     };
 
     /** Mortar window chrome (action bar + tab strip); ImGui fallback inside. */
@@ -109,6 +110,7 @@ public class SBOEditorWindow {
         this.soundsEditor = new SoundsEditor(
                 () -> dirty = true,
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenAudioDialog(cb::accept); });
+        this.dropsSection = new SBODropsSection(() -> dirty = true);
     }
 
     /**
@@ -186,6 +188,7 @@ public class SBOEditorWindow {
         statesEditor.load(doc, loadedStateBytes, loadedStateClipBytes, loadedDefaultBytes);
         soundsEditor.load(doc.sounds(),
                 loadedSoundBytes != null ? loadedSoundBytes::get : f -> null);
+        dropsSection.setFromDropData(doc.drops());
     }
 
     public void render() {
@@ -214,6 +217,7 @@ public class SBOEditorWindow {
                     case 3 -> recipeSection.render();
                     case 4 -> smeltingSection.render();
                     case 5 -> soundsEditor.render();
+                    case 6 -> dropsSection.render();
                     default -> { }
                 }
             }
@@ -336,6 +340,11 @@ public class SBOEditorWindow {
             if (statusService != null) statusService.updateStatus("Cannot save: " + soundError);
             return;
         }
+        String dropError = dropsSection.validate();
+        if (dropError != null) {
+            if (statusService != null) statusService.updateStatus("Cannot save: " + dropError);
+            return;
+        }
         if (hasGameProperties) {
             NumericIdValidator.Result result = NumericIdValidator.validate(
                     currentDomain(), numericId.get(), objectId.get().trim());
@@ -402,7 +411,8 @@ public class SBOEditorWindow {
                 recipeSection.toRecipeData(),
                 smeltingSection.toSmeltingRecipeData(),
                 isFuel ? new SBOFormat.FuelData(Math.max(1, fuelBurnTicks.get())) : null,
-                soundsEditor.toSoundData()
+                soundsEditor.toSoundData(),
+                dropsSection.toDropData()
         );
     }
 
@@ -439,6 +449,7 @@ public class SBOEditorWindow {
         recipeSection.close();
         statesEditor.close();
         soundsEditor.close();
+        dropsSection.close();
         SBOIngredientIcons.clear();
     }
 }
