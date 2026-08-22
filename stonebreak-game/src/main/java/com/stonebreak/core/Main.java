@@ -181,6 +181,7 @@ public class Main {
             inputRouter.pollActiveScreen();
 
             frameRenderer.renderFrame();
+            maybeAutoFurnace();
             maybeAutoScreenshot();
             window.swapBuffers();
 
@@ -231,6 +232,160 @@ public class Main {
         }
         System.out.println("[autoworld] starting singleplayer world '" + name + "' seed " + seed);
         com.stonebreak.network.MultiplayerSession.startSingleplayer(name, seed);
+    }
+
+    // ─── Dev: -Dstonebreak.autofurnace=<seconds> ─────────────────────────────
+
+    private long autoFurnaceDeadlineNanos = -1;
+    private boolean autoFurnaceDone;
+    private int autoFurnaceX, autoFurnaceY, autoFurnaceZ;
+    private boolean autoFurnacePlaced;
+    private int autoFurnaceFrames;
+    private String autoFurnaceLastState;
+
+    /**
+     * Development shortcut paired with {@code stonebreak.autoworld}: N seconds
+     * after the world is entered, places a furnace a few blocks from the player
+     * and loads it with the first registered fuel + smeltable through the same
+     * slot-intent packet the furnace UI sends, so the Unlit→Lit re-mesh can be
+     * reproduced from a script. Inert unless the property is set.
+     */
+    private void maybeAutoFurnace() {
+        if (autoFurnaceDone) {
+            if (autoFurnacePlaced) {
+                autoFurnaceWatch();
+            }
+            return;
+        }
+        String spec = System.getProperty("stonebreak.autofurnace");
+        if (spec == null || spec.isBlank()) {
+            autoFurnaceDone = true;
+            return;
+        }
+        if (Game.getInstance().getState() != GameState.PLAYING && autoFurnaceDeadlineNanos < 0) {
+            return;
+        }
+        if (autoFurnaceDeadlineNanos < 0) {
+            double seconds = 5;
+            try {
+                seconds = Double.parseDouble(spec.trim());
+            } catch (NumberFormatException ignored) {
+                // keep default
+            }
+            autoFurnaceDeadlineNanos = System.nanoTime() + (long) (seconds * 1e9);
+            return;
+        }
+        if (System.nanoTime() < autoFurnaceDeadlineNanos) {
+            return;
+        }
+        autoFurnaceDone = true;
+        var world = Game.getWorld();
+        var player = Game.getPlayer();
+        var smelting = Game.getInstance().getSmeltingManager();
+        if (world == null || player == null || smelting == null) {
+            System.err.println("[autofurnace] world/player/smelting not ready");
+            return;
+        }
+        com.stonebreak.items.Item fuel = null;
+        for (com.stonebreak.items.ItemType t : com.stonebreak.items.ItemType.values()) {
+            if (smelting.getBurnTimePerUnit(t) > 0) { fuel = t; break; }
+        }
+        if (fuel == null) {
+            for (com.stonebreak.blocks.BlockType t : com.stonebreak.blocks.BlockType.values()) {
+                if (smelting.getBurnTimePerUnit(t) > 0) { fuel = t; break; }
+            }
+        }
+        var recipes = smelting.getAllRecipes();
+        if (fuel == null || recipes.isEmpty()) {
+            System.err.println("[autofurnace] no fuel/recipe registered (fuel=" + fuel
+                + ", recipes=" + recipes.size() + ")");
+            return;
+        }
+        org.joml.Vector3f pos = player.getPosition();
+        int px = (int) Math.floor(pos.x);
+        int py = (int) Math.floor(pos.y);
+        int pz = (int) Math.floor(pos.z);
+        int fx = px + 3;
+        int fy = py;
+        int fz = pz;
+        // Clear a pocket in front of the player so the furnace and its
+        // neighbours are in view (stone floor under it).
+        for (int x = px + 1; x <= px + 6; x++) {
+            for (int z = pz - 3; z <= pz + 3; z++) {
+                for (int y = py; y <= py + 5; y++) {
+                    if (world.getBlockAt(x, y, z) != com.stonebreak.blocks.BlockType.AIR) {
+                        world.setBlockAt(x, y, z, com.stonebreak.blocks.BlockType.AIR, true);
+                    }
+                }
+                if (world.getBlockAt(x, py - 1, z) == com.stonebreak.blocks.BlockType.AIR) {
+                    world.setBlockAt(x, py - 1, z, com.stonebreak.blocks.BlockType.STONE, true);
+                }
+            }
+        }
+        if (!world.setBlockAt(fx, fy, fz, com.stonebreak.blocks.BlockType.FURNACE, true)) {
+            System.err.println("[autofurnace] setBlockAt failed at " + fx + "," + fy + "," + fz);
+            return;
+        }
+        var fr = Game.getInstance().getFurnaceRegistry();
+        if (fr != null) {
+            fr.onBlockPlaced(world, fx, fy, fz, com.stonebreak.blocks.BlockType.FURNACE);
+        }
+        var state = new com.stonebreak.blocks.furnace.FurnaceState(
+            new com.openmason.engine.util.BlockPos(fx, fy, fz));
+        state.setIngredient(new com.stonebreak.items.ItemStack(recipes.getFirst().getInput().getItem(), 8));
+        state.setFuel(new com.stonebreak.items.ItemStack(fuel, 8));
+        String slots = state.encodeSlots();
+        com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(fx, fy, fz, slots);
+        autoFurnaceX = fx;
+        autoFurnaceY = fy;
+        autoFurnaceZ = fz;
+        autoFurnacePlaced = true;
+        System.out.println("[autofurnace] placed furnace at " + fx + "," + fy + "," + fz
+            + " fuel=" + fuel.getName() + " input=" + recipes.getFirst().getInput().getItem().getName()
+            + " slots=" + slots);
+    }
+
+    /** Keeps the camera on the placed furnace and logs its client-side state whenever it changes. */
+    private void autoFurnaceWatch() {
+        var world = Game.getWorld();
+        var player = Game.getPlayer();
+        if (world == null || player == null) {
+            return;
+        }
+        org.joml.Vector3f pos = player.getPosition();
+        float dx = autoFurnaceX + 0.5f - pos.x;
+        float dz = autoFurnaceZ + 0.5f - pos.z;
+        float dy = autoFurnaceY + 0.5f - (pos.y + 1.6f);
+        float yaw = (float) Math.toDegrees(Math.atan2(dz, dx));
+        float pitch = (float) Math.toDegrees(Math.atan2(dy, Math.hypot(dx, dz)));
+        player.getCamera().setYaw(yaw);
+        player.getCamera().setPitch(pitch);
+        if (++autoFurnaceFrames % 30 != 0) {
+            return;
+        }
+        // -Dstonebreak.autofurnace.ui=<frames-after-place>[:close] — open the
+        // furnace UI on the furnace (and optionally close it again 120 frames
+        // later) to reproduce UI-triggered rendering state leaks.
+        String uiSpec = System.getProperty("stonebreak.autofurnace.ui");
+        if (uiSpec != null && !uiSpec.isBlank()) {
+            String[] parts = uiSpec.split(":");
+            int openAt = Integer.parseInt(parts[0].trim());
+            boolean close = parts.length > 1 && parts[1].equals("close");
+            if (autoFurnaceFrames == openAt) {
+                System.out.println("[autofurnace] opening furnace UI");
+                Game.getInstance().openFurnaceScreen(
+                    new com.openmason.engine.util.BlockPos(autoFurnaceX, autoFurnaceY, autoFurnaceZ));
+            } else if (close && autoFurnaceFrames == openAt + 120) {
+                System.out.println("[autofurnace] closing furnace UI");
+                Game.getInstance().closeFurnaceScreen();
+            }
+        }
+        String state = world.getBlockStateAt(autoFurnaceX, autoFurnaceY, autoFurnaceZ);
+        String render = com.stonebreak.blocks.BlockRenderState.meshVariantKey(state);
+        if (!java.util.Objects.equals(render, autoFurnaceLastState)) {
+            autoFurnaceLastState = render;
+            System.out.println("[autofurnace] render state now " + render + " (raw " + state + ")");
+        }
     }
 
     // ─── Dev: -Dstonebreak.autoscreenshot=<seconds>:<file.png>[:quit] ──────────
