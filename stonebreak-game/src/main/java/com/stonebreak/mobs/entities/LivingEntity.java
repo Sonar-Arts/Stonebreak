@@ -2,39 +2,36 @@ package com.stonebreak.mobs.entities;
 
 import org.joml.Vector3f;
 import com.stonebreak.audio.MobSounds;
-import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
-import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.world.World;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.blocks.BlockType;
-import com.stonebreak.network.MultiplayerSession;
-import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
 import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.ai.MobAI;
-import com.stonebreak.mobs.entities.status.StatusEffect;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
-
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
 
 /**
  * Base class for all living entities that can move, interact, and have AI behavior.
  * Extends Entity with health management, movement, and interaction capabilities.
+ *
+ * <p>Thin facade over three single-responsibility components (issue #233):
+ * {@link LivingEntityCombat} (damage, death/XP credit, i-frames, knockback, Fracture stubs),
+ * {@link LivingEntityStatusEffects} (timed debuffs and the multipliers they derive) and
+ * {@link LivingEntityLocomotion} (jump/swim, steering, knockback impulse, collision probes).
+ * The per-tick order in {@link #update} is the contract: physics → status effects →
+ * bewildered timer → AI → animation → footsteps.
  */
 public abstract class LivingEntity extends Entity {
-    // Health and damage system
-    protected boolean invulnerable;
-    protected float invulnerabilityTimer;
-    private static final float INVULNERABILITY_DURATION = 0.5f; // 500ms after taking damage
-    
+    // Components
+    private final LivingEntityCombat combat = new LivingEntityCombat(this);
+    private final LivingEntityStatusEffects statusEffects = new LivingEntityStatusEffects(this);
+    private final LivingEntityLocomotion locomotion = new LivingEntityLocomotion(this);
+
     // Movement and behavior
     protected float moveSpeed;
     protected float turnSpeed;
     protected Vector3f targetDirection;
     protected boolean isMoving;
-    
+
     // Physical properties
     protected float legHeight; // Distance from ground to bottom of body
 
@@ -73,9 +70,6 @@ public abstract class LivingEntity extends Entity {
     protected long lastInteractionTime;
     private static final float INTERACTION_COOLDOWN = 1.0f; // 1 second between interactions
 
-    // Status effects (timed debuffs — burning, stun, armor break, etc.)
-    private final List<StatusEffect> statusEffects = new ArrayList<>();
-
     /**
      * Optional per-enemy stealth awareness (sight/sound detection driving UNAWARE/SUSPICIOUS/
      * ALERTED). Null on entities that don't react to a stealthed player; subclasses opt in by
@@ -84,27 +78,11 @@ public abstract class LivingEntity extends Entity {
     protected AwarenessController awareness;
 
     /**
-     * Position of the most recent attacker, set per damage application. Lets knockback push
-     * away from the actual attacker (e.g. a remote player on a host) instead of always the
-     * local player. Null when the attacker is unknown or is the local player.
-     */
-    private Vector3f lastAttackerPosition;
-
-    /**
-     * Illusionist Fracture stubs. {@code bewilderedTimer} counts down while the entity is in a
-     * panic/friendly-fire state; {@code forcedAttackTarget} names an entity the AI should attack
-     * next instead of its normal selection. Both are inert today (no hostile mob AI exists yet)
-     * and will be consulted once hostile target selection is implemented.
-     */
-    private float bewilderedTimer;
-    private LivingEntity forcedAttackTarget;
-
-    /**
      * Creates a new living entity at the specified position.
      */
     public LivingEntity(World world, Vector3f position, EntityType type) {
         super(world, position);
-        
+
         // Set properties based on entity type
         this.maxHealth = type.getMaxHealth();
         this.health = maxHealth;
@@ -114,10 +92,8 @@ public abstract class LivingEntity extends Entity {
         this.height = type.getHeight();
         this.length = type.getLength();
         this.legHeight = type.getLegHeight();
-        
+
         // Initialize state
-        this.invulnerable = false;
-        this.invulnerabilityTimer = 0.0f;
         this.targetDirection = new Vector3f(0, 0, 0);
         this.isMoving = false;
         this.interactionRange = 3.0f;
@@ -133,33 +109,24 @@ public abstract class LivingEntity extends Entity {
     protected boolean hasFootsteps() {
         return true;
     }
-    
+
     /**
      * Updates the living entity's state, including invulnerability and movement.
      */
     @Override
     public void update(float deltaTime) {
         // Update invulnerability timer
-        if (invulnerable) {
-            invulnerabilityTimer -= deltaTime;
-            if (invulnerabilityTimer <= 0) {
-                invulnerable = false;
-                invulnerabilityTimer = 0;
-            }
-        }
+        combat.updateInvulnerability(deltaTime);
 
         // Water forces (buoyancy, drag, current) belong to the physics step, where they act on the
         // velocity about to be integrated — see EntityWaterPhysics.
 
         // Update movement state
-        isMoving = velocity.length() > 0.1f;
+        isMoving = locomotion.computeIsMoving();
 
         // Rooted entities are pinned in place — kill residual horizontal drift
         // (knockback slide, water flow) before it integrates into position.
-        if (isRooted()) {
-            velocity.x = 0f;
-            velocity.z = 0f;
-        }
+        locomotion.pinIfRooted();
 
         // Apply basic physics
         applyPhysics(deltaTime);
@@ -168,13 +135,7 @@ public abstract class LivingEntity extends Entity {
         updateStatusEffects(deltaTime);
 
         // Tick the Illusionist Bewildered/panic timer; clear the forced target when it lapses.
-        if (bewilderedTimer > 0f) {
-            bewilderedTimer -= deltaTime;
-            if (bewilderedTimer <= 0f) {
-                bewilderedTimer = 0f;
-                forcedAttackTarget = null;
-            }
-        }
+        combat.updateBewildered(deltaTime);
 
         // Update AI behavior — suppressed while stunned
         if (!isStunned()) {
@@ -210,10 +171,7 @@ public abstract class LivingEntity extends Entity {
      * (same scheme as the player).
      */
     public void jump() {
-        if (isOnGround()) {
-            velocity.y = jumpVelocity;
-            setOnGround(false);
-        }
+        locomotion.jump();
     }
 
     /**
@@ -228,17 +186,12 @@ public abstract class LivingEntity extends Entity {
      * strong as its jump clears the same one-block ledge in water that it clears on land.
      */
     public void swimUp() {
-        if (isInWater()) {
-            velocity.y = Math.max(velocity.y,
-                    Math.max(jumpVelocity, EntityWaterPhysics.MIN_ESCAPE_STROKE));
-            setOnGround(false);
-        }
+        locomotion.swimUp();
     }
 
     /** How high a swim stroke carries this mob, in blocks — what a shore must be within. */
     public float getSwimStrokeReach() {
-        float stroke = Math.max(jumpVelocity, EntityWaterPhysics.MIN_ESCAPE_STROKE);
-        return (stroke * stroke) / (2.0f * -GRAVITY);
+        return locomotion.swimStrokeReach();
     }
 
     /**
@@ -247,7 +200,7 @@ public abstract class LivingEntity extends Entity {
      * will not — and the two can never disagree, because both read the same velocity.
      */
     public float getJumpApexHeight() {
-        return (jumpVelocity * jumpVelocity) / (2.0f * -GRAVITY);
+        return locomotion.jumpApexHeight();
     }
 
     /**
@@ -276,12 +229,7 @@ public abstract class LivingEntity extends Entity {
     }
 
     /**
-     * Authoritative damage application.
-     *
-     * <p>On a network shadow this never mutates local state: the authoritative entity lives
-     * on the server, so the hit is forwarded as an {@code EntityDamageC2S} intent and a
-     * predicted damage number is shown for feedback. (Mutating the shadow would also wedge
-     * it permanently invulnerable — shadows never tick, so i-frames would never expire.)
+     * Authoritative damage application; see {@link LivingEntityCombat#damage}.
      *
      * @param attackerPos       authoritative attacker position for knockback direction, or
      *                          null to fall back to the local player's position
@@ -290,180 +238,57 @@ public abstract class LivingEntity extends Entity {
      *                          credited for their kills
      */
     public void damage(float amount, DamageSource source, Vector3f attackerPos, boolean creditLocalPlayer) {
-        if (isNetworkShadow()) {
-            if (getNetworkId() >= 0 && amount > 0f) {
-                DamageNumberRenderer.getInstance().spawn(
-                    position.x, position.y + height * 0.9f, position.z, amount);
-                // Predicted hurt voice, like the predicted damage number: the
-                // authoritative entity lives in the headless server world, so
-                // this shadow is the only place the local player can hear it.
-                // Plays only when the entity's SBE declares a hurt event.
-                com.stonebreak.audio.EntitySounds.playAt(this,
-                    com.stonebreak.audio.EntitySounds.EVENT_HURT);
-                MultiplayerSession.onLocalEntityDamage(this, amount, source);
-            }
-            return;
-        }
-        if (!alive || invulnerable) return;
-        float effectiveAmount = amount * getIncomingDamageMultiplier(source);
-        if (source == DamageSource.ARCANE) {
-            effectiveAmount *= consumeSpellmark();
-        }
-        super.damage(effectiveAmount);
-        invulnerable = true;
-        invulnerabilityTimer = INVULNERABILITY_DURATION;
-        // Damage numbers are client UI — only spawn them for entities living in the world
-        // being rendered. Authoritative entities live in the headless server world, where
-        // this would emit a duplicate of the client's predicted number from the tick thread.
-        if (Game.getWorld() == world) {
-            DamageNumberRenderer.getInstance().spawn(
-                position.x, position.y + height * 0.9f, position.z, effectiveAmount);
-            // Data-driven voice: plays only when the entity's SBE declares a
-            // hurt/death sound event (SBE 1.4+); silent otherwise.
-            com.stonebreak.audio.EntitySounds.playAt(this,
-                alive ? com.stonebreak.audio.EntitySounds.EVENT_HURT
-                      : com.stonebreak.audio.EntitySounds.EVENT_DEATH);
-        }
-        if ((source == DamageSource.PLAYER || source == DamageSource.ARCANE) && creditLocalPlayer) {
-            Player player = Game.getPlayer();
-            if (player != null) {
-                player.getStats().addDamageDealt(effectiveAmount);
-                if (!alive) {
-                    player.getStats().incrementEntitiesKilled();
-                    player.getStats().incrementKillsForType(getType());
-                    int xpReward = getXpReward();
-                    if (xpReward > 0) {
-                        player.getCharacterStats().addXp(xpReward);
-                    }
-                }
-            }
-        }
-        lastAttackerPosition = attackerPos;
-        onDamage(effectiveAmount, source);
+        combat.damage(amount, source, attackerPos, creditLocalPlayer);
     }
+
+    /** Applies already-multiplied damage to health via {@link Entity#damage} (may trigger death). */
+    void applyBaseDamage(float effectiveAmount) {
+        super.damage(effectiveAmount);
+    }
+
+    /** The status-effect component, for sibling components. */
+    LivingEntityStatusEffects statusEffects() { return statusEffects; }
 
     // ─────────────────────────────────────────────── Status effects
 
     /** Applies (or refreshes) a timed debuff. Same-type effects are refreshed rather than stacked. */
     public void applyStatusEffect(StatusEffectType type, float duration, float magnitude) {
-        if (!alive) return;
-        for (StatusEffect existing : statusEffects) {
-            if (existing.getType() == type) {
-                existing.refresh(duration, resolveRefreshMagnitude(existing, magnitude));
-                return;
-            }
-        }
-        statusEffects.add(new StatusEffect(type, duration, magnitude));
+        statusEffects.apply(type, duration, magnitude);
     }
 
-    /**
-     * The magnitude an existing effect should carry after a re-application. DOTs and SHAKEN
-     * adopt the latest application's value, so their strength tracks the most recent
-     * application — e.g. an Illusionist's SHAKEN hesitation grows as Doubt stacks rise
-     * (issue #232) and a re-applied burn ticks at its own rate. Potency bonuses are
-     * strongest-wins, so re-applying with a weaker source can never weaken an active debuff.
-     */
-    private static float resolveRefreshMagnitude(StatusEffect existing, float magnitude) {
-        return switch (existing.getType()) {
-            case ARMOR_BREAK, AMPLIFIED, CRIPPLE, EXPOSED ->
-                Math.max(existing.getMagnitude(), magnitude);
-            default -> magnitude;
-        };
-    }
-
-    // Tick and prune first so damage()/onDamage() (which may itself touch statusEffects,
-    // e.g. via applyStatusEffect) never runs while we're iterating the live list.
     // Package-private so tests can advance the DOT clock directly without a full update().
     void updateStatusEffects(float deltaTime) {
-        if (statusEffects.isEmpty()) return;
-
-        float burningTickDamage = 0f;
-        float bleedTickDamage = 0f;
-        Iterator<StatusEffect> it = statusEffects.iterator();
-        while (it.hasNext()) {
-            StatusEffect effect = it.next();
-            boolean dotTick = effect.tick(deltaTime);
-            if (dotTick && effect.getType() == StatusEffectType.BURNING) {
-                burningTickDamage += effect.getMagnitude() * StatusEffect.DOT_TICK_INTERVAL;
-            }
-            if (dotTick && effect.getType() == StatusEffectType.BLEED) {
-                bleedTickDamage += effect.getMagnitude() * StatusEffect.DOT_TICK_INTERVAL;
-            }
-            if (effect.isExpired()) {
-                it.remove();
-            }
-        }
-
-        // Combine concurrent DOT ticks into a single damage() call — the 0.5s
-        // invulnerability window would otherwise swallow the second application.
-        float totalTickDamage = burningTickDamage + bleedTickDamage;
-        if (totalTickDamage > 0f && alive) {
-            DamageSource source;
-            if (bleedTickDamage <= 0f) {
-                source = DamageSource.FIRE;
-            } else if (burningTickDamage <= 0f) {
-                source = DamageSource.BLEED;
-            } else {
-                source = DamageSource.UNKNOWN;
-            }
-            damage(totalTickDamage, source);
-        }
+        statusEffects.update(deltaTime);
     }
 
     /** Removes any active status effect of the given type (no-op if absent). */
     public void removeStatusEffect(StatusEffectType type) {
-        statusEffects.removeIf(effect -> effect.getType() == type);
+        statusEffects.remove(type);
     }
 
     /** True while a status effect of the given type is active. */
     public boolean hasStatusEffect(StatusEffectType type) {
-        for (StatusEffect effect : statusEffects) {
-            if (effect.getType() == type) {
-                return true;
-            }
-        }
-        return false;
+        return statusEffects.has(type);
     }
 
     /** Magnitude of the active effect of the given type, or {@code 0f} if none is active. */
     public float getStatusEffectMagnitude(StatusEffectType type) {
-        for (StatusEffect effect : statusEffects) {
-            if (effect.getType() == type) {
-                return effect.getMagnitude();
-            }
-        }
-        return 0f;
+        return statusEffects.magnitude(type);
     }
 
     /** True while any STUNNED effect is active — suppresses AI updates. */
     public boolean isStunned() {
-        for (StatusEffect effect : statusEffects) {
-            if (effect.getType() == StatusEffectType.STUNNED) {
-                return true;
-            }
-        }
-        return false;
+        return statusEffects.isStunned();
     }
 
     /** True while any ROOT (or STUNNED — stun implies immobility) effect is active. */
     public boolean isRooted() {
-        for (StatusEffect effect : statusEffects) {
-            if (effect.getType() == StatusEffectType.ROOT || effect.getType() == StatusEffectType.STUNNED) {
-                return true;
-            }
-        }
-        return false;
+        return statusEffects.isRooted();
     }
 
     /** Multiplier applied to incoming damage; {@code 1.0} with no Armor Break active, higher otherwise. */
     public float getArmorBreakDamageMultiplier() {
-        float bonus = 0f;
-        for (StatusEffect effect : statusEffects) {
-            if (effect.getType() == StatusEffectType.ARMOR_BREAK) {
-                bonus = Math.max(bonus, effect.getMagnitude());
-            }
-        }
-        return 1f + bonus;
+        return statusEffects.armorBreakDamageMultiplier();
     }
 
     /**
@@ -480,47 +305,12 @@ public abstract class LivingEntity extends Entity {
      * (a mutation) happens separately in {@link #damage}.
      */
     public float getIncomingDamageMultiplier(DamageSource source) {
-        float exposedBonus = 0f;
-        float amplifiedBonus = 0f;
-        for (StatusEffect effect : statusEffects) {
-            if (effect.getType() == StatusEffectType.EXPOSED) {
-                exposedBonus = Math.max(exposedBonus, effect.getMagnitude());
-            }
-            if (effect.getType() == StatusEffectType.AMPLIFIED) {
-                amplifiedBonus = Math.max(amplifiedBonus, effect.getMagnitude());
-            }
-        }
-        float multiplier = getArmorBreakDamageMultiplier() * (1f + exposedBonus);
-        if (source.isMagical()) {
-            multiplier *= 1f + amplifiedBonus;
-        }
-        return multiplier;
-    }
-
-    /**
-     * Consumes an active Spellmarked debuff: removes it and returns the one-shot bonus
-     * multiplier for the arcane hit that triggered it, or {@code 1.0} when unmarked.
-     */
-    private float consumeSpellmark() {
-        Iterator<StatusEffect> it = statusEffects.iterator();
-        while (it.hasNext()) {
-            if (it.next().getType() == StatusEffectType.SPELLMARKED) {
-                it.remove();
-                return 1f + PlayerConstants.SPELLMARKED_BONUS_DAMAGE_MULT;
-            }
-        }
-        return 1f;
+        return statusEffects.incomingDamageMultiplier(source);
     }
 
     /** Multiplier applied to movement speed; {@code 1.0} with no Cripple active, lower otherwise. */
     public float getMoveSpeedMultiplier() {
-        float reduction = 0f;
-        for (StatusEffect effect : statusEffects) {
-            if (effect.getType() == StatusEffectType.CRIPPLE) {
-                reduction = Math.max(reduction, effect.getMagnitude());
-            }
-        }
-        return Math.max(0f, 1f - reduction);
+        return statusEffects.moveSpeedMultiplier();
     }
 
     /** XP awarded to the player when this entity is killed. Override in subclasses. */
@@ -532,44 +322,27 @@ public abstract class LivingEntity extends Entity {
     // ─────────────────────────────────────────────── Illusionist Fracture stubs
 
     /** World position of the most recent attacker (null if unknown / the local player). */
-    public Vector3f getLastAttackerPosition() { return lastAttackerPosition; }
+    public Vector3f getLastAttackerPosition() { return combat.getLastAttackerPosition(); }
 
     /** Puts this entity into the Bewildered panic state for {@code duration} seconds. */
-    public void setBewildered(float duration) {
-        this.bewilderedTimer = Math.max(this.bewilderedTimer, duration);
-    }
+    public void setBewildered(float duration) { combat.setBewildered(duration); }
 
     /** True while this entity is panicked (Fracture at full Doubt). */
-    public boolean isBewildered() { return bewilderedTimer > 0f; }
+    public boolean isBewildered() { return combat.isBewildered(); }
 
     /** Names an entity this one should attack next, overriding normal AI target selection. */
-    public void setForcedAttackTarget(LivingEntity target) { this.forcedAttackTarget = target; }
+    public void setForcedAttackTarget(LivingEntity target) { combat.setForcedAttackTarget(target); }
 
     /** The forced attack target set by Fracture, or null. */
-    public LivingEntity getForcedAttackTarget() { return forcedAttackTarget; }
-    
+    public LivingEntity getForcedAttackTarget() { return combat.getForcedAttackTarget(); }
+
     /**
      * Makes the entity face a specific direction, honoring the entity type's
      * model yaw offset so all rotation paths (AI steering, awareness pursuit)
      * agree on which way the model points.
      */
     public void faceDirection(Vector3f direction, float deltaTime) {
-        if (direction.length() < 0.1f) return;
-
-        float targetYaw = (float) Math.toDegrees(Math.atan2(direction.x, direction.z))
-                + getType().getModelYawOffsetDegrees();
-
-        // Smoothly rotate toward target along the shortest arc
-        float yawDiff = targetYaw - rotation.y;
-        while (yawDiff > 180.0f) yawDiff -= 360.0f;
-        while (yawDiff < -180.0f) yawDiff += 360.0f;
-
-        float maxRotation = turnSpeed * deltaTime;
-        if (Math.abs(yawDiff) > maxRotation) {
-            yawDiff = Math.signum(yawDiff) * maxRotation;
-        }
-
-        rotation.y += yawDiff;
+        locomotion.faceDirection(direction, deltaTime);
     }
 
     /**
@@ -578,144 +351,61 @@ public abstract class LivingEntity extends Entity {
      * of {@link #faceDirection}; used by sight cones and any forward probing.
      */
     public Vector3f getForwardDirection() {
-        float travelYawRad = (float) Math.toRadians(
-                rotation.y - getType().getModelYawOffsetDegrees());
-        return new Vector3f((float) Math.sin(travelYawRad), 0f, (float) Math.cos(travelYawRad));
+        return locomotion.forwardDirection();
     }
-    
+
     /**
      * Checks if the entity can interact with a player.
      */
     public boolean canInteractWith(Player player) {
         if (!alive || player == null) return false;
-        
+
         float distance = position.distance(player.getPosition());
         long currentTime = System.currentTimeMillis();
-        
-        return distance <= interactionRange && 
+
+        return distance <= interactionRange &&
                (currentTime - lastInteractionTime) >= (INTERACTION_COOLDOWN * 1000);
     }
-    
+
     /**
      * Handles interaction with a player.
      */
     public void interact(Player player) {
         if (!canInteractWith(player)) return;
-        
+
         lastInteractionTime = System.currentTimeMillis();
         onInteract(player);
     }
-    
+
     /**
      * Gets a random direction for wandering behavior.
      */
     protected Vector3f getRandomDirection() {
-        float angle = (float) (Math.random() * 2 * Math.PI);
-        return new Vector3f(
-            (float) Math.sin(angle),
-            0,
-            (float) Math.cos(angle)
-        );
+        return LivingEntityLocomotion.randomDirection();
     }
-    
+
     /**
      * Checks if the entity can move to a specific position.
      * This method performs collision detection starting from the very bottom of the entity's legs.
      */
     public boolean canMoveTo(Vector3f targetPosition) {
-        // Create bounding box starting from the bottom of the legs
-        // targetPosition.y represents the bottom of the body, so subtract legHeight to get leg bottom
-        float legBottomY = targetPosition.y - legHeight;
-        BoundingBox targetBounds = new BoundingBox(
-            targetPosition.x - width / 2.0f,
-            legBottomY, // Start from bottom of legs
-            targetPosition.z - length / 2.0f,
-            targetPosition.x + width / 2.0f,
-            targetPosition.y + height, // Extend to full height
-            targetPosition.z + length / 2.0f
-        );
-        
-        // Check for solid blocks in the target area
-        int minX = (int) Math.floor(targetBounds.minX);
-        int maxX = (int) Math.ceil(targetBounds.maxX);
-        int minY = (int) Math.floor(targetBounds.minY);
-        int maxY = (int) Math.ceil(targetBounds.maxY);
-        int minZ = (int) Math.floor(targetBounds.minZ);
-        int maxZ = (int) Math.ceil(targetBounds.maxZ);
-        
-        for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    if (world.getBlockAt(x, y, z) != null && 
-                        world.getBlockAt(x, y, z).isSolid()) {
-                        return false;
-                    }
-                }
-            }
-        }
-        
-        return true;
+        return locomotion.canMoveTo(targetPosition);
     }
-    
+
     /**
      * Checks if the entity can move to a specific position while avoiding flowers.
      * This method is specifically for cows and other passive mobs that should avoid trampling flowers.
      */
     public boolean canMoveToAvoidingFlowers(Vector3f targetPosition) {
-        // First do basic collision check
-        if (!canMoveTo(targetPosition)) {
-            return false;
-        }
-        
-        // Check for flowers at ground level to avoid trampling them
-        // Use bottom of legs position for ground checking
-        float legBottomY = targetPosition.y - legHeight;
-        int groundX = (int) Math.floor(targetPosition.x);
-        int groundY = (int) Math.floor(legBottomY);
-        int groundZ = (int) Math.floor(targetPosition.z);
-        
-        // Check current ground block and surrounding area
-        for (int x = groundX - 1; x <= groundX + 1; x++) {
-            for (int z = groundZ - 1; z <= groundZ + 1; z++) {
-                // Check at ground level and one block up (where flowers typically are)
-                for (int y = groundY; y <= groundY + 1; y++) {
-                    var blockType = world.getBlockAt(x, y, z);
-                    if (blockType != null && isFlower(blockType)) {
-                        return false; // Avoid trampling flowers
-                    }
-                }
-            }
-        }
-        
-        return true;
+        return locomotion.canMoveToAvoidingFlowers(targetPosition);
     }
-    
-    /**
-     * Helper method to identify flower blocks.
-     */
-    private boolean isFlower(BlockType blockType) {
-        return blockType == BlockType.ROSE ||
-               blockType == BlockType.DANDELION ||
-               blockType == BlockType.WILDGRASS;
-    }
-    
+
     /**
      * Applies knockback away from the attacking player. Call from {@link #onDamage} when
      * source is {@link DamageSource#PLAYER}.
      */
     protected void applyPlayerKnockback() {
-        Vector3f attackerPos = lastAttackerPosition;
-        if (attackerPos == null) {
-            Player player = Game.getPlayer();
-            if (player == null) return;
-            attackerPos = player.getPosition();
-        }
-        Vector3f knockbackDir = new Vector3f(position).sub(attackerPos);
-        knockbackDir.y = 0;
-        if (knockbackDir.length() > 0.01f) {
-            knockbackDir.normalize();
-            applyKnockback(knockbackDir, 3.0f, 1.5f);
-        }
+        combat.applyPlayerKnockback();
     }
 
     /**
@@ -724,46 +414,32 @@ public abstract class LivingEntity extends Entity {
      * {@code horizontalDirection} need not be normalized; only its horizontal (XZ) component is used.
      */
     public void applyKnockback(Vector3f horizontalDirection, float horizontalForce, float verticalForce) {
-        Vector3f dir = new Vector3f(horizontalDirection.x, 0f, horizontalDirection.z);
-        if (dir.lengthSquared() <= 0.0001f) return;
-        dir.normalize();
-        velocity.x += dir.x * horizontalForce;
-        velocity.z += dir.z * horizontalForce;
-        velocity.y += verticalForce;
-        if (verticalForce > 0f) {
-            setOnGround(false);
-        }
-        float horizontalSpeed = (float) Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-        if (horizontalSpeed > 8.0f) {
-            float scale = 8.0f / horizontalSpeed;
-            velocity.x *= scale;
-            velocity.z *= scale;
-        }
+        locomotion.applyKnockback(horizontalDirection, horizontalForce, verticalForce);
     }
 
     // Abstract methods that must be implemented by subclasses
-    
+
     /**
      * Called when the player interacts with this entity.
      */
     public abstract void onInteract(Player player);
-    
+
     /**
      * Called when the entity takes damage.
      */
     public abstract void onDamage(float damage, DamageSource source);
-    
+
     /**
      * Called when the entity dies.
      */
     @Override
     protected abstract void onDeath();
-    
+
     /**
      * Gets the items this entity should drop when it dies.
      */
     public abstract ItemStack[] getDrops();
-    
+
     /** This mob's AI controller, or null for AI-less living entities. */
     public MobAI getAI() { return mobAI; }
 
@@ -796,19 +472,19 @@ public abstract class LivingEntity extends Entity {
     // Getters
     public float getMoveSpeed() { return moveSpeed; }
     public float getTurnSpeed() { return turnSpeed; }
-    public boolean isInvulnerable() { return invulnerable; }
-    public float getInvulnerabilityTimer() { return invulnerabilityTimer; }
+    public boolean isInvulnerable() { return combat.isInvulnerable(); }
+    public float getInvulnerabilityTimer() { return combat.getInvulnerabilityTimer(); }
     public boolean isMoving() { return isMoving; }
     public float getInteractionRange() { return interactionRange; }
     public Vector3f getTargetDirection() { return new Vector3f(targetDirection); }
     public float getLegHeight() { return legHeight; }
-    
+
     // Setters
     public void setMoveSpeed(float moveSpeed) { this.moveSpeed = moveSpeed; }
     public void setTurnSpeed(float turnSpeed) { this.turnSpeed = turnSpeed; }
     public void setInteractionRange(float range) { this.interactionRange = range; }
     public void setTargetDirection(Vector3f direction) { this.targetDirection.set(direction); }
-    
+
     /**
      * Enumeration of damage sources for damage handling.
      */

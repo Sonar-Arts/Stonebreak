@@ -21,13 +21,10 @@ import com.stonebreak.world.chunk.utils.WorldChunkStore;
 import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.fastlod.FastLodManager;
-import com.stonebreak.world.fastlod.FastLodStore;
 import com.stonebreak.world.leaves.LeafDecaySystem;
 import com.stonebreak.world.leaves.WorldLeafWorld;
 import com.stonebreak.world.operations.WorldConfiguration;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
 
 /**
  * Manages the game world and chunks using a modular architecture.
@@ -64,8 +61,12 @@ public class World {
     private final LeafDecaySystem leafDecay;
     private final com.stonebreak.world.generation.features.FeatureQueue featureQueue;
 
-    // Lazily constructed once the render-thread hands us a texture atlas.
-    private volatile FastLodManager fastLodManager;
+    // Extracted collaborators (see their class docs): mesh scheduling, FastLOD lifecycle,
+    // network chunk install and per-tick update sequencing.
+    private final ChunkMeshScheduler meshScheduler;
+    private final FastLodLifecycle fastLod;
+    private final NetworkChunkInstaller networkChunkInstaller;
+    private final WorldUpdateOrchestrator updates;
 
     // Per-world persistence. Null = this world is not persisted (e.g. a client render
     // world, whose state is authoritative on the server). Set by SaveService.initialize().
@@ -245,6 +246,13 @@ public class World {
             System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + config.getChunkBuildThreads() + " mesh builder threads.");
         }
 
+        this.meshScheduler = new ChunkMeshScheduler(meshPipeline, neighborCoordinator, chunkStore);
+        this.fastLod = new FastLodLifecycle(config, terrainSystem);
+        this.networkChunkInstaller = new NetworkChunkInstaller(
+                chunkStore, snowLayerManager, furnaceRegistry, animatedBlockRegistry, meshScheduler);
+        this.updates = new WorldUpdateOrchestrator(
+                this, waterSim, leafDecay, furnaceRegistry, chunkStore, chunkManager, meshScheduler, fastLod);
+
         // Chunk listeners (wired for BOTH the headless server world and rendered worlds).
         // Water simulation load runs only on authoritative worlds (a render-only client
         // receives water via streamed chunks/block changes). The furnace registry is now
@@ -266,14 +274,7 @@ public class World {
                 furnaceRegistry.onChunkLoaded(chunk);
             }
             animatedBlockRegistry.onChunkLoaded(chunk);
-            if (meshPipeline != null) {
-                int cx = chunk.getX();
-                int cz = chunk.getZ();
-                markMeshedNeighborDirty(cx - 1, cz);
-                markMeshedNeighborDirty(cx + 1, cz);
-                markMeshedNeighborDirty(cx, cz - 1);
-                markMeshedNeighborDirty(cx, cz + 1);
-            }
+            meshScheduler.onChunkLoaded(chunk.getX(), chunk.getZ());
         }, chunk -> {
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkUnloaded(chunk);
@@ -301,23 +302,7 @@ public class World {
     
     
     public void update(com.stonebreak.rendering.Renderer renderer) {
-        if (meshPipeline == null) return; // Test mode - skip rendering updates
-
-        waterSim.tick(Game.getDeltaTime());
-        leafDecay.tick(Game.getDeltaTime());
-        com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
-        if (fr != null) fr.tick(this, Game.getDeltaTime());
-        meshPipeline.requeueFailedChunks();
-        if (chunkManager != null) {
-            chunkManager.update(Game.getPlayer());
-        }
-
-        // Process deferred feature population (breaks recursive generation cycles)
-        if (chunkStore != null) {
-            chunkStore.processPendingFeaturePopulation();
-        }
-
-        meshPipeline.processChunkMeshBuildRequests(this);
+        updates.update();
     }
 
     /**
@@ -328,23 +313,8 @@ public class World {
      * is a no-op. Safe to call with no render infrastructure.
      */
     public void updateSimulation(float deltaTime) {
-        long tickStart = System.nanoTime();
-        waterSim.tick(deltaTime);
-        leafDecay.tick(deltaTime);
-        com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistryOrNull();
-        if (fr != null) fr.tick(this, deltaTime);
-        if (chunkStore != null) {
-            // Throughput-bound feature population: drain against the tick's own
-            // clock (leave ~20 ms of the 50 ms period for entity sim + chunk
-            // streaming that follow in ServerLevel.tick) instead of a fixed
-            // 8 ms slice — a light tick populates ~4x more chunks per tick,
-            // a heavy one (water settling etc.) backs off automatically.
-            chunkStore.processPendingFeaturePopulation(tickStart + FEATURE_TICK_DEADLINE_NANOS);
-        }
+        updates.updateSimulation(deltaTime);
     }
-
-    /** How far into the 50 ms server tick the feature-population drain may run. */
-    private static final long FEATURE_TICK_DEADLINE_NANOS = 30_000_000L;
 
     /**
      * Render-only client update, run by {@code GameLoop} on a {@link #createClientView} world.
@@ -356,35 +326,7 @@ public class World {
      * "load" produces empty placeholders that {@link #installNetworkChunk} then fills.
      */
     public void updateClient(com.stonebreak.rendering.Renderer renderer) {
-        if (meshPipeline == null) return; // No rendering infrastructure — nothing to do.
-
-        // Deliberately NO chunkManager.update here: on a render-only world it calls
-        // getOrCreateChunk around the player and, with terrain generation disabled, manufactures
-        // empty all-air placeholder chunks the server never streams — their empty meshes get
-        // treated as failed builds and spam the retry path. The client only meshes chunks the
-        // server installs (installNetworkChunk schedules their build directly); we just pump the
-        // build queue. Distant streamed chunks unload via unloadClientChunksOutsideView
-        // below, so client memory stays bounded to the keep radius.
-        meshPipeline.requeueFailedChunks();
-        meshPipeline.processChunkMeshBuildRequests(this);
-        unloadClientChunksOutsideView();
-
-        // FastLOD ring tick. On a full world ChunkManager.update drives this,
-        // but render-only worlds skip the chunk manager entirely (chunks
-        // stream from the server), so without this call the LOD manager is
-        // created by the render pass yet never schedules a single node —
-        // distant terrain simply never appears. The sampler reads the local
-        // deterministic TerrainGenerationSystem (seeded from the server's
-        // WelcomeS2C world seed), so client-side LOD matches server terrain
-        // without any chunk streaming. Runs on the same logic-thread executor
-        // that ticks full-world updateRing — threading contract unchanged.
-        var lodPlayer = Game.getPlayer();
-        if (lodPlayer != null && fastLodManager != null) {
-            Vector3f lodPos = lodPlayer.getPosition();
-            fastLodManager.updateRing(
-                    (int) Math.floor(lodPos.x / WorldConfiguration.CHUNK_SIZE),
-                    (int) Math.floor(lodPos.z / WorldConfiguration.CHUNK_SIZE));
-        }
+        updates.updateClient();
     }
 
     /**
@@ -400,79 +342,18 @@ public class World {
         return config.getRenderDistance() + 2;
     }
 
-    // Last position/radius the client unload sweep ran for. The sweep only does work when the
-    // player crosses a chunk boundary or the keep radius shrinks/grows (settings Apply) —
-    // chunks the server streams in are always within the keep radius, so a stationary player
-    // can never accumulate out-of-range chunks between crossings.
-    private int lastUnloadSweepCx = Integer.MIN_VALUE;
-    private int lastUnloadSweepCz = Integer.MIN_VALUE;
-    private int lastUnloadSweepKeepRadius = -1;
-
-    /**
-     * Unload streamed chunks that have left the client's keep radius. Render-only worlds never
-     * regenerate, so a dropped chunk simply re-streams from the server if the player returns
-     * (the server forgets it at the same radius). Bounds the client's memory as it explores;
-     * no save (the client never persists). Skips entirely while the player stays inside one
-     * chunk — the previous per-frame full scan copied every resident chunk position each frame.
-     */
-    private void unloadClientChunksOutsideView() {
-        var player = Game.getPlayer();
-        if (player == null || chunkStore == null) {
-            return;
-        }
-        Vector3f pos = player.getPosition();
-        int pcx = Math.floorDiv((int) Math.floor(pos.x), WorldConfiguration.CHUNK_SIZE);
-        int pcz = Math.floorDiv((int) Math.floor(pos.z), WorldConfiguration.CHUNK_SIZE);
-        int keepRadius = clientKeepRadius();
-        if (pcx == lastUnloadSweepCx && pcz == lastUnloadSweepCz && keepRadius == lastUnloadSweepKeepRadius) {
-            return;
-        }
-        lastUnloadSweepCx = pcx;
-        lastUnloadSweepCz = pcz;
-        lastUnloadSweepKeepRadius = keepRadius;
-        chunkStore.unloadChunksOutside(pcx, pcz, keepRadius);
-    }
-
     public void updateMainThread() {
         if (meshPipeline == null) return; // Test mode - skip rendering updates
 
-        meshPipeline.applyPendingGLUpdates();
-        meshPipeline.processGpuCleanupQueue();
+        meshScheduler.applyPendingGLUpdates();
+        meshScheduler.processGpuCleanupQueue();
     }
 
     public void processGpuCleanupQueue() {
-        if (meshPipeline == null) return; // Test mode - skip rendering updates
-
-        meshPipeline.processGpuCleanupQueue();
+        meshScheduler.processGpuCleanupQueue();
     }
     public void ensureChunkIsReadyForRender(int cx, int cz) {
-        if (meshPipeline == null || neighborCoordinator == null) return; // Test mode - no rendering
-
-        Chunk chunk = chunkStore.getChunk(cx, cz);
-
-        if (chunk == null) {
-            chunk = getChunkAt(cx, cz);
-            if (chunk == null) {
-                return;
-            }
-        }
-
-        // Features are now always populated during chunk generation - no need to check
-
-        boolean isMeshReady = chunk.isMeshGenerated() && chunk.isDataReadyForGL();
-        boolean isMeshGenerating = chunk.isMeshDataGenerationScheduledOrInProgress();
-
-        // CRITICAL FIX: If chunk has features but no mesh and isn't generating, force retry
-        // This handles cases where mesh generation silently failed or was never attempted
-        if (chunk.areFeaturesPopulated() && !isMeshReady && !isMeshGenerating) {
-            // Force reset mesh state to allow retry
-            resetMeshGenerationState(chunk);
-            meshPipeline.scheduleConditionalMeshBuild(chunk);
-        } else if (!isMeshReady) {
-            meshPipeline.scheduleConditionalMeshBuild(chunk);
-        }
-
-        neighborCoordinator.ensureNeighborsReadyForRender(cx, cz, meshPipeline::scheduleConditionalMeshBuild);
+        meshScheduler.ensureChunkIsReadyForRender(cx, cz, pos -> getChunkAt(pos[0], pos[1]));
     }
     
     /**
@@ -686,20 +567,7 @@ public class World {
 
         chunk.setBlock(localX, y, localZ, blockType);
 
-        if (meshPipeline != null && neighborCoordinator != null) {
-            if (isPlayerModification) {
-                // PRIORITY PATH: Player modification - high priority async mesh generation
-                // Uses PRIORITY_PLAYER_MODIFICATION to bypass batch limits for 1-frame feedback
-                markChunkForMeshRebuildWithScheduling(chunk,
-                    c -> meshPipeline.scheduleConditionalMeshBuild(c, MmsMeshPipeline.PRIORITY_PLAYER_MODIFICATION));
-                neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, localX, localZ,
-                    c -> meshPipeline.scheduleConditionalMeshBuild(c, MmsMeshPipeline.PRIORITY_NEIGHBOR_CHUNK));
-            } else {
-                // NORMAL PATH: World gen/loading - standard priority async mesh generation
-                markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
-                neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
-            }
-        }
+        meshScheduler.onBlockChanged(chunk, chunkX, chunkZ, localX, localZ, isPlayerModification);
 
         // Only authoritative worlds simulate flow; a render-only client applying
         // streamed changes must not queue sim work (its layer is display-only).
@@ -861,15 +729,9 @@ public class World {
             chunkManager.shutdown();
         }
 
-        if (fastLodManager != null) {
-            fastLodManager.shutdown();
-            final com.stonebreak.world.fastlod.FastLodManager lod = fastLodManager;
-            com.stonebreak.core.Game.getInstance().runOnMainThread(lod::applyGLUpdates);
-        }
+        fastLod.shutdownDeferred();
 
-        if (meshPipeline != null) {
-            meshPipeline.shutdown();
-        }
+        meshScheduler.shutdown();
         chunkStore.cleanup();
         // Deferred AFTER chunkStore.cleanup() so anything it queued is included in the
         // final main-thread drain (nothing ticks this pipeline's queue once the world is
@@ -881,10 +743,7 @@ public class World {
         // server world) — a wholesale reset from those would delete regions the ACTIVE
         // world is drawing. The per-chunk cleanup above frees every region segment this
         // world held, and the next rendered frame's beginFrame() prunes emptied regions.
-        if (meshPipeline != null) {
-            final MmsMeshPipeline mp = meshPipeline;
-            com.stonebreak.core.Game.getInstance().runOnMainThread(mp::processGpuCleanupQueue);
-        }
+        meshScheduler.deferFinalGpuCleanup();
     }
 
     /**
@@ -894,52 +753,11 @@ public class World {
      * persistence. Idempotent; safe to call each frame.
      */
     public void ensureFastLodManager(com.stonebreak.rendering.textures.BlockTextureArray textureArray) {
-        if (fastLodManager != null || textureArray == null || terrainSystem == null) return;
-        synchronized (this) {
-            if (fastLodManager != null) return;
-            FastLodStore store = openFastLodStoreIfPossible();
-            fastLodManager = new FastLodManager(config, terrainSystem, textureArray, store);
-        }
-    }
-
-    private static FastLodStore openFastLodStoreIfPossible() {
-        // Resolves the save directory without coupling World to how save state
-        // is plumbed. Any failure (no save path, SQLite driver missing) falls
-        // through to pure in-memory LOD.
-        try {
-            String worldPath = null;
-            com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
-            com.stonebreak.world.save.SaveService svc = (game != null) ? game.getSaveService() : null;
-            if (svc != null) {
-                worldPath = svc.getWorldPath();
-            }
-            if (worldPath == null || worldPath.isEmpty()) {
-                // Two-world model: the client RENDER world carries no
-                // SaveService — the authoritative one lives on the co-located
-                // integrated server (singleplayer + LAN host). Only the render
-                // world ever opens a FastLOD store (the headless server world
-                // is never rendered), so there is no double-open on the file.
-                // Remote-join clients have no integrated server and correctly
-                // fall through to in-memory LOD.
-                var server = com.stonebreak.network.MultiplayerSession.getServer();
-                var ctx = (server != null) ? server.worldContext() : null;
-                var level = (ctx != null) ? ctx.serverLevel() : null;
-                var save = (level != null) ? level.saveService() : null;
-                if (save != null) {
-                    worldPath = save.getWorldPath();
-                }
-            }
-            if (worldPath == null || worldPath.isEmpty()) return null;
-            Path dbPath = Paths.get(worldPath, "fastlod", "cache.sqlite");
-            return FastLodStore.open(dbPath);
-        } catch (Exception e) {
-            System.err.println("[World] FastLod store setup failed: " + e.getMessage());
-            return null;
-        }
+        fastLod.ensure(textureArray);
     }
 
     public FastLodManager getFastLodManager() {
-        return fastLodManager;
+        return fastLod.get();
     }
 
     public WorldConfiguration getConfig() {
@@ -957,21 +775,11 @@ public class World {
         }
 
         // Shut down the Fast LOD manager so its world-specific SQLite cache is
-        // closed. The store points at worlds/<name>/fastlod/cache.sqlite, so
-        // leaving it open here would keep the .sqlite/.sqlite-wal/.sqlite-shm
-        // files locked and block a later world deletion. Runs on the main/GL
-        // thread (clearWorldData is invoked from the quit-to-menu path), so we
-        // can drain the LOD GPU cleanup queue inline rather than deferring it.
-        if (fastLodManager != null) {
-            fastLodManager.shutdown();
-            fastLodManager.applyGLUpdates();
-            fastLodManager = null;
-        }
+        // closed (see FastLodLifecycle.shutdownInline).
+        fastLod.shutdownInline();
 
         // Process any pending GPU cleanup without shutting down the pipeline
-        if (meshPipeline != null) {
-            meshPipeline.processGpuCleanupQueue();
-        }
+        meshScheduler.processGpuCleanupQueue();
 
         // Reset spawn position to default for world isolation
         spawnPosition.set(0, 100, 0);
@@ -1023,7 +831,7 @@ public class World {
      * This is used for debugging purposes.
      */
     public int getPendingMeshBuildCount() {
-        return meshPipeline != null ? meshPipeline.getPendingMeshBuildCount() : 0;
+        return meshScheduler.getPendingMeshBuildCount();
     }
 
     /**
@@ -1031,7 +839,7 @@ public class World {
      * This is used for debugging purposes.
      */
     public int getPendingGLUploadCount() {
-        return meshPipeline != null ? meshPipeline.getPendingGLUploadCount() : 0;
+        return meshScheduler.getPendingGLUploadCount();
     }
     
     /**
@@ -1087,15 +895,7 @@ public class World {
      * Use this when block visual properties change without changing the block type.
      */
     public void triggerChunkRebuild(int worldX, int worldY, int worldZ) {
-        if (meshPipeline == null) return; // Test mode - no rendering
-
-        int chunkX = Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE);
-        int chunkZ = Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE);
-
-        Chunk chunk = chunkStore.getChunk(chunkX, chunkZ);
-        if (chunk != null) {
-            markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
-        }
+        meshScheduler.triggerChunkRebuild(worldX, worldZ);
     }
 
     /**
@@ -1120,13 +920,7 @@ public class World {
      *         request a chunk resync, since the server has marked this chunk as sent.
      */
     public boolean installNetworkChunk(int chunkX, int chunkZ, byte[] payload, byte[] metaPayload) {
-        com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage decoded =
-            com.stonebreak.network.client.NetworkChunkDecoder.decodeBlocks(chunkX, chunkZ, payload);
-        if (decoded == null) {
-            return false; // caller requests a resync — the server thinks this chunk was sent
-        }
-        return installDecodedNetworkChunk(chunkX, chunkZ, decoded,
-            com.stonebreak.network.client.NetworkChunkDecoder.computeSkyHeights(decoded), metaPayload);
+        return networkChunkInstaller.install(chunkX, chunkZ, payload, metaPayload);
     }
 
     /**
@@ -1139,95 +933,7 @@ public class World {
     public boolean installDecodedNetworkChunk(int chunkX, int chunkZ,
             com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage decoded,
             int[] heights, byte[] metaPayload) {
-        if (chunkStore == null) return false;
-        // Synchronous slot creation — the render-only client has no disk-load or terrain-gen,
-        // so the chunk arrives ready in the same call. No async machinery, no race conditions,
-        // no chance of dropping the payload because the slot "isn't ready yet".
-        Chunk chunk = chunkStore.createOrGetNetworkChunkSlot(chunkX, chunkZ);
-        chunk.replaceAllBlocks(decoded);
-        // The bulk block install bypasses Chunk.setBlock, so stale water-layer entries from a
-        // previous stream of this chunk would survive it — clear unconditionally; the meta
-        // below re-hydrates the authoritative set (absence = source, per the layer invariant).
-        chunk.getWaterLayer().clear();
-
-        // Apply streamed chunk metadata: snow layer heights + per-block SBO states + water
-        // flow levels. Replaces (not merges) this chunk's previous entries so a re-stream is
-        // a clean resync.
-        if (metaPayload != null && metaPayload.length > 0) {
-            try {
-                var meta = com.stonebreak.network.bridge.GameChunkMetaCodec.decode(metaPayload);
-                snowLayerManager.onChunkUnloaded(chunkX, chunkZ); // clear stale entries first
-                int baseX = chunkX * WorldConfiguration.CHUNK_SIZE;
-                int baseZ = chunkZ * WorldConfiguration.CHUNK_SIZE;
-                for (var e : meta.snowLayers().entrySet()) {
-                    int key = e.getKey();
-                    snowLayerManager.putRaw(
-                        baseX + com.stonebreak.world.chunk.utils.LocalBlockKey.x(key),
-                        com.stonebreak.world.chunk.utils.LocalBlockKey.y(key),
-                        baseZ + com.stonebreak.world.chunk.utils.LocalBlockKey.z(key),
-                        e.getValue());
-                }
-                for (var e : meta.blockStates().entrySet()) {
-                    int key = e.getKey();
-                    chunk.setBlockState(
-                        com.stonebreak.world.chunk.utils.LocalBlockKey.x(key),
-                        com.stonebreak.world.chunk.utils.LocalBlockKey.y(key),
-                        com.stonebreak.world.chunk.utils.LocalBlockKey.z(key),
-                        e.getValue());
-                }
-                for (var e : meta.waterLevels().entrySet()) {
-                    int key = e.getKey();
-                    chunk.getWaterLayer().set(
-                        com.stonebreak.world.chunk.utils.LocalBlockKey.x(key),
-                        com.stonebreak.world.chunk.utils.LocalBlockKey.y(key),
-                        com.stonebreak.world.chunk.utils.LocalBlockKey.z(key),
-                        e.getValue());
-                }
-                // Hydrate the DISPLAY furnace registry from the states just applied. The
-                // chunk-load listener fired at slot creation, BEFORE this meta landed, so
-                // without this an idle furnace opens empty on a joiner — and their first
-                // slot edit would then overwrite the server's real contents.
-                if (!meta.blockStates().isEmpty() && furnaceRegistry != null) {
-                    furnaceRegistry.onChunkLoaded(chunk);
-                }
-                // Same re-hydration for animated blocks (doors): the load-time
-                // scan saw an all-air placeholder with no states, so streamed
-                // doors were never indexed — and rendered invisible.
-                if (!meta.blockStates().isEmpty()) {
-                    animatedBlockRegistry.onChunkLoaded(chunk);
-                }
-            } catch (Exception e) {
-                System.err.println("[NETWORK] Failed to decode chunk meta (" + chunkX + "," + chunkZ + "): " + e.getMessage());
-            }
-        }
-
-        // The chunk was an empty placeholder (all-air heightmap). Now that real blocks are in,
-        // install the heightmap so sky-shadow/lighting and the mesher's Y-scan are correct —
-        // precomputed on the decode worker; the fallback rescan covers direct callers.
-        if (heights != null) {
-            chunk.getHeightMap().populate(heights);
-        } else {
-            chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
-        }
-        if (meshPipeline != null) {
-            markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
-            if (neighborCoordinator != null) {
-                // Re-mesh ALL four resident neighbors: any neighbor meshed before this
-                // payload landed built its border against an absent or empty chunk
-                // (culled/sentinel faces, or all-AIR reads → spurious water sheets).
-                // Streaming order is not guaranteed to be west/north-first — movement
-                // west or north delivers new chunks on the far side of already-meshed
-                // ones — so both edge pairs must be marked. Non-resident neighbors
-                // no-op, and the dirty-flag gating keeps this to one rebuild each.
-                neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, 0, 0,
-                        meshPipeline::scheduleConditionalMeshBuild);
-                neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ,
-                        WorldConfiguration.CHUNK_SIZE - 1, WorldConfiguration.CHUNK_SIZE - 1,
-                        meshPipeline::scheduleConditionalMeshBuild);
-            }
-        }
-        com.stonebreak.world.chunk.utils.ChunkPipelineStats.INSTALLED.increment();
-        return true;
+        return networkChunkInstaller.installDecoded(chunkX, chunkZ, decoded, heights, metaPayload);
     }
 
     /**
@@ -1242,7 +948,7 @@ public class World {
             // Mark all chunks currently loaded around the player for mesh rebuild
             int[] marked = {0};
             forEachChunkAroundPlayer(playerChunkX, playerChunkZ, chunk -> {
-                markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
+                meshScheduler.scheduleRebuild(chunk);
                 marked[0]++;
             });
 
@@ -1287,48 +993,6 @@ public class World {
         this.spawnPosition.set(newSpawnPosition);
     }
     
-    /**
-     * Marks a chunk for mesh rebuild using CCO dirty tracker.
-     */
-    private void markChunkForMeshRebuild(Chunk chunk) {
-        chunk.getCcoDirtyTracker().markMeshDirtyOnly();
-    }
-
-    /**
-     * Marks a chunk for mesh rebuild and schedules it using CCO dirty tracker.
-     */
-    private void markChunkForMeshRebuildWithScheduling(Chunk chunk, Consumer<Chunk> meshBuildScheduler) {
-        markChunkForMeshRebuild(chunk);
-        meshBuildScheduler.accept(chunk);
-    }
-
-    /**
-     * Resets mesh generation state using CCO dirty tracker.
-     */
-    private void resetMeshGenerationState(Chunk chunk) {
-        chunk.getCcoDirtyTracker().markMeshDirtyOnly();
-    }
-
-    /**
-     * Marks an existing neighbor chunk dirty and schedules a rebuild so its
-     * border faces (water seams, sentinel-culled boundaries) recompute with
-     * correct data once this chunk is available.
-     *
-     * <p>Do NOT skip when the neighbor hasn't finished its first mesh build:
-     * if the neighbor was scheduled before this chunk loaded, its in-flight
-     * build is racing against the sentinel-opaque path in MmsFaceCullingService
-     * and may have already baked culled boundary faces. Dropping the signal
-     * here leaves those faces missing until the player edits the chunk. The
-     * mesh pipeline coalesces duplicate schedule requests, so re-scheduling a
-     * pending build is cheap.
-     */
-    private void markMeshedNeighborDirty(int chunkX, int chunkZ) {
-        Chunk neighbor = chunkStore.getChunk(chunkX, chunkZ);
-        if (neighbor == null) return;
-        neighbor.getCcoDirtyTracker().markMeshDirtyOnly();
-        meshPipeline.scheduleConditionalMeshBuild(neighbor);
-    }
-
     /**
      * Sets the world spawn position with coordinates
      */
@@ -1377,7 +1041,6 @@ public class World {
         int cz = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
         Chunk chunk = getChunkIfLoaded(cx, cz);
         if (chunk == null) return;
-        chunk.getCcoDirtyTracker().markMeshDirtyOnly();
-        meshPipeline.scheduleConditionalMeshBuild(chunk, MmsMeshPipeline.PRIORITY_PLAYER_MODIFICATION);
+        meshScheduler.scheduleChunkRemesh(chunk);
     }
 }
