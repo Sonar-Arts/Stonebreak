@@ -211,6 +211,10 @@ public class SBOStampEmitter {
         float[] layers = faceStamp.layers();
         int triCount = faceStamp.vertexCount() / 3;
         boolean scaleY = blockHeight < 1.0f;
+        // worldX/Y/Z is the block centre; the cell it occupies is its floor.
+        int bx = (int) Math.floor(worldX);
+        int by = (int) Math.floor(worldY);
+        int bz = (int) Math.floor(worldZ);
 
         for (int tri = 0; tri < triCount; tri++) {
             int baseVertex = builder.getVertexCount();
@@ -229,7 +233,7 @@ public class SBOStampEmitter {
                 float wx = pos[pOff] + worldX;
                 float wyAbs = vy + worldY;
                 float wz = pos[pOff + 2] + worldZ;
-                float vertexLight = lightSampler.sampleVertexLight(face, wx, wyAbs, wz, chunkData);
+                float vertexLight = lightSampler.sampleVertexLight(face, wx, wyAbs, wz, bx, by, bz, chunkData);
                 builder.addVertex(
                         wx, wyAbs, wz,
                         uv[tOff], uv[tOff + 1],
@@ -269,9 +273,9 @@ public class SBOStampEmitter {
             && translucencyOverride.shouldRenderFaceAsOpaque(blockType, lx, ly, lz, face, chunkData);
     }
 
-    /** Per-vertex light exactly as {@link #emitBlock} samples it. */
-    public float sampleLight(int face, float wx, float wy, float wz, CcoChunkData chunkData) {
-        return lightSampler.sampleVertexLight(face, wx, wy, wz, chunkData);
+    /** Per-vertex light exactly as {@link #emitBlock} samples it; {@code bx,by,bz} is the block's cell. */
+    public float sampleLight(int face, float wx, float wy, float wz, int bx, int by, int bz, CcoChunkData chunkData) {
+        return lightSampler.sampleVertexLight(face, wx, wy, wz, bx, by, bz, chunkData);
     }
 
     /** Whether the translucency policy routes this block to alpha-blended rendering. */

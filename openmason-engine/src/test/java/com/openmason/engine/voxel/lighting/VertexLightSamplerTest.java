@@ -175,4 +175,93 @@ class VertexLightSamplerTest {
         assertEquals(1.0f, VertexLightSampler.samplePointSky(world, 99.5f, 6.0f, 99.5f), EPS,
                 "an unloaded column must not black out the player's arms");
     }
+
+    // ── Shaped (stair) geometry: fractional vertices + own-cell exclusion (#224) ──
+
+    private static final int NORTH = 2;
+
+    /**
+     * Issue #224's layout: a north-facing stair at (0,10,0) on flat ground (sky at 10),
+     * its own column therefore reads 11. The upper riser is the interior face at
+     * z = 0.5 spanning y 10.5..11.
+     */
+    private void stairOnOpenGround() {
+        for (int x = -2; x <= 2; x++) {
+            for (int z = -2; z <= 2; z++) {
+                world.column(x, z, 10);
+            }
+        }
+        world.column(0, 0, 11);
+        world.solid(0, 10, 0);
+    }
+
+    @Test
+    void aStairsUpperRiserInOpenDaylightIsFullBright() {
+        stairOnOpenGround();
+
+        // Bottom and top vertices of the riser, mid-span in x.
+        assertEquals(1.0f, VertexLightSampler.sampleCombined(world, 0.5f, 10.5f, 0.5f, NORTH, 0, 10, 0), EPS,
+                "the stair must not shade its own interior riser");
+        assertEquals(1.0f, VertexLightSampler.sampleCombined(world, 0.5f, 11.0f, 0.5f, NORTH, 0, 10, 0), EPS);
+    }
+
+    @Test
+    void theRoundingSamplerWouldHaveShadedTheSameRiser() {
+        stairOnOpenGround();
+
+        // Documents the bug the geometry-aware variant fixes: rounding z=0.5 → 1 puts
+        // the north face's air side inside the stair's own cell, which then reads as
+        // overhead cover (one of the four sky samples) and as an AO neighbour.
+        float legacy = VertexLightSampler.sampleCombined(world, 0.5f, 10.5f, 0.5f, NORTH);
+        assertEquals(0.75f * 0.87f, legacy, EPS);
+    }
+
+    @Test
+    void aLowerTreadInOpenDaylightIsFullBright() {
+        stairOnOpenGround();
+
+        assertEquals(1.0f, VertexLightSampler.sampleCombined(world, 0.5f, 10.5f, 0.25f, TOP, 0, 10, 0), EPS);
+    }
+
+    @Test
+    void aWallBesideTheRiserStillCreasesItsEndVertex() {
+        stairOnOpenGround();
+        world.column(-1, 0, 12);
+        world.solid(-1, 10, 0);
+        world.solid(-1, 11, 0);
+
+        // Left-end bottom vertex: columns (-1,0) roofed + (0,0) open → sky 0.5; the wall
+        // is the only solid air-side cell (own cell excluded) → one AO step.
+        assertEquals(0.5f * 0.87f, VertexLightSampler.sampleCombined(world, 0.0f, 10.5f, 0.5f, NORTH, 0, 10, 0), EPS);
+        // Mid-span is untouched by the wall.
+        assertEquals(1.0f, VertexLightSampler.sampleCombined(world, 0.5f, 10.5f, 0.5f, NORTH, 0, 10, 0), EPS);
+    }
+
+    @Test
+    void integralCornersMatchTheRoundingSamplerOnEveryFace() {
+        litNeighborhood();
+        for (int x = -2; x <= 2; x++) {
+            for (int z = -2; z <= 2; z++) {
+                world.column(x, z, (x + z) % 2 == 0 ? 5 : 20);
+            }
+        }
+        world.solid(-1, 10, 0);
+        world.solid(0, 9, -1);
+        world.solid(-1, 9, -1);
+        world.solid(1, 10, 1);
+
+        for (int face = 0; face < 6; face++) {
+            for (int x = -1; x <= 1; x++) {
+                for (int y = 9; y <= 11; y++) {
+                    for (int z = -1; z <= 1; z++) {
+                        float legacy = VertexLightSampler.sampleCombined(world, x, y, z, face);
+                        // Own cell far away so it never intersects the sampled neighbourhood.
+                        float shaped = VertexLightSampler.sampleCombined(world, x, y, z, face, 100, 100, 100);
+                        assertEquals(legacy, shaped, EPS,
+                                "face " + face + " at (" + x + "," + y + "," + z + ")");
+                    }
+                }
+            }
+        }
+    }
 }

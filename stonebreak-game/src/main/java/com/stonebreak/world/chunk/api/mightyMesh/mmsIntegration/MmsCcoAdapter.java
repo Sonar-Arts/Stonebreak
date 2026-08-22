@@ -197,8 +197,11 @@ public class MmsCcoAdapter {
         this.sboStampEmitter = emitter;
         // Per-vertex shadow sampling — heightmap sky occlusion + classic AO.
         // Deterministic at first mesh build; no seed races, no stale data.
-        emitter.setLightSampler((face, vx, vy, vz, data) ->
-            com.openmason.engine.voxel.lighting.VertexLightSampler.sampleCombined(shadowContext, vx, vy, vz, face));
+        // Geometry-aware: stamp vertices may sit at fractional cell coordinates
+        // (stair risers/treads), and the block's own cell must not shade them.
+        emitter.setLightSampler((face, vx, vy, vz, bx, by, bz, data) ->
+            com.openmason.engine.voxel.lighting.VertexLightSampler.sampleCombined(
+                shadowContext, vx, vy, vz, face, bx, by, bz));
         // SBO blocks that are exact unit cubes take the cube path (kernel, greedy
         // merge, pulled quads) with their stamp's textures; only shaped stamps
         // stay on the per-triangle emitter. The native mesher's per-id class
@@ -1059,7 +1062,7 @@ public class MmsCcoAdapter {
                 float cx = MmsCuboidGenerator.cornerOffset(face, c, 0);
                 float cy = MmsCuboidGenerator.cornerOffset(face, c, 1) * height;
                 float cz = MmsCuboidGenerator.cornerOffset(face, c, 2);
-                l[c] = emitter.sampleLight(face, wx0 + cx, ly + cy, wz0 + cz, chunkData);
+                l[c] = emitter.sampleLight(face, wx0 + cx, ly + cy, wz0 + cz, (int) wx0, ly, (int) wz0, chunkData);
             }
             if (!quads.addQuad(qx, ly, qz, face, 1, 1, orient, alpha, transl, layer,
                     l[0], l[1], l[2], l[3], heightEighths)) {
