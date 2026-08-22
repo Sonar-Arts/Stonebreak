@@ -58,9 +58,15 @@ public class BlockPlacer {
             }
         }
 
-        if (!selectedItem.isPlaceable()) return;
+        // Items that place a block they are not themselves: the torch item
+        // places the torch block (with a state derived from the clicked face).
+        boolean placingTorch = com.stonebreak.blocks.torch.TorchBlock.isTorchItem(selectedItem.getItem());
 
-        BlockType selectedBlockType = selectedItem.asBlockType();
+        if (!placingTorch && !selectedItem.isPlaceable()) return;
+
+        BlockType selectedBlockType = placingTorch
+                ? com.stonebreak.blocks.torch.TorchBlock.block()
+                : selectedItem.asBlockType();
         if (selectedBlockType == null) return;
 
         Vector3i hitBlockPos = raycastEngine.raycastForPlacement();
@@ -87,6 +93,18 @@ public class BlockPlacer {
 
         if (blockAtPos != BlockType.AIR && blockAtPos != BlockType.WATER) return;
 
+        // Torch: on top of a solid block → Ground; against its side → Side
+        // hanging from that wall; the underside of a block is refused. Never
+        // into water either — water washes torches away.
+        String placementState = null;
+        if (placingTorch) {
+            if (blockAtPos == BlockType.WATER) return;
+            com.stonebreak.blocks.torch.TorchState torch =
+                    com.stonebreak.blocks.torch.TorchBlock.placementState(world, hitBlockPos, placePos);
+            if (torch == null) return;
+            placementState = torch.toStateString();
+        }
+
         BlockPlacementValidator.PlacementValidationResult validationResult =
                 placementService.validatePlacement(placePos, state.getPosition(), selectedBlockType, state.isOnGround());
         if (!validationResult.canPlace()) return;
@@ -103,7 +121,10 @@ public class BlockPlacer {
             return;
         }
 
-        if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType, true)) {
+        // The placement state (torch) is written with the block and rides along
+        // in the block-change intent; the authoritative server validates it and
+        // echoes the final state via BlockStateS2C.
+        if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType, true, placementState)) {
             inventory.removeItem(selectedItem.getItem(), 1);
             BlockSounds.playPlace(selectedBlockType, placePos.x, placePos.y, placePos.z);
             if (selectedBlockType == BlockType.SNOW) {

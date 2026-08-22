@@ -115,9 +115,12 @@ public final class SbeEntityRenderer {
             uniform float u_ambientLight;
             uniform vec3 u_sunDirection;
             uniform float u_entityLight;
+            uniform float u_selfGlow;
             """
             + com.openmason.engine.rendering.shadow.ShadowGlsl.UNIFORMS
             + com.openmason.engine.rendering.shadow.ShadowGlsl.FUNCTIONS
+            + com.stonebreak.rendering.lighting.PointLightGlsl.UNIFORMS
+            + com.stonebreak.rendering.lighting.PointLightGlsl.FUNCTIONS
             + """
             void main() {
                 vec4 texColor = texture(textureSampler, TexCoord);
@@ -136,6 +139,10 @@ public final class SbeEntityRenderer {
                 float brightness = u_ambientLight * (0.5 + 0.55 * diff * shadowFactor);
                 brightness *= mix(0.3, 1.0, u_entityLight);
                 vec3 lit = texColor.rgb * min(brightness, 1.0);
+                // Dynamic point lights (torches) and the model's own glow (a
+                // torch is lit by its flame) add on top of the sky/sun term.
+                lit += texColor.rgb * (pointLightContribution(FragWorldPos, normal)
+                        * pointLightWeight(u_ambientLight, u_entityLight) + u_selfGlow);
 
                 if (underwaterFogDensity > 0.0) {
                     float dist = length(FragWorldPos - cameraPos);
@@ -516,9 +523,18 @@ public final class SbeEntityRenderer {
             shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
         }
         shader.setFloat("u_entityLight", sampleEntityLight(world, position));
+        shader.setFloat("u_selfGlow", selfGlow);
+        com.stonebreak.rendering.lighting.DynamicLights.applyTo(shader);
         if (shadowMapRenderer != null) {
             shadowMapRenderer.applyToShader(shader);
         }
+    }
+
+    /** Extra flat brightness (0 = none) applied to subsequent draws; see {@code u_selfGlow}. */
+    private float selfGlow = 0f;
+
+    public void setSelfGlow(float glow) {
+        this.selfGlow = Math.max(0f, glow);
     }
 
     /**

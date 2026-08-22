@@ -119,6 +119,11 @@ public class WorldRenderer {
         clearPendingGLErrors();
         checkGLError("After clearing pending errors");
 
+        // Gather this frame's dynamic point lights (placed + held torches) once;
+        // the world, water and entity shaders all read the same set.
+        com.stonebreak.rendering.lighting.DynamicLights.update(
+                world, player, player.getCamera().getPosition(), totalTime);
+
         // Get time of day system for lighting. The engine sky/cloud renderers are decoupled
         // from TimeOfDay, so resolve the values they need here (static fallback when absent).
         com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
@@ -359,6 +364,9 @@ public class WorldRenderer {
 
         // Set view position for specular lighting calculations
         shaderProgram.setUniform("u_viewPos", player.getCamera().getPosition());
+
+        // Dynamic point lights (torches) for this frame.
+        com.stonebreak.rendering.lighting.DynamicLights.applyTo(shaderProgram);
 
         // Cascaded sun-shadow sampling state (binds the map on its own unit;
         // disables sampling when the pass was skipped — night, setting off).

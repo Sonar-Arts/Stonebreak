@@ -154,6 +154,38 @@ public final class ServerBlockHandler {
             pendingStateEchoes.add(new com.stonebreak.network.packet.world.BlockStateS2C(
                     c.x(), c.y(), c.z(), placed));
         }
+        // Torch placement: Ground/Side + facing depend on which FACE the placer
+        // clicked, which only the client knows — it proposes the state in the
+        // packet and the server validates it against its own world (the support
+        // block must be solid; the underside of a block is never accepted).
+        // Rejected proposals revert the cell for the placer.
+        if (com.stonebreak.blocks.torch.TorchBlock.isTorch(incoming)) {
+            com.stonebreak.blocks.torch.TorchState placed = c.hasPlacementState()
+                    ? com.stonebreak.blocks.torch.TorchBlock.validatePlacement(
+                            world, c.x(), c.y(), c.z(), c.placementState())
+                    : null;
+            if (placed == null) {
+                world.setBlockAt(c.x(), c.y(), c.z(), BlockType.AIR, false);
+                sendRevert(sp, c.x(), c.y(), c.z(), ctx);
+                return;
+            }
+            world.setBlockStateAt(c.x(), c.y(), c.z(), placed.toStateString());
+            pendingStateEchoes.add(new com.stonebreak.network.packet.world.BlockStateS2C(
+                    c.x(), c.y(), c.z(), placed.toStateString()));
+        }
+        // Torches held up by the block that just changed pop off with it
+        // (a break, or any edit leaving a non-solid cell). Authoritative only:
+        // clients learn of it through the queued block broadcast.
+        if (incoming == null || !incoming.isSolid()) {
+            for (org.joml.Vector3i t : com.stonebreak.blocks.torch.TorchBlock.findUnsupported(
+                    world, c.x(), c.y(), c.z())) {
+                com.stonebreak.util.DropUtil.handleBlockBroken(world,
+                        new Vector3f(t.x + 0.5f, t.y + 0.5f, t.z + 0.5f), BlockType.TORCH_PLACED);
+                world.setBlockAt(t.x, t.y, t.z, BlockType.AIR, false);
+                chunkHandler.markChunkModified(Math.floorDiv(t.x, 16), Math.floorDiv(t.z, 16));
+                queueOutgoing(t.x, t.y, t.z, (short) BlockType.AIR.getId());
+            }
+        }
         // Snow layer bookkeeping derived from the block change (the SnowLayerC2S intent only
         // covers layer increments on an EXISTING snow block): a placed SNOW block starts at
         // 1 layer; a broken one drops its tracking. The manager's mutation listener then

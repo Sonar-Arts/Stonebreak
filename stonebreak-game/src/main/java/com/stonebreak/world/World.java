@@ -542,6 +542,20 @@ public class World {
      * @return true if the block was successfully set, false otherwise (e.g., out of bounds).
      */
     public boolean setBlockAt(int x, int y, int z, BlockType blockType, boolean isPlayerModification) {
+        return setBlockAt(x, y, z, blockType, isPlayerModification, null);
+    }
+
+    /**
+     * Places a block together with its initial per-position state in one step.
+     * The state is written AFTER the block (Chunk.setBlock drops the cell's
+     * state on a type change) and, for player modifications, rides along in the
+     * outgoing block-change intent so the authoritative server can validate
+     * and echo it ({@code BlockChangeC2S.placementState}).
+     *
+     * @param placementState initial state string, or {@code null} for none
+     */
+    public boolean setBlockAt(int x, int y, int z, BlockType blockType, boolean isPlayerModification,
+                              String placementState) {
         if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
             return false;
         }
@@ -575,6 +589,10 @@ public class World {
             waterSim.onBlockChanged(x, y, z, previous, blockType);
             leafDecay.onBlockChanged(x, y, z, previous, blockType);
         }
+        if (placementState != null && !placementState.isEmpty()) {
+            setBlockStateAt(x, y, z, placementState);
+        }
+
         animatedBlockRegistry.onBlockChanged(x, y, z, previous, blockType);
 
         // Multiplayer: forward locally-driven block edits (player modifications) to the local
@@ -584,7 +602,8 @@ public class World {
         if (isPlayerModification) {
             // Pass `previous` so the server can spawn break drops from the client's view (its
             // own world snapshot may lag — esp. for fast non-host breaks on a busy tick).
-            com.stonebreak.network.MultiplayerSession.onLocalBlockChange(x, y, z, blockType, previous);
+            com.stonebreak.network.MultiplayerSession.onLocalBlockChange(
+                    x, y, z, blockType, previous, placementState);
         }
 
         return true;

@@ -434,12 +434,21 @@ public final class ClientWorldView {
 
     /** Local-player block edit: send the intent (with the prev block the player saw) to the server. */
     public void onLocalBlockChange(int x, int y, int z, BlockType type, BlockType prevType) {
+        onLocalBlockChange(x, y, z, type, prevType, null);
+    }
+
+    /**
+     * Same, with an optional client-proposed placement state (see
+     * {@link BlockChangeC2S#placementState()}); {@code null} when none.
+     */
+    public void onLocalBlockChange(int x, int y, int z, BlockType type, BlockType prevType,
+                                   String placementState) {
         if (connection == null) {
             return;
         }
         short id = (short) (type == null ? 0 : type.getId());
         short prevId = (short) (prevType == null ? 0 : prevType.getId());
-        connection.send(new BlockChangeC2S(x, y, z, id, prevId), false);
+        connection.send(new BlockChangeC2S(x, y, z, id, prevId, placementState), false);
     }
 
     /**

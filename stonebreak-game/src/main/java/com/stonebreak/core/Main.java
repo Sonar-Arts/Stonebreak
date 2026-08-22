@@ -182,6 +182,7 @@ public class Main {
 
             frameRenderer.renderFrame();
             maybeAutoFurnace();
+            maybeAutoTorch();
             maybeAutoScreenshot();
             window.swapBuffers();
 
@@ -232,6 +233,128 @@ public class Main {
         }
         System.out.println("[autoworld] starting singleplayer world '" + name + "' seed " + seed);
         com.stonebreak.network.MultiplayerSession.startSingleplayer(name, seed);
+    }
+
+    // ─── Dev: -Dstonebreak.autotorch=<seconds>[:night] ───────────────────────
+
+    private long autoTorchDeadlineNanos = -1;
+    private boolean autoTorchDone;
+    private boolean autoTorchPlaced;
+    private float autoTorchLookX, autoTorchLookY, autoTorchLookZ;
+
+    /**
+     * Development shortcut paired with {@code stonebreak.autoworld}: N seconds
+     * after the world is entered, clears a pocket in front of the player, raises
+     * a stone wall, places a ground torch and a wall torch (through the same
+     * state-carrying {@code World.setBlockAt} the BlockPlacer uses), hands the
+     * player a stack of torches (selected, so the held-torch light shows) and
+     * aims the camera at them. {@code :night} jumps the clock to midnight so
+     * the point lights are visible. Inert unless the property is set.
+     */
+    private void maybeAutoTorch() {
+        if (autoTorchDone) {
+            if (autoTorchPlaced) {
+                aimCameraAt(autoTorchLookX, autoTorchLookY, autoTorchLookZ);
+            }
+            return;
+        }
+        String spec = System.getProperty("stonebreak.autotorch");
+        if (spec == null || spec.isBlank()) {
+            autoTorchDone = true;
+            return;
+        }
+        if (Game.getInstance().getState() != GameState.PLAYING && autoTorchDeadlineNanos < 0) {
+            return;
+        }
+        String[] parts = spec.trim().split(":");
+        if (autoTorchDeadlineNanos < 0) {
+            double seconds = 5;
+            try {
+                seconds = Double.parseDouble(parts[0]);
+            } catch (NumberFormatException ignored) {
+                // keep default
+            }
+            autoTorchDeadlineNanos = System.nanoTime() + (long) (seconds * 1e9);
+            return;
+        }
+        if (System.nanoTime() < autoTorchDeadlineNanos) {
+            return;
+        }
+        autoTorchDone = true;
+        var world = Game.getWorld();
+        var player = Game.getPlayer();
+        if (world == null || player == null) {
+            System.err.println("[autotorch] world/player not ready");
+            return;
+        }
+        var torchItem = com.stonebreak.blocks.torch.TorchBlock.item();
+        if (torchItem == null) {
+            System.err.println("[autotorch] torch item not registered");
+            return;
+        }
+        org.joml.Vector3f pos = player.getPosition();
+        int px = (int) Math.floor(pos.x);
+        int py = (int) Math.floor(pos.y);
+        int pz = (int) Math.floor(pos.z);
+        var air = com.stonebreak.blocks.BlockType.AIR;
+        var stone = com.stonebreak.blocks.BlockType.STONE;
+        // Pocket: x+1..x+7, z-3..z+3, floor of stone, back wall of stone at x+7.
+        for (int x = px + 1; x <= px + 7; x++) {
+            for (int z = pz - 3; z <= pz + 3; z++) {
+                for (int y = py; y <= py + 4; y++) {
+                    boolean wall = x == px + 7;
+                    var want = wall ? stone : air;
+                    if (world.getBlockAt(x, y, z) != want) {
+                        world.setBlockAt(x, y, z, want, true);
+                    }
+                }
+                if (world.getBlockAt(x, py - 1, z) != stone) {
+                    world.setBlockAt(x, py - 1, z, stone, true);
+                }
+            }
+        }
+        var torchBlock = com.stonebreak.blocks.torch.TorchBlock.block();
+        // Ground torch on the floor, 3 blocks ahead.
+        String ground = com.stonebreak.blocks.torch.TorchState.ground().toStateString();
+        boolean g = world.setBlockAt(px + 3, py, pz - 1, torchBlock, true, ground);
+        // Wall torch hanging off the back wall (the wall is at +X of its cell → EAST).
+        String side = com.stonebreak.blocks.torch.TorchState
+                .side(com.stonebreak.blocks.torch.TorchState.Facing.EAST).toStateString();
+        boolean w = world.setBlockAt(px + 6, py + 1, pz + 1, torchBlock, true, side);
+        // Hand the player torches and select them.
+        var inv = player.getInventory();
+        inv.addItem(new com.stonebreak.items.ItemStack(torchItem, 16));
+        for (int i = 0; i < 9; i++) {
+            inv.setSelectedHotbarSlotIndex(i);
+            var sel = inv.getSelectedHotbarSlot();
+            if (sel != null && !sel.isEmpty() && sel.getItem() == torchItem) break;
+        }
+        if (parts.length > 1 && "night".equalsIgnoreCase(parts[1])) {
+            // The integrated server owns the clock (TimeSyncS2C snaps the client
+            // back), so route through the same path as /timeset.
+            com.stonebreak.network.MultiplayerSession.requestServerTimeSet(18000L);
+            if (Game.getTimeOfDay() != null) Game.getTimeOfDay().setTicks(18000L);
+        }
+        autoTorchLookX = px + 4.5f;
+        autoTorchLookY = py + 0.6f;
+        autoTorchLookZ = pz + 0f;
+        autoTorchPlaced = true;
+        System.out.println("[autotorch] ground=" + g + " @" + (px + 3) + "," + py + "," + (pz - 1)
+                + " [" + world.getBlockStateAt(px + 3, py, pz - 1) + "]"
+                + " wall=" + w + " @" + (px + 6) + "," + (py + 1) + "," + (pz + 1)
+                + " [" + world.getBlockStateAt(px + 6, py + 1, pz + 1) + "]"
+                + " held=" + (inv.getSelectedHotbarSlot() != null ? inv.getSelectedHotbarSlot().getItem().getName() : "-"));
+    }
+
+    private void aimCameraAt(float x, float y, float z) {
+        var player = Game.getPlayer();
+        if (player == null) return;
+        org.joml.Vector3f pos = player.getPosition();
+        float dx = x - pos.x;
+        float dz = z - pos.z;
+        float dy = y - (pos.y + 1.6f);
+        player.getCamera().setYaw((float) Math.toDegrees(Math.atan2(dz, dx)));
+        player.getCamera().setPitch((float) Math.toDegrees(Math.atan2(dy, Math.hypot(dx, dz))));
     }
 
     // ─── Dev: -Dstonebreak.autofurnace=<seconds> ─────────────────────────────

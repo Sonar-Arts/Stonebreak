@@ -81,6 +81,9 @@ class PacketRoundTripTest {
         assertEquals(new KickS2C("bye"), roundTrip(KickS2C.CODEC, new KickS2C("bye")));
         assertEquals(new DisconnectC2S("leaving"), roundTrip(DisconnectC2S.CODEC, new DisconnectC2S("leaving")));
         assertEquals(new BlockChangeC2S(10, 64, -5, (short) 3, (short) 1), roundTrip(BlockChangeC2S.CODEC, new BlockChangeC2S(10, 64, -5, (short) 3, (short) 1)));
+        assertEquals(new BlockChangeC2S(10, 64, -5, (short) 43, (short) 0, "torch:state=Side;facing=WEST"),
+                roundTrip(BlockChangeC2S.CODEC, new BlockChangeC2S(10, 64, -5, (short) 43, (short) 0, "torch:state=Side;facing=WEST")));
+        assertEquals("", roundTrip(BlockChangeC2S.CODEC, new BlockChangeC2S(1, 2, 3, (short) 4, (short) 5, null)).placementState());
         assertEquals(new BlockChangeS2C(10, 64, -5, (short) 3), roundTrip(BlockChangeS2C.CODEC, new BlockChangeS2C(10, 64, -5, (short) 3)));
         assertEquals(new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0), roundTrip(PlayerStateC2S.CODEC, new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0)));
         assertEquals(new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0xFF), roundTrip(PlayerStateC2S.CODEC, new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0xFF)));

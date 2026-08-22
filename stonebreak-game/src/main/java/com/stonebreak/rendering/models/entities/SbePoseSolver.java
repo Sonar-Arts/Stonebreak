@@ -79,9 +79,9 @@ public final class SbePoseSolver {
         ResolvedAnim resolved = resolveAnim(asset, anim);
         String headPartId = (headYawDeg != 0f || headPitchDeg != 0f) ? headPartId(geometry) : null;
         Matrix4f partMatrix = new Matrix4f();
-        Matrix4f restInverse = new Matrix4f();
+        HierarchyFrame frame = new HierarchyFrame(geometry, resolved);
         for (SbePart part : geometry.parts()) {
-            computePartMatrix(partMatrix, restInverse, part, resolved, base,
+            computePartMatrix(partMatrix, frame, part, resolved, base,
                     headPartId, headYawDeg, headPitchDeg);
             consumer.accept(partMatrix, part);
         }
@@ -118,7 +118,7 @@ public final class SbePoseSolver {
             if (host == null) return null;
             ResolvedAnim resolved = resolveAnim(asset, anim);
             String headPartId = (headYawDeg != 0f || headPitchDeg != 0f) ? headPartId(geometry) : null;
-            computePartMatrix(dest, new Matrix4f(), host, resolved, base,
+            computePartMatrix(dest, new HierarchyFrame(geometry, resolved), host, resolved, base,
                     headPartId, headYawDeg, headPitchDeg);
         }
 
@@ -153,16 +153,13 @@ public final class SbePoseSolver {
     }
 
     /**
-     * One part's world matrix into {@code dest}. {@code scratchRestInverse} is
-     * caller-provided scratch so the per-frame loop stays allocation-free.
+     * One part's world matrix into {@code dest}: {@code base * D(part)}, where
+     * {@code D} is the part's hierarchy-propagated pose delta from
+     * {@link HierarchyFrame#delta}.
      */
-    private static void computePartMatrix(Matrix4f dest, Matrix4f scratchRestInverse,
+    private static void computePartMatrix(Matrix4f dest, HierarchyFrame frame,
                                           SbePart part, ResolvedAnim resolved, Matrix4f base,
                                           String headPartId, float headYawDeg, float headPitchDeg) {
-        ParsedAnimTrack track = resolved.baseTracks().get(part.id());
-        if (track == null) {
-            track = trackByName(resolved.baseClip(), part.name());
-        }
 
         // The head part may receive an extra turn about its neck pivot, in the
         // model's local frame (between base and the part transform), so the head
@@ -180,34 +177,126 @@ public final class SbePoseSolver {
                     .translate(-px, -py, -pz);
         }
 
-        AnimSampler.PartPose pose;
+        Matrix4f delta = frame.delta(part);
+        if (delta == null) {
+            dest.set(parent);
+        } else {
+            dest.set(parent).mul(delta);
+        }
+    }
+
+    /**
+     * Samples a part's own local pose for the frame: {@code null} when nothing
+     * animates it (its local transform is exactly its rest transform).
+     */
+    private static AnimSampler.PartPose samplePartPose(SbePart part, ResolvedAnim resolved) {
+        ParsedAnimTrack track = resolved.baseTracks().get(part.id());
+        if (track == null) {
+            track = trackByName(resolved.baseClip(), part.name());
+        }
         if (!resolved.overlays().isEmpty()) {
             // Rest pose references the part's own vectors — no copies. blendPart
             // returns this same instance when nothing animates the part.
             AnimSampler.PartPose restPose = new AnimSampler.PartPose(
                     part.restPos(), part.restRot(), part.restScale());
-            pose = AnimLayering.blendPart(restPose, track, resolved.baseTime(),
+            AnimSampler.PartPose pose = AnimLayering.blendPart(restPose, track, resolved.baseTime(),
                     resolved.overlays(), part.id(), part.name());
-            if (pose == restPose && track == null) {
-                pose = null; // nothing touches this part — fast path below
+            return (pose == restPose && track == null) ? null : pose;
+        }
+        return track != null ? AnimSampler.sample(track, resolved.baseTime()) : null;
+    }
+
+    /**
+     * Per-frame pose deltas with the part hierarchy propagated.
+     *
+     * <p>Mesh vertices are baked in model space at the rest pose, and a part's
+     * rest/animated transforms ({@code posX/Y/Z}, rotation, scale, origin) are
+     * LOCAL to its parent part. So a part's model-space delta — what moves its
+     * baked vertices from rest to the current pose — is
+     * <pre>
+     *   D(p) = W_anim(p) · W_rest(p)⁻¹
+     *        = D(parent) · W_rest(parent) · L_anim(p) · L_rest(p)⁻¹ · W_rest(parent)⁻¹
+     * </pre>
+     * with {@code W_rest} the rest transform chained down from the root. A part
+     * nothing animates has {@code L_anim = L_rest}, so it simply inherits its
+     * parent's delta: a child stays attached when only the parent is keyed
+     * (a torch's ember riding its leaning stick). Root-level parts reduce to the
+     * plain {@code L_anim · L_rest⁻¹}. Cycles / unknown parents are treated as
+     * root-level.
+     */
+    private static final class HierarchyFrame {
+        private final SbeModelGeometry geometry;
+        private final ResolvedAnim resolved;
+        private final Map<String, SbePart> byId;
+        private final Map<String, Matrix4f> deltas = new java.util.HashMap<>();
+        private final Map<String, Matrix4f> restWorld = new java.util.HashMap<>();
+        /** Sentinel for "no delta" (identity) so the memo can record it. */
+        private static final Matrix4f IDENTITY = new Matrix4f();
+        private static final int MAX_DEPTH = 32;
+
+        HierarchyFrame(SbeModelGeometry geometry, ResolvedAnim resolved) {
+            this.geometry = geometry;
+            this.resolved = resolved;
+            this.byId = new java.util.HashMap<>(geometry.parts().size() * 2);
+            for (SbePart p : geometry.parts()) {
+                if (p.id() != null) byId.put(p.id(), p);
             }
-        } else {
-            pose = track != null ? AnimSampler.sample(track, resolved.baseTime()) : null;
         }
 
-        if (pose == null) {
-            dest.set(parent);
-        } else {
-            Vector3f origin = part.restOrigin();
+        private SbePart parentOf(SbePart part) {
+            String pid = part.parentId();
+            if (pid == null || pid.isBlank()) return null;
+            SbePart parent = byId.get(pid);
+            return parent == part ? null : parent;
+        }
 
-            // M_rest^-1
-            partTransform(scratchRestInverse.identity(),
-                    part.restPos(), part.restRot(), part.restScale(), origin)
-                    .invert();
-            // parent * M_anim * M_rest^-1
-            partTransform(dest.set(parent),
-                    pose.position(), pose.rotationDeg(), pose.scale(), origin)
-                    .mul(scratchRestInverse);
+        /** Model-space delta for the part, or {@code null} when it is identity. */
+        Matrix4f delta(SbePart part) {
+            return delta(part, 0);
+        }
+
+        private Matrix4f delta(SbePart part, int depth) {
+            Matrix4f cached = deltas.get(part.id());
+            if (cached != null) return cached == IDENTITY ? null : cached;
+
+            AnimSampler.PartPose pose = samplePartPose(part, resolved);
+            SbePart parent = depth < MAX_DEPTH ? parentOf(part) : null;
+            Matrix4f parentDelta = parent != null ? delta(parent, depth + 1) : null;
+
+            Matrix4f result;
+            if (pose == null) {
+                // L_anim == L_rest: inherit the parent's delta verbatim.
+                result = parentDelta;
+            } else {
+                Vector3f origin = part.restOrigin();
+                Matrix4f local = partTransform(new Matrix4f(),
+                        pose.position(), pose.rotationDeg(), pose.scale(), origin);
+                Matrix4f restInverse = partTransform(new Matrix4f(),
+                        part.restPos(), part.restRot(), part.restScale(), origin).invert();
+                local.mul(restInverse); // L_anim · L_rest⁻¹
+                if (parent == null) {
+                    result = local;
+                } else {
+                    Matrix4f wr = restWorld(parent, depth + 1);
+                    result = new Matrix4f();
+                    if (parentDelta != null) result.set(parentDelta);
+                    result.mul(wr).mul(local).mul(wr.invert(new Matrix4f()));
+                }
+            }
+            deltas.put(part.id(), result == null ? IDENTITY : result);
+            return result;
+        }
+
+        /** Rest transform of a part chained from the root (model space). */
+        private Matrix4f restWorld(SbePart part, int depth) {
+            Matrix4f cached = restWorld.get(part.id());
+            if (cached != null) return cached;
+            Matrix4f m = new Matrix4f();
+            SbePart parent = depth < MAX_DEPTH ? parentOf(part) : null;
+            if (parent != null) m.set(restWorld(parent, depth + 1));
+            partTransform(m, part.restPos(), part.restRot(), part.restScale(), part.restOrigin());
+            restWorld.put(part.id(), m);
+            return m;
         }
     }
 
