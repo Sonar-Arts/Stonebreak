@@ -18,11 +18,29 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * </ul>
  *
  * All variants stay within {@link #LEAF_RADIUS} so chunk-scheduling guarantees remain valid.
+ *
+ * <p><b>Leaf-decay contract.</b> Every leaf must sit within
+ * {@code LeafDecaySystem.DECAY_RADIUS} orthogonal leaf/log steps of a log, or the decay
+ * system removes it on the next chunk-load rescan. The canopy spans seven layers above
+ * the visible trunk top, so a hidden {@link #CORE_TOP} log column continues the trunk up
+ * through the canopy core (placed after the leaves so they do not overwrite it), and the
+ * canopy's centre column is never randomly thinned, keeping that chain deterministic.
+ * Leaf islands that random side-thinning still isolates are pruned by
+ * {@link TreeShapeBuffer#flushAnchored} before the tree is written.
  */
 public final class ElmTree {
 
     public static final int LEAF_RADIUS = 4;
     public static final int MAX_HEIGHT = 18;
+
+    /**
+     * Highest canopy layer (relative to the trunk top) that gets a core log. Leaves the
+     * top cap at +6 three steps away, the outer upper-canopy ring ({@code upperRadius} 3,
+     * offsets like (2,1) at +5) five steps away, and the widest lower-canopy ring
+     * ({@code lowerRadius} 4, offsets like (3,2) at +2) five steps away — all inside a
+     * decay radius of 6 with one step of slack for a thinned neighbour.
+     */
+    private static final int CORE_TOP = 3;
     private static final long SEED_TAG = 0x5EED1E1F5EED1E1FL;
 
     private enum Variant { CLASSIC, ASYMMETRIC, CROWN, WINDSWEPT }
@@ -31,6 +49,22 @@ public final class ElmTree {
 
     public static void place(World world, int worldX, int worldY, int worldZ) {
         TreeBlockPlacer placer = new TreeBlockPlacer(world);
+        place(placer, worldX, worldY, worldZ);
+        placer.complete();
+    }
+
+    /**
+     * Shape generation against any sink — the seam tests use to inspect generated elms.
+     * The shape is buffered and leaves the decay system could never anchor are pruned
+     * before anything is written (see {@link TreeShapeBuffer}).
+     */
+    static void place(TreeBlockSink out, int worldX, int worldY, int worldZ) {
+        TreeShapeBuffer placer = new TreeShapeBuffer();
+        generate(placer, worldX, worldY, worldZ);
+        placer.flushAnchored(out);
+    }
+
+    private static void generate(TreeBlockSink placer, int worldX, int worldY, int worldZ) {
         Random rng = TreeRandom.forPosition(worldX, worldY, worldZ, SEED_TAG);
 
         Variant variant = Variant.values()[rng.nextInt(Variant.values().length)];
@@ -45,9 +79,8 @@ public final class ElmTree {
         // Inner branches go AFTER the canopy so a few logs remain visible inside the
         // foliage instead of being silently overwritten by leaf placement.
         placeHighInnerBranches(placer, rng, worldX, worldY, worldZ, profile.trunkHeight);
+        placeCanopyCore(placer, worldX, worldY, worldZ, profile.trunkHeight);
         placeTopCap(placer, worldX, worldY + profile.trunkHeight + 6, worldZ);
-
-        placer.complete();
     }
 
     private static Profile profileFor(Variant variant, Random rng) {
@@ -61,7 +94,7 @@ public final class ElmTree {
         };
     }
 
-    private static void placeTrunk(TreeBlockPlacer placer, int wx, int wy, int wz, int trunkHeight) {
+    private static void placeTrunk(TreeBlockSink placer, int wx, int wy, int wz, int trunkHeight) {
         for (int dy = 0; dy < trunkHeight; dy++) {
             placer.placeBlock(wx, wy + dy, wz, BlockType.ELM_WOOD_LOG);
         }
@@ -71,7 +104,7 @@ public final class ElmTree {
     // Branches
     // --------------------------------------------------------------------------------------
 
-    private static void placeBranches(TreeBlockPlacer placer, Random rng, Variant variant,
+    private static void placeBranches(TreeBlockSink placer, Random rng, Variant variant,
                                       Profile profile, int wx, int wy, int wz) {
         int branchLevel = wy + profile.trunkHeight - 3;
         if (branchLevel + 3 >= WorldConfiguration.WORLD_HEIGHT) return;
@@ -85,7 +118,7 @@ public final class ElmTree {
     }
 
     /** CROWN's only branches: 2-3 short, 1-block cardinal stubs near the top of the trunk. */
-    private static void placeCrownBranches(TreeBlockPlacer placer, Random rng,
+    private static void placeCrownBranches(TreeBlockSink placer, Random rng,
                                            int branchLevel, int wx, int wz) {
         int branchCount = 2 + rng.nextInt(2);
         int[] dx = {1, -1, 0, 0};
@@ -102,7 +135,7 @@ public final class ElmTree {
     }
 
     /** 1-2 short logs at trunk-top height embedded inside the lower canopy. */
-    private static void placeHighInnerBranches(TreeBlockPlacer placer, Random rng,
+    private static void placeHighInnerBranches(TreeBlockSink placer, Random rng,
                                                int wx, int wy, int wz, int trunkHeight) {
         int innerY = wy + trunkHeight;
         if (innerY >= WorldConfiguration.WORLD_HEIGHT) return;
@@ -121,7 +154,21 @@ public final class ElmTree {
         }
     }
 
-    private static void placeClassicBranches(TreeBlockPlacer placer, int branchLevel, int wx, int wz) {
+    /**
+     * Hidden core: continues the trunk from its visible top up through the canopy so
+     * every leaf stays within leaf-decay reach (see class javadoc). Placed after the
+     * canopy because leaf placement overwrites, and fully enclosed by the lower canopy
+     * (radius 4) and upper canopy (radius 3) so it is not visible from outside.
+     */
+    private static void placeCanopyCore(TreeBlockSink placer, int wx, int wy, int wz, int trunkHeight) {
+        for (int dy = trunkHeight; dy <= trunkHeight + CORE_TOP; dy++) {
+            int worldY = wy + dy;
+            if (worldY >= WorldConfiguration.WORLD_HEIGHT) return;
+            placer.placeBlock(wx, worldY, wz, BlockType.ELM_WOOD_LOG);
+        }
+    }
+
+    private static void placeClassicBranches(TreeBlockSink placer, int branchLevel, int wx, int wz) {
         for (int by = branchLevel; by < branchLevel + 3; by++) {
             placer.placeBlock(wx + 1, by, wz, BlockType.ELM_WOOD_LOG);
             placer.placeBlock(wx - 1, by, wz, BlockType.ELM_WOOD_LOG);
@@ -137,7 +184,7 @@ public final class ElmTree {
         }
     }
 
-    private static void placeAsymmetricBranches(TreeBlockPlacer placer, Random rng,
+    private static void placeAsymmetricBranches(TreeBlockSink placer, Random rng,
                                                 int branchLevel, int wx, int wz) {
         // Pick 2-3 cardinal branches at random; skip the rest for a lopsided crown.
         int branchCount = 2 + rng.nextInt(2);
@@ -158,7 +205,7 @@ public final class ElmTree {
         }
     }
 
-    private static void placeWindsweptBranches(TreeBlockPlacer placer, int branchLevel,
+    private static void placeWindsweptBranches(TreeBlockSink placer, int branchLevel,
                                                int leanDir, int wx, int wz) {
         int[] dx = {1, -1, 0, 0};
         int[] dz = {0, 0, 1, -1};
@@ -180,7 +227,7 @@ public final class ElmTree {
     // Canopy
     // --------------------------------------------------------------------------------------
 
-    private static void placeLowerCanopy(TreeBlockPlacer placer, Random rng, Variant variant,
+    private static void placeLowerCanopy(TreeBlockSink placer, Random rng, Variant variant,
                                          Profile profile, int wx, int wy, int wz) {
         int radius = profile.lowerRadius;
         for (int dy = profile.trunkHeight - 1; dy <= profile.trunkHeight + 2; dy++) {
@@ -201,7 +248,7 @@ public final class ElmTree {
         }
     }
 
-    private static void placeUpperCanopy(TreeBlockPlacer placer, Random rng, Profile profile,
+    private static void placeUpperCanopy(TreeBlockSink placer, Random rng, Profile profile,
                                          int wx, int wy, int wz) {
         int radius = profile.upperRadius;
         for (int dy = profile.trunkHeight + 3; dy <= profile.trunkHeight + 5; dy++) {
@@ -212,14 +259,17 @@ public final class ElmTree {
                 for (int dz = -radius; dz <= radius; dz++) {
                     float dist = (float) Math.sqrt(dx * dx + dz * dz);
                     if (dist > radius * 0.8f) continue;
-                    if (rng.nextFloat() < 0.20f) continue;
+                    // The centre column is the decay-support spine — never thin it. The
+                    // draw still happens so the rest of the silhouette keeps its seed shape.
+                    boolean thin = rng.nextFloat() < 0.20f;
+                    if (thin && !(dx == 0 && dz == 0)) continue;
                     placer.placeBlock(wx + dx, worldY, wz + dz, BlockType.ELM_LEAVES);
                 }
             }
         }
     }
 
-    private static void placeTopCap(TreeBlockPlacer placer, int wx, int topY, int wz) {
+    private static void placeTopCap(TreeBlockSink placer, int wx, int topY, int wz) {
         if (topY >= WorldConfiguration.WORLD_HEIGHT) return;
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {

@@ -15,7 +15,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * and triggers a single mesh rebuild per chunk on {@link #complete()}. Caller guarantees the
  * required chunks are loaded before invoking {@link #placeBlock} (see TreeGenerator scheduling).
  */
-public final class TreeBlockPlacer {
+public final class TreeBlockPlacer implements TreeBlockSink {
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
@@ -26,6 +26,7 @@ public final class TreeBlockPlacer {
         this.world = world;
     }
 
+    @Override
     public void placeBlock(int worldX, int worldY, int worldZ, BlockType blockType) {
         if (worldY < 0 || worldY >= WorldConfiguration.WORLD_HEIGHT) return;
 

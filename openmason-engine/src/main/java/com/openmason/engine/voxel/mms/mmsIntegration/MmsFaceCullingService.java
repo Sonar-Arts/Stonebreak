@@ -158,6 +158,23 @@ public class MmsFaceCullingService implements SBOCullingPolicy {
             return true;
         }
 
+        // A transparent (cutout) block whose shape fills this plane — leaves,
+        // any full-cube cutout stamp — has that face completely covered by an
+        // opaque neighbour that fills the opposite plane. The opaque block
+        // emits its own face toward the transparent cell, so emitting this one
+        // too only z-fights it. Guarded on BOTH shapes filling the plane so a
+        // cutout stamp's interior face slots (a fence post's sides sit inside
+        // the cell) and notched neighbours (stairs) are untouched. Cross-plane
+        // blocks are exempt (their slots are not cube faces at all), and
+        // translucent cubes already get the stricter rule in shouldRenderAgainst.
+        if (adjacentBlock != null && !adjacentBlock.isAir()
+                && blockType.isTransparent() && !adjacentBlock.isTransparent()
+                && !crossBlockPolicy.test(blockType)
+                && occlusionPolicy.occludesFace(blockType, face)
+                && occlusionPolicy.occludesFace(adjacentBlock, SBOFaceConventions.opposite(face))) {
+            return false;
+        }
+
         return shouldRenderAgainst(blockType, adjacentBlock);
     }
 

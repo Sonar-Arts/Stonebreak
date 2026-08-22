@@ -80,9 +80,10 @@ void testMesher() {
         MeshFixture g;
         g.set(4, 10, 5, LEAVES);
         g.set(5, 10, 5, STONE);
-        // leaves renders against stone (different type), stone renders against
-        // transparent leaves: shared boundary emits BOTH faces -> 12 quads.
-        check(g.mesh(20, true) == 12, "leaves|stone boundary renders both faces");
+        // stone renders against transparent leaves, but the leaf face toward the
+        // opaque stone is fully covered (and would z-fight stone's face): only
+        // ONE face is emitted on the shared boundary -> 11 quads.
+        check(g.mesh(20, true) == 11, "leaves|stone boundary renders only the stone face");
     }
     { // cube face against non-cube transparent block (water) still renders
         MeshFixture f;

@@ -23,7 +23,7 @@ class LeafDecaySystemTest {
 
     @Test
     void intactTreeNeverDecays() {
-        FakeLeafWorld world = new FakeLeafWorld(21, 24, 21);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         world.setBlock(10, 10, 10, BlockType.WOOD);
@@ -44,7 +44,7 @@ class LeafDecaySystemTest {
 
     @Test
     void choppingTrunkDecaysOrphanedCanopyOnly() {
-        FakeLeafWorld world = new FakeLeafWorld(21, 24, 21);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         // Four-log trunk with a canopy sitting orthogonally on top of it.
@@ -82,7 +82,7 @@ class LeafDecaySystemTest {
 
     @Test
     void diagonalOnlyLeafToLogDecays() {
-        FakeLeafWorld world = new FakeLeafWorld(21, 24, 21);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         world.setBlock(10, 10, 10, BlockType.WOOD);
@@ -95,7 +95,7 @@ class LeafDecaySystemTest {
 
     @Test
     void diagonalLeafConnectedThroughLeafChainSurvives() {
-        FakeLeafWorld world = new FakeLeafWorld(21, 24, 21);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         world.setBlock(10, 10, 10, BlockType.WOOD);
@@ -112,37 +112,35 @@ class LeafDecaySystemTest {
 
     @Test
     void radiusBoundaryIsInclusive() {
-        FakeLeafWorld world = new FakeLeafWorld(25, 25, 25);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
+        int r = LeafDecaySystem.DECAY_RADIUS;
 
-        // Distance 4 survives: a leaf column resting four cells above the log.
+        // Distance r survives: a leaf column resting r cells above the log.
         world.setBlock(10, 10, 10, BlockType.WOOD);
-        world.setBlock(10, 11, 10, BlockType.LEAVES);
-        world.setBlock(10, 12, 10, BlockType.LEAVES);
-        world.setBlock(10, 13, 10, BlockType.LEAVES);
-        world.placeBlock(sim, 10, 14, 10, BlockType.LEAVES); // distance 4 from the log
+        for (int k = 1; k < r; k++) {
+            world.setBlock(10, 10 + k, 10, BlockType.LEAVES);
+        }
+        world.placeBlock(sim, 10, 10 + r, 10, BlockType.LEAVES); // distance r from the log
         sim.advanceTicks(SETTLE_TICKS);
-        assertTrue(world.isLeaf(10, 14, 10), "exactly DECAY_RADIUS from a log must survive");
+        assertTrue(world.isLeaf(10, 10 + r, 10), "exactly DECAY_RADIUS from a log must survive");
 
-        // Distance 5 decays: same column one cell taller (trigger leaf placed at the top).
+        // Distance r+1 decays: same column one cell taller (trigger leaf placed at the top).
         world.setBlock(20, 10, 10, BlockType.WOOD);
-        world.setBlock(20, 11, 10, BlockType.LEAVES);
-        world.setBlock(20, 12, 10, BlockType.LEAVES);
-        world.setBlock(20, 13, 10, BlockType.LEAVES);
-        world.setBlock(20, 14, 10, BlockType.LEAVES);
-        world.placeBlock(sim, 20, 15, 10, BlockType.LEAVES); // distance 5 from the log
+        for (int k = 1; k <= r; k++) {
+            world.setBlock(20, 10 + k, 10, BlockType.LEAVES);
+        }
+        world.placeBlock(sim, 20, 10 + r + 1, 10, BlockType.LEAVES); // distance r+1 from the log
         sim.advanceTicks(SETTLE_TICKS);
 
-        assertFalse(world.isLeaf(20, 15, 10), "one past the radius must decay");
-        assertTrue(world.isLeaf(20, 14, 10), "the cell at the radius boundary must survive");
+        assertFalse(world.isLeaf(20, 10 + r + 1, 10), "one past the radius must decay");
+        assertTrue(world.isLeaf(20, 10 + r, 10), "the cell at the radius boundary must survive");
         assertTrue(world.isLeaf(20, 12, 10), "closer column cells must survive");
     }
 
-    // ===== 5. Detached leaves decay; leaves touching a log never do =====
-
     @Test
     void detachedLeafDecaysButLeafBesideLogSurvives() {
-        FakeLeafWorld world = new FakeLeafWorld(25, 25, 25);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         world.setBlock(10, 10, 10, BlockType.WOOD);
@@ -159,7 +157,7 @@ class LeafDecaySystemTest {
 
     @Test
     void detachedCanopyDecaysStaggeredNotInstant() {
-        FakeLeafWorld world = new FakeLeafWorld(21, 24, 21);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         world.setBlock(10, 10, 10, BlockType.WOOD);
@@ -208,7 +206,7 @@ class LeafDecaySystemTest {
 
     @Test
     void replacedLogRescuesScheduledLeaf() {
-        FakeLeafWorld world = new FakeLeafWorld(25, 25, 25);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         world.placeBlock(sim, 20, 20, 20, BlockType.LEAVES); // detached — will be scheduled
@@ -228,7 +226,7 @@ class LeafDecaySystemTest {
 
     @Test
     void nonSupportingChangesCauseNoWork() {
-        FakeLeafWorld world = new FakeLeafWorld(21, 24, 21);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         world.setBlock(10, 10, 10, BlockType.WOOD);
@@ -246,7 +244,7 @@ class LeafDecaySystemTest {
 
     @Test
     void breakingBridgeLeafDecaysTheRestOfTheCanopy() {
-        FakeLeafWorld world = new FakeLeafWorld(21, 24, 21);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         // Support routes THROUGH foliage: (12..13) only reach the log via (11).
@@ -268,26 +266,28 @@ class LeafDecaySystemTest {
 
     @Test
     void chunkLoadRescanResumesInterruptedCollapse() {
-        FakeLeafWorld world = new FakeLeafWorld(25, 25, 25);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         // State as if a collapse was interrupted by eviction/quit: orphaned
         // leaves already in the blocks, with no pending work (direct setBlock —
         // the funnel never saw these).
-        world.setBlock(5, 10, 5, BlockType.LEAVES);
-        world.setBlock(5, 11, 5, BlockType.LEAVES);
-        world.setBlock(6, 10, 5, BlockType.LEAVES);
+        // (kept >= DECAY_RADIUS from the region edge so the residency guard
+        // sees a fully loaded neighbourhood)
+        world.setBlock(7, 10, 7, BlockType.LEAVES);
+        world.setBlock(7, 11, 7, BlockType.LEAVES);
+        world.setBlock(8, 10, 7, BlockType.LEAVES);
         // A healthy tree in the same chunk must not be disturbed.
         world.setBlock(10, 10, 10, BlockType.WOOD);
         world.setBlock(10, 11, 10, BlockType.LEAVES);
         world.setBlock(10, 12, 10, BlockType.LEAVES);
 
-        sim.onChunkLoaded(0, 0); // (5,5) and (10,10) both live in chunk (0,0)
+        sim.onChunkLoaded(0, 0); // (7,7) and (10,10) both live in chunk (0,0)
         sim.advanceTicks(SETTLE_TICKS);
 
-        assertFalse(world.isLeaf(5, 10, 5), "orphaned leaves must decay after the rescan");
-        assertFalse(world.isLeaf(5, 11, 5), "orphaned leaves must decay after the rescan");
-        assertFalse(world.isLeaf(6, 10, 5), "orphaned leaves must decay after the rescan");
+        assertFalse(world.isLeaf(7, 10, 7), "orphaned leaves must decay after the rescan");
+        assertFalse(world.isLeaf(7, 11, 7), "orphaned leaves must decay after the rescan");
+        assertFalse(world.isLeaf(8, 10, 7), "orphaned leaves must decay after the rescan");
         assertTrue(world.isLeaf(10, 11, 10), "the healthy tree must survive the rescan");
         assertTrue(world.isLeaf(10, 12, 10), "the healthy tree must survive the rescan");
         assertEquals(3, world.removals.size());
@@ -295,7 +295,7 @@ class LeafDecaySystemTest {
 
     @Test
     void chunkLoadRescanTrustsCrossSeamSupport() {
-        FakeLeafWorld world = new FakeLeafWorld(25, 25, 25);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         // Trunk in chunk (1,0); part of its canopy hangs into chunk (0,0). The
@@ -315,7 +315,7 @@ class LeafDecaySystemTest {
 
     @Test
     void rescanOfLeaflessChunkSchedulesNothing() {
-        FakeLeafWorld world = new FakeLeafWorld(25, 25, 25);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         world.setBlock(3, 10, 3, BlockType.STONE);
@@ -331,7 +331,7 @@ class LeafDecaySystemTest {
 
     @Test
     void decayRefusesToActBesideUnloadedChunks() {
-        FakeLeafWorld world = new FakeLeafWorld(25, 25, 25);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         // Detached leaf whose radius-4 anchor neighborhood pokes outside the
@@ -350,7 +350,7 @@ class LeafDecaySystemTest {
 
     @Test
     void chunkUnloadPurgesPendingWork() {
-        FakeLeafWorld world = new FakeLeafWorld(25, 25, 25);
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         world.placeBlock(sim, 20, 20, 20, BlockType.LEAVES); // detached
@@ -368,7 +368,7 @@ class LeafDecaySystemTest {
 
     @Test
     void floodDoesNotDescendBelowWorldFloor() {
-        FakeLeafWorld world = new FakeLeafWorld(21, 16, 21);
+        FakeLeafWorld world = new FakeLeafWorld(32, 16, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         // A detached leaf sitting on the floor (y=0): the flood must not try to

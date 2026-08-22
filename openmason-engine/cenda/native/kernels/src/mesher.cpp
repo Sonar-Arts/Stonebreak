@@ -12,7 +12,7 @@
  *    masks per row are a couple of ANDs/shifts; tzcnt iteration over the set
  *    bits skips empty/buried cells without touching them. Only face EXISTENCE
  *    is bitmasked — per-corner lighting runs unchanged on emitted faces, and
- *    transparent cubes (per-id `adj != id` rule, not class-maskable) fall back
+ *    transparent cubes (per-id `adj != id` part of the rule is not class-maskable) fall back
  *    to the scalar probe per cell. Portable <bit> ops only, no intrinsics. */
 #include "cenda/kernels.h"
 
@@ -151,14 +151,21 @@ float aoFactor(const MeshInput& in, int ivx, int ivy, int ivz, int face) {
 }
 
 /* The exact scalar cull rule, shared by the scalar path and the bitmask
- * path's transparent-cube cells (whose `adj != id` test is per-id). */
+ * path's transparent-cube cells (whose `adj != id` test is per-id).
+ * A transparent cube (leaves) culls against the same id AND against any
+ * non-transparent neighbour: an opaque block covers the shared plane, and
+ * emitting the hidden leaf face only z-fights the opaque block's own face
+ * (which IS emitted, since it borders a transparent cell). Shaped stamps are
+ * flagged transparent by the class table, so a leaf beside a stair still
+ * renders. Mirrors MmsCcoAdapter.shouldRenderAgainst — keep in lockstep. */
 bool renderFace(const MeshInput& in, int32_t id, bool selfTransparent,
                 int lx, int ly, int lz, int face) {
     const int32_t adj = in.adjacentId(lx + FACE_DX[face], ly + FACE_DY[face],
                                       lz + FACE_DZ[face]);
     if (adj == in.airId) return true;
-    if (selfTransparent) return adj != id;
-    return (in.classOf(adj) & CK_CLASS_TRANSPARENT) != 0;
+    const bool adjTransparent = (in.classOf(adj) & CK_CLASS_TRANSPARENT) != 0;
+    if (selfTransparent) return adj != id && adjTransparent;
+    return adjTransparent;
 }
 
 struct EmitState {

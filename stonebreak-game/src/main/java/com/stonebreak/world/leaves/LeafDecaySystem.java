@@ -18,9 +18,12 @@ import com.stonebreak.world.operations.WorldConfiguration;
 /**
  * Vanilla-Minecraft-style leaf decay over a {@link LeafWorld}. A leaf is
  * "anchored" while it remains 6-connected to a log through foliage or trunks
- * within {@value #DECAY_RADIUS} orthogonal steps — vanilla leaf distance, so a
- * leaf that only touches a log diagonally, with no orthogonal leaf/log chain,
- * is NOT anchored and decays. Once its connection to an anchor is cut it decays
+ * within {@value #DECAY_RADIUS} orthogonal steps — modern vanilla leaf distance
+ * (leaves at distance 7 decay), so a leaf that only touches a log diagonally,
+ * with no orthogonal leaf/log chain, is NOT anchored and decays. The radius
+ * must cover the widest generated canopy: elms put leaves up to six steps from
+ * their nearest log (see {@code ElmTree}), which the old radius of 4 silently
+ * decayed on every chunk-load rescan. Once its connection to an anchor is cut it decays
  * — fast, but staggered across a window of a few tenths of a second so the
  * player watches the canopy visibly collapse instead of vanishing instantly.
  *
@@ -49,8 +52,11 @@ import com.stonebreak.world.operations.WorldConfiguration;
  */
 public final class LeafDecaySystem {
 
-    /** Farthest a leaf may be from a log and still be anchored (vanilla leaf distance). */
-    public static final int DECAY_RADIUS = 4;
+    /** Farthest a leaf may be from a log and still be anchored (modern vanilla leaf
+     *  distance: 7 decays, so 6 is the last supported step). Must stay below
+     *  {@code WorldConfiguration.CHUNK_SIZE} — {@link #decayNeighborhoodLoaded}
+     *  relies on the reach box spanning at most 2×2 chunk columns. */
+    public static final int DECAY_RADIUS = 6;
 
     /**
      * How far the anchor flood reaches from a trigger. Any log that can support
@@ -60,8 +66,10 @@ public final class LeafDecaySystem {
      */
     private static final int ANCHOR_SCAN_RADIUS = DECAY_RADIUS * 2;
 
-    /** Hard cap on expanded nodes per A* flood — a radius-4 ball easily fits. */
-    private static final int SEARCH_EXPANSION_LIMIT = 2048;
+    /** Hard cap on expanded nodes per A* flood. A fully foliated 6-connected ball of
+     *  radius {@link #ANCHOR_SCAN_RADIUS} (=12) has ~2.5k cells, so this leaves
+     *  headroom for the anchor scan in a dense forest without truncating it. */
+    private static final int SEARCH_EXPANSION_LIMIT = 8192;
 
     /** Delay (20 TPS ticks) between a block update and the reachability pass. */
     private static final int EVICT_DELAY_TICKS = 3;
@@ -83,6 +91,12 @@ public final class LeafDecaySystem {
     private static final int MAX_ANCHOR_FLOODS = 24;
 
     private static final float TICK_INTERVAL = 1.0f / 20.0f;
+
+    static {
+        if (DECAY_RADIUS >= WorldConfiguration.CHUNK_SIZE) {
+            throw new IllegalStateException("DECAY_RADIUS must be smaller than a chunk (2x2 column residency check)");
+        }
+    }
 
     private final LeafWorld world;
     private final AStar solver = new AStar();
@@ -469,8 +483,8 @@ public final class LeafDecaySystem {
      * Whether every chunk column the leaf's anchor flood can touch is resident.
      * The flood reaches at most {@link #DECAY_RADIUS} cells from the leaf, so
      * the four corners of that box cover every chunk column it can enter
-     * (the radius is smaller than a chunk, so the box spans at most 2×2
-     * columns). With this true, {@link #isAnchored} decides on complete
+     * (the radius is smaller than a chunk — asserted below — so the box spans
+     * at most 2×2 columns). With this true, {@link #isAnchored} decides on complete
      * information — the earlier recompute may have run with less, but it only
      * schedules; this is the last word before a block is destroyed.
      */

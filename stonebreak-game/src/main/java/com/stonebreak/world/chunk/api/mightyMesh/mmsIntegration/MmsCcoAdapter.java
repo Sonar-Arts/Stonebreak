@@ -979,13 +979,15 @@ public class MmsCcoAdapter {
             return true;
         }
 
-        // Transparent blocks (water, leaves, flowers) render against different block types.
-        // Note: the stricter cull-against-opaque rule for cube-shaped TRANSLUCENT
-        // blocks (e.g. ice) lives in MmsFaceCullingService, which has access to
-        // the translucency policy. This legacy CCO path is used for water/cross
-        // geometry where the permissive rule is correct.
+        // Transparent cubes (leaves with leaf transparency on) render against
+        // different TRANSPARENT neighbours only. Against an opaque neighbour the
+        // face is fully covered, and since the opaque block emits its own face
+        // toward the transparent cell, drawing the hidden one just z-fights it.
+        // Same-type pairs cull too (leaf|leaf interiors). Only cube blocks reach
+        // this method — water and cross geometry have their own paths. Mirrors
+        // the Cenda mesher's renderFace — keep in lockstep.
         if (isTransparent(blockType)) {
-            return blockType != adjacentBlock;
+            return blockType != adjacentBlock && isTransparent(adjacentBlock);
         }
 
         // Opaque blocks don't render against other opaque blocks (standard culling)
