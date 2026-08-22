@@ -21,6 +21,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
 public class HeightMapGenerator {
     private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
+    private static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
 
     /** Max absolute detail offset in blocks. Keeps biomes from looking samey. */
     public static final float DETAIL_AMPLITUDE = 3f;
@@ -144,6 +145,36 @@ public class HeightMapGenerator {
             out[i] = heightFromChannels(c[i], pv[i], e[i], d[i]);
         }
     }
+
+    /**
+     * Fills a 16x16 final-height grid AND the co-located water plane the cave
+     * carvers guard against. Indices match {@link #populateChunkHeights}.
+     */
+    public void populateChunkHeights(int chunkX, int chunkZ, int[] out, int[] outWaterLevels) {
+        populateChunkHeights(chunkX, chunkZ, out);
+        if (outWaterLevels == null) {
+            return;
+        }
+        for (int i = 0; i < out.length; i++) {
+            outWaterLevels[i] = waterLevelFor(out[i]);
+        }
+    }
+
+    /**
+     * Water level for a column, or {@link WorldConfiguration#NO_WATER} when it is dry.
+     *
+     * <p>This branch has no rivers or lakes — the only standing water is the ocean that
+     * {@code determineBlockType} fills in below {@code SEA_LEVEL}. So a column is wet
+     * exactly when its surface is submerged, and its water level is sea level.
+     */
+    public int waterLevel(int x, int z) {
+        return waterLevelFor(generateHeight(x, z));
+    }
+
+    private static int waterLevelFor(int height) {
+        return height < SEA_LEVEL ? SEA_LEVEL : WorldConfiguration.NO_WATER;
+    }
+
 
     private static int clampToWorld(int height) {
         return Math.max(1, Math.min(height, WORLD_HEIGHT - 1));

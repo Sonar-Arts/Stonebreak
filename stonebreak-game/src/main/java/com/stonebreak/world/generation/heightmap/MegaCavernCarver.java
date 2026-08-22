@@ -13,24 +13,31 @@ import java.util.Random;
  *   - broader Y range to reach down toward bedrock or up to mid-mountain
  *   - taller stalagmite/stalactite formations
  *
- * Exposes the same anchor API as {@link CavernCarver} so {@link PerlinWormCarver}
+ * <p>Exposes the same anchor API as {@link CavernCarver} so {@link PerlinWormCarver}
  * can route connectors to whichever cavern type is closer.
  */
 public final class MegaCavernCarver {
     /** 1 in N chunks spawns a megacavern. Higher => rarer. */
-    private static final int MEGA_CAVERN_CHUNK_DIVISOR = 256;
-    /** Megacavern center Y range — broader than normal caverns. */
-    private static final int CAVERN_Y_MIN = 8;
-    private static final int CAVERN_Y_MAX = 50;
+    private static final int MEGA_CAVERN_CHUNK_DIVISOR = 192;
+    /**
+     * Megacavern center depth below the LOCAL surface, in blocks — a broader band than
+     * normal caverns get, reaching down toward bedrock at its deepest.
+     *
+     * <p>Surface-relative for the same reason {@code CavernCarver.CAVERN_DEPTH_MIN} is:
+     * an absolute Y band expressed as a fraction of {@link WorldConfiguration#SEA_LEVEL}
+     * sat hundreds of blocks below terrain that no tunnel could climb back up from.
+     */
+    private static final int CAVERN_DEPTH_MIN = 30;
+    private static final int CAVERN_DEPTH_MAX = 90;
 
     /** Mean blob radius (blocks). Final radius per blob is BASE_RADIUS * [0.75 .. 1.20]. */
-    private static final float BASE_RADIUS = 18f;
+    private static final float BASE_RADIUS = 24f;
     /** Maximum horizontal blob offset from the megacavern center. */
-    private static final float BLOB_OFFSET = 11f;
+    private static final float BLOB_OFFSET = 15f;
     /** Y squash — wider than tall but not as flat as normal caverns. */
-    private static final float Y_SQUASH = 0.60f;
-    private static final int MIN_BLOBS = 10;
-    private static final int MAX_BLOBS = 14;
+    private static final float Y_SQUASH = 0.66f;
+    private static final int MIN_BLOBS = 12;
+    private static final int MAX_BLOBS = 18;
 
     /** Per-column probability of starting a stalagmite. */
     private static final float STALAGMITE_CHANCE = 0.12f;
@@ -46,8 +53,7 @@ public final class MegaCavernCarver {
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
     private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
-    private static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
-    /** Minimum surface-to-sea-level clearance for the megacavern to carve a column. */
+    /** Vertical clearance {@link WaterGuard} keeps below a wet column's bed — prevents underwater breach. */
     private static final int WATER_CLEARANCE = (int) Math.ceil(BASE_RADIUS * 1.20f) + 1;
 
     private final long seed;
@@ -58,6 +64,11 @@ public final class MegaCavernCarver {
         this.heightMapGenerator = heightMapGenerator;
     }
 
+    /**
+     * Whether a chunk hosts a megacavern (pure hash). Kept as a positive predicate even
+     * though every call site negates it — see {@link CavernCarver#hasCavern}.
+     */
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     public boolean hasCavern(int cx, int cz) {
         long h = seed ^ 0x3EA9CA77B16BEEF0L;
         h ^= (long) cx * 0xD1B54A32D192ED03L;
@@ -72,6 +83,17 @@ public final class MegaCavernCarver {
     }
 
     /**
+     * Megacavern centre Y — a depth below the local surface. One {@code nextInt}, so the
+     * draw counts here and in {@link #carveCavern} stay aligned for the predictable anchor.
+     * See {@link #CAVERN_DEPTH_MIN} for why depth is surface-relative.
+     */
+    private float centerY(float ox, float oz, Random rng) {
+        int surface = heightMapGenerator.generateHeight(Math.round(ox), Math.round(oz));
+        int depth = CAVERN_DEPTH_MIN + rng.nextInt(CAVERN_DEPTH_MAX - CAVERN_DEPTH_MIN);
+        return Math.max(2, surface - depth);
+    }
+
+    /**
      * Returns the megacavern center (x, y, z) for a megacavern-bearing chunk, or
      * {@code null} if the chunk does not host one. Mirrors the first three RNG draws
      * inside {@link #carveCavern} so worm connectors can predict the anchor without
@@ -82,7 +104,7 @@ public final class MegaCavernCarver {
         Random rng = new Random(cavernRngSeed(cx, cz));
         float ox = cx * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE);
         float oz = cz * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE);
-        float oy = CAVERN_Y_MIN + rng.nextInt(CAVERN_Y_MAX - CAVERN_Y_MIN);
+        float oy = centerY(ox, oz, rng);
         return new float[] { ox, oy, oz };
     }
 
@@ -113,18 +135,28 @@ public final class MegaCavernCarver {
 
     /**
      * Builds the megacavern carve mask and formation (stalagmite/stalactite) mask for
-     * the target chunk. Both bitsets use the packed local position
-     * {@code (x << 12) | (y << 4) | z}. Caller must apply formationMask as STONE
+     * the target chunk. Both bitsets use {@code CarveMaskKey.pack(x, y, z)} packed local positions.
+     * Caller must apply formationMask as STONE
      * after applying carveMask as AIR (or apply formations inside the carved volume).
      */
     public Result buildForChunk(int chunkX, int chunkZ, int[] targetHeights) {
+        return buildForChunk(chunkX, chunkZ, targetHeights, null);
+    }
+
+    /**
+     * As {@link #buildForChunk(int, int, int[])}, keeping clear of the beds and bank
+     * walls of wet columns — see {@link WaterGuard}. A null {@code waterLevels}
+     * suppresses nothing.
+     */
+    public Result buildForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels) {
+        int[] waterGuard = WaterGuard.guardPlane(targetHeights, waterLevels, heightMapGenerator, chunkX, chunkZ);
         BitSet carve = new BitSet();
         for (int dcx = -SCAN_RADIUS; dcx <= SCAN_RADIUS; dcx++) {
             for (int dcz = -SCAN_RADIUS; dcz <= SCAN_RADIUS; dcz++) {
                 int srcCx = chunkX + dcx;
                 int srcCz = chunkZ + dcz;
                 if (!hasCavern(srcCx, srcCz)) continue;
-                carveCavern(srcCx, srcCz, chunkX, chunkZ, targetHeights, carve);
+                carveCavern(srcCx, srcCz, chunkX, chunkZ, targetHeights, waterGuard, carve);
             }
         }
         BitSet formations = carve.isEmpty() ? new BitSet() : buildFormations(chunkX, chunkZ, carve);
@@ -132,11 +164,11 @@ public final class MegaCavernCarver {
     }
 
     private void carveCavern(int srcCx, int srcCz, int targetCx, int targetCz,
-                             int[] targetHeights, BitSet mask) {
+                             int[] targetHeights, int[] waterGuard, BitSet mask) {
         Random rng = new Random(cavernRngSeed(srcCx, srcCz));
         float ox = srcCx * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE);
         float oz = srcCz * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE);
-        float oy = CAVERN_Y_MIN + rng.nextInt(CAVERN_Y_MAX - CAVERN_Y_MIN);
+        float oy = centerY(ox, oz, rng);
 
         int blobs = MIN_BLOBS + rng.nextInt(MAX_BLOBS - MIN_BLOBS + 1);
         for (int i = 0; i < blobs; i++) {
@@ -144,12 +176,13 @@ public final class MegaCavernCarver {
             float dy = (rng.nextFloat() - 0.5f) * 2f * (BLOB_OFFSET * 0.45f);
             float dz = (rng.nextFloat() - 0.5f) * 2f * BLOB_OFFSET;
             float r = BASE_RADIUS * (0.75f + rng.nextFloat() * 0.45f);
-            carveEllipsoid(ox + dx, oy + dy, oz + dz, r, targetCx, targetCz, targetHeights, mask);
+            carveEllipsoid(ox + dx, oy + dy, oz + dz, r, targetCx, targetCz,
+                    targetHeights, waterGuard, mask);
         }
     }
 
-    private void carveEllipsoid(float wx, float wy, float wz, float radius,
-                                int targetCx, int targetCz, int[] targetHeights, BitSet mask) {
+    private void carveEllipsoid(float wx, float wy, float wz, float radius, int targetCx,
+                                int targetCz, int[] targetHeights, int[] waterGuard, BitSet mask) {
         int targetBaseX = targetCx * CHUNK_SIZE;
         int targetBaseZ = targetCz * CHUNK_SIZE;
         int rxz = (int) Math.ceil(radius);
@@ -170,8 +203,11 @@ public final class MegaCavernCarver {
             for (int oz = -rxz; oz <= rxz; oz++) {
                 int bz = wzi + oz - targetBaseZ;
                 if (bz < 0 || bz >= CHUNK_SIZE) continue;
-                int surface = targetHeights[bx * CHUNK_SIZE + bz];
-                if (surface <= SEA_LEVEL + WATER_CLEARANCE) continue;
+                int idx = bx * CHUNK_SIZE + bz;
+                int surface = targetHeights[idx];
+                // See CavernCarver: WaterGuard.seals below is the real protection, and it
+                // understands rivers and lakes at any altitude rather than just sea level.
+                if (surface <= 1) continue;
                 float horizTerm = (ox * ox + oz * oz) * invRxz2;
                 if (horizTerm >= 1f) continue;
                 float maxOyTerm = 1f - horizTerm;
@@ -180,7 +216,8 @@ public final class MegaCavernCarver {
                     int by = wyi + oy;
                     if (by < 1 || by >= WORLD_HEIGHT) continue;
                     if (by >= surface) continue;
-                    mask.set((bx << 12) | (by << 4) | bz);
+                    if (WaterGuard.seals(waterGuard, idx, by, WATER_CLEARANCE)) continue;
+                    mask.set(CarveMaskKey.pack(bx, by, bz));
                 }
             }
         }
@@ -192,16 +229,34 @@ public final class MegaCavernCarver {
         int baseZ = chunkZ * CHUNK_SIZE;
         for (int bx = 0; bx < CHUNK_SIZE; bx++) {
             for (int bz = 0; bz < CHUNK_SIZE; bz++) {
+                // The TALLEST CONTIGUOUS run of carved cells, not the column's overall
+                // min and max. A column that clips two separate blobs has solid rock
+                // between them; anchoring to the global extremes grew a pillar out of the
+                // lower void, through that rock, and out into the upper one, where its tip
+                // reads as a formation floating in mid-air. A run's own ends are the floor
+                // and ceiling of one room, which is what a formation actually stands on.
                 int floorY = -1;
                 int ceilY = -1;
-                for (int by = 1; by < WORLD_HEIGHT; by++) {
-                    if (carve.get((bx << 12) | (by << 4) | bz)) {
-                        if (floorY < 0) floorY = by;
-                        ceilY = by;
+                int runStart = -1;
+                for (int by = 1; by <= WORLD_HEIGHT; by++) {
+                    if (by < WORLD_HEIGHT && carve.get(CarveMaskKey.pack(bx, by, bz))) {
+                        if (runStart < 0) runStart = by;
+                        continue;
+                    }
+                    if (runStart >= 0) {
+                        // Strictly taller, so ties keep the lowest run and the choice is
+                        // a pure function of the mask.
+                        if (by - 1 - runStart > ceilY - floorY) {
+                            floorY = runStart;
+                            ceilY = by - 1;
+                        }
+                        runStart = -1;
                     }
                 }
+                // floorY < 0 covers both "no carve here" and "no run taller than one cell":
+                // the initial -1/-1 pair scores 0, which nothing one cell tall can beat.
+                if (floorY < 0) continue;
                 int gap = ceilY - floorY;
-                if (floorY < 0 || gap < 1) continue;
 
                 int worldX = baseX + bx;
                 int worldZ = baseZ + bz;
@@ -210,24 +265,29 @@ public final class MegaCavernCarver {
                 int stalagH = rng.nextFloat() < STALAGMITE_CHANCE ? 1 + rng.nextInt(FORMATION_MAX_HEIGHT) : 0;
                 int stalactiteH = rng.nextFloat() < STALACTITE_CHANCE ? 1 + rng.nextInt(FORMATION_MAX_HEIGHT) : 0;
                 int total = stalagH + stalactiteH;
-                if (total > gap && total > 0) {
+                // gap >= 1 here, so total > gap already implies total > 0 — safe to divide by.
+                if (total > gap) {
                     stalagH = (int) ((long) stalagH * gap / total);
                     stalactiteH = (int) ((long) stalactiteH * gap / total);
                 }
 
-                if (stalagH > 0 && floorY > 0 && !carve.get((bx << 12) | ((floorY - 1) << 4) | bz)) {
+                // Both anchors are solid within this carver's own mask by construction —
+                // a run ends exactly where the carve stops — so the local checks the
+                // column-wide scan used to need are gone. Whether they are still solid once
+                // the worms, ravines, sinkholes and noise field have had their turn is
+                // settled afterwards, by {@link FormationSupport#prune}.
+                if (stalagH > 0) {
                     for (int h = 0; h < stalagH; h++) {
                         int by = floorY + h;
                         if (by > ceilY) break;
-                        formations.set((bx << 12) | (by << 4) | bz);
+                        formations.set(CarveMaskKey.pack(bx, by, bz));
                     }
                 }
-                if (stalactiteH > 0 && ceilY < WORLD_HEIGHT - 1
-                        && !carve.get((bx << 12) | ((ceilY + 1) << 4) | bz)) {
+                if (stalactiteH > 0) {
                     for (int h = 0; h < stalactiteH; h++) {
                         int by = ceilY - h;
                         if (by < floorY) break;
-                        formations.set((bx << 12) | (by << 4) | bz);
+                        formations.set(CarveMaskKey.pack(bx, by, bz));
                     }
                 }
             }

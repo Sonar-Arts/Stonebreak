@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-#define CK_ABI_VERSION 2
+#define CK_ABI_VERSION 3
 
 /* ABI handshake — Java refuses to use the lib if this doesn't match. */
 int32_t ck_abi_version(void);
@@ -147,8 +147,11 @@ int64_t ck_carve_worms(void* ctx, int32_t chunk_x, int32_t chunk_z,
  *
  * ck_chunkgen_create:
  *  - terrain channel/spline params: same 11 as ck_terrain_create.
- *  - density_*: the Density3D cave-noise node (built via the simplex-fbm
- *    convenience, frequency inside the node).
+ *  - density_*: Density3D's THREE cave-noise nodes, in fill order
+ *    (cheese, spaghetti 1, spaghetti 2), each built via the simplex-fbm
+ *    convenience with the frequency inside the node.
+ *  - cheese_spline_*: Density3D's depth->threshold curve, same packing as
+ *    spline_xs (one curve, so cheese_spline_sizes is a single count).
  *  - block_ids: [air, water, stone, bedrock, magma].
  *  - biome tables: n_biomes entries each, indexed by BiomeType ordinal;
  *    flags bit0 = magma host biome, bit1 = dry-below-sea biome.
@@ -159,6 +162,14 @@ int64_t ck_carve_worms(void* ctx, int32_t chunk_x, int32_t chunk_z,
  * ck_generate_chunk:
  *  - heights/biomes: 256 entries, [x*16 + z] (populateChunkHeights layout);
  *    biomes are BiomeType ordinals into the create-time tables.
+ *  - extra_carve_mask: 1024 uint64 (bit = (x<<12)|(y<<4)|z), OR'd into the
+ *    kernel's own carve mask, or NULL for none. This is how the surface-anchored
+ *    carvers reach the fused path: RavineCarver and SinkholeCarver walk a shape
+ *    grammar over Java's NoiseGenerator, which has no native point sampler, so
+ *    duplicating them here would mean porting that simplex bit-exactly to gain a
+ *    pass that only fires in 1-in-450 and 1-in-40 chunks. Taking the Java mask
+ *    instead keeps one implementation of the grammar and makes the two paths
+ *    agree by construction rather than by test.
  *  - out_blocks: 65536 int16, idx = y*256 + z*16 + x (mesher layout ==
  *    16 concatenated CCO sections).
  *  - out_heightmap: 256 int32, [z*16 + x] (ChunkHeightMap layout), Y+1 of the
@@ -172,8 +183,10 @@ void* ck_chunkgen_create(
     const int32_t* ch_xoff, const int32_t* ch_zoff,
     const double* spline_xs, const double* spline_ys, const int32_t* spline_sizes,
     float detail_amplitude,
-    int32_t density_seed, int32_t density_octaves,
-    float density_gain, float density_lacunarity, float density_freq,
+    const int32_t* density_seeds, const int32_t* density_octaves,
+    const float* density_gain, const float* density_lacunarity, const float* density_freq,
+    const double* cheese_spline_xs, const double* cheese_spline_ys,
+    const int32_t* cheese_spline_sizes,
     const int32_t* block_ids,
     int32_t n_biomes,
     const int16_t* biome_surface_id, const int16_t* biome_subsurface_id,
@@ -184,11 +197,13 @@ void* ck_chunkgen_create(
 
 #define CK_BIOME_MAGMA 1u          /* biome hosts deep magma pockets            */
 #define CK_BIOME_DRY_BELOW_SEA 2u  /* suppress sub-sea WATER when surface > sea */
+#define CK_BIOME_CRAG_SURFACE 4u   /* overhang band reads the crag channel      */
 
 void ck_chunkgen_destroy(void* ctx);
 
 int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
                           const int32_t* heights, const int32_t* biomes,
+                          const uint64_t* extra_carve_mask,
                           int16_t* out_blocks, int32_t* out_heightmap);
 
 /* ════════════════════════ zstd codec ════════════════════════ */

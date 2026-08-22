@@ -1,6 +1,6 @@
 package com.stonebreak.world.generation.heightmap;
-
 import com.stonebreak.world.generation.NoiseGenerator;
+
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.ArrayDeque;
@@ -11,40 +11,65 @@ import java.util.Random;
 /**
  * Walks long, smoothly-curving tunnel carvers that produce ribbon-like cave systems.
  *
- * Each spawning chunk emits a primary carver and (usually) a twin going the opposite
+ * <p>Each spawning chunk emits a primary carver and (usually) a twin going the opposite
  * direction from the same origin point — so the spawn point sits in the middle of a
  * through-routed corridor rather than at a dead end. Mid-walk branches add side
  * passages. Cave-to-cave intersections emerge naturally where two long carvers cross,
  * not from any forced rendezvous, which keeps individual carvers from clustering and
  * over-carving entire regions.
  *
- * Carve volumes are vertically-squashed ellipsoids whose radius is modulated along
+ * <p>Carve volumes are vertically-squashed ellipsoids whose radius is modulated along
  * the path by an independent noise channel — tunnels pinch and bulge, giving caves
  * a natural cross-section instead of a uniform pipe.
  */
 public final class PerlinWormCarver {
     /** 1 in N source chunks spawns a carver pair. Lower => denser cave network. */
     private static final int WORM_CHUNK_DIVISOR = 8;
-    /** Steps per primary carver. STEP_SIZE * MAX_STEPS bounds reach. */
-    private static final int MAX_STEPS = 60;
+    /**
+     * Steps per primary carver. STEP_SIZE * MAX_STEPS bounds reach.
+     *
+     * <p>Raised from 60: with the origin now placed relative to the local surface rather
+     * than to sea level, a tunnel has to cross a much taller underground column to reach
+     * anything. Note the cost is quadratic — {@link #SCAN_RADIUS} grows with this, and the
+     * per-chunk source scan is O(SCAN_RADIUS^2).
+     */
+    private static final int MAX_STEPS = 70;
     /** Distance per step in blocks. */
     private static final float STEP_SIZE = 1.0f;
 
-    /** Base carve radius (blocks); modulated along the path. */
-    private static final float BASE_RADIUS = 2.2f;
+    /**
+     * Base carve radius (blocks); modulated along the path.
+     *
+     * <p>Sized for gameplay rather than for realism. At the old 2.2 the tunnel bore was
+     * ~4 blocks across but only {@code 2 * 2.2 * Y_SQUASH} ≈ 2.9 blocks tall before the
+     * noise dips — a corridor a player fits through and nothing more, which is what made the
+     * cave network read as cramped everywhere the larger features did not reach. Worms are
+     * the connective tissue of the whole system, so their bore sets the felt size of most of
+     * it.
+     */
+    private static final float BASE_RADIUS = 3.1f;
     /** Radius modulation amplitude — tunnels pinch and widen along their length. */
-    private static final float RADIUS_AMP = 0.9f;
+    private static final float RADIUS_AMP = 1.25f;
     /** Floor on per-step radius so noise dips don't pinch tunnels closed. */
-    private static final float MIN_RADIUS = 1.3f;
-    /** Y-axis squash factor — caves are wider than they are tall. */
-    private static final float Y_SQUASH = 0.65f;
+    private static final float MIN_RADIUS = 1.9f;
+    /**
+     * Y-axis squash factor — caves are wider than they are tall. This multiplies the bore's
+     * vertical half-extent directly, so it is the cheapest headroom in the generator: at the
+     * old 0.65 a mean-radius tunnel stood under three blocks tall, which is a corridor with
+     * no room to jump, fight or place a block overhead.
+     */
+    private static final float Y_SQUASH = 0.78f;
 
     /**
      * Source-chunk scan radius (chunks). Must cover origin offset + path reach + carve
-     * radius. With MAX_STEPS=60 + BRANCH_MAX_STEPS=22 + 16 (origin) + 3 (radius) ~= 101
-     * blocks ≈ 6.3 chunks, so 6 covers the worst-case branch endpoint.
+     * radius. With MAX_STEPS=90 + BRANCH_MAX_STEPS=22 + 16 (origin) + 5 (radius) ~= 133
+     * blocks ≈ 8.4 chunks, so 9 covers the worst-case branch endpoint.
+     *
+     * <p>Kept a literal rather than derived from those constants because they are declared
+     * below this point and a forward reference in the initializer will not compile. If you
+     * change MAX_STEPS or BRANCH_MAX_STEPS, redo this arithmetic.
      */
-    private static final int SCAN_RADIUS = 6;
+    private static final int SCAN_RADIUS = 9;
 
     /** Heading-noise wavelength in blocks (lower frequency => smoother curves). */
     private static final float HEADING_SCALE = 1f / 38f;
@@ -59,6 +84,30 @@ public final class PerlinWormCarver {
     /** Pitch clamp. */
     private static final float PITCH_MIN = -0.85f;
     private static final float PITCH_MAX = 0.65f;
+
+    // --- Zone-aware steering (see CaveWaterTable) -------------------------------------
+    // Passage shape should tell the player how deep they are. The three hydrological zones
+    // produce visibly different tunnels from the same walk by biasing pitch differently.
+
+    /**
+     * Vadose: above the water table, where water descends under gravity and cuts steep
+     * shafts and narrow canyons. Implemented by pushing pitch AWAY from horizontal rather
+     * than downward — a vadose shaft is near-vertical in both directions, and the upward
+     * half is what reaches the surface, which is exactly where such a passage starts in
+     * reality (a sinkhole taking water in).
+     */
+    private static final float VADOSE_STEEPEN = 0.06f;
+    private static final float VADOSE_PITCH_MIN = -0.95f;
+    private static final float VADOSE_PITCH_MAX = 0.95f;
+
+    /**
+     * Epiphreatic: at a (present or former) water table, where flow is lateral and cuts
+     * level galleries. Pitch is damped toward horizontal each step and clamped hard, so a
+     * tunnel entering this band tracks it instead of passing through.
+     */
+    private static final float GALLERY_DAMP = 0.55f;
+    private static final float GALLERY_PITCH_MIN = -0.14f;
+    private static final float GALLERY_PITCH_MAX = 0.14f;
 
     /** Per-step probability of spawning a child branch. */
     private static final float BRANCH_CHANCE = 0.04f;
@@ -80,7 +129,7 @@ public final class PerlinWormCarver {
     /** Chunk radius to scan when searching for a cavern to feed into. */
     private static final int CAVERN_CONNECTOR_RADIUS = 5;
     /** Step budget for a cavern connector — caverns may sit further out than worm-chunk neighbors. */
-    private static final int CAVERN_CONNECTOR_MAX_STEPS = 110;
+    private static final int CAVERN_CONNECTOR_MAX_STEPS = 85;
     /** Per-step lerp factor steering the connector toward its target (dominates noise drift). */
     private static final float CONNECTOR_BIAS = 0.55f;
     /** Step budget for a connector — enough to bridge {@link #CONNECTOR_SEARCH_RADIUS} chunks plus slack. */
@@ -92,9 +141,22 @@ public final class PerlinWormCarver {
      */
     private static final float CONNECTOR_REACHED_DIST = BASE_RADIUS;
 
-    /** Carver origin Y range. */
-    private static final int ORIGIN_Y_MIN = 14;
-    private static final int ORIGIN_Y_MAX = 50;
+    /**
+     * Carver origin depth below the LOCAL surface, in blocks.
+     *
+     * <p>This used to be an absolute Y band expressed as a fraction of
+     * {@link WorldConfiguration#SEA_LEVEL} (the old 14-50 band's share of the old 64-block
+     * sea level). That was wrong, and by a wide margin: with SEA_LEVEL=320 it put every worm
+     * between y=70 and y=250, while land surfaces sit at 340-500. A carver climbs at most
+     * {@code MAX_STEPS * sin(PITCH_MAX)} blocks, so it could never reach the surface — the
+     * entire worm/cavern network was sealed off with no entrances anywhere in the world.
+     *
+     * <p>Depth is relative to the surface above the origin because that is the quantity that
+     * actually matters: "60 blocks down from where you are standing" is meaningful at any
+     * terrain height, whereas "y=180" is near-surface in one world and unreachable in another.
+     */
+    private static final int ORIGIN_DEPTH_MIN = 12;
+    private static final int ORIGIN_DEPTH_MAX = 60;
     /** Termination Y bounds. */
     private static final int Y_FLOOR = 6;
     /** Stop carving once well above the local surface — the carver has fully breached. */
@@ -107,13 +169,15 @@ public final class PerlinWormCarver {
     private static final int WATER_CLEARANCE = (int) Math.ceil(BASE_RADIUS + RADIUS_AMP) + 1;
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
+    /** @see WorldConfiguration#NO_WATER */
+    private static final int NO_WATER = WorldConfiguration.NO_WATER;
     private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
-    private static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
 
     private final long seed;
     private final NoiseGenerator headingNoise;
     private final NoiseGenerator radiusNoise;
     private final HeightMapGenerator heightMapGenerator;
+    private final CaveWaterTable waterTable;
     private CavernCarver cavernCarver;
     private MegaCavernCarver megaCavernCarver;
 
@@ -122,6 +186,7 @@ public final class PerlinWormCarver {
         this.headingNoise = new NoiseGenerator(seed + 41, 1, 0.5, 2.0);
         this.radiusNoise = new NoiseGenerator(seed + 113, 1, 0.5, 2.0);
         this.heightMapGenerator = heightMapGenerator;
+        this.waterTable = new CaveWaterTable(seed, heightMapGenerator);
     }
 
     /**
@@ -162,18 +227,28 @@ public final class PerlinWormCarver {
     }
 
     /**
-     * Builds the carve mask for a chunk. Bits are packed local positions
-     * {@code (x << 12) | (y << 4) | z}; set bits should be replaced with AIR
+     * Builds the carve mask for a chunk. Bits use {@code CarveMaskKey.pack(x, y, z)} packed local
+     * positions; set bits should be replaced with AIR
      * by the caller (only when the block would otherwise be solid).
      */
     public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights) {
+        return carveMaskForChunk(chunkX, chunkZ, targetHeights, null);
+    }
+
+    /**
+     * As {@link #carveMaskForChunk(int, int, int[])}, keeping clear of the beds and bank
+     * walls of wet columns — see {@link WaterGuard}. A null {@code waterLevels}
+     * suppresses nothing.
+     */
+    public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels) {
+        int[] waterGuard = WaterGuard.guardPlane(targetHeights, waterLevels, heightMapGenerator, chunkX, chunkZ);
         BitSet mask = new BitSet();
         for (int dcx = -SCAN_RADIUS; dcx <= SCAN_RADIUS; dcx++) {
             for (int dcz = -SCAN_RADIUS; dcz <= SCAN_RADIUS; dcz++) {
                 int srcCx = chunkX + dcx;
                 int srcCz = chunkZ + dcz;
                 if (!hasWorm(srcCx, srcCz)) continue;
-                spawnCarvers(srcCx, srcCz, chunkX, chunkZ, targetHeights, mask);
+                spawnCarvers(srcCx, srcCz, chunkX, chunkZ, targetHeights, waterGuard, mask);
             }
         }
         return mask;
@@ -192,6 +267,21 @@ public final class PerlinWormCarver {
     }
 
     /**
+     * Origin Y for a carver spawning at {@code (ox, oz)} — a depth below that column's own
+     * surface, not an absolute band.
+     *
+     * <p>Consumes exactly one {@code nextInt} so the RNG stream downstream (twin, connector
+     * and cavern-connector seeds) is unchanged in shape. That matters because
+     * {@link #computeOrigin} must mirror {@link #spawnCarvers}' first three draws exactly for
+     * the predictable-anchor trick to keep producing guaranteed tunnel links — both call here.
+     */
+    private float originY(float ox, float oz, Random rng) {
+        int surface = heightMapGenerator.generateHeight(Math.round(ox), Math.round(oz));
+        int depth = ORIGIN_DEPTH_MIN + rng.nextInt(ORIGIN_DEPTH_MAX - ORIGIN_DEPTH_MIN);
+        return Math.max(Y_FLOOR + 2, surface - depth);
+    }
+
+    /**
      * Returns the deterministic origin (x, y, z) for a worm-bearing chunk. Must mirror
      * the first three RNG draws inside {@link #spawnCarvers} exactly so connectors can
      * predict where a neighbor's tunnel system anchors without re-walking it.
@@ -200,8 +290,38 @@ public final class PerlinWormCarver {
         Random rng = new Random(chunkRngSeed(cx, cz));
         float ox = cx * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE);
         float oz = cz * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE);
-        float oy = ORIGIN_Y_MIN + rng.nextInt(ORIGIN_Y_MAX - ORIGIN_Y_MIN);
+        float oy = originY(ox, oz, rng);
         return new float[] { ox, oy, oz };
+    }
+
+    /**
+     * Origin {@code (x, y, z)} of the nearest worm within {@code searchRadius} chunks of
+     * (cx, cz), including (cx, cz) itself, or {@code null} if none is in range.
+     *
+     * <p>Exposed for {@link SinkholeCarver}, which cuts its shaft to exactly the depth that
+     * opens into a tunnel. This is the same predictable-anchor trick the connectors use: the
+     * spawn RNG stream is replayed far enough to recover the origin, so the answer costs
+     * three RNG draws and a height lookup instead of walking the carver.
+     */
+    public float[] nearestWormOrigin(int cx, int cz, int searchRadius) {
+        int bestCx = 0, bestCz = 0;
+        int bestDistSq = Integer.MAX_VALUE;
+        boolean found = false;
+        for (int dcx = -searchRadius; dcx <= searchRadius; dcx++) {
+            for (int dcz = -searchRadius; dcz <= searchRadius; dcz++) {
+                int ncx = cx + dcx;
+                int ncz = cz + dcz;
+                if (!hasWorm(ncx, ncz)) continue;
+                int d = dcx * dcx + dcz * dcz;
+                if (d < bestDistSq) {
+                    bestDistSq = d;
+                    bestCx = ncx;
+                    bestCz = ncz;
+                    found = true;
+                }
+            }
+        }
+        return found ? computeOrigin(bestCx, bestCz) : null;
     }
 
     /**
@@ -244,11 +364,11 @@ public final class PerlinWormCarver {
      * side of the spawn point continues out the other side.
      */
     private void spawnCarvers(int srcCx, int srcCz, int targetCx, int targetCz,
-                              int[] targetHeights, BitSet mask) {
+                              int[] targetHeights, int[] waterGuard, BitSet mask) {
         Random rng = new Random(chunkRngSeed(srcCx, srcCz));
         float ox = srcCx * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE);
         float oz = srcCz * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE);
-        float oy = ORIGIN_Y_MIN + rng.nextInt(ORIGIN_Y_MAX - ORIGIN_Y_MIN);
+        float oy = originY(ox, oz, rng);
         float yaw = rng.nextFloat() * (float) (Math.PI * 2);
         float pitch = -0.15f + rng.nextFloat() * 0.3f;
         boolean spawnTwin = rng.nextFloat() < TWIN_CHANCE;
@@ -276,7 +396,7 @@ public final class PerlinWormCarver {
         }
 
         while (!queue.isEmpty()) {
-            walkCarver(queue.pop(), queue, targetCx, targetCz, targetHeights, mask);
+            walkCarver(queue.pop(), queue, targetCx, targetCz, targetHeights, waterGuard, mask);
         }
     }
 
@@ -368,18 +488,43 @@ public final class PerlinWormCarver {
     }
 
     private void walkCarver(CarverSegment seg, Deque<CarverSegment> queue,
-                            int targetCx, int targetCz, int[] targetHeights, BitSet mask) {
+                            int targetCx, int targetCz, int[] targetHeights, int[] waterGuard,
+                            BitSet mask) {
         Random rng = new Random(seg.rngSeed);
         float x = seg.x, y = seg.y, z = seg.z, yaw = seg.yaw, pitch = seg.pitch;
         int branchesLeft = seg.branchesLeft;
 
         float reachedSq = CONNECTOR_REACHED_DIST * CONNECTOR_REACHED_DIST;
 
+        // Zone of the previous step's position. One step of lag is deliberate: the surface
+        // and water level needed to resolve it are fetched AFTER the move (they describe
+        // where the carver landed), and re-fetching them here to remove the lag would
+        // triple this loop's tile lookups for a steering heuristic. Starts PHREATIC so a
+        // carver's first step behaves as it always did.
+        CaveWaterTable.Zone zone = CaveWaterTable.Zone.PHREATIC;
+
         for (int step = 0; step < seg.stepBudget; step++) {
             float yawNoise = headingNoise.noise3D(x * HEADING_SCALE, y * HEADING_SCALE, z * HEADING_SCALE);
             float pitchNoise = headingNoise.noise3D((x + 1024f) * HEADING_SCALE, y * HEADING_SCALE, (z + 1024f) * HEADING_SCALE);
             yaw += yawNoise * YAW_DRIFT;
             pitch += pitchNoise * PITCH_DRIFT + UPWARD_BIAS;
+
+            // Shape the passage to its zone. Connectors are exempt: their whole job is to
+            // reach a specific anchor, and a gallery clamp would stop them ever climbing or
+            // diving to it, breaking the guaranteed-link property.
+            if (seg.target == null) {
+                switch (zone) {
+                    case VADOSE ->
+                        // Away from horizontal, preserving sign — steep in whichever
+                        // direction the carver is already going.
+                        pitch += Math.signum(pitch) * VADOSE_STEEPEN;
+                    case EPIPHREATIC ->
+                        pitch *= GALLERY_DAMP;
+                    case PHREATIC -> {
+                        // Free wander — rounded tubes that rise and fall. Unchanged.
+                    }
+                }
+            }
 
             if (seg.target != null) {
                 float dx = seg.target[0] - x;
@@ -394,8 +539,19 @@ public final class PerlinWormCarver {
                 }
             }
 
-            if (pitch < PITCH_MIN) pitch = PITCH_MIN;
-            else if (pitch > PITCH_MAX) pitch = PITCH_MAX;
+            // Clamp to the zone's envelope: steeper than default in the vadose zone,
+            // near-flat in a gallery. Connectors keep the default so they can still aim.
+            float pitchMin = PITCH_MIN;
+            float pitchMax = PITCH_MAX;
+            if (seg.target == null) {
+                switch (zone) {
+                    case VADOSE -> { pitchMin = VADOSE_PITCH_MIN; pitchMax = VADOSE_PITCH_MAX; }
+                    case EPIPHREATIC -> { pitchMin = GALLERY_PITCH_MIN; pitchMax = GALLERY_PITCH_MAX; }
+                    case PHREATIC -> { }
+                }
+            }
+            if (pitch < pitchMin) pitch = pitchMin;
+            else if (pitch > pitchMax) pitch = pitchMax;
 
             float cosPitch = (float) Math.cos(pitch);
             x += (float) Math.cos(yaw) * cosPitch * STEP_SIZE;
@@ -407,12 +563,24 @@ public final class PerlinWormCarver {
             int wzi = Math.round(z);
             if (wyi < Y_FLOOR || wyi >= WORLD_HEIGHT) break;
             int surface = heightMapGenerator.generateHeight(wxi, wzi);
-            if (surface <= SEA_LEVEL + WATER_CLEARANCE) break;
+            // Was `surface <= SEA_LEVEL + WATER_CLEARANCE`, i.e. "stop anywhere within 5
+            // blocks of global sea level". With per-column water that test is both too broad
+            // and too narrow: it killed every worm under dry coastal flats (surface 320-325,
+            // a large share of the lowlands) while saying nothing about a river or lake
+            // sitting hundreds of blocks higher. Gate on whether THIS column actually holds
+            // water instead. WaterGuard.seals still does the precise per-cell sealing below;
+            // this is only the coarse early-out for the walk.
+            int water = heightMapGenerator.waterLevel(wxi, wzi);
+            if (water != NO_WATER && surface <= water + WATER_CLEARANCE) break;
             if (wyi > surface + BREACH_OVERHEAD) break;
+
+            // Zone for the NEXT step, reusing the surface/water this step already resolved.
+            zone = CaveWaterTable.zoneAt(waterTable.tableFrom(wxi, wzi, surface, water), wyi);
 
             float radius = BASE_RADIUS + radiusNoise.noise3D(x * RADIUS_SCALE, y * RADIUS_SCALE, z * RADIUS_SCALE) * RADIUS_AMP;
             if (radius < MIN_RADIUS) radius = MIN_RADIUS;
-            carveEllipsoid(wxi, wyi, wzi, radius, targetCx, targetCz, targetHeights, mask);
+            carveEllipsoid(wxi, wyi, wzi, radius, targetCx, targetCz,
+                    targetHeights, waterGuard, mask);
 
             if (seg.target != null) {
                 float dx = seg.target[0] - x;
@@ -442,8 +610,8 @@ public final class PerlinWormCarver {
      * Y-axis squash gives tunnels their characteristic flatter cross-section.
      * Per-column water guard prevents exposing water-bearing terrain.
      */
-    private void carveEllipsoid(int wx, int wy, int wz, float radius,
-                                int targetCx, int targetCz, int[] targetHeights, BitSet mask) {
+    private void carveEllipsoid(int wx, int wy, int wz, float radius, int targetCx,
+                                int targetCz, int[] targetHeights, int[] waterGuard, BitSet mask) {
         int targetBaseX = targetCx * CHUNK_SIZE;
         int targetBaseZ = targetCz * CHUNK_SIZE;
         int rxz = (int) Math.ceil(radius);
@@ -462,7 +630,14 @@ public final class PerlinWormCarver {
             for (int oz = -rxz; oz <= rxz; oz++) {
                 int bz = wz + oz - targetBaseZ;
                 if (bz < 0 || bz >= CHUNK_SIZE) continue;
-                if (targetHeights[bx * CHUNK_SIZE + bz] <= SEA_LEVEL + 1) continue;
+                int idx = bx * CHUNK_SIZE + bz;
+                int surface = targetHeights[idx];
+                // Only skip columns at/below the world floor; the per-cell WaterGuard check
+                // below is what actually keeps carving away from water, and it understands
+                // rivers and lakes at any altitude. The old `surface <= SEA_LEVEL + 1` test
+                // additionally blanked every column near y=320 regardless of whether any
+                // water was there.
+                if (surface <= 1) continue;
                 float horizTerm = (ox * ox + oz * oz) * invRxz2;
                 if (horizTerm >= 1f) continue;
                 float maxOyTerm = 1f - horizTerm;
@@ -470,7 +645,8 @@ public final class PerlinWormCarver {
                     if ((oy * oy) * invRy2 >= maxOyTerm) continue;
                     int by = wy + oy;
                     if (by < 1 || by >= WORLD_HEIGHT) continue;
-                    mask.set((bx << 12) | (by << 4) | bz);
+                    if (WaterGuard.seals(waterGuard, idx, by, WATER_CLEARANCE)) continue;
+                    mask.set(CarveMaskKey.pack(bx, by, bz));
                 }
             }
         }

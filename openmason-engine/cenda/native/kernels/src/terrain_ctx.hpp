@@ -29,14 +29,16 @@ constexpr int CHUNK_SIZE = 16;
 constexpr int WORLD_HEIGHT = 256;
 constexpr int SEA_LEVEL = 64;
 
+constexpr int NO_WATER = -1;
+
 constexpr int WORM_CHUNK_DIVISOR = 8;
-constexpr int MAX_STEPS = 60;
+constexpr int MAX_STEPS = 70;
 constexpr float STEP_SIZE = 1.0f;
-constexpr float BASE_RADIUS = 2.2f;
-constexpr float RADIUS_AMP = 0.9f;
-constexpr float MIN_RADIUS = 1.3f;
-constexpr float Y_SQUASH = 0.65f;
-constexpr int SCAN_RADIUS = 6;
+constexpr float BASE_RADIUS = 3.1f;
+constexpr float RADIUS_AMP = 1.25f;
+constexpr float MIN_RADIUS = 1.9f;
+constexpr float Y_SQUASH = 0.78f;
+constexpr int SCAN_RADIUS = 9;
 constexpr float HEADING_SCALE = 1.0f / 38.0f;
 constexpr float RADIUS_SCALE = 1.0f / 18.0f;
 constexpr float YAW_DRIFT = 0.18f;
@@ -52,15 +54,85 @@ constexpr float TWIN_CHANCE = 0.75f;
 constexpr float CONNECTOR_CHANCE = 0.95f;
 constexpr float CAVERN_CONNECTOR_CHANCE = 1.0f;
 constexpr int CONNECTOR_SEARCH_RADIUS = 4;
-constexpr int CAVERN_CONNECTOR_MAX_STEPS = 110;
+constexpr int CAVERN_CONNECTOR_MAX_STEPS = 85;
 constexpr float CONNECTOR_BIAS = 0.55f;
 constexpr int CONNECTOR_MAX_STEPS = 80;
 constexpr float CONNECTOR_REACHED_DIST = BASE_RADIUS;
-constexpr int ORIGIN_Y_MIN = 14;
-constexpr int ORIGIN_Y_MAX = 50;
+/* Origin depth BELOW the local surface, replacing the old absolute y=14..50 band. */
+constexpr int ORIGIN_DEPTH_MIN = 12;
+constexpr int ORIGIN_DEPTH_MAX = 60;
 constexpr int Y_FLOOR = 6;
 constexpr int BREACH_OVERHEAD = 3;
 inline const int WATER_CLEARANCE = static_cast<int>(std::ceil(BASE_RADIUS + RADIUS_AMP)) + 1;
+
+/* CaveWaterTable zone steering — see PerlinWormCarver.java. */
+constexpr float VADOSE_STEEPEN = 0.06f;
+constexpr float VADOSE_PITCH_MIN = -0.95f;
+constexpr float VADOSE_PITCH_MAX = 0.95f;
+constexpr float GALLERY_DAMP = 0.55f;
+constexpr float GALLERY_PITCH_MIN = -0.14f;
+constexpr float GALLERY_PITCH_MAX = 0.14f;
+
+/* ── CaveWaterTable.java ──────────────────────────────────────────────────── */
+constexpr float WT_DAMP = 0.40f;
+constexpr float WT_WOBBLE = 5.0f;
+constexpr int WT_MIN_ROOF = 10;
+constexpr int WT_LEVEL_SPACING = 22;
+constexpr int WT_STOREYS = 3;
+constexpr int WT_FLOOR = 9;
+constexpr int WT_BAND = 5;
+constexpr float WT_SCALE = 1.0f / 220.0f;
+
+enum class Zone { VADOSE, EPIPHREATIC, PHREATIC };
+
+/* CaveWaterTable.resolve. */
+inline int waterTableResolve(int surface, int waterLevel, float wobbleNoise) {
+    int table;
+    if (waterLevel != NO_WATER && waterLevel > 0) {
+        table = waterLevel;
+    } else {
+        table = cenda::javaRoundFloat(
+            static_cast<float>(SEA_LEVEL)
+            + static_cast<float>(surface - SEA_LEVEL) * WT_DAMP
+            + wobbleNoise * WT_WOBBLE);
+    }
+    if (table < WT_FLOOR) table = WT_FLOOR;
+    const int roof = surface - WT_MIN_ROOF;
+    return table < roof ? table : roof;
+}
+
+/* CaveWaterTable.zoneAt. */
+inline Zone waterTableZoneAt(int table, int y) {
+    if (y > table + WT_BAND) {
+        return Zone::VADOSE;
+    }
+    for (int k = 0; k < WT_STOREYS; k++) {
+        const int storey = table - k * WT_LEVEL_SPACING;
+        if (std::abs(y - storey) <= WT_BAND) {
+            return Zone::EPIPHREATIC;
+        }
+    }
+    return Zone::PHREATIC;
+}
+
+/* CaveWaterTable.galleryWeight. */
+inline float waterTableGalleryWeight(int table, int y) {
+    float best = 0.0f;
+    for (int k = 0; k < WT_STOREYS; k++) {
+        const int storey = table - k * WT_LEVEL_SPACING;
+        const float w = 1.0f - static_cast<float>(std::abs(y - storey)) / static_cast<float>(WT_BAND);
+        if (w > best) best = w;
+    }
+    return best;
+}
+
+/* HeightMapGenerator.waterLevel — this branch's only standing water is the ocean,
+ * so a column is wet exactly when its surface is submerged. */
+inline int waterLevelOf(int surface) {
+    return surface < SEA_LEVEL ? SEA_LEVEL : NO_WATER;
+}
+
+constexpr int WATER_GUARD_OPEN = INT32_MAX;
 
 inline int32_t nativeSeedOf(int64_t v) { // Long.hashCode
     const auto u = static_cast<uint64_t>(v);
@@ -81,8 +153,10 @@ struct TerrainCtx {
     int64_t seed = 0;
     FastNoise::SmartNode<> headingNoise;
     FastNoise::SmartNode<> radiusNoise;
+    FastNoise::SmartNode<> wobbleNoise;
     int32_t headingSeed = 0;
     int32_t radiusSeed = 0;
+    int32_t wobbleSeed = 0;
 
     // Java channel axis convention: FastNoise2 X carries worldZ, Y carries worldX.
     [[nodiscard]] float sampleChannel(int i, int x, int z) const {
@@ -113,7 +187,65 @@ struct TerrainCtx {
     [[nodiscard]] float radius3D(float x, float y, float z) const {
         return radiusNoise->GenSingle3D(x, y, z, radiusSeed);
     }
+
+    /* CaveWaterTable's wobble channel. Same axis convention as sampleChannel:
+     * FastNoise2 X carries worldZ, Y carries worldX. */
+    [[nodiscard]] float waterTableWobble(int x, int z) const {
+        return wobbleNoise->GenSingle2D(static_cast<float>(z), static_cast<float>(x), wobbleSeed);
+    }
+
+    /* CaveWaterTable.tableFrom, for a caller that already resolved the column. */
+    [[nodiscard]] int waterTableFrom(int x, int z, int surface, int waterLevel) const {
+        return waterTableResolve(surface, waterLevel, waterTableWobble(x, z));
+    }
+
+    /* CaveWaterTable.tableAt. */
+    [[nodiscard]] int waterTableAt(int x, int z) const {
+        const int surface = generateHeight(x, z);
+        return waterTableFrom(x, z, surface, waterLevelOf(surface));
+    }
 };
+
+/* WaterGuard.guardPlane — per-column lowest wet-column bed in the 4-neighborhood
+ * (itself included), or WATER_GUARD_OPEN. Border columns resolve through the
+ * height oracle so a coastline hugging a chunk edge guards from both sides. */
+inline void waterGuardPlane(const TerrainCtx& ctx, const int32_t* targetHeights,
+                            int chunkX, int chunkZ, int32_t* outPlane) {
+    const int baseX = chunkX * CHUNK_SIZE;
+    const int baseZ = chunkZ * CHUNK_SIZE;
+    auto consider = [&](int guard, int x, int z) {
+        if (x >= 0 && x < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) {
+            const int idx = x * CHUNK_SIZE + z;
+            const int h = targetHeights[idx];
+            if (waterLevelOf(h) != NO_WATER) {
+                return guard < h ? guard : h;
+            }
+            return guard;
+        }
+        const int h = ctx.generateHeight(baseX + x, baseZ + z);
+        if (waterLevelOf(h) != NO_WATER) {
+            return guard < h ? guard : h;
+        }
+        return guard;
+    };
+    for (int x = 0; x < CHUNK_SIZE; x++) {
+        for (int z = 0; z < CHUNK_SIZE; z++) {
+            int guard = WATER_GUARD_OPEN;
+            guard = consider(guard, x, z);
+            guard = consider(guard, x - 1, z);
+            guard = consider(guard, x + 1, z);
+            guard = consider(guard, x, z - 1);
+            guard = consider(guard, x, z + 1);
+            outPlane[x * CHUNK_SIZE + z] = guard;
+        }
+    }
+}
+
+/* WaterGuard.seals. */
+inline bool waterGuardSeals(const int32_t* plane, int index, int y, int clearance) {
+    return plane != nullptr && plane[index] != WATER_GUARD_OPEN
+        && y >= plane[index] - clearance;
+}
 
 struct Segment {
     float x, y, z, yaw, pitch;
@@ -158,11 +290,21 @@ inline int64_t chunkRngSeed(int64_t seed, int cx, int cz) {
     return static_cast<int64_t>(h);
 }
 
-inline void computeOrigin(int64_t seed, int cx, int cz, float out[3]) {
+/* PerlinWormCarver.originY — a depth below THIS column's surface, not an absolute band.
+ * Consumes exactly one nextInt so the downstream stream (twin, connector and
+ * cavern-connector seeds) keeps its shape; spawnCarvers must mirror these three draws. */
+inline float originY(const TerrainCtx& ctx, float ox, float oz, JavaRandom& rng) {
+    const int surface = ctx.generateHeight(cenda::javaRoundFloat(ox), cenda::javaRoundFloat(oz));
+    const int depth = ORIGIN_DEPTH_MIN + rng.nextInt(ORIGIN_DEPTH_MAX - ORIGIN_DEPTH_MIN);
+    const int y = surface - depth;
+    return static_cast<float>(y > Y_FLOOR + 2 ? y : Y_FLOOR + 2);
+}
+
+inline void computeOrigin(const TerrainCtx& ctx, int64_t seed, int cx, int cz, float out[3]) {
     JavaRandom rng(chunkRngSeed(seed, cx, cz));
     out[0] = static_cast<float>(cx * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE));
     out[2] = static_cast<float>(cz * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE));
-    out[1] = static_cast<float>(ORIGIN_Y_MIN + rng.nextInt(ORIGIN_Y_MAX - ORIGIN_Y_MIN));
+    out[1] = originY(ctx, out[0], out[2], rng);
 }
 
 inline bool nearestWormChunk(int64_t seed, int cx, int cz, int out[2]) {
@@ -194,7 +336,8 @@ inline float lerpAngle(float from, float to, float t) {
 }
 
 inline void carveEllipsoid(int wx, int wy, int wz, float radius, int targetCx, int targetCz,
-                           const int32_t* targetHeights, uint64_t* mask) {
+                           const int32_t* targetHeights, const int32_t* waterGuard,
+                           uint64_t* mask) {
     const int targetBaseX = targetCx * CHUNK_SIZE;
     const int targetBaseZ = targetCz * CHUNK_SIZE;
     const int rxz = static_cast<int>(std::ceil(radius));
@@ -212,7 +355,10 @@ inline void carveEllipsoid(int wx, int wy, int wz, float radius, int targetCx, i
         for (int oz = -rxz; oz <= rxz; oz++) {
             const int bz = wz + oz - targetBaseZ;
             if (bz < 0 || bz >= CHUNK_SIZE) continue;
-            if (targetHeights[bx * CHUNK_SIZE + bz] <= SEA_LEVEL + 1) continue;
+            const int idx = bx * CHUNK_SIZE + bz;
+            /* Only skip columns at/below the world floor; waterGuardSeals below is what
+             * actually keeps carving away from water. */
+            if (targetHeights[idx] <= 1) continue;
             const float horizTerm = static_cast<float>(ox * ox + oz * oz) * invRxz2;
             if (horizTerm >= 1.0f) continue;
             const float maxOyTerm = 1.0f - horizTerm;
@@ -220,6 +366,7 @@ inline void carveEllipsoid(int wx, int wy, int wz, float radius, int targetCx, i
                 if (static_cast<float>(oy * oy) * invRy2 >= maxOyTerm) continue;
                 const int by = wy + oy;
                 if (by < 1 || by >= WORLD_HEIGHT) continue;
+                if (waterGuardSeals(waterGuard, idx, by, WATER_CLEARANCE)) continue;
                 const int bit = (bx << 12) | (by << 4) | bz;
                 mask[bit >> 6] |= (1ULL << (bit & 63));
             }
@@ -228,11 +375,16 @@ inline void carveEllipsoid(int wx, int wy, int wz, float radius, int targetCx, i
 }
 
 inline void walkCarver(const TerrainCtx& ctx, Segment seg, std::vector<Segment>& queue,
-                       int targetCx, int targetCz, const int32_t* targetHeights, uint64_t* mask) {
+                       int targetCx, int targetCz, const int32_t* targetHeights,
+                       const int32_t* waterGuard, uint64_t* mask) {
     JavaRandom rng(seg.rngSeed);
     float x = seg.x, y = seg.y, z = seg.z, yaw = seg.yaw, pitch = seg.pitch;
     int branchesLeft = seg.branchesLeft;
     const float reachedSq = CONNECTOR_REACHED_DIST * CONNECTOR_REACHED_DIST;
+    /* Zone of the CURRENT position, resolved at the end of the previous step from the
+     * surface/water that step already fetched. Seeded from the segment's own origin. */
+    Zone zone = waterTableZoneAt(ctx.waterTableAt(cenda::javaRoundFloat(x), cenda::javaRoundFloat(z)),
+                                 cenda::javaRoundFloat(y));
 
     for (int step = 0; step < seg.stepBudget; step++) {
         const float yawNoise = ctx.heading3D(x * HEADING_SCALE, y * HEADING_SCALE, z * HEADING_SCALE);
@@ -240,6 +392,22 @@ inline void walkCarver(const TerrainCtx& ctx, Segment seg, std::vector<Segment>&
                                                (z + 1024.0f) * HEADING_SCALE);
         yaw += yawNoise * YAW_DRIFT;
         pitch += pitchNoise * PITCH_DRIFT + UPWARD_BIAS;
+
+        /* Vadose water cuts down, phreatic water wanders, and the band between them runs
+         * flat along the table — the shape difference that makes a cave system read as one
+         * rather than as noise. Connectors are exempt: they are aiming at a cavern. */
+        if (!seg.hasTarget) {
+            switch (zone) {
+                case Zone::VADOSE:
+                    pitch += (pitch > 0.0f ? 1.0f : (pitch < 0.0f ? -1.0f : 0.0f)) * VADOSE_STEEPEN;
+                    break;
+                case Zone::EPIPHREATIC:
+                    pitch *= GALLERY_DAMP;
+                    break;
+                case Zone::PHREATIC:
+                    break;
+            }
+        }
 
         if (seg.hasTarget) {
             const float dx = seg.target[0] - x;
@@ -254,8 +422,20 @@ inline void walkCarver(const TerrainCtx& ctx, Segment seg, std::vector<Segment>&
             }
         }
 
-        if (pitch < PITCH_MIN) pitch = PITCH_MIN;
-        else if (pitch > PITCH_MAX) pitch = PITCH_MAX;
+        /* Clamp to the zone's envelope. Connectors keep the default so they can still aim. */
+        float pitchMin = PITCH_MIN;
+        float pitchMax = PITCH_MAX;
+        if (!seg.hasTarget) {
+            if (zone == Zone::VADOSE) {
+                pitchMin = VADOSE_PITCH_MIN;
+                pitchMax = VADOSE_PITCH_MAX;
+            } else if (zone == Zone::EPIPHREATIC) {
+                pitchMin = GALLERY_PITCH_MIN;
+                pitchMax = GALLERY_PITCH_MAX;
+            }
+        }
+        if (pitch < pitchMin) pitch = pitchMin;
+        else if (pitch > pitchMax) pitch = pitchMax;
 
         const float cosPitch = static_cast<float>(std::cos(static_cast<double>(pitch)));
         x += static_cast<float>(std::cos(static_cast<double>(yaw))) * cosPitch * STEP_SIZE;
@@ -267,12 +447,19 @@ inline void walkCarver(const TerrainCtx& ctx, Segment seg, std::vector<Segment>&
         const int wzi = cenda::javaRoundFloat(z);
         if (wyi < Y_FLOOR || wyi >= WORLD_HEIGHT) break;
         const int surface = ctx.generateHeight(wxi, wzi);
-        if (surface <= SEA_LEVEL + WATER_CLEARANCE) break;
+        /* Gate on whether THIS column actually holds water rather than on global sea level:
+         * the old test killed every worm under dry coastal flats while saying nothing about
+         * standing water above it. waterGuardSeals does the precise per-cell sealing. */
+        const int water = waterLevelOf(surface);
+        if (water != NO_WATER && surface <= water + WATER_CLEARANCE) break;
         if (wyi > surface + BREACH_OVERHEAD) break;
+
+        /* Zone for the NEXT step, reusing the surface/water this step already resolved. */
+        zone = waterTableZoneAt(ctx.waterTableFrom(wxi, wzi, surface, water), wyi);
 
         float radius = BASE_RADIUS + ctx.radius3D(x * RADIUS_SCALE, y * RADIUS_SCALE, z * RADIUS_SCALE) * RADIUS_AMP;
         if (radius < MIN_RADIUS) radius = MIN_RADIUS;
-        carveEllipsoid(wxi, wyi, wzi, radius, targetCx, targetCz, targetHeights, mask);
+        carveEllipsoid(wxi, wyi, wzi, radius, targetCx, targetCz, targetHeights, waterGuard, mask);
 
         if (seg.hasTarget) {
             const float dx = seg.target[0] - x;
@@ -311,13 +498,13 @@ inline void pushConnectorToward(std::vector<Segment>& queue, float ox, float oy,
 }
 
 inline void spawnCarvers(const TerrainCtx& ctx, int srcCx, int srcCz, int targetCx, int targetCz,
-                         const int32_t* targetHeights, const AnchorSource* anchorSource,
-                         uint64_t* mask) {
+                         const int32_t* targetHeights, const int32_t* waterGuard,
+                         const AnchorSource* anchorSource, uint64_t* mask) {
     // RNG draw order mirrors PerlinWormCarver.spawnCarvers exactly.
     JavaRandom rng(chunkRngSeed(ctx.seed, srcCx, srcCz));
     const float ox = static_cast<float>(srcCx * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE));
     const float oz = static_cast<float>(srcCz * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE));
-    const float oy = static_cast<float>(ORIGIN_Y_MIN + rng.nextInt(ORIGIN_Y_MAX - ORIGIN_Y_MIN));
+    const float oy = originY(ctx, ox, oz, rng);
     const float yaw = rng.nextFloat() * static_cast<float>(JPI * 2);
     const float pitch = -0.15f + rng.nextFloat() * 0.3f;
     const bool spawnTwin = rng.nextFloat() < TWIN_CHANCE;
@@ -338,7 +525,7 @@ inline void spawnCarvers(const TerrainCtx& ctx, int srcCx, int srcCz, int target
         int neighbor[2] = {};
         if (nearestWormChunk(ctx.seed, srcCx, srcCz, neighbor)) {
             float target[3];
-            computeOrigin(ctx.seed, neighbor[0], neighbor[1], target);
+            computeOrigin(ctx, ctx.seed, neighbor[0], neighbor[1], target);
             pushConnectorToward(queue, ox, oy, oz, target, CONNECTOR_MAX_STEPS, connectorSeed);
         }
     }
@@ -353,7 +540,7 @@ inline void spawnCarvers(const TerrainCtx& ctx, int srcCx, int srcCz, int target
     while (!queue.empty()) {
         Segment seg = queue.back();
         queue.pop_back();
-        walkCarver(ctx, seg, queue, targetCx, targetCz, targetHeights, mask);
+        walkCarver(ctx, seg, queue, targetCx, targetCz, targetHeights, waterGuard, mask);
     }
 }
 
@@ -401,6 +588,10 @@ inline TerrainCtx* terrainCreateImpl(int64_t worm_seed,
     ctx->radiusNoise = cenda::makeSimplexFbm(1, 2.0f, 0.5f, 1.0f);
     ctx->headingSeed = nativeSeedOf(worm_seed + 41);
     ctx->radiusSeed = nativeSeedOf(worm_seed + 113);
+    // CaveWaterTable's wobble: 2 octaves with the frequency INSIDE the node, matching
+    // TerrainNoise.channel2D(seed + 8191, 2, 0.5, 2.0, WT_SCALE, ...).
+    ctx->wobbleNoise = cenda::makeSimplexFbm(2, 2.0f, 0.5f, WT_SCALE);
+    ctx->wobbleSeed = nativeSeedOf(worm_seed + 8191);
     return ctx;
 }
 
@@ -412,13 +603,16 @@ inline int64_t carveWormsImpl(const TerrainCtx& ctx, int32_t chunk_x, int32_t ch
                               uint64_t* out_mask) {
     std::memset(out_mask, 0, 1024 * sizeof(uint64_t));
 
+    int32_t guard[CHUNK_SIZE * CHUNK_SIZE];
+    waterGuardPlane(ctx, target_heights, chunk_x, chunk_z, guard);
+
     for (int dcx = -SCAN_RADIUS; dcx <= SCAN_RADIUS; dcx++) {
         for (int dcz = -SCAN_RADIUS; dcz <= SCAN_RADIUS; dcz++) {
             const int srcCx = chunk_x + dcx;
             const int srcCz = chunk_z + dcz;
             if (!hasWorm(ctx.seed, srcCx, srcCz)) continue;
             spawnCarvers(ctx, srcCx, srcCz, chunk_x, chunk_z, target_heights,
-                         anchorSource, out_mask);
+                         guard, anchorSource, out_mask);
         }
     }
 

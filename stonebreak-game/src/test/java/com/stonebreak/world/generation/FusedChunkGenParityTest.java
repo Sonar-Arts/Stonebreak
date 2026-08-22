@@ -3,6 +3,7 @@ package com.stonebreak.world.generation;
 import com.openmason.engine.cenda.CendaKernels;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.heightmap.CavernCarver;
 import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
 import com.stonebreak.world.generation.noise.TerrainNoise;
@@ -27,6 +28,12 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * <p>Chunk selection deliberately includes cavern- and megacavern-bearing
  * coordinates (found via the carvers' own hash predicates) so formations and
  * cavern connectors are exercised, not just plain terrain.
+ *
+ * <p>It also includes a {@code STONY_PEAKS}-bearing chunk. That is the only biome that reads
+ * the crag channel in the overhang band, and none of the fixed coordinates above happen to
+ * contain one — so without the search this test pinned the crag port <em>vacuously</em>, and a
+ * Java/native divergence there would have gone unnoticed. The assertion below keeps that
+ * coverage from silently lapsing if the terrain shifts.
  */
 @Tag("regression")
 class FusedChunkGenParityTest {
@@ -50,8 +57,15 @@ class FusedChunkGenParityTest {
         }
         assertTrue(!legacy.isFusedGenerationActive(), "legacy system must not use the fused path");
 
+        int[] stony = nearestStonyPeaksChunk(fused);
+        assertTrue(stony != null,
+            "no STONY_PEAKS chunk found in range — the crag channel would go untested");
+
+        List<int[]> coordsList = interestingChunks();
+        coordsList.add(stony);
+
         boolean sawNonTrivialChunk = false;
-        for (int[] coords : interestingChunks()) {
+        for (int[] coords : coordsList) {
             Chunk chunkFused = fused.generateTerrainOnly(coords[0], coords[1]).chunk();
             Chunk chunkLegacy = legacy.generateTerrainOnly(coords[0], coords[1]).chunk();
 
@@ -93,6 +107,38 @@ class FusedChunkGenParityTest {
      * Plain chunks plus the nearest cavern- and megacavern-bearing chunks (and
      * a neighbor of each, so cross-chunk blob spill and connectors are covered).
      */
+    /**
+     * The nearest chunk holding a {@code STONY_PEAKS} column. Searched rather than hardcoded so
+     * the coordinate tracks the generator instead of pinning a number that quietly stops
+     * meaning anything the next time the biome fields move.
+     */
+    private static int[] nearestStonyPeaksChunk(TerrainGenerationSystem gen) {
+        for (int r = 0; r <= 40; r++) {
+            for (int cx = -r; cx <= r; cx++) {
+                for (int cz = -r; cz <= r; cz++) {
+                    if (Math.max(Math.abs(cx), Math.abs(cz)) != r) {
+                        continue;
+                    }
+                    if (chunkHasStonyPeaks(gen, cx, cz)) {
+                        return new int[]{cx, cz};
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean chunkHasStonyPeaks(TerrainGenerationSystem gen, int cx, int cz) {
+        for (int lx = 0; lx < 16; lx++) {
+            for (int lz = 0; lz < 16; lz++) {
+                if (gen.getBiomeAt(cx * 16 + lx, cz * 16 + lz) == BiomeType.STONY_PEAKS) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private static List<int[]> interestingChunks() {
         List<int[]> chunks = new ArrayList<>(List.of(
             new int[]{0, 0}, new int[]{3, -2}, new int[]{-7, 11}, new int[]{25, 25}));
