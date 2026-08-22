@@ -29,7 +29,7 @@ import java.nio.file.Path;
 public final class CendaKernels {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CendaKernels.class);
-    private static final int EXPECTED_ABI = 2;
+    private static final int EXPECTED_ABI = 3;
 
     private static final boolean AVAILABLE;
     private static final String SIMD_LEVEL;
@@ -152,8 +152,9 @@ public final class CendaKernels {
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                         ValueLayout.JAVA_FLOAT,
-                        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
-                        ValueLayout.JAVA_FLOAT, ValueLayout.JAVA_FLOAT, ValueLayout.JAVA_FLOAT,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS,
                         ValueLayout.JAVA_INT,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -168,7 +169,7 @@ public final class CendaKernels {
                     FunctionDescriptor.of(ValueLayout.JAVA_LONG,
                         ValueLayout.ADDRESS,
                         ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS));
                 zstdBound = linker.downcallHandle(
                     find(lookup, "ck_zstd_bound"),
@@ -273,6 +274,12 @@ public final class CendaKernels {
     private static MemorySegment scratchFrom(int slot, int[] data) {
         MemorySegment segment = scratch(slot, (long) data.length * Integer.BYTES);
         MemorySegment.copy(data, 0, segment, ValueLayout.JAVA_INT, 0L, data.length);
+        return segment;
+    }
+
+    private static MemorySegment scratchFrom(int slot, long[] data) {
+        MemorySegment segment = scratch(slot, (long) data.length * Long.BYTES);
+        MemorySegment.copy(data, 0, segment, ValueLayout.JAVA_LONG, 0L, data.length);
         return segment;
     }
 
@@ -568,8 +575,11 @@ public final class CendaKernels {
                                       int[] chXoff, int[] chZoff,
                                       double[] splineXs, double[] splineYs, int[] splineSizes,
                                       float detailAmplitude,
-                                      int densitySeed, int densityOctaves,
-                                      float densityGain, float densityLacunarity, float densityFreq,
+                                      int[] densitySeeds, int[] densityOctaves,
+                                      float[] densityGain, float[] densityLacunarity,
+                                      float[] densityFreq,
+                                      double[] cheeseSplineXs, double[] cheeseSplineYs,
+                                      int[] cheeseSplineSizes,
                                       int[] blockIds,
                                       short[] biomeSurfaceId, short[] biomeSubsurfaceId,
                                       float[] biomeCaveIntensity, float[] biomeOverhangIntensity,
@@ -594,8 +604,14 @@ public final class CendaKernels {
                 arena.allocateFrom(ValueLayout.JAVA_DOUBLE, splineYs),
                 arena.allocateFrom(ValueLayout.JAVA_INT, splineSizes),
                 detailAmplitude,
-                densitySeed, densityOctaves,
-                densityGain, densityLacunarity, densityFreq,
+                arena.allocateFrom(ValueLayout.JAVA_INT, densitySeeds),
+                arena.allocateFrom(ValueLayout.JAVA_INT, densityOctaves),
+                arena.allocateFrom(ValueLayout.JAVA_FLOAT, densityGain),
+                arena.allocateFrom(ValueLayout.JAVA_FLOAT, densityLacunarity),
+                arena.allocateFrom(ValueLayout.JAVA_FLOAT, densityFreq),
+                arena.allocateFrom(ValueLayout.JAVA_DOUBLE, cheeseSplineXs),
+                arena.allocateFrom(ValueLayout.JAVA_DOUBLE, cheeseSplineYs),
+                arena.allocateFrom(ValueLayout.JAVA_INT, cheeseSplineSizes),
                 arena.allocateFrom(ValueLayout.JAVA_INT, blockIds),
                 nBiomes,
                 arena.allocateFrom(ValueLayout.JAVA_SHORT, biomeSurfaceId),
@@ -633,13 +649,24 @@ public final class CendaKernels {
      * {@code [z*16+x]}, nullable) receives topOpaqueY+1 per column.
      * Returns the non-air block count, or negative on error/unavailable.
      */
+    /**
+     * @param extraCarveMask 1024 longs (bit = {@code (x<<12)|(y<<4)|z}) OR'd into the
+     *                       kernel's own carve mask, or null for none
+     */
     public static long generateChunk(long ctx, int chunkX, int chunkZ,
                                      int[] heights256, int[] biomes256,
+                                     long[] extraCarveMask,
                                      short[] outBlocks, int[] outHeightmap) {
         if (!AVAILABLE || ctx == 0L) {
             return -1L;
         }
         try {
+            // invokeExact matches the STATIC types of its arguments, so the null case has to
+            // be a MemorySegment local — a ternary here widens to Object and throws
+            // WrongMethodTypeException at the call.
+            MemorySegment maskSeg = extraCarveMask == null
+                ? MemorySegment.NULL
+                : scratchFrom(4, extraCarveMask);
             MemorySegment blocksSeg = scratch(0, 65536L * Short.BYTES);
             MemorySegment heightmapSeg = outHeightmap == null ? MemorySegment.NULL
                 : scratch(1, 256L * Integer.BYTES);
@@ -647,6 +674,7 @@ public final class CendaKernels {
                 MemorySegment.ofAddress(ctx), chunkX, chunkZ,
                 scratchFrom(2, heights256),
                 scratchFrom(3, biomes256),
+                maskSeg,
                 blocksSeg, heightmapSeg);
             if (nonAir >= 0) {
                 MemorySegment.copy(blocksSeg, ValueLayout.JAVA_SHORT, 0L, outBlocks, 0, 65536);

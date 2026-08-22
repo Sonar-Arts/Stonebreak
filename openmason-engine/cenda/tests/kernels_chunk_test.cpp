@@ -345,11 +345,25 @@ void testCarver() {
     check(std::memcmp(a.data(), b.data(), 1024 * sizeof(uint64_t)) == 0,
           "same input reproduces mask exactly");
 
-    // Submerged terrain: water guard suppresses all carving.
-    std::vector<int32_t> seaHeights(256, 60);
-    int64_t seaBits = ck_carve_worms(ctx, carvedChunk, -carvedChunk, seaHeights.data(),
-                                     0, nullptr, nullptr, b.data());
-    check(seaBits == 0, "sea-level columns are never carved");
+    // Submerged terrain: the water guard keeps carving clear of the bed and its banks.
+    // Not a blanket ban — that was the old flat `surface <= SEA_LEVEL + clearance` gate,
+    // which also blanked dry land merely near sea level. The guard anchors on the BED of
+    // the wet columns in each column's 4-neighborhood, so what must hold is that nothing
+    // is carved within WATER_CLEARANCE below it; deeper rock is fair game.
+    constexpr int SEABED = 60;
+    std::vector<int32_t> seaHeights(256, SEABED);
+    ck_carve_worms(ctx, carvedChunk, -carvedChunk, seaHeights.data(),
+                   0, nullptr, nullptr, b.data());
+    // Mirrors terrain_ctx.hpp's WATER_CLEARANCE = ceil(BASE_RADIUS + RADIUS_AMP) + 1.
+    const int waterClearance = static_cast<int>(std::ceil(3.1f + 1.25f)) + 1;
+    const int guardFloor = SEABED - waterClearance;
+    int breaches = 0;
+    for (int bit = 0; bit < 65536; bit++) {
+        if ((b[static_cast<size_t>(bit) >> 6] & (1ULL << (bit & 63))) == 0) continue;
+        const int by = (bit >> 4) & 0xFF;
+        if (by >= guardFloor) breaches++;
+    }
+    check(breaches == 0, "no carve comes within WATER_CLEARANCE of a submerged bed");
 
     ck_terrain_destroy(ctx);
     ck_terrain_destroy(nullptr); // safe
@@ -387,10 +401,27 @@ void* makeChunkGenCtx(int64_t seed) {
     // Opacity: everything solid is opaque; air (0) and water (9) are not.
     const uint8_t opacity[10] = {0, 1, 1, 1, 1, 1, 1, 1, 1, 0};
 
+    // Density3D's three channels: cheese (+17), spaghetti 1 (+331), spaghetti 2 (+733).
+    const auto nativeSeed = [](int64_t v) {
+        return static_cast<int32_t>(static_cast<uint32_t>(
+            static_cast<uint64_t>(v) ^ (static_cast<uint64_t>(v) >> 32)));
+    };
+    const int32_t dSeeds[3] = {nativeSeed(seed + 17), nativeSeed(seed + 331),
+                               nativeSeed(seed + 733)};
+    const int32_t dOct[3] = {2, 2, 2};
+    const float dGain[3] = {0.5f, 0.5f, 0.5f};
+    const float dLac[3] = {2.0f, 2.0f, 2.0f};
+    const float dFreq[3] = {1.0f / 96.0f, 1.0f / 68.0f, 1.0f / 68.0f};
+
+    // The depth -> cheese-threshold curve (Density3D.CHEESE_KNOTS).
+    const double cx[] = {0, 18, 45, 90, 160, 250};
+    const double cy[] = {2.0, 0.90, 0.68, 0.55, 0.47, 0.44};
+    const int32_t cSizes[1] = {6};
+
     return ck_chunkgen_create(seed, seeds, octaves, gain, lac, freq, xoff, zoff,
                               sx, sy, sizes, 3.0f,
-                              static_cast<int32_t>((seed + 17) ^ ((seed + 17) >> 32)),
-                              2, 0.5f, 2.0f, 1.0f / 26.0f,
+                              dSeeds, dOct, dGain, dLac, dFreq,
+                              cx, cy, cSizes,
                               blockIds, 2, surf, sub, cave, overhang, flags,
                               103655975 /* "magma".hashCode() */, 0.6f,
                               opacity, 10);
@@ -407,7 +438,7 @@ void testGenerator() {
     std::vector<int16_t> blocks(65536);
     std::vector<int32_t> heightmap(256);
 
-    int64_t rc = ck_generate_chunk(ctx, 3, -4, heights.data(), biomes.data(),
+    int64_t rc = ck_generate_chunk(ctx, 3, -4, heights.data(), biomes.data(), nullptr,
                                    blocks.data(), heightmap.data());
     check(rc > 0, "generator returns non-air count");
 
@@ -459,7 +490,7 @@ void testGenerator() {
     if (ctx2 != nullptr) {
         std::vector<int16_t> blocks2(65536);
         std::vector<int32_t> heightmap2(256);
-        int64_t rc2 = ck_generate_chunk(ctx2, 3, -4, heights.data(), biomes.data(),
+        int64_t rc2 = ck_generate_chunk(ctx2, 3, -4, heights.data(), biomes.data(), nullptr,
                                         blocks2.data(), heightmap2.data());
         check(rc2 == rc, "independent ctx reproduces non-air count");
         check(std::memcmp(blocks.data(), blocks2.data(), blocks.size() * sizeof(int16_t)) == 0,
@@ -472,7 +503,7 @@ void testGenerator() {
 
     // Submerged terrain gets a water column from surface to sea level.
     std::vector<int32_t> seaHeights(256, 30);
-    rc = ck_generate_chunk(ctx, 3, -4, seaHeights.data(), biomes.data(),
+    rc = ck_generate_chunk(ctx, 3, -4, seaHeights.data(), biomes.data(), nullptr,
                            blocks.data(), nullptr);
     check(rc > 0, "submerged chunk generates");
     bool waterOk = true;
@@ -485,7 +516,7 @@ void testGenerator() {
 
     // Bad biome ordinal rejected.
     std::vector<int32_t> badBiomes(256, 5);
-    check(ck_generate_chunk(ctx, 0, 0, heights.data(), badBiomes.data(),
+    check(ck_generate_chunk(ctx, 0, 0, heights.data(), badBiomes.data(), nullptr,
                             blocks.data(), nullptr) == -2,
           "out-of-range biome ordinal rejected");
 

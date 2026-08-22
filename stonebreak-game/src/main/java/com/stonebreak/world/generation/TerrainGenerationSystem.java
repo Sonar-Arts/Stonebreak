@@ -14,10 +14,14 @@ import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator;
 import com.stonebreak.world.generation.heightmap.Density3D;
+import com.stonebreak.world.generation.heightmap.FormationSupport;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
+import com.stonebreak.world.generation.heightmap.CarveMaskKey;
 import com.stonebreak.world.generation.heightmap.CavernCarver;
 import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
 import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
+import com.stonebreak.world.generation.heightmap.RavineCarver;
+import com.stonebreak.world.generation.heightmap.SinkholeCarver;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 
 import java.util.BitSet;
@@ -50,6 +54,8 @@ public class TerrainGenerationSystem {
     private final PerlinWormCarver wormCarver;
     private final CavernCarver cavernCarver;
     private final MegaCavernCarver megaCavernCarver;
+    private final RavineCarver ravineCarver;
+    private final SinkholeCarver sinkholeCarver;
 
     private final Random animalRandom = new Random();
     private final Object animalRandomLock = new Object();
@@ -63,28 +69,63 @@ public class TerrainGenerationSystem {
     /** One-shot latch so a kernel failure doesn't spam the log per chunk. */
     private volatile boolean fusedFailureLogged;
 
+    /**
+     * {@code carver.cpp}'s worm walk predates the zone-aware steering, the per-column water
+     * plane and the retuned radii that {@link PerlinWormCarver} now carries, so its mask no
+     * longer matches the Java one. Refuse the native carver context until the kernel port
+     * lands rather than generate two different cave networks depending on which path a chunk
+     * took. Mirrors {@code CendaChunkGenerator.KERNEL_HAS_CAVE_MODEL}; both flip together.
+     */
+    private static final boolean KERNEL_HAS_CAVE_MODEL = true;
+
     public TerrainGenerationSystem(long seed) {
+        this(seed, null);
+    }
+
+    /**
+     * Test seam: runs the whole generation stack against a supplied height oracle instead of
+     * the seed's own noise terrain. The cave tests need a known surface profile — dry hills
+     * well above sea level, or a square-wave cliff — because on real terrain the chunks that
+     * happen to carry a ravine or sit behind a face are a property of the seed, and the
+     * ratchet floors would measure the seed rather than the carvers.
+     *
+     * @param heightMapGenerator height oracle to use, or null to build the seed's own
+     */
+    TerrainGenerationSystem(long seed, HeightMapGenerator heightMapGenerator) {
+        // A supplied height oracle disables both native contexts, and it has to: the kernel
+        // resolves heights from its OWN FastNoise2 channels rather than from the array it is
+        // handed, because the worm walk reaches outside the chunk.
+        // Left enabled, it would place caves for the seed's terrain and then fill the
+        // caller's — which measured as an 8-point reachability drop, not as an error.
+        final boolean ownTerrain = heightMapGenerator != null;
         this.seed = seed;
         this.deterministicRandom = new DeterministicRandom(seed);
         this.noiseRouter = new NoiseRouter(seed);
-        this.heightMapGenerator = new HeightMapGenerator(noiseRouter);
-        this.biomeManager = new BiomeManager(noiseRouter, heightMapGenerator);
-        this.oreGenerator = new OreGenerator(deterministicRandom);
+        this.heightMapGenerator = heightMapGenerator != null
+            ? heightMapGenerator
+            : new HeightMapGenerator(noiseRouter);
+        this.biomeManager = new BiomeManager(noiseRouter, this.heightMapGenerator);
+        this.oreGenerator = new OreGenerator(deterministicRandom, this.heightMapGenerator, seed);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
-        this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, seed);
-        this.density3D = new Density3D(seed);
-        this.wormCarver = new PerlinWormCarver(seed, heightMapGenerator);
-        this.cavernCarver = new CavernCarver(seed, heightMapGenerator);
-        this.megaCavernCarver = new MegaCavernCarver(seed, heightMapGenerator);
+        this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, this.heightMapGenerator, seed);
+        this.density3D = new Density3D(seed, this.heightMapGenerator);
+        this.wormCarver = new PerlinWormCarver(seed, this.heightMapGenerator);
+        this.cavernCarver = new CavernCarver(seed, this.heightMapGenerator);
+        this.megaCavernCarver = new MegaCavernCarver(seed, this.heightMapGenerator);
+        this.ravineCarver = new RavineCarver(seed, this.heightMapGenerator);
+        this.sinkholeCarver = new SinkholeCarver(seed, this.heightMapGenerator);
         this.wormCarver.setCavernCarver(cavernCarver);
         this.wormCarver.setMegaCavernCarver(megaCavernCarver);
+        // Lets a sinkhole cut to exactly the depth that opens into a real tunnel.
+        this.sinkholeCarver.setWormCarver(wormCarver);
 
         // Native worm carving only when the native noise backend is active:
         // the kernel evaluates heights from the same FastNoise2 channels, so
         // its surface gates agree with the Java-side terrain. On the Java
         // backend those channels don't exist — the Java carver stays in charge.
         long carverCtx = 0L;
-        if (com.stonebreak.world.generation.noise.TerrainNoise.backend()
+        if (KERNEL_HAS_CAVE_MODEL && !ownTerrain
+            && com.stonebreak.world.generation.noise.TerrainNoise.backend()
                 == com.stonebreak.world.generation.noise.TerrainNoise.Backend.NATIVE
             && !"java".equalsIgnoreCase(System.getProperty("stonebreak.carver.backend", "auto"))) {
             carverCtx = NoiseRouter.createCarverTerrainContext(seed,
@@ -99,7 +140,8 @@ public class TerrainGenerationSystem {
         // its outputs are bit-identical to the mixed path above, and on the
         // Java backend the channels it samples don't exist.
         long fusedCtx = 0L;
-        if (com.stonebreak.world.generation.noise.TerrainNoise.backend()
+        if (!ownTerrain
+            && com.stonebreak.world.generation.noise.TerrainNoise.backend()
                 == com.stonebreak.world.generation.noise.TerrainNoise.Backend.NATIVE
             && !"java".equalsIgnoreCase(System.getProperty("stonebreak.terraingen.backend", "auto"))) {
             fusedCtx = CendaChunkGenerator.createContext(seed);
@@ -308,10 +350,13 @@ public class TerrainGenerationSystem {
         updateLoadingProgress("Generating Base Terrain Shape");
 
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
+        int[] waterLevels = new int[CHUNK_SIZE * CHUNK_SIZE];
         BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
 
         // Shape first (noise-driven), then skin with biomes. Biomes do not influence shape.
-        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights);
+        // The water plane rides along: the carvers guard against it so a carve never opens
+        // an ocean floor or an ocean-adjacent bank into the cave network.
+        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels);
         updateLoadingProgress("Determining Biomes");
         biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
 
@@ -322,15 +367,19 @@ public class TerrainGenerationSystem {
         // profile stays Java-computed and the outputs are bit-identical to the
         // legacy body below (FusedChunkGenParityTest pins this).
         if (fusedGenCtx != 0L) {
-            CendaChunkGenerator.Result fused =
-                CendaChunkGenerator.generate(fusedGenCtx, chunkX, chunkZ, heights, biomes);
+            // Ravines and sinkholes are carved here on both paths: their shape grammar runs
+            // on Java's NoiseGenerator, which has no native point sampler, so the kernel
+            // takes the finished mask rather than carrying a second implementation.
+            CendaChunkGenerator.Result fused = CendaChunkGenerator.generate(
+                fusedGenCtx, chunkX, chunkZ, heights, biomes,
+                surfaceCarveWords(chunkX, chunkZ, heights, waterLevels));
             if (fused != null) {
                 Chunk chunk = new Chunk(chunkX, chunkZ, fused.storage());
                 chunk.getHeightMap().populate(fused.heightmap());
                 chunk.getCcoDirtyTracker().markBlockChanged();
                 chunk.setFeaturesPopulated(false);
                 TerrainGenStats.record(System.nanoTime() - startNanos, TerrainGenStats.Mode.FUSED);
-                return new TerrainResult(chunk, new ColumnProfile(heights, biomes));
+                return new TerrainResult(chunk, new ColumnProfile(heights, waterLevels, biomes));
             }
             if (!fusedFailureLogged) {
                 fusedFailureLogged = true;
@@ -339,7 +388,7 @@ public class TerrainGenerationSystem {
             }
         }
 
-        TerrainResult result = generateTerrainLegacy(chunkX, chunkZ, heights, biomes);
+        TerrainResult result = generateTerrainLegacy(chunkX, chunkZ, heights, waterLevels, biomes);
         TerrainGenStats.record(System.nanoTime() - startNanos,
             nativeCarverCtx != 0L ? TerrainGenStats.Mode.MIXED : TerrainGenStats.Mode.JAVA);
         return result;
@@ -351,22 +400,42 @@ public class TerrainGenerationSystem {
      * Remains the runtime fallback for kernel failures and the reference
      * implementation the fused kernel is parity-tested against.
      */
+    /**
+     * The surface-anchored carvers' combined mask as the kernel's {@code long[1024]} words.
+     * Same bit packing as {@link CarveMaskKey}, which is what the kernel's mask ABI uses.
+     */
+    private long[] surfaceCarveWords(int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
+        BitSet surface = ravineCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
+        surface.or(sinkholeCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels));
+        long[] words = new long[1024];
+        long[] packed = surface.toLongArray();
+        System.arraycopy(packed, 0, words, 0, Math.min(packed.length, words.length));
+        return words;
+    }
+
     private TerrainResult generateTerrainLegacy(int chunkX, int chunkZ,
-                                                int[] heights, BiomeType[] biomes) {
+                                                int[] heights, int[] waterLevels,
+                                                BiomeType[] biomes) {
         BitSet wormMask = (nativeCarverCtx != 0L)
             ? nativeWormMask(chunkX, chunkZ, heights)
-            : wormCarver.carveMaskForChunk(chunkX, chunkZ, heights);
-        CavernCarver.Result cavernResult = cavernCarver.buildForChunk(chunkX, chunkZ, heights);
-        MegaCavernCarver.Result megaCavernResult = megaCavernCarver.buildForChunk(chunkX, chunkZ, heights);
+            : wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
+        CavernCarver.Result cavernResult =
+            cavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
+        MegaCavernCarver.Result megaCavernResult =
+            megaCavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
         BitSet caveMask = wormMask;
         caveMask.or(cavernResult.carveMask);
         caveMask.or(megaCavernResult.carveMask);
+        // Entrances. Unlike the carvers above, these two are anchored to the surface and cut
+        // downward, so they open the network to the sky by construction rather than by luck.
+        caveMask.or(ravineCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels));
+        caveMask.or(sinkholeCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels));
         BitSet formationMask = cavernResult.formationMask;
         formationMask.or(megaCavernResult.formationMask);
 
         // Native backend: one SIMD volume fill replaces per-block cave-noise
         // sampling in determineBlockType. Null on the Java backend.
-        Density3D.Field densityField = density3D.prepareChunk(chunkX, chunkZ, heights);
+        Density3D.Field densityField = density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels);
 
         // Write terrain into paletted storage directly instead of 65k
         // chunk.setBlock calls (each of which churns dirty flags, per-block
@@ -376,6 +445,29 @@ public class TerrainGenerationSystem {
         CcoBlockStorage storage = CcoFactory.createEmptyStorage(BlockType.AIR);
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
+
+        // Each cavern grew its formations against its own mask, which is all it can see.
+        // Only here — every carver in, the density field prepared — is it known which of
+        // those anchors are still standing. The test mirrors the head of the fill loop
+        // below, so a pillar is kept exactly when the block it rests on is one the fill
+        // will write.
+        FormationSupport.prune(formationMask, (lx, ly, lz) -> {
+            if (ly <= 0) {
+                return true; // bedrock floor
+            }
+            int col = lx * CHUNK_SIZE + lz;
+            int columnHeight = heights[col];
+            if (ly >= columnHeight) {
+                return false; // sky or open water above the surface — nothing to hang from
+            }
+            if (caveMask.get(CarveMaskKey.pack(lx, ly, lz))) {
+                return false;
+            }
+            return (densityField != null)
+                ? densityField.isSolid(lx, ly, lz, columnHeight, biomes[col])
+                : density3D.isSolid(baseX + lx, ly, baseZ + lz, columnHeight, biomes[col]);
+        });
+
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 int idx = x * CHUNK_SIZE + z;
@@ -384,7 +476,7 @@ public class TerrainGenerationSystem {
                 int worldX = baseX + x;
                 int worldZ = baseZ + z;
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
-                    int bit = (x << 12) | (y << 4) | z;
+                    int bit = CarveMaskKey.pack(x, y, z);
                     BlockType block;
                     if (y > 0 && y < height && formationMask.get(bit)) {
                         block = BlockType.STONE;
@@ -405,7 +497,7 @@ public class TerrainGenerationSystem {
         // clears data-dirty for waterless chunks, exactly as before.
         chunk.getCcoDirtyTracker().markBlockChanged();
         chunk.setFeaturesPopulated(false);
-        return new TerrainResult(chunk, new ColumnProfile(heights, biomes));
+        return new TerrainResult(chunk, new ColumnProfile(heights, waterLevels, biomes));
     }
 
     /**

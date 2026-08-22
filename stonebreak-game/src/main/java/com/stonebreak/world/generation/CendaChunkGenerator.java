@@ -57,12 +57,35 @@ public final class CendaChunkGenerator {
      * stays on the legacy path. Register cleanup via
      * {@code TerrainNoise.destroyChunkGenOnCollect}.
      */
+    /**
+     * Guards the fused path against a kernel that has fallen behind the Java carve stack:
+     * if {@code generator.cpp} cannot reproduce the terrain the legacy path produces, the
+     * context is refused outright rather than silently generating a different world in
+     * whichever chunks happen to take the fused path.
+     *
+     * <p>Flip to true in the same change that lands the kernel port;
+     * {@code FusedChunkGenParityTest} is the gate that says it is allowed.
+     */
+    private static final boolean KERNEL_HAS_CAVE_MODEL = true;
+
     public static long createContext(long seed) {
-        if (!CendaKernels.isAvailable()) {
+        if (!CendaKernels.isAvailable() || !KERNEL_HAS_CAVE_MODEL) {
             return 0L;
         }
         NoiseRouter.ShapeChannelParams ch = NoiseRouter.shapeChannelParams(seed);
-        Density3D.NodeParams density = Density3D.nodeParams(seed);
+        Density3D.NodeParams[] density = Density3D.nodeParams(seed);
+        int[] densitySeeds = new int[density.length];
+        int[] densityOctaves = new int[density.length];
+        float[] densityGain = new float[density.length];
+        float[] densityLacunarity = new float[density.length];
+        float[] densityFreq = new float[density.length];
+        for (int i = 0; i < density.length; i++) {
+            densitySeeds[i] = density[i].seed();
+            densityOctaves[i] = density[i].octaves();
+            densityGain[i] = density[i].gain();
+            densityLacunarity[i] = density[i].lacunarity();
+            densityFreq[i] = density[i].frequency();
+        }
 
         BiomeType[] biomes = BiomeType.values();
         short[] surfaceIds = new short[biomes.length];
@@ -105,8 +128,9 @@ public final class CendaChunkGenerator {
             ch.seeds(), ch.octaves(), ch.gain(), ch.lacunarity(), ch.freq(), ch.xOff(), ch.zOff(),
             HeightMapGenerator.splineXs(), HeightMapGenerator.splineYs(),
             HeightMapGenerator.splineSizes(), HeightMapGenerator.DETAIL_AMPLITUDE,
-            density.seed(), density.octaves(),
-            density.gain(), density.lacunarity(), density.frequency(),
+            densitySeeds, densityOctaves, densityGain, densityLacunarity, densityFreq,
+            Density3D.thresholdSplineXs(), Density3D.thresholdSplineYs(),
+            Density3D.thresholdSplineSizes(),
             blockIds,
             surfaceIds, subsurfaceIds, caveIntensity, overhangIntensity, flags,
             TerrainGenerationSystem.MAGMA_FEATURE.hashCode(),
@@ -119,8 +143,13 @@ public final class CendaChunkGenerator {
      * Java-computed column profile ({@code [x*16+z]}). Returns null on any
      * kernel failure (caller falls back to the legacy path).
      */
+    /**
+     * @param surfaceCarveMask ravine/sinkhole mask from the Java carvers, or null — the
+     *                         kernel has no port of their shape grammar (see kernels.h)
+     */
     public static Result generate(long ctx, int chunkX, int chunkZ,
-                                  int[] heights, BiomeType[] biomes) {
+                                  int[] heights, BiomeType[] biomes,
+                                  long[] surfaceCarveMask) {
         int[] ordinals = ORDINALS_SCRATCH.get();
         for (int i = 0; i < ordinals.length; i++) {
             BiomeType biome = biomes[i];
@@ -132,7 +161,7 @@ public final class CendaChunkGenerator {
         short[] blocks = BLOCKS_SCRATCH.get();
         int[] heightmap = new int[CHUNK_SIZE * CHUNK_SIZE];
         long nonAir = CendaKernels.generateChunk(ctx, chunkX, chunkZ, heights, ordinals,
-            blocks, heightmap);
+            surfaceCarveMask, blocks, heightmap);
         if (nonAir < 0) {
             return null;
         }
