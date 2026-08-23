@@ -22,6 +22,7 @@ import com.stonebreak.ui.multiplayerMenu.HostWorldScreen;
 import com.stonebreak.ui.multiplayerMenu.JoinWorldScreen;
 import com.stonebreak.ui.multiplayerMenu.MultiplayerMenu;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
+import com.stonebreak.ui.saveChanges.SaveChangesDialog;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.startupIntro.SonarArtsIntroScreen;
 import com.stonebreak.ui.statisticsScreen.StatisticsScreen;
@@ -46,6 +47,7 @@ public final class GameScreens {
     private DeathMenu deathMenu;
     private StatisticsScreen statisticsScreen;
     private GlossaryScreen glossaryScreen;
+    private SaveChangesDialog saveChangesDialog;
     private MainMenu mainMenu;
     private SettingsMenu settingsMenu;
     private MultiplayerMenu multiplayerMenu;
@@ -75,6 +77,7 @@ public final class GameScreens {
         var skija = renderer.getSkijaBackend();
 
         pauseMenu = new PauseMenu(skija);
+        saveChangesDialog = new SaveChangesDialog(skija);
         statisticsScreen = new StatisticsScreen(skija);
         glossaryScreen = new GlossaryScreen(skija);
         deathMenu = new DeathMenu(skija);
@@ -127,6 +130,10 @@ public final class GameScreens {
 
     public PauseMenu pauseMenu() {
         return pauseMenu;
+    }
+
+    public SaveChangesDialog saveChangesDialog() {
+        return saveChangesDialog;
     }
 
     public DeathMenu deathMenu() {

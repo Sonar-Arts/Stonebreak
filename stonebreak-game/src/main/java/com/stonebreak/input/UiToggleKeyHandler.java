@@ -9,6 +9,7 @@ import com.stonebreak.ui.furnace.FurnaceScreen;
 import com.stonebreak.ui.glossaryScreen.GlossaryScreen;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
+import com.stonebreak.ui.saveChanges.SaveChangesDialog;
 import com.stonebreak.ui.statisticsScreen.StatisticsScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 
@@ -42,6 +43,13 @@ final class UiToggleKeyHandler {
         }
 
         Game game = Game.getInstance();
+
+        // The "Save changes?" prompt is modal: Escape dismisses it and stays in the panel.
+        SaveChangesDialog saveDialog = game.getSaveChangesDialog();
+        if (saveDialog != null && saveDialog.isVisible()) {
+            game.cancelSaveChanges();
+            return;
+        }
 
         ChatSystem chatSystem = game.getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
@@ -100,6 +108,9 @@ final class UiToggleKeyHandler {
         }
 
         Game game = Game.getInstance();
+        if (game.getSaveChangesDialog() != null && game.getSaveChangesDialog().isVisible()) {
+            return;
+        }
         if (game.getState() == GameState.INVENTORY_UI) {
             game.toggleInventoryScreen();
             return;
@@ -131,6 +142,9 @@ final class UiToggleKeyHandler {
         }
 
         Game game = Game.getInstance();
+        if (game.getSaveChangesDialog() != null && game.getSaveChangesDialog().isVisible()) {
+            return;
+        }
         if (game.getState() == GameState.CHARACTER_SHEET_UI) {
             game.toggleCharacterScreen();
             return;
@@ -159,7 +173,8 @@ final class UiToggleKeyHandler {
 
         InventoryScreen inventoryScreen = game.getInventoryScreen();
         if (inventoryScreen != null && inventoryScreen.isVisible()) {
-            game.toggleInventoryScreen();
+            game.switchToCharacter();
+            return;
         }
         game.toggleCharacterScreen();
     }

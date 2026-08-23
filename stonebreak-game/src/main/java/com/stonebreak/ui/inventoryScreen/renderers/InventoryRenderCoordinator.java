@@ -56,9 +56,7 @@ public class InventoryRenderCoordinator {
   // Tab buttons — visual only; click detection is in InventoryInputManager
   private final MButton tabInventory;
   private final MButton tabCharacter;
-  private final MButton tabClasses;
-  private final MButton tabSkills;
-  private final MButton tabFeats;
+  private final MButton tabTalents;
 
   // Crafting arrow fill
   private static final int ARROW_FILL = 0xB48C8C8C;
@@ -122,9 +120,7 @@ public class InventoryRenderCoordinator {
 
     this.tabInventory = new MButton("Inventory").fontSize(MStyle.FONT_META);
     this.tabCharacter = new MButton("Character").fontSize(MStyle.FONT_META);
-    this.tabClasses = new MButton("Classes").fontSize(MStyle.FONT_META);
-    this.tabSkills = new MButton("Skills").fontSize(MStyle.FONT_META);
-    this.tabFeats = new MButton("Feats").fontSize(MStyle.FONT_META);
+    this.tabTalents   = new MButton("Talents").fontSize(MStyle.FONT_META);
   }
 
   // ─── Public entry points ───────────────────────────────────────────────────
@@ -147,9 +143,7 @@ public class InventoryRenderCoordinator {
     updateTabBounds(screenWidth, layout3);
     tabInventory.updateHover(mx, my);
     tabCharacter.updateHover(mx, my);
-    tabClasses.updateHover(mx, my);
-    tabSkills.updateHover(mx, my);
-    tabFeats.updateHover(mx, my);
+    tabTalents.updateHover(mx, my);
 
     // Phase A — Skija: all panel chrome + slot backgrounds + widgets
     if (ui.beginFrame(screenWidth, screenHeight, 1.0f)) {
@@ -700,9 +694,7 @@ public class InventoryRenderCoordinator {
     int startX = TabStripLayout.startX(screenWidth);
     tabInventory.bounds(startX, tabY, tw, th);
     tabCharacter.bounds(startX + stride, tabY, tw, th);
-    tabClasses.bounds(startX + stride * 2, tabY, tw, th);
-    tabSkills.bounds(startX + stride * 3, tabY, tw, th);
-    tabFeats.bounds(startX + stride * 4, tabY, tw, th);
+    tabTalents.bounds(startX + stride * 2, tabY, tw, th);
   }
 
   private void drawTabBar(Canvas canvas, int screenWidth,
@@ -714,9 +706,7 @@ public class InventoryRenderCoordinator {
     int startX = TabStripLayout.startX(screenWidth);
     drawTab(canvas, startX, tabY, "Inventory", true, tabInventory.isHovered(), tw, th);
     drawTab(canvas, startX + stride, tabY, "Character", false, tabCharacter.isHovered(), tw, th);
-    drawTab(canvas, startX + stride * 2, tabY, "Classes", false, tabClasses.isHovered(), tw, th);
-    drawTab(canvas, startX + stride * 3, tabY, "Skills", false, tabSkills.isHovered(), tw, th);
-    drawTab(canvas, startX + stride * 4, tabY, "Feats", false, tabFeats.isHovered(), tw, th);
+    drawTab(canvas, startX + stride * 2, tabY, "Talents", false, tabTalents.isHovered(), tw, th);
   }
 
   // ─── Utilities ────────────────────────────────────────────────────────────

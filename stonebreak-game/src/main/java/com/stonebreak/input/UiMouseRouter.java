@@ -12,6 +12,7 @@ import com.stonebreak.ui.furnace.FurnaceScreen;
 import com.stonebreak.ui.glossaryScreen.GlossaryScreen;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
+import com.stonebreak.ui.saveChanges.SaveChangesDialog;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.statisticsScreen.StatisticsScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
@@ -52,6 +53,15 @@ final class UiMouseRouter {
         ChatSystem chatSystem = game.getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             chatRouter.handleMouseButton(chatSystem, button, action);
+            return;
+        }
+
+        // The "Save changes?" prompt is modal: it sits above the panel and swallows input.
+        SaveChangesDialog saveDialog = game.getSaveChangesDialog();
+        if (saveDialog != null && saveDialog.isVisible()) {
+            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+                handleSaveDialogClick(saveDialog);
+            }
             return;
         }
 
@@ -129,6 +139,11 @@ final class UiMouseRouter {
         int windowWidth = Game.getWindowWidth();
         int windowHeight = Game.getWindowHeight();
 
+        SaveChangesDialog saveDialog = game.getSaveChangesDialog();
+        if (saveDialog != null && saveDialog.isVisible()) {
+            saveDialog.updateHover(mouse.x(), mouse.y(), windowWidth, windowHeight);
+        }
+
         DeathMenu deathMenu = game.getDeathMenu();
         if (deathMenu != null && deathMenu.isVisible()) {
             deathMenu.updateHover(mouse.x(), mouse.y(), windowWidth, windowHeight);
@@ -150,8 +165,19 @@ final class UiMouseRouter {
         }
     }
 
-    private void handleDeathMenuClick(DeathMenu deathMenu) {
-        if (!deathMenu.isRespawnButtonClicked(mouse.x(), mouse.y(), Game.getWindowWidth(), Game.getWindowHeight())) {
+    private void handleSaveDialogClick(SaveChangesDialog saveDialog) {
+        Game game = Game.getInstance();
+        int w = Game.getWindowWidth();
+        int h = Game.getWindowHeight();
+
+        if (saveDialog.isYesButtonClicked(mouse.x(), mouse.y(), w, h)) {
+            game.confirmSaveChanges();
+        } else if (saveDialog.isNoButtonClicked(mouse.x(), mouse.y(), w, h)) {
+            game.confirmDiscardChanges();
+        }
+    }
+
+    private void handleDeathMenuClick(DeathMenu deathMenu) {        if (!deathMenu.isRespawnButtonClicked(mouse.x(), mouse.y(), Game.getWindowWidth(), Game.getWindowHeight())) {
             return;
         }
         Player player = Game.getInstance().getPlayer();

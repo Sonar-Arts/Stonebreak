@@ -1,6 +1,7 @@
 package com.stonebreak.ui.characterScreen;
 
 import com.stonebreak.rpg.CharacterPanelTab;
+import com.stonebreak.rpg.TalentSubTab;
 
 /**
  * Manages visibility and delegates rendering/input for the Character Screen.
@@ -11,6 +12,7 @@ public class CharacterController {
   private boolean visible = false;
   private CharacterRenderCoordinator renderCoordinator;
   private CharacterPanelTab activeTab = CharacterPanelTab.OVERVIEW;
+  private TalentSubTab talentSubTab = TalentSubTab.CLASS_ABILITIES;
 
   public CharacterController() {}
 
@@ -36,6 +38,14 @@ public class CharacterController {
 
   public void setActiveTab(CharacterPanelTab tab) {
     this.activeTab = tab;
+  }
+
+  public TalentSubTab getTalentSubTab() {
+    return talentSubTab;
+  }
+
+  public void setTalentSubTab(TalentSubTab subTab) {
+    this.talentSubTab = subTab;
   }
 
   public void render(int screenWidth, int screenHeight) {

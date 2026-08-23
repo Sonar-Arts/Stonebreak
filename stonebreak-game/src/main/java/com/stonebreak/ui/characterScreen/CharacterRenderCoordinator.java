@@ -8,6 +8,7 @@ import com.stonebreak.rendering.UI.masonryUI.MButton;
 import com.stonebreak.rendering.UI.masonryUI.MItemSlot;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.stonebreak.rendering.UI.masonryUI.MTabBar;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.sbe.EntityAttachments;
@@ -16,6 +17,7 @@ import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.mobs.sbe.SbeModelGeometry;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rpg.CharacterPanelTab;
+import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.ui.TabStripLayout;
 import com.stonebreak.ui.characterScreen.renderers.ClassesTabRenderer;
 import com.stonebreak.ui.characterScreen.renderers.FeatsTabRenderer;
@@ -81,9 +83,19 @@ public class CharacterRenderCoordinator {
   // Tab buttons — bounds updated each frame for hit-testing
   private final MButton tabInventory = new MButton("Inventory").fontSize(MStyle.FONT_META);
   private final MButton tabCharacter = new MButton("Character").fontSize(MStyle.FONT_META);
-  private final MButton tabClasses   = new MButton("Classes").fontSize(MStyle.FONT_META);
-  private final MButton tabSkills    = new MButton("Skills").fontSize(MStyle.FONT_META);
-  private final MButton tabFeats     = new MButton("Feats").fontSize(MStyle.FONT_META);
+  private final MButton tabTalents   = new MButton("Talents").fontSize(MStyle.FONT_META);
+
+  // Sub-tab bar inside the Talents tab (Class Abilities / Skills / Feats)
+  private final MTabBar talentBar =
+      new MTabBar("Class Abilities", "Skills", "Feats").fontSize(MStyle.FONT_META);
+
+  // Vertical offset of the Talents sub-tab content below the panel top: the
+  // sub-tab bar (28px) plus its margins. Sub-renderers receive this as py.
+  private static final float TALENT_SUB_BAR_Y   = 16f;
+  private static final float TALENT_SUB_BAR_H   = 28f;
+  private static final float TALENT_CONTENT_PAD = 6f;
+  private static final float TALENT_CONTENT_OFFSET =
+      TALENT_SUB_BAR_Y + TALENT_SUB_BAR_H + TALENT_CONTENT_PAD;
 
   // Sub-renderers for the three new tabs
   private final ClassesTabRenderer classesRenderer = new ClassesTabRenderer();
@@ -157,9 +169,15 @@ public class CharacterRenderCoordinator {
 
     switch (controller.getActiveTab()) {
       case OVERVIEW -> drawOverviewContent(canvas, mx, my, px, py, scale, scaledPW);
-      case CLASSES  -> classesRenderer.render(canvas, ui, stats, px, py, mx, my, scale);
-      case SKILLS   -> skillsRenderer.render(canvas, ui, stats, px, py, mx, my, scale);
-      case FEATS    -> featsRenderer.render(canvas, ui, stats, px, py, mx, my, scale);
+      case TALENTS  -> {
+        drawTalentSubTabBar(canvas, ui, px, py, mx, my, scale);
+        float contentPy = py + TALENT_CONTENT_OFFSET * scale;
+        switch (controller.getTalentSubTab()) {
+          case CLASS_ABILITIES -> classesRenderer.render(canvas, ui, stats, px, contentPy, mx, my, scale);
+          case SKILLS          -> skillsRenderer.render(canvas, ui, stats, px, contentPy, mx, my, scale);
+          case FEATS           -> featsRenderer.render(canvas, ui, stats, px, contentPy, mx, my, scale);
+        }
+      }
     }
 
     ui.renderOverlays();
@@ -205,8 +223,7 @@ public class CharacterRenderCoordinator {
     if (leftClick) {
       // Inventory tab — close character screen, open inventory
       if (tabInventory.contains(mx, my)) {
-        controller.setVisible(false);
-        Game.getInstance().toggleInventoryScreen();
+        Game.getInstance().switchToInventory();
         inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
         return;
       }
@@ -215,27 +232,33 @@ public class CharacterRenderCoordinator {
         inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
         return;
       }
-      if (tabClasses.contains(mx, my)) {
-        controller.setActiveTab(CharacterPanelTab.CLASSES);
-        inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
-        return;
-      }
-      if (tabSkills.contains(mx, my)) {
-        controller.setActiveTab(CharacterPanelTab.SKILLS);
-        inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
-        return;
-      }
-      if (tabFeats.contains(mx, my)) {
-        controller.setActiveTab(CharacterPanelTab.FEATS);
+      if (tabTalents.contains(mx, my)) {
+        controller.setActiveTab(CharacterPanelTab.TALENTS);
         inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
         return;
       }
 
+      // Sub-tab bar inside the Talents tab
+      if (controller.getActiveTab() == CharacterPanelTab.TALENTS
+          && talentBar.contains(mx, my)) {
+        int idx = talentBar.tabAt(mx, my);
+        if (idx >= 0) {
+          controller.setTalentSubTab(TalentSubTab.values()[idx]);
+          inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
+          return;
+        }
+      }
+
       boolean consumed = switch (controller.getActiveTab()) {
         case OVERVIEW -> handleOverviewClick(mx, my, px, py);
-        case CLASSES  -> classesRenderer.handleClick(mx, my, stats, px, py, scale);
-        case SKILLS   -> skillsRenderer.handleClick(mx, my, stats);
-        case FEATS    -> featsRenderer.handleClick(mx, my, stats, px, py, scale);
+        case TALENTS  -> {
+          float contentPy = py + TALENT_CONTENT_OFFSET * scale;
+          yield switch (controller.getTalentSubTab()) {
+            case CLASS_ABILITIES -> classesRenderer.handleClick(mx, my, stats, px, contentPy, scale);
+            case SKILLS          -> skillsRenderer.handleClick(mx, my, stats);
+            case FEATS           -> featsRenderer.handleClick(mx, my, stats, px, contentPy, scale);
+          };
+        }
       };
       if (consumed) {
         inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_LEFT);
@@ -244,8 +267,14 @@ public class CharacterRenderCoordinator {
 
     if (rightClick) {
       boolean consumed = switch (controller.getActiveTab()) {
-        case FEATS -> featsRenderer.handleRightClick(mx, my, stats, px, py, scale);
-        default    -> false;
+        case TALENTS -> {
+          float contentPy = py + TALENT_CONTENT_OFFSET * scale;
+          yield switch (controller.getTalentSubTab()) {
+            case FEATS -> featsRenderer.handleRightClick(mx, my, stats, px, contentPy, scale);
+            default    -> false;
+          };
+        }
+        default -> false;
       };
       if (consumed) {
         inputHandler.consumeMouseButtonPress(GLFW_MOUSE_BUTTON_RIGHT);
@@ -278,9 +307,15 @@ public class CharacterRenderCoordinator {
     float py = panel.y();
 
     switch (controller.getActiveTab()) {
-      case CLASSES -> classesRenderer.handleScroll(deltaY, mouse.x, mouse.y, px, py, scale);
-      case FEATS   -> featsRenderer.handleScroll(deltaY, px, py, scale);
-      default      -> { /* OVERVIEW and SKILLS do not scroll */ }
+      case TALENTS -> {
+        float contentPy = py + TALENT_CONTENT_OFFSET * scale;
+        switch (controller.getTalentSubTab()) {
+          case CLASS_ABILITIES -> classesRenderer.handleScroll(deltaY, mouse.x, mouse.y, px, contentPy, scale);
+          case FEATS           -> featsRenderer.handleScroll(deltaY, px, contentPy, scale);
+          default              -> { /* SKILLS does not scroll */ }
+        }
+      }
+      default -> { /* OVERVIEW does not scroll */ }
     }
   }
 
@@ -294,17 +329,13 @@ public class CharacterRenderCoordinator {
     int stride = TabStripLayout.stride();
     tabInventory.bounds(startX,              tabY, tabW, tabH);
     tabCharacter.bounds(startX + stride,     tabY, tabW, tabH);
-    tabClasses  .bounds(startX + stride * 2, tabY, tabW, tabH);
-    tabSkills   .bounds(startX + stride * 3, tabY, tabW, tabH);
-    tabFeats    .bounds(startX + stride * 4, tabY, tabW, tabH);
+    tabTalents  .bounds(startX + stride * 2, tabY, tabW, tabH);
   }
 
   private void updateTabHovers(float mx, float my) {
     tabInventory.updateHover(mx, my);
     tabCharacter.updateHover(mx, my);
-    tabClasses  .updateHover(mx, my);
-    tabSkills   .updateHover(mx, my);
-    tabFeats    .updateHover(mx, my);
+    tabTalents  .updateHover(mx, my);
   }
 
   private void drawTabBar(Canvas canvas, int screenWidth, float panelTopY) {
@@ -318,12 +349,21 @@ public class CharacterRenderCoordinator {
         false, tabInventory.isHovered(), tabW, tabH);
     drawTab(canvas, startX + stride,     tabY, "Character",
         active == CharacterPanelTab.OVERVIEW, tabCharacter.isHovered(), tabW, tabH);
-    drawTab(canvas, startX + stride * 2, tabY, "Classes",
-        active == CharacterPanelTab.CLASSES, tabClasses.isHovered(), tabW, tabH);
-    drawTab(canvas, startX + stride * 3, tabY, "Skills",
-        active == CharacterPanelTab.SKILLS, tabSkills.isHovered(), tabW, tabH);
-    drawTab(canvas, startX + stride * 4, tabY, "Feats",
-        active == CharacterPanelTab.FEATS, tabFeats.isHovered(), tabW, tabH);
+    drawTab(canvas, startX + stride * 2, tabY, "Talents",
+        active == CharacterPanelTab.TALENTS, tabTalents.isHovered(), tabW, tabH);
+  }
+
+  /** Draws the Class Abilities / Skills / Feats sub-tab bar inside the Talents tab. */
+  private void drawTalentSubTabBar(Canvas canvas, MasonryUI ui,
+                                   float px, float py, float mx, float my, float scale) {
+    float barX = px + 10 * scale;
+    float barY = py + TALENT_SUB_BAR_Y * scale;
+    float barW = (600f - 20f) * scale;
+    float barH = TALENT_SUB_BAR_H * scale;
+    talentBar.bounds(barX, barY, barW, barH);
+    talentBar.selected(controller.getTalentSubTab().ordinal());
+    talentBar.updateHover(mx, my);
+    talentBar.render(ui);
   }
 
   private void drawTab(Canvas canvas, float x, float y, String label,

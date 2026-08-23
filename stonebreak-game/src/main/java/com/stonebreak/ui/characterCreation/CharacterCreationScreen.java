@@ -40,6 +40,7 @@ public final class CharacterCreationScreen {
     private void wireCallbacks() {
         state.getBackToWorldSelectButton().onClick(actionHandler::goBackToWorldSelect);
         state.getTerrainMapperButton().onClick(actionHandler::goToTerrainMapper);
+        state.getUndoButton().onClick(() -> state.getCharacterStats().undoLastAllocation());
     }
 
     // ─────────────────────────────────────────────── Input

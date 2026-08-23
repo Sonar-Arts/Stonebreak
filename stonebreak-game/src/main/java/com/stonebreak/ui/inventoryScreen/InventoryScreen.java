@@ -52,6 +52,13 @@ public class InventoryScreen {
     }
 
     /**
+     * Sets the visibility of the inventory screen directly.
+     */
+    public void setVisible(boolean visible) {
+        controller.setVisible(visible);
+    }
+
+    /**
      * Returns whether the inventory screen is currently visible.
      */
     public boolean isVisible() {

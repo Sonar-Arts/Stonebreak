@@ -33,7 +33,7 @@ public class SkillsTabRenderer {
   private static final float TOOLTIP_BOTTOM_PAD = 34f; // offset from py + PANEL_HEIGHT
   private static final int   TOOLTIP_BG         = 0xCC1A1A1A;
   private static final int   TOOLTIP_BORDER      = 0xFF141414;
-  private static final float PANEL_HEIGHT        = 480f;
+  private static final float PANEL_HEIGHT        = 450f;
 
   // ─── State ─────────────────────────────────────────────────────────────────
   private String hoveredSkillId = null;

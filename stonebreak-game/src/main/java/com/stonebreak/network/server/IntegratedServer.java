@@ -499,7 +499,7 @@ public final class IntegratedServer {
         java.util.regex.Matcher cpM = java.util.regex.Pattern.compile(cpPattern).matcher(s);
         if (cpM.find()) {
             int cp = Integer.parseInt(cpM.group(1));
-            if (cp < 0 || cp > 100) return "remainingCp out of range (0-100), got " + cp;
+            if (cp < 0 || cp > 1000) return "remainingCp out of range (0-1000), got " + cp;
         }
 
         // Validate remaining SP
@@ -507,7 +507,7 @@ public final class IntegratedServer {
         java.util.regex.Matcher spM = java.util.regex.Pattern.compile(spPattern).matcher(s);
         if (spM.find()) {
             int sp = Integer.parseInt(spM.group(1));
-            if (sp < 0 || sp > 100) return "remainingSp out of range (0-100), got " + sp;
+            if (sp < 0 || sp > 1000) return "remainingSp out of range (0-1000), got " + sp;
         }
 
         // Validate remaining FP
@@ -515,7 +515,7 @@ public final class IntegratedServer {
         java.util.regex.Matcher fpM = java.util.regex.Pattern.compile(fpPattern).matcher(s);
         if (fpM.find()) {
             int fp = Integer.parseInt(fpM.group(1));
-            if (fp < 0 || fp > 100) return "remainingFp out of range (0-100), got " + fp;
+            if (fp < 0 || fp > 1000) return "remainingFp out of range (0-1000), got " + fp;
         }
 
         // Validate class (if present, must be in registry)

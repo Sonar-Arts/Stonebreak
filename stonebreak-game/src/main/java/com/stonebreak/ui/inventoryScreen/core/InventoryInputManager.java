@@ -48,7 +48,7 @@ public class InventoryInputManager {
 
     // Tab bounds (mirroring InventoryRenderCoordinator tab geometry)
     private float charTabX, charTabY, charTabWidth, charTabHeight;
-    private float classesTabX, skillsTabX, featsTabX;
+    private float talentsTabX;
 
     public InventoryInputManager(InputHandler inputHandler,
                                 Inventory inventory,
@@ -153,26 +153,12 @@ public class InventoryInputManager {
         if (dragState.draggedItemStack == null) {
             // Check character-group tabs (above panel) before slot interactions
             if (isCharTabClicked(mouseX, mouseY, layout)) {
-                Game.getInstance().toggleInventoryScreen();
-                Game.getInstance().toggleCharacterScreen();
+                Game.getInstance().switchToCharacter();
                 inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
-            if (isClassesTabClicked(mouseX, mouseY, layout)) {
-                Game.getInstance().toggleInventoryScreen();
-                Game.getInstance().openCharacterTab(CharacterPanelTab.CLASSES);
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                return;
-            }
-            if (isSkillsTabClicked(mouseX, mouseY, layout)) {
-                Game.getInstance().toggleInventoryScreen();
-                Game.getInstance().openCharacterTab(CharacterPanelTab.SKILLS);
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                return;
-            }
-            if (isFeatsTabClicked(mouseX, mouseY, layout)) {
-                Game.getInstance().toggleInventoryScreen();
-                Game.getInstance().openCharacterTab(CharacterPanelTab.FEATS);
+            if (isTalentsTabClicked(mouseX, mouseY, layout)) {
+                Game.getInstance().openCharacterTab(CharacterPanelTab.TALENTS);
                 inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
@@ -294,30 +280,14 @@ public class InventoryInputManager {
         int startX = com.stonebreak.ui.TabStripLayout.startX(lastScreenWidth);
         charTabX    = startX + stride;
         charTabY    = com.stonebreak.ui.TabStripLayout.tabY(layout.panelStartY);
-        classesTabX = startX + stride * 2;
-        skillsTabX  = startX + stride * 3;
-        featsTabX   = startX + stride * 4;
+        talentsTabX = startX + stride * 2;
     }
 
-    private boolean isClassesTabClicked(float mouseX, float mouseY,
+    private boolean isTalentsTabClicked(float mouseX, float mouseY,
                                         InventoryLayoutCalculator.InventoryLayout layout) {
         updateCharTabBounds(layout);
-        return mouseX >= classesTabX && mouseX <= classesTabX + charTabWidth
-            && mouseY >= charTabY    && mouseY <= charTabY    + charTabHeight;
-    }
-
-    private boolean isSkillsTabClicked(float mouseX, float mouseY,
-                                       InventoryLayoutCalculator.InventoryLayout layout) {
-        updateCharTabBounds(layout);
-        return mouseX >= skillsTabX && mouseX <= skillsTabX + charTabWidth
-            && mouseY >= charTabY   && mouseY <= charTabY   + charTabHeight;
-    }
-
-    private boolean isFeatsTabClicked(float mouseX, float mouseY,
-                                      InventoryLayoutCalculator.InventoryLayout layout) {
-        updateCharTabBounds(layout);
-        return mouseX >= featsTabX && mouseX <= featsTabX + charTabWidth
-            && mouseY >= charTabY  && mouseY <= charTabY  + charTabHeight;
+        return mouseX >= talentsTabX && mouseX <= talentsTabX + charTabWidth
+            && mouseY >= charTabY     && mouseY <= charTabY + charTabHeight;
     }
 
     private void handleCraftAll() {

@@ -422,6 +422,26 @@ public class Game {
         return screens.pauseMenu();
     }
 
+    /** Gets the "Save changes?" confirmation dialog for the inventory/character sheet. */
+    public com.stonebreak.ui.saveChanges.SaveChangesDialog getSaveChangesDialog() {
+        return screens.saveChangesDialog();
+    }
+
+    /** Commits the inventory session's point allocations (Save changes? → Yes). */
+    public void confirmSaveChanges() {
+        stateController.confirmSaveChanges();
+    }
+
+    /** Discards the inventory session's point allocations (Save changes? → No). */
+    public void confirmDiscardChanges() {
+        stateController.confirmDiscardChanges();
+    }
+
+    /** Dismisses the "Save changes?" dialog without leaving the panel. */
+    public void cancelSaveChanges() {
+        stateController.cancelSaveChanges();
+    }
+
     public com.stonebreak.ui.statisticsScreen.StatisticsScreen getStatisticsScreen() {
         return screens.statisticsScreen();
     }
@@ -504,6 +524,21 @@ public class Game {
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#toggleCharacterScreen()}. */
     public void toggleCharacterScreen() {
         stateController.toggleCharacterScreen();
+    }
+
+    /** Switches from the character sheet to the inventory without a save prompt. */
+    public void switchToInventory() {
+        stateController.switchToInventory();
+    }
+
+    /** Switches from the inventory to the character sheet without a save prompt. */
+    public void switchToCharacter() {
+        stateController.switchToCharacter();
+    }
+
+    /** Switches from the inventory to the character sheet at the given tab. */
+    public void switchToCharacter(com.stonebreak.rpg.CharacterPanelTab tab) {
+        stateController.switchToCharacter(tab);
     }
 
     /** Opens the character screen at the given tab. */

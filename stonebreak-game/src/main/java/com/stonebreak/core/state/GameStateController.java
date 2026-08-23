@@ -3,6 +3,7 @@ package com.stonebreak.core.state;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.input.MouseCaptureManager;
+import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rpg.CharacterPanelTab;
 import com.stonebreak.ui.MainMenu;
 import com.stonebreak.ui.PauseMenu;
@@ -25,6 +26,16 @@ public final class GameStateController {
     private GameState currentState = GameState.STARTUP_INTRO;
     private GameState previousGameState = GameState.STARTUP_INTRO;
     private boolean paused = false;
+
+    /**
+     * Baseline of the spendable RPG state captured when the inventory/character
+     * panel opens. Non-null only while that panel session is active; the exit
+     * "Save changes?" prompt compares against it and restores it on "No".
+     */
+    private CharacterStats.RpgSnapshot rpgSessionBaseline;
+
+    /** The close action deferred while the "Save changes?" prompt is showing. */
+    private Runnable pendingExitAction;
 
     public GameStateController(Game game) {
         this.game = game;
@@ -53,6 +64,20 @@ public final class GameStateController {
             this.previousGameState = this.currentState;
         }
         this.currentState = state;
+
+        // Bound the RPG "unsaved changes" session to the inventory/character panel:
+        // snapshot when entering it from outside, drop it when leaving it. Switching
+        // between the two panels (or layering the recipe book on top) keeps the same
+        // session, so the baseline survives the whole stay in the panel.
+        if (stateChanged) {
+            boolean wasUi = isPanelSessionState(previousGameState);
+            boolean isUi = isPanelSessionState(state);
+            if (isUi && !wasUi) {
+                beginRpgSession();
+            } else if (!isUi && wasUi) {
+                endRpgSession();
+            }
+        }
 
         // Entering gameplay from any menu/UI state: drop residual mouse button
         // state so the click that closed the menu (or a release swallowed by a
@@ -140,16 +165,117 @@ public final class GameStateController {
         InventoryScreen inventoryScreen = game.getInventoryScreen();
         if (inventoryScreen == null) return;
 
-        inventoryScreen.toggleVisibility();
-
         if (inventoryScreen.isVisible()) {
-            setState(GameState.INVENTORY_UI);
+            closeInventoryScreen();
         } else {
-            PauseMenu pauseMenu = game.getPauseMenu();
-            if (pauseMenu == null || !pauseMenu.isVisible()) {
-                setState(GameState.PLAYING);
-            }
+            openInventoryScreen();
         }
+    }
+
+    /** Opens the inventory from gameplay, starting a fresh RPG session. */
+    public void openInventoryScreen() {
+        InventoryScreen inventoryScreen = game.getInventoryScreen();
+        if (inventoryScreen == null) return;
+        inventoryScreen.setVisible(true);
+        setState(GameState.INVENTORY_UI);
+    }
+
+    /**
+     * Closes the inventory back to gameplay. If the player made point allocations
+     * since it opened, a "Save changes?" prompt intercepts the exit first.
+     */
+    public void closeInventoryScreen() {
+        InventoryScreen inventoryScreen = game.getInventoryScreen();
+        if (inventoryScreen == null || !inventoryScreen.isVisible()) return;
+        if (interceptExit(this::doCloseInventoryScreen)) {
+            return;
+        }
+        doCloseInventoryScreen();
+    }
+
+    private void doCloseInventoryScreen() {
+        InventoryScreen inventoryScreen = game.getInventoryScreen();
+        if (inventoryScreen == null) return;
+        inventoryScreen.setVisible(false);
+        PauseMenu pauseMenu = game.getPauseMenu();
+        if (pauseMenu == null || !pauseMenu.isVisible()) {
+            setState(GameState.PLAYING);
+        }
+    }
+
+    /** Moves from the character sheet to the inventory without a save prompt. */
+    public void switchToInventory() {
+        CharacterScreen characterScreen = game.getCharacterScreen();
+        if (characterScreen != null) {
+            characterScreen.setVisible(false);
+        }
+        InventoryScreen inventoryScreen = game.getInventoryScreen();
+        if (inventoryScreen != null) {
+            inventoryScreen.setVisible(true);
+        }
+        setState(GameState.INVENTORY_UI);
+    }
+
+    public void toggleCharacterScreen() {
+        CharacterScreen characterScreen = game.getCharacterScreen();
+        if (characterScreen == null) return;
+
+        if (characterScreen.isVisible()) {
+            closeCharacterScreen();
+        } else {
+            openCharacterScreen();
+        }
+    }
+
+    /** Opens the character sheet from gameplay, starting a fresh RPG session. */
+    public void openCharacterScreen() {
+        CharacterScreen characterScreen = game.getCharacterScreen();
+        if (characterScreen == null) return;
+        characterScreen.setVisible(true);
+        setState(GameState.CHARACTER_SHEET_UI);
+    }
+
+    /**
+     * Closes the character sheet back to gameplay. Point allocations made since it
+     * opened trigger the "Save changes?" prompt first.
+     */
+    public void closeCharacterScreen() {
+        CharacterScreen characterScreen = game.getCharacterScreen();
+        if (characterScreen == null || !characterScreen.isVisible()) return;
+        if (interceptExit(this::doCloseCharacterScreen)) {
+            return;
+        }
+        doCloseCharacterScreen();
+    }
+
+    private void doCloseCharacterScreen() {
+        CharacterScreen characterScreen = game.getCharacterScreen();
+        if (characterScreen == null) return;
+        characterScreen.setVisible(false);
+        PauseMenu pauseMenu = game.getPauseMenu();
+        if (pauseMenu == null || !pauseMenu.isVisible()) {
+            setState(GameState.PLAYING);
+        }
+    }
+
+    /** Moves from the inventory to the character sheet without a save prompt. */
+    public void switchToCharacter() {
+        switchToCharacter(null);
+    }
+
+    /** Moves from the inventory to the character sheet at the given tab. */
+    public void switchToCharacter(CharacterPanelTab tab) {
+        CharacterScreen characterScreen = game.getCharacterScreen();
+        if (characterScreen == null) return;
+        if (tab != null) {
+            characterScreen.getController().setActiveTab(tab);
+        }
+        characterScreen.setVisible(true);
+        InventoryScreen inventoryScreen = game.getInventoryScreen();
+        if (inventoryScreen != null) {
+            inventoryScreen.setVisible(false);
+        }
+        setState(GameState.CHARACTER_SHEET_UI);
     }
 
     public void openWorkbenchScreen() {
@@ -204,22 +330,6 @@ public final class GameStateController {
         }
     }
 
-    public void toggleCharacterScreen() {
-        CharacterScreen characterScreen = game.getCharacterScreen();
-        if (characterScreen == null) return;
-
-        characterScreen.toggleVisibility();
-
-        if (characterScreen.isVisible()) {
-            setState(GameState.CHARACTER_SHEET_UI);
-        } else {
-            PauseMenu pauseMenu = game.getPauseMenu();
-            if (pauseMenu == null || !pauseMenu.isVisible()) {
-                setState(GameState.PLAYING);
-            }
-        }
-    }
-
     /**
      * Opens the character screen at the given tab, switching from any current state.
      * If the character screen is already visible, just switches the active tab.
@@ -231,8 +341,7 @@ public final class GameStateController {
         characterScreen.getController().setActiveTab(tab);
 
         if (!characterScreen.isVisible()) {
-            characterScreen.toggleVisibility();
-            setState(GameState.CHARACTER_SHEET_UI);
+            switchToCharacter(tab);
         }
     }
 
@@ -275,6 +384,84 @@ public final class GameStateController {
         if (recipeScreen != null && currentState == GameState.RECIPE_BOOK_UI) {
             recipeScreen.onClose();
             setState(previousGameState);
+        }
+    }
+
+    // ─────────────────────────────────────────────── RPG session / save prompt
+
+    /** States that share the inventory/character panel's "unsaved changes" session. */
+    private static boolean isPanelSessionState(GameState s) {
+        return s == GameState.INVENTORY_UI
+                || s == GameState.CHARACTER_SHEET_UI
+                || s == GameState.RECIPE_BOOK_UI;
+    }
+
+    /** Captures the baseline the "Save changes?" prompt restores against. */
+    private void beginRpgSession() {
+        com.stonebreak.player.Player player = Game.getPlayer();
+        if (player == null) return;
+        rpgSessionBaseline = player.getCharacterStats().snapshotRpgState();
+        pendingExitAction = null;
+    }
+
+    private void endRpgSession() {
+        rpgSessionBaseline = null;
+        pendingExitAction = null;
+    }
+
+    /** True when the player made RPG allocations since the panel session began. */
+    private boolean hasUnsavedChanges() {
+        if (rpgSessionBaseline == null) return false;
+        com.stonebreak.player.Player player = Game.getPlayer();
+        if (player == null) return false;
+        return player.getCharacterStats().hasChangedSince(rpgSessionBaseline);
+    }
+
+    /**
+     * Routes a panel-close through the "Save changes?" prompt when the player holds
+     * unspent allocations. Returns true when the close was intercepted (the caller
+     * must not close); false means proceed with the close.
+     */
+    private boolean interceptExit(Runnable closeAction) {
+        if (!hasUnsavedChanges()) {
+            endRpgSession();
+            return false;
+        }
+        pendingExitAction = closeAction;
+        game.getSaveChangesDialog().setVisible(true);
+        return true;
+    }
+
+    /** Save changes? → Yes: keep the allocations and leave the panel. */
+    public void confirmSaveChanges() {
+        endRpgSession();
+        finishPendingExit();
+    }
+
+    /** Save changes? → No: revert the session's allocations and leave the panel. */
+    public void confirmDiscardChanges() {
+        if (rpgSessionBaseline != null) {
+            com.stonebreak.player.Player player = Game.getPlayer();
+            if (player != null) {
+                player.getCharacterStats().restoreRpgState(rpgSessionBaseline);
+            }
+        }
+        endRpgSession();
+        finishPendingExit();
+    }
+
+    /** Dismisses the prompt and stays in the panel. */
+    public void cancelSaveChanges() {
+        game.getSaveChangesDialog().setVisible(false);
+        pendingExitAction = null;
+    }
+
+    private void finishPendingExit() {
+        Runnable action = pendingExitAction;
+        pendingExitAction = null;
+        game.getSaveChangesDialog().setVisible(false);
+        if (action != null) {
+            action.run();
         }
     }
 

@@ -408,6 +408,11 @@ public final class FrameRenderer {
         if (deathMenu != null && deathMenu.isVisible()) {
             deathMenu.render(width, height);
         }
+
+        com.stonebreak.ui.saveChanges.SaveChangesDialog saveDialog = game.getSaveChangesDialog();
+        if (saveDialog != null && saveDialog.isVisible()) {
+            saveDialog.render(width, height);
+        }
     }
 
     private void renderDebugOverlay(Renderer renderer) {

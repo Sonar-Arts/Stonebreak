@@ -4,9 +4,11 @@ import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rendering.UI.masonryUI.MButton;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.stonebreak.rendering.UI.masonryUI.MTabBar;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.rendering.UI.masonryUI.textures.MTexture;
 import com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry;
+import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.ui.characterCreation.CharacterCreationActionHandler;
 import com.stonebreak.ui.characterCreation.CharacterCreationLayout;
 import com.stonebreak.ui.characterCreation.CharacterCreationLayout.Rect;
@@ -63,6 +65,13 @@ public final class SkijaCharacterCreationRenderer {
 
     // One MButton per tab for hover tracking and click detection
     private final MButton[] tabButtons = new MButton[CharacterCreationTab.values().length];
+
+    // Sub-tab bar inside the Talents tab (Class Abilities / Skills / Feats)
+    private final MTabBar talentBar =
+        new MTabBar("Class Abilities", "Skills", "Feats").fontSize(MStyle.FONT_META);
+    private static final float TALENT_SUB_BAR_H   = 30f;
+    private static final float TALENT_SUB_BAR_PAD = 8f;
+    private static final float TALENT_CONTENT_GAP = 6f;
 
     // Wood planks texture shader — lazily built, null until the backend is ready
     private Shader woodPlanksShader;
@@ -332,11 +341,36 @@ public final class SkijaCharacterCreationRenderer {
         switch (state.getActiveTab()) {
             case BACKGROUND      -> backgroundTab.render(canvas, ui, stats, tabContent, mx, my);
             case ABILITY_SCORE   -> abilityScoreTab.render(canvas, ui, stats, tabContent, mx, my);
-            case CLASS_ABILITIES -> classAbilitiesTab.render(canvas, ui, stats, state, tabContent, mx, my);
-            case SKILLS          -> skillsTab.render(canvas, ui, stats, state, tabContent, mx, my);
-            case FEATS           -> featsTab.render(canvas, ui, stats, state, tabContent, mx, my);
+            case TALENTS         -> {
+                drawTalentSubTabBar(canvas, tabContent, mx, my);
+                CharacterCreationLayout.Rect sub = talentContentRect(tabContent);
+                switch (state.getTalentSubTab()) {
+                    case CLASS_ABILITIES -> classAbilitiesTab.render(canvas, ui, stats, state, sub, mx, my);
+                    case SKILLS          -> skillsTab.render(canvas, ui, stats, state, sub, mx, my);
+                    case FEATS           -> featsTab.render(canvas, ui, stats, state, sub, mx, my);
+                }
+            }
             case LOOKS           -> looksTab.render(canvas, ui, tabContent, mx, my);
         }
+    }
+
+    /** Draws the Class Abilities / Skills / Feats sub-tab bar inside the Talents tab. */
+    private void drawTalentSubTabBar(Canvas canvas, CharacterCreationLayout.Rect tabContent,
+                                     float mx, float my) {
+        float barX = tabContent.x() + TALENT_SUB_BAR_PAD;
+        float barY = tabContent.y() + TALENT_SUB_BAR_PAD;
+        float barW = tabContent.width() - TALENT_SUB_BAR_PAD * 2f;
+        talentBar.bounds(barX, barY, barW, TALENT_SUB_BAR_H);
+        talentBar.selected(state.getTalentSubTab().ordinal());
+        talentBar.updateHover(mx, my);
+        talentBar.render(ui);
+    }
+
+    /** Content rect below the Talents sub-tab bar. */
+    private CharacterCreationLayout.Rect talentContentRect(CharacterCreationLayout.Rect tabContent) {
+        float contentY = tabContent.y() + TALENT_SUB_BAR_PAD + TALENT_SUB_BAR_H + TALENT_CONTENT_GAP;
+        return new CharacterCreationLayout.Rect(
+            tabContent.x(), contentY, tabContent.width(), tabContent.bottom() - contentY);
     }
 
     // ─────────────────────────────────────────────── Footer
@@ -348,6 +382,12 @@ public final class SkijaCharacterCreationRenderer {
         back.size(back.preferredWidth(ui), back.height())
             .position(footer.x() + 16f, btnY);
         back.render(ui);
+
+        MButton undo = state.getUndoButton();
+        undo.setEnabled(state.getCharacterStats().canUndo());
+        undo.size(undo.preferredWidth(ui), undo.height())
+            .position(footer.x() + (footer.width() - undo.width()) / 2f, btnY);
+        undo.render(ui);
 
         MButton next = state.getTerrainMapperButton();
         float nextW = next.preferredWidth(ui);
@@ -379,13 +419,28 @@ public final class SkijaCharacterCreationRenderer {
         Rect tabBar     = layout.tabBar(rightPanel);
         Rect tabContent = layout.tabContent(rightPanel, tabBar);
 
+        // Talents sub-tab bar clicks
+        if (state.getActiveTab() == CharacterCreationTab.TALENTS
+            && talentBar.contains(mx, my)) {
+            int idx = talentBar.tabAt(mx, my);
+            if (idx >= 0) {
+                state.setTalentSubTab(TalentSubTab.values()[idx]);
+                return true;
+            }
+        }
+
         CharacterStats stats = state.getCharacterStats();
         return switch (state.getActiveTab()) {
             case BACKGROUND      -> backgroundTab.handleClick(mx, my, tabContent, stats, actions);
             case ABILITY_SCORE   -> abilityScoreTab.handleClick(mx, my, stats, actions);
-            case CLASS_ABILITIES -> classAbilitiesTab.handleClick(mx, my, stats, state, actions, tabContent);
-            case SKILLS          -> skillsTab.handleClick(mx, my, stats, state, actions);
-            case FEATS           -> featsTab.handleClick(mx, my, stats, state, actions);
+            case TALENTS         -> {
+                CharacterCreationLayout.Rect sub = talentContentRect(tabContent);
+                yield switch (state.getTalentSubTab()) {
+                    case CLASS_ABILITIES -> classAbilitiesTab.handleClick(mx, my, stats, state, actions, sub);
+                    case SKILLS          -> skillsTab.handleClick(mx, my, stats, state, actions);
+                    case FEATS           -> featsTab.handleClick(mx, my, stats, state, actions);
+                };
+            }
             case LOOKS           -> looksTab.handleClick(mx, my, actions);
         };
     }

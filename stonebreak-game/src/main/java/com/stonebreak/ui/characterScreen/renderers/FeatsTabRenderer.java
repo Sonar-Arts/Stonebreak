@@ -30,7 +30,7 @@ public class FeatsTabRenderer {
   private static final float LIST_X_PAD        = 10f;
   private static final float LIST_W            = 370f;
   private static final float LIST_TOP_OFFSET_Y = 58f; // from py
-  private static final float LIST_H            = 414f;
+  private static final float LIST_H            = 382f;
   private static final float ROW_H             = 24f;
   private static final int   GENERAL_TAG_COLOR = 0xFFAACC66;
 
@@ -39,7 +39,7 @@ public class FeatsTabRenderer {
   private static final float DETAIL_W          = 194f;
   private static final float ACQUIRE_BTN_W     = 140f;
   private static final float ACQUIRE_BTN_H     = 26f;
-  private static final float ACQUIRE_BTN_Y_PAD = 430f; // from py
+  private static final float ACQUIRE_BTN_Y_PAD = 400f; // from py
 
   // ─── State ─────────────────────────────────────────────────────────────────
   private int     filterLevel   = 0;     // 0 = All, 1-10 = specific level
