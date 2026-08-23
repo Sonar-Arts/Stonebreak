@@ -5,7 +5,7 @@
 // quadratic-ish curve that reaches exactly zero at the radius so lights never
 // pop at their edge. The wrap term keeps faces pointing away from a torch
 // from going pitch black (a torch on a wall still lights that wall).
-#define MAX_POINT_LIGHTS 16
+#define MAX_POINT_LIGHTS 256
 uniform int u_pointLightCount;
 uniform vec4 u_pointLightPos[MAX_POINT_LIGHTS];   // xyz = world position, w = radius
 uniform vec3 u_pointLightColor[MAX_POINT_LIGHTS]; // color * intensity
