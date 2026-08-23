@@ -45,8 +45,17 @@ public final class CcoPaletteSection {
      */
     private static final class State {
         final IBlockType[] palette;
+        /** Byte-indexed tier (palette ≤ 256); null otherwise. */
         final byte[] indices;
+        /** Wide tier (palette > 256); null otherwise. */
         final short[] wideIndices;
+        /**
+         * Nibble tier (palette ≤ 16): two cells per byte, cell {@code i} in
+         * the low nibble of byte {@code i >> 1} when even, high when odd. Half
+         * the bytes of the byte tier for the sections terrain produces
+         * (≤ 13 distinct ids). Null otherwise.
+         */
+        final byte[] nibbles;
         /**
          * Copy-on-write marker: set (under the owning section's lock) when this
          * state becomes visible from more than one section via {@link #copy()}/
@@ -57,10 +66,62 @@ public final class CcoPaletteSection {
         volatile boolean shared;
 
         State(IBlockType[] palette, byte[] indices, short[] wideIndices) {
+            this(palette, indices, wideIndices, null);
+        }
+
+        State(IBlockType[] palette, byte[] indices, short[] wideIndices, byte[] nibbles) {
             this.palette = palette;
             this.indices = indices;
             this.wideIndices = wideIndices;
+            this.nibbles = nibbles;
         }
+
+        boolean uniform() {
+            return indices == null && wideIndices == null && nibbles == null;
+        }
+    }
+
+    /** Palette size up to which a section stays on the nibble tier. */
+    private static final int MAX_NIBBLE_PALETTE = 16;
+
+    /**
+     * True when {@link #fromPaletteData} will pack a palette of this size into
+     * the nibble tier and therefore NOT keep the caller's index array — the
+     * caller may pass a reusable scratch buffer instead of a fresh one.
+     */
+    public static boolean packsToNibbles(int paletteLength) {
+        return NIBBLE_TIER && paletteLength <= MAX_NIBBLE_PALETTE;
+    }
+    /** Kill switch: {@code -Dstonebreak.palette.nibble=off} keeps the byte tier for ≤16 palettes. */
+    private static final boolean NIBBLE_TIER =
+        !"off".equalsIgnoreCase(System.getProperty("stonebreak.palette.nibble", "on"));
+
+    private static int nibbleAt(byte[] nibbles, int cellIndex) {
+        int b = nibbles[cellIndex >> 1];
+        return (cellIndex & 1) == 0 ? (b & 0xF) : ((b >> 4) & 0xF);
+    }
+
+    private static void nibblePut(byte[] nibbles, int cellIndex, int value) {
+        int i = cellIndex >> 1;
+        int b = nibbles[i];
+        nibbles[i] = (byte) ((cellIndex & 1) == 0 ? ((b & 0xF0) | value) : ((b & 0x0F) | (value << 4)));
+    }
+
+    /** Packs byte indices (all < 16) into nibbles. */
+    private static byte[] packNibbles(byte[] indices, int volume) {
+        byte[] out = new byte[(volume + 1) >> 1];
+        for (int i = 0; i < volume; i++) {
+            nibblePut(out, i, indices[i] & 0xF);
+        }
+        return out;
+    }
+
+    private static byte[] unpackNibbles(byte[] nibbles, int volume) {
+        byte[] out = new byte[volume];
+        for (int i = 0; i < volume; i++) {
+            out[i] = (byte) nibbleAt(nibbles, i);
+        }
+        return out;
     }
 
     private final int cellsPerLayer;
@@ -122,8 +183,11 @@ public final class CcoPaletteSection {
                 nonAir++;
             }
         }
-        return new CcoPaletteSection(cellsPerLayer,
-            new State(Arrays.copyOf(palette, paletteLength), cellIndices, null), nonAir);
+        IBlockType[] copy = Arrays.copyOf(palette, paletteLength);
+        State state = NIBBLE_TIER && paletteLength <= MAX_NIBBLE_PALETTE
+            ? new State(copy, null, null, packNibbles(cellIndices, volume))
+            : new State(copy, cellIndices, null);
+        return new CcoPaletteSection(cellsPerLayer, state, nonAir);
     }
 
     private CcoPaletteSection(int cellsPerLayer, State state, int nonAirCount) {
@@ -136,6 +200,9 @@ public final class CcoPaletteSection {
     /** Lock-free read of the block at a section-local cell index. */
     public IBlockType get(int cellIndex) {
         State s = state;
+        if (s.nibbles != null) {
+            return s.palette[nibbleAt(s.nibbles, cellIndex)];
+        }
         if (s.indices != null) {
             return s.palette[s.indices[cellIndex] & 0xFF];
         }
@@ -158,7 +225,30 @@ public final class CcoPaletteSection {
         }
 
         int paletteIndex = indexOf(s.palette, block);
-        if (s.indices != null) {
+        if (s.nibbles != null) {
+            if (paletteIndex >= 0) {
+                if (s.shared) {
+                    byte[] nib = s.nibbles.clone();
+                    nibblePut(nib, cellIndex, paletteIndex);
+                    state = new State(s.palette, null, null, nib);
+                } else {
+                    nibblePut(s.nibbles, cellIndex, paletteIndex);
+                }
+            } else if (s.palette.length < MAX_NIBBLE_PALETTE) {
+                IBlockType[] palette = Arrays.copyOf(s.palette, s.palette.length + 1);
+                palette[s.palette.length] = block;
+                byte[] nib = s.nibbles.clone();
+                nibblePut(nib, cellIndex, s.palette.length);
+                state = new State(palette, null, null, nib);
+            } else {
+                // Promote nibble → byte tier (17th palette entry).
+                IBlockType[] palette = Arrays.copyOf(s.palette, s.palette.length + 1);
+                palette[s.palette.length] = block;
+                byte[] indices = unpackNibbles(s.nibbles, volume);
+                indices[cellIndex] = (byte) s.palette.length;
+                state = new State(palette, indices, null);
+            }
+        } else if (s.indices != null) {
             if (paletteIndex >= 0) {
                 if (s.shared) {
                     byte[] indices = s.indices.clone();
@@ -195,9 +285,15 @@ public final class CcoPaletteSection {
         } else {
             // Uniform section: inflate to byte-indexed. The new block can't
             // equal palette[0] (the current == block check above caught that).
-            byte[] indices = new byte[volume]; // zero-filled = uniform block
-            indices[cellIndex] = 1;
-            state = new State(new IBlockType[]{s.palette[0], block}, indices, null);
+            if (NIBBLE_TIER) {
+                byte[] nib = new byte[(volume + 1) >> 1]; // zero-filled = uniform block
+                nibblePut(nib, cellIndex, 1);
+                state = new State(new IBlockType[]{s.palette[0], block}, null, null, nib);
+            } else {
+                byte[] indices = new byte[volume]; // zero-filled = uniform block
+                indices[cellIndex] = 1;
+                state = new State(new IBlockType[]{s.palette[0], block}, indices, null);
+            }
         }
 
         boolean wasAir = isAir(current);
@@ -229,7 +325,7 @@ public final class CcoPaletteSection {
      */
     public void writeBlockIdsInto(short[] dst, int dstOffset) {
         State s = state;
-        if (s.indices == null && s.wideIndices == null) {
+        if (s.uniform()) {
             java.util.Arrays.fill(dst, dstOffset, dstOffset + volume, (short) s.palette[0].getId());
             return;
         }
@@ -237,7 +333,16 @@ public final class CcoPaletteSection {
         for (int i = 0; i < s.palette.length; i++) {
             paletteIds[i] = (short) s.palette[i].getId();
         }
-        if (s.indices != null) {
+        if (s.nibbles != null) {
+            byte[] nib = s.nibbles;
+            for (int i = 0; i < volume; i += 2) {
+                int b = nib[i >> 1];
+                dst[dstOffset + i] = paletteIds[b & 0xF];
+                if (i + 1 < volume) {
+                    dst[dstOffset + i + 1] = paletteIds[(b >> 4) & 0xF];
+                }
+            }
+        } else if (s.indices != null) {
             byte[] indices = s.indices;
             for (int i = 0; i < volume; i++) {
                 dst[dstOffset + i] = paletteIds[indices[i] & 0xFF];
@@ -252,8 +357,7 @@ public final class CcoPaletteSection {
 
     /** True if every cell holds the same block. */
     public boolean isUniform() {
-        State s = state;
-        return s.indices == null && s.wideIndices == null;
+        return state.uniform();
     }
 
     /** The fill block of a uniform section; meaningless if not uniform. */
@@ -272,7 +376,7 @@ public final class CcoPaletteSection {
      */
     public int highestNonAirLocalY() {
         State s = state;
-        if (s.indices == null && s.wideIndices == null) {
+        if (s.uniform()) {
             return isAir(s.palette[0]) ? -1 : CcoSectionIndexing.SECTION_HEIGHT - 1;
         }
         for (int ly = CcoSectionIndexing.SECTION_HEIGHT - 1; ly >= 0; ly--) {
@@ -334,11 +438,11 @@ public final class CcoPaletteSection {
      */
     public int snapshotPaletteData(short[] paletteIds, byte[] indices) {
         State s = state;
-        if (s.indices == null && s.wideIndices == null) {
+        if (s.uniform()) {
             paletteIds[0] = (short) s.palette[0].getId();
             return 0;
         }
-        if (s.indices == null) {
+        if (s.wideIndices != null) {
             return -1;
         }
         if (paletteIds.length < s.palette.length || indices.length < volume) {
@@ -347,11 +451,25 @@ public final class CcoPaletteSection {
         for (int i = 0; i < s.palette.length; i++) {
             paletteIds[i] = (short) s.palette[i].getId();
         }
-        System.arraycopy(s.indices, 0, indices, 0, volume);
+        if (s.nibbles != null) {
+            for (int i = 0; i < volume; i++) {
+                indices[i] = (byte) nibbleAt(s.nibbles, i);
+            }
+        } else {
+            System.arraycopy(s.indices, 0, indices, 0, volume);
+        }
         return s.palette.length;
     }
 
+    /** True when this section is on the 4-bit nibble tier (palette ≤ 16). */
+    public boolean isNibbleTier() {
+        return state.nibbles != null;
+    }
+
     private static IBlockType readFrom(State s, int cellIndex) {
+        if (s.nibbles != null) {
+            return s.palette[nibbleAt(s.nibbles, cellIndex)];
+        }
         if (s.indices != null) {
             return s.palette[s.indices[cellIndex] & 0xFF];
         }
@@ -377,7 +495,8 @@ public final class CcoPaletteSection {
     @Override
     public String toString() {
         State s = state;
-        String tier = s.indices != null ? "byte" : (s.wideIndices != null ? "short" : "uniform");
+        String tier = s.nibbles != null ? "nibble"
+            : s.indices != null ? "byte" : (s.wideIndices != null ? "short" : "uniform");
         return String.format("CcoPaletteSection{tier=%s, palette=%d, nonAir=%d}",
                 tier, s.palette.length, nonAirCount);
     }

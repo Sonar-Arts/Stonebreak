@@ -1,6 +1,6 @@
 package com.stonebreak.world.generation;
 
-import com.stonebreak.world.generation.heightmap.CarveMaskKey;
+import com.stonebreak.world.chunk.utils.LocalBlockKey;
 import com.stonebreak.world.generation.heightmap.CavernCarver;
 import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
 import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
@@ -80,7 +80,7 @@ public class CarverAnchorTest {
 
                 anchors++;
                 BitSet mask = worm.carveMaskForChunk(cx, cz, heights(cx, cz), waterLevels(cx, cz));
-                if (mask.get(CarveMaskKey.pack(Math.round(o[0]) - cx * CHUNK, Math.round(o[1]),
+                if (mask.get(LocalBlockKey.pack(Math.round(o[0]) - cx * CHUNK, Math.round(o[1]),
                         Math.round(o[2]) - cz * CHUNK))) {
                     inTunnel++;
                 }
@@ -104,7 +104,7 @@ public class CarverAnchorTest {
                 anchors++;
                 BitSet mask = carver.buildForChunk(
                         cx, cz, heights(cx, cz), waterLevels(cx, cz)).carveMask;
-                if (mask.get(CarveMaskKey.pack(Math.round(o[0]) - cx * CHUNK, Math.round(o[1]),
+                if (mask.get(LocalBlockKey.pack(Math.round(o[0]) - cx * CHUNK, Math.round(o[1]),
                         Math.round(o[2]) - cz * CHUNK))) {
                     inVoid++;
                 }
@@ -129,7 +129,7 @@ public class CarverAnchorTest {
                 anchors++;
                 BitSet mask = carver.buildForChunk(
                         cx, cz, heights(cx, cz), waterLevels(cx, cz)).carveMask;
-                if (mask.get(CarveMaskKey.pack(Math.round(o[0]) - cx * CHUNK, Math.round(o[1]),
+                if (mask.get(LocalBlockKey.pack(Math.round(o[0]) - cx * CHUNK, Math.round(o[1]),
                         Math.round(o[2]) - cz * CHUNK))) {
                     inVoid++;
                 }

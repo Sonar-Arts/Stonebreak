@@ -1,6 +1,7 @@
 package com.stonebreak.util;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.drops.BlockDropTables;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
@@ -234,9 +235,22 @@ public class DropUtil {
         selectedSlot.clear();
     }
     
+    /** Spawns each rolled line: blocks as block drops, everything else as item stacks. */
+    private static void spawnRolledDrops(World world, Vector3f position,
+                                         java.util.List<BlockDropTables.RolledDrop> rolled) {
+        for (BlockDropTables.RolledDrop r : rolled) {
+            if (r.item() instanceof BlockType bt) {
+                createBlockDrops(world, position, bt, r.count());
+            } else {
+                createItemDrop(world, position, new ItemStack(r.item(), r.count()));
+            }
+        }
+    }
+
     /**
-     * Gets the appropriate drop for a broken block.
-     * Some blocks may drop different items than themselves (e.g., stone drops cobblestone).
+     * Built-in fallback drop for a block whose SBO carries no {@code drops} table.
+     * Some blocks drop something other than themselves (e.g., stone drops cobblestone).
+     * Prefer authoring a drop table in Open Mason over extending this method.
      */
     public static BlockType getBlockDrop(BlockType brokenBlock) {
         if (brokenBlock == null) {
@@ -280,6 +294,18 @@ public class DropUtil {
      */
     public static void handleBlockBroken(World world, Vector3f position, BlockType brokenBlock, ItemType toolItem, int snowLayers) {
         if (world == null || brokenBlock == null || brokenBlock == BlockType.AIR) {
+            return;
+        }
+
+        // Data-driven path first: a block whose SBO carries a `drops` table
+        // (authored in Open Mason) is governed entirely by that table — the
+        // tool selects a per-tool override, otherwise the default list rolls.
+        // An empty table means "drops nothing". Blocks without a table fall
+        // through to the built-in rules below.
+        java.util.List<BlockDropTables.RolledDrop> rolled =
+                BlockDropTables.roll(brokenBlock, toolItem, java.util.concurrent.ThreadLocalRandom.current());
+        if (rolled != null) {
+            spawnRolledDrops(world, position, rolled);
             return;
         }
 

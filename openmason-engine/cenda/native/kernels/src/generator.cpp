@@ -20,6 +20,7 @@
 namespace {
 
 using cenda::JavaRandom;
+using cenda::SplineLinear;
 using cenda::gen::AnchorSource;
 using cenda::gen::TerrainCtx;
 using cenda::gen::CHUNK_SIZE;
@@ -30,9 +31,39 @@ using cenda::gen::WORLD_HEIGHT;
 constexpr int CAVERN_CONNECTOR_RADIUS = 5;
 
 /* Density3D constants (lockstep with Density3D.java). */
+/* ── Density3D.java ───────────────────────────────────────────────────────────
+ * Three channels now: one "cheese" (chambers) and two "spaghetti" whose zero
+ * isosurfaces intersect in tubes. The single-channel field this replaced is gone;
+ * biome caveIntensity no longer gates caves at all, only the overhang band. */
 constexpr int DENSITY_CAVE_FLOOR = 8;
 constexpr int DENSITY_OVERHANG_DEPTH = 16;
-constexpr float DENSITY_Y_SQUASH = 1.8f;
+
+/* Density3D.PEAK_DAMP_* — the altitude taper on the overhang band. That band is a
+ * silhouette decision rather than a depth one, so unlike everything else here it is
+ * keyed on absolute Y: an intensity that undercuts a cliff at y=100 eats through a
+ * summit at y=145, where the band IS the skyline. See the Java for the full note and
+ * for where the knots come from. */
+constexpr int DENSITY_PEAK_DAMP_START = 100;
+constexpr int DENSITY_PEAK_DAMP_END = 145;
+constexpr float DENSITY_PEAK_DAMP_FLOOR = 0.55f;
+
+constexpr float CHEESE_Y_SQUASH = 1.6f;
+/* Density3D.CRAG_Y_SQUASH — the overhang band's own channel, for biomes flagged
+ * CK_BIOME_CRAG_SURFACE. Frequency arrives from Java in density_freq[3]. */
+constexpr float CRAG_Y_SQUASH = 1.8f;
+constexpr float SPAG_Y_SQUASH = 1.08f;
+constexpr float SPAG_THICKNESS = 0.085f;
+constexpr float SPAG_GALLERY_BONUS = 0.070f;
+constexpr int SPAG_FADE_START = 10;
+constexpr int SPAG_FADE_END = 34;
+
+/* Density3D.spaghettiFade. */
+inline float spaghettiFade(int depth) {
+    if (depth <= SPAG_FADE_START) return 0.0f;
+    if (depth >= SPAG_FADE_END) return 1.0f;
+    return static_cast<float>(depth - SPAG_FADE_START)
+        / static_cast<float>(SPAG_FADE_END - SPAG_FADE_START);
+}
 
 constexpr int MASK_WORDS = 1024; /* 65536 bits, bit = (x<<12) | (y<<4) | z */
 
@@ -44,6 +75,10 @@ inline void setBit(uint64_t* mask, int bit) {
     mask[bit >> 6] |= 1ULL << (bit & 63);
 }
 
+inline void clearBit(uint64_t* mask, int bit) {
+    mask[bit >> 6] &= ~(1ULL << (bit & 63));
+}
+
 /* One parameterized implementation covers CavernCarver and MegaCavernCarver —
  * they differ only in constants and hash mixers. */
 struct CavernParams {
@@ -52,14 +87,15 @@ struct CavernParams {
      * so floorMod == unsigned h & (divisor-1)). */
     uint64_t hashXor, hashMulX, hashMulZ;
     int hashRot;
-    uint64_t divisorMask;
+    int32_t divisor;      /* NOT a power of two — needs a real floorMod */
     /* cavernRngSeed: ((seed*seedMul) ^ (cx*seedMulX)) ^ (cz*seedMulZ) ^ seedFinalXor */
     uint64_t seedMul, seedMulX, seedMulZ, seedFinalXor;
     /* formationSeed: h = seed ^ formXor; h ^= wx*formMulX; rotl(formRot); h ^= wz*formMulZ */
     uint64_t formXor, formMulX, formMulZ;
     int formRot;
 
-    int yMin, yMax;
+    /* Center depth BELOW the local surface, replacing the old absolute Y band. */
+    int depthMin, depthMax;
     float baseRadius, blobOffset, ySquash;
     int minBlobs, maxBlobs;
     float stalagmiteChance, stalactiteChance;
@@ -74,7 +110,7 @@ CavernParams cavernParams() { /* CavernCarver.java */
     p.hashMulX = UINT64_C(0xBEA225F9EB34556D);
     p.hashRot = 19;
     p.hashMulZ = UINT64_C(0x94D049BB133111EB);
-    p.divisorMask = UINT64_C(64) - 1;
+    p.divisor = 48;
     p.seedMul = UINT64_C(6364136223846793005);
     p.seedMulX = UINT64_C(0x9E3779B97F4A7C15);
     p.seedMulZ = UINT64_C(0xC2B2AE3D27D4EB4F);
@@ -83,13 +119,13 @@ CavernParams cavernParams() { /* CavernCarver.java */
     p.formMulX = UINT64_C(0x9E3779B97F4A7C15);
     p.formRot = 17;
     p.formMulZ = UINT64_C(0xC2B2AE3D27D4EB4F);
-    p.yMin = 10;
-    p.yMax = 30;
-    p.baseRadius = 7.0f;
-    p.blobOffset = 5.5f;
-    p.ySquash = 0.55f;
-    p.minBlobs = 4;
-    p.maxBlobs = 7;
+    p.depthMin = 18;
+    p.depthMax = 65;
+    p.baseRadius = 10.0f;
+    p.blobOffset = 8.0f;
+    p.ySquash = 0.62f;
+    p.minBlobs = 5;
+    p.maxBlobs = 9;
     p.stalagmiteChance = 0.10f;
     p.stalactiteChance = 0.08f;
     p.formationMaxHeight = 5;
@@ -107,7 +143,7 @@ CavernParams megaCavernParams() { /* MegaCavernCarver.java */
     p.hashMulX = UINT64_C(0xD1B54A32D192ED03);
     p.hashRot = 23;
     p.hashMulZ = UINT64_C(0xAEF17502108EF2D9);
-    p.divisorMask = UINT64_C(256) - 1;
+    p.divisor = 192;
     p.seedMul = UINT64_C(0x9E3779B97F4A7C15);
     p.seedMulX = UINT64_C(0xBF58476D1CE4E5B9);
     p.seedMulZ = UINT64_C(0x94D049BB133111EB);
@@ -116,13 +152,13 @@ CavernParams megaCavernParams() { /* MegaCavernCarver.java */
     p.formMulX = UINT64_C(0xD1B54A32D192ED03);
     p.formRot = 19;
     p.formMulZ = UINT64_C(0xAEF17502108EF2D9);
-    p.yMin = 8;
-    p.yMax = 50;
-    p.baseRadius = 18.0f;
-    p.blobOffset = 11.0f;
-    p.ySquash = 0.60f;
-    p.minBlobs = 10;
-    p.maxBlobs = 14;
+    p.depthMin = 30;
+    p.depthMax = 90;
+    p.baseRadius = 24.0f;
+    p.blobOffset = 15.0f;
+    p.ySquash = 0.66f;
+    p.minBlobs = 12;
+    p.maxBlobs = 18;
     p.stalagmiteChance = 0.12f;
     p.stalactiteChance = 0.10f;
     p.formationMaxHeight = 9;
@@ -147,7 +183,7 @@ bool hasCavern(const CavernParams& p, int64_t seed, int cx, int cz) {
     h ^= signExt(cx) * p.hashMulX;
     h = rotl64(h, p.hashRot);
     h ^= signExt(cz) * p.hashMulZ;
-    return (h & p.divisorMask) == 0; /* floorMod(h, 2^n) on the signed value */
+    return cenda::javaFloorMod(static_cast<int64_t>(h), p.divisor) == 0;
 }
 
 int64_t cavernRngSeed(const CavernParams& p, int64_t seed, int cx, int cz) {
@@ -164,12 +200,24 @@ int64_t formationSeed(const CavernParams& p, int64_t seed, int worldX, int world
     return static_cast<int64_t>(h);
 }
 
+/* CavernCarver.centerY — a depth below THIS column's surface, not an absolute band.
+ * Clamped to y>=2, so a depth range overshooting the rock column piles caverns on
+ * bedrock; the Java depth ranges are chosen to stay inside a ~114-block column. */
+float cavernCenterY(const CavernParams& p, const TerrainCtx& terrain,
+                    float ox, float oz, JavaRandom& rng) {
+    const int surface = terrain.generateHeight(cenda::javaRoundFloat(ox), cenda::javaRoundFloat(oz));
+    const int depth = p.depthMin + rng.nextInt(p.depthMax - p.depthMin);
+    const int y = surface - depth;
+    return static_cast<float>(y > 2 ? y : 2);
+}
+
 /* Mirrors CavernCarver.computeCavernOrigin's three RNG draws exactly. */
-void computeCavernOrigin(const CavernParams& p, int64_t seed, int cx, int cz, float out[3]) {
+void computeCavernOrigin(const CavernParams& p, const TerrainCtx& terrain,
+                         int64_t seed, int cx, int cz, float out[3]) {
     JavaRandom rng(cavernRngSeed(p, seed, cx, cz));
     out[0] = static_cast<float>(cx * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE));
     out[2] = static_cast<float>(cz * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE));
-    out[1] = static_cast<float>(p.yMin + rng.nextInt(p.yMax - p.yMin));
+    out[1] = cavernCenterY(p, terrain, out[0], out[2], rng);
 }
 
 /* Mirrors CavernCarver.nearestCavernChunk (includes the center chunk). */
@@ -197,7 +245,7 @@ bool nearestCavernChunk(const CavernParams& p, int64_t seed, int cx, int cz,
  * (rounded here), per-column waterClearance gate, and the by >= surface clamp. */
 void carveCavernEllipsoid(const CavernParams& p, float wx, float wy, float wz, float radius,
                           int targetCx, int targetCz, const int32_t* targetHeights,
-                          uint64_t* mask) {
+                          const int32_t* waterGuard, uint64_t* mask) {
     const int targetBaseX = targetCx * CHUNK_SIZE;
     const int targetBaseZ = targetCz * CHUNK_SIZE;
     const int rxz = static_cast<int>(std::ceil(static_cast<double>(radius)));
@@ -218,8 +266,11 @@ void carveCavernEllipsoid(const CavernParams& p, float wx, float wy, float wz, f
         for (int oz = -rxz; oz <= rxz; oz++) {
             const int bz = wzi + oz - targetBaseZ;
             if (bz < 0 || bz >= CHUNK_SIZE) continue;
-            const int surface = targetHeights[bx * CHUNK_SIZE + bz];
-            if (surface <= SEA_LEVEL + p.waterClearance) continue;
+            const int idx = bx * CHUNK_SIZE + bz;
+            const int surface = targetHeights[idx];
+            /* Only the world floor here; waterGuardSeals below anchors on the bed of any
+             * wet column in this column's 4-neighborhood, covering beds and banks alike. */
+            if (surface <= 1) continue;
             const float horizTerm = static_cast<float>(ox * ox + oz * oz) * invRxz2;
             if (horizTerm >= 1.0f) continue;
             const float maxOyTerm = 1.0f - horizTerm;
@@ -228,6 +279,7 @@ void carveCavernEllipsoid(const CavernParams& p, float wx, float wy, float wz, f
                 const int by = wyi + oy;
                 if (by < 1 || by >= WORLD_HEIGHT) continue;
                 if (by >= surface) continue;
+                if (cenda::gen::waterGuardSeals(waterGuard, idx, by, p.waterClearance)) continue;
                 setBit(mask, (bx << 12) | (by << 4) | bz);
             }
         }
@@ -236,12 +288,13 @@ void carveCavernEllipsoid(const CavernParams& p, float wx, float wy, float wz, f
 
 /* Mirrors CavernCarver.carveCavern's RNG draw order exactly (3 origin draws
  * shared with computeCavernOrigin, blob count, then 4 draws per blob). */
-void carveCavern(const CavernParams& p, int64_t seed, int srcCx, int srcCz,
-                 int targetCx, int targetCz, const int32_t* targetHeights, uint64_t* mask) {
+void carveCavern(const CavernParams& p, const TerrainCtx& terrain, int64_t seed,
+                 int srcCx, int srcCz, int targetCx, int targetCz,
+                 const int32_t* targetHeights, const int32_t* waterGuard, uint64_t* mask) {
     JavaRandom rng(cavernRngSeed(p, seed, srcCx, srcCz));
     const float ox = static_cast<float>(srcCx * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE));
     const float oz = static_cast<float>(srcCz * CHUNK_SIZE + rng.nextInt(CHUNK_SIZE));
-    const float oy = static_cast<float>(p.yMin + rng.nextInt(p.yMax - p.yMin));
+    const float oy = cavernCenterY(p, terrain, ox, oz, rng);
 
     const int blobs = p.minBlobs + rng.nextInt(p.maxBlobs - p.minBlobs + 1);
     for (int i = 0; i < blobs; i++) {
@@ -250,26 +303,31 @@ void carveCavern(const CavernParams& p, int64_t seed, int srcCx, int srcCz,
         const float dz = (rng.nextFloat() - 0.5f) * 2.0f * p.blobOffset;
         const float r = p.baseRadius * (0.75f + rng.nextFloat() * 0.45f);
         carveCavernEllipsoid(p, ox + dx, oy + dy, oz + dz, r,
-                             targetCx, targetCz, targetHeights, mask);
+                             targetCx, targetCz, targetHeights, waterGuard, mask);
     }
 }
 
 /* CavernCarver.buildForChunk carve scan (formations are built separately from
  * this carver's own mask only, matching the Java per-carver Result split). */
-void buildCavernCarve(const CavernParams& p, int64_t seed, int chunkX, int chunkZ,
-                      const int32_t* targetHeights, uint64_t* mask) {
+void buildCavernCarve(const CavernParams& p, const TerrainCtx& terrain, int64_t seed,
+                      int chunkX, int chunkZ, const int32_t* targetHeights,
+                      const int32_t* waterGuard, uint64_t* mask) {
     for (int dcx = -p.scanRadius; dcx <= p.scanRadius; dcx++) {
         for (int dcz = -p.scanRadius; dcz <= p.scanRadius; dcz++) {
             const int srcCx = chunkX + dcx;
             const int srcCz = chunkZ + dcz;
             if (!hasCavern(p, seed, srcCx, srcCz)) continue;
-            carveCavern(p, seed, srcCx, srcCz, chunkX, chunkZ, targetHeights, mask);
+            carveCavern(p, terrain, seed, srcCx, srcCz, chunkX, chunkZ,
+                        targetHeights, waterGuard, mask);
         }
     }
 }
 
-/* Mirrors CavernCarver.buildFormations: per-column floor/ceiling scan of THIS
- * carver's carve mask, fresh Random per column, ?: short-circuit draw order. */
+/* Mirrors CavernCarver.buildFormations: per-column scan of THIS carver's carve
+ * mask for its TALLEST CONTIGUOUS run, fresh Random per column, ?: short-circuit
+ * draw order. The run — not the column's overall min/max — is what a formation
+ * stands in; see the Java for why the global extremes grew pillars through rock
+ * and left their tips floating in the next void up. */
 void buildFormations(const CavernParams& p, int64_t seed, int chunkX, int chunkZ,
                      const uint64_t* carve, uint64_t* formations) {
     const int baseX = chunkX * CHUNK_SIZE;
@@ -278,14 +336,25 @@ void buildFormations(const CavernParams& p, int64_t seed, int chunkX, int chunkZ
         for (int bz = 0; bz < CHUNK_SIZE; bz++) {
             int floorY = -1;
             int ceilY = -1;
-            for (int by = 1; by < WORLD_HEIGHT; by++) {
-                if (testBit(carve, (bx << 12) | (by << 4) | bz)) {
-                    if (floorY < 0) floorY = by;
-                    ceilY = by;
+            int runStart = -1;
+            for (int by = 1; by <= WORLD_HEIGHT; by++) {
+                if (by < WORLD_HEIGHT && testBit(carve, (bx << 12) | (by << 4) | bz)) {
+                    if (runStart < 0) runStart = by;
+                    continue;
+                }
+                if (runStart >= 0) {
+                    /* Strictly taller, so ties keep the lowest run. */
+                    if (by - 1 - runStart > ceilY - floorY) {
+                        floorY = runStart;
+                        ceilY = by - 1;
+                    }
+                    runStart = -1;
                 }
             }
+            /* Covers both "no carve here" and "no run taller than one cell": the
+             * initial -1/-1 pair scores 0, which nothing one cell tall can beat. */
+            if (floorY < 0) continue;
             const int gap = ceilY - floorY;
-            if (floorY < 0 || gap < 1) continue;
 
             const int worldX = baseX + bx;
             const int worldZ = baseZ + bz;
@@ -302,16 +371,17 @@ void buildFormations(const CavernParams& p, int64_t seed, int chunkX, int chunkZ
                 stalactiteH = static_cast<int>(static_cast<int64_t>(stalactiteH) * gap / total);
             }
 
-            if (stalagH > 0 && floorY > 0
-                    && !testBit(carve, (bx << 12) | ((floorY - 1) << 4) | bz)) {
+            /* Both anchors are solid within this carver's own mask by construction —
+             * a run ends where the carve stops. Whether they survive the other carvers
+             * is settled afterwards, by pruneUnsupportedFormations. */
+            if (stalagH > 0) {
                 for (int h = 0; h < stalagH; h++) {
                     const int by = floorY + h;
                     if (by > ceilY) break;
                     setBit(formations, (bx << 12) | (by << 4) | bz);
                 }
             }
-            if (stalactiteH > 0 && ceilY < WORLD_HEIGHT - 1
-                    && !testBit(carve, (bx << 12) | ((ceilY + 1) << 4) | bz)) {
+            if (stalactiteH > 0) {
                 for (int h = 0; h < stalactiteH; h++) {
                     const int by = ceilY - h;
                     if (by < floorY) break;
@@ -341,8 +411,11 @@ bool magmaAt(int64_t worldSeed, int x, int y, int z, int32_t featureHash, float 
 
 struct ChunkGenCtx {
     TerrainCtx* terrain = nullptr; /* owned */
-    FastNoise::SmartNode<> densityNode;
-    int32_t densitySeed = 0;
+    /* [0] cheese, [1] spaghetti 1, [2] spaghetti 2, [3] crag — Density3D's fill order. */
+    FastNoise::SmartNode<> densityNode[4];
+    int32_t densitySeed[4] = {};
+    float densityYSquash[4] = {CHEESE_Y_SQUASH, SPAG_Y_SQUASH, SPAG_Y_SQUASH, CRAG_Y_SQUASH};
+    SplineLinear cheeseThreshold;
     int64_t seed = 0;
 
     int16_t airId = 0, waterId = 0, stoneId = 0, bedrockId = 0, magmaId = 0;
@@ -381,7 +454,7 @@ struct NativeAnchorSource final : AnchorSource {
                 continue;
             }
             float anchor[3];
-            computeCavernOrigin(*p, ctx->seed, neighbor[0], neighbor[1], anchor);
+            computeCavernOrigin(*p, *ctx->terrain, ctx->seed, neighbor[0], neighbor[1], anchor);
             const float dx = anchor[0] - ox;
             const float dy = anchor[1] - oy;
             const float dz = anchor[2] - oz;
@@ -403,42 +476,125 @@ struct NativeAnchorSource final : AnchorSource {
     }
 };
 
-/* Density3D.Field.isSolid — chunk-local, volume laid out
- * [(y - CAVE_FLOOR)*256 + localX*16 + localZ]. volume == nullptr means the
- * whole chunk is below the cave floor (prepareChunk returned null): solid. */
-bool densitySolid(const ChunkGenCtx& c, int localX, int y, int localZ,
-                  int surfaceHeight, int biomeIdx, const float* volume, int yCount) {
-    if (y < DENSITY_CAVE_FLOOR || y >= surfaceHeight) {
-        return true;
+/* Density3D.peakDamp — how much of the biome's surface-carve intensity survives at this
+ * column's altitude. Written operand for operand as the Java is: the kernels build with
+ * -ffp-contract=off (see native/kernels/CMakeLists.txt) so that an identically-ordered
+ * float expression is bit-identical across the backends, which is what
+ * FusedChunkGenParityTest asserts. Reassociating this breaks that test. */
+float densityPeakDamp(int surfaceHeight) {
+    if (surfaceHeight <= DENSITY_PEAK_DAMP_START) {
+        return 1.0f;
     }
-    const float intensity = (y >= surfaceHeight - DENSITY_OVERHANG_DEPTH)
-        ? c.biomeOverhang[static_cast<size_t>(biomeIdx)]
-        : c.biomeCave[static_cast<size_t>(biomeIdx)];
+    if (surfaceHeight >= DENSITY_PEAK_DAMP_END) {
+        return DENSITY_PEAK_DAMP_FLOOR;
+    }
+    const float t = static_cast<float>(surfaceHeight - DENSITY_PEAK_DAMP_START)
+        / static_cast<float>(DENSITY_PEAK_DAMP_END - DENSITY_PEAK_DAMP_START);
+    return 1.0f - (1.0f - DENSITY_PEAK_DAMP_FLOOR) * t;
+}
+
+/* Density3D.solidInOverhangBand — the biome rule, now a UNION with the cave test
+ * rather than a branch that short-circuits it. `n` is the channel the biome selected:
+ * crag when it is flagged CK_BIOME_CRAG_SURFACE, cheese otherwise. The caller picks,
+ * so each backend samples its own way. */
+bool solidInOverhangBand(const ChunkGenCtx& c, float n, int biomeIdx, int surfaceHeight) {
+    const float intensity = c.biomeOverhang[static_cast<size_t>(biomeIdx)]
+        * densityPeakDamp(surfaceHeight);
     if (intensity <= 0.0f) {
         return true;
     }
-    if (volume == nullptr) {
+    /* CAUTION: Java's helper is NAMED carve() but the caller RETURNS IT DIRECTLY —
+     * `n < 1 - 2*intensity` is the SOLID predicate (air on the high-noise tail). */
+    return n < (1.0f - 2.0f * intensity);
+}
+
+/* Density3D.solidAt — the carve decision, shared by both backends. */
+bool densitySolidAt(const ChunkGenCtx& c, float cheese, float s1, float s2,
+                    int y, int surfaceHeight, int table) {
+    const int depth = surfaceHeight - y;
+    if (static_cast<double>(cheese) > c.cheeseThreshold.interpolate(depth)) {
+        return false;
+    }
+    /* Two noise sheets intersect in a curve: this is the tube test. */
+    const float thickness =
+        (SPAG_THICKNESS + SPAG_GALLERY_BONUS * cenda::gen::waterTableGalleryWeight(table, y))
+        * spaghettiFade(depth);
+    if (thickness > 0.0f && std::fabs(s1) < thickness && std::fabs(s2) < thickness) {
+        return false;
+    }
+    return true;
+}
+
+/* Density3D.Field.isSolid — chunk-local, volumes laid out
+ * [(y - CAVE_FLOOR)*256 + localX*16 + localZ]. volume == nullptr means the
+ * whole chunk is below the cave floor (prepareChunk returned null): solid. */
+bool densitySolid(const ChunkGenCtx& c, int localX, int y, int localZ,
+                  int surfaceHeight, int biomeIdx, const float* cheeseVol,
+                  const float* spag1Vol, const float* spag2Vol, const float* cragVol,
+                  int yCount, const int32_t* table) {
+    if (y < DENSITY_CAVE_FLOOR || y >= surfaceHeight) {
+        return true;
+    }
+    if (cheeseVol == nullptr) {
         return true;
     }
     const int yIndex = y - DENSITY_CAVE_FLOOR;
     if (yIndex >= yCount) {
         return true;
     }
-    const float n = volume[(yIndex * CHUNK_SIZE + localX) * CHUNK_SIZE + localZ];
-    /* CAUTION: Java's helper is NAMED carve() but isSolid RETURNS IT DIRECTLY —
-     * `n < 1 - 2*intensity` is the SOLID predicate (air on the high-noise tail).
-     * Inverting this carves ~75% of the underground into floating-blob sponge. */
-    return n < (1.0f - 2.0f * intensity);
+    const int i = (yIndex * CHUNK_SIZE + localX) * CHUNK_SIZE + localZ;
+    const int col = localX * CHUNK_SIZE + localZ;
+    const float cheese = cheeseVol[i];
+    if (y >= surfaceHeight - DENSITY_OVERHANG_DEPTH) {
+        /* cragVol is non-null whenever any column in the chunk is flagged, and only a
+         * flagged column can reach this branch wanting it. */
+        const bool crag =
+            (c.biomeFlags[static_cast<size_t>(biomeIdx)] & CK_BIOME_CRAG_SURFACE) != 0
+            && cragVol != nullptr;
+        if (!solidInOverhangBand(c, crag ? cragVol[i] : cheese, biomeIdx, surfaceHeight)) {
+            return false;
+        }
+    }
+    return densitySolidAt(c, cheese, spag1Vol[i], spag2Vol[i], y, surfaceHeight, table[col]);
+}
+
+/* FormationSupport.prune — clears every formation run that neither the block below
+ * it nor the block above it holds up. The support test is a caller-supplied
+ * predicate for the same reason the Java takes an interface: it is the head of the
+ * block fill, and only the caller has the pieces. */
+template <typename SupportFn>
+void pruneUnsupportedFormations(uint64_t* formations, SupportFn&& solidAt) {
+    for (int x = 0; x < CHUNK_SIZE; x++) {
+        for (int z = 0; z < CHUNK_SIZE; z++) {
+            int runStart = -1;
+            for (int y = 1; y <= WORLD_HEIGHT; y++) {
+                if (y < WORLD_HEIGHT && testBit(formations, (x << 12) | (y << 4) | z)) {
+                    if (runStart < 0) runStart = y;
+                    continue;
+                }
+                if (runStart < 0) continue;
+                const int runEnd = y - 1;
+                if (!solidAt(x, runStart - 1, z) && !solidAt(x, runEnd + 1, z)) {
+                    for (int cy = runStart; cy <= runEnd; cy++) {
+                        clearBit(formations, (x << 12) | (cy << 4) | z);
+                    }
+                }
+                runStart = -1;
+            }
+        }
+    }
 }
 
 /* TerrainGenerationSystem.determineBlockType, exact branch order. */
 int16_t determineBlock(const ChunkGenCtx& c, int worldX, int y, int worldZ,
-                       int height, int biomeIdx, const float* volume, int yCount,
-                       int localX, int localZ) {
+                       int height, int biomeIdx, const float* cheeseVol,
+                       const float* spag1Vol, const float* spag2Vol, const float* cragVol,
+                       int yCount, const int32_t* table, int localX, int localZ) {
     if (y == 0) {
         return c.bedrockId;
     }
-    if (y < height && !densitySolid(c, localX, y, localZ, height, biomeIdx, volume, yCount)) {
+    if (y < height && !densitySolid(c, localX, y, localZ, height, biomeIdx,
+                                    cheeseVol, spag1Vol, spag2Vol, cragVol, yCount, table)) {
         return c.airId;
     }
     const uint8_t flags = c.biomeFlags[static_cast<size_t>(biomeIdx)];
@@ -475,8 +631,10 @@ void* ck_chunkgen_create(
     const int32_t* ch_xoff, const int32_t* ch_zoff,
     const double* spline_xs, const double* spline_ys, const int32_t* spline_sizes,
     float detail_amplitude,
-    int32_t density_seed, int32_t density_octaves,
-    float density_gain, float density_lacunarity, float density_freq,
+    const int32_t* density_seeds, const int32_t* density_octaves,
+    const float* density_gain, const float* density_lacunarity, const float* density_freq,
+    const double* cheese_spline_xs, const double* cheese_spline_ys,
+    const int32_t* cheese_spline_sizes,
     const int32_t* block_ids,
     int32_t n_biomes,
     const int16_t* biome_surface_id, const int16_t* biome_subsurface_id,
@@ -484,7 +642,11 @@ void* ck_chunkgen_create(
     const uint8_t* biome_flags,
     int32_t magma_feature_hash, float magma_chance,
     const uint8_t* opacity_table, int32_t opacity_table_len) {
-    if (block_ids == nullptr || n_biomes <= 0
+    if (density_seeds == nullptr || density_octaves == nullptr || density_gain == nullptr
+            || density_lacunarity == nullptr || density_freq == nullptr
+            || cheese_spline_xs == nullptr || cheese_spline_ys == nullptr
+            || cheese_spline_sizes == nullptr
+            || block_ids == nullptr || n_biomes <= 0
             || biome_surface_id == nullptr || biome_subsurface_id == nullptr
             || biome_cave_intensity == nullptr || biome_overhang_intensity == nullptr
             || biome_flags == nullptr
@@ -497,17 +659,25 @@ void* ck_chunkgen_create(
     if (terrain == nullptr) {
         return nullptr;
     }
-    auto densityNode = cenda::makeSimplexFbm(density_octaves, density_lacunarity,
-                                             density_gain, density_freq);
-    if (!densityNode) {
-        delete terrain;
-        return nullptr;
+    FastNoise::SmartNode<> densityNodes[4];
+    for (int n = 0; n < 4; n++) {
+        densityNodes[n] = cenda::makeSimplexFbm(density_octaves[n], density_lacunarity[n],
+                                                density_gain[n], density_freq[n]);
+        if (!densityNodes[n]) {
+            delete terrain;
+            return nullptr;
+        }
     }
 
     auto* ctx = new ChunkGenCtx();
     ctx->terrain = terrain;
-    ctx->densityNode = std::move(densityNode);
-    ctx->densitySeed = density_seed;
+    for (int n = 0; n < 4; n++) {
+        ctx->densityNode[n] = std::move(densityNodes[n]);
+        ctx->densitySeed[n] = density_seeds[n];
+    }
+    for (int32_t i = 0; i < cheese_spline_sizes[0]; i++) {
+        ctx->cheeseThreshold.addPoint(cheese_spline_xs[i], cheese_spline_ys[i]);
+    }
     ctx->seed = seed;
     ctx->airId = static_cast<int16_t>(block_ids[0]);
     ctx->waterId = static_cast<int16_t>(block_ids[1]);
@@ -533,6 +703,7 @@ void ck_chunkgen_destroy(void* ctx) {
 
 int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
                           const int32_t* heights, const int32_t* biomes,
+                          const uint64_t* extra_carve_mask,
                           int16_t* out_blocks, int32_t* out_heightmap) {
     auto* ctx = static_cast<ChunkGenCtx*>(ctxPtr);
     if (ctx == nullptr || heights == nullptr || biomes == nullptr || out_blocks == nullptr) {
@@ -556,7 +727,11 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
     anchors.ctx = ctx;
     cenda::gen::carveWormsImpl(*ctx->terrain, chunk_x, chunk_z, heights, &anchors, caveMask);
 
-    buildCavernCarve(ctx->cavern, ctx->seed, chunk_x, chunk_z, heights, cavA);
+    int32_t waterGuard[CHUNK_SIZE * CHUNK_SIZE];
+    cenda::gen::waterGuardPlane(*ctx->terrain, heights, chunk_x, chunk_z, waterGuard);
+
+    buildCavernCarve(ctx->cavern, *ctx->terrain, ctx->seed, chunk_x, chunk_z,
+                     heights, waterGuard, cavA);
     bool anyA = false;
     for (const uint64_t w : cavA) {
         if (w != 0) { anyA = true; break; }
@@ -565,7 +740,8 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
         buildFormations(ctx->cavern, ctx->seed, chunk_x, chunk_z, cavA, formMask);
     }
 
-    buildCavernCarve(ctx->mega, ctx->seed, chunk_x, chunk_z, heights, cavB);
+    buildCavernCarve(ctx->mega, *ctx->terrain, ctx->seed, chunk_x, chunk_z,
+                     heights, waterGuard, cavB);
     bool anyB = false;
     for (const uint64_t w : cavB) {
         if (w != 0) { anyB = true; break; }
@@ -576,6 +752,12 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
 
     for (int i = 0; i < MASK_WORDS; i++) {
         caveMask[i] |= cavA[i] | cavB[i];
+    }
+    /* Ravines and sinkholes, carved Java-side and handed over — see kernels.h. */
+    if (extra_carve_mask != nullptr) {
+        for (int i = 0; i < MASK_WORDS; i++) {
+            caveMask[i] |= extra_carve_mask[i];
+        }
     }
 
     /* Density volume: the identical GenUniformGrid3D call Density3D.prepareChunk
@@ -589,23 +771,69 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
      * rows are fully overwritten by GenUniformGrid3D; vol is null when this
      * call generated no rows, so stale data from a previous chunk is never
      * read. */
-    thread_local std::vector<float> volume;
+    thread_local std::vector<float> volume[4];
+    /* Density3D.needsCrag — the crag channel is filled only when some column in the chunk
+     * belongs to a biome that reads it. Most chunks contain none, so the fourth fill costs
+     * nothing in the common case; where it is skipped, no column can ask for it either. */
+    bool needsCrag = false;
+    for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE; i++) {
+        const int b = biomes[i];
+        if (b >= 0 && b < ctx->nBiomes
+                && (ctx->biomeFlags[static_cast<size_t>(b)] & CK_BIOME_CRAG_SURFACE) != 0) {
+            needsCrag = true;
+            break;
+        }
+    }
+    const int nVolumes = needsCrag ? 4 : 3;
     int yCount = 0;
     if (maxSurface > DENSITY_CAVE_FLOOR) {
         yCount = maxSurface - DENSITY_CAVE_FLOOR;
-        if (volume.size() < static_cast<size_t>(yCount) * CHUNK_SIZE * CHUNK_SIZE) {
-            volume.resize(static_cast<size_t>(yCount) * CHUNK_SIZE * CHUNK_SIZE);
+        const size_t need = static_cast<size_t>(yCount) * CHUNK_SIZE * CHUNK_SIZE;
+        for (int n = 0; n < nVolumes; n++) {
+            if (volume[n].size() < need) {
+                volume[n].resize(need);
+            }
+            ctx->densityNode[n]->GenUniformGrid3D(
+                volume[n].data(),
+                static_cast<float>(chunk_z * CHUNK_SIZE),
+                static_cast<float>(chunk_x * CHUNK_SIZE),
+                static_cast<float>(DENSITY_CAVE_FLOOR) * ctx->densityYSquash[n],
+                CHUNK_SIZE, CHUNK_SIZE, yCount,
+                1.0f, 1.0f, ctx->densityYSquash[n],
+                ctx->densitySeed[n]);
         }
-        ctx->densityNode->GenUniformGrid3D(
-            volume.data(),
-            static_cast<float>(chunk_z * CHUNK_SIZE),
-            static_cast<float>(chunk_x * CHUNK_SIZE),
-            static_cast<float>(DENSITY_CAVE_FLOOR) * DENSITY_Y_SQUASH,
-            CHUNK_SIZE, CHUNK_SIZE, yCount,
-            1.0f, 1.0f, DENSITY_Y_SQUASH,
-            ctx->densitySeed);
     }
-    const float* vol = yCount > 0 ? volume.data() : nullptr;
+    const float* cheeseVol = yCount > 0 ? volume[0].data() : nullptr;
+    const float* spag1Vol = yCount > 0 ? volume[1].data() : nullptr;
+    const float* spag2Vol = yCount > 0 ? volume[2].data() : nullptr;
+    const float* cragVol = (yCount > 0 && needsCrag) ? volume[3].data() : nullptr;
+
+    /* CaveWaterTable.tableForChunk — one batched wobble fill, then resolve per column. */
+    float wobble[CHUNK_SIZE * CHUNK_SIZE];
+    ctx->terrain->wobbleNoise->GenUniformGrid2D(
+        wobble,
+        static_cast<float>(chunk_z * CHUNK_SIZE), static_cast<float>(chunk_x * CHUNK_SIZE),
+        CHUNK_SIZE, CHUNK_SIZE, 1.0f, 1.0f, ctx->terrain->wobbleSeed);
+    int32_t table[CHUNK_SIZE * CHUNK_SIZE];
+    for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE; i++) {
+        table[i] = cenda::gen::waterTableResolve(
+            heights[i], cenda::gen::waterLevelOf(heights[i]), wobble[i]);
+    }
+
+    /* Every carver is in and the density volumes exist, so a formation's anchor can
+     * finally be tested against the chunk as it will actually be written — the same
+     * point TerrainGenerationSystem prunes at, and the same predicate. */
+    if (anyA || anyB) {
+        pruneUnsupportedFormations(formMask, [&](int lx, int ly, int lz) -> bool {
+            if (ly <= 0) return true; /* bedrock floor */
+            const int col = lx * CHUNK_SIZE + lz;
+            const int h = heights[col];
+            if (ly >= h) return false; /* sky or open water above the surface */
+            if (testBit(caveMask, (lx << 12) | (ly << 4) | lz)) return false;
+            return densitySolid(*ctx, lx, ly, lz, h, biomes[col],
+                                cheeseVol, spag1Vol, spag2Vol, cragVol, yCount, table);
+        });
+    }
 
     /* Block fill — exact port of the generateTerrainOnly loop + determineBlockType. */
     std::fill_n(out_blocks, 65536, ctx->airId);
@@ -628,7 +856,8 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
                     continue; /* carved to air — already the fill value */
                 } else {
                     block = determineBlock(*ctx, worldX, y, worldZ, height, biomeIdx,
-                                           vol, yCount, x, z);
+                                           cheeseVol, spag1Vol, spag2Vol, cragVol, yCount,
+                                           table, x, z);
                 }
                 if (block != ctx->airId) {
                     out_blocks[y * 256 + z * 16 + x] = block;

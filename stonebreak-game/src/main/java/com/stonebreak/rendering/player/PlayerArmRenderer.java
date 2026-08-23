@@ -105,7 +105,16 @@ public class PlayerArmRenderer {
         // Sample world light at the player's eye so the arm/held item darken in
         // caves and night. Reset to -1 at the end so subsequent draws fall back
         // to their per-vertex light (terrain must not inherit this override).
-        shaderProgram.setUniform("u_playerLight", samplePlayerLight(player));
+        float playerLight = samplePlayerLight(player);
+        if (com.stonebreak.rendering.lighting.DynamicLights.isHoldingTorch(player)) {
+            // A held torch lights the hand holding it (arm-local geometry can't
+            // sample the world point lights), pulsing with the flame.
+            float flame = com.stonebreak.rendering.lighting.TorchLight.intensity(
+                    com.stonebreak.core.Game.getInstance().getTotalTimeElapsed());
+            playerLight = Math.max(playerLight,
+                    com.stonebreak.rendering.lighting.DynamicLights.heldTorchLight() * flame);
+        }
+        shaderProgram.setUniform("u_playerLight", playerLight);
 
         // Reset transformation matrix
         reusableArmViewModel.identity();

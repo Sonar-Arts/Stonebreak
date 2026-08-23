@@ -18,7 +18,26 @@ import java.util.List;
  * @param waterMesh  water geometry for the dedicated water renderer, may be null/empty
  * @param sboEntries per-block-type SBO mesh data and face batches, may be null or empty
  */
-public record ChunkMeshResult(MmsMeshData atlasMesh, MmsMeshData waterMesh, List<SBOEntry> sboEntries) {
+public record ChunkMeshResult(MmsMeshData atlasMesh, MmsMeshData waterMesh, List<SBOEntry> sboEntries,
+                              MmsMeshData stampMesh) {
+
+    /**
+     * Three-part result (no stamp mesh): the atlas mesh carries everything
+     * atlas-textured. Under a pulled vertex format the mesher passes the
+     * non-quad geometry separately as {@code stampMesh}.
+     */
+    public ChunkMeshResult(MmsMeshData atlasMesh, MmsMeshData waterMesh, List<SBOEntry> sboEntries) {
+        this(atlasMesh, waterMesh, sboEntries, null);
+    }
+
+    /**
+     * Whether this result carries atlas geometry that could not be expressed
+     * as pulled quads (SBO stamps, crosses) — drawn with the atlas pass from
+     * its own per-vertex mesh.
+     */
+    public boolean hasStampMesh() {
+        return stampMesh != null && stampMesh.getVertexCount() > 0;
+    }
 
     /**
      * A single SBO block type's mesh data and face batches.

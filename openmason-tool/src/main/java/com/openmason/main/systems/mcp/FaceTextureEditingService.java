@@ -219,7 +219,45 @@ public final class FaceTextureEditingService {
         }));
     }
 
+    /**
+     * Text rendering of a face texture (or a rect of it) for vision-less readers:
+     * glyph grid + legend + structural stats. See {@link PixelTextCodec}.
+     */
+    public PixelTextCodec.Result describe(int faceId, int[] rectOrNull, PixelTextCodec.Options opt) {
+        return await(MainThreadExecutor.submit(() -> {
+            Target t = resolveTarget(faceId);
+            int w = t.width(), h = t.height();
+            int x = 0, y = 0, rw = w, rh = h;
+            if (rectOrNull != null) {
+                if (rectOrNull.length != 4) throw new IllegalArgumentException("rect must be [x,y,w,h]");
+                x = rectOrNull[0];
+                y = rectOrNull[1];
+                rw = rectOrNull[2];
+                rh = rectOrNull[3];
+                if (rw <= 0 || rh <= 0 || x < 0 || y < 0 || x + rw > w || y + rh > h) {
+                    throw new IllegalArgumentException("rect " + rw + "x" + rh + " at (" + x + "," + y
+                            + ") exceeds the " + w + "x" + h + " texture");
+                }
+            }
+            return PixelTextCodec.describe(t.canvas().getPixels(), w, x, y, rw, rh, opt);
+        }));
+    }
+
     // ===================== Sessionless one-shot mutations =====================
+
+    /** Paint a glyph grid with a legend directly onto a face texture (inverse of describe). */
+    public DrawResult paintGrid(int faceId, List<String> rows, java.util.Map<String, String> legend,
+                                int ox, int oy, boolean clearDots) {
+        int[] writes = PixelTextCodec.parseGrid(rows, PixelTextCodec.legendFrom(legend), ox, oy, clearDots);
+        return runDraw(faceId, "Face " + faceId + " Paint Grid", edit -> {
+            int changed = 0;
+            for (int i = 0; i < writes.length; i += 6) {
+                int color = PixelCanvas.packRGBA(writes[i + 2], writes[i + 3], writes[i + 4], writes[i + 5]);
+                changed += edit.write(writes[i], writes[i + 1], color);
+            }
+            return changed;
+        });
+    }
 
     public DrawResult setPixels(int faceId, List<PixelEntry> pixels) {
         return runDraw(faceId, "Face " + faceId + " Set Pixels", edit -> {

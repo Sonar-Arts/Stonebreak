@@ -11,6 +11,7 @@ in float v_viewDepth;
 out vec4 fragColor;
 
 #include "/shaders/shadow/csm_uniforms.glsl"
+#include "/shaders/lighting/point_lights.glsl"
 #include "/shaders/shadow/csm_functions.glsl"
 
 uniform sampler2D texture_sampler;
@@ -144,6 +145,15 @@ void main() {
         // it light or the two stack into pitch-black corners.
         float worldLightFactor = mix(0.30, 1.0, worldLight);
         result *= worldLightFactor;
+
+        // Dynamic point lights (torches) add on top of the baked/sun terms so
+        // they light caves and night. Player-held geometry has no world-space
+        // fragPos; it is lit through u_playerLight instead.
+        if (u_playerLight < 0.0) {
+            vec3 torch = pointLightContribution(fragPos, norm)
+                    * pointLightWeight(u_ambientLight, worldLight);
+            result = applyPointLight(result, textureColor.rgb, torch);
+        }
 
         if (v_isAlphaTested > 0.5) {
             if (sampledAlpha < 0.1) {

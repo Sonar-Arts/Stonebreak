@@ -42,8 +42,18 @@ class FastLodMesherTest {
 
     private FastLodMesher mesher;
 
+    // These tests pin the per-vertex writer's exact quad structure; the pulled
+    // LOD format greedy-merges flat cells and is covered by FastLodPulledParityTest.
+    @org.junit.jupiter.api.AfterEach
+    void restoreFormat() {
+        com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.override(
+            com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.DEFAULT);
+    }
+
     @BeforeEach
     void setUp() {
+        com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.override(
+            com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.LEGACY40);
         BlockTextureArray textures = mock(BlockTextureArray.class);
         when(textures.getBlockFaceLayer(any(), anyInt())).thenReturn(7);
         mesher = new FastLodMesher(textures);
@@ -166,7 +176,8 @@ class FastLodMesherTest {
         FastLodMesher.Result result = mesher.build(l4Data(filled(9, 296), BlockType.SAND, SEA_LEVEL));
         MmsMeshData sheet = result.waterMesh();
         assertNotNull(sheet);
-        for (float f : sheet.getWaterHeightFlags()) assertEquals(0.875f, f, EPS);
+        // 1/255 tolerance: the flag is a u8 on the GPU in every packed format.
+        for (float f : sheet.getWaterHeightFlags()) assertEquals(0.875f, f, 1f / 255f);
         for (float f : sheet.getAlphaTestFlags()) assertEquals(0f, f, EPS);
         for (float f : sheet.getLightValues()) assertEquals(1f, f, EPS);
         float[] normals = sheet.getVertexNormals();
@@ -254,12 +265,14 @@ class FastLodMesherTest {
         // The slope makes every cell emit a -x skirt too; skirt and foundation
         // normals are axis-aligned so they never match the gradient normal.
         // Count the gradient-normal verts: exactly the 4 corners of every top quad.
+        // Tolerance 1e-2: the pulled LOD format stores normals as 8+8-bit
+        // octahedral (≈0.005 per component), the per-vertex path is exact.
         int gradientVerts = 0;
         for (int v = 0; v < mesh.getVertexCount(); v++) {
             float nx = normals[v * 3], ny = normals[v * 3 + 1], nz = normals[v * 3 + 2];
-            if (Math.abs(ny - expected) < 1e-3f) {
-                assertEquals(-expected, nx, 1e-3f);
-                assertEquals(0f, nz, 1e-3f);
+            if (Math.abs(ny - expected) < 1e-2f) {
+                assertEquals(-expected, nx, 1e-2f);
+                assertEquals(0f, nz, 1e-2f);
                 gradientVerts++;
             }
         }

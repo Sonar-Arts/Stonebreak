@@ -205,20 +205,37 @@ public final class CendaMesher {
 
     private static volatile byte[] cachedClassTable;
     private static volatile java.util.function.Predicate<BlockType> cachedSboPredicate;
+    private static volatile java.util.function.Predicate<BlockType> cachedShapedPredicate;
 
     /**
      * (Re)builds the per-block-id class table. Must be refreshed whenever the
      * SBO stamp emitter's block set changes (adapter calls this on wiring).
      */
     public static void rebuildClassTable(java.util.function.Predicate<BlockType> isSboStampBlock) {
+        rebuildClassTable(isSboStampBlock, t -> false);
+    }
+
+    /**
+     * @param isSboStampBlock ids the SBO stamp emitter keeps (left to the Java pass)
+     * @param isShapedSbo     stamp ids whose geometry doesn't fill the cell (stairs,
+     *                        slabs, snow layers): treated as non-occluding so a cube
+     *                        face behind them is still emitted
+     */
+    public static void rebuildClassTable(java.util.function.Predicate<BlockType> isSboStampBlock,
+                                         java.util.function.Predicate<BlockType> isShapedSbo) {
         cachedSboPredicate = isSboStampBlock;
+        cachedShapedPredicate = isShapedSbo;
         int maxId = 0;
         for (BlockType type : BlockType.values()) {
             maxId = Math.max(maxId, type.getId());
         }
         byte[] table = new byte[maxId + 1];
         for (BlockType type : BlockType.values()) {
-            table[type.getId()] = classify(type, isSboStampBlock);
+            byte cls = classify(type, isSboStampBlock);
+            if (isShapedSbo.test(type)) {
+                cls |= CendaKernels.CLASS_TRANSPARENT; // can't hide a neighbour's face
+            }
+            table[type.getId()] = cls;
         }
         cachedClassTable = table;
     }
@@ -226,7 +243,8 @@ public final class CendaMesher {
     public static byte[] classTable() {
         byte[] table = cachedClassTable;
         if (table == null) {
-            rebuildClassTable(cachedSboPredicate != null ? cachedSboPredicate : t -> false);
+            rebuildClassTable(cachedSboPredicate != null ? cachedSboPredicate : t -> false,
+                cachedShapedPredicate != null ? cachedShapedPredicate : t -> false);
             table = cachedClassTable;
         }
         return table;

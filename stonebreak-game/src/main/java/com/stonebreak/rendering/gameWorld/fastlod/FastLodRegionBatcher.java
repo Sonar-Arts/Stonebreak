@@ -1,6 +1,7 @@
 package com.stonebreak.rendering.gameWorld.fastlod;
 
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
+import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion;
 import com.openmason.engine.vram.VramPlans;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsMultiDrawBatch;
@@ -44,7 +45,40 @@ import java.util.Map;
 public final class FastLodRegionBatcher {
 
     /** LOD regions span 16x16 chunk columns (shift 4). */
-    private static final int LOD_REGION_SHIFT = 4;
+    public static final int LOD_REGION_SHIFT = 4;
+
+    /** Tracked GPU bytes of all live LOD regions in one layer (debug/telemetry). */
+    public long layerBytes(int layer) {
+        long total = 0;
+        for (MmsChunkRegion r : (layer == LAYER_WATER ? waterRegions : terrainRegions).values()) {
+            total += r.capacityBytes();
+        }
+        return total;
+    }
+
+    /** Live quads (indices / 6) in one layer (debug/telemetry). */
+    public long layerQuads(int layer) {
+        long n = 0;
+        for (MmsChunkRegion r : (layer == LAYER_WATER ? waterRegions : terrainRegions).values()) {
+            n += r.liveIndexCount();
+        }
+        return n / 6;
+    }
+
+    /** Live LOD meshes in one layer (debug/telemetry). */
+    public int layerMeshes(int layer) {
+        int n = 0;
+        for (MmsChunkRegion r : (layer == LAYER_WATER ? waterRegions : terrainRegions).values()) {
+            n += r.gpuCommandCount();
+        }
+        return n;
+    }
+
+    /** World-space origin of the LOD region containing chunk column {@code (chunkX, chunkZ)}. */
+    public static float regionOrigin(int chunkCoord) {
+        return (float) (((chunkCoord >> LOD_REGION_SHIFT) << LOD_REGION_SHIFT)
+            * com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE);
+    }
 
     public static final int LAYER_TERRAIN = 0;
     public static final int LAYER_WATER = 1;
@@ -92,12 +126,11 @@ public final class FastLodRegionBatcher {
         // cell). Sizes/growth come from the active CEARL plan (builtin
         // defaults match the pre-CEARL constants exactly).
         MmsChunkRegion region = regions.computeIfAbsent(key,
-            k -> layer == LAYER_WATER
-                ? new MmsChunkRegion(VramPlans.arena(VramPlans.POOL_LOD_WATER))
-                : new MmsChunkRegion(VramPlans.arena(VramPlans.POOL_LOD_TERRAIN)));
-        return region.upload(mesh.getPackedVertexData(), mesh.getPackedIndexData(),
-            mesh.getVertexCount(), mesh.getIndexCount(),
-            minX, minY, minZ, maxX, maxY, maxZ);
+            k -> new MmsChunkRegion(layer == LAYER_WATER
+                    ? MmsVertexFormat.active().waterFormat()   // sea sheets: pulled water quads when pulling
+                    : MmsVertexFormat.active().lodFormat(),    // terrain: pulled LOD quads when pulling
+                VramPlans.arena(layer == LAYER_WATER ? VramPlans.POOL_LOD_WATER : VramPlans.POOL_LOD_TERRAIN)));
+        return region.upload(mesh, minX, minY, minZ, maxX, maxY, maxZ);
     }
 
     /**

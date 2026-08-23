@@ -98,6 +98,18 @@ inline int32_t javaRoundFloat(float f) {
 /* Java Math.floorMod(long, positive power-of-two divisor). */
 inline int64_t floorMod8(int64_t v) { return v & 7; }
 
+/* Math.floorMod(long, int) — result carries the sign of the divisor. The carve
+ * divisors (48, 192, 40, 450) are not powers of two, so the & (n-1) shortcut that
+ * works for the worm's 8 is wrong for them: it samples the low bits instead of the
+ * residue and picks a different, denser set of chunks. */
+inline int32_t javaFloorMod(int64_t x, int32_t y) {
+    int32_t r = static_cast<int32_t>(x % y);
+    if (r != 0 && ((r < 0) != (y < 0))) {
+        r += y;
+    }
+    return r;
+}
+
 inline int64_t rotateLeft(int64_t v, int distance) {
     auto u = static_cast<uint64_t>(v);
     return static_cast<int64_t>((u << distance) | (u >> (64 - distance)));

@@ -98,8 +98,8 @@ public class OMTImportDialog {
         if (needsPositioning) {
             ImGui.setNextWindowSize(DIALOG_WIDTH, DIALOG_HEIGHT);
             ImGui.setNextWindowPos(
-                ImGui.getMainViewport().getSizeX() / 2.0f - DIALOG_WIDTH / 2.0f,
-                ImGui.getMainViewport().getSizeY() / 2.0f - DIALOG_HEIGHT / 2.0f
+                ImGui.getMainViewport().getCenterX() - DIALOG_WIDTH / 2.0f,
+                ImGui.getMainViewport().getCenterY() - DIALOG_HEIGHT / 2.0f
             );
             needsPositioning = false;
         }

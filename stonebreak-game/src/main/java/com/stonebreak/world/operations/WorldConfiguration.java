@@ -10,6 +10,14 @@ public class WorldConfiguration {
     public static final int WORLD_HEIGHT = 1024;
     public static final int SEA_LEVEL = 320;
 
+    /**
+     * Sentinel water level for a column that holds no standing water. The cave
+     * carvers take a per-column water plane so they can keep off water beds and
+     * banks; on this branch the only standing water is the ocean, so a column is
+     * wet exactly when its surface sits below {@link #SEA_LEVEL}.
+     */
+    public static final int NO_WATER = -1;
+
     // Rendering settings
     public static final int DEFAULT_RENDER_DISTANCE = 8;
 

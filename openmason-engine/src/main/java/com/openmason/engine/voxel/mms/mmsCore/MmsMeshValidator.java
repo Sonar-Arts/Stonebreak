@@ -303,7 +303,9 @@ public final class MmsMeshValidator {
 
         java.nio.ByteBuffer indexBuf =
             java.nio.ByteBuffer.wrap(indexBytes).order(java.nio.ByteOrder.nativeOrder());
-        if (meshData.hasShortIndices()) {
+        if (meshData.getFormat().pulled()) {
+            // Shared quad pattern: indices are implied and always in range.
+        } else if (meshData.hasShortIndices()) {
             for (int i = 0; i < indexCount; i++) {
                 int index = Short.toUnsignedInt(indexBuf.getShort(i * Short.BYTES));
                 if (index >= vertexCount) {
@@ -323,11 +325,11 @@ public final class MmsMeshValidator {
 
         java.nio.ByteBuffer vertexBuf =
             java.nio.ByteBuffer.wrap(vertexBytes).order(java.nio.ByteOrder.nativeOrder());
-        int stride = MmsBufferLayout.VERTEX_STRIDE_BYTES;
+        MmsVertexFormat fmt = meshData.getFormat();
         for (int i = 0; i < vertexCount; i++) {
-            int base = i * stride;
             for (int c = 0; c < 3; c++) {
-                float value = vertexBuf.getFloat(base + c * Float.BYTES);
+                float value = fmt.position(vertexBuf, i, c,
+                    meshData.getOriginX(), meshData.getOriginY(), meshData.getOriginZ());
                 if (!Float.isFinite(value)) {
                     return ValidationResult.invalid(String.format(
                         "Non-finite vertex position at vertex %d: %f", i, value));

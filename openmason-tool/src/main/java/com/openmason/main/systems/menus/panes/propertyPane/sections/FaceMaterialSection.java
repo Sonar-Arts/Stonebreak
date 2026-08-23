@@ -397,13 +397,29 @@ public class FaceMaterialSection implements IPanelSection {
     private static final int BLANK_FACE_TEXTURE_SIZE = 16;
     private static final int BLANK_FACE_FILL_COLOR = PixelCanvas.packRGBA(0xCC, 0xCC, 0xCC, 0xFF);
 
-    private void handleEditTexture(int faceId, String materialName) {
+    /**
+     * Open {@code faceId} in the texture editor exactly as the "Edit Texture"
+     * button does: resolves/creates the face material, loads its pixels into
+     * the editor canvas, opens the face region and fires the
+     * edit-texture-requested callback (which shows the editor window).
+     * Intended for programmatic drivers (MCP); must run on the GL thread.
+     *
+     * @return true if the face was opened for editing
+     */
+    public boolean openFaceForEditing(int faceId) {
+        if (faceEditorBridge == null || viewportConnector == null) {
+            return false;
+        }
+        return handleEditTexture(faceId, getMaterialName(faceId));
+    }
+
+    private boolean handleEditTexture(int faceId, String materialName) {
         boolean opened;
 
         FaceTextureManager ftm = viewportConnector.getFaceTextureManager();
         if (ftm == null) {
             logger.error("FaceTextureManager not available");
-            return;
+            return false;
         }
 
         if (materialName.equals("Default")) {
@@ -421,7 +437,7 @@ public class FaceMaterialSection implements IPanelSection {
             int gpuTextureId = omtTextureLoader.createBlankTexture(texW, texH);
             if (gpuTextureId <= 0) {
                 logger.error("Failed to create blank GPU texture for face {}", faceId);
-                return;
+                return false;
             }
 
             // Register as a new material and assign to the face
@@ -529,6 +545,7 @@ public class FaceMaterialSection implements IPanelSection {
                 onEditTextureRequested.run();
             }
         }
+        return opened;
     }
 
     /**

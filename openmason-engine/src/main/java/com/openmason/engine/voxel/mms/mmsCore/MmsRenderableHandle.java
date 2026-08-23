@@ -1,6 +1,9 @@
 package com.openmason.engine.voxel.mms.mmsCore;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL31;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 
@@ -46,6 +49,11 @@ public final class MmsRenderableHandle implements AutoCloseable {
     // State management
     private final AtomicBoolean disposed = new AtomicBoolean(false);
     private final boolean useBufferPool;
+    /** Per-mesh origin buffer for local-position formats (0 when unused). */
+    private int originBufferId;
+    /** Vertex pulling: quad buffer texture over the VBO; EBO is the shared quad pattern. */
+    private int quadTextureId;
+    private boolean pulled;
 
     // Statistics
     private final long uploadTimestamp;
@@ -115,19 +123,22 @@ public final class MmsRenderableHandle implements AutoCloseable {
         // Prepare interleaved data. Packed meshes (the chunk path) already
         // hold the exact GPU byte layout — staging is a bulk copy; SoA meshes
         // interleave here as before.
-        boolean packed = meshData.isPacked();
-        ByteBuffer interleavedData;
-        if (packed) {
-            interleavedData = MmsUploadBufferPool.acquire(meshData.getPackedVertexData().length);
-            interleavedData.put(meshData.getPackedVertexData());
-            interleavedData.flip();
-        } else {
-            interleavedData = createInterleavedVertexData(meshData);
+        // SoA meshes pack through the active format first (self-contained origin),
+        // so one upload path serves every layout.
+        if (!meshData.isPacked()) {
+            meshData = meshData.toPacked();
         }
+        boolean packed = true;
+        MmsVertexFormat format = meshData.getFormat();
+        ByteBuffer interleavedData = MmsUploadBufferPool.acquire(meshData.getPackedVertexData().length);
+        interleavedData.put(meshData.getPackedVertexData());
+        interleavedData.flip();
+        boolean pulled = format.pulled();
         int indexType = packed && meshData.hasShortIndices()
             ? GL15.GL_UNSIGNED_SHORT : GL15.GL_UNSIGNED_INT;
         int vboSizeBytes = interleavedData.remaining();
-        int eboSizeBytes = meshData.getIndexCount()
+        // Pulled meshes draw through the shared quad EBO — no per-mesh index bytes.
+        int eboSizeBytes = pulled ? 0 : meshData.getIndexCount()
             * (indexType == GL15.GL_UNSIGNED_SHORT ? Short.BYTES : Integer.BYTES);
 
         // Acquire buffers from pool or allocate new
@@ -137,11 +148,11 @@ public final class MmsRenderableHandle implements AutoCloseable {
         if (pool != null) {
             vaoId = pool.acquireVAO();
             vboId = pool.acquireVBO(vboSizeBytes);
-            eboId = pool.acquireEBO(eboSizeBytes);
+            eboId = pulled ? MmsSharedQuadIndexBuffer.id() : pool.acquireEBO(eboSizeBytes);
         } else {
             vaoId = GL30.glGenVertexArrays();
             vboId = GL15.glGenBuffers();
-            eboId = GL15.glGenBuffers();
+            eboId = pulled ? MmsSharedQuadIndexBuffer.id() : GL15.glGenBuffers();
         }
 
         // Bind VAO and setup buffers
@@ -152,18 +163,29 @@ public final class MmsRenderableHandle implements AutoCloseable {
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vboId);
         GL15.glBufferData(GL15.GL_ARRAY_BUFFER, interleavedData, GL15.GL_STATIC_DRAW);
 
-        // Setup vertex attributes
-        setupVertexAttributes();
+        // Setup vertex attributes (+ the per-mesh origin for local-position formats)
+        format.setupVertexAttributes();
+        int originBuffer = 0;
+        if (format.localPositions()) {
+            originBuffer = format.createOriginBuffer(
+                meshData.getOriginX(), meshData.getOriginY(), meshData.getOriginZ());
+            format.setupOriginAttribute(originBuffer);
+        }
 
         // Upload EBO data
         GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
-        if (packed) {
+        if (!pulled) {
             ByteBuffer indexData = MmsUploadBufferPool.acquire(meshData.getPackedIndexData().length);
             indexData.put(meshData.getPackedIndexData());
             indexData.flip();
             GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, indexData, GL15.GL_STATIC_DRAW);
-        } else {
-            GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, meshData.getIndices(), GL15.GL_STATIC_DRAW);
+        }
+        int quadTexture = 0;
+        if (pulled) {
+            quadTexture = GL11.glGenTextures();
+            GL11.glBindTexture(GL31.GL_TEXTURE_BUFFER, quadTexture);
+            GL31.glTexBuffer(GL31.GL_TEXTURE_BUFFER, GL30.GL_RGBA32UI, vboId);
+            GL11.glBindTexture(GL31.GL_TEXTURE_BUFFER, 0);
         }
 
         // Unbind (good practice)
@@ -180,147 +202,28 @@ public final class MmsRenderableHandle implements AutoCloseable {
         GpuMemoryTracker.getInstance()
             .track(GpuMemoryTracker.Category.CHUNK_MESH, memoryUsage);
 
-        return new MmsRenderableHandle(
+        MmsRenderableHandle handle = new MmsRenderableHandle(
             vaoId, vboId, eboId, meshData.getIndexCount(), indexType,
             vboSizeBytes, eboSizeBytes, memoryUsage, useBufferPool
         );
+        handle.originBufferId = originBuffer;
+        handle.quadTextureId = quadTexture;
+        handle.pulled = pulled;
+        return handle;
     }
 
     /**
-     * Builds the interleaved VBO data as a native ByteBuffer in little-endian
-     * order. The four flag fields (water, alpha, translucent, light) are
-     * packed into a single 4-byte word that GL reads as a normalized
-     * {@code GL_UNSIGNED_BYTE} vec4.
-     *
-     * Layout per vertex (40 bytes):
-     *   pos(3 floats) | tex(2 floats) | normal(3 floats) | flags(4 bytes) | layer(1 float)
-     *
-     * @param meshData Source mesh data
-     * @return direct ByteBuffer positioned at 0, limit = vertexCount * stride.
-     *         Pooled per GL thread — valid only until the next upload; the
-     *         glBufferData call in {@link #upload} consumes it synchronously.
-     */
-    private static ByteBuffer createInterleavedVertexData(MmsMeshData meshData) {
-        int vertexCount = meshData.getVertexCount();
-        int totalBytes = vertexCount * MmsBufferLayout.VERTEX_STRIDE_BYTES;
-        ByteBuffer buffer = MmsUploadBufferPool.acquire(totalBytes);
-
-        float[] positions = meshData.getVertexPositions();
-        float[] texCoords = meshData.getTextureCoordinates();
-        float[] normals = meshData.getVertexNormals();
-        float[] water = meshData.getWaterHeightFlags();
-        float[] alpha = meshData.getAlphaTestFlags();
-        float[] translucent = meshData.getTranslucentFlags();
-        float[] light = meshData.getLightValues();
-        float[] layer = meshData.getLayerIndices();
-
-        for (int i = 0; i < vertexCount; i++) {
-            // Position (3 floats)
-            buffer.putFloat(positions[i * 3]);
-            buffer.putFloat(positions[i * 3 + 1]);
-            buffer.putFloat(positions[i * 3 + 2]);
-
-            // Texture (2 floats)
-            buffer.putFloat(texCoords[i * 2]);
-            buffer.putFloat(texCoords[i * 2 + 1]);
-
-            // Normal (3 floats)
-            buffer.putFloat(normals[i * 3]);
-            buffer.putFloat(normals[i * 3 + 1]);
-            buffer.putFloat(normals[i * 3 + 2]);
-
-            // Packed flags (4 unsigned bytes)
-            int packed = MmsBufferLayout.packFlags(water[i], alpha[i], translucent[i], light[i]);
-            buffer.putInt(packed);
-
-            // Texture-array layer index (1 float)
-            buffer.putFloat(layer[i]);
-        }
-
-        buffer.flip();
-        return buffer;
-    }
-
-    /**
-     * Configures OpenGL vertex attribute pointers for the interleaved layout.
-     * Three float attributes (position, tex, normal) plus one packed-byte vec4
-     * attribute (water/alpha/translucent/light), normalized so the shader
-     * reads it as a [0,1] vec4.
-     *
-     * <p>Public because the region renderer sets up the identical layout on
-     * its per-region VAOs (the currently bound GL_ARRAY_BUFFER supplies the
-     * data in both cases).
+     * Records the active {@link MmsVertexFormat}'s attribute pointers on the
+     * bound VAO. Public because {@code MmsChunkRegion.rebuildVao} shares it.
      */
     public static void setupVertexAttributes() {
-        int stride = MmsBufferLayout.VERTEX_STRIDE_BYTES;
-
-        // Position attribute (location 0) — 3 floats
-        GL30.glEnableVertexAttribArray(MmsBufferLayout.POSITION_LOCATION);
-        GL30.glVertexAttribPointer(
-            MmsBufferLayout.POSITION_LOCATION,
-            MmsBufferLayout.POSITION_SIZE,
-            GL15.GL_FLOAT,
-            false,
-            stride,
-            MmsBufferLayout.POSITION_OFFSET
-        );
-
-        // Texture coordinate attribute (location 1) — 2 floats
-        GL30.glEnableVertexAttribArray(MmsBufferLayout.TEXTURE_LOCATION);
-        GL30.glVertexAttribPointer(
-            MmsBufferLayout.TEXTURE_LOCATION,
-            MmsBufferLayout.TEXTURE_SIZE,
-            GL15.GL_FLOAT,
-            false,
-            stride,
-            MmsBufferLayout.TEXTURE_OFFSET
-        );
-
-        // Normal attribute (location 2) — 3 floats
-        GL30.glEnableVertexAttribArray(MmsBufferLayout.NORMAL_LOCATION);
-        GL30.glVertexAttribPointer(
-            MmsBufferLayout.NORMAL_LOCATION,
-            MmsBufferLayout.NORMAL_SIZE,
-            GL15.GL_FLOAT,
-            false,
-            stride,
-            MmsBufferLayout.NORMAL_OFFSET
-        );
-
-        // Packed flags (location 3) — 4 unsigned bytes, normalized.
-        // Shader reads as vec4 aFlags: .x=water, .y=alpha, .z=translucent, .w=light
-        GL30.glEnableVertexAttribArray(MmsBufferLayout.FLAGS_LOCATION);
-        GL30.glVertexAttribPointer(
-            MmsBufferLayout.FLAGS_LOCATION,
-            MmsBufferLayout.FLAGS_COMPONENTS,
-            GL15.GL_UNSIGNED_BYTE,
-            true, // normalized → shader sees [0,1]
-            stride,
-            MmsBufferLayout.FLAGS_OFFSET
-        );
-
-        // Texture-array layer index (location 4) — 1 float
-        GL30.glEnableVertexAttribArray(MmsBufferLayout.LAYER_LOCATION);
-        GL30.glVertexAttribPointer(
-            MmsBufferLayout.LAYER_LOCATION,
-            MmsBufferLayout.LAYER_SIZE,
-            GL15.GL_FLOAT,
-            false,
-            stride,
-            MmsBufferLayout.LAYER_OFFSET
-        );
+        MmsVertexFormat.active().setupVertexAttributes();
     }
 
-    /**
-     * Renders the mesh.
-     * MUST be called from the OpenGL thread.
-     *
-     * @throws IllegalStateException if handle has been disposed
-     */
     public void render() {
         ensureNotDisposed();
 
-        GL30.glBindVertexArray(vaoId);
+        bind();
         GL15.glDrawElements(GL15.GL_TRIANGLES, indexCount, indexType, 0);
         GL30.glBindVertexArray(0);
     }
@@ -345,6 +248,11 @@ public final class MmsRenderableHandle implements AutoCloseable {
     public void bind() {
         ensureNotDisposed();
         GL30.glBindVertexArray(vaoId);
+        if (pulled) {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0 + MmsQuadCodec.QUAD_TEXTURE_UNIT);
+            GL11.glBindTexture(GL31.GL_TEXTURE_BUFFER, quadTextureId);
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        }
     }
 
     /**
@@ -435,6 +343,14 @@ public final class MmsRenderableHandle implements AutoCloseable {
             // outright deleted.
             GpuMemoryTracker.getInstance()
                 .untrack(GpuMemoryTracker.Category.CHUNK_MESH, memoryUsageBytes);
+            if (originBufferId != 0) {
+                GL15.glDeleteBuffers(originBufferId);
+                originBufferId = 0;
+            }
+            if (quadTextureId != 0) {
+                GL11.glDeleteTextures(quadTextureId);
+                quadTextureId = 0;
+            }
             if (useBufferPool) {
                 // Return buffers to pool for reuse
                 MmsBufferPool pool = MmsBufferPool.getInstance();
@@ -444,7 +360,7 @@ public final class MmsRenderableHandle implements AutoCloseable {
                 if (vboId != 0) {
                     pool.returnVBO(vboId, vboSizeBytes);
                 }
-                if (eboId != 0) {
+                if (eboId != 0 && !pulled) {
                     pool.returnEBO(eboId, eboSizeBytes);
                 }
             } else {
@@ -455,7 +371,7 @@ public final class MmsRenderableHandle implements AutoCloseable {
                 if (vboId != 0) {
                     GL15.glDeleteBuffers(vboId);
                 }
-                if (eboId != 0) {
+                if (eboId != 0 && !pulled) {
                     GL15.glDeleteBuffers(eboId);
                 }
             }

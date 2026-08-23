@@ -20,6 +20,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class MmsMeshBuilderPackedTest {
 
+    // This test pins the LEGACY40 byte layout specifically.
+    @org.junit.jupiter.api.BeforeEach
+    void legacyLayout() {
+        MmsVertexFormat.override(MmsVertexFormat.LEGACY40);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void restore() {
+        MmsVertexFormat.override(MmsVertexFormat.DEFAULT);
+    }
+
     private static MmsMeshBuilder quadBuilder() {
         MmsMeshBuilder builder = MmsMeshBuilder.createWithCapacity(4);
         builder.beginFace();

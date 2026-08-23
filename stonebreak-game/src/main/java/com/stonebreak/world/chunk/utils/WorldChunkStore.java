@@ -701,21 +701,46 @@ public class WorldChunkStore {
     private static class PositionCache {
         private static final int MAX_SIZE = WorldConfiguration.MAX_CHUNK_POSITION_CACHE_SIZE;
         private final Map<Long, ChunkPosition> cache = new ConcurrentHashMap<>();
+        /**
+         * Allocation-free front cache: direct-mapped by a hash of (x, z). Every
+         * chunk lookup (meshing neighbour reads, physics, lighting) goes through
+         * {@link #get}; the ConcurrentHashMap path behind it boxed a Long and
+         * allocated a capturing lambda per call. Benign races only — entries
+         * are immutable and a miss just falls through.
+         */
+        private final ChunkPosition[] direct = new ChunkPosition[4096];
 
         ChunkPosition get(int x, int z) {
+            int slot = (x * 0x9E3779B1 ^ z * 0x85EBCA77) >>> 20; // 12 bits
+            ChunkPosition hit = direct[slot];
+            if (hit != null && hit.getX() == x && hit.getZ() == z) {
+                return hit;
+            }
             if (cache.size() > MAX_SIZE) {
                 System.out.println("WARNING: Position cache exceeded max size, clearing");
                 cache.clear();
             }
-            return cache.computeIfAbsent(key(x, z), k -> new ChunkPosition(x, z));
+            Long key = key(x, z);
+            ChunkPosition pos = cache.get(key);
+            if (pos == null) {
+                pos = cache.computeIfAbsent(key, k -> new ChunkPosition(x, z));
+            }
+            direct[slot] = pos;
+            return pos;
         }
 
         void remove(int x, int z) {
             cache.remove(key(x, z));
+            int slot = (x * 0x9E3779B1 ^ z * 0x85EBCA77) >>> 20;
+            ChunkPosition hit = direct[slot];
+            if (hit != null && hit.getX() == x && hit.getZ() == z) {
+                direct[slot] = null;
+            }
         }
 
         void clear() {
             cache.clear();
+            java.util.Arrays.fill(direct, null);
         }
 
         int size() {
@@ -726,6 +751,7 @@ public class WorldChunkStore {
             Set<Long> loadedKeys = new HashSet<>();
             loadedPositions.forEach(pos -> loadedKeys.add(key(pos.getX(), pos.getZ())));
             cache.keySet().removeIf(key -> !loadedKeys.contains(key));
+            java.util.Arrays.fill(direct, null);
             MemoryProfiler.getInstance().takeSnapshot("chunk_position_cache_cleanup");
         }
 

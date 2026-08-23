@@ -670,6 +670,73 @@ public final class OpBatchExecutor {
                     return null;
                 }));
 
+        ops.put("canvas_ellipse", spec(
+                op -> {
+                    JsonNode rect = op.get("rect");
+                    if (rect == null || !rect.isArray() || rect.size() != 4) {
+                        throw new IllegalArgumentException("rect must be [x,y,w,h]");
+                    }
+                    rgbaCheck(op, "color", true);
+                },
+                (cmds, op, b) -> {
+                    cmds.canvas().ellipse(reqIntArr(op, "rect"), reqIntArr(op, "color"),
+                            op.path("filled").asBoolean(true));
+                    return null;
+                }));
+
+        ops.put("canvas_outline", spec(
+                op -> rgbaCheck(op, "color", false),
+                (cmds, op, b) -> {
+                    cmds.canvas().outline(op.path("inside").asBoolean(false), optIntArr(op, "color"));
+                    return null;
+                }));
+
+        ops.put("canvas_paint_grid", spec(
+                op -> {
+                    JsonNode rows = op.get("rows");
+                    if (rows == null || !rows.isArray() || rows.isEmpty()) {
+                        throw new IllegalArgumentException("rows must be a non-empty array of strings");
+                    }
+                    JsonNode legend = op.get("legend");
+                    if (legend == null || !legend.isObject()) {
+                        throw new IllegalArgumentException("legend must be an object {glyph: color}");
+                    }
+                },
+                (cmds, op, b) -> {
+                    java.util.Map<String, String> legend = new java.util.LinkedHashMap<>();
+                    op.get("legend").fields().forEachRemaining(e -> legend.put(e.getKey(), e.getValue().asText()));
+                    Float x = optFloat(op, "x");
+                    Float y = optFloat(op, "y");
+                    cmds.canvas().paintGrid(strList(op.get("rows")), legend,
+                            x != null ? x.intValue() : 0, y != null ? y.intValue() : 0,
+                            op.path("clear_dots").asBoolean(false));
+                    return null;
+                }));
+
+        ops.put("canvas_move_layer", spec(
+                op -> {
+                    reqNum(op, "from");
+                    reqNum(op, "to");
+                },
+                (cmds, op, b) -> {
+                    cmds.canvas().moveLayer((int) reqNum(op, "from"), (int) reqNum(op, "to"));
+                    return null;
+                }));
+
+        ops.put("canvas_duplicate_layer", spec(
+                op -> reqNum(op, "index"),
+                (cmds, op, b) -> {
+                    cmds.canvas().duplicateLayer((int) reqNum(op, "index"));
+                    return null;
+                }));
+
+        ops.put("canvas_merge_down", spec(
+                op -> reqNum(op, "index"),
+                (cmds, op, b) -> {
+                    cmds.canvas().mergeLayerDown((int) reqNum(op, "index"));
+                    return null;
+                }));
+
         ops.put("canvas_export_png", spec(
                 op -> reqStr(op, "path"),
                 (cmds, op, b) -> {

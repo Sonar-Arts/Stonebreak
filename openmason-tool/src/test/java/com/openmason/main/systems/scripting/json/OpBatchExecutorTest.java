@@ -217,6 +217,23 @@ class OpBatchExecutorTest {
                 """
                 {"op":"canvas_set_pixels","pixels":[1,2,3,4,5,6,7]}""");
         assertTrue(badPixels.getMessage().contains("pixels"));
+
+        // New shape / grid / layer ops.
+        assertTrue(expectInvalidSecondOp("""
+                {"op":"canvas_ellipse","rect":[0,0,4],"color":[1,2,3,4]}""")
+                .getMessage().contains("rect"));
+        assertTrue(expectInvalidSecondOp("""
+                {"op":"canvas_paint_grid","rows":[],"legend":{"A":"#ff0000"}}""")
+                .getMessage().contains("rows"));
+        assertTrue(expectInvalidSecondOp("""
+                {"op":"canvas_paint_grid","rows":["A"],"legend":"#ff0000"}""")
+                .getMessage().contains("legend"));
+        assertTrue(expectInvalidSecondOp("""
+                {"op":"canvas_move_layer","from":1}""")
+                .getMessage().contains("to"));
+        assertTrue(expectInvalidSecondOp("""
+                {"op":"canvas_merge_down"}""")
+                .getMessage().contains("index"));
     }
 
     @Test

@@ -34,11 +34,22 @@ class CearlBootstrapTest {
         assertNotNull(program, "the shipped stonebreak.CEARL must compile");
         assertEquals("stonebreak", VramPlans.active().name());
 
-        // Initial sizes stay the proven pre-CEARL constants; growth is
-        // tightened and trim enabled — the minimal-allocation posture.
+        // Initial sizes come from the chunk footprint lab (a dense 8x8 region's
+        // pulled-quad atlas ≈ 1.3 MiB); growth is tightened and trim enabled —
+        // the minimal-allocation posture.
         VramArenaPolicy chunk = VramPlans.arena(VramPlans.POOL_CHUNK_MESH);
-        assertEquals(16 * 1024 * 40L, chunk.vertexInitialBytes());
+        assertEquals(1280L * 1024, chunk.vertexInitialBytes());
         assertEquals(24 * 1024 * 2L, chunk.indexInitialBytes());
+        // Water and stamp regions have their own, smaller first allocations and
+        // inherit the tuned growth/trim/sparse policy.
+        VramArenaPolicy water = VramPlans.arena(VramPlans.POOL_CHUNK_WATER);
+        assertEquals(320L * 1024, water.vertexInitialBytes());
+        assertEquals(24L * 1024, water.indexInitialBytes());
+        assertTrue(water.sparseGrowth());
+        assertEquals(0.4, water.trimFraction(), 1e-9);
+        VramArenaPolicy stamp = VramPlans.arena(VramPlans.POOL_CHUNK_STAMP);
+        assertEquals(1024L * 1024, stamp.vertexInitialBytes());
+        assertEquals(64L * 1024, stamp.indexInitialBytes());
         assertEquals(1.5, chunk.growthFactor());
         assertEquals(0.125, chunk.growthReserve());
         assertEquals(0.4, chunk.trimFraction(), 1e-9);
@@ -48,13 +59,13 @@ class CearlBootstrapTest {
 
         // LOD pools inherit the tuned policy, overriding only their sizes.
         VramArenaPolicy lod = VramPlans.arena(VramPlans.POOL_LOD_TERRAIN);
-        assertEquals(128 * 1024 * 40L, lod.vertexInitialBytes());
-        assertEquals(192 * 1024 * 2L, lod.indexInitialBytes());
+        assertEquals(512L * 1024, lod.vertexInitialBytes());
+        assertEquals(48L * 1024, lod.indexInitialBytes());
         assertEquals(1.5, lod.growthFactor());
         assertEquals(0.4, lod.trimFraction(), 1e-9);
-        assertEquals(32 * 1024 * 40L,
+        assertEquals(320L * 1024,
             VramPlans.arena(VramPlans.POOL_LOD_WATER).vertexInitialBytes());
-        assertEquals(48 * 1024 * 2L,
+        assertEquals(24L * 1024,
             VramPlans.arena(VramPlans.POOL_LOD_WATER).indexInitialBytes());
 
         assertEquals(8L << 20, VramPlans.budgetBytes(VramPlans.POOL_STAGING, 0));

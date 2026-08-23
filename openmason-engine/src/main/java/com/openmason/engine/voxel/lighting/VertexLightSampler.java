@@ -63,6 +63,122 @@ public final class VertexLightSampler {
         return sky * ao;
     }
 
+    /**
+     * Geometry-aware variant for shaped (SBO stamp) blocks whose vertices may sit
+     * at fractional cell coordinates — a stair's upper riser at half depth, its
+     * lower tread at half height. {@link #sampleCombined(LightingContext, float,
+     * float, float, int)} rounds every coordinate to the nearest cell corner,
+     * which snaps such a face onto the emitting block's own cell: the riser then
+     * "sees" the stair beneath it as an occluder and its own column as overhead
+     * cover, and renders in shadow even in open daylight (issue #224).
+     *
+     * <p>Here the cells touching a vertex are resolved per axis: along the face
+     * normal the air side is {@code floor(v + n·ε)}; along the tangents an
+     * integral coordinate touches two cells ({@code v-1}, {@code v}) while a
+     * fractional one lies inside a single cell. The emitting block's own cell
+     * ({@code ownX, ownY, ownZ}) is treated as open — interior geometry is by
+     * definition inside it — both for occlusion and for its column's sky height.
+     * Integral vertices of a boundary face resolve to exactly the same cells as
+     * the rounding variant, so cube-shaped stamps are lit identically.
+     */
+    public static float sampleCombined(LightingContext ctx, float vx, float vy, float vz, int face,
+                                       int ownX, int ownY, int ownZ) {
+        if (ctx == null) return 1.0f;
+        // Normal direction per MMS face: +Y, -Y, -Z, +Z, +X, -X.
+        int nx = face == 4 ? 1 : face == 5 ? -1 : 0;
+        int ny = face == 0 ? 1 : face == 1 ? -1 : 0;
+        int nz = face == 3 ? 1 : face == 2 ? -1 : 0;
+        int xlo = nx != 0 ? floorAlongNormal(vx, nx) : floor(vx - CELL_EPS);
+        int xhi = nx != 0 ? xlo : floor(vx + CELL_EPS);
+        int ylo = ny != 0 ? floorAlongNormal(vy, ny) : floor(vy - CELL_EPS);
+        int yhi = ny != 0 ? ylo : floor(vy + CELL_EPS);
+        int zlo = nz != 0 ? floorAlongNormal(vz, nz) : floor(vz - CELL_EPS);
+        int zhi = nz != 0 ? zlo : floor(vz + CELL_EPS);
+
+        boolean smooth = smoothLightingEnabled;
+
+        // Sky: the (up to four) air-side columns touching the vertex. (a, b) walk
+        // the two tangent axes; flat lighting samples only the (hi, hi) cell.
+        int litCount = 0;
+        int sampled = 0;
+        for (int a = smooth ? 0 : 1; a < 2; a++) {
+            for (int b = smooth ? 0 : 1; b < 2; b++) {
+                int cx, cy, cz;
+                if (ny != 0) {            // top/bottom: tangents x, z
+                    cx = a == 0 ? xlo : xhi; cy = ylo; cz = b == 0 ? zlo : zhi;
+                } else if (nz != 0) {     // north/south: tangents x, y
+                    cx = a == 0 ? xlo : xhi; cy = b == 0 ? ylo : yhi; cz = zlo;
+                } else {                  // east/west: tangents y, z
+                    cx = xlo; cy = a == 0 ? ylo : yhi; cz = b == 0 ? zlo : zhi;
+                }
+                int h = columnHeight(ctx, cx, cz, ownX, ownY, ownZ);
+                if (h < 0) continue;
+                sampled++;
+                if (cy >= h) litCount++;
+            }
+        }
+        float sky = sampled == 0 ? 1.0f : SKY_FLOOR + (1.0f - SKY_FLOOR) * ((float) litCount / sampled);
+        if (!smooth) return sky;
+
+        // AO: classic 3-neighbour count over the air-side cells. The "air" cell is
+        // the (hi, hi) corner; sides are one step down each tangent; corner both.
+        // A fractional tangent coordinate collapses that axis (lo == hi), so a
+        // side or the corner can coincide with another cell — count each distinct
+        // cell once.
+        int s1x, s1y, s1z, s2x, s2y, s2z, cx, cy, cz;
+        if (ny != 0) {            // top/bottom: tangents x, z
+            s1x = xlo; s1y = ylo; s1z = zhi;
+            s2x = xhi; s2y = ylo; s2z = zlo;
+            cx = xlo;  cy = ylo;  cz = zlo;
+        } else if (nz != 0) {     // north/south: tangents x, y
+            s1x = xlo; s1y = yhi; s1z = zlo;
+            s2x = xhi; s2y = ylo; s2z = zlo;
+            cx = xlo;  cy = ylo;  cz = zlo;
+        } else {                  // east/west: tangents y, z
+            s1x = xlo; s1y = ylo; s1z = zhi;
+            s2x = xlo; s2y = yhi; s2z = zlo;
+            cx = xlo;  cy = ylo;  cz = zlo;
+        }
+        boolean side1 = solid(ctx, s1x, s1y, s1z, ownX, ownY, ownZ);
+        boolean side2 = !same(s2x, s2y, s2z, s1x, s1y, s1z) && solid(ctx, s2x, s2y, s2z, ownX, ownY, ownZ);
+        boolean corner = !same(cx, cy, cz, s1x, s1y, s1z) && !same(cx, cy, cz, s2x, s2y, s2z)
+                && solid(ctx, cx, cy, cz, ownX, ownY, ownZ);
+        int count = (side1 ? 1 : 0) + (side2 ? 1 : 0) + (corner ? 1 : 0);
+        if (side1 && side2) count = 3;
+        return sky * (1.0f - AO_PER_NEIGHBOR * count);
+    }
+
+    private static boolean same(int ax, int ay, int az, int bx, int by, int bz) {
+        return ax == bx && ay == by && az == bz;
+    }
+
+    /** Sub-cell tolerance separating "on a cell boundary" from "inside a cell". */
+    private static final float CELL_EPS = 1e-3f;
+
+    private static int floor(float v) {
+        return (int) Math.floor(v);
+    }
+
+    /** Cell on the air side of a face plane at {@code v} whose normal points along {@code n}. */
+    private static int floorAlongNormal(float v, int n) {
+        return floor(v + n * CELL_EPS);
+    }
+
+    private static boolean solid(LightingContext ctx, int x, int y, int z, int ownX, int ownY, int ownZ) {
+        if (x == ownX && y == ownY && z == ownZ) return false;
+        return ctx.isSolidAt(x, y, z);
+    }
+
+    /**
+     * Column height with the emitting block's own cell treated as open: when the
+     * block itself is the column's topmost occluder, the sky starts at its floor.
+     */
+    private static int columnHeight(LightingContext ctx, int x, int z, int ownX, int ownY, int ownZ) {
+        int h = ctx.getColumnHeight(x, z);
+        if (h == ownY + 1 && x == ownX && z == ownZ) return ownY;
+        return h;
+    }
+
     /** Point sky probe for shading first-person geometry at the player's eye. */
     public static float samplePointSky(LightingContext ctx, float wx, float wy, float wz) {
         if (ctx == null) return 1.0f;

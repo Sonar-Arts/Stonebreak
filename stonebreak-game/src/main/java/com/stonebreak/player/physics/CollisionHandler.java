@@ -398,8 +398,9 @@ public class CollisionHandler {
                 continue;
             }
             BlockType type = world.getBlockAt(pos.x(), pos.y(), pos.z());
-            if (!com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(type)) {
-                continue;
+            if (!com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(type)
+                    || com.stonebreak.blocks.torch.TorchBlock.isTorch(type)) {
+                continue; // torches are walk-through
             }
             panels.add(com.stonebreak.blocks.anim.AnimatedBlockShapes
                     .worldAabb(world, pos.x(), pos.y(), pos.z(), type));

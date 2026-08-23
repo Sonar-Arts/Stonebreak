@@ -61,6 +61,10 @@ public final class AnimatedBlockShapes {
             DoorState door = DoorState.parse(raw);
             return door.modelBoxToWorld(settledModelAabb(type, door.renderState()), x, y, z);
         }
+        if (com.stonebreak.blocks.torch.TorchBlock.isTorch(type)) {
+            // Hand-sized targeting box (the model is only 2 px wide), no collision.
+            return com.stonebreak.blocks.torch.TorchState.parse(raw).worldAabb(x, y, z);
+        }
         String state = raw != null && !raw.isBlank() ? raw : defaultStateOf(type);
         float[] m = settledModelAabb(type, state);
         return new float[]{x + m[0], y + m[1], z + m[2], x + m[3], y + m[4], z + m[5]};

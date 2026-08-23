@@ -20,6 +20,7 @@ cco	openmason-engine	com/openmason/engine/voxel/cco/**/*Test
 mms	openmason-engine	com/openmason/engine/voxel/mms/**/*Test
 sbo	openmason-engine	com/openmason/engine/voxel/sbo/**/*Test
 lighting	openmason-engine	com/openmason/engine/voxel/lighting/**/*Test
+lighting	stonebreak-game	com/stonebreak/rendering/lighting/**/*Test
 engine-util	openmason-engine	com/openmason/engine/util/**/*Test
 cearl	openmason-engine	com/openmason/engine/cearl/**/*Test,com/openmason/engine/vram/**/*Test
 cearl	stonebreak-game	com/stonebreak/rendering/vram/**/*Test
@@ -44,6 +45,7 @@ fastlod	stonebreak-game	com/stonebreak/world/fastlod/**/*Test,com/stonebreak/ren
 leaves	stonebreak-game	com/stonebreak/world/leaves/**/*Test
 terrain-gen	stonebreak-game	com/stonebreak/world/generation/**/*Test
 persistence	stonebreak-game	com/stonebreak/world/save/**/*Test
+bench	stonebreak-game	com/stonebreak/world/bench/**/*Test
 
 # ---- tool ----
 mcp	openmason-tool	com/openmason/main/systems/mcp/**/*Test

@@ -135,6 +135,109 @@ final class EditorChrome implements AutoCloseable {
         return Math.max(0, Math.min(selectedTab, tabs.length - 1));
     }
 
+    /**
+     * Export-window variant of the chrome: a primary accent "Export..." pill,
+     * a secondary "Cancel" pill, a right-aligned source-model label and the
+     * same pill tab strip as the editors. Used by the SBO/SBE exporters so the
+     * "start screen" and the editor that opens after the export share one
+     * visual language.
+     *
+     * @return the (possibly changed) selected tab index
+     */
+    int renderExport(boolean canExport, String sourceLabel, String exportLabel,
+                     String[] tabs, int selectedTab, Runnable onExport, Runnable onCancel) {
+        if (!region.isAvailable()) {
+            return renderExportFallback(canExport, sourceLabel, exportLabel, tabs, selectedTab,
+                    onExport, onCancel);
+        }
+
+        float availW = Math.max(1f, ImGui.getContentRegionAvailX());
+        float height = BTN_H + SEP_PAD * 2f + 1f + TAB_H + 2f;
+        region.begin(availW, height);
+
+        float exportW = pillWidth(exportLabel);
+        float cancelW = 64f;
+        float x = 0f;
+        addAction("act.export", x, exportW, exportLabel, canExport, canExport);
+        x += exportW + BTN_GAP;
+        addAction("act.cancel", x, cancelW, "Cancel", true, false);
+
+        float statusX = x + cancelW + BTN_GAP;
+        if (sourceLabel != null && !sourceLabel.isEmpty() && statusX < availW - 40f) {
+            final String label = sourceLabel;
+            region.add("deco.status", statusX, 0f, availW - statusX, BTN_H,
+                    (g, px, py, pw, ph, state) -> {
+                        float cy = py + ph / 2f;
+                        float labelW = g.measureWidth(label, Weight.REGULAR, 12f);
+                        float textRight = px + pw - 4f;
+                        g.textEllipsized(label, Math.max(px, textRight - labelW), cy,
+                                pw - 16f, Weight.REGULAR, 12f, g.theme().textDim);
+                    });
+        }
+
+        float sepY = BTN_H + SEP_PAD + 1f;
+        region.add("deco.sep", 0f, sepY, availW, 1f,
+                (g, px, py, pw, ph, state) -> g.fillRect(px, py, pw, 1f, g.theme().separator));
+        float tabY = sepY + SEP_PAD + 1f;
+        float tx = 0f;
+        for (int i = 0; i < tabs.length; i++) {
+            float w = pillWidth(tabs[i]);
+            final String label = tabs[i];
+            region.add("tab." + i, tx, tabY, w, TAB_H, i == selectedTab,
+                    (g, px, py, pw, ph, state) -> paintTab(g, px, py, pw, ph, state, label));
+            tx += w + TAB_GAP;
+        }
+
+        MortarFrameResult input = region.render();
+        region.update(ImGui.getIO().getDeltaTime());
+
+        String hovered = input.hovered();
+        if ("act.export".equals(hovered)) {
+            ImGui.setTooltip(canExport
+                    ? "Choose where to write the file, then open it in the editor"
+                    : "Save the model as .OMO first");
+        }
+
+        String clicked = input.clicked();
+        if (clicked != null) {
+            switch (clicked) {
+                case "act.export" -> { if (canExport) onExport.run(); }
+                case "act.cancel" -> onCancel.run();
+                default -> {
+                    if (clicked.startsWith("tab.")) {
+                        selectedTab = Integer.parseInt(clicked.substring(4));
+                    }
+                }
+            }
+        }
+        return Math.max(0, Math.min(selectedTab, tabs.length - 1));
+    }
+
+    private int renderExportFallback(boolean canExport, String sourceLabel, String exportLabel,
+                                     String[] tabs, int selectedTab,
+                                     Runnable onExport, Runnable onCancel) {
+        if (!canExport) ImGui.beginDisabled();
+        if (ImGui.button(exportLabel)) onExport.run();
+        if (!canExport) ImGui.endDisabled();
+        ImGui.sameLine();
+        if (ImGui.button("Cancel")) onCancel.run();
+        if (sourceLabel != null && !sourceLabel.isEmpty()) {
+            ImGui.sameLine();
+            ImGui.textDisabled(sourceLabel);
+        }
+        ImGui.separator();
+        if (ImGui.beginTabBar("##chrome_tabs_" + fallbackId, ImGuiTabBarFlags.None)) {
+            for (int i = 0; i < tabs.length; i++) {
+                if (ImGui.beginTabItem(tabs[i])) {
+                    selectedTab = i;
+                    ImGui.endTabItem();
+                }
+            }
+            ImGui.endTabBar();
+        }
+        return selectedTab;
+    }
+
     private static float pillWidth(String label) {
         return label.length() * CHAR_W + 26f;
     }

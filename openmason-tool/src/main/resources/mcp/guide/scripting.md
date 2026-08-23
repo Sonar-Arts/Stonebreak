@@ -40,10 +40,13 @@ print(om.summary())                      # stdout comes back in the result
   materials/UVs instead). Pixel edits flush to the GPU immediately, yet the
   run is still ONE model undo entry; a failed script rolls back painted
   pixels and script-created textures too.
-- Canvas: `om.canvas.fill/rect/line/flood/set_pixels/noise` paint the texture
+- Canvas: `om.canvas.fill/rect/ellipse/line/flood/set_pixels/noise/outline/paint_grid` paint the texture
   editor's ACTIVE layer (honors the shape mask + active selection); layers via
   `add_layer(name)`, `remove_layer(i)`, `set_layer(i, active/visible/name/
-  opacity)`; `om.canvas.info()/layers()/get_region(...)`. Requires the texture
+  opacity)`, `move_layer(i, to)`, `duplicate_layer(i)`, `merge_down(i)`;
+  reads: `info()/layers()/get_region(...)` and `describe(layer=-1, tolerance=24,
+  rle=, hex=)` — glyph grid + legend + symmetry/orphan stats, no vision needed
+  (`layer=None` active, `-1` composite). Requires the texture
   editor window to be OPEN (live-only; teaching error otherwise).
   `om.canvas.export("/abs/out.png")` is DEFERRED like `c.save`: absolute path
   required, validated now, written only if the whole script succeeds, and
@@ -75,9 +78,13 @@ A mixed script produces one entry in each — `undo {domain:"model"}` AND
 - `texture_resize {part, face, size:[w,h]}`
 - `canvas_set_pixels {pixels}` · `canvas_fill {color, rect?}` ·
   `canvas_rect {rect, color, filled?}` · `canvas_line {from, to, color}` ·
-  `canvas_flood {at, color}` · `canvas_noise {generator, ...same knobs}`
+  `canvas_flood {at, color}` · `canvas_noise {generator, ...same knobs}` ·
+  `canvas_ellipse {rect, color, filled?}` · `canvas_outline {inside?, color?}` ·
+  `canvas_paint_grid {rows, legend, x?, y?, clear_dots?}`
 - `canvas_add_layer {name}` · `canvas_remove_layer {index}` ·
   `canvas_set_layer {index, active?, visible?, name?, opacity?}` ·
+  `canvas_move_layer {from, to}` · `canvas_duplicate_layer {index}` ·
+  `canvas_merge_down {index}` ·
   `canvas_export_png {path}` (deferred, absolute)
 
 ## Sandbox & limits

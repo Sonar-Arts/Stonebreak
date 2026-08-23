@@ -58,6 +58,10 @@ public class ResourceManager {
         // samples this; text/UI keep using the 2D texture_sampler on unit 0.
         shaderProgram.createUniform("block_sampler");
         shaderProgram.setUniform("block_sampler", 1);
+        // Pulled-quad buffer texture (MmsVertexFormat.QUAD16); regions/handles
+        // bind it on this unit when their VAO flags pull mode.
+        shaderProgram.createUniform("u_quads");
+        shaderProgram.setUniform("u_quads", com.openmason.engine.voxel.mms.mmsCore.MmsQuadCodec.QUAD_TEXTURE_UNIT);
         shaderProgram.createUniform("u_useTextureArray");
         shaderProgram.setUniform("u_useTextureArray", false);
         // Layer override for geometry without a per-vertex layer attribute

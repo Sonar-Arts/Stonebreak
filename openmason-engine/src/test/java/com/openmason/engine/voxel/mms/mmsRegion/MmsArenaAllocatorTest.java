@@ -141,6 +141,48 @@ class MmsArenaAllocatorTest {
         arena.checkInvariants();
     }
 
+    /**
+     * Regression: compaction feeds GPU copies from the OLD buffer into a FRESH
+     * one (MmsChunkRegion.resizeArena), so a live run whose offset happens to
+     * coincide with its new offset is NOT a no-op — dropping its Move leaves
+     * that segment uninitialized in the new buffer (the 2026-08-22 furnace
+     * smear: a trim shrank the arena by exactly the hole above a neighbour
+     * chunk's segment, and that chunk's pulled quads became garbage forever).
+     */
+    @Test
+    void compactionEmitsMovesForRunsThatStayInPlace() {
+        // Allocation carves from the END of free spans: a=80..100, b=60..80, c=30..60.
+        MmsArenaAllocator arena = new MmsArenaAllocator(100);
+        MmsArenaAllocator.Segment a = arena.alloc(20);
+        MmsArenaAllocator.Segment b = arena.alloc(20);
+        MmsArenaAllocator.Segment c = arena.alloc(30);
+        assertEquals(80, a.offset());
+        assertEquals(60, b.offset());
+        assertEquals(30, c.offset());
+        arena.free(a); // hole 80..100 above b and c
+
+        // Trim by exactly the hole: packed tail = 80-50 = 30, so c (30..60)
+        // and b (60..80) keep their offsets — one contiguous in-place run.
+        List<MmsArenaAllocator.Move> moves = arena.compactTo(80);
+        assertEquals(30, c.offset());
+        assertEquals(60, b.offset());
+        arena.checkInvariants();
+
+        int[] oldData = new int[100];
+        for (int i = 0; i < 100; i++) oldData[i] = i;
+        int[] newData = new int[80];
+        java.util.Arrays.fill(newData, -1);
+        for (MmsArenaAllocator.Move m : moves) {
+            System.arraycopy(oldData, m.from(), newData, m.to(), m.length());
+        }
+        for (int i = 0; i < 30; i++) {
+            assertEquals(30 + i, newData[c.offset() + i], "segment c must be copied into the new buffer");
+        }
+        for (int i = 0; i < 20; i++) {
+            assertEquals(60 + i, newData[b.offset() + i], "segment b must be copied into the new buffer");
+        }
+    }
+
     @Test
     void compactRejectsTooSmallCapacity() {
         MmsArenaAllocator arena = new MmsArenaAllocator(100);
@@ -173,7 +215,11 @@ class MmsArenaAllocatorTest {
                 MmsArenaAllocator.Segment s = arena.alloc(len);
                 if (s == null) {
                     // Grow + compact, applying the moves to the simulated store.
-                    long newCap = Math.max(arena.used() + len, arena.capacity() * 3 / 2);
+                    // Alternate grow and trim-to-fit so segments sometimes land
+                    // on their old offsets (the in-place-run case).
+                    long newCap = (step & 1) == 0
+                        ? Math.max(arena.used() + len, arena.capacity() * 3 / 2)
+                        : arena.used() + len + random.nextInt(64);
                     int[] newStore = new int[(int) newCap];
                     for (MmsArenaAllocator.Move m : arena.compactTo(newCap)) {
                         System.arraycopy(store, m.from(), newStore, m.to(), m.length());

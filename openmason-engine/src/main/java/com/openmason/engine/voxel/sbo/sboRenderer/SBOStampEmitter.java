@@ -211,6 +211,10 @@ public class SBOStampEmitter {
         float[] layers = faceStamp.layers();
         int triCount = faceStamp.vertexCount() / 3;
         boolean scaleY = blockHeight < 1.0f;
+        // worldX/Y/Z is the block centre; the cell it occupies is its floor.
+        int bx = (int) Math.floor(worldX);
+        int by = (int) Math.floor(worldY);
+        int bz = (int) Math.floor(worldZ);
 
         for (int tri = 0; tri < triCount; tri++) {
             int baseVertex = builder.getVertexCount();
@@ -229,7 +233,7 @@ public class SBOStampEmitter {
                 float wx = pos[pOff] + worldX;
                 float wyAbs = vy + worldY;
                 float wz = pos[pOff + 2] + worldZ;
-                float vertexLight = lightSampler.sampleVertexLight(face, wx, wyAbs, wz, chunkData);
+                float vertexLight = lightSampler.sampleVertexLight(face, wx, wyAbs, wz, bx, by, bz, chunkData);
                 builder.addVertex(
                         wx, wyAbs, wz,
                         uv[tOff], uv[tOff + 1],
@@ -250,6 +254,40 @@ public class SBOStampEmitter {
      * @param blockType the block type to check
      * @return true if the cache contains a stamp for this type
      */
+    /**
+     * The per-cell face decisions {@link #emitBlock} makes, exposed so a caller
+     * that emits a unit-cube stamp as pulled quads applies exactly the same
+     * culling and translucency rules. {@code face} uses MMS face ids.
+     */
+    public boolean isFaceVisible(IBlockType blockType, int lx, int ly, int lz, int face, CcoChunkData chunkData) {
+        if (!cullingPolicy.shouldRenderFace(blockType, lx, ly, lz, face, chunkData)) {
+            return false;
+        }
+        return instanceFaceCullPolicy == null
+            || !instanceFaceCullPolicy.shouldCullFace(blockType, lx, ly, lz, face, chunkData);
+    }
+
+    /** True when a translucent block's face is forced opaque for this cell (e.g. ice touching water). */
+    public boolean isFaceForcedOpaque(IBlockType blockType, int lx, int ly, int lz, int face, CcoChunkData chunkData) {
+        return translucencyOverride != null
+            && translucencyOverride.shouldRenderFaceAsOpaque(blockType, lx, ly, lz, face, chunkData);
+    }
+
+    /** Per-vertex light exactly as {@link #emitBlock} samples it; {@code bx,by,bz} is the block's cell. */
+    public float sampleLight(int face, float wx, float wy, float wz, int bx, int by, int bz, CcoChunkData chunkData) {
+        return lightSampler.sampleVertexLight(face, wx, wy, wz, bx, by, bz, chunkData);
+    }
+
+    /** Whether the translucency policy routes this block to alpha-blended rendering. */
+    public boolean isTranslucent(IBlockType blockType) {
+        return translucencyPolicy.test(blockType);
+    }
+
+    /** True when an instance-level override/cull policy can change this block's faces per cell. */
+    public boolean hasInstancePolicies() {
+        return translucencyOverride != null || instanceFaceCullPolicy != null;
+    }
+
     public boolean hasBlock(IBlockType blockType) {
         return cache.has(blockType);
     }

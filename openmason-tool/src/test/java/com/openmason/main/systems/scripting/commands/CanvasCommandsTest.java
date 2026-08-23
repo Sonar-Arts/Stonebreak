@@ -206,4 +206,118 @@ class CanvasCommandsTest {
                 "canvas_set_layer", "canvas_remove_layer", "canvas_set_pixels",
                 "canvas_export_png"), ops);
     }
+
+    // ===================== Shapes / outline / grid =====================
+
+    @Test
+    void ellipseFilledAndRing() {
+        assertTrue(canvas.ellipse(new int[]{0, 0, 16, 16}, RED, true) > 0);
+        assertEquals(RED_PACKED, activePixel(8, 8), "centre is inside");
+        assertEquals(TRANSPARENT, activePixel(0, 0), "corner is outside the disc");
+
+        surface = new FakeCanvasSurface(16, 16);
+        cmds = new ModelCommands(new HeadlessModelDocument(), new ObjectMapper(), null, surface);
+        canvas = cmds.canvas();
+        canvas.ellipse(new int[]{0, 0, 16, 16}, RED, false);
+        assertEquals(TRANSPARENT, activePixel(8, 8), "ring leaves the interior");
+        assertEquals(RED_PACKED, activePixel(8, 0), "top of the ring");
+        assertThrows(CommandException.class, () -> canvas.ellipse(null, RED, true));
+    }
+
+    @Test
+    void outlineGrowsAndNeverGoesBlack() {
+        canvas.fill(new int[]{4, 4, 4, 4}, RED);
+        int changed = canvas.outline(false, null);
+        assertEquals(16, changed, "4 sides x 4 pixels of outer border");
+        int edge = activePixel(3, 4);
+        int[] c = PixelCanvas.unpackRGBA(edge);
+        assertTrue(c[0] > 0 && c[0] < 255, "darker red, not black: " + c[0]);
+        assertTrue(c[2] > 0, "outline is pushed cool (some blue)");
+        assertEquals(RED_PACKED, activePixel(4, 4), "outer outline does not touch the body");
+
+        canvas.outline(true, GREEN);
+        assertEquals(PixelCanvas.packRGBA(0, 255, 0, 255), activePixel(3, 4),
+                "inner outline recolours the (now larger) silhouette's edge row with the fixed colour");
+    }
+
+    @Test
+    void paintGridAndDescribeRoundTrip() {
+        int changed = canvas.paintGrid(List.of("AB", ".A"), java.util.Map.of("A", "#ff0000", "B", "0,255,0"),
+                2, 3, false);
+        assertEquals(3, changed);
+        assertEquals(RED_PACKED, activePixel(2, 3));
+        assertEquals(PixelCanvas.packRGBA(0, 255, 0, 255), activePixel(3, 3));
+        assertEquals(TRANSPARENT, activePixel(2, 4));
+        assertEquals(RED_PACKED, activePixel(3, 4));
+
+        var d = canvas.describe(null, new int[]{2, 3, 2, 2}, 0, 72, true, true);
+        assertEquals(List.of("AB", ".A"), d.rows());
+        assertEquals("#ff0000", d.legend().get(0).hex());
+        assertEquals(List.of("y3: A@2 B@3", "y4: A@3"), d.rle());
+        assertEquals("y3|ff0000 00ff00", d.hexRows().get(0));
+        assertEquals("canvas_paint_grid", cmds.opsTrace().get(0).get("op").asText());
+
+        assertThrows(CommandException.class,
+                () -> canvas.paintGrid(List.of("Z"), java.util.Map.of(), 0, 0, false));
+        assertThrows(CommandException.class,
+                () -> canvas.describe(null, new int[]{10, 10, 10, 10}, 0, 72, false, false));
+    }
+
+    @Test
+    void describeReadsCompositeAndSpecificLayer() {
+        canvas.fill(null, RED);
+        canvas.addLayer("top");
+        canvas.fill(new int[]{0, 0, 1, 1}, GREEN);
+        assertEquals("A", canvas.describe(null, new int[]{0, 0, 1, 1}, 0, 72, false, false)
+                .rows().get(0), "active (top) layer sees only green");
+        assertEquals(2, canvas.describe(-1, null, 0, 72, false, false).legendSize(),
+                "composite sees red + green");
+        assertEquals(1, canvas.describe(0, null, 0, 72, false, false).legendSize());
+        assertThrows(CommandException.class, () -> canvas.describe(5, null, 0, 72, false, false));
+    }
+
+    // ===================== Layer reorder / duplicate / merge =====================
+
+    @Test
+    void moveDuplicateAndMergeLayers() {
+        canvas.fill(null, RED);                       // layer 0: red
+        canvas.addLayer("top");                       // layer 1 active, empty
+        canvas.fill(new int[]{0, 0, 2, 2}, GREEN);
+        canvas.setLayer(1, null, null, null, 0.5f);
+
+        var dup = canvas.duplicateLayer(1);
+        assertEquals(2, dup.index());
+        assertTrue(dup.active());
+        assertEquals(3, surface.layers().getLayerCount());
+
+        canvas.moveLayer(2, 0);
+        assertEquals(0, surface.layers().getActiveLayerIndex(), "active index follows the moved layer");
+        assertEquals("Background", surface.layers().getLayer(1).getName());
+
+        canvas.moveLayer(0, 2);
+        canvas.mergeLayerDown(2);                     // duplicate (50% green) onto 'top' (50% green)
+        assertEquals(2, surface.layers().getLayerCount());
+        assertEquals(1, surface.layers().getActiveLayerIndex());
+        // The duplicate's opaque green is scaled by its 0.5 layer opacity, then alpha-over'd onto
+        // 'top', whose own pixels are fully opaque — so the result is opaque green and 'top'
+        // keeps its layer opacity (0.5) untouched.
+        int[] merged = PixelCanvas.unpackRGBA(surface.layers().getLayer(1).getCanvas().getPixel(0, 0));
+        assertArrayEquals(new int[]{0, 255, 0, 255}, merged);
+        assertEquals(0.5f, surface.layers().getLayer(1).getOpacity(), 1e-6);
+        assertEquals(TRANSPARENT, surface.layers().getLayer(1).getCanvas().getPixel(5, 5),
+                "merging transparent source pixels leaves the destination alone");
+
+        // A half-transparent source over an empty destination keeps its scaled alpha.
+        canvas.addLayer("wash");
+        canvas.fill(new int[]{5, 5, 1, 1}, new int[]{0, 0, 255, 200});
+        canvas.setLayer(2, null, null, null, 0.5f);
+        canvas.mergeLayerDown(2);
+        int[] wash = PixelCanvas.unpackRGBA(surface.layers().getLayer(1).getCanvas().getPixel(5, 5));
+        assertEquals(100, wash[3], "200 * 0.5");
+
+        assertThrows(CommandException.class, () -> canvas.mergeLayerDown(0));
+        assertThrows(CommandException.class, () -> canvas.moveLayer(0, 9));
+        List<String> ops = cmds.opsTrace().stream().map(n -> n.get("op").asText()).toList();
+        assertTrue(ops.containsAll(List.of("canvas_duplicate_layer", "canvas_move_layer", "canvas_merge_down")));
+    }
 }

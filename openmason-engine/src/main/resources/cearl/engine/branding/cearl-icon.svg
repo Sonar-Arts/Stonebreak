@@ -19,6 +19,10 @@
     <path d="M 336 352 C 428 322, 440 184, 356 140"
           fill="none" stroke="#B9BFC9" stroke-width="15" stroke-linecap="round"/>
 
+    <!-- Far ear: peeks over the skull from behind the head -->
+    <circle cx="206" cy="136" r="16" fill="#8E96A4"/>
+    <circle cx="204" cy="140" r="7" fill="#6F7785"/>
+
     <!-- Body: one round momonga mass -->
     <ellipse cx="278" cy="330" rx="100" ry="95" fill="#A7ABB3"/>
     <ellipse cx="235" cy="268" rx="75" ry="95" fill="#A7ABB3" transform="rotate(-15 235 268)"/>
@@ -26,7 +30,7 @@
     <ellipse cx="246" cy="188" rx="44" ry="42" fill="#A7ABB3"/>
     <circle cx="138" cy="238" r="22" fill="#A7ABB3"/>
 
-    <!-- Ear -->
+    <!-- Near ear -->
     <circle cx="150" cy="132" r="17" fill="#A7ABB3"/>
     <circle cx="152" cy="136" r="8" fill="#838B99"/>
 

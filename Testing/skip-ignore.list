@@ -10,3 +10,5 @@ com.stonebreak.world.generation.FusedChunkGenParityTest
 com.stonebreak.world.generation.NativeCarverIntegrationTest
 com.stonebreak.world.generation.noise.TerrainNoiseParityTest
 com.stonebreak.world.save.io.ChunkCodecZstdTest
+com.stonebreak.world.bench.ChunkFootprintLabTest
+com.stonebreak.world.bench.PulledQuadRenderTest

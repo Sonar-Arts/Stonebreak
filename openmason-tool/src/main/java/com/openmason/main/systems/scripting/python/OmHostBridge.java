@@ -299,6 +299,53 @@ public final class OmHostBridge {
         return toJson(commands.canvas().region(x, y, w, h));
     }
 
+    @HostAccess.Export
+    public int canvasEllipse(int[] rect, int[] color, boolean filled) {
+        return commands.canvas().ellipse(rect, color, filled);
+    }
+
+    @HostAccess.Export
+    public int canvasOutline(boolean inside, int[] colorOrNull) {
+        return commands.canvas().outline(inside, colorOrNull);
+    }
+
+    /** rows: JSON array of strings; legend: JSON object glyph → colour string. */
+    @HostAccess.Export
+    public int canvasPaintGrid(String rowsJson, String legendJson, int x, int y, boolean clearDots) {
+        try {
+            java.util.List<String> rows = mapper.readValue(rowsJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<java.util.List<String>>() {});
+            java.util.Map<String, String> legend = mapper.readValue(legendJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, String>>() {});
+            return commands.canvas().paintGrid(rows, legend, x, y, clearDots);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalArgumentException("paint_grid: bad rows/legend: " + e.getOriginalMessage(), e);
+        }
+    }
+
+    @HostAccess.Export
+    public void canvasMoveLayer(int from, int to) {
+        commands.canvas().moveLayer(from, to);
+    }
+
+    @HostAccess.Export
+    public void canvasDuplicateLayer(int index) {
+        commands.canvas().duplicateLayer(index);
+    }
+
+    @HostAccess.Export
+    public void canvasMergeDown(int index) {
+        commands.canvas().mergeLayerDown(index);
+    }
+
+    /** layer &lt; -1 ⇒ active layer; -1 ⇒ composite. rect null/empty ⇒ whole canvas. */
+    @HostAccess.Export
+    public String canvasDescribeJson(int layer, int[] rectOrNull, int tolerance, int maxColors,
+                                     boolean rle, boolean hex) {
+        int[] rect = rectOrNull == null || rectOrNull.length == 0 ? null : rectOrNull;
+        return toJson(commands.canvas().describe(layer < -1 ? null : layer, rect, tolerance, maxColors, rle, hex));
+    }
+
     // ===================== Animation (detached .omanim clips) =====================
 
     @HostAccess.Export

@@ -101,6 +101,10 @@ public final class BlockType implements Item, IBlockType {
     public static final BlockType CLAY = fromRegistry("stonebreak:clay", "CLAY");
     public static final BlockType RED_SAND_COBBLESTONE = fromRegistry("stonebreak:red_sand_cobblestone", "RED_SAND_COBBLESTONE");
     public static final BlockType SAND_COBBLESTONE = fromRegistry("stonebreak:sand_cobblestone", "SAND_COBBLESTONE");
+    // Brick / stone-brick building blocks (SBO: bricks_block / stone_bricks) —
+    // solid stone-family materials, tuned as pickaxe targets in ToolMiningRules.
+    public static final BlockType BRICKS_BLOCK = fromRegistry("stonebreak:bricks_block", "BRICKS_BLOCK");
+    public static final BlockType STONE_BRICKS = fromRegistry("stonebreak:stone_bricks", "STONE_BRICKS");
     public static final BlockType WILDGRASS = fromRegistry("stonebreak:wildgrass", "WILDGRASS");
     // Animated door (SBO 1.6 per-state clips); interaction special-cased in
     // InputHandler, rendered dynamically by AnimatedBlockRenderer.
@@ -111,6 +115,10 @@ public final class BlockType implements Item, IBlockType {
     public static final BlockType OAK_STAIRS = fromRegistry("stonebreak:oak_stairs", "OAK_STAIRS");
     public static final BlockType ELM_STAIRS = fromRegistry("stonebreak:elm_stairs", "ELM_STAIRS");
     public static final BlockType PINE_STAIRS = fromRegistry("stonebreak:pine_stairs", "PINE_STAIRS");
+    // Torch: placed by the stonebreak:torch ITEM (see blocks/torch/TorchBlock),
+    // Ground/Side states with looping flicker clips drawn by
+    // AnimatedBlockRenderer; emits a pulsing point light (rendering/lighting).
+    public static final BlockType TORCH_PLACED = fromRegistry("stonebreak:torch_placed", "TORCH_PLACED");
 
     // ----- Promote any SBO entries that didn't match a static-final field
     //       above. New SBOs dropped into sbo/blocks/ become BlockType
@@ -299,11 +307,12 @@ public final class BlockType implements Item, IBlockType {
                 return true;
             }
         }
-        // OAK_DOOR is transparent for meshing purposes: its thin panel is
-        // drawn dynamically (AnimatedBlockRenderer), so neighbouring blocks
-        // must keep the faces that border the door cell.
+        // OAK_DOOR / TORCH_PLACED are transparent for meshing purposes: their
+        // models are drawn dynamically (AnimatedBlockRenderer), so neighbouring
+        // blocks must keep the faces that border the cell.
         return this == AIR || this == WATER || this == ROSE || this == DANDELION
-                || this == WILDGRASS || this == ICE || this == SNOW || this == OAK_DOOR;
+                || this == WILDGRASS || this == ICE || this == SNOW || this == OAK_DOOR
+                || this == TORCH_PLACED;
     }
 
     @Override

@@ -86,6 +86,18 @@ public final class McpSchema {
         return this;
     }
 
+    /** Free-form JSON object property (string values). */
+    public McpSchema strMap(String name, String description) {
+        ObjectNode def = mapper.createObjectNode();
+        def.put("type", "object");
+        def.put("description", description);
+        ObjectNode add = mapper.createObjectNode();
+        add.put("type", "string");
+        def.set("additionalProperties", add);
+        properties.set(name, def);
+        return this;
+    }
+
     public McpSchema prop(String name, String type, String description) {
         ObjectNode def = mapper.createObjectNode();
         def.put("type", type);

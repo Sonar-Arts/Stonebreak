@@ -82,14 +82,31 @@ public class FurnaceController {
         // Slot intent: whatever mutation path the UI took (drag, split, place, take), the
         // per-frame dirty check catches it and ships the full slot snapshot to the server.
         // BlockStateS2C echoes then confirm/correct — including the smelting results.
+        //
+        // Echoes are NOT intent: the server streams state every cook tick, so an echo that
+        // left before our last intent arrived restores the old slots locally. Re-sending that
+        // would tell the server to put back what the player just took (duplicating shift-
+        // clicked output). So when an echo landed since the last frame, first flush any edit
+        // made before it (the pre-echo snapshot), then adopt the echoed slots as the baseline.
         if (visible && state != null) {
+            String preEcho = state.consumePreEchoSlots();
+            if (preEcho != null) {
+                if (!preEcho.equals(lastSentSlots)) {
+                    sendSlots(preEcho);
+                }
+                lastSentSlots = state.encodeSlots();
+            }
             String slots = state.encodeSlots();
             if (!slots.equals(lastSentSlots)) {
-                lastSentSlots = slots;
-                com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(
-                    state.getPos().x(), state.getPos().y(), state.getPos().z(), slots);
+                sendSlots(slots);
             }
         }
+    }
+
+    private void sendSlots(String slots) {
+        lastSentSlots = slots;
+        com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(
+            state.getPos().x(), state.getPos().y(), state.getPos().z(), slots);
     }
 
     /* ── Input / rendering delegates ─────────────────────── */

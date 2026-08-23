@@ -79,9 +79,14 @@ public class WaterRenderer {
             shader.link();
 
             shader.createUniform("uProjection");
+            shader.createUniform("u_quads");
+            shader.bind();
+            shader.setUniform("u_quads", com.openmason.engine.voxel.mms.mmsCore.MmsQuadCodec.QUAD_TEXTURE_UNIT);
+            shader.unbind();
             shader.createUniform("uView");
             shader.createUniform("uTime");
             shader.createUniform("uWavesEnabled");
+            shader.createUniform("uWaveFadeEnd");
             shader.createUniform("uSunDirection");
             shader.createUniform("uAmbientLight");
             shader.createUniform("uCameraPos");
@@ -162,8 +167,14 @@ public class WaterRenderer {
         shader.setUniform("uView", view);
         shader.setUniform("uTime", time);
         shader.setUniform("uWavesEnabled", wavesEnabled);
+        // Waves fade to zero at the edge of the near-chunk range so wavy near water
+        // meets the flat FastLOD sea sheets (which carry no displacement) seamlessly.
+        shader.setUniform("uWaveFadeEnd",
+            com.stonebreak.config.Settings.getInstance().getRenderDistance()
+                * (float) com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE);
         shader.setUniform("uSunDirection", sunDirection);
         shader.setUniform("uAmbientLight", ambientLight);
+        com.stonebreak.rendering.lighting.DynamicLights.applyTo(shader);
         shader.setUniform("uCameraPos", cameraPos);
         shader.setUniform("uFogColor", fogColor);
         shader.setUniform("uFogStart", fogStart);

@@ -98,7 +98,7 @@ class CendaMesherKernelTest {
                         int adj = f.block(lx + FDX[face], ly + FDY[face], lz + FDZ[face]);
                         boolean render;
                         if (adj == AIR) render = true;
-                        else if (transparent) render = adj != id;
+                        else if (transparent) render = adj != id && (cls(adj) & CendaKernels.CLASS_TRANSPARENT) != 0;
                         else render = (cls(adj) & CendaKernels.CLASS_TRANSPARENT) != 0;
                         if (!render) continue;
 
