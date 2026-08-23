@@ -65,6 +65,8 @@ public final class ItemType implements Item {
     public static final ItemType PATTY_SMACKER = fromRegistry("stonebreak:patty_smacker", "PATTY_SMACKER");
     public static final ItemType SNOWBALL = fromRegistry("stonebreak:snowball", "SNOWBALL");
     public static final ItemType STONE_SHOVEL = fromRegistry("stonebreak:stone_shovel", "STONE_SHOVEL");
+    public static final ItemType STONE_PICKAXE = fromRegistry("stonebreak:stone_pickaxe", "STONE_PICKAXE");
+    public static final ItemType STONE_AXE = fromRegistry("stonebreak:stone_axe", "STONE_AXE");
     public static final ItemType SWORD = fromRegistry("stonebreak:sword", "SWORD");
     public static final ItemType WAR_AXE = fromRegistry("stonebreak:war_axe", "WAR_AXE");
     public static final ItemType WOODEN_SHOVEL = fromRegistry("stonebreak:wooden_shovel", "WOODEN_SHOVEL");
@@ -286,6 +288,8 @@ public final class ItemType implements Item {
     public float getDamage() {
         if (this == SWORD) return 6.0f;
         if (this == WAR_AXE || this == WOODEN_AXE) return 4.0f;
+        if (this == STONE_AXE) return 5.0f;
+        if (this == STONE_PICKAXE) return 2.0f;
         return 1.0f;
     }
 

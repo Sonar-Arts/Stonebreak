@@ -5,15 +5,17 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.items.ItemType;
+import com.stonebreak.items.ToolMiningRules;
 import com.stonebreak.player.combat.AttackController;
 import com.stonebreak.world.World;
 import org.joml.Vector3i;
 
 /**
  * Tracks block-breaking progress for the currently targeted block. Per-frame progress
- * advances based on block hardness and tool efficiency (pickaxe on stone, axe on wood).
- * Breaking completes when progress reaches 1.0; instant-break blocks complete on press.
+ * advances based on block hardness and tool efficiency — pickaxes on stone-family
+ * blocks, axes on wood-family blocks, with wooden weaker than stone (see
+ * {@link ToolMiningRules}). Breaking completes when progress reaches 1.0;
+ * instant-break blocks complete on press.
  */
 public class BlockBreaker {
 
@@ -117,17 +119,7 @@ public class BlockBreaker {
         float hardness = blockType.getHardness();
         ItemStack selectedItem = inventory.getSelectedHotbarSlot();
         if (selectedItem == null || !selectedItem.isTool()) return hardness;
-
-        ItemType itemType = selectedItem.asItemType();
-        if (itemType == ItemType.WOODEN_PICKAXE) {
-            if (blockType == BlockType.STONE || blockType == BlockType.SANDSTONE ||
-                    blockType == BlockType.RED_SANDSTONE) {
-                return hardness * 0.25f;
-            }
-        } else if (itemType == ItemType.WOODEN_AXE && isWoodenBlock(blockType)) {
-            return Math.max(0.1f, hardness - 2.0f);
-        }
-        return hardness;
+        return ToolMiningRules.effectiveHardness(selectedItem.asItemType(), blockType, hardness);
     }
 
     private void completeBreak(Vector3i pos, BlockType blockType) {
@@ -143,15 +135,5 @@ public class BlockBreaker {
         // local drop (in the client EM) alongside the server-spawned shadow.
         world.setBlockAt(pos.x, pos.y, pos.z, BlockType.AIR, true);
         BlockSounds.playBreak(blockType, pos.x, pos.y, pos.z);
-    }
-
-    private static boolean isWoodenBlock(BlockType blockType) {
-        return blockType == BlockType.WOOD ||
-                blockType == BlockType.WORKBENCH ||
-                blockType == BlockType.PINE ||
-                blockType == BlockType.ELM_WOOD_LOG ||
-                blockType == BlockType.WOOD_PLANKS ||
-                blockType == BlockType.PINE_WOOD_PLANKS ||
-                blockType == BlockType.ELM_WOOD_PLANKS;
     }
 }

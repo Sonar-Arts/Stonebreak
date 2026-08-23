@@ -101,6 +101,10 @@ public final class BlockType implements Item, IBlockType {
     public static final BlockType CLAY = fromRegistry("stonebreak:clay", "CLAY");
     public static final BlockType RED_SAND_COBBLESTONE = fromRegistry("stonebreak:red_sand_cobblestone", "RED_SAND_COBBLESTONE");
     public static final BlockType SAND_COBBLESTONE = fromRegistry("stonebreak:sand_cobblestone", "SAND_COBBLESTONE");
+    // Brick / stone-brick building blocks (SBO: bricks_block / stone_bricks) —
+    // solid stone-family materials, tuned as pickaxe targets in ToolMiningRules.
+    public static final BlockType BRICKS_BLOCK = fromRegistry("stonebreak:bricks_block", "BRICKS_BLOCK");
+    public static final BlockType STONE_BRICKS = fromRegistry("stonebreak:stone_bricks", "STONE_BRICKS");
     public static final BlockType WILDGRASS = fromRegistry("stonebreak:wildgrass", "WILDGRASS");
     // Animated door (SBO 1.6 per-state clips); interaction special-cased in
     // InputHandler, rendered dynamically by AnimatedBlockRenderer.
