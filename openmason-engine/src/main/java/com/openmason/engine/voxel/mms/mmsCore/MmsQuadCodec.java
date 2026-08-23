@@ -12,8 +12,10 @@ import java.nio.ByteBuffer;
  * bytes instead of 4 × 20 + 12.
  *
  * <pre>
- * word0: x:8 | y:9 | z:8 | face:3 | (w-1):4        positions relative to the mesh origin, whole blocks
- * word1: (h-1):4 | orient:3 | alpha:1 | translucent:1 | layer:16 | spare:7
+ * word0: x:8 | y:10 | z:8 | face:3 | spare:3      positions relative to the mesh origin, whole blocks
+ *        (the mesh origin's Y is 0, so y is absolute world Y: 10 bits covers
+ *        WORLD_HEIGHT 1024)
+ * word1: (h-1):4 | orient:3 | alpha:1 | translucent:1 | layer:16 | (w-1):4 | spare:3
  * word2: light0:8 | light1:8 | light2:8 | light3:8 per-corner light (0..1 → 0..255)
  * word3: topLower:4 | sideHeight:4 | spare   partial-height cubes (snow layers):
  *        the top face sits topLower/8 below the cell top; side faces span
@@ -42,21 +44,23 @@ public final class MmsQuadCodec {
 
     // ─── Packing ───────────────────────────────────────────────────────────
 
-    public static int word0(int x, int y, int z, int face, int w) {
+    public static int word0(int x, int y, int z, int face) {
         check(x, 0, 255, "x");
-        check(y, 0, 511, "y");
+        check(y, 0, 1023, "y");
         check(z, 0, 255, "z");
         check(face, 0, 5, "face");
-        check(w, 1, 16, "w");
-        return x | (y << 8) | (z << 17) | (face << 25) | ((w - 1) << 28);
+        return x | (y << 8) | (z << 18) | (face << 26);
     }
 
-    public static int word1(int h, int orientation, boolean alpha, boolean translucent, int layer) {
+    /** {@code w} rides in word1: word0 gave its top nibble to the wider y field. */
+    public static int word1(int w, int h, int orientation, boolean alpha, boolean translucent,
+                            int layer) {
+        check(w, 1, 16, "w");
         check(h, 1, 16, "h");
         check(orientation, 0, 7, "orientation");
         check(layer, 0, 65535, "layer");
         return (h - 1) | (orientation << 4) | ((alpha ? 1 : 0) << 7) | ((translucent ? 1 : 0) << 8)
-            | (layer << 9);
+            | (layer << 9) | ((w - 1) << 25);
     }
 
     public static int word2(float l0, float l1, float l2, float l3) {
@@ -164,19 +168,20 @@ public final class MmsQuadCodec {
     }
 
     public static int y(int w0) {
-        return (w0 >>> 8) & 0x1FF;
+        return (w0 >>> 8) & 0x3FF;
     }
 
     public static int z(int w0) {
-        return (w0 >>> 17) & 0xFF;
+        return (w0 >>> 18) & 0xFF;
     }
 
     public static int face(int w0) {
-        return (w0 >>> 25) & 7;
+        return (w0 >>> 26) & 7;
     }
 
-    public static int width(int w0) {
-        return ((w0 >>> 28) & 0xF) + 1;
+    /** Width — lives in word1 (word0's top nibble went to the wider y field). */
+    public static int width(int w1) {
+        return ((w1 >>> 25) & 0xF) + 1;
     }
 
     public static int height(int w1) {
@@ -212,7 +217,7 @@ public final class MmsQuadCodec {
         int face = face(w0);
         float off = MmsCuboidGenerator.cornerOffset(face, corner, axis);
         if (axis == MmsCuboidGenerator.uAxis(face)) {
-            off *= width(w0);
+            off *= width(w1);
         } else if (axis == MmsCuboidGenerator.vAxis(face)) {
             off *= height(w1);
         }
@@ -235,7 +240,7 @@ public final class MmsQuadCodec {
         int w0 = quads.getInt(q * QUAD_BYTES);
         int w1 = quads.getInt(q * QUAD_BYTES + 4);
         int face = face(w0);
-        float a = MmsCuboidGenerator.cornerOffset(face, corner, MmsCuboidGenerator.uAxis(face)) * width(w0);
+        float a = MmsCuboidGenerator.cornerOffset(face, corner, MmsCuboidGenerator.uAxis(face)) * width(w1);
         float b = MmsCuboidGenerator.cornerOffset(face, corner, MmsCuboidGenerator.vAxis(face)) * height(w1);
         int o = orientation(w1);
         return c == 0

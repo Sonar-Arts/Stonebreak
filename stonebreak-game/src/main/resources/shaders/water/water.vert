@@ -35,10 +35,10 @@ void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags,
     int corner = gl_VertexID & 3;
     uvec4 q = texelFetch(u_quads, qi);
     uint w0 = q.x;
-    int face = int((w0 >> 25u) & 7u);
-    float falling = float((w0 >> 28u) & 1u);
-    float source = float((w0 >> 29u) & 1u);
-    sheet = ((w0 >> 30u) & 1u) != 0u;
+    int face = int((w0 >> 26u) & 7u);
+    float falling = float((w0 >> 29u) & 1u);
+    float source = float((w0 >> 30u) & 1u);
+    sheet = ((w0 >> 31u) & 1u) != 0u;
     float w = float(q.w & 15u) + 1.0;
     float h = float((q.w >> 4u) & 15u) + 1.0;
     vec3 c = QUAD_CORNER[face * 4 + corner];
@@ -51,7 +51,7 @@ void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags,
     off[va] = b * h;
     // Vertex Y comes from the record (1/128 block from one block below the cell).
     float vy = float((q.y >> (uint(corner) * 8u)) & 255u) / 128.0 - 1.0;
-    localPos = vec3(float(w0 & 255u) + off.x, float((w0 >> 8u) & 511u) + vy, float((w0 >> 17u) & 255u) + off.z);
+    localPos = vec3(float(w0 & 255u) + off.x, float((w0 >> 8u) & 1023u) + vy, float((w0 >> 18u) & 255u) + off.z);
     uv = vec2(a, face >= 2 ? 1.0 - b : b);
     nrm = QUAD_NORMAL[face];
     float surface = float((q.z >> (uint(corner) * 8u)) & 255u) / 255.0;

@@ -527,7 +527,7 @@ public class MmsCcoAdapter {
             int qx = lx + chunkX * WorldConfiguration.CHUNK_SIZE - (int) quads.originX();
             int qz = lz + chunkZ * WorldConfiguration.CHUNK_SIZE - (int) quads.originZ();
             if (orient >= 0 && layer >= 0 && layer <= 65535
-                    && qx >= 0 && qx <= 255 && qz >= 0 && qz <= 255 && ly >= 0 && ly <= 511
+                    && qx >= 0 && qx <= 255 && qz >= 0 && qz <= 255 && ly >= 0 && ly <= 1023
                     && w >= 1 && w <= 16 && h >= 1 && h <= 16
                     && quads.addQuad(qx, ly, qz, face, w, h, orient, alphaFlags[0] != 0f, false, layer,
                         l0, l1, l2, l3)) {
@@ -754,7 +754,7 @@ public class MmsCcoAdapter {
                 // order is the cuboid corner order, so corner i = vertex i.
                 int qx = blockX - (int) waterQuads.originX();
                 int qz = blockZ - (int) waterQuads.originZ();
-                if (qx >= 0 && qx <= 255 && qz >= 0 && qz <= 255 && blockY >= 0 && blockY <= 511
+                if (qx >= 0 && qx <= 255 && qz >= 0 && qz <= 255 && blockY >= 0 && blockY <= 1023
                         && waterQuads.addWords(
                             MmsWaterQuadCodec.word0(qx, blockY, qz, face, fallingFlag > 0.5f, sourceFlag > 0.5f),
                             MmsWaterQuadCodec.word1(blockY, vertices[1], vertices[4], vertices[7], vertices[10]),
@@ -1032,7 +1032,7 @@ public class MmsCcoAdapter {
         }
         int qx = lx + chunkX * WorldConfiguration.CHUNK_SIZE - (int) quads.originX();
         int qz = lz + chunkZ * WorldConfiguration.CHUNK_SIZE - (int) quads.originZ();
-        if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || ly < 0 || ly > 511) {
+        if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || ly < 0 || ly > 1023) {
             return false;
         }
         boolean translucent = emitter.isTranslucent(blockType);

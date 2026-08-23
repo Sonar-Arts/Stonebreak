@@ -455,12 +455,15 @@ public final class FastLodMesher {
             int yHalf = Math.round(yMin * 2f);
             int wHalf = Math.max(1, Math.round(w * 2f));
             int hHalf = Math.max(1, Math.round(h * 2f));
-            if (yHalf < 0 || yHalf > 511 || hHalf > 1023 || wHalf > 63) {
-                return; // outside the representable band (never for WORLD_HEIGHT 256)
+            if (yHalf < 0 || yHalf > 2047 || hHalf > 2047 || wHalf > 63) {
+                // Outside the representable band. LODQUAD16 carries y and h in 11 bits of
+                // half blocks, so this covers WORLD_HEIGHT up to 1024; raise the codec's
+                // budget, not this guard, if the world ever grows past that.
+                return;
             }
             if (!quads.addWords(
-                    MmsLodQuadCodec.word0(rx, rz, yHalf, face, smooth, lit),
-                    MmsLodQuadCodec.word1(wHalf, hHalf, layer, alpha),
+                    MmsLodQuadCodec.word0(rx, rz, yHalf, face),
+                    MmsLodQuadCodec.word1(wHalf, hHalf, layer, alpha, smooth, lit),
                     nPair01, nPair23)) {
                 return; // per-draw quad cap (never reached by a single LOD node)
             }
@@ -747,7 +750,9 @@ public final class FastLodMesher {
             int cellY = (int) Math.floor(y) + 1; // sheet sits 0.125 below the cell's top: cell = SEA_LEVEL
             int qx = Math.round(wx - originX);
             int qz = Math.round(wz - originZ);
-            if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || cellY < 0 || cellY > 511) {
+            // WATERQUAD16 carries y in 10 bits of whole blocks, covering WORLD_HEIGHT 1024;
+            // a lake or river perched high in the column must not be silently dropped.
+            if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || cellY < 0 || cellY > 1023) {
                 return;
             }
             if (!quads.addWords(

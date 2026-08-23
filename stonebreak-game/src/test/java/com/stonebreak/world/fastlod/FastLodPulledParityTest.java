@@ -6,6 +6,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeKind;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -176,6 +178,9 @@ class FastLodPulledParityTest {
         return out;
     }
 
+    /** This branch's sea level. Main's is 64; every height here is anchored to ours. */
+    private static final int SEA = WorldConfiguration.SEA_LEVEL;
+
     private static FastLodChunkData data(FastLodLevel level, int chunkX, int chunkZ) {
         int stride = level.stride();
         int[] heights = new int[stride * stride];
@@ -184,8 +189,10 @@ class FastLodPulledParityTest {
             for (int z = 0; z < stride; z++) {
                 // West half: a ridge with a submerged corner (varied skirts, smooth normals,
                 // one water cell at L4). East half: a flat plateau (merge candidates).
-                int h = x >= stride / 2 ? 72
-                    : 60 + x * 3 + (z % 2 == 0 ? 2 : 0) - (x == 0 && z == 0 ? 8 : 0);
+                // Heights sit around this branch's SEA_LEVEL (320), NOT main's 64: at 64 the
+                // LODQUAD16 y field is never stressed and this test passes vacuously.
+                int h = x >= stride / 2 ? SEA + 8
+                    : SEA - 4 + x * 3 + (z % 2 == 0 ? 2 : 0) - (x == 0 && z == 0 ? 8 : 0);
                 heights[x * stride + z] = h;
             }
         }
@@ -197,6 +204,8 @@ class FastLodPulledParityTest {
         }
         int[] waterLevels = new int[level.cellCount()];
         java.util.Arrays.fill(waterLevels, -1);
+        // Submerge the low corner so the WATERQUAD16 sheet is exercised at altitude too.
+        waterLevels[0] = SEA;
         return new FastLodChunkData(FastLodKey.of(level, chunkX, chunkZ), heights, waterLevels, surface, trees);
     }
 
@@ -235,7 +244,7 @@ class FastLodPulledParityTest {
         for (FastLodLevel level : FastLodLevel.values()) {
             int stride = level.stride();
             int[] heights = new int[stride * stride];
-            java.util.Arrays.fill(heights, 80);
+            java.util.Arrays.fill(heights, SEA + 16);
             BlockType[] surface = new BlockType[level.cellCount()];
             java.util.Arrays.fill(surface, BlockType.STONE);
             TreeSample[] trees = level.emitsTrees() ? new TreeSample[level.cellCount()] : null;
@@ -250,5 +259,62 @@ class FastLodPulledParityTest {
 
             assertEquals(tiles(ref.mesh()), tiles(pulled.mesh()), level + " flat plateau covered tiles");
         }
+    }
+
+    /**
+     * Regression for the silent LOD blackout: {@code MmsLodQuadCodec} budgeted 9 bits of
+     * HALF blocks for Y (max y=255.5) because it was authored against WORLD_HEIGHT 256.
+     * On this branch terrain sits at SEA_LEVEL 320 and mountains run higher still, so
+     * {@code FastLodMesher.record()} discarded every quad it was handed and the whole
+     * distant-terrain ring rendered as sky. Sweep the column, including the very top.
+     */
+    @Test
+    void terrainHighInTheColumnStillEmitsQuads() {
+        for (int height : new int[]{SEA, 512, 900, WorldConfiguration.WORLD_HEIGHT - 2}) {
+            for (FastLodLevel level : FastLodLevel.values()) {
+                int stride = level.stride();
+                int[] heights = new int[stride * stride];
+                java.util.Arrays.fill(heights, height);
+                BlockType[] surface = new BlockType[level.cellCount()];
+                java.util.Arrays.fill(surface, BlockType.STONE);
+                TreeSample[] trees = level.emitsTrees() ? new TreeSample[level.cellCount()] : null;
+                int[] waterLevels = new int[level.cellCount()];
+                java.util.Arrays.fill(waterLevels, -1);
+                FastLodChunkData d = new FastLodChunkData(
+                    FastLodKey.of(level, 3, 4), heights, waterLevels, surface, trees);
+                String what = level + " at y=" + height;
+
+                MmsVertexFormat.override(MmsVertexFormat.LEGACY40);
+                FastLodMesher.Result ref = mesher().build(d);
+                MmsVertexFormat.override(MmsVertexFormat.QUAD16);
+                FastLodMesher.Result pulled = mesher().build(d);
+
+                assertTrue(pulled.mesh().getVertexCount() > 0, what + " emits quads");
+                assertEquals(tiles(ref.mesh()), tiles(pulled.mesh()), what + " covered tiles");
+                assertEquals(ref.maxY(), pulled.maxY(), 0.5f, what + " maxY");
+            }
+        }
+    }
+
+    /** A lake perched above y=511 used to throw straight out of WATERQUAD16's word0. */
+    @Test
+    void waterSheetHighInTheColumnStillEmitsQuads() {
+        FastLodLevel level = FastLodLevel.L4;
+        int stride = level.stride();
+        int[] heights = new int[stride * stride];
+        java.util.Arrays.fill(heights, 880);
+        BlockType[] surface = new BlockType[level.cellCount()];
+        java.util.Arrays.fill(surface, BlockType.STONE);
+        TreeSample[] trees = level.emitsTrees() ? new TreeSample[level.cellCount()] : null;
+        int[] waterLevels = new int[level.cellCount()];
+        java.util.Arrays.fill(waterLevels, 900);
+        FastLodChunkData d = new FastLodChunkData(
+            FastLodKey.of(level, 3, 4), heights, waterLevels, surface, trees);
+
+        MmsVertexFormat.override(MmsVertexFormat.QUAD16);
+        FastLodMesher.Result pulled = mesher().build(d);
+
+        assertNotNull(pulled.waterMesh(), "water sheet at y=900 is emitted");
+        assertTrue(pulled.waterMesh().getVertexCount() > 0, "water sheet at y=900 has quads");
     }
 }

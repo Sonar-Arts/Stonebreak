@@ -96,8 +96,8 @@ public final class MmsQuadMeshBuilder {
         if (base + 4 > words.length) {
             words = Arrays.copyOf(words, words.length + (words.length >> 1) + 4);
         }
-        words[base] = MmsQuadCodec.word0(x, y, z, face, w);
-        words[base + 1] = MmsQuadCodec.word1(h, orientation, alpha, translucent, layer);
+        words[base] = MmsQuadCodec.word0(x, y, z, face);
+        words[base + 1] = MmsQuadCodec.word1(w, h, orientation, alpha, translucent, layer);
         words[base + 2] = MmsQuadCodec.word2(l0, l1, l2, l3);
         words[base + 3] = MmsQuadCodec.word3(heightEighths);
         quadCount++;

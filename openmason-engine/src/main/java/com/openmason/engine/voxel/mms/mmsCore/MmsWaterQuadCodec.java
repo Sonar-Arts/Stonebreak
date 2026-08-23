@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
  * sheets (flat, up to 16×16 blocks).
  *
  * <pre>
- * word0: x:8 | y:9 | z:8 | face:3 | falling:1 | source:1 | sheet:1 | spare:1
+ * word0: x:8 | y:10 | z:8 | face:3 | falling:1 | source:1 | sheet:1
  *        sheet = FastLOD sea sheet: no wave displacement in the shader
  *        cell relative to the region origin (y = the water cell's block Y)
  * word1: 4 × u8 vertex Y offsets from (y − 1) in 1/128 block, corner order =
@@ -47,15 +47,16 @@ public final class MmsWaterQuadCodec {
      */
     public static int word0(int x, int y, int z, int face, boolean falling, boolean source, boolean sheet) {
         check(x, 0, 255, "x");
-        check(y, 0, 511, "y");
+        // The mesh origin's Y is 0, so y is absolute world Y: 10 bits covers WORLD_HEIGHT 1024.
+        check(y, 0, 1023, "y");
         check(z, 0, 255, "z");
         check(face, 0, 5, "face");
-        return x | (y << 8) | (z << 17) | (face << 25) | ((falling ? 1 : 0) << 28) | ((source ? 1 : 0) << 29)
-            | ((sheet ? 1 : 0) << 30);
+        return x | (y << 8) | (z << 18) | (face << 26) | ((falling ? 1 : 0) << 29) | ((source ? 1 : 0) << 30)
+            | ((sheet ? 1 : 0) << 31);
     }
 
     public static boolean sheet(int w0) {
-        return ((w0 >>> 30) & 1) != 0;
+        return ((w0 >>> 31) & 1) != 0;
     }
 
     /** Packs four vertex Y values (world units, {@code cellY - 1 ≤ vy < cellY + 1}) into 1/128 steps. */
@@ -94,23 +95,23 @@ public final class MmsWaterQuadCodec {
     }
 
     public static int y(int w0) {
-        return (w0 >>> 8) & 0x1FF;
+        return (w0 >>> 8) & 0x3FF;
     }
 
     public static int z(int w0) {
-        return (w0 >>> 17) & 0xFF;
+        return (w0 >>> 18) & 0xFF;
     }
 
     public static int face(int w0) {
-        return (w0 >>> 25) & 7;
+        return (w0 >>> 26) & 7;
     }
 
     public static boolean falling(int w0) {
-        return ((w0 >>> 28) & 1) != 0;
+        return ((w0 >>> 29) & 1) != 0;
     }
 
     public static boolean source(int w0) {
-        return ((w0 >>> 29) & 1) != 0;
+        return ((w0 >>> 30) & 1) != 0;
     }
 
     public static float vertexY(int cellY, int w1, int corner) {

@@ -13,13 +13,13 @@ import java.nio.ByteBuffer;
  * per-corner light (LOD light is 0 or 1 per quad) for four octahedral normals.
  *
  * <pre>
- * word0: x:9 | z:9 | y:9 | face:3 | smooth:1 | light:1
+ * word0: x:9 | z:9 | y:11 | face:3
  *        the rectangle's minimum corner ON ITS PLANE (unlike MmsQuadCodec, which
  *        stores the cell and lets the corner table add the face offset): x,z
  *        whole blocks relative to the LOD-region origin, biased by +8 (canopies
- *        overhang a cell by up to 2 blocks); y in HALF blocks (0..255.5)
- * word1: w:6 | h:10 | layer:15 | alpha:1
- *        w,h in half blocks along the face's u/v axes (w ≤ 32, h ≤ 1023)
+ *        overhang a cell by up to 2 blocks); y in HALF blocks (0..1023.5)
+ * word1: w:6 | h:11 | layer:12 | alpha:1 | smooth:1 | light:1
+ *        w,h in half blocks along the face's u/v axes (w ≤ 31.5, h ≤ 1023.5)
  * word2: oct(n0) | oct(n1)      per-corner normals, 8+8 bits each, corner order =
  * word3: oct(n2) | oct(n3)      MmsCuboidGenerator.FACE_VERTEX_OFFSETS; used when smooth=1
  * </pre>
@@ -41,26 +41,32 @@ public final class MmsLodQuadCodec {
 
     /**
      * @param x,z  whole blocks relative to the region origin (−8..503)
-     * @param yHalf  base Y in half blocks (0..511)
-     * @param wHalf  extent along the face's u axis in half blocks (1..63)
-     * @param hHalf  extent along the face's v axis in half blocks (1..1023)
+     * @param yHalf  base Y in half blocks (0..2047, i.e. up to y=1023.5)
      */
-    public static int word0(int x, int z, int yHalf, int face, boolean smooth, boolean lit) {
+    public static int word0(int x, int z, int yHalf, int face) {
         int bx = x + XZ_BIAS;
         int bz = z + XZ_BIAS;
         check(bx, 0, 511, "x");
         check(bz, 0, 511, "z");
-        check(yHalf, 0, 511, "y");
+        check(yHalf, 0, 2047, "y");
         check(face, 0, 5, "face");
-        return bx | (bz << 9) | (yHalf << 18) | (face << 27) | ((smooth ? 1 : 0) << 30)
-            | ((lit ? 1 : 0) << 31);
+        return bx | (bz << 9) | (yHalf << 18) | (face << 29);
     }
 
-    public static int word1(int wHalf, int hHalf, int layer, boolean alpha) {
+    /**
+     * @param wHalf  extent along the face's u axis in half blocks (1..63)
+     * @param hHalf  extent along the face's v axis in half blocks (1..2047) — a
+     *               foundation wall spans from the cell top down to y=0, so at
+     *               {@code WORLD_HEIGHT} 1024 this reaches 2046
+     * @param layer  texture-array layer (0..4095)
+     */
+    public static int word1(int wHalf, int hHalf, int layer, boolean alpha,
+                            boolean smooth, boolean lit) {
         check(wHalf, 1, 63, "w");
-        check(hHalf, 1, 1023, "h");
-        check(layer, 0, 32767, "layer");
-        return wHalf | (hHalf << 6) | (layer << 16) | ((alpha ? 1 : 0) << 31);
+        check(hHalf, 1, 2047, "h");
+        check(layer, 0, 4095, "layer");
+        return wHalf | (hHalf << 6) | (layer << 17) | ((alpha ? 1 : 0) << 29)
+            | ((smooth ? 1 : 0) << 30) | ((lit ? 1 : 0) << 31);
     }
 
     /** Two octahedral-encoded normals in one word (low half = first). */
@@ -126,19 +132,21 @@ public final class MmsLodQuadCodec {
     }
 
     public static float y(int w0) {
-        return ((w0 >>> 18) & 0x1FF) * 0.5f;
+        return ((w0 >>> 18) & 0x7FF) * 0.5f;
     }
 
     public static int face(int w0) {
-        return (w0 >>> 27) & 7;
+        return (w0 >>> 29) & 7;
     }
 
-    public static boolean smooth(int w0) {
-        return ((w0 >>> 30) & 1) != 0;
+    /** Smooth-normal flag — lives in word1 (word0 is full at x:9|z:9|y:11|face:3). */
+    public static boolean smooth(int w1) {
+        return ((w1 >>> 30) & 1) != 0;
     }
 
-    public static boolean lit(int w0) {
-        return (w0 >>> 31) != 0;
+    /** Light flag — lives in word1, as {@link #smooth(int)} does. */
+    public static boolean lit(int w1) {
+        return (w1 >>> 31) != 0;
     }
 
     public static float width(int w1) {
@@ -146,15 +154,15 @@ public final class MmsLodQuadCodec {
     }
 
     public static float height(int w1) {
-        return ((w1 >>> 6) & 0x3FF) * 0.5f;
+        return ((w1 >>> 6) & 0x7FF) * 0.5f;
     }
 
     public static int layer(int w1) {
-        return (w1 >>> 16) & 0x7FFF;
+        return (w1 >>> 17) & 0xFFF;
     }
 
     public static boolean alpha(int w1) {
-        return (w1 >>> 31) != 0;
+        return ((w1 >>> 29) & 1) != 0;
     }
 
     public static float position(ByteBuffer quads, int q, int corner, int axis,
@@ -186,7 +194,8 @@ public final class MmsLodQuadCodec {
 
     public static float normal(ByteBuffer quads, int q, int corner, int c) {
         int w0 = quads.getInt(q * QUAD_BYTES);
-        if (smooth(w0)) {
+        int w1 = quads.getInt(q * QUAD_BYTES + 4);
+        if (smooth(w1)) {
             int word = quads.getInt(q * QUAD_BYTES + 8 + (corner >> 1) * 4);
             int packed = (corner & 1) == 0 ? (word & 0xFFFF) : ((word >>> 16) & 0xFFFF);
             return octDecode(packed, c);
@@ -207,9 +216,8 @@ public final class MmsLodQuadCodec {
     }
 
     public static int flags(ByteBuffer quads, int q) {
-        int w0 = quads.getInt(q * QUAD_BYTES);
         int w1 = quads.getInt(q * QUAD_BYTES + 4);
-        return MmsBufferLayout.packFlags(0f, alpha(w1) ? 1f : 0f, 0f, lit(w0) ? 1f : 0f);
+        return MmsBufferLayout.packFlags(0f, alpha(w1) ? 1f : 0f, 0f, lit(w1) ? 1f : 0f);
     }
 
     public static float layer(ByteBuffer quads, int q) {
