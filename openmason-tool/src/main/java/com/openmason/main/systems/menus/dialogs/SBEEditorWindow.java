@@ -52,6 +52,13 @@ public class SBEEditorWindow {
 
     /** Mortar window chrome (action bar + tab strip); ImGui fallback inside. */
     private final EditorChrome chrome = new EditorChrome("sbe");
+
+    /** Opens embedded model bytes in the model editor (wired by MainImGuiInterface). */
+    private java.util.function.BiConsumer<byte[], String> openModelHandler;
+
+    public void setOpenModelHandler(java.util.function.BiConsumer<byte[], String> handler) {
+        this.openModelHandler = handler;
+    }
     private int selectedTab;
 
     // Loaded document state
@@ -188,6 +195,17 @@ public class SBEEditorWindow {
     }
 
     private void renderMetadataTab() {
+        if (openModelHandler != null && loadedOmoBytes != null) {
+            if (ImGui.button("Open Model in Editor")) {
+                openModelHandler.accept(loadedOmoBytes,
+                        loadedManifest != null ? loadedManifest.objectName() : "SBE model");
+            }
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Loads a COPY of the embedded model into the viewport "
+                        + "(the .sbe file itself is not touched; Save becomes Save As)");
+            }
+            ImGui.separator();
+        }
         if (ImGui.inputText("Object ID", objectId))    dirty = true;
         ImGui.sameLine();
         if (ImGui.smallButton("Registered IDs...")) objectIndexPopup.open();

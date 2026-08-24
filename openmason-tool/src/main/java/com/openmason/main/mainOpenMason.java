@@ -56,9 +56,14 @@ public class mainOpenMason {
             new com.openmason.main.systems.layout.CenterTabTracker();
     private TextureCreatorImGui textureCreatorInterface;
     private TextureEditorWindow textureEditorWindow;
+    private com.openmason.main.systems.menus.scriptingWindow.ScriptingWindow scriptingWindow;
+    private com.openmason.main.systems.assistant.AssistantController assistantController;
     private AnimationEditorImGui animationEditor;
     private TexturePreviewPipeline texturePreviewPipeline;
     private final McpServerBootstrap mcpServer = new McpServerBootstrap();
+    private final com.openmason.main.systems.mcp.approval.McpApprovalGate approvalGate =
+            new com.openmason.main.systems.mcp.approval.McpApprovalGate();
+    private com.openmason.main.systems.menus.dialogs.ApprovalDialog approvalDialog;
     private SkijaContext skijaContext;
     private SkijaTestPanel skijaTestPanel;
 
@@ -87,7 +92,11 @@ public class mainOpenMason {
             initializeUI();
 
             omLifecycle.onApplicationStarted();
-            mcpServer.start(mainInterface);
+            com.openmason.main.systems.mcp.ToolCapabilities toolCapabilities = buildToolCapabilities();
+            mcpServer.start(mainInterface, toolCapabilities);
+            if (assistantController != null) {
+                assistantController.setLibalexAvailable(toolCapabilities.libalexAvailable());
+            }
             runMainLoop();
 
         } catch (Exception e) {
@@ -191,8 +200,57 @@ public class mainOpenMason {
             sceneViewerInterface = composition.sceneViewerInterface();
             textureCreatorInterface = composition.textureCreatorInterface();
             textureEditorWindow = composition.textureEditorWindow();
+            scriptingWindow = composition.scriptingWindow();
             animationEditor = composition.animationEditor();
             texturePreviewPipeline = composition.texturePreviewPipeline();
+        }
+        if (mainInterface != null) {
+            com.fasterxml.jackson.databind.ObjectMapper assistantMapper =
+                    new com.fasterxml.jackson.databind.ObjectMapper();
+            assistantController = new com.openmason.main.systems.assistant.AssistantController(
+                    () -> mcpServer.registry(),
+                    com.openmason.main.systems.menus.preferences.AssistantPreferences::read,
+                    () -> mainInterface.getModelState() != null
+                            ? mainInterface.getModelState().getCurrentModelPath() : null,
+                    assistantMapper);
+            mainInterface.setAssistantPane(
+                    new com.openmason.main.systems.assistant.ui.AssistantPaneImGui(assistantController));
+        }
+        if (mainInterface != null) {
+            mainInterface.setApprovalGate(approvalGate);
+            approvalDialog = new com.openmason.main.systems.menus.dialogs.ApprovalDialog(
+                    approvalGate,
+                    () -> {
+                        var ops = mainInterface.getModelOperations();
+                        if (ops != null) {
+                            ops.saveModel();
+                        }
+                    },
+                    () -> mainInterface.getModelState() != null
+                            && mainInterface.getModelState().hasUnsavedChanges());
+        }
+        if (mainInterface != null && scriptingWindow != null) {
+            mainInterface.setScriptingPresenter(new MainImGuiInterface.ScriptingPresenter() {
+                @Override
+                public void show() {
+                    scriptingWindow.show();
+                }
+
+                @Override
+                public void showWithScript(String scriptName) {
+                    scriptingWindow.showWithScript(scriptName);
+                }
+
+                @Override
+                public void close() {
+                    scriptingWindow.hide();
+                }
+
+                @Override
+                public boolean isVisible() {
+                    return scriptingWindow.isVisible();
+                }
+            });
         }
         if (mainInterface != null && textureEditorWindow != null) {
             mainInterface.setTextureEditorPresenter(new MainImGuiInterface.TextureEditorPresenter() {
@@ -228,6 +286,16 @@ public class mainOpenMason {
     private void renderUI() {
         float deltaTime = ImGui.getIO().getDeltaTime();
 
+        // Agent approval modal — independent of which screen is showing.
+        if (approvalDialog != null) {
+            approvalDialog.render();
+        }
+
+        // Scripting window — standalone like the texture editor.
+        if (scriptingWindow != null) {
+            scriptingWindow.render();
+        }
+
         if (showHomeScreen) {
             renderComponent(projectHubScreen, deltaTime, "Project Hub");
         }
@@ -251,6 +319,7 @@ public class mainOpenMason {
         if (showTextureEditor) {
             safeRender(() -> {
                 textureEditorWindow.render();
+
                 if (!textureEditorWindow.isVisible()) {
                     onTextureEditorClosed();
                 }
@@ -489,11 +558,50 @@ public class mainOpenMason {
     /**
      * Cleanup all application resources (idempotent).
      */
+    private com.openmason.main.systems.assistant.libalex.LibalexClient libalexClient;
+
+    /**
+     * Optional-capability detection: libalex is enabled when a launch config
+     * exists on this machine AND the user hasn't disabled it in Preferences.
+     * Absence of either simply leaves knowledge_search unregistered.
+     */
+    private com.openmason.main.systems.mcp.ToolCapabilities buildToolCapabilities() {
+        try {
+            if (!com.openmason.main.systems.menus.preferences.AssistantPreferences.libalexEnabled()) {
+                logger.info("libalex disabled in preferences — knowledge_search not registered");
+                return com.openmason.main.systems.mcp.ToolCapabilities.none();
+            }
+            var config = com.openmason.main.systems.assistant.libalex.LibalexDetector.detect();
+            if (config == null) {
+                logger.info("libalex not detected — knowledge_search not registered");
+                return com.openmason.main.systems.mcp.ToolCapabilities.none();
+            }
+            libalexClient = new com.openmason.main.systems.assistant.libalex.LibalexClient(
+                    config, new com.fasterxml.jackson.databind.ObjectMapper());
+            logger.info("libalex detected — knowledge_search registered");
+            return new com.openmason.main.systems.mcp.ToolCapabilities(
+                    (query, collection, limit) -> libalexClient.recall(query, collection, limit));
+        } catch (RuntimeException e) {
+            logger.warn("libalex detection failed — feature disabled: {}", e.toString());
+            return com.openmason.main.systems.mcp.ToolCapabilities.none();
+        }
+    }
+
     private void cleanup() {
         if (cleanedUp) return;
         cleanedUp = true;
 
         try {
+            approvalGate.shutdown();
+            if (libalexClient != null) {
+                libalexClient.close();
+            }
+            if (assistantController != null) {
+                assistantController.shutdown();
+            }
+            if (scriptingWindow != null) {
+                scriptingWindow.shutdown();
+            }
             mcpServer.stop();
 
             long window = window();

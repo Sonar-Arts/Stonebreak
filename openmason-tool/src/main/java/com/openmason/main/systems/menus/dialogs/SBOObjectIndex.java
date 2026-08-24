@@ -1,12 +1,13 @@
 package com.openmason.main.systems.menus.dialogs;
 
-import com.openmason.engine.format.sbo.SBOParser;
 
-import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import com.openmason.main.systems.assets.AssetCatalog;
+import com.openmason.main.systems.assets.AssetEntry;
+
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,15 +15,11 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * Cached index of every SBO object reachable from the bundled Stonebreak
- * resources. Used by the SBO editor's recipe ingredient picker (and any other
- * "pick an object" UI) to enumerate valid {@code objectId}s.
- *
- * <p>Loaded lazily on first use, refreshable on demand.
+ * SBO view over the shared {@link AssetCatalog}. Kept as a thin façade so the
+ * recipe ingredient picker (and any other "pick an object" UI) keeps its
+ * historical shape while scanning/caching lives in one place.
  */
 public final class SBOObjectIndex {
-
-    private static volatile List<Entry> cached;
 
     private SBOObjectIndex() {}
 
@@ -41,42 +38,14 @@ public final class SBOObjectIndex {
     }
 
     public static List<Entry> listAll() {
-        List<Entry> snapshot = cached;
-        if (snapshot == null) {
-            synchronized (SBOObjectIndex.class) {
-                if (cached == null) {
-                    cached = scan();
-                }
-                snapshot = cached;
-            }
-        }
-        return snapshot;
+        return AssetCatalog.shared().listAll(false).stream()
+                .filter(e -> e.kind() == AssetEntry.Kind.SBO)
+                .map(e -> new Entry(e.id(), e.displayName(), e.type(), e.sourcePath()))
+                .toList();
     }
 
-    public static synchronized void refresh() {
-        cached = scan();
-    }
-
-    private static List<Entry> scan() {
-        List<Entry> out = new ArrayList<>();
-        SBOParser parser = new SBOParser();
-        for (String resourceDir : new String[]{"sbo/blocks", "sbo/items"}) {
-            for (Path p : discover(resourceDir)) {
-                try {
-                    SBOParser.RawParse raw = parser.parseRaw(p);
-                    out.add(new Entry(
-                            raw.manifest().objectId(),
-                            raw.manifest().objectName(),
-                            raw.manifest().objectType(),
-                            p
-                    ));
-                } catch (IOException ignored) {
-                    // best-effort enumeration; skip unreadable files
-                }
-            }
-        }
-        out.sort((a, b) -> a.objectId().compareToIgnoreCase(b.objectId()));
-        return Collections.unmodifiableList(out);
+    public static void refresh() {
+        AssetCatalog.shared().listAll(true);
     }
 
     /**
@@ -99,7 +68,7 @@ public final class SBOObjectIndex {
             if (Files.isDirectory(candidate)) {
                 try (Stream<Path> stream = Files.list(candidate)) {
                     stream.filter(p -> p.toString().toLowerCase().endsWith(".sbo")).forEach(paths::add);
-                } catch (IOException ignored) {}
+                } catch (java.io.IOException ignored) {}
                 if (!paths.isEmpty()) return paths;
             }
         }
@@ -120,7 +89,7 @@ public final class SBOObjectIndex {
             try (Stream<Path> stream = Files.list(resourcePath)) {
                 stream.filter(p -> p.toString().toLowerCase().endsWith(".sbo")).forEach(paths::add);
             }
-        } catch (IOException | URISyntaxException ignored) {}
+        } catch (java.io.IOException | URISyntaxException ignored) {}
 
         return paths;
     }

@@ -89,6 +89,22 @@ public class PreferencesPageRenderer {
     // Folders ImGui state holders
     private final imgui.type.ImString projectsFolderInput = new imgui.type.ImString("", 512);
 
+    // Assistant ImGui state holders (deferred-apply like every other page)
+    private static final String[] APPROVAL_POLICY_NAMES = {"Auto-approve", "Ask", "Deny"};
+    private final imgui.type.ImString assistantEndpoint = new imgui.type.ImString("", 256);
+    private final imgui.type.ImString assistantApiKey = new imgui.type.ImString("", 256);
+    private final ImFloat assistantTemperature = new ImFloat();
+    private final ImInt assistantMaxIterations = new ImInt();
+    private final ImInt assistantContextOverride = new ImInt();
+    private final imgui.type.ImString assistantPromptExtras = new imgui.type.ImString("", 4096);
+    private final ImInt assistantPolicyRead = new ImInt();
+    private final ImInt assistantPolicyMutating = new ImInt();
+    private final ImInt assistantPolicyAuth = new ImInt();
+    private final ImBoolean assistantAuthAutoConfirm = new ImBoolean(false);
+    private final ImBoolean assistantLibalexEnabled = new ImBoolean(true);
+    private final ImBoolean assistantAutoCompact = new ImBoolean(true);
+    private volatile String assistantTestResult;
+
     // Dependencies
     private final PreferencesManager preferencesManager;
     private final ThemeManager themeManager;
@@ -149,6 +165,7 @@ public class PreferencesPageRenderer {
 
         syncCommonState();
         syncAssetsState();
+        syncAssistantState();
 
         logger.debug("All preference pages synced from persistence");
     }
@@ -162,6 +179,7 @@ public class PreferencesPageRenderer {
         applyTextureEditorSettings();
         applyCommonSettings();
         applyAssetsSettings();
+        applyAssistantSettings();
 
         // Migrate the file so it contains every known key.
         // Adds defaults for any missing keys without overwriting existing values.
@@ -191,6 +209,9 @@ public class PreferencesPageRenderer {
                 break;
             case ASSETS:
                 renderAssetsPage();
+                break;
+            case ASSISTANT:
+                renderAssistantPage();
                 break;
             case COMMON:
                 renderCommonPage();
@@ -925,4 +946,165 @@ public class PreferencesPageRenderer {
         this.textureCreatorImGui = textureCreatorImGui;
         logger.debug("TextureCreatorImGui reference updated");
     }
+
+    // ========================================
+    // Assistant Page (deferred apply)
+    // ========================================
+
+    private void renderAssistantPage() {
+        ImGuiComponents.renderSectionHeader("Local LLM Server");
+        ImGui.textWrapped("OpenAI-compatible endpoint (vLLM). The served model is discovered "
+                + "automatically — only one model runs per port. Applied on OK/Apply.");
+        ImGui.spacing();
+        ImGui.text("Endpoint");
+        ImGui.sameLine(160);
+        ImGui.pushItemWidth(320);
+        ImGui.inputText("##assistantEndpoint", assistantEndpoint);
+        ImGui.popItemWidth();
+        ImGui.text("API key");
+        ImGui.sameLine(160);
+        ImGui.pushItemWidth(320);
+        ImGui.inputText("##assistantApiKey", assistantApiKey,
+                imgui.flag.ImGuiInputTextFlags.Password);
+        ImGui.popItemWidth();
+        ImGui.sameLine();
+        if (ImGui.button("Test connection")) {
+            testAssistantConnection();
+        }
+        if (assistantTestResult != null) {
+            ImGui.sameLine();
+            ImGui.textWrapped(assistantTestResult);
+        }
+
+        ImGuiComponents.addSectionSeparator();
+        ImGuiComponents.renderSectionHeader("Behavior");
+        ImGui.text("Temperature");
+        ImGui.sameLine(200);
+        ImGui.pushItemWidth(200);
+        ImGui.sliderFloat("##assistantTemp", assistantTemperature.getData(), 0.0f, 1.5f, "%.2f");
+        ImGui.text("Max tool iterations");
+        ImGui.sameLine(200);
+        ImGui.sliderInt("##assistantIters", assistantMaxIterations.getData(), 1, 100);
+        ImGui.text("Context override (tokens)");
+        ImGui.sameLine(200);
+        ImGui.inputInt("##assistantCtx", assistantContextOverride, 4096);
+        ImGui.popItemWidth();
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("0 = use the model's known context window");
+        }
+        ImGui.checkbox("Auto-compact context##assistantAutoCompact", assistantAutoCompact);
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("When a chat passes ~75% of the context window, fold older "
+                    + "messages into a model-written summary automatically. "
+                    + "/compact in the chat does it on demand.");
+        }
+
+        ImGuiComponents.addSectionSeparator();
+        ImGuiComponents.renderSectionHeader("Tool Approval");
+        ImGui.textWrapped("What the assistant may do without asking. Unknown tools count as "
+                + "'Mutating'. 'Requires authorization' covers actions that replace your "
+                + "working model (e.g. asset_open).");
+        renderPolicyRow("Read-only tools", assistantPolicyRead);
+        renderPolicyRow("Mutating tools", assistantPolicyMutating);
+        renderPolicyRow("Requires authorization", assistantPolicyAuth);
+        if (assistantPolicyAuth.get() == 0 && !assistantAuthAutoConfirm.get()) {
+            ImGui.textColored(1f, 0.7f, 0.2f, 1f,
+                    "Auto-approving authorization-level actions lets the assistant replace "
+                    + "your open model without asking.");
+            ImGui.checkbox("I understand — allow auto-approve##assistantAuthConfirm",
+                    assistantAuthAutoConfirm);
+        }
+
+        ImGuiComponents.addSectionSeparator();
+        ImGuiComponents.renderSectionHeader("Knowledge");
+        boolean libalexDetected =
+                com.openmason.main.systems.assistant.libalex.LibalexDetector.detect() != null;
+        if (!libalexDetected) {
+            ImGui.beginDisabled();
+        }
+        ImGui.checkbox("Enable libalex knowledge_search"
+                + (libalexDetected ? "" : " (not detected)"), assistantLibalexEnabled);
+        if (!libalexDetected) {
+            ImGui.endDisabled();
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("No libalex launch config found (~/.pi/agent/libalex.json "
+                        + "or ~/.claude.json mcpServers.libalex)");
+            }
+        } else if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Takes effect on next launch (tool registration is startup-time)");
+        }
+
+        ImGuiComponents.addSectionSeparator();
+        ImGuiComponents.renderSectionHeader("System Prompt Extras");
+        ImGui.textWrapped("Appended verbatim to the assistant's system prompt.");
+        ImGui.inputTextMultiline("##assistantExtras", assistantPromptExtras, -1, 90);
+    }
+
+    private void renderPolicyRow(String label, ImInt state) {
+        ImGui.text(label);
+        ImGui.sameLine(200);
+        ImGui.pushItemWidth(160);
+        ImGui.combo("##policy_" + label, state, APPROVAL_POLICY_NAMES);
+        ImGui.popItemWidth();
+    }
+
+    private void testAssistantConnection() {
+        assistantTestResult = "probing...";
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                var client = new com.openmason.main.systems.assistant.llm.LlmClient(
+                        new com.fasterxml.jackson.databind.ObjectMapper());
+                var models = client.probeModels(assistantEndpoint.get(), assistantApiKey.get());
+                assistantTestResult = models.isEmpty() ? "reachable, no models served"
+                        : "OK — serving " + models.get(0);
+            } catch (Exception e) {
+                assistantTestResult = "failed: " + e.getMessage();
+            }
+        });
+    }
+
+    private void syncAssistantState() {
+        var settings = AssistantPreferences.read();
+        assistantEndpoint.set(settings.endpoint());
+        assistantApiKey.set(settings.apiKey());
+        assistantTemperature.set(settings.temperature());
+        assistantMaxIterations.set(settings.maxToolIterations());
+        assistantContextOverride.set((int) Math.min(Integer.MAX_VALUE,
+                settings.contextTokensOverride()));
+        assistantPromptExtras.set(settings.promptExtras() == null ? "" : settings.promptExtras());
+        assistantPolicyRead.set(settings.readOnlyPolicy().ordinal());
+        assistantPolicyMutating.set(settings.mutatingPolicy().ordinal());
+        assistantPolicyAuth.set(settings.requiresAuthPolicy().ordinal());
+        assistantAuthAutoConfirm.set(
+                settings.requiresAuthPolicy() == com.openmason.main.systems.assistant.llm
+                        .AssistantSettings.ApprovalPolicy.AUTO);
+        assistantLibalexEnabled.set(AssistantPreferences.libalexEnabled());
+        assistantAutoCompact.set(settings.autoCompact());
+        assistantTestResult = null;
+    }
+
+    private void applyAssistantSettings() {
+        var policies = com.openmason.main.systems.assistant.llm.AssistantSettings.ApprovalPolicy
+                .values();
+        var auth = policies[Math.min(assistantPolicyAuth.get(), policies.length - 1)];
+        // The auth-auto footgun needs the explicit confirmation checkbox.
+        if (auth == com.openmason.main.systems.assistant.llm.AssistantSettings.ApprovalPolicy.AUTO
+                && !assistantAuthAutoConfirm.get()) {
+            auth = com.openmason.main.systems.assistant.llm.AssistantSettings.ApprovalPolicy.ASK;
+            assistantPolicyAuth.set(auth.ordinal());
+        }
+        var settings = new com.openmason.main.systems.assistant.llm.AssistantSettings(
+                assistantEndpoint.get().strip(),
+                assistantApiKey.get(),
+                assistantTemperature.get(),
+                Math.max(1, assistantMaxIterations.get()),
+                Math.max(0, assistantContextOverride.get()),
+                assistantPromptExtras.get(),
+                policies[Math.min(assistantPolicyRead.get(), policies.length - 1)],
+                policies[Math.min(assistantPolicyMutating.get(), policies.length - 1)],
+                auth,
+                assistantAutoCompact.get());
+        AssistantPreferences.write(settings, assistantLibalexEnabled.get());
+    }
+
 }

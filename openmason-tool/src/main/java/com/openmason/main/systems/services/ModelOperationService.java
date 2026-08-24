@@ -328,6 +328,56 @@ public class ModelOperationService {
     }
 
     /**
+     * Result of {@link #openExtractedAssetModel}.
+     */
+    public record OpenAssetResult(boolean opened, String message) {
+    }
+
+    /**
+     * Open a model extracted from an SBO/SBE asset as an UNSAVED COPY: the
+     * asset file itself is never written — the embedded OMO is staged to a
+     * temp file, loaded through the normal OMO path (parts, face textures,
+     * bones, attachments), and the session is then marked as an imported
+     * asset with no backing file, so Save forces Save As.
+     *
+     * <p>Must run on the main thread (same requirement as any model load).
+     */
+    public OpenAssetResult openExtractedAssetModel(byte[] omoBytes, String displayName,
+                                                   String originAsset) {
+        java.nio.file.Path tempDir = null;
+        try {
+            tempDir = java.nio.file.Files.createTempDirectory("openmason-asset-open");
+            java.nio.file.Path tempOmo = tempDir.resolve("model.omo");
+            java.nio.file.Files.write(tempOmo, omoBytes);
+            loadOMOModelFromFile(tempOmo.toString());
+            if (!modelState.isModelLoaded()) {
+                return new OpenAssetResult(false, "model failed to load — see log");
+            }
+            modelState.setCurrentOMOFilePath("");
+            modelState.setUnsavedChanges(true);
+            modelState.setModelSource(ModelState.ModelSource.IMPORTED_ASSET);
+            modelState.setCurrentModelPath(displayName);
+            statusService.updateStatus("Opened a copy of " + originAsset
+                    + " — use Save As to keep it");
+            return new OpenAssetResult(true, "opened copy of " + originAsset);
+        } catch (java.io.IOException e) {
+            return new OpenAssetResult(false, "failed to stage model: " + e.getMessage());
+        } finally {
+            if (tempDir != null) {
+                try {
+                    java.nio.file.Path dir = tempDir;
+                    try (var stream = java.nio.file.Files.walk(dir)) {
+                        stream.sorted(java.util.Comparator.reverseOrder())
+                                .forEach(pp -> pp.toFile().delete());
+                    }
+                } catch (java.io.IOException ignored) {
+                    // best-effort cleanup
+                }
+            }
+        }
+    }
+
+    /**
      * Load a .OMO model from a specific file path.
      * Loads custom mesh data (if any) for subdivision support.
      *

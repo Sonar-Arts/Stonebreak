@@ -19,6 +19,7 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
     private final ImBoolean showSceneInspector = new ImBoolean(true);
     private final ImBoolean showPropertyPanel = new ImBoolean(true);
     private final ImBoolean showRiggingPane = new ImBoolean(true);
+    private final ImBoolean showAssistantPane = new ImBoolean(true);
     private final ImBoolean showToolbar = new ImBoolean(true);
     private final ImBoolean showPreferencesWindow = new ImBoolean(false);
     private final ImBoolean showAboutWindow = new ImBoolean(false);
@@ -43,6 +44,14 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
 
     public ImBoolean getShowRiggingPane() {
         return showRiggingPane;
+    }
+
+    public ImBoolean getShowAssistantPane() {
+        return showAssistantPane;
+    }
+
+    public void toggleAssistantPane() {
+        showAssistantPane.set(!showAssistantPane.get());
     }
 
     public ImBoolean getShowPreferencesWindow() {
@@ -108,6 +117,7 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
         showModelBrowser.set(true);
         showPropertyPanel.set(true);
         showRiggingPane.set(true);
+        showAssistantPane.set(true);
         showToolbar.set(true);
         showPreferencesWindow.set(false);
         showAboutWindow.set(false);
@@ -132,6 +142,7 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
             showModelBrowser.set(true);
             showPropertyPanel.set(true);
             showRiggingPane.set(true);
+        showAssistantPane.set(true);
             showToolbar.set(true);
         }
     }

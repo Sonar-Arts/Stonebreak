@@ -45,7 +45,12 @@ public final class MainLayoutBuilder {
      *       floating instead of docked.</li>
      * </ul>
      */
-    public static final int LAYOUT_VERSION = 3;
+    /**
+     * v4 (2026-08-23): Assistant pane docked into the right-top stack. A new
+     * docked window MUST bump this so existing imgui.ini users get a rebuild —
+     * otherwise the pane opens floating (possibly off-window) on first load.
+     */
+    public static final int LAYOUT_VERSION = 4;
 
     private final omConfig config;
 
@@ -137,6 +142,8 @@ public final class MainLayoutBuilder {
         imgui.internal.ImGui.dockBuilderDockWindow(PropertyPanelImGui.WINDOW_TITLE, left.get());
         imgui.internal.ImGui.dockBuilderDockWindow(RiggingPaneImGui.WINDOW_TITLE, left.get());
         imgui.internal.ImGui.dockBuilderDockWindow(SceneOutlinerImGui.WINDOW_TITLE, rightTop.get());
+        imgui.internal.ImGui.dockBuilderDockWindow(
+                com.openmason.main.systems.assistant.ui.AssistantPaneImGui.WINDOW_TITLE, rightTop.get());
         imgui.internal.ImGui.dockBuilderDockWindow(SceneInspectorImGui.WINDOW_TITLE, rightBottom.get());
         imgui.internal.ImGui.dockBuilderDockWindow(ProjectBrowserImGui.WINDOW_TITLE, bottom.get());
 
