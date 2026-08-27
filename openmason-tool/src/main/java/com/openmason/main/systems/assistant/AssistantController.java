@@ -322,7 +322,7 @@ public final class AssistantController {
         ProbeState probe = probeNow();
         if (!probe.online()) {
             appendNotice(target, "LLM server unreachable at " + settings.endpoint()
-                    + " (" + probe.error() + ") — start vLLM and retry");
+                    + " (" + probe.error() + ") — start the LLM server (vLLM/SGLang) and retry");
             return;
         }
         String modelId = probe.modelId();

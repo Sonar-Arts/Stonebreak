@@ -5,15 +5,16 @@ import java.util.Map;
 
 /**
  * Known local-model limits. The live model id is DISCOVERED via
- * {@code GET /v1/models} (the local vLLM servers swap models on one port —
- * never hardcode which is up); this table only supplies context budgets and
- * thinking-mode knobs for ids we recognize.
+ * {@code GET /v1/models} (the local vLLM/SGLang servers swap models on one
+ * port — never hardcode which is up); this table only supplies context
+ * budgets and thinking-mode knobs for ids we recognize.
  */
 public record ModelInfo(String id, long contextTokens, long maxOutputTokens, boolean thinking) {
 
     private static final Map<String, ModelInfo> KNOWN = Map.of(
             "deepseek-v4-flash", new ModelInfo("deepseek-v4-flash", 1_048_576, 65_536, true),
             "qwen3.8-27b", new ModelInfo("qwen3.8-27b", 262_144, 32_768, true),
+            "qwen3.8-flash-next", new ModelInfo("qwen3.8-flash-next", 262_144, 32_768, true),
             "laguna", new ModelInfo("laguna", 262_144, 32_768, false));
 
     /** Info for a model id; unknown ids get a conservative default. */

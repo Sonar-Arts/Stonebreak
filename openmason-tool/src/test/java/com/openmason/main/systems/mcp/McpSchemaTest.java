@@ -34,6 +34,21 @@ class McpSchemaTest {
     }
 
     @Test
+    void requiredDeduplicatesRepeatedNames() {
+        // Strict OpenAI-compat validators (SGLang) reject duplicated required
+        // entries (uniqueItems) — the script_save "name, name, source" bug.
+        JsonNode s = McpSchema.of(MAPPER)
+                .str("name", "a name")
+                .str("source", "text")
+                .required("name")
+                .required("name", "source")
+                .build();
+        assertEquals(2, s.get("required").size());
+        assertEquals("name", s.get("required").get(0).asText());
+        assertEquals("source", s.get("required").get(1).asText());
+    }
+
+    @Test
     void noRequiredNodeWhenNoneDeclared() {
         JsonNode s = McpSchema.of(MAPPER).str("a", "x").build();
         assertFalse(s.has("required"));

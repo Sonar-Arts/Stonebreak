@@ -40,7 +40,7 @@ public final class ScriptLibraryToolDefinitions {
                 nameSchema()
                         .str("source", "Script source text")
                         .bool("overwrite", "Replace an existing script (default false)")
-                        .required("name", "source")
+                        .required("source")
                         .build(),
                 args -> service.save(reqString(args, "name"), reqString(args, "source"),
                         optBool(args, "overwrite", false))));

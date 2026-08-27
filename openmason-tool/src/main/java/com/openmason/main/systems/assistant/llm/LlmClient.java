@@ -44,7 +44,7 @@ public final class LlmClient {
             InputStream s = stream;
             if (s != null) {
                 try {
-                    s.close(); // aborts the request; vLLM stops generating on disconnect
+                    s.close(); // aborts the request; vLLM/SGLang stop generating on disconnect
                 } catch (IOException ignored) {
                     // already closed
                 }
@@ -68,7 +68,7 @@ public final class LlmClient {
         this.parser = new SseParser(mapper);
     }
 
-    /** Ids served at the endpoint (vLLM serves one). Throws on unreachable. */
+    /** Ids served at the endpoint (vLLM/SGLang serve one). Throws on unreachable. */
     public List<String> probeModels(String endpoint, String apiKey) throws IOException {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(stripSlash(endpoint) + "/models"))

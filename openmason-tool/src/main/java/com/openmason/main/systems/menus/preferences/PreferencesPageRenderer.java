@@ -953,8 +953,8 @@ public class PreferencesPageRenderer {
 
     private void renderAssistantPage() {
         ImGuiComponents.renderSectionHeader("Local LLM Server");
-        ImGui.textWrapped("OpenAI-compatible endpoint (vLLM). The served model is discovered "
-                + "automatically — only one model runs per port. Applied on OK/Apply.");
+        ImGui.textWrapped("OpenAI-compatible endpoint (vLLM, SGLang). The served model is "
+                + "discovered automatically — only one model runs per port. Applied on OK/Apply.");
         ImGui.spacing();
         ImGui.text("Endpoint");
         ImGui.sameLine(160);
