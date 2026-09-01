@@ -42,6 +42,9 @@ public class TerrainGenerationSystem {
     static final String MAGMA_FEATURE = "magma";
     static final float MAGMA_CHANCE = 0.6f;
 
+    /** {@code outFloor} sentinel for a cell with no cave mouth; see {@link #sampleCellOpenings}. */
+    public static final int NO_OPENING = Integer.MIN_VALUE;
+
     private final long seed;
     private final NoiseRouter noiseRouter;
     private final HeightMapGenerator heightMapGenerator;
@@ -56,6 +59,7 @@ public class TerrainGenerationSystem {
     private final MegaCavernCarver megaCavernCarver;
     private final RavineCarver ravineCarver;
     private final SinkholeCarver sinkholeCarver;
+    private final SurfaceProfileCache surfaceProfiles;
 
     private final Random animalRandom = new Random();
     private final Object animalRandomLock = new Object();
@@ -148,6 +152,7 @@ public class TerrainGenerationSystem {
             com.stonebreak.world.generation.noise.TerrainNoise.destroyChunkGenOnCollect(this, fusedCtx);
         }
         this.fusedGenCtx = fusedCtx;
+        this.surfaceProfiles = new SurfaceProfileCache(this::buildSurfaceProfile);
     }
 
     /**
@@ -243,12 +248,94 @@ public class TerrainGenerationSystem {
     }
 
     /**
+     * One past the highest solid block of a column — the surface a heightfield renderer has
+     * to draw. Equals {@link #getFinalTerrainHeightAt} wherever nothing cut the top off the
+     * column, and sits below it inside a ravine, a sinkhole, a breached cavern or the
+     * {@code Density3D} overhang band. Backed by a per-chunk cache; see
+     * {@link #buildSurfaceProfile}.
+     */
+    public int carvedSurfaceHeight(int worldX, int worldZ) {
+        SurfaceProfileCache.Profile profile = surfaceProfiles.get(
+                Math.floorDiv(worldX, CHUNK_SIZE), Math.floorDiv(worldZ, CHUNK_SIZE));
+        return profile.surfaceY()[
+                Math.floorMod(worldX, CHUNK_SIZE) * CHUNK_SIZE + Math.floorMod(worldZ, CHUNK_SIZE)];
+    }
+
+    /**
+     * Per-cell cave-mouth geometry for a FastLOD node, aggregated over each cell's whole
+     * {@code cellSize x cellSize} footprint rather than point-probed like the heights.
+     *
+     * <p>This is the channel that makes caves other than ravines visible past the finest LOD
+     * band. Heights are one representative probe per cell, so an opening only survives
+     * coarsening if the probe happens to land in it: measured hit rates are 79% at L1, 54% at
+     * L2, 33% at L3 and 15% at L4. Ravines are long and wide enough to be hit anyway, which is
+     * why they were the only thing left in the distance; a worm mouth or a sinkhole a few
+     * blocks across was not.
+     *
+     * <p>Aggregating the <em>heights</em> instead is the obvious fix and it is wrong — taking
+     * the minimum over each cell reports a mean carve of 32 blocks at L4 against a true mean
+     * of 2.8, which would gouge trenches across open terrain. So the surface keeps its point
+     * sample and the opening rides alongside it as its own channel, for the mesher to draw as
+     * a recessed notch inside the cell.
+     *
+     * <p>Costs only cached reads: every column consulted here is one
+     * {@link #carvedSurfaceHeight} already built for this chunk's profile.
+     *
+     * @param cellHeights  the per-cell surface heights already sampled, {@code [ix*cells+iz]}
+     * @param outFloor     per cell: lowest carved floor in the footprint, or
+     *                     {@link #NO_OPENING} when nothing in the cell is carved below
+     *                     {@code cellHeights}
+     * @param outCoverage  per cell: carved share of the footprint, 0..255
+     */
+    public void sampleCellOpenings(int worldX0, int worldZ0, int cellsPerAxis, int cellSize,
+                                   int[] cellHeights, int[] outFloor, byte[] outCoverage) {
+        for (int ix = 0; ix < cellsPerAxis; ix++) {
+            for (int iz = 0; iz < cellsPerAxis; iz++) {
+                int cell = ix * cellsPerAxis + iz;
+                int shown = cellHeights[cell];
+                int floor = Integer.MAX_VALUE;
+                int carvedCount = 0;
+                for (int dx = 0; dx < cellSize; dx++) {
+                    for (int dz = 0; dz < cellSize; dz++) {
+                        int wx = worldX0 + ix * cellSize + dx;
+                        int wz = worldZ0 + iz * cellSize + dz;
+                        SurfaceProfileCache.Profile p = surfaceProfiles.get(
+                                Math.floorDiv(wx, CHUNK_SIZE), Math.floorDiv(wz, CHUNK_SIZE));
+                        int local = Math.floorMod(wx, CHUNK_SIZE) * CHUNK_SIZE
+                                  + Math.floorMod(wz, CHUNK_SIZE);
+                        if (!p.carved()[local]) {
+                            continue;   // downhill ground is not a cave mouth
+                        }
+                        carvedCount++;
+                        floor = Math.min(floor, p.surfaceY()[local]);
+                    }
+                }
+                // Only an opening that reaches BELOW the surface being drawn is worth a
+                // notch. At L0 the cell is one column, so its own carve is already in the
+                // height and this is always false — the finest level emits nothing.
+                if (carvedCount == 0 || floor >= shown) {
+                    outFloor[cell] = NO_OPENING;
+                    outCoverage[cell] = 0;
+                } else {
+                    outFloor[cell] = floor;
+                    int cells = cellSize * cellSize;
+                    outCoverage[cell] = (byte) Math.min(255, Math.max(1, carvedCount * 255 / cells));
+                }
+            }
+        }
+    }
+
+    /**
      * Returns the surface block a column places at its terrain top
      * ({@code y == height - 1}), derived from the same biome rules as
      * {@link #determineBlockType}. Submerged columns report their real seabed
      * block — {@code determineBlockType} places {@code surfaceBlock(biome)}
-     * there just like on land — so coarse renderers (FastLOD) can draw the
-     * ocean floor; submergence itself is decided from {@code height < SEA_LEVEL}.
+     * there just like on land — so a renderer can draw the ocean floor;
+     * submergence itself is decided from {@code height < SEA_LEVEL}.
+     *
+     * <p>Reports off the raw column height, so it says nothing about whether the top of
+     * that column survived carving. FastLOD needs that and gets it from
+     * {@link #sampleColumns}, which reports the block a carved top actually exposes.
      */
     public BlockType getSurfaceBlockAt(int worldX, int worldZ) {
         return surfaceBlock(biomeManager.getBiome(worldX, worldZ));
@@ -261,8 +348,12 @@ public class TerrainGenerationSystem {
 
     /**
      * Probes whether a tree would be placed at this column, without mutating any
-     * chunk. Distant-terrain LOD uses this to emit silhouette geometry matching
-     * the real generator's deterministic placements.
+     * chunk.
+     *
+     * <p>Note this reports off the raw column height, so it says nothing about whether the
+     * ground under the tree survived carving. FastLOD needs that and gets it from
+     * {@link #sampleColumns}, which suppresses trees on a carved top the same way the real
+     * {@code VegetationGenerator} does by reading the block.
      */
     public com.stonebreak.world.generation.features.VegetationGenerator.TreeSample getTreeAt(int worldX, int worldZ) {
         int height = heightMapGenerator.generateHeight(worldX, worldZ);
@@ -278,8 +369,18 @@ public class TerrainGenerationSystem {
      * optionally, surface blocks / tree samples for a {@code count x count}
      * grid at block positions {@code (worldX0 + ix*stride, worldZ0 + iz*stride)},
      * indexed {@code [ix*count + iz]}. Six channel fills replace thousands of
-     * per-point samples; results are bit-identical to {@link #getFinalTerrainHeightAt},
-     * {@link #getSurfaceBlockAt} and {@link #getTreeAt} at the same coordinates.
+     * per-point samples for the shape and climate channels behind them.
+     *
+     * <p>Heights are the <em>carved</em> surface — one past the highest solid block, see
+     * {@link #buildSurfaceProfile} — not the raw tile height {@link #getFinalTerrainHeightAt}
+     * reports. A heightfield renderer that used the raw height drew ravines and sinkholes as
+     * flat ground, sealed the cut with a dark foundation wall at the node border, and popped a
+     * trench into place the moment the real chunk loaded. Surface blocks and trees follow from
+     * the same carved top: a cut column exposes stone rather than a sheet of grass, and grows
+     * no tree, exactly as {@code VegetationGenerator} finds when it reads the real block.
+     *
+     * <p>The carve profiles behind the heights are cached per chunk, which is what keeps a
+     * grid that spills into its neighbours from rebuilding their masks.
      *
      * @param outSurface nullable; length count*count when present
      * @param outTrees   nullable; length count*count when present (requires outSurface logic)
@@ -307,7 +408,10 @@ public class TerrainGenerationSystem {
         for (int ix = 0; ix < count; ix++) {
             for (int iz = 0; iz < count; iz++) {
                 int idx = ix * count + iz;
-                int height = heightMapGenerator.heightFromChannels(c[idx], pv[idx], e[idx], d[idx]);
+                int wx = worldX0 + ix * stride;
+                int wz = worldZ0 + iz * stride;
+                int rawHeight = heightMapGenerator.heightFromChannels(c[idx], pv[idx], e[idx], d[idx]);
+                int height = carvedSurfaceHeight(wx, wz);
                 outHeights[idx] = height;
                 if (!needBiomes) {
                     continue;
@@ -321,14 +425,20 @@ public class TerrainGenerationSystem {
                     c[idx], e[idx], pv[idx],
                     com.stonebreak.world.generation.noise.NoiseRouter.temperatureFromRaw(tRaw[idx], shaped),
                     com.stonebreak.world.generation.noise.NoiseRouter.moistureFromRaw(mRaw[idx])));
-                BlockType surface = surfaceBlock(biome);
+                BlockType surface = exposedBlock(wx, wz, rawHeight, height, biome);
                 if (outSurface != null) {
                     outSurface[idx] = surface;
                 }
                 if (outTrees != null) {
-                    outTrees[idx] = (height < SEA_LEVEL) ? null
+                    // The real generator reads the block at rawHeight - 1 and every placement
+                    // branch needs it to be the biome's surface block. Carved away, it is air
+                    // and nothing is planted — so a carved top is exactly a treeless column.
+                    // An uncarved top is the only case that reaches probeTree, and there
+                    // exposedBlock IS surfaceBlock(biome) — the same block the real
+                    // VegetationGenerator reads.
+                    outTrees[idx] = (rawHeight < SEA_LEVEL || height != rawHeight) ? null
                         : com.stonebreak.world.generation.features.VegetationGenerator.probeTree(
-                            worldX0 + ix * stride, worldZ0 + iz * stride, biome, surface, deterministicRandom);
+                            wx, wz, biome, surface, deterministicRandom);
                 }
             }
         }
@@ -416,22 +526,9 @@ public class TerrainGenerationSystem {
     private TerrainResult generateTerrainLegacy(int chunkX, int chunkZ,
                                                 int[] heights, int[] waterLevels,
                                                 BiomeType[] biomes) {
-        BitSet wormMask = (nativeCarverCtx != 0L)
-            ? nativeWormMask(chunkX, chunkZ, heights)
-            : wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
-        CavernCarver.Result cavernResult =
-            cavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
-        MegaCavernCarver.Result megaCavernResult =
-            megaCavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
-        BitSet caveMask = wormMask;
-        caveMask.or(cavernResult.carveMask);
-        caveMask.or(megaCavernResult.carveMask);
-        // Entrances. Unlike the carvers above, these two are anchored to the surface and cut
-        // downward, so they open the network to the sky by construction rather than by luck.
-        caveMask.or(ravineCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels));
-        caveMask.or(sinkholeCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels));
-        BitSet formationMask = cavernResult.formationMask;
-        formationMask.or(megaCavernResult.formationMask);
+        CarveMasks masks = buildCarveMasks(chunkX, chunkZ, heights, waterLevels);
+        BitSet caveMask = masks.caveMask();
+        BitSet formationMask = masks.formationMask();
 
         // Native backend: one SIMD volume fill replaces per-block cave-noise
         // sampling in determineBlockType. Null on the Java backend.
@@ -451,22 +548,8 @@ public class TerrainGenerationSystem {
         // those anchors are still standing. The test mirrors the head of the fill loop
         // below, so a pillar is kept exactly when the block it rests on is one the fill
         // will write.
-        FormationSupport.prune(formationMask, (lx, ly, lz) -> {
-            if (ly <= 0) {
-                return true; // bedrock floor
-            }
-            int col = lx * CHUNK_SIZE + lz;
-            int columnHeight = heights[col];
-            if (ly >= columnHeight) {
-                return false; // sky or open water above the surface — nothing to hang from
-            }
-            if (caveMask.get(CarveMaskKey.pack(lx, ly, lz))) {
-                return false;
-            }
-            return (densityField != null)
-                ? densityField.isSolid(lx, ly, lz, columnHeight, biomes[col])
-                : density3D.isSolid(baseX + lx, ly, baseZ + lz, columnHeight, biomes[col]);
-        });
+        FormationSupport.prune(formationMask,
+            formationSupport(heights, biomes, caveMask, densityField, baseX, baseZ));
 
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
@@ -498,6 +581,167 @@ public class TerrainGenerationSystem {
         chunk.getCcoDirtyTracker().markBlockChanged();
         chunk.setFeaturesPopulated(false);
         return new TerrainResult(chunk, new ColumnProfile(heights, waterLevels, biomes));
+    }
+
+    /**
+     * The masks that decide solidity for one chunk, in the order
+     * {@link #determineBlockType} applies them: {@code formationMask} beats
+     * {@code caveMask}, and {@code caveMask} beats the {@code Density3D} test.
+     */
+    private record CarveMasks(BitSet caveMask, BitSet formationMask) {}
+
+    /**
+     * Builds both masks for a chunk. Shared by real generation and by
+     * {@link #buildSurfaceProfile} so the surface FastLOD draws cannot drift from the
+     * surface the block loop writes — a drift that showed up as ravines rendering flat at
+     * distance and then popping into a trench at the chunk seam.
+     */
+    private CarveMasks buildCarveMasks(int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
+        BitSet caveMask = (nativeCarverCtx != 0L)
+            ? nativeWormMask(chunkX, chunkZ, heights)
+            : wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
+        CavernCarver.Result cavernResult =
+            cavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
+        MegaCavernCarver.Result megaCavernResult =
+            megaCavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
+        caveMask.or(cavernResult.carveMask);
+        caveMask.or(megaCavernResult.carveMask);
+        // Entrances. Unlike the carvers above, these two are anchored to the surface and cut
+        // downward, so they open the network to the sky by construction rather than by luck.
+        caveMask.or(ravineCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels));
+        caveMask.or(sinkholeCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels));
+        BitSet formationMask = cavernResult.formationMask;
+        formationMask.or(megaCavernResult.formationMask);
+        return new CarveMasks(caveMask, formationMask);
+    }
+
+    /**
+     * The head of the block fill as a predicate: whether a chunk-local cell holds a block a
+     * formation can hang from. Shared with {@link #buildSurfaceProfile} so a pillar the block
+     * loop deletes cannot stop the surface profile's descent.
+     */
+    private FormationSupport.Support formationSupport(int[] heights, BiomeType[] biomes,
+                                                      BitSet caveMask, Density3D.Field densityField,
+                                                      int baseX, int baseZ) {
+        return (lx, ly, lz) -> {
+            if (ly <= 0) {
+                return true; // bedrock floor
+            }
+            int col = lx * CHUNK_SIZE + lz;
+            int columnHeight = heights[col];
+            if (ly >= columnHeight) {
+                return false; // sky or open water above the surface — nothing to hang from
+            }
+            if (caveMask.get(CarveMaskKey.pack(lx, ly, lz))) {
+                return false;
+            }
+            return (densityField != null)
+                ? densityField.isSolid(lx, ly, lz, columnHeight, biomes[col])
+                : density3D.isSolid(baseX + lx, ly, baseZ + lz, columnHeight, biomes[col]);
+        };
+    }
+
+    /**
+     * The visible top of every column of a chunk — one past the highest solid block —
+     * indexed {@code [x * CHUNK_SIZE + z]}.
+     *
+     * <p>This is what a heightfield view of the world (FastLOD) has to draw. The raw tile
+     * height is only where the column <em>starts</em>; a ravine or sinkhole mouth, a cavern
+     * that broke through, or the {@code Density3D} overhang band can all take the top off it,
+     * and a formation can put stone back. Descending here with the same predicate the block
+     * loop uses is what keeps the two agreeing.
+     *
+     * <p>The descent goes through {@link Density3D#prepareChunk} — the same prepared field
+     * {@link #generateTerrainLegacy} reads — not the per-point {@link Density3D#isSolid}.
+     * That is not an optimisation, it is the parity requirement. On the native backend the
+     * two are different noise implementations, not two spellings of one: {@code isSolid}
+     * samples the Java simplex generator while the prepared field is a FastNoise2 SIMD
+     * volume fill. Descending on the per-point path made FastLOD draw a surface derived from
+     * noise the chunk loop never consults, and the two disagreed on 0.79% of columns by as
+     * much as 16 blocks — LOD terrain standing above the chunk that replaces it, which pops
+     * away (and opens a hole in what it was occluding) the moment the chunk loads.
+     * {@code prepareChunk} returns null on the Java backend, where per-point {@code isSolid}
+     * IS what the block loop uses, so the fallback below is the parity-preserving path there.
+     *
+     * <p>The fused native generator is bit-identical to the legacy body it replaces
+     * ({@code FusedChunkGenParityTest} pins that), so deriving the profile from the legacy
+     * masks agrees with either path.
+     */
+    private SurfaceProfileCache.Profile buildSurfaceProfile(int chunkX, int chunkZ) {
+        int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
+        int[] waterLevels = new int[CHUNK_SIZE * CHUNK_SIZE];
+        BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
+        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels);
+        biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
+
+        CarveMasks masks = buildCarveMasks(chunkX, chunkZ, heights, waterLevels);
+        BitSet caveMask = masks.caveMask();
+        BitSet formationMask = masks.formationMask();
+        Density3D.Field densityField = density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels, biomes);
+
+        int baseX = chunkX * CHUNK_SIZE;
+        int baseZ = chunkZ * CHUNK_SIZE;
+        // Same prune the block fill applies: an unsupported pillar is cleared before it can
+        // stop the descent on a column the chunk leaves open.
+        FormationSupport.prune(formationMask,
+            formationSupport(heights, biomes, caveMask, densityField, baseX, baseZ));
+
+        int[] profile = new int[CHUNK_SIZE * CHUNK_SIZE];
+        boolean[] carved = new boolean[CHUNK_SIZE * CHUNK_SIZE];
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                int idx = x * CHUNK_SIZE + z;
+                int height = heights[idx];
+                BiomeType biome = biomes[idx];
+                int worldX = baseX + x;
+                int worldZ = baseZ + z;
+                int y = height - 1;
+                // y == 0 is always BEDROCK, so this terminates with profile >= 1 — the same
+                // floor HeightMapGenerator.clampToWorld imposes on the raw height.
+                while (y > 0) {
+                    int bit = CarveMaskKey.pack(x, y, z);
+                    if (formationMask.get(bit)) {
+                        break;
+                    }
+                    boolean solid = (densityField != null)
+                            ? densityField.isSolid(x, y, z, height, biome)
+                            : density3D.isSolid(worldX, y, worldZ, height, biome);
+                    if (caveMask.get(bit) || !solid) {
+                        y--;
+                        continue;
+                    }
+                    break;
+                }
+                profile[idx] = y + 1;
+                carved[idx] = profile[idx] < height;
+            }
+        }
+        return new SurfaceProfileCache.Profile(profile, carved);
+    }
+
+    /**
+     * The block exposed at the top of a column that has been carved down from
+     * {@code rawHeight} to {@code carvedHeight}, matching the material branches of
+     * {@link #determineBlockType}. Uncarved columns get the biome's surface block as
+     * before; a ravine wall gets stone rather than a sheet of grass laid over the cut.
+     */
+    private BlockType exposedBlock(int worldX, int worldZ, int rawHeight, int carvedHeight,
+                                   BiomeType biome) {
+        int y = carvedHeight - 1;
+        if (y == 0) {
+            return BlockType.BEDROCK;
+        }
+        if (y < rawHeight - 4) {
+            if (biome == BiomeType.RED_SAND_DESERT && y < rawHeight - 10
+                && deterministicRandom.shouldGenerate3D(worldX, y, worldZ, MAGMA_FEATURE, MAGMA_CHANCE)) {
+                return BlockType.MAGMA;
+            }
+            return BlockType.STONE;
+        }
+        if (y < rawHeight - 1) {
+            return subsurfaceBlock(biome);
+        }
+        return surfaceBlock(biome);
     }
 
     /**

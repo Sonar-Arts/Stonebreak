@@ -55,6 +55,50 @@ class FastLodTransitionTest {
         assertEquals(1f, e.fade, 1e-6f, "fully covers the hole until the mesh lands");
     }
 
+    /**
+     * The void this system exists to prevent, in the one direction the old rule missed.
+     * A node that has fully dissolved under a live detail chunk draws nothing; if that
+     * chunk stops drawing while the column is still inside the native disk — it unloaded,
+     * or dropped MESH_GPU_UPLOADED to rebuild in place — the node has to come straight
+     * back. Fading in from zero at FADE_IN_PER_SEC leaves the column at under half
+     * opacity for ~130 ms and under 90% for ~250 ms, which reads as a hole in the terrain.
+     */
+    @Test
+    void losingTheNativeMeshInsideTheDiskSnapsBackToSolid() {
+        FastLodManager.Entry e = entry();
+        e.fade = 1f;
+        for (int i = 0; i < 40; i++) {
+            FastLodRenderPass.updateFade(e, INNER, INNER, true, 1f / 60f);
+        }
+        assertEquals(0f, e.fade, 1e-6f, "precondition: fully dissolved under the detail chunk");
+        assertTrue(e.nativeCovered);
+
+        float f = FastLodRenderPass.updateFade(e, INNER, INNER, false, 1f / 60f);
+
+        assertEquals(1f, f, 1e-6f,
+                "nothing draws this column now — it must not fade in from zero");
+        assertFalse(e.nativeCovered, "flag consumed by the snap");
+    }
+
+    /** The snap is one-shot: once consumed, a still-missing chunk leaves the node solid. */
+    @Test
+    void snappedBackNodeStaysSolidWhileTheChunkIsStillMissing() {
+        FastLodManager.Entry e = entry();
+        e.fade = 0f;
+        e.nativeCovered = true;
+
+        FastLodRenderPass.updateFade(e, INNER, INNER, false, 1f / 60f);
+        for (int i = 0; i < 30; i++) {
+            FastLodRenderPass.updateFade(e, INNER, INNER, false, 1f / 60f);
+        }
+        assertEquals(1f, e.fade, 1e-6f);
+
+        // And when the chunk comes back it dissolves out again, no pop.
+        float f = FastLodRenderPass.updateFade(e, INNER, INNER, true, 1f / 60f);
+        assertTrue(f < 1f && f > 0f, "returns to a gradual dissolve-out");
+        assertTrue(e.nativeCovered);
+    }
+
     @Test
     void leavingTheNativeDiskSnapsACoveredNodeSolid() {
         FastLodManager.Entry e = entry();

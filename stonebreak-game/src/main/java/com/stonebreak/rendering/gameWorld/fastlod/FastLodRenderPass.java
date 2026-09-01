@@ -31,9 +31,10 @@ import java.util.List;
  *   <li>While the native mesh is still meshing/streaming, the preload node
  *       keeps drawing at full opacity — covering the hole that used to appear
  *       at the ring edge before the detail mesh landed.</li>
- *   <li>When a column leaves the native disk (player moving away), a node the
- *       native pass was covering snaps straight to solid — nothing else draws
- *       that column anymore, so fading in would flash a gap.</li>
+ *   <li>When the native chunk covering a node stops drawing — the column left
+ *       the native disk, or the chunk unloaded / went back to meshing where it
+ *       stands — the node snaps straight to solid. Nothing else draws that
+ *       column anymore, so fading in would flash a gap.</li>
  *   <li>Fresh nodes at the far edge dissolve in instead of popping.</li>
  * </ul>
  *
@@ -210,9 +211,12 @@ public final class FastLodRenderPass {
             // Detail mesh is live underneath — dissolve out over it.
             entry.nativeCovered = true;
             entry.fade = Math.max(0f, entry.fade - dt * FADE_OUT_PER_SEC);
-        } else if (dist > inner && entry.nativeCovered) {
-            // Column just left the native disk; the chunk that was covering
-            // it no longer draws, so appear immediately — no gap flash.
+        } else if (entry.nativeCovered) {
+            // The native chunk that was covering this column has stopped
+            // drawing — because the column left the native disk, or because
+            // the chunk unloaded / went back to meshing in place. Either way
+            // nothing else covers it now, so appear immediately: fading in
+            // from a fully dissolved node flashes ~0.25 s of hole.
             entry.nativeCovered = false;
             entry.fade = 1f;
         } else {

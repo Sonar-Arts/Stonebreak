@@ -410,6 +410,29 @@ public class World {
     }
 
     /**
+     * True when the opaque terrain pass will actually DRAW this chunk this frame.
+     *
+     * <p>Stricter than {@link #isChunkRenderableAt}, and deliberately so. That one asks
+     * "does a mesh handle exist", which is the right question for gameplay (don't drop the
+     * player through a column that has geometry). The renderer asks more: both
+     * {@code ChunkMeshLifecycle.render} and {@code ChunkRegionRenderer.drawLayer} additionally
+     * require {@code MESH_GPU_UPLOADED && !UNLOADING} plus the mesh-generated flag.
+     *
+     * <p>FastLOD dissolves a node out as soon as it believes the detail chunk covers the
+     * column. Asking the weaker question let it dissolve out over a chunk the opaque pass was
+     * skipping — a chunk mid-unload, or one whose {@code MESH_GPU_UPLOADED} state was dropped
+     * for a rebuild while its old handle was still attached (see {@code Chunk.loadFromSnapshot})
+     * — and the column rendered as a hole for as long as the disagreement lasted.
+     */
+    public boolean isChunkDrawnAt(int chunkX, int chunkZ) {
+        Chunk c = getChunkIfLoaded(chunkX, chunkZ);
+        return c != null
+            && c.getCcoStateManager().isRenderable()
+            && c.isMeshGenerated()
+            && (c.getMmsRenderableHandle() != null || c.getRegionAtlasHandle() != null);
+    }
+
+    /**
      * Gets the block type at the specified world position.
      */
     public BlockType getBlockAt(int x, int y, int z) {

@@ -1,6 +1,7 @@
 package com.stonebreak.world.fastlod;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.world.generation.TerrainGenerationSystem;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeKind;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
 import org.junit.jupiter.api.Tag;
@@ -78,6 +79,66 @@ class FastLodSerializerTest {
         assertArrayEquals(original.rawHeights(), restored.rawHeights());
         assertArrayEquals(original.rawSurface(), restored.rawSurface());
         assertNull(restored.rawTrees());
+    }
+
+    /**
+     * The cave-mouth channel survives the round trip, sentinel included. The sentinel needs
+     * its own wire value: in memory "no opening" is an int
+     * ({@link TerrainGenerationSystem#NO_OPENING}) and the field on the wire is i16.
+     */
+    @Test
+    void roundTripCarriesTheCaveOpeningChannel() {
+        FastLodLevel level = FastLodLevel.L2;
+        FastLodChunkData base = makeData(level, false);
+        int cells = level.cellCount();
+        int[] floor = new int[cells];
+        byte[] cover = new byte[cells];
+        for (int i = 0; i < cells; i++) {
+            boolean open = (i % 4 == 1);
+            floor[i] = open ? 100 + i : TerrainGenerationSystem.NO_OPENING;
+            cover[i] = (byte) (open ? Math.min(255, 30 + i * 7) : 0);
+        }
+        FastLodChunkData original = new FastLodChunkData(base.key(), base.rawHeights(),
+                base.rawSurface(), null, floor, cover);
+
+        FastLodChunkData restored = FastLodSerializer.deserialize(
+                original.key(), FastLodSerializer.serialize(original));
+
+        assertNotNull(restored);
+        assertArrayEquals(floor, restored.rawOpeningFloor());
+        assertArrayEquals(cover, restored.rawOpeningCoverage());
+        for (int i = 0; i < cells; i++) {
+            if (i % 4 != 1) {
+                assertEquals(TerrainGenerationSystem.NO_OPENING, restored.rawOpeningFloor()[i],
+                        "sentinel must survive the i16 narrowing at cell " + i);
+            }
+        }
+    }
+
+    /** L0 cells are single columns, so they carry no opening channel and none comes back. */
+    @Test
+    void finestLevelBlobsCarryNoOpeningChannel() {
+        FastLodChunkData original = makeData(FastLodLevel.L0, true);
+        FastLodChunkData restored = FastLodSerializer.deserialize(
+                original.key(), FastLodSerializer.serialize(original));
+        assertNotNull(restored);
+        assertNull(restored.rawOpeningFloor());
+        assertNull(restored.rawOpeningCoverage());
+    }
+
+    /**
+     * A v2 blob holds the uncarved height and no opening channel at all, so a world cached
+     * before this change would otherwise keep showing flat ravines forever — the store is
+     * consulted before the sampler ever runs. The version bump is what forces the resample.
+     */
+    @Test
+    void previousVersionBlobsAreRejected() {
+        FastLodChunkData data = makeData(FastLodLevel.L2, false);
+        byte[] blob = FastLodSerializer.serialize(data);
+        assertEquals(3, blob[4], "version byte moved; update this test and the note below");
+        blob[4] = 2;
+        assertNull(FastLodSerializer.deserialize(data.key(), blob),
+                "a pre-carve blob must miss, not load");
     }
 
     @Test

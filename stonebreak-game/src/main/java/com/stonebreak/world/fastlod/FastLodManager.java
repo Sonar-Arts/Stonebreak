@@ -50,6 +50,14 @@ import java.util.concurrent.TimeUnit;
 public final class FastLodManager {
 
     private static final int MAX_SCHEDULES_PER_TICK = 256;
+    /**
+     * Queue depth allowed behind the worker pool, as a multiple of the worker count.
+     * Deep enough that no worker ever idles waiting for the next ring tick; shallow
+     * enough that the newest, nearest work starts within a few node builds.
+     */
+    private static final int IN_FLIGHT_PER_WORKER = 8;
+    /** Floor for the above on very small worker pools (and in tests). */
+    private static final int MIN_IN_FLIGHT = 64;
     private static final int MAX_UPLOADS_PER_FRAME  = 48;
     private static final int MAX_CLEANUPS_PER_FRAME = 48;
     /** Cap spent on GPU upload work per frame; prevents bursts from spiking frame time. */
@@ -61,6 +69,8 @@ public final class FastLodManager {
     private final ExecutorService executor;
     private final FastLodStore store;   // may be null when persistence is disabled
     private final Uploader uploader;
+    /** Cap on {@link #inFlight}; see {@link #IN_FLIGHT_PER_WORKER}. */
+    private final int maxInFlight;
 
     /** GL upload seam — injectable so manager bookkeeping is testable headlessly. */
     interface Uploader {
@@ -128,6 +138,8 @@ public final class FastLodManager {
         this.store    = store;
         this.executor = executor;
         this.uploader = uploader;
+        this.maxInFlight = Math.max(MIN_IN_FLIGHT,
+                IN_FLIGHT_PER_WORKER * config.getChunkBuildThreads());
     }
 
     public void updateRing(int playerCx, int playerCz) {
@@ -142,18 +154,21 @@ public final class FastLodManager {
         lastPlayerColumn = packColumn(playerCx, playerCz);
 
         // Pass 1: evict anything that has fallen outside the ring entirely.
-        // Band-change transitions (wanted != key.level but wanted != null) are
-        // NOT evicted here — the old node keeps rendering so the user never
-        // sees a gap between retiring the old level and the new level showing
-        // up. The handover happens inside applyGLUpdates when the replacement
-        // uploads successfully.
+        // Two things are deliberately NOT evicted here, both for the same
+        // reason — never leave a column with nothing drawing it:
+        //   * band-change transitions (wanted != key.level but wanted != null).
+        //     The old node keeps rendering until the replacement uploads; the
+        //     handover happens inside applyGLUpdates.
+        //   * nodes the render pass is currently using as hole cover, see
+        //     isCoveringAHole. They leave on the tick after the detail chunk
+        //     actually starts drawing.
         for (Iterator<Map.Entry<FastLodKey, Entry>> it = handles.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<FastLodKey, Entry> e = it.next();
             FastLodKey key = e.getKey();
             FastLodLevel wanted = FastLodBandPolicy.levelFor(
                     chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz), inner, range);
-            if (wanted == null) {
-                Entry entry = e.getValue();
+            Entry entry = e.getValue();
+            if (wanted == null && !isCoveringAHole(entry)) {
                 it.remove();
                 long col = packColumn(key.chunkX(), key.chunkZ());
                 residentByColumn.remove(col, key);
@@ -215,12 +230,41 @@ public final class FastLodManager {
                 chebyshev(a.chunkX(), a.chunkZ(), playerCx, playerCz),
                 chebyshev(b.chunkX(), b.chunkZ(), playerCx, playerCz)));
 
-        int toSchedule = Math.min(missing.size(), MAX_SCHEDULES_PER_TICK);
+        // Bound how much work can be queued behind the executor. updateRing runs every
+        // frame and re-sorts `missing` nearest-first, so a shallow queue is re-picked
+        // constantly and near work starts almost immediately. Without the bound the ring
+        // dumps every wanted node into a FIFO in one burst (4056 of them at the default
+        // range) and a band upgrade the player is walking into waits behind thousands of
+        // far-ring nodes queued seconds earlier — the LOD stays coarse long after the
+        // player is close enough to see it.
+        int queueBudget = Math.max(0, maxInFlight - inFlight.size());
+        int toSchedule = Math.min(Math.min(missing.size(), MAX_SCHEDULES_PER_TICK), queueBudget);
         for (int i = 0; i < toSchedule; i++) {
             FastLodKey key = missing.get(i);
             if (!inFlight.add(key)) continue;
             executor.submit(() -> runGenerate(key));
         }
+    }
+
+    /**
+     * True while this node is the only thing drawing its column, so dropping it now
+     * would punch a visible hole.
+     *
+     * <p>The band policy stops wanting a node once the player is more than
+     * {@link FastLodBandPolicy#PRELOAD_RING} chunks inside it, on the assumption that the
+     * detail chunk underneath has arrived by then. When it hasn't — the player walked or flew
+     * inward faster than chunks could mesh — the old unconditional eviction deleted the
+     * preload node that was covering the gap, and the column went to void until the mesh
+     * landed. Holding the node costs one already-built mesh and resolves on the next tick,
+     * because the render pass sets {@code nativeCovered} the first frame the detail chunk
+     * actually draws.
+     *
+     * <p>Reads render-thread state from the logic thread. Both fields are volatile, and a
+     * value one frame stale only shifts eviction by a tick either way — {@code nativeCovered}
+     * latches on coverage, so this cannot pin a node indefinitely.
+     */
+    private static boolean isCoveringAHole(Entry entry) {
+        return !entry.nativeCovered && entry.fade > 0f;
     }
 
     public void applyGLUpdates() {
@@ -507,13 +551,13 @@ public final class FastLodManager {
          * New nodes dissolve in from 0; band-change replacements inherit the
          * superseded node's value so level swaps stay visually atomic.
          */
-        public float fade;
+        public volatile float fade;
         /**
          * Render-pass bookkeeping: true while a resident native chunk mesh
          * covers this column, so leaving the native disk snaps the node solid
          * instead of fading in over a hole.
          */
-        public boolean nativeCovered;
+        public volatile boolean nativeCovered;
         public Entry(FastLodKey key, MmsRenderableHandle handle, float minY, float maxY) {
             this(key, handle, null, null, null, minY, maxY);
         }
