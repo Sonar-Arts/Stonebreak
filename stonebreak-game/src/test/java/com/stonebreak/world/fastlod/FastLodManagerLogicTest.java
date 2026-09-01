@@ -196,6 +196,47 @@ class FastLodManagerLogicTest {
         assertTrue(replacement.nativeCovered);
     }
 
+    /**
+     * Walking inward used to punch a hole. The band policy stops wanting a node once the
+     * player is past it by more than PRELOAD_RING, and the eviction pass deleted it on
+     * that alone — including when the node was the only thing drawing its column because
+     * the detail chunk had not meshed yet. The hole lasted until the mesh landed, which is
+     * exactly the case (moving faster than chunks load) where it lasts longest.
+     */
+    @Test
+    void nodeCoveringAHoleSurvivesEvictionUntilTheDetailChunkDraws() {
+        tick(0, 0);
+        // Column (1,0): d=1 from origin → in the ring. d=0 from (1,0) → wanted == null.
+        FastLodKey key = FastLodKey.of(FastLodLevel.L0, 1, 0);
+        FastLodManager.Entry e = entryFor(key);
+        assertNotNull(e);
+
+        // Render-pass state for "this node is the only thing drawing this column".
+        e.fade = 1f;
+        e.nativeCovered = false;
+
+        tick(1, 0);
+        assertNotNull(entryFor(key), "must not delete the node that is covering the gap");
+
+        // The detail chunk lands; the render pass latches nativeCovered on the first
+        // frame it actually draws. Now the node is redundant and goes.
+        entryFor(key).nativeCovered = true;
+        tick(1, 0);
+        assertNull(entryFor(key), "retired once the detail chunk covers the column");
+    }
+
+    /** A node that has never drawn anything (fresh upload, fade 0) is still evicted at once. */
+    @Test
+    void neverRenderedNodeIsEvictedImmediately() {
+        tick(0, 0);
+        FastLodKey key = FastLodKey.of(FastLodLevel.L0, 1, 0);
+        assertNotNull(entryFor(key));
+        assertEquals(0f, entryFor(key).fade, 1e-6f);
+
+        tick(1, 0);
+        assertNull(entryFor(key), "nothing to protect — normal eviction");
+    }
+
     @Test
     void freshUploadsStartFullyFadedOut() {
         tick(0, 0);

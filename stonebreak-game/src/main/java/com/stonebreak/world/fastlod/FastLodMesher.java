@@ -70,6 +70,23 @@ public final class FastLodMesher {
     private static final int TOP_QUAD            = 1;
     private static final int MAX_SKIRTS_PER_CELL = 4;
     private static final int TREE_QUADS_PER_CELL = 9;   // 4 trunk + 5 canopy
+    private static final int NOTCH_QUADS_PER_CELL = 5;  // floor + 4 inward-facing walls
+
+    /**
+     * Deepest a cave-mouth notch is allowed to be cut, in blocks. A ravine floor can sit 60
+     * blocks under the rim; drawn at full depth inside one coarse cell that reads as a
+     * needle-thin shaft rather than an opening, and it drags the node's Y bounds (and so its
+     * frustum box) down with it. The mouth is the part you can see from the LOD ring anyway.
+     */
+    private static final int MAX_NOTCH_DEPTH = 24;
+    /**
+     * Fraction of the cell the notch may span. The upper bound is what keeps this from
+     * degenerating into "lower the whole cell": a rim always survives, so a cell with an
+     * opening still reads as ground with a hole in it rather than as a pit. The lower bound
+     * keeps a notch from shrinking below the point of being visible at range.
+     */
+    private static final float MIN_NOTCH_FRACTION = 0.30f;
+    private static final float MAX_NOTCH_FRACTION = 0.80f;
 
     /**
      * Per-vertex light for foundation walls (flags.w). They are only ever
@@ -106,8 +123,10 @@ public final class FastLodMesher {
         int cellSize     = level.cellSize();
         int cellsPerAxis = level.cellsPerAxis();
 
+        boolean notches = data.hasOpenings();
         int maxQuadsPerCell = TOP_QUAD + MAX_SKIRTS_PER_CELL
-                + (level.emitsTrees() ? TREE_QUADS_PER_CELL : 0);
+                + (level.emitsTrees() ? TREE_QUADS_PER_CELL : 0)
+                + (notches ? NOTCH_QUADS_PER_CELL : 0);
         // Foundations are bounded by the node's border-edge count, NOT per
         // cell: at L4 the single cell owns all four border edges (a per-cell
         // constant would under-allocate there and overflow the arrays).
@@ -196,6 +215,15 @@ public final class FastLodMesher {
                     // x = surface-height fraction, y = falling, w = light.
                     float waterSurfaceY = waterLevel + WATER_SURFACE_OFFSET;
                     ww.topQuadFlat(wx, waterSurfaceY, wz, cellSize, 0, WATER_SURFACE_FRACTION);
+                }
+
+                if (notches) {
+                    int floor = data.openingFloorAt(ix, iz);
+                    if (floor != com.stonebreak.world.generation.TerrainGenerationSystem.NO_OPENING
+                            && floor < terrainH) {
+                        emitCaveNotch(w, wx, wz, cellSize, terrainH, floor,
+                                data.openingCoverageAt(ix, iz));
+                    }
                 }
 
                 if (level.emitsTrees() && !submerged) {
@@ -326,6 +354,55 @@ public final class FastLodMesher {
     }
 
     /** L0 tree silhouette — identical geometry to the legacy mesher. */
+    /**
+     * A cave mouth, drawn as a notch recessed into the cell: a floor quad with four walls
+     * facing inward, sized by how much of the cell is actually carved.
+     *
+     * <p>Additive geometry inside one cell, deliberately — the same shape of change as
+     * {@link #emitTree}. The cell keeps its own surface height and its skirts, so seams,
+     * neighbour cells, the water sheet and the greedy top merge are all untouched; the node's
+     * Y bounds pick the notch up on their own because the writer tracks them per quad.
+     *
+     * <p>Walls and floor are STONE rather than the cell's surface block. A carved column
+     * exposes stone — that is what {@code exposedBlock} gives it in real generation — and the
+     * cell's own surface block is whatever its representative probe landed on, which for a
+     * cell whose mouth the probe missed is the grass beside the hole.
+     *
+     * @param coverage carved share of the cell footprint, 0..255
+     */
+    private void emitCaveNotch(QuadWriter w, float wx, float wz, int cellSize,
+                               int terrainH, int floorY, int coverage) {
+        float depth = Math.min(terrainH - floorY, MAX_NOTCH_DEPTH);
+        float y1 = terrainH;
+        float y0 = terrainH - depth;
+
+        // Area-proportional side length: coverage is an area fraction, the notch is a square.
+        float frac = (float) Math.sqrt(coverage / 255f);
+        frac = Math.max(MIN_NOTCH_FRACTION, Math.min(MAX_NOTCH_FRACTION, frac));
+        float side = cellSize * frac;
+        float inset = (cellSize - side) * 0.5f;
+        float x0 = wx + inset, x1 = x0 + side;
+        float z0 = wz + inset, z1 = z0 + side;
+
+        int wallLayer = textureArray.getBlockFaceLayer(BlockType.STONE,
+                BlockType.Face.SIDE_NORTH.getIndex());
+        int floorLayer = textureArray.getBlockFaceLayer(BlockType.STONE,
+                BlockType.Face.TOP.getIndex());
+
+        // Floor, seen from above.
+        w.axisAlignedQuad(x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1,
+                          0, 1, 0, floorLayer, 0f);
+        // Walls face into the notch, so the far side is what you see looking down.
+        w.axisAlignedQuad(x1, y1, z1, x1, y1, z0, x1, y0, z0, x1, y0, z1,
+                          -1, 0, 0, wallLayer, 0f);
+        w.axisAlignedQuad(x0, y1, z0, x0, y1, z1, x0, y0, z1, x0, y0, z0,
+                          1, 0, 0, wallLayer, 0f);
+        w.axisAlignedQuad(x0, y1, z1, x1, y1, z1, x1, y0, z1, x0, y0, z1,
+                          0, 0, -1, wallLayer, 0f);
+        w.axisAlignedQuad(x1, y1, z0, x0, y1, z0, x0, y0, z0, x1, y0, z0,
+                          0, 0, 1, wallLayer, 0f);
+    }
+
     private void emitTree(QuadWriter w, float wx, float wz, int terrainH, TreeSample tree) {
         float trunkBase = terrainH;
         float trunkTop  = terrainH + tree.trunkHeight();

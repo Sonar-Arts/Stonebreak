@@ -310,19 +310,36 @@ public class ChunkErrorReporter {
             if (exception != null) {
                 sb.append("Exception: ").append(exception.getClass().getSimpleName())
                   .append(": ").append(exception.getMessage()).append('\n');
+                appendFrames(sb, exception, "  ");
 
-                // First 3 stack frames only (reduce log size)
-                StackTraceElement[] frames = exception.getStackTrace();
-                int limit = Math.min(3, frames.length);
-                for (int i = 0; i < limit; i++) {
-                    sb.append("  at ").append(frames[i]).append('\n');
-                }
-                if (frames.length > 3) {
-                    sb.append("  ... ").append(frames.length - 3).append(" more\n");
+                // The cause chain, which is the only part that says what actually went wrong.
+                // Every mesh-build failure arrives wrapped twice — MmsAPI wraps MmsCcoAdapter's
+                // RuntimeException, which wraps the real one — so a report that stops at the
+                // outermost exception says nothing beyond "chunk (x, z) failed", and a log full
+                // of those cannot be diagnosed after the fact. Bounded at 5 links, matching the
+                // console report, so a self-referential chain cannot run away.
+                Throwable cause = exception.getCause();
+                for (int depth = 0; cause != null && depth < 5; depth++) {
+                    sb.append("Caused by: ").append(cause.getClass().getName())
+                      .append(": ").append(cause.getMessage()).append('\n');
+                    appendFrames(sb, cause, "  ");
+                    cause = cause.getCause();
                 }
             }
 
             return sb.toString();
+        }
+
+        /** First 3 frames, then a count of the rest — enough to locate, small enough to log. */
+        private static void appendFrames(StringBuilder sb, Throwable t, String indent) {
+            StackTraceElement[] frames = t.getStackTrace();
+            int limit = Math.min(3, frames.length);
+            for (int i = 0; i < limit; i++) {
+                sb.append(indent).append("at ").append(frames[i]).append('\n');
+            }
+            if (frames.length > limit) {
+                sb.append(indent).append("... ").append(frames.length - limit).append(" more\n");
+            }
         }
     }
 

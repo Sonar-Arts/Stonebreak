@@ -59,7 +59,27 @@ public final class FastLodSampler {
             }
         }
 
-        return new FastLodChunkData(key, heights, waterLevels, surface, trees);
+        // Cave mouths, aggregated over each cell's footprint rather than point-probed —
+        // see TerrainGenerationSystem.sampleCellOpenings for why the heights cannot carry
+        // this. Skipped at L0, where a cell is one column and its carve is already the
+        // height, so the finest band pays nothing and draws exactly what it drew before.
+        int[] openingFloor = null;
+        byte[] openingCoverage = null;
+        if (cellSize > 1) {
+            openingFloor = new int[level.cellCount()];
+            openingCoverage = new byte[level.cellCount()];
+            int[] cellHeights = new int[level.cellCount()];
+            for (int ix = 0; ix < cellsPerAxis; ix++) {
+                for (int iz = 0; iz < cellsPerAxis; iz++) {
+                    cellHeights[ix * cellsPerAxis + iz] = heights[(ix + 1) * stride + (iz + 1)];
+                }
+            }
+            terrain.sampleCellOpenings(baseX, baseZ, cellsPerAxis, cellSize,
+                    cellHeights, openingFloor, openingCoverage);
+        }
+
+        return new FastLodChunkData(key, heights, waterLevels, surface, trees,
+                openingFloor, openingCoverage);
     }
 
     /**

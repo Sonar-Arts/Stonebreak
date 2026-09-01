@@ -231,7 +231,7 @@ public class WorldRenderer {
         }
         int lodStamp = lodRenderPass.render(shaderProgram, world.getFastLodManager(),
                 lodPlayerCx, lodPlayerCz,
-                frustumCuller, world::isChunkRenderableAt, lodRegionBatcher, reusableLodWater);
+                frustumCuller, world::isChunkDrawnAt, lodRegionBatcher, reusableLodWater);
 
         // Render SBO blocks (blocks with SBO textures, rendered separately from atlas)
         renderSBOPass(visibleChunks);
