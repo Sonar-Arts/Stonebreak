@@ -162,3 +162,12 @@ QWEN.md
 
 # Stray mirror of the absolute repo path (tool writing absolute paths as relative)
 /mnt/
+
+# Basin (depression-fill) solver cache
+# Regenerated on demand by BasinCache from the terrain itself, so it is derived
+# data, not source: each `basins_<fingerprint>` subdirectory is keyed to one set
+# of solver parameters and is orphaned the moment any rung is retuned. The L1-L4
+# .plane files run to ~100 MB per fingerprint and churn every session, which is
+# exactly what a repo should not carry. Override the location with
+# -Dstonebreak.water.basinCacheDir=... if you want it outside the working tree.
+/cache/basins/
