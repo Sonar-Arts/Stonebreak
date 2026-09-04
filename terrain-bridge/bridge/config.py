@@ -78,6 +78,14 @@ class BridgeConfig:
     bank_margin_blocks: int = 48
     min_water_blocks: int = 1
 
+    # Coarse elevation chunks (bridge/coarse.py) -- the field the game's river
+    # walker descends. The chunk size fixes the canonical request shape, which is
+    # what makes a chunk deterministic; changing either knob rotates the coarse
+    # cache namespace. `coarse_cell_blocks` must divide `coarse_chunk_blocks` and
+    # be a whole number of native pixels (a multiple of `scale`).
+    coarse_chunk_blocks: int = 2048
+    coarse_cell_blocks: int = 16
+
     # Cold-start bound (Rivers and lakes plan.md section 16.10 / 18.5). A cold L1 solve
     # is ~17 s and a cold L0 region ~200-290 s; the worst case, an L1 tile whose halo
     # straddles four unsolved L0 regions, is ~1160 s. That is far too long to hold one
@@ -145,6 +153,8 @@ class BridgeConfig:
             river_threshold_cells=_env_float("TERRAIN_BRIDGE_RIVER_THRESHOLD_CELLS", 10_000.0),
             bank_margin_blocks=_env_int("TERRAIN_BRIDGE_BANK_MARGIN_BLOCKS", 48),
             min_water_blocks=_env_int("TERRAIN_BRIDGE_MIN_WATER_BLOCKS", 1),
+            coarse_chunk_blocks=_env_int("TERRAIN_BRIDGE_COARSE_CHUNK_BLOCKS", 2048),
+            coarse_cell_blocks=_env_int("TERRAIN_BRIDGE_COARSE_CELL_BLOCKS", 16),
             max_wait_s=_env_float("TERRAIN_BRIDGE_MAX_WAIT_S", 20.0),
             solve_retry_after_s=_env_int("TERRAIN_BRIDGE_SOLVE_RETRY_AFTER_S", 5),
         )

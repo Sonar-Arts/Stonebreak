@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -245,7 +246,8 @@ class DiffusionTerrainClientTest {
         DiffusionBridgeConfig config = new DiffusionBridgeConfig(
                 "http://localhost:" + port,
                 256, 2000, 5000, maxRetries, 10, 50, 64, unreachableGraceMs,
-                hydrologySolveGraceMs, solvePollIntervalMs);
+                hydrologySolveGraceMs, solvePollIntervalMs,
+                2048, 16, 64);
         return new DiffusionTerrainClient(config, 42L);
     }
 
@@ -260,12 +262,21 @@ class DiffusionTerrainClientTest {
         return s;
     }
 
-    /** A port nothing is listening on: bound to learn a free one, then released. */
+    /**
+     * A port nothing is listening on: bound to learn a free one, then released.
+     *
+     * <p>Uses a plain {@link ServerSocket} rather than an {@link HttpServer}, because
+     * {@code HttpServer.create} binds its socket immediately while {@code stop()} only unwinds what
+     * {@code start()} set up — so probing with an unstarted HttpServer leaks the listening socket
+     * for the life of the JVM. The port then stays in {@code LISTEN} with nothing accepting: a
+     * connect completes from the kernel backlog and the request hangs to its timeout instead of
+     * being refused, and {@link #startServerOnPort} can no longer bind the port it was handed.
+     */
     private static int closedPort() throws IOException {
-        HttpServer probe = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-        int port = probe.getAddress().getPort();
-        probe.stop(0);
-        return port;
+        try (ServerSocket probe = new ServerSocket()) {
+            probe.bind(new InetSocketAddress("localhost", 0), 1);
+            return probe.getLocalPort();
+        }
     }
 
     /** The bridge's "still generating this tile" response: 503 + Retry-After (whole seconds). */

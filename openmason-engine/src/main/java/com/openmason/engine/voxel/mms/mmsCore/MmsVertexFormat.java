@@ -39,13 +39,31 @@ public enum MmsVertexFormat {
     LEGACY40(40, false, 1f),
 
     /**
-     * 20 bytes: pos 3×i16 in 1/64-block units relative to the mesh origin
-     * (±512 blocks — covers 8×8 chunk regions, 16×16 LOD regions and the
-     * 256-block world height), uv 2×f16, normal 3×i8 snorm (+1 pad), layer
-     * u16, flags 4×u8 normalized. Arbitrary normals survive, so SBO stamps,
-     * crosses and FastLOD smooth shading all work unchanged.
+     * 20 bytes: pos 3×i16 in 1/32-block units relative to the mesh origin, uv
+     * 2×f16, normal 3×i8 snorm (+1 pad), layer u16, flags 4×u8 normalized.
+     * Arbitrary normals survive, so SBO stamps, crosses and FastLOD smooth
+     * shading all work unchanged.
+     *
+     * <p>X and Z reach ±1024 blocks, far past the 8×8 chunk region and 16×16
+     * LOD region they have to span. Y is the tight axis — every producer passes
+     * originY = 0, so a Y offset is an absolute world Y and the format has to
+     * span {@code WORLD_HEIGHT} on its own — and it is stored against a window
+     * shifted up by {@link #COMPACT_Y_SHIFT}, giving {@link #COMPACT_MIN_Y}
+     * ..{@link #COMPACT_MAX_Y}: the whole 1024-tall column with room to spare
+     * above it and 512 blocks of slack below for model meshes pivoted on zero.
+     *
+     * <p>Both properties were bought in one 2026-09-04 pass, and neither
+     * touched the 20-byte layout or a line of GLSL. The unit was 1/64 block
+     * (±512) — sized for the old 256-tall world like the pulled codecs, and
+     * missed when they were widened, so every stamp above y=512 threw and its
+     * chunk rendered as nothing. Halving the resolution doubled the range,
+     * because the unit is data: it rides to the shader as {@code aOrigin.w}.
+     * That still left the top face of a top-layer block one unit out of reach,
+     * which the Y shift closed the same way — it rides in {@code aOrigin.y}.
+     * Blocks are the geometric unit here and stamp models are authored on the
+     * 1/16 grid, so 1/32 represents authored vertices exactly.
      */
-    COMPACT20(20, true, 1f / 64f),
+    COMPACT20(20, true, 1f / 32f),
 
     /**
      * Vertex pulling: 16 bytes per QUAD ({@link MmsQuadCodec}) — nominally 4
@@ -76,6 +94,37 @@ public enum MmsVertexFormat {
 
     /** Attribute location of the per-mesh origin {@code vec4(ox, oy, oz, scale)}. */
     public static final int ORIGIN_LOCATION = 5;
+
+    /**
+     * {@link #COMPACT20} fixed-point position units per block — derived from
+     * the format's own scale so the constructor argument stays the one place
+     * the unit is chosen. It sets both the stored resolution (1/32 block) and
+     * how far a position can sit from the mesh origin — {@link
+     * #COMPACT_MAX_BLOCKS} on X/Z, and {@link #COMPACT_MIN_Y}..{@link
+     * #COMPACT_MAX_Y} on the shifted Y axis, which has to cover the world
+     * height because chunk meshes carry a Y origin of 0.
+     */
+    public static final float COMPACT_POSITION_UNITS = 1f / COMPACT20.positionScale;
+
+    /** Largest {@link #COMPACT20} X/Z offset from the mesh origin, in blocks. */
+    public static final float COMPACT_MAX_BLOCKS = Short.MAX_VALUE * COMPACT20.positionScale;
+
+    /**
+     * Blocks {@link #COMPACT20} adds to the mesh's Y origin before storing a
+     * position — see {@link #originYShift()}. i16 is symmetric about zero but a
+     * world column is not: every producer passes originY = 0 and no geometry
+     * sits below y=0, so half the range was spent on blocks that cannot exist
+     * while the top of a 1024-tall world fell one unit outside it. Shifting the
+     * window up by half a world trades unreachable depth for the headroom.
+     */
+    public static final float COMPACT_Y_SHIFT = 512f;
+
+    /** Lowest Y a {@link #COMPACT20} mesh can store, as an offset from its origin. */
+    public static final float COMPACT_MIN_Y = Short.MIN_VALUE * COMPACT20.positionScale
+        + COMPACT_Y_SHIFT;
+
+    /** Highest Y a {@link #COMPACT20} mesh can store, as an offset from its origin. */
+    public static final float COMPACT_MAX_Y = COMPACT_MAX_BLOCKS + COMPACT_Y_SHIFT;
 
     /**
      * The shipped default. Promoted from LEGACY40 on 2026-08-20 after the chunk
@@ -111,6 +160,17 @@ public enum MmsVertexFormat {
     /** World units per stored position unit (the {@code aOrigin.w} the shader multiplies by). */
     public float positionScale() {
         return positionScale;
+    }
+
+    /**
+     * Blocks this format adds to a mesh's Y origin before storing positions:
+     * {@link #COMPACT_Y_SHIFT} for {@link #COMPACT20}, zero for every other
+     * format (the pulled codecs document Y as absolute world Y and must keep
+     * reading an unshifted origin). Callers pass the mesh's true origin
+     * everywhere; only the stored bytes and the origin attribute carry it.
+     */
+    public float originYShift() {
+        return this == COMPACT20 ? COMPACT_Y_SHIFT : 0f;
     }
 
     /** True for vertex-pulling formats (per-quad records, no per-mesh indices). */
@@ -206,7 +266,7 @@ public enum MmsVertexFormat {
                 "pulled meshes are built per quad via MmsQuadMeshBuilder");
             case COMPACT20 -> {
                 dst.putShort(fixed16(x - originX, "x"));
-                dst.putShort(fixed16(y - originY, "y"));
+                dst.putShort(fixed16Y(y - originY));
                 dst.putShort(fixed16(z - originZ, "z"));
                 dst.putShort(Float.floatToFloat16(u));
                 dst.putShort(Float.floatToFloat16(v));
@@ -218,11 +278,28 @@ public enum MmsVertexFormat {
     }
 
     private static short fixed16(float local, String axis) {
-        float scaled = local * 64f;
-        long q = Math.round(scaled);
+        long q = Math.round(local * COMPACT_POSITION_UNITS);
         if (q < Short.MIN_VALUE || q > Short.MAX_VALUE) {
             throw new IllegalArgumentException("COMPACT20 position out of range on " + axis
-                + ": local " + local + " blocks (max ±512) — wrong mesh origin?");
+                + ": local " + local + " blocks (max ±" + COMPACT_MAX_BLOCKS
+                + ") — wrong mesh origin?");
+        }
+        return (short) q;
+    }
+
+    /**
+     * Packs a Y offset, which is stored relative to {@code originY +
+     * COMPACT_Y_SHIFT} rather than to originY. Nothing outside this class sees
+     * the shift: {@link #position} adds it back, and the GPU gets it for free
+     * because {@link #createOriginBuffer} folds it into the origin attribute
+     * the shaders already add.
+     */
+    private static short fixed16Y(float local) {
+        long q = Math.round((local - COMPACT_Y_SHIFT) * COMPACT_POSITION_UNITS);
+        if (q < Short.MIN_VALUE || q > Short.MAX_VALUE) {
+            throw new IllegalArgumentException("COMPACT20 position out of range on y: local "
+                + local + " blocks (allowed " + COMPACT_MIN_Y + " .. " + COMPACT_MAX_Y
+                + ") — wrong mesh origin?");
         }
         return (short) q;
     }
@@ -239,7 +316,7 @@ public enum MmsVertexFormat {
         return switch (this) {
             case LEGACY40 -> src.getFloat(base + c * 4);
             case COMPACT20 -> src.getShort(base + c * 2) * positionScale
-                + (c == 0 ? originX : c == 1 ? originY : originZ);
+                + (c == 0 ? originX : c == 1 ? originY + COMPACT_Y_SHIFT : originZ);
             case QUAD16 -> MmsQuadCodec.position(src, i >> 2, i & 3, c, originX, originY, originZ);
             case LODQUAD16 -> MmsLodQuadCodec.position(src, i >> 2, i & 3, c, originX, originY, originZ);
             case WATERQUAD16 -> MmsWaterQuadCodec.position(src, i >> 2, i & 3, c, originX, originY, originZ);
@@ -375,7 +452,8 @@ public enum MmsVertexFormat {
         int id = GL15.glGenBuffers();
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, id);
         GL15.glBufferData(GL15.GL_ARRAY_BUFFER,
-            new float[]{originX, originY, originZ, positionScale}, GL15.GL_STATIC_DRAW);
+            new float[]{originX, originY + originYShift(), originZ, positionScale},
+            GL15.GL_STATIC_DRAW);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         return id;
     }

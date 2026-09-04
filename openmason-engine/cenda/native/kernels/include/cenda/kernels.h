@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-#define CK_ABI_VERSION 3
+#define CK_ABI_VERSION 7
 
 /* ABI handshake — Java refuses to use the lib if this doesn't match. */
 int32_t ck_abi_version(void);
@@ -206,47 +206,222 @@ int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
                           const uint64_t* extra_carve_mask,
                           int16_t* out_blocks, int32_t* out_heightmap);
 
+/* ═════════════════ The water params array (plan.md §8) ═════════════════
+ *
+ * ONE array, read by both water kernels: `ck_solve_basins` takes the indices
+ * that decide where water is, `ck_carve_water` the ones that decide what it
+ * looks like on the ground. Two arrays would mean two places for a knob to
+ * drift out of step, and several of these are read by both.
+ *
+ * Any prefix is legal; entries past the end take the default. NULL/0 is all
+ * defaults.
+ *
+ *   idx  name                  unit      default  read by
+ *   ---  --------------------  --------  -------  -----------------
+ *    0   min_lake_depth        blocks        0.5  solve
+ *    1   min_lake_area         cells           8  solve
+ *    2   sea_level             blocks        320  solve, carve
+ *    3   min_river_lake_area   cells          12  solve
+ *    4   river_keep_fraction   fraction     0.70  solve
+ *    5   step_len              blocks         16  solve
+ *    6   max_steps             steps         256  solve   (halo may bind)
+ *    7   w_inertia             weight        1.0  solve
+ *    8   w_descent             weight       0.55  solve
+ *    9   meander_amp           radians      0.35  solve
+ *   10   bank_tolerance        blocks          8  solve, carve
+ *   11   gorge_max_depth       blocks         24  solve
+ *   12   gorge_max_width       blocks         96  solve
+ *   13   waterfall_min_drop    blocks          6  solve
+ *   14   valley_radius         blocks         80  carve
+ *   15   w_base                blocks          4  solve
+ *   16   w_lake                blocks          3  solve
+ *   17   w_dist                blocks          2  solve
+ *   18   vol_scale             blocks^3    50000  solve
+ *   19   dist_scale            blocks       1000  solve
+ *   20   d_base                blocks        1.5  solve
+ *   21   d_gain                blocks        0.8  solve
+ *   22   plunge_widen          multiplier    1.6  solve
+ *   23   refine_levels         count           2  solve
+ *   24   refine_amp            fraction     0.22  solve
+ *   25   min_points            vertices        4  solve
+ *
+ * Four deliberate departures from §8's table:
+ *
+ *   sea_level is here at [2]. §8 omitted it because the old design passed it
+ *   as an argument; both kernels need it and one source is better than two.
+ *
+ *   w_avoid is GONE. §8 reserved [8] for the obstruction avoidance of §5.7,
+ *   which has no trigger: `filled >= raw` by construction and a route never
+ *   climbs, so ground above the water surface cannot lie ahead of one.
+ *   Measured over 158 real route steps, the largest `rise` at any centreline
+ *   was 3.1 blocks against a bank tolerance of 8 — and that 3.1 is a bilinear
+ *   sample against its own cell, not terrain. Indices after it shift down one.
+ *
+ *   vol_scale and dist_scale are new. §5.5's width formula divides by both and
+ *   §8's table forgot them; a width term without its scale is not a knob.
+ *
+ *   The ownership lattice — cell/region/halo, i.e. which region emits which
+ *   column — is NOT here. It is passed per call (see ck_solve_basins) because
+ *   the caller owns the escalation ladder, but it is not a runtime knob in the
+ *   retuning sense: changing a rung silently invalidates every cached region
+ *   rather than retuning anything, so `BasinCache`'s fingerprint covers every
+ *   rung of the ladder.
+ */
+
+/* ═══════════════ Region water plan (lakes + rivers) ═══════════════
+ *
+ * One region's depression fill AND the river routes whose sources it owns —
+ * layers 1 and 2 of the lakes-first hydrology (plan.md §4, §5). The unit of
+ * work is a REGION, not a tile: the solve is ~23 ms on the 512² window L1
+ * uses, which is 0.089 ms once amortized over that region's 256 terrain tiles
+ * but ruinous if repeated per tile. The caller caches it.
+ *
+ * Both come from one call because the routes need the fill's basin table —
+ * spill points, areas, volumes — and that table deliberately does not cross
+ * this boundary. Splitting them would mean solving the region twice.
+ *
+ * dem: cells^2 float32, row = world X, col = world Z, fractional block
+ * heights on a `cell_blocks` lattice, covering world
+ * [origin_x, origin_x + cells*cell_blocks) x the same in Z. Fractional
+ * matters: quantised to whole blocks 40 % of land is perfectly level and
+ * downhill routing over it degenerates into a distance field.
+ *
+ * origin must be the level's own window origin for the region — that is,
+ * region * region_blocks - halo_blocks — because ownership of both lakes and
+ * river sources is decided from it.
+ *
+ * out_filled: the depression-filled surface — the water surface AND the field
+ * rivers descend. Complete, including basins whose lake is withheld, because
+ * a route descending it must never be able to go uphill.
+ * out_depth: lake depth in blocks, and exactly 0 wherever this level has no
+ * lake to vouch for. Ownership (§4.4) is applied before either plane is
+ * written, so `depth > 0` alone tells a consumer what it may trust.
+ *
+ * region_blocks / halo_blocks: the level's ownership geometry, together with
+ * cell_blocks. A basin whose own bounding box exceeds halo_blocks is NOT
+ * emitted by this level — it would be cut differently by a window one region
+ * over, and the two would disagree across the seam.
+ *
+ * These are CALLER DATA rather than a fixed pair of levels, because the number
+ * of rungs between "cheap and narrow" and "expensive and wide" is a cost
+ * decision, not a physical one. Escalating L1 (a 16-chunk DEM fetch) straight
+ * to a 16 km halo (1,024 chunks, ~24 min of GPU measured 2026-09-03) to own a
+ * basin barely past L1's limit is what made a world load unusable; a caller
+ * that can interpose 4 km and 8 km rungs pays 64 chunks instead. The kernel
+ * has no opinion on the ladder — it applies the ownership rule to whatever
+ * geometry it is handed, and the caller's cache fingerprint must cover every
+ * rung of it (see BasinCache.fingerprint).
+ *
+ * coarse_*: optional. Pass the coarser level's already-solved planes and their
+ * geometry to import the basins this level withheld; pass NULL to skip. The
+ * return value says whether it is worth fetching: a region that withheld
+ * nothing needs no coarse solve, which on measured terrain is the usual case
+ * (largest basin 928 blocks against L1's 2048-block halo).
+ *
+ * out_withheld: optional, 2 int32 — {largest withheld lake in CELLS of this
+ * call's lattice, longest withheld bbox side in blocks}, over the same basins
+ * the return value counts. Both 0 when nothing was withheld.
+ *
+ * This is the second half of the escalation decision and the return value is
+ * not usable without it. A coarser rung applies `min_lake_area` in ITS OWN
+ * cells, so the smallest lake it will emit grows with its cell area — on the
+ * shipping parameters 0.46 km² at L1, 1.84 at L2, 7.37 at L3, 29.5 at L4.
+ * Escalating for a lake below the next rung's floor buys a plane that comes
+ * back dry over that ground, at 4x the DEM: measured 2026-09-03, one such
+ * escalation cost 207 CoarseDem chunks (~5-7 min of serial GPU, 76 % of a
+ * whole world load) and emitted zero lake cells. Compare the stake against
+ * the rung you are about to pay for before paying for it.
+ *
+ * The lake figure is a LOWER BOUND when the basin is truncated by the window
+ * — the border is an escape, so a truncated fill sits at or below the true
+ * spill — so a caller gating on it must leave headroom.
+ *
+ * ── Rivers ──
+ * Optional: pass out_vertices NULL to skip planning them. Otherwise
+ * out_vertices holds up to max_vertices packed vertices of
+ * CK_RIVER_VERTEX_FLOATS floats each, out_route_starts holds up to
+ * max_routes+1 offsets into it (route r spans [starts[r], starts[r+1])), and
+ * out_river_counts receives {route count, vertex count}. Planning stops when
+ * either cap is reached rather than overflowing; a caller that sees the counts
+ * pinned at its caps should raise them.
+ *
+ * A route is emitted by the region that owns its SOURCE, so no two regions
+ * ever plan the same river. A consumer needing every route that touches some
+ * ground must gather from every region within a route's reach of it, which at
+ * L1 is ~2 km — rivers cross region borders and ownership does not change that.
+ *
+ * params: the shared water params array above; solve reads [0]-[13] and
+ * [15]-[25]. *
+ * Thread-safe and reentrant (per-thread scratch). Returns the number of basins
+ * withheld for the coarser level (>= 0), or negative on bad arguments. */
+
+/* Packed river vertex layout: x, z, surf, width, bed_depth, bank, flags. */
+#define CK_RIVER_VERTEX_FLOATS 7
+#define CK_RIVER_FLAG_WATERFALL 1
+#define CK_RIVER_FLAG_GORGE 2
+
+int32_t ck_solve_basins(int64_t seed,
+                        int32_t region_blocks, int32_t halo_blocks,
+                        int32_t cells, int32_t cell_blocks,
+                        int64_t origin_x, int64_t origin_z,
+                        const float* dem,
+                        const float* params, int32_t n_params,
+                        int32_t coarse_cells, int32_t coarse_cell_blocks,
+                        int64_t coarse_origin_x, int64_t coarse_origin_z,
+                        const float* coarse_filled, const float* coarse_depth,
+                        float* out_filled, float* out_depth,
+                        int32_t max_routes, int32_t max_vertices,
+                        int32_t* out_route_starts, float* out_vertices,
+                        int32_t* out_river_counts,
+                        int32_t* out_withheld);
+
 /* ════════════════════════ Water carve ════════════════════════
  *
- * Noise-derived rivers and lakes at block resolution — the native replacement
- * for the terrain bridge's hydrological L0/L1 solve. Input is one terrain
- * tile's raw block heights plus a one-tile halo on every side (a 3x3 tile
- * window); output is the CENTER tile's carved heights and per-column water
- * levels. Every emitted value is a pure function of (seed, column, raw
- * heights within a bounded reach far below tile_size), so adjacent tiles
- * agree over shared ground and the result is seam-free by construction —
- * see water.cpp's canonicality notes.
+ * Inland water at block resolution, stamped from a basin solve — layer 3 of
+ * the lakes-first hydrology (plan.md §6). Input is one terrain tile's raw
+ * block heights plus a one-tile halo on every side (a 3x3 tile window), and
+ * the depression-fill planes covering that same ground; output is the CENTER
+ * tile's heights and per-column water levels.
+ *
+ * This kernel invents nothing. Where water sits was decided by
+ * ck_solve_basins; all that happens here is drawing the shoreline at block
+ * resolution, which is a comparison rather than a construction: a lake's
+ * surface is one integer for the whole basin, and a column is wet exactly when
+ * its block height is below it. So a 16-block DEM yields a 1-block shoreline
+ * while the surface stays level to the bit.
  *
  * heights3x3: (3*tile_size)^2 int16, row-major with row = world X and
  * col = world Z (the TerrainTile layout), covering world
  * [origin_x, origin_x + 3*tile_size) x [origin_z, origin_z + 3*tile_size).
  * The center tile is the middle third.
  *
+ * dem_filled / dem_depth: dem_cells^2 float32 each, same row/col convention,
+ * covering the SAME ground as heights3x3 — dem_cells * dem_cell_blocks must
+ * equal 3*tile_size exactly, with the span's origin at (origin_x, origin_z).
+ * These are a sub-window of the owning region's ck_solve_basins output. Pass
+ * NULL for both to get sea-level-only water, the same graceful degradation as
+ * an absent kernels library.
+ *
+ * n_routes / route_starts / vertices: the river routes near this window, as
+ * ck_solve_basins packed them (CK_RIVER_VERTEX_FLOATS floats per vertex,
+ * route r spanning [route_starts[r], route_starts[r+1])). A tile must be
+ * handed every route that comes within a valley radius of it, which means
+ * gathering from every region within a route's reach — rivers cross region
+ * borders. Pass n_routes 0 to stamp lakes only.
+ *
  * out_heights/out_water: tile_size^2, same layout, center tile only.
  * Water level w means the column holds water for height <= y < w; -1 = dry.
+ * Terrain is returned uncarved for LAKES — one sits in a depression the
+ * terrain already has — and carved for RIVERS: a channel cut to the bed depth
+ * and, on an ordinary reach, a valley drawn down around it. A gorge reach
+ * keeps its walls.
  * Containment invariant (WaterSim): every wet column's 4-neighbors are wet
  * or have terrain >= its level; worldgen water is source blocks, so a
- * violation is a permanent spring.
+ * violation is a permanent spring. Wet-next-to-wet at differing levels is a
+ * waterfall and is deliberately allowed.
  *
- * params (optional, NULL/0 = defaults): float array, prefix of
- *   [0] channel_threshold   |C| below this is a river channel (0.045;
- *                           0 disables rivers)
- *   [1] river_depth_scale   extra centerline depth in blocks (3.0)
- *   [2] surface_blur_radius box-blur radius for the water surface (24)
- *   [3] lake_spacing        candidate lattice pitch in blocks (160;
- *                           0 disables lakes)
- *   [4] lake_keep_fraction  fraction of candidates that try to fill (0.35)
- *   [5] lake_max_radius     bounded-flood box radius in blocks (72)
- *   [6] alt_fade_start      blocks above sea where channels start thinning (25)
- *   [7] alt_fade_end        blocks above sea where thinning bottoms out (70)
- *   [8] slope_fade_start    surface gradient (blocks/block) where channels
- *                           start fading off hillsides (0.35)
- *   [9] slope_fade_end      gradient where channels are fully off (0.80)
- *   [10] max_incision       ground this many blocks above the water surface
- *                           interrupts the channel instead of being slotted (12)
- *   [11] erode_radius       windowed-min radius flattening the water surface
- *                           across a channel's width (16; 0 disables)
- *
+ * params: the shared water params array above; the carve reads [2] sea_level,
+ * [10] bank_tolerance and [14] valley_radius. *
  * Thread-safe and reentrant (per-thread scratch). Returns 0 on success,
  * negative on bad arguments. */
 
@@ -255,6 +430,10 @@ int32_t ck_carve_water(int64_t seed,
                        int32_t origin_x, int32_t origin_z,
                        const int16_t* heights3x3,
                        int32_t sea_level, int32_t world_height,
+                       int32_t dem_cells, int32_t dem_cell_blocks,
+                       const float* dem_filled, const float* dem_depth,
+                       int32_t n_routes, const int32_t* route_starts,
+                       const float* vertices,
                        const float* params, int32_t n_params,
                        int16_t* out_heights, int16_t* out_water);
 

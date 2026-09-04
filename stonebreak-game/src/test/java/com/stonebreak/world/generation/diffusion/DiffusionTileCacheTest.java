@@ -23,7 +23,7 @@ class DiffusionTileCacheTest {
 
     private static DiffusionBridgeConfig config(int tileSize, int maxCachedTiles) {
         return new DiffusionBridgeConfig("http://unused", tileSize, 1000, 1000, 0, 10, 50, maxCachedTiles, 1000,
-                1000, 50);
+                1000, 50, 2048, 16, 64);
     }
 
     private static TerrainTile stubTile(int tileX, int tileZ, int tileSize) {

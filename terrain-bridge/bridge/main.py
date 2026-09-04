@@ -4,6 +4,7 @@ Contract for the Java client (plan.md section 5, Phase 1):
   POST /generate_heightmap  {world_x, world_z, seed?} -> binary tile + headers
   GET  /health               -> model/queue/cache status
   POST /prefetch             {world_x, world_z}        -> fire-and-forget warm
+  POST /coarse_elevation    {chunk_x, chunk_z, seed?} -> float32 block heights
 
 The tile body is bare concatenated int16-LE planes with no header bytes of its
 own, so a consumer that expects a different plane count mis-slices it into
@@ -20,6 +21,7 @@ from pydantic import BaseModel
 
 from . import water as water_module
 from .cache import PLANES, TileCache
+from .coarse import CoarseElevation
 from .config import BridgeConfig
 from .queue import GpuWorkQueue, TilePending
 from .tiling import TileId, tile_bounds, tile_containing
@@ -40,6 +42,7 @@ water = water_module.build(cfg)
 cache = TileCache(cfg, water.fingerprint)
 client = UpstreamClient(cfg)
 work_queue = GpuWorkQueue(cfg, cache, client, water)
+coarse = CoarseElevation(cfg, client)
 
 app = FastAPI(title="Stonebreak Terrain Bridge")
 
@@ -47,6 +50,14 @@ app = FastAPI(title="Stonebreak Terrain Bridge")
 class TileCoordRequest(BaseModel):
     world_x: int
     world_z: int
+    seed: int | None = None
+
+
+class CoarseChunkRequest(BaseModel):
+    """A chunk is addressed by ID, never by bounding box — see coarse.py."""
+
+    chunk_x: int
+    chunk_z: int
     seed: int | None = None
 
 
@@ -140,6 +151,40 @@ async def generate_heightmap(req: TileCoordRequest):
     resp.headers["X-World-J2"] = str(j2)
     resp.headers["X-Sea-Level"] = str(cfg.sea_level)
     resp.headers["X-Cache-Hit"] = "1" if from_cache else "0"
+    return resp
+
+
+@app.post("/coarse_elevation")
+async def coarse_elevation(req: CoarseChunkRequest):
+    """One coarse chunk: fractional block heights, row = world X, col = world Z.
+
+    Fractional on purpose — quantising to whole blocks makes 40 % of land
+    perfectly flat at 15 m per block, which turns the caller's downhill routing
+    into a distance field (hydrology/README.md). Do not round these.
+
+    Generation is a single square GPU request and runs off the event loop; the
+    store serialises so concurrent callers on the same cold chunk wait rather
+    than each starting one.
+    """
+    _require_matching_seed(req.seed)
+    try:
+        cells = await asyncio.to_thread(coarse.chunk, req.chunk_x, req.chunk_z)
+    except UpstreamError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    n = coarse.cells_per_chunk
+    resp = Response(content=cells.tobytes(), media_type="application/octet-stream")
+    resp.headers["X-Protocol-Version"] = str(PROTOCOL_VERSION)
+    resp.headers["X-Dtype"] = "float32-le"
+    resp.headers["X-Height"] = str(n)
+    resp.headers["X-Width"] = str(n)
+    resp.headers["X-Chunk-X"] = str(req.chunk_x)
+    resp.headers["X-Chunk-Z"] = str(req.chunk_z)
+    resp.headers["X-Chunk-Blocks"] = str(cfg.coarse_chunk_blocks)
+    resp.headers["X-Cell-Blocks"] = str(cfg.coarse_cell_blocks)
+    resp.headers["X-Sea-Level"] = str(cfg.sea_level)
     return resp
 
 

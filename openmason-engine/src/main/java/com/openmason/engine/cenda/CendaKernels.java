@@ -29,7 +29,7 @@ import java.nio.file.Path;
 public final class CendaKernels {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CendaKernels.class);
-    private static final int EXPECTED_ABI = 3;
+    private static final int EXPECTED_ABI = 7;
 
     private static final boolean AVAILABLE;
     private static final String SIMD_LEVEL;
@@ -45,6 +45,7 @@ public final class CendaKernels {
     private static final MethodHandle CHUNKGEN_CREATE;
     private static final MethodHandle CHUNKGEN_DESTROY;
     private static final MethodHandle GENERATE_CHUNK;
+    private static final MethodHandle SOLVE_BASINS;
     private static final MethodHandle CARVE_WATER;
     private static final MethodHandle ZSTD_BOUND;
     private static final MethodHandle ZSTD_COMPRESS;
@@ -70,6 +71,7 @@ public final class CendaKernels {
         MethodHandle chunkGenCreate = null;
         MethodHandle chunkGenDestroy = null;
         MethodHandle generateChunk = null;
+        MethodHandle solveBasins = null;
         MethodHandle carveWater = null;
         MethodHandle zstdBound = null;
         MethodHandle zstdCompress = null;
@@ -173,6 +175,22 @@ public final class CendaKernels {
                         ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+                solveBasins = linker.downcallHandle(
+                    find(lookup, "ck_solve_basins"),
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_LONG,
+                        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS));
                 carveWater = linker.downcallHandle(
                     find(lookup, "ck_carve_water"),
                     FunctionDescriptor.of(ValueLayout.JAVA_INT,
@@ -180,6 +198,10 @@ public final class CendaKernels {
                         ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
                         ValueLayout.ADDRESS,
                         ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                        ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS));
                 zstdBound = linker.downcallHandle(
@@ -227,6 +249,7 @@ public final class CendaKernels {
         CHUNKGEN_CREATE = chunkGenCreate;
         CHUNKGEN_DESTROY = chunkGenDestroy;
         GENERATE_CHUNK = generateChunk;
+        SOLVE_BASINS = solveBasins;
         CARVE_WATER = carveWater;
         ZSTD_BOUND = zstdBound;
         ZSTD_COMPRESS = zstdCompress;
@@ -727,8 +750,22 @@ public final class CendaKernels {
      * {@link Integer#MIN_VALUE} when the library is unavailable (callers fall
      * back to the raw tile's own water plane).
      */
+    /**
+     * Inland water for one tile: lakes stamped from a basin solve, the sea, and
+     * the containment repair. {@code outHeights} comes back uncarved except
+     * where a wet column's dry neighbour had to be walled — a lake sits in a
+     * depression the terrain already has.
+     *
+     * <p>{@code demFilled}/{@code demDepth} are a sub-window of the owning
+     * region's {@link #solveBasins} output covering exactly this 3x3 tile
+     * window, so {@code demCells * demCellBlocks} must equal {@code 3*tileSize}.
+     * Pass null for both to get sea-level-only water.
+     */
     public static int carveWater(long seed, int tileSize, int originX, int originZ,
                                  short[] heights3x3, int seaLevel, int worldHeight,
+                                 int demCells, int demCellBlocks,
+                                 float[] demFilled, float[] demDepth,
+                                 int routeCount, int[] routeStarts, float[] vertices,
                                  float[] params,
                                  short[] outHeights, short[] outWater) {
         int window = 3 * tileSize;
@@ -741,6 +778,24 @@ public final class CendaKernels {
             throw new IllegalArgumentException("outputs must be tileSize^2 = " + tileArea
                 + " shorts, were " + outHeights.length + " / " + outWater.length);
         }
+        boolean withDem = demFilled != null && demDepth != null;
+        if (withDem) {
+            int demArea = demCells * demCells;
+            if (demFilled.length != demArea || demDepth.length != demArea) {
+                throw new IllegalArgumentException("DEM planes must be demCells^2 = " + demArea
+                    + " floats, were " + demFilled.length + " / " + demDepth.length);
+            }
+            if (demCells * demCellBlocks != window) {
+                throw new IllegalArgumentException("DEM span " + demCells + "x" + demCellBlocks
+                    + " = " + (demCells * demCellBlocks) + " blocks must cover the whole "
+                    + window + "-block window exactly");
+            }
+        }
+        boolean withRivers = routeCount > 0 && routeStarts != null && vertices != null;
+        if (withRivers && routeStarts.length < routeCount + 1) {
+            throw new IllegalArgumentException("routeStarts needs " + (routeCount + 1)
+                + " entries for " + routeCount + " routes, has " + routeStarts.length);
+        }
         if (!AVAILABLE) {
             return Integer.MIN_VALUE;
         }
@@ -750,10 +805,17 @@ public final class CendaKernels {
             MemorySegment outWaterSeg = scratch(2, (long) tileArea * Short.BYTES);
             MemorySegment paramsSeg = params == null || params.length == 0
                 ? MemorySegment.NULL : scratchFrom(3, params);
+            MemorySegment filledSeg = withDem ? scratchFrom(4, demFilled) : MemorySegment.NULL;
+            MemorySegment depthSeg = withDem ? scratchFrom(5, demDepth) : MemorySegment.NULL;
+            MemorySegment startsSeg = withRivers ? scratchFrom(6, routeStarts) : MemorySegment.NULL;
+            MemorySegment vertsSeg = withRivers ? scratchFrom(7, vertices) : MemorySegment.NULL;
             int nParams = params == null ? 0 : params.length;
             int rc = (int) CARVE_WATER.invokeExact(
                 seed, tileSize, originX, originZ,
                 heightsSeg, seaLevel, worldHeight,
+                withDem ? demCells : 0, withDem ? demCellBlocks : 0,
+                filledSeg, depthSeg,
+                withRivers ? routeCount : 0, startsSeg, vertsSeg,
                 paramsSeg, nParams,
                 outHeightsSeg, outWaterSeg);
             if (rc == 0) {
@@ -763,6 +825,146 @@ public final class CendaKernels {
             return rc;
         } catch (Throwable t) {
             throw new IllegalStateException("ck_carve_water failed", t);
+        }
+    }
+
+    // ═══════════════════════ Basin solve ═══════════════════════
+
+    /**
+     * One region's depression fill: {@code outFilled} is the water surface and
+     * the field rivers descend, {@code outDepth} is lake depth and is exactly 0
+     * wherever this level has no lake it may vouch for.
+     *
+     * <p>Returns how many basins this level withheld for the coarser one
+     * (a basin wider than the level's halo would be cut differently by a window
+     * one region over, so it is not this level's to emit) — or
+     * {@link Integer#MIN_VALUE} if the kernels library is absent. <b>Zero is
+     * the caller's licence to skip the coarse solve entirely</b>, which on
+     * measured terrain is the usual answer and is what keeps the expensive L0
+     * path cold.
+     *
+     * <p>{@code outWithheld} (optional, 2 ints) receives {largest withheld lake
+     * in CELLS of this call's lattice, longest withheld bbox side in blocks}
+     * over those same basins. <b>A non-zero return is not on its own a reason
+     * to escalate</b>: a coarser rung applies {@code minLakeArea} in its own
+     * cells, so the smallest lake it will emit grows with its cell area, and
+     * escalating for a lake below that floor buys a plane guaranteed to come
+     * back dry at 4x the DEM. Measured 2026-09-03, one such escalation cost 207
+     * coarse-elevation chunks — 76 % of a whole world load — and emitted zero
+     * lake cells. The lake figure is a lower bound where the window truncates
+     * the basin, so gate with headroom.
+     *
+     * <p>Pass {@code coarseFilled}/{@code coarseDepth} null to solve this level
+     * alone; pass the coarser level's already-solved planes and geometry to
+     * import the basins this one withheld.
+     *
+     * <p>{@code regionBlocks}/{@code haloBlocks} are the caller's rung of the
+     * escalation ladder rather than a fixed level id: the kernel applies the
+     * ownership rule to whatever geometry it is handed, and the caller decides
+     * how many rungs to interpose between a cheap narrow window and an
+     * expensive wide one. See {@code BasinCache.Level}, whose fingerprint must
+     * cover every rung.
+     *
+     * <p>Unlike the per-chunk kernels this allocates a confined Arena per call
+     * rather than growing the shared per-thread scratch: a 512² region is ~3 MB
+     * across its three planes, and the call happens once per region rather than
+     * once per chunk.
+     */
+    /** Floats per packed river vertex, mirrored from cenda/kernels.h. */
+    public static final int RIVER_VERTEX_FLOATS = 7;
+    public static final int RIVER_FLAG_WATERFALL = 1;
+    public static final int RIVER_FLAG_GORGE = 2;
+
+    public static int solveBasins(long seed, int regionBlocks, int haloBlocks,
+                                  int cells, int cellBlocks,
+                                  long originX, long originZ, float[] dem,
+                                  float[] params,
+                                  int coarseCells, int coarseCellBlocks,
+                                  long coarseOriginX, long coarseOriginZ,
+                                  float[] coarseFilled, float[] coarseDepth,
+                                  float[] outFilled, float[] outDepth,
+                                  int[] outRouteStarts, float[] outVertices,
+                                  int[] outCounts, int[] outWithheld) {
+        int area = cells * cells;
+        if (dem.length != area) {
+            throw new IllegalArgumentException("dem must be cells^2 = " + area
+                + " floats, was " + dem.length);
+        }
+        if (outFilled.length != area || outDepth.length != area) {
+            throw new IllegalArgumentException("outputs must be cells^2 = " + area
+                + " floats, were " + outFilled.length + " / " + outDepth.length);
+        }
+        boolean withCoarse = coarseFilled != null && coarseDepth != null;
+        if (withCoarse) {
+            int coarseArea = coarseCells * coarseCells;
+            if (coarseFilled.length != coarseArea || coarseDepth.length != coarseArea) {
+                throw new IllegalArgumentException("coarse planes must be coarseCells^2 = "
+                    + coarseArea + " floats, were " + coarseFilled.length + " / "
+                    + coarseDepth.length);
+            }
+        }
+        boolean withRivers = outRouteStarts != null && outVertices != null && outCounts != null;
+        if (withRivers && (outRouteStarts.length < 2 || outCounts.length < 2)) {
+            throw new IllegalArgumentException("river outputs need routeStarts of at least 2 "
+                + "and counts of 2");
+        }
+        if (outWithheld != null && outWithheld.length < 2) {
+            throw new IllegalArgumentException("outWithheld needs room for 2 ints, had "
+                + outWithheld.length);
+        }
+        if (!AVAILABLE) {
+            return Integer.MIN_VALUE;
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment demSeg = arena.allocateFrom(ValueLayout.JAVA_FLOAT, dem);
+            MemorySegment paramsSeg = params == null || params.length == 0
+                ? MemorySegment.NULL : arena.allocateFrom(ValueLayout.JAVA_FLOAT, params);
+            MemorySegment cFilledSeg = withCoarse
+                ? arena.allocateFrom(ValueLayout.JAVA_FLOAT, coarseFilled) : MemorySegment.NULL;
+            MemorySegment cDepthSeg = withCoarse
+                ? arena.allocateFrom(ValueLayout.JAVA_FLOAT, coarseDepth) : MemorySegment.NULL;
+            MemorySegment outFilledSeg = arena.allocate(ValueLayout.JAVA_FLOAT, area);
+            MemorySegment outDepthSeg = arena.allocate(ValueLayout.JAVA_FLOAT, area);
+            int maxRoutes = withRivers ? outRouteStarts.length - 1 : 0;
+            int maxVertices = withRivers ? outVertices.length / RIVER_VERTEX_FLOATS : 0;
+            MemorySegment startsSeg = withRivers
+                ? arena.allocate(ValueLayout.JAVA_INT, outRouteStarts.length) : MemorySegment.NULL;
+            MemorySegment vertsSeg = withRivers
+                ? arena.allocate(ValueLayout.JAVA_FLOAT, outVertices.length) : MemorySegment.NULL;
+            MemorySegment countsSeg = withRivers
+                ? arena.allocate(ValueLayout.JAVA_INT, 2) : MemorySegment.NULL;
+            MemorySegment withheldSeg = outWithheld != null
+                ? arena.allocate(ValueLayout.JAVA_INT, 2) : MemorySegment.NULL;
+            int rc = (int) SOLVE_BASINS.invokeExact(
+                seed, regionBlocks, haloBlocks, cells, cellBlocks, originX, originZ,
+                demSeg, paramsSeg, params == null ? 0 : params.length,
+                withCoarse ? coarseCells : 0, withCoarse ? coarseCellBlocks : 0,
+                coarseOriginX, coarseOriginZ, cFilledSeg, cDepthSeg,
+                outFilledSeg, outDepthSeg,
+                maxRoutes, maxVertices, startsSeg, vertsSeg, countsSeg, withheldSeg);
+            if (outWithheld != null) {
+                // Copied even on a bad-args return: the kernel zeroes it up
+                // front, so the caller reads 0 rather than a stale stake.
+                MemorySegment.copy(withheldSeg, ValueLayout.JAVA_INT, 0L, outWithheld, 0, 2);
+            }
+            if (rc >= 0) {
+                MemorySegment.copy(outFilledSeg, ValueLayout.JAVA_FLOAT, 0L, outFilled, 0, area);
+                MemorySegment.copy(outDepthSeg, ValueLayout.JAVA_FLOAT, 0L, outDepth, 0, area);
+                if (withRivers) {
+                    MemorySegment.copy(countsSeg, ValueLayout.JAVA_INT, 0L, outCounts, 0, 2);
+                    int nRoutes = outCounts[0];
+                    int nVerts = outCounts[1];
+                    if (nRoutes > 0) {
+                        MemorySegment.copy(startsSeg, ValueLayout.JAVA_INT, 0L,
+                            outRouteStarts, 0, nRoutes + 1);
+                        MemorySegment.copy(vertsSeg, ValueLayout.JAVA_FLOAT, 0L,
+                            outVertices, 0, nVerts * RIVER_VERTEX_FLOATS);
+                    }
+                }
+            }
+            return rc;
+        } catch (Throwable t) {
+            throw new IllegalStateException("ck_solve_basins failed", t);
         }
     }
 

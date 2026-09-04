@@ -26,6 +26,7 @@ import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
 import com.stonebreak.world.generation.heightmap.RavineCarver;
 import com.stonebreak.world.generation.heightmap.SinkholeCarver;
 import com.stonebreak.world.generation.noise.TerrainNoise;
+import com.stonebreak.world.generation.water.BasinCache;
 import com.stonebreak.world.generation.water.NativeWaterTiles;
 
 import java.util.BitSet;
@@ -71,8 +72,9 @@ public class TerrainGenerationSystem {
     /**
      * The production tile chain: the HTTP-backed bridge cache, wrapped — when the
      * native water backend is selected ({@code -Dstonebreak.water.backend=native},
-     * the default) — in {@link NativeWaterTiles}, which derives rivers and lakes
-     * per tile via Cenda's {@code ck_carve_water} kernel. With the wrapper active
+     * the default) — in {@link NativeWaterTiles}, which stamps lakes per tile
+     * from the depression fill {@link BasinCache} solves per region. With the
+     * wrapper active
      * the bridge runs with its hydrological solve disabled (the process manager
      * sets {@code TERRAIN_BRIDGE_HYDROLOGY=0} from the same property), so raw
      * tiles carry sea-level-only water and cost sub-second GPU time instead of
@@ -84,7 +86,8 @@ public class TerrainGenerationSystem {
         if (!NativeWaterTiles.nativeBackendSelected()) {
             return rawTiles;
         }
-        return new NativeWaterTiles(rawTiles, seed, config.tileSizeBlocks(), config.maxCachedTiles());
+        return new NativeWaterTiles(rawTiles, BasinCache.production(config, seed), seed,
+            config.tileSizeBlocks(), config.maxCachedTiles());
     }
 
     /**

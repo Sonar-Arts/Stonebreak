@@ -37,6 +37,7 @@ add_library(cenda_kernels SHARED
         src/mesher.cpp
         src/carver.cpp
         src/generator.cpp
+        src/basins.cpp
         src/water.cpp
         src/zstd_codec.cpp)
 
