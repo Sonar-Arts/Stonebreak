@@ -79,7 +79,9 @@ void readRiverParams(const float* params, int32_t n, rp::Config& cfg) {
     if (n > 7) cfg.wInertia = params[7];
     if (n > 8) cfg.wDescent = params[8];
     if (n > 9) cfg.meanderAmp = params[9];
-    if (n > 10) cfg.bankTolerance = params[10];
+    /* [10] is bank_tolerance, which only the carve reads. The router splits
+     * Normal from Gorge on gorge_max_depth below; it has no use for the bank
+     * height, and storing it here made a live-looking knob that was not. */
     if (n > 11) cfg.gorgeMaxDepth = params[11];
     if (n > 12) cfg.gorgeMaxWidth = params[12];
     if (n > 13) cfg.waterfallMinDrop = params[13];

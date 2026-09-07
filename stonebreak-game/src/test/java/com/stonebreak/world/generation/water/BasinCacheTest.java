@@ -100,6 +100,22 @@ class BasinCacheTest {
     }
 
     /**
+     * The same 2,800-block crater, centred ON the x = 0 region seam so that L1
+     * regions (-1,0) and (0,0) each own part of its floor and each hold the
+     * whole thing inside their own window. Both therefore withhold it on the
+     * span rule and both must reach the same rung for it — which is what
+     * {@link #twoRegionsSharingAWithheldBasinAgreeAboutIt} checks.
+     */
+    private static float craterAcrossTheSeamAt(long worldX, long worldZ) {
+        double h = 500.0;
+        double r = Math.hypot(worldX, worldZ - 1024.0);
+        if (r < 1400.0) {
+            h -= 40.0 * (1.0 - r / 1400.0);
+        }
+        return (float) h;
+    }
+
+    /**
      * Exactly the chunks L2 region (0,0)'s window spans and not one more —
      * origin -4096, 16384 blocks, so chunks -2..5 on each axis. L3's window
      * would need -4..11, so a test that completes over this DEM has proved the
@@ -361,41 +377,83 @@ class BasinCacheTest {
     }
 
     @Test
-    void aWithheldPuddleIsLeftDryRatherThanPaidForAtTheNextRung(@TempDir Path dir) {
+    void theLadderCapLeavesABasinDryRatherThanClimbingPastIt(@TempDir Path dir) {
         requireKernels();
-        // The measured failure this gate exists for: L1 region (-1,-1) of seed
-        // 5145549158747503491 withheld one basin, climbed two rungs for it at
-        // 207 coarse chunks — 76 % of that world load — and both rungs emitted
-        // ZERO lake cells, because minLakeArea is counted in CELLS and every
-        // rung's cells are 4x the area of the one below.
+        // The cost the ladder cap exists to bound: seed 5145549158747503491's
+        // L1 region (-1,-1) withheld one basin, climbed two rungs for it at 207
+        // coarse chunks — 76 % of that world load — and both rungs emitted ZERO
+        // lake cells, because minLakeArea is counted in CELLS and every rung's
+        // cells are 4x the area of the one below.
         //
-        // This DEM holds only L1's 16 chunks, so escalating at all would ask
-        // for chunks that are not there and throw. Completing IS the assertion.
-        BasinCache cache = withSyncEscalation(
-                () -> cache(demOver(-1, 2, BasinCacheTest::wideSaucerWithAPuddleAt), dir));
-        BasinCache.Solved s = withSyncEscalation(() -> cache.forColumn(1024, 1024));
+        // The cap is a CONSTANT rather than a measurement of the withheld
+        // basin, which is what makes it seam-safe: see
+        // twoRegionsSharingAWithheldBasinAgreeAboutIt below. Here it is pinned
+        // at L1, so nothing escalates at all — and this DEM holds only L1's 16
+        // chunks, so an escalation would ask for chunks that are not there and
+        // throw. Completing IS the assertion.
+        BasinCache.Solved s = withProperty("stonebreak.water.maxBasinLevel", "L1", () ->
+                withSyncEscalation(() -> cache(
+                        demOver(-1, 2, BasinCacheTest::wideSaucerWithAPuddleAt), dir)
+                        .forColumn(1024, 1024)));
 
         assertTrue(s.withheld() > 0, "L1 still cannot own a 2,800-block depression");
         assertFalse(s.provisional(), "the region is settled, not waiting on a rung");
         assertFalse(s.isLake(1024, 1024),
-                "a puddle no coarser rung would emit is left dry rather than chased");
+                "a basin past the cap is left dry rather than chased");
         assertEquals(500.0f, s.filledAt(1024, 1024), 0.01f,
                 "the fill is kept whole — only the water is withheld, so routing still works");
     }
 
     @Test
-    void theGateIsWhatStopsIt_notTheFixture(@TempDir Path dir) {
+    void theCapIsWhatStopsIt_notTheFixture(@TempDir Path dir) {
         requireKernels();
         // The companion to the test above, and the reason it proves anything:
-        // the same terrain with the gate switched off DOES climb, and reaches
-        // for L2's chunks this DEM does not hold. Without this, a fixture that
-        // simply withheld nothing would pass the test above vacuously.
+        // the same terrain at the DEFAULT cap does climb, and reaches for L2's
+        // chunks this DEM does not hold. Without this, a fixture that simply
+        // withheld nothing would pass the test above vacuously.
         assertThrows(RuntimeException.class,
-                () -> withProperty("stonebreak.water.escalationStake", "0", () ->
-                        withSyncEscalation(() -> cache(
-                                demOver(-1, 2, BasinCacheTest::wideSaucerWithAPuddleAt), dir)
-                                .forColumn(1024, 1024))),
-                "with the gate off the ladder is climbed and the missing DEM is asked for");
+                () -> withSyncEscalation(() -> cache(
+                        demOver(-1, 2, BasinCacheTest::wideSaucerWithAPuddleAt), dir)
+                        .forColumn(1024, 1024)),
+                "at the default cap the ladder is climbed and the missing DEM is asked for");
+    }
+
+    @Test
+    void twoRegionsSharingAWithheldBasinAgreeAboutIt(@TempDir Path dir) {
+        requireKernels();
+        // The seam this fix is about. The 2,800-block crater is centred on the
+        // x = 0 region boundary: too wide for either L1 region to own, so both
+        // withhold it, and both own part of its floor, so both must reach the
+        // same rung for it.
+        //
+        // The old gate compared the withheld basin's trimmed lake against the
+        // coarser rung's emission floor — a measurement taken in THIS window, of
+        // a basin this window by definition could not see whole. Two regions
+        // measure it differently, and a threshold falling between their two
+        // answers sends one to L2 and leaves the other dry: a multi-kilometre
+        // lake on one side of a region seam and nothing on the other. The cap
+        // that replaced it is a constant, so both regions climb identically.
+        //
+        // Asserted across the seam, on ground BOTH windows cover, which is
+        // where a disagreement would show.
+        BasinCache cache = withSyncEscalation(
+                () -> cache(demOver(-6, 5, BasinCacheTest::craterAcrossTheSeamAt), dir));
+        BasinCache.Solved west =
+                withSyncEscalation(() -> cache.solved(BasinCache.Level.L1, -1, 0));
+        BasinCache.Solved east =
+                withSyncEscalation(() -> cache.solved(BasinCache.Level.L1, 0, 0));
+
+        assertTrue(west.withheld() > 0 && east.withheld() > 0,
+                "neither L1 region can own a 2,800-block basin");
+        for (long x : new long[]{-1000, -100, 0, 100, 1000}) {
+            assertTrue(east.isLake(x, 1024),
+                    "the rung that owns it vouched for the lake at x=" + x);
+            assertEquals(east.isLake(x, 1024), west.isLake(x, 1024),
+                    "both regions agree the shared ground is wet at x=" + x);
+            assertEquals(east.filledAt(x, 1024), west.filledAt(x, 1024), 0.0f,
+                    "and agree on its surface to the bit at x=" + x
+                        + " — a lake is level across a region seam");
+        }
     }
 
     @Test

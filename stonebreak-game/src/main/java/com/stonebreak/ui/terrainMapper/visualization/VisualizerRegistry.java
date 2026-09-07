@@ -26,6 +26,9 @@ public final class VisualizerRegistry {
 
     private final Map<VisualizerKind, NoiseVisualizer> visualizers = new EnumMap<>(VisualizerKind.class);
     private long seed;
+    /** The tile chain the current visualizers read through, so {@link #rebuild}
+     *  can release the previous one instead of leaking its threads. */
+    private TerrainTileSource tileSource;
 
     public VisualizerRegistry(long seed) {
         rebuild(seed);
@@ -54,6 +57,9 @@ public final class VisualizerRegistry {
 
     /** Rebuild every visualizer against a fresh seed. Does not touch the services — see {@link #ensureServices()}. */
     public void rebuild(long newSeed) {
+        // The outgoing chain owns a BasinCache with two background threads of
+        // its own; dropping the reference alone leaked them every seed change.
+        closeTileSource();
         this.seed = newSeed;
         DiffusionBridgeConfig config = DiffusionBridgeConfig.fromSystemProperties();
         // Same tile chain the world generator uses (TerrainGenerationSystem
@@ -65,6 +71,7 @@ public final class VisualizerRegistry {
             tileCache = new NativeWaterTiles(tileCache, BasinCache.production(config, newSeed),
                 newSeed, config.tileSizeBlocks(), config.maxCachedTiles());
         }
+        this.tileSource = tileCache;
         HeightMapGenerator heightMap = new HeightMapGenerator(tileCache);
         BiomeManager biomes = new BiomeManager(tileCache);
 
@@ -75,5 +82,17 @@ public final class VisualizerRegistry {
         visualizers.put(VisualizerKind.TOPOGRAPHY, new TopographyVisualizer(heightMap));
         visualizers.put(VisualizerKind.BIOME, new BiomeVisualizer(biomes));
         visualizers.put(VisualizerKind.WATER, new WaterVisualizer(heightMap));
+    }
+
+    /** Releases the current tile chain. Safe to call more than once. */
+    private void closeTileSource() {
+        if (tileSource instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                System.err.println("[VisualizerRegistry] tile source close failed: " + e);
+            }
+        }
+        tileSource = null;
     }
 }

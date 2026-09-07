@@ -97,14 +97,34 @@ public final class BasinCache {
     public static final float DEFAULT_RIVER_KEEP_FRACTION = 0.70f;
 
     /**
-     * How much of the next rung's own emission floor a withheld lake must be
-     * worth before that rung is worth fetching. See {@link #worthEscalating}.
+     * The widest rung the ladder is allowed to climb to. See
+     * {@link #withinLadderCap}.
      *
-     * <p>0.5 is the exact test with one doubling of headroom for the fact that
-     * a truncated window under-measures the lake. 0 restores the old
-     * behaviour — escalate on any withheld basin at all.
+     * <p>L2 owns basins up to 4,032 blocks across, which is more than four
+     * times the widest basin measured on real terrain (928 blocks at L1's
+     * 2,016-block limit). Everything past it stays dry — identically in every
+     * region, which is the property that matters — and costs 64
+     * {@link CoarseDem} chunks rather than L4's 1,024.
+     *
+     * <p>Override with {@code -Dstonebreak.water.maxBasinLevel=L1|L2|L3|L4}.
+     * {@code L1} disables escalation entirely.
      */
-    public static final float DEFAULT_ESCALATION_STAKE = 0.5f;
+    public static final Level DEFAULT_MAX_LEVEL = Level.L2;
+
+    /**
+     * Solved regions production keeps in memory. A region is two 512² float
+     * planes — 2 MB — plus its route plan, so this is roughly 70 MB.
+     *
+     * <p>Sized against movement rather than against one tile: sixteen tiles a
+     * side share a region, so a player crossing a region border has the old
+     * region, the new one, and both sets of river neighbours live at once. 32
+     * covers that with room, and the cost of being wrong in this direction is
+     * only memory — a miss re-reads a plane from disk, never from the GPU.
+     */
+    public static final int DEFAULT_MAX_CACHED_REGIONS = 32;
+
+    /** The floor {@link #productionCachedRegions} enforces; see it for why 9. */
+    public static final int MIN_USEFUL_CACHED_REGIONS = 9;
 
     /**
      * §4.4's ownership levels, finest first — an escalation LADDER rather than
@@ -287,7 +307,7 @@ public final class BasinCache {
     private final float seaLevel;
     private final int minRiverLakeArea;
     private final float riverKeepFraction;
-    private final float escalationStake;
+    private final Level maxLevel;
     private final Map<Key, Solved> memory;
     private final SingleFlight<Flight, Solved> inFlight = new SingleFlight<>();
 
@@ -325,8 +345,7 @@ public final class BasinCache {
         this.seaLevel = seaLevel;
         this.minRiverLakeArea = minRiverLakeArea;
         this.riverKeepFraction = riverKeepFraction;
-        this.escalationStake = Math.max(0.0f, Float.parseFloat(System.getProperty(
-            "stonebreak.water.escalationStake", Float.toString(DEFAULT_ESCALATION_STAKE))));
+        this.maxLevel = parseMaxLevel();
         if (dem.cellBlocks() != Level.L1.cellBlocks) {
             throw new IllegalArgumentException("BasinCache needs a " + Level.L1.cellBlocks
                 + "-block DEM; CoarseDem serves " + dem.cellBlocks());
@@ -372,7 +391,33 @@ public final class BasinCache {
         Path root = "none".equalsIgnoreCase(dir) ? null : Path.of(dir);
         return new BasinCache(new CoarseDem(config, seed), seed, root,
                 DEFAULT_MIN_LAKE_DEPTH, DEFAULT_MIN_LAKE_AREA,
-                WorldConfiguration.SEA_LEVEL, 8);
+                WorldConfiguration.SEA_LEVEL, productionCachedRegions());
+    }
+
+    /**
+     * How many solved regions production keeps resident, from
+     * {@code -Dstonebreak.water.maxCachedRegions} (default
+     * {@link #DEFAULT_MAX_CACHED_REGIONS}).
+     *
+     * <p>Floored at {@link #MIN_USEFUL_CACHED_REGIONS}, which is not a
+     * defensive round number: it is the working set of a SINGLE tile.
+     * {@code NativeWaterTiles.gatherRivers} consults every L1 region within a
+     * route's reach of the tile's window — four regions typically, and nine
+     * near a region corner, because the searched span is 4,864 blocks against a
+     * 4,096-block region. Hold fewer than nine and the corner case evicts a
+     * region it is about to ask for again, and each miss is a 2 MB plane re-read
+     * from disk. It was 8: one short, at exactly the worst moment.
+     */
+    private static int productionCachedRegions() {
+        int want = Integer.getInteger("stonebreak.water.maxCachedRegions",
+            DEFAULT_MAX_CACHED_REGIONS);
+        if (want < MIN_USEFUL_CACHED_REGIONS) {
+            LOG.warning("-Dstonebreak.water.maxCachedRegions=" + want + " is below the "
+                + MIN_USEFUL_CACHED_REGIONS + " a single tile's river gather can touch; "
+                + "using " + MIN_USEFUL_CACHED_REGIONS);
+            return MIN_USEFUL_CACHED_REGIONS;
+        }
+        return want;
     }
 
     /**
@@ -389,24 +434,29 @@ public final class BasinCache {
             .append('|').append(seaLevel)
             .append('|').append(minRiverLakeArea)
             .append('|').append(riverKeepFraction)
-            // A region gated out of escalating is written to disk as finished,
-            // with nothing in the file to say a lower stake would have taken it
-            // further. Retuning the gate must therefore orphan those files, the
-            // same as retuning a rung's geometry does.
-            .append('|').append(escalationStake);
+            // A region that stopped at the ladder cap is written to disk as
+            // finished, with nothing in the file to say a higher cap would have
+            // taken it further. Raising the cap must therefore orphan those
+            // files, the same as retuning a rung's geometry does.
+            .append('|').append(maxLevel.name());
         for (Level level : Level.values()) {
             raw.append('|').append(level.cellBlocks)
                .append(':').append(level.regionBlocks)
                .append(':').append(level.haloBlocks);
         }
-        return Long.toHexString(scramble(raw.toString().hashCode())).substring(0, 12);
+        // Zero-padded rather than substring'd. scramble() returns a 60-bit
+        // value, so about one input in 65,536 renders to eleven hex digits or
+        // fewer and substring(0, 12) threw — deterministically, for the life of
+        // that seed, out of the constructor.
+        return String.format(java.util.Locale.ROOT, "%012x", scramble(raw.toString().hashCode()));
     }
 
+    /** A 48-bit digest of the fingerprint string: twelve hex digits, always. */
     private static long scramble(int h) {
         long x = (h & 0xFFFFFFFFL) + 0x9E3779B97F4A7C15L;
         x = (x ^ (x >>> 30)) * 0xBF58476D1CE4E5B9L;
         x = (x ^ (x >>> 27)) * 0x94D049BB133111EBL;
-        return (x ^ (x >>> 31)) >>> 4;
+        return (x ^ (x >>> 31)) & 0xFFFF_FFFF_FFFFL;
     }
 
     /**
@@ -642,10 +692,19 @@ public final class BasinCache {
         return upgrading.isEmpty() && prefetching.isEmpty();
     }
 
-    /** Releases the background threads. */
+    /**
+     * Releases the background threads. Idempotent.
+     *
+     * <p>The queued-work sets are cleared as well as the executors shut down:
+     * a task interrupted mid-run never reaches its own {@code finally}, and a
+     * key left behind in one of them would make {@link #awaitBackground} wait
+     * for work that can no longer run.
+     */
     public void close() {
         escalator.shutdownNow();
         prefetcher.shutdownNow();
+        upgrading.clear();
+        prefetching.clear();
     }
 
     private Solved resident(Key key) {
@@ -691,8 +750,15 @@ public final class BasinCache {
 
         Level coarserLevel = level.coarser();
         boolean provisional = false;
-        if (withheld > 0 && coarserLevel != null
-                && worthEscalating(level, coarserLevel, regionX, regionZ, stake)) {
+        if (withheld > 0 && coarserLevel != null && !withinLadderCap(coarserLevel)) {
+            // Capped. Every region caps identically, so the basin stays dry on
+            // both sides of every seam it crosses — it keeps its FILL, so the
+            // routing field is still complete and rivers still descend it.
+            LOG.info(level + " region (" + regionX + "," + regionZ + ") withheld "
+                + withheld + " basin(s), the widest " + stake[1] + " blocks across, but "
+                + coarserLevel + " is past the " + maxLevel + " ladder cap; leaving them dry. "
+                + "Raise -Dstonebreak.water.maxBasinLevel to own them.");
+        } else if (withheld > 0 && coarserLevel != null) {
             if (deferEscalation) {
                 // Hand back what this rung does know and let the escalation
                 // thread finish it. The planes are already complete and
@@ -701,12 +767,15 @@ public final class BasinCache {
                 // rung out will vouch for.
                 provisional = true;
             } else {
-                // One rung, on evidence. Escalating straight to the widest is
-                // what cost 24 minutes; the next rung out costs 4x this one's
-                // DEM and almost always ends it.
+                // One rung, on evidence, and unconditionally on that evidence:
+                // any test of how big the withheld basin looked from HERE is
+                // window-dependent, and two regions sharing one basin would
+                // answer it differently (see withinLadderCap). The ladder cap
+                // is what bounds the cost instead.
                 LOG.info(level + " region (" + regionX + "," + regionZ + ") withheld "
                     + withheld + " basin(s) too wide for its " + level.haloBlocks
-                    + "-block halo; escalating to " + coarserLevel);
+                    + "-block halo, the widest " + stake[1] + " blocks across; escalating to "
+                    + coarserLevel);
                 // Each rung's region is a whole number of the finer rung's, on
                 // the same lattice, so this region lies entirely inside one.
                 Solved coarse = resolve(coarserLevel,
@@ -746,63 +815,74 @@ public final class BasinCache {
     }
 
     /**
-     * Whether the next rung out could emit the lake this one withheld — the
-     * difference between "a coarser level is permitted to help" and "a coarser
-     * level can help", which the withheld count alone does not draw.
+     * Whether the ladder may climb to {@code coarser} — a pure function of the
+     * two rungs, and deliberately nothing else.
      *
-     * <p><b>The rung you escalate to is the one least able to emit what you
-     * escalated for.</b> {@code minLakeArea} is counted in CELLS and every rung
-     * doubles its cell size, so the smallest lake a rung will emit grows with
-     * its cell area — on the shipping parameters 0.46 km² at L1, 1.84 at L2,
-     * 7.37 at L3, 29.5 at L4. Meanwhile the rung's DEM window costs 4x the one
-     * below it. Escalating for a lake under the next rung's floor therefore
-     * buys, at four times the price, a plane that is guaranteed to come back
-     * dry over the ground it was fetched for.
+     * <p><b>Why the gate cannot look at the basin.</b> The obvious gate is the
+     * one that was here until 2026-09-04: compare the withheld basin's trimmed
+     * lake against the coarser rung's own emission floor, and skip the fetch
+     * when the coarser rung would come back dry anyway. {@code minLakeArea} is
+     * counted in CELLS and every rung doubles its cell size, so that floor
+     * grows with cell area — 0.46 km² at L1, 1.84 at L2, 7.37 at L3, 29.5 at
+     * L4 — while the DEM costs 4x a rung. Escalating for a lake under the next
+     * rung's floor really does buy a dry plane at four times the price, and it
+     * really was measured: seed 5145549158747503491, L1 region (-1,-1) climbed
+     * to L3 for 207 extra {@link CoarseDem} chunks (~5-7 min of serial GPU, 76 %
+     * of the whole world load) and both coarse planes emitted zero lake cells
+     * over the ground they were fetched for.
      *
-     * <p>Measured on seed 5145549158747503491 (2026-09-03): L1 region (-1,-1)
-     * withheld one basin, escalated to L2, was withheld again, escalated to L3.
-     * That cost 207 extra {@link CoarseDem} chunks — ~5-7 minutes of serial GPU
-     * and 76 % of the entire world load — and both coarse planes emitted
-     * <b>zero</b> lake cells over region (-1,-1)'s ground. This gate is what
-     * stops that ladder being climbed for nothing.
+     * <p>The trouble is that the measurement is <b>window-dependent</b>. A
+     * withheld basin is by definition one this window could not see whole, so
+     * its trimmed lake is a lower bound whose slack depends on where the window
+     * was placed. Two regions sharing one oversized basin measure it
+     * differently, and a threshold between their two measurements makes one
+     * escalate and the other not. The one that escalates imports the coarse
+     * lake over its whole window; the one that does not imports nothing. The
+     * disagreement is over a basin wider than the halo — a multi-kilometre lake
+     * present on one side of a region seam and absent on the other. That is the
+     * exact class of defect §4.4's ownership rule exists to make impossible,
+     * and no amount of headroom on the threshold removes it: headroom moves the
+     * band of spans where the two disagree, it does not close it.
      *
-     * <p><b>The headroom, and why the test is not exact.</b> The stake is the
-     * withheld basin's trimmed lake as measured in THIS window, and a window
-     * that truncates a basin can only under-measure it: the border is an
-     * escape, so a truncated fill sits at or below the true spill and the lake
-     * it implies is at or smaller than the real one. {@link #escalationStake}
-     * is the fraction of the coarser floor that must be reached, defaulting to
-     * 0.5 — the exact test with one doubling of slack for that bias. Set
-     * {@code -Dstonebreak.water.escalationStake=0} to restore the old
-     * escalate-on-any-withheld-basin behaviour.
+     * <p><b>So the cost is bounded by the ladder instead of by the basin.</b>
+     * Every region obeys the same cap, so every region withholds exactly the
+     * same basins and a basin past the cap stays dry <em>identically
+     * everywhere</em> — it keeps its FILL, so the routing field is still
+     * complete and rivers still descend it correctly; only the lake is absent,
+     * and it is absent on both sides of every seam. The escalation below the
+     * cap is unconditional on the withheld count, which is canonical for the
+     * basins that matter: a basin overlapping a region's own rectangle sits at
+     * least a halo from that window's border, so {@code ownsBasin} decides it
+     * the same way in every neighbour, and every region that shares it climbs.
      *
-     * <p><b>What this trades away.</b> The measurement is window-dependent, so
-     * two regions sharing one huge basin can in principle land on opposite
-     * sides of the threshold and disagree about whether it holds water. That is
-     * bounded by what the gate is allowed to skip: only a lake the coarser rung
-     * would itself have discarded, which is a lake near the smallest either
-     * level can emit. A skipped basin keeps its FILL and simply stays dry —
-     * both neighbours withhold it identically — so the failure mode is a small
-     * missing pond, never a broken routing field or a wall of water.
+     * <p>{@link #DEFAULT_MAX_LEVEL} is L2, which owns basins to 4,032 blocks
+     * against the widest ever measured on real terrain (928) and costs 64
+     * {@link CoarseDem} chunks against L4's 1,024 — so the 24-minute climb the
+     * ladder was built to prevent is now unreachable by construction rather
+     * than by a predicate that can disagree with itself.
      */
-    private boolean worthEscalating(Level level, Level coarser,
-                                    long regionX, long regionZ, int[] stake) {
-        if (escalationStake <= 0.0f) {
-            return true;
+    private boolean withinLadderCap(Level coarser) {
+        return coarser.ordinal() <= maxLevel.ordinal();
+    }
+
+    /**
+     * {@code -Dstonebreak.water.maxBasinLevel}, defaulting to
+     * {@link #DEFAULT_MAX_LEVEL}. An unrecognised value is a configuration
+     * mistake worth hearing about, not worth failing a world load over, so it
+     * warns and takes the default.
+     */
+    private static Level parseMaxLevel() {
+        String raw = System.getProperty("stonebreak.water.maxBasinLevel");
+        if (raw == null || raw.isBlank()) {
+            return DEFAULT_MAX_LEVEL;
         }
-        // Both sides in blocks², the only unit the two rungs' lattices share.
-        long lakeBlocks = (long) stake[0] * level.cellBlocks * level.cellBlocks;
-        long coarseFloor = (long) minLakeArea * coarser.cellBlocks * coarser.cellBlocks;
-        long needed = (long) Math.ceil(escalationStake * coarseFloor);
-        if (lakeBlocks >= needed) {
-            return true;
+        try {
+            return Level.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            LOG.warning("-Dstonebreak.water.maxBasinLevel=" + raw + " is not one of "
+                + java.util.Arrays.toString(Level.values()) + "; using " + DEFAULT_MAX_LEVEL);
+            return DEFAULT_MAX_LEVEL;
         }
-        LOG.info(level + " region (" + regionX + "," + regionZ + ") withheld a basin "
-            + stake[1] + " blocks across, but its lake measures only " + lakeBlocks
-            + " blocks^2 against the " + needed + " " + coarser + " needs to emit anything "
-            + "there; leaving it dry rather than fetching " + coarser + "'s DEM. Lower "
-            + "-Dstonebreak.water.escalationStake to escalate anyway.");
-        return false;
     }
 
     /**

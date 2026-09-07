@@ -48,6 +48,7 @@ public class TerrainGenerationSystem {
     /** {@code outFloor} sentinel for a cell with no cave mouth; see {@link #sampleCellOpenings}. */
     public static final int NO_OPENING = Integer.MIN_VALUE;
 
+    private final TerrainTileSource tileSource;
     private final HeightMapGenerator heightMapGenerator;
     private final BiomeManager biomeManager;
     private final OreGenerator oreGenerator;
@@ -110,6 +111,7 @@ public class TerrainGenerationSystem {
      */
     TerrainGenerationSystem(long seed, TerrainTileSource tileSource) {
         this.seed = seed;
+        this.tileSource = tileSource;
         this.deterministicRandom = new DeterministicRandom(seed);
         this.heightMapGenerator = new HeightMapGenerator(tileSource);
         this.biomeManager = new BiomeManager(tileSource);
@@ -127,6 +129,25 @@ public class TerrainGenerationSystem {
         // Lets a sinkhole cut to exactly the depth that opens into a real tunnel.
         this.sinkholeCarver.setWormCarver(wormCarver);
         this.surfaceProfiles = new SurfaceProfileCache(this::buildSurfaceProfile);
+    }
+
+    /**
+     * Releases whatever the tile chain holds open — with the native water
+     * backend that is {@link NativeWaterTiles}, and through it the
+     * {@link BasinCache}'s escalation and prefetch threads.
+     *
+     * <p>Called from {@code World.cleanup()}. Nothing here is required for a
+     * clean JVM exit (the threads are daemons), but a session that loads
+     * several worlds leaked a pair of them and a region cache every time.
+     */
+    public void shutdown() {
+        if (tileSource instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                System.err.println("[TerrainGenerationSystem] tile source close failed: " + e);
+            }
+        }
     }
 
     public long getSeed() {

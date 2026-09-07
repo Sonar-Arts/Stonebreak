@@ -55,7 +55,10 @@
 namespace {
 
 constexpr float DEF_VALLEY_RADIUS = 80.0f;
-constexpr float DEF_BANK_HEIGHT = 8.0f;
+/* Blocks of ground above the water surface that still read as an ordinary
+ * bank: what a Normal reach's valley pull lifts terrain to. Params slot [10]
+ * ("bank_tolerance") overrides it, and this is the slot's only consumer. */
+constexpr float DEF_BANK_TOLERANCE = 8.0f;
 
 inline size_t idx2(int row, int col, int stride) {
     return static_cast<size_t>(row) * static_cast<size_t>(stride) + static_cast<size_t>(col);
@@ -280,13 +283,18 @@ int32_t ck_carve_water(int64_t seed,
     const size_t N = static_cast<size_t>(W) * static_cast<size_t>(W);
 
     /* The shared water params array (kernels.h documents it). The carve reads
-     * three of its entries; the rest belong to the plan. Indices are shared
-     * with ck_solve_basins on purpose — `bank_tolerance` is one idea, and two
-     * copies of it would be one more place to drift. */
+     * exactly TWO of its entries — [10] and [14]; the rest belong to the plan,
+     * and sea level arrives as its own argument rather than through [2].
+     *
+     * `bank_tolerance` is deliberately one idea in one slot: the height of
+     * ground above the water that still reads as an ordinary bank. This is the
+     * only place it is consumed — the router classifies Normal vs Gorge on
+     * `gorge_max_depth`, not on this — so a second copy on the solve side would
+     * be a knob that looks live and is not. There was one until 2026-09-06. */
     float valleyRadius = DEF_VALLEY_RADIUS;
-    float bankHeight = DEF_BANK_HEIGHT;
+    float bankTolerance = DEF_BANK_TOLERANCE;
     if (params != nullptr) {
-        if (n_params > 10) bankHeight = params[10];
+        if (n_params > 10) bankTolerance = params[10];
         if (n_params > 14) valleyRadius = params[14];
     }
     valleyRadius = std::clamp(valleyRadius, 1.0f, static_cast<float>(T));
@@ -387,9 +395,31 @@ int32_t ck_carve_water(int64_t seed,
     bucketSegments(s.channel, 2.0f, nb, W, s.channelBuckets);
     bucketSegments(s.valley, valleyRadius, nb, W, s.valleyBuckets);
 
-    /* ── 2. Stamp: lakes from the fill, rivers from the plan, then the sea ── */
-    for (int x = 0; x < W; ++x) {
-        for (int z = 0; z < W; ++z) {
+    /* ── 2. Stamp: lakes from the fill, rivers from the plan, then the sea ──
+     *
+     * Over the center tile and a ONE-COLUMN ring around it, not the whole
+     * window. The window exists so this pass has its INPUTS — a valley pull
+     * reaches 80 blocks, a route sourced next door crosses the border, and the
+     * DEM stencil straddles cells — and all three are read at world
+     * coordinates that lie outside the stamped range without being stamped
+     * themselves. The ring is there for §3 below, which walls a dry column
+     * against its four neighbors' water and therefore reads one column past
+     * the tile on each side; nothing reads further.
+     *
+     * Stamping the full window instead computed 9x the columns and discarded
+     * eight ninths of them. Measured on a 256-block tile, 200 iterations:
+     * lakes only 4.22 -> 0.555 ms, with two routes crossing 14.70 -> 3.30 ms,
+     * with `out_heights`/`out_water` byte-identical either way.
+     *
+     * The bound is coupled to §3's neighbor reads: widen those and this range
+     * must widen with them, or the repair reads columns this pass never wrote.
+     * `s.water` is cleared to -1 over the whole window below regardless, so
+     * the failure mode of getting that wrong is a missing wall rather than
+     * stale water from the previous tile on this thread. */
+    const int stampLo = T - 1;
+    const int stampHi = 2 * T + 1;
+    for (int x = stampLo; x < stampHi; ++x) {
+        for (int z = stampLo; z < stampHi; ++z) {
             const size_t i = idx2(x, z, W);
             /* Terrain is NOT carved for a lake. A lake sits in a depression the
              * terrain already has — that is what the fill found — so there is
@@ -436,7 +466,7 @@ int32_t ck_carve_water(int64_t seed,
                 const float f = 1.0f - d / valleyRadius;
                 const float falloff = f * f * (3.0f - 2.0f * f);
                 const float target = static_cast<float>(raw)
-                    + falloff * (surfF + bankHeight - static_cast<float>(raw));
+                    + falloff * (surfF + bankTolerance - static_cast<float>(raw));
                 carved = std::min(carved, static_cast<int>(std::lround(target)));
             }
 
@@ -489,7 +519,11 @@ int32_t ck_carve_water(int64_t seed,
         }
     }
 
-    /* ── 3. Containment repair + emission (center tile only) ── */
+    /* ── 3. Containment repair + emission (center tile only) ──
+     *
+     * The four neighbor reads below reach one column outside the tile, which
+     * is exactly what §2's stamp range is sized for. Reaching further — a
+     * diagonal, a second ring — means widening `stampLo`/`stampHi` to match. */
     for (int x = 0; x < T; ++x) {
         for (int z = 0; z < T; ++z) {
             const size_t wi = idx2(x + T, z + T, W);

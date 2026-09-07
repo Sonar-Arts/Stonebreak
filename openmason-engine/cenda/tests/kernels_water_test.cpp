@@ -168,7 +168,8 @@ struct Tile {
  * `region == nullptr` runs the no-DEM path.
  */
 template <typename F>
-Tile runTile(int64_t seed, int64_t tileX, int64_t tileZ, F&& terrain, const Region* region) {
+Tile runTile(int64_t seed, int64_t tileX, int64_t tileZ, F&& terrain, const Region* region,
+             const float* params = nullptr, int32_t nParams = 0) {
     const int64_t originX = (tileX - 1) * T;
     const int64_t originZ = (tileZ - 1) * T;
     std::vector<int16_t> window(static_cast<size_t>(W) * static_cast<size_t>(W));
@@ -209,7 +210,7 @@ Tile runTile(int64_t seed, int64_t tileX, int64_t tileZ, F&& terrain, const Regi
                                       region == nullptr ? 0 : region->routeCount,
                                       region == nullptr ? nullptr : region->starts.data(),
                                       region == nullptr ? nullptr : region->verts.data(),
-                                      nullptr, 0,
+                                      params, nParams,
                                       t.heights.data(), t.water.data());
     check(rc == 0, "ck_carve_water returned 0");
     return t;
@@ -656,6 +657,53 @@ void testDocumentedDefaultsAreTheRealDefaults() {
     std::puts("params ABI ok");
 }
 
+void testBankToleranceIsLiveOnTheCarve() {
+    /* Slot [10] was HALF dead until 2026-09-06: `ck_solve_basins` parsed it
+     * into a `Config` field nothing ever read, while `ck_carve_water` used it
+     * as the bank height. The defaults-vs-NULL test above cannot see that —
+     * both sides defaulted to 8 — so a dead knob passed every assertion in this
+     * file. This one fails if the slot stops reaching the ground.
+     *
+     * Direction: the valley pull draws terrain toward `surf + bank_tolerance`
+     * and takes a `min` against the raw ground, so LOWERING the tolerance can
+     * only cut more. No column may come out higher than it did at the default.
+     *
+     * Probing downward rather than upward is not arbitrary. At the default 8
+     * this fixture's banks already stand less than 8 blocks over the water, so
+     * `surf + 8` is above the raw ground and the `min` never bites — raising
+     * the knob to 24 moves exactly nothing, which is correct and useless as a
+     * liveness signal. Dropping it to 0 pulls the valley down to the water
+     * surface itself, which any live wiring must show. */
+    const Region r = solveRegion(0, 0, riverTerrainAt, 777, 1.0f);
+    check(r.routeCount > 0, "bank tolerance: the fixture plans a river");
+    if (r.routeCount == 0) {
+        return;
+    }
+
+    float flattened[26];
+    for (int i = 0; i < 26; ++i) {
+        flattened[i] = DOCUMENTED_DEFAULTS[i];
+    }
+    flattened[10] = 0.0f;
+
+    int higher = 0;
+    int lower = 0;
+    for (int64_t tx = 2; tx <= 7; ++tx) {
+        const Tile base = runTile(777, tx, 8, riverTerrainAt, &r, DOCUMENTED_DEFAULTS, 26);
+        const Tile flat = runTile(777, tx, 8, riverTerrainAt, &r, flattened, 26);
+        for (size_t i = 0; i < base.heights.size(); ++i) {
+            if (flat.heights[i] < base.heights[i]) {
+                ++lower;
+            } else if (flat.heights[i] > base.heights[i]) {
+                ++higher;
+            }
+        }
+    }
+    check(lower > 0, "lowering bank_tolerance changes the carved ground (the slot is live)");
+    check(higher == 0, "and only ever downward — a shorter bank cannot raise a valley");
+    std::printf("bank tolerance ok (%d columns lowered, %d raised)\n", lower, higher);
+}
+
 void testEachDensityKnobMovesInTheDocumentedDirection() {
     float p[26];
     std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
@@ -767,6 +815,7 @@ int main() {
     testRiversAgreeAcrossATileSeam();
     testNoRoutesMeansNoRivers();
     testDocumentedDefaultsAreTheRealDefaults();
+    testBankToleranceIsLiveOnTheCarve();
     testEachDensityKnobMovesInTheDocumentedDirection();
     testSea();
     testMountains();

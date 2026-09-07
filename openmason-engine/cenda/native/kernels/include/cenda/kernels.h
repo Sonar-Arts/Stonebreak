@@ -228,7 +228,7 @@ int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
  *    7   w_inertia             weight        1.0  solve
  *    8   w_descent             weight       0.55  solve
  *    9   meander_amp           radians      0.35  solve
- *   10   bank_tolerance        blocks          8  solve, carve
+ *   10   bank_tolerance        blocks          8  carve
  *   11   gorge_max_depth       blocks         24  solve
  *   12   gorge_max_width       blocks         96  solve
  *   13   waterfall_min_drop    blocks          6  solve
@@ -420,8 +420,10 @@ int32_t ck_solve_basins(int64_t seed,
  * violation is a permanent spring. Wet-next-to-wet at differing levels is a
  * waterfall and is deliberately allowed.
  *
- * params: the shared water params array above; the carve reads [2] sea_level,
- * [10] bank_tolerance and [14] valley_radius. *
+ * params: the shared water params array above. The carve reads exactly two of
+ * its entries — [10] bank_tolerance and [14] valley_radius. Sea level arrives
+ * as the `sea_level` argument, NOT through [2]; the solve is what reads [2].
+ *
  * Thread-safe and reentrant (per-thread scratch). Returns 0 on success,
  * negative on bad arguments. */
 

@@ -8,8 +8,14 @@ import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -192,6 +198,69 @@ public class NativeWaterTilesTest {
                 SEA, BasinCache.DEFAULT_MIN_RIVER_LAKE_AREA, keepFraction, 4);
         return new Stack(new NativeWaterTiles(new RawHillsTiles(), basins, SEED, TILE, 64),
                 basins);
+    }
+
+    @Test
+    public void concurrentCallersForOneTileHydrateItOnce() throws Exception {
+        // A hydration is nine raw-tile fetches, a river gather across up to
+        // nine regions and a native carve. The wrapper used to let EVERY thread
+        // that arrived before the first one finished run all of it — the
+        // CompletableFuture deduplicated the result, not the work — so a dozen
+        // chunk threads landing on one cold tile paid for it a dozen times.
+        //
+        // Counted at the raw source: hydrate() asks for its centre tile exactly
+        // once, so requests for that one key ARE the hydration count.
+        final int threads = 8;
+        final int worldX = 1024;
+        final int worldZ = 1024;
+        CountDownLatch arrived = new CountDownLatch(threads);
+        AtomicInteger centreRequests = new AtomicInteger();
+
+        RawHillsTiles raw = new RawHillsTiles();
+        TerrainTileSource counting = (x, z) -> {
+            if (Math.floorDiv(x, TILE) == Math.floorDiv(worldX, TILE)
+                    && Math.floorDiv(z, TILE) == Math.floorDiv(worldZ, TILE)) {
+                centreRequests.incrementAndGet();
+                // Hold the first hydrator here until every caller has had time
+                // to reach the wrapper, so they really do contend.
+                try {
+                    arrived.await(10, TimeUnit.SECONDS);
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return raw.getTile(x, z);
+        };
+
+        BasinCache basins = new BasinCache(dem(), SEED, null,
+                BasinCache.DEFAULT_MIN_LAKE_DEPTH, BasinCache.DEFAULT_MIN_LAKE_AREA,
+                SEA, BasinCache.DEFAULT_MIN_RIVER_LAKE_AREA,
+                BasinCache.DEFAULT_RIVER_KEEP_FRACTION, 4);
+        try (NativeWaterTiles tiles =
+                     new NativeWaterTiles(counting, basins, SEED, TILE, 64)) {
+            List<TerrainTile> results = Collections.synchronizedList(new ArrayList<>());
+            List<Thread> workers = new ArrayList<>();
+            for (int i = 0; i < threads; i++) {
+                Thread t = new Thread(() -> {
+                    arrived.countDown();
+                    results.add(tiles.getTile(worldX, worldZ));
+                });
+                workers.add(t);
+                t.start();
+            }
+            for (Thread t : workers) {
+                t.join(60_000);
+                assertTrue(!t.isAlive(), "worker finished");
+            }
+
+            assertEquals(threads, results.size(), "every caller got a tile");
+            assertEquals(1, centreRequests.get(),
+                    "one hydration serves every concurrent caller");
+            for (TerrainTile got : results) {
+                assertSame(results.get(0), got, "and they all get the same instance");
+            }
+        }
     }
 
     @Test

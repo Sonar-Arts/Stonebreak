@@ -783,6 +783,9 @@ public class World {
 
         meshScheduler.shutdown();
         chunkStore.cleanup();
+        // After the chunk store: nothing may ask for a tile once the tile
+        // chain's background threads are gone.
+        terrainSystem.shutdown();
         // Deferred AFTER chunkStore.cleanup() so anything it queued is included in the
         // final main-thread drain (nothing ticks this pipeline's queue once the world is
         // swapped out).

@@ -98,9 +98,13 @@ struct Config {
     float meanderFreq = 1.0f / 300.0f; /* blocks^-1                       */
 
     /* ── Carve policy (§5.6) and waterfalls (§5.8) ── */
-    /* Blocks of ground above the water surface that count as ordinary banks.
-     * Phase 9 stamps a valley to this height on a Normal reach. */
-    float bankTolerance = 8.0f;
+    /* Params slot [10], bank_tolerance — the height of ground above the water
+     * that still reads as an ordinary bank — is deliberately NOT here. Routing
+     * does not use it: a reach is Normal or Gorge by `gorgeMaxDepth` below, and
+     * the bank height only matters at stamp time. It lived here until
+     * 2026-09-06, parsed out of the array and never read once, which is worse
+     * than absent — a knob that looks honoured and is not. `water.cpp` owns it.
+     */
     /* Banks higher than this make the reach a GORGE: confined ground where the
      * valley pull would flatten a canyon into a trough, so phase 9 leaves the
      * walls standing instead. */

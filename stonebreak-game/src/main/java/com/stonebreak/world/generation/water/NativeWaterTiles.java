@@ -63,7 +63,7 @@ import java.util.logging.Logger;
  * wired — tiles get sea-level-only water, logged once, rather than failing
  * world load.
  */
-public final class NativeWaterTiles implements TerrainTileSource {
+public final class NativeWaterTiles implements TerrainTileSource, AutoCloseable {
 
     private static final Logger LOG = Logger.getLogger(NativeWaterTiles.class.getName());
 
@@ -118,18 +118,33 @@ public final class NativeWaterTiles implements TerrainTileSource {
     @Override
     public TerrainTile getTile(int worldX, int worldZ) {
         TileKey key = new TileKey(Math.floorDiv(worldX, tileSize), Math.floorDiv(worldZ, tileSize));
-        CompletableFuture<TerrainTile> future =
-            tiles.computeIfAbsent(key, k -> new CompletableFuture<>());
-        if (!future.isDone()) {
-            // First caller (or a concurrent one) computes; completeSupplied is
-            // idempotent so a race costs at most one redundant hydration of the
-            // same deterministic result.
+        // Exactly one thread hydrates a given tile; the rest wait on its future.
+        //
+        // The obvious shape — computeIfAbsent, then "if (!future.isDone())
+        // complete(hydrate(key))" — makes EVERY thread that arrives before the
+        // first one finishes run the whole hydration. complete() being
+        // idempotent only makes the stored RESULT single-valued; it does not
+        // stop the work. A hydration is nine raw-tile fetches, a river gather
+        // across up to nine regions and a native carve, so a dozen chunk
+        // threads landing on one cold tile paid for it a dozen times. The
+        // creator is elected inside computeIfAbsent instead (the mapping
+        // function only allocates, so it is safe to run under the bin lock).
+        boolean[] mine = {false};
+        CompletableFuture<TerrainTile> future = tiles.computeIfAbsent(key, k -> {
+            mine[0] = true;
+            return new CompletableFuture<>();
+        });
+        if (mine[0]) {
             try {
                 future.complete(hydrate(key));
-            } catch (RuntimeException e) {
-                // Never cache a failure: drop the slot so the next probe retries.
+            } catch (RuntimeException | Error e) {
+                // Never cache a failure: drop the slot so the next probe
+                // retries. Completing exceptionally as well as removing is what
+                // releases the waiters already parked on this future — dropping
+                // it alone would leave them blocked on a join() nobody finishes.
                 tiles.remove(key, future);
                 future.completeExceptionally(e);
+                throw e;
             }
         }
         try {
@@ -139,6 +154,9 @@ public final class NativeWaterTiles implements TerrainTileSource {
         } catch (CompletionException e) {
             if (e.getCause() instanceof RuntimeException re) {
                 throw re;
+            }
+            if (e.getCause() instanceof Error err) {
+                throw err;
             }
             throw e;
         }
@@ -351,6 +369,27 @@ public final class NativeWaterTiles implements TerrainTileSource {
             LOG.info("basin " + region.level() + " region (" + region.regionX() + ","
                 + region.regionZ() + ") landed; dropped " + dropped
                 + " tile(s) stamped before it was available");
+        }
+    }
+
+    /**
+     * Releases the {@link BasinCache} this wrapper owns, and with it the two
+     * background threads it runs.
+     *
+     * <p>Both are daemons, so leaking them never blocked JVM exit — which is
+     * why nothing called this for a while. It still leaked a pair of threads
+     * and a region cache per world load and per terrain-mapper seed change,
+     * and those add up over a session.
+     *
+     * <p>Idempotent, and safe to call while tiles are still being served: the
+     * hydrations already in flight finish against whatever the cache has, and
+     * anything asked for afterwards fails loudly rather than silently serving
+     * water-free terrain.
+     */
+    @Override
+    public void close() {
+        if (basins != null) {
+            basins.close();
         }
     }
 
