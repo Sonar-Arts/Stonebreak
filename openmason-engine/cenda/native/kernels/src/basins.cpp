@@ -79,24 +79,23 @@ void readRiverParams(const float* params, int32_t n, rp::Config& cfg) {
     if (n > 7) cfg.wInertia = params[7];
     if (n > 8) cfg.wDescent = params[8];
     if (n > 9) cfg.meanderAmp = params[9];
-    /* [10] is bank_tolerance, which only the carve reads. The router splits
-     * Normal from Gorge on gorge_max_depth below; it has no use for the bank
-     * height, and storing it here made a live-looking knob that was not. */
-    if (n > 11) cfg.gorgeMaxDepth = params[11];
-    if (n > 12) cfg.gorgeMaxWidth = params[12];
-    if (n > 13) cfg.waterfallMinDrop = params[13];
-    /* [14] is valley_radius, which only the carve reads. */
-    if (n > 15) cfg.wBase = params[15];
-    if (n > 16) cfg.wLake = params[16];
-    if (n > 17) cfg.wDist = params[17];
-    if (n > 18) cfg.volScale = params[18];
-    if (n > 19) cfg.distScale = params[19];
-    if (n > 20) cfg.dBase = params[20];
-    if (n > 21) cfg.dGain = params[21];
-    if (n > 22) cfg.plungeWiden = params[22];
-    if (n > 23) cfg.refineLevels = static_cast<int32_t>(params[23]);
-    if (n > 24) cfg.refineAmp = params[24];
-    if (n > 25) cfg.minPoints = static_cast<int32_t>(params[25]);
+    if (n > 10) cfg.gorgeMaxDepth = params[10];
+    if (n > 11) cfg.gorgeMaxWidth = params[11];
+    if (n > 12) cfg.waterfallMinDrop = params[12];
+    if (n > 13) cfg.wBase = params[13];
+    if (n > 14) cfg.wLake = params[14];
+    if (n > 15) cfg.wDist = params[15];
+    if (n > 16) cfg.volScale = params[16];
+    if (n > 17) cfg.distScale = params[17];
+    if (n > 18) cfg.dBase = params[18];
+    if (n > 19) cfg.dGain = params[19];
+    if (n > 20) cfg.plungeWiden = params[20];
+    if (n > 21) cfg.refineLevels = static_cast<int32_t>(params[21]);
+    if (n > 22) cfg.refineAmp = params[22];
+    if (n > 23) cfg.minPoints = static_cast<int32_t>(params[23]);
+    /* [24] and [25] are the tunnel knobs, which only the carve reads. The two
+     * carve-only slots that used to sit at [10] and [14] went with the valley
+     * pull; the indices after them shifted down to close the holes. */
 }
 
 } // namespace

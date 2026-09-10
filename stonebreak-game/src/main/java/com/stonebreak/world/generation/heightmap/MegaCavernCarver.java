@@ -150,7 +150,18 @@ public final class MegaCavernCarver {
      * suppresses nothing.
      */
     public Result buildForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels) {
-        int[] waterGuard = WaterGuard.guardPlane(targetHeights, waterLevels, heightMapGenerator, chunkX, chunkZ);
+        return buildForChunk(chunkX, chunkZ, targetHeights, waterLevels, null);
+    }
+
+    /**
+     * As {@link #buildForChunk(int, int, int[], int[])}, also keeping clear of the river
+     * TUNNELS in {@code riverFloors}. A tunnelled column's height is the ground
+     * standing over the river, so without this the guard measures from the hilltop
+     * and leaves the passage itself open to be carved into and drained.
+     */
+    public Result buildForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels,
+                                    int[] riverFloors) {
+        int[] waterGuard = WaterGuard.guardPlane(targetHeights, waterLevels, riverFloors, heightMapGenerator, chunkX, chunkZ);
         BitSet carve = new BitSet();
         for (int dcx = -SCAN_RADIUS; dcx <= SCAN_RADIUS; dcx++) {
             for (int dcz = -SCAN_RADIUS; dcz <= SCAN_RADIUS; dcz++) {

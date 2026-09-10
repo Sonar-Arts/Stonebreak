@@ -46,6 +46,22 @@ public class HeightMapGenerator {
     }
 
     /**
+     * Floor of the river tunnel through a column, or {@link TerrainTile#NO_TUNNEL}.
+     *
+     * <p>This, not {@link #generateHeight}, is the bed of a tunnelled column:
+     * the height there is the ground standing over the river, so a cave guard
+     * measuring from the height leaves the tunnel itself open.
+     */
+    public int riverFloor(int x, int z) {
+        return tileSource.getTile(x, z).riverFloorAt(x, z);
+    }
+
+    /** @see #riverFloor */
+    public int riverRoof(int x, int z) {
+        return tileSource.getTile(x, z).riverRoofAt(x, z);
+    }
+
+    /**
      * Fills a 16x16 final-height grid for the given chunk, indexed [x*16+z].
      * A chunk (16 blocks) always fits inside a single bridge tile (256
      * blocks by default, always a multiple of CHUNK_SIZE), so this resolves
@@ -70,15 +86,39 @@ public class HeightMapGenerator {
      * "no water here" into "one block of water at bedrock".
      */
     public void populateChunkHeights(int chunkX, int chunkZ, int[] out, int[] outWaterLevels) {
+        populateChunkHeights(chunkX, chunkZ, out, outWaterLevels, null, null);
+    }
+
+    /**
+     * As {@link #populateChunkHeights(int, int, int[], int[])}, and fills the
+     * co-located river-tunnel planes when they are non-null: the void a river
+     * runs through where it passes under standing ground, as
+     * {@code outRiverFloors < y < outRiverRoofs}, or
+     * {@link TerrainTile#NO_TUNNEL} in both for a column that has none.
+     *
+     * <p>All four planes come from the one resolved tile for the same reason the
+     * first two do: they describe one column between them and must not be able
+     * to disagree about which tile that column came from.
+     */
+    public void populateChunkHeights(int chunkX, int chunkZ, int[] out, int[] outWaterLevels,
+                                     int[] outRiverFloors, int[] outRiverRoofs) {
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
         TerrainTile tile = tileSource.getTile(baseX, baseZ);
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 int idx = x * CHUNK_SIZE + z;
-                out[idx] = clampToWorld(tile.heightAt(baseX + x, baseZ + z));
+                int worldX = baseX + x;
+                int worldZ = baseZ + z;
+                out[idx] = clampToWorld(tile.heightAt(worldX, worldZ));
                 if (outWaterLevels != null) {
-                    outWaterLevels[idx] = tile.waterLevelAt(baseX + x, baseZ + z);
+                    outWaterLevels[idx] = tile.waterLevelAt(worldX, worldZ);
+                }
+                if (outRiverFloors != null) {
+                    outRiverFloors[idx] = tile.riverFloorAt(worldX, worldZ);
+                }
+                if (outRiverRoofs != null) {
+                    outRiverRoofs[idx] = tile.riverRoofAt(worldX, worldZ);
                 }
             }
         }

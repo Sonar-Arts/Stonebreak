@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-#define CK_ABI_VERSION 7
+#define CK_ABI_VERSION 8
 
 /* ABI handshake — Java refuses to use the lib if this doesn't match. */
 int32_t ck_abi_version(void);
@@ -228,24 +228,24 @@ int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
  *    7   w_inertia             weight        1.0  solve
  *    8   w_descent             weight       0.55  solve
  *    9   meander_amp           radians      0.35  solve
- *   10   bank_tolerance        blocks          8  carve
- *   11   gorge_max_depth       blocks         24  solve
- *   12   gorge_max_width       blocks         96  solve
- *   13   waterfall_min_drop    blocks          6  solve
- *   14   valley_radius         blocks         80  carve
- *   15   w_base                blocks          4  solve
- *   16   w_lake                blocks          3  solve
- *   17   w_dist                blocks          2  solve
- *   18   vol_scale             blocks^3    50000  solve
- *   19   dist_scale            blocks       1000  solve
- *   20   d_base                blocks        1.5  solve
- *   21   d_gain                blocks        0.8  solve
- *   22   plunge_widen          multiplier    1.6  solve
- *   23   refine_levels         count           2  solve
- *   24   refine_amp            fraction     0.22  solve
- *   25   min_points            vertices        4  solve
+ *   10   gorge_max_depth       blocks         24  solve
+ *   11   gorge_max_width       blocks         96  solve
+ *   12   waterfall_min_drop    blocks          6  solve
+ *   13   w_base                blocks          4  solve
+ *   14   w_lake                blocks          3  solve
+ *   15   w_dist                blocks          2  solve
+ *   16   vol_scale             blocks^3    50000  solve
+ *   17   dist_scale            blocks       1000  solve
+ *   18   d_base                blocks        1.5  solve
+ *   19   d_gain                blocks        0.8  solve
+ *   20   plunge_widen          multiplier    1.6  solve
+ *   21   refine_levels         count           2  solve
+ *   22   refine_amp            fraction     0.22  solve
+ *   23   min_points            vertices        4  solve
+ *   24   tunnel_headroom       blocks          5  carve
+ *   25   tunnel_min_roof       blocks          4  carve
  *
- * Four deliberate departures from §8's table:
+ * Five deliberate departures from §8's table:
  *
  *   sea_level is here at [2]. §8 omitted it because the old design passed it
  *   as an argument; both kernels need it and one source is better than two.
@@ -259,6 +259,15 @@ int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
  *
  *   vol_scale and dist_scale are new. §5.5's width formula divides by both and
  *   §8's table forgot them; a width term without its scale is not a knob.
+ *
+ *   bank_tolerance and valley_radius are GONE, and tunnel_headroom and
+ *   tunnel_min_roof replace them (2026-09-07). Both belonged to the valley
+ *   pull, which lowered terrain toward the water over an 80-block radius; the
+ *   carve no longer lowers terrain at all, so the pull cannot fire and is
+ *   deleted rather than gated. They sat at [10] and [14] and the indices after
+ *   them shift down, the same compaction w_avoid's removal got. The two new
+ *   slots shape what replaced the pull: how much air a river tunnel carries
+ *   above its water, and the thinnest rock lid that still reads as ground.
  *
  *   The ownership lattice — cell/region/halo, i.e. which region emits which
  *   column — is NOT here. It is passed per call (see ck_solve_basins) because
@@ -350,8 +359,7 @@ int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
  * ground must gather from every region within a route's reach of it, which at
  * L1 is ~2 km — rivers cross region borders and ownership does not change that.
  *
- * params: the shared water params array above; solve reads [0]-[13] and
- * [15]-[25]. *
+ * params: the shared water params array above; solve reads [0]-[23]. *
  * Thread-safe and reentrant (per-thread scratch). Returns the number of basins
  * withheld for the coarser level (>= 0), or negative on bad arguments. */
 
@@ -411,18 +419,34 @@ int32_t ck_solve_basins(int64_t seed,
  *
  * out_heights/out_water: tile_size^2, same layout, center tile only.
  * Water level w means the column holds water for height <= y < w; -1 = dry.
- * Terrain is returned uncarved for LAKES — one sits in a depression the
- * terrain already has — and carved for RIVERS: a channel cut to the bed depth
- * and, on an ordinary reach, a valley drawn down around it. A gorge reach
- * keeps its walls.
+ *
+ * THIS KERNEL DOES NOT LOWER TERRAIN. Nothing is carved for a LAKE — one sits
+ * in a depression the terrain already has. A RIVER cuts a bed where it runs at
+ * grade, and where ground stands above its surface it TUNNELS under that ground
+ * instead of removing it: `out_heights` keeps the raw height and the passage
+ * comes back in the two planes below. Before 2026-09-07 the channel cut was
+ * unconditional and a river crossing a hill deleted the hill.
+ *
+ * out_river_floor/out_river_roof: tile_size^2, same layout, center tile only,
+ * and both optional (pass NULL to discard). Where a column carries a tunnel its
+ * void is `floor < y < roof`, holding water below `out_water[i]` and air above;
+ * -1 in both means no tunnel, which is the great majority of columns. The roof
+ * is always at least `tunnel_min_roof` below `out_heights[i]`, so the ground
+ * over a tunnel is never breached, and the void pinches shut at the channel
+ * edge, so the column beside one is solid.
+ *
  * Containment invariant (WaterSim): every wet column's 4-neighbors are wet
  * or have terrain >= its level; worldgen water is source blocks, so a
  * violation is a permanent spring. Wet-next-to-wet at differing levels is a
- * waterfall and is deliberately allowed.
+ * waterfall and is deliberately allowed. A tunnel is contained by the rock
+ * around it rather than by this rule — hence the roof clamp and the pinch.
+ * NOTE for the caller: a carver that breaks into a tunnel drains it exactly
+ * like a breached riverbed, so the cave guard must read `out_river_floor` as
+ * the bed of a tunnelled column, not `out_heights`.
  *
  * params: the shared water params array above. The carve reads exactly two of
- * its entries — [10] bank_tolerance and [14] valley_radius. Sea level arrives
- * as the `sea_level` argument, NOT through [2]; the solve is what reads [2].
+ * its entries — [24] tunnel_headroom and [25] tunnel_min_roof. Sea level
+ * arrives as the `sea_level` argument, NOT through [2]; the solve reads [2].
  *
  * Thread-safe and reentrant (per-thread scratch). Returns 0 on success,
  * negative on bad arguments. */
@@ -437,7 +461,8 @@ int32_t ck_carve_water(int64_t seed,
                        int32_t n_routes, const int32_t* route_starts,
                        const float* vertices,
                        const float* params, int32_t n_params,
-                       int16_t* out_heights, int16_t* out_water);
+                       int16_t* out_heights, int16_t* out_water,
+                       int16_t* out_river_floor, int16_t* out_river_roof);
 
 /* ════════════════════════ zstd codec ════════════════════════ */
 

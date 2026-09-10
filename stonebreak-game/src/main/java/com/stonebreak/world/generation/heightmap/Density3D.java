@@ -6,6 +6,7 @@ import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.generation.biomes.BiomeSurfaceConfig;
 import com.stonebreak.world.generation.biomes.BiomeSurfaceConfig.Entry;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.noise.TerrainNoise;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -68,6 +69,13 @@ public final class Density3D {
     private static final int CAVE_FLOOR = 8;
     /** Top N blocks of the column are governed by the biome's overhangIntensity. */
     private static final int OVERHANG_DEPTH = 16;
+    /**
+     * Blocks of rock kept around a river tunnel's shell. One would do — this carve is a
+     * per-cell test with no radius, unlike the blob carvers whose clearance has to cover
+     * their reach — but two leaves a wall rather than a skin, so a single noise cell
+     * landing on the boundary cannot open the passage.
+     */
+    private static final int TUNNEL_CLEARANCE = 2;
 
     /** Cheese: low frequency, flattened, so chambers are wider than tall. */
     private static final float CHEESE_SCALE = 1f / 96f;
@@ -132,6 +140,7 @@ public final class Density3D {
     private final int spag2Seed;
     private final CaveWaterTable waterTable;
     private final CliffExposure cliffExposure;
+    private final HeightMapGenerator heightMapGenerator;
 
     /**
      * Cheese carve threshold as a function of depth below the local surface. Above the first
@@ -163,6 +172,7 @@ public final class Density3D {
         TerrainNoise.destroyOnCollect(this, spag2Node);
         this.waterTable = new CaveWaterTable(seed, heightMapGenerator);
         this.cliffExposure = new CliffExposure(heightMapGenerator);
+        this.heightMapGenerator = heightMapGenerator;
 
         this.cheeseThreshold = new SplineInterpolator();
         // Lowering a knot widens the chambers at that depth. The 0 and 18 knots are left
@@ -225,6 +235,29 @@ public final class Density3D {
      * @param waterLevels co-located water levels, for pinning the table to real water
      */
     public Field prepareChunk(int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
+        return prepareChunk(chunkX, chunkZ, heights, waterLevels, null, null);
+    }
+
+    /**
+     * As {@link #prepareChunk(int, int, int[], int[])}, and keeping clear of the river
+     * TUNNELS described by {@code riverFloors}/{@code riverRoofs}.
+     *
+     * <p>This is the one carver {@link WaterGuard} does not cover — it reads noise and
+     * depth and consults no water plane — and a tunnel is the case where that finally
+     * bites. A surface riverbed is its column's own surface height, and nothing carves
+     * at or above the surface, so the bed was safe by accident. A tunnel bed sits tens
+     * of blocks down in the middle of cave country, and the wall beside one is ordinary
+     * deep rock: measured on the offline fixture, cheese caves opened 18 cells straight
+     * into the passage. Worldgen water is a source block, so each of those drains the
+     * river for good.
+     *
+     * <p>What is sealed is a BAND around the shell, not everything above it the way
+     * {@code WaterGuard} seals a riverbed. Above a tunnel's roof is ordinary rock that
+     * should keep its caves — sealing upward would leave every hill a river runs under
+     * conspicuously hollow-free.
+     */
+    public Field prepareChunk(int chunkX, int chunkZ, int[] heights, int[] waterLevels,
+                              int[] riverFloors, int[] riverRoofs) {
         if (cheeseNode == 0L || spag1Node == 0L || spag2Node == 0L) {
             return null;
         }
@@ -242,7 +275,54 @@ public final class Density3D {
         int[] table = waterTable.tableForChunk(chunkX, chunkZ, heights, waterLevels);
         // Per-column arithmetic over heights, not a fourth volume fill — this stays at three.
         float[] exposure = cliffExposure.exposureForChunk(chunkX, chunkZ, heights);
-        return new Field(this, cheese, spag1, spag2, table, exposure, yCount);
+        int[][] band = tunnelBand(chunkX, chunkZ, riverFloors, riverRoofs);
+        return new Field(this, cheese, spag1, spag2, table, exposure, yCount, band[0], band[1]);
+    }
+
+    /**
+     * Per-column {@code [lo, hi]} of the river tunnel shell in this column's
+     * 4-neighbourhood, expanded by {@link #TUNNEL_CLEARANCE}; {@code lo > hi} where there
+     * is none. Null planes in, empty band out — a caller with no river data seals nothing.
+     *
+     * <p>The neighbourhood is what makes this a wall guard rather than a bed guard: the
+     * column that drains a tunnel is the dry one BESIDE it, exactly as with
+     * {@link WaterGuard}'s banks. Columns outside the chunk resolve through the tile
+     * source, so a tunnel hugging a chunk border is guarded from both sides.
+     */
+    private int[][] tunnelBand(int chunkX, int chunkZ, int[] riverFloors, int[] riverRoofs) {
+        int[] lo = new int[CHUNK_SIZE * CHUNK_SIZE];
+        int[] hi = new int[CHUNK_SIZE * CHUNK_SIZE];
+        java.util.Arrays.fill(lo, Integer.MAX_VALUE);
+        java.util.Arrays.fill(hi, Integer.MIN_VALUE);
+        if (riverFloors == null || riverRoofs == null) {
+            return new int[][]{lo, hi};
+        }
+        int baseX = chunkX * CHUNK_SIZE;
+        int baseZ = chunkZ * CHUNK_SIZE;
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                int idx = x * CHUNK_SIZE + z;
+                for (int d = 0; d < 5; d++) {
+                    int nx = x + (d == 1 ? -1 : d == 2 ? 1 : 0);
+                    int nz = z + (d == 3 ? -1 : d == 4 ? 1 : 0);
+                    int floor;
+                    int roof;
+                    if (nx >= 0 && nx < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
+                        int n = nx * CHUNK_SIZE + nz;
+                        floor = riverFloors[n];
+                        roof = riverRoofs[n];
+                    } else {
+                        floor = heightMapGenerator.riverFloor(baseX + nx, baseZ + nz);
+                        roof = heightMapGenerator.riverRoof(baseX + nx, baseZ + nz);
+                    }
+                    if (roof > floor && floor != TerrainTile.NO_TUNNEL) {
+                        lo[idx] = Math.min(lo[idx], floor - TUNNEL_CLEARANCE);
+                        hi[idx] = Math.max(hi[idx], roof + TUNNEL_CLEARANCE);
+                    }
+                }
+            }
+        }
+        return new int[][]{lo, hi};
     }
 
     private float[] fill(long node, int seed, float ySquash, int chunkX, int chunkZ, int yCount) {
@@ -346,10 +426,14 @@ public final class Density3D {
         private final int[] table;
         private final float[] exposure;
         private final int yCount;
+        private final int[] tunnelLo;
+        private final int[] tunnelHi;
 
         private Field(Density3D owner, float[] cheese, float[] spag1, float[] spag2,
-                      int[] table, float[] exposure, int yCount) {
+                      int[] table, float[] exposure, int yCount, int[] tunnelLo, int[] tunnelHi) {
             this.owner = owner;
+            this.tunnelLo = tunnelLo;
+            this.tunnelHi = tunnelHi;
             this.cheese = cheese;
             this.spag1 = spag1;
             this.spag2 = spag2;
@@ -367,11 +451,15 @@ public final class Density3D {
             if (yIndex >= yCount) {
                 return true;
             }
+            int column = localX * CHUNK_SIZE + localZ;
+            // The wall of a river tunnel stays rock, whatever the noise says.
+            if (y >= tunnelLo[column] && y <= tunnelHi[column]) {
+                return true;
+            }
             int i = (yIndex * CHUNK_SIZE + localX) * CHUNK_SIZE + localZ;
             if (y >= surfaceHeight - OVERHANG_DEPTH && !solidInOverhangBand(cheese[i], biome)) {
                 return false;
             }
-            int column = localX * CHUNK_SIZE + localZ;
             return owner.solidAt(cheese[i], spag1[i], spag2[i], y, surfaceHeight,
                 table[column], exposure[column]);
         }

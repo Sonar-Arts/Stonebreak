@@ -255,8 +255,19 @@ public final class RavineCarver {
 
     /** Carve mask for the target chunk, packed by {@link LocalBlockKey#pack(int,int,int)}. */
     public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels) {
+        return carveMaskForChunk(chunkX, chunkZ, targetHeights, waterLevels, null);
+    }
+
+    /**
+     * As {@link #carveMaskForChunk(int, int, int[], int[])}, also keeping clear of the river
+     * TUNNELS in {@code riverFloors}. A tunnelled column's height is the ground
+     * standing over the river, so without this the guard measures from the hilltop
+     * and leaves the passage itself open to be carved into and drained.
+     */
+    public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels,
+                                    int[] riverFloors) {
         int[] waterGuard =
-                WaterGuard.guardPlane(targetHeights, waterLevels, heightMapGenerator, chunkX, chunkZ);
+                WaterGuard.guardPlane(targetHeights, waterLevels, riverFloors, heightMapGenerator, chunkX, chunkZ);
         BitSet mask = new BitSet();
         for (int dcx = -SCAN_RADIUS; dcx <= SCAN_RADIUS; dcx++) {
             for (int dcz = -SCAN_RADIUS; dcz <= SCAN_RADIUS; dcz++) {
@@ -286,8 +297,10 @@ public final class RavineCarver {
                                         int[] targetHeights, int[] waterLevels) {
         BitSet mask = new BitSet();
         if (!hasRavine(srcCx, srcCz)) return mask;
+        // No river planes here: this entry point exists so a test can drive one named
+        // ravine directly, and it has no tile to read tunnels from.
         int[] waterGuard = WaterGuard.guardPlane(
-                targetHeights, waterLevels, heightMapGenerator, targetCx, targetCz);
+                targetHeights, waterLevels, null, heightMapGenerator, targetCx, targetCz);
         carveRavine(srcCx, srcCz, targetCx, targetCz, targetHeights, waterGuard, mask);
         return mask;
     }

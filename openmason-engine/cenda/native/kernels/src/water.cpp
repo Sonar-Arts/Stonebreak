@@ -3,8 +3,9 @@
  * Layer 3 of the lakes-first hydrology (Dev Working/Lakes-first hydrology
  * plan.md §6). Input is one terrain tile's raw block heights plus a one-tile
  * halo, the depression-fill planes covering that same ground, and the river
- * polylines planned over it; output is the center tile's heights and
- * per-column water levels.
+ * polylines planned over it; output is the center tile's heights, per-column
+ * water levels, and — where a river runs under standing ground — the floor and
+ * roof of the tunnel that carries it.
  *
  * ═══ What this file used to be, and why none of it survived ═══
  *
@@ -36,6 +37,38 @@
  * or an order-independent merge — heights by `min`, water by `max` — so two
  * tiles stamping the same column from the same plan cannot disagree.
  *
+ * ═══ Rivers tunnel; they do not excavate (2026-09-07) ═══
+ *
+ * This kernel does not lower terrain. It used to, in two places, and both are
+ * gone:
+ *
+ *   The CHANNEL CUT wrote `carved = surf - cut` unconditionally. `surf` is the
+ *   river surface read off the depression-filled DEM at 16-BLOCK cells, while
+ *   `carved` lands in the FULL-RESOLUTION heightfield, and nothing compared the
+ *   two. Where block-scale ground stood above `surf` the entire column dropped
+ *   to the water line, so a river crossing a hill deleted the hill. The router's
+ *   defence — "a route never climbs, largest rise 3.1 blocks"
+ *   (river_plan.hpp) — is true and says nothing about this: it is measured on
+ *   the same coarse grid the route descends, not on the ground written here.
+ *
+ *   The VALLEY PULL drew every column within 80 blocks down toward
+ *   `surf + bank_tolerance`. It only ever lowered, so with the rule above it
+ *   can no longer fire anywhere, and it is deleted rather than gated — a knob
+ *   that looks honoured and is not is worse than an absent one. `git show
+ *   6758ff77` has it if river valleys are wanted back.
+ *
+ * In their place, one per-column decision taken against the fine `raw`:
+ *
+ *     roof = min(surf + headroom·(1 - u²),  raw - tunnel_min_roof)
+ *     roof >  surf  ->  TUNNEL: floor/roof planes, `carved` untouched
+ *     roof <= surf  ->  OPEN:   `carved = surf - cut`, as before
+ *
+ * The roof arches on the same `u` the bed is cut on, so the void pinches shut
+ * exactly where the channel does and the ground beside it is never touched.
+ * `tunnel_min_roof` is the thinnest lid that reads as rock rather than debris,
+ * and clamping the roof to `raw - it` makes it the only ground the stamp may
+ * still take: about four blocks, against the unbounded amount it replaced.
+ *
  * ═══ Containment (the WaterSim invariant) ═══
  *
  * Worldgen water is source blocks: a wet column with a lower dry 4-neighbor is
@@ -54,11 +87,20 @@
 
 namespace {
 
-constexpr float DEF_VALLEY_RADIUS = 80.0f;
-/* Blocks of ground above the water surface that still read as an ordinary
- * bank: what a Normal reach's valley pull lifts terrain to. Params slot [10]
- * ("bank_tolerance") overrides it, and this is the slot's only consumer. */
-constexpr float DEF_BANK_TOLERANCE = 8.0f;
+/* Blocks of air between the river surface and the tunnel roof, measured at the
+ * centreline; the roof arches down to meet the surface at the channel edge.
+ * Params slot [24] ("tunnel_headroom") overrides it. */
+constexpr float DEF_TUNNEL_HEADROOM = 5.0f;
+/* The thinnest rock lid that still reads as ground rather than as debris.
+ * Because the roof is clamped to `raw - this`, it doubles as the excavation
+ * budget: the most ground the stamp may take from a column it tunnels under.
+ * Params slot [25] ("tunnel_min_roof") overrides it.
+ *
+ * Lowering it toward zero is what makes a river bead — `surf` is a bilinear
+ * sample of a 16-block DEM and fine terrain wobbles a few blocks either side of
+ * it, so a small value roofs a river with one-block lids wherever it does. This
+ * is the knob to raise if that shows up. */
+constexpr float DEF_TUNNEL_MIN_ROOF = 4.0f;
 
 inline size_t idx2(int row, int col, int stride) {
     return static_cast<size_t>(row) * static_cast<size_t>(stride) + static_cast<size_t>(col);
@@ -130,7 +172,7 @@ struct Seg {
     float aBed, bBed;
     float shape;          /* cross-section exponent; see rosgenShape */
     bool falls;           /* the surface steps rather than ramping (§5.8) */
-    bool gorge;           /* no valley pull; leave the walls (§5.6)       */
+    bool gorge;           /* runs between walls: a narrower channel (§5.6) */
 };
 
 /**
@@ -181,47 +223,22 @@ inline float segDistanceSq(const Seg& s, float px, float pz, float& t) {
 struct Scratch {
     std::vector<int16_t> carved;
     std::vector<int16_t> water;
+    /* Where a river runs under standing ground: the void carried through it,
+     * -1 for the great majority of columns that have none. */
+    std::vector<int16_t> floor;
+    std::vector<int16_t> roof;
     /* Every segment of the refined polyline: what the CHANNEL is cut from,
      * where four-block detail is the whole point of refining. */
     std::vector<Seg> channel;
-    /* The same routes decimated: what the VALLEY PULL is shaped from. */
-    std::vector<Seg> valley;
-    /* Segment indices per 16-block bucket of the window, one set per list.
-     * Rivers touch a few per cent of a tile, so the bucket list is what lets
-     * the other 95 % of columns skip the river pass on one empty-vector test. */
+    /* Segment indices per 16-block bucket of the window. Rivers touch a few per
+     * cent of a tile, so the bucket list is what lets the other 95 % of columns
+     * skip the river pass on one empty-vector test. */
     std::vector<std::vector<int32_t>> channelBuckets;
-    std::vector<std::vector<int32_t>> valleyBuckets;
 };
 
 thread_local Scratch tls;
 
 constexpr int BUCKET = 16;
-
-/* Length of one segment of the decimated polyline the VALLEY PULL reads, as a
- * fraction of the pull's own radius.
- *
- * The pull falls off smoothly over its whole radius, so its shape cannot tell a
- * four-block polyline from a thirty-two-block one: the two differ in distance
- * by a few blocks, which moves the pull by a few per cent. The CHANNEL is a
- * different matter and reads every segment, because that detail is visible at
- * the water's edge and is the whole reason for refining.
- *
- * This is the difference between fitting §10's 15 ms per tile and not. Testing
- * every refined segment against every column within the pull radius cost 52 ms
- * on the busiest tile of the real fixture against 6 ms on average; measured
- * over the same tiles as the decimation coarsens:
- *
- *     segment length    worst tile
- *     4 blk (none)        52.5 ms
- *     16 blk              17.1 ms
- *     32 blk              11.3 ms
- *     48 blk               9.6 ms
- *
- * 0.4 puts the polyline at 32 blocks against an 80-block radius, which is
- * comfortably inside budget while still following a meander. Expressed as a
- * fraction rather than a vertex count so it stays right if `refine_levels` or
- * `valley_radius` are retuned. */
-constexpr float VALLEY_SEGMENT_FRACTION = 0.4f;
 
 /** Register a segment list into buckets, each expanded by its own reach. */
 inline void bucketSegments(const std::vector<Seg>& segs, float pad, int nb, int W,
@@ -262,7 +279,8 @@ int32_t ck_carve_water(int64_t seed,
                        int32_t n_routes, const int32_t* route_starts,
                        const float* vertices,
                        const float* params, int32_t n_params,
-                       int16_t* out_heights, int16_t* out_water) {
+                       int16_t* out_heights, int16_t* out_water,
+                       int16_t* out_river_floor, int16_t* out_river_roof) {
     /* Unread, and kept in the signature on purpose. The DEM span and the routes
      * are addressed in world coordinates and everything else here is a
      * comparison, so stamping needs no hashed mechanism of its own; the plan is
@@ -283,21 +301,24 @@ int32_t ck_carve_water(int64_t seed,
     const size_t N = static_cast<size_t>(W) * static_cast<size_t>(W);
 
     /* The shared water params array (kernels.h documents it). The carve reads
-     * exactly TWO of its entries — [10] and [14]; the rest belong to the plan,
+     * exactly TWO of its entries — [24] and [25]; the rest belong to the plan,
      * and sea level arrives as its own argument rather than through [2].
      *
-     * `bank_tolerance` is deliberately one idea in one slot: the height of
-     * ground above the water that still reads as an ordinary bank. This is the
-     * only place it is consumed — the router classifies Normal vs Gorge on
-     * `gorge_max_depth`, not on this — so a second copy on the solve side would
-     * be a knob that looks live and is not. There was one until 2026-09-06. */
-    float valleyRadius = DEF_VALLEY_RADIUS;
-    float bankTolerance = DEF_BANK_TOLERANCE;
+     * Each is one idea in one slot, and this is the only place either is
+     * consumed. `bank_tolerance` and `valley_radius` used to live at [10] and
+     * [14] and were read here; the pull they shaped is gone, so they are gone
+     * with it rather than left as knobs that look live. */
+    float tunnelHeadroom = DEF_TUNNEL_HEADROOM;
+    float tunnelMinRoofF = DEF_TUNNEL_MIN_ROOF;
     if (params != nullptr) {
-        if (n_params > 10) bankTolerance = params[10];
-        if (n_params > 14) valleyRadius = params[14];
+        if (n_params > 24) tunnelHeadroom = params[24];
+        if (n_params > 25) tunnelMinRoofF = params[25];
     }
-    valleyRadius = std::clamp(valleyRadius, 1.0f, static_cast<float>(T));
+    tunnelHeadroom = std::clamp(tunnelHeadroom, 0.0f, static_cast<float>(world_height));
+    /* At least one block of lid: a roof flush with the surface is not a roof,
+     * and it would let the void breach the ground it is supposed to run under. */
+    const int tunnelMinRoof =
+        std::max(1, static_cast<int>(std::lround(tunnelMinRoofF)));
 
     /* The DEM span is optional: without it the tile gets sea-level-only water,
      * which is the same graceful degradation as an absent kernels library. It
@@ -316,23 +337,31 @@ int32_t ck_carve_water(int64_t seed,
     Scratch& s = tls;
     s.carved.resize(N);
     s.water.assign(N, -1);
+    s.floor.assign(N, -1);
+    s.roof.assign(N, -1);
 
     /* ── 1. Build the river segments in window coordinates ──
-     * Clipped to what can reach the window: a segment further than the valley
-     * radius from it changes nothing here, and the region that owns it stamps
-     * its own ground anyway. */
+     * Clipped to what can reach the window: a segment further than its own
+     * half-width from it changes nothing here, and the region that owns it
+     * stamps its own ground anyway. */
     s.channel.clear();
-    s.valley.clear();
     const bool haveRivers = vertices != nullptr && route_starts != nullptr && n_routes > 0;
     if (haveRivers) {
-        const float lo = -valleyRadius;
-        const float hi = static_cast<float>(W) + valleyRadius;
-        /* Build one Seg from two packed vertices, in window coordinates. */
+        /* Build one Seg from two packed vertices, in window coordinates.
+         *
+         * Clipped by the segment's OWN half-width — a channel is a few blocks
+         * wide, so a reach further than that from the window changes nothing
+         * here. It used to be clipped by the valley radius, which was the pull's
+         * reach and not the channel's; with the pull gone that bound was both
+         * wrong and eighty blocks too generous. */
         const auto makeSeg = [&](const float* a, const float* b, Seg& g) {
             g.ax = a[0] - static_cast<float>(origin_x);
             g.az = a[1] - static_cast<float>(origin_z);
             g.bx = b[0] - static_cast<float>(origin_x);
             g.bz = b[1] - static_cast<float>(origin_z);
+            const float reach = std::max(std::max(a[3], b[3]), 1.0f) * 0.5f + 1.0f;
+            const float lo = -reach;
+            const float hi = static_cast<float>(W) + reach;
             if (std::max(g.ax, g.bx) < lo || std::min(g.ax, g.bx) > hi
                     || std::max(g.az, g.bz) < lo || std::min(g.az, g.bz) > hi) {
                 return false;
@@ -348,7 +377,9 @@ int32_t ck_carve_water(int64_t seed,
             g.gorge = (flags & CK_RIVER_FLAG_GORGE) != 0;
             if (g.gorge) {
                 /* §5.6: a gorge is a narrow channel with walls, not a valley.
-                 * The pull is skipped below; the channel narrows here. */
+                 * Narrowing the channel is all this flag does now — the valley
+                 * pull it used to suppress is gone for every reach, not just
+                 * this one. */
                 g.aHalf *= 0.75f;
                 g.bHalf *= 0.75f;
             }
@@ -369,42 +400,21 @@ int32_t ck_carve_water(int64_t seed,
                     s.channel.push_back(g);
                 }
             }
-            /* The decimated copy: the same route walked by DISTANCE rather
-             * than by vertex count, so the result is the same polyline
-             * whatever `refine_levels` was. The tail is always kept, so the
-             * decimated route still ends where the river does. */
-            const float target = valleyRadius * VALLEY_SEGMENT_FRACTION;
-            int32_t anchor = from;
-            float run = 0.0f;
-            for (int32_t v = from; v + 1 < to; ++v) {
-                run += std::hypot(at(v + 1)[0] - at(v)[0], at(v + 1)[1] - at(v)[1]);
-                if (run < target && v + 2 < to) {
-                    continue;
-                }
-                Seg g{};
-                if (makeSeg(at(anchor), at(v + 1), g)) {
-                    s.valley.push_back(g);
-                }
-                anchor = v + 1;
-                run = 0.0f;
-            }
         }
     }
 
     const int nb = (W + BUCKET - 1) / BUCKET;
     bucketSegments(s.channel, 2.0f, nb, W, s.channelBuckets);
-    bucketSegments(s.valley, valleyRadius, nb, W, s.valleyBuckets);
 
     /* ── 2. Stamp: lakes from the fill, rivers from the plan, then the sea ──
      *
      * Over the center tile and a ONE-COLUMN ring around it, not the whole
-     * window. The window exists so this pass has its INPUTS — a valley pull
-     * reaches 80 blocks, a route sourced next door crosses the border, and the
-     * DEM stencil straddles cells — and all three are read at world
-     * coordinates that lie outside the stamped range without being stamped
-     * themselves. The ring is there for §3 below, which walls a dry column
-     * against its four neighbors' water and therefore reads one column past
-     * the tile on each side; nothing reads further.
+     * window. The window exists so this pass has its INPUTS — a route sourced
+     * next door crosses the border, and the DEM stencil straddles cells — and
+     * both are read at world coordinates that lie outside the stamped range
+     * without being stamped themselves. The ring is there for §3 below, which
+     * walls a dry column against its four neighbors' water and therefore reads
+     * one column past the tile on each side; nothing reads further.
      *
      * Stamping the full window instead computed 9x the columns and discarded
      * eight ninths of them. Measured on a 256-block tile, 200 iterations:
@@ -424,12 +434,17 @@ int32_t ck_carve_water(int64_t seed,
             /* Terrain is NOT carved for a lake. A lake sits in a depression the
              * terrain already has — that is what the fill found — so there is
              * nothing to excavate, and the old excavator existed only because
-             * nothing was finding depressions. Rivers DO carve: a channel is
-             * cut into the ground and, on an ordinary reach, a valley pulled
-             * down around it. */
+             * nothing was finding depressions. A river cuts a bed where it runs
+             * at grade, and where it does not, tunnels instead of levelling the
+             * ground in its way. */
             const int raw = std::clamp<int>(heights3x3[i], 1, world_height - 1);
             int carved = raw;
             int water = -1;
+            /* The tunnel, if any reach over this column turns out to need one.
+             * Merged across reaches the same order-independent way everything
+             * else here is: floor by min, roof by max. */
+            int tunnelFloor = world_height;
+            int tunnelRoof = -1;
 
             if (haveDem) {
                 const int level = lakeLevelAt(dem, x, z);
@@ -439,44 +454,24 @@ int32_t ck_carve_water(int64_t seed,
             }
 
             /* Rivers touch a few per cent of a tile, so for almost every
-             * column these two empty-bucket tests are the entire river pass. */
+             * column this one empty-bucket test is the entire river pass. */
             const size_t bi = idx2(std::min(x / BUCKET, nb - 1),
                                    std::min(z / BUCKET, nb - 1), nb);
             const float px = static_cast<float>(x) + 0.5f;
             const float pz = static_cast<float>(z) + 0.5f;
 
-            /* Valley pull, on ordinary reaches only (§5.6), from the decimated
-             * polyline. Terrain is drawn down toward the water over the valley
-             * radius with a smooth falloff, so a reach carves a valley rather
-             * than a slot. On a gorge it is deliberately skipped: pulling a
-             * 130-block canyon wall down to the river would read as a trench
-             * dug through a mountain. */
-            for (int32_t si : s.valleyBuckets[bi]) {
-                const Seg& g = s.valley[static_cast<size_t>(si)];
-                if (g.gorge) {
-                    continue;
-                }
-                float t = 0.0f;
-                const float d2 = segDistanceSq(g, px, pz, t);
-                if (d2 >= valleyRadius * valleyRadius) {
-                    continue;
-                }
-                const float surfF = g.aSurf + (g.bSurf - g.aSurf) * t;
-                const float d = std::sqrt(d2);
-                const float f = 1.0f - d / valleyRadius;
-                const float falloff = f * f * (3.0f - 2.0f * f);
-                const float target = static_cast<float>(raw)
-                    + falloff * (surfF + bankTolerance - static_cast<float>(raw));
-                carved = std::min(carved, static_cast<int>(std::lround(target)));
-            }
-
-            /* The channel itself, from every segment of the refined polyline:
-             * this is the detail refinement exists for, and it is cheap because
-             * a channel is a few blocks wide rather than eighty.
+            /* The channel, from every segment of the refined polyline: this is
+             * the detail refinement exists for, and it is cheap because a
+             * channel is a few blocks wide.
              *
-             * Nearest reach wins the cross-section; heights merge by min and
-             * water by max, so two rivers meeting is order-independent and
-             * needs no confluence graph (§5.9). */
+             * Heights merge by min, water and roof by max, floor by min, so two
+             * rivers meeting is order-independent and needs no confluence graph
+             * (§5.9).
+             *
+             * TUNNEL vs OPEN is decided here, per column, against the FULL
+             * RESOLUTION `raw` — which is the whole point of the change. `surf`
+             * is a bilinear sample of a 16-block DEM, so it says nothing on its
+             * own about the block-scale ground this kernel writes. */
             for (int32_t si : s.channelBuckets[bi]) {
                 const Seg& g = s.channel[static_cast<size_t>(si)];
                 float t = 0.0f;
@@ -504,7 +499,34 @@ int32_t ck_carve_water(int64_t seed,
                  * meeting the bank at the half-width; `p` is the Rosgen shape. */
                 const float u = std::sqrt(d2) / half;
                 const float cut = bed * (1.0f - std::pow(u, g.shape));
-                carved = std::min(carved, surf - std::max(1, static_cast<int>(std::lround(cut))));
+                const int bedY = surf - std::max(1, static_cast<int>(std::lround(cut)));
+
+                /* Tunnel or open is decided by the COLUMN, not by the roof: is
+                 * there enough ground standing over this reach's water to make a
+                 * lid out of? Deciding it on the roof instead is a trap worth
+                 * recording — the arch goes to zero at the channel edge, so
+                 * every rim column fell to the open branch and was cut to the
+                 * water line even with forty blocks of hill on it. That is the
+                 * original defect, moved to the edge of the channel. */
+                if (raw - tunnelMinRoof > surf) {
+                    /* The ground stands and the river runs under it. `carved` is
+                     * deliberately untouched: this is the whole point.
+                     *
+                     * The roof arches on the same `u` the bed is cut on, so the
+                     * void pinches shut exactly where the channel does and the
+                     * column outside the half-width is never opened — that, and
+                     * not a containment rule, is what holds the water in. The
+                     * clamp to `raw - tunnelMinRoof` is what keeps a lid on it. */
+                    const float arch = tunnelHeadroom * (1.0f - u * u);
+                    const int roofY = std::min(surf + static_cast<int>(std::lround(arch)),
+                                               raw - tunnelMinRoof);
+                    if (roofY > bedY) {
+                        tunnelFloor = std::min(tunnelFloor, bedY);
+                        tunnelRoof = std::max(tunnelRoof, roofY);
+                    }
+                } else {
+                    carved = std::min(carved, bedY);
+                }
                 water = std::max(water, surf);
             }
 
@@ -514,8 +536,20 @@ int32_t ck_carve_water(int64_t seed,
                 water = std::max(water, sea_level);
             }
 
+            /* A column can be both, where one reach tunnels over it and another
+             * runs open across it — a tight meander, or a confluence. The open
+             * reach lowered `carved`, so hold the roof a full lid under it: a
+             * void at or above the ground would put water in mid-air, and a lid
+             * thinner than the one promised is not a roof. Where only tunnelling
+             * happened `carved == raw` and the roof is already under that, so
+             * this changes nothing. */
+            tunnelRoof = std::min(tunnelRoof, carved - tunnelMinRoof);
+            const bool hasTunnel = tunnelRoof > tunnelFloor && tunnelFloor >= 1;
+
             s.carved[i] = static_cast<int16_t>(carved);
             s.water[i] = static_cast<int16_t>(water);
+            s.floor[i] = hasTunnel ? static_cast<int16_t>(tunnelFloor) : static_cast<int16_t>(-1);
+            s.roof[i] = hasTunnel ? static_cast<int16_t>(tunnelRoof) : static_cast<int16_t>(-1);
         }
     }
 
@@ -544,6 +578,12 @@ int32_t ck_carve_water(int64_t seed,
             const size_t oi = idx2(x, z, T);
             out_heights[oi] = static_cast<int16_t>(h);
             out_water[oi] = w;
+            if (out_river_floor != nullptr) {
+                out_river_floor[oi] = s.floor[wi];
+            }
+            if (out_river_roof != nullptr) {
+                out_river_roof[oi] = s.roof[wi];
+            }
         }
     }
     return 0;

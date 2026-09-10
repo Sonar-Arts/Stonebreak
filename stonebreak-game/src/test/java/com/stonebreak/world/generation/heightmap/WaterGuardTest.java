@@ -107,6 +107,32 @@ class WaterGuardTest {
     }
 
     @Test
+    void guardsATunnelledRiverFromItsFloorRatherThanItsHilltop() {
+        // A river passing under standing ground keeps the ground: the column's
+        // height is the hill (420) while the river runs at 384 with its bed at
+        // 381. Measuring from the height would seal only the top few blocks and
+        // leave the passage itself open for a worm to hole into and drain.
+        int[] heights = new int[CHUNK * CHUNK];
+        int[] water = new int[CHUNK * CHUNK];
+        int[] floors = new int[CHUNK * CHUNK];
+        Arrays.fill(heights, 420);
+        Arrays.fill(water, TerrainTile.NO_WATER);
+        Arrays.fill(floors, TerrainTile.NO_TUNNEL);
+        water[idx(4, 4)] = 384;
+        floors[idx(4, 4)] = 381;
+
+        int[] guard = WaterGuard.guardPlane(heights, water, floors, null, 0, 0);
+        assertEquals(381, guard[idx(4, 4)], "the tunnel floor is the bed, not the hilltop");
+        assertTrue(WaterGuard.seals(guard, idx(4, 4), 384, CLEARANCE), "the passage is sealed");
+        assertTrue(WaterGuard.seals(guard, idx(3, 4), 381, CLEARANCE), "and so are its walls");
+
+        // Without the floors plane the same column is guarded from 420, which
+        // leaves the whole passage carveable — the bug this parameter exists for.
+        int[] blind = WaterGuard.guardPlane(heights, water, null, 0, 0);
+        assertFalse(WaterGuard.seals(blind, idx(4, 4), 384, CLEARANCE));
+    }
+
+    @Test
     void suppressesNothingWhenTheCallerHasNoWaterPlane() {
         // The three-argument carver entry points pass null, and every existing
         // caller of those must keep carving exactly as it did before Phase 8.

@@ -49,6 +49,47 @@ class TerrainTileTest {
     }
 
     @Test
+    void carriesRiverTunnelPlanesWhenTheCarveProducedThem() {
+        // Same 2x3 layout as above. Column (10,21) runs a river under standing
+        // ground: floor 357, roof 365, with the terrain still up at 404.
+        short[] heights = {404, 404, 404, 362, 362, 362};
+        short[] biomes = {9, 9, 9, 9, 9, 9};
+        short[] water = {-1, 360, -1, -1, -1, -1};
+        short[] floors = {-1, 357, -1, -1, -1, -1};
+        short[] roofs = {-1, 365, -1, -1, -1, -1};
+        TerrainTile tile = new TerrainTile(0, 0, 10, 20, 12, 23, 3, 2,
+                heights, biomes, water, floors, roofs);
+
+        assertEquals(357, tile.riverFloorAt(10, 21));
+        assertEquals(365, tile.riverRoofAt(10, 21));
+        // The tunnelled column keeps its ground: the height is the hill, not the water.
+        assertEquals(404, tile.heightAt(10, 21));
+        assertEquals(360, tile.waterLevelAt(10, 21));
+        // Its neighbours carry no tunnel, and the sentinel survives as a negative
+        // rather than as an unsigned 65535 — the same trap the water plane has.
+        assertEquals(TerrainTile.NO_TUNNEL, tile.riverFloorAt(10, 20));
+        assertEquals(TerrainTile.NO_TUNNEL, tile.riverRoofAt(11, 22));
+    }
+
+    /**
+     * Every tile source except the water carve — the bridge client and the test
+     * fakes — builds tiles with the eleven-argument constructor and has no tunnels
+     * to report. Those tiles must answer the tunnel questions rather than throwing,
+     * so the block loop can ask unconditionally.
+     */
+    @Test
+    void reportsNoTunnelForATileBuiltWithoutTheRiverPlanes() {
+        TerrainTile tile = new TerrainTile(0, 0, 0, 0, 2, 2, 2, 2,
+                new short[]{1, 2, 3, 4}, new short[]{0, 0, 0, 0}, new short[]{5, 6, 7, 8});
+
+        assertEquals(TerrainTile.NO_TUNNEL, tile.riverFloorAt(0, 0));
+        assertEquals(TerrainTile.NO_TUNNEL, tile.riverRoofAt(1, 1));
+        // and it is still a working tile in every other respect
+        assertEquals(2, tile.heightAt(0, 1));
+        assertEquals(7, tile.waterLevelAt(1, 0));
+    }
+
+    @Test
     void throwsOnOutOfBoundsCoordinate() {
         TerrainTile tile = new TerrainTile(0, 0, 0, 0, 1, 1, 1, 1,
                 new short[]{1}, new short[]{0}, new short[]{-1});

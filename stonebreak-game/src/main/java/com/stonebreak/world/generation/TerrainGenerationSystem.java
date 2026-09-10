@@ -391,15 +391,22 @@ public class TerrainGenerationSystem {
 
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
         int[] waterLevels = new int[CHUNK_SIZE * CHUNK_SIZE];
+        // Where a river passes under standing ground it tunnels instead of levelling
+        // it, so the column's height is the hill and the river is in here. Local
+        // rather than on ColumnProfile: only this loop and the cave guard need them,
+        // and the feature pass correctly plants on the hilltop.
+        int[] riverFloors = new int[CHUNK_SIZE * CHUNK_SIZE];
+        int[] riverRoofs = new int[CHUNK_SIZE * CHUNK_SIZE];
         BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
 
         // Shape first (noise-driven), then skin with biomes. Biomes do not influence shape.
-        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels);
+        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels,
+                riverFloors, riverRoofs);
         updateLoadingProgress("Determining Biomes");
         biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
 
         updateLoadingProgress("Applying Biome Materials");
-        CarveMasks masks = buildCarveMasks(chunkX, chunkZ, heights, waterLevels);
+        CarveMasks masks = buildCarveMasks(chunkX, chunkZ, heights, waterLevels, riverFloors);
         BitSet caveMask = masks.caveMask();
         BitSet formationMask = masks.formationMask();
 
@@ -415,19 +422,39 @@ public class TerrainGenerationSystem {
         // a surface near y=400 the per-point path costs ~100k Java noise samples per chunk;
         // this path was written for exactly that and had simply never been called. Null on
         // the Java backend, where determineBlockType falls back to per-point isSolid.
-        Density3D.Field densityField = density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels);
+        Density3D.Field densityField =
+                density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels, riverFloors, riverRoofs);
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 int idx = x * CHUNK_SIZE + z;
                 int height = heights[idx];
                 int waterLevel = waterLevels[idx];
+                int riverFloor = riverFloors[idx];
+                int riverRoof = riverRoofs[idx];
                 BiomeType biome = biomes[idx];
                 int worldX = baseX + x;
                 int worldZ = baseZ + z;
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
                     int bit = LocalBlockKey.pack(x, y, z);
                     BlockType block;
-                    if (y > 0 && y < height && formationMask.get(bit)) {
+                    if (riverRoof > riverFloor && y >= riverFloor && y <= riverRoof) {
+                        // A river running under standing ground. This has to beat every
+                        // mask below it: a cavern or worm that wins one of these cells
+                        // opens the passage, and worldgen water is a source block, so the
+                        // river would then drain forever.
+                        //
+                        // The branch owns the SHELL as well as the void. `riverFloor` is
+                        // the bed the kernel cut and `riverRoof` the lid it left, and
+                        // neither is safe by being underground: unlike a surface riverbed
+                        // — which IS the column's surface height, so nothing carves it —
+                        // a tunnel bed sits tens of blocks down, in the middle of cave
+                        // country. Density3D is the one carver WaterGuard does not cover
+                        // (it reads noise and depth, no water plane), and it was hollowing
+                        // the bed out from underneath.
+                        block = (y == riverFloor || y == riverRoof)
+                                ? BlockType.STONE
+                                : (y < waterLevel ? BlockType.WATER : BlockType.AIR);
+                    } else if (y > 0 && y < height && formationMask.get(bit)) {
                         block = BlockType.STONE;
                     } else if (y > 0 && y < height && caveMask.get(bit)) {
                         continue; // carved to air — already the uniform fill
@@ -451,9 +478,10 @@ public class TerrainGenerationSystem {
     }
 
     /**
-     * The masks that decide solidity for one chunk, in the order
-     * {@link #determineBlockType} applies them: {@code formationMask} beats
-     * {@code caveMask}, and {@code caveMask} beats the {@code Density3D} test.
+     * The masks that decide solidity for one chunk, in the order the block loop
+     * applies them: a river tunnel beats everything, then {@code formationMask}
+     * beats {@code caveMask}, and {@code caveMask} beats the {@code Density3D}
+     * test in {@link #determineBlockType}.
      */
     private record CarveMasks(BitSet caveMask, BitSet formationMask) {}
 
@@ -463,17 +491,19 @@ public class TerrainGenerationSystem {
      * surface the block loop writes — a drift that showed up as ravines rendering flat at
      * distance and then popping into a trench at the chunk seam.
      */
-    private CarveMasks buildCarveMasks(int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
-        BitSet caveMask = wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
-        CavernCarver.Result cavernResult = cavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
+    private CarveMasks buildCarveMasks(int chunkX, int chunkZ, int[] heights, int[] waterLevels,
+                                       int[] riverFloors) {
+        BitSet caveMask = wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels, riverFloors);
+        CavernCarver.Result cavernResult =
+                cavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels, riverFloors);
         MegaCavernCarver.Result megaCavernResult =
-                megaCavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
+                megaCavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels, riverFloors);
         caveMask.or(cavernResult.carveMask);
         caveMask.or(megaCavernResult.carveMask);
         // Entrances. Unlike the carvers above, these two are anchored to the surface and cut
         // downward, so they open the network to the sky by construction rather than by luck.
-        caveMask.or(ravineCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels));
-        caveMask.or(sinkholeCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels));
+        caveMask.or(ravineCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels, riverFloors));
+        caveMask.or(sinkholeCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels, riverFloors));
         BitSet formationMask = cavernResult.formationMask;
         formationMask.or(megaCavernResult.formationMask);
         return new CarveMasks(caveMask, formationMask);
@@ -504,14 +534,20 @@ public class TerrainGenerationSystem {
     private SurfaceProfileCache.Profile buildSurfaceProfile(int chunkX, int chunkZ) {
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
         int[] waterLevels = new int[CHUNK_SIZE * CHUNK_SIZE];
+        int[] riverFloors = new int[CHUNK_SIZE * CHUNK_SIZE];
+        int[] riverRoofs = new int[CHUNK_SIZE * CHUNK_SIZE];
         BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
-        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels);
+        heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels,
+                riverFloors, riverRoofs);
         biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
 
-        CarveMasks masks = buildCarveMasks(chunkX, chunkZ, heights, waterLevels);
+        // The same masks the block loop builds, from the same planes — the parity
+        // contract below is only worth anything if the inputs match too.
+        CarveMasks masks = buildCarveMasks(chunkX, chunkZ, heights, waterLevels, riverFloors);
         BitSet caveMask = masks.caveMask();
         BitSet formationMask = masks.formationMask();
-        Density3D.Field densityField = density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels);
+        Density3D.Field densityField =
+                density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels, riverFloors, riverRoofs);
 
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;

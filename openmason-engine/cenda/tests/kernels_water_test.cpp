@@ -22,6 +22,9 @@
  *   6. sea                  columns below sea level report sea level, with or
  *                           without a DEM
  *   7. steep terrain        containment and level surfaces survive mountains
+ *   8. tunnelling          ground standing over a route is NOT removed: the
+ *                           river runs under it, the lid stays solid, and the
+ *                           void is sealed by the rock around it
  */
 
 #include "cenda/kernels.h"
@@ -160,6 +163,8 @@ Region solveRegion(int64_t regionX, int64_t regionZ, F&& terrain,
 struct Tile {
     std::vector<int16_t> heights;
     std::vector<int16_t> water;
+    std::vector<int16_t> floor;
+    std::vector<int16_t> roof;
 };
 
 /**
@@ -201,6 +206,8 @@ Tile runTile(int64_t seed, int64_t tileX, int64_t tileZ, F&& terrain, const Regi
     Tile t;
     t.heights.resize(static_cast<size_t>(T) * static_cast<size_t>(T));
     t.water.resize(t.heights.size());
+    t.floor.resize(t.heights.size());
+    t.roof.resize(t.heights.size());
     const int32_t rc = ck_carve_water(seed, T,
                                       static_cast<int32_t>(originX), static_cast<int32_t>(originZ),
                                       window.data(), SEA, WH,
@@ -211,7 +218,8 @@ Tile runTile(int64_t seed, int64_t tileX, int64_t tileZ, F&& terrain, const Regi
                                       region == nullptr ? nullptr : region->starts.data(),
                                       region == nullptr ? nullptr : region->verts.data(),
                                       params, nParams,
-                                      t.heights.data(), t.water.data());
+                                      t.heights.data(), t.water.data(),
+                                      t.floor.data(), t.roof.data());
     check(rc == 0, "ck_carve_water returned 0");
     return t;
 }
@@ -264,6 +272,23 @@ int16_t riverTerrainAt(int64_t x, int64_t z) {
         base -= 40.0 * (1.0 - r / 200.0);
     }
     return static_cast<int16_t>(base);
+}
+
+/* `riverTerrainAt` with a ridge thrown across the river's path.
+ *
+ * The fixture for the tunnelling tests, and it is built the way the real defect
+ * was: the region is solved on the SMOOTH plain, so the route is planned on a
+ * DEM that knows nothing about the ridge, and then the carve is handed ground
+ * that has one. That is not a contrivance — it is the production case in
+ * miniature. The router descends a 16-block filled DEM and can honestly report
+ * that it never climbs, while the stamp writes block-resolution terrain the DEM
+ * averaged away. A route crossing this ridge used to delete it.
+ *
+ * 44 blocks tall against a bed a few blocks deep, so nothing about the answer is
+ * ambiguous: either the ridge is standing afterwards or it is not. */
+int16_t ridgedRiverTerrainAt(int64_t x, int64_t z) {
+    const double d = (static_cast<double>(x) - 1200.0) / 70.0;
+    return static_cast<int16_t>(riverTerrainAt(x, z) + 44.0 * std::exp(-d * d));
 }
 
 /* ── Tests ──────────────────────────────────────────────────────────────── */
@@ -408,10 +433,13 @@ void testARiverIsStampedIntoTheGround() {
                 const int16_t rawH = riverTerrainAt(wx, wz);
                 if (tile.water[i] > SEA) {
                     ++wet;
-                    /* A wet column is under its own water: the channel was cut
-                     * for it rather than the water perched on the ground. */
-                    check(tile.heights[i] < tile.water[i],
-                          "a river column sits below its own surface");
+                    /* A wet column either sits under its own water — the channel
+                     * was cut for it rather than the water perched on the ground
+                     * — or it carries that water through a tunnel, in which case
+                     * the ground standing over it is the entire point and it is
+                     * correct for the height to be above the surface. */
+                    check(tile.heights[i] < tile.water[i] || tile.roof[i] >= 0,
+                          "a river column is under its own surface or tunnelled");
                 }
                 if (tile.heights[i] < rawH) {
                     ++carved;
@@ -546,23 +574,27 @@ const float DOCUMENTED_DEFAULTS[26] = {
     1.0f,      /*  7 w_inertia           */
     0.55f,     /*  8 w_descent           */
     0.35f,     /*  9 meander_amp         */
-    8.0f,      /* 10 bank_tolerance      */
-    24.0f,     /* 11 gorge_max_depth     */
-    96.0f,     /* 12 gorge_max_width     */
-    6.0f,      /* 13 waterfall_min_drop  */
-    80.0f,     /* 14 valley_radius       */
-    4.0f,      /* 15 w_base              */
-    3.0f,      /* 16 w_lake              */
-    2.0f,      /* 17 w_dist              */
-    50000.0f,  /* 18 vol_scale           */
-    1000.0f,   /* 19 dist_scale          */
-    1.5f,      /* 20 d_base              */
-    0.8f,      /* 21 d_gain              */
-    1.6f,      /* 22 plunge_widen        */
-    2.0f,      /* 23 refine_levels       */
-    0.22f,     /* 24 refine_amp          */
-    4.0f,      /* 25 min_points          */
+    24.0f,     /* 10 gorge_max_depth     */
+    96.0f,     /* 11 gorge_max_width     */
+    6.0f,      /* 12 waterfall_min_drop  */
+    4.0f,      /* 13 w_base              */
+    3.0f,      /* 14 w_lake              */
+    2.0f,      /* 15 w_dist              */
+    50000.0f,  /* 16 vol_scale           */
+    1000.0f,   /* 17 dist_scale          */
+    1.5f,      /* 18 d_base              */
+    0.8f,      /* 19 d_gain              */
+    1.6f,      /* 20 plunge_widen        */
+    2.0f,      /* 21 refine_levels       */
+    0.22f,     /* 22 refine_amp          */
+    4.0f,      /* 23 min_points          */
+    5.0f,      /* 24 tunnel_headroom     */
+    4.0f,      /* 25 tunnel_min_roof     */
 };
+
+/* Mirrors DOCUMENTED_DEFAULTS[25]; the tests below assert against the lid the
+ * kernel promises to leave, so the two must not drift. */
+constexpr int TUNNEL_MIN_ROOF = 4;
 
 /** Solve one region with an explicit params array. */
 Region solveWithParams(const float* params, int32_t n) {
@@ -630,6 +662,8 @@ void testDocumentedDefaultsAreTheRealDefaults() {
     const Tile a = runTile(31337, 4, 8, riverTerrainAt, &none);
     std::vector<int16_t> outH(static_cast<size_t>(T) * T);
     std::vector<int16_t> outW(outH.size());
+    std::vector<int16_t> outF(outH.size());
+    std::vector<int16_t> outR(outH.size());
     std::vector<int16_t> win(static_cast<size_t>(W) * W);
     const int64_t ox = 3 * T;
     const int64_t oz = 7 * T;
@@ -650,58 +684,197 @@ void testDocumentedDefaultsAreTheRealDefaults() {
     ck_carve_water(31337, T, static_cast<int32_t>(ox), static_cast<int32_t>(oz),
                    win.data(), SEA, WH, SPAN_CELLS, CELL, spanF.data(), spanD.data(),
                    none.routeCount, none.starts.data(), none.verts.data(),
-                   DOCUMENTED_DEFAULTS, 26, outH.data(), outW.data());
+                   DOCUMENTED_DEFAULTS, 26, outH.data(), outW.data(),
+                   outF.data(), outR.data());
     check(std::memcmp(a.heights.data(), outH.data(), outH.size() * 2) == 0
-              && std::memcmp(a.water.data(), outW.data(), outW.size() * 2) == 0,
+              && std::memcmp(a.water.data(), outW.data(), outW.size() * 2) == 0
+              && std::memcmp(a.floor.data(), outF.data(), outF.size() * 2) == 0
+              && std::memcmp(a.roof.data(), outR.data(), outR.size() * 2) == 0,
           "the carve reads the same array's defaults, not a second table");
     std::puts("params ABI ok");
 }
 
-void testBankToleranceIsLiveOnTheCarve() {
-    /* Slot [10] was HALF dead until 2026-09-06: `ck_solve_basins` parsed it
-     * into a `Config` field nothing ever read, while `ck_carve_water` used it
-     * as the bank height. The defaults-vs-NULL test above cannot see that —
-     * both sides defaulted to 8 — so a dead knob passed every assertion in this
-     * file. This one fails if the slot stops reaching the ground.
+void testTunnelKnobsAreLiveOnTheCarve() {
+    /* The carve reads exactly two slots, and a knob that looks honoured and is
+     * not is worse than an absent one — the reason [10] and [14] are gone. So
+     * each of the two that replaced them is probed in the direction it can
+     * actually move the ground.
      *
-     * Direction: the valley pull draws terrain toward `surf + bank_tolerance`
-     * and takes a `min` against the raw ground, so LOWERING the tolerance can
-     * only cut more. No column may come out higher than it did at the default.
+     * [25] tunnel_min_roof is the lid the roof is clamped under, so raising it
+     * past any available ground forces every column back onto the open-channel
+     * branch: no tunnels, and terrain cut instead. That is the strongest signal
+     * either slot can give, because it swings the kernel between its two modes.
      *
-     * Probing downward rather than upward is not arbitrary. At the default 8
-     * this fixture's banks already stand less than 8 blocks over the water, so
-     * `surf + 8` is above the raw ground and the `min` never bites — raising
-     * the knob to 24 moves exactly nothing, which is correct and useless as a
-     * liveness signal. Dropping it to 0 pulls the valley down to the water
-     * surface itself, which any live wiring must show. */
+     * [24] tunnel_headroom cannot do that, and deliberately: whether a river
+     * tunnels is a question about the ground over it, not about how much air it
+     * is given. Setting it to zero leaves every tunnel exactly where it was and
+     * floods it — the ground is still kept, which is the invariant — so what is
+     * probed is the void, which must shrink and may never grow. */
     const Region r = solveRegion(0, 0, riverTerrainAt, 777, 1.0f);
-    check(r.routeCount > 0, "bank tolerance: the fixture plans a river");
+    check(r.routeCount > 0, "tunnel knobs: the fixture plans a river");
     if (r.routeCount == 0) {
         return;
     }
 
-    float flattened[26];
-    for (int i = 0; i < 26; ++i) {
-        flattened[i] = DOCUMENTED_DEFAULTS[i];
-    }
-    flattened[10] = 0.0f;
+    float noRoof[26];
+    float noAir[26];
+    std::memcpy(noRoof, DOCUMENTED_DEFAULTS, sizeof noRoof);
+    std::memcpy(noAir, DOCUMENTED_DEFAULTS, sizeof noAir);
+    noRoof[25] = 4096.0f;   /* no column has that much ground to spare */
+    noAir[24] = 0.0f;
 
-    int higher = 0;
-    int lower = 0;
+    int baseTunnels = 0;
+    int noRoofTunnels = 0;
+    int noAirTunnels = 0;
+    int cutMore = 0;
+    long baseVoid = 0;
+    long airlessVoid = 0;
+    int airlessTaller = 0;
     for (int64_t tx = 2; tx <= 7; ++tx) {
-        const Tile base = runTile(777, tx, 8, riverTerrainAt, &r, DOCUMENTED_DEFAULTS, 26);
-        const Tile flat = runTile(777, tx, 8, riverTerrainAt, &r, flattened, 26);
+      for (int64_t tz = 7; tz <= 9; ++tz) {
+        const Tile base = runTile(777, tx, tz, ridgedRiverTerrainAt, &r, DOCUMENTED_DEFAULTS, 26);
+        const Tile flat = runTile(777, tx, tz, ridgedRiverTerrainAt, &r, noRoof, 26);
+        const Tile airless = runTile(777, tx, tz, ridgedRiverTerrainAt, &r, noAir, 26);
         for (size_t i = 0; i < base.heights.size(); ++i) {
+            baseTunnels += base.roof[i] >= 0 ? 1 : 0;
+            noRoofTunnels += flat.roof[i] >= 0 ? 1 : 0;
+            noAirTunnels += airless.roof[i] >= 0 ? 1 : 0;
+            if (base.roof[i] >= 0) {
+                baseVoid += base.roof[i] - base.floor[i];
+            }
+            if (airless.roof[i] >= 0) {
+                airlessVoid += airless.roof[i] - airless.floor[i];
+                if (base.roof[i] >= 0 && airless.roof[i] > base.roof[i]) {
+                    ++airlessTaller;
+                }
+            }
+            check(airless.heights[i] == base.heights[i],
+                  "[24] headroom never changes the ground, only the void under it");
             if (flat.heights[i] < base.heights[i]) {
-                ++lower;
-            } else if (flat.heights[i] > base.heights[i]) {
-                ++higher;
+                ++cutMore;
             }
         }
+      }
     }
-    check(lower > 0, "lowering bank_tolerance changes the carved ground (the slot is live)");
-    check(higher == 0, "and only ever downward — a shorter bank cannot raise a valley");
-    std::printf("bank tolerance ok (%d columns lowered, %d raised)\n", lower, higher);
+    check(baseTunnels > 0, "at the defaults the ridged fixture tunnels");
+    check(noRoofTunnels == 0, "[25] an unaffordable lid leaves no tunnels at all");
+    check(cutMore > 0, "[25] and the columns that stopped tunnelling got cut instead");
+    check(noAirTunnels == baseTunnels, "[24] headroom does not decide WHETHER to tunnel");
+    check(airlessVoid < baseVoid, "[24] but no headroom does shrink the void (the slot is live)");
+    check(airlessTaller == 0, "and it can only ever shrink it");
+    std::printf("tunnel knobs ok (%d tunnel columns, %d cut when tunnels are off, "
+                "void %ld -> %ld with no headroom)\n",
+                baseTunnels, cutMore, baseVoid, airlessVoid);
+}
+
+void testARiverTunnelsRatherThanRemovingTheGround() {
+    /* THE regression for the reported defect: a river crossing a hill used to
+     * take the hill with it. `carved = surf - cut` was written unconditionally
+     * against a `surf` sampled off a 16-block DEM, so every block of ground
+     * standing over the route was deleted down to the water line.
+     *
+     * The ridge here is 44 blocks tall. What is pinned is the whole of the new
+     * contract: the ground survives, the river is still there underneath it, and
+     * the lid over it is real rock rather than a token block. */
+    const Region r = solveRegion(0, 0, riverTerrainAt, 777, 1.0f);
+    check(r.routeCount > 0, "tunnelling: the fixture plans a river");
+    if (r.routeCount == 0) {
+        return;
+    }
+
+    int tunnelled = 0;
+    int deepestCut = 0;
+    int thinnestLid = WH;
+    int ridgeCrestColumns = 0;
+    for (int64_t tx = 2; tx <= 7; ++tx) {
+      for (int64_t tz = 7; tz <= 9; ++tz) {
+        const Tile tile = runTile(777, tx, tz, ridgedRiverTerrainAt, &r);
+        for (int x = 0; x < T; ++x) {
+            for (int z = 0; z < T; ++z) {
+                const size_t i = idx(x, z, T);
+                const int64_t wx = tx * T + x;
+                const int64_t wz = tz * T + z;
+                const int rawH = ridgedRiverTerrainAt(wx, wz);
+
+                /* No column anywhere loses more than the bed of an open channel
+                 * plus the lid the roof clamp is allowed to shave. Before the
+                 * fix this reached the full height of the ridge. */
+                deepestCut = std::max(deepestCut, rawH - tile.heights[i]);
+
+                if (tile.roof[i] >= 0) {
+                    ++tunnelled;
+                    check(tile.heights[i] >= rawH,
+                          "a tunnelled column keeps every block of its ground");
+                    check(tile.floor[i] < tile.roof[i], "a tunnel has room inside it");
+                    check(tile.water[i] > tile.floor[i],
+                          "and water standing on its floor");
+                    thinnestLid = std::min(thinnestLid, tile.heights[i] - tile.roof[i]);
+                }
+                /* The crest of the ridge, away from the channel, must be
+                 * untouched — the stamp has no business there at all. */
+                if (wx - 1200 <= 4 && 1200 - wx <= 4) {
+                    ++ridgeCrestColumns;
+                    check(tile.heights[i] >= rawH, "the ridge crest is not planed down");
+                }
+            }
+        }
+      }
+    }
+    check(tunnelled > 0, "the route tunnels through the ridge rather than cutting it");
+    check(ridgeCrestColumns > 0, "the walked tiles actually cover the ridge");
+    check(thinnestLid >= TUNNEL_MIN_ROOF,
+          "every tunnel keeps at least tunnel_min_roof of rock over it");
+    check(deepestCut <= TUNNEL_MIN_ROOF + 8,
+          "no column is lowered by more than a bed plus the lid");
+    std::printf("tunnelling ok (%d tunnel columns, thinnest lid %d, deepest cut %d blocks)\n",
+                tunnelled, thinnestLid, deepestCut);
+}
+
+void testATunnelIsSealedByTheRockAroundIt() {
+    /* A tunnel is not covered by the containment rule the open water uses — it
+     * is contained by the rock it was bored through — so the seal is asserted
+     * directly. Worldgen water is a source block, so a void beside a tunnel at
+     * the same height is a permanent spring, exactly like a breached riverbed.
+     *
+     * Each 4-neighbour of a tunnelled column must therefore be one of: solid to
+     * at least the tunnel's water line; a tunnel itself; or wet at that line or
+     * above, which is the mouth where the passage opens into open channel. */
+    const Region r = solveRegion(0, 0, riverTerrainAt, 777, 1.0f);
+    if (r.routeCount == 0) {
+        check(false, "tunnel seal: the fixture plans a river");
+        return;
+    }
+
+    int checked = 0;
+    int leaks = 0;
+    for (int64_t tx = 2; tx <= 7; ++tx) {
+      for (int64_t tz = 7; tz <= 9; ++tz) {
+        const Tile t = runTile(777, tx, tz, ridgedRiverTerrainAt, &r);
+        for (int x = 1; x < T - 1; ++x) {
+            for (int z = 1; z < T - 1; ++z) {
+                const size_t i = idx(x, z, T);
+                if (t.roof[i] < 0) {
+                    continue;
+                }
+                const int waterTop = std::min<int>(t.water[i], t.roof[i]);
+                const size_t nb[4] = {i - static_cast<size_t>(T), i + static_cast<size_t>(T),
+                                      i - 1, i + 1};
+                for (size_t n : nb) {
+                    ++checked;
+                    const bool sealed = t.heights[n] >= waterTop
+                                        || t.roof[n] >= 0
+                                        || t.water[n] >= waterTop;
+                    if (!sealed) {
+                        ++leaks;
+                    }
+                }
+            }
+        }
+      }
+    }
+    check(checked > 0, "tunnel seal: there were tunnels to check");
+    check(leaks == 0, "no tunnel column pours into a lower dry neighbour");
+    std::printf("tunnel seal ok (%d neighbours checked, %d leaks)\n", checked, leaks);
 }
 
 void testEachDensityKnobMovesInTheDocumentedDirection() {
@@ -815,7 +988,9 @@ int main() {
     testRiversAgreeAcrossATileSeam();
     testNoRoutesMeansNoRivers();
     testDocumentedDefaultsAreTheRealDefaults();
-    testBankToleranceIsLiveOnTheCarve();
+    testTunnelKnobsAreLiveOnTheCarve();
+    testARiverTunnelsRatherThanRemovingTheGround();
+    testATunnelIsSealedByTheRockAroundIt();
     testEachDensityKnobMovesInTheDocumentedDirection();
     testSea();
     testMountains();

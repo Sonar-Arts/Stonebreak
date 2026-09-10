@@ -26,6 +26,13 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * the bed itself wide open. {@code height <= waterLevel} for every wet column, so the
  * bed anchor covers both.
  *
+ * <p>A river that passes under standing ground is TUNNELLED rather than stamped, and
+ * such a column's bed is its {@code riverFloors} entry, not its height — the height
+ * there is the hill the river runs beneath. Measuring from the height would seal only
+ * the few blocks under the hilltop and leave the passage itself wide open, which drains
+ * it exactly like a breached riverbed. So the bed of a wet column is its tunnel floor
+ * where it has one and its height otherwise.
+ *
  * <p>Neighbors outside the 16x16 chunk are resolved through the
  * {@link HeightMapGenerator}'s tile source — the same resolved tiles the chunk's own
  * planes came from — so a river hugging a chunk border is guarded from both sides.
@@ -51,11 +58,21 @@ final class WaterGuard {
      * @param targetHeights the chunk's 16x16 final heights, indexed {@code x*16+z}
      * @param waterLevels   the co-located water levels ({@link TerrainTile#NO_WATER}
      *                      for dry), same indexing
+     * @param riverFloors   the co-located river-tunnel floors
+     *                      ({@link TerrainTile#NO_TUNNEL} where there is none), same
+     *                      indexing; may be null, which guards tunnels from their
+     *                      hilltops and so barely at all
      * @param heightMap     resolves the one-block ring outside the chunk; may be
      *                      null, which leaves border columns guarded from inside
      *                      the chunk only
      */
     static int[] guardPlane(int[] targetHeights, int[] waterLevels,
+                            HeightMapGenerator heightMap, int chunkX, int chunkZ) {
+        return guardPlane(targetHeights, waterLevels, null, heightMap, chunkX, chunkZ);
+    }
+
+    /** @see #guardPlane(int[], int[], HeightMapGenerator, int, int) */
+    static int[] guardPlane(int[] targetHeights, int[] waterLevels, int[] riverFloors,
                             HeightMapGenerator heightMap, int chunkX, int chunkZ) {
         if (waterLevels == null) {
             return null;
@@ -66,11 +83,11 @@ final class WaterGuard {
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 int guard = OPEN;
-                guard = consider(guard, x, z, targetHeights, waterLevels, heightMap, baseX, baseZ);
-                guard = consider(guard, x - 1, z, targetHeights, waterLevels, heightMap, baseX, baseZ);
-                guard = consider(guard, x + 1, z, targetHeights, waterLevels, heightMap, baseX, baseZ);
-                guard = consider(guard, x, z - 1, targetHeights, waterLevels, heightMap, baseX, baseZ);
-                guard = consider(guard, x, z + 1, targetHeights, waterLevels, heightMap, baseX, baseZ);
+                guard = consider(guard, x, z, targetHeights, waterLevels, riverFloors, heightMap, baseX, baseZ);
+                guard = consider(guard, x - 1, z, targetHeights, waterLevels, riverFloors, heightMap, baseX, baseZ);
+                guard = consider(guard, x + 1, z, targetHeights, waterLevels, riverFloors, heightMap, baseX, baseZ);
+                guard = consider(guard, x, z - 1, targetHeights, waterLevels, riverFloors, heightMap, baseX, baseZ);
+                guard = consider(guard, x, z + 1, targetHeights, waterLevels, riverFloors, heightMap, baseX, baseZ);
                 plane[x * CHUNK_SIZE + z] = guard;
             }
         }
@@ -78,11 +95,13 @@ final class WaterGuard {
     }
 
     private static int consider(int guard, int x, int z, int[] heights, int[] waterLevels,
-                                HeightMapGenerator heightMap, int baseX, int baseZ) {
+                                int[] riverFloors, HeightMapGenerator heightMap,
+                                int baseX, int baseZ) {
         if (x >= 0 && x < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) {
             int idx = x * CHUNK_SIZE + z;
             if (waterLevels[idx] != TerrainTile.NO_WATER) {
-                return Math.min(guard, heights[idx]);
+                return Math.min(guard, bed(heights[idx],
+                        riverFloors == null ? TerrainTile.NO_TUNNEL : riverFloors[idx]));
             }
             return guard;
         }
@@ -92,9 +111,14 @@ final class WaterGuard {
         int wx = baseX + x;
         int wz = baseZ + z;
         if (heightMap.waterLevel(wx, wz) != TerrainTile.NO_WATER) {
-            return Math.min(guard, heightMap.generateHeight(wx, wz));
+            return Math.min(guard, bed(heightMap.generateHeight(wx, wz), heightMap.riverFloor(wx, wz)));
         }
         return guard;
+    }
+
+    /** The lowest water in a wet column: its tunnel floor, or its own bed. */
+    private static int bed(int height, int riverFloor) {
+        return riverFloor == TerrainTile.NO_TUNNEL ? height : Math.min(height, riverFloor);
     }
 
     /**

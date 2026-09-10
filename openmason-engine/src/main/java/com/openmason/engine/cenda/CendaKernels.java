@@ -29,7 +29,7 @@ import java.nio.file.Path;
 public final class CendaKernels {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CendaKernels.class);
-    private static final int EXPECTED_ABI = 7;
+    private static final int EXPECTED_ABI = 8;
 
     private static final boolean AVAILABLE;
     private static final String SIMD_LEVEL;
@@ -203,6 +203,7 @@ public final class CendaKernels {
                         ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS));
                 zstdBound = linker.downcallHandle(
                     find(lookup, "ck_zstd_bound"),
@@ -738,28 +739,35 @@ public final class CendaKernels {
     // ═══════════════════════ Water carve ═══════════════════════
 
     /**
-     * Derives one terrain tile's rivers/lakes from raw block heights: input is
-     * a 3x3-tile window of heights (center tile plus a one-tile halo on every
-     * side, {@code (3*tileSize)^2} shorts, row-major with row = world X), and
-     * the outputs are the CENTER tile's carved heights and per-column water
-     * levels ({@code tileSize^2} each; water level -1 = dry column). Seam-free
+     * Derives one terrain tile's rivers and lakes from raw block heights. Input
+     * is a 3x3-tile window (the center tile plus a one-tile halo on every side,
+     * {@code (3*tileSize)^2} shorts, row-major with row = world X); the outputs
+     * describe the CENTER tile only, {@code tileSize^2} shorts each. Seam-free
      * and deterministic per seed by construction — see cenda/kernels.h
      * (ck_carve_water) for the layout and the optional params array.
      *
-     * Returns 0 on success, a negative kernel error on bad arguments, or
-     * {@link Integer#MIN_VALUE} when the library is unavailable (callers fall
-     * back to the raw tile's own water plane).
-     */
-    /**
-     * Inland water for one tile: lakes stamped from a basin solve, the sea, and
-     * the containment repair. {@code outHeights} comes back uncarved except
-     * where a wet column's dry neighbour had to be walled — a lake sits in a
-     * depression the terrain already has.
+     * <p><b>This kernel does not lower terrain.</b> {@code outHeights} comes
+     * back uncarved except for the bed of a channel running at grade, and where
+     * a wet column's dry neighbour had to be walled. A lake sits in a depression
+     * the terrain already has; a river that meets standing ground tunnels under
+     * it rather than removing it.
+     *
+     * <p>{@code outWater} is the first y that is NOT water in a column, or -1
+     * for dry. {@code outRiverFloor}/{@code outRiverRoof} carry those tunnels:
+     * the void is {@code floor < y < roof}, water below {@code outWater} and air
+     * above it, with -1 in both for the great majority of columns that have no
+     * tunnel. Both are optional — pass null to discard them — but a caller that
+     * carves caves needs the floor, because it is the bed of a tunnelled column
+     * and breaking into it drains the river exactly like a breached riverbed.
      *
      * <p>{@code demFilled}/{@code demDepth} are a sub-window of the owning
      * region's {@link #solveBasins} output covering exactly this 3x3 tile
      * window, so {@code demCells * demCellBlocks} must equal {@code 3*tileSize}.
      * Pass null for both to get sea-level-only water.
+     *
+     * <p>Returns 0 on success, a negative kernel error on bad arguments, or
+     * {@link Integer#MIN_VALUE} when the library is unavailable (callers fall
+     * back to the raw tile's own water plane).
      */
     public static int carveWater(long seed, int tileSize, int originX, int originZ,
                                  short[] heights3x3, int seaLevel, int worldHeight,
@@ -767,7 +775,8 @@ public final class CendaKernels {
                                  float[] demFilled, float[] demDepth,
                                  int routeCount, int[] routeStarts, float[] vertices,
                                  float[] params,
-                                 short[] outHeights, short[] outWater) {
+                                 short[] outHeights, short[] outWater,
+                                 short[] outRiverFloor, short[] outRiverRoof) {
         int window = 3 * tileSize;
         if (heights3x3.length != window * window) {
             throw new IllegalArgumentException("heights3x3 must be (3*tileSize)^2 = "
@@ -777,6 +786,11 @@ public final class CendaKernels {
         if (outHeights.length != tileArea || outWater.length != tileArea) {
             throw new IllegalArgumentException("outputs must be tileSize^2 = " + tileArea
                 + " shorts, were " + outHeights.length + " / " + outWater.length);
+        }
+        if ((outRiverFloor != null && outRiverFloor.length != tileArea)
+                || (outRiverRoof != null && outRiverRoof.length != tileArea)) {
+            throw new IllegalArgumentException("river planes must be tileSize^2 = " + tileArea
+                + " shorts when present");
         }
         boolean withDem = demFilled != null && demDepth != null;
         if (withDem) {
@@ -809,6 +823,10 @@ public final class CendaKernels {
             MemorySegment depthSeg = withDem ? scratchFrom(5, demDepth) : MemorySegment.NULL;
             MemorySegment startsSeg = withRivers ? scratchFrom(6, routeStarts) : MemorySegment.NULL;
             MemorySegment vertsSeg = withRivers ? scratchFrom(7, vertices) : MemorySegment.NULL;
+            MemorySegment outFloorSeg = outRiverFloor == null
+                ? MemorySegment.NULL : scratch(8, (long) tileArea * Short.BYTES);
+            MemorySegment outRoofSeg = outRiverRoof == null
+                ? MemorySegment.NULL : scratch(9, (long) tileArea * Short.BYTES);
             int nParams = params == null ? 0 : params.length;
             int rc = (int) CARVE_WATER.invokeExact(
                 seed, tileSize, originX, originZ,
@@ -817,10 +835,17 @@ public final class CendaKernels {
                 filledSeg, depthSeg,
                 withRivers ? routeCount : 0, startsSeg, vertsSeg,
                 paramsSeg, nParams,
-                outHeightsSeg, outWaterSeg);
+                outHeightsSeg, outWaterSeg,
+                outFloorSeg, outRoofSeg);
             if (rc == 0) {
                 MemorySegment.copy(outHeightsSeg, ValueLayout.JAVA_SHORT, 0L, outHeights, 0, tileArea);
                 MemorySegment.copy(outWaterSeg, ValueLayout.JAVA_SHORT, 0L, outWater, 0, tileArea);
+                if (outRiverFloor != null) {
+                    MemorySegment.copy(outFloorSeg, ValueLayout.JAVA_SHORT, 0L, outRiverFloor, 0, tileArea);
+                }
+                if (outRiverRoof != null) {
+                    MemorySegment.copy(outRoofSeg, ValueLayout.JAVA_SHORT, 0L, outRiverRoof, 0, tileArea);
+                }
             }
             return rc;
         } catch (Throwable t) {

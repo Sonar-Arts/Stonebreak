@@ -241,7 +241,18 @@ public final class PerlinWormCarver {
      * suppresses nothing.
      */
     public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels) {
-        int[] waterGuard = WaterGuard.guardPlane(targetHeights, waterLevels, heightMapGenerator, chunkX, chunkZ);
+        return carveMaskForChunk(chunkX, chunkZ, targetHeights, waterLevels, null);
+    }
+
+    /**
+     * As {@link #carveMaskForChunk(int, int, int[], int[])}, also keeping clear of the river
+     * TUNNELS in {@code riverFloors}. A tunnelled column's height is the ground
+     * standing over the river, so without this the guard measures from the hilltop
+     * and leaves the passage itself open to be carved into and drained.
+     */
+    public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels,
+                                    int[] riverFloors) {
+        int[] waterGuard = WaterGuard.guardPlane(targetHeights, waterLevels, riverFloors, heightMapGenerator, chunkX, chunkZ);
         BitSet mask = new BitSet();
         for (int dcx = -SCAN_RADIUS; dcx <= SCAN_RADIUS; dcx++) {
             for (int dcz = -SCAN_RADIUS; dcz <= SCAN_RADIUS; dcz++) {
