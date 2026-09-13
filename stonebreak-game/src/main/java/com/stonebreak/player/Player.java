@@ -160,6 +160,22 @@ public class Player {
         setPosition(position.x, position.y, position.z);
     }
 
+    /**
+     * Moves the player to an arbitrary position, clearing the motion state a bare
+     * {@link #setPosition} would leave stale. Velocity is zeroed so momentum from before
+     * the jump doesn't carry over, and the descent arc fall damage is measured against is
+     * re-anchored to the destination — otherwise teleporting down a cliff lands as a fall
+     * of that whole height. {@code onGround} is cleared because the destination column is
+     * usually not loaded yet; physics re-establishes it once terrain arrives.
+     */
+    public void teleport(float x, float y, float z) {
+        setPosition(x, y, z);
+        state.getVelocity().set(0, 0, 0);
+        state.setPreviousY(y);
+        state.setWasFalling(false);
+        state.setOnGround(false);
+    }
+
     // Camera / view / inventory
     public Camera getCamera() { return camera; }
     public Inventory getInventory() { return inventory; }
