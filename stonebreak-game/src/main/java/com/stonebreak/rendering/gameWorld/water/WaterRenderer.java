@@ -175,7 +175,14 @@ public class WaterRenderer {
         shader.setUniform("uSunDirection", sunDirection);
         shader.setUniform("uAmbientLight", ambientLight);
         com.stonebreak.rendering.lighting.DynamicLights.applyTo(shader);
-        shader.setUniform("uCameraPos", cameraPos);
+        // Render space, to difference against the render-space mesh position...
+        shader.setUniform("uCameraPos",
+            com.openmason.engine.rendering.RenderOrigin.toRender(cameraPos, new org.joml.Vector3f()));
+        // ...and the origin itself, for the wave/flow lattices, which are
+        // world-space functions and must not slide when the origin steps.
+        shader.setVec2("uRenderOrigin", new org.joml.Vector2f(
+            com.openmason.engine.rendering.RenderOrigin.x(),
+            com.openmason.engine.rendering.RenderOrigin.z()));
         shader.setUniform("uFogColor", fogColor);
         shader.setUniform("uFogStart", fogStart);
         shader.setUniform("uFogEnd", fogEnd);

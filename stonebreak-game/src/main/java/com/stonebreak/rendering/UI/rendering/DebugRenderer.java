@@ -21,6 +21,7 @@ import org.lwjgl.opengl.GL30;
 import static org.lwjgl.opengl.GL11.*;
 
 // Stonebreak Game Components
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
@@ -145,12 +146,18 @@ public class DebugRenderer {
         int points = Math.min(pathPoints.size(), MAX_PATH_POINTS);
         int segments = points - 1;
 
+        // Path points arrive in world coordinates and cross into render space
+        // here rather than through the model matrix: the world shader's
+        // modelMatrix is a frame-wide identity that other passes fold their own
+        // transform against, so this path must leave it alone.
+        float ox = RenderOrigin.x();
+        float oz = RenderOrigin.z();
         pathScratch.clear();
         for (int i = 0; i < segments; i++) {
             Vector3f start = pathPoints.get(i);
             Vector3f end = pathPoints.get(i + 1);
-            pathScratch.put(start.x).put(start.y).put(start.z);
-            pathScratch.put(end.x).put(end.y).put(end.z);
+            pathScratch.put(start.x - ox).put(start.y).put(start.z - oz);
+            pathScratch.put(end.x - ox).put(end.y).put(end.z - oz);
         }
         pathScratch.flip();
 

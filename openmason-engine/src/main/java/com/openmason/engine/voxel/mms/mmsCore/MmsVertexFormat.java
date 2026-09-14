@@ -1,5 +1,6 @@
 package com.openmason.engine.voxel.mms.mmsCore;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL33;
@@ -23,8 +24,14 @@ import java.nio.ByteBuffer;
  * that origin as a divisor-1 (per-instance) attribute {@code vec4(ox, oy, oz,
  * scale)} — VAO state, so no draw path has to set a uniform. VAOs that don't
  * enable the attribute (UI, items, entities) read GL's default generic value
- * {@code (0,0,0,1)}, i.e. identity. Shaders compute
- * {@code worldPos = aOrigin.xyz + position * aOrigin.w}.
+ * {@code (0,0,0,1)}, i.e. identity, and are placed by their model matrix
+ * instead. Shaders compute {@code pos = aOrigin.xyz + position * aOrigin.w}.
+ *
+ * <p>That {@code pos} is in <em>render space</em>, not world space: the origin
+ * attribute is baked relative to {@link RenderOrigin} (see
+ * {@link #createOriginBuffer}), which is what keeps chunk geometry precise
+ * however far from spawn it sits. Mesh producers still pass true world
+ * origins — the rebase happens at the one seam where the buffer is filled.
  *
  * <p>Strides stay multiples of 4 bytes: {@code MmsStagingRing.upload} rejects
  * unaligned arena offsets, and a 4-aligned stride keeps every vertex offset
@@ -428,10 +435,6 @@ public enum MmsVertexFormat {
      * the attribute is left disabled (generic default = identity).
      */
     public void setupOriginAttribute(int originBufferId) {
-        if (!localPositions) {
-            GL30.glDisableVertexAttribArray(ORIGIN_LOCATION);
-            return;
-        }
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, originBufferId);
         GL30.glEnableVertexAttribArray(ORIGIN_LOCATION);
         GL30.glVertexAttribPointer(ORIGIN_LOCATION, 4, GL15.GL_FLOAT, false, 16, 0);
@@ -447,14 +450,19 @@ public enum MmsVertexFormat {
         }
     }
 
-    /** Creates and fills a 16-byte origin buffer for this format. */
+    /**
+     * Creates and fills a 16-byte origin buffer for this format, rebased into
+     * render space by {@link RenderOrigin} — which also re-bakes it whenever
+     * the origin steps, so the mesh bytes never have to move.
+     *
+     * <p>Every format gets one, {@link #LEGACY40} included: its positions are
+     * absolute world floats, so it carries {@code origin = (0,0,0)} and the
+     * rebase alone supplies the {@code -renderOrigin} the shader needs. (Its
+     * stored coordinates still quantize at large world X/Z — that error is in
+     * the mesh data itself and only a compact format can avoid it.)
+     */
     public int createOriginBuffer(float originX, float originY, float originZ) {
-        int id = GL15.glGenBuffers();
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, id);
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER,
-            new float[]{originX, originY + originYShift(), originZ, positionScale},
-            GL15.GL_STATIC_DRAW);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-        return id;
+        return RenderOrigin.createOriginBuffer(
+            originX, originY + originYShift(), originZ, positionScale);
     }
 }

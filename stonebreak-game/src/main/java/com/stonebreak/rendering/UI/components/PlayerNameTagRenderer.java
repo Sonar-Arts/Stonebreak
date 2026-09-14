@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.UI.components;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.LivingEntity;
@@ -62,7 +63,9 @@ public class PlayerNameTagRenderer {
             Font font = fonts.get(NAME_FONT_SIZE);
             if (font == null) return;
 
-            Matrix4f vp = new Matrix4f(proj).mul(view);
+            // view is render-space; these markers project WORLD positions, so
+            // rebase the combined matrix to consume them.
+            Matrix4f vp = RenderOrigin.acceptWorldSpace(new Matrix4f(proj).mul(view));
             for (LivingEntity entity : entityManager.getLivingEntities()) {
                 if (!(entity instanceof RemotePlayer remote) || !remote.isAlive()) continue;
 

@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.models.entities;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.entities.Entity;
@@ -96,7 +97,9 @@ public class DropRenderer {
             int camZ = (int) Math.floor(cameraPos.z);
             if (world.isPositionUnderwater(camX, camY, camZ)) fogDensity = 0.15f;
         }
-        shaderProgram.setUniform("u_cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
+        // Render space: the fragment stage differences it against fragPos.
+        shaderProgram.setUniform("u_cameraPos", cameraPos != null
+                ? RenderOrigin.toRender(cameraPos, new Vector3f()) : new Vector3f(0, 0, 0));
         shaderProgram.setUniform("u_underwaterFogDensity", fogDensity);
         shaderProgram.setUniform("u_underwaterFogColor", fogColor);
 
@@ -162,7 +165,9 @@ public class DropRenderer {
             int camZ = (int) Math.floor(cameraPos.z);
             if (world.isPositionUnderwater(camX, camY, camZ)) fogDensity = 0.15f;
         }
-        shaderProgram.setUniform("u_cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
+        // Render space: the fragment stage differences it against fragPos.
+        shaderProgram.setUniform("u_cameraPos", cameraPos != null
+                ? RenderOrigin.toRender(cameraPos, new Vector3f()) : new Vector3f(0, 0, 0));
         shaderProgram.setUniform("u_underwaterFogDensity", fogDensity);
         shaderProgram.setUniform("u_underwaterFogColor", fogColor);
 
@@ -252,7 +257,9 @@ public class DropRenderer {
         }
 
         // Set underwater fog uniforms (applied to all drops)
-        shaderProgram.setUniform("u_cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
+        // Render space: the fragment stage differences it against fragPos.
+        shaderProgram.setUniform("u_cameraPos", cameraPos != null
+                ? RenderOrigin.toRender(cameraPos, new Vector3f()) : new Vector3f(0, 0, 0));
         shaderProgram.setUniform("u_underwaterFogDensity", fogDensity);
         shaderProgram.setUniform("u_underwaterFogColor", fogColor);
 
@@ -316,7 +323,9 @@ public class DropRenderer {
         shaderProgram.setUniform("texture_sampler", 0);
         shaderProgram.setUniform("u_useTextureArray", false); // CBR meshes use the 2D atlas
         shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_cameraPos", cameraPos != null ? cameraPos : new Vector3f(0, 0, 0));
+        // Render space: the fragment stage differences it against fragPos.
+        shaderProgram.setUniform("u_cameraPos", cameraPos != null
+                ? RenderOrigin.toRender(cameraPos, new Vector3f()) : new Vector3f(0, 0, 0));
         shaderProgram.setUniform("u_underwaterFogDensity", 0.0f);
         shaderProgram.setUniform("u_underwaterFogColor", new Vector3f(0.1f, 0.3f, 0.5f));
 
@@ -356,8 +365,7 @@ public class DropRenderer {
                         ? sboHandMeshRegistry.getMesh(blockType)
                         : null;
                 boolean isFlower = sboMesh != null && blockType.isFlower();
-                dropModelMatrix.identity()
-                        .translate(handX, handY, handZ)
+                RenderOrigin.modelAt(dropModelMatrix, handX, handY, handZ)
                         .rotateY(yawRad)
                         .scale(HAND_SCALE);
                 shaderProgram.setUniform("viewMatrix", new Matrix4f(viewMatrix).mul(dropModelMatrix));
@@ -388,8 +396,7 @@ public class DropRenderer {
             } else if (held instanceof ItemType itemType && SpriteVoxelizer.isVoxelizable(itemType)) {
                 // Voxelized tool/item: position the same world-space sprite pipeline drops use
                 // at the hand (no spin), then let the drop helper drive the voxel render.
-                dropModelMatrix.identity()
-                        .translate(handX, handY, handZ)
+                RenderOrigin.modelAt(dropModelMatrix, handX, handY, handZ)
                         .rotateY(yawRad)
                         .scale(TOOL_SCALE);
                 shaderProgram.setUniform("viewMatrix", new Matrix4f(viewMatrix).mul(dropModelMatrix));
@@ -435,8 +442,7 @@ public class DropRenderer {
             // For 3D voxelized items, create standard transformation with spinning rotation
             float rotationY = dropAge * 30.0f; // Slower rotation for voxelized items
 
-            dropModelMatrix.identity()
-                .translate(dropPos.x, dropPos.y + bobOffset, dropPos.z)
+            RenderOrigin.modelAt(dropModelMatrix, dropPos.x, dropPos.y + bobOffset, dropPos.z)
                 .scale(0.25f); // Same size as blocks for consistency
 
             // Apply rotation for spinning effect
@@ -446,8 +452,7 @@ public class DropRenderer {
             // For block drops, keep spinning rotation
             float rotationY = dropAge * 50.0f; // Rotate 50 degrees per second
 
-            dropModelMatrix.identity()
-                .translate(dropPos.x, dropPos.y + bobOffset, dropPos.z)
+            RenderOrigin.modelAt(dropModelMatrix, dropPos.x, dropPos.y + bobOffset, dropPos.z)
                 .scale(0.25f); // Make drops smaller than full blocks
 
             // Apply rotation for spinning effect

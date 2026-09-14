@@ -12,6 +12,7 @@ import org.lwjgl.opengl.GL30;
 
 import static org.lwjgl.opengl.GL11.*;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.audio.emitters.SoundEmitter;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
@@ -137,9 +138,9 @@ public class SoundEmitterRenderer {
     private void renderSingleEmitter(SoundEmitter emitter) {
         Vector3f position = emitter.getPosition();
 
-        // Calculate model matrix for the emitter
-        Matrix4f modelMatrix = new Matrix4f();
-        modelMatrix.translation(position.x, position.y, position.z);
+        // Calculate model matrix for the emitter (render space — the view
+        // matrix this draws through is rebased on RenderOrigin).
+        Matrix4f modelMatrix = RenderOrigin.modelAt(position.x, position.y, position.z);
 
         // Make the triangle always face the player (billboard effect)
         Player player = Game.getPlayer();

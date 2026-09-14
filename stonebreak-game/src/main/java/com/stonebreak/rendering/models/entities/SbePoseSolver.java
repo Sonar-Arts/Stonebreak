@@ -4,6 +4,7 @@ import com.openmason.engine.format.oma.AnimLayering;
 import com.openmason.engine.format.oma.AnimSampler;
 import com.openmason.engine.format.oma.ParsedAnimClip;
 import com.openmason.engine.format.oma.ParsedAnimTrack;
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.mobs.sbe.AnimState;
 import com.stonebreak.mobs.sbe.SbeAttachmentPoint;
 import com.stonebreak.mobs.sbe.SbeEntityAsset;
@@ -55,10 +56,24 @@ public final class SbePoseSolver {
         throw new UnsupportedOperationException("Utility class");
     }
 
-    /** The base entity transform: {@code T(position) · Ry(yawDegrees) · S(scale)}. */
+    /**
+     * The base entity transform: {@code T(position) · Ry(yawDegrees) · S(scale)}.
+     *
+     * <p>{@code position} is a world position, but the matrix is built in
+     * <b>render space</b> ({@link RenderOrigin}) — the single seam where SBE
+     * models cross over. Mob geometry has no normal attribute: the fragment
+     * stage differentiates the interpolated position to recover a flat normal,
+     * and a derivative amplifies coordinate error by the reciprocal of the
+     * per-pixel delta, so absolute world coordinates degraded into per-pixel
+     * lighting noise from a few thousand blocks out. Rebasing here is what
+     * bounds that error.
+     *
+     * <p>Every matrix downstream of this one ({@link #forEachPartMatrix},
+     * {@link #socketWorldMatrix}) is therefore in render space too; anything
+     * that needs the world position back wants {@link RenderOrigin#toWorld}.
+     */
     public static Matrix4f baseMatrix(Vector3f position, float yawDegrees, Vector3f scale) {
-        return new Matrix4f()
-                .translate(position.x, position.y, position.z)
+        return RenderOrigin.modelAt(position.x, position.y, position.z)
                 .rotateY((float) Math.toRadians(yawDegrees))
                 .scale(scale);
     }

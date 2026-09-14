@@ -1,5 +1,6 @@
 package com.stonebreak.player;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -51,15 +52,38 @@ public class Camera {
     }
     
     /**
-     * Returns the view matrix calculated using Euler angles and the LookAt matrix.
+     * The view matrix for scene rendering, built in <b>render space</b> — world
+     * axes rebased on {@link RenderOrigin}, so the camera sits within a
+     * {@link RenderOrigin#GRID}-block cell of the coordinate origin however far
+     * from spawn the player has walked.
+     *
+     * <p>Geometry drawn through this matrix must be in render space too (mesh
+     * origin buffers are baked there; model matrices come from
+     * {@link RenderOrigin#modelAt}). Anything that genuinely needs world space —
+     * picking against world coordinates, say — wants
+     * {@link #getAbsoluteViewMatrix()} instead.
      */
     public Matrix4f getViewMatrix() {
-        // Create a temporary "look at" point that is position + front
+        Vector3f eye = getRenderPosition(new Vector3f());
+        Vector3f target = eye.add(front, new Vector3f());
+        return new Matrix4f().lookAt(eye, target, up);
+    }
+
+    /**
+     * The view matrix in absolute world coordinates — the pre-rebase form.
+     * Loses precision far from spawn (that is the whole reason
+     * {@link #getViewMatrix()} exists), so use it only where the consumer works
+     * in world coordinates and the error is provably harmless.
+     */
+    public Matrix4f getAbsoluteViewMatrix() {
         Vector3f target = new Vector3f();
         position.add(front, target);
-        
-        // Create the view matrix
         return new Matrix4f().lookAt(position, target, up);
+    }
+
+    /** The camera position in render space — where {@link #getViewMatrix()} puts the eye. */
+    public Vector3f getRenderPosition(Vector3f dest) {
+        return RenderOrigin.toRender(position, dest);
     }
     
     /**

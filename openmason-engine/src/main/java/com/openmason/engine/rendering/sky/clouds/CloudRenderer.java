@@ -16,6 +16,7 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 // Project Imports
+import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 
 /**
@@ -42,6 +43,9 @@ public class CloudRenderer {
     private static final long PATTERN_SEED = 20260517L;
     /** Altitude of the cloud layer, in world units (world is 1024 tall). */
     private static final float CLOUD_Y = 768.0f;
+
+    /** Scratch for the render-space camera position uniform. */
+    private final Vector3f scratchCameraPos = new Vector3f();
     /** Horizontal drift speed of the cloud layer, in units per second. */
     private static final float DRIFT_SPEED = 0.6f;
     /** Base opacity of the clouds. */
@@ -155,7 +159,9 @@ public class CloudRenderer {
         cloudShaderProgram.bind();
         cloudShaderProgram.setUniform("projectionMatrix", projectionMatrix);
         cloudShaderProgram.setUniform("viewMatrix", viewMatrix);
-        cloudShaderProgram.setUniform("cameraPosition", cameraPosition);
+        // Render space: the fragment stage differences this against a model-matrix
+        // world position, which drawCloudTiles emits relative to RenderOrigin.
+        cloudShaderProgram.setUniform("cameraPosition", RenderOrigin.toRender(cameraPosition, scratchCameraPos));
         cloudShaderProgram.setUniform("cloudColor", computeCloudColor(ambientLightLevel));
         cloudShaderProgram.setUniform("cloudAlpha", CLOUD_ALPHA);
 
@@ -217,7 +223,9 @@ public class CloudRenderer {
         cloudShaderProgram.bind();
         cloudShaderProgram.setUniform("projectionMatrix", projectionMatrix);
         cloudShaderProgram.setUniform("viewMatrix", viewMatrix);
-        cloudShaderProgram.setUniform("cameraPosition", cameraPosition);
+        // Render space: the fragment stage differences this against a model-matrix
+        // world position, which drawCloudTiles emits relative to RenderOrigin.
+        cloudShaderProgram.setUniform("cameraPosition", RenderOrigin.toRender(cameraPosition, scratchCameraPos));
         // Color is masked, but the program still needs valid uniform values.
         cloudShaderProgram.setUniform("cloudColor", cloudColor.set(1.0f, 1.0f, 1.0f));
         cloudShaderProgram.setUniform("cloudAlpha", CLOUD_ALPHA);
@@ -255,6 +263,12 @@ public class CloudRenderer {
     private void drawCloudTiles(Vector3f cameraPosition, float totalTime) {
         // Drift wraps at the tile extent so the toroidal pattern stays seamless.
         float drift = (totalTime * DRIFT_SPEED) % TILE_EXTENT;
+        // The tile lattice is snapped in WORLD space and drawn in render space.
+        // Snapping it in render space instead would translate the whole field by
+        // (origin mod TILE_EXTENT) every time RenderOrigin steps, which reads as
+        // the clouds jumping; the lattice has to stay anchored to the world.
+        float ox = RenderOrigin.x();
+        float oz = RenderOrigin.z();
         float baseX = (float) Math.floor((cameraPosition.x - drift) / TILE_EXTENT) * TILE_EXTENT;
         float baseZ = (float) Math.floor(cameraPosition.z / TILE_EXTENT) * TILE_EXTENT;
 
@@ -263,7 +277,7 @@ public class CloudRenderer {
             for (int tj = -1; tj <= 1; tj++) {
                 float originX = baseX + ti * TILE_EXTENT + drift;
                 float originZ = baseZ + tj * TILE_EXTENT;
-                modelMatrix.identity().translate(originX, CLOUD_Y, originZ);
+                modelMatrix.identity().translate(originX - ox, CLOUD_Y, originZ - oz);
                 cloudShaderProgram.setUniform("modelMatrix", modelMatrix);
                 glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
             }

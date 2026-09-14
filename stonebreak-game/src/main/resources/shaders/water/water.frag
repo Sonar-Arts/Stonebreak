@@ -21,6 +21,9 @@ in float vSurfaceHeight;
 uniform vec3 uSunDirection;
 uniform float uAmbientLight;
 uniform vec3 uCameraPos;
+// World XZ of the render origin — vWorldPos is render-space, and the
+// procedural lattices below are world-space functions.
+uniform vec2 uRenderOrigin;
 uniform float uTime;
 uniform bool uWavesEnabled;
 // Atmospheric distance fog — same parameters the world shader gets, so far
@@ -74,19 +77,26 @@ void main() {
     float t = uWavesEnabled ? uTime : 0.0;
     bool horizontal = abs(vNormal.y) > 0.5;
 
+    // The pattern domains below are world-space functions and have to stay
+    // anchored to the world, or the whole surface pattern would slide every
+    // time the render origin steps. Everything else here (distance fades,
+    // view vectors, point lights) is a difference against another render-space
+    // quantity and uses vWorldPos directly.
+    vec3 absPos = vWorldPos + vec3(uRenderOrigin.x, 0.0, uRenderOrigin.y);
+
     // Pattern domain per face kind.
     vec2 p;
     if (horizontal) {
         // Top/bottom: world-space XZ with a slow directional drift.
-        p = vWorldPos.xz * 0.35 + vec2(t * 0.060, t * 0.045);
+        p = absPos.xz * 0.35 + vec2(t * 0.060, t * 0.045);
     } else {
         // Sides: world-space face coords — U runs along the face plane,
         // V is world height. Continuous across adjacent blocks, so a wide
         // waterfall shows one unbroken pattern instead of per-column tiles.
         // Sampling V + t makes features flow DOWNWARD.
-        float u = abs(vNormal.x) > 0.5 ? vWorldPos.z : vWorldPos.x;
+        float u = abs(vNormal.x) > 0.5 ? absPos.z : absPos.x;
         float scroll = vFalling > 0.5 ? 2.2 : 0.35;
-        vec2 q = vec2(u, vWorldPos.y + t * scroll);
+        vec2 q = vec2(u, absPos.y + t * scroll);
         if (vFalling > 0.5) {
             // Stretch the lattice vertically into falling rivulet streaks.
             q = vec2(q.x * 2.4, q.y * 0.55);

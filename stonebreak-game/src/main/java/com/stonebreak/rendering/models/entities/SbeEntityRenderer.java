@@ -1,6 +1,7 @@
 package com.stonebreak.rendering.models.entities;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.mobs.sbe.AnimState;
 import com.stonebreak.mobs.sbe.MaterialImage;
 import com.stonebreak.mobs.sbe.SbeEntityAsset;
@@ -319,10 +320,17 @@ public final class SbeEntityRenderer {
                         (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z))) {
             fogDensity = 0.15f;
         }
-        shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f());
+        // cameraPos arrives in world coordinates (the underwater probe above needs
+        // it that way); the shader differences it against a render-space fragment
+        // position, so it crosses over here.
+        shader.setUniform("cameraPos", cameraPos != null
+                ? RenderOrigin.toRender(cameraPos, new Vector3f())
+                : new Vector3f());
         shader.setUniform("underwaterFogDensity", fogDensity);
         shader.setUniform("underwaterFogColor", fogColor);
-        applyEnvironmentLighting(world, baseMatrix.getTranslation(new Vector3f()));
+        // baseMatrix is render-space; the sky-light probe is a world block lookup.
+        applyEnvironmentLighting(world,
+                RenderOrigin.toWorld(baseMatrix.getTranslation(new Vector3f()), new Vector3f()));
 
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         GL30.glBindVertexArray(gpu.vao);

@@ -9,7 +9,10 @@
 //   location 3 (flags) = x: surface-height fraction (0..0.875, sewn corner
 //                        heights baked by MmsWaterGenerator), y: falling flag,
 //                        z: source flag, w: light (currently 1.0)
-// Positions are world-space (chunk meshes carry no model matrix).
+// Positions are render-space (chunk meshes carry no model matrix; their origin
+// attribute is baked relative to RenderOrigin). uRenderOrigin.xy is that
+// origin's world XZ, for the few places that need the absolute coordinate
+// back — the wave lattice, which has to stay anchored to the world.
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec2 aUV;
 layout (location = 2) in vec3 aNormal;
@@ -18,6 +21,8 @@ layout (location = 3) in vec4 aFlags;
 // w < -2.5 = pulled water quads (MmsWaterQuadCodec) read from u_quads by gl_VertexID.
 layout (location = 5) in vec4 aOrigin;
 uniform usamplerBuffer u_quads;
+// World XZ of the render origin (see com.openmason.engine.rendering.RenderOrigin).
+uniform vec2 uRenderOrigin;
 const vec3 QUAD_CORNER[24] = vec3[24](
     vec3(0,1,1), vec3(1,1,1), vec3(1,1,0), vec3(0,1,0),   // 0 top    (+Y)
     vec3(0,0,0), vec3(1,0,0), vec3(1,0,1), vec3(0,0,1),   // 1 bottom (-Y)
@@ -117,7 +122,9 @@ void main() {
     if (uWavesEnabled && falling < 0.5 && !sheet) {
         const float MIN_WATER_SURFACE = 0.125;
         const float MAX_WAVE_DELTA = 0.18;
-        float wave = gerstnerHeight(pos.xz, uTime);
+        // Absolute XZ: the Gerstner lattice is a world-space function, so it must
+        // not shift when the render origin steps.
+        float wave = gerstnerHeight(pos.xz + uRenderOrigin, uTime);
         if (uWaveFadeEnd > 0.0) {
             float dist = length(pos.xz - uCameraPos.xz);
             wave *= 1.0 - smoothstep(uWaveFadeEnd * 0.6, uWaveFadeEnd, dist);

@@ -337,7 +337,18 @@ public final class ShadowMapRenderer {
         sunDir.set(sunDirection).normalize();
 
         computeUpdateMask(player);
-        calculator.update(cascades, player.getViewMatrix(), projectionMatrix, sunDir, settings, updateMask);
+        // Cascades are fitted and texel-snapped in ABSOLUTE world coordinates on
+        // purpose: the snap grid then stays put as RenderOrigin steps, so the
+        // shadow volume never slides by a fraction of a texel when the player
+        // crosses a grid boundary. Only the matrices handed to draws and
+        // receivers are rebased, immediately below.
+        calculator.update(cascades, player.getAbsoluteViewMatrix(), projectionMatrix, sunDir, settings, updateMask);
+        // Every cascade, not just the ones refitted this frame — a staggered
+        // cascade keeps last frame's fit but still has to draw against this
+        // frame's origin.
+        for (ShadowCascade cascade : cascades) {
+            cascade.rebaseToRenderSpace();
+        }
         collectCasterChunks(loadedChunks);
 
         // Save state we clobber (the scene FBO may already be bound by post-fx).
@@ -365,12 +376,15 @@ public final class ShadowMapRenderer {
             shadowMap.beginCascade(i);
 
             depthShader.bind();
-            depthShader.setUniform("u_lightViewProj", cascades[i].lightViewProj);
+            depthShader.setUniform("u_lightViewProj", cascades[i].lightViewProjRender);
             if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
                 var regionRenderer =
                     com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance();
                 // GL 4.3+ path: compute-shader cull against this cascade's
                 // light frustum + one indirect multidraw per region.
+                // World-space matrix here, unlike the draw uniform above: the
+                // cull compute shader tests per-mesh AABBs that were uploaded
+                // in world coordinates.
                 if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isGpuCullEnabled()
                         && regionRenderer.drawLayerGpuCulled(
                             com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS,
@@ -393,8 +407,11 @@ public final class ShadowMapRenderer {
             depthShader.unbind();
 
             if (entityRenderer != null) {
+                // Render-space light view (entities draw from render-space model
+                // matrices); the cull sphere stays in world space, where entity
+                // positions are.
                 entityRenderer.renderShadowCasters(player,
-                        cascades[i].lightView, cascades[i].lightProj,
+                        cascades[i].lightViewRender, cascades[i].lightProj,
                         cascades[i].centerWorld, cascades[i].radius);
             }
 

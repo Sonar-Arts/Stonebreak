@@ -37,6 +37,7 @@ module openmason.engine {
 
     // Export rendering API
     exports com.openmason.engine.cenda;
+    exports com.openmason.engine.rendering;
     exports com.openmason.engine.rendering.api;
     exports com.openmason.engine.rendering.shaders;
     exports com.openmason.engine.rendering.sky;

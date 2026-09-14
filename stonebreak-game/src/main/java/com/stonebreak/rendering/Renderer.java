@@ -509,6 +509,15 @@ public class Renderer {
      * UI elements have been stripped from this method and should be rendered separately.
      */
     public void renderWorld(World world, Player player, float totalTime) {
+        // Rebase the frame onto a coordinate origin near the camera BEFORE any
+        // pass builds a matrix or uniform: every view/model/light matrix and
+        // every mesh origin buffer below is expressed relative to it, which is
+        // what keeps float32 shader math precise arbitrarily far from spawn.
+        // Must be the first statement in the frame — a pass that read a matrix
+        // built against last frame's origin would draw a grid cell out of place.
+        org.joml.Vector3f renderCameraPos = player.getCamera().getPosition();
+        com.openmason.engine.rendering.RenderOrigin.update(renderCameraPos.x, renderCameraPos.z);
+
         // Far plane tracks the LOD outer ring: at max settings the ring reaches
         // (24 + 48) * 16 = 1152 blocks — past the 1000-block default — and its
         // square corners lie √2 farther out still. Change-detected inside

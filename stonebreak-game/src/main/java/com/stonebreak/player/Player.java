@@ -181,6 +181,12 @@ public class Player {
     public Inventory getInventory() { return inventory; }
     public Matrix4f getViewMatrix() { return camera.getViewMatrix(); }
 
+    /** @see Camera#getAbsoluteViewMatrix() */
+    public Matrix4f getAbsoluteViewMatrix() { return camera.getAbsoluteViewMatrix(); }
+
+    /** @see Camera#getRenderPosition(org.joml.Vector3f) */
+    public Vector3f getRenderPosition(Vector3f dest) { return camera.getRenderPosition(dest); }
+
     // Fishing
     public com.stonebreak.mobs.entities.FishingBobber getActiveBobber() { return activeBobber; }
     public void setActiveBobber(com.stonebreak.mobs.entities.FishingBobber b) { activeBobber = b; }

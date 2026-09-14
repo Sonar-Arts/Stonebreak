@@ -18,6 +18,7 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 // Project Imports
+import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 
 /**
@@ -28,6 +29,9 @@ import com.openmason.engine.rendering.shaders.ShaderProgram;
  * game time-of-day system), keeping this renderer free of any game-world coupling.</p>
  */
 public class SkyRenderer {
+
+    /** Scratch for the render-space camera position uniform. */
+    private final Vector3f scratchCameraPos = new Vector3f();
 
     // Sky dome geometry
     private int skyVAO;
@@ -175,7 +179,10 @@ public class SkyRenderer {
         // Set uniforms
         skyShaderProgram.setUniform("projectionMatrix", projectionMatrix);
         skyShaderProgram.setUniform("viewMatrix", viewMatrix);
-        skyShaderProgram.setUniform("cameraPosition", cameraPosition);
+        // Render space: the sky dome is built as cameraPosition + aPos * 1000 in
+        // the vertex stage, and is drawn through the render-space view matrix.
+        skyShaderProgram.setUniform("cameraPosition",
+                RenderOrigin.toRender(cameraPosition, scratchCameraPos));
         skyShaderProgram.setUniform("sunDirection", sunDirection);
         skyShaderProgram.setUniform("skyColor", skyColor);
 

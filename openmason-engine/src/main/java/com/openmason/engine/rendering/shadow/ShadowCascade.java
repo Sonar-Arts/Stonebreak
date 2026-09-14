@@ -1,5 +1,6 @@
 package com.openmason.engine.rendering.shadow;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -22,6 +23,18 @@ public final class ShadowCascade {
     /** {@code lightProj * lightView} — transform from world space to light clip space. */
     public final Matrix4f lightViewProj = new Matrix4f();
 
+    /**
+     * {@link #lightView} rebased to consume render-space positions. The cascade
+     * is fitted and texel-snapped in world coordinates — keeping that stable
+     * across {@link RenderOrigin} steps, so the shadow volume never shifts under
+     * the snap grid — but the geometry drawn into it, and the fragments that
+     * sample it, are in render space. These two are that bridge.
+     */
+    public final Matrix4f lightViewRender = new Matrix4f();
+
+    /** {@link #lightViewProj} rebased to consume render-space positions. */
+    public final Matrix4f lightViewProjRender = new Matrix4f();
+
     /** View-space distance where this cascade ends (used for cascade selection). */
     public float splitFar;
 
@@ -33,6 +46,18 @@ public final class ShadowCascade {
 
     /** World-space size of one shadow-map texel (drives receiver normal-offset bias). */
     public float texelWorldSize;
+
+    /**
+     * Refreshes {@link #lightViewRender} / {@link #lightViewProjRender} from the
+     * world-space matrices against the current {@link RenderOrigin}. Call once
+     * per frame after the cascade is fitted, and again whenever the origin
+     * steps — a cascade that skipped its staggered refit still needs this, or
+     * it would keep drawing against the previous origin.
+     */
+    public void rebaseToRenderSpace() {
+        RenderOrigin.acceptRenderSpace(lightViewRender.set(lightView));
+        RenderOrigin.acceptRenderSpace(lightViewProjRender.set(lightViewProj));
+    }
 
     /**
      * Whether a world-space axis-aligned box could cast into this cascade. The test

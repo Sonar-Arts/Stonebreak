@@ -182,9 +182,13 @@ public class PlayerArmRenderer {
         org.joml.Vector3f eyeTip = armViewModel.transformPosition(new org.joml.Vector3f(modelTip));
         eyeTip.x += ROD_TIP_NUDGE_RIGHT;
         eyeTip.y += ROD_TIP_NUDGE_UP;
+        // Inverting the render-space view matrix lands in render space, but this
+        // method's contract (and its caller, which pairs the tip with a bobber's
+        // world position) is world coordinates — so step back out.
         Matrix4f invView = new Matrix4f();
         player.getViewMatrix().invert(invView);
-        return invView.transformPosition(eyeTip);
+        org.joml.Vector3f renderTip = invView.transformPosition(eyeTip);
+        return com.openmason.engine.rendering.RenderOrigin.toWorld(renderTip, renderTip);
     }
 
     /**

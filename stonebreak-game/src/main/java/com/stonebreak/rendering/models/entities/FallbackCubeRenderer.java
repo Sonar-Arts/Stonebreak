@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.models.entities;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.mobs.entities.Entity;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -37,8 +38,8 @@ final class FallbackCubeRenderer {
                 cameraPos != null ? cameraPos : new Vector3f(0, 0, 0),
                 fogDensity, fogColor, entity, true);
 
-        Matrix4f modelMatrix = new Matrix4f()
-            .translate(entity.getPosition())
+        Matrix4f modelMatrix = RenderOrigin
+            .modelAt(entity.getPosition().x, entity.getPosition().y, entity.getPosition().z)
             .rotateY((float) Math.toRadians(entity.getRotation().y))
             .scale(entity.getScale());
 

@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.lighting;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.blocks.BlockType;
@@ -129,9 +130,13 @@ public final class DynamicLights {
         if (shader == null) return;
         int n = lights.size();
         shader.setInt("u_pointLightCount", n);
+        // Positions go up in render space: the shaders subtract them from a
+        // render-space fragment position, and both sides have to agree.
+        float ox = RenderOrigin.x();
+        float oz = RenderOrigin.z();
         for (int i = 0; i < n; i++) {
             Light l = lights.get(i);
-            scratchPos.set(l.x, l.y, l.z, l.radius);
+            scratchPos.set(l.x - ox, l.y, l.z - oz, l.radius);
             scratchColor.set(l.r, l.g, l.b);
             shader.setVec4(POS_NAMES[i], scratchPos);
             shader.setVec3(COLOR_NAMES[i], scratchColor);

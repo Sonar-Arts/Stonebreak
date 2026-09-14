@@ -362,8 +362,10 @@ public class WorldRenderer {
             shaderProgram.setUniform("u_sunDirection", new Vector3f(0.5f, 1.0f, 0.3f).normalize());
         }
 
-        // Set view position for specular lighting calculations
-        shaderProgram.setUniform("u_viewPos", player.getCamera().getPosition());
+        // Set view position for specular lighting calculations. Render space —
+        // it is differenced against fragPos, which the mesh origin buffers put
+        // in render space too.
+        shaderProgram.setUniform("u_viewPos", player.getRenderPosition(new Vector3f()));
 
         // Dynamic point lights (torches) for this frame.
         com.stonebreak.rendering.lighting.DynamicLights.applyTo(shaderProgram);
@@ -496,10 +498,13 @@ public class WorldRenderer {
             // multidraw per region — no per-chunk CPU visibility work for the
             // opaque pass at all. Falls back to the CPU multidraw when the
             // cull program is unavailable.
+            // projectionViewWorld, not projectionView: the cull compute shader
+            // tests per-mesh AABBs that were uploaded in world coordinates,
+            // while the draw itself runs in render space off the mesh origins.
             if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isGpuCullEnabled()
                     && regionRenderer.drawLayerGpuCulled(
                         com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS,
-                        frustumCuller.projectionView())) {
+                        frustumCuller.projectionViewWorld())) {
                 regionRenderer.drawLegacyOnly(visibleChunks,
                     com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
                 return;
