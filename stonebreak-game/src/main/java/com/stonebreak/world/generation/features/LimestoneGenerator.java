@@ -1,6 +1,9 @@
 package com.stonebreak.world.generation.features;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.stalagmite.Stalagmite;
+import com.stonebreak.blocks.stalagmite.StalagmiteState;
+import com.stonebreak.blocks.stairs.StairState;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.ChunkGenerationContext;
 import com.stonebreak.world.generation.NoiseGenerator;
@@ -16,12 +19,16 @@ import java.util.Random;
 /**
  * Replaces stone with limestone after terrain and ores are in place.
  *
- * <p>Four placements, all of which only ever overwrite {@link BlockType#STONE}:
+ * <p>Four placements, all of which only ever replace {@link BlockType#STONE} (a stalagmite
+ * also takes the cave air above its pillar):
  * <ol>
- *   <li><b>Cavern formations</b> — inside a cavern or megacavern every stalagmite and
- *       stalactite becomes limestone. A formation is recognised structurally (a stone cell
- *       whose horizontal neighbours are all cave air) rather than by rebuilding the carvers'
- *       formation masks, which would repeat the most expensive part of terrain generation.</li>
+ *   <li><b>Cavern formations</b> — inside a cavern or megacavern, a stone pillar standing on
+ *       the floor or hanging from the ceiling is replaced by a
+ *       {@link BlockType#LIMESTONE_STALAGMITE} of size 1-3, upright or hanging, with a rolled
+ *       facing. A pillar bridging floor to ceiling becomes limestone blocks. A formation is
+ *       recognised structurally (a stone cell whose horizontal neighbours are all cave air)
+ *       rather than by rebuilding the carvers' formation masks, which would repeat the most
+ *       expensive part of terrain generation.</li>
  *   <li><b>Cavern flowstone</b> — noise-shaped sheets up to {@link #CAVERN_COAT_DEPTH}
  *       blocks deep over cavern floors, walls and ceilings.</li>
  *   <li><b>Karst caves</b> — within regional karst zones, patchy one-block coatings on the
@@ -51,6 +58,10 @@ public class LimestoneGenerator {
     private static final float CAVERN_ZONE_HALF_HEIGHT = 16f;
     private static final float MEGA_ZONE_RADIUS = 48f;
     private static final float MEGA_ZONE_HALF_HEIGHT = 36f;
+
+    /** Size distribution of generated stalagmites; the rest are size 3. Headroom caps them. */
+    private static final int STALAGMITE_SIZE1_PERCENT = 45;
+    private static final int STALAGMITE_SIZE2_PERCENT = 35;
 
     /** Deepest flowstone sheet, in blocks from the exposed face. */
     private static final int CAVERN_COAT_DEPTH = 2;
@@ -128,6 +139,9 @@ public class LimestoneGenerator {
         }
         List<float[]> zones = cavernZones(ctx.chunkX, ctx.chunkZ);
         Chunk[] neighbours = neighbourChunks(ctx);
+        if (!zones.isEmpty()) {
+            placeStalagmites(ctx, cells, neighbours, zones);
+        }
 
         for (int lx = 0; lx < CHUNK; lx++) {
             for (int lz = 0; lz < CHUNK; lz++) {
@@ -189,6 +203,102 @@ public class LimestoneGenerator {
             return phase - (float) Math.floor(phase) < bedFill;
         }
         return false;
+    }
+
+    /**
+     * Swaps every formation pillar in a cavern zone for a stalagmite.
+     *
+     * <p>A pillar is a vertical run of formation-shaped stone. Resting on rock with air over its
+     * tip it stands; attached to the ceiling with air under its tip it hangs. Either way the run
+     * is cleared and a stalagmite of a rolled size and facing is anchored where it was attached,
+     * capped by the room along its direction. A run touching both floor and ceiling is left for
+     * the limestone pass. {@code cells} is kept in step so that pass sees the cleared air.
+     */
+    private void placeStalagmites(ChunkGenerationContext ctx, byte[] cells, Chunk[] neighbours,
+                                  List<float[]> zones) {
+        Chunk chunk = ctx.chunk;
+        Stalagmite.Cells chunkCells = new Stalagmite.Cells() {
+            @Override public BlockType block(int x, int y, int z) { return chunk.getBlock(x, y, z); }
+            @Override public String state(int x, int y, int z) { return chunk.getBlockState(x, y, z); }
+            @Override public void set(int x, int y, int z, BlockType block, String state) {
+                chunk.setBlock(x, y, z, block);
+                if (state != null) {
+                    chunk.setBlockState(x, y, z, state);
+                }
+            }
+        };
+        for (int lx = 0; lx < CHUNK; lx++) {
+            for (int lz = 0; lz < CHUNK; lz++) {
+                int wx = ctx.worldX(lx);
+                int wz = ctx.worldZ(lz);
+                int stoneTop = Math.min(ctx.height(lx, lz) - SUBSURFACE_DEPTH, WORLD_HEIGHT - 1);
+                int column = (lx * CHUNK + lz) * WORLD_HEIGHT;
+                int y = 1;
+                while (y < stoneTop) {
+                    if (cells[column + y] != STONE || !isFormation(cells, neighbours, lx, y, lz)
+                            || zoneAt(zones, wx, y, wz) == 0) {
+                        y++;
+                        continue;
+                    }
+                    int runStart = y;
+                    while (y < stoneTop && cells[column + y] == STONE && isFormation(cells, neighbours, lx, y, lz)) {
+                        y++;
+                    }
+                    int runEnd = y - 1;
+                    boolean floorBelow = cells[column + runStart - 1] != AIR;
+                    boolean airAbove = cells[column + runEnd + 1] == AIR;
+                    boolean ceilingAbove = !airAbove;
+                    boolean airBelow = !floorBelow;
+                    int direction;
+                    int anchor;
+                    if (floorBelow && airAbove) {
+                        direction = 1;        // stands on the floor
+                        anchor = runStart;
+                    } else if (ceilingAbove && airBelow) {
+                        direction = -1;       // hangs from the ceiling
+                        anchor = runEnd;
+                    } else {
+                        continue;             // bridges floor to ceiling, or floats: leave to limestone
+                    }
+                    // Room along the growth direction: the pillar's own cells plus cave air.
+                    int room = 0;
+                    while (room < Stalagmite.MAX_SIZE) {
+                        int cy = anchor + room * direction;
+                        boolean inRun = cy >= runStart && cy <= runEnd;
+                        if (cy < 1 || cy >= stoneTop || !(inRun || cells[column + cy] == AIR)) break;
+                        room++;
+                    }
+                    long roll = formationHash(wx, anchor, wz);
+                    StalagmiteState state = new StalagmiteState(
+                            Math.min(room, rollStalagmiteSize(roll)), direction < 0,
+                            StairState.Facing.values()[(int) ((roll >>> 40) & 3)]);
+                    for (int cy = runStart; cy <= runEnd; cy++) {
+                        chunk.setBlock(lx, cy, lz, BlockType.AIR);
+                        cells[column + cy] = AIR;
+                    }
+                    Stalagmite.place(chunkCells, lx, anchor, lz, state);
+                    for (int i = 0; i < state.size(); i++) {
+                        cells[column + anchor + i * direction] = ROCK;
+                    }
+                }
+            }
+        }
+    }
+
+    /** Deterministic per-formation hash: size from its low bits, facing from its high bits. */
+    private long formationHash(int wx, int y, int wz) {
+        long h = seed ^ 0x57A1A6317E5L;
+        h ^= wx * 0x9E3779B97F4A7C15L;
+        h = Long.rotateLeft(h, 21) ^ (y * 0xC2B2AE3D27D4EB4FL);
+        h = Long.rotateLeft(h, 17) ^ (wz * 0x165667B19E3779F9L);
+        h ^= h >>> 29;
+        return h * 0xBF58476D1CE4E5B9L;
+    }
+
+    /** Mostly small, tall ones rarer. */
+    private static int rollStalagmiteSize(long hash) {
+        int roll = (int) Math.floorMod(hash >>> 1, 100L);
+        return roll < STALAGMITE_SIZE1_PERCENT ? 1 : roll < STALAGMITE_SIZE1_PERCENT + STALAGMITE_SIZE2_PERCENT ? 2 : 3;
     }
 
     /**

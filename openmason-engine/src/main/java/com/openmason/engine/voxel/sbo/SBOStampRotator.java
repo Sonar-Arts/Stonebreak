@@ -49,6 +49,65 @@ public final class SBOStampRotator {
         return new BlockStamp(faces, interior, occludes);
     }
 
+    /**
+     * A copy of {@code stamp} mirrored top-to-bottom about the cell centre ({@code y → −y}),
+     * for shapes that can hang from a ceiling as well as stand on a floor.
+     *
+     * <p>A mirror reverses handedness, so each triangle's winding is reversed to keep its
+     * front face outward, and normals flip their Y. The top and bottom face buckets (and
+     * their occlusion flags) trade places; the four sides stay where they are. UVs and
+     * layers ride along, so the texture is mirrored with the geometry.
+     */
+    public static BlockStamp flipY(BlockStamp stamp) {
+        FaceStamp[] faces = new FaceStamp[SBOFaceConventions.FACE_COUNT];
+        FaceStamp[] interior = new FaceStamp[SBOFaceConventions.FACE_COUNT];
+        boolean[] occludes = new boolean[SBOFaceConventions.FACE_COUNT];
+        for (int face = 0; face < SBOFaceConventions.FACE_COUNT; face++) {
+            int flipped = flipFace(face);
+            faces[flipped] = flipGeometry(stamp.faces()[face]);
+            interior[flipped] = flipGeometry(stamp.interior()[face]);
+            occludes[flipped] = stamp.occludesFace()[face];
+        }
+        return new BlockStamp(faces, interior, occludes);
+    }
+
+    /** The MMS face a face points at after a top-to-bottom mirror. */
+    public static int flipFace(int mmsFace) {
+        return switch (mmsFace) {
+            case SBOFaceConventions.MMS_TOP -> SBOFaceConventions.MMS_BOTTOM;
+            case SBOFaceConventions.MMS_BOTTOM -> SBOFaceConventions.MMS_TOP;
+            default -> mmsFace;
+        };
+    }
+
+    private static FaceStamp flipGeometry(FaceStamp source) {
+        int vertexCount = source.vertexCount();
+        if (vertexCount == 0) {
+            return source;
+        }
+        float[] positions = new float[vertexCount * 3];
+        float[] normals = new float[vertexCount * 3];
+        float[] uvs = new float[vertexCount * 2];
+        float[] layers = new float[vertexCount];
+        for (int tri = 0; tri < vertexCount / 3; tri++) {
+            for (int v = 0; v < 3; v++) {
+                // (a, b, c) → (a, c, b): reversed winding
+                int src = tri * 3 + (v == 0 ? 0 : 3 - v);
+                int dst = tri * 3 + v;
+                positions[dst * 3] = source.positions()[src * 3];
+                positions[dst * 3 + 1] = -source.positions()[src * 3 + 1];
+                positions[dst * 3 + 2] = source.positions()[src * 3 + 2];
+                normals[dst * 3] = source.normals()[src * 3];
+                normals[dst * 3 + 1] = -source.normals()[src * 3 + 1];
+                normals[dst * 3 + 2] = source.normals()[src * 3 + 2];
+                uvs[dst * 2] = source.atlasUVs()[src * 2];
+                uvs[dst * 2 + 1] = source.atlasUVs()[src * 2 + 1];
+                layers[dst] = source.layers()[src];
+            }
+        }
+        return new FaceStamp(positions, normals, uvs, layers, vertexCount);
+    }
+
     /** The MMS face a face ends up pointing at after {@code turns} quarter turns. */
     public static int rotateFace(int mmsFace, int turns) {
         int t = Math.floorMod(turns, 4);

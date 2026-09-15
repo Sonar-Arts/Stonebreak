@@ -87,6 +87,46 @@ class SBOStampRotatorTest {
         assertArrayEquals(base.faces()[SBOFaceConventions.MMS_SOUTH].layers(), moved.layers(), EPS);
     }
 
+    @Test
+    void flipMirrorsYSwapsTopAndBottomAndKeepsTrianglesFacingOut() {
+        FaceStamp[] flush = new FaceStamp[SBOFaceConventions.FACE_COUNT];
+        FaceStamp[] interior = new FaceStamp[SBOFaceConventions.FACE_COUNT];
+        boolean[] occludes = new boolean[SBOFaceConventions.FACE_COUNT];
+        for (int f = 0; f < SBOFaceConventions.FACE_COUNT; f++) {
+            flush[f] = empty();
+            interior[f] = empty();
+        }
+        // Counter-clockwise from above on the top plane: normal +Y.
+        flush[SBOFaceConventions.MMS_TOP] = new FaceStamp(
+                new float[]{0f, 0.5f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0f},
+                new float[]{0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f, 0f},
+                new float[]{0f, 0f, 0f, 1f, 1f, 0f},
+                new float[]{1f, 2f, 3f},
+                3);
+        occludes[SBOFaceConventions.MMS_TOP] = true;
+        BlockStamp flipped = SBOStampRotator.flipY(new BlockStamp(flush, interior, occludes));
+
+        FaceStamp bottom = flipped.faces()[SBOFaceConventions.MMS_BOTTOM];
+        assertEquals(3, bottom.vertexCount());
+        assertEquals(0, flipped.faces()[SBOFaceConventions.MMS_TOP].vertexCount());
+        assertEquals(true, flipped.occludesFace()[SBOFaceConventions.MMS_BOTTOM]);
+        assertEquals(false, flipped.occludesFace()[SBOFaceConventions.MMS_TOP]);
+        float[] p = bottom.positions();
+        for (int v = 0; v < 3; v++) {
+            assertEquals(-0.5f, p[v * 3 + 1], EPS);
+            assertEquals(-1f, bottom.normals()[v * 3 + 1], EPS);
+        }
+        // Geometric normal from the winding must agree with the flipped normal (-Y).
+        float ax = p[3] - p[0], az = p[5] - p[2];
+        float bx = p[6] - p[0], bz = p[8] - p[2];
+        float crossY = az * bx - ax * bz;
+        assertEquals(true, crossY < 0, "winding must face down after the flip");
+        // Vertex attributes stay attached to their vertex.
+        assertEquals(1f, bottom.layers()[0], EPS);
+        assertEquals(3f, bottom.layers()[1], EPS);
+        assertEquals(2f, bottom.layers()[2], EPS);
+    }
+
     /**
      * A stamp with one triangle in {@code face}'s flush and interior buckets,
      * its lone marked vertex at that face's outward extreme, and only that face

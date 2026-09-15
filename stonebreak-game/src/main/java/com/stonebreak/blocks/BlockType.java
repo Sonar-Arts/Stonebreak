@@ -108,6 +108,9 @@ public final class BlockType implements Item, IBlockType {
     // Limestone: natural stone generated in cavern formations, cave coatings, pockets and
     // beds by world/generation/features/LimestoneGenerator.
     public static final BlockType LIMESTONE = fromRegistry("stonebreak:limestone", "LIMESTONE");
+    // Limestone stalagmite: 1-3 blocks tall, size in the anchor cell's state, cells above hold
+    // an empty "upper" state. Rules in blocks/stalagmite/Stalagmite.
+    public static final BlockType LIMESTONE_STALAGMITE = fromRegistry("stonebreak:limestone_stalagmite", "LIMESTONE_STALAGMITE");
     public static final BlockType WILDGRASS = fromRegistry("stonebreak:wildgrass", "WILDGRASS");
     // Animated door (SBO 1.6 per-state clips); interaction special-cased in
     // InputHandler, rendered dynamically by AnimatedBlockRenderer.

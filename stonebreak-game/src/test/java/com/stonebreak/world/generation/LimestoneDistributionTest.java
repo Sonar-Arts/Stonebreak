@@ -1,6 +1,8 @@
 package com.stonebreak.world.generation;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.stalagmite.Stalagmite;
+import com.stonebreak.blocks.stalagmite.StalagmiteState;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.features.LimestoneGenerator;
 import com.stonebreak.world.generation.heightmap.CavernCarver;
@@ -13,8 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Limestone must replace stone only, turn cavern formations into limestone, show up both on
- * cave walls and inside solid rock, and stay a minority of the rock.
+ * Limestone must replace stone only, turn cavern formations into standing and hanging stalagmites,
+ * show up both on cave walls and inside solid rock, and stay a minority of the rock.
  */
 public class LimestoneDistributionTest {
 
@@ -59,8 +61,14 @@ public class LimestoneDistributionTest {
                     BlockType was = before.getBlock(x, y, z);
                     BlockType now = after.getBlock(x, y, z);
                     if (was != now) {
-                        assertEquals(BlockType.STONE, was, "replaced a non-stone block at " + x + "," + y + "," + z);
-                        assertEquals(BlockType.LIMESTONE, now);
+                        String at = " at " + x + "," + y + "," + z;
+                        if (now == BlockType.LIMESTONE_STALAGMITE) {
+                            // a stalagmite takes its pillar's stone and the cave air above it
+                            assertTrue(was == BlockType.STONE || was == BlockType.AIR, "stalagmite over " + was + at);
+                        } else {
+                            assertEquals(BlockType.STONE, was, "replaced a non-stone block" + at);
+                            assertTrue(now == BlockType.LIMESTONE || now == BlockType.AIR, "stone became " + now + at);
+                        }
                     }
                     assertEquals(now, again.getBlock(x, y, z), "non-deterministic at " + x + "," + y + "," + z);
                 }
@@ -69,7 +77,7 @@ public class LimestoneDistributionTest {
     }
 
     @Test
-    public void cavernFormationsBecomeLimestone() {
+    public void cavernFormationsBecomeStandingAndHangingStalagmites() {
         Setup s = setup();
         int[] host = null;
         for (int r = 0; r < 64 && host == null; r++) {
@@ -86,6 +94,9 @@ public class LimestoneDistributionTest {
 
         int limestonePillars = 0;
         int stonePillars = 0;
+        int stalagmites = 0;
+        int hangingCount = 0;
+        java.util.Set<Integer> sizes = new java.util.HashSet<>();
         float[] origin = s.caverns().computeCavernOrigin(host[0], host[1]);
         for (int dcx = -1; dcx <= 1; dcx++) {
             for (int dcz = -1; dcz <= 1; dcz++) {
@@ -95,6 +106,20 @@ public class LimestoneDistributionTest {
                     for (int z = 1; z < CHUNK - 1; z++) {
                         for (int y = 2; y < H - 1; y++) {
                             BlockType b = chunk.getBlock(x, y, z);
+                            if (b == BlockType.LIMESTONE_STALAGMITE) {
+                                Stalagmite.Cells cells = chunkCells(chunk);
+                                assertEquals(true, Stalagmite.anchorY(cells, x, y, z) != Integer.MIN_VALUE,
+                                        "stalagmite cell without an anchor at " + x + "," + y + "," + z);
+                                if (!Stalagmite.isPartState(chunk.getBlockState(x, y, z))) {
+                                    StalagmiteState st = StalagmiteState.parse(chunk.getBlockState(x, y, z));
+                                    stalagmites++;
+                                    sizes.add(st.size());
+                                    if (st.hanging()) hangingCount++;
+                                    assertTrue(chunk.getBlock(x, y - st.direction(), z) != BlockType.AIR,
+                                            "stalagmite not attached at " + x + "," + y + "," + z);
+                                }
+                                continue;
+                            }
                             if (b != BlockType.STONE && b != BlockType.LIMESTONE) continue;
                             if (chunk.getBlock(x + 1, y, z) != BlockType.AIR
                                     || chunk.getBlock(x - 1, y, z) != BlockType.AIR
@@ -105,13 +130,31 @@ public class LimestoneDistributionTest {
                             float dz = (cz * CHUNK + z - origin[2]) / 20f;
                             if (dx * dx + dy * dy + dz * dz > 1f) continue;
                             if (b == BlockType.LIMESTONE) limestonePillars++; else stonePillars++;
+                            // A pillar standing on the floor or hanging from the ceiling is a stalagmite now;
+                            // only one bridging floor to ceiling may stay rock.
+                            boolean airBelow = chunk.getBlock(x, y - 1, z) == BlockType.AIR;
+                            boolean airAbove = chunk.getBlock(x, y + 1, z) == BlockType.AIR;
+                            assertTrue(airBelow == airAbove, "attached pillar left as " + b + " at " + x + "," + y + "," + z);
                         }
                     }
                 }
             }
         }
-        assertTrue(limestonePillars > 0, "cavern produced no limestone formations");
+        assertTrue(stalagmites > 0, "cavern produced no stalagmites");
+        assertTrue(sizes.size() >= 2, "stalagmite sizes never vary: " + sizes);
+        assertTrue(hangingCount > 0, "no stalagmites hang from the cavern ceiling");
+        assertTrue(hangingCount < stalagmites, "no stalagmites stand on the cavern floor");
         assertEquals(0, stonePillars, "stone formations left inside the cavern");
+    }
+
+    private static Stalagmite.Cells chunkCells(Chunk chunk) {
+        return new Stalagmite.Cells() {
+            @Override public BlockType block(int x, int y, int z) { return chunk.getBlock(x, y, z); }
+            @Override public String state(int x, int y, int z) { return chunk.getBlockState(x, y, z); }
+            @Override public void set(int x, int y, int z, BlockType block, String state) {
+                throw new UnsupportedOperationException();
+            }
+        };
     }
 
     @Test

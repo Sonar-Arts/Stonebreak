@@ -228,6 +228,7 @@ public class Renderer {
                         // "block state selects a mesh variant" path draws them
                         // turned with no per-instance work.
                         registerStairRotations(sboRendererAPI.getStampCache(), sboBlockMap.keySet());
+                        registerStalagmiteVariants(sboRendererAPI.getStampCache());
 
                         // Create deferred emitter with face culling (world set later in applySBODispatcher)
                         sboCullingService = new MmsFaceCullingService();
@@ -330,6 +331,56 @@ public class Renderer {
             logger.debug("[Renderer] Registered {} stair orientations for {}",
                     com.stonebreak.blocks.stairs.StairState.Facing.values().length, type.name());
         }
+    }
+
+    /**
+     * Stalagmite variants, registered the way stairs register their facings: each size's SBO
+     * model, mirrored for hanging and turned for every stair facing, under its
+     * {@code StalagmiteState} string — so orientation needs no SBO states. Part cells (above an
+     * upright anchor, below a hanging one) draw nothing: the anchor's model already reaches
+     * through them. Their empty stamp keeps the cache from falling back to the default model
+     * there and, having no flush geometry, never hides a neighbour's face.
+     */
+    private static void registerStalagmiteVariants(
+            com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache cache) {
+        com.stonebreak.blocks.BlockType type = com.stonebreak.blocks.BlockType.LIMESTONE_STALAGMITE;
+        if (type == null || !cache.has(type)) {
+            return;
+        }
+        int registered = 0;
+        for (int size = 1; size <= com.stonebreak.blocks.stalagmite.Stalagmite.MAX_SIZE; size++) {
+            String sboState = new com.stonebreak.blocks.stalagmite.StalagmiteState(size, false, null).sboStateName();
+            com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp upright = cache.get(type, sboState);
+            if (upright == null) {
+                continue;
+            }
+            com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp hanging =
+                    com.openmason.engine.voxel.sbo.SBOStampRotator.flipY(upright);
+            for (boolean hang : new boolean[]{false, true}) {
+                for (com.stonebreak.blocks.stairs.StairState.Facing facing
+                        : com.stonebreak.blocks.stairs.StairState.Facing.values()) {
+                    String key = com.stonebreak.blocks.BlockRenderState.meshVariantKey(
+                            new com.stonebreak.blocks.stalagmite.StalagmiteState(size, hang, facing).toStateString());
+                    cache.put(type, key, com.openmason.engine.voxel.sbo.SBOStampRotator
+                            .rotateY(hang ? hanging : upright, facing.quarterTurns()));
+                    registered++;
+                }
+            }
+        }
+
+        int faceCount = com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions.FACE_COUNT;
+        com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp[] faces =
+                new com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp[faceCount];
+        com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp empty =
+                new com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp(
+                        new float[0], new float[0], new float[0], new float[0], 0);
+        java.util.Arrays.fill(faces, empty);
+        com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp nothing =
+                new com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp(
+                        faces, faces.clone(), new boolean[faceCount]);
+        cache.put(type, com.stonebreak.blocks.stalagmite.Stalagmite.UPPER, nothing);
+        cache.put(type, com.stonebreak.blocks.stalagmite.Stalagmite.LOWER, nothing);
+        logger.debug("[Renderer] Registered {} stalagmite variants", registered);
     }
 
     /**

@@ -105,7 +105,68 @@ class SBONormalComputerTest {
         }
     }
 
+    @Test
+    void overlappingPartsAreEachOrientedByTheirOwnShell() {
+        // A stalagmite-like stack: a tier resting on the base's top plane, and a collar sunk
+        // into that tier. Parity over the whole union reads the base's top cap as facing down
+        // wherever the tier and collar sit over it (three crossings), and up elsewhere — so one
+        // triangle of the cap lit dark and the other bright.
+        Mesh base = box(-0.4f, -0.5f, -0.4f, 0.4f, -0.1f, 0.4f, true);
+        Mesh tier = box(-0.2f, -0.1f, -0.2f, 0.2f, 0.3f, 0.2f, true);
+        Mesh collar = box(-0.25f, 0.0f, -0.25f, 0.25f, 0.06f, 0.25f, true);
+        SBONormalComputer.ProcessedMesh mesh = process(merge(merge(base, tier), collar));
+
+        for (int tri = 0; tri < mesh.triangleCount(); tri++) {
+            assertOutward(mesh, tri);
+            assertOutwardOfItsBox(mesh, tri);
+        }
+    }
+
     // ------------------------------------------------------------------
+
+    /**
+     * For a mesh of separate boxes: the normal points away from the centre of the box the
+     * triangle belongs to, which — each triangle lying on one of its box's faces — is the
+     * box whose bounds contain all three corners and put the triangle on a face plane.
+     */
+    private static void assertOutwardOfItsBox(SBONormalComputer.ProcessedMesh mesh, int tri) {
+        int[] shells = SBONormalComputer.shells(mesh.vertices(), mesh.triangleCount());
+        int shell = shells[tri];
+        float[] min = {Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE};
+        float[] max = {-Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE};
+        for (int t = 0; t < mesh.triangleCount(); t++) {
+            if (shells[t] != shell) continue;
+            for (int c = 0; c < 9; c++) {
+                float v = mesh.vertices()[t * 9 + c];
+                min[c % 3] = Math.min(min[c % 3], v);
+                max[c % 3] = Math.max(max[c % 3], v);
+            }
+        }
+        int base = tri * 9;
+        for (int axis = 0; axis < 3; axis++) {
+            float n = mesh.normals()[base + axis];
+            if (Math.abs(n) < 0.5f) continue;
+            float coord = mesh.vertices()[base + axis];
+            float centre = (min[axis] + max[axis]) * 0.5f;
+            assertTrue((coord - centre) * n > 0f, "triangle " + tri + " faces into its own box");
+        }
+    }
+
+    private static Mesh merge(Mesh a, Mesh b) {
+        float[] v = new float[a.vertices().length + b.vertices().length];
+        System.arraycopy(a.vertices(), 0, v, 0, a.vertices().length);
+        System.arraycopy(b.vertices(), 0, v, a.vertices().length, b.vertices().length);
+        float[] t = new float[a.texCoords().length + b.texCoords().length];
+        System.arraycopy(a.texCoords(), 0, t, 0, a.texCoords().length);
+        System.arraycopy(b.texCoords(), 0, t, a.texCoords().length, b.texCoords().length);
+        int offset = a.vertices().length / 3;
+        int[] idx = new int[a.indices().length + b.indices().length];
+        System.arraycopy(a.indices(), 0, idx, 0, a.indices().length);
+        for (int i = 0; i < b.indices().length; i++) {
+            idx[a.indices().length + i] = b.indices()[i] + offset;
+        }
+        return new Mesh(v, t, idx);
+    }
 
     /** A face normal must point away from the material, i.e. out of the box. */
     private static void assertOutward(SBONormalComputer.ProcessedMesh mesh, int tri) {

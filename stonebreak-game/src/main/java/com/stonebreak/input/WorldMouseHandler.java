@@ -1,5 +1,6 @@
 package com.stonebreak.input;
 
+import com.stonebreak.blocks.stalagmite.StalagmiteInteraction;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 
@@ -162,6 +163,9 @@ final class WorldMouseHandler {
         } else if (targetedBlockType == BlockType.FURNACE) {
             Game.getInstance().openFurnaceScreen(
                     new com.openmason.engine.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
+        } else if (targetedBlockType == BlockType.LIMESTONE_STALAGMITE
+                && StalagmiteInteraction.tryGrow(player, targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z)) {
+            // Watered with a full bucket: grew one size.
         } else if (targetedBlockType == BlockType.OAK_DOOR) {
             // Toggle the door open/closed — plays the target state's one-shot
             // clip and holds the final pose.

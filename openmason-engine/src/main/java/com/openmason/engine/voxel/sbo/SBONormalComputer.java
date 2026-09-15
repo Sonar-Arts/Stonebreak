@@ -25,9 +25,15 @@ import com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions;
  *       outward direction is the boundary's own sign. Covers every cube.</li>
  *   <li><b>Interior</b> (a stair tread, a riser) — the solid side is found by
  *       an axis-parallel <em>crossing-parity</em> probe from the triangle's
- *       centroid: an odd number of the model's own perpendicular triangles
- *       above the plane means the material lies that way, so the surface
- *       faces the other way.</li>
+ *       centroid: an odd number of perpendicular triangles above the plane
+ *       means the material lies that way, so the surface faces the other way.
+ *       Only triangles of the triangle's own <em>shell</em> (the surface it is
+ *       connected to through shared corners) are counted. A model built from
+ *       overlapping parts — tiers stacked on shared planes, a collar sunk into
+ *       a column — is a union of closed shells, and parity over the whole union
+ *       double-counts wherever they overlap: the two triangles of one face then
+ *       probe different footprints, disagree, and half the face lights as if
+ *       it faced into the rock. Parity within one closed shell is always right.</li>
  * </ul>
  * Only non-axis-aligned geometry (a flower's diagonal cross planes) falls back
  * to the winding normal, flipped away from the block centre.
@@ -141,6 +147,7 @@ public final class SBONormalComputer {
             triCoord[tri] = triAxis[tri] >= 0 ? vertices[tri * 9 + triAxis[tri]] : 0f;
         }
         boolean parityAvailable = triangleCount <= PARITY_TRIANGLE_LIMIT;
+        int[] shell = parityAvailable ? shells(vertices, triangleCount) : null;
 
         for (int tri = 0; tri < triangleCount; tri++) {
             int axis = triAxis[tri];
@@ -157,7 +164,7 @@ public final class SBONormalComputer {
                 } else if (parityAvailable) {
                     // Odd crossing count above the plane ⇒ solid above ⇒ the
                     // surface looks down the axis.
-                    positive = (crossingsAbove(vertices, triAxis, triCoord, tri, axis, coord) & 1) == 0;
+                    positive = (crossingsAbove(vertices, triAxis, triCoord, shell, tri, axis, coord) & 1) == 0;
                 } else {
                     positive = windingComponent(vertices, tri, axis) >= 0f;
                 }
@@ -222,7 +229,7 @@ public final class SBONormalComputer {
      * the point clear of the axis-aligned splits a box model produces while
      * staying strictly inside the triangle.
      */
-    private static int crossingsAbove(float[] verts, int[] triAxis, float[] triCoord,
+    private static int crossingsAbove(float[] verts, int[] triAxis, float[] triCoord, int[] shell,
                                       int tri, int axis, float coord) {
         int base = tri * 9;
         int u = axis == 0 ? 1 : 0;
@@ -232,7 +239,8 @@ public final class SBONormalComputer {
 
         int crossings = 0;
         for (int other = 0; other < triAxis.length; other++) {
-            if (triAxis[other] != axis || triCoord[other] <= coord + PLANE_EPSILON) {
+            if (shell[other] != shell[tri] || triAxis[other] != axis
+                    || triCoord[other] <= coord + PLANE_EPSILON) {
                 continue;
             }
             int ob = other * 9;
@@ -243,6 +251,42 @@ public final class SBONormalComputer {
             }
         }
         return crossings;
+    }
+
+    /**
+     * Shell id per triangle: triangles sharing a corner position (within
+     * {@link #PLANE_EPSILON}) belong to the same shell. Positions rather than
+     * indices, because authored meshes give every face its own vertices.
+     */
+    static int[] shells(float[] verts, int triangleCount) {
+        int[] parent = new int[triangleCount];
+        for (int i = 0; i < triangleCount; i++) parent[i] = i;
+        java.util.Map<Long, Integer> firstAt = new java.util.HashMap<>();
+        float inv = 1f / PLANE_EPSILON;
+        for (int tri = 0; tri < triangleCount; tri++) {
+            for (int c = 0; c < 3; c++) {
+                int o = tri * 9 + c * 3;
+                long key = (Math.round(verts[o] * inv) * 73856093L)
+                        ^ (Math.round(verts[o + 1] * inv) * 19349663L)
+                        ^ (Math.round(verts[o + 2] * inv) * 83492791L);
+                Integer seen = firstAt.putIfAbsent(key, tri);
+                if (seen != null) {
+                    int a = find(parent, seen);
+                    int b = find(parent, tri);
+                    if (a != b) parent[a] = b;
+                }
+            }
+        }
+        for (int i = 0; i < triangleCount; i++) parent[i] = find(parent, i);
+        return parent;
+    }
+
+    private static int find(int[] parent, int i) {
+        while (parent[i] != i) {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        return i;
     }
 
     /** Strict 2D point-in-triangle test (points on an edge are excluded). */

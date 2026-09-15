@@ -164,6 +164,10 @@ public class RaycastEngine {
      * would target, break and lose line of sight to a stair's empty corner.
      */
     private boolean fillsPoint(BlockType type, Vector3f p, int bx, int by, int bz) {
+        if (type == BlockType.LIMESTONE_STALAGMITE) {
+            // Only the spire itself is a target; the air beside it lets the ray through.
+            return com.stonebreak.blocks.stalagmite.StalagmiteShape.contains(world, bx, by, bz, p.x, p.y, p.z);
+        }
         if (!type.isStairs()) {
             return true;
         }

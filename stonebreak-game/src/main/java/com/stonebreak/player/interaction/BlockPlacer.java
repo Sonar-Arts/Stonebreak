@@ -104,6 +104,15 @@ public class BlockPlacer {
             if (torch == null) return;
             placementState = torch.toStateString();
         }
+        // Stalagmite: clicking the underside of a block hangs it from that ceiling; either way
+        // it faces the way the placer looks. Proposed in the packet like the torch's state,
+        // and settled by the server (see ServerBlockHandler).
+        if (selectedBlockType == BlockType.LIMESTONE_STALAGMITE) {
+            Vector3f look = raycastEngine.eyeDirection();
+            boolean hanging = hitBlockPos != null && placePos.y == hitBlockPos.y - 1;
+            placementState = com.stonebreak.blocks.stalagmite.StalagmiteState
+                    .placed(hanging, look.x, look.z).toStateString();
+        }
 
         BlockPlacementValidator.PlacementValidationResult validationResult =
                 placementService.validatePlacement(placePos, state.getPosition(), selectedBlockType, state.isOnGround());
