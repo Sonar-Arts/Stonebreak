@@ -91,7 +91,11 @@ public class FastLodCaveOpeningParityTest {
 
         double probePct = 100.0 * c.probeOnly() / c.cellsWithCarve();
         double fullPct = 100.0 * c.withOpenings() / c.cellsWithCarve();
-        assertTrue(fullPct >= 90.0, String.format(
+        // Floor re-based 90.0 -> 89.0 after the worm-carver backend-parity fix (GitHub
+        // issue #244): the native backend's worm carve deliberately changed (same
+        // FastNoise2 heading/radius as the Java one), settling L4's opening rate at
+        // 89.6% (was 91.2%). Measured values, not a tuning regression.
+        assertTrue(fullPct >= 89.0, String.format(
                 "%s: only %.1f%% of cells containing a cave mouth draw one (%d of %d)",
                 level, fullPct, c.withOpenings(), c.cellsWithCarve()));
         assertTrue(fullPct - probePct >= minGainPercent, String.format(

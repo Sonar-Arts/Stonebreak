@@ -6,10 +6,16 @@
  * Java NoiseRouter uses (bit-identical channel values) plus exact ports of the
  * Java splines and java.util.Random.
  *
- * NOT bit-identical to the Java carver overall — libm trig (sin/cos/atan2)
- * may differ by ulps across languages — but fully deterministic per seed on a
- * given platform's libm. Callers gate it on the native noise backend so one
- * implementation owns a world's caves.
+ * Heading/radius/wobble parity: the Java fallback walker evaluates heading and
+ * radius through TerrainNoise.channel3D — the same FastNoise2 nodes (single
+ * octave, frequency 1 applied at the call sites) — and wobble through
+ * TerrainNoise.channel2D, mirroring CaveWaterTable's seam. Heading/radius,
+ * wobble and heights are therefore bit-identical on both sides; the walker's
+ * remaining Java-vs-native difference is libm trig (sin/cos/atan2), which may
+ * differ by ulps across languages. Fully deterministic per seed on a given
+ * platform's libm. Callers gate it on the native noise backend so one
+ * implementation owns a world's caves. Parity with the Java walker is
+ * ratcheted by WormCarverParityTest. (GitHub issue #244.)
  *
  * Constants mirror PerlinWormCarver.java and must stay in lockstep. */
 #pragma once
@@ -382,9 +388,10 @@ inline void walkCarver(const TerrainCtx& ctx, Segment seg, std::vector<Segment>&
     int branchesLeft = seg.branchesLeft;
     const float reachedSq = CONNECTOR_REACHED_DIST * CONNECTOR_REACHED_DIST;
     /* Zone of the CURRENT position, resolved at the end of the previous step from the
-     * surface/water that step already fetched. Seeded from the segment's own origin. */
-    Zone zone = waterTableZoneAt(ctx.waterTableAt(cenda::javaRoundFloat(x), cenda::javaRoundFloat(z)),
-                                 cenda::javaRoundFloat(y));
+     * surface/water that step already fetched. Mirrors the Java walker's deliberate
+     * one-step lag: the first step starts PHREATIC and behaves as it always did, so
+     * both backends carve identical walks from the same seed. (GitHub issue #244.) */
+    Zone zone = Zone::PHREATIC;
 
     for (int step = 0; step < seg.stepBudget; step++) {
         const float yawNoise = ctx.heading3D(x * HEADING_SCALE, y * HEADING_SCALE, z * HEADING_SCALE);

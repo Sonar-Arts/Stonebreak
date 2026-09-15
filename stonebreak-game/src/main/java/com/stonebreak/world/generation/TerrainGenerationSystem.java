@@ -76,11 +76,10 @@ public class TerrainGenerationSystem {
     private volatile boolean fusedFailureLogged;
 
     /**
-     * {@code carver.cpp}'s worm walk predates the zone-aware steering, the per-column water
-     * plane and the retuned radii that {@link PerlinWormCarver} now carries, so its mask no
-     * longer matches the Java one. Refuse the native carver context until the kernel port
-     * lands rather than generate two different cave networks depending on which path a chunk
-     * took. Mirrors {@code CendaChunkGenerator.KERNEL_HAS_CAVE_MODEL}; both flip together.
+     * {@code carver.cpp}'s worm walk now matches the Java one from the same seed: the
+     * native step-0 zone seed and the heading/radius noise seam were aligned (GitHub
+     * issue #244), ratcheted by {@code WormCarverParityTest}. Mirrors
+     * {@code CendaChunkGenerator.KERNEL_HAS_CAVE_MODEL}; both flip together.
      */
     private static final boolean KERNEL_HAS_CAVE_MODEL = true;
 

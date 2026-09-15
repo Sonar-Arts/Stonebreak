@@ -61,6 +61,12 @@ public class CaveVolumeTest {
      *       it; roominess is unchanged because feature <em>size</em> did not scale with the
      *       world and must not, which is what the first attempt at this port got wrong
      *       (shrinking the wavelengths and blob radii took roominess to 0.318).
+     *   <li>0.116 volume / 0.427 roomy — after the worm-carver backend-parity fix
+     *       (GitHub issue #244): the native backend's worm carve now uses the same FastNoise2
+     *       heading/radius the Java fallback does, so tunnels match across machines. Native
+     *       volume dropped slightly (12.17% to 11.60%) and roominess rose (41.4% to 42.7%);
+     *       Java-backend values are unchanged. Floor re-based under the new lower — a
+     *       deliberate carve change with re-measured values, not a tuning regression.
      * </ul>
      *
      * <p>Every density-driven figure here is quoted for both backends and the floor set under
@@ -70,8 +76,8 @@ public class CaveVolumeTest {
      * functions and carve ~6% differently in aggregate. A floor measured on only one of them
      * fails on whichever machine has the other.
      */
-    private static final double MIN_CARVED_FRACTION = 0.118;   // measured 0.1217 native / 0.1289 Java
-    private static final double MIN_ROOMY_FRACTION = 0.400;    // measured 0.414 native / 0.411 Java
+    private static final double MIN_CARVED_FRACTION = 0.115;   // measured 0.1160 native / 0.1289 Java
+    private static final double MIN_ROOMY_FRACTION = 0.400;    // measured 0.427 native / 0.411 Java
 
     @Test
     public void cavesAreLargeEnoughToPlayIn() {

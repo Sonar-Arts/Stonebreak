@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation.heightmap;
-import com.stonebreak.world.generation.NoiseGenerator;
+import com.stonebreak.world.generation.noise.NoiseChannel3D;
+import com.stonebreak.world.generation.noise.TerrainNoise;
 
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -174,8 +175,8 @@ public final class PerlinWormCarver {
     private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
 
     private final long seed;
-    private final NoiseGenerator headingNoise;
-    private final NoiseGenerator radiusNoise;
+    private final NoiseChannel3D headingNoise;
+    private final NoiseChannel3D radiusNoise;
     private final HeightMapGenerator heightMapGenerator;
     private final CaveWaterTable waterTable;
     private CavernCarver cavernCarver;
@@ -183,8 +184,14 @@ public final class PerlinWormCarver {
 
     public PerlinWormCarver(long seed, HeightMapGenerator heightMapGenerator) {
         this.seed = seed;
-        this.headingNoise = new NoiseGenerator(seed + 41, 1, 0.5, 2.0);
-        this.radiusNoise = new NoiseGenerator(seed + 113, 1, 0.5, 2.0);
+        // Heading/radius go through the TerrainNoise seam so the Java fallback walker
+        // evaluates them from the SAME FastNoise2 nodes the native walker's context
+        // carries (GitHub issue #244): on the native backend both backends then carve
+        // identical tunnels from the same seed, and on the Java backend this stays the
+        // original byte-exact simplex. Call sites pass raw world coordinates — the
+        // wavelength scale lives in the factory, mirroring CaveWaterTable's wobble.
+        this.headingNoise = TerrainNoise.channel3D(seed + 41, 1, 0.5, 2.0, HEADING_SCALE);
+        this.radiusNoise = TerrainNoise.channel3D(seed + 113, 1, 0.5, 2.0, RADIUS_SCALE);
         this.heightMapGenerator = heightMapGenerator;
         this.waterTable = new CaveWaterTable(seed, heightMapGenerator);
     }
@@ -504,8 +511,8 @@ public final class PerlinWormCarver {
         CaveWaterTable.Zone zone = CaveWaterTable.Zone.PHREATIC;
 
         for (int step = 0; step < seg.stepBudget; step++) {
-            float yawNoise = headingNoise.noise3D(x * HEADING_SCALE, y * HEADING_SCALE, z * HEADING_SCALE);
-            float pitchNoise = headingNoise.noise3D((x + 1024f) * HEADING_SCALE, y * HEADING_SCALE, (z + 1024f) * HEADING_SCALE);
+            float yawNoise = headingNoise.sample(x, y, z);
+            float pitchNoise = headingNoise.sample(x + 1024f, y, z + 1024f);
             yaw += yawNoise * YAW_DRIFT;
             pitch += pitchNoise * PITCH_DRIFT + UPWARD_BIAS;
 
@@ -577,7 +584,7 @@ public final class PerlinWormCarver {
             // Zone for the NEXT step, reusing the surface/water this step already resolved.
             zone = CaveWaterTable.zoneAt(waterTable.tableFrom(wxi, wzi, surface, water), wyi);
 
-            float radius = BASE_RADIUS + radiusNoise.noise3D(x * RADIUS_SCALE, y * RADIUS_SCALE, z * RADIUS_SCALE) * RADIUS_AMP;
+            float radius = BASE_RADIUS + radiusNoise.sample(x, y, z) * RADIUS_AMP;
             if (radius < MIN_RADIUS) radius = MIN_RADIUS;
             carveEllipsoid(wxi, wyi, wzi, radius, targetCx, targetCz,
                     targetHeights, waterGuard, mask);

@@ -65,7 +65,7 @@ public class CaveReachabilityTest {
      * <p>Never 1.0: isolated pockets are a legitimate outcome of noise carving, and a region
      * this size clips tunnel systems at its own edges.
      */
-    private static final double MIN_REACHABLE_FRACTION = 0.94;  // measured 0.9720 native / 0.9804 Java
+    private static final double MIN_REACHABLE_FRACTION = 0.94;  // measured 0.9692 native / 0.9804 Java
 
     @Test
     public void carvedVolumeIsReachableFromTheSurface() {

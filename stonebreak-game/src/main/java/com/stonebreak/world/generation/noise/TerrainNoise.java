@@ -106,6 +106,69 @@ public final class TerrainNoise {
         return CendaKernels.createSimplexFbm(octaves, (float) lacunarity, (float) persistence, scale);
     }
 
+    /**
+     * Builds a 3D channel for the carver walkers. Contract as {@link #channel2D}:
+     * callers pass raw world coordinates — the Java fallback multiplies the
+     * position by {@code scale} (the Java simplex carries no internal frequency),
+     * the native node carries it. Used with the carvers' wavelength scales so the
+     * Java fallback walker evaluates heading/radius from the same FastNoise2
+     * nodes the native walker's context carries, mirroring
+     * {@code CaveWaterTable}'s wobble seam.
+     */
+    public static NoiseChannel3D channel3D(long seed, int octaves, double persistence,
+                                           double lacunarity, float scale) {
+        if (BACKEND == Backend.NATIVE) {
+            long node = CendaKernels.createSimplexFbm(octaves, (float) lacunarity, (float) persistence, scale);
+            if (node != 0L) {
+                return new CendaNoise3DChannel(node, nativeSeed(seed));
+            }
+            LOGGER.warn("Native 3D noise node creation failed; falling back to Java for this channel");
+        }
+        return new JavaNoise3DChannel(new NoiseGenerator(seed, octaves, persistence, lacunarity), scale);
+    }
+
+    /** Java fallback for {@link #channel3D}, byte-exact with historical terrain. */
+    private static final class JavaNoise3DChannel implements NoiseChannel3D {
+        private final NoiseGenerator generator;
+        private final float scale;
+
+        JavaNoise3DChannel(NoiseGenerator generator, float scale) {
+            this.generator = generator;
+            this.scale = scale;
+        }
+
+        @Override
+        public float sample(float x, float y, float z) {
+            return generator.noise3D(x * scale, y * scale, z * scale);
+        }
+    }
+
+    /**
+     * FastNoise2 3D channel: single-position fills through {@code ck_gen_grid_3d},
+     * which is position-wise identical to the native walker's {@code GenSingle3D}
+     * at the same coordinate. Frequency lives inside the node.
+     */
+    private static final class CendaNoise3DChannel implements NoiseChannel3D {
+        private final long node;
+        private final int seed;
+
+        CendaNoise3DChannel(long node, int seed) {
+            this.node = node;
+            this.seed = seed;
+            TerrainNoise.destroyOnCollect(this, node);
+        }
+
+        @Override
+        public float sample(float x, float y, float z) {
+            float[] out = new float[1];
+            boolean ok = CendaKernels.fillGrid3D(node, out, x, y, z, 1, 1, 1, 1f, 1f, 1f, seed);
+            if (!ok) {
+                throw new IllegalStateException("Cenda 3D noise fill failed (node=" + node + ")");
+            }
+            return out[0];
+        }
+    }
+
     /** Registers native-node cleanup against the owner's lifetime. */
     public static void destroyOnCollect(Object owner, long node) {
         if (node != 0L) {

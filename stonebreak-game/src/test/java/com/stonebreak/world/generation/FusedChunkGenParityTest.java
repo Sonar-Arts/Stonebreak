@@ -25,6 +25,10 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * pins every C++ port against the living Java implementations, including the
  * kernel-returned sky heightmap vs. a Java recompute.
  *
+ * <p>Note the worm-walk coverage here is native-vs-native (both of this test's
+ * paths run the C++ walker) — the Java walker is pinned against the kernel
+ * separately by {@code WormCarverParityTest} (GitHub issue #244).
+ *
  * <p>Chunk selection deliberately includes cavern- and megacavern-bearing
  * coordinates (found via the carvers' own hash predicates) so formations and
  * cavern connectors are exercised, not just plain terrain.
