@@ -404,6 +404,19 @@ public final class BlockType implements Item, IBlockType {
     }
 
     /**
+     * True when this block can hold up a placed torch (issue #247). Full-cube
+     * solids only: foliage decays away (leaves never support a torch) and the
+     * door's panel swings on its state change (the type never changes, so a
+     * torch mounted on it would hang off the moved panel). The raw
+     * {@link #isSolid()} flag still governs the pop sweep's "cell still holds
+     * things up" early-return and the apply gate — only the placement-time
+     * support tests use this predicate.
+     */
+    public boolean canHoldTorch() {
+        return solid && !isLeaves() && this != OAK_DOOR;
+    }
+
+    /**
      * Texture atlas coordinates for the given face. Hardcoded for the legacy
      * 35 blocks; returns the default atlas coords for SBO-only blocks (the
      * SBO/CBR system handles per-face texturing for those).

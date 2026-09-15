@@ -79,6 +79,13 @@ public class World {
     // authoritative/singleplayer world is never render-only. Drives GameLoop's update branch.
     private volatile boolean renderOnly = false;
 
+    // Torch support sweep re-entry guard (issue #247): popping an unsupported torch removes
+    // it through setBlockAt, which re-enters this funnel for the torch's own cell. The
+    // re-entry sweep always terminates empty (no torch's support is ever a torch — placement
+    // rejects non-solid supports), but the guard skips the redundant scan. World mutations
+    // are confined to the server tick thread / main loop, so plain visibility suffices.
+    private volatile boolean sweepingTorches = false;
+
     // Per-world entity spawner used for initial mob spawning during chunk generation. The
     // headless server world sets this to ITS OWN spawner so generated mobs land in the server's
     // EntityManager (not the client's, which the Game singleton would resolve to). Null = fall
@@ -617,6 +624,27 @@ public class World {
         }
 
         animatedBlockRegistry.onBlockChanged(x, y, z, previous, blockType);
+
+        // Torch support sweep (issue #247): torches held up by the block that just
+        // changed — a break, a decay, or any edit leaving a non-solid cell — pop off
+        // with it, whatever removed the support. Authoritative worlds only: client
+        // render views learn of pops through the server's queued block broadcast.
+        // findUnsupported self-gates on solid cells (one read for placements), so the
+        // sweep costs the same neighbour scan breaks already paid in applyAccepted.
+        // Pops remove the torch through THIS funnel (the re-entry guard skips the
+        // redundant sweep for the torch's own cell), and popUnsupported reports the
+        // AIR write through the replication sink so remote clients observe it through
+        // the same per-section batches as sim edits — save-dirty is automatic via
+        // Chunk#setBlock. Host edits round-trip through applyAccepted afterwards; its
+        // pop sweep then finds nothing (idempotent, no second drop).
+        if (!renderOnly && !sweepingTorches) {
+            sweepingTorches = true;
+            try {
+                com.stonebreak.blocks.torch.TorchBlock.popUnsupported(this, x, y, z);
+            } finally {
+                sweepingTorches = false;
+            }
+        }
 
         // Multiplayer: forward locally-driven block edits (player modifications) to the local
         // client, which sends them to the authoritative server as intents. Inbound network
