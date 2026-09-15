@@ -26,7 +26,7 @@ import java.util.Map;
  * hits the integrator-overlaid SBO pixels on the atlas).
  *
  * <p>Scope: cross-plane flowers (single texture layer, shared vertices) and
- * animated non-cube blocks like the oak door (per-face texture layers derived
+ * shaped non-cube blocks — the oak door, stairs, stalagmites (per-face texture layers derived
  * from {@code triangleToFaceId}, de-indexed so each triangle can carry its own
  * layer). Cube blocks already render as cubes in-hand with per-face layers —
  * no mismatch to fix there.
@@ -62,8 +62,10 @@ public class SBOHandMeshRegistry {
 
         for (BlockType type : BlockType.values()) {
             boolean animated = com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(type);
-            // Multi-face models: doors and stairs both need per-triangle layers.
-            boolean multiFace = animated || type.isStairs();
+            // Multi-face models: doors, stairs and stalagmites need per-triangle layers.
+            // A stalagmite item is always a size-1 stalagmite, which is the SBO's
+            // default model — so drops, icons and the held item show that shape.
+            boolean multiFace = animated || type.isStairs() || type == BlockType.LIMESTONE_STALAGMITE;
             if (!type.isFlower() && !multiFace) continue;
             if (!bridge.isSBOBlock(type)) continue;
 

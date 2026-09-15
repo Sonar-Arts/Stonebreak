@@ -279,10 +279,20 @@ public class MainImGuiInterface implements ProjectBrowserListener {
             // SBO editor — for opening and editing existing .sbo files
             this.sboEditorWindow = new SBOEditorWindow(fileDialogService, statusService);
             toolsMenuHandler.setSBOEditorWindow(sboEditorWindow);
+            sboEditorWindow.setOpenModelHandler((omoBytes, name) -> {
+                if (modelOperations != null) {
+                    modelOperations.openExtractedAssetModel(omoBytes, name, name);
+                }
+            });
 
             // SBE editor — for opening and editing existing .sbe files
             this.sbeEditorWindow = new SBEEditorWindow(fileDialogService, statusService);
             toolsMenuHandler.setSBEEditorWindow(sbeEditorWindow);
+            sbeEditorWindow.setOpenModelHandler((omoBytes, name) -> {
+                if (modelOperations != null) {
+                    modelOperations.openExtractedAssetModel(omoBytes, name, name);
+                }
+            });
 
             // Export windows act as "start screens": a successful export opens
             // the new file straight in the matching editor.
@@ -392,6 +402,10 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
         if (uiVisibilityState.getShowRiggingPane().get()) {
             renderRiggingPane();
+        }
+
+        if (assistantPane != null) {
+            assistantPane.render(uiVisibilityState.getShowAssistantPane());
         }
 
         // Note: Unified preferences window is rendered at app level in OpenMasonApp
@@ -579,6 +593,22 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         return themeManager;
     }
 
+    /** Approval gate for agent-initiated working-set changes (null until UI wiring). */
+    private com.openmason.main.systems.mcp.approval.ApprovalGate approvalGate;
+
+    public void setApprovalGate(com.openmason.main.systems.mcp.approval.ApprovalGate gate) {
+        this.approvalGate = gate;
+    }
+
+    public com.openmason.main.systems.mcp.approval.ApprovalGate getApprovalGate() {
+        return approvalGate;
+    }
+
+    /** Model/session state (loaded flag, dirty flag, source). */
+    public com.openmason.main.systems.stateHandling.ModelState getModelState() {
+        return modelState;
+    }
+
     public ModelOperationService getModelOperations() {
         return modelOperations;
     }
@@ -622,6 +652,12 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     public void setOpenTextureEditorCallback(Runnable callback) {
         if (toolsMenuHandler != null) {
             toolsMenuHandler.setOpenTextureEditorCallback(callback);
+        }
+    }
+
+    public void setOpenScriptingWindowCallback(Runnable callback) {
+        if (toolsMenuHandler != null) {
+            toolsMenuHandler.setOpenScriptingWindowCallback(callback);
         }
     }
 
@@ -735,7 +771,39 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         void flush();
     }
 
+    /** Assistant chat pane (installed by the app shell once the harness exists). */
+    private com.openmason.main.systems.assistant.ui.AssistantPaneImGui assistantPane;
+
+    public void setAssistantPane(com.openmason.main.systems.assistant.ui.AssistantPaneImGui pane) {
+        this.assistantPane = pane;
+    }
+
     private TextureEditorPresenter textureEditorPresenter;
+
+    /**
+     * Seam to the standalone Scripting window (mirrors TextureEditorPresenter):
+     * lets MCP tools and the assistant open it without coupling to the window class.
+     */
+    public interface ScriptingPresenter {
+        void show();
+
+        /** Show and load a saved script from the library by name. */
+        void showWithScript(String scriptName);
+
+        void close();
+
+        boolean isVisible();
+    }
+
+    private ScriptingPresenter scriptingPresenter;
+
+    public void setScriptingPresenter(ScriptingPresenter presenter) {
+        this.scriptingPresenter = presenter;
+    }
+
+    public ScriptingPresenter getScriptingPresenter() {
+        return scriptingPresenter;
+    }
 
     /** Install the shell's texture editor window control. */
     public void setTextureEditorPresenter(TextureEditorPresenter presenter) {
@@ -889,6 +957,9 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      * SkijaContext is closed.
      */
     public void dispose() {
+        if (assistantPane != null) {
+            assistantPane.dispose(); // Skija regions must close before SkijaContext
+        }
         if (projectBrowserImGui != null) {
             projectBrowserImGui.cleanup();
         }

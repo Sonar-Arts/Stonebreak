@@ -16,7 +16,7 @@ public final class McpGuide {
 
     public static final List<String> TOPICS = List.of(
             "overview", "parts", "face_textures", "bones", "attachments",
-            "animation", "scripting", "texture_editor", "recipes");
+            "animation", "scripting", "texture_editor", "recipes", "assets");
 
     private static final Map<String, String> CACHE = new ConcurrentHashMap<>();
 

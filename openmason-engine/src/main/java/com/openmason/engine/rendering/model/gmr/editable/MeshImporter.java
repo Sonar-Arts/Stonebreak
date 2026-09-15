@@ -11,6 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Builds an {@link EditableMesh} from legacy triangle soup (duplicated
@@ -55,6 +56,27 @@ public final class MeshImporter {
     public record ImportResult(EditableMesh mesh, int[][] vertexIdToSoupIndices) {
     }
 
+    /**
+     * Structural problem encountered while importing soup. Emitted through the
+     * optional warning sink so validators (e.g. WindingAnalyzer) can report
+     * face-id contract violations instead of scraping the log.
+     *
+     * @param faceId Face the warning concerns, or -1 when not face-specific
+     */
+    public record ImportWarning(int faceId, Kind kind, String message) {
+
+        /** Warning category. */
+        public enum Kind {
+            /** Directed boundary-edge walk did not close — the face id maps to
+             *  soup that is not a triangulated simple polygon (contract violation). */
+            BOUNDARY_WALK_FAILED,
+            /** Face collapsed below 3 loop vertices after welding and was skipped. */
+            DEGENERATE_FACE,
+            /** Triangle indices exceeded the vertex array; triangles were dropped. */
+            CORRUPT_INDICES
+        }
+    }
+
     private MeshImporter() {
         // Static utility — no instantiation
     }
@@ -76,6 +98,16 @@ public final class MeshImporter {
      */
     public static ImportResult importSoup(float[] vertices, float[] texCoords,
                                           int[] indices, int[] triangleToFaceId) {
+        return importSoup(vertices, texCoords, indices, triangleToFaceId, null);
+    }
+
+    /**
+     * Import triangle soup, reporting structural problems to {@code warningSink}
+     * (may be {@code null}). Warnings are additionally logged as before.
+     */
+    public static ImportResult importSoup(float[] vertices, float[] texCoords,
+                                          int[] indices, int[] triangleToFaceId,
+                                          Consumer<ImportWarning> warningSink) {
         EditableMesh mesh = new EditableMesh();
         if (vertices == null || vertices.length < 9 || indices == null || indices.length < 3) {
             return new ImportResult(mesh, new int[0][]);
@@ -136,14 +168,19 @@ public final class MeshImporter {
             logger.error("Import dropped {} triangle(s) whose indices exceed the {}-vertex soup "
                     + "— the input geometry is corrupt (stale part ranges?)",
                     skippedOutOfRange, soupToWelded.length);
+            emit(warningSink, new ImportWarning(-1, ImportWarning.Kind.CORRUPT_INDICES,
+                    skippedOutOfRange + " triangle(s) dropped: indices exceed the "
+                    + soupToWelded.length + "-vertex soup"));
         }
 
         for (Map.Entry<Integer, List<int[]>> entry : faceTriangles.entrySet()) {
             int faceId = entry.getKey();
-            int[] loop = reconstructLoop(entry.getValue());
+            int[] loop = reconstructLoop(faceId, entry.getValue(), warningSink);
             if (loop.length < 3) {
                 logger.warn("Face {} degenerate after welding ({} loop vertices) — skipped",
                     faceId, loop.length);
+                emit(warningSink, new ImportWarning(faceId, ImportWarning.Kind.DEGENERATE_FACE,
+                        "face collapsed to " + loop.length + " loop vertices after welding"));
                 continue;
             }
 
@@ -195,7 +232,8 @@ public final class MeshImporter {
      * warning) if the boundary chain does not close — which only happens for
      * soup that was not produced by triangulating a simple polygon.
      */
-    private static int[] reconstructLoop(List<int[]> triangles) {
+    private static int[] reconstructLoop(int faceId, List<int[]> triangles,
+                                         Consumer<ImportWarning> warningSink) {
         if (triangles.size() == 1) {
             return triangles.get(0).clone();
         }
@@ -246,8 +284,11 @@ public final class MeshImporter {
 
         // Fallback: insertion order. Correct for fans; warn because winding
         // is not guaranteed for other patterns.
-        logger.warn("Boundary walk failed for a {}-triangle face — using insertion-order fallback",
-            triangles.size());
+        logger.warn("Boundary walk failed for face {} ({} triangles) — using insertion-order fallback",
+            faceId, triangles.size());
+        emit(warningSink, new ImportWarning(faceId, ImportWarning.Kind.BOUNDARY_WALK_FAILED,
+                "boundary walk over " + triangles.size()
+                + " triangles did not close — soup is not a triangulated simple polygon"));
         Set<Integer> seen = new LinkedHashSet<>();
         for (int[] tri : triangles) {
             seen.add(tri[0]);
@@ -260,6 +301,12 @@ public final class MeshImporter {
             loop[i++] = v;
         }
         return loop;
+    }
+
+    private static void emit(Consumer<ImportWarning> sink, ImportWarning warning) {
+        if (sink != null) {
+            sink.accept(warning);
+        }
     }
 
     private static long edgeKey(int src, int dst) {

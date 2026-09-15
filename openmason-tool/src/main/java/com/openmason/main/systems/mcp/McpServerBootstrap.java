@@ -21,44 +21,23 @@ public final class McpServerBootstrap {
     private static final int PORT = 7878;
 
     private McpHttpServer server;
+    private McpToolRegistry registry;
+    private ObjectMapper mapper;
 
     public void start(MainImGuiInterface mainInterface) {
+        start(mainInterface, ToolCapabilities.none());
+    }
+
+    public void start(MainImGuiInterface mainInterface, ToolCapabilities capabilities) {
         try {
             ObjectMapper mapper = new ObjectMapper();
             // Token efficiency: omit null fields from tool results (gated arrays in
             // inspect_part, unresolved bone world positions, etc.).
             mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-            McpToolRegistry registry = new McpToolRegistry();
-            ModelEditingService editor = new ModelEditingService(mainInterface);
-            new OpenMasonToolDefinitions(editor, mapper).registerAll(registry);
-
-            TextureEditingService textureEditor = new TextureEditingService(mainInterface);
-            CanvasCaptureService canvasCapture = new CanvasCaptureService(mainInterface);
-            new TextureToolDefinitions(textureEditor, canvasCapture, mapper).registerAll(registry);
-
-            FaceTextureEditingService faceTextureEditor = new FaceTextureEditingService(mainInterface);
-            new FaceTextureToolDefinitions(faceTextureEditor, mapper).registerAll(registry);
-
-            BoneEditingService boneEditor = new BoneEditingService(mainInterface);
-            new BoneToolDefinitions(boneEditor, mapper).registerAll(registry);
-
-            AttachmentEditingService attachmentEditor = new AttachmentEditingService(mainInterface);
-            new AttachmentToolDefinitions(attachmentEditor, mapper).registerAll(registry);
-
-            AnimationEditingService animationEditor = new AnimationEditingService(mainInterface);
-            new AnimationToolDefinitions(animationEditor, mapper).registerAll(registry);
-
-            ViewportCaptureService viewportCapture = new ViewportCaptureService(mainInterface);
-            new ViewportToolDefinitions(viewportCapture, mapper).registerAll(registry);
-
-            com.openmason.main.systems.scripting.mcp.ScriptingService scripting =
-                    new com.openmason.main.systems.scripting.mcp.ScriptingService(mainInterface, mapper);
-            new com.openmason.main.systems.scripting.mcp.ScriptingToolDefinitions(scripting, mapper)
-                    .registerAll(registry);
-
-            new MetaToolDefinitions(new ModelSummaryService(mainInterface),
-                    editor, textureEditor, boneEditor, attachmentEditor, animationEditor, mapper)
-                    .registerAll(registry);
+            McpToolRegistry registry =
+                    McpToolRegistryFactory.build(mainInterface, mapper, capabilities);
+            this.registry = registry;
+            this.mapper = mapper;
 
             McpRequestRouter router = new McpRequestRouter(registry, mapper);
             server = new McpHttpServer(PORT, router, mapper);
@@ -68,6 +47,19 @@ public final class McpServerBootstrap {
             logger.error("Failed to start MCP server", e);
             server = null;
         }
+    }
+
+    /**
+     * The live tool registry, or {@code null} before {@link #start} succeeds.
+     * Shared with the in-tool assistant harness so both surfaces stay identical.
+     */
+    public McpToolRegistry registry() {
+        return registry;
+    }
+
+    /** The shared JSON mapper (NON_NULL serialization), or {@code null} before start. */
+    public ObjectMapper mapper() {
+        return mapper;
     }
 
     public void stop() {

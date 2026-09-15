@@ -33,34 +33,21 @@ class McpToolsListSnapshotTest {
 
     /**
      * Upper bound on the serialized tools/list JSON (name + description +
-     * inputSchema for every tool). Set for the curated 71-tool surface —
-     * growing past it must be a conscious decision, not drift.
+     * inputSchema for every tool). Raised 60k -> 72k for the 112-tool surface
+     * (2026-08-23: asset lens, model inspection, script library, knowledge) —
+     * measured 61.3k at the raise; growing past the budget must stay a
+     * conscious decision, not drift.
      */
-    private static final int TOOLS_LIST_BYTE_BUDGET = 60_000;
+    private static final int TOOLS_LIST_BYTE_BUDGET = 72_000;
 
     private static McpToolRegistry buildRealRegistry() {
         ObjectMapper mapper = new ObjectMapper();
         mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-        McpToolRegistry registry = new McpToolRegistry();
-        ModelEditingService model = new ModelEditingService(null);
-        TextureEditingService texture = new TextureEditingService(null);
-        FaceTextureEditingService faceTexture = new FaceTextureEditingService(null);
-        BoneEditingService bones = new BoneEditingService(null);
-        AttachmentEditingService attachments = new AttachmentEditingService(null);
-        AnimationEditingService animation = new AnimationEditingService(null);
-        new OpenMasonToolDefinitions(model, mapper).registerAll(registry);
-        new TextureToolDefinitions(texture, new CanvasCaptureService(null), mapper).registerAll(registry);
-        new FaceTextureToolDefinitions(faceTexture, mapper).registerAll(registry);
-        new BoneToolDefinitions(bones, mapper).registerAll(registry);
-        new AttachmentToolDefinitions(attachments, mapper).registerAll(registry);
-        new AnimationToolDefinitions(animation, mapper).registerAll(registry);
-        new ViewportToolDefinitions(new ViewportCaptureService(null), mapper).registerAll(registry);
-        new com.openmason.main.systems.scripting.mcp.ScriptingToolDefinitions(
-                new com.openmason.main.systems.scripting.mcp.ScriptingService(null, mapper), mapper)
-                .registerAll(registry);
-        new MetaToolDefinitions(new ModelSummaryService(null),
-                model, texture, bones, attachments, animation, mapper).registerAll(registry);
-        return registry;
+        // Same construction path as production (McpServerBootstrap + the
+        // assistant harness); null MainImGuiInterface — constructors only
+        // store the reference. Capabilities.none() keeps the surface
+        // deterministic on machines without optional integrations.
+        return McpToolRegistryFactory.build(null, mapper, ToolCapabilities.none());
     }
 
     @Test

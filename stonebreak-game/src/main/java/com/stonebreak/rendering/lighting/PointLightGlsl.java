@@ -16,8 +16,13 @@ public final class PointLightGlsl {
 
     public static final String PATH = "/shaders/lighting/point_lights.glsl";
 
-    /** Maximum lights the shaders accept per draw — must match {@code MAX_POINT_LIGHTS}. */
-    public static final int MAX_LIGHTS = 16;
+    /**
+     * Maximum lights the shaders accept per draw — must match {@code MAX_POINT_LIGHTS}.
+     * Deliberately generous (effectively unbounded for the 64-block gather radius):
+     * 256 lights is 2048 uniform components, inside every real driver's fragment
+     * uniform budget. Moving to a UBO/SSBO is the next step if this ever binds.
+     */
+    public static final int MAX_LIGHTS = 256;
 
     public static final String UNIFORMS;
     public static final String FUNCTIONS;

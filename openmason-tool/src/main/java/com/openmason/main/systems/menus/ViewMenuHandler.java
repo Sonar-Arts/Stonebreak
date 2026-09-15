@@ -81,6 +81,10 @@ public class ViewMenuHandler {
             uiState.togglePropertyPanel();
         }
 
+        if (ImGui.menuItem("Assistant", "", uiState.getShowAssistantPane().get())) {
+            uiState.toggleAssistantPane();
+        }
+
         if (ImGui.menuItem("Rigging", "", uiState.getShowRiggingPane().get())) {
             uiState.toggleRiggingPane();
         }

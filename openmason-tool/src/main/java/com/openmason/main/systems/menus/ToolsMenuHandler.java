@@ -20,6 +20,7 @@ public class ToolsMenuHandler {
 
     private Runnable openTextureEditorCallback;
     private Runnable openAnimationEditorCallback;
+    private Runnable openScriptingWindowCallback;
     private SBOExportWindow sboExportWindow;
     private SBEExportWindow sbeExportWindow;
     private SBOEditorWindow sboEditorWindow;
@@ -40,6 +41,13 @@ public class ToolsMenuHandler {
      */
     public void setOpenAnimationEditorCallback(Runnable callback) {
         this.openAnimationEditorCallback = callback;
+    }
+
+    /**
+     * Set the callback for opening the scripting window.
+     */
+    public void setOpenScriptingWindowCallback(Runnable callback) {
+        this.openScriptingWindowCallback = callback;
     }
 
     /**
@@ -112,6 +120,12 @@ public class ToolsMenuHandler {
         if (ImGui.menuItem("Animation Editor")) {
             if (openAnimationEditorCallback != null) {
                 openAnimationEditorCallback.run();
+            }
+        }
+
+        if (ImGui.menuItem("Scripting Editor")) {
+            if (openScriptingWindowCallback != null) {
+                openScriptingWindowCallback.run();
             }
         }
 

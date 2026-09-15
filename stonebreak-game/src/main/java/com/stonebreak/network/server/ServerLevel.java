@@ -50,21 +50,18 @@ public final class ServerLevel {
     private final Vector3f spawn;
     private final PlayerData loadedPlayerData;
 
-    private ServerLevel(long seed, World world, long worldTimeTicks, SaveService saveService,
+    private ServerLevel(long seed, World world, EntityManager entityManager,
+                        EntitySpawner entitySpawner, long worldTimeTicks, SaveService saveService,
                         WorldData worldData, Vector3f spawn, PlayerData loadedPlayerData) {
         this.seed = seed;
         this.world = world;
-        this.entityManager = new EntityManager(world);
-        this.entitySpawner = new EntitySpawner(world, entityManager);
+        this.entityManager = entityManager;
+        this.entitySpawner = entitySpawner;
         this.timeOfDay = new TimeOfDay(worldTimeTicks);
         this.saveService = saveService;
         this.worldData = worldData;
         this.spawn = spawn;
         this.loadedPlayerData = loadedPlayerData;
-        // Route initial chunk-gen mob spawning AND saved-chunk entity loading into THIS world's
-        // manager/spawner (not the Game/client singleton, which during boot is the wrong one).
-        world.setEntitySpawner(entitySpawner);
-        world.setEntityManager(entityManager);
     }
 
     /**
@@ -104,25 +101,53 @@ public final class ServerLevel {
             world.setSpawnPosition(worldData.getSpawnPosition());
         }
 
-        PlayerData playerData = existing ? lr.getPlayerData() : null;
-
-        // Resolve the authoritative spawn: saved player position > explicit world spawn >
-        // located safe surface spawn. getFinalTerrainHeightAt samples noise without loading.
-        Vector3f spawn = resolveSpawn(world, worldData, playerData);
-        world.setSpawnPosition(spawn);
-
-        // Persist the chosen spawn back into the world data so it is stable across reloads.
-        if (!worldData.hasExplicitSpawn() && playerData == null) {
-            worldData = new WorldData.Builder(worldData).spawnPosition(spawn).hasExplicitSpawn(true).build();
-        }
-
-        // Save service is bound to the (headless) world; player is registered later (slice 5).
+        // Spawn resolution below loads REAL chunks (issue #250 validation + spawn-area pre-gen),
+        // so everything a chunk load consults must be wired BEFORE the first load: the save
+        // service (or saved chunks silently regenerate from noise and later clobber the on-disk
+        // ones) and this world's entity manager/spawner (or saved entities restore into the
+        // Game/client singleton and chunk-gen animal spawns lose the spawner's placement guard).
+        EntityManager entityManager = new EntityManager(world);
+        EntitySpawner entitySpawner = new EntitySpawner(world, entityManager);
+        world.setEntityManager(entityManager);
+        world.setEntitySpawner(entitySpawner);
         save.initialize(worldData, null, world);
 
-        ServerLevel level = new ServerLevel(seed, world, timeTicks, save, worldData, spawn, playerData);
+        PlayerData playerData = existing ? lr.getPlayerData() : null;
+
+        Vector3f spawn;
+        if (playerData != null && playerData.getPosition() != null) {
+            // Loaded player restore: their saved position is authoritative — don't move it.
+            spawn = new Vector3f(playerData.getPosition());
+        } else if (worldData != null && worldData.hasExplicitSpawn() && worldData.getSpawnPosition() != null) {
+            // Saved / user-chosen spawn: keep the column, but snap it onto the real (carved)
+            // surface so a pre-issue-#250 saved pit doesn't drop the player. A chosen spawn is
+            // deliberately never moved elsewhere.
+            Vector3f saved = worldData.getSpawnPosition();
+            int x = Math.round(saved.x);
+            int z = Math.round(saved.z);
+            int height = world.terrain().getFinalTerrainHeightAt(x, z);
+            Vector3f candidate = new Vector3f(x, height + 1, z);
+            pregenSpawnArea(world, candidate);
+            spawn = resolveSurfaceSpawn(world, candidate);
+        } else {
+            // Locate a safe surface spawn, rejecting columns a ravine or sinkhole has carved
+            // into a pit well below the pre-carve rim (issue #250).
+            spawn = findSafeSurfaceSpawn(world);
+        }
+        world.setSpawnPosition(spawn);
+
+        // The located spawn is a fresh-world choice; persist it so respawns stay put. The save
+        // service was initialized before spawn resolution, so refresh its WorldData reference
+        // (initialize doubles as a refresh — see registerLocalPlayer).
+        if (worldData != null && !worldData.hasExplicitSpawn() && playerData == null) {
+            worldData = new WorldData.Builder(worldData).spawnPosition(spawn).hasExplicitSpawn(true).build();
+            save.initialize(worldData, null, world);
+        }
+
+        ServerLevel level = new ServerLevel(seed, world, entityManager, entitySpawner, timeTicks,
+            save, worldData, spawn, playerData);
         save.setWorldTimeSource(level.timeOfDay);
 
-        level.pregenSpawnArea();
         save.startAutoSave();
 
         System.out.println("[SERVER-LEVEL] Booted '" + worldName + "' (seed=" + seed
@@ -130,21 +155,55 @@ public final class ServerLevel {
         return level;
     }
 
-    private static Vector3f resolveSpawn(World world, WorldData worldData, PlayerData playerData) {
-        if (playerData != null && playerData.getPosition() != null) {
-            return new Vector3f(playerData.getPosition());
+    /**
+     * How many candidate columns {@link #findSafeSurfaceSpawn} will draw and validate before
+     * giving up and snapping the last one to its floor.
+     */
+    private static final int MAX_SPAWN_ATTEMPTS = 256;
+
+    /**
+     * Locates a world spawn that is not a carved pit (issue #250). Draws noise-sampled
+     * candidate columns from a single {@link SpawnLocator} (so its internal random advances
+     * between draws), loads each candidate's chunk just long enough to validate its real
+     * surface, and accepts the first column {@link SpawnLocator#acceptIfSafeSurface} okays —
+     * i.e. one whose real surface matches the pre-carve rim rather than a ravine/sinkhole
+     * floor. The winning column's spawn area is then pre-generated for collision/streaming. If
+     * every draw lands in a pit, falls back to snapping the last candidate to its real floor so
+     * the player never drops / takes fall damage.
+     */
+    private static Vector3f findSafeSurfaceSpawn(World world) {
+        SpawnLocator locator = new SpawnLocator(world);
+        Vector3f last = null;
+        for (int attempt = 0; attempt < MAX_SPAWN_ATTEMPTS; attempt++) {
+            last = locator.findSafeSurfaceSpawn();
+            loadSpawnChunk(world, last);
+            Vector3f accepted = SpawnLocator.acceptIfSafeSurface(world, last);
+            if (accepted != null) {
+                pregenSpawnArea(world, accepted);
+                return accepted;
+            }
         }
-        if (worldData != null && worldData.hasExplicitSpawn() && worldData.getSpawnPosition() != null) {
-            Vector3f saved = worldData.getSpawnPosition();
-            int x = Math.round(saved.x);
-            int z = Math.round(saved.z);
-            int height = world.terrain().getFinalTerrainHeightAt(x, z);
-            return new Vector3f(x, height + 1, z);
-        }
-        return new SpawnLocator(world).findSafeSurfaceSpawn();
+        pregenSpawnArea(world, last);
+        return resolveSurfaceSpawn(world, last);
     }
 
-    private void pregenSpawnArea() {
+    /** Loads {@code p}'s chunk (blocking until generated) so its real surface can be read. */
+    private static void loadSpawnChunk(World world, Vector3f p) {
+        int cx = Math.floorDiv((int) Math.floor(p.x), WorldConfiguration.CHUNK_SIZE);
+        int cz = Math.floorDiv((int) Math.floor(p.z), WorldConfiguration.CHUNK_SIZE);
+        world.getChunkAt(cx, cz);
+        try {
+            world.awaitPendingChunkLoads().get(15, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            System.err.println("[SERVER-LEVEL] Spawn chunk load wait failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Pre-generates a disc of chunks around {@code spawn} so the real (carved) terrain is
+     * resident before anything collides with it.
+     */
+    private static void pregenSpawnArea(World world, Vector3f spawn) {
         int pcx = (int) Math.floor(spawn.x / 16.0);
         int pcz = (int) Math.floor(spawn.z / 16.0);
         for (int dx = -PREGEN_RADIUS; dx <= PREGEN_RADIUS; dx++) {
@@ -157,6 +216,23 @@ public final class ServerLevel {
         } catch (Exception e) {
             System.err.println("[SERVER-LEVEL] Spawn-area pre-gen wait failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Snaps the candidate spawn's Y down onto the real top solid block of its column once the
+     * chunk is resident. {@code getFinalTerrainHeightAt} samples pre-carve noise and ignores the
+     * ravine/sinkhole masks, so a column cut open to the ravine floor would otherwise resolve to
+     * rim height. Uses the same standable-column predicate as {@link EntitySpawner}. Falls back
+     * to the candidate unchanged if no standable surface is found (e.g. open air to the floor).
+     */
+    private static Vector3f resolveSurfaceSpawn(World world, Vector3f candidate) {
+        int x = (int) Math.floor(candidate.x);
+        int z = (int) Math.floor(candidate.z);
+        int standY = SpawnLocator.resolveStandingY(world, x, z, WorldConfiguration.WORLD_HEIGHT - 1);
+        if (standY < 1) {
+            return new Vector3f(candidate);
+        }
+        return new Vector3f(x + 0.5f, standY, z + 0.5f);
     }
 
     public long seed() { return seed; }

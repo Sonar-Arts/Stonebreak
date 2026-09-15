@@ -41,6 +41,8 @@ public final class ToolMiningRules {
             BlockType.RED_SANDSTONE,
             BlockType.BRICKS_BLOCK,
             BlockType.STONE_BRICKS,
+            BlockType.LIMESTONE,
+            BlockType.LIMESTONE_STALAGMITE,
             BlockType.COAL_ORE,
             BlockType.IRON_ORE,
             BlockType.FURNACE,

@@ -48,6 +48,7 @@ module com.openmason {
     requires ch.qos.logback.classic;
     
     // Java base modules
+    requires java.net.http;
     requires java.desktop;
     requires java.prefs;
     requires java.xml;

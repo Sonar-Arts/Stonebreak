@@ -95,3 +95,14 @@ Errors return a short message + line number + hint (no tracebacks).
 `run_model_ops` is the declarative twin (JSON `{"ops":[...]}`, validated fully
 before executing; `validate_model_ops` dry-runs it). `include_trace:true` on a
 Python run returns the equivalent JSON ops for replay/audit.
+
+## Script library + Scripting window
+Scripts persist in `~/.openmason/scripts/` and are shared between MCP,
+the assistant, and the in-tool Scripting window (Tools > Scripting Editor):
+- `script_list` — user scripts + bundled read-only examples
+- `script_read {name}` / `script_save {name, source, overwrite?}` /
+  `script_delete {name}` (examples refuse deletion)
+- `scripting_open_window {script?}` — open the window, optionally pre-loading
+  a saved script for the user to see/edit
+Check `script_list` before writing a script that may already exist; save
+anything reusable.

@@ -105,6 +105,12 @@ public final class BlockType implements Item, IBlockType {
     // solid stone-family materials, tuned as pickaxe targets in ToolMiningRules.
     public static final BlockType BRICKS_BLOCK = fromRegistry("stonebreak:bricks_block", "BRICKS_BLOCK");
     public static final BlockType STONE_BRICKS = fromRegistry("stonebreak:stone_bricks", "STONE_BRICKS");
+    // Limestone: natural stone generated in cavern formations, cave coatings, pockets and
+    // beds by world/generation/features/LimestoneGenerator.
+    public static final BlockType LIMESTONE = fromRegistry("stonebreak:limestone", "LIMESTONE");
+    // Limestone stalagmite: 1-3 blocks tall, size in the anchor cell's state, cells above hold
+    // an empty "upper" state. Rules in blocks/stalagmite/Stalagmite.
+    public static final BlockType LIMESTONE_STALAGMITE = fromRegistry("stonebreak:limestone_stalagmite", "LIMESTONE_STALAGMITE");
     public static final BlockType WILDGRASS = fromRegistry("stonebreak:wildgrass", "WILDGRASS");
     // Animated door (SBO 1.6 per-state clips); interaction special-cased in
     // InputHandler, rendered dynamically by AnimatedBlockRenderer.

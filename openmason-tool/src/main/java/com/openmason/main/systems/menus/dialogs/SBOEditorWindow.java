@@ -94,6 +94,13 @@ public class SBOEditorWindow {
 
     /** Mortar window chrome (action bar + tab strip); ImGui fallback inside. */
     private final EditorChrome chrome = new EditorChrome("sbo");
+
+    /** Opens embedded model bytes in the model editor (wired by MainImGuiInterface). */
+    private java.util.function.BiConsumer<byte[], String> openModelHandler;
+
+    public void setOpenModelHandler(java.util.function.BiConsumer<byte[], String> handler) {
+        this.openModelHandler = handler;
+    }
     private int selectedTab;
 
     public SBOEditorWindow(FileDialogService fileDialogService, StatusService statusService) {
@@ -237,6 +244,18 @@ public class SBOEditorWindow {
     }
 
     private void renderMetadataTab() {
+        if (openModelHandler != null && loadedManifest != null
+                && loadedManifest.isModelBearing() && loadedDefaultBytes != null) {
+            if (ImGui.button("Open Model in Editor")) {
+                openModelHandler.accept(loadedDefaultBytes,
+                        objectName.get().isBlank() ? objectId.get() : objectName.get());
+            }
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Loads a COPY of the embedded model into the viewport "
+                        + "(the .sbo file itself is not touched; Save becomes Save As)");
+            }
+            ImGui.separator();
+        }
         if (ImGui.inputText("Object ID", objectId))    dirty = true;
         if (ImGui.inputText("Object Name", objectName)) dirty = true;
         if (ImGui.combo("Object Type", objectTypeIndex, OBJECT_TYPE_LABELS)) dirty = true;

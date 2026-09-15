@@ -48,6 +48,9 @@ public class GroundChecker {
             }
         }
 
+        if (!blockBeneath && collisionHandler.modelBoxBeneath(x1, z1, x2, z2, y)) {
+            blockBeneath = true;
+        }
         if (!blockBeneath) {
             state.setOnGround(false);
             if (state.getVelocity().y == 0) state.getVelocity().y = -0.1f;

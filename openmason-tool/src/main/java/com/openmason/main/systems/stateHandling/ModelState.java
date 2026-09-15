@@ -13,7 +13,8 @@ public class ModelState {
         NONE,           // No model loaded
         NEW,            // Created via "New Model"
         OMO_FILE,       // Loaded from .OMO file
-        BROWSER         // Loaded from Model Browser (read-only)
+        BROWSER,        // Loaded from Model Browser (read-only)
+        IMPORTED_ASSET  // Copy extracted from an SBO/SBE asset (Save -> Save As)
     }
 
     private boolean modelLoaded = false;
@@ -91,7 +92,8 @@ public class ModelState {
      * BROWSER models are read-only references.
      */
     public boolean canSaveModel() {
-        return modelSource == ModelSource.NEW || modelSource == ModelSource.OMO_FILE;
+        return modelSource == ModelSource.NEW || modelSource == ModelSource.OMO_FILE
+                || modelSource == ModelSource.IMPORTED_ASSET;
     }
 
     /**

@@ -125,7 +125,10 @@ public final class ServerBlockHandler {
             // (SBO `drops.byTool`). Block ids and item ids never collide, so a held
             // block simply resolves to no tool.
             com.stonebreak.items.ItemType tool = com.stonebreak.items.ItemType.getById(sp.heldItemId());
-            com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev, tool);
+            // Issue #225: the breaker's position biases which adjacent passable cell the
+            // drops spawn into (nearest to the player) and the direction they spit out.
+            com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev, tool, 0,
+                    new Vector3f(sp.x(), sp.y(), sp.z()));
         }
         // Furnace placement: register the authoritative state (Unlit, empty). The client's
         // own BlockPlacer only touched ITS display registry.
@@ -173,6 +176,19 @@ public final class ServerBlockHandler {
             pendingStateEchoes.add(new com.stonebreak.network.packet.world.BlockStateS2C(
                     c.x(), c.y(), c.z(), placed.toStateString()));
         }
+        // Stalagmite placement: hanging and facing come from the client's proposal (only it knows
+        // which face was clicked); a missing or unreadable one stands upright facing the placer's
+        // yaw. A placed stalagmite is always size 1 — it grows with water, never by proposal.
+        if (incoming == BlockType.LIMESTONE_STALAGMITE) {
+            com.stonebreak.blocks.stalagmite.StalagmiteState placed = c.hasPlacementState()
+                    && c.placementState().startsWith(com.stonebreak.blocks.stalagmite.StalagmiteState.STATE_PREFIX)
+                    ? com.stonebreak.blocks.stalagmite.StalagmiteState.parse(c.placementState()).withSize(1)
+                    : new com.stonebreak.blocks.stalagmite.StalagmiteState(1, false,
+                            com.stonebreak.blocks.stairs.StairState.Facing.fromYaw(sp.yaw()));
+            world.setBlockStateAt(c.x(), c.y(), c.z(), placed.toStateString());
+            pendingStateEchoes.add(new com.stonebreak.network.packet.world.BlockStateS2C(
+                    c.x(), c.y(), c.z(), placed.toStateString()));
+        }
         // Torches held up by the block that just changed pop off with it
         // (a break, or any edit leaving a non-solid cell). Authoritative only:
         // clients learn of it through the queued block broadcast.
@@ -184,6 +200,24 @@ public final class ServerBlockHandler {
                 world.setBlockAt(t.x, t.y, t.z, BlockType.AIR, false);
                 chunkHandler.markChunkModified(Math.floorDiv(t.x, 16), Math.floorDiv(t.z, 16));
                 queueOutgoing(t.x, t.y, t.z, (short) BlockType.AIR.getId());
+            }
+        }
+        // Stalagmites span up to three cells. Breaking any of them — or the floor under one —
+        // clears the rest of the formation here; clients learn of it through the queued block
+        // broadcast. Only the cell the player broke drops (one size-1 stalagmite, via the drop
+        // above); a stalagmite knocked off its floor drops its own.
+        if (incoming == null || !incoming.isSolid()) {
+            com.stonebreak.blocks.stalagmite.Stalagmite.BreakResult fell =
+                    com.stonebreak.blocks.stalagmite.Stalagmite.breakAt(
+                            com.stonebreak.blocks.stalagmite.Stalagmite.of(world), c.x(), c.y(), c.z(),
+                            prev == BlockType.LIMESTONE_STALAGMITE);
+            for (org.joml.Vector3i a : fell.fallenAnchors()) {
+                com.stonebreak.util.DropUtil.handleBlockBroken(world,
+                        new Vector3f(a.x + 0.5f, a.y + 0.5f, a.z + 0.5f), BlockType.LIMESTONE_STALAGMITE);
+            }
+            for (org.joml.Vector3i r : fell.removed()) {
+                chunkHandler.markChunkModified(Math.floorDiv(r.x, 16), Math.floorDiv(r.z, 16));
+                queueOutgoing(r.x, r.y, r.z, (short) BlockType.AIR.getId());
             }
         }
         // Snow layer bookkeeping derived from the block change (the SnowLayerC2S intent only
@@ -288,7 +322,12 @@ public final class ServerBlockHandler {
                 return;
             }
         }
-        if (world.getBlockAt(t.x(), t.y(), t.z()) != BlockType.OAK_DOOR) {
+        BlockType target = world.getBlockAt(t.x(), t.y(), t.z());
+        if (target == BlockType.LIMESTONE_STALAGMITE) {
+            growStalagmite(world, t.x(), t.y(), t.z(), ctx);
+            return;
+        }
+        if (target != BlockType.OAK_DOOR) {
             return;
         }
         com.stonebreak.blocks.door.DoorState next = com.stonebreak.blocks.door.DoorState
@@ -297,6 +336,26 @@ public final class ServerBlockHandler {
         world.setBlockStateAt(t.x(), t.y(), t.z(), next.toStateString());
         ctx.broadcast(new com.stonebreak.network.packet.world.BlockStateS2C(
                 t.x(), t.y(), t.z(), next.toStateString()), false);
+    }
+
+    /**
+     * The toggle intent on a stalagmite is the water-bucket use: grow it one size. The new
+     * upper cell goes out on the block batch and both states ride the queued echo, so a state
+     * packet can never overtake the block change that would clear it. The bucket itself is
+     * client inventory, emptied by the client that sent the intent.
+     */
+    private void growStalagmite(World world, int x, int y, int z, ServerWorldContext ctx) {
+        java.util.List<org.joml.Vector3i> written = com.stonebreak.blocks.stalagmite.Stalagmite.grow(
+                com.stonebreak.blocks.stalagmite.Stalagmite.of(world), x, y, z);
+        if (!written.isEmpty()) {
+            org.joml.Vector3i newCell = written.get(0);
+            queueOutgoing(newCell.x, newCell.y, newCell.z, (short) BlockType.LIMESTONE_STALAGMITE.getId());
+        }
+        for (org.joml.Vector3i w : written) {
+            chunkHandler.markChunkModified(Math.floorDiv(w.x, 16), Math.floorDiv(w.z, 16));
+            pendingStateEchoes.add(new com.stonebreak.network.packet.world.BlockStateS2C(
+                    w.x, w.y, w.z, world.getBlockStateAt(w.x, w.y, w.z)));
+        }
     }
 
     /**

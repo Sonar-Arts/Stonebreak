@@ -107,7 +107,18 @@ public final class McpSchema {
     }
 
     public McpSchema required(String... names) {
-        for (String n : names) required.add(n);
+        // Dedup: strict validators (SGLang's jsonschema) reject a "required"
+        // array with repeated names (uniqueItems) and fail the whole request.
+        for (String n : names) {
+            boolean present = false;
+            for (JsonNode existing : required) {
+                if (existing.asText().equals(n)) {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present) required.add(n);
+        }
         return this;
     }
 

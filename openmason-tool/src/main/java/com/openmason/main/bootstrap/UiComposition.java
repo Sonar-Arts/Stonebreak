@@ -12,6 +12,7 @@ import com.openmason.main.systems.menus.textureCreator.FaceTextureResizeDialog;
 import com.openmason.main.systems.menus.textureCreator.IFaceTextureGPUService;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.textureCreator.TexturePreviewPipeline;
+import com.openmason.main.systems.menus.scriptingWindow.ScriptingWindow;
 import com.openmason.main.systems.menus.windows.TextureEditorWindow;
 import com.openmason.main.systems.project.OMPFormat;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
@@ -65,6 +66,7 @@ public final class UiComposition {
     private SceneViewerImGuiInterface sceneViewerInterface;
     private TextureCreatorImGui textureCreatorInterface;
     private TextureEditorWindow textureEditorWindow;
+    private ScriptingWindow scriptingWindow;
     private AnimationEditorImGui animationEditor;
     private TexturePreviewPipeline texturePreviewPipeline;
 
@@ -82,6 +84,7 @@ public final class UiComposition {
     public SceneViewerImGuiInterface sceneViewerInterface() { return sceneViewerInterface; }
     public TextureCreatorImGui textureCreatorInterface() { return textureCreatorInterface; }
     public TextureEditorWindow textureEditorWindow() { return textureEditorWindow; }
+    public ScriptingWindow scriptingWindow() { return scriptingWindow; }
     public AnimationEditorImGui animationEditor() { return animationEditor; }
     public TexturePreviewPipeline texturePreviewPipeline() { return texturePreviewPipeline; }
 
@@ -200,6 +203,7 @@ public final class UiComposition {
 
             textureCreatorInterface = TextureCreatorImGui.createDefault();
             textureEditorWindow = new TextureEditorWindow(textureCreatorInterface);
+            scriptingWindow = new ScriptingWindow(mainInterface);
 
             // Point the texture editor's save/open dialogs at the open project's root
             // folder (same source the model-save dialogs use).
@@ -310,6 +314,11 @@ public final class UiComposition {
     private void wireCallbacks() {
         mainInterface.setBackToHomeCallback(host::transitionToHomeScreen);
         mainInterface.setExitCallback(host::requestExit);
+        mainInterface.setOpenScriptingWindowCallback(() -> {
+            if (scriptingWindow != null) {
+                scriptingWindow.show();
+            }
+        });
         mainInterface.setOpenTextureEditorCallback(() -> {
             // Standalone open: reset to a fresh blank canvas so previous
             // per-face edits don't leak into the standalone session

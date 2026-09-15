@@ -1,0 +1,9 @@
+{
+  "ops": [
+    { "op": "create_part", "shape": "box", "name": "ops_demo_body",
+      "size": [6, 3, 4], "position": [0, 3, 0] },
+    { "op": "create_part", "shape": "cylinder", "name": "ops_demo_leg",
+      "size": [1, 3, 1], "position": [2, 1.5, 1] },
+    { "op": "set_parent", "part": "ops_demo_leg", "parent": "ops_demo_body" }
+  ]
+}

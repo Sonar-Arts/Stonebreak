@@ -368,9 +368,11 @@ public class CollisionHandler {
      */
     public float getBlockCollisionHeight(int x, int y, int z,
                                          float minX, float minZ, float maxX, float maxZ) {
-        if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(world.getBlockAt(x, y, z))) {
-            // Animated blocks (doors) never collide as cells — the panel AABB
-            // pass below resolves against the actual posed model box.
+        BlockType type = world.getBlockAt(x, y, z);
+        if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(type)
+                || type == BlockType.LIMESTONE_STALAGMITE) {
+            // Animated blocks (doors) and stalagmites never collide as cells — the
+            // model-box pass below resolves against their actual geometry.
             return 0.0f;
         }
         return com.stonebreak.blocks.BlockShape.collisionHeight(world, x, y, z, minX, minZ, maxX, maxZ);
@@ -389,6 +391,7 @@ public class CollisionHandler {
     private java.util.List<float[]> nearbyDoorPanels() {
         java.util.List<float[]> panels = new java.util.ArrayList<>(2);
         Vector3f position = state.getPosition();
+        addNearbyStalagmiteBoxes(panels, position);
         for (com.openmason.engine.util.BlockPos pos : world.getAnimatedBlockRegistry().positions()) {
             // Quick reject: a posed model reaches at most ~2 blocks from its anchor.
             if (Math.abs(pos.x() + 0.5f - position.x) > 4f
@@ -406,6 +409,56 @@ public class CollisionHandler {
                     .worldAabb(world, pos.x(), pos.y(), pos.z(), type));
         }
         return panels;
+    }
+
+    /**
+     * Stalagmite model boxes ({@code StalagmiteShape}) for every stalagmite whose cells the
+     * player could touch this step: the player's cells plus a one-cell margin, each stalagmite
+     * counted once by its anchor. The boxes follow the tiers of the model, so the player walks
+     * around the spire they see and can stand on its tip, instead of meeting a full block.
+     */
+    private void addNearbyStalagmiteBoxes(java.util.List<float[]> out, Vector3f position) {
+        float halfWidth = PLAYER_WIDTH / 2;
+        int minX = (int) Math.floor(position.x - halfWidth) - 1;
+        int maxX = (int) Math.floor(position.x + halfWidth) + 1;
+        int minY = (int) Math.floor(position.y) - 1;
+        int maxY = (int) Math.floor(position.y + PLAYER_HEIGHT) + 1;
+        int minZ = (int) Math.floor(position.z - halfWidth) - 1;
+        int maxZ = (int) Math.floor(position.z + halfWidth) + 1;
+        com.stonebreak.blocks.stalagmite.Stalagmite.Cells cells =
+                com.stonebreak.blocks.stalagmite.Stalagmite.of(world);
+        java.util.Set<Long> anchors = null;
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                for (int y = minY; y <= maxY; y++) {
+                    if (world.getBlockAt(x, y, z) != BlockType.LIMESTONE_STALAGMITE) {
+                        continue;
+                    }
+                    int ay = com.stonebreak.blocks.stalagmite.Stalagmite.anchorY(cells, x, y, z);
+                    if (ay == Integer.MIN_VALUE) {
+                        continue;
+                    }
+                    if (anchors == null) anchors = new java.util.HashSet<>();
+                    if (anchors.add(((long) x << 40) ^ ((long) z << 20) ^ ay)) {
+                        out.addAll(com.stonebreak.blocks.stalagmite.StalagmiteShape.worldBoxes(cells, x, y, z));
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Whether a model box (door panel, stalagmite) supports a footprint whose feet are at
+     * {@code feetY} — the ground check's counterpart to the cell heights, which report 0 there.
+     */
+    public boolean modelBoxBeneath(float minX, float minZ, float maxX, float maxZ, float feetY) {
+        for (float[] b : nearbyDoorPanels()) {
+            if (maxX > b[0] && minX < b[3] && maxZ > b[2] && minZ < b[5]
+                    && b[4] >= feetY && b[4] - feetY <= 0.15f) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Player AABB vs panel box overlap. Box layout: {minX,minY,minZ,maxX,maxY,maxZ}. */

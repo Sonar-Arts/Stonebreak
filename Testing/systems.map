@@ -32,7 +32,7 @@ sky	openmason-engine	com/openmason/engine/rendering/sky/**/*Test
 
 # ---- game ----
 audio	stonebreak-game	com/stonebreak/audio/**/*Test
-blocks	stonebreak-game	com/stonebreak/blocks/**/*Test,!com/stonebreak/blocks/waterSystem/**
+blocks	stonebreak-game	com/stonebreak/blocks/**/*Test,!com/stonebreak/blocks/waterSystem/**,com/stonebreak/util/**/*Test
 water	stonebreak-game	com/stonebreak/blocks/waterSystem/**/*Test,com/stonebreak/world/chunk/ChunkWaterLayerTest,com/stonebreak/world/chunk/WaterMeshSplitTest
 core	stonebreak-game	com/stonebreak/core/**/*Test,com/stonebreak/config/**/*Test,com/stonebreak/world/TimeOfDayTest,com/stonebreak/world/DeterministicRandomTest,com/stonebreak/world/SnowLayerManagerTest
 items	stonebreak-game	com/stonebreak/items/**/*Test
@@ -43,12 +43,14 @@ ui	stonebreak-game	com/stonebreak/ui/**/*Test,com/stonebreak/rendering/UI/**/*Te
 chunks	stonebreak-game	com/stonebreak/world/chunk/**/*Test,!com/stonebreak/world/chunk/api/**,!com/stonebreak/world/chunk/ChunkWaterLayerTest,!com/stonebreak/world/chunk/WaterMeshSplitTest,com/stonebreak/world/LoadingPerformanceIntegrationTest
 fastlod	stonebreak-game	com/stonebreak/world/fastlod/**/*Test,com/stonebreak/rendering/gameWorld/**/*Test
 leaves	stonebreak-game	com/stonebreak/world/leaves/**/*Test
-terrain-gen	stonebreak-game	com/stonebreak/world/generation/**/*Test
+terrain-gen	stonebreak-game	com/stonebreak/world/generation/**/*Test,com/stonebreak/world/spawn/**/*Test
 persistence	stonebreak-game	com/stonebreak/world/save/**/*Test
 bench	stonebreak-game	com/stonebreak/world/bench/**/*Test
 
 # ---- tool ----
 mcp	openmason-tool	com/openmason/main/systems/mcp/**/*Test
+assets	openmason-tool	com/openmason/main/systems/assets/**/*Test
+assistant	openmason-tool	com/openmason/main/systems/assistant/**/*Test
 anim-editor	openmason-tool	com/openmason/main/systems/menus/animationEditor/**/*Test
 tool-ui	openmason-tool	com/openmason/main/systems/menus/dialogs/**/*Test,com/openmason/main/systems/menus/textureCreator/**/*Test,com/openmason/main/systems/mortar/**/*Test
 scripting	openmason-tool	com/openmason/main/systems/scripting/**/*Test

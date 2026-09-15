@@ -28,6 +28,7 @@ public final class BlockOpacity {
                 && type != BlockType.WILDGRASS
                 && type != BlockType.SNOW
                 && type != BlockType.TORCH_PLACED
+                && type != BlockType.LIMESTONE_STALAGMITE
                 && type != BlockType.LEAVES
                 && type != BlockType.PINE_LEAVES
                 && type != BlockType.ELM_LEAVES;

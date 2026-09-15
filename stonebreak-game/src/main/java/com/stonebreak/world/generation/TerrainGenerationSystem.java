@@ -15,6 +15,7 @@ import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.diffusion.TerrainTileSource;
 import com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager;
+import com.stonebreak.world.generation.features.LimestoneGenerator;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator;
@@ -52,6 +53,7 @@ public class TerrainGenerationSystem {
     private final HeightMapGenerator heightMapGenerator;
     private final BiomeManager biomeManager;
     private final OreGenerator oreGenerator;
+    private final LimestoneGenerator limestoneGenerator;
     private final VegetationGenerator vegetationGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
     private final DeterministicRandom deterministicRandom;
@@ -124,6 +126,7 @@ public class TerrainGenerationSystem {
         this.megaCavernCarver = new MegaCavernCarver(seed, heightMapGenerator);
         this.ravineCarver = new RavineCarver(seed, heightMapGenerator);
         this.sinkholeCarver = new SinkholeCarver(seed, heightMapGenerator);
+        this.limestoneGenerator = new LimestoneGenerator(seed, heightMapGenerator, cavernCarver, megaCavernCarver);
         this.wormCarver.setCavernCarver(cavernCarver);
         this.wormCarver.setMegaCavernCarver(megaCavernCarver);
         // Lets a sinkhole cut to exactly the depth that opens into a real tunnel.
@@ -648,6 +651,8 @@ public class TerrainGenerationSystem {
             world, chunk, snowLayerManager, heights, biomes, waterLevels, dominantBiome);
 
         oreGenerator.generate(ctx);
+        // After ores: limestone only replaces stone, so it never eats a vein.
+        limestoneGenerator.generate(ctx);
         vegetationGenerator.generate(ctx);
         decorationGenerator.generate(ctx);
 

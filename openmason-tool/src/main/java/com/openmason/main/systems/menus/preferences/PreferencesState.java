@@ -16,6 +16,7 @@ public class PreferencesState {
         TEXTURE_EDITOR("Texture Editor"),
         ASSETS("Folders"),
         KEYBINDS("Keybinds"),
+        ASSISTANT("Assistant"),
         COMMON("Common");
 
         private final String displayName;
