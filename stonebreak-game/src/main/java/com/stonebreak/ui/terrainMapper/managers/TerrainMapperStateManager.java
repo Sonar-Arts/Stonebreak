@@ -56,6 +56,7 @@ public final class TerrainMapperStateManager {
     // ─────────────────────────────────────────────── Viewport + preview
     private final TerrainMapViewport viewport = new TerrainMapViewport();
     private final TerrainPreviewLoader previewLoader = new TerrainPreviewLoader(new TerrainPreviewSampler()::sample);
+    private final PreviewRequestPlanner requestPlanner = new PreviewRequestPlanner();
 
     // ─────────────────────────────────────────────── Map drag
     private boolean dragging;
@@ -280,6 +281,7 @@ public final class TerrainMapperStateManager {
 
     public TerrainMapViewport getViewport() { return viewport; }
     public TerrainPreviewLoader getPreviewLoader() { return previewLoader; }
+    public PreviewRequestPlanner getRequestPlanner() { return requestPlanner; }
 
     // ─────────────────────────────────────────────── Drag state
 
@@ -359,6 +361,11 @@ public final class TerrainMapperStateManager {
         // Back to a blank map, so re-entering the screen doesn't briefly show the previous
         // world's terrain under the new seed.
         previewLoader.reset();
+        requestPlanner.reset();
+        // The mapper is being closed, so the terrain remembered for looking back over is no
+        // longer anyone's. This is the only place it is dropped: panning, zooming, switching mode
+        // and even changing seed all keep it.
+        visualizers.clearPreviewData();
         seedText = Long.toString(new java.util.Random().nextLong());
         // Deliberately deferred, not rebuilt here: reset() runs on the way *out* of this screen
         // (back, or world created), and rebuilding would restart the terrain services for a

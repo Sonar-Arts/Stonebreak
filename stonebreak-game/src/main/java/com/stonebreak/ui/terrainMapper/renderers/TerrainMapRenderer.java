@@ -84,17 +84,16 @@ public final class TerrainMapRenderer {
 
     private SampleRequest buildRequest(TerrainMapperLayout.Rect mapRect) {
         NoiseVisualizer visualizer = state.getVisualizers().get(state.getActiveVisualizer());
-        if (visualizer == null) return null;
         TerrainMapViewport viewport = state.getViewport();
-        return new SampleRequest(
+        return state.getRequestPlanner().plan(
                 visualizer,
                 state.getVisualizers(),
                 (int) mapRect.width(),
                 (int) mapRect.height(),
-                state.effectiveSampleStep(),
                 viewport.panX(),
                 viewport.panZ(),
-                viewport.zoom());
+                viewport.zoom(),
+                state.effectiveSampleStep());
     }
 
     /**

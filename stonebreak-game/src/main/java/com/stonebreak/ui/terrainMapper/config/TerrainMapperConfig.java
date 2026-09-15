@@ -50,6 +50,25 @@ public final class TerrainMapperConfig {
     /** Coarser sample spacing used during drag/zoom so interaction stays 60 fps. */
     public static final int SAMPLE_STEP_INTERACTIVE_PX = 6;
 
+    /**
+     * Preload margin sampled beyond every edge of the map, as a fraction of its shorter side.
+     * Panning within half of it shows terrain that is already there and starts no new work.
+     *
+     * <p>The cost is tiles: at 0.5 the margin is roughly three times the visible area again.
+     * It is only sampled after the visible map has finished, and any pan past the margin, zoom,
+     * or mode switch abandons it, so it never delays what is on screen — but it does keep the
+     * single-GPU terrain queue busy for longer on a zoomed-out view. 0 disables preloading.
+     */
+    public static final float PRELOAD_MARGIN_FRACTION = 0.5f;
+
+    /**
+     * Memory the mapper may spend remembering sampled terrain values while it is open (see
+     * PreviewSampleStore). Past it, the least recently viewed detail is forgotten and would
+     * have to be sampled again. About 43,000 chunks; a zoom-1 screen with its preload margin
+     * takes a few hundred.
+     */
+    public static final long PREVIEW_CACHE_BUDGET_BYTES = 512L * 1024 * 1024;
+
     /** After a wheel-zoom, keep interactive quality this long before resampling at hi-res. */
     public static final long ZOOM_COOLDOWN_NANOS = 180_000_000L;
 

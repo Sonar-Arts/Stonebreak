@@ -35,27 +35,26 @@ public record PreviewSnapshot(
         boolean complete
 ) {
 
-    /** World X of the image's left edge. */
+    /**
+     * World X of the image's left edge. Each pixel is one lattice cell: the square of
+     * {@link SampleRequest#spacing()} blocks whose north-west corner is the point it sampled.
+     */
     public float worldLeft() {
-        return request.worldXAt(0f);
+        return request.latticeOriginX();
     }
 
     /** World Z of the image's top edge. */
     public float worldTop() {
-        return request.worldZAt(0f);
+        return request.latticeOriginZ();
     }
 
-    /**
-     * World-space width the image covers. Derived from {@code sampleW * step} rather than the
-     * rect width because integer division in the sampler can leave the sample grid a step
-     * short of the rect; using the rect width here would stretch the image slightly.
-     */
+    /** World-space width the image covers: its lattice columns, not the view it was asked for. */
     public float worldWidth() {
-        return (sampleW * request.step()) / request.zoom();
+        return (float) sampleW * request.spacing();
     }
 
     public float worldHeight() {
-        return (sampleH * request.step()) / request.zoom();
+        return (float) sampleH * request.spacing();
     }
 
     /**
@@ -64,9 +63,9 @@ public record PreviewSnapshot(
      * behind the pixel under the cursor without touching the terrain bridge.
      */
     public float valueAt(float worldX, float worldZ) {
-        float scale = request.zoom() / request.step();
-        int sx = (int) Math.floor((worldX - worldLeft()) * scale);
-        int sz = (int) Math.floor((worldZ - worldTop()) * scale);
+        float spacing = request.spacing();
+        int sx = (int) Math.floor((worldX - worldLeft()) / spacing);
+        int sz = (int) Math.floor((worldZ - worldTop()) / spacing);
         if (sx < 0 || sx >= sampleW || sz < 0 || sz >= sampleH) return Float.NaN;
         return raw[sz * sampleW + sx];
     }

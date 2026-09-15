@@ -282,6 +282,103 @@ class TerrainPreviewLoaderTest {
         }
     }
 
+    @Test
+    void theVisibleMapIsFinishedBeforeTheMarginIsPreloaded() throws InterruptedException {
+        // The margin is for a pan that may never come; it must not hold back what is on screen.
+        java.util.List<SampleRequest> asked = new java.util.concurrent.CopyOnWriteArrayList<>();
+        CountDownLatch marginStarted = new CountDownLatch(1);
+        CountDownLatch releaseMargin = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<PreviewSnapshot> onScreenDuringMargin =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<TerrainPreviewLoader.Phase> phaseDuringMargin =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        TerrainPreviewLoader[] self = new TerrainPreviewLoader[1];
+        TerrainPreviewLoader preloading = new TerrainPreviewLoader((request, sink) -> {
+            asked.add(request);
+            if (request.marginPx() > 0) {
+                onScreenDuringMargin.set(self[0].snapshot());
+                phaseDuringMargin.set(self[0].phase());
+                marginStarted.countDown();
+                try {
+                    releaseMargin.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return snapshotFor(request, true);
+        });
+        self[0] = preloading;
+        try {
+            SampleRequest withMargin = withMargin(requestFor(ONE_SEED), 100);
+            preloading.request(withMargin);
+            assertTrue(marginStarted.await(2, TimeUnit.SECONDS), "the margin was never sampled");
+
+            assertEquals(withMargin.core(), asked.get(0), "the visible rect must be sampled first");
+            assertTrue(onScreenDuringMargin.get().complete(), "the visible map must already be up");
+            assertEquals(withMargin.core(), onScreenDuringMargin.get().request());
+            assertEquals(TerrainPreviewLoader.Phase.READY, phaseDuringMargin.get(),
+                    "preloading off-screen terrain is not 'Sampling...' the user is waiting on");
+
+            releaseMargin.countDown();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (!withMargin.equals(preloading.snapshot().request()) && System.nanoTime() < deadline) {
+                Thread.sleep(5);
+            }
+            assertEquals(withMargin, preloading.snapshot().request());
+
+            preloading.request(withMargin);   // the render loop asks again next frame
+            Thread.sleep(20);
+            assertEquals(2, asked.size(), "a finished preload was sampled again");
+        } finally {
+            releaseMargin.countDown();
+            preloading.dispose();
+        }
+    }
+
+    @Test
+    void aPassAbandonedAfterItsVisibleRectSkipsTheMargin() throws InterruptedException {
+        java.util.List<SampleRequest> asked = new java.util.concurrent.CopyOnWriteArrayList<>();
+        CountDownLatch coreSampling = new CountDownLatch(1);
+        CountDownLatch releaseCore = new CountDownLatch(1);
+        TerrainPreviewLoader preloading = new TerrainPreviewLoader((request, sink) -> {
+            asked.add(request);
+            if (request.visualizer() == ONE_SEED && request.marginPx() == 0) {
+                coreSampling.countDown();
+                try {
+                    releaseCore.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                // Finishes anyway, as a pass does when abandonment lands after its last poll.
+            }
+            return snapshotFor(request, true);
+        });
+        try {
+            SampleRequest first = withMargin(requestFor(ONE_SEED), 100);
+            preloading.request(first);
+            assertTrue(coreSampling.await(2, TimeUnit.SECONDS));
+            preloading.request(requestFor(ANOTHER_SEED));
+            releaseCore.countDown();
+
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (asked.size() < 2 && System.nanoTime() < deadline) {
+                Thread.sleep(5);
+            }
+            Thread.sleep(20);
+            assertEquals(2, asked.size(), "asked for: " + asked);
+            assertSame(ANOTHER_SEED, asked.get(1).visualizer(), "the stale margin ran before the new view");
+        } finally {
+            releaseCore.countDown();
+            preloading.dispose();
+        }
+    }
+
+    private static SampleRequest withMargin(SampleRequest request, int marginPx) {
+        return new SampleRequest(request.visualizer(), request.registry(), request.widthPx(),
+                request.heightPx(), request.step(), request.panX(), request.panZ(), request.zoom(),
+                marginPx, null);
+    }
+
     private PreviewSnapshot awaitSnapshot() throws InterruptedException {
         return awaitSnapshot(loader);
     }

@@ -17,6 +17,15 @@ public interface NoiseVisualizer {
     /** Raw sample at a world position. Cheap — must be safe to call per-pixel. */
     float sample(int worldX, int worldZ);
 
+    /**
+     * The cached channel {@link #sample} reads, so the preview can serve it from
+     * {@link PreviewSampleStore} instead of the terrain. Must return exactly what
+     * {@link #sample} would. Null means "not cached": every pass calls {@link #sample} directly.
+     */
+    default PreviewChannel channel() {
+        return null;
+    }
+
     /** Map a raw sample to [0, 1]; default assumes already in range. */
     default float normalize(float raw) {
         return Math.max(0f, Math.min(1f, raw));

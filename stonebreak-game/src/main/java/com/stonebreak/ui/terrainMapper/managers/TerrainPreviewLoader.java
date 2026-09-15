@@ -263,15 +263,14 @@ public final class TerrainPreviewLoader {
             if (sink.abandoned()) return;
             samplingLabel = request.visualizer().displayName();
             phase = Phase.SAMPLING;
-            PreviewSnapshot finished = sampler.sample(request, sink);
-            // Abandoned: the partials it published stand, and the request that replaced this one
-            // is already waiting in drain(). Leaving the phase on SAMPLING is honest — the next
-            // job starts immediately.
-            if (finished == null) return;
-            if (!publish(finished, startedAt)) return;
-            failureMessage = null;
-            retryAfterNanos = 0L;
-            phase = Phase.READY;
+            // What the user can see comes first. The margin around it is preload for a pan that
+            // may never happen, so it must not hold the visible map back.
+            if (!sampleAndPublish(request.core(), sink, startedAt)) return;
+            if (request.marginPx() > 0) {
+                // The visible map is done; the margin fills in silently behind it. Its bands paint
+                // over the core (now the backdrop) with identical pixels, so nothing flickers.
+                sampleAndPublish(request, sink, startedAt);
+            }
         } catch (StaleSeedException e) {
             // Not a failure: the bridge is pinned to a seed this pass is no longer sampling for.
             // A pass in flight when the seed changes keeps drawing tiles from the registry it
@@ -300,6 +299,23 @@ public final class TerrainPreviewLoader {
             phase = Phase.FAILED;
             LOG.log(Level.SEVERE, "unexpected terrain preview failure", e);
         }
+    }
+
+    /**
+     * One sampling pass, published as a complete snapshot. Returns false if the pass was
+     * abandoned or its result dropped by a {@link #reset()}, in which case the phase is left for
+     * whatever replaced it: abandoned partials stand, and the request that superseded this one is
+     * already waiting in {@link #drain()}, so leaving the phase on SAMPLING is honest.
+     */
+    private boolean sampleAndPublish(SampleRequest request, JobSink sink, int startedAt) {
+        if (sink.abandoned()) return false;
+        PreviewSnapshot finished = sampler.sample(request, sink);
+        if (finished == null) return false;
+        if (!publish(finished, startedAt)) return false;
+        failureMessage = null;
+        retryAfterNanos = 0L;
+        phase = Phase.READY;
+        return true;
     }
 
     /**

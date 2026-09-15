@@ -1,6 +1,10 @@
 package com.stonebreak.ui.terrainMapper.managers;
 
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
+import com.stonebreak.ui.terrainMapper.visualization.PreviewChannel;
+import com.stonebreak.ui.terrainMapper.visualization.PreviewSampleStore;
+import com.stonebreak.ui.terrainMapper.visualization.PreviewSource;
+import com.stonebreak.ui.terrainMapper.visualization.TerrainColumns;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -95,6 +99,61 @@ class TerrainPreviewSamplerTest {
         assertEquals(SAMPLE_W, finished.sampleW());
         assertEquals(SAMPLE_H, finished.sampleH());
         assertEquals(SAMPLE_W * SAMPLE_H, samplesTaken.get(), "every cell sampled exactly once");
+    }
+
+    @Test
+    void aMarginIsSampledOnEverySide() {
+        int margin = 40;
+        SampleRequest withMargin = new SampleRequest(counting, null, WIDTH_PX, HEIGHT_PX, STEP, 0f, 0f, 1f, margin, null);
+
+        PreviewSnapshot finished = sampler.sample(withMargin, new RecordingSink(Integer.MAX_VALUE));
+
+        assertNotNull(finished);
+        assertEquals(SAMPLE_W + 2 * margin / STEP, finished.sampleW());
+        assertEquals(SAMPLE_H + 2 * margin / STEP, finished.sampleH());
+        // The counter returns worldZ: the top row sits a margin above the visible rect's top.
+        assertEquals(-HEIGHT_PX / 2f - margin, finished.raw()[0], 0f);
+    }
+
+    @Test
+    void groundAlreadySampledIsServedFromTheStoreInAnyModeSharingItsChannel() {
+        AtomicInteger columnReads = new AtomicInteger();
+        TerrainColumns columns = (x, z, out) -> {
+            columnReads.incrementAndGet();
+            out[PreviewChannel.HEIGHT.ordinal()] = x + z;
+            out[PreviewChannel.WATER.ordinal()] = 7f;
+            out[PreviewChannel.BIOME.ordinal()] = 2f;
+        };
+        PreviewSource source = new PreviewSource(99L, columns, new PreviewSampleStore(64L * 1024 * 1024));
+        NoiseVisualizer height = channelVisualizer(PreviewChannel.HEIGHT);
+        NoiseVisualizer water = channelVisualizer(PreviewChannel.WATER);
+
+        PreviewSnapshot first = sampler.sample(
+                new SampleRequest(height, null, WIDTH_PX, HEIGHT_PX, STEP, 0f, 0f, 1f, 0, source),
+                new RecordingSink(Integer.MAX_VALUE));
+        int readsAfterFirstPass = columnReads.get();
+        assertEquals(SAMPLE_W * SAMPLE_H, readsAfterFirstPass, "every column read once the first time");
+        assertEquals(first.raw()[0], -HEIGHT_PX / 2f - WIDTH_PX / 2f, 0f, "the column's height channel");
+
+        // Panned a little and switched to another channel of the same columns.
+        PreviewSnapshot second = sampler.sample(
+                new SampleRequest(water, null, WIDTH_PX, HEIGHT_PX, STEP, 20f, 0f, 1f, 0, source),
+                new RecordingSink(Integer.MAX_VALUE));
+        assertEquals(7f, second.raw()[0], 0f);
+        assertEquals(readsAfterFirstPass + 10 * SAMPLE_H, columnReads.get(),
+                "only the 10 newly exposed columns should have touched the terrain");
+        assertEquals(0, samplesTaken.get(), "a cached visualizer must not be sampled directly");
+    }
+
+    private NoiseVisualizer channelVisualizer(PreviewChannel channel) {
+        return new NoiseVisualizer() {
+            @Override public String displayName() { return channel.name(); }
+            @Override public PreviewChannel channel() { return channel; }
+            @Override public float sample(int worldX, int worldZ) {
+                samplesTaken.incrementAndGet();
+                return Float.NaN;
+            }
+        };
     }
 
     @Test

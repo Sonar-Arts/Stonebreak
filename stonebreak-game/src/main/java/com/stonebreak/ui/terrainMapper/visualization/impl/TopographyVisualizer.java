@@ -2,6 +2,7 @@ package com.stonebreak.ui.terrainMapper.visualization.impl;
 
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
+import com.stonebreak.ui.terrainMapper.visualization.PreviewChannel;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -68,6 +69,8 @@ public final class TopographyVisualizer implements NoiseVisualizer {
     public float sample(int worldX, int worldZ) {
         return heightMap.generateHeight(worldX, worldZ);
     }
+
+    @Override public PreviewChannel channel() { return PreviewChannel.HEIGHT; }
 
     @Override
     public float normalize(float raw) {

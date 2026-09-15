@@ -2,6 +2,7 @@ package com.stonebreak.ui.terrainMapper.visualization.impl;
 
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
+import com.stonebreak.ui.terrainMapper.visualization.PreviewChannel;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -43,6 +44,8 @@ public final class WaterVisualizer implements NoiseVisualizer {
     public float sample(int worldX, int worldZ) {
         return heightMap.waterLevel(worldX, worldZ);
     }
+
+    @Override public PreviewChannel channel() { return PreviewChannel.WATER; }
 
     @Override
     public float normalize(float raw) {

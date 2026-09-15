@@ -45,6 +45,19 @@ class PreviewSnapshotTest {
     }
 
     @Test
+    void aMarginWidensTheExtentEvenlyAroundThePan() {
+        // 800x600 plus 100 px each side at step 2 -> a 500x400 grid over world x[-500,500), z[-400,400).
+        SampleRequest request = new SampleRequest(STUB, null, 800, 600, 2, 0f, 0f, 1f, 100, null);
+        PreviewSnapshot snapshot = new PreviewSnapshot(request, null, new float[500 * 400], 500, 400, true);
+        assertEquals(-500f, snapshot.worldLeft(), 0.001f);
+        assertEquals(-400f, snapshot.worldTop(), 0.001f);
+        assertEquals(1000f, snapshot.worldWidth(), 0.001f);
+        assertEquals(800f, snapshot.worldHeight(), 0.001f);
+        assertEquals(snapshotAt(0f, 0f, 1f).worldLeft(), request.core().worldXAt(0f), 0.001f,
+                "the core must be exactly the visible rect");
+    }
+
+    @Test
     void worldExtentScalesWithZoom() {
         // Zoomed 2x, the same pixel grid covers half as much world.
         PreviewSnapshot snapshot = snapshotAt(0f, 0f, 2f);
@@ -53,22 +66,51 @@ class PreviewSnapshotTest {
     }
 
     @Test
-    void redrawingIntoAnUnmovedViewportIsAPlainOneToOneBlit() {
-        // Mirrors TerrainMapRenderer.drawSnapshot: with the viewport unchanged the destination
-        // must land back on the map rect exactly, or the image would drift on a still map.
+    void theLatticeIsWorldAlignedAndCoversTheWholeView() {
+        // Mirrors TerrainMapRenderer.drawSnapshot. The image is snapped to the world lattice so
+        // values can be reused, which may start it up to one cell before the map's edge — but
+        // never after it, or a sliver of the map would be left blank.
         float panX = 1234f;
         float panZ = -567f;
         float zoom = 1f;
-        PreviewSnapshot snapshot = snapshotAt(panX, panZ, zoom);
+        SampleRequest request = new SampleRequest(STUB, null, 800, 600, 2, panX, panZ, zoom);
+        int spacing = request.spacing();
+        PreviewSnapshot snapshot = new PreviewSnapshot(request, null,
+                new float[request.latticeColumns() * request.latticeRows()],
+                request.latticeColumns(), request.latticeRows(), true);
 
         float mapX = 320f;
         float mapY = 0f;
         float dstX = mapX + 800 * 0.5f + (snapshot.worldLeft() - panX) * zoom;
         float dstY = mapY + 600 * 0.5f + (snapshot.worldTop() - panZ) * zoom;
 
-        assertEquals(mapX, dstX, 0.001f);
-        assertEquals(mapY, dstY, 0.001f);
-        assertEquals(800f, snapshot.worldWidth() * zoom, 0.001f);
+        assertEquals(0, Math.floorMod((int) snapshot.worldLeft(), spacing), "left edge on the lattice");
+        assertEquals(0, Math.floorMod((int) snapshot.worldTop(), spacing), "top edge on the lattice");
+        assertTrue(dstX <= mapX && dstX > mapX - spacing * zoom, "dstX=" + dstX);
+        assertTrue(dstY <= mapY && dstY > mapY - spacing * zoom, "dstY=" + dstY);
+        assertTrue(dstX + snapshot.worldWidth() * zoom >= mapX + 800f, "must reach the right edge");
+        assertTrue(dstY + snapshot.worldHeight() * zoom >= mapY + 600f, "must reach the bottom edge");
+    }
+
+    @Test
+    void spacingIsThePowerOfTwoNearestTheZoom() {
+        assertEquals(2, new SampleRequest(STUB, null, 800, 600, 2, 0f, 0f, 1f).spacing());
+        assertEquals(1, new SampleRequest(STUB, null, 800, 600, 2, 0f, 0f, 1.5f).spacing(), "1.33 blocks");
+        assertEquals(2, new SampleRequest(STUB, null, 800, 600, 2, 0f, 0f, 0.8f).spacing(), "2.5 blocks");
+        assertEquals(4, new SampleRequest(STUB, null, 800, 600, 2, 0f, 0f, 0.6f).spacing(), "3.33 blocks");
+        assertEquals(1, new SampleRequest(STUB, null, 800, 600, 2, 0f, 0f, 8f).spacing(), "never below a block");
+        assertEquals(64, new SampleRequest(STUB, null, 800, 600, 6, 0f, 0f, 0.0625f).spacing(), "capped");
+    }
+
+    @Test
+    void aSlightZoomLandsOnTheSameWorldPoints() {
+        // The property the value cache depends on: within an octave, zooming changes how much of
+        // the lattice is in view, not where its points are.
+        SampleRequest before = new SampleRequest(STUB, null, 800, 600, 2, 37f, -91f, 1f);
+        SampleRequest after = new SampleRequest(STUB, null, 800, 600, 2, 37f, -91f, 1.1f);
+        assertEquals(before.spacing(), after.spacing());
+        assertEquals(0, Math.floorMod(after.latticeOriginX() - before.latticeOriginX(), before.spacing()));
+        assertEquals(0, Math.floorMod(after.latticeOriginZ() - before.latticeOriginZ(), before.spacing()));
     }
 
     @Test

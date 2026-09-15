@@ -1,6 +1,7 @@
 package com.stonebreak.ui.terrainMapper.visualization.impl;
 
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
+import com.stonebreak.ui.terrainMapper.visualization.PreviewChannel;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
 
@@ -30,6 +31,8 @@ public final class BiomeVisualizer implements NoiseVisualizer {
     public float sample(int worldX, int worldZ) {
         return biomes.getBiome(worldX, worldZ).ordinal();
     }
+
+    @Override public PreviewChannel channel() { return PreviewChannel.BIOME; }
 
     @Override
     public float normalize(float raw) {

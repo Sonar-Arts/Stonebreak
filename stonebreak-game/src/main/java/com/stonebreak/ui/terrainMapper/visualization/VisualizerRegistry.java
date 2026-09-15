@@ -1,5 +1,6 @@
 package com.stonebreak.ui.terrainMapper.visualization;
 
+import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainMapper.visualization.impl.BiomeVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.impl.HeightVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.impl.TopographyVisualizer;
@@ -25,6 +26,13 @@ import java.util.Map;
 public final class VisualizerRegistry {
 
     private final Map<VisualizerKind, NoiseVisualizer> visualizers = new EnumMap<>(VisualizerKind.class);
+    /**
+     * Outlives {@link #rebuild}: values are keyed by seed, so switching back to a seed already
+     * explored shows its terrain again without resampling. Emptied only by {@link #clearPreviewData()}.
+     */
+    private final PreviewSampleStore previewStore =
+            new PreviewSampleStore(TerrainMapperConfig.PREVIEW_CACHE_BUDGET_BYTES);
+    private PreviewSource previewSource;
     private long seed;
     /** The tile chain the current visualizers read through, so {@link #rebuild}
      *  can release the previous one instead of leaking its threads. */
@@ -38,6 +46,16 @@ public final class VisualizerRegistry {
 
     public NoiseVisualizer get(VisualizerKind kind) {
         return visualizers.get(kind);
+    }
+
+    /** Cached terrain values for the current seed. Replaced, together with the visualizers, by {@link #rebuild}. */
+    public PreviewSource previewSource() {
+        return previewSource;
+    }
+
+    /** Forgets every sampled value, for every seed. Called when the mapper is closed. */
+    public void clearPreviewData() {
+        previewStore.clear();
     }
 
     /**
@@ -82,6 +100,14 @@ public final class VisualizerRegistry {
         visualizers.put(VisualizerKind.TOPOGRAPHY, new TopographyVisualizer(heightMap));
         visualizers.put(VisualizerKind.BIOME, new BiomeVisualizer(biomes));
         visualizers.put(VisualizerKind.WATER, new WaterVisualizer(heightMap));
+
+        // Must agree with each visualizer's sample() for its channel — the cache stands in for it.
+        TerrainColumns columns = (x, z, out) -> {
+            out[PreviewChannel.HEIGHT.ordinal()] = heightMap.generateHeight(x, z);
+            out[PreviewChannel.WATER.ordinal()] = heightMap.waterLevel(x, z);
+            out[PreviewChannel.BIOME.ordinal()] = biomes.getBiome(x, z).ordinal();
+        };
+        this.previewSource = new PreviewSource(newSeed, columns, previewStore);
     }
 
     /** Releases the current tile chain. Safe to call more than once. */

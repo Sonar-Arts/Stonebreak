@@ -1,6 +1,8 @@
 package com.stonebreak.ui.terrainMapper.managers;
 
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
+import com.stonebreak.ui.terrainMapper.visualization.PreviewChannel;
+import com.stonebreak.ui.terrainMapper.visualization.PreviewSource;
 import io.github.humbleui.skija.ColorAlphaType;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.ImageInfo;
@@ -12,8 +14,9 @@ import java.util.stream.IntStream;
  * it owns no threading, no phase, and no notion of what is currently on screen; the caller
  * decides when and on which thread a sample happens, and hears back through a {@link SamplingSink}.
  *
- * <p>This is the slow part: every sample can reach through to the terrain bridge, so a call
- * may block for many seconds. {@link TerrainPreviewLoader} is the only caller and always
+ * <p>This is the slow part: every sample the {@link com.stonebreak.ui.terrainMapper.visualization.PreviewSampleStore}
+ * doesn't already hold can reach through to the terrain bridge, so a call may block for many
+ * seconds. Ground seen before, in any mode, is served from that store instead. {@link TerrainPreviewLoader} is the only caller and always
  * invokes it on its worker thread.
  *
  * <p>The grid is sampled in row bands rather than in one shot. That buys two things a single
@@ -58,9 +61,12 @@ public final class TerrainPreviewSampler {
      *         bridge fails mid-sample; the caller decides how to recover.
      */
     public PreviewSnapshot sample(SampleRequest request, SamplingSink sink) {
-        int sampleW = Math.max(1, request.widthPx() / request.step());
-        int sampleH = Math.max(1, request.heightPx() / request.step());
+        int sampleW = request.latticeColumns();
+        int sampleH = request.latticeRows();
         int pixelCount = sampleW * sampleH;
+        if (request.source() != null) {
+            request.source().store().beginPass();
+        }
 
         if (pixelBuffer == null || pixelBuffer.length < pixelCount) {
             pixelBuffer = new int[pixelCount];
@@ -92,7 +98,7 @@ public final class TerrainPreviewSampler {
      */
     private PreviewSnapshot buildSnapshot(SampleRequest request, NoiseVisualizer visualizer,
                                           float[] raw, int sampleW, int rowsDone, boolean complete) {
-        visualizer.postProcess(raw, pixelBuffer, sampleW, rowsDone, request.blocksPerSample());
+        visualizer.postProcess(raw, pixelBuffer, sampleW, rowsDone, request.spacing());
         Image image = buildImage(pixelBuffer, sampleW * rowsDone, sampleW, rowsDone);
         return new PreviewSnapshot(request, image, raw, sampleW, rowsDone, complete);
     }
@@ -100,20 +106,27 @@ public final class TerrainPreviewSampler {
     private static void samplePixels(SampleRequest request, NoiseVisualizer visualizer,
                                      float[] raw, int[] pixels, int sampleW,
                                      int fromRow, int toRow, SamplingSink sink) {
-        int step = request.step();
-        float halfStep = step * 0.5f;
+        int spacing = request.spacing();
+        int originX = request.latticeOriginX();
+        int originZ = request.latticeOriginZ();
+        // Null when the visualizer isn't cacheable or the request carries no cache (tests); then
+        // every value comes straight from the visualizer.
+        PreviewSource source = visualizer.channel() == null ? null : request.source();
+        PreviewChannel channel = visualizer.channel();
         // Rows are independent; the common ForkJoin pool sizes itself to the CPU so we get
         // parallel speedup without configuring threads here.
         IntStream.range(fromRow, toRow).parallel().forEach(sy -> {
             if (sink.abandoned()) return;
-            int worldZ = Math.round(request.worldZAt(sy * step + halfStep));
+            int worldZ = originZ + sy * spacing;
             int rowOffset = sy * sampleW;
             for (int sx = 0; sx < sampleW; sx++) {
                 // A single row can span a hundred bridge tiles, so polling once per row would
                 // leave a preempting request waiting minutes for it to drain.
                 if (sx % ABANDON_POLL_INTERVAL == 0 && sink.abandoned()) return;
-                int worldX = Math.round(request.worldXAt(sx * step + halfStep));
-                float value = visualizer.sample(worldX, worldZ);
+                int worldX = originX + sx * spacing;
+                float value = source == null
+                        ? visualizer.sample(worldX, worldZ)
+                        : source.valueAt(channel, spacing, worldX, worldZ);
                 raw[rowOffset + sx] = value;
                 pixels[rowOffset + sx] = visualizer.colorFor(visualizer.normalize(value));
             }
