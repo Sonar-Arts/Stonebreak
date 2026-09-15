@@ -39,46 +39,18 @@ public class DropUtil {
     }
 
     /**
-     * Full overload: {@code preferencePoint} (usually the breaker's position) biases
-     * which adjacent passable cell the drop spawns into and the direction it spits out.
+     * Full overload: with {@code preferencePoint} (usually the breaker's position, issue
+     * #225) the drop spawns into the adjacent passable cell nearest the breaker and spits
+     * out toward it. Without one (mob deaths, inventory spills, furnace contents) the
+     * legacy scatter + random pop is kept — the resolved path is a break-drop rule.
      */
     public static void createBlockDrop(World world, Vector3f position, BlockType blockType, Vector3f preferencePoint) {
         if (blockType == null || blockType == BlockType.AIR || world == null) {
             return;
         }
 
-        int cellX = (int) Math.floor(position.x);
-        int cellY = (int) Math.floor(position.y);
-        int cellZ = (int) Math.floor(position.z);
-
-        // Issue #225: spawn into the nearest adjacent passable cell (air or non-collidable,
-        // preferably the one nearest the breaker) instead of blindly offsetting upward — the
-        // legacy offset landed drops inside the block above a broken log, and the collision
-        // pass then surfaced them trunk-by-trunk. The legacy offset below is only the
-        // fallback for a fully-enclosed cell (should not be possible).
-        Vector3f resolved = DropSpawnResolver.resolveSpawn(world, cellX, cellY, cellZ, preferencePoint);
-        Vector3f dropPosition;
-        Vector3f initialVelocity;
-        if (resolved != null) {
-            dropPosition = resolved;
-            initialVelocity = spitOutVelocity(dropPosition, preferencePoint);
-        } else {
-            // Add some randomness to the drop position
-            dropPosition = new Vector3f(
-                position.x + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS,
-                position.y + DROP_HEIGHT_OFFSET,
-                position.z + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS
-            );
-
-            // Create random initial velocity
-            initialVelocity = new Vector3f(
-                (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX,
-                DROP_VELOCITY_MIN + (float)Math.random() * (DROP_VELOCITY_MAX - DROP_VELOCITY_MIN),
-                (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX
-            );
-        }
-
-        BlockDrop drop = BlockDrop.createDropWithVelocity(world, dropPosition, blockType, initialVelocity);
+        SpawnAndVelocity spawn = chooseSpawn(world, position, preferencePoint);
+        BlockDrop drop = BlockDrop.createDropWithVelocity(world, spawn.position(), blockType, spawn.velocity());
 
         // Route through the passed world's EntityManager (NOT Game.getEntityManager(), which
         // always resolves to the client render world in the two-world model). On a server-thread
@@ -106,6 +78,51 @@ public class DropUtil {
         for (int i = 0; i < count; i++) {
             createBlockDrop(world, position, blockType, preferencePoint);
         }
+    }
+
+    /** Spawn resting position + initial velocity chosen for one drop creation. */
+    private record SpawnAndVelocity(Vector3f position, Vector3f velocity) {
+    }
+
+    /**
+     * Issue #225 spawn rule for break drops with a known breaker: the adjacent passable
+     * cell nearest the breaker, spitting out toward it. Without a breaker (non-break
+     * callers: mob deaths, inventory spills, furnace contents) — and for a fully-enclosed
+     * break cell — the legacy scatter + random pop is kept, which goes through the drops'
+     * existing ground check for landing.
+     */
+    private static SpawnAndVelocity chooseSpawn(World world, Vector3f position, Vector3f preferencePoint) {
+        if (preferencePoint != null) {
+            int cellX = (int) Math.floor(position.x);
+            int cellY = (int) Math.floor(position.y);
+            int cellZ = (int) Math.floor(position.z);
+
+            // Issue #225: spawn into the nearest adjacent passable cell (air or non-collidable,
+            // preferably the one nearest the breaker) instead of blindly offsetting upward — the
+            // legacy offset landed drops inside the block above a broken log, and the collision
+            // pass then surfaced them trunk-by-trunk.
+            Vector3f resolved = DropSpawnResolver.resolveSpawn(world, cellX, cellY, cellZ, preferencePoint);
+            if (resolved != null) {
+                return new SpawnAndVelocity(resolved, spitOutVelocity(resolved, preferencePoint));
+            }
+        }
+        return new SpawnAndVelocity(scatterPosition(position), randomVelocity());
+    }
+
+    private static Vector3f scatterPosition(Vector3f position) {
+        return new Vector3f(
+            position.x + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS,
+            position.y + DROP_HEIGHT_OFFSET,
+            position.z + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS
+        );
+    }
+
+    private static Vector3f randomVelocity() {
+        return new Vector3f(
+            (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX,
+            DROP_VELOCITY_MIN + (float)Math.random() * (DROP_VELOCITY_MAX - DROP_VELOCITY_MIN),
+            (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX
+        );
     }
 
     /**
@@ -139,42 +156,17 @@ public class DropUtil {
     }
 
     /**
-     * Full overload: {@code preferencePoint} biases the spawn cell (see
-     * {@link #createBlockDrop(World, Vector3f, BlockType, Vector3f)}).
+     * Full overload: same rule as block drops — with {@code preferencePoint} (issue #225)
+     * the drop spawns into the adjacent passable cell nearest the breaker; without one the
+     * legacy scatter + random pop is kept (see {@link #chooseSpawn}).
      */
     public static void createItemDrop(World world, Vector3f position, ItemStack itemStack, Vector3f preferencePoint) {
         if (itemStack == null || itemStack.isEmpty() || world == null) {
             return;
         }
 
-        int cellX = (int) Math.floor(position.x);
-        int cellY = (int) Math.floor(position.y);
-        int cellZ = (int) Math.floor(position.z);
-
-        // Issue #225: same adjacent-passable-cell spawn rule as block drops.
-        Vector3f resolved = DropSpawnResolver.resolveSpawn(world, cellX, cellY, cellZ, preferencePoint);
-        Vector3f dropPosition;
-        Vector3f initialVelocity;
-        if (resolved != null) {
-            dropPosition = resolved;
-            initialVelocity = spitOutVelocity(dropPosition, preferencePoint);
-        } else {
-            // Add some randomness to the drop position
-            dropPosition = new Vector3f(
-                position.x + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS,
-                position.y + DROP_HEIGHT_OFFSET,
-                position.z + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS
-            );
-
-            // Create random initial velocity
-            initialVelocity = new Vector3f(
-                (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX,
-                DROP_VELOCITY_MIN + (float)Math.random() * (DROP_VELOCITY_MAX - DROP_VELOCITY_MIN),
-                (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX
-            );
-        }
-
-        ItemDrop drop = ItemDrop.createDropWithVelocity(world, dropPosition, itemStack, initialVelocity);
+        SpawnAndVelocity spawn = chooseSpawn(world, position, preferencePoint);
+        ItemDrop drop = ItemDrop.createDropWithVelocity(world, spawn.position(), itemStack, spawn.velocity());
 
         EntityManager entityManager = world.getEntityManager();
         if (entityManager != null) {
@@ -417,7 +409,7 @@ public class DropUtil {
             int layers = snowLayers > 0 ? snowLayers : world.getSnowLayers(
                     (int) Math.floor(position.x), (int) Math.floor(position.y), (int) Math.floor(position.z));
             if (toolItem == ItemType.STONE_SHOVEL || toolItem == ItemType.WOODEN_SHOVEL) {
-                createItemDrop(world, position, new ItemStack(ItemType.SNOWBALL, layers), preferencePoint);
+                createItemDrop(world, position, ItemType.SNOWBALL, layers, preferencePoint);
             } else {
                 if (layers > 0) {
                     createBlockDrops(world, position, BlockType.SNOW, layers, preferencePoint);
@@ -437,7 +429,7 @@ public class DropUtil {
                 || brokenBlock == BlockType.PINE_LEAVES
                 || brokenBlock == BlockType.ELM_LEAVES) {
             if (Math.random() < LEAF_BANANA_DROP_CHANCE) {
-                createItemDrop(world, position, new ItemStack(ItemType.BANANA, 1), preferencePoint);
+                createItemDrop(world, position, ItemType.BANANA, 1, preferencePoint);
             }
         }
     }

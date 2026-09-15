@@ -102,14 +102,35 @@ class DropSpawnResolverTest {
     }
 
     @Test
-    void resolveEscapeNeverSurfacesWhileASideEscapeExists() {
-        // Embedded trunk cell with air above (the canopy gap) but solid sides and air
-        // below: the down escape must win — never the surfacing climb.
+    void resolveEscapeTriesBelowBeforeAbove() {
+        // Embedded trunk cell with air above (the canopy gap) and air below, every side
+        // solid: the down escape must win — below is in the distance-ordered candidate
+        // set, up (surfacing) only when no side or down escape exists.
         World world = worldWith((x, y, z) ->
                 (y == BROKEN_Y + 1 || y == BROKEN_Y - 1) && x == BROKEN_X && z == BROKEN_Z
                         ? BlockType.AIR : BlockType.DIRT);
         Vector3f escape = DropSpawnResolver.resolveEscape(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
                 new Vector3f(BROKEN_X + 0.5f, BROKEN_Y + 1.5f, BROKEN_Z + 0.5f));
+        assertEquals(new Vector3f(BROKEN_X + 0.5f, BROKEN_Y - 0.5f, BROKEN_Z + 0.5f), escape);
+    }
+
+    @Test
+    void resolveEscapePrefersComingFromBelowOverAnArbitrarySide() {
+        // Embedded cell with every side and below passable; the drop came from straight
+        // below (rising into a trunk). All four sides tie in distance from a point straight
+        // below — below (distance 0) must win so the drop escapes back down, not out an
+        // arbitrary side.
+        World world = worldWith((x, y, z) -> {
+            if (x == BROKEN_X && z == BROKEN_Z && y <= BROKEN_Y) {
+                return BlockType.AIR;
+            }
+            if (y == BROKEN_Y) {
+                return BlockType.AIR;
+            }
+            return BlockType.DIRT;
+        });
+        Vector3f escape = DropSpawnResolver.resolveEscape(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
+                new Vector3f(BROKEN_X + 0.5f, BROKEN_Y - 0.5f, BROKEN_Z + 0.5f));
         assertEquals(new Vector3f(BROKEN_X + 0.5f, BROKEN_Y - 0.5f, BROKEN_Z + 0.5f), escape);
     }
 

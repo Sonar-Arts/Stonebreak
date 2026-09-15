@@ -58,24 +58,24 @@ public final class DropSpawnResolver {
 
     /**
      * Escape cell for a drop embedded inside the solid cell {@code (cellX, cellY, cellZ)}.
-     * Strict side-first ordering: the four horizontal neighbours, then down, then up —
-     * never surfacing while any side escape exists. Within a side group the candidate
-     * nearest {@code preferencePoint} (usually the drop's pre-embedment position) wins,
-     * so the drop escapes out the side it came from. Returns the cell's centre, or null
-     * when the drop is fully enclosed (surfacing is then the caller's only option).
+     * The four horizontal neighbours and down are distance-ordered against
+     * {@code preferencePoint} (usually the drop's pre-embedment position), so the drop
+     * escapes out the open side nearest where it came from — a drop rising into a trunk
+     * from straight below escapes back down, not out an arbitrary side (all four sides
+     * tie in distance from a point straight below). Up (surfacing) is tried only when no
+     * side or down escape exists — e.g. a fully enclosed cell, which CAN happen (a drop
+     * embedded in flat ground below the surface has no side or down escape). Returns the
+     * chosen cell's centre, or null when the drop is fully enclosed above too.
      */
     public static Vector3f resolveEscape(World world, int cellX, int cellY, int cellZ, Vector3f preferencePoint) {
-        int[][] sides = {
+        int[][] candidates = {
             {cellX + 1, cellY, cellZ}, {cellX - 1, cellY, cellZ},
             {cellX, cellY, cellZ + 1}, {cellX, cellY, cellZ - 1},
+            {cellX, cellY - 1, cellZ},
         };
-        Vector3f side = nearestPassable(world, sides, preferencePoint);
-        if (side != null) {
-            return side;
-        }
-        Vector3f down = nearestPassable(world, new int[][]{{cellX, cellY - 1, cellZ}}, preferencePoint);
-        if (down != null) {
-            return down;
+        Vector3f escape = nearestPassable(world, candidates, preferencePoint);
+        if (escape != null) {
+            return escape;
         }
         return nearestPassable(world, new int[][]{{cellX, cellY + 1, cellZ}}, preferencePoint);
     }

@@ -32,7 +32,7 @@ sky	openmason-engine	com/openmason/engine/rendering/sky/**/*Test
 
 # ---- game ----
 audio	stonebreak-game	com/stonebreak/audio/**/*Test
-blocks	stonebreak-game	com/stonebreak/blocks/**/*Test,!com/stonebreak/blocks/waterSystem/**
+blocks	stonebreak-game	com/stonebreak/blocks/**/*Test,!com/stonebreak/blocks/waterSystem/**,com/stonebreak/util/**/*Test
 water	stonebreak-game	com/stonebreak/blocks/waterSystem/**/*Test,com/stonebreak/world/chunk/ChunkWaterLayerTest,com/stonebreak/world/chunk/WaterMeshSplitTest
 core	stonebreak-game	com/stonebreak/core/**/*Test,com/stonebreak/config/**/*Test,com/stonebreak/world/TimeOfDayTest,com/stonebreak/world/DeterministicRandomTest,com/stonebreak/world/SnowLayerManagerTest
 items	stonebreak-game	com/stonebreak/items/**/*Test

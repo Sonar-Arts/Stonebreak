@@ -166,29 +166,32 @@ public class ItemDrop extends Entity {
             // into a tree trunk or was pushed sideways into a log), the legacy probe below
             // sampled that solid cell as "ground" and snapped the drop ON TOP of it —
             // climbing block-by-block until reaching air above the canopy (issue #225).
-            // Escape sideways into the nearest adjacent passable cell instead; surface only
-            // when fully enclosed (which should not be possible).
+            // A drop that entered the solid cell through its TOP face this tick (a fast
+            // fall onto a narrow block — one 20 Hz tick moves a fast drop further than
+            // half its height) is a NORMAL landing: come to rest on the cell's top
+            // surface like any other landing instead of being pushed off sideways.
             int cellY = (int) Math.floor(position.y);
             if (DropSpawnResolver.isEmbedded(world, blockX, cellY, blockZ)) {
-                Vector3f escape = DropSpawnResolver.resolveEscape(world, blockX, cellY, blockZ, oldPosition);
-                if (escape != null) {
-                    position.set(escape);
-                    velocity.y = 0; // No pop on escape — the resolver guaranteed a passable cell
+                if (oldPosition.y >= cellY + 1.0f) {
+                    landOnTop(cellY);
+                } else {
+                    // Entered through a side or the bottom face: escape out the nearest
+                    // open side. Escape also zeroes the horizontal speed — keeping it made
+                    // the drop bounce off the wall and back (onGround=false also turns off
+                    // ground friction, so anything still pushing it re-embeds it forever).
+                    Vector3f escape = DropSpawnResolver.resolveEscape(world, blockX, cellY, blockZ, oldPosition);
+                    if (escape != null) {
+                        position.set(escape);
+                        velocity.x = 0;
+                        velocity.z = 0;
+                        velocity.y = 0; // No pop on escape — the resolver guaranteed a passable cell
+                    }
+                    onGround = false;
                 }
-                onGround = false;
             } else {
                 com.stonebreak.blocks.BlockType blockBelow = world.getBlockAt(blockX, blockY, blockZ);
                 if (blockBelow != null && blockBelow != com.stonebreak.blocks.BlockType.AIR && blockBelow != com.stonebreak.blocks.BlockType.WATER) {
-                    onGround = true;
-                    position.y = blockY + 1.0f + height/2; // Place on top of block
-
-                    // Custom bounce effect for floaty drops
-                    if (velocity.y < 0) {
-                        velocity.y = -velocity.y * DROP_BOUNCE;
-                        if (Math.abs(velocity.y) < 0.2f) {
-                            velocity.y = 0; // Stop small bounces (lower threshold)
-                        }
-                    }
+                    landOnTop(blockY);
                 } else {
                     onGround = false;
                 }
@@ -199,6 +202,23 @@ public class ItemDrop extends Entity {
             com.stonebreak.blocks.BlockType blockAtPosition =
                 world.getBlockAt(blockX, (int) Math.floor(position.y), blockZ);
             inWater = (blockAtPosition == com.stonebreak.blocks.BlockType.WATER);
+        }
+    }
+
+    /**
+     * Snap the drop's bottom onto the top surface of the block ending at {@code blockY}
+     * and apply the floaty bounce.
+     */
+    private void landOnTop(int blockY) {
+        onGround = true;
+        position.y = blockY + 1.0f + height/2;
+
+        // Custom bounce effect for floaty drops
+        if (velocity.y < 0) {
+            velocity.y = -velocity.y * DROP_BOUNCE;
+            if (Math.abs(velocity.y) < 0.2f) {
+                velocity.y = 0; // Stop small bounces (lower threshold)
+            }
         }
     }
 
