@@ -25,30 +25,59 @@ public class DropUtil {
     private static final float DROP_VELOCITY_MIN = 1.0f;
     private static final float DROP_VELOCITY_MAX = 3.0f;
     private static final float DROP_HEIGHT_OFFSET = 0.5f;
-    
+    private static final float DROP_SPIT_SPEED_MIN = 0.5f;
+    private static final float DROP_SPIT_SPEED_MAX = 1.5f;
+    private static final float DROP_SPIT_UP_MIN = 0.25f;
+    private static final float DROP_SPIT_UP_MAX = 0.6f;
+
     /**
      * Creates a block drop at the specified position.
      * Used when blocks are broken by mining.
      */
     public static void createBlockDrop(World world, Vector3f position, BlockType blockType) {
+        createBlockDrop(world, position, blockType, null);
+    }
+
+    /**
+     * Full overload: {@code preferencePoint} (usually the breaker's position) biases
+     * which adjacent passable cell the drop spawns into and the direction it spits out.
+     */
+    public static void createBlockDrop(World world, Vector3f position, BlockType blockType, Vector3f preferencePoint) {
         if (blockType == null || blockType == BlockType.AIR || world == null) {
             return;
         }
-        
-        // Add some randomness to the drop position
-        Vector3f dropPosition = new Vector3f(
-            position.x + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS,
-            position.y + DROP_HEIGHT_OFFSET,
-            position.z + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS
-        );
-        
-        // Create random initial velocity
-        Vector3f initialVelocity = new Vector3f(
-            (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX,
-            DROP_VELOCITY_MIN + (float)Math.random() * (DROP_VELOCITY_MAX - DROP_VELOCITY_MIN),
-            (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX
-        );
-        
+
+        int cellX = (int) Math.floor(position.x);
+        int cellY = (int) Math.floor(position.y);
+        int cellZ = (int) Math.floor(position.z);
+
+        // Issue #225: spawn into the nearest adjacent passable cell (air or non-collidable,
+        // preferably the one nearest the breaker) instead of blindly offsetting upward — the
+        // legacy offset landed drops inside the block above a broken log, and the collision
+        // pass then surfaced them trunk-by-trunk. The legacy offset below is only the
+        // fallback for a fully-enclosed cell (should not be possible).
+        Vector3f resolved = DropSpawnResolver.resolveSpawn(world, cellX, cellY, cellZ, preferencePoint);
+        Vector3f dropPosition;
+        Vector3f initialVelocity;
+        if (resolved != null) {
+            dropPosition = resolved;
+            initialVelocity = spitOutVelocity(dropPosition, preferencePoint);
+        } else {
+            // Add some randomness to the drop position
+            dropPosition = new Vector3f(
+                position.x + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS,
+                position.y + DROP_HEIGHT_OFFSET,
+                position.z + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS
+            );
+
+            // Create random initial velocity
+            initialVelocity = new Vector3f(
+                (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX,
+                DROP_VELOCITY_MIN + (float)Math.random() * (DROP_VELOCITY_MAX - DROP_VELOCITY_MIN),
+                (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX
+            );
+        }
+
         BlockDrop drop = BlockDrop.createDropWithVelocity(world, dropPosition, blockType, initialVelocity);
 
         // Route through the passed world's EntityManager (NOT Game.getEntityManager(), which
@@ -65,34 +94,86 @@ public class DropUtil {
      * Creates multiple block drops for blocks that drop multiple items (like snow layers).
      */
     public static void createBlockDrops(World world, Vector3f position, BlockType blockType, int count) {
+        createBlockDrops(world, position, blockType, count, null);
+    }
+
+    /**
+     * Full overload: {@code preferencePoint} biases the spawn cell (see
+     * {@link #createBlockDrop(World, Vector3f, BlockType, Vector3f)}).
+     */
+    public static void createBlockDrops(World world, Vector3f position, BlockType blockType, int count,
+                                        Vector3f preferencePoint) {
         for (int i = 0; i < count; i++) {
-            createBlockDrop(world, position, blockType);
+            createBlockDrop(world, position, blockType, preferencePoint);
         }
     }
-    
+
+    /**
+     * Sideways spit toward the preference point with a low upward pop. The spawn resolver
+     * already guarantees a passable resting cell, so no big launch is needed — a large
+     * upward pop is what used to carry drops into the trunk above a broken log.
+     */
+    private static Vector3f spitOutVelocity(Vector3f dropPosition, Vector3f preferencePoint) {
+        Vector3f horizontal;
+        if (preferencePoint != null) {
+            horizontal = new Vector3f(
+                preferencePoint.x - dropPosition.x, 0f, preferencePoint.z - dropPosition.z);
+        } else {
+            horizontal = new Vector3f((float)(Math.random() - 0.5), 0f, (float)(Math.random() - 0.5));
+        }
+        if (horizontal.lengthSquared() < 1e-6f) {
+            horizontal.set((float)(Math.random() - 0.5), 0f, (float)(Math.random() - 0.5));
+        }
+        float speed = DROP_SPIT_SPEED_MIN + (float) Math.random() * (DROP_SPIT_SPEED_MAX - DROP_SPIT_SPEED_MIN);
+        horizontal.normalize().mul(speed);
+        float upwardPop = DROP_SPIT_UP_MIN + (float) Math.random() * (DROP_SPIT_UP_MAX - DROP_SPIT_UP_MIN);
+        return horizontal.add(0f, upwardPop, 0f);
+    }
+
     /**
      * Creates an item drop at the specified position.
      * Used when items are dropped from inventory or other sources.
      */
     public static void createItemDrop(World world, Vector3f position, ItemStack itemStack) {
+        createItemDrop(world, position, itemStack, null);
+    }
+
+    /**
+     * Full overload: {@code preferencePoint} biases the spawn cell (see
+     * {@link #createBlockDrop(World, Vector3f, BlockType, Vector3f)}).
+     */
+    public static void createItemDrop(World world, Vector3f position, ItemStack itemStack, Vector3f preferencePoint) {
         if (itemStack == null || itemStack.isEmpty() || world == null) {
             return;
         }
-        
-        // Add some randomness to the drop position
-        Vector3f dropPosition = new Vector3f(
-            position.x + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS,
-            position.y + DROP_HEIGHT_OFFSET,
-            position.z + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS
-        );
-        
-        // Create random initial velocity
-        Vector3f initialVelocity = new Vector3f(
-            (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX,
-            DROP_VELOCITY_MIN + (float)Math.random() * (DROP_VELOCITY_MAX - DROP_VELOCITY_MIN),
-            (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX
-        );
-        
+
+        int cellX = (int) Math.floor(position.x);
+        int cellY = (int) Math.floor(position.y);
+        int cellZ = (int) Math.floor(position.z);
+
+        // Issue #225: same adjacent-passable-cell spawn rule as block drops.
+        Vector3f resolved = DropSpawnResolver.resolveSpawn(world, cellX, cellY, cellZ, preferencePoint);
+        Vector3f dropPosition;
+        Vector3f initialVelocity;
+        if (resolved != null) {
+            dropPosition = resolved;
+            initialVelocity = spitOutVelocity(dropPosition, preferencePoint);
+        } else {
+            // Add some randomness to the drop position
+            dropPosition = new Vector3f(
+                position.x + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS,
+                position.y + DROP_HEIGHT_OFFSET,
+                position.z + (float)(Math.random() - 0.5) * DROP_SPREAD_RADIUS
+            );
+
+            // Create random initial velocity
+            initialVelocity = new Vector3f(
+                (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX,
+                DROP_VELOCITY_MIN + (float)Math.random() * (DROP_VELOCITY_MAX - DROP_VELOCITY_MIN),
+                (float)(Math.random() - 0.5) * DROP_VELOCITY_MAX
+            );
+        }
+
         ItemDrop drop = ItemDrop.createDropWithVelocity(world, dropPosition, itemStack, initialVelocity);
 
         EntityManager entityManager = world.getEntityManager();
@@ -105,12 +186,21 @@ public class DropUtil {
      * Creates an item drop from item type and count.
      */
     public static void createItemDrop(World world, Vector3f position, ItemType itemType, int count) {
+        createItemDrop(world, position, itemType, count, null);
+    }
+
+    /**
+     * Full overload: {@code preferencePoint} biases the spawn cell (see
+     * {@link #createBlockDrop(World, Vector3f, BlockType, Vector3f)}).
+     */
+    public static void createItemDrop(World world, Vector3f position, ItemType itemType, int count,
+                                      Vector3f preferencePoint) {
         if (itemType == null || count <= 0) {
             return;
         }
-        
+
         ItemStack itemStack = new ItemStack(itemType, count);
-        createItemDrop(world, position, itemStack);
+        createItemDrop(world, position, itemStack, preferencePoint);
     }
     
     /**
@@ -237,12 +327,13 @@ public class DropUtil {
     
     /** Spawns each rolled line: blocks as block drops, everything else as item stacks. */
     private static void spawnRolledDrops(World world, Vector3f position,
-                                         java.util.List<BlockDropTables.RolledDrop> rolled) {
+                                         java.util.List<BlockDropTables.RolledDrop> rolled,
+                                         Vector3f preferencePoint) {
         for (BlockDropTables.RolledDrop r : rolled) {
             if (r.item() instanceof BlockType bt) {
-                createBlockDrops(world, position, bt, r.count());
+                createBlockDrops(world, position, bt, r.count(), preferencePoint);
             } else {
-                createItemDrop(world, position, new ItemStack(r.item(), r.count()));
+                createItemDrop(world, position, new ItemStack(r.item(), r.count()), preferencePoint);
             }
         }
     }
@@ -293,6 +384,18 @@ public class DropUtil {
      * @param snowLayers the number of snow layers when breaking snow (0 when not snow or unknown)
      */
     public static void handleBlockBroken(World world, Vector3f position, BlockType brokenBlock, ItemType toolItem, int snowLayers) {
+        handleBlockBroken(world, position, brokenBlock, toolItem, snowLayers, null);
+    }
+
+    /**
+     * Full overload: {@code preferencePoint} (usually the breaker's position) biases which
+     * adjacent passable cell the drops spawn into (issue #225).
+     * @param toolItem the item type used to break the block (may be null)
+     * @param snowLayers the number of snow layers when breaking snow (0 when not snow or unknown)
+     * @param preferencePoint the position drops should spawn nearest to (may be null)
+     */
+    public static void handleBlockBroken(World world, Vector3f position, BlockType brokenBlock, ItemType toolItem,
+                                         int snowLayers, Vector3f preferencePoint) {
         if (world == null || brokenBlock == null || brokenBlock == BlockType.AIR) {
             return;
         }
@@ -305,18 +408,19 @@ public class DropUtil {
         java.util.List<BlockDropTables.RolledDrop> rolled =
                 BlockDropTables.roll(brokenBlock, toolItem, java.util.concurrent.ThreadLocalRandom.current());
         if (rolled != null) {
-            spawnRolledDrops(world, position, rolled);
+            spawnRolledDrops(world, position, rolled, preferencePoint);
             return;
         }
 
         // Special handling for snow blocks
         if (brokenBlock == BlockType.SNOW) {
-            int layers = snowLayers > 0 ? snowLayers : world.getSnowLayers((int)position.x, (int)position.y, (int)position.z);
+            int layers = snowLayers > 0 ? snowLayers : world.getSnowLayers(
+                    (int) Math.floor(position.x), (int) Math.floor(position.y), (int) Math.floor(position.z));
             if (toolItem == ItemType.STONE_SHOVEL || toolItem == ItemType.WOODEN_SHOVEL) {
-                createItemDrop(world, position, ItemType.SNOWBALL, layers);
+                createItemDrop(world, position, new ItemStack(ItemType.SNOWBALL, layers), preferencePoint);
             } else {
                 if (layers > 0) {
-                    createBlockDrops(world, position, BlockType.SNOW, layers);
+                    createBlockDrops(world, position, BlockType.SNOW, layers, preferencePoint);
                 }
             }
             return;
@@ -325,7 +429,7 @@ public class DropUtil {
         // Get the appropriate drop for this block
         BlockType dropType = getBlockDrop(brokenBlock);
         if (dropType != null) {
-            createBlockDrop(world, position, dropType);
+            createBlockDrop(world, position, dropType, preferencePoint);
         }
 
         // Small chance to drop a banana from any leaf block
@@ -333,7 +437,7 @@ public class DropUtil {
                 || brokenBlock == BlockType.PINE_LEAVES
                 || brokenBlock == BlockType.ELM_LEAVES) {
             if (Math.random() < LEAF_BANANA_DROP_CHANCE) {
-                createItemDrop(world, position, ItemType.BANANA, 1);
+                createItemDrop(world, position, new ItemStack(ItemType.BANANA, 1), preferencePoint);
             }
         }
     }

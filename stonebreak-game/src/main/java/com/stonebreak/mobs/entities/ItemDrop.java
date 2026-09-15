@@ -3,6 +3,7 @@ package com.stonebreak.mobs.entities;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.rendering.Renderer;
+import com.stonebreak.util.DropSpawnResolver;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
@@ -161,20 +162,36 @@ public class ItemDrop extends Entity {
         
         // Check if there's a solid block below
         if (world != null) {
-            com.stonebreak.blocks.BlockType blockBelow = world.getBlockAt(blockX, blockY, blockZ);
-            if (blockBelow != null && blockBelow != com.stonebreak.blocks.BlockType.AIR && blockBelow != com.stonebreak.blocks.BlockType.WATER) {
-                onGround = true;
-                position.y = blockY + 1.0f + height/2; // Place on top of block
-                
-                // Custom bounce effect for floaty drops
-                if (velocity.y < 0) {
-                    velocity.y = -velocity.y * DROP_BOUNCE;
-                    if (Math.abs(velocity.y) < 0.2f) {
-                        velocity.y = 0; // Stop small bounces (lower threshold)
-                    }
+            // Embedded check FIRST: when the drop's own cell is solid (e.g. the drop rose
+            // into a tree trunk or was pushed sideways into a log), the legacy probe below
+            // sampled that solid cell as "ground" and snapped the drop ON TOP of it —
+            // climbing block-by-block until reaching air above the canopy (issue #225).
+            // Escape sideways into the nearest adjacent passable cell instead; surface only
+            // when fully enclosed (which should not be possible).
+            int cellY = (int) Math.floor(position.y);
+            if (DropSpawnResolver.isEmbedded(world, blockX, cellY, blockZ)) {
+                Vector3f escape = DropSpawnResolver.resolveEscape(world, blockX, cellY, blockZ, oldPosition);
+                if (escape != null) {
+                    position.set(escape);
+                    velocity.y = 0; // No pop on escape — the resolver guaranteed a passable cell
                 }
-            } else {
                 onGround = false;
+            } else {
+                com.stonebreak.blocks.BlockType blockBelow = world.getBlockAt(blockX, blockY, blockZ);
+                if (blockBelow != null && blockBelow != com.stonebreak.blocks.BlockType.AIR && blockBelow != com.stonebreak.blocks.BlockType.WATER) {
+                    onGround = true;
+                    position.y = blockY + 1.0f + height/2; // Place on top of block
+
+                    // Custom bounce effect for floaty drops
+                    if (velocity.y < 0) {
+                        velocity.y = -velocity.y * DROP_BOUNCE;
+                        if (Math.abs(velocity.y) < 0.2f) {
+                            velocity.y = 0; // Stop small bounces (lower threshold)
+                        }
+                    }
+                } else {
+                    onGround = false;
+                }
             }
 
             // In-water check (drops skip the external EntityCollision physics pass, so

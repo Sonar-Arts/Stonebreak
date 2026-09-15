@@ -125,7 +125,10 @@ public final class ServerBlockHandler {
             // (SBO `drops.byTool`). Block ids and item ids never collide, so a held
             // block simply resolves to no tool.
             com.stonebreak.items.ItemType tool = com.stonebreak.items.ItemType.getById(sp.heldItemId());
-            com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev, tool);
+            // Issue #225: the breaker's position biases which adjacent passable cell the
+            // drops spawn into (nearest to the player) and the direction they spit out.
+            com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev, tool, 0,
+                    new Vector3f(sp.x(), sp.y(), sp.z()));
         }
         // Furnace placement: register the authoritative state (Unlit, empty). The client's
         // own BlockPlacer only touched ITS display registry.
