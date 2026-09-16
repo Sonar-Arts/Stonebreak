@@ -401,17 +401,23 @@ void* makeChunkGenCtx(int64_t seed) {
     // Opacity: everything solid is opaque; air (0) and water (9) are not.
     const uint8_t opacity[10] = {0, 1, 1, 1, 1, 1, 1, 1, 1, 0};
 
-    // Density3D's three channels: cheese (+17), spaghetti 1 (+331), spaghetti 2 (+733).
+    // Density3D's four channels, in nodeParams fill order: cheese (+17),
+    // spaghetti 1 (+331), spaghetti 2 (+733), crag (+1187). FOUR is authoritative —
+    // the kernel reads four entries; sizing these arrays to fewer reads one past
+    // the end of each stack array, and whatever lands in slot 3 goes into
+    // makeSimplexFbm, which either rejects the context or builds an arbitrary
+    // crag node (see kernels.h, Density3D.nodeParams). The crag frequency is
+    // Density3D.CRAG_SCALE = 1/26f.
     const auto nativeSeed = [](int64_t v) {
         return static_cast<int32_t>(static_cast<uint32_t>(
             static_cast<uint64_t>(v) ^ (static_cast<uint64_t>(v) >> 32)));
     };
-    const int32_t dSeeds[3] = {nativeSeed(seed + 17), nativeSeed(seed + 331),
-                               nativeSeed(seed + 733)};
-    const int32_t dOct[3] = {2, 2, 2};
-    const float dGain[3] = {0.5f, 0.5f, 0.5f};
-    const float dLac[3] = {2.0f, 2.0f, 2.0f};
-    const float dFreq[3] = {1.0f / 96.0f, 1.0f / 68.0f, 1.0f / 68.0f};
+    const int32_t dSeeds[4] = {nativeSeed(seed + 17), nativeSeed(seed + 331),
+                               nativeSeed(seed + 733), nativeSeed(seed + 1187)};
+    const int32_t dOct[4] = {2, 2, 2, 2};
+    const float dGain[4] = {0.5f, 0.5f, 0.5f, 0.5f};
+    const float dLac[4] = {2.0f, 2.0f, 2.0f, 2.0f};
+    const float dFreq[4] = {1.0f / 96.0f, 1.0f / 68.0f, 1.0f / 68.0f, 1.0f / 26.0f};
 
     // The depth -> cheese-threshold curve (Density3D.CHEESE_KNOTS).
     const double cx[] = {0, 18, 45, 90, 160, 250};
@@ -513,6 +519,20 @@ void testGenerator() {
         }
     }
     check(waterOk, "sub-sea cells above the surface are water");
+
+    // Density water gate: the overhang band may not carve the block directly beneath
+    // the source water cell. Here every column is wet at bed 30 (water at 30..63), so
+    // the chunk's water guard plane anchors at 30 in every column and the band carve
+    // at bed-1 = 29 is always sealed (29 >= 30 - DENSITY_WATER_CLEARANCE). The cave
+    // test below the band cannot fire at depth 1 (the cheese threshold is still ~1.94
+    // there and the spaghetti fade is 0), magma needs height-10, and no mask carver's
+    // blob reaches the top terrain block from below (clearance >= radius+1 bounds the
+    // blob top under plane-1) — so bed-1 must be terrain in every column.
+    bool bedOk = true;
+    for (int i = 0; i < 256 && bedOk; i++) {
+        if (blocks[static_cast<std::size_t>(29 * 256 + i)] == 0) bedOk = false;
+    }
+    check(bedOk, "band carve sealed under standing water (bed-1 solid in every column)");
 
     // Bad biome ordinal rejected.
     std::vector<int32_t> badBiomes(256, 5);

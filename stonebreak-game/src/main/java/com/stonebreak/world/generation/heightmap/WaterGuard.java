@@ -26,20 +26,24 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * bed anchor covers both.
  *
  * <p>Neighbors outside the 16x16 chunk are resolved through the
- * {@link HeightMapGenerator}'s tile source — the same resolved tiles the chunk's own
- * planes came from — so a river hugging a chunk border is guarded from both sides.
+ * {@link HeightMapGenerator}'s tile source — the same resolved tiles the chunk's
+ * own planes came from — so a river hugging a chunk border is guarded from both sides.
  * The clearance is each carver's own {@code WATER_CLEARANCE}, derived from its blob
  * radius: the distance that matters is how far a carve reaches up from the y it was
  * aimed at, and that is a property of the carver.
+ *
+ * <p>Public so the orchestration pass that owns the compute can thread one plane
+ * through every consumer — the carvers, the {@link Density3D} field and every solid
+ * probe that descends it — instead of each consumer recomputing its own.
  */
-final class WaterGuard {
+public final class WaterGuard {
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
     /** @see WorldConfiguration#NO_WATER */
     private static final int NO_WATER = WorldConfiguration.NO_WATER;
 
     /** Sentinel for "no wet column anywhere in this column's neighborhood". */
-    static final int OPEN = Integer.MAX_VALUE;
+    public static final int OPEN = Integer.MAX_VALUE;
 
     private WaterGuard() {
     }
@@ -56,8 +60,8 @@ final class WaterGuard {
      *                      null, which leaves border columns guarded from inside
      *                      the chunk only
      */
-    static int[] guardPlane(int[] targetHeights, int[] waterLevels,
-                            HeightMapGenerator heightMap, int chunkX, int chunkZ) {
+    public static int[] guardPlane(int[] targetHeights, int[] waterLevels,
+                                   HeightMapGenerator heightMap, int chunkX, int chunkZ) {
         if (waterLevels == null) {
             return null;
         }
@@ -103,7 +107,7 @@ final class WaterGuard {
      * a neighboring (or own) wet column's bed. {@code guardPlane} null suppresses
      * nothing.
      */
-    static boolean seals(int[] guardPlane, int index, int y, int clearance) {
+    public static boolean seals(int[] guardPlane, int index, int y, int clearance) {
         return guardPlane != null
                 && guardPlane[index] != OPEN
                 && y >= guardPlane[index] - clearance;

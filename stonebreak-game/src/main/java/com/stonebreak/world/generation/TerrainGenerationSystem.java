@@ -24,6 +24,8 @@ import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
 import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
 import com.stonebreak.world.generation.heightmap.RavineCarver;
 import com.stonebreak.world.generation.heightmap.SinkholeCarver;
+
+import com.stonebreak.world.generation.heightmap.WaterGuard;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 
 import java.util.BitSet;
@@ -535,9 +537,18 @@ public class TerrainGenerationSystem {
         BitSet caveMask = masks.caveMask();
         BitSet formationMask = masks.formationMask();
 
+        // One WaterGuard plane for the whole pass — the same one the carvers guard
+        // against, threaded into the density field and every solid probe below so the
+        // overhang band is sealed against standing water exactly as the block fill
+        // applies it (WaterGuard is the single guard authority; the density test
+        // consumes, it does not own the compute).
+        int[] waterGuardPlane =
+            WaterGuard.guardPlane(heights, waterLevels, heightMapGenerator, chunkX, chunkZ);
+
         // Native backend: one SIMD volume fill replaces per-block cave-noise
         // sampling in determineBlockType. Null on the Java backend.
-        Density3D.Field densityField = density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels, biomes);
+        Density3D.Field densityField =
+            density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels, biomes, waterGuardPlane);
 
         // Write terrain into paletted storage directly instead of 65k
         // chunk.setBlock calls (each of which churns dirty flags, per-block
@@ -554,7 +565,8 @@ public class TerrainGenerationSystem {
         // below, so a pillar is kept exactly when the block it rests on is one the fill
         // will write.
         FormationSupport.prune(formationMask,
-            formationSupport(heights, biomes, caveMask, densityField, baseX, baseZ));
+            formationSupport(heights, biomes, caveMask, densityField, waterGuardPlane,
+                baseX, baseZ));
 
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
@@ -571,7 +583,8 @@ public class TerrainGenerationSystem {
                     } else if (y > 0 && y < height && caveMask.get(bit)) {
                         continue; // carved to air — already the uniform fill
                     } else {
-                        block = determineBlockType(worldX, y, worldZ, height, biome, densityField, x, z);
+                        block = determineBlockType(worldX, y, worldZ, height, biome,
+                            densityField, waterGuardPlane, x, z);
                     }
                     if (block != BlockType.AIR) {
                         storage.set(x, y, z, block);
@@ -623,10 +636,14 @@ public class TerrainGenerationSystem {
     /**
      * The head of the block fill as a predicate: whether a chunk-local cell holds a block a
      * formation can hang from. Shared with {@link #buildSurfaceProfile} so a pillar the block
-     * loop deletes cannot stop the surface profile's descent.
+     * loop deletes cannot stop the surface profile's descent. The density test reads the
+     * chunk's WaterGuard plane so the overhang band is sealed exactly as the block fill
+     * applies it — a band carve under water cannot stop the descent on a column the fill
+     * keeps solid.
      */
     private FormationSupport.Support formationSupport(int[] heights, BiomeType[] biomes,
                                                       BitSet caveMask, Density3D.Field densityField,
+                                                      int[] waterGuardPlane,
                                                       int baseX, int baseZ) {
         return (lx, ly, lz) -> {
             if (ly <= 0) {
@@ -642,7 +659,8 @@ public class TerrainGenerationSystem {
             }
             return (densityField != null)
                 ? densityField.isSolid(lx, ly, lz, columnHeight, biomes[col])
-                : density3D.isSolid(baseX + lx, ly, baseZ + lz, columnHeight, biomes[col]);
+                : density3D.isSolid(baseX + lx, ly, baseZ + lz, columnHeight, biomes[col],
+                    waterGuardPlane, col);
         };
     }
 
@@ -682,14 +700,21 @@ public class TerrainGenerationSystem {
         CarveMasks masks = buildCarveMasks(chunkX, chunkZ, heights, waterLevels);
         BitSet caveMask = masks.caveMask();
         BitSet formationMask = masks.formationMask();
-        Density3D.Field densityField = density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels, biomes);
+        // One WaterGuard plane for the whole pass, exactly as generateTerrainLegacy threads
+        // it — the descent and the block fill must agree on the sealed band, so both read
+        // the same plane.
+        int[] waterGuardPlane =
+            WaterGuard.guardPlane(heights, waterLevels, heightMapGenerator, chunkX, chunkZ);
+        Density3D.Field densityField =
+            density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels, biomes, waterGuardPlane);
 
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
         // Same prune the block fill applies: an unsupported pillar is cleared before it can
         // stop the descent on a column the chunk leaves open.
         FormationSupport.prune(formationMask,
-            formationSupport(heights, biomes, caveMask, densityField, baseX, baseZ));
+            formationSupport(heights, biomes, caveMask, densityField, waterGuardPlane,
+                baseX, baseZ));
 
         int[] profile = new int[CHUNK_SIZE * CHUNK_SIZE];
         boolean[] carved = new boolean[CHUNK_SIZE * CHUNK_SIZE];
@@ -710,7 +735,8 @@ public class TerrainGenerationSystem {
                     }
                     boolean solid = (densityField != null)
                             ? densityField.isSolid(x, y, z, height, biome)
-                            : density3D.isSolid(worldX, y, worldZ, height, biome);
+                            : density3D.isSolid(worldX, y, worldZ, height, biome,
+                                waterGuardPlane, idx);
                     if (caveMask.get(bit) || !solid) {
                         y--;
                         continue;
@@ -810,13 +836,15 @@ public class TerrainGenerationSystem {
     }
 
     private BlockType determineBlockType(int worldX, int y, int worldZ, int height, BiomeType biome,
-                                         Density3D.Field densityField, int localX, int localZ) {
+                                         Density3D.Field densityField, int[] waterGuardPlane,
+                                         int localX, int localZ) {
         if (y == 0) {
             return BlockType.BEDROCK;
         }
         if (y < height && !((densityField != null)
                 ? densityField.isSolid(localX, y, localZ, height, biome)
-                : density3D.isSolid(worldX, y, worldZ, height, biome))) {
+                : density3D.isSolid(worldX, y, worldZ, height, biome,
+                    waterGuardPlane, localX * CHUNK_SIZE + localZ))) {
             return BlockType.AIR;
         }
         if (y < height - 4) {

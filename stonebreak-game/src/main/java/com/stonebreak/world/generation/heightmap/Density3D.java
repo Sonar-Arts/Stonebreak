@@ -61,6 +61,16 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * depth 16 and the spaghetti fade has barely opened — so this is a union that lets a cave
  * already there break through, not a second source of surface holes.
  *
+ * <p>The band carve decision itself is gated only on depth and the biome's intensity, so
+ * the band is additionally sealed against standing water: callers hand in the chunk's
+ * {@link WaterGuard} plane (the same one every mask carver goes through) and a band carve
+ * is suppressed where {@link WaterGuard#seals} holds — with {@link #WATER_CLEARANCE},
+ * since the band carves exactly the cell it samples. Without this, a submerged column
+ * whose biome has a non-zero intensity can be carved at depth 1 directly beneath the
+ * source water cell, and {@code WaterSim} pours into the hole and every connected band
+ * cell below it. The cave test below the band needs no seal: at those thresholds it
+ * cannot fire that shallow on its own.
+ *
  * <p>Backends: on the native (FastNoise2) backend the chunk pipeline calls
  * {@link #prepareChunk} once and queries the returned {@link Field} — a handful of SIMD volume
  * fills replace hundreds of thousands of per-block samples. Per-point {@link #isSolid} remains
@@ -71,6 +81,22 @@ public final class Density3D {
     private static final int CAVE_FLOOR = 8;
     /** Top N blocks of the column are governed by the biome's overhangIntensity. */
     private static final int OVERHANG_DEPTH = 16;
+
+    /**
+     * The overhang band's water clearance, its own constant per the carver convention
+     * (see {@code CavernCarver.WATER_CLEARANCE}).
+     *
+     * <p>The band carve is a per-block test that carves exactly the cell it samples —
+     * unlike the mask carvers' blobs, it never reaches up from the y it was aimed at.
+     * So the distance that matters is the one block below the plane: the guard plane
+     * anchors at the wet column's bed (= its terrain top, whose y is the first water
+     * cell's), and carving bed - 1 is the breach — air directly beneath the source
+     * water cell, into which {@code WaterSim} pours across every chunk that loads.
+     * The same clearance suppresses every 4-adjacent sideways water cell in a dry bank
+     * column, whose carve range tops out at its own bed - 1. Water itself is never
+     * carved (the carve range tops at bed - 1) and stays passable and non-ground.
+     */
+    private static final int WATER_CLEARANCE = 1;
 
     /**
      * Altitude taper on the overhang band's intensity.
@@ -264,10 +290,16 @@ public final class Density3D {
     }
 
     /**
-     * @param surfaceHeight final terrain height for this column (post-erosion)
+     * @param surfaceHeight   final terrain height for this column (post-erosion)
+     * @param waterGuardPlane the chunk's 16x16 {@link WaterGuard} plane, indexed
+     *                        {@code x*16+z} with chunk-local x/z — null suppresses
+     *                        nothing (tests, plane-less callers)
+     * @param columnIndex     the chunk-local column index {@code localX*16+localZ};
+     *                         supplied because this test is per-block and chunk-free
      * @return true if the block should remain solid; false to carve to air
      */
-    public boolean isSolid(int worldX, int y, int worldZ, int surfaceHeight, BiomeType biome) {
+    public boolean isSolid(int worldX, int y, int worldZ, int surfaceHeight, BiomeType biome,
+                           int[] waterGuardPlane, int columnIndex) {
         if (y < CAVE_FLOOR || y >= surfaceHeight) {
             return true;
         }
@@ -279,7 +311,8 @@ public final class Density3D {
                 ? cragJava.noise3D(
                     worldX * CRAG_SCALE, y * CRAG_Y_SQUASH * CRAG_SCALE, worldZ * CRAG_SCALE)
                 : cheese;
-            if (!solidInOverhangBand(band, cfg, surfaceHeight)) {
+            if (!solidInOverhangBand(band, cfg, surfaceHeight)
+                    && !WaterGuard.seals(waterGuardPlane, columnIndex, y, WATER_CLEARANCE)) {
                 return false;
             }
         }
@@ -300,12 +333,16 @@ public final class Density3D {
      * opts into it. Most chunks contain no such column, so the fourth fill costs nothing in the
      * common case — and where it is skipped, no column can ask for it either.
      *
-     * @param heights     the chunk's 16x16 final-height grid, indexed [x*16+z]
-     * @param waterLevels co-located water levels, for pinning the table to real water
-     * @param biomes      co-located biomes, to decide whether the crag channel is needed
+     * @param heights         the chunk's 16x16 final-height grid, indexed [x*16+z]
+     * @param waterLevels     co-located water levels, for pinning the table to real water
+     * @param biomes          co-located biomes, to decide whether the crag channel is needed
+     * @param waterGuardPlane the chunk's 16x16 {@link WaterGuard} plane (see
+     *                        {@code WaterGuard.guardPlane}) — carried so the band carve
+     *                        is sealed against standing water exactly as the block fill
+     *                        applies it; null suppresses nothing
      */
     public Field prepareChunk(int chunkX, int chunkZ, int[] heights, int[] waterLevels,
-                              BiomeType[] biomes) {
+                              BiomeType[] biomes, int[] waterGuardPlane) {
         if (cheeseNode == 0L || spag1Node == 0L || spag2Node == 0L || cragNode == 0L) {
             return null;
         }
@@ -324,7 +361,7 @@ public final class Density3D {
             ? fill(cragNode, cragSeed, CRAG_Y_SQUASH, chunkX, chunkZ, yCount)
             : null;
         int[] table = waterTable.tableForChunk(chunkX, chunkZ, heights, waterLevels);
-        return new Field(this, cheese, spag1, spag2, crag, table, yCount);
+        return new Field(this, cheese, spag1, spag2, crag, table, yCount, waterGuardPlane);
     }
 
     /** True when any column in the chunk reads the crag channel. */
@@ -435,9 +472,11 @@ public final class Density3D {
         private final float[] crag;
         private final int[] table;
         private final int yCount;
+        /** Null when no caller handed in a water plane (tests) — suppresses nothing. */
+        private final int[] waterGuardPlane;
 
         private Field(Density3D owner, float[] cheese, float[] spag1, float[] spag2,
-                      float[] crag, int[] table, int yCount) {
+                      float[] crag, int[] table, int yCount, int[] waterGuardPlane) {
             this.owner = owner;
             this.cheese = cheese;
             this.spag1 = spag1;
@@ -445,6 +484,7 @@ public final class Density3D {
             this.crag = crag;
             this.table = table;
             this.yCount = yCount;
+            this.waterGuardPlane = waterGuardPlane;
         }
 
         /** Same contract as {@link Density3D#isSolid}, with chunk-local x/z. */
@@ -457,16 +497,17 @@ public final class Density3D {
                 return true;
             }
             int i = (yIndex * CHUNK_SIZE + localX) * CHUNK_SIZE + localZ;
+            int column = localX * CHUNK_SIZE + localZ;
             if (y >= surfaceHeight - OVERHANG_DEPTH) {
                 Entry cfg = BiomeSurfaceConfig.get(biome);
                 // crag is non-null whenever any column opts in, and only an opted-in column
                 // can reach this branch with cragSurface set.
                 float band = (cfg.cragSurface && crag != null) ? crag[i] : cheese[i];
-                if (!solidInOverhangBand(band, cfg, surfaceHeight)) {
+                if (!solidInOverhangBand(band, cfg, surfaceHeight)
+                        && !WaterGuard.seals(waterGuardPlane, column, y, WATER_CLEARANCE)) {
                     return false;
                 }
             }
-            int column = localX * CHUNK_SIZE + localZ;
             return owner.solidAt(cheese[i], spag1[i], spag2[i], y, surfaceHeight, table[column]);
         }
     }

@@ -147,9 +147,11 @@ int64_t ck_carve_worms(void* ctx, int32_t chunk_x, int32_t chunk_z,
  *
  * ck_chunkgen_create:
  *  - terrain channel/spline params: same 11 as ck_terrain_create.
- *  - density_*: Density3D's THREE cave-noise nodes, in fill order
- *    (cheese, spaghetti 1, spaghetti 2), each built via the simplex-fbm
- *    convenience with the frequency inside the node.
+ *  - density_*: Density3D's FOUR cave-noise nodes, in fill order
+ *    (cheese, spaghetti 1, spaghetti 2, crag), each built via the simplex-fbm
+ *    convenience with the frequency inside the node. FOUR is authoritative —
+ *    the kernel reads four entries; sizing the arrays to fewer reads one past
+ *    the end (see Density3D.nodeParams, which is the single source).
  *  - cheese_spline_*: Density3D's depth->threshold curve, same packing as
  *    spline_xs (one curve, so cheese_spline_sizes is a single count).
  *  - block_ids: [air, water, stone, bedrock, magma].

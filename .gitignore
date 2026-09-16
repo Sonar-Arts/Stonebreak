@@ -471,3 +471,6 @@ QWEN.md
 
 # Stray mirror of the absolute repo path (tool writing absolute paths as relative)
 /mnt/
+
+# Heracles terrain bridge (local venv + tile cache)
+terrain-bridge/
