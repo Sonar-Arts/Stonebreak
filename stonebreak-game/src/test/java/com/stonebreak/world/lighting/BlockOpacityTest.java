@@ -27,6 +27,18 @@ class BlockOpacityTest {
     }
 
     @Test
+    void seeThroughAssetsPassSkyLight() {
+        // Read off the SBO (BlockType.isAuthoredTransparent) — a new glass-like
+        // block passes light with no code change.
+        BlockType glass = BlockType.getByObjectId("stonebreak:glass");
+        assertFalse(BlockOpacity.isOpaque(glass), "glass roofs must not darken the room below");
+        assertFalse(BlockOpacity.isOpaque(BlockType.ICE));
+        assertFalse(BlockOpacity.isOpaque(BlockType.LEAVES));
+        assertFalse(BlockOpacity.isOpaque(BlockType.SNOW));
+        assertFalse(BlockOpacity.isOpaque(BlockType.WATER));
+    }
+
+    @Test
     void cubesAndCellFillingShapesOccludeSkyLight() {
         assertTrue(BlockOpacity.isOpaque(BlockType.SAND));
         assertTrue(BlockOpacity.isOpaque(BlockType.STONE));

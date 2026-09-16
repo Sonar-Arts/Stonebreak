@@ -705,9 +705,15 @@ public final class SBOFormat {
      *   <li>{@code breakable} - whether players can break the block.</li>
      *   <li>{@code atlasX}, {@code atlasY} - texture atlas coords for the
      *       inventory/hotbar icon (legacy field; -1 means "no icon").</li>
-     *   <li>{@code renderLayer} - "OPAQUE", "CUTOUT", or "TRANSLUCENT".</li>
+     *   <li>{@code renderLayer} - "OPAQUE", "CUTOUT", or "TRANSLUCENT". Selects the
+     *       chunk render pass: CUTOUT is alpha-tested (leaves, flowers), TRANSLUCENT
+     *       is alpha-blended and sorted (ice, glass). This field, together with the
+     *       {@code renderLayer} of the authored face materials in the embedded OMO
+     *       (most permissive wins), is the game's only source for which pass a block
+     *       needs — there is no block list in code.</li>
      *   <li>{@code transparent} - whether neighbouring faces should still render
-     *       through this block (e.g. glass, water, leaves).</li>
+     *       through this block (e.g. glass, water, leaves), i.e. the block cannot
+     *       occlude its neighbours. Any non-OPAQUE {@code renderLayer} implies it.</li>
      *   <li>{@code flower} - whether water flow can break this block.</li>
      *   <li>{@code stackable} - whether the block supports layered stacking
      *       (e.g. snow).</li>
