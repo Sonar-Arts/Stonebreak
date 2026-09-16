@@ -38,6 +38,9 @@ public class SceneViewerMainView {
     /** Invoked with (absolute .omo path, drop position) when a model is dragged in. */
     private BiConsumer<String, float[]> onModelDropped = (path, pos) -> { };
 
+    /** Invoked after a viewport click changed the selection, so the gizmo can re-aim. */
+    private Runnable onSelectionChanged = () -> { };
+
     private final ImVec2 viewportSize = new ImVec2();
 
     public SceneViewerMainView(SceneViewerUIState state, SceneViewerController controller,
@@ -52,6 +55,10 @@ public class SceneViewerMainView {
 
     public void setOnModelDropped(BiConsumer<String, float[]> callback) {
         this.onModelDropped = callback != null ? callback : (path, pos) -> { };
+    }
+
+    public void setOnSelectionChanged(Runnable callback) {
+        this.onSelectionChanged = callback != null ? callback : () -> { };
     }
 
     public void render() {
@@ -159,21 +166,16 @@ public class SceneViewerMainView {
                 } else {
                     selection.select(instance.id());
                 }
-                controller.setGizmoInstance(resolvePrimary());
+                onSelectionChanged.run();
             }, () -> {
                 // Clicking empty space clears, unless the user is extending a selection.
                 if (!ImGui.getIO().getKeyCtrl() && !ImGui.getIO().getKeyShift()) {
                     selection.clear();
-                    controller.setGizmoInstance(null);
+                    onSelectionChanged.run();
                 }
             });
         } catch (Exception e) {
             logger.error("Scene pick failed", e);
         }
-    }
-
-    private ModelInstance resolvePrimary() {
-        String primary = selection.primary();
-        return primary == null ? null : document.scene().byId(primary);
     }
 }

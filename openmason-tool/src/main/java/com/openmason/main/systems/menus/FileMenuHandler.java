@@ -261,7 +261,7 @@ public class FileMenuHandler {
     public void requestHomeScreen() {
         boolean projectUnsaved = projectService != null && projectService.hasUnsavedChanges();
         boolean modelUnsaved = modelState.isModelLoaded() && modelState.hasUnsavedChanges();
-        homeScreenDialog.show(projectUnsaved || modelUnsaved);
+        homeScreenDialog.show(projectUnsaved || modelUnsaved || isSceneDirty());
     }
 
     /**
@@ -280,6 +280,18 @@ public class FileMenuHandler {
             return;
         }
 
+        // Opening replaces the session, so unsaved work gets the same prompt as exit.
+        if (hasAnyUnsavedChanges()) {
+            unsavedChangesDialog.showOnce(
+                    () -> { saveProject(); showOpenProjectDialog(); },
+                    this::showOpenProjectDialog,
+                    () -> logger.debug("Open project cancelled by user"));
+            return;
+        }
+        showOpenProjectDialog();
+    }
+
+    private void showOpenProjectDialog() {
         fileDialogService.showOpenOMPDialog(filePath -> {
             // Drop the outgoing project's scene BEFORE opening: its models resolve
             // against the old root, and openProject restores the new project's own scene.
@@ -296,6 +308,19 @@ public class FileMenuHandler {
                 statusService.updateStatus("Failed to open project");
             }
         });
+    }
+
+    /** Project, active model, or open scene dirty. */
+    private boolean hasAnyUnsavedChanges() {
+        boolean projectUnsaved = projectService != null
+                && projectService.hasCurrentProject()
+                && projectService.hasUnsavedChanges();
+        boolean modelUnsaved = modelState.isModelLoaded() && modelState.hasUnsavedChanges();
+        return projectUnsaved || modelUnsaved || isSceneDirty();
+    }
+
+    private boolean isSceneDirty() {
+        return sceneDirtySupplier != null && sceneDirtySupplier.getAsBoolean();
     }
 
     /**
@@ -386,12 +411,7 @@ public class FileMenuHandler {
      * otherwise exits directly.
      */
     public void requestExit() {
-        boolean projectUnsaved = projectService != null
-                && projectService.hasCurrentProject()
-                && projectService.hasUnsavedChanges();
-        boolean modelUnsaved = modelState.isModelLoaded() && modelState.hasUnsavedChanges();
-
-        if (projectUnsaved || modelUnsaved) {
+        if (hasAnyUnsavedChanges()) {
             unsavedChangesDialog.show();
         } else {
             performExit();

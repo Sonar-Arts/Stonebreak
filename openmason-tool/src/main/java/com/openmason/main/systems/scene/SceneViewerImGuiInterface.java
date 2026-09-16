@@ -69,6 +69,13 @@ public class SceneViewerImGuiInterface {
                 uiVisibility.getShowSceneInspector());
 
         this.mainView.setOnModelDropped(this::onModelDropped);
+        // A viewport click changed the selection: re-aim the gizmo at the primary and
+        // make the rest of the selection follow it.
+        this.mainView.setOnSelectionChanged(actions::syncGizmoToSelection);
+        // The camera and display toggles ride along in the .omsc.
+        this.sceneService.setViewStateBridge(
+                controller::captureCameraState, controller::captureViewportState,
+                controller::applyCameraState, controller::applyViewportState);
         // A scene swap (new / open / project change) invalidates any selection: the ids
         // it holds refer to instances that no longer exist.
         this.sceneService.setOnSceneChanged(this::dropStaleSelection);
@@ -80,7 +87,7 @@ public class SceneViewerImGuiInterface {
         // Scene undo/redo go through the central registry so they are rebindable and
         // scoped to their own "scene" context (peer of "viewport" and "texture").
         SceneKeybindActions.registerAll(
-                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance(), actions);
+                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance(), actions, uiState);
 
         // Camera navigation follows the same preferences as the model editor.
         var prefs = com.openmason.main.systems.menus.preferences.PreferencesManager.getInstance();
@@ -168,8 +175,7 @@ public class SceneViewerImGuiInterface {
                 selection.remove(id);
             }
         }
-        String primary = selection.primary();
-        controller.setGizmoInstance(primary == null ? null : document.scene().byId(primary));
+        actions.syncGizmoToSelection();
     }
 
     // --------------------------------------------------------------- accessors
@@ -180,6 +186,7 @@ public class SceneViewerImGuiInterface {
     }
 
     public SceneService getSceneService() { return sceneService; }
+    public SceneDocument getDocument() { return document; }
     public SceneViewerUIState getUIState() { return uiState; }
     public SceneViewerController getController() { return controller; }
     public SceneSelectionState getSelection() { return selection; }

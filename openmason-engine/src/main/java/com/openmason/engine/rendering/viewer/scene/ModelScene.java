@@ -41,6 +41,23 @@ public final class ModelScene {
         return instances.remove(instance);
     }
 
+    /**
+     * Put a previously removed instance back at {@code index} (clamped), keeping its id
+     * and object identity — the undo of a delete. A no-op if it is already present.
+     */
+    public void insert(int index, ModelInstance instance) {
+        if (instance == null || instances.contains(instance)) {
+            return;
+        }
+        int at = Math.max(0, Math.min(index, instances.size()));
+        instances.add(at, instance);
+    }
+
+    /** Position of an instance in scene order, or -1. */
+    public int indexOf(ModelInstance instance) {
+        return instances.indexOf(instance);
+    }
+
     public void clear() {
         instances.clear();
     }

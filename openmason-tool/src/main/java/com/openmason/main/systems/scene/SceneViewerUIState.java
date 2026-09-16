@@ -14,6 +14,7 @@ public class SceneViewerUIState {
 
     private final ImBoolean gridVisible = new ImBoolean(true);
     private final ImBoolean axesVisible = new ImBoolean(true);
+    private final ImBoolean unrendered = new ImBoolean(false);
     private final ImBoolean gridSnappingEnabled = new ImBoolean(false);
     private final ImFloat gridSnappingIncrement = new ImFloat(0.25f);
 
@@ -24,6 +25,8 @@ public class SceneViewerUIState {
 
     public ImBoolean getGridVisible() { return gridVisible; }
     public ImBoolean getAxesVisible() { return axesVisible; }
+    /** Flat grey, untextured rendering — the model editor's "unrendered" view. */
+    public ImBoolean getUnrendered() { return unrendered; }
     public ImBoolean getGridSnappingEnabled() { return gridSnappingEnabled; }
     public ImFloat getGridSnappingIncrement() { return gridSnappingIncrement; }
 

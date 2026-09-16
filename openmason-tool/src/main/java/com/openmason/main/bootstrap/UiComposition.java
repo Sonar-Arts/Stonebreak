@@ -133,6 +133,12 @@ public final class UiComposition {
                 mainInterface.requestCenterTab(
                         com.openmason.main.systems.viewport.views.ViewportMainView.WINDOW_TITLE);
             });
+            // The edit round-trip: saving a model in the editor refreshes every scene
+            // instance that places it.
+            mainInterface.getModelOperations().setOnModelSaved(
+                    path -> sceneViewerInterface.getSceneService().reloadModel(path));
+            // Lets the MCP scene tools and the File menu's dirty checks reach the scene.
+            mainInterface.setSceneViewer(sceneViewerInterface);
             // Scene open/save, routed through the shell so the project root is applied.
             java.util.function.Supplier<java.nio.file.Path> sceneRoot = () -> {
                 String dir = mainInterface.getProjectDirectorySupplier().get();
@@ -176,8 +182,10 @@ public final class UiComposition {
                     host::restoreSceneSession);
             mainInterface.setSaveOpenSceneAction(() -> {
                 var svc = sceneViewerInterface.getSceneService();
-                if (svc.hasCurrentScene() && svc.hasUnsavedChanges()) {
-                    svc.saveScene(sceneRoot.get());
+                if (svc.hasUnsavedChanges()) {
+                    // An untitled scene lands in the project's Scenes/ folder under its
+                    // name, so save-with-project / save-on-exit never drops it.
+                    svc.saveIntoProject(sceneRoot.get());
                 }
             });
 

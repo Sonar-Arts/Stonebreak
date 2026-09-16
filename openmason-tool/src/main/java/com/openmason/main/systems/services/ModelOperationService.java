@@ -51,6 +51,9 @@ public class ModelOperationService {
     // Called when a new/different model is loaded to reset dependent editor state
     private Runnable onModelChangedCallback;
 
+    /** Fired with the absolute path after a successful .omo save; the Scene Viewer reloads placements from it. */
+    private java.util.function.Consumer<String> onModelSaved = path -> { };
+
     public ModelOperationService(ModelState modelState, StatusService statusService,
                                  FileDialogService fileDialogService) {
         this.modelState = modelState;
@@ -74,6 +77,11 @@ public class ModelOperationService {
     public void setViewport(ViewportController viewport) {
         this.viewport = viewport;
         logger.debug("Viewport reference set in ModelOperationService");
+    }
+
+    /** Register the hook fired after every successful .omo save (absolute path). */
+    public void setOnModelSaved(java.util.function.Consumer<String> callback) {
+        this.onModelSaved = callback != null ? callback : path -> { };
     }
 
     /**
@@ -280,6 +288,11 @@ public class ModelOperationService {
                 modelState.setCurrentModelPath(currentEditableModel.getName());
                 modelState.setCurrentOMOFilePath(filePath);
                 modelState.setModelSource(ModelState.ModelSource.OMO_FILE);
+                try {
+                    onModelSaved.accept(filePath);
+                } catch (Exception e) {
+                    logger.warn("Post-save hook failed for {}: {}", filePath, e.getMessage());
+                }
                 String statusMsg = meshData != null
                         ? "Model saved with mesh data: " + filePath
                         : "Model saved (WARNING: no mesh data): " + filePath;

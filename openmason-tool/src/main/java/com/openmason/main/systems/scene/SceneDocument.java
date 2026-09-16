@@ -1,5 +1,6 @@
 package com.openmason.main.systems.scene;
 
+import com.openmason.engine.format.omsc.OMSCFormat;
 import com.openmason.engine.rendering.viewer.scene.ModelHandle;
 import com.openmason.engine.rendering.viewer.scene.ModelInstance;
 import com.openmason.engine.rendering.viewer.scene.ModelScene;
@@ -28,9 +29,19 @@ public class SceneDocument {
     /** Reverse lookup, so an instance's handle can find its provenance. */
     private final Map<ModelHandle, SceneModelRef> refByHandle = new LinkedHashMap<>();
 
+    /**
+     * Instances whose model could not be loaded at open time. They have no engine
+     * counterpart (nothing to render or pick) but are carried verbatim to the next save,
+     * so opening a scene beside a missing model and saving it never silently drops
+     * placements. Cleared for a model once it resolves again (see {@link #adoptOrphans}).
+     */
+    private final List<OMSCFormat.InstanceEntry> orphanInstances = new ArrayList<>();
+
     private String sceneName = "Untitled Scene";
     private String currentScenePath;
     private String createdAt;
+    private String author;
+    private String description;
     private boolean dirty;
 
     public ModelScene scene() {
@@ -103,6 +114,58 @@ public class SceneDocument {
             markDirty();
         }
         return removed;
+    }
+
+    /** Re-insert a removed instance at its old position — the undo of a delete. */
+    public void insertInstance(int index, ModelInstance instance) {
+        scene.insert(index, instance);
+        markDirty();
+    }
+
+    // ---------------------------------------------------------------- orphans
+
+    /** Record a placement whose model is unavailable, so it survives the next save. */
+    public void addOrphanInstance(OMSCFormat.InstanceEntry entry) {
+        if (entry != null) {
+            orphanInstances.add(entry);
+        }
+    }
+
+    /** Placements kept only on paper because their model is missing. */
+    public List<OMSCFormat.InstanceEntry> orphanInstances() {
+        return List.copyOf(orphanInstances);
+    }
+
+    /**
+     * Turn the orphans of a model that has become loadable back into live instances.
+     *
+     * @return how many were adopted
+     */
+    public int adoptOrphans(String sessionId) {
+        SceneModelRef ref = modelsBySessionId.get(sessionId);
+        if (ref == null || ref.handle() == null) {
+            return 0;
+        }
+        int adopted = 0;
+        for (var it = orphanInstances.iterator(); it.hasNext(); ) {
+            OMSCFormat.InstanceEntry entry = it.next();
+            if (!sessionId.equals(entry.modelId())) {
+                continue;
+            }
+            ModelInstance instance = scene.add(ref.handle(), entry.name());
+            var t = entry.transform();
+            instance.transform().setPosition(t.posX(), t.posY(), t.posZ());
+            instance.transform().setRotation(t.rotX(), t.rotY(), t.rotZ());
+            instance.transform().setScale(t.scaleX(), t.scaleY(), t.scaleZ());
+            instance.setVisible(entry.visible());
+            instance.setLocked(entry.locked());
+            it.remove();
+            adopted++;
+        }
+        if (adopted > 0) {
+            markDirty();
+        }
+        return adopted;
     }
 
     /**
@@ -182,6 +245,12 @@ public class SceneDocument {
     public String createdAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
 
+    public String author() { return author; }
+    public void setAuthor(String author) { this.author = author; }
+
+    public String description() { return description; }
+    public void setDescription(String description) { this.description = description; }
+
     public boolean isDirty() { return dirty; }
     public void markDirty() { this.dirty = true; }
     public void clearDirty() { this.dirty = false; }
@@ -191,9 +260,12 @@ public class SceneDocument {
         scene.clear();
         modelsBySessionId.clear();
         refByHandle.clear();
+        orphanInstances.clear();
         sceneName = "Untitled Scene";
         currentScenePath = null;
         createdAt = null;
+        author = null;
+        description = null;
         dirty = false;
     }
 }
