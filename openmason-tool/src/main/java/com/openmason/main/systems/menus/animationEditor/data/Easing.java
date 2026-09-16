@@ -15,7 +15,9 @@ public enum Easing {
     LINEAR,
     EASE_IN,
     EASE_OUT,
-    EASE_IN_OUT;
+    EASE_IN_OUT,
+    /** Hold the outgoing pose for the whole segment; the next pose snaps in. */
+    STEP;
 
     /**
      * Remap a normalized segment parameter {@code t} in {@code [0,1]} through

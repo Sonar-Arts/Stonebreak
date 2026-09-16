@@ -93,6 +93,11 @@ public class SBEEditorWindow {
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenAudioDialog(cb::accept); });
     }
 
+    /** Link the states editor to the Animation Editor (in-memory clip round trips). */
+    public void setAnimationBridge(AnimationClipBridge bridge) {
+        statesEditor.setAnimationBridge(bridge);
+    }
+
     // ========================================================================
     // Open / show
     // ========================================================================

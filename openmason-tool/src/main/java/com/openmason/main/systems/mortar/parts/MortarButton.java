@@ -29,15 +29,33 @@ public final class MortarButton implements MortarPart {
 
     private final String label;
     private final Variant variant;
+    private final boolean enabled;
 
     public MortarButton(String label, Variant variant) {
+        this(label, variant, true);
+    }
+
+    /** A disabled button paints washed out and ignores hover/press; the caller must drop its clicks. */
+    public MortarButton(String label, Variant variant, boolean enabled) {
         this.label = label;
         this.variant = variant;
+        this.enabled = enabled;
+    }
+
+    public boolean isEnabled() {
+        return enabled;
     }
 
     @Override
     public void paint(MortarPainter g, float x, float y, float w, float h, PartState state) {
         MortarTheme theme = g.theme();
+        if (!enabled) {
+            g.fillRoundRect(x, y, w, h, RADIUS, Argb.withAlpha(theme.surface, 0.5f));
+            g.strokeRoundRect(x, y, w, h, RADIUS, 1f, Argb.withAlpha(theme.border, 0.5f));
+            g.text(label, x + w / 2f, y + h / 2f, MortarPainter.Align.CENTER,
+                    Weight.MEDIUM, FONT_SIZE, Argb.withAlpha(theme.text, 0.35f));
+            return;
+        }
         float hover = state.hover();
         float press = state.press();
         float inset = press; // 1px settle when held

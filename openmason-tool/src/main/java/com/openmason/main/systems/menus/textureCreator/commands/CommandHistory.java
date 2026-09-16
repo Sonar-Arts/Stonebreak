@@ -129,6 +129,16 @@ public class CommandHistory {
     }
 
     /**
+     * The command that would be undone next, or null when the stack is empty.
+     * Identity of this command is a stable "history position" marker: an
+     * editor can remember it at save time and report dirty whenever the top
+     * differs (undoing past the save point, or redoing back to it, both work).
+     */
+    public Command peekUndo() {
+        return undoStack.isEmpty() ? null : undoStack.peek();
+    }
+
+    /**
      * Clear all history.
      */
     public void clear() {

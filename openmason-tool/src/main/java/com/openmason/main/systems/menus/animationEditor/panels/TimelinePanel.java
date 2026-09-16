@@ -20,14 +20,19 @@ import java.util.Map;
  * Multi-row timeline with a time ruler, zoom/scroll, keyframe dragging, and
  * box selection.
  *
- * <p>All rows are drawn with the window draw list and covered by a single
- * invisible button so drags and marquees can cross rows. Interactions:
+ * <p>Rows follow {@link PartRows}: model parts in hierarchy order (indented
+ * by depth), then unbound tracks (orphans) which can be rebound or deleted
+ * from the context menu. All rows are drawn with the window draw list and
+ * covered by a single invisible button so drags and marquees can cross rows.
+ * Interactions:
  * <ul>
- *   <li>Click a diamond — select it (Ctrl toggles membership)</li>
+ *   <li>Click a diamond — select it (Ctrl toggles membership); hover shows its time/pose</li>
  *   <li>Drag a diamond — move the whole selection; snaps to frames unless Alt</li>
+ *   <li>Double-click a row — insert a keyframe there</li>
  *   <li>Drag on empty track area — box select (Ctrl adds)</li>
  *   <li>Click/drag the ruler — scrub the playhead</li>
  *   <li>Ctrl+wheel — zoom at mouse; Shift+wheel — pan; plain wheel — vertical scroll</li>
+ *   <li>Right-click — insert here / copy / paste / duplicate / reverse / delete / rebind</li>
  * </ul>
  */
 public final class TimelinePanel {
@@ -39,6 +44,7 @@ public final class TimelinePanel {
     private static final float DIAMOND_RADIUS = 5.5f;
     private static final float HIT_PIXELS = 6f;
     private static final float DRAG_THRESHOLD = 4f;
+    private static final float INDENT = 10f;
 
     private enum DragMode { NONE, PENDING_KEYS, DRAG_KEYS, PENDING_BOX, BOX_SELECT, SCRUB }
 
@@ -55,7 +61,8 @@ public final class TimelinePanel {
     private final List<DragKey> dragSet = new ArrayList<>();
     private final Map<String, List<Keyframe>> dragBeforeByPart = new LinkedHashMap<>();
     private float dragDeltaTime;
-    private String contextPartId;   // row under the last right-click
+    private PartRows.Row contextRow;   // row under the last right-click
+    private float contextTime;         // time under the last right-click
 
     public TimelinePanel(AnimationEditorController controller) {
         this.controller = controller;
@@ -74,7 +81,7 @@ public final class TimelinePanel {
         ImGui.separator();
 
         AnimationClip clip = controller.state().clip();
-        List<ModelPartDescriptor> parts = new ArrayList<>(pm.getAllParts());
+        List<PartRows.Row> rows = PartRows.build(pm, controller.orphanTracks());
 
         ImGui.beginChild("##timelineBody");
 
@@ -82,7 +89,7 @@ public final class TimelinePanel {
         float availWidth = Math.max(LABEL_WIDTH + 60f + BAR_PADDING, ImGui.getContentRegionAvailX());
         float barX0 = origin.x + LABEL_WIDTH;
         float barX1 = origin.x + availWidth - BAR_PADDING;
-        float totalHeight = RULER_HEIGHT + parts.size() * ROW_HEIGHT;
+        float totalHeight = RULER_HEIGHT + rows.size() * ROW_HEIGHT;
 
         TimelineLayout layout = new TimelineLayout(
                 barX0, barX1 - barX0, clip.duration(),
@@ -90,17 +97,19 @@ public final class TimelinePanel {
 
         ImDrawList dl = ImGui.getWindowDrawList();
         drawRuler(dl, layout, clip, origin.y, barX0, barX1);
-        for (int row = 0; row < parts.size(); row++) {
-            drawRow(dl, layout, clip, parts.get(row), origin.x, rowY0(origin.y, row), barX0, barX1);
+        for (int row = 0; row < rows.size(); row++) {
+            drawRow(dl, layout, clip, rows.get(row), origin.x, rowY0(origin.y, row), barX0, barX1);
         }
         drawPlayhead(dl, layout, origin.y, totalHeight);
 
         ImGui.invisibleButton("##timelineSurface", availWidth, Math.max(1f, totalHeight));
-        handleInput(layout, clip, parts, origin, barX0, barX1);
-        renderContextMenu();
+        handleInput(layout, clip, rows, origin, barX0, barX1);
+        // Reads isItemHovered() of the surface: must run before the popup changes the last item.
+        drawHoverTooltip(layout, clip, rows, origin, barX0);
+        renderContextMenu(rows, pm);
 
         // Overlays draw after input so they reflect this frame's gesture state.
-        drawDragGhosts(dl, layout, clip, parts, origin.y);
+        drawDragGhosts(dl, layout, clip, rows, origin.y);
         drawMarquee(dl);
 
         ImGui.endChild();
@@ -155,21 +164,22 @@ public final class TimelinePanel {
     }
 
     private void drawRow(ImDrawList dl, TimelineLayout layout, AnimationClip clip,
-                         ModelPartDescriptor part, float originX, float y0,
+                         PartRows.Row row, float originX, float y0,
                          float barX0, float barX1) {
         float top = y0 + 2f;
         float bottom = y0 + ROW_HEIGHT - 2f;
         float yMid = (top + bottom) * 0.5f;
 
         // When the clip is an OVERLAY, rows outside its part mask are dimmed —
-        // the overlay won't drive them in-game.
-        boolean dimmed = isOutsideOverlayMask(clip, part.name());
+        // the overlay won't drive them in-game. Orphan rows are always dimmed.
+        boolean dimmed = row.isOrphan() || isOutsideOverlayMask(clip, row.label());
         float dim = dimmed ? 0.35f : 1f;
 
-        boolean isSelectedPart = part.id().equals(controller.state().selectedPartId());
+        boolean isSelectedPart = row.id().equals(controller.state().selectedPartId());
         int labelColor = isSelectedPart ? AnimEditorTheme.labelText() : AnimEditorTheme.labelTextDim();
-        dl.addText(originX + 4f, yMid - ImGui.getTextLineHeight() * 0.5f,
-                dimmed ? AnimEditorTheme.withAlpha(labelColor, dim) : labelColor, part.name());
+        String label = row.isOrphan() ? "? " + row.label() : row.label();
+        dl.addText(originX + 4f + row.depth() * INDENT, yMid - ImGui.getTextLineHeight() * 0.5f,
+                dimmed ? AnimEditorTheme.withAlpha(labelColor, dim) : labelColor, label);
 
         dl.addRectFilled(barX0, top, barX1, bottom,
                 dimmed ? AnimEditorTheme.withAlpha(AnimEditorTheme.trackBg(), 0.5f)
@@ -178,7 +188,7 @@ public final class TimelinePanel {
                 dimmed ? AnimEditorTheme.withAlpha(AnimEditorTheme.trackAxis(), dim)
                        : AnimEditorTheme.trackAxis(), 1f);
 
-        Track track = clip.trackFor(part.id());
+        Track track = clip.trackFor(row.id());
         if (track == null) return;
 
         KeyframeSelection selection = controller.state().selection();
@@ -187,9 +197,9 @@ public final class TimelinePanel {
             Keyframe kf = track.get(i);
             if (!layout.isTimeVisible(kf.time())) continue;
             // While dragging, the moving keys render as ghosts only.
-            if (dragging && isDragged(part.id(), kf.time())) continue;
+            if (dragging && isDragged(row.id(), kf.time())) continue;
             float kx = layout.timeToX(kf.time());
-            boolean selected = selection.contains(part.id(), kf.time());
+            boolean selected = selection.contains(row.id(), kf.time());
             int color = selected ? AnimEditorTheme.keyframeSelected() : AnimEditorTheme.keyframe();
             drawDiamond(dl, kx, yMid, DIAMOND_RADIUS,
                     dimmed ? AnimEditorTheme.withAlpha(color, dim) : color);
@@ -219,11 +229,11 @@ public final class TimelinePanel {
     }
 
     private void drawDragGhosts(ImDrawList dl, TimelineLayout layout, AnimationClip clip,
-                                List<ModelPartDescriptor> parts, float originY) {
+                                List<PartRows.Row> rows, float originY) {
         if (dragMode != DragMode.DRAG_KEYS) return;
         int ghost = AnimEditorTheme.ghost();
         for (DragKey key : dragSet) {
-            int row = rowOfPart(parts, key.partId());
+            int row = rowOfPart(rows, key.partId());
             if (row < 0) continue;
             float t = ghostTime(key.origTime(), clip);
             float kx = layout.timeToX(t);
@@ -242,6 +252,29 @@ public final class TimelinePanel {
         dl.addRect(x0, y0, x1, y1, AnimEditorTheme.marqueeBorder());
     }
 
+    /** Time / frame / easing / pose of the keyframe under the mouse, when idle. */
+    private void drawHoverTooltip(TimelineLayout layout, AnimationClip clip,
+                                  List<PartRows.Row> rows, ImVec2 origin, float barX0) {
+        if (dragMode != DragMode.NONE || !ImGui.isItemHovered()) return;
+        float mouseX = ImGui.getIO().getMousePosX();
+        float mouseY = ImGui.getIO().getMousePosY();
+        if (mouseX < barX0) return;
+        int row = rowAt(origin.y, rows.size(), mouseY);
+        if (row < 0) return;
+        Track track = clip.trackFor(rows.get(row).id());
+        int hit = findKeyframeNearPixel(layout, track, mouseX);
+        if (hit < 0) return;
+        Keyframe kf = track.get(hit);
+        ImGui.beginTooltip();
+        ImGui.text(String.format("%.3f s  (frame %d)  %s",
+                kf.time(), Math.round(kf.time() * clip.fps()), kf.easing().name()));
+        ImGui.textDisabled(String.format("pos %.2f %.2f %.2f   rot %.1f %.1f %.1f   scl %.2f %.2f %.2f",
+                kf.position().x, kf.position().y, kf.position().z,
+                kf.rotation().x, kf.rotation().y, kf.rotation().z,
+                kf.scale().x, kf.scale().y, kf.scale().z));
+        ImGui.endTooltip();
+    }
+
     private static void drawDiamond(ImDrawList dl, float cx, float cy, float r, int color) {
         dl.addQuadFilled(cx, cy - r, cx + r, cy, cx, cy + r, cx - r, cy, color);
     }
@@ -249,7 +282,7 @@ public final class TimelinePanel {
     // ====================== input ======================
 
     private void handleInput(TimelineLayout layout, AnimationClip clip,
-                             List<ModelPartDescriptor> parts, ImVec2 origin,
+                             List<PartRows.Row> rows, ImVec2 origin,
                              float barX0, float barX1) {
         handleWheel(layout, clip, barX0, barX1);
 
@@ -257,12 +290,29 @@ public final class TimelinePanel {
         float mouseY = ImGui.getIO().getMousePosY();
 
         if (ImGui.isItemHovered() && ImGui.isMouseClicked(1)) {
-            int row = rowAt(origin.y, parts.size(), mouseY);
-            contextPartId = row >= 0 ? parts.get(row).id() : null;
+            int row = rowAt(origin.y, rows.size(), mouseY);
+            contextRow = row >= 0 ? rows.get(row) : null;
+            contextTime = snapIfEnabled(layout.xToTime(mouseX), clip);
+        }
+
+        // Double-click on a part row's bar: insert a keyframe at that time.
+        if (ImGui.isItemHovered() && ImGui.isMouseDoubleClicked(0) && mouseX >= barX0) {
+            int row = rowAt(origin.y, rows.size(), mouseY);
+            if (row >= 0 && !rows.get(row).isOrphan()) {
+                String partId = rows.get(row).id();
+                float t = snapIfEnabled(layout.xToTime(mouseX), clip);
+                controller.state().setSelectedPartId(partId);
+                controller.state().setPlaying(false);
+                controller.state().setPlayhead(t);
+                controller.applyCurrentPose();
+                controller.insertKeyframeAtPlayhead(partId);
+                dragMode = DragMode.NONE;
+                return;
+            }
         }
 
         if (ImGui.isItemActivated()) {
-            beginGesture(layout, clip, parts, origin, barX0, mouseX, mouseY);
+            beginGesture(layout, clip, rows, origin, barX0, mouseX, mouseY);
         }
 
         if (ImGui.isItemActive()) {
@@ -270,7 +320,7 @@ public final class TimelinePanel {
         }
 
         if (ImGui.isItemDeactivated()) {
-            endGesture(layout, clip, parts, origin, mouseX, mouseY);
+            endGesture(layout, clip, rows, origin, mouseX, mouseY);
             dragMode = DragMode.NONE;
         }
     }
@@ -298,7 +348,7 @@ public final class TimelinePanel {
     }
 
     private void beginGesture(TimelineLayout layout, AnimationClip clip,
-                              List<ModelPartDescriptor> parts, ImVec2 origin,
+                              List<PartRows.Row> rows, ImVec2 origin,
                               float barX0, float mouseX, float mouseY) {
         pressX = mouseX;
         pressY = mouseY;
@@ -315,22 +365,22 @@ public final class TimelinePanel {
             return;
         }
 
-        int row = rowAt(origin.y, parts.size(), mouseY);
+        int row = rowAt(origin.y, rows.size(), mouseY);
         if (row < 0) {
             dragMode = DragMode.NONE;
             return;
         }
-        ModelPartDescriptor part = parts.get(row);
-        pressedPartId = part.id();
+        PartRows.Row hitRow = rows.get(row);
+        pressedPartId = hitRow.id();
 
         // Label region → select the part.
         if (mouseX < barX0) {
-            controller.state().setSelectedPartId(part.id());
+            controller.state().setSelectedPartId(hitRow.id());
             dragMode = DragMode.NONE;
             return;
         }
 
-        Track track = clip.trackFor(part.id());
+        Track track = clip.trackFor(hitRow.id());
         int hit = findKeyframeNearPixel(layout, track, mouseX);
         boolean ctrl = ImGui.getIO().getKeyCtrl();
 
@@ -339,18 +389,18 @@ public final class TimelinePanel {
             Keyframe kf = track.get(hit);
             if (ctrl) {
                 controller.state().selection().toggle(
-                        new KeyframeSelection.KeyRef(part.id(), kf.time()));
+                        new KeyframeSelection.KeyRef(hitRow.id(), kf.time()));
                 dragMode = DragMode.NONE;
                 return;
             }
-            if (!controller.state().selection().contains(part.id(), kf.time())) {
-                controller.state().setSelectedPartId(part.id());
+            if (!controller.state().selection().contains(hitRow.id(), kf.time())) {
+                controller.state().setSelectedPartId(hitRow.id());
                 controller.state().setSelectedKeyframeIndex(hit);
             } else {
                 // Clicking inside an existing multi-selection keeps it; just
                 // repoint the primary for the inspector.
                 KeyframeSelection keep = snapshotSelection();
-                controller.state().selectKeyframes(keep, part.id(), hit);
+                controller.state().selectKeyframes(keep, hitRow.id(), hit);
             }
             controller.state().setPlayhead(kf.time());
             controller.applyCurrentPose();
@@ -393,11 +443,11 @@ public final class TimelinePanel {
     }
 
     private void endGesture(TimelineLayout layout, AnimationClip clip,
-                            List<ModelPartDescriptor> parts, ImVec2 origin,
+                            List<PartRows.Row> rows, ImVec2 origin,
                             float mouseX, float mouseY) {
         switch (dragMode) {
             case DRAG_KEYS -> commitKeyDrag(clip);
-            case BOX_SELECT -> commitBoxSelect(layout, clip, parts, origin, mouseX, mouseY);
+            case BOX_SELECT -> commitBoxSelect(layout, clip, rows, origin, mouseX, mouseY);
             case PENDING_BOX -> {
                 // Plain click on empty track area: select part + scrub.
                 if (pressedPartId != null) {
@@ -448,7 +498,7 @@ public final class TimelinePanel {
     }
 
     private void commitBoxSelect(TimelineLayout layout, AnimationClip clip,
-                                 List<ModelPartDescriptor> parts, ImVec2 origin,
+                                 List<PartRows.Row> rows, ImVec2 origin,
                                  float mouseX, float mouseY) {
         float x0 = Math.min(pressX, mouseX), x1 = Math.max(pressX, mouseX);
         float y0 = Math.min(pressY, mouseY), y1 = Math.max(pressY, mouseY);
@@ -458,19 +508,19 @@ public final class TimelinePanel {
         String primaryPart = null;
         int primaryIndex = -1;
 
-        for (int row = 0; row < parts.size(); row++) {
+        for (int row = 0; row < rows.size(); row++) {
             float yMid = rowY0(origin.y, row) + ROW_HEIGHT * 0.5f;
             if (yMid < y0 || yMid > y1) continue;
-            ModelPartDescriptor part = parts.get(row);
-            Track track = clip.trackFor(part.id());
+            PartRows.Row r = rows.get(row);
+            Track track = clip.trackFor(r.id());
             if (track == null) continue;
             for (int i = 0; i < track.size(); i++) {
                 Keyframe kf = track.get(i);
                 float kx = layout.timeToX(kf.time());
                 if (kx < x0 || kx > x1) continue;
-                result.add(new KeyframeSelection.KeyRef(part.id(), kf.time()));
+                result.add(new KeyframeSelection.KeyRef(r.id(), kf.time()));
                 if (primaryPart == null) {
-                    primaryPart = part.id();
+                    primaryPart = r.id();
                     primaryIndex = i;
                 }
             }
@@ -488,25 +538,58 @@ public final class TimelinePanel {
         controller.state().selectKeyframes(result, primaryPart, primaryIndex);
     }
 
-    private void renderContextMenu() {
+    private void renderContextMenu(List<PartRows.Row> rows, ModelPartManager pm) {
         if (ImGui.beginPopupContextItem("##timelineContext")) {
             boolean hasSelection = !controller.state().selection().isEmpty();
             boolean hasClipboard = !controller.state().clipboard().isEmpty();
+            boolean hasKeys = !controller.state().clip().tracks().isEmpty();
 
+            if (contextRow != null && !contextRow.isOrphan()) {
+                if (ImGui.menuItem(String.format("Insert Keyframe Here (%.3f s)", contextTime), "Dbl-click")) {
+                    controller.state().setSelectedPartId(contextRow.id());
+                    controller.state().setPlaying(false);
+                    controller.state().setPlayhead(contextTime);
+                    controller.applyCurrentPose();
+                    controller.insertKeyframeAtPlayhead(contextRow.id());
+                }
+                ImGui.separator();
+            }
+
+            if (ImGui.menuItem("Select All", "Ctrl+A", false, hasKeys)) {
+                controller.selectAll();
+            }
             if (ImGui.menuItem("Copy", "Ctrl+C", false, hasSelection)) {
                 controller.copySelection();
             }
             if (ImGui.menuItem("Paste at Playhead", "Ctrl+V", false, hasClipboard)) {
                 controller.pasteAtPlayhead();
             }
+            if (ImGui.menuItem("Duplicate to Playhead", "Ctrl+D", false, hasSelection)) {
+                controller.duplicateSelectionToPlayhead();
+            }
+            if (ImGui.menuItem("Reverse Selection", null, false,
+                    controller.state().selection().size() > 1)) {
+                controller.reverseSelection();
+            }
             if (ImGui.menuItem("Delete Selected", "Del", false, hasSelection)) {
                 controller.deleteSelectedKeyframes();
             }
-            if (contextPartId != null) {
+            if (contextRow != null) {
                 ImGui.separator();
-                boolean hasTrack = controller.state().clip().trackFor(contextPartId) != null;
+                boolean hasTrack = controller.state().clip().trackFor(contextRow.id()) != null;
+                if (contextRow.isOrphan()) {
+                    ImGui.textDisabled("Unbound track: " + contextRow.label());
+                    if (ImGui.beginMenu("Rebind to Part")) {
+                        for (ModelPartDescriptor part : pm.getAllParts()) {
+                            if (ImGui.menuItem(part.name())) {
+                                controller.rebindTrack(contextRow.id(), part.id());
+                            }
+                        }
+                        ImGui.endMenu();
+                    }
+                }
                 if (ImGui.menuItem("Delete Track", null, false, hasTrack)) {
-                    controller.deleteTrack(contextPartId);
+                    controller.deleteTrack(contextRow.id());
                 }
             }
             ImGui.endPopup();
@@ -517,7 +600,7 @@ public final class TimelinePanel {
 
     private void renderInsertButton(ModelPartManager pm) {
         String selected = controller.state().selectedPartId();
-        boolean canInsert = selected != null;
+        boolean canInsert = selected != null && pm.getPartById(selected).isPresent();
         AnimUI.beginDisabled(!canInsert);
         if (ImGui.button("+ Keyframe @ Playhead")) {
             controller.insertKeyframeAtPlayhead(selected);
@@ -531,6 +614,25 @@ public final class TimelinePanel {
         ImGui.textDisabled(canInsert
                 ? "target: " + pm.getPartById(selected).map(ModelPartDescriptor::name).orElse(selected)
                 : "(no part selected)");
+
+        // A part was posed in the viewport but not keyed: it snaps back on the
+        // next scrub unless keyed (or auto-key is on).
+        String unkeyed = controller.state().unkeyedPartId();
+        if (unkeyed != null) {
+            String name = pm.getPartById(unkeyed).map(ModelPartDescriptor::name).orElse(unkeyed);
+            ImGui.sameLine();
+            ImGui.textColored(0.95f, 0.75f, 0.25f, 1f, "'" + name + "' moved but not keyed");
+            AnimUI.tooltip("The viewport pose of '" + name + "' is not in the clip and will be "
+                    + "lost on the next scrub. Select it and press K, or enable Auto-key.");
+        }
+
+        int beyond = controller.keyframesBeyondDuration();
+        if (beyond > 0) {
+            ImGui.sameLine();
+            ImGui.textColored(0.95f, 0.55f, 0.35f, 1f, beyond + " key(s) past clip end");
+            AnimUI.tooltip("Keyframes beyond the clip duration are unreachable here but still "
+                    + "sampled (held) and saved. Trim them from the Clip section of the inspector.");
+        }
     }
 
     private void scrubTo(TimelineLayout layout, float mouseX) {
@@ -539,11 +641,14 @@ public final class TimelinePanel {
         controller.applyCurrentPose();
     }
 
+    private float snapIfEnabled(float t, AnimationClip clip) {
+        boolean snap = controller.state().snapToFrames() && !ImGui.getIO().getKeyAlt();
+        return snap ? TimelineLayout.snap(t, clip.fps()) : t;
+    }
+
     /** The time a dragged keyframe lands at: offset, clamped, frame-snapped unless Alt. */
     private float ghostTime(float origTime, AnimationClip clip) {
-        float t = origTime + dragDeltaTime;
-        boolean snap = controller.state().snapToFrames() && !ImGui.getIO().getKeyAlt();
-        if (snap) t = TimelineLayout.snap(t, clip.fps());
+        float t = snapIfEnabled(origTime + dragDeltaTime, clip);
         return Math.min(Math.max(t, 0f), clip.duration());
     }
 
@@ -570,9 +675,9 @@ public final class TimelinePanel {
         return (row >= 0 && row < rowCount) ? row : -1;
     }
 
-    private static int rowOfPart(List<ModelPartDescriptor> parts, String partId) {
-        for (int i = 0; i < parts.size(); i++) {
-            if (parts.get(i).id().equals(partId)) return i;
+    private static int rowOfPart(List<PartRows.Row> rows, String partId) {
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).id().equals(partId)) return i;
         }
         return -1;
     }

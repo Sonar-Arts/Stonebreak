@@ -220,6 +220,7 @@ public final class UiComposition {
             animationEditor = new AnimationEditorImGui();
             animationEditor.setFileDialogService(mainInterface.getFileDialogService());
             mainInterface.setAnimationEditorInterface(animationEditor);
+            wireAnimationEditor();
 
             // Load custom keybinds AFTER both viewport and texture editor are initialized
             loadCustomKeybinds();
@@ -343,15 +344,7 @@ public final class UiComposition {
             }
             host.showTextureEditor();
         });
-        mainInterface.setOpenAnimationEditorCallback(() -> {
-            if (animationEditor == null) return;
-            // Bind the animation editor to whatever model is currently loaded so
-            // the timeline drives this viewport's parts.
-            if (mainInterface.getViewport3D() != null) {
-                animationEditor.bindViewport(mainInterface.getViewport3D().getPartManager());
-            }
-            animationEditor.show();
-        });
+        mainInterface.setOpenAnimationEditorCallback(this::openAnimationEditor);
         mainInterface.setTextureCreatorInterface(textureCreatorInterface);
 
         // Reset texture editor when a new/different model is loaded. Single
@@ -368,6 +361,59 @@ public final class UiComposition {
 
         textureCreatorInterface.setBackToHomeCallback(host::transitionToHomeScreen);
         textureCreatorInterface.setPreferencesCallback(mainInterface.getShowPreferencesCallback());
+    }
+
+    /**
+     * Bind the animation editor to whatever model is currently loaded so the
+     * timeline drives this viewport's parts, then show it. Re-binding while
+     * already open is routed through {@code onModelChanged} so the preview's
+     * rest-pose snapshot is not clobbered.
+     */
+    private void openAnimationEditor() {
+        if (animationEditor == null) return;
+        if (mainInterface.getViewport3D() != null) {
+            var pm = mainInterface.getViewport3D().getPartManager();
+            if (animationEditor.isVisible() && animationEditor.getController().partManager() == pm) {
+                // already bound to this model
+            } else if (animationEditor.isVisible()) {
+                animationEditor.getController().onModelChanged(pm);
+            } else {
+                animationEditor.bindViewport(pm);
+            }
+        }
+        animationEditor.show();
+    }
+
+    /**
+     * Cross-wiring the animation editor needs beyond its own window: the
+     * model save puts the viewport at rest for the write (no preview pose in
+     * the .omo), the clip records which model it targets, and the SBE/SBO
+     * state editors can hand clips to/from the editor without a file.
+     */
+    private void wireAnimationEditor() {
+        var controller = animationEditor.getController();
+        mainInterface.getModelOperations().setAroundSaveHooks(
+                () -> { if (animationEditor.isVisible()) controller.suspendPreview(); },
+                () -> { if (animationEditor.isVisible()) controller.resumePreview(); });
+        controller.setModelRefSupplier(() -> {
+            var ms = mainInterface.getModelState();
+            if (ms == null) return null;
+            String omo = ms.getCurrentOMOFilePath();
+            return omo != null ? omo : ms.getCurrentModelPath();
+        });
+        var bridge = new com.openmason.main.systems.menus.dialogs.AnimationClipBridge(
+                controller::exportClipBytes,
+                (bytes, label) -> {
+                    openAnimationEditor();
+                    animationEditor.confirmDiscardThen(() -> controller.importClipBytes(bytes, label));
+                },
+                () -> controller.state().clip().name());
+        if (mainInterface.getSBEEditorWindow() != null) {
+            mainInterface.getSBEEditorWindow().setAnimationBridge(bridge);
+        }
+        if (mainInterface.getSBOEditorWindow() != null) {
+            mainInterface.getSBOEditorWindow().setAnimationBridge(bridge);
+        }
     }
 
     private void setWindowHandles() {

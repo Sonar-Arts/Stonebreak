@@ -27,6 +27,12 @@ public final class AnimationEditorState {
     private final KeyframeClipboard clipboard = new KeyframeClipboard();
     private String filePath;              // null if never saved
     private boolean dirty = false;
+    private boolean autoKey = false;      // viewport edits upsert a keyframe at the playhead
+    /** Part most recently moved in the viewport without being keyed (auto-key off); null when none. */
+    private String unkeyedPartId;
+    /** Optional BASE clip the preview layers this OVERLAY clip on top of. */
+    private AnimationClip basePreviewClip;
+    private String basePreviewPath;
 
     // Timeline view state
     private float timelineZoom = 1f;      // 1 = whole clip fits the bar
@@ -108,6 +114,21 @@ public final class AnimationEditorState {
     public boolean dirty() { return dirty; }
     public void markDirty() { this.dirty = true; }
     public void markClean() { this.dirty = false; }
+    /** Direct set for history-position based dirty tracking (see controller). */
+    public void setDirty(boolean dirty) { this.dirty = dirty; }
+
+    public boolean autoKey() { return autoKey; }
+    public void setAutoKey(boolean autoKey) { this.autoKey = autoKey; }
+
+    public String unkeyedPartId() { return unkeyedPartId; }
+    public void setUnkeyedPartId(String partId) { this.unkeyedPartId = partId; }
+
+    public AnimationClip basePreviewClip() { return basePreviewClip; }
+    public String basePreviewPath() { return basePreviewPath; }
+    public void setBasePreviewClip(AnimationClip clip, String path) {
+        this.basePreviewClip = clip;
+        this.basePreviewPath = clip != null ? path : null;
+    }
 
     // ---------- timeline view ----------
 

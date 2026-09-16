@@ -56,25 +56,40 @@ public final class OMASerializer {
         }
         String resolved = OMAFormat.ensureExtension(filePath);
 
-        try (FileOutputStream fos = new FileOutputStream(resolved);
-             ZipOutputStream zos = new ZipOutputStream(fos)) {
-
-            List<TrackRef> trackRefs = new ArrayList<>();
-            for (Track track : clip.tracks().values()) {
-                String filename = OMAFormat.trackFilename(track.partId());
-                String partName = partNameLookup != null ? partNameLookup.apply(track.partId()) : null;
-                trackRefs.add(new TrackRef(track.partId(), partName, filename));
-                writeTrack(zos, filename, track);
-            }
-
-            writeManifest(zos, clip, trackRefs);
-
+        try (FileOutputStream fos = new FileOutputStream(resolved)) {
+            write(clip, fos, partNameLookup);
             logger.info("Saved animation clip '{}' ({} tracks) to {}",
                     clip.name(), clip.tracks().size(), resolved);
             return true;
         } catch (IOException ex) {
             logger.error("Failed to save .oma to {}", resolved, ex);
             return false;
+        }
+    }
+
+    /**
+     * Serialize the clip to an in-memory {@code .omanim} archive — the bytes
+     * an SBE/SBO state embeds. Same layout as {@link #save}.
+     */
+    public byte[] toBytes(AnimationClip clip, java.util.function.Function<String, String> partNameLookup)
+            throws IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        write(clip, out, partNameLookup);
+        return out.toByteArray();
+    }
+
+    private void write(AnimationClip clip, java.io.OutputStream out,
+                       java.util.function.Function<String, String> partNameLookup) throws IOException {
+        try (ZipOutputStream zos = new ZipOutputStream(out)) {
+            List<TrackRef> trackRefs = new ArrayList<>();
+            for (Track track : clip.tracks().values()) {
+                String filename = OMAFormat.trackFilename(track.partId());
+                String partName = partNameLookup != null ? partNameLookup.apply(track.partId()) : null;
+                if (partName == null) partName = track.partNameHint();
+                trackRefs.add(new TrackRef(track.partId(), partName, filename));
+                writeTrack(zos, filename, track);
+            }
+            writeManifest(zos, clip, trackRefs);
         }
     }
 

@@ -50,6 +50,8 @@ public class ModelOperationService {
 
     // Called when a new/different model is loaded to reset dependent editor state
     private Runnable onModelChangedCallback;
+    private Runnable beforeSave = () -> { };
+    private Runnable afterSave = () -> { };
 
     /** Fired with the absolute path after a successful .omo save; the Scene Viewer reloads placements from it. */
     private java.util.function.Consumer<String> onModelSaved = path -> { };
@@ -82,6 +84,17 @@ public class ModelOperationService {
     /** Register the hook fired after every successful .omo save (absolute path). */
     public void setOnModelSaved(java.util.function.Consumer<String> callback) {
         this.onModelSaved = callback != null ? callback : path -> { };
+    }
+
+    /**
+     * Hooks run immediately before the viewport is read for serialization and
+     * (always, even on failure) after. The animation editor uses them to put
+     * the model back at its rest pose for the save and re-apply the preview
+     * pose afterwards, so an animated preview is never baked into the .omo.
+     */
+    public void setAroundSaveHooks(Runnable beforeSave, Runnable afterSave) {
+        this.beforeSave = beforeSave != null ? beforeSave : () -> { };
+        this.afterSave = afterSave != null ? afterSave : () -> { };
     }
 
     /**
@@ -210,6 +223,23 @@ public class ModelOperationService {
     private void saveModelToFile(String filePath) {
         statusService.updateStatus("Saving model...");
 
+        try {
+            beforeSave.run();
+        } catch (Exception e) {
+            logger.warn("Pre-save hook failed: {}", e.getMessage());
+        }
+        try {
+            saveModelToFileInner(filePath);
+        } finally {
+            try {
+                afterSave.run();
+            } catch (Exception e) {
+                logger.warn("Post-save hook failed: {}", e.getMessage());
+            }
+        }
+    }
+
+    private void saveModelToFileInner(String filePath) {
         try {
             // ALWAYS extract mesh data to make .omo files self-contained
             OMOFormat.MeshData meshData = null;

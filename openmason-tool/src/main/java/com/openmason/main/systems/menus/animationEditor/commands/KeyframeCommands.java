@@ -174,34 +174,40 @@ public final class KeyframeCommands {
     /**
      * Replace the keyframe at {@code index} with a new pose at the same or
      * different time. Used by the inspector for single-keyframe edits.
-     * <p>Undo locates the keyframe by its new time — do NOT use for bulk moves;
-     * use {@link #replaceTrackKeyframes} instead.
+     *
+     * <p>Retiming onto another keyframe's time <em>displaces</em> that
+     * keyframe (a track never holds two keys at one time — matching
+     * {@link Track#upsert}); undo restores both. Undo locates the edited key
+     * by identity, not time, so it is safe even when times coincide.
      */
     public static Command edit(AnimationClip clip, String partId, int index, Keyframe newKf) {
         return new Command() {
             private Keyframe before;
+            private Keyframe displaced;   // key that sat at newKf.time(), if any
 
             @Override
             public void execute() {
                 Track track = clip.trackFor(partId);
                 if (track == null || index < 0 || index >= track.size()) return;
                 before = track.get(index);
-                track.set(index, newKf);
-                track.resort();
+                track.removeAt(index);
+                displaced = null;
+                for (int i = 0; i < track.size(); i++) {
+                    if (Math.abs(track.get(i).time() - newKf.time()) < 1e-4f) {
+                        displaced = track.get(i);
+                        break;
+                    }
+                }
+                track.upsert(newKf);
             }
 
             @Override
             public void undo() {
                 Track track = clip.trackFor(partId);
                 if (track == null || before == null) return;
-                // The edit may have moved the keyframe — search by the new time and revert.
-                for (int i = 0; i < track.size(); i++) {
-                    if (Math.abs(track.get(i).time() - newKf.time()) < 1e-4f) {
-                        track.set(i, before);
-                        track.resort();
-                        return;
-                    }
-                }
+                removeByIdentity(track, newKf);
+                if (displaced != null) track.upsert(displaced);
+                track.upsert(before);
             }
 
             @Override
@@ -209,5 +215,92 @@ public final class KeyframeCommands {
                 return "Edit keyframe on " + partId;
             }
         };
+    }
+
+    /**
+     * Re-key a track under a different part id (the manual "rebind orphan
+     * track" operation). If the target already has a track, the rebound
+     * keyframes are merged into it (same-time keys replace); undo restores
+     * both tracks exactly.
+     */
+    public static Command rebindTrack(AnimationClip clip, String fromPartId,
+                                      String toPartId, String toPartName) {
+        return new Command() {
+            private java.util.List<Keyframe> fromKeys;
+            private String fromHint;
+            private java.util.List<Keyframe> toKeysBefore;   // null = no target track existed
+            private String toHintBefore;
+
+            @Override
+            public void execute() {
+                Track from = clip.trackFor(fromPartId);
+                if (from == null || fromPartId.equals(toPartId)) return;
+                fromKeys = new java.util.ArrayList<>(from.keyframes());
+                fromHint = from.partNameHint();
+                clip.removeTrack(fromPartId);
+
+                Track to = clip.trackFor(toPartId);
+                if (to != null) {
+                    toKeysBefore = new java.util.ArrayList<>(to.keyframes());
+                    toHintBefore = to.partNameHint();
+                } else {
+                    toKeysBefore = null;
+                    to = clip.ensureTrack(toPartId);
+                }
+                to.setPartNameHint(toPartName);
+                for (Keyframe kf : fromKeys) to.upsert(kf);
+            }
+
+            @Override
+            public void undo() {
+                if (fromKeys == null) return;
+                if (toKeysBefore == null) {
+                    clip.removeTrack(toPartId);
+                } else {
+                    Track to = clip.ensureTrack(toPartId);
+                    to.keyframes().clear();
+                    for (Keyframe kf : toKeysBefore) to.upsert(kf);
+                    to.setPartNameHint(toHintBefore);
+                }
+                Track from = clip.ensureTrack(fromPartId);
+                from.keyframes().clear();
+                from.setPartNameHint(fromHint);
+                for (Keyframe kf : fromKeys) from.upsert(kf);
+            }
+
+            @Override
+            public String getDescription() {
+                return "Rebind track " + fromPartId + " -> " + toPartId;
+            }
+        };
+    }
+
+    /**
+     * Drop every keyframe past {@code duration} on every track, as one
+     * command (tracks left empty are removed). No-op when nothing is beyond.
+     */
+    public static Command trimBeyond(AnimationClip clip, float duration) {
+        java.util.List<Command> parts = new java.util.ArrayList<>();
+        for (Track track : clip.tracks().values()) {
+            java.util.List<Keyframe> keep = new java.util.ArrayList<>();
+            for (Keyframe kf : track.keyframes()) {
+                if (kf.time() <= duration + 1e-4f) keep.add(kf);
+            }
+            if (keep.size() != track.size()) {
+                parts.add(replaceTrackKeyframes(clip, track.partId(), track.keyframes(), keep));
+            }
+        }
+        return parts.isEmpty() ? null
+                : new CompositeCommand("Trim keyframes beyond " + duration + "s", parts);
+    }
+
+    /** Remove the exact keyframe instance (identity, not time) from a track. */
+    static void removeByIdentity(Track track, Keyframe kf) {
+        for (int i = 0; i < track.size(); i++) {
+            if (track.get(i) == kf) {
+                track.removeAt(i);
+                return;
+            }
+        }
     }
 }

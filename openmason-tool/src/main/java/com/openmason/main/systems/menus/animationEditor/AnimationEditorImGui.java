@@ -10,6 +10,8 @@ import com.openmason.main.systems.menus.animationEditor.panels.TransportPanel;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
+import imgui.flag.ImGuiFocusedFlags;
+import imgui.flag.ImGuiHoveredFlags;
 import imgui.flag.ImGuiKey;
 import imgui.flag.ImGuiTableColumnFlags;
 import imgui.flag.ImGuiTableFlags;
@@ -18,11 +20,14 @@ import imgui.type.ImBoolean;
 
 /**
  * Single-window Animation Editor — owns the controller, composes the panels,
- * routes shortcuts. All real UI logic lives in the {@code panels} package.
+ * routes shortcuts, and guards unsaved changes (New / Open / closing the
+ * window ask before discarding). All real UI logic lives in the
+ * {@code panels} package.
  */
 public final class AnimationEditorImGui {
 
     private static final String WINDOW_TITLE = "Animation Editor";
+    private static final String DISCARD_POPUP = "Unsaved animation changes";
 
     private final AnimationEditorController controller = new AnimationEditorController();
     private final ImBoolean visible = new ImBoolean(false);
@@ -33,12 +38,21 @@ public final class AnimationEditorImGui {
     private final TimelinePanel timeline = new TimelinePanel(controller);
     private final KeyframeInspectorPanel inspector = new KeyframeInspectorPanel(controller);
 
+    /** Action waiting on the discard-confirmation popup; null when none. */
+    private Runnable pendingDiscardAction;
+    private boolean openDiscardPopup;
+
+    public AnimationEditorImGui() {
+        fileBar.setDiscardGuard(this::confirmDiscardThen);
+    }
+
     public AnimationEditorController getController() {
         return controller;
     }
 
     public void setFileDialogService(FileDialogService service) {
         fileBar.setFileDialogService(service);
+        inspector.setFileDialogService(service);
     }
 
     public void show() { visible.set(true); }
@@ -56,6 +70,21 @@ public final class AnimationEditorImGui {
         controller.bindViewport(partManager);
     }
 
+    /**
+     * Run {@code action} now if the clip is clean, otherwise after the user
+     * chooses Save / Discard in the confirmation popup (Cancel drops it).
+     */
+    public void confirmDiscardThen(Runnable action) {
+        if (action == null) return;
+        if (!controller.state().dirty()) {
+            action.run();
+            return;
+        }
+        pendingDiscardAction = action;
+        openDiscardPopup = true;
+        visible.set(true);
+    }
+
     /** Per-frame entry point. Caller passes deltaTime so playback can advance. */
     public void render(float deltaTime) {
         if (!visible.get()) return;
@@ -65,7 +94,7 @@ public final class AnimationEditorImGui {
         ImGui.setNextWindowSize(1100, 600, ImGuiCond.FirstUseEver);
         if (!ImGui.begin(WINDOW_TITLE, visible, ImGuiWindowFlags.NoCollapse)) {
             ImGui.end();
-            if (!visible.get()) controller.endSession();
+            handleCloseRequest();
             return;
         }
 
@@ -91,12 +120,78 @@ public final class AnimationEditorImGui {
             ImGui.endTable();
         }
 
+        renderDiscardPopup();
+
         ImGui.end();
-        if (!visible.get()) controller.endSession();
+        handleCloseRequest();
+    }
+
+    /** The window's X was clicked: close only once unsaved changes are resolved. */
+    private void handleCloseRequest() {
+        if (visible.get()) return;
+        if (controller.state().dirty() && pendingDiscardAction == null) {
+            confirmDiscardThen(() -> {
+                visible.set(false);
+                controller.endSession();
+            });
+            return;
+        }
+        if (pendingDiscardAction == null) {
+            controller.endSession();
+        } else {
+            // A popup is pending; keep the window alive until it is answered.
+            visible.set(true);
+        }
+    }
+
+    private void renderDiscardPopup() {
+        if (openDiscardPopup) {
+            ImGui.openPopup(DISCARD_POPUP);
+            openDiscardPopup = false;
+        }
+        if (!ImGui.beginPopupModal(DISCARD_POPUP, ImGuiWindowFlags.AlwaysAutoResize)) {
+            return;
+        }
+        String name = controller.state().clip().name();
+        ImGui.text("'" + name + "' has unsaved changes.");
+        ImGui.spacing();
+        if (ImGui.button("Save", 90, 0)) {
+            Runnable action = pendingDiscardAction;
+            pendingDiscardAction = null;
+            ImGui.closeCurrentPopup();
+            if (controller.state().filePath() != null) {
+                if (controller.save() && action != null) action.run();
+            } else {
+                // Save As is asynchronous (native dialog); continue only once saved.
+                fileBar.promptSaveAs();
+                if (!controller.state().dirty() && action != null) action.run();
+            }
+        }
+        ImGui.sameLine();
+        if (ImGui.button("Discard", 90, 0)) {
+            Runnable action = pendingDiscardAction;
+            pendingDiscardAction = null;
+            ImGui.closeCurrentPopup();
+            if (action != null) action.run();
+        }
+        ImGui.sameLine();
+        if (ImGui.button("Cancel", 90, 0)) {
+            pendingDiscardAction = null;
+            ImGui.closeCurrentPopup();
+        }
+        ImGui.endPopup();
     }
 
     private void handleShortcuts() {
-        if (!ImGui.isWindowFocused() && !ImGui.isWindowHovered()) return;
+        // The timeline and part list are child windows: a click on a keyframe
+        // focuses the child, so test the whole window family, not just the root.
+        if (!ImGui.isWindowFocused(ImGuiFocusedFlags.RootAndChildWindows)
+                && !ImGui.isWindowHovered(ImGuiHoveredFlags.ChildWindows)) {
+            return;
+        }
+        // A text field owns the keyboard: no editor shortcuts at all — not even
+        // Ctrl+C/V, which must keep their text-editing meaning there.
+        if (ImGui.getIO().getWantTextInput()) return;
 
         boolean ctrl = ImGui.getIO().getKeyCtrl();
         boolean shift = ImGui.getIO().getKeyShift();
@@ -110,11 +205,12 @@ public final class AnimationEditorImGui {
             controller.copySelection();
         } else if (ctrl && ImGui.isKeyPressed(ImGuiKey.V)) {
             controller.pasteAtPlayhead();
+        } else if (ctrl && ImGui.isKeyPressed(ImGuiKey.A)) {
+            controller.selectAll();
+        } else if (ctrl && ImGui.isKeyPressed(ImGuiKey.D)) {
+            controller.duplicateSelectionToPlayhead();
         }
-
-        // Everything below is a bare-key shortcut — suppress while a text
-        // field owns the keyboard so typing doesn't trigger edits.
-        if (ImGui.getIO().getWantTextInput()) return;
+        if (ctrl) return;
 
         int stride = shift ? 5 : 1;
         if (ImGui.isKeyPressed(ImGuiKey.LeftArrow)) {

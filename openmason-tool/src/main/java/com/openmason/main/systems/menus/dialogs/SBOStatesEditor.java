@@ -66,6 +66,12 @@ public final class SBOStatesEditor implements AutoCloseable {
     private final List<Row> rows = new ArrayList<>();
     private int defaultRowIndex = 0;
     private boolean modelKind = true;
+    private AnimationClipBridge animBridge;
+
+    /** Link to the Animation Editor for in-memory clip round trips (optional). */
+    public void setAnimationBridge(AnimationClipBridge bridge) {
+        this.animBridge = bridge;
+    }
 
     private final MortarRegionPool headerPool = new MortarRegionPool();
 
@@ -363,7 +369,39 @@ public final class SBOStatesEditor implements AutoCloseable {
                     pickClip(row);
                 }
             }
+            renderEditorBridge(row);
         }
+    }
+
+    /** "From editor" / "Edit in editor" buttons — clip round trip without a file. */
+    private void renderEditorBridge(Row row) {
+        if (animBridge == null) return;
+        ImGui.pushID("animBridge");
+        ImGui.textDisabled("  ");
+        ImGui.sameLine();
+        if (ImGui.smallButton("From editor")) {
+            byte[] bytes = animBridge.fromEditor().get();
+            if (bytes != null) {
+                row.clipBytes = bytes;
+                row.clipLabel = "(editor: " + animBridge.editorClipName().get() + ")";
+                onDirty.run();
+            }
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Embed the clip currently open in the Animation Editor as this state's clip.");
+        }
+        if (row.hasClip()) {
+            ImGui.sameLine();
+            if (ImGui.smallButton("Edit in editor")) {
+                String label = row.clipLabel != null ? row.clipLabel : "(embedded)";
+                animBridge.openInEditor().accept(row.clipBytes, "SBO state '" + row.name.get().trim() + "' " + label);
+            }
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Open this state's embedded clip in the Animation Editor. "
+                        + "Use 'From editor' afterwards to write the edited clip back.");
+            }
+        }
+        ImGui.popID();
     }
 
     private void pickAsset(Row row) {

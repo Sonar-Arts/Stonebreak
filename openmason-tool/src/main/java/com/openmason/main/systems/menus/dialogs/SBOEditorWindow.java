@@ -120,6 +120,12 @@ public class SBOEditorWindow {
         this.dropsSection = new SBODropsSection(() -> dirty = true);
     }
 
+    /** Link the states editor to the Animation Editor (in-memory clip round trips). */
+    public void setAnimationBridge(AnimationClipBridge bridge) {
+        statesEditor.setAnimationBridge(bridge);
+    }
+
+
     /**
      * Open the editor: prompts for an SBO file, loads it on success.
      */
