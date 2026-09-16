@@ -88,17 +88,6 @@ public final class VertexLightSampler {
         int nx = face == 4 ? 1 : face == 5 ? -1 : 0;
         int ny = face == 0 ? 1 : face == 1 ? -1 : 0;
         int nz = face == 3 ? 1 : face == 2 ? -1 : 0;
-        // Interior plane: the face sits inside its cell along the normal (not on a
-        // boundary). Its tangent axes collapse to the own column, so the emitting
-        // cell's own row IS the visible surface — it must count as under sky even
-        // when the column above is genuinely occluded (a stacked formation's lower
-        // cell would otherwise sample sky 0 and render uniformly dark, seamed
-        // exactly at the cell boundary). Samples above the emitting row stay
-        // genuinely shaded.
-        float normalCoord = nx != 0 ? vx : ny != 0 ? vy : vz;
-        float boundaryDist = normalCoord - (float) Math.floor(normalCoord);
-        boundaryDist = Math.min(boundaryDist, 1f - boundaryDist);
-        boolean interiorPlane = boundaryDist > CELL_EPS;
         int xlo = nx != 0 ? floorAlongNormal(vx, nx) : floor(vx - CELL_EPS);
         int xhi = nx != 0 ? xlo : floor(vx + CELL_EPS);
         int ylo = ny != 0 ? floorAlongNormal(vy, ny) : floor(vy - CELL_EPS);
@@ -122,7 +111,7 @@ public final class VertexLightSampler {
                 } else {                  // east/west: tangents y, z
                     cx = xlo; cy = a == 0 ? ylo : yhi; cz = b == 0 ? zlo : zhi;
                 }
-                int h = columnHeight(ctx, cx, cz, ownX, ownY, ownZ, interiorPlane, cy);
+                int h = columnHeight(ctx, cx, cz, ownX, ownY, ownZ);
                 if (h < 0) continue;
                 sampled++;
                 if (cy >= h) litCount++;
@@ -181,21 +170,12 @@ public final class VertexLightSampler {
     }
 
     /**
-     * Column height with the emitting block's own cell treated as open:
-     * when the block itself is the column's topmost occluder, the sky starts at
-     * its floor — and for an interior face the emitting cell's own row is the
-     * visible surface (the tangent axes collapse to the own column), so that
-     * row counts as under sky regardless of what occludes the column above.
-     * Samples above the emitting row stay genuinely shaded — the block above a
-     * stacked formation really does occlude its column.
+     * Column height with the emitting block's own cell treated as open: when the
+     * block itself is the column's topmost occluder, the sky starts at its floor.
      */
-    private static int columnHeight(LightingContext ctx, int x, int z, int ownX, int ownY, int ownZ,
-                                    boolean interiorPlane, int cy) {
+    private static int columnHeight(LightingContext ctx, int x, int z, int ownX, int ownY, int ownZ) {
         int h = ctx.getColumnHeight(x, z);
-        if (x == ownX && z == ownZ) {
-            if (h == ownY + 1) return ownY;               // topmost occluder: sky starts at its floor
-            if (interiorPlane && cy == ownY) return ownY; // interior face: the emitting row is the visible surface
-        }
+        if (h == ownY + 1 && x == ownX && z == ownZ) return ownY;
         return h;
     }
 

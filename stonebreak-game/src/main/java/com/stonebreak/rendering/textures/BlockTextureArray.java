@@ -276,11 +276,10 @@ public class BlockTextureArray {
         // to its own material. Materials without embedded PNG bytes (e.g. the
         // cactus's black-tint thorn tints) are skipped — those faces fall back
         // to the geometric MMS face's layer.
+        // Last mapping wins for a duplicated face id, exactly like faceToMaterialId
+        // above — the flush and interior halves of one face must agree.
         Map<Integer, Float> authoredFaceLayers = new HashMap<>();
         for (ParsedFaceMapping mapping : sbo.faceMappings()) {
-            if (authoredFaceLayers.containsKey(mapping.faceId())) {
-                continue; // first mapping wins, mirroring faceToMaterialId's put
-            }
             BufferedImage mapped = materialTextures.get(mapping.materialId());
             if (mapped == null) {
                 continue;
@@ -344,9 +343,6 @@ public class BlockTextureArray {
         Map<Integer, Float> authoredFaceLayers = new HashMap<>();
         if (variant.faceMappings() != null) {
             for (ParsedFaceMapping mapping : variant.faceMappings()) {
-                if (authoredFaceLayers.containsKey(mapping.faceId())) {
-                    continue;
-                }
                 BufferedImage mapped = materialTextures.get(mapping.materialId());
                 if (mapped == null) {
                     continue;

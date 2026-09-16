@@ -8,8 +8,8 @@ import com.stonebreak.blocks.BlockType;
  *
  * <p>Collapses block-type metadata down to a boolean — the heightmap design
  * only cares whether a block fully blocks the sky beam. Leaves, glass,
- * flowers, water, and snow all pass light through; every other block is
- * treated as solid.
+ * flowers, water, snow and the thin shaped formations (stalagmites, cacti)
+ * all pass light through; every other block is treated as solid.
  *
  * <p>If emissive / semi-transparent tiers are needed later, extend here.
  */
@@ -29,6 +29,7 @@ public final class BlockOpacity {
                 && type != BlockType.SNOW
                 && type != BlockType.TORCH_PLACED
                 && type != BlockType.LIMESTONE_STALAGMITE
+                && type != BlockType.CACTUS
                 && type != BlockType.LEAVES
                 && type != BlockType.PINE_LEAVES
                 && type != BlockType.ELM_LEAVES;
