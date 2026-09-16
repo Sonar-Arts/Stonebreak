@@ -244,6 +244,9 @@ int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
  *   23   min_points            vertices        4  solve
  *   24   tunnel_headroom       blocks          5  carve
  *   25   tunnel_min_roof       blocks          4  carve
+ *   26   lake_shore_reach      blocks         64  carve   (clamped to T-1)
+ *   27   lake_shore_max_depth  blocks          8  carve
+ *   28   lake_link_reach       blocks        128  solve
  *
  * Five deliberate departures from §8's table:
  *

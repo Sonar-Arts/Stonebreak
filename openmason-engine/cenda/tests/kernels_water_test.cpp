@@ -104,6 +104,64 @@ int16_t bowlTerrainAt(int64_t x, int64_t z, int64_t bx, int64_t bz) {
     return static_cast<int16_t>(base);
 }
 
+/* The same bowl with the block-scale detail the coarse DEM never sees.
+ *
+ * Not decoration, and not a stand-in for "noise": it is the actual relationship
+ * between the two fields the lake stamp compares. The bridge fetches the coarse
+ * DEM with `scale=1`, which never runs the upsampler that adds slope-scaled
+ * Perlin, while a block tile is fetched at `scale=2` and does. So the coarse
+ * surface is SMOOTH and the block surface wobbles a few blocks either side of
+ * it — and a fixture whose two fields agree (every bowl test before this one)
+ * cannot see a shoreline defect at all, which is why the plan's "zero raised
+ * columns" measurement was true and meant nothing.
+ *
+ * +-3 blocks on a 0.12-per-block cone moves the real waterline up to ~25 blocks
+ * in or out, comfortably past the 8 blocks of dilation the cell mask allows. */
+int16_t bowlDetailAt(int64_t x, int64_t z, int64_t bx, int64_t bz) {
+    return static_cast<int16_t>(
+        bowlTerrainAt(x, z, bx, bz)
+        + 3.0 * std::sin(static_cast<double>(x) * 0.07 + 0.3)
+              * std::cos(static_cast<double>(z) * 0.061));
+}
+
+/* The bowl with a narrow slot cut clean through its rim, 14 blocks below the
+ * water it will hold. A 16x16 mean barely registers a slot this narrow, so the
+ * fill fills the bowl as if the rim were whole — which is exactly the case the
+ * shore flood must NOT chase, or it runs a tongue of water down the outside. */
+int16_t notchedBowlAt(int64_t x, int64_t z, int64_t bx, int64_t bz) {
+    const int16_t h = bowlTerrainAt(x, z, bx, bz);
+    /* One block wide and open-ended. Both matter: a 16x16 mean drops by under
+     * a block, so the fill's spill barely moves and the lake still fills to
+     * nearly the smooth rim; and a trench with a far END would be a depression
+     * the fill is RIGHT to fill, which is not the case under test. */
+    if (z == bz && x > bx + 80) {
+        return static_cast<int16_t>(h - 14);
+    }
+    return h;
+}
+
+/* Two bowls 220 blocks apart with a 20-block step of ground between them, so
+ * the second holds its water well below the first's spill: §5.2's case where a
+ * lake is perched over another one and the two must be joined. */
+int16_t twoBowlsAt(int64_t x, int64_t z, int64_t bx, int64_t bz) {
+    double base = 500.0 - 0.02 * static_cast<double>(x);
+    if (x > bx + 110) {
+        base -= 20.0;
+    }
+    const auto dip = [&](int64_t cx, int64_t cz) {
+        const double dx = static_cast<double>(x - cx);
+        const double dz = static_cast<double>(z - cz);
+        const double r = std::sqrt(dx * dx + dz * dz);
+        const double R = 100.0;
+        if (r < R) {
+            base -= 24.0 * (1.0 - r / R);
+        }
+    };
+    dip(bx, bz);
+    dip(bx + 220, bz);
+    return static_cast<int16_t>(base);
+}
+
 /* ── The region solve, and the per-tile slice of it ─────────────────────── */
 
 /** One L1 region's solved planes, held the way BasinCache holds them. */
@@ -563,7 +621,7 @@ void testNoRoutesMeansNoRivers() {
 /* ── Phase 10: the shared params array ──────────────────────────────────── */
 
 /** The defaults kernels.h documents, in its own order. */
-const float DOCUMENTED_DEFAULTS[26] = {
+const float DOCUMENTED_DEFAULTS[29] = {
     0.5f,      /*  0 min_lake_depth      */
     8.0f,      /*  1 min_lake_area       */
     320.0f,    /*  2 sea_level           */
@@ -590,6 +648,9 @@ const float DOCUMENTED_DEFAULTS[26] = {
     4.0f,      /* 23 min_points          */
     5.0f,      /* 24 tunnel_headroom     */
     4.0f,      /* 25 tunnel_min_roof     */
+    64.0f,     /* 26 lake_shore_reach    */
+    8.0f,      /* 27 lake_shore_max_depth*/
+    128.0f,    /* 28 lake_link_reach     */
 };
 
 /* Mirrors DOCUMENTED_DEFAULTS[25]; the tests below assert against the lid the
@@ -597,7 +658,9 @@ const float DOCUMENTED_DEFAULTS[26] = {
 constexpr int TUNNEL_MIN_ROOF = 4;
 
 /** Solve one region with an explicit params array. */
-Region solveWithParams(const float* params, int32_t n) {
+template <typename F = int16_t (*)(int64_t, int64_t)>
+Region solveWithParams(const float* params, int32_t n,
+                       F&& terrain = riverTerrainAt, int64_t seed = 31337) {
     Region r;
     r.originX = -2048;
     r.originZ = -2048;
@@ -607,8 +670,8 @@ Region solveWithParams(const float* params, int32_t n) {
             double acc = 0.0;
             for (int a = 0; a < CELL; ++a) {
                 for (int b = 0; b < CELL; ++b) {
-                    acc += riverTerrainAt(r.originX + static_cast<int64_t>(i) * CELL + a,
-                                          r.originZ + static_cast<int64_t>(j) * CELL + b);
+                    acc += terrain(r.originX + static_cast<int64_t>(i) * CELL + a,
+                                   r.originZ + static_cast<int64_t>(j) * CELL + b);
                 }
             }
             dem[idx(i, j, REGION_CELLS)] = static_cast<float>(acc / (CELL * CELL));
@@ -621,7 +684,7 @@ Region solveWithParams(const float* params, int32_t n) {
     r.starts.assign(MAX_ROUTES + 1, 0);
     r.verts.assign(static_cast<size_t>(MAX_VERTS) * CK_RIVER_VERTEX_FLOATS, 0.0f);
     int32_t counts[2] = {0, 0};
-    r.withheld = ck_solve_basins(31337, REGION_BLOCKS, HALO_BLOCKS,
+    r.withheld = ck_solve_basins(seed, REGION_BLOCKS, HALO_BLOCKS,
                                  REGION_CELLS, CELL,
                                  r.originX, r.originZ, dem.data(), params, n,
                                  0, 0, 0, 0, nullptr, nullptr,
@@ -638,7 +701,7 @@ void testDocumentedDefaultsAreTheRealDefaults() {
      * default edited in the code and not in the table — or an index that
      * shifted when a knob was inserted — shows up here and nowhere else. */
     const Region none = solveWithParams(nullptr, 0);
-    const Region spelled = solveWithParams(DOCUMENTED_DEFAULTS, 26);
+    const Region spelled = solveWithParams(DOCUMENTED_DEFAULTS, 29);
 
     check(none.routeCount == spelled.routeCount,
           "the documented defaults plan the same rivers as no params at all");
@@ -684,7 +747,7 @@ void testDocumentedDefaultsAreTheRealDefaults() {
     ck_carve_water(31337, T, static_cast<int32_t>(ox), static_cast<int32_t>(oz),
                    win.data(), SEA, WH, SPAN_CELLS, CELL, spanF.data(), spanD.data(),
                    none.routeCount, none.starts.data(), none.verts.data(),
-                   DOCUMENTED_DEFAULTS, 26, outH.data(), outW.data(),
+                   DOCUMENTED_DEFAULTS, 29, outH.data(), outW.data(),
                    outF.data(), outR.data());
     check(std::memcmp(a.heights.data(), outH.data(), outH.size() * 2) == 0
               && std::memcmp(a.water.data(), outW.data(), outW.size() * 2) == 0
@@ -878,23 +941,23 @@ void testATunnelIsSealedByTheRockAroundIt() {
 }
 
 void testEachDensityKnobMovesInTheDocumentedDirection() {
-    float p[26];
+    float p[29];
     std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
-    const Region base = solveWithParams(p, 26);
+    const Region base = solveWithParams(p, 29);
 
     p[4] = 0.0f;   /* river_keep_fraction */
-    check(solveWithParams(p, 26).routeCount == 0, "[4] keep fraction 0 plans no rivers");
+    check(solveWithParams(p, 29).routeCount == 0, "[4] keep fraction 0 plans no rivers");
     p[4] = 1.0f;
-    const Region all = solveWithParams(p, 26);
+    const Region all = solveWithParams(p, 29);
     check(all.routeCount >= base.routeCount, "[4] keep fraction 1 plans at least as many");
     std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
 
     p[3] = 100000.0f;  /* min_river_lake_area */
-    check(solveWithParams(p, 26).routeCount == 0, "[3] an impossible area gate plans no rivers");
+    check(solveWithParams(p, 29).routeCount == 0, "[3] an impossible area gate plans no rivers");
     std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
 
     p[0] = 10000.0f;   /* min_lake_depth */
-    const Region dry = solveWithParams(p, 26);
+    const Region dry = solveWithParams(p, 29);
     long wet = 0;
     for (float d : dry.depth) {
         if (d > 0.0f) {
@@ -904,6 +967,261 @@ void testEachDensityKnobMovesInTheDocumentedDirection() {
     check(wet == 0, "[0] an impossible depth gate leaves no lakes");
     std::printf("density knobs ok (%d rivers at the defaults, %d at keep 1.0)\n",
                 base.routeCount, all.routeCount);
+}
+
+/* ── The shoreline ──────────────────────────────────────────────────────── */
+
+/* Columns the containment repair walled. Nothing else in the stamp raises
+ * ground — a river only ever lowers it — so an output height above the input
+ * terrain is exactly one wall, and counting them is the only direct measure of
+ * how much shoreline is being walled rather than wetted. */
+template <typename F>
+int walledColumns(const Tile& t, F&& terrain, int64_t tileX, int64_t tileZ) {
+    int n = 0;
+    for (int x = 0; x < T; ++x) {
+        for (int z = 0; z < T; ++z) {
+            if (t.heights[idx(x, z, T)] > terrain(tileX * T + x, tileZ * T + z)) {
+                ++n;
+            }
+        }
+    }
+    return n;
+}
+
+/* The furthest any wet column in `b` sits from the nearest wet column in `a`,
+ * in 4-connected steps.
+ *
+ * This is the lattice, measured. A cell mask can put water at most 8 blocks
+ * past a lake CELL's centre — that is the whole of the "shoreline tolerance the
+ * coarse lattice owes the block grid" — so against the mask-only stamp this
+ * number is bounded by 8 no matter what the ground does. Anything above 8 is
+ * shore the cell grid could not have drawn. */
+int reachPastMask(const Tile& a, const Tile& b) {
+    std::vector<int> dist(static_cast<size_t>(T) * T, -1);
+    std::vector<int> ring;
+    std::vector<int> next;
+    for (int i = 0; i < T * T; ++i) {
+        if (a.water[static_cast<size_t>(i)] >= 0) {
+            dist[static_cast<size_t>(i)] = 0;
+            ring.push_back(i);
+        }
+    }
+    int furthest = 0;
+    for (int step = 1; !ring.empty(); ++step) {
+        next.clear();
+        for (int ci : ring) {
+            const int cx = ci / T;
+            const int cz = ci % T;
+            const int nbx[4] = {cx - 1, cx + 1, cx, cx};
+            const int nbz[4] = {cz, cz, cz - 1, cz + 1};
+            for (int k = 0; k < 4; ++k) {
+                if (nbx[k] < 0 || nbx[k] >= T || nbz[k] < 0 || nbz[k] >= T) {
+                    continue;
+                }
+                const size_t ni = idx(nbx[k], nbz[k], T);
+                if (dist[ni] >= 0 || b.water[ni] < 0) {
+                    continue;
+                }
+                dist[ni] = step;
+                furthest = std::max(furthest, step);
+                next.push_back(static_cast<int>(ni));
+            }
+        }
+        ring.swap(next);
+    }
+    return furthest;
+}
+
+int wetColumns(const Tile& t) {
+    int n = 0;
+    for (size_t i = 0; i < t.water.size(); ++i) {
+        if (t.water[i] >= 0) {
+            ++n;
+        }
+    }
+    return n;
+}
+
+void testTheShoreFollowsTheGroundNotTheCellLattice() {
+    /* The DEM is solved on the SMOOTH bowl and the tile is stamped from the
+     * detailed one — the bridge's own arrangement, and the whole defect. */
+    auto smooth = [](int64_t x, int64_t z) { return bowlTerrainAt(x, z, 2048, 2048); };
+    auto detailed = [](int64_t x, int64_t z) { return bowlDetailAt(x, z, 2048, 2048); };
+    const Region r = solveRegion(0, 0, smooth);
+    check(r.withheld == 0, "L1 owns the bowl");
+
+    float p[29];
+    std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
+    p[26] = 0.0f;   /* reach 0 is exactly the old coarse-mask-only stamp */
+    const Tile mask = runTile(3, 8, 8, detailed, &r, p, 29);
+    const Tile flooded = runTile(3, 8, 8, detailed, &r, DOCUMENTED_DEFAULTS, 29);
+
+    const int maskWalls = walledColumns(mask, detailed, 8, 8);
+    const int floodWalls = walledColumns(flooded, detailed, 8, 8);
+    const int past = reachPastMask(mask, flooded);
+
+    /* 1. The fixture really does exhibit the defect. Without this the rest of
+     *    the test could pass on a fixture where nothing was ever wrong. */
+    check(maskWalls > 50, "the cell mask walls a great deal of shoreline");
+
+    /* 2. And the flood removes it. Not "reduces": a dry column beside water is
+     *    dry because the ground there is at or above the level, which is what
+     *    the repair being idle means. */
+    /*    What is left is the spill lip and nothing else: a handful of columns
+     *    in one cluster where the fill says the ground is already downstream,
+     *    which is the one place a lake without an outlet river HAS to be
+     *    walled. It is bounded by a cell, against a mask artifact that ran the
+     *    length of the shoreline. */
+    check(floodWalls <= CELL, "the flood leaves only the spill lip to wall");
+    check(floodWalls * 10 < maskWalls, "which is a different order of thing");
+    check(past > CELL / 2, "and the shore reaches past anything the cell grid could draw");
+
+    /* 3. It widened the lake rather than moving it. */
+    check(wetColumns(flooded) > wetColumns(mask), "the flood reaches ground the mask cut off");
+
+    /* 4. The property this must not cost: one level for the whole basin. */
+    int16_t level = -1;
+    int levels = 0;
+    for (size_t i = 0; i < flooded.water.size(); ++i) {
+        if (flooded.water[i] < 0) {
+            continue;
+        }
+        if (flooded.water[i] != level) {
+            level = flooded.water[i];
+            ++levels;
+        }
+    }
+    check(levels <= 1 || level > 0, "the surface is still one integer");
+    bool flat = true;
+    int16_t first = -1;
+    for (size_t i = 0; i < flooded.water.size(); ++i) {
+        if (flooded.water[i] < 0) {
+            continue;
+        }
+        if (first < 0) {
+            first = flooded.water[i];
+        } else if (flooded.water[i] != first) {
+            flat = false;
+        }
+    }
+    check(flat, "and it is the same integer everywhere");
+
+    std::printf("shore ok (walls %d -> %d, wet %d -> %d, %d blocks past the mask)\n",
+                maskWalls, floodWalls, wetColumns(mask), wetColumns(flooded), past);
+}
+
+void testTheShoreFloodRefusesADeepNotch() {
+    /* The fill fills the bowl as though the rim were whole, so the slot sits 14
+     * blocks under the water surface with dry ground all around it. The flood
+     * may repair a shoreline; it may not discover a basin, because discovering
+     * one needs the fill's window and not this tile's. */
+    auto notched = [](int64_t x, int64_t z) { return notchedBowlAt(x, z, 2048, 2048); };
+    const Region r = solveRegion(0, 0, notched);
+    const Tile t = runTile(3, 8, 8, notched, &r, DOCUMENTED_DEFAULTS, 29);
+
+    int outsideRim = 0;
+    for (int x = 0; x < T; ++x) {
+        for (int z = 0; z < T; ++z) {
+            const int16_t w = t.water[idx(x, z, T)];
+            if (w < 0) {
+                continue;
+            }
+            const int64_t wx = 8 * T + x;
+            const int64_t wz = 8 * T + z;
+            const double dx = static_cast<double>(wx - 2048);
+            const double dz = static_cast<double>(wz - 2048);
+            if (std::sqrt(dx * dx + dz * dz) > 230.0) {
+                ++outsideRim;
+            }
+        }
+    }
+    check(outsideRim == 0, "the flood does not run down a notch the fill never saw");
+    /* And it passed because the flood stopped, not because there was no lake:
+     * a fixture that came out dry would satisfy the line above for free. */
+    check(wetColumns(t) > 10000, "and the bowl still holds its lake");
+    std::printf("notch ok (%d wet in the bowl, %d outside the rim)\n",
+                wetColumns(t), outsideRim);
+}
+
+void testTheShoreAgreesAcrossATileSeam() {
+    /* Two tiles that share the bowl's +X edge, each stamped from its own 3x3
+     * window. The flood travels at most `reach`, and the caller clamps that to
+     * T-1, so the facing columns must match at any legal reach. */
+    auto smooth = [](int64_t x, int64_t z) { return bowlTerrainAt(x, z, 2200, 2048); };
+    auto detailed = [](int64_t x, int64_t z) { return bowlDetailAt(x, z, 2200, 2048); };
+    const Region r = solveRegion(0, 0, smooth);
+
+    const float reaches[] = {64.0f, static_cast<float>(T - 1), 4096.0f};
+    for (float reach : reaches) {
+        float p[29];
+        std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
+        p[26] = reach;
+        const Tile a = runTile(3, 8, 8, detailed, &r, p, 29);
+        const Tile b = runTile(3, 9, 8, detailed, &r, p, 29);
+        int mismatched = 0;
+        int wetPairs = 0;
+        for (int z = 0; z < T; ++z) {
+            const int16_t wa = a.water[idx(T - 1, z, T)];
+            const int16_t wb = b.water[idx(0, z, T)];
+            if (wa >= 0 || wb >= 0) {
+                ++wetPairs;
+            }
+            /* Not "equal": they are different columns. The invariant is that
+             * neither stands dry below the other's water — the seam form of
+             * containment, and the thing a truncated flood would break. */
+            if (wa >= 0 && wb < 0 && b.heights[idx(0, z, T)] < wa) {
+                ++mismatched;
+            }
+            if (wb >= 0 && wa < 0 && a.heights[idx(T - 1, z, T)] < wb) {
+                ++mismatched;
+            }
+            if (wa >= 0 && wb >= 0 && wa != wb) {
+                ++mismatched;
+            }
+        }
+        check(mismatched == 0, "the two tiles draw the same shore at their seam");
+        check(wetPairs > 0, "and the seam actually crosses the lake");
+    }
+    std::puts("shore seam ok");
+}
+
+void testALakePerchedOverAnotherGetsAnOutlet() {
+    /* Both gates are shut: keep fraction 0 rejects every basin, and the area
+     * gate is set past anything the fixture holds. The only thing that can
+     * plan a river here is the perched-lake rule. */
+    auto two = [](int64_t x, int64_t z) { return twoBowlsAt(x, z, 1400, 2048); };
+    float p[29];
+    std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
+    p[3] = 100000.0f;   /* min_river_lake_area */
+    p[4] = 0.0f;        /* river_keep_fraction */
+
+    p[28] = 0.0f;       /* lake_link_reach off */
+    const Region off = solveWithParams(p, 29, two);
+    check(off.routeCount == 0, "with the link rule off, two shut gates plan no rivers");
+
+    p[28] = 128.0f;
+    const Region on = solveWithParams(p, 29, two);
+    check(on.routeCount > 0, "a lake with lower water in reach drains past both gates");
+
+    /* It has to arrive somewhere, and over a 20-block step it has to fall. */
+    bool falls = false;
+    int longest = 0;
+    for (int32_t v = 0; v < on.routeCount; ++v) {
+        const int32_t from = on.starts[static_cast<size_t>(v)];
+        const int32_t to = on.starts[static_cast<size_t>(v) + 1];
+        longest = std::max(longest, to - from);
+        for (int32_t i = from; i < to; ++i) {
+            const auto flags = static_cast<int32_t>(
+                on.verts[static_cast<size_t>(i) * CK_RIVER_VERTEX_FLOATS + 6]);
+            if ((flags & CK_RIVER_FLAG_WATERFALL) != 0) {
+                falls = true;
+            }
+        }
+    }
+    check(longest >= 4, "and it is a route, not an overflow lip");
+    check(falls, "and the step between the two lakes is stamped as a waterfall");
+    std::printf("lake link ok (%d routes, longest %d vertices, waterfall %s)\n",
+                on.routeCount, longest, falls ? "yes" : "no");
 }
 
 void testSea() {
@@ -992,6 +1310,10 @@ int main() {
     testARiverTunnelsRatherThanRemovingTheGround();
     testATunnelIsSealedByTheRockAroundIt();
     testEachDensityKnobMovesInTheDocumentedDirection();
+    testTheShoreFollowsTheGroundNotTheCellLattice();
+    testTheShoreFloodRefusesADeepNotch();
+    testTheShoreAgreesAcrossATileSeam();
+    testALakePerchedOverAnotherGetsAnOutlet();
     testSea();
     testMountains();
     if (failures == 0) {

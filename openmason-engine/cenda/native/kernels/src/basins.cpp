@@ -93,6 +93,9 @@ void readRiverParams(const float* params, int32_t n, rp::Config& cfg) {
     if (n > 21) cfg.refineLevels = static_cast<int32_t>(params[21]);
     if (n > 22) cfg.refineAmp = params[22];
     if (n > 23) cfg.minPoints = static_cast<int32_t>(params[23]);
+    /* [24] and [25] are the carve's tunnel knobs and [26]/[27] its shore
+     * flood; the plan reads none of them. [28] is the plan's again. */
+    if (n > 28) cfg.lakeLinkReach = static_cast<int32_t>(params[28]);
     /* [24] and [25] are the tunnel knobs, which only the carve reads. The two
      * carve-only slots that used to sit at [10] and [14] went with the valley
      * pull; the indices after them shifted down to close the holes. */

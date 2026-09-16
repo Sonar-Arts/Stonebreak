@@ -68,8 +68,17 @@ public final class BasinCache {
 
     private static final Logger LOG = Logger.getLogger(BasinCache.class.getName());
 
-    /** Bumped when the stored payload's meaning changes. Part of the header. */
-    private static final int DISK_VERSION = 3;
+    /**
+     * Bumped when the stored payload's meaning changes. Part of the header.
+     *
+     * <p>4: a lake with lower water within {@code lake_link_reach} of its spill
+     * now gets an outlet river past both of the gates in {@code river_plan.hpp},
+     * so a cached region's route list is no longer the one this build would
+     * plan. The knob itself lives at params[28] and takes the kernel's default,
+     * like every index past [4] — {@link #riverParams()} says why — so the
+     * fingerprint cannot see it and the version is what orphans the caches.
+     */
+    private static final int DISK_VERSION = 4;
     private static final int HEADER_BYTES = 24;
 
     /* Caps on one region's river plan. The kernel stops at these rather than

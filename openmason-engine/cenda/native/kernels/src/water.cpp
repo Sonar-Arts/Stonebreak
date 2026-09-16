@@ -102,6 +102,28 @@ constexpr float DEF_TUNNEL_HEADROOM = 5.0f;
  * is the knob to raise if that shows up. */
 constexpr float DEF_TUNNEL_MIN_ROOF = 4.0f;
 
+/* How far past the coarse lake mask the shore flood may travel, in blocks.
+ * Params slot [26] ("lake_shore_reach") overrides it.
+ *
+ * This is a PATH length, not a box: a column's wetness has to be a function of
+ * a neighbourhood no window can truncate, or two tiles sharing a shore draw it
+ * differently. Every center-tile column has T blocks of margin inside its own
+ * window, so the cap is clamped to `T - 1` below. 64 covers any real shelf;
+ * the clamp is what makes a silly value safe rather than seam-breaking. */
+constexpr float DEF_LAKE_SHORE_REACH = 64.0f;
+/* The deepest a column may sit below the lake surface and still be claimed by
+ * the shore flood. Params slot [27] ("lake_shore_max_depth") overrides it.
+ *
+ * A real shore is shallow by definition — it is ground the coarse DEM read a
+ * few blocks too high, because a cell is a 16x16 MEAN of a noisy heightmap and
+ * the coarse fetch carries no noise at all. A column ten blocks under the
+ * surface that the fill nonetheless called dry is a different animal: a
+ * block-scale notch through the rim that the mean averaged away. Flooding it
+ * would run a tongue of water down the outside of the basin. So the flood
+ * repairs the shoreline and refuses to discover new basins, which is the fill's
+ * job and needs the fill's window. */
+constexpr float DEF_LAKE_SHORE_MAX_DEPTH = 8.0f;
+
 inline size_t idx2(int row, int col, int stride) {
     return static_cast<size_t>(row) * static_cast<size_t>(stride) + static_cast<size_t>(col);
 }
@@ -234,9 +256,189 @@ struct Scratch {
      * cent of a tile, so the bucket list is what lets the other 95 % of columns
      * skip the river pass on one empty-vector test. */
     std::vector<std::vector<int32_t>> channelBuckets;
+    /* Which columns are under a lake surface, and at what level; -1 for dry.
+     * Built once per tile by `floodLakeShore` and read by the stamp. */
+    std::vector<int16_t> lakeWater;
+    /* The shore flood's working set: the seeded columns that have somewhere to
+     * expand to, their levels, and the two rings of a level-synchronous BFS.
+     * Synchronous rings rather than a distance plane — the ring index IS the
+     * path length, so the reach cap costs no memory and no per-column state. */
+    std::vector<int32_t> shoreFrontier;
+    std::vector<int32_t> shoreFrontierLevel;
+    std::vector<int32_t> shoreRing;
+    std::vector<int32_t> shoreNextRing;
+    std::vector<int32_t> shoreLevels;
 };
 
 thread_local Scratch tls;
+
+/**
+ * Fill `s.lakeWater` over `[lo, hi)^2` of the window: the level at every column
+ * a lake covers, -1 elsewhere.
+ *
+ * `lakeLevelAt` decides where a lake IS. This decides where it ENDS, and the
+ * two are different questions that were being answered by the same test.
+ *
+ * The coarse answer is a cell mask: a lake cell donates its level to its own 16
+ * columns plus 8 blocks of dilation, so the wet region's boundary lies on the
+ * lines `x = 8 (mod 16)` — straight, axis-aligned, and visible from a long way
+ * off. Worse, the columns cut off that way are not merely left dry: §3's
+ * containment repair RAISES them flush to the water, so the artifact reads as a
+ * wall of ground standing exactly at the waterline. (Beaches are disabled for
+ * all inland water because of those walls — see DiffusionBiomeMapper.)
+ *
+ * Two things guarantee real ground falls outside the mask, and neither is a
+ * tuning error. `min_lake_depth` drops the outermost ring of cells, whose 16x16
+ * MEAN depth is under half a block even where most of their columns are wet.
+ * And the coarse DEM is a different FIELD from the block heightmap, not a
+ * coarser view of it: the coarse fetch carries no noise and is not floored,
+ * while fine heights carry both, so fine ground near a shore sits
+ * systematically below what the fill believes.
+ *
+ * So the mask seeds a flood and stops there. The shore is then wherever the
+ * real blocks cross the level — connectivity, at block resolution, the way the
+ * water itself would find it.
+ *
+ * What is deliberately NOT changed by this: the level. It is still one integer
+ * per basin, still straight from the fill, still never interpolated. A flood
+ * cannot tilt a surface, which is why this can be a pure widening of the wet
+ * set rather than a new way of computing where the water sits.
+ *
+ * Order-independence, which the seam rule needs: levels are flooded in
+ * DESCENDING order and a claimed column is never re-claimed, so where two lakes
+ * reach one column the higher wins — the same max rule `lakeLevelAt` already
+ * uses across its stencil, and the same one rivers merge by. Within one level a
+ * BFS with uniform edge weights reaches the same set whatever the queue order.
+ *
+ * Seam-safety, which is the reason for `reach`: a claim travels at most `reach`
+ * columns from a seed, so a center-tile column's answer depends only on ground
+ * within `reach` of it. `[lo, hi)` is the stamp range grown by `reach`, and the
+ * caller clamps `reach` to `T - 1`, so every column of every path is inside the
+ * window that stamps it. Grow either without the other and two tiles will
+ * disagree along their shared edge.
+ */
+void floodLakeShore(const Dem& dem, const int16_t* heights, int W,
+                    int world_height, int lo, int hi,
+                    int reach, int maxDepth, Scratch& s) {
+    const size_t N = static_cast<size_t>(W) * static_cast<size_t>(W);
+    s.lakeWater.assign(N, -1);
+
+    /* 1. Seed from the coarse mask, by exactly the test the stamp used to make
+     *    inline. A seed is the fill's own answer and is taken as given; the
+     *    depth cap below applies only to what the flood ADDS. */
+    bool any = false;
+    for (int x = lo; x < hi; ++x) {
+        for (int z = lo; z < hi; ++z) {
+            const size_t i = idx2(x, z, W);
+            const int level = lakeLevelAt(dem, x, z);
+            if (level <= 0) {
+                continue;
+            }
+            if (std::clamp<int>(heights[i], 1, world_height - 1) >= level) {
+                continue;
+            }
+            s.lakeWater[i] = static_cast<int16_t>(level);
+            any = true;
+        }
+    }
+    if (!any || reach <= 0 || maxDepth <= 0) {
+        return;
+    }
+
+    /* 2. The frontier: seeded columns with an unclaimed neighbour. A lake's
+     *    interior is already answered, so only its rim can expand — which is
+     *    what keeps this proportional to shoreline rather than to lake area. */
+    s.shoreFrontier.clear();
+    s.shoreFrontierLevel.clear();
+    const auto stride = static_cast<size_t>(W);
+    for (int x = lo + 1; x < hi - 1; ++x) {
+        for (int z = lo + 1; z < hi - 1; ++z) {
+            const size_t i = idx2(x, z, W);
+            const int level = s.lakeWater[i];
+            if (level < 0) {
+                continue;
+            }
+            if (s.lakeWater[i - stride] >= 0 && s.lakeWater[i + stride] >= 0
+                    && s.lakeWater[i - 1] >= 0 && s.lakeWater[i + 1] >= 0) {
+                continue;
+            }
+            s.shoreFrontier.push_back(static_cast<int32_t>(i));
+            s.shoreFrontierLevel.push_back(level);
+        }
+    }
+    if (s.shoreFrontier.empty()) {
+        return;
+    }
+
+    /* 3. Distinct levels, highest first. There are as many as there are lakes
+     *    touching the window — a handful — so this sorts the frontier's levels
+     *    and not the far larger seed set. */
+    s.shoreLevels.assign(s.shoreFrontierLevel.begin(), s.shoreFrontierLevel.end());
+    std::sort(s.shoreLevels.begin(), s.shoreLevels.end(),
+              [](int32_t a, int32_t b) { return a > b; });
+    s.shoreLevels.erase(std::unique(s.shoreLevels.begin(), s.shoreLevels.end()),
+                        s.shoreLevels.end());
+
+    for (const int32_t level : s.shoreLevels) {
+        s.shoreRing.clear();
+        for (size_t k = 0; k < s.shoreFrontier.size(); ++k) {
+            if (s.shoreFrontierLevel[k] == level) {
+                s.shoreRing.push_back(s.shoreFrontier[k]);
+            }
+        }
+        /* Ring `step` holds the columns exactly `step` from the mask, so the
+         * loop bound IS the reach cap. */
+        for (int step = 0; step < reach && !s.shoreRing.empty(); ++step) {
+            s.shoreNextRing.clear();
+            for (const int32_t ci : s.shoreRing) {
+                const int cx = ci / W;
+                const int cz = ci % W;
+                const auto claim = [&](int nx, int nz) {
+                    if (nx < lo || nx >= hi || nz < lo || nz >= hi) {
+                        return;
+                    }
+                    const size_t ni = idx2(nx, nz, W);
+                    if (s.lakeWater[ni] >= 0) {
+                        return;
+                    }
+                    const int h = std::clamp<int>(heights[ni], 1, world_height - 1);
+                    if (h >= level || level - h > maxDepth) {
+                        return;
+                    }
+                    /* And the fill's own answer about which ground belongs to
+                     * this water: the cell's filled surface must stand at the
+                     * level or above it.
+                     *
+                     * The depth cap alone does not bound an ESCAPE. A notch
+                     * through the rim, five blocks wide and too narrow for a
+                     * 16x16 mean to notice, is shallow where it leaves the
+                     * lake and only deepens at the gradient of the ground
+                     * outside — so a cap on depth lets the flood walk tens of
+                     * blocks down the outside of the basin before it bites.
+                     * `filled` says which side of the spill a cell is on, which
+                     * is the question actually being asked, and it says it from
+                     * the fill's window rather than from this tile's. Inside
+                     * the basin `filled` IS the level; on the shore ring it is
+                     * the ground, which is why that ring stays reachable; one
+                     * cell past the spill it is already below, which is where
+                     * this stops. Repair a shoreline, never discover a basin. */
+                    const int cellI = std::clamp(nx / dem.cellBlocks, 0, dem.cells - 1);
+                    const int cellJ = std::clamp(nz / dem.cellBlocks, 0, dem.cells - 1);
+                    if (std::lround(dem.filled[idx2(cellI, cellJ, dem.cells)]) < level) {
+                        return;
+                    }
+                    s.lakeWater[ni] = static_cast<int16_t>(level);
+                    s.shoreNextRing.push_back(static_cast<int32_t>(ni));
+                };
+                claim(cx - 1, cz);
+                claim(cx + 1, cz);
+                claim(cx, cz - 1);
+                claim(cx, cz + 1);
+            }
+            s.shoreRing.swap(s.shoreNextRing);
+        }
+    }
+}
 
 constexpr int BUCKET = 16;
 
@@ -301,18 +503,22 @@ int32_t ck_carve_water(int64_t seed,
     const size_t N = static_cast<size_t>(W) * static_cast<size_t>(W);
 
     /* The shared water params array (kernels.h documents it). The carve reads
-     * exactly TWO of its entries — [24] and [25]; the rest belong to the plan,
-     * and sea level arrives as its own argument rather than through [2].
+     * exactly FOUR of its entries — [24]-[27]; the rest belong to the plan, and
+     * sea level arrives as its own argument rather than through [2].
      *
-     * Each is one idea in one slot, and this is the only place either is
+     * Each is one idea in one slot, and this is the only place any of them is
      * consumed. `bank_tolerance` and `valley_radius` used to live at [10] and
      * [14] and were read here; the pull they shaped is gone, so they are gone
      * with it rather than left as knobs that look live. */
     float tunnelHeadroom = DEF_TUNNEL_HEADROOM;
     float tunnelMinRoofF = DEF_TUNNEL_MIN_ROOF;
+    float shoreReachF = DEF_LAKE_SHORE_REACH;
+    float shoreMaxDepthF = DEF_LAKE_SHORE_MAX_DEPTH;
     if (params != nullptr) {
         if (n_params > 24) tunnelHeadroom = params[24];
         if (n_params > 25) tunnelMinRoofF = params[25];
+        if (n_params > 26) shoreReachF = params[26];
+        if (n_params > 27) shoreMaxDepthF = params[27];
     }
     tunnelHeadroom = std::clamp(tunnelHeadroom, 0.0f, static_cast<float>(world_height));
     /* At least one block of lid: a roof flush with the surface is not a roof,
@@ -334,11 +540,36 @@ int32_t ck_carve_water(int64_t seed,
         dem = Dem{dem_filled, dem_depth, dem_cells, dem_cell_blocks};
     }
 
+    /* Clamped, not rejected: these arrive from outside, and a silly value
+     * should cost a plain shoreline rather than a seam. `T - 1` is the margin
+     * every center-tile column has inside its own window, and it is the whole
+     * of the seam argument in `floodLakeShore` — a reach past it lets one tile
+     * read ground its neighbour cannot, and the two draw different shores. */
+    const int shoreReach =
+        std::clamp(static_cast<int>(std::lround(shoreReachF)), 0, T - 1);
+    const int shoreMaxDepth =
+        std::clamp(static_cast<int>(std::lround(shoreMaxDepthF)), 0, world_height);
+
     Scratch& s = tls;
     s.carved.resize(N);
     s.water.assign(N, -1);
     s.floor.assign(N, -1);
     s.roof.assign(N, -1);
+
+    /* ── 1a. Where the lakes are, at block resolution ──
+     *
+     * Grown by the reach on each side of §2's stamp range, because a claim
+     * travels at most that far: the columns §2 stamps then have every path that
+     * could reach them inside this domain, and no column §2 writes depends on
+     * ground the domain cut off. The two bounds move together or not at all. */
+    if (haveDem) {
+        const int floodLo = std::max(0, (T - 1) - shoreReach);
+        const int floodHi = std::min(W, (2 * T + 1) + shoreReach);
+        floodLakeShore(dem, heights3x3, W, world_height,
+                       floodLo, floodHi, shoreReach, shoreMaxDepth, s);
+    } else {
+        s.lakeWater.assign(N, -1);
+    }
 
     /* ── 1. Build the river segments in window coordinates ──
      * Clipped to what can reach the window: a segment further than its own
@@ -446,8 +677,12 @@ int32_t ck_carve_water(int64_t seed,
             int tunnelFloor = world_height;
             int tunnelRoof = -1;
 
-            if (haveDem) {
-                const int level = lakeLevelAt(dem, x, z);
+            /* §1a already answered this, on the real block heights and by
+             * connectivity. The height test is a no-op for anything it claimed
+             * — nothing raises `carved`, only rivers lower it — and is kept
+             * because it is the invariant the plane is built to satisfy. */
+            {
+                const int level = s.lakeWater[i];
                 if (level > 0 && carved < level) {
                     water = level;
                 }

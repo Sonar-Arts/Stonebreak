@@ -83,6 +83,21 @@ struct Config {
      * area gate's original 24 cells only a keep fraction of 0.85+ produced any
      * rivers at all, which makes the density dial a switch. */
     float riverKeepFraction = 0.70f;
+    /* Blocks. A lake with another lake's surface below its own within this far
+     * of its spill gets an outlet river WHATEVER the two gates above say.
+     *
+     * The gates thin the river network, and thinning it is the right default —
+     * but a lake perched beside a lower one is not a density question. Left
+     * ungated it stands there with a walled dry rim and its neighbour ten
+     * blocks below it, which is the one arrangement that reads as broken rather
+     * than as sparse. Both gates stay live for every other lake, so the density
+     * dial keeps its range.
+     *
+     * 128 blocks is eight cells: far enough to catch the two-lakes-in-one-
+     * valley case the fill splits across a saddle, near enough that the route
+     * the walker then plans actually arrives. It must stay well inside the
+     * halo — the scan is asserted against the window below. */
+    int32_t lakeLinkReach = 128;
 
     /* ── Stepping (§5.3) ── */
     float stepLen = 16.0f;
@@ -510,6 +525,49 @@ inline void applyPlungePools(const Config& cfg, Route& r) {
     }
 }
 
+/**
+ * Whether another lake's surface sits below `b`'s within `reach` blocks of its
+ * spill — the test that forces an outlet past §5.2's two gates.
+ *
+ * Deliberately a proximity test on the planes and not a route: it runs for
+ * every candidate basin, it has to be cheap, and a wrong answer is cheap too.
+ * A false positive plans a river the walker then routes normally, which is a
+ * river; a false negative leaves the basin to the gates, which is today.
+ *
+ * Reads only cells the region's own window holds, so two regions that both see
+ * this basin agree — and the basin's spill is inside the owned rectangle while
+ * the halo is 2,048 blocks at L1, so the clamp below never actually bites.
+ */
+inline bool drainsToLowerLake(const basin::Grid& g, const basin::Solution& s,
+                              const basin::Basin& b, int32_t reach) {
+    if (reach <= 0 || s.basinAt.empty()) {
+        return false;
+    }
+    const auto self = static_cast<int32_t>(&b - s.basins.data());
+    const int32_t r = (reach + g.cellBlocks - 1) / g.cellBlocks;
+    const int32_t i0 = std::max(0, b.spillI - r);
+    const int32_t j0 = std::max(0, b.spillJ - r);
+    const int32_t i1 = std::min(g.cells - 1, b.spillI + r);
+    const int32_t j1 = std::min(g.cells - 1, b.spillJ + r);
+    for (int32_t i = i0; i <= i1; ++i) {
+        for (int32_t j = j0; j <= j1; ++j) {
+            const size_t k = static_cast<size_t>(i) * static_cast<size_t>(g.cells)
+                           + static_cast<size_t>(j);
+            const int32_t other = s.basinAt[k];
+            if (other < 0 || other == self) {
+                continue;
+            }
+            /* Strictly lower: two lakes that settled at the same level have
+             * nothing to fall between them, and joining them would be a canal,
+             * not a river. */
+            if (s.filled[k] < b.level) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 } // namespace detail
 
 /**
@@ -556,12 +614,25 @@ inline void plan(const basin::Grid& g, const basin::Solution& s, const basin::Le
         if (!basin::ownsBasin(b, lv)) {
             continue;
         }
-        if (b.area < cfg.minRiverLakeArea) {
-            continue;
-        }
-        if (basin::hash01(basin::hashCell(seed, b.spillX, b.spillZ, SALT_RIVER))
-                >= cfg.riverKeepFraction) {
-            continue;
+        /* Two gates, and one case that overrides both: a lake with lower
+         * water within reach drains, because the alternative is a perched
+         * pool walled off from the one below it. Everything else is still
+         * thinned by area and by the hash, so §5.2's density dial is intact —
+         * this only adds the rivers whose absence reads as a bug.
+         *
+         * The walker takes it from here: it descends `filled` like any other
+         * route, ends at `End::Lake` when it arrives, and marks any step of
+         * `waterfallMinDrop` or more a waterfall for the stamp to step rather
+         * than ramp. Small drops come out a stream and large ones a fall, off
+         * the one threshold that already existed. */
+        if (!detail::drainsToLowerLake(g, s, b, cfg.lakeLinkReach)) {
+            if (b.area < cfg.minRiverLakeArea) {
+                continue;
+            }
+            if (basin::hash01(basin::hashCell(seed, b.spillX, b.spillZ, SALT_RIVER))
+                    >= cfg.riverKeepFraction) {
+                continue;
+            }
         }
 
         Route r;
