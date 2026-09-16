@@ -10,6 +10,7 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.features.CactusGenerator;
 import com.stonebreak.world.generation.features.LimestoneGenerator;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
@@ -53,6 +54,7 @@ public class TerrainGenerationSystem {
     private final OreGenerator oreGenerator;
     private final LimestoneGenerator limestoneGenerator;
     private final VegetationGenerator vegetationGenerator;
+    private final CactusGenerator cactusGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
     private final DeterministicRandom deterministicRandom;
     private final Density3D density3D;
@@ -112,6 +114,7 @@ public class TerrainGenerationSystem {
         this.biomeManager = new BiomeManager(noiseRouter, this.heightMapGenerator);
         this.oreGenerator = new OreGenerator(deterministicRandom, this.heightMapGenerator, seed);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
+        this.cactusGenerator = new CactusGenerator(deterministicRandom);
         this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, this.heightMapGenerator, seed);
         this.density3D = new Density3D(seed, this.heightMapGenerator);
         this.wormCarver = new PerlinWormCarver(seed, this.heightMapGenerator);
@@ -791,6 +794,7 @@ public class TerrainGenerationSystem {
         // After ores: limestone only replaces stone, so it never eats a vein.
         limestoneGenerator.generate(ctx);
         vegetationGenerator.generate(ctx);
+        cactusGenerator.generate(ctx);
         decorationGenerator.generate(ctx);
 
         // Passive-mob population is owned entirely by EntitySpawner, which is a

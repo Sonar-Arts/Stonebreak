@@ -125,6 +125,10 @@ public final class BlockType implements Item, IBlockType {
     // Ground/Side states with looping flicker clips drawn by
     // AnimatedBlockRenderer; emits a pulsing point light (rendering/lighting).
     public static final BlockType TORCH_PLACED = fromRegistry("stonebreak:torch_placed", "TORCH_PLACED");
+    // Cactus: sparse desert feature (world/generation/features/CactusGenerator) that
+    // stacks per-cell; the lower cell's top face is culled when a cactus sits above
+    // (Renderer instance cull policy) and contact rules live in blocks/cactus/.
+    public static final BlockType CACTUS = fromRegistry("stonebreak:cactus", "CACTUS");
 
     // ----- Promote any SBO entries that didn't match a static-final field
     //       above. New SBOs dropped into sbo/blocks/ become BlockType

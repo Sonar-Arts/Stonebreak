@@ -29,4 +29,28 @@ public interface ILayerIndexProvider {
     default int getBlockFaceLayer(IBlockType blockType, String stateName, int face) {
         return getBlockFaceLayer(blockType, face);
     }
+
+    /**
+     * Authored-face-aware overload — resolves the layer for a triangle's ORIGINAL
+     * authored face id, which can exceed the six MMS faces: a shaped model with 3D
+     * detail (a cactus's thorn prickle boxes) carries per-triangle authored face
+     * ids past 5, each mapped to its own material in the SBO's face textures.
+     * Interior geometry must ride its own material's layer — the geometric MMS
+     * face it points along would squeeze the block's side texture onto every tiny
+     * detail face.
+     *
+     * <p>Defaults to the geometric MMS face's layer so hosts that don't map
+     * per-authored-face keep working unchanged.
+     *
+     * @param blockType      the block type
+     * @param stateName      the SBO state name, or null for the default mesh
+     * @param authoredFaceId the triangle's original authored face id from the
+     *                       SBO's face mappings (may exceed 5)
+     * @param mmsFace        the geometric MMS face the triangle points along
+     * @return the layer index into the block texture array
+     */
+    default float getBlockFaceLayerForAuthoredFace(IBlockType blockType, String stateName,
+                                                    int authoredFaceId, int mmsFace) {
+        return getBlockFaceLayer(blockType, stateName, mmsFace);
+    }
 }

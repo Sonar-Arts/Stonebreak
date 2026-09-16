@@ -3,6 +3,7 @@ package com.stonebreak.player;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.player.combat.AttackController;
 import com.stonebreak.player.combat.BowController;
+import com.stonebreak.player.combat.CactusContactDamage;
 import com.stonebreak.player.combat.DeathHandler;
 import com.stonebreak.player.combat.FallDamageHandler;
 import com.stonebreak.player.combat.HealthController;
@@ -56,6 +57,7 @@ final class PlayerControllers {
     final StaminaController stamina;
     final ManaController mana;
     final FallDamageHandler fallDamage;
+    final CactusContactDamage cactusContact;
     final DeathHandler deathHandler;
     final BerserkerAbilityController berserkerAbilities;
     final RangerAbilityController rangerAbilities;
@@ -94,6 +96,7 @@ final class PlayerControllers {
         this.spectator = new SpectatorController(state, flight, health);
         this.movement = new MovementController(state, camera, collisionHandler, flight, swimming, jumpHandler, spectator);
         this.fallDamage = new FallDamageHandler(state, health);
+        this.cactusContact = new CactusContactDamage(world, state, health);
         this.deathHandler = new DeathHandler(state, health, inventory, camera, world);
         this.berserkerAbilities = new BerserkerAbilityController();
         this.rangerAbilities = new RangerAbilityController();
@@ -118,6 +121,7 @@ final class PlayerControllers {
     void setWorld(World world) {
         collisionHandler.setWorld(world);
         swimming.setWorld(world);
+        cactusContact.setWorld(world);
         raycastEngine.setWorld(world);
         blockBreaker.setWorld(world);
         blockPlacer.setWorld(world);

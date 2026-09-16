@@ -115,6 +115,9 @@ final class PlayerUpdatePipeline {
         }
 
         c.fallDamage.update(c.flight.isFlying());
+        // Cactus contact: eighth heart every 0.5 s while a spiky cell touches the
+        // body — same flight gate as fall damage, next to it in the sequence.
+        c.cactusContact.update(dt, c.flight.isFlying());
         c.deathHandler.processDeathIfNeeded();
 
         bodyAnimation.update(dt, c.attack.isAttacking(), state.isOnGround(), state.getVelocity(), camera.getFront());

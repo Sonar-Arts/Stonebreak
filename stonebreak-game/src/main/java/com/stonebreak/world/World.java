@@ -59,6 +59,7 @@ public class World {
     private final ChunkErrorReporter errorReporter;
     private final WaterSim waterSim;
     private final LeafDecaySystem leafDecay;
+    private final com.stonebreak.blocks.cactus.CactusContactSystem cactusContact;
     private final com.stonebreak.world.generation.features.FeatureQueue featureQueue;
 
     // Extracted collaborators (see their class docs): mesh scheduling, FastLOD lifecycle,
@@ -254,11 +255,12 @@ public class World {
         }
 
         this.meshScheduler = new ChunkMeshScheduler(meshPipeline, neighborCoordinator, chunkStore);
+        this.cactusContact = new com.stonebreak.blocks.cactus.CactusContactSystem(this);
         this.fastLod = new FastLodLifecycle(config, terrainSystem);
         this.networkChunkInstaller = new NetworkChunkInstaller(
                 chunkStore, snowLayerManager, furnaceRegistry, animatedBlockRegistry, meshScheduler);
         this.updates = new WorldUpdateOrchestrator(
-                this, waterSim, leafDecay, furnaceRegistry, chunkStore, chunkManager, meshScheduler, fastLod);
+                this, waterSim, leafDecay, cactusContact, furnaceRegistry, chunkStore, chunkManager, meshScheduler, fastLod);
 
         // Chunk listeners (wired for BOTH the headless server world and rendered worlds).
         // Water simulation load runs only on authoritative worlds (a render-only client

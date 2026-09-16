@@ -281,14 +281,22 @@ public class Renderer {
                         // when a snow layer sits directly on it. Snow's bottom
                         // face is coplanar with ice's top face — rendering both
                         // produces z-fighting at that shared plane.
+                        //
+                        // Cactus stacks: cull the lower cactus's top face when a
+                        // cactus sits directly above, so stacked formations don't
+                        // emit geometry that can never be seen. Authoritative
+                        // regardless of the asset's authored geometry.
                         pendingSBOEmitter.setInstanceFaceCullPolicy((block, lx, ly, lz, face, chunkData) -> {
                             if (face != 0) return false; // top face only
                             if (!(block instanceof com.stonebreak.blocks.BlockType bt)) return false;
-                            if (bt != com.stonebreak.blocks.BlockType.ICE) return false;
+                            if (bt != com.stonebreak.blocks.BlockType.ICE
+                                    && bt != com.stonebreak.blocks.BlockType.CACTUS) return false;
                             com.openmason.engine.voxel.IBlockType above =
                                     cullingForNeighborLookup.getAdjacentBlock(lx, ly + 1, lz, chunkData);
-                            return above instanceof com.stonebreak.blocks.BlockType ab
-                                    && ab == com.stonebreak.blocks.BlockType.SNOW;
+                            if (!(above instanceof com.stonebreak.blocks.BlockType ab)) return false;
+                            return bt == com.stonebreak.blocks.BlockType.ICE
+                                    ? ab == com.stonebreak.blocks.BlockType.SNOW
+                                    : ab == com.stonebreak.blocks.BlockType.CACTUS;
                         });
 
                         logger.debug("[Renderer] SBO Renderer API: {} block types processed (emitter deferred)", processed);
