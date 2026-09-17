@@ -1,6 +1,7 @@
 package com.openmason.main.systems.menus.textureCreator.tools.move;
 
 import com.openmason.main.systems.menus.textureCreator.canvas.CanvasState;
+import imgui.ImColor;
 import imgui.ImDrawList;
 
 import java.awt.Rectangle;
@@ -18,16 +19,16 @@ final class TransformOverlayRenderer {
     private static final float PIVOT_RADIUS = 5.0f;
     private static final float PIVOT_INNER_RADIUS = 2.0f;
 
-    // Professional color scheme
-    private static final int OUTLINE_COLOR = 0xFF3D3D3D;           // Dark gray outline
-    private static final int HANDLE_FILL = 0xFFFFFFFF;             // White fill
-    private static final int HANDLE_OUTLINE = 0xFF000000;          // Black outline
-    private static final int HANDLE_HOVER_FILL = 0xFFFFAA40;       // Light blue fill
-    private static final int HANDLE_HOVER_OUTLINE = 0xFF0077CC;    // Medium blue outline
-    private static final int HANDLE_ACTIVE_FILL = 0xFFFF7700;      // Bright blue fill
-    private static final int HANDLE_ACTIVE_OUTLINE = 0xFF0055AA;   // Deep blue outline
-    private static final int PIVOT_COLOR = 0xFF3D3D3D;             // Dark gray for pivot
-    private static final int PIVOT_HOVER_COLOR = 0xFF0077CC;       // Blue when hovering
+    // Professional color scheme — ImColor.rgba packs RGBA correctly for ImGui draw lists (ABGR)
+    static final int OUTLINE_COLOR = ImColor.rgba(61, 61, 61, 255);        // Dark gray outline
+    static final int HANDLE_FILL = ImColor.rgba(255, 255, 255, 255);       // White fill
+    static final int HANDLE_OUTLINE = ImColor.rgba(0, 0, 0, 255);          // Black outline
+    static final int HANDLE_HOVER_FILL = ImColor.rgba(64, 170, 255, 255);  // Light blue fill
+    static final int HANDLE_HOVER_OUTLINE = ImColor.rgba(0, 119, 204, 255);    // Medium blue outline
+    static final int HANDLE_ACTIVE_FILL = ImColor.rgba(0, 119, 255, 255);      // Bright blue fill
+    static final int HANDLE_ACTIVE_OUTLINE = ImColor.rgba(0, 85, 170, 255);   // Deep blue outline
+    static final int PIVOT_COLOR = ImColor.rgba(61, 61, 61, 255);          // Dark gray for pivot
+    static final int PIVOT_HOVER_COLOR = ImColor.rgba(0, 119, 204, 255);       // Blue when hovering
 
     void render(ImDrawList drawList,
                 Rectangle bounds,
