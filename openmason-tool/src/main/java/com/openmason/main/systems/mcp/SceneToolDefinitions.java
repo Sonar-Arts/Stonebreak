@@ -18,10 +18,14 @@ import static com.openmason.main.systems.mcp.McpArgs.reqString;
 public final class SceneToolDefinitions {
 
     private final SceneEditingService scene;
+    private final com.openmason.main.systems.io.AssetWriteService writes;
     private final ObjectMapper mapper;
 
-    public SceneToolDefinitions(SceneEditingService scene, ObjectMapper mapper) {
+    public SceneToolDefinitions(SceneEditingService scene,
+                                com.openmason.main.systems.io.AssetWriteService writes,
+                                ObjectMapper mapper) {
         this.scene = scene;
+        this.writes = writes;
         this.mapper = mapper;
     }
 
@@ -156,11 +160,30 @@ public final class SceneToolDefinitions {
 
         registry.register(new McpTool(
                 "scene_save",
-                "Save the scene. With path: Save As (absolute, project-relative, or a bare name in "
-                        + "Scenes/). Without: save to its current file, or — for an untitled scene — into "
-                        + "the project's Scenes/ folder under its name.",
-                schema().str("path", "Optional Save As target").build(),
-                args -> scene.save(optString(args, "path"))));
+                "Save the scene. With path: Save As through the write sandbox (absolute, "
+                        + "project:<rel>, or a bare name in Scenes/; risky writes ask the user). "
+                        + "Without: save to its current file, or — for an untitled scene — into the "
+                        + "project's Scenes/ folder under its name. prompt:true opens the Save Sheet.",
+                schema().str("path", "Optional Save As target")
+                        .bool("prompt", "Always ask the user in the in-app Save Sheet")
+                        .bool("overwrite", "Acknowledge replacing an existing file")
+                        .build(),
+                args -> {
+                    String path = optString(args, "path");
+                    boolean prompt = McpArgs.optBool(args, "prompt", false);
+                    if (path == null && !prompt) {
+                        return scene.save(null);
+                    }
+                    var outcome = writes.save(
+                            com.openmason.main.systems.io.AssetWriteService.WriteRequest.of(
+                                    com.openmason.main.systems.io.WriteKind.OMSC, path, prompt,
+                                    McpArgs.optBool(args, "overwrite", false), "scene"),
+                            p -> scene.saveAsPath(p.toString()));
+                    if (!outcome.ok()) {
+                        return outcome;
+                    }
+                    return scene.getInfo();
+                }));
 
         registry.register(new McpTool(
                 "scene_undo",

@@ -32,6 +32,11 @@ public final class MainThreadExecutor {
         mainThread = Thread.currentThread();
     }
 
+    /** True when called from the bound main/GL thread. */
+    public static boolean isMainThread() {
+        return mainThread != null && Thread.currentThread() == mainThread;
+    }
+
     /**
      * Run all pending tasks on the current (main) thread. Called per-frame.
      */

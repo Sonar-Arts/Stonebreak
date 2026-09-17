@@ -24,12 +24,15 @@ public final class TextureToolDefinitions {
 
     private final TextureEditingService editor;
     private final CanvasCaptureService capture;
+    private final com.openmason.main.systems.io.AssetWriteService writes;
     private final ObjectMapper mapper;
 
     public TextureToolDefinitions(TextureEditingService editor, CanvasCaptureService capture,
+                                  com.openmason.main.systems.io.AssetWriteService writes,
                                   ObjectMapper mapper) {
         this.editor = editor;
         this.capture = capture;
+        this.writes = writes;
         this.mapper = mapper;
     }
 
@@ -175,9 +178,13 @@ public final class TextureToolDefinitions {
 
         registry.register(new McpTool(
                 "tex_save_project",
-                "Save the editor's layer stack as a .omt texture project.",
-                schema().str("file_path", "Absolute .omt path").required("file_path").build(),
-                args -> editor.saveProject(reqString(args, "file_path"))));
+                "Save the editor's layer stack as a .omt texture project. Without file_path: "
+                        + "re-save the open .omt, or open the in-app Save Sheet. Paths must be inside "
+                        + "a writable root (see save_targets); risky writes ask the user.",
+                savePathSchema("Target .omt path: absolute, project:<rel>, or a bare name").build(),
+                args -> saveOrInPlace(com.openmason.main.systems.io.WriteKind.OMT, args,
+                        editor.currentProjectPath(), "texture",
+                        p -> editor.saveProject(p.toString()))));
 
         // ---------- Layers ----------
 
@@ -423,9 +430,37 @@ public final class TextureToolDefinitions {
 
         registry.register(new McpTool(
                 "tex_export_png",
-                "Flatten visible layers and export to a PNG file at the given absolute path.",
-                schema().str("file_path", "Absolute output PNG path").required("file_path").build(),
-                args -> editor.exportPng(reqString(args, "file_path"))));
+                "Flatten visible layers and export a PNG. file_path: absolute, exports:<rel>, "
+                        + "project:<rel> or a bare name (lands in the exports root); omit to ask "
+                        + "the user in the Save Sheet.",
+                savePathSchema("Target .png path").build(),
+                args -> writes.save(
+                        com.openmason.main.systems.io.AssetWriteService.WriteRequest.of(
+                                com.openmason.main.systems.io.WriteKind.PNG,
+                                McpArgs.optString(args, "file_path"),
+                                McpArgs.optBool(args, "prompt", false),
+                                McpArgs.optBool(args, "overwrite", false), "texture"),
+                        p -> editor.exportPng(p.toString()))));
+    }
+
+    private McpSchema savePathSchema(String pathDescription) {
+        return schema()
+                .str("file_path", pathDescription)
+                .bool("prompt", "Always ask the user in the in-app Save Sheet")
+                .bool("overwrite", "Acknowledge replacing an existing file");
+    }
+
+    /** Shared save routing: explicit path → sandbox+policy; none → in-place or Save Sheet. */
+    private Object saveOrInPlace(com.openmason.main.systems.io.WriteKind kind, JsonNode args,
+                                 String currentPath, String suggestedName,
+                                 com.openmason.main.systems.io.AssetWriteService.Writer writer) {
+        String path = McpArgs.optString(args, "file_path");
+        boolean prompt = McpArgs.optBool(args, "prompt", false);
+        if (path == null && !prompt && currentPath != null && !currentPath.isBlank()) {
+            return writes.saveInPlace(kind, currentPath, writer);
+        }
+        return writes.save(com.openmason.main.systems.io.AssetWriteService.WriteRequest.of(
+                kind, path, prompt, McpArgs.optBool(args, "overwrite", false), suggestedName), writer);
     }
 
     // ===================== Schema helpers =====================

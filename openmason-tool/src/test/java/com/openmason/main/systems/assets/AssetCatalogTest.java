@@ -71,16 +71,16 @@ class AssetCatalogTest {
     @Test
     void pathGuardRejectsEscapes() {
         assertThrows(IllegalArgumentException.class,
-                () -> AssetPathGuard.requireAssetPath("/etc/passwd"));
+                () -> com.openmason.main.systems.io.WriteSandbox.requireAssetPath("/etc/passwd"));
         assertThrows(IllegalArgumentException.class,
-                () -> AssetPathGuard.requireAssetPath("../outside.sbo",
+                () -> com.openmason.main.systems.io.WriteSandbox.requireAssetPath("../outside.sbo",
                         catalog.scanRoots().toArray(new java.nio.file.Path[0])));
     }
 
     @Test
     void sanitizeStripsSeparators() {
-        assertEquals("a_b_c", AssetPathGuard.sanitizeFileName("a/b\\c", "x"));
-        assertEquals("x", AssetPathGuard.sanitizeFileName("...", "x"));
-        assertEquals("x", AssetPathGuard.sanitizeFileName(null, "x"));
+        assertEquals("a_b_c", com.openmason.main.systems.io.WriteSandbox.sanitizeFileName("a/b\\c", "x"));
+        assertEquals("x", com.openmason.main.systems.io.WriteSandbox.sanitizeFileName("...", "x"));
+        assertEquals("x", com.openmason.main.systems.io.WriteSandbox.sanitizeFileName(null, "x"));
     }
 }

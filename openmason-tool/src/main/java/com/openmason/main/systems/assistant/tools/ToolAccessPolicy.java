@@ -14,7 +14,7 @@ public final class ToolAccessPolicy {
 
     /** Tools that replace the user's working set → REQUIRES_AUTH. */
     private static final Set<String> REQUIRES_AUTH = Set.of(
-            "asset_open");
+            "asset_open", "model_open", "model_new");
 
     /** Read-only tools that name-heuristics miss. */
     private static final Set<String> READ_ONLY_EXPLICIT = Set.of(
@@ -23,7 +23,8 @@ public final class ToolAccessPolicy {
             "validate_model_ops", "script_list", "script_read",
             "asset_list", "asset_manifest", "asset_mesh_summary", "asset_face_data",
             "asset_texture_describe", "asset_texture_export", "asset_check_winding",
-            "model_describe", "model_check_winding");
+            "model_describe", "model_check_winding", "save_targets", "ui_prompt_status",
+            "sbo_editor_get", "sbe_editor_get");
 
     private static final String[] READ_ONLY_PREFIXES = {
             "get_", "list_", "inspect_", "tex_describe", "tex_get_", "tex_list_",

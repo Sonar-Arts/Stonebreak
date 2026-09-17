@@ -34,6 +34,8 @@ public final class AssistantPreferences {
     private static final String KEY_POLICY_AUTH = "assistant.approval.requiresauth";
     private static final String KEY_LIBALEX_ENABLED = "assistant.libalex.enabled";
     private static final String KEY_AUTO_COMPACT = "assistant.context.auto.compact";
+    /** When agent-initiated file writes show the in-app Save Sheet (shared by MCP + assistant). */
+    private static final String KEY_WRITE_POLICY = "mcp.write.policy";
 
     private static final Object LOCK = new Object();
     private static Properties cached;
@@ -85,6 +87,33 @@ public final class AssistantPreferences {
             } catch (IOException e) {
                 logger.warn("Could not save assistant settings: {}", e.toString());
             }
+        }
+    }
+
+    /** The agent write policy (Save Sheet behaviour); default ASK_RISKY. */
+    public static com.openmason.main.systems.io.WritePolicy writePolicy() {
+        return com.openmason.main.systems.io.WritePolicy.fromString(
+                load().getProperty(KEY_WRITE_POLICY),
+                com.openmason.main.systems.io.WritePolicy.ASK_RISKY);
+    }
+
+    /** Persist the agent write policy (called from the Preferences Apply). */
+    public static void writeWritePolicy(com.openmason.main.systems.io.WritePolicy policy) {
+        synchronized (LOCK) {
+            Properties p = load();
+            p.setProperty(KEY_WRITE_POLICY, policy.name());
+            store(p);
+        }
+    }
+
+    private static void store(Properties p) {
+        try {
+            Files.createDirectories(FILE.getParent());
+            try (OutputStream out = Files.newOutputStream(FILE)) {
+                p.store(out, "Open Mason assistant settings (per-machine)");
+            }
+        } catch (IOException e) {
+            logger.warn("Could not save assistant settings: {}", e.toString());
         }
     }
 

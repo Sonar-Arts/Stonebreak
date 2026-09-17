@@ -189,14 +189,38 @@ public class ModelOperationService {
             return;
         }
 
-        // Check if model has file path (saved before)
-        if (currentEditableModel.getFilePath() == null) {
-            // First-time save: show save dialog
+        // ModelState is the source of truth for "where does this model live":
+        // a copy extracted from an SBO/SBE asset (IMPORTED_ASSET) has no path
+        // even though it was staged through a temp .omo, so Save must re-route
+        // to Save As instead of writing into a deleted temp folder.
+        if (!modelState.hasOMOFile()) {
             saveModelAs();
         } else {
-            // Save to existing path
-            saveModelToFile(currentEditableModel.getFilePath().toString());
+            saveModelToFile(modelState.getCurrentOMOFilePath());
         }
+    }
+
+    /**
+     * Save the current editable model straight to {@code filePath} (no dialog).
+     * The programmatic twin of {@link #saveModel()} used by the MCP
+     * {@code model_save} tool once the target has been chosen and approved.
+     *
+     * @return true when the .omo was written and the state updated
+     */
+    public boolean saveModelToPath(String filePath) {
+        if (currentEditableModel == null) {
+            statusService.updateStatus("No model to save");
+            return false;
+        }
+        if (filePath == null || filePath.isBlank()) {
+            return false;
+        }
+        return saveModelToFile(filePath);
+    }
+
+    /** The live editable model, or null when nothing editable is loaded. */
+    public BlockModel getCurrentEditableModel() {
+        return currentEditableModel;
     }
 
     /**
@@ -210,6 +234,11 @@ public class ModelOperationService {
             return;
         }
 
+        if (fileDialogService == null) {
+            logger.warn("No file dialog service — Save As unavailable (headless)");
+            statusService.updateStatus("Save As unavailable without a UI");
+            return;
+        }
         // Show save dialog
         fileDialogService.showSaveOMODialog(this::saveModelToFile);
     }
@@ -220,7 +249,7 @@ public class ModelOperationService {
      *
      * @param filePath the path to save to
      */
-    private void saveModelToFile(String filePath) {
+    private boolean saveModelToFile(String filePath) {
         statusService.updateStatus("Saving model...");
 
         try {
@@ -229,7 +258,7 @@ public class ModelOperationService {
             logger.warn("Pre-save hook failed: {}", e.getMessage());
         }
         try {
-            saveModelToFileInner(filePath);
+            return saveModelToFileInner(filePath);
         } finally {
             try {
                 afterSave.run();
@@ -239,7 +268,7 @@ public class ModelOperationService {
         }
     }
 
-    private void saveModelToFileInner(String filePath) {
+    private boolean saveModelToFileInner(String filePath) {
         try {
             // ALWAYS extract mesh data to make .omo files self-contained
             OMOFormat.MeshData meshData = null;
@@ -333,10 +362,12 @@ public class ModelOperationService {
                 statusService.updateStatus("Failed to save model");
                 logger.error("Save operation returned false");
             }
+            return success;
 
         } catch (Exception e) {
             logger.error("Error saving model", e);
             statusService.updateStatus("Error saving model: " + e.getMessage());
+            return false;
         }
     }
 
@@ -395,6 +426,11 @@ public class ModelOperationService {
             loadOMOModelFromFile(tempOmo.toString());
             if (!modelState.isModelLoaded()) {
                 return new OpenAssetResult(false, "model failed to load — see log");
+            }
+            // The deserializer stamped the temp path onto the model; forget it,
+            // the folder is deleted below and Save must go through Save As.
+            if (currentEditableModel != null) {
+                currentEditableModel.setFilePath(null);
             }
             modelState.setCurrentOMOFilePath("");
             modelState.setUnsavedChanges(true);

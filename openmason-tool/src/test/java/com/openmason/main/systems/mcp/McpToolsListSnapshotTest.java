@@ -35,10 +35,12 @@ class McpToolsListSnapshotTest {
      * Upper bound on the serialized tools/list JSON (name + description +
      * inputSchema for every tool). Raised 60k -> 72k for the 112-tool surface
      * (2026-08-23: asset lens, model inspection, script library, knowledge) —
-     * measured 61.3k at the raise; growing past the budget must stay a
-     * conscious decision, not drift.
+     * measured 61.3k at the raise. Raised 72k -> 80k for the 142-tool surface
+     * (2026-09-16: save sandbox / Save Sheet, model_save/open/new, sbo/sbe
+     * export + editor tools) — measured ~74k at the raise; growing past the
+     * budget must stay a conscious decision, not drift.
      */
-    private static final int TOOLS_LIST_BYTE_BUDGET = 72_000;
+    private static final int TOOLS_LIST_BYTE_BUDGET = 80_000;
 
     private static McpToolRegistry buildRealRegistry() {
         ObjectMapper mapper = new ObjectMapper();

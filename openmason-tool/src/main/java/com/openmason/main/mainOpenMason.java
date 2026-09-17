@@ -64,6 +64,9 @@ public class mainOpenMason {
     private final com.openmason.main.systems.mcp.approval.McpApprovalGate approvalGate =
             new com.openmason.main.systems.mcp.approval.McpApprovalGate();
     private com.openmason.main.systems.menus.dialogs.ApprovalDialog approvalDialog;
+    private final com.openmason.main.systems.mcp.approval.SaveSheetGate saveSheetGate =
+            new com.openmason.main.systems.mcp.approval.SaveSheetGate();
+    private com.openmason.main.systems.menus.dialogs.SaveSheetDialog saveSheetDialog;
     private SkijaContext skijaContext;
     private SkijaTestPanel skijaTestPanel;
 
@@ -228,6 +231,27 @@ public class mainOpenMason {
                     },
                     () -> mainInterface.getModelState() != null
                             && mainInterface.getModelState().hasUnsavedChanges());
+            // Agent-initiated file writes pick their target here, never in an OS dialog.
+            mainInterface.setSaveSheetGate(saveSheetGate);
+            saveSheetDialog = new com.openmason.main.systems.menus.dialogs.SaveSheetDialog(
+                    saveSheetGate,
+                    new com.openmason.main.systems.io.WriteSandbox(
+                            com.openmason.main.systems.io.WriteRoots.forInterface(mainInterface)));
+            saveSheetDialog.setNativePicker((kind, suggestedName, preferredDir, onPicked) -> {
+                var dialogs = mainInterface.getFileDialogService();
+                if (dialogs == null) {
+                    return;
+                }
+                switch (kind) {
+                    case OMO -> dialogs.showSaveOMODialog(onPicked::accept);
+                    case OMT -> dialogs.showSaveOMTDialog(onPicked::accept);
+                    case OMANIM -> dialogs.showSaveOMADialog(onPicked::accept);
+                    case OMSC -> dialogs.showSaveOMSCDialog(onPicked::accept);
+                    case PNG -> dialogs.showSavePNGDialog(onPicked::accept);
+                    case SBO -> dialogs.showSaveSBODialog(suggestedName, preferredDir, onPicked::accept);
+                    case SBE -> dialogs.showSaveSBEDialog(suggestedName, preferredDir, onPicked::accept);
+                }
+            });
         }
         if (mainInterface != null && scriptingWindow != null) {
             mainInterface.setScriptingPresenter(new MainImGuiInterface.ScriptingPresenter() {
@@ -289,6 +313,9 @@ public class mainOpenMason {
         // Agent approval modal — independent of which screen is showing.
         if (approvalDialog != null) {
             approvalDialog.render();
+        }
+        if (saveSheetDialog != null) {
+            saveSheetDialog.render();
         }
 
         // Scripting window — standalone like the texture editor.
@@ -593,6 +620,7 @@ public class mainOpenMason {
 
         try {
             approvalGate.shutdown();
+            saveSheetGate.shutdown();
             if (libalexClient != null) {
                 libalexClient.close();
             }

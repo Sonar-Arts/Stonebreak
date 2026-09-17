@@ -103,6 +103,7 @@ public class PreferencesPageRenderer {
     private final ImBoolean assistantAuthAutoConfirm = new ImBoolean(false);
     private final ImBoolean assistantLibalexEnabled = new ImBoolean(true);
     private final ImBoolean assistantAutoCompact = new ImBoolean(true);
+    private final ImInt mcpWritePolicy = new ImInt();
     private volatile String assistantTestResult;
 
     // Dependencies
@@ -1016,6 +1017,22 @@ public class PreferencesPageRenderer {
         }
 
         ImGuiComponents.addSectionSeparator();
+        ImGuiComponents.renderSectionHeader("Agent File Writes");
+        ImGui.textWrapped("When a model (this assistant or an external MCP client) saves or "
+                + "exports a file, the in-app Save Sheet asks you to pick the target. Writes "
+                + "outside the project, game resources and exports folders are always refused.");
+        ImGui.text("Ask policy");
+        ImGui.sameLine(200);
+        ImGui.pushItemWidth(260);
+        ImGui.combo("##mcpWritePolicy", mcpWritePolicy,
+                com.openmason.main.systems.io.WritePolicy.labels());
+        ImGui.popItemWidth();
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Ask for every write / ask only for overwrites and game resources "
+                    + "(default) / ask only for game resources (overwrite:true replaces silently).");
+        }
+
+        ImGuiComponents.addSectionSeparator();
         ImGuiComponents.renderSectionHeader("Knowledge");
         boolean libalexDetected =
                 com.openmason.main.systems.assistant.libalex.LibalexDetector.detect() != null;
@@ -1080,6 +1097,7 @@ public class PreferencesPageRenderer {
                         .AssistantSettings.ApprovalPolicy.AUTO);
         assistantLibalexEnabled.set(AssistantPreferences.libalexEnabled());
         assistantAutoCompact.set(settings.autoCompact());
+        mcpWritePolicy.set(AssistantPreferences.writePolicy().ordinal());
         assistantTestResult = null;
     }
 
@@ -1105,6 +1123,9 @@ public class PreferencesPageRenderer {
                 auth,
                 assistantAutoCompact.get());
         AssistantPreferences.write(settings, assistantLibalexEnabled.get());
+        var writePolicies = com.openmason.main.systems.io.WritePolicy.values();
+        AssistantPreferences.writeWritePolicy(
+                writePolicies[Math.min(Math.max(0, mcpWritePolicy.get()), writePolicies.length - 1)]);
     }
 
 }

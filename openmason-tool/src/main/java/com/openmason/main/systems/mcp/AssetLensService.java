@@ -14,7 +14,7 @@ import com.openmason.main.systems.assets.AssetCatalog;
 import com.openmason.main.systems.assets.AssetEntry;
 import com.openmason.main.systems.assets.AssetModelDigest;
 import com.openmason.main.systems.assets.AssetParseCache;
-import com.openmason.main.systems.assets.AssetPathGuard;
+import com.openmason.main.systems.io.WriteSandbox;
 import org.joml.Vector3f;
 
 import javax.imageio.ImageIO;
@@ -345,7 +345,7 @@ public class AssetLensService {
         String baseName = out != null ? out
                 : (materialId != null ? "material_" + materialId : "default")
                 + (state != null ? "_" + state : "") + (variant != null ? "_" + variant : "");
-        Path target = AssetPathGuard.exportPngTarget(entry.id(), baseName);
+        Path target = WriteSandbox.exportPngTarget(entry.id(), baseName);
         ImageIO.write(image, "png", target.toFile());
         if (inline) {
             int cap = maxSize > 0 ? Math.min(maxSize, INLINE_IMAGE_MAX) : INLINE_IMAGE_MAX;
@@ -536,7 +536,7 @@ public class AssetLensService {
         }
         if (asset.contains("/") || asset.contains("\\")
                 || asset.toLowerCase(Locale.ROOT).matches(".*\\.(sbo|sbe)$")) {
-            Path p = AssetPathGuard.requireAssetPath(asset,
+            Path p = WriteSandbox.requireAssetPath(asset,
                     catalog.scanRoots().toArray(new Path[0]));
             for (AssetEntry e : catalog.listAll(true)) {
                 if (e.sourcePath().equals(p)) {

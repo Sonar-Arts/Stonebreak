@@ -479,8 +479,8 @@ public class SBOExportWindow {
      * metadata is unreachable — callers should treat that as "no slot" and
      * rely on the game's runtime dynamic allocator.
      */
-    private int[] findFreeAtlasSlot() {
-        try (InputStream in = getClass().getClassLoader()
+    public static int[] findFreeAtlasSlot() {
+        try (InputStream in = SBOExportWindow.class.getClassLoader()
                 .getResourceAsStream("texture atlas/atlas_metadata.json")) {
             if (in == null) {
                 logger.debug("atlas_metadata.json not on classpath — defaulting atlasX/Y to -1");

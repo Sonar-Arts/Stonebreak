@@ -254,6 +254,12 @@ public final class SceneEditingService {
         return getInfo();
     }
 
+    /** Save As to an already-resolved absolute path (the write sandbox picked it). */
+    public boolean saveAsPath(String absolutePath) {
+        return await(MainThreadExecutor.submit(() ->
+                requireViewer().getSceneService().saveSceneAs(absolutePath, projectRoot())));
+    }
+
     public Map<String, Object> undo() {
         return await(MainThreadExecutor.submit(() -> {
             SceneViewerActions actions = requireViewer().getActions();

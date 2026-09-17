@@ -607,6 +607,17 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         return approvalGate;
     }
 
+    /** Save Sheet gate for agent-initiated file writes (null until UI wiring). */
+    private com.openmason.main.systems.mcp.approval.SaveSheetGate saveSheetGate;
+
+    public void setSaveSheetGate(com.openmason.main.systems.mcp.approval.SaveSheetGate gate) {
+        this.saveSheetGate = gate;
+    }
+
+    public com.openmason.main.systems.mcp.approval.SaveSheetGate getSaveSheetGate() {
+        return saveSheetGate;
+    }
+
     /** Model/session state (loaded flag, dirty flag, source). */
     public com.openmason.main.systems.stateHandling.ModelState getModelState() {
         return modelState;

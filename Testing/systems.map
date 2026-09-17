@@ -50,6 +50,8 @@ bench	stonebreak-game	com/stonebreak/world/bench/**/*Test
 # ---- tool ----
 mcp	openmason-tool	com/openmason/main/systems/mcp/**/*Test
 assets	openmason-tool	com/openmason/main/systems/assets/**/*Test
+tool-io	openmason-tool	com/openmason/main/systems/io/**/*Test
+tool-services	openmason-tool	com/openmason/main/systems/services/**/*Test
 assistant	openmason-tool	com/openmason/main/systems/assistant/**/*Test
 anim-editor	openmason-tool	com/openmason/main/systems/menus/animationEditor/**/*Test
 tool-ui	openmason-tool	com/openmason/main/systems/menus/dialogs/**/*Test,com/openmason/main/systems/menus/textureCreator/**/*Test,com/openmason/main/systems/mortar/**/*Test

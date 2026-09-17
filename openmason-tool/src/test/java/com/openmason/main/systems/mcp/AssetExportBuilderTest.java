@@ -1,0 +1,190 @@
+package com.openmason.main.systems.mcp;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openmason.engine.format.sbe.SBEFormat;
+import com.openmason.engine.format.sbe.SBEParser;
+import com.openmason.engine.format.sbe.SBESerializer;
+import com.openmason.engine.format.sbo.SBOFormat;
+import com.openmason.engine.format.sbo.SBOParser;
+import com.openmason.engine.format.sbo.SBOSerializer;
+import com.openmason.main.systems.services.ModelOperationService;
+import com.openmason.main.systems.services.StatusService;
+import com.openmason.main.systems.stateHandling.ModelState;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/** JSON → ExportParameters → serializer → parser round trips, headless. */
+class AssetExportBuilderTest {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    @TempDir
+    Path tmp;
+
+    private Path omo;
+
+    @BeforeEach
+    void blankCubeOnDisk() {
+        ModelState state = new ModelState();
+        ModelOperationService ops = new ModelOperationService(state, new StatusService(), null);
+        ops.newModel();
+        omo = tmp.resolve("Cube.omo");
+        assertTrue(ops.saveModelToPath(omo.toString()));
+    }
+
+    private static JsonNode json(String s) throws Exception {
+        return JSON.readTree(s);
+    }
+
+    private Path resolve(String raw) {
+        Path p = Path.of(raw);
+        return p.isAbsolute() ? p : tmp.resolve(raw);
+    }
+
+    @Test
+    void sboDefaultsMirrorTheExportWindow() {
+        SBOFormat.ExportParameters p = AssetExportBuilder.sbo(null, omo, "My Block.omo", this::resolve);
+        assertEquals("My Block", p.getObjectName());
+        assertEquals("stonebreak:my_block", p.getObjectId());
+        assertEquals(SBOFormat.ObjectType.BLOCK, p.getObjectType());
+        assertEquals("default", p.getObjectPack());
+        assertFalse(p.getAuthor().isBlank());
+        assertTrue(p.isValid(), p.getValidationError());
+        assertNotNull(p.getGameProperties(), "blocks always get game properties");
+        assertTrue(p.getGameProperties().numericId() > 0, "next free block id is suggested");
+        assertTrue(p.getGameProperties().solid());
+        assertEquals("BLOCKS", p.getGameProperties().categoryOrDefault());
+        assertFalse(p.isStatesEnabled());
+        assertNull(p.getDrops());
+    }
+
+    @Test
+    void sboRoundTripThroughSerializerAndParser() throws Exception {
+        JsonNode params = json("""
+                {"objectId":"stonebreak:test_lamp","objectName":"Test Lamp","objectType":"block",
+                 "author":"tester","description":"a lamp",
+                 "gameProperties":{"numericId":9001,"hardness":2.5,"renderLayer":"cutout","transparent":true},
+                 "states":[{"name":"off"},{"name":"on","loop":"loop"}],"defaultState":"on",
+                 "sounds":[{"event":"break","resource":"/sounds/GrassWalk.wav","volume":0.5,"variation":true}],
+                 "drops":{"drops":[{"objectId":"stonebreak:test_lamp","min":1,"max":2,"chance":0.75}],
+                          "toolOverrides":[{"tool":"stonebreak:pickaxe","drops":[]}]}}
+                """);
+        SBOFormat.ExportParameters p = AssetExportBuilder.sbo(params, omo, "ignored", this::resolve);
+        assertTrue(p.isValid(), p.getValidationError());
+        assertEquals(2, p.getStates().size());
+        assertEquals(omo.toString(), p.getStates().get(0).sourcePath(), "states default to the model's omo");
+        assertEquals(SBOFormat.LoopMode.LOOP, p.getStates().get(1).loopMode());
+
+        Path out = tmp.resolve("SB_Test_Lamp.sbo");
+        assertTrue(new SBOSerializer().export(p, omo, out.toString()));
+        SBOFormat.Document d = new SBOParser().parseRaw(out).manifest();
+        assertEquals("stonebreak:test_lamp", d.objectId());
+        assertEquals("block", d.objectType());
+        assertEquals("a lamp", d.description());
+        assertEquals(9001, d.gameProperties().numericId());
+        assertEquals(2.5f, d.gameProperties().hardness(), 1e-6);
+        assertEquals("CUTOUT", d.gameProperties().renderLayerOrDefault());
+        assertTrue(d.gameProperties().transparent());
+        assertEquals(2, d.states().size());
+        assertEquals("on", d.defaultStateName());
+        assertEquals(1, d.sounds().sounds().size());
+        assertEquals("/sounds/GrassWalk.wav", d.sounds().sounds().get(0).resourcePath());
+        assertEquals(1, d.drops().drops().size());
+        assertEquals(0.75f, d.drops().drops().get(0).chance(), 1e-6);
+        assertEquals(1, d.drops().toolOverrides().size());
+
+        Map<String, Object> described = AssetExportBuilder.describe(d);
+        assertEquals("stonebreak:test_lamp", described.get("objectId"));
+        assertNotNull(described.get("gameProperties"));
+        assertNotNull(described.get("drops"));
+    }
+
+    @Test
+    void sbeRoundTripThroughSerializerAndParser() throws Exception {
+        Path override = tmp.resolve("Variant.omo");
+        Files.copy(omo, override);
+        JsonNode params = json("""
+                {"objectName":"Test Goose","entityType":"mob","author":"tester",
+                 "states":[{"name":"idle"},{"name":"swim","model":"Variant.omo"}],
+                 "variants":[{"name":"white"},{"name":"grey","model":"Variant.omo"}]}
+                """);
+        SBEFormat.ExportParameters p = AssetExportBuilder.sbe(params, "ignored", this::resolve);
+        assertTrue(p.isValid(), p.getValidationError());
+        assertNull(AssetExportBuilder.validateSbeBindings(p));
+        assertEquals("stonebreak:test_goose", p.getObjectId());
+
+        Path out = tmp.resolve("SB_Test_Goose.sbe");
+        assertTrue(new SBESerializer().export(p, omo, out.toString()));
+        SBEFormat.Document d = new SBEParser().parseRaw(out).manifest();
+        assertEquals("stonebreak:test_goose", d.objectId());
+        assertEquals("mob", d.entityType());
+        assertEquals(2, d.states().size());
+        assertNotNull(d.states().get(1).modelOverride());
+        assertEquals(2, d.variants().size());
+        assertNotNull(AssetExportBuilder.describe(d).get("variants"));
+    }
+
+    @Test
+    void sbeBindingValidationCatchesDuplicates() throws Exception {
+        SBEFormat.ExportParameters p = AssetExportBuilder.sbe(
+                json("{\"states\":[{\"name\":\"a\"},{\"name\":\"a\"}]}"), "x", this::resolve);
+        assertEquals("Duplicate state: 'a'", AssetExportBuilder.validateSbeBindings(p));
+    }
+
+    @Test
+    void sboPatchChangesOnlyNamedFields() throws Exception {
+        SBOFormat.ExportParameters p = AssetExportBuilder.sbo(
+                json("{\"objectId\":\"stonebreak:p\",\"objectName\":\"P\",\"author\":\"t\","
+                        + "\"gameProperties\":{\"numericId\":9002}}"), omo, "x", this::resolve);
+        Path out = tmp.resolve("p.sbo");
+        assertTrue(new SBOSerializer().export(p, omo, out.toString()));
+        SBOFormat.Document base = new SBOParser().parseRaw(out).manifest();
+
+        SBOFormat.Document patched = AssetExportBuilder.patchSbo(base, json("""
+                {"description":"patched","gameProperties":{"hardness":7},"fuel":800,
+                 "sounds":[{"event":"step","resource":"/sounds/x.wav"}],
+                 "drops":[]}
+                """));
+        assertEquals("patched", patched.description());
+        assertEquals(base.objectId(), patched.objectId());
+        assertEquals(9002, patched.gameProperties().numericId(), "unnamed fields keep their value");
+        assertEquals(7f, patched.gameProperties().hardness(), 1e-6);
+        assertEquals(800, patched.fuel().burnTicks());
+        assertEquals(1, patched.sounds().sounds().size());
+        assertNotNull(patched.drops());
+        assertTrue(patched.drops().drops().isEmpty(), "\"drops\": [] means drops nothing");
+
+        SBOFormat.Document cleared = AssetExportBuilder.patchSbo(patched,
+                json("{\"gameProperties\":null,\"drops\":null,\"fuel\":null}"));
+        assertNull(cleared.gameProperties());
+        assertNull(cleared.drops());
+        assertNull(cleared.fuel());
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> AssetExportBuilder.patchSbo(base,
+                        json("{\"sounds\":[{\"event\":\"hit\",\"filename\":\"sounds/nope.wav\"}]}")));
+        assertTrue(e.getMessage().contains("not embedded"));
+    }
+
+    @Test
+    void wrongExtensionOrMissingSourceFileIsRefusedBeforeSerializing() throws Exception {
+        assertThrows(IllegalArgumentException.class, () -> AssetExportBuilder.sbo(
+                json("{\"states\":[{\"name\":\"a\",\"clip\":\"missing.omanim\"}]}"), omo, "x",
+                raw -> {
+                    throw new IllegalArgumentException("no_such_file: " + raw);
+                }));
+    }
+}
