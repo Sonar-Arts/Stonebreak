@@ -3,6 +3,8 @@ package com.openmason.main.systems.menus.textureCreator.dialogs;
 import imgui.ImColor;
 import imgui.ImGui;
 import imgui.ImVec2;
+import imgui.ImVec4;
+import imgui.flag.ImGuiCol;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,11 +36,29 @@ public class OMTImportDialog {
     private static final float DIALOG_WIDTH = 480.0f;
     private static final float DIALOG_HEIGHT = 220.0f;
 
+    // Reference-viewport centre for modal positioning (main viewport when docked,
+    // the popped-out editor host window's viewport when windowed). -1 = main viewport.
+    private float refCenterX = -1.0f;
+    private float refCenterY = -1.0f;
+
     /**
      * Create OMT import dialog.
      */
     public OMTImportDialog() {
         logger.debug("OMT import dialog created");
+    }
+
+    /**
+     * Set the reference-viewport centre used for modal positioning.
+     * Called each frame by the texture editor's render path (docked = main
+     * viewport, windowed = the popped-out editor host window's viewport).
+     *
+     * @param centerX reference viewport centre X
+     * @param centerY reference viewport centre Y
+     */
+    public void setReferenceViewportCenter(float centerX, float centerY) {
+        this.refCenterX = centerX;
+        this.refCenterY = centerY;
     }
 
     /**
@@ -97,31 +117,35 @@ public class OMTImportDialog {
         // Set initial size and position only on first open
         if (needsPositioning) {
             ImGui.setNextWindowSize(DIALOG_WIDTH, DIALOG_HEIGHT);
+            float centerX = refCenterX >= 0 ? refCenterX : ImGui.getMainViewport().getCenterX();
+            float centerY = refCenterY >= 0 ? refCenterY : ImGui.getMainViewport().getCenterY();
             ImGui.setNextWindowPos(
-                ImGui.getMainViewport().getCenterX() - DIALOG_WIDTH / 2.0f,
-                ImGui.getMainViewport().getCenterY() - DIALOG_HEIGHT / 2.0f
+                centerX - DIALOG_WIDTH / 2.0f,
+                centerY - DIALOG_HEIGHT / 2.0f
             );
             needsPositioning = false;
         }
 
         if (ImGui.beginPopupModal("Import .OMT File")) {
 
-            // Header
+            // Header (theme Text color — legible in every theme)
             ImGui.spacing();
             String headerText = "Import .OMT File";
             ImVec2 headerSize = ImGui.calcTextSize(headerText);
             ImGui.setCursorPosX((DIALOG_WIDTH - headerSize.x) / 2.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, ImColor.rgba(80, 80, 80, 255));
+            ImVec2 headerPos = ImGui.getCursorScreenPos();
             ImGui.text(headerText);
-            ImGui.popStyleColor();
+            ImGui.getWindowDrawList().addText(headerPos.x + 0.5f, headerPos.y,
+                    ImGui.getColorU32(ImGuiCol.Text), headerText);
             ImGui.spacing();
 
-            // Show filename
+            // Show filename (theme accent)
             if (pendingFilePath != null) {
                 String fileName = new File(pendingFilePath).getName();
                 ImVec2 fileNameSize = ImGui.calcTextSize(fileName);
                 ImGui.setCursorPosX((DIALOG_WIDTH - fileNameSize.x) / 2.0f);
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, ImColor.rgba(100, 150, 255, 255));
+                ImVec4 accent = getAccentColor();
+                ImGui.pushStyleColor(ImGuiCol.Text, ImColor.rgba(accent.x, accent.y, accent.z, 1.0f));
                 ImGui.text(fileName);
                 ImGui.popStyleColor();
             }
@@ -133,9 +157,7 @@ public class OMTImportDialog {
             String subText = "How would you like to import this file?";
             ImVec2 subSize = ImGui.calcTextSize(subText);
             ImGui.setCursorPosX((DIALOG_WIDTH - subSize.x) / 2.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, ImColor.rgba(140, 140, 140, 255));
-            ImGui.text(subText);
-            ImGui.popStyleColor();
+            ImGui.textDisabled(subText);
 
             ImGui.spacing();
             ImGui.spacing();
@@ -207,6 +229,17 @@ public class OMTImportDialog {
         if (isOpen && !ImGui.isPopupOpen("Import .OMT File")) {
             ImGui.openPopup("Import .OMT File");
         }
+    }
+
+    /**
+     * Get the accent color from the current theme (HeaderActive, as in NewTextureDialog).
+     */
+    private ImVec4 getAccentColor() {
+        ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+        if (accent == null || (accent.x == 0 && accent.y == 0 && accent.z == 0)) {
+            accent = new ImVec4(0.36f, 0.61f, 0.84f, 1.0f);
+        }
+        return accent;
     }
 
     /**

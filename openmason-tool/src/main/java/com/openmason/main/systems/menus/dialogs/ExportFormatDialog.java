@@ -42,6 +42,24 @@ public class ExportFormatDialog {
     private final ImInt selectedFormat = new ImInt(0); // 0 = PNG, 1 = OMT
     private ExportFormatCallback callback;
 
+    // Reference-viewport centre for modal positioning (main viewport when docked,
+    // the popped-out editor host window's viewport when windowed). -1 = main viewport.
+    private float refCenterX = -1.0f;
+    private float refCenterY = -1.0f;
+
+    /**
+     * Set the reference-viewport centre used for modal positioning.
+     * Called each frame by the texture editor's render path (docked = main
+     * viewport, windowed = the popped-out editor host window's viewport).
+     *
+     * @param centerX reference viewport centre X
+     * @param centerY reference viewport centre Y
+     */
+    public void setReferenceViewportCenter(float centerX, float centerY) {
+        this.refCenterX = centerX;
+        this.refCenterY = centerY;
+    }
+
     /**
      * Show the export format dialog.
      *
@@ -63,11 +81,13 @@ public class ExportFormatDialog {
             return;
         }
 
-        // Center the modal
+        // Center the modal over the reference viewport
         ImGui.setNextWindowSize(400, 200);
+        float centerX = refCenterX >= 0 ? refCenterX : ImGui.getMainViewport().getCenterX();
+        float centerY = refCenterY >= 0 ? refCenterY : ImGui.getMainViewport().getCenterY();
         ImGui.setNextWindowPos(
-                ImGui.getMainViewport().getCenterX() - 200,
-                ImGui.getMainViewport().getCenterY() - 100
+                centerX - 200,
+                centerY - 100
         );
 
         // Open modal popup
