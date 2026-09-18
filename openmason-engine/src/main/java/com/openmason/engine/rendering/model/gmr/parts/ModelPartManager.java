@@ -836,6 +836,31 @@ public class ModelPartManager implements IModelPartManager {
 
     // ========== Bulk Operations ==========
 
+    /**
+     * Replace a document's parts in their saved order and rebuild once. All parents
+     * are registered before matrices are evaluated, including parents after children.
+     * Validation happens before modifying the current document.
+     */
+    public void replaceAllParts(List<ModelPartDescriptor> descriptors,
+                                Map<String, PartMeshRebuilder.PartGeometry> geometry) {
+        Map<String, ModelPartDescriptor> replacement = new LinkedHashMap<>();
+        for (ModelPartDescriptor part : descriptors) {
+            if (part.id() == null || replacement.putIfAbsent(part.id(), part.withMeshRange(null)) != null) {
+                throw new IllegalArgumentException("Missing or duplicate part ID: " + part.id());
+            }
+            requireConsistent(geometry.get(part.id()), part.name());
+        }
+        parts.clear();
+        parts.putAll(replacement);
+        partGeometry.clear();
+        for (String id : replacement.keySet()) partGeometry.put(id, geometry.get(id));
+        selectedPartIds.clear();
+        partNameCounter = 0;
+        invalidateEffectiveMatrixCache();
+        rebuildCombinedMesh();
+        notifyPartsRebuilt();
+    }
+
     @Override
     public void clear() {
         parts.clear();

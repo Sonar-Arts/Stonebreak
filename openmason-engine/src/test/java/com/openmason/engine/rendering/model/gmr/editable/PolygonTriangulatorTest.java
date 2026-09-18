@@ -11,6 +11,27 @@ class PolygonTriangulatorTest {
 
     private static final float EPS = 1e-5f;
 
+    @Test
+    void tinyConcaveFaceTriangulatesLikeItsFullSizeVersion() {
+        Vector3f[] full = TestMeshes.lShapeLoop();
+        Vector3f[] tiny = new Vector3f[full.length];
+        for (int i = 0; i < full.length; i++) {
+            tiny[i] = new Vector3f(full[i]).mul(1e-4f).add(0.03f, 1.68f, -0.09f);
+        }
+        assertArrayEqualsInt(PolygonTriangulator.triangulate(full),
+                PolygonTriangulator.triangulate(tiny));
+        assertEquals(polygonArea(tiny), triangulatedArea(tiny, PolygonTriangulator.triangulate(tiny)),
+                polygonArea(tiny) * 1e-4f);
+    }
+
+    @Test
+    void translatingConcaveFaceDoesNotChangeItsTriangulation() {
+        Vector3f[] full = TestMeshes.lShapeLoop();
+        Vector3f[] moved = new Vector3f[full.length];
+        for (int i = 0; i < full.length; i++) moved[i] = new Vector3f(full[i]).add(8192, -8192, 8192);
+        assertArrayEqualsInt(PolygonTriangulator.triangulate(full), PolygonTriangulator.triangulate(moved));
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     /** Sum of signed triangle areas projected on the loop's Newell normal. */

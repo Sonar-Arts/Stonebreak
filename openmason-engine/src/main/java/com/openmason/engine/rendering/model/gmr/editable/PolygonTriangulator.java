@@ -1,6 +1,5 @@
 package com.openmason.engine.rendering.model.gmr.editable;
 
-import com.openmason.engine.rendering.model.gmr.GMRConstants;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,8 +45,11 @@ public final class PolygonTriangulator {
             return new int[]{0, 1, 2};
         }
 
+        // Evaluate shape, not its size or distance from the model origin. Small
+        // facial polygons are valid even when their area is below 1e-6 units².
+        loop = normalizedLoop(loop);
         Vector3f normal = newellNormal(loop);
-        if (normal.lengthSquared() < GMRConstants.DEGENERATE_NORMAL_EPSILON_SQ) {
+        if (normal.lengthSquared() < RELATIVE_AREA_EPSILON * RELATIVE_AREA_EPSILON) {
             logger.warn("Degenerate polygon normal ({} vertices) — falling back to fan triangulation", n);
             return fan(0, n);
         }
@@ -89,16 +91,39 @@ public final class PolygonTriangulator {
      * Points out of a counter-clockwise loop. Not normalized.
      */
     public static Vector3f newellNormal(Vector3f[] loop) {
-        float nx = 0.0f, ny = 0.0f, nz = 0.0f;
+        double nx = 0, ny = 0, nz = 0;
         int n = loop.length;
+        if (n == 0) return new Vector3f();
+        Vector3f origin = loop[0];
         for (int i = 0; i < n; i++) {
             Vector3f c = loop[i];
             Vector3f x = loop[(i + 1) % n];
-            nx += (c.y - x.y) * (c.z + x.z);
-            ny += (c.z - x.z) * (c.x + x.x);
-            nz += (c.x - x.x) * (c.y + x.y);
+            double cy = (double) c.y - origin.y, xy = (double) x.y - origin.y;
+            double cz = (double) c.z - origin.z, xz = (double) x.z - origin.z;
+            double cx = (double) c.x - origin.x, xx = (double) x.x - origin.x;
+            nx += (cy - xy) * (cz + xz);
+            ny += (cz - xz) * (cx + xx);
+            nz += (cx - xx) * (cy + xy);
         }
-        return new Vector3f(nx, ny, nz);
+        return new Vector3f((float) nx, (float) ny, (float) nz);
+    }
+
+    private static Vector3f[] normalizedLoop(Vector3f[] loop) {
+        Vector3f origin = loop[0];
+        double extent = 0;
+        for (Vector3f p : loop) {
+            extent = Math.max(extent, Math.max(Math.abs((double) p.x - origin.x),
+                    Math.max(Math.abs((double) p.y - origin.y), Math.abs((double) p.z - origin.z))));
+        }
+        if (extent == 0) return loop;
+        Vector3f[] result = new Vector3f[loop.length];
+        for (int i = 0; i < loop.length; i++) {
+            Vector3f p = loop[i];
+            result[i] = new Vector3f((float) (((double) p.x - origin.x) / extent),
+                    (float) (((double) p.y - origin.y) / extent),
+                    (float) (((double) p.z - origin.z) / extent));
+        }
+        return result;
     }
 
     // ── Internals ───────────────────────────────────────────────────────────
