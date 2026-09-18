@@ -161,6 +161,12 @@ public final class IntegratedServer {
     // ─── Per-frame pump (host game thread) ────────────────────────────────────────
 
     public void tick() {
+        // The command-only local arena suspends the saved singleplayer world, including replication.
+        if (com.stonebreak.battletest.BattleTestSession.isActive()) {
+            lastTickNs = System.nanoTime();
+            tickAccumulatorNs = 0;
+            return;
+        }
         ServerInboundQueue queue = networkServer.inboundQueue();
         queue.drain(this::dispatch);
 

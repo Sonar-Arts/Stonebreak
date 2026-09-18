@@ -65,7 +65,7 @@ public final class GameLoop {
         // immediately on state transitions instead of lagging behind.
         com.stonebreak.audio.MusicManager musicManager = Game.getMusicManager();
         if (musicManager != null) {
-            musicManager.update(deltaTime, isMusicActive());
+            musicManager.update(deltaTime, musicScene());
         }
 
         if (!routeStateUpdate(deltaTime)) {
@@ -79,6 +79,19 @@ public final class GameLoop {
      * world is loaded (paused mid-game, opened from the pause menu) — only settings reached
      * before starting/joining a world (still {@code Game.getWorld() == null}) gets music.
      */
+    /**
+     * Which playlist should be audible. A running Focus battle owns the music in every state it can
+     * sit under (the battle itself, the pause menu and settings opened over it), so the battle theme
+     * does not cut out when the player pauses.
+     */
+    private com.stonebreak.audio.MusicManager.Scene musicScene() {
+        if (com.stonebreak.battle.stage.FocusBattle.isActive()) {
+            return com.stonebreak.audio.MusicManager.Scene.BATTLE;
+        }
+        return isMusicActive() ? com.stonebreak.audio.MusicManager.Scene.MENU
+                : com.stonebreak.audio.MusicManager.Scene.NONE;
+    }
+
     private boolean isMusicActive() {
         GameState state = game.getState();
         if (!MUSIC_ACTIVE_STATES.contains(state)) return false;
@@ -101,6 +114,12 @@ public final class GameLoop {
                 return false;
             }
             case MAIN_MENU -> {
+                return false;
+            }
+            case FOCUS_BATTLE -> {
+                // The battle has its own clock. Returning false keeps updateGameWorld (and with it the
+                // arena session's player physics and out-of-bounds reset) from running under it.
+                com.stonebreak.battle.stage.FocusBattle.tick(deltaTime);
                 return false;
             }
             case LOADING -> {
@@ -180,6 +199,12 @@ public final class GameLoop {
         com.stonebreak.audio.emitters.SoundEmitterManager soundEmitterManager = Game.getSoundEmitterManager();
         if (soundEmitterManager != null) {
             soundEmitterManager.update(deltaTime);
+        }
+
+        var battle = com.stonebreak.battletest.BattleTestSession.current();
+        if (battle != null) {
+            battle.update(deltaTime);
+            return;
         }
 
         World world = Game.getWorld();

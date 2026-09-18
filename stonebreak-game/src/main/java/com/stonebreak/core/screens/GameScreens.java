@@ -56,6 +56,7 @@ public final class GameScreens {
     private CharacterCreationScreen characterCreationScreen;
     private TerrainMapperScreen terrainMapperScreen;
     private SonarArtsIntroScreen startupIntroScreen;
+    private com.stonebreak.ui.focusBattle.FocusBattleScreen focusBattleScreen;
 
     // In-world screens — rebuilt per world, so they stay null outside one.
     private InventoryScreen inventoryScreen;
@@ -88,6 +89,8 @@ public final class GameScreens {
         characterCreationScreen = new CharacterCreationScreen(skija);
         terrainMapperScreen = new TerrainMapperScreen(skija);
         startupIntroScreen = new SonarArtsIntroScreen(skija);
+        // Needs only the backend; the battle coordinator binds/unbinds it per encounter.
+        focusBattleScreen = new com.stonebreak.ui.focusBattle.FocusBattleScreen(skija);
     }
 
     /**
@@ -179,6 +182,10 @@ public final class GameScreens {
 
     public SonarArtsIntroScreen startupIntroScreen() {
         return startupIntroScreen;
+    }
+
+    public com.stonebreak.ui.focusBattle.FocusBattleScreen focusBattleScreen() {
+        return focusBattleScreen;
     }
 
     public InventoryScreen inventoryScreen() {

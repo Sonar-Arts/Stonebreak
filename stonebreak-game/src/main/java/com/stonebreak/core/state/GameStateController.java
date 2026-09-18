@@ -48,6 +48,19 @@ public final class GameStateController {
      * {@link GameState#MAIN_MENU}, and nudges mouse capture.
      */
     public void setState(GameState state) {
+        // While a Focus battle is live, "back to gameplay" means back to the battle. Every resume path
+        // (pause menu, settings, statistics, glossary) ends in setState(PLAYING), so redirecting here
+        // keeps the parked player and its cinematic camera from ever being simulated as free roam.
+        // FocusBattle clears its active flag before it asks for PLAYING, so its own exits pass through.
+        if (state == GameState.PLAYING && com.stonebreak.battle.stage.FocusBattle.isActive()) {
+            state = GameState.FOCUS_BATTLE;
+        }
+        // Quitting to the main menu has already torn the arena session down (WorldLifecycle.resetWorld);
+        // release the battle's camera/FOV/screen bindings with it.
+        if (state == GameState.MAIN_MENU) {
+            com.stonebreak.battle.stage.FocusBattle.shutdown();
+        }
+
         boolean stateChanged = this.currentState != state && state != null;
         if (stateChanged) {
             this.previousGameState = this.currentState;
@@ -118,7 +131,10 @@ public final class GameStateController {
             case STARTUP_INTRO, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI,
                  MULTIPLAYER_MENU, HOST_WORLD_SELECT, JOIN_WORLD_SCREEN,
                  WORLD_SELECT, CHARACTER_CREATION, TERRAIN_MAPPER, STATISTICS, GLOSSARY -> paused = true;
-            case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI, CHARACTER_SHEET_UI, FURNACE_UI -> paused = false;
+            // FOCUS_BATTLE keeps its own clock (GameLoop ticks FocusBattle instead of the world), so it
+            // is never "paused"; opening the pause menu over it switches to PAUSED like any other state.
+            case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI, CHARACTER_SHEET_UI, FURNACE_UI,
+                 FOCUS_BATTLE -> paused = false;
         }
     }
 
@@ -132,7 +148,7 @@ public final class GameStateController {
         if (newPauseState) {
             setState(GameState.PAUSED);
         } else {
-            setState(GameState.PLAYING);
+            setState(GameState.PLAYING); // resumes into FOCUS_BATTLE while a battle is live, see setState
         }
     }
 
@@ -185,6 +201,20 @@ public final class GameStateController {
             if (currentState == GameState.FURNACE_UI) {
                 setState(GameState.PLAYING);
             }
+        }
+    }
+
+    /** Enters the Focus battle state. Only from live gameplay; the coordinator owns everything else. */
+    public void openFocusBattle() {
+        if (currentState == GameState.PLAYING && !paused) {
+            setState(GameState.FOCUS_BATTLE);
+        }
+    }
+
+    /** Leaves the Focus battle state back to gameplay. No-op in any other state. */
+    public void closeFocusBattle() {
+        if (currentState == GameState.FOCUS_BATTLE) {
+            setState(GameState.PLAYING);
         }
     }
 

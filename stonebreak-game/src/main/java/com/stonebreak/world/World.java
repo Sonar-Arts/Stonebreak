@@ -444,6 +444,11 @@ public class World {
     /**
      * Gets the block type at the specified world position.
      */
+    /** Additional static model colliders, queried locally by player physics. Ordinary voxel worlds have none. */
+    public java.util.List<float[]> getStaticCollisionBoxes(org.joml.Vector3f position, float range) {
+        return java.util.List.of();
+    }
+
     public BlockType getBlockAt(int x, int y, int z) {
         if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
             return BlockType.AIR;

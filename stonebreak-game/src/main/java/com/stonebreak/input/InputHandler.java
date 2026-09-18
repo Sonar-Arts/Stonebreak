@@ -54,6 +54,16 @@ public class InputHandler {
         this.mouseRouter = new UiMouseRouter(mouse, chatRouter, new WorldMouseHandler());
     }
 
+    /**
+     * Call when a key-event driven surface (the Focus battle HUD) hands control back to the polled
+     * in-game input: toggle keys still held from that surface (the Escape that opened the pause
+     * menu, the E that confirmed "Explore arena") are ignored until released, instead of firing
+     * again as a fresh press on the next poll.
+     */
+    public void suppressHeldUiToggleKeys() {
+        uiToggleKeys.suppressUntilReleased();
+    }
+
     /** Call at the START of each frame's input processing cycle. */
     public void prepareForNewFrame() {
         mouse.beginFrame();

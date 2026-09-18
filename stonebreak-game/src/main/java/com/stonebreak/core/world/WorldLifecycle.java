@@ -25,6 +25,7 @@ public final class WorldLifecycle {
      */
     @SuppressWarnings("deprecation")
     public void resetWorld() {
+        com.stonebreak.battletest.BattleTestSession.leave();
         System.out.println("========================================");
         System.out.println("[MAIN-MENU-TRANSITION] Starting complete world reset...");
         System.out.println("========================================");

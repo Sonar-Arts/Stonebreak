@@ -427,6 +427,12 @@ public final class ShadowMapRenderer {
         }
     }
 
+    /** Suspend receivers while a separate scene is drawn; refresh all cascades when the world resumes. */
+    public void suspend() {
+        active = false;
+        needsFullRefresh = true;
+    }
+
     public boolean isActive() {
         return active;
     }

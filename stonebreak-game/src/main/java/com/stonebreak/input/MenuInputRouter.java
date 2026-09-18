@@ -22,6 +22,8 @@ public final class MenuInputRouter {
 
     private final GameWindow window;
     private InputHandler inputHandler;
+    /** Keys whose PRESS the battle HUD saw; see {@link #routeBattleKey}. */
+    private final java.util.BitSet battleKeysDown = new java.util.BitSet();
 
     public MenuInputRouter(GameWindow window) {
         this.window = window;
@@ -37,11 +39,15 @@ public final class MenuInputRouter {
     public void onKey(int key, int action, int mods) {
         Game game = Game.getInstance();
         GameState state = game.getState();
+        if (state != GameState.FOCUS_BATTLE) {
+            battleKeysDown.clear();
+        }
         boolean consumed = state != null && switch (state) {
             case WORLD_SELECT -> dispatch(game.getWorldSelectScreen(), s -> s.handleKeyInput(key, action, mods));
             case TERRAIN_MAPPER -> dispatch(game.getTerrainMapperScreen(), s -> s.handleKeyInput(key, action, mods));
             case HOST_WORLD_SELECT -> dispatch(game.getHostWorldScreen(), s -> s.handleKeyInput(key, action, mods));
             case JOIN_WORLD_SCREEN -> dispatch(game.getJoinWorldScreen(), s -> s.handleKeyInput(key, action, mods));
+            case FOCUS_BATTLE -> routeBattleKey(game, key, action, mods);
             default -> false;
         };
         if (!consumed && inputHandler != null) {
@@ -64,6 +70,7 @@ public final class MenuInputRouter {
             case TERRAIN_MAPPER -> dispatch(game.getTerrainMapperScreen(), s -> s.handleCharacterInput(character));
             case HOST_WORLD_SELECT -> dispatch(game.getHostWorldScreen(), s -> s.handleCharInput(character));
             case JOIN_WORLD_SCREEN -> dispatch(game.getJoinWorldScreen(), s -> s.handleCharInput(character));
+            case FOCUS_BATTLE -> true; // no text entry in a battle; keep it away from chat/search fields
             default -> false;
         };
         if (!consumed && inputHandler != null) {
@@ -99,6 +106,12 @@ public final class MenuInputRouter {
                     s -> s.handleMouseClick(x, y, width, height, button, action)));
             case JOIN_WORLD_SCREEN -> withUiCursor((x, y) -> dispatch(game.getJoinWorldScreen(),
                     s -> s.handleMouseClick(x, y, width, height, button, action)));
+            // The battle owns every click whether or not the HUD used it: nothing may reach the world.
+            case FOCUS_BATTLE -> {
+                withUiCursor((x, y) -> dispatch(game.getFocusBattleScreen(),
+                        s -> s.handleMouseClick(x, y, width, height, button, action)));
+                yield true;
+            }
             default -> false;
         };
         if (!consumed && inputHandler != null) {
@@ -143,6 +156,7 @@ public final class MenuInputRouter {
             case MULTIPLAYER_MENU -> dispatch(game.getMultiplayerMenu(), s -> s.handleMouseMove(x, y, width, height));
             case HOST_WORLD_SELECT -> dispatch(game.getHostWorldScreen(), s -> s.handleMouseMove(x, y, width, height));
             case JOIN_WORLD_SCREEN -> dispatch(game.getJoinWorldScreen(), s -> s.handleMouseMove(x, y, width, height));
+            case FOCUS_BATTLE -> dispatch(game.getFocusBattleScreen(), s -> s.handleMouseMove(x, y, width, height));
             default -> { }
         }
     }
@@ -159,6 +173,7 @@ public final class MenuInputRouter {
                     s -> s.handleMouseWheel(x, y, yOffset)));
             case SETTINGS -> withUiCursor((x, y) -> dispatch(game.getSettingsMenu(),
                     s -> s.handleMouseWheel(x, y, yOffset)));
+            case FOCUS_BATTLE -> true; // swallowed: the hotbar must not cycle under the battle
             default -> false;
         };
         if (!consumed && inputHandler != null) {
@@ -195,6 +210,9 @@ public final class MenuInputRouter {
             case JOIN_WORLD_SCREEN -> dispatch(game.getJoinWorldScreen(), s -> s.handleInput(handle));
             case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, CHARACTER_SHEET_UI, FURNACE_UI ->
                     pollInGame(game);
+            // Event-driven only. Polling InputHandler here would run the gameplay and UI-toggle keys
+            // (Escape, E, C, T, Q, movement) underneath the battle.
+            case FOCUS_BATTLE -> { }
             default -> { }
         }
     }
@@ -214,6 +232,34 @@ public final class MenuInputRouter {
         if (player != null) {
             inputHandler.handleInput(player);
         }
+    }
+
+    /**
+     * The battle HUD owns every key while {@link GameState#FOCUS_BATTLE} is up, so the event is always
+     * consumed. An Escape press the HUD declines (nothing bound yet, or a HUD that does not handle it)
+     * still opens the pause menu, so the player can never be trapped in the state.
+     *
+     * <p>The HUD only sees REPEAT/RELEASE for keys it saw go down. A key held across the state switch
+     * (the Enter that submitted {@code /battle}, the Escape that resumed from the pause menu) would
+     * otherwise auto-repeat straight into "confirm" or "open pause menu".</p>
+     */
+    private boolean routeBattleKey(Game game, int key, int action, int mods) {
+        if (key >= 0) {
+            if (action == org.lwjgl.glfw.GLFW.GLFW_PRESS) {
+                battleKeysDown.set(key);
+            } else if (!battleKeysDown.get(key)) {
+                return true;
+            } else if (action == org.lwjgl.glfw.GLFW.GLFW_RELEASE) {
+                battleKeysDown.clear(key);
+            }
+        }
+        com.stonebreak.ui.focusBattle.FocusBattleScreen screen = game.getFocusBattleScreen();
+        boolean handled = screen != null && screen.handleKeyInput(key, action, mods);
+        if (!handled && key == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE
+                && action == org.lwjgl.glfw.GLFW.GLFW_PRESS) {
+            com.stonebreak.battle.stage.FocusBattle.requestPauseMenu();
+        }
+        return true;
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

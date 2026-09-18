@@ -156,6 +156,18 @@ public class Player {
         camera.setPosition(x, y + CAMERA_EYE_OFFSET, z);
     }
 
+    /** Teleport between temporary scenes without carrying a fall arc or a death state across worlds. */
+    public void resetForScene(Vector3f position) {
+        stopBreakingBlock();
+        state.setPreviousY(position.y);
+        state.setWasFalling(false);
+        state.setOnGround(false);
+        state.getVelocity().zero();
+        c.health.restoreFullHealth();
+        c.health.enableSpawnProtection();
+        setPosition(position);
+    }
+
     public void setPosition(Vector3f position) {
         setPosition(position.x, position.y, position.z);
     }

@@ -104,4 +104,28 @@ final class SbeMobRenderer {
         sbeEntityRenderer.render(asset, variant, stateName, animationTime,
                 position, yawDegrees, scale, viewMatrix, projectionMatrix, null, null);
     }
+
+    /** Tint for an untextured asset drawn through {@link #renderPreviewByObjectId}. */
+    private static final Vector4f UNTEXTURED_PREVIEW_TINT = new Vector4f(0.62f, 0.80f, 0.95f, 1f);
+
+    /**
+     * {@link #renderPreview} for an asset that has no {@link EntityType}: the same registry lookup
+     * the live path does through {@code type.getSbeObjectId()}, keyed by the object id directly.
+     * Lets asset-only models (the Focus battle's Ice Archon) be staged without a mob definition.
+     * Untextured assets take the flat-coloured path, which the textured path would draw as nothing.
+     */
+    void renderPreviewByObjectId(String sbeObjectId, String variant, String stateName,
+                                 float animationTime, Vector3f position, float yawDegrees,
+                                 Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
+        com.stonebreak.mobs.sbe.SbeEntityAsset asset =
+                com.stonebreak.mobs.sbe.SbeEntityRegistry.get(sbeObjectId);
+        if (asset == null) return;
+        if (SbeRenderSupport.isTextured(asset)) {
+            sbeEntityRenderer.render(asset, variant, stateName, animationTime,
+                    position, yawDegrees, scale, viewMatrix, projectionMatrix, null, null);
+        } else {
+            sbeEntityRenderer.renderColored(asset, variant, stateName, animationTime,
+                    position, yawDegrees, scale, viewMatrix, projectionMatrix, UNTEXTURED_PREVIEW_TINT);
+        }
+    }
 }

@@ -38,6 +38,8 @@ public class ChatCommandExecutor {
         registerCommand(new VoxelAdjCommand());
         registerCommand(new TimeSetCommand());
         registerCommand(new AttachCommand());
+        registerCommand(new BattleTestCommand());
+        registerCommand(new BattleCommand());
     }
 
     /**

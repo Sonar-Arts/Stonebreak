@@ -76,6 +76,11 @@ public class MouseCaptureManager {
             case MAIN_MENU, LOADING, SETTINGS -> {
                 return false;
             }
+            case FOCUS_BATTLE -> {
+                // Menu-driven combat: the cursor stays visible for the battle HUD, and the scripted
+                // camera must never receive mouse look.
+                return false;
+            }
             default -> {
                 return false;
             }

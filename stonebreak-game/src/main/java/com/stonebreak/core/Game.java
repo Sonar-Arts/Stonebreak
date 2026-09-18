@@ -352,7 +352,8 @@ public class Game {
      * Gets the world.
      */
     public static World getWorld() {
-        return getInstance().services.world();
+        var battle = com.stonebreak.battletest.BattleTestSession.current();
+        return battle != null ? battle.world() : getInstance().services.world();
     }
     
     /**
@@ -373,7 +374,8 @@ public class Game {
      * Gets the entity manager.
      */
     public static com.stonebreak.mobs.entities.EntityManager getEntityManager() {
-        return getInstance().services.entityManager();
+        var battle = com.stonebreak.battletest.BattleTestSession.current();
+        return battle != null ? battle.entities() : getInstance().services.entityManager();
     }
 
 
@@ -381,7 +383,8 @@ public class Game {
      * Gets the time of day system.
      */
     public static TimeOfDay getTimeOfDay() {
-        return getInstance().services.timeOfDay();
+        var battle = com.stonebreak.battletest.BattleTestSession.current();
+        return battle != null ? battle.time() : getInstance().services.timeOfDay();
     }
 
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#togglePauseMenu()}. */
@@ -442,6 +445,11 @@ public class Game {
      */
     public FurnaceScreen getFurnaceScreen() {
         return screens.furnaceScreen();
+    }
+
+    /** The Focus battle HUD screen (shell screen; bound per encounter by the battle coordinator). */
+    public com.stonebreak.ui.focusBattle.FocusBattleScreen getFocusBattleScreen() {
+        return screens.focusBattleScreen();
     }
 
     /**
@@ -645,6 +653,16 @@ public class Game {
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#closeFurnaceScreen()}. */
     public void closeFurnaceScreen() {
         stateController.closeFurnaceScreen();
+    }
+
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#openFocusBattle()}. */
+    public void openFocusBattle() {
+        stateController.openFocusBattle();
+    }
+
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#closeFocusBattle()}. */
+    public void closeFocusBattle() {
+        stateController.closeFocusBattle();
     }
     
     /**

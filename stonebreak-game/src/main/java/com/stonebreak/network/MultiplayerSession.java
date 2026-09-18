@@ -64,11 +64,13 @@ public final class MultiplayerSession {
     public static boolean isOnline() { return mode == Mode.HOST || mode == Mode.JOIN; }
     public static boolean isHosting() { return mode == Mode.HOST; }
     /** The local player is a client in every in-world mode (two-world model). */
-    public static boolean isClient() { return mode != Mode.MENU; }
+    public static boolean isClient() { return mode != Mode.MENU && !com.stonebreak.battletest.BattleTestSession.isActive(); }
     /** True when an authoritative server runs in this process (singleplayer or host). */
     public static boolean hasIntegratedServer() { return mode == Mode.SINGLEPLAYER || mode == Mode.HOST; }
     public static IntegratedServer getServer() { return server; }
-    public static ClientWorldView getClient() { return client; }
+    public static ClientWorldView getClient() {
+        return com.stonebreak.battletest.BattleTestSession.isActive() ? null : client;
+    }
 
     /** True when the session is in the given mode. */
     public static boolean isInMode(Mode m) { return mode == m; }
@@ -78,7 +80,7 @@ public final class MultiplayerSession {
      * No-op if not in JOIN mode or the client is unavailable.
      */
     public static void submitCharacterCreation(byte[] json) {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c != null) {
             c.submitCharacterCreation(json);
         }
@@ -90,13 +92,13 @@ public final class MultiplayerSession {
      * server's actual time-of-day instead of a NOON default.
      */
     public static Long pendingServerTimeTicks() {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         return c != null ? c.pendingServerTimeTicks() : null;
     }
 
     /** Last server-measured RTT for the local client in ms, or -1 when unknown / no session. */
     public static int lastRttMs() {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         return c != null ? c.lastRttMs() : -1;
     }
 
@@ -106,7 +108,7 @@ public final class MultiplayerSession {
      */
     public static void sendKillCredit(int ownerPlayerId, com.stonebreak.mobs.entities.LivingEntity victim,
                                       float dealt, boolean killed) {
-        IntegratedServer s = server;
+        IntegratedServer s = com.stonebreak.battletest.BattleTestSession.isActive() ? null : server;
         if (s != null) {
             s.sendKillCreditTo(ownerPlayerId, victim, dealt, killed);
         }
@@ -114,7 +116,7 @@ public final class MultiplayerSession {
 
     /** Ask the server to re-stream one chunk (client-side decode/apply failure). */
     public static void requestChunkResync(int cx, int cz) {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
             c.requestChunkResync(cx, cz);
         }
@@ -126,7 +128,7 @@ public final class MultiplayerSession {
      * -1 when there is no live session.
      */
     public static int requestFullResync() {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
             return c.requestFullResync();
         }
@@ -135,7 +137,7 @@ public final class MultiplayerSession {
 
     /** Ask the server to re-send the full entity spawn snapshot. */
     public static void requestEntityResync() {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
             c.requestEntityResync();
         }
@@ -143,7 +145,7 @@ public final class MultiplayerSession {
 
     /** Snow-layer intent (the increment-on-existing-snow case with no block change). */
     public static void sendSnowLayer(int x, int y, int z, int layers) {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
             c.sendSnowLayer(x, y, z, layers);
         }
@@ -151,7 +153,7 @@ public final class MultiplayerSession {
 
     /** Furnace slot intent: the open furnace UI's slots changed (see {@code FurnaceSlotsC2S}). */
     public static void sendFurnaceSlots(int x, int y, int z, String slots) {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
             c.sendFurnaceSlots(x, y, z, slots);
         }
@@ -163,7 +165,7 @@ public final class MultiplayerSession {
      * clients. Returns false when there is no live connection (caller flips locally).
      */
     public static boolean sendBlockToggle(int x, int y, int z) {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
             return c.sendBlockToggle(x, y, z);
         }
@@ -176,7 +178,7 @@ public final class MultiplayerSession {
      * false when there is no live client connection (caller falls back to a local spawn).
      */
     public static boolean sendProjectileSpawn(byte kind, Vector3f pos, Vector3f v, float... params) {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c == null || c.isDisconnected()) {
             return false;
         }
@@ -189,7 +191,7 @@ public final class MultiplayerSession {
      * Returns false when there is no live client connection (caller may fall back locally).
      */
     public static boolean sendDropItem(int itemId, int count) {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c == null || c.isDisconnected()) {
             return false;
         }
@@ -206,7 +208,7 @@ public final class MultiplayerSession {
         if (mode == Mode.JOIN) {
             return false; // host-only: the server rejects non-local time sets
         }
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c == null || c.isDisconnected()) {
             return mode == Mode.MENU; // no session at all — the local clock is the only clock
         }
@@ -231,7 +233,7 @@ public final class MultiplayerSession {
         if (hasIntegratedServer()) {
             return localPlayerRestored;
         }
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         return c != null && c.isRestoreApplied();
     }
 
@@ -321,6 +323,7 @@ public final class MultiplayerSession {
     }
 
     public static synchronized void shutdown() {
+        com.stonebreak.battletest.BattleTestSession.leave();
         // Abort any in-flight client-world build FIRST: a stale "ClientWorld-Build" thread
         // finishing after this teardown would flip the game back to PLAYING with no session
         // (and race the next session's build) — the disconnect/reconnect crash chain.
@@ -395,7 +398,7 @@ public final class MultiplayerSession {
     /** Same, carrying an optional client-proposed placement state (torches). */
     public static void onLocalBlockChange(int x, int y, int z, BlockType type, BlockType prevType,
                                           String placementState) {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c != null) {
             c.onLocalBlockChange(x, y, z, type, prevType, placementState);
         }
@@ -407,7 +410,7 @@ public final class MultiplayerSession {
      */
     public static void onLocalEntityDamage(Entity target, float amount,
                                            com.stonebreak.mobs.entities.LivingEntity.DamageSource source) {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c != null && target != null && target.getNetworkId() >= 0) {
             c.sendEntityDamage(target.getNetworkId(), amount, source);
         }
@@ -415,7 +418,7 @@ public final class MultiplayerSession {
 
     /** Hook from the chat UI for a locally-submitted message — routed via the local client. */
     public static void submitChat(String text) {
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c != null) {
             c.submitChat(text);
         }
@@ -423,7 +426,7 @@ public final class MultiplayerSession {
 
     /** Server-side: hand a connected client an item stack (drop pickup, command-give). */
     public static void giveItemTo(int playerId, int itemId, int count) {
-        IntegratedServer s = server;
+        IntegratedServer s = com.stonebreak.battletest.BattleTestSession.isActive() ? null : server;
         if (s != null) {
             s.giveItemTo(playerId, itemId, count);
         }
@@ -436,7 +439,7 @@ public final class MultiplayerSession {
      * Returns false when there is no server or nobody is close enough.
      */
     public static boolean tryServerPickup(Vector3f pos, float range, int itemId, int count) {
-        IntegratedServer s = server;
+        IntegratedServer s = com.stonebreak.battletest.BattleTestSession.isActive() ? null : server;
         if (s == null) {
             return false;
         }
@@ -474,6 +477,10 @@ public final class MultiplayerSession {
     }
 
     private static void tickLocked() {
+        if (com.stonebreak.battletest.BattleTestSession.isActive()) {
+            if (client != null) client.suspendClock();
+            return;
+        }
         if (mode == Mode.MENU) {
             return;
         }
@@ -481,7 +488,7 @@ public final class MultiplayerSession {
         // The integrated server ticks on its own thread (see startWithServer). The main thread
         // only pumps the CLIENT here — applying inbound packets to the render world + sending
         // local intents — so rendering never waits on server-side world generation.
-        ClientWorldView c = client;
+        ClientWorldView c = getClient();
         if (c != null) {
             c.tick();
             if (c.isDisconnected()) {
@@ -511,7 +518,7 @@ public final class MultiplayerSession {
             return;
         }
         if (hasIntegratedServer()) {
-            IntegratedServer s = server;
+            IntegratedServer s = com.stonebreak.battletest.BattleTestSession.isActive() ? null : server;
             ServerLevel level = (s != null) ? s.worldContext().serverLevel() : null;
             if (level == null) {
                 return;
@@ -528,7 +535,7 @@ public final class MultiplayerSession {
             return;
         }
         if (mode == Mode.JOIN) {
-            ClientWorldView c = client;
+            ClientWorldView c = getClient();
             if (c == null) {
                 return;
             }
@@ -554,11 +561,11 @@ public final class MultiplayerSession {
         listenerTarget = em;
         entityListener = new EntityManager.Listener() {
             @Override public void onEntityAdded(Entity e) {
-                IntegratedServer s = server;
+                IntegratedServer s = com.stonebreak.battletest.BattleTestSession.isActive() ? null : server;
                 if (s != null) s.onEntitySpawned(e);
             }
             @Override public void onEntityRemoved(Entity e) {
-                IntegratedServer s = server;
+                IntegratedServer s = com.stonebreak.battletest.BattleTestSession.isActive() ? null : server;
                 if (s != null) s.onEntityDespawned(e);
             }
         };

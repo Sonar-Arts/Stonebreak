@@ -183,6 +183,7 @@ public class Main {
             frameRenderer.renderFrame();
             maybeAutoFurnace();
             maybeAutoTorch();
+            maybeAutoBattle();
             maybeAutoScreenshot();
             window.swapBuffers();
 
@@ -517,6 +518,68 @@ public class Main {
             autoFurnaceLastState = render;
             System.out.println("[autofurnace] render state now " + render + " (raw " + state + ")");
         }
+    }
+
+    // ─── Dev: -Dstonebreak.autobattle=<seconds>[:skipintro] ───────────────────
+
+    private long autoBattleDeadlineNanos = -1;
+    private boolean autoBattleDone;
+
+    /**
+     * Development shortcut paired with {@code stonebreak.autoworld}: N seconds after the world is
+     * entered, starts the Focus battle exactly as {@code /battle} does (entering the arena on the
+     * way), optionally skipping the camera intro, so the mode can be screenshotted from a script.
+     * Inert unless the property is set.
+     */
+    private com.stonebreak.battle.stage.BattleAutoScript autoBattleScript;
+    private boolean autoBattleSkipIntro;
+
+    private void maybeAutoBattle() {
+        if (autoBattleDone && autoBattleSkipIntro && com.stonebreak.battle.stage.FocusBattle.isActive()
+                && !com.stonebreak.battle.stage.FocusBattle.encounterTransitionActive()) {
+            autoBattleSkipIntro = false; // the battle begins a frame after it is requested
+            com.stonebreak.battle.stage.FocusBattle.skipIntroNow();
+            System.out.println("[autobattle] intro skipped");
+        }
+        if (autoBattleDone) {
+            // ...:script:<dir> / ...:shots:<dir>: a bot plays the fight and dumps labelled screenshots.
+            if (autoBattleScript != null
+                    && autoBattleScript.frame(Game.getDeltaTime(), window.width(), window.height())) {
+                autoBattleScript = null;
+                running = false;
+            }
+            return;
+        }
+        String spec = System.getProperty("stonebreak.autobattle");
+        if (spec == null || spec.isBlank()) {
+            autoBattleDone = true;
+            return;
+        }
+        // Arm on the first PLAYING frame, and only fire from PLAYING: a window that lost focus under
+        // the compositor auto-pauses, and the battle refuses to start from the pause menu.
+        if (Game.getInstance().getState() != GameState.PLAYING) {
+            return;
+        }
+        String[] parts = spec.split(":");
+        if (autoBattleDeadlineNanos < 0) {
+            double seconds = 3;
+            try {
+                seconds = Double.parseDouble(parts[0].trim());
+            } catch (NumberFormatException ignored) {
+                // keep default
+            }
+            autoBattleDeadlineNanos = System.nanoTime() + (long) (seconds * 1e9);
+            return;
+        }
+        if (System.nanoTime() < autoBattleDeadlineNanos) {
+            return;
+        }
+        autoBattleDone = true;
+        String result = com.stonebreak.battle.stage.FocusBattle.start();
+        System.out.println("[autobattle] " + result + " (pending="
+                + com.stonebreak.battle.stage.FocusBattle.isStartPending() + ")");
+        autoBattleScript = com.stonebreak.battle.stage.BattleAutoScript.parse(parts);
+        autoBattleSkipIntro = parts.length > 1 && parts[1].trim().equalsIgnoreCase("skipintro");
     }
 
     // ─── Dev: -Dstonebreak.autoscreenshot=<seconds>:<file.png>[:quit] ──────────

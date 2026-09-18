@@ -191,6 +191,21 @@ public class EntityRenderer {
     }
 
     /**
+     * {@link #renderEntityPreview} keyed by SBE object id instead of {@link EntityType}, for
+     * asset-only models that have no mob definition (the Focus battle's Ice Archon). The model
+     * origin is placed at {@code position} exactly as authored: no ground anchoring, no fog.
+     *
+     * @param sbeObjectId registry object id, e.g. {@code stonebreak:ice_archon}; unknown ids draw nothing
+     */
+    public void renderSbePreview(String sbeObjectId, String variant, String stateName,
+                                 float animationTime, Vector3f position, float yawDegrees,
+                                 Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
+        if (!initialized || sbeObjectId == null) return;
+        mobRenderer.renderPreviewByObjectId(sbeObjectId, variant, stateName, animationTime,
+                position, yawDegrees, scale, viewMatrix, projectionMatrix);
+    }
+
+    /**
      * Renders a preview pose of the player SBE model into whatever
      * viewport/scissor the caller has set up, using a caller-supplied camera.
      *

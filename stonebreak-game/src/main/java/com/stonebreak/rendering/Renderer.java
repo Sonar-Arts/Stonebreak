@@ -410,6 +410,17 @@ public class Renderer {
         postPipeline.resize(width, height);
     }
 
+    /** Scripted-camera FOV (degrees). Pair every use with {@link #resetFov()}. */
+    public void setCinematicFov(float degrees) {
+        configManager.setFieldOfViewDegrees(degrees);
+    }
+
+    /** Restores the default gameplay field of view. */
+    public void resetFov() {
+        configManager.setFieldOfViewDegrees(
+                com.openmason.engine.rendering.gl.RenderingConfigurationManager.DEFAULT_FOV_DEGREES);
+    }
+
     public int getWindowWidth() {
         return configManager.getWindowWidth();
     }
@@ -578,7 +589,8 @@ public class Renderer {
         org.joml.Vector3f sunDirection = timeOfDay != null
                 ? timeOfDay.getSunDirection()
                 : new org.joml.Vector3f(0.7f, 0.1f, 0.5f).normalize();
-        float godRayStrength = com.stonebreak.config.Settings.getInstance().getGodRaysEnabled()
+        float godRayStrength = !com.stonebreak.battletest.BattleTestSession.isActive()
+                && com.stonebreak.config.Settings.getInstance().getGodRaysEnabled()
                 ? computeGodRayStrength(sunDirection)
                 : 0.0f;
 

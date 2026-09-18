@@ -49,6 +49,12 @@ final class UiMouseRouter {
     void route(int button, int action) {
         Game game = Game.getInstance();
 
+        // MenuInputRouter hands battle clicks to the battle HUD; anything that still arrives here
+        // must not reach chat, a polled screen or the world.
+        if (game.getState() == GameState.FOCUS_BATTLE) {
+            return;
+        }
+
         ChatSystem chatSystem = game.getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             chatRouter.handleMouseButton(chatSystem, button, action);

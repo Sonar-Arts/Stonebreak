@@ -1,0 +1,410 @@
+{
+  "version": 1,
+  "objectId": "stonebreak:Player",
+  "asset": "/sbe/Mobs/SB_Player.sbe",
+  "authoredForward": [
+    0,
+    0,
+    -1
+  ],
+  "units": "blocks",
+  "layer": "BASE",
+  "trackCount": 33,
+  "rootMotion": "In-place X/Z; vertical crouch/collapse is baked. Stage owns dashes.",
+  "suggestedBlendSeconds": 0.12,
+  "legacyStatesPreserved": [
+    "walking",
+    "jumping",
+    "idle",
+    "sprinting",
+    "attacking"
+  ],
+  "sockets": [
+    "punch_left",
+    "punch_right",
+    "kick_left",
+    "kick_right"
+  ],
+  "rigNaming": "Legacy *_left parts are +X (anatomical right when facing -Z); labels retained for compatibility.",
+  "clips": [
+    {
+      "state": "combat_enter",
+      "durationSeconds": 0.72,
+      "loop": false,
+      "fps": 60,
+      "startPose": "rest",
+      "endPose": "combat_idle",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "combat_exit",
+      "durationSeconds": 0.76,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "rest",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "combat_idle",
+      "durationSeconds": 3.2,
+      "loop": true,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "combat_idle",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "combat_dash",
+      "durationSeconds": 0.64,
+      "loop": true,
+      "fps": 60,
+      "startPose": "combat_dash",
+      "endPose": "combat_dash",
+      "cues": [],
+      "note": "In-place; stage owns world movement. Use only while moving."
+    },
+    {
+      "state": "strike",
+      "durationSeconds": 0.96,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "combat_idle",
+      "cues": [
+        {
+          "timeSeconds": 0.38,
+          "kind": "contact",
+          "index": 1
+        }
+      ],
+      "note": ""
+    },
+    {
+      "state": "flurry",
+      "durationSeconds": 2.08,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "combat_idle",
+      "cues": [
+        {
+          "timeSeconds": 0.43,
+          "kind": "contact",
+          "index": 1
+        },
+        {
+          "timeSeconds": 0.95,
+          "kind": "contact",
+          "index": 2
+        },
+        {
+          "timeSeconds": 1.47,
+          "kind": "contact",
+          "index": 3
+        }
+      ],
+      "note": "Three hits: lead jab, rear cross, lead hook."
+    },
+    {
+      "state": "stunning_strike",
+      "durationSeconds": 1.38,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "combat_idle",
+      "cues": [
+        {
+          "timeSeconds": 0.62,
+          "kind": "contact",
+          "index": 1
+        }
+      ],
+      "note": "Open-palm strike. Hold the contact beat for optional cinematic slow motion."
+    },
+    {
+      "state": "kick",
+      "durationSeconds": 1.42,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "combat_idle",
+      "cues": [
+        {
+          "timeSeconds": 0.6,
+          "kind": "contact",
+          "index": 1
+        }
+      ],
+      "note": ""
+    },
+    {
+      "state": "guard_enter",
+      "durationSeconds": 0.32,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "guard",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "guard",
+      "durationSeconds": 2.4,
+      "loop": true,
+      "fps": 60,
+      "startPose": "guard",
+      "endPose": "guard",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "guard_exit",
+      "durationSeconds": 0.38,
+      "loop": false,
+      "fps": 60,
+      "startPose": "guard",
+      "endPose": "combat_idle",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "parry",
+      "durationSeconds": 0.78,
+      "loop": false,
+      "fps": 60,
+      "startPose": "guard",
+      "endPose": "guard",
+      "cues": [
+        {
+          "timeSeconds": 0.2,
+          "kind": "contact",
+          "index": 1
+        }
+      ],
+      "note": "Deflect, then return to Guard. Runtime selects reaction when parry succeeds."
+    },
+    {
+      "state": "block",
+      "durationSeconds": 0.58,
+      "loop": false,
+      "fps": 60,
+      "startPose": "guard",
+      "endPose": "guard",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "meditate_enter",
+      "durationSeconds": 0.84,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "meditate_loop",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "meditate_loop",
+      "durationSeconds": 3.2,
+      "loop": true,
+      "fps": 60,
+      "startPose": "meditate_loop",
+      "endPose": "meditate_loop",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "meditate_exit",
+      "durationSeconds": 0.8,
+      "loop": false,
+      "fps": 60,
+      "startPose": "meditate_loop",
+      "endPose": "combat_idle",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "meditate",
+      "durationSeconds": 3.6,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "combat_idle",
+      "cues": [
+        {
+          "timeSeconds": 1.8,
+          "kind": "effect",
+          "index": 1
+        }
+      ],
+      "note": "Complete standing meditation; heal cue at 1.8 s. Enter/loop/exit also supplied."
+    },
+    {
+      "state": "swift_step",
+      "durationSeconds": 1.32,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "combat_idle",
+      "cues": [
+        {
+          "timeSeconds": 0.62,
+          "kind": "effect",
+          "index": 1
+        }
+      ],
+      "note": ""
+    },
+    {
+      "state": "martial_surge",
+      "durationSeconds": 1.58,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "combat_idle",
+      "cues": [
+        {
+          "timeSeconds": 0.86,
+          "kind": "effect",
+          "index": 1
+        }
+      ],
+      "note": ""
+    },
+    {
+      "state": "focus_combo",
+      "durationSeconds": 4.9,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "combat_idle",
+      "cues": [
+        {
+          "timeSeconds": 0.6,
+          "kind": "contact",
+          "index": 1
+        },
+        {
+          "timeSeconds": 1.17,
+          "kind": "contact",
+          "index": 2
+        },
+        {
+          "timeSeconds": 1.74,
+          "kind": "contact",
+          "index": 3
+        },
+        {
+          "timeSeconds": 2.31,
+          "kind": "contact",
+          "index": 4
+        },
+        {
+          "timeSeconds": 2.88,
+          "kind": "contact",
+          "index": 5
+        },
+        {
+          "timeSeconds": 3.8,
+          "kind": "contact",
+          "index": 6
+        }
+      ],
+      "note": "Six contacts: jab, cross, two hooks, front kick, palm finisher. Freeze/retime before each contact for input; do not restart clip per prompt."
+    },
+    {
+      "state": "hurt",
+      "durationSeconds": 0.72,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "combat_idle",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "stunned_enter",
+      "durationSeconds": 0.4,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "stunned",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "stunned",
+      "durationSeconds": 2.4,
+      "loop": true,
+      "fps": 60,
+      "startPose": "stunned",
+      "endPose": "stunned",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "stunned_exit",
+      "durationSeconds": 0.68,
+      "loop": false,
+      "fps": 60,
+      "startPose": "stunned",
+      "endPose": "combat_idle",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "victory",
+      "durationSeconds": 3.2,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "victory_loop",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "victory_loop",
+      "durationSeconds": 2.8,
+      "loop": true,
+      "fps": 60,
+      "startPose": "victory_loop",
+      "endPose": "victory_loop",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "victory_exit",
+      "durationSeconds": 0.9,
+      "loop": false,
+      "fps": 60,
+      "startPose": "victory_loop",
+      "endPose": "combat_idle",
+      "cues": [],
+      "note": ""
+    },
+    {
+      "state": "defeat",
+      "durationSeconds": 2.6,
+      "loop": false,
+      "fps": 60,
+      "startPose": "combat_idle",
+      "endPose": "defeated",
+      "cues": [],
+      "note": "Sideways collapse, settles on the floor; follow with defeated loop. No root X/Z travel."
+    },
+    {
+      "state": "defeated",
+      "durationSeconds": 3.2,
+      "loop": true,
+      "fps": 60,
+      "startPose": "defeated",
+      "endPose": "defeated",
+      "cues": [],
+      "note": ""
+    }
+  ]
+}
