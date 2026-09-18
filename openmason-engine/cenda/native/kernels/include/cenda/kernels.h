@@ -247,8 +247,12 @@ int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
  *   26   lake_shore_reach      blocks         64  carve   (clamped to T-1)
  *   27   lake_shore_max_depth  blocks          8  carve
  *   28   lake_link_reach       blocks        128  solve
+ *   29   lake_bank_slope       blocks/blk   0.25  carve
+ *   30   lake_bank_reach       blocks         32  carve   (clamped to
+ *                                                          T-1-lake_shore_reach)
+ *   31   river_guard_reach     blocks         32  carve   (clamped to T-1-[26]-[30])
  *
- * Five deliberate departures from §8's table:
+ * Six deliberate departures from §8's table:
  *
  *   sea_level is here at [2]. §8 omitted it because the old design passed it
  *   as an argument; both kernels need it and one source is better than two.
@@ -271,6 +275,36 @@ int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
  *   them shift down, the same compaction w_avoid's removal got. The two new
  *   slots shape what replaced the pull: how much air a river tunnel carries
  *   above its water, and the thinnest rock lid that still reads as ground.
+ *
+ *   lake_bank_slope and lake_bank_reach are new (2026-09-15), and they are the
+ *   only thing in this kernel that adds ground. A dry column beside water is
+ *   raised flush to the waterline — the WaterSim invariant leaves no choice —
+ *   and the flood at [26]/[27] shrinks that set without ever emptying it, so
+ *   what is left is a one-column cliff around every rim the flood declined.
+ *   The skirt grades the ground away from it at a repose angle. It is
+ *   RAISE-ONLY, and not by preference: the crest cannot come down without
+ *   springing the water, and nothing here lowers terrain any more, so a
+ *   monotone ramp out to natural ground is the only shape on offer. Note that
+ *   `lake_bank_slope * lake_bank_reach` equals [27]: a wall no taller than the
+ *   flood's depth gate is one the flood WANTED, so the skirt reaches natural
+ *   ground and the cliff is gone; a taller one is a rim the flood refused, and
+ *   grading it to nothing would be inventing a hillside. The two reaches also
+ *   share one margin — `1 + [26] + [30] <= tile_size` — which is why [30] is
+ *   clamped against [26] rather than against the tile.
+ *
+ *   Since 2026-09-17 the skirt is not a plain ramp: the crest holds level
+ *   with the water for a noisy one to three columns (wall included) before
+ *   the fall begins, and the fall runs 1x-1.5x [29] with a block of
+ *   roughness. [29] is therefore the GENTLEST the fall gets, so the budget
+ *   above is still the least a skirt spends.
+ *
+ *   river_guard_reach is new (2026-09-18). Every river step exposes water to
+ *   air, WaterSim spreads a flowing layer a block above the reach below it,
+ *   and its infinite-source rule then promotes that reach toward the level
+ *   upstream. So walls are built to a RAIL — the highest water within this
+ *   many wet steps — rather than to the column's own level. It shares the
+ *   margin: `1 + [26] + [30] + [31] <= tile_size`. A declared cap, not a halo:
+ *   a cascade longer than it can still overtop.
  *
  *   The ownership lattice — cell/region/halo, i.e. which region emits which
  *   column — is NOT here. It is passed per call (see ck_solve_basins) because
@@ -435,21 +469,26 @@ int32_t ck_solve_basins(int64_t seed,
  * void is `floor < y < roof`, holding water below `out_water[i]` and air above;
  * -1 in both means no tunnel, which is the great majority of columns. The roof
  * is always at least `tunnel_min_roof` below `out_heights[i]`, so the ground
- * over a tunnel is never breached, and the void pinches shut at the channel
- * edge, so the column beside one is solid.
+ * over a tunnel is never breached, and the water's void pinches shut at the
+ * channel edge. A DRY column (`out_water[i] == -1`) may still carry a void:
+ * the bulge that widens a tunnel's air past the channel. Its floor is a stone
+ * lip at the top water block of every wet 4-neighbour, so it holds no water
+ * and opens nothing below the surface. The vault's height and the bulge are
+ * seeded noise of the world column — `seed` is read for that and nothing else.
  *
  * Containment invariant (WaterSim): every wet column's 4-neighbors are wet
- * or have terrain >= its level; worldgen water is source blocks, so a
- * violation is a permanent spring. Wet-next-to-wet at differing levels is a
- * waterfall and is deliberately allowed. A tunnel is contained by the rock
+ * or have terrain >= its level — in fact >= its guard rail, see [31];
+ * worldgen water is source blocks, so a violation is a permanent spring.
+ * Wet-next-to-wet at differing levels is a waterfall and is deliberately
+ * allowed. A tunnel is contained by the rock
  * around it rather than by this rule — hence the roof clamp and the pinch.
  * NOTE for the caller: a carver that breaks into a tunnel drains it exactly
  * like a breached riverbed, so the cave guard must read `out_river_floor` as
  * the bed of a tunnelled column, not `out_heights`.
  *
- * params: the shared water params array above. The carve reads exactly two of
- * its entries — [24] tunnel_headroom and [25] tunnel_min_roof. Sea level
- * arrives as the `sea_level` argument, NOT through [2]; the solve reads [2].
+ * params: the shared water params array above. The carve reads [24]-[27] and
+ * [29]-[31]; the rest belong to the solve. Sea level arrives as the
+ * `sea_level` argument, NOT through [2]; the solve reads [2].
  *
  * Thread-safe and reentrant (per-thread scratch). Returns 0 on success,
  * negative on bad arguments. */

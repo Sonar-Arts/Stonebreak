@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <vector>
 
 namespace {
@@ -621,7 +622,7 @@ void testNoRoutesMeansNoRivers() {
 /* ── Phase 10: the shared params array ──────────────────────────────────── */
 
 /** The defaults kernels.h documents, in its own order. */
-const float DOCUMENTED_DEFAULTS[29] = {
+const float DOCUMENTED_DEFAULTS[32] = {
     0.5f,      /*  0 min_lake_depth      */
     8.0f,      /*  1 min_lake_area       */
     320.0f,    /*  2 sea_level           */
@@ -651,6 +652,9 @@ const float DOCUMENTED_DEFAULTS[29] = {
     64.0f,     /* 26 lake_shore_reach    */
     8.0f,      /* 27 lake_shore_max_depth*/
     128.0f,    /* 28 lake_link_reach     */
+    0.25f,     /* 29 lake_bank_slope     */
+    32.0f,     /* 30 lake_bank_reach     */
+    32.0f,     /* 31 river_guard_reach   */
 };
 
 /* Mirrors DOCUMENTED_DEFAULTS[25]; the tests below assert against the lid the
@@ -701,7 +705,7 @@ void testDocumentedDefaultsAreTheRealDefaults() {
      * default edited in the code and not in the table — or an index that
      * shifted when a knob was inserted — shows up here and nowhere else. */
     const Region none = solveWithParams(nullptr, 0);
-    const Region spelled = solveWithParams(DOCUMENTED_DEFAULTS, 29);
+    const Region spelled = solveWithParams(DOCUMENTED_DEFAULTS, 32);
 
     check(none.routeCount == spelled.routeCount,
           "the documented defaults plan the same rivers as no params at all");
@@ -747,7 +751,7 @@ void testDocumentedDefaultsAreTheRealDefaults() {
     ck_carve_water(31337, T, static_cast<int32_t>(ox), static_cast<int32_t>(oz),
                    win.data(), SEA, WH, SPAN_CELLS, CELL, spanF.data(), spanD.data(),
                    none.routeCount, none.starts.data(), none.verts.data(),
-                   DOCUMENTED_DEFAULTS, 29, outH.data(), outW.data(),
+                   DOCUMENTED_DEFAULTS, 32, outH.data(), outW.data(),
                    outF.data(), outR.data());
     check(std::memcmp(a.heights.data(), outH.data(), outH.size() * 2) == 0
               && std::memcmp(a.water.data(), outW.data(), outW.size() * 2) == 0
@@ -869,8 +873,11 @@ void testARiverTunnelsRatherThanRemovingTheGround() {
                     check(tile.heights[i] >= rawH,
                           "a tunnelled column keeps every block of its ground");
                     check(tile.floor[i] < tile.roof[i], "a tunnel has room inside it");
-                    check(tile.water[i] > tile.floor[i],
-                          "and water standing on its floor");
+                    /* Wet: the river itself. Dry: the bulge beside it, which is
+                     * air above a stone lip and holds no water at all. */
+                    check(tile.water[i] > tile.floor[i]
+                              || (tile.water[i] < 0 && tile.roof[i] > tile.floor[i] + 1),
+                          "and water standing on its floor, or air over a dry lip");
                     thinnestLid = std::min(thinnestLid, tile.heights[i] - tile.roof[i]);
                 }
                 /* The crest of the ridge, away from the channel, must be
@@ -916,16 +923,21 @@ void testATunnelIsSealedByTheRockAroundIt() {
         for (int x = 1; x < T - 1; ++x) {
             for (int z = 1; z < T - 1; ++z) {
                 const size_t i = idx(x, z, T);
-                if (t.roof[i] < 0) {
-                    continue;
+                if (t.roof[i] < 0 || t.water[i] < 0) {
+                    continue;   /* a dry bulge holds nothing to leak */
                 }
                 const int waterTop = std::min<int>(t.water[i], t.roof[i]);
                 const size_t nb[4] = {i - static_cast<size_t>(T), i + static_cast<size_t>(T),
                                       i - 1, i + 1};
                 for (size_t n : nb) {
                     ++checked;
+                    /* A tunnel neighbour seals only if it is wet too, or is a
+                     * dry bulge whose lip stands at the top water block: the
+                     * bulge is air, and air below the surface is a spring. */
+                    const bool tunnelSeals = t.roof[n] >= 0
+                        && (t.water[n] >= 0 || t.floor[n] >= waterTop - 1);
                     const bool sealed = t.heights[n] >= waterTop
-                                        || t.roof[n] >= 0
+                                        || tunnelSeals
                                         || t.water[n] >= waterTop;
                     if (!sealed) {
                         ++leaks;
@@ -941,23 +953,23 @@ void testATunnelIsSealedByTheRockAroundIt() {
 }
 
 void testEachDensityKnobMovesInTheDocumentedDirection() {
-    float p[29];
+    float p[31];
     std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
-    const Region base = solveWithParams(p, 29);
+    const Region base = solveWithParams(p, 31);
 
     p[4] = 0.0f;   /* river_keep_fraction */
-    check(solveWithParams(p, 29).routeCount == 0, "[4] keep fraction 0 plans no rivers");
+    check(solveWithParams(p, 31).routeCount == 0, "[4] keep fraction 0 plans no rivers");
     p[4] = 1.0f;
-    const Region all = solveWithParams(p, 29);
+    const Region all = solveWithParams(p, 31);
     check(all.routeCount >= base.routeCount, "[4] keep fraction 1 plans at least as many");
     std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
 
     p[3] = 100000.0f;  /* min_river_lake_area */
-    check(solveWithParams(p, 29).routeCount == 0, "[3] an impossible area gate plans no rivers");
+    check(solveWithParams(p, 31).routeCount == 0, "[3] an impossible area gate plans no rivers");
     std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
 
     p[0] = 10000.0f;   /* min_lake_depth */
-    const Region dry = solveWithParams(p, 29);
+    const Region dry = solveWithParams(p, 31);
     long wet = 0;
     for (float d : dry.depth) {
         if (d > 0.0f) {
@@ -971,10 +983,12 @@ void testEachDensityKnobMovesInTheDocumentedDirection() {
 
 /* ── The shoreline ──────────────────────────────────────────────────────── */
 
-/* Columns the containment repair walled. Nothing else in the stamp raises
- * ground — a river only ever lowers it — so an output height above the input
- * terrain is exactly one wall, and counting them is the only direct measure of
- * how much shoreline is being walled rather than wetted. */
+/* Columns the stamp raised above the terrain it was handed.
+ *
+ * A river only ever lowers ground, so the two things that raise it are the
+ * containment wall and the bank skirt that grades away from it. A caller that
+ * means WALLS — the shore tests do — must pass `lake_bank_reach` 0, or it is
+ * measuring the skirt as well and the number stops being a defect count. */
 template <typename F>
 int walledColumns(const Tile& t, F&& terrain, int64_t tileX, int64_t tileZ) {
     int n = 0;
@@ -1032,6 +1046,41 @@ int reachPastMask(const Tile& a, const Tile& b) {
     return furthest;
 }
 
+/* The tallest drop from ground the stamp RAISED to the ground beside it.
+ *
+ * The artifact's own height, with the fixture's natural relief excluded — a
+ * plain "steepest step near the water" counts the cliffs a fixture was built
+ * with and cannot tell a wall from a canyon wall. A containment wall stands at
+ * the waterline with whatever was under it still under it, so before the skirt
+ * this is the full height of the cliff; after it, it is one tread of the ramp.
+ * Wet neighbours are excluded at the far end: ground dropping to a water
+ * surface is a shore, not a cliff. */
+template <typename F>
+int maxRaisedDrop(const Tile& t, F&& terrain, int64_t tileX, int64_t tileZ) {
+    int worst = 0;
+    for (int x = 0; x < T; ++x) {
+        for (int z = 0; z < T; ++z) {
+            const size_t i = idx(x, z, T);
+            if (t.heights[i] <= terrain(tileX * T + x, tileZ * T + z)) {
+                continue;
+            }
+            const int nbx[4] = {x - 1, x + 1, x, x};
+            const int nbz[4] = {z, z, z - 1, z + 1};
+            for (int k = 0; k < 4; ++k) {
+                if (nbx[k] < 0 || nbx[k] >= T || nbz[k] < 0 || nbz[k] >= T) {
+                    continue;
+                }
+                const size_t n = idx(nbx[k], nbz[k], T);
+                if (t.water[n] >= 0) {
+                    continue;
+                }
+                worst = std::max(worst, t.heights[i] - t.heights[n]);
+            }
+        }
+    }
+    return worst;
+}
+
 int wetColumns(const Tile& t) {
     int n = 0;
     for (size_t i = 0; i < t.water.size(); ++i) {
@@ -1050,11 +1099,18 @@ void testTheShoreFollowsTheGroundNotTheCellLattice() {
     const Region r = solveRegion(0, 0, smooth);
     check(r.withheld == 0, "L1 owns the bowl");
 
-    float p[29];
-    std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
+    /* The skirt is off for both: `walledColumns` counts everything the stamp
+     * raises, and what is under test here is how much shoreline the flood
+     * leaves to WALL. The skirt's own effect on those walls is
+     * `testTheBankBrushSmoothsTheSpillLip`. */
+    float noBank[31];
+    std::memcpy(noBank, DOCUMENTED_DEFAULTS, sizeof noBank);
+    noBank[30] = 0.0f;
+    float p[31];
+    std::memcpy(p, noBank, sizeof p);
     p[26] = 0.0f;   /* reach 0 is exactly the old coarse-mask-only stamp */
-    const Tile mask = runTile(3, 8, 8, detailed, &r, p, 29);
-    const Tile flooded = runTile(3, 8, 8, detailed, &r, DOCUMENTED_DEFAULTS, 29);
+    const Tile mask = runTile(3, 8, 8, detailed, &r, p, 31);
+    const Tile flooded = runTile(3, 8, 8, detailed, &r, noBank, 31);
 
     const int maskWalls = walledColumns(mask, detailed, 8, 8);
     const int floodWalls = walledColumns(flooded, detailed, 8, 8);
@@ -1117,7 +1173,7 @@ void testTheShoreFloodRefusesADeepNotch() {
      * one needs the fill's window and not this tile's. */
     auto notched = [](int64_t x, int64_t z) { return notchedBowlAt(x, z, 2048, 2048); };
     const Region r = solveRegion(0, 0, notched);
-    const Tile t = runTile(3, 8, 8, notched, &r, DOCUMENTED_DEFAULTS, 29);
+    const Tile t = runTile(3, 8, 8, notched, &r, DOCUMENTED_DEFAULTS, 31);
 
     int outsideRim = 0;
     for (int x = 0; x < T; ++x) {
@@ -1153,11 +1209,11 @@ void testTheShoreAgreesAcrossATileSeam() {
 
     const float reaches[] = {64.0f, static_cast<float>(T - 1), 4096.0f};
     for (float reach : reaches) {
-        float p[29];
+        float p[31];
         std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
         p[26] = reach;
-        const Tile a = runTile(3, 8, 8, detailed, &r, p, 29);
-        const Tile b = runTile(3, 9, 8, detailed, &r, p, 29);
+        const Tile a = runTile(3, 8, 8, detailed, &r, p, 31);
+        const Tile b = runTile(3, 9, 8, detailed, &r, p, 31);
         int mismatched = 0;
         int wetPairs = 0;
         for (int z = 0; z < T; ++z) {
@@ -1185,22 +1241,286 @@ void testTheShoreAgreesAcrossATileSeam() {
     std::puts("shore seam ok");
 }
 
+/* ── The bank skirt ─────────────────────────────────────────────────────── */
+
+/** The documented defaults with the skirt switched off: the pre-brush stamp. */
+void bankOff(float (&p)[31]) {
+    std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
+    p[30] = 0.0f;
+}
+
+void testTheBankBrushGradesAWallIntoTheGround() {
+    /* The notched bowl, because it is the fixture that still HAS a wall. The
+     * flood is right to refuse a slot fourteen blocks under the surface — that
+     * is a basin to discover, not a shoreline to repair — so it walls it, and
+     * what the wall then needs is not to be a fourteen-block cliff. */
+    auto notched = [](int64_t x, int64_t z) { return notchedBowlAt(x, z, 2048, 2100); };
+    const Region r = solveRegion(0, 0, notched);
+
+    float off[31];
+    bankOff(off);
+    const Tile plain = runTile(3, 8, 8, notched, &r, off, 31);
+    const Tile brushed = runTile(3, 8, 8, notched, &r, DOCUMENTED_DEFAULTS, 31);
+
+    const int walls = walledColumns(plain, notched, 8, 8);
+    const int raised = walledColumns(brushed, notched, 8, 8);
+    const int dropPlain = maxRaisedDrop(plain, notched, 8, 8);
+    const int dropBrushed = maxRaisedDrop(brushed, notched, 8, 8);
+
+    /* The same tile with reach enough for the whole wall. At the defaults the
+     * skirt has 0.25 * 32 = 8 blocks of fall to spend and this wall is taller
+     * than that, on purpose — the budget is tied to `lake_shore_max_depth` so
+     * that a wall the flood WANTED is graded to nothing and a rim it refused
+     * is only taken down, not landscaped away. Doubling the reach puts this
+     * wall inside the budget and shows the other half of that rule. */
+    float wide[31];
+    std::memcpy(wide, DOCUMENTED_DEFAULTS, sizeof wide);
+    wide[30] = 64.0f;
+    const Tile fully = runTile(3, 8, 8, notched, &r, wide, 31);
+    const int dropWide = maxRaisedDrop(fully, notched, 8, 8);
+
+    /* 1. There is still something to blend. Without this the rest passes on a
+     *    tile the flood already wetted clean, which proves nothing. */
+    check(walls > 0, "the flood leaves a wall the skirt has something to do with");
+
+    /* 2. The skirt grades ground away from it — more columns raised, by less. */
+    check(raised > walls, "and the skirt grades ground away from that wall");
+
+    /* 3. Which is the whole point: the cliff comes down, by the budget the
+     *    slope and the reach agree on. */
+    check(dropBrushed <= dropPlain - 6, "so the cliff comes down by most of the budget");
+
+    /* 4. And given reach for all of it, down to one tread of the ramp — a step
+     *    costs a quarter block, so a fully graded wall ends in a single one. */
+    check(dropWide <= 1, "and a reach that covers the wall removes it entirely");
+
+    std::printf("bank ok (walls %d, raised %d, tallest drop off raised ground"
+                " %d -> %d, %d at reach 64)\n",
+                walls, raised, dropPlain, dropBrushed, dropWide);
+}
+
+void testTheBankBrushNeverWetsNorLowersNorRaisesWater() {
+    /* The four things a raise-only brush may not do to a tile. Run on both
+     * shore fixtures: the plain bowl is where the flood leaves nothing to
+     * grade and the brush must be inert, the notched one is where it fires. */
+    auto smooth = [](int64_t x, int64_t z) { return bowlTerrainAt(x, z, 2048, 2048); };
+    auto detailed = [](int64_t x, int64_t z) { return bowlDetailAt(x, z, 2048, 2048); };
+    auto notched = [](int64_t x, int64_t z) { return notchedBowlAt(x, z, 2048, 2100); };
+
+    float off[31];
+    bankOff(off);
+    int raises = 0;
+    for (int fixture = 0; fixture < 2; ++fixture) {
+        const Region r = fixture == 0 ? solveRegion(0, 0, smooth) : solveRegion(0, 0, notched);
+        const Tile plain = fixture == 0 ? runTile(3, 8, 8, detailed, &r, off, 31)
+                                        : runTile(3, 8, 8, notched, &r, off, 31);
+        const Tile brushed = fixture == 0
+            ? runTile(3, 8, 8, detailed, &r, DOCUMENTED_DEFAULTS, 31)
+            : runTile(3, 8, 8, notched, &r, DOCUMENTED_DEFAULTS, 31);
+
+        /* The skirt's ceiling is the crest it fell from, and every crest is a
+         * water level, so no column it raises may stand above the highest
+         * water on the tile. Looser than the per-wall bound and checkable
+         * without re-deriving which wall fed which column. */
+        int16_t highest = -1;
+        for (size_t i = 0; i < brushed.water.size(); ++i) {
+            highest = std::max(highest, brushed.water[i]);
+        }
+
+        int wetChanged = 0;
+        int lowered = 0;
+        int wetMoved = 0;
+        int overCrest = 0;
+        int voidMoved = 0;
+        for (size_t i = 0; i < plain.heights.size(); ++i) {
+            if (brushed.water[i] != plain.water[i]) {
+                ++wetChanged;
+            }
+            if (brushed.heights[i] < plain.heights[i]) {
+                ++lowered;
+            }
+            if (plain.water[i] >= 0 && brushed.heights[i] != plain.heights[i]) {
+                ++wetMoved;
+            }
+            if (brushed.floor[i] != plain.floor[i] || brushed.roof[i] != plain.roof[i]) {
+                ++voidMoved;
+            }
+            if (brushed.heights[i] > plain.heights[i]) {
+                ++raises;
+                if (brushed.heights[i] > highest) {
+                    ++overCrest;
+                }
+            }
+        }
+        check(wetChanged == 0, "the skirt does not wet or dry a single column");
+        check(lowered == 0, "and it never lowers ground");
+        check(wetMoved == 0, "and it never raises a wet column");
+        check(overCrest == 0, "and it never stands above the water it banks");
+        check(voidMoved == 0, "and it leaves every river tunnel where it was");
+    }
+    check(raises > 0, "and the fixtures actually exercised it");
+    std::printf("bank invariants ok (%d raised columns checked)\n", raises);
+}
+
+void testTheBankSkirtAgreesAcrossATileSeam() {
+    /* The test that would have caught seeding the skirt from only the water a
+     * tile already stamps. The notch leaves this bowl's mask within a few
+     * blocks of the 8|9 tile edge, so the wall sits on one side of the seam
+     * and its ramp runs out across the other. Tile A has to stamp B's water to
+     * draw that ramp; if it does not, A stops at the seam and B does not, and
+     * the two leave a step along a straight tile-aligned line. */
+    auto notched = [](int64_t x, int64_t z) { return notchedBowlAt(x, z, 2104, 2100); };
+    const Region r = solveRegion(0, 0, notched);
+
+    const float reaches[] = {8.0f, 32.0f, static_cast<float>(T - 1)};
+    for (float reach : reaches) {
+        float p[31];
+        std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
+        p[30] = reach;
+        const Tile a = runTile(3, 8, 8, notched, &r, p, 31);
+        const Tile b = runTile(3, 9, 8, notched, &r, p, 31);
+        int worst = 0;
+        int graded = 0;
+        for (int z = 0; z < T; ++z) {
+            const size_t ia = idx(T - 1, z, T);
+            const size_t ib = idx(0, z, T);
+            if (a.water[ia] >= 0 || b.water[ib] >= 0) {
+                continue;   /* the shore seam test owns the wet columns */
+            }
+            if (a.heights[ia] > notched(8 * T + T - 1, 8 * T + z)
+                    || b.heights[ib] > notched(9 * T, 8 * T + z)) {
+                ++graded;
+            }
+            /* Adjacent columns of one continuous ramp. A step of a quarter
+             * block per column rounds to at most one; anything taller is one
+             * side grading and the other not. */
+            worst = std::max(worst, std::abs(a.heights[ia] - b.heights[ib]));
+        }
+        check(worst <= 1, "the two tiles draw one continuous bank at their seam");
+        check(reach < 32.0f || graded > 0, "and the seam really is inside a skirt");
+    }
+    std::puts("bank seam ok");
+}
+
+void testTheBankBrushIsMonotoneInItsReach() {
+    /* Reach 0 is the pre-brush stamp exactly — it collapses the stamp range
+     * back to the tile plus §3's ring — so this sweep doubles as the proof
+     * that widening that range changed nothing on its own. */
+    auto notched = [](int64_t x, int64_t z) { return notchedBowlAt(x, z, 2048, 2100); };
+    const Region r = solveRegion(0, 0, notched);
+
+    const float reaches[] = {0.0f, 8.0f, 16.0f, 32.0f};
+    Tile prev;
+    int prevDrop = 0;
+    int firstRaised = 0;
+    int lastRaised = 0;
+    for (size_t k = 0; k < sizeof reaches / sizeof *reaches; ++k) {
+        float p[31];
+        std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
+        p[30] = reaches[k];
+        const Tile t = runTile(3, 8, 8, notched, &r, p, 31);
+        const int drop = maxRaisedDrop(t, notched, 8, 8);
+        lastRaised = walledColumns(t, notched, 8, 8);
+        if (k == 0) {
+            firstRaised = lastRaised;
+        } else {
+            int lowered = 0;
+            int moved = 0;
+            for (size_t i = 0; i < t.heights.size(); ++i) {
+                if (t.heights[i] < prev.heights[i]) {
+                    ++lowered;
+                }
+                if (t.water[i] != prev.water[i] || t.floor[i] != prev.floor[i]
+                        || t.roof[i] != prev.roof[i]) {
+                    ++moved;
+                }
+            }
+            check(lowered == 0, "a longer reach only ever raises more ground");
+            check(moved == 0, "and moves no water and no tunnel");
+            check(drop <= prevDrop, "and never leaves the wall steeper than it was");
+        }
+        prev = t;
+        prevDrop = drop;
+    }
+    /* And the knob is live: everything above would pass on a dead one. */
+    check(lastRaised > firstRaised, "the reach is a knob and not a comment");
+    std::printf("bank reach knob ok (%d raised at reach 0, %d at 32)\n",
+                firstRaised, lastRaised);
+}
+
+void testTheSeaShorelineIsNotBrushed() {
+    /* §2 gives a column sea water only where `carved < sea_level`, so a DRY
+     * coastal column already stands at or above the sea and the containment
+     * repair is idle there. No wall, therefore no seed, therefore no skirt —
+     * without a single line testing for the sea. Non-obvious enough to pin. */
+    const Region r = solveRegion(-1, 0, terrainAt);
+    float off[31];
+    bankOff(off);
+    const Tile plain = runTile(9, -3, 0, terrainAt, &r, off, 31);
+    const Tile brushed = runTile(9, -3, 0, terrainAt, &r, DOCUMENTED_DEFAULTS, 31);
+    int coastal = 0;
+    for (size_t i = 0; i < plain.heights.size(); ++i) {
+        if (plain.water[i] == SEA) {
+            ++coastal;
+        }
+    }
+    check(coastal > 0, "the tile really is coastal");
+    check(std::memcmp(plain.heights.data(), brushed.heights.data(),
+                      plain.heights.size() * sizeof(int16_t)) == 0,
+          "the sea walls nothing, so the skirt has nothing to grade");
+    std::printf("sea unbrushed ok (%d sea columns)\n", coastal);
+}
+
+void testTheBankBrushDoesNotDamAnOutlet() {
+    /* The failure a raise-only brush invites: banking a lake by filling in the
+     * river that drains it. Wet columns are barriers, so the outlet keeps both
+     * its water and its bed. */
+    auto two = [](int64_t x, int64_t z) { return twoBowlsAt(x, z, 1400, 2048); };
+    float p[31];
+    std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
+    p[3] = 100000.0f;   /* min_river_lake_area: only the link rule may plan */
+    p[4] = 0.0f;        /* river_keep_fraction */
+    const Region r = solveWithParams(p, 31, two);
+    check(r.routeCount > 0, "the fixture has an outlet to dam");
+
+    float off[31];
+    std::memcpy(off, p, sizeof off);
+    off[30] = 0.0f;
+    const Tile plain = runTile(3, 5, 8, two, &r, off, 31);
+    const Tile brushed = runTile(3, 5, 8, two, &r, p, 31);
+
+    int wet = 0;
+    int changed = 0;
+    for (size_t i = 0; i < plain.water.size(); ++i) {
+        if (plain.water[i] >= 0) {
+            ++wet;
+            if (brushed.water[i] != plain.water[i]
+                    || brushed.heights[i] != plain.heights[i]) {
+                ++changed;
+            }
+        }
+    }
+    check(wet > 0, "and the tile holds that water");
+    check(changed == 0, "which the skirt neither fills nor floors");
+    std::printf("outlet ok (%d wet columns, %d touched by the skirt)\n", wet, changed);
+}
+
 void testALakePerchedOverAnotherGetsAnOutlet() {
     /* Both gates are shut: keep fraction 0 rejects every basin, and the area
      * gate is set past anything the fixture holds. The only thing that can
      * plan a river here is the perched-lake rule. */
     auto two = [](int64_t x, int64_t z) { return twoBowlsAt(x, z, 1400, 2048); };
-    float p[29];
+    float p[31];
     std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
     p[3] = 100000.0f;   /* min_river_lake_area */
     p[4] = 0.0f;        /* river_keep_fraction */
 
     p[28] = 0.0f;       /* lake_link_reach off */
-    const Region off = solveWithParams(p, 29, two);
+    const Region off = solveWithParams(p, 31, two);
     check(off.routeCount == 0, "with the link rule off, two shut gates plan no rivers");
 
     p[28] = 128.0f;
-    const Region on = solveWithParams(p, 29, two);
+    const Region on = solveWithParams(p, 31, two);
     check(on.routeCount > 0, "a lake with lower water in reach drains past both gates");
 
     /* It has to arrive somewhere, and over a 20-block step it has to fall. */
@@ -1222,6 +1542,564 @@ void testALakePerchedOverAnotherGetsAnOutlet() {
     check(falls, "and the step between the two lakes is stamped as a waterfall");
     std::printf("lake link ok (%d routes, longest %d vertices, waterfall %s)\n",
                 on.routeCount, longest, falls ? "yes" : "no");
+}
+
+/* The lip a wall leaves, measured from every wall column: how many dry columns
+ * in a row, walking straight away from the water it holds, stand at the crest.
+ * The crest is the wall's own height in the reach-0 tile — the guard rail, which
+ * can stand above the water directly beside it.
+ * The wall column counts, so a bare wall is 1. Capped at 5 — past the most
+ * the profile can hold, so an overlong run is visible rather than truncated. */
+template <typename F>
+void lipHistogram(const Tile& off, const Tile& on, F&& terrain, int64_t tileX, int64_t tileZ,
+                  int (&hist)[6]) {
+    for (int x = 1; x < T - 1; ++x) {
+        for (int z = 1; z < T - 1; ++z) {
+            const size_t i = idx(x, z, T);
+            /* A wall: dry, raised by §3 alone (the reach-0 tile), beside water. */
+            if (off.water[i] >= 0 || off.heights[i] <= terrain(tileX * T + x, tileZ * T + z)) {
+                continue;
+            }
+            const int dx[4] = {-1, 1, 0, 0};
+            const int dz[4] = {0, 0, -1, 1};
+            for (int k = 0; k < 4; ++k) {
+                const size_t n = idx(x + dx[k], z + dz[k], T);
+                if (on.water[n] < 0 || on.water[n] > off.heights[i]) {
+                    continue;
+                }
+                /* Walk away from that water. */
+                const int crest = off.heights[i];
+                /* A taller rail's skirt nearby may lift this wall past its own
+                 * crest; that is a bank doing its job, not a lip to measure. */
+                if (on.heights[i] > crest) {
+                    continue;
+                }
+                int run = 0;
+                int cx = x;
+                int cz = z;
+                while (run < 5 && cx >= 0 && cx < T && cz >= 0 && cz < T
+                       && on.water[idx(cx, cz, T)] < 0 && on.heights[idx(cx, cz, T)] == crest
+                       && on.heights[idx(cx, cz, T)] > terrain(tileX * T + cx, tileZ * T + cz)) {
+                    ++run;
+                    cx -= dx[k];
+                    cz -= dz[k];
+                }
+                ++hist[run];
+            }
+        }
+    }
+}
+
+void testTheBankLipIsOneToThreeThickAndVaries() {
+    /* The complaint this pins: a river one block above the ground beside it
+     * was held back by a ridge one column wide, and a 1:4 ramp could not help
+     * — the column past the crest floors to the ground that was already there.
+     * The lip now holds the crest for a noisy one to three columns. */
+    const Region r = solveRegion(0, 0, riverTerrainAt, 777, 1.0f);
+    if (r.routeCount == 0) {
+        check(false, "bank lip: the fixture plans a river");
+        return;
+    }
+    float off[31];
+    bankOff(off);
+    int hist[6] = {0, 0, 0, 0, 0, 0};
+    int widestLip = 0;
+    constexpr int PROBE = 5;
+    /* How far a taller wall's ramp can still stand level with a lower crest:
+     * a full plateau, then a block of fall at the gentlest slope plus a block
+     * of roughness — 2 + 2 / 0.25. */
+    constexpr int RAMP = 10;
+    for (int64_t tx = 2; tx <= 7; ++tx) {
+        const Tile a = runTile(777, tx, 8, riverTerrainAt, &r, off, 31);
+        const Tile b = runTile(777, tx, 8, riverTerrainAt, &r, DOCUMENTED_DEFAULTS, 31);
+        lipHistogram(a, b, riverTerrainAt, tx, 8, hist);
+        for (int x = RAMP; x < T - RAMP; ++x) {
+            for (int z = RAMP; z < T - RAMP; ++z) {
+                const size_t i = idx(x, z, T);
+                if (b.water[i] >= 0 || b.heights[i] <= riverTerrainAt(tx * T + x, 8 * T + z)) {
+                    continue;
+                }
+                /* The nearest wall with this column's crest — a wall being
+                 * what the reach-0 tile raised — counting the wall as 1, i.e.
+                 * the wall this column is a lip for. Measured from the wall
+                 * and not from water at that level because the crest is the
+                 * guard rail, which need not equal the water beside it. */
+                int nearest = PROBE + 1;
+                int topCrest = -1;
+                for (int dx = -RAMP; dx <= RAMP; ++dx) {
+                    for (int dz = -RAMP; dz <= RAMP; ++dz) {
+                        const size_t w = idx(x + dx, z + dz, T);
+                        if (a.water[w] < 0
+                                && a.heights[w] > riverTerrainAt(tx * T + x + dx, 8 * T + z + dz)) {
+                            topCrest = std::max<int>(topCrest, a.heights[w]);
+                            if (a.heights[w] == b.heights[i]
+                                    && std::max(std::abs(dx), std::abs(dz)) < PROBE) {
+                                nearest = std::min(nearest, 1 + std::max(std::abs(dx), std::abs(dz)));
+                            }
+                        }
+                    }
+                }
+                /* Only a column at the TALLEST crest in reach is a lip: one
+                 * level with a lower wall may just be a taller wall's ramp. */
+                if (nearest <= PROBE && b.heights[i] == topCrest) {
+                    widestLip = std::max(widestLip, nearest);
+                }
+            }
+        }
+    }
+    const int walls = hist[1] + hist[2] + hist[3] + hist[4] + hist[5];
+    check(walls > 0, "bank lip: the river leaves walls to measure");
+    check(hist[0] == 0, "every wall column still stands at its crest");
+    check(hist[2] + hist[3] > 0, "some lips are thicker than the wall itself");
+    check(hist[1] > 0 || hist[3] > 0, "and they are not all the same thickness");
+    /* The upper bound, measured the way the skirt measures: not an axial walk,
+     * which runs along a diagonal bank and counts the wall's own length, but
+     * the 8-connected distance from each crest column to the water it banks.
+     * Wall at 1, plateau of at most two past it: nothing at the crest past 3. */
+    check(widestLip <= 3, "no lip is thicker than three columns");
+    check(widestLip == 3, "and the noise really reaches three");
+    std::printf("bank lip ok (%d walls: %d / %d / %d / %d+ along an axis, widest %d)\n",
+                walls, hist[1], hist[2], hist[3], hist[4] + hist[5], widestLip);
+}
+
+void testTheTunnelVaultIsIrregular() {
+    /* The vault used to be one parabola extruded along the route, so the air
+     * over the water was the same height at every centreline column. Now it
+     * swells and lumps, and a dry bulge widens the passage above the water. */
+    const Region r = solveRegion(0, 0, riverTerrainAt, 777, 1.0f);
+    if (r.routeCount == 0) {
+        check(false, "vault: the fixture plans a river");
+        return;
+    }
+    int lo = WH;
+    int hi = -1;
+    int bulges = 0;
+    int badBulges = 0;
+    for (int64_t tx = 3; tx <= 6; ++tx) {
+      for (int64_t tz = 7; tz <= 9; ++tz) {
+        const Tile t = runTile(777, tx, tz, ridgedRiverTerrainAt, &r);
+        for (int x = 1; x < T - 1; ++x) {
+            for (int z = 1; z < T - 1; ++z) {
+                const size_t i = idx(x, z, T);
+                if (t.roof[i] < 0) {
+                    continue;
+                }
+                if (t.water[i] >= 0) {
+                    /* Headroom where the roof is not clamped by the lid. */
+                    if (t.roof[i] < t.heights[i] - TUNNEL_MIN_ROOF) {
+                        lo = std::min(lo, t.roof[i] - t.water[i]);
+                        hi = std::max(hi, t.roof[i] - t.water[i]);
+                    }
+                    continue;
+                }
+                ++bulges;
+                /* A bulge is air: its lip must stand at the top water block of
+                 * every wet neighbour, and its roof under a full lid. */
+                const size_t nb[4] = {i - static_cast<size_t>(T), i + static_cast<size_t>(T),
+                                      i - 1, i + 1};
+                for (size_t n : nb) {
+                    if (t.water[n] >= 0 && t.floor[i] < t.water[n] - 1) {
+                        ++badBulges;
+                    }
+                }
+                if (t.roof[i] > t.heights[i] - TUNNEL_MIN_ROOF) {
+                    ++badBulges;
+                }
+            }
+        }
+      }
+    }
+    check(hi >= 0, "vault: there were tunnel columns to measure");
+    check(hi - lo >= 3, "the headroom over the water varies along the tunnel");
+    check(bulges > 0, "the passage bulges past the channel above the water");
+    check(badBulges == 0, "and every bulge is air over a lip, under a lid");
+    std::printf("vault ok (headroom %d..%d, %d bulge columns, %d bad)\n",
+                lo, hi, bulges, badBulges);
+}
+
+void testATunnelStaysSealedAcrossATileSeam() {
+    /* The tunnel seal test checks interior columns only; the noise that shapes
+     * the vault and the bulge is a function of the world column, so the seam
+     * has to come out as sealed as the interior. */
+    const Region r = solveRegion(0, 0, riverTerrainAt, 777, 1.0f);
+    if (r.routeCount == 0) {
+        return;
+    }
+    int compared = 0;
+    int leaks = 0;
+    for (int64_t tx = 3; tx <= 5; ++tx) {
+      for (int64_t tz = 7; tz <= 9; ++tz) {
+        const Tile a = runTile(777, tx, tz, ridgedRiverTerrainAt, &r);
+        const Tile b = runTile(777, tx + 1, tz, ridgedRiverTerrainAt, &r);
+        for (int z = 0; z < T; ++z) {
+            const size_t ia = idx(T - 1, z, T);
+            const size_t ib = idx(0, z, T);
+            const auto leaksInto = [&](const Tile& wet, size_t w, const Tile& dry, size_t d) {
+                if (wet.water[w] < 0 || dry.water[d] >= 0 || dry.roof[d] < 0) {
+                    return;
+                }
+                ++compared;
+                if (dry.floor[d] < wet.water[w] - 1) {
+                    ++leaks;
+                }
+            };
+            leaksInto(a, ia, b, ib);
+            leaksInto(b, ib, a, ia);
+        }
+      }
+    }
+    check(leaks == 0, "no bulge opens below the water across a tile seam");
+    std::printf("tunnel seam ok (%d bulge columns on a seam, %d leaks)\n", compared, leaks);
+}
+
+/* ── The guard rail, judged by the sim that actually runs ─────────────────
+ *
+ * Every containment test above checks the planes against the STATIC rule, and
+ * the static rule is not what floods a bank: WaterSim is. A river steps down a
+ * block at a time, the step exposes water to air, the flowing layer runs a
+ * block above the reach below, and the infinite-source rule promotes that
+ * reach toward the level upstream. None of that is visible in the planes. */
+
+/**
+ * WaterSim (stonebreak-game blocks/waterSystem/WaterSim.java), rule for rule,
+ * over one stamped tile turned into blocks the way TerrainGenerationSystem
+ * turns them: the tunnel shell first, then solid below `height`, water below
+ * the level, air above. No caves — this judges the planes, not Density3D.
+ *
+ * Deliberate differences, all pessimistic: every exposed water cell in the
+ * tile is scheduled (the game only sees exposure inside one chunk), updates
+ * run FIFO with no tick delay, and the whole tile counts as loaded while
+ * everything past it does not — so water piles up at the tile edge rather
+ * than leaving, which is why `escaped` ignores that ring.
+ */
+class FlowReplica {
+public:
+    explicit FlowReplica(const Tile& t) {
+        int lo = WH;
+        int hi = 0;
+        for (size_t i = 0; i < t.water.size(); ++i) {
+            if (t.water[i] < 0) {
+                continue;
+            }
+            const int bed = t.floor[i] >= 0 ? std::min<int>(t.floor[i], t.heights[i]) : t.heights[i];
+            lo = std::min(lo, bed - 1);
+            hi = std::max<int>(hi, t.water[i] + 1);
+        }
+        y0_ = std::max(0, lo);
+        ny_ = std::max(0, hi - y0_ + 1);
+        block_.assign(static_cast<size_t>(ny_) * T * T, AIR);
+        state_.assign(block_.size(), EMPTY);
+        queued_.assign(block_.size(), 0);
+        for (int x = 0; x < T; ++x) {
+            for (int z = 0; z < T; ++z) {
+                const size_t c = idx(x, z, T);
+                const int h = t.heights[c];
+                const int w = t.water[c];
+                const int f = t.floor[c];
+                const int r = t.roof[c];
+                for (int y = y0_; y < y0_ + ny_; ++y) {
+                    uint8_t b;
+                    if (r > f && y >= f && y <= r) {
+                        b = (y == f || y == r) ? SOLID : (y < w ? WATER : AIR);
+                    } else if (y < h) {
+                        b = SOLID;
+                    } else {
+                        b = y < w ? WATER : AIR;
+                    }
+                    const int32_t k = at(x, y, z);
+                    block_[static_cast<size_t>(k)] = b;
+                    if (b == WATER) {
+                        state_[static_cast<size_t>(k)] = SOURCE;
+                    }
+                }
+            }
+        }
+        /* WaterSim.onChunkLoaded: water with air below or beside it. */
+        for (int y = y0_; y < y0_ + ny_; ++y) {
+            for (int x = 0; x < T; ++x) {
+                for (int z = 0; z < T; ++z) {
+                    const int32_t k = at(x, y, z);
+                    if (block_[static_cast<size_t>(k)] != WATER) {
+                        continue;
+                    }
+                    if (isAir(x, y - 1, z) || isAir(x + 1, y, z) || isAir(x - 1, y, z)
+                            || isAir(x, y, z + 1) || isAir(x, y, z - 1)) {
+                        enqueue(k);
+                    }
+                }
+            }
+        }
+    }
+
+    /** Run to a fixed point; false if `budget` updates were not enough. */
+    bool settle(long budget) {
+        while (!queue_.empty()) {
+            if (budget-- <= 0) {
+                return false;
+            }
+            const int32_t k = queue_.front();
+            queue_.pop_front();
+            queued_[static_cast<size_t>(k)] = 0;
+            update(k);
+        }
+        return true;
+    }
+
+    /** Water cells standing in columns the planes call dry, off the edge ring. */
+    long escaped(const Tile& t) const {
+        long n = 0;
+        for (int x = 1; x < T - 1; ++x) {
+            for (int z = 1; z < T - 1; ++z) {
+                if (t.water[idx(x, z, T)] >= 0) {
+                    continue;
+                }
+                for (int y = y0_; y < y0_ + ny_; ++y) {
+                    n += block_[static_cast<size_t>(at(x, y, z))] == WATER ? 1 : 0;
+                }
+            }
+        }
+        return n;
+    }
+
+private:
+    static constexpr int8_t SOURCE = 0;
+    static constexpr int8_t FALLING = 8;
+    static constexpr int8_t MAX_LEVEL = 7;
+    static constexpr int8_t EMPTY = -1;
+    static constexpr int SLOPE_SEARCH_RANGE = 4;
+    static constexpr int NO_HOLE = 1 << 30;
+    enum : uint8_t { AIR = 0, SOLID = 1, WATER = 2 };
+    static constexpr int HX[4] = {1, -1, 0, 0};
+    static constexpr int HZ[4] = {0, 0, 1, -1};
+
+    int y0_ = 0;
+    int ny_ = 0;
+    std::vector<uint8_t> block_;
+    std::vector<int8_t> state_;
+    std::vector<uint8_t> queued_;
+    std::deque<int32_t> queue_;
+
+    int32_t at(int x, int y, int z) const {
+        return static_cast<int32_t>((static_cast<size_t>(y - y0_) * T + static_cast<size_t>(x)) * T
+                                    + static_cast<size_t>(z));
+    }
+    bool loaded(int x, int y, int z) const {
+        return x >= 0 && x < T && z >= 0 && z < T && y >= y0_ && y < y0_ + ny_;
+    }
+    bool isAir(int x, int y, int z) const {
+        return loaded(x, y, z) && block_[static_cast<size_t>(at(x, y, z))] == AIR;
+    }
+    /* Below the volume is ground; the volume is sized so nothing reaches it. */
+    bool isSolidAt(int x, int y, int z) const {
+        if (y < y0_) {
+            return true;
+        }
+        return loaded(x, y, z) && block_[static_cast<size_t>(at(x, y, z))] == SOLID;
+    }
+    int waterAt(int x, int y, int z) const {
+        if (!loaded(x, y, z)) {
+            return EMPTY;
+        }
+        const size_t k = static_cast<size_t>(at(x, y, z));
+        return block_[k] == WATER ? state_[k] : EMPTY;
+    }
+    static int effectiveLevel(int s) { return s == FALLING ? 0 : s; }
+    bool canFlowInto(int x, int y, int z) const {
+        if (!loaded(x, y, z)) {
+            return false;
+        }
+        const size_t k = static_cast<size_t>(at(x, y, z));
+        if (block_[k] == SOLID) {
+            return false;
+        }
+        return !(block_[k] == WATER && state_[k] == SOURCE);
+    }
+    bool isHole(int x, int y, int z) const { return canFlowInto(x, y - 1, z); }
+
+    void enqueue(int32_t k) {
+        if (!queued_[static_cast<size_t>(k)]) {
+            queued_[static_cast<size_t>(k)] = 1;
+            queue_.push_back(k);
+        }
+    }
+    void scheduleIfWater(int x, int y, int z) {
+        if (loaded(x, y, z) && block_[static_cast<size_t>(at(x, y, z))] == WATER) {
+            enqueue(at(x, y, z));
+        }
+    }
+    void scheduleWaterNeighbors(int x, int y, int z) {
+        for (int d = 0; d < 4; ++d) {
+            scheduleIfWater(x + HX[d], y, z + HZ[d]);
+        }
+        scheduleIfWater(x, y + 1, z);
+        scheduleIfWater(x, y - 1, z);
+    }
+    void coords(int32_t k, int& x, int& y, int& z) const {
+        z = k % T;
+        x = (k / T) % T;
+        y = k / (T * T) + y0_;
+    }
+
+    void update(int32_t k) {
+        int x, y, z;
+        coords(k, x, y, z);
+        if (block_[static_cast<size_t>(k)] != WATER) {
+            return;
+        }
+        int state = state_[static_cast<size_t>(k)];
+        if (state != SOURCE) {
+            const int desired = computeState(x, y, z);
+            if (desired == EMPTY) {
+                block_[static_cast<size_t>(k)] = AIR;
+                state_[static_cast<size_t>(k)] = EMPTY;
+                scheduleWaterNeighbors(x, y, z);
+                return;
+            }
+            if (desired != state) {
+                state_[static_cast<size_t>(k)] = static_cast<int8_t>(desired);
+                scheduleWaterNeighbors(x, y, z);
+                enqueue(k);
+                state = desired;
+            }
+        }
+        if (canFlowInto(x, y - 1, z)) {
+            fill(x, y - 1, z, FALLING);
+            return;
+        }
+        const int spread = effectiveLevel(state) + 1;
+        if (spread > MAX_LEVEL) {
+            return;
+        }
+        const int mask = pickFlowDirections(x, y, z);
+        for (int d = 0; d < 4; ++d) {
+            if ((mask & (1 << d)) != 0) {
+                fill(x + HX[d], y, z + HZ[d], spread);
+            }
+        }
+    }
+
+    int computeState(int x, int y, int z) const {
+        int sources = 0;
+        int minNeighbor = NO_HOLE;
+        for (int d = 0; d < 4; ++d) {
+            const int s = waterAt(x + HX[d], y, z + HZ[d]);
+            if (s == EMPTY) {
+                continue;
+            }
+            if (s == SOURCE) {
+                ++sources;
+            }
+            minNeighbor = std::min(minNeighbor, effectiveLevel(s));
+        }
+        if (sources >= 2 && (isSolidAt(x, y - 1, z) || waterAt(x, y - 1, z) == SOURCE)) {
+            return SOURCE;
+        }
+        if (waterAt(x, y + 1, z) != EMPTY) {
+            return FALLING;
+        }
+        if (minNeighbor == NO_HOLE || minNeighbor + 1 > MAX_LEVEL) {
+            return EMPTY;
+        }
+        return minNeighbor + 1;
+    }
+
+    void fill(int x, int y, int z, int candidate) {
+        if (!canFlowInto(x, y, z)) {
+            return;
+        }
+        const size_t k = static_cast<size_t>(at(x, y, z));
+        if (block_[k] == WATER && effectiveLevel(candidate) >= effectiveLevel(state_[k])) {
+            return;
+        }
+        block_[k] = WATER;
+        state_[k] = static_cast<int8_t>(candidate);
+        enqueue(static_cast<int32_t>(k));
+    }
+
+    int pickFlowDirections(int x, int y, int z) const {
+        int best = NO_HOLE;
+        int mask = 0;
+        for (int d = 0; d < 4; ++d) {
+            const int nx = x + HX[d];
+            const int nz = z + HZ[d];
+            if (!canFlowInto(nx, y, nz)) {
+                continue;
+            }
+            const int dist = isHole(nx, y, nz) ? 0 : slopeDistance(nx, y, nz, 1, d);
+            if (dist < best) {
+                best = dist;
+                mask = 1 << d;
+            } else if (dist == best) {
+                mask |= 1 << d;
+            }
+        }
+        return mask;
+    }
+
+    int slopeDistance(int x, int y, int z, int distance, int from) const {
+        if (distance >= SLOPE_SEARCH_RANGE) {
+            return NO_HOLE;
+        }
+        int best = NO_HOLE;
+        for (int d = 0; d < 4; ++d) {
+            if ((d ^ 1) == from) {
+                continue;
+            }
+            const int nx = x + HX[d];
+            const int nz = z + HZ[d];
+            if (!canFlowInto(nx, y, nz)) {
+                continue;
+            }
+            if (isHole(nx, y, nz)) {
+                return distance;
+            }
+            best = std::min(best, slopeDistance(nx, y, nz, distance + 1, d));
+        }
+        return best;
+    }
+};
+
+/** Settle a tile under the replica and count what left the river. */
+long escapedAfterSettling(const Tile& t) {
+    FlowReplica sim(t);
+    const bool settled = sim.settle(400L * 1000L * 1000L);
+    check(settled, "the flow replica reaches a fixed point");
+    return sim.escaped(t);
+}
+
+void testTheGuardRailHoldsWhatTheSimMakes() {
+    /* Both river fixtures: the sloped plain, whose river steps a block at a
+     * time, and the ridged one, whose river tunnels and comes out again. */
+    long before = 0;
+    long after = 0;
+    long wet = 0;
+    const auto run = [&](auto terrain, int64_t tx0, int64_t tx1) {
+        const Region r = solveRegion(0, 0, terrain, 777, 1.0f);
+        if (r.routeCount == 0) {
+            check(false, "guard rail: the fixture plans a river");
+            return;
+        }
+        float noRail[32];
+        std::memcpy(noRail, DOCUMENTED_DEFAULTS, sizeof noRail);
+        noRail[31] = 0.0f;
+        for (int64_t tx = tx0; tx <= tx1; ++tx) {
+            const Tile a = runTile(777, tx, 8, terrain, &r, noRail, 32);
+            const Tile b = runTile(777, tx, 8, terrain, &r, DOCUMENTED_DEFAULTS, 32);
+            before += escapedAfterSettling(a);
+            after += escapedAfterSettling(b);
+            for (int16_t w : b.water) {
+                wet += w >= 0 ? 1 : 0;
+            }
+        }
+    };
+    run(riverTerrainAt, 2, 7);
+    run(ridgedRiverTerrainAt, 2, 7);
+    check(wet > 0, "guard rail: the fixtures hold water to spill");
+    /* Proves the replica is live: without the rail, the sim floods the banks. */
+    check(before > 0, "without the rail the sim spills water over the banks");
+    check(after == 0, "with the rail nothing leaves the river");
+    std::printf("guard rail ok (%ld wet columns; water cells escaped %ld -> %ld)\n",
+                wet, before, after);
 }
 
 void testSea() {
@@ -1313,7 +2191,17 @@ int main() {
     testTheShoreFollowsTheGroundNotTheCellLattice();
     testTheShoreFloodRefusesADeepNotch();
     testTheShoreAgreesAcrossATileSeam();
+    testTheBankBrushGradesAWallIntoTheGround();
+    testTheBankBrushNeverWetsNorLowersNorRaisesWater();
+    testTheBankSkirtAgreesAcrossATileSeam();
+    testTheBankBrushIsMonotoneInItsReach();
+    testTheSeaShorelineIsNotBrushed();
+    testTheBankBrushDoesNotDamAnOutlet();
     testALakePerchedOverAnotherGetsAnOutlet();
+    testTheBankLipIsOneToThreeThickAndVaries();
+    testTheTunnelVaultIsIrregular();
+    testATunnelStaysSealedAcrossATileSeam();
+    testTheGuardRailHoldsWhatTheSimMakes();
     testSea();
     testMountains();
     if (failures == 0) {

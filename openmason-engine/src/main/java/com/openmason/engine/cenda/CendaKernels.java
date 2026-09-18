@@ -746,7 +746,9 @@ public final class CendaKernels {
      * and deterministic per seed by construction — see cenda/kernels.h
      * (ck_carve_water) for the layout and the optional params array.
      *
-     * <p><b>This kernel does not lower terrain.</b> {@code outHeights} comes
+     * <p><b>This kernel does not lower terrain.</b> It raises it in one place —
+     * the bank skirt that grades the ground away from a containment wall so the
+     * wall is not a cliff. {@code outHeights} otherwise comes
      * back uncarved except for the bed of a channel running at grade, and where
      * a wet column's dry neighbour had to be walled. A lake sits in a depression
      * the terrain already has; a river that meets standing ground tunnels under

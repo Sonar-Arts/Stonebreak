@@ -63,8 +63,10 @@
  *     roof >  surf  ->  TUNNEL: floor/roof planes, `carved` untouched
  *     roof <= surf  ->  OPEN:   `carved = surf - cut`, as before
  *
- * The roof arches on the same `u` the bed is cut on, so the void pinches shut
- * exactly where the channel does and the ground beside it is never touched.
+ * The roof arches on the same `u` the bed is cut on, so the WATER'S void
+ * pinches shut exactly where the channel does. The only thing opened past the
+ * channel edge is the dry bulge above the waterline (see "Noise on the walls"),
+ * which sits on a stone lip at the top water block.
  * `tunnel_min_roof` is the thinnest lid that reads as rock rather than debris,
  * and clamping the roof to `raw - it` makes it the only ground the stamp may
  * still take: about four blocks, against the unbounded amount it replaced.
@@ -75,7 +77,66 @@
  * a permanent spring that floods every chunk it touches. Rule held here (same
  * as the bridge's carve.py): for every wet column at level W, each 4-neighbor
  * is wet itself or has terrain >= W. Wet-next-to-wet at different levels is a
- * waterfall and is deliberately allowed — §5.8 depends on it.
+ * waterfall and is deliberately allowed — §5.8 depends on it. Since the guard
+ * rail (below) the dry neighbour is walled to the column's RAIL, which is >= W,
+ * so the rule still holds with room to spare.
+ *
+ * ═══ The bank skirt (2026-09-15) ═══
+ *
+ * The rule above is not negotiable, so the wall it produces cannot be removed;
+ * it can only stop being a CLIFF. §1a's shore flood shrinks the walled set by
+ * wetting the ground the coarse mask cut off, but a lake with no outlet has to
+ * be walled at its spill lip, and a waterfall has to be walled at its drop.
+ * §2b therefore grades the ground away from whatever §3 raises, at a repose
+ * angle, out to wherever the ramp meets the terrain that was already there.
+ *
+ * That skirt is the one thing in this file that ADDS ground, and it adds it
+ * because nothing here may take any away: the crest is pinned at the waterline
+ * by the invariant, so the only shape left is a monotone ramp down from it. It
+ * never touches a wet column and never rises above the water it banks.
+ *
+ * ═══ Noise on the walls (2026-09-17) ═══
+ *
+ * A plain 1:4 ramp did nothing to the commonest wall there is — a river bank
+ * one block high — because the column beside the crest floors to `W - 1`,
+ * which is the ground that was already there. So the skirt now holds the
+ * crest level for a noisy one to three columns before it falls, and the fall
+ * itself varies in steepness and carries a block of roughness. The tunnel
+ * shell gets the same treatment: an uneven vault and, above the waterline, a
+ * dry bulge past the channel edge, so the passage stops being one parabola
+ * extruded along the route.
+ *
+ * Every noise value is `smoothNoise01` of the WORLD column and the seed,
+ * evaluated per column with nothing accumulated, so the seam rule holds. All
+ * of it raises dry ground or opens rock ABOVE the water — never beside it.
+ *
+ * ═══ The guard rail (2026-09-18) ═══
+ *
+ * Holding the static waterline is not enough, because the static waterline is
+ * not where WaterSim leaves the water. A river's surface steps down a block at
+ * a time — `lround` of a ramp, which on a diagonal is a staircase — and every
+ * step exposes the upper column's top water block to air, so it is scheduled
+ * on load and spreads a flowing layer ONE BLOCK ABOVE the lower reach. The
+ * bank there was walled to the lower reach's level, and the layer runs over it.
+ *
+ * Worse, it does not stay a layer. `WaterSim.computeState` mints a source from
+ * any flowing cell with two source neighbours and a source BELOW it, and a
+ * step front that is not dead straight always has such cells, so the lower
+ * reach is promoted one layer up, which makes the next front a step of its
+ * own, and so on: a reach settles at the level of the water upstream of it.
+ * The sim is not changing (the user's call), so the banks have to.
+ *
+ * §2c therefore gives every wet column a RAIL: the highest level of any water
+ * within `river_guard_reach` wet steps of it — the level the cascade can carry
+ * down to it within that reach. §2a, §2b and §3 wall to the rail instead of to
+ * the water. Wet columns are the only conductors, so a rail never jumps a
+ * ridge to a different river; where nothing higher is within reach the rail IS
+ * the water, so a still lake and a flat reach come out exactly as before.
+ *
+ * Known limit, stated rather than hidden: the fully settled level is the
+ * headwater's, carried the whole length of the river, and no bounded window
+ * can know it. A cascade longer than the reach can still climb past the rail;
+ * raise [31] if that shows up.
  */
 
 #include "cenda/kernels.h"
@@ -124,6 +185,94 @@ constexpr float DEF_LAKE_SHORE_REACH = 64.0f;
  * job and needs the fill's window. */
 constexpr float DEF_LAKE_SHORE_MAX_DEPTH = 8.0f;
 
+/* How gently the ground falls away from a containment wall, in blocks of drop
+ * per block of horizontal distance. Params slot [29] ("lake_bank_slope")
+ * overrides it.
+ *
+ * The wall cannot be removed. §3 below is the WaterSim invariant, and a wet
+ * column with a lower dry neighbour is a spring — so the only thing left to do
+ * with a wall is stop it being a cliff. The skirt is therefore RAISE-ONLY: a
+ * talus ramp from the crest outward, ending where it meets the ground the
+ * terrain already had. Lowering toward the water is not an option and is not
+ * coming back; the river valley pull that did exactly that is deleted, for the
+ * reasons in the header.
+ *
+ * 1:4 is a repose angle that reads as a bank rather than as a berm. */
+constexpr float DEF_LAKE_BANK_SLOPE = 0.25f;
+/* How far the skirt may travel from a wall, in blocks. Params slot [30]
+ * ("lake_bank_reach") overrides it.
+ *
+ * A PATH length, for the same reason `lake_shore_reach` is one, and it SHARES
+ * that reach's margin: a skirt seeded from a wall the shore flood found needs
+ * `1 + shore_reach + bank_reach` blocks of window, so the clamp below is
+ * `T - 1 - shoreReach` rather than `T - 1`. Eight-connected, so a path of `n`
+ * edges is at most `n` columns away on each axis — the ring index still bounds
+ * the box, which is what the margin argument needs.
+ *
+ * `slope * reach` is 8, which is `lake_shore_max_depth` on purpose. A wall no
+ * taller than that is one the flood WANTED and its depth gate refused, so the
+ * skirt reaches natural ground and no cliff is left at all; a taller one is a
+ * rim the flood declined to cross, and grading that away to nothing would be
+ * inventing a hillside rather than blending one. Retuning either knob alone
+ * breaks the correspondence. */
+constexpr float DEF_LAKE_BANK_REACH = 32.0f;
+
+/* How far upstream, in blocks of wet path, a bank looks for water higher than
+ * its own when deciding how tall to stand. Params slot [31]
+ * ("river_guard_reach") overrides it. See the header's "The guard rail".
+ *
+ * A PATH length through wet columns, and it spends the same margin the other
+ * two reaches do: a skirt `bank_reach` outside the tile seeds from a rail that
+ * read water `guard_reach` beyond that, so the budget is
+ * `1 + shore_reach + bank_reach + guard_reach <= T` and this is clamped from
+ * whatever the other two left. It is a declared cap, not a halo that could be
+ * grown until it is right — the settled level has no bound (see the header). */
+constexpr float DEF_RIVER_GUARD_REACH = 32.0f;
+
+/* ── Wall noise (see the header's "Noise on the walls") ──
+ *
+ * Not params slots: they are shape, not policy, and nothing outside this file
+ * has a reason to move them. */
+
+/* How many columns PAST the wall itself the crest stays level with the water,
+ * at most. The wall is one column, so a bank's lip is 1 to 1 + this thick. */
+constexpr float BANK_PLATEAU_MAX = 2.0f;
+/* How much steeper than `lake_bank_slope` the ramp may run, as a fraction of
+ * it. Steeper only, never gentler: the slope is the floor of the fall, so
+ * `slope * reach` stays the least a skirt spends and the budget in
+ * DEF_LAKE_BANK_REACH's comment still holds. */
+constexpr float BANK_SLOPE_JITTER = 0.5f;
+/* Blocks of roughness on the ramp, either way. Faded in over the first column
+ * past the plateau so the lip does not end in a notch. */
+constexpr float BANK_ROUGH = 1.0f;
+/* Wavelengths, in blocks: the lip width changes along a bank over about a
+ * chunk; the roughness is finer. */
+constexpr float BANK_PLATEAU_WAVE = 9.0f;
+constexpr float BANK_SLOPE_WAVE = 13.0f;
+constexpr float BANK_ROUGH_WAVE = 4.0f;
+
+/* The vault's headroom varies by these fractions of `tunnel_headroom` either
+ * side of it: a slow swell along the route and finer lumps on top, 0.4x to
+ * 1.6x in all. Fractions rather than blocks so that a headroom of zero still
+ * means no air, which is what that knob promises. Both ride on the same
+ * `1 - u²` the arch does, so the void still pinches shut at the channel edge. */
+constexpr float TUNNEL_HEADROOM_JITTER = 0.3f;
+constexpr float TUNNEL_ROUGH = 0.3f;
+constexpr float TUNNEL_HEADROOM_WAVE = 17.0f;
+constexpr float TUNNEL_ROUGH_WAVE = 5.0f;
+/* How far past the channel edge, in blocks, the dry bulge above the waterline
+ * may reach, and how tall it stands at the edge. */
+constexpr float TUNNEL_BULGE_MAX = 2.0f;
+constexpr float TUNNEL_BULGE_RISE = 2.0f;
+constexpr float TUNNEL_BULGE_WAVE = 7.0f;
+
+constexpr uint64_t SALT_BANK_PLATEAU = 0x42414E4B504C5400ULL; /* "BANKPLT" */
+constexpr uint64_t SALT_BANK_SLOPE = 0x42414E4B534C5000ULL;   /* "BANKSLP" */
+constexpr uint64_t SALT_BANK_ROUGH = 0x42414E4B52474800ULL;   /* "BANKRGH" */
+constexpr uint64_t SALT_TUNNEL_HEAD = 0x54554E4E48454400ULL;  /* "TUNNHED" */
+constexpr uint64_t SALT_TUNNEL_ROUGH = 0x54554E4E52474800ULL; /* "TUNNRGH" */
+constexpr uint64_t SALT_TUNNEL_BULGE = 0x54554E4E424C4700ULL; /* "TUNNBLG" */
+
 inline size_t idx2(int row, int col, int stride) {
     return static_cast<size_t>(row) * static_cast<size_t>(stride) + static_cast<size_t>(col);
 }
@@ -133,6 +282,30 @@ inline size_t idx2(int row, int col, int stride) {
 inline int floorDivInt(int a, int b) {
     const int q = a / b;
     return (a % b != 0 && ((a < 0) != (b < 0))) ? q - 1 : q;
+}
+
+/**
+ * Smooth 2D value noise in [0, 1) at a WORLD column: hashed lattice corners
+ * every `wave` blocks, blended with a smoothstep. A pure function of its
+ * arguments, evaluated once per column and never accumulated, so every tile
+ * whose window covers a column reads the same value — the seam rule for free.
+ */
+inline float smoothNoise01(int64_t seed, int64_t wx, int64_t wz, float wave, uint64_t salt) {
+    const double fx = (static_cast<double>(wx) + 0.5) / wave;
+    const double fz = (static_cast<double>(wz) + 0.5) / wave;
+    const double x0 = std::floor(fx);
+    const double z0 = std::floor(fz);
+    const auto cx = static_cast<int64_t>(x0);
+    const auto cz = static_cast<int64_t>(z0);
+    const auto ease = [](float t) { return t * t * (3.0f - 2.0f * t); };
+    const float tx = ease(static_cast<float>(fx - x0));
+    const float tz = ease(static_cast<float>(fz - z0));
+    const auto at = [&](int64_t i, int64_t j) {
+        return cenda::basin::hash01(cenda::basin::hashCell(seed, i, j, salt));
+    };
+    const float a = at(cx, cz) + (at(cx + 1, cz) - at(cx, cz)) * tx;
+    const float b = at(cx, cz + 1) + (at(cx + 1, cz + 1) - at(cx, cz + 1)) * tx;
+    return a + (b - a) * tz;
 }
 
 /* The DEM planes covering the 3x3 tile window, at cell resolution. */
@@ -268,6 +441,32 @@ struct Scratch {
     std::vector<int32_t> shoreRing;
     std::vector<int32_t> shoreNextRing;
     std::vector<int32_t> shoreLevels;
+    /* The bank skirt's value plane, in Q8 blocks (units of 1/256 of a block),
+     * 0 where no skirt reaches, plus the two rings of its frontier relaxation
+     * and the values those rings were pushed with.
+     *
+     * Fixed point rather than float because a value accumulates one step's cost
+     * per edge along a path, and float accumulation differs in the last ulp with
+     * the path taken — one ulp is enough to flip the floor at emission and make
+     * two tiles disagree on a column they share. */
+    std::vector<int32_t> bank;
+    std::vector<int32_t> bankRing;
+    std::vector<int32_t> bankNextRing;
+    std::vector<int32_t> bankRingVal;
+    std::vector<int32_t> bankNextRingVal;
+    /* The crest of the wall each `bank` value descends from, Q8. Together
+     * they give the path distance back — `(crest - bank) / cost` — which is
+     * what the noisy profile at emission is a function of. */
+    std::vector<int32_t> bankCrest;
+    std::vector<int32_t> bankRingCrest;
+    std::vector<int32_t> bankNextRingCrest;
+    /* §2c's guard rail per column, -1 for dry, plus the rings of its
+     * relaxation and the values they were pushed with. */
+    std::vector<int16_t> rail;
+    std::vector<int32_t> railRing;
+    std::vector<int32_t> railNextRing;
+    std::vector<int16_t> railRingVal;
+    std::vector<int16_t> railNextRingVal;
 };
 
 thread_local Scratch tls;
@@ -440,6 +639,273 @@ void floodLakeShore(const Dem& dem, const int16_t* heights, int W,
     }
 }
 
+/**
+ * Fill `s.rail` over `[lo, hi)^2` of the window: for every wet column, the
+ * highest `s.water` of any wet column at most `reach` 4-steps away through wet
+ * columns; -1 for dry. See the header's "The guard rail".
+ *
+ * A max-dilation that only ever conducts through water, so a rail cannot cross
+ * a ridge to a different river, and a column with nothing higher within reach
+ * keeps its own level — the rail adds nothing to a still lake or a flat reach.
+ *
+ * Order-independence, for the seam rule, is `talusSkirt`'s argument: a round
+ * expands only the ring fixed at its start, with the values captured at that
+ * moment, so a level travels exactly one step per round wherever it is
+ * processed from. Only columns with a lower wet neighbour are seeded — a level
+ * only ever flows downhill, and a column with none raises nothing.
+ *
+ * Seam-safety: after `reach` rounds every value is from within `reach` steps,
+ * so a column's rail is exact when `[lo, hi)` extends `reach` past it. The
+ * caller sizes the stamp range for that and reads rails only inside it.
+ */
+void guardRail(int W, int lo, int hi, int reach, Scratch& s) {
+    const size_t N = static_cast<size_t>(W) * static_cast<size_t>(W);
+    s.rail.assign(s.water.begin(), s.water.begin() + static_cast<std::ptrdiff_t>(N));
+    if (reach <= 0) {
+        return;
+    }
+    const auto stride = static_cast<size_t>(W);
+    s.railRing.clear();
+    s.railRingVal.clear();
+    for (int x = lo; x < hi; ++x) {
+        for (int z = lo; z < hi; ++z) {
+            const size_t i = idx2(x, z, W);
+            const int16_t w = s.water[i];
+            if (w < 0) {
+                continue;
+            }
+            const bool lowerNeighbour =
+                (x > lo && s.water[i - stride] >= 0 && s.water[i - stride] < w)
+                || (x + 1 < hi && s.water[i + stride] >= 0 && s.water[i + stride] < w)
+                || (z > lo && s.water[i - 1] >= 0 && s.water[i - 1] < w)
+                || (z + 1 < hi && s.water[i + 1] >= 0 && s.water[i + 1] < w);
+            if (lowerNeighbour) {
+                s.railRing.push_back(static_cast<int32_t>(i));
+                s.railRingVal.push_back(w);
+            }
+        }
+    }
+    for (int step = 0; step < reach && !s.railRing.empty(); ++step) {
+        s.railNextRing.clear();
+        s.railNextRingVal.clear();
+        for (size_t k = 0; k < s.railRing.size(); ++k) {
+            const int32_t ci = s.railRing[k];
+            const int16_t cv = s.railRingVal[k];
+            const int cx = ci / W;
+            const int cz = ci % W;
+            const auto relax = [&](int nx, int nz) {
+                if (nx < lo || nx >= hi || nz < lo || nz >= hi) {
+                    return;
+                }
+                const size_t ni = idx2(nx, nz, W);
+                if (s.water[ni] < 0 || s.rail[ni] >= cv) {
+                    return;
+                }
+                s.rail[ni] = cv;
+                s.railNextRing.push_back(static_cast<int32_t>(ni));
+                s.railNextRingVal.push_back(cv);
+            };
+            relax(cx - 1, cz);
+            relax(cx + 1, cz);
+            relax(cx, cz - 1);
+            relax(cx, cz + 1);
+        }
+        s.railRing.swap(s.railNextRing);
+        s.railRingVal.swap(s.railNextRingVal);
+    }
+}
+
+/**
+ * Fill `s.bank` over `[lo, hi)^2` of the window: a raise-only talus skirt
+ * falling away from every containment wall, in Q8 blocks, 0 where none reaches.
+ *
+ * §3 below raises any dry column beside water flush to the waterline, because
+ * the WaterSim invariant leaves it no choice. What it leaves behind is a
+ * one-column vertical cliff on the dry side — a retaining wall around every
+ * lake rim, river bank and waterfall lip the shore flood could not wet. The
+ * flood shrank that set; it cannot empty it, because the spill lip of a lake
+ * with no outlet HAS to be walled.
+ *
+ * So the wall stands and the ground beside it is graded instead. `slope` is the
+ * repose angle and the skirt terminates where it meets the terrain that was
+ * already there, so a one-block wall gets a four-block ramp and a six-block
+ * wall a twenty-four-block one, with no per-wall bookkeeping.
+ *
+ * What this pass builds is only the LINEAR potential — crest minus slope times
+ * path distance — plus the crest it descends from, which together give the
+ * distance back. The profile actually written (a noisy level lip, then a noisy
+ * ramp) is §3's, because it is a per-column function of that distance and of
+ * nothing else; see `bankProfile`.
+ *
+ * RAISE-ONLY, and not by preference. The crest cannot come down without
+ * springing the water, and nothing in this kernel lowers terrain any more (the
+ * header says why the valley pull is gone), so a monotone ramp from the crest
+ * out to natural ground is the only shape available. `V <= crest <= waterline`
+ * everywhere, so the skirt never stands above the water it banks.
+ *
+ * WET COLUMNS ARE BARRIERS: never seeded, never written, and they donate
+ * nothing. That one rule is what keeps the skirt from raising a lake bed,
+ * filling a channel, or damming the outlet river of the very lake it is
+ * banking. It also truncates a skirt where a river tunnels under it, which is
+ * a pure function of the world column — seam-safe, if occasionally visible.
+ *
+ * Order-independence, which the seam rule needs: a round expands only from the
+ * ring fixed at its start and reads each parent's value from `bankRingVal`,
+ * captured at the same moment, so a round is a pure function of the previous
+ * round's state. Within a round two parents may reach one column in either
+ * order; the strict improvement test keeps the larger value regardless, and an
+ * improvement always re-enqueues, so no maximum is lost. A column enqueued
+ * twice in one round expands twice, and the second expansion dominates the
+ * first at every neighbour, so the duplicate costs work and changes nothing.
+ *
+ * Seam-safety, which is the reason for `reach`: after `step` rounds a column is
+ * at most `step` edges from a seed, hence at most `step` columns away on each
+ * axis. `[lo, hi)` is the stamp range, the caller clamps `reach` so that range
+ * plus the shore flood's own reach fits the window, and every path is therefore
+ * inside the window that stamps it.
+ */
+void talusSkirt(const int16_t* heights, int W, int world_height,
+                int lo, int hi, int reach, int axialCost, int diagCost,
+                int32_t slack, Scratch& s) {
+    const size_t N = static_cast<size_t>(W) * static_cast<size_t>(W);
+    s.bank.assign(N, 0);
+    s.bankCrest.assign(N, 0);
+    if (reach <= 0 || axialCost <= 0) {
+        return;
+    }
+
+    /* 1. Seed from the walls, by exactly the test §3 raises on — one place
+     *    decides what a wall is, and the skirt is its consequence. The ring
+     *    inside `[lo, hi)` is skipped because its neighbours' water lies
+     *    outside the stamped range; a wall there is further from the center
+     *    tile than `reach`, so it could not have reached it anyway. */
+    const auto stride = static_cast<size_t>(W);
+    s.bankRing.clear();
+    s.bankRingVal.clear();
+    s.bankRingCrest.clear();
+    for (int x = lo + 1; x < hi - 1; ++x) {
+        for (int z = lo + 1; z < hi - 1; ++z) {
+            const size_t i = idx2(x, z, W);
+            if (s.water[i] >= 0) {
+                continue;
+            }
+            int need = -1;
+            need = std::max<int>(need, s.rail[i - stride]);
+            need = std::max<int>(need, s.rail[i + stride]);
+            need = std::max<int>(need, s.rail[i - 1]);
+            need = std::max<int>(need, s.rail[i + 1]);
+            if (std::clamp<int>(heights[i], 1, world_height - 1) >= need) {
+                continue;
+            }
+            const int32_t crest = std::min(need, world_height - 1) << 8;
+            s.bank[i] = crest;
+            s.bankCrest[i] = crest;
+            s.bankRing.push_back(static_cast<int32_t>(i));
+            s.bankRingVal.push_back(crest);
+            s.bankRingCrest.push_back(crest);
+        }
+    }
+
+    /* 2. Relax outward. Ring `step` holds columns at most `step` edges from a
+     *    wall, so the loop bound IS the reach cap. */
+    for (int step = 0; step < reach && !s.bankRing.empty(); ++step) {
+        s.bankNextRing.clear();
+        s.bankNextRingVal.clear();
+        s.bankNextRingCrest.clear();
+        for (size_t k = 0; k < s.bankRing.size(); ++k) {
+            const int32_t ci = s.bankRing[k];
+            const int32_t cv = s.bankRingVal[k];
+            const int32_t cc = s.bankRingCrest[k];
+            const int cx = ci / W;
+            const int cz = ci % W;
+            const auto relax = [&](int nx, int nz, int cost) {
+                if (nx < lo || nx >= hi || nz < lo || nz >= hi) {
+                    return;
+                }
+                const size_t ni = idx2(nx, nz, W);
+                if (s.water[ni] >= 0) {
+                    return;
+                }
+                const int32_t v = cv - cost;
+                /* Lexicographic on (value, crest): equal values from walls of
+                 * different heights resolve to the taller one whichever parent
+                 * arrives first, so the crest — and with it the distance the
+                 * emission profile reads — is order-independent too. */
+                if (s.bank[ni] > v || (s.bank[ni] == v && s.bankCrest[ni] >= cc)) {
+                    return;
+                }
+                /* Met the ground: this column needs no help, and neither does
+                 * anything behind it — a ramp that has run into a hillside
+                 * stops there rather than climbing over it and resuming on the
+                 * far side, which is what makes the reach geodesic instead of
+                 * a radius. `slack` is the most §3's noisy profile can stand
+                 * above this linear value; stopping without it would cut the
+                 * lip short wherever the ground is within a block of it. */
+                const int32_t ground =
+                    static_cast<int32_t>(std::clamp<int>(heights[ni], 1, world_height - 1)) << 8;
+                if (v + slack <= ground) {
+                    return;
+                }
+                s.bank[ni] = v;
+                s.bankCrest[ni] = cc;
+                s.bankNextRing.push_back(static_cast<int32_t>(ni));
+                s.bankNextRingVal.push_back(v);
+                s.bankNextRingCrest.push_back(cc);
+            };
+            relax(cx - 1, cz, axialCost);
+            relax(cx + 1, cz, axialCost);
+            relax(cx, cz - 1, axialCost);
+            relax(cx, cz + 1, axialCost);
+            relax(cx - 1, cz - 1, diagCost);
+            relax(cx - 1, cz + 1, diagCost);
+            relax(cx + 1, cz - 1, diagCost);
+            relax(cx + 1, cz + 1, diagCost);
+        }
+        s.bankRing.swap(s.bankNextRing);
+        s.bankRingVal.swap(s.bankNextRingVal);
+        s.bankRingCrest.swap(s.bankNextRingCrest);
+    }
+}
+
+/**
+ * The height §2b's skirt asks for at one dry column, from the linear potential
+ * `bankQ8` and the crest `crestQ8` it descends from (both Q8, as `talusSkirt`
+ * leaves them), at world column `(wx, wz)`.
+ *
+ * `(crest - bank) / axialCost` is the path distance to the wall in columns.
+ * The crest holds level for a noisy 0 to BANK_PLATEAU_MAX of it — so the lip,
+ * wall column included, is one to three thick and varies along the bank — and
+ * then falls at `slope` to `slope * (1 + BANK_SLOPE_JITTER)` with BANK_ROUGH of
+ * roughness faded in over the first column. The lip is only the plateau: the
+ * first column past it is at least a block down. Never above the crest, which
+ * is the waterline; the caller takes the max with the ground, so never below.
+ *
+ * Every term is `smoothNoise01` of the world column, and `talusSkirt`'s pair
+ * is canonical, so this is too.
+ */
+inline int bankProfile(int64_t seed, int64_t wx, int64_t wz,
+                       int32_t bankQ8, int32_t crestQ8, int axialCost, float slope) {
+    const float d = static_cast<float>(crestQ8 - bankQ8) / static_cast<float>(axialCost);
+    /* Stretched: bilinear value noise piles up around one half and almost
+     * never reaches its ends, so unstretched the lip was two thick nearly
+     * everywhere and three thick nowhere. */
+    const float n = smoothNoise01(seed, wx, wz, BANK_PLATEAU_WAVE, SALT_BANK_PLATEAU);
+    const float plateau = BANK_PLATEAU_MAX * std::clamp((n - 0.25f) * 2.0f, 0.0f, 1.0f);
+    const float dEff = std::max(0.0f, d - plateau);
+    const int crest = crestQ8 >> 8;
+    if (dEff <= 0.0f) {
+        return crest;
+    }
+    const float steep = slope
+        * (1.0f + BANK_SLOPE_JITTER * smoothNoise01(seed, wx, wz, BANK_SLOPE_WAVE, SALT_BANK_SLOPE));
+    const float rough = (2.0f * smoothNoise01(seed, wx, wz, BANK_ROUGH_WAVE, SALT_BANK_ROUGH) - 1.0f)
+        * BANK_ROUGH * std::min(1.0f, dEff);
+    const float v = static_cast<float>(crestQ8) / 256.0f - steep * dEff + rough;
+    /* Past the plateau is past the lip, by definition: roughness may lump the
+     * ramp but must not stretch the lip a column further than the noise said. */
+    return std::min(crest - 1, static_cast<int>(std::floor(v)));
+}
+
 constexpr int BUCKET = 16;
 
 /** Register a segment list into buckets, each expanded by its own reach. */
@@ -483,12 +949,10 @@ int32_t ck_carve_water(int64_t seed,
                        const float* params, int32_t n_params,
                        int16_t* out_heights, int16_t* out_water,
                        int16_t* out_river_floor, int16_t* out_river_roof) {
-    /* Unread, and kept in the signature on purpose. The DEM span and the routes
-     * are addressed in world coordinates and everything else here is a
-     * comparison, so stamping needs no hashed mechanism of its own; the plan is
-     * the only source. Breaking the ABI again to re-add a seed would cost more
-     * than carrying it. */
-    (void)seed;
+    /* Read only by the wall noise (the header's "Noise on the walls"). The
+     * water itself still has no hashed mechanism of its own: the DEM span and
+     * the routes are addressed in world coordinates and everything else is a
+     * comparison, so the plan remains its only source. */
     if (heights3x3 == nullptr || out_heights == nullptr || out_water == nullptr) {
         return -1;
     }
@@ -503,8 +967,8 @@ int32_t ck_carve_water(int64_t seed,
     const size_t N = static_cast<size_t>(W) * static_cast<size_t>(W);
 
     /* The shared water params array (kernels.h documents it). The carve reads
-     * exactly FOUR of its entries — [24]-[27]; the rest belong to the plan, and
-     * sea level arrives as its own argument rather than through [2].
+     * exactly SEVEN of its entries — [24]-[27] and [29]-[31]; the rest belong to
+     * the plan, and sea level arrives as its own argument rather than [2].
      *
      * Each is one idea in one slot, and this is the only place any of them is
      * consumed. `bank_tolerance` and `valley_radius` used to live at [10] and
@@ -514,11 +978,17 @@ int32_t ck_carve_water(int64_t seed,
     float tunnelMinRoofF = DEF_TUNNEL_MIN_ROOF;
     float shoreReachF = DEF_LAKE_SHORE_REACH;
     float shoreMaxDepthF = DEF_LAKE_SHORE_MAX_DEPTH;
+    float bankSlopeF = DEF_LAKE_BANK_SLOPE;
+    float bankReachF = DEF_LAKE_BANK_REACH;
+    float guardReachF = DEF_RIVER_GUARD_REACH;
     if (params != nullptr) {
         if (n_params > 24) tunnelHeadroom = params[24];
         if (n_params > 25) tunnelMinRoofF = params[25];
         if (n_params > 26) shoreReachF = params[26];
         if (n_params > 27) shoreMaxDepthF = params[27];
+        if (n_params > 29) bankSlopeF = params[29];
+        if (n_params > 30) bankReachF = params[30];
+        if (n_params > 31) guardReachF = params[31];
     }
     tunnelHeadroom = std::clamp(tunnelHeadroom, 0.0f, static_cast<float>(world_height));
     /* At least one block of lid: a roof flush with the surface is not a roof,
@@ -549,6 +1019,43 @@ int32_t ck_carve_water(int64_t seed,
         std::clamp(static_cast<int>(std::lround(shoreReachF)), 0, T - 1);
     const int shoreMaxDepth =
         std::clamp(static_cast<int>(std::lround(shoreMaxDepthF)), 0, world_height);
+    /* What is left of that margin after the shore flood has taken its share.
+     * The two reaches are spent out of one budget — `1 + shoreReach + bankReach
+     * <= T` — and this is the only place that budget exists, which is why the
+     * stamp range below is derived from `bankReach` and the flood's range from
+     * the stamp range, rather than all three restating `T`. */
+    const int bankReach = std::clamp(static_cast<int>(std::lround(bankReachF)),
+                                     0, std::max(0, T - 1 - shoreReach));
+    /* And what the skirt left, for the rail it seeds from. */
+    const int guardReach = std::clamp(static_cast<int>(std::lround(guardReachF)),
+                                      0, std::max(0, T - 1 - shoreReach - bankReach));
+    /* Q8 edge costs. The diagonal is the axial one times root two, so the ramp
+     * falls at the same rate in every direction to within the eight per cent a
+     * square lattice can express. */
+    const float bankSlope = std::clamp(bankSlopeF, 0.0f, static_cast<float>(world_height));
+    const int bankAxialCost =
+        std::max(1, static_cast<int>(std::lround(bankSlope * 256.0f)));
+    const int bankDiagCost =
+        std::max(1, static_cast<int>(std::lround(bankSlope * 256.0f * 1.41421356f)));
+    /* The most `bankProfile` can stand above the linear potential: a full
+     * plateau's worth of fall it skipped, plus the roughness, plus one for the
+     * floor. `talusSkirt` keeps relaxing until even that is under the ground. */
+    const int32_t bankSlack = static_cast<int32_t>(std::lround(BANK_PLATEAU_MAX * static_cast<float>(bankAxialCost)))
+        + static_cast<int32_t>(std::lround(BANK_ROUGH * 256.0f)) + 256;
+
+    /* The stamp's range: the center tile, the one-column ring §3 reads past it,
+     * and whatever the skirt needs beyond that. A wall `bankReach` columns
+     * outside the tile can still grade INTO it, so its own water has to be
+     * stamped or the skirt a tile draws would depend on which tile drew it —
+     * a straight, tile-aligned ridge, which is the artifact class §1a exists to
+     * kill. §2 restates the cost this buys. */
+    const int bankLo = std::max(0, (T - 1) - bankReach);
+    const int bankHi = std::min(W, (2 * T + 1) + bankReach);
+    /* ...and the rail every wall in that range reads has to have seen the
+     * water `guardReach` beyond it, so that water is stamped too. §2c's rails
+     * are exact only inside `[bankLo, bankHi)`, which is all anything reads. */
+    const int stampLo = std::max(0, bankLo - guardReach);
+    const int stampHi = std::min(W, bankHi + guardReach);
 
     Scratch& s = tls;
     s.carved.resize(N);
@@ -561,10 +1068,12 @@ int32_t ck_carve_water(int64_t seed,
      * Grown by the reach on each side of §2's stamp range, because a claim
      * travels at most that far: the columns §2 stamps then have every path that
      * could reach them inside this domain, and no column §2 writes depends on
-     * ground the domain cut off. The two bounds move together or not at all. */
+     * ground the domain cut off. The two bounds move together or not at all —
+     * literally, now: they are `stampLo`/`stampHi` grown by the reach, so there
+     * is one range to widen and not two to keep in step. */
     if (haveDem) {
-        const int floodLo = std::max(0, (T - 1) - shoreReach);
-        const int floodHi = std::min(W, (2 * T + 1) + shoreReach);
+        const int floodLo = std::max(0, stampLo - shoreReach);
+        const int floodHi = std::min(W, stampHi + shoreReach);
         floodLakeShore(dem, heights3x3, W, world_height,
                        floodLo, floodHi, shoreReach, shoreMaxDepth, s);
     } else {
@@ -590,7 +1099,8 @@ int32_t ck_carve_water(int64_t seed,
             g.az = a[1] - static_cast<float>(origin_z);
             g.bx = b[0] - static_cast<float>(origin_x);
             g.bz = b[1] - static_cast<float>(origin_z);
-            const float reach = std::max(std::max(a[3], b[3]), 1.0f) * 0.5f + 1.0f;
+            const float reach = std::max(std::max(a[3], b[3]), 1.0f) * 0.5f + 1.0f
+                + TUNNEL_BULGE_MAX;
             const float lo = -reach;
             const float hi = static_cast<float>(W) + reach;
             if (std::max(g.ax, g.bx) < lo || std::min(g.ax, g.bx) > hi
@@ -635,30 +1145,35 @@ int32_t ck_carve_water(int64_t seed,
     }
 
     const int nb = (W + BUCKET - 1) / BUCKET;
+    static_assert(TUNNEL_BULGE_MAX <= 2.0f, "the bucket pad below covers a bulge of 2");
     bucketSegments(s.channel, 2.0f, nb, W, s.channelBuckets);
 
     /* ── 2. Stamp: lakes from the fill, rivers from the plan, then the sea ──
      *
-     * Over the center tile and a ONE-COLUMN ring around it, not the whole
-     * window. The window exists so this pass has its INPUTS — a route sourced
-     * next door crosses the border, and the DEM stencil straddles cells — and
-     * both are read at world coordinates that lie outside the stamped range
-     * without being stamped themselves. The ring is there for §3 below, which
-     * walls a dry column against its four neighbors' water and therefore reads
-     * one column past the tile on each side; nothing reads further.
+     * Over the center tile and a MARGIN, not the whole window. The window
+     * exists so this pass has its INPUTS — a route sourced next door crosses
+     * the border, and the DEM stencil straddles cells — and both are read at
+     * world coordinates that lie outside the stamped range without being
+     * stamped themselves.
      *
      * Stamping the full window instead computed 9x the columns and discarded
      * eight ninths of them. Measured on a 256-block tile, 200 iterations:
      * lakes only 4.22 -> 0.555 ms, with two routes crossing 14.70 -> 3.30 ms,
      * with `out_heights`/`out_water` byte-identical either way.
      *
-     * The bound is coupled to §3's neighbor reads: widen those and this range
-     * must widen with them, or the repair reads columns this pass never wrote.
-     * `s.water` is cleared to -1 over the whole window below regardless, so
-     * the failure mode of getting that wrong is a missing wall rather than
-     * stale water from the previous tile on this thread. */
-    const int stampLo = T - 1;
-    const int stampHi = 2 * T + 1;
+     * The bound is coupled to what reads `s.water` past the tile: §3's four
+     * neighbors, and §2b's skirt, which reaches `lake_bank_reach` further. That
+     * is why `stampLo`/`stampHi` are computed up with the other reaches instead
+     * of here — widen a consumer and the range widens with it, in one place.
+     * §3 alone wanted one column; the skirt wants `lake_bank_reach` more, and
+     * at the default 32 that is a 322x322 pass against the 258x258 a ring-only
+     * margin would take — measured 0.95 -> 1.33 ms per tile. That is the price
+     * of a skirt that does not depend on which tile drew it: seed it from only
+     * the water a tile already stamped and two tiles grade a shared wall
+     * differently, which is a straight tile-aligned step in the ground. `s.water` is cleared to -1 over the whole
+     * window below regardless, so the failure mode of getting the range wrong
+     * is a missing wall rather than stale water from the previous tile on this
+     * thread. */
     for (int x = stampLo; x < stampHi; ++x) {
         for (int z = stampLo; z < stampHi; ++z) {
             const size_t i = idx2(x, z, W);
@@ -694,6 +1209,31 @@ int32_t ck_carve_water(int64_t seed,
                                    std::min(z / BUCKET, nb - 1), nb);
             const float px = static_cast<float>(x) + 0.5f;
             const float pz = static_cast<float>(z) + 0.5f;
+            const int64_t wx = origin_x + static_cast<int64_t>(x);
+            const int64_t wz = origin_z + static_cast<int64_t>(z);
+            /* The wall noise, sampled once and only for columns a channel
+             * actually reaches — which is a few per cent of them. */
+            bool noiseReady = false;
+            float vaultScale = 1.0f;
+            float bulgeWidth = 0.0f;
+            const auto sampleNoise = [&]() {
+                if (noiseReady) {
+                    return;
+                }
+                noiseReady = true;
+                vaultScale = 1.0f
+                    + TUNNEL_HEADROOM_JITTER
+                        * (2.0f * smoothNoise01(seed, wx, wz, TUNNEL_HEADROOM_WAVE, SALT_TUNNEL_HEAD) - 1.0f)
+                    + TUNNEL_ROUGH
+                        * (2.0f * smoothNoise01(seed, wx, wz, TUNNEL_ROUGH_WAVE, SALT_TUNNEL_ROUGH) - 1.0f);
+                bulgeWidth = TUNNEL_BULGE_MAX
+                    * smoothNoise01(seed, wx, wz, TUNNEL_BULGE_WAVE, SALT_TUNNEL_BULGE);
+            };
+            /* A dry void just past the channel edge, above the waterline, held
+             * apart from the tunnel planes until the column is known to stay
+             * dry — another reach may yet wet it, and then its own planes win. */
+            int bulgeFloor = -1;
+            int bulgeRoof = -1;
 
             /* The channel, from every segment of the refined polyline: this is
              * the detail refinement exists for, and it is cheap because a
@@ -712,7 +1252,7 @@ int32_t ck_carve_water(int64_t seed,
                 float t = 0.0f;
                 const float d2 = segDistanceSq(g, px, pz, t);
                 const float half = g.aHalf + (g.bHalf - g.aHalf) * t;
-                if (d2 >= half * half) {
+                if (d2 >= (half + TUNNEL_BULGE_MAX) * (half + TUNNEL_BULGE_MAX)) {
                     continue;
                 }
                 /* §5.8: a falling reach steps rather than ramps. The surface
@@ -729,6 +1269,30 @@ int32_t ck_carve_water(int64_t seed,
                  * point is at this `t` shares the level, so a channel never
                  * steps sideways across its own width. */
                 const int surf = static_cast<int>(std::lround(surfF));
+                if (d2 >= half * half) {
+                    /* Past the channel: only the bulge lives here. It widens a
+                     * tunnel's AIR, never its water — the floor is a stone lip
+                     * at `surf - 1`, level with the top water block beside it,
+                     * so everything opened is at or above the surface and the
+                     * containment rule has nothing to hold. Same lid test as
+                     * the tunnel itself, so it never breaches the ground. */
+                    if (raw - tunnelMinRoof <= surf) {
+                        continue;
+                    }
+                    sampleNoise();
+                    const float past = std::sqrt(d2) - half;
+                    if (past >= bulgeWidth) {
+                        continue;
+                    }
+                    const float rise = TUNNEL_BULGE_RISE * (1.0f - past / bulgeWidth);
+                    const int roofY = std::min(surf + 1 + static_cast<int>(std::lround(rise)),
+                                               raw - tunnelMinRoof);
+                    /* Floor by MAX, unlike a wet tunnel's: the lip has to
+                     * stand at the top of every reach's water that opens it. */
+                    bulgeFloor = std::max(bulgeFloor, surf - 1);
+                    bulgeRoof = std::max(bulgeRoof, roofY);
+                    continue;
+                }
                 const float bed = g.aBed + (g.bBed - g.aBed) * t;
                 /* `cut` is `bed * (1 - u^p)`, deepest at the centreline and
                  * meeting the bank at the half-width; `p` is the Rosgen shape. */
@@ -748,11 +1312,14 @@ int32_t ck_carve_water(int64_t seed,
                      * deliberately untouched: this is the whole point.
                      *
                      * The roof arches on the same `u` the bed is cut on, so the
-                     * void pinches shut exactly where the channel does and the
-                     * column outside the half-width is never opened — that, and
-                     * not a containment rule, is what holds the water in. The
-                     * clamp to `raw - tunnelMinRoof` is what keeps a lid on it. */
-                    const float arch = tunnelHeadroom * (1.0f - u * u);
+                     * void pinches shut exactly where the channel does and no
+                     * column outside the half-width is opened BELOW the water
+                     * — that, and not a containment rule, is what holds it in.
+                     * The clamp to `raw - tunnelMinRoof` keeps a lid on it, and
+                     * `vaultScale` only reshapes the air: it rides on the same
+                     * `1 - u²`, so it cannot move the pinch. */
+                    sampleNoise();
+                    const float arch = tunnelHeadroom * vaultScale * (1.0f - u * u);
                     const int roofY = std::min(surf + static_cast<int>(std::lround(arch)),
                                                raw - tunnelMinRoof);
                     if (roofY > bedY) {
@@ -779,6 +1346,14 @@ int32_t ck_carve_water(int64_t seed,
              * happened `carved == raw` and the roof is already under that, so
              * this changes nothing. */
             tunnelRoof = std::min(tunnelRoof, carved - tunnelMinRoof);
+            /* The bulge only where the column stayed dry. A wet column has
+             * planes of its own, and a lip at `surf - 1` inside water would be
+             * a dam. `carved == raw` here — only a wet column is ever lowered —
+             * so the bulge's lid clamp is still the one that holds. */
+            if (water < 0 && bulgeRoof > bulgeFloor + 1) {
+                tunnelFloor = bulgeFloor;
+                tunnelRoof = bulgeRoof;
+            }
             const bool hasTunnel = tunnelRoof > tunnelFloor && tunnelFloor >= 1;
 
             s.carved[i] = static_cast<int16_t>(carved);
@@ -787,6 +1362,45 @@ int32_t ck_carve_water(int64_t seed,
             s.roof[i] = hasTunnel ? static_cast<int16_t>(tunnelRoof) : static_cast<int16_t>(-1);
         }
     }
+
+    /* ── 2c. The guard rail (see the header) ──
+     *
+     * Computed before §2a because §2a, §2b and §3 all wall to it. Numbered
+     * after them because it was added after them. */
+    guardRail(W, stampLo, stampHi, guardReach, s);
+
+    /* ── 2a. Seat every bulge on the water beside it ──
+     *
+     * A bulge's lip was set from the reaches that opened it, but the water it
+     * sits beside may be a lake, or a reach whose own bulge noise did not reach
+     * this column. Air beside water below its surface is a spring, so the lip
+     * rises to the highest 4-neighbour's top water block, and a bulge that
+     * leaves no air above that is dropped. Only the neighbours' `s.water`, so
+     * canonical; the ring inside the stamp range is all §3 emits from. */
+    for (int x = bankLo + 1; x < bankHi - 1; ++x) {
+        for (int z = bankLo + 1; z < bankHi - 1; ++z) {
+            const size_t i = idx2(x, z, W);
+            if (s.water[i] >= 0 || s.floor[i] < 0) {
+                continue;
+            }
+            int need = -1;
+            need = std::max<int>(need, s.rail[i - static_cast<size_t>(W)]);
+            need = std::max<int>(need, s.rail[i + static_cast<size_t>(W)]);
+            need = std::max<int>(need, s.rail[i - 1]);
+            need = std::max<int>(need, s.rail[i + 1]);
+            const int lip = std::max<int>(s.floor[i], need - 1);
+            if (s.roof[i] > lip + 1) {
+                s.floor[i] = static_cast<int16_t>(lip);
+            } else {
+                s.floor[i] = -1;
+                s.roof[i] = -1;
+            }
+        }
+    }
+
+    /* ── 2b. Grade the ground away from every wall §3 is about to raise ── */
+    talusSkirt(heights3x3, W, world_height, bankLo, bankHi,
+               bankReach, bankAxialCost, bankDiagCost, bankSlack, s);
 
     /* ── 3. Containment repair + emission (center tile only) ──
      *
@@ -802,12 +1416,22 @@ int32_t ck_carve_water(int64_t seed,
                 /* Dry ground beside water must wall it (raise, never wet —
                  * extending water would need re-checking ITS neighbors). */
                 int need = -1;
-                need = std::max<int>(need, s.water[wi - static_cast<size_t>(W)]);
-                need = std::max<int>(need, s.water[wi + static_cast<size_t>(W)]);
-                need = std::max<int>(need, s.water[wi - 1]);
-                need = std::max<int>(need, s.water[wi + 1]);
+                need = std::max<int>(need, s.rail[wi - static_cast<size_t>(W)]);
+                need = std::max<int>(need, s.rail[wi + static_cast<size_t>(W)]);
+                need = std::max<int>(need, s.rail[wi - 1]);
+                need = std::max<int>(need, s.rail[wi + 1]);
                 if (h < need) {
                     h = std::min(need, world_height - 1);
+                }
+                /* §2b's skirt, applied here rather than in the pass that built
+                 * it so that "never raises a wet column" is structural: it is
+                 * inside the dry branch and cannot reach anything else. */
+                const int32_t skirt = s.bank[wi];
+                if (skirt > 0) {
+                    const int want = bankProfile(seed, origin_x + static_cast<int64_t>(x + T),
+                                                 origin_z + static_cast<int64_t>(z + T),
+                                                 skirt, s.bankCrest[wi], bankAxialCost, bankSlope);
+                    h = std::max(h, std::min(want, world_height - 1));
                 }
             }
             const size_t oi = idx2(x, z, T);

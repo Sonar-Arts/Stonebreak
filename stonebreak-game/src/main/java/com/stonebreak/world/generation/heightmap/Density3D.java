@@ -76,6 +76,19 @@ public final class Density3D {
      * landing on the boundary cannot open the passage.
      */
     private static final int TUNNEL_CLEARANCE = 2;
+    /** Rock kept under the lowest wet bed near a column, as the tunnel band keeps. */
+    private static final int BANK_CLEARANCE = 2;
+    /**
+     * The band's roughness, so a cave that runs into a river tunnel ends on a rough
+     * face rather than one offset exactly {@link #TUNNEL_CLEARANCE} from the shell.
+     * Up to this many blocks MORE clearance per column, and a second ring of columns
+     * where the noise says so — only ever more rock, never less.
+     */
+    private static final int TUNNEL_EXTRA_CLEARANCE = 2;
+    private static final float TUNNEL_BAND_WAVE = 5f;
+    private static final float TUNNEL_RING_WAVE = 7f;
+    private static final long SALT_TUNNEL_BAND = 0x44335442414E4400L; // "D3TBAND"
+    private static final long SALT_TUNNEL_RING = 0x443354524E470000L; // "D3TRNG"
 
     /** Cheese: low frequency, flattened, so chambers are wider than tall. */
     private static final float CHEESE_SCALE = 1f / 96f;
@@ -255,6 +268,12 @@ public final class Density3D {
      * {@code WaterGuard} seals a riverbed. Above a tunnel's roof is ordinary rock that
      * should keep its caves — sealing upward would leave every hill a river runs under
      * conspicuously hollow-free.
+     *
+     * <p>Surface water gets {@link WaterGuard#surfaceGuardPlane}: everything from just
+     * under the lowest nearby bed up is kept, because the overhang band carves to the
+     * surface and the bank beside a river is raised to the kernel's guard rail — above
+     * the water — so that the flow {@code WaterSim} makes at every step stays in the
+     * channel. A hole anywhere in that wall lets it out.
      */
     public Field prepareChunk(int chunkX, int chunkZ, int[] heights, int[] waterLevels,
                               int[] riverFloors, int[] riverRoofs) {
@@ -276,18 +295,24 @@ public final class Density3D {
         // Per-column arithmetic over heights, not a fourth volume fill — this stays at three.
         float[] exposure = cliffExposure.exposureForChunk(chunkX, chunkZ, heights);
         int[][] band = tunnelBand(chunkX, chunkZ, riverFloors, riverRoofs);
-        return new Field(this, cheese, spag1, spag2, table, exposure, yCount, band[0], band[1]);
+        int[] bankGuard = WaterGuard.surfaceGuardPlane(heights, waterLevels, heightMapGenerator, chunkX, chunkZ);
+        return new Field(this, cheese, spag1, spag2, table, exposure, yCount, band[0], band[1],
+                bankGuard);
     }
 
     /**
      * Per-column {@code [lo, hi]} of the river tunnel shell in this column's
-     * 4-neighbourhood, expanded by {@link #TUNNEL_CLEARANCE}; {@code lo > hi} where there
-     * is none. Null planes in, empty band out — a caller with no river data seals nothing.
+     * neighbourhood, expanded by {@link #TUNNEL_CLEARANCE} plus up to
+     * {@link #TUNNEL_EXTRA_CLEARANCE} of noise; {@code lo > hi} where there is none.
+     * Null planes in, empty band out — a caller with no river data seals nothing.
      *
      * <p>The neighbourhood is what makes this a wall guard rather than a bed guard: the
      * column that drains a tunnel is the dry one BESIDE it, exactly as with
-     * {@link WaterGuard}'s banks. Columns outside the chunk resolve through the tile
-     * source, so a tunnel hugging a chunk border is guarded from both sides.
+     * {@link WaterGuard}'s banks. It is always the 4-neighbourhood, plus the second
+     * diamond ring where {@link ShellNoise} says so, so the edge of the band wanders
+     * instead of running parallel to the tunnel. Columns outside the chunk resolve
+     * through the tile source, so a tunnel hugging a chunk border is guarded from
+     * both sides.
      */
     private int[][] tunnelBand(int chunkX, int chunkZ, int[] riverFloors, int[] riverRoofs) {
         int[] lo = new int[CHUNK_SIZE * CHUNK_SIZE];
@@ -302,22 +327,30 @@ public final class Density3D {
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 int idx = x * CHUNK_SIZE + z;
-                for (int d = 0; d < 5; d++) {
-                    int nx = x + (d == 1 ? -1 : d == 2 ? 1 : 0);
-                    int nz = z + (d == 3 ? -1 : d == 4 ? 1 : 0);
-                    int floor;
-                    int roof;
-                    if (nx >= 0 && nx < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
-                        int n = nx * CHUNK_SIZE + nz;
-                        floor = riverFloors[n];
-                        roof = riverRoofs[n];
-                    } else {
-                        floor = heightMapGenerator.riverFloor(baseX + nx, baseZ + nz);
-                        roof = heightMapGenerator.riverRoof(baseX + nx, baseZ + nz);
-                    }
-                    if (roof > floor && floor != TerrainTile.NO_TUNNEL) {
-                        lo[idx] = Math.min(lo[idx], floor - TUNNEL_CLEARANCE);
-                        hi[idx] = Math.max(hi[idx], roof + TUNNEL_CLEARANCE);
+                int wx = baseX + x;
+                int wz = baseZ + z;
+                int radius = ShellNoise.at(wx, wz, TUNNEL_RING_WAVE, SALT_TUNNEL_RING) >= 0.5f ? 2 : 1;
+                int clearance = TUNNEL_CLEARANCE + Math.round(
+                        TUNNEL_EXTRA_CLEARANCE * ShellNoise.stretched(wx, wz, TUNNEL_BAND_WAVE, SALT_TUNNEL_BAND));
+                for (int dx = -radius; dx <= radius; dx++) {
+                    int span = radius - Math.abs(dx);
+                    for (int dz = -span; dz <= span; dz++) {
+                        int nx = x + dx;
+                        int nz = z + dz;
+                        int floor;
+                        int roof;
+                        if (nx >= 0 && nx < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
+                            int n = nx * CHUNK_SIZE + nz;
+                            floor = riverFloors[n];
+                            roof = riverRoofs[n];
+                        } else {
+                            floor = heightMapGenerator.riverFloor(baseX + nx, baseZ + nz);
+                            roof = heightMapGenerator.riverRoof(baseX + nx, baseZ + nz);
+                        }
+                        if (roof > floor && floor != TerrainTile.NO_TUNNEL) {
+                            lo[idx] = Math.min(lo[idx], floor - clearance);
+                            hi[idx] = Math.max(hi[idx], roof + clearance);
+                        }
                     }
                 }
             }
@@ -428,12 +461,16 @@ public final class Density3D {
         private final int yCount;
         private final int[] tunnelLo;
         private final int[] tunnelHi;
+        /** {@link WaterGuard#surfaceGuardPlane}; null seals nothing. */
+        private final int[] bankGuard;
 
         private Field(Density3D owner, float[] cheese, float[] spag1, float[] spag2,
-                      int[] table, float[] exposure, int yCount, int[] tunnelLo, int[] tunnelHi) {
+                      int[] table, float[] exposure, int yCount, int[] tunnelLo, int[] tunnelHi,
+                      int[] bankGuard) {
             this.owner = owner;
             this.tunnelLo = tunnelLo;
             this.tunnelHi = tunnelHi;
+            this.bankGuard = bankGuard;
             this.cheese = cheese;
             this.spag1 = spag1;
             this.spag2 = spag2;
@@ -454,6 +491,11 @@ public final class Density3D {
             int column = localX * CHUNK_SIZE + localZ;
             // The wall of a river tunnel stays rock, whatever the noise says.
             if (y >= tunnelLo[column] && y <= tunnelHi[column]) {
+                return true;
+            }
+            // Nor a riverbed or the bank wall holding it: the overhang band below
+            // carves right up to the surface, and one hole there drains the river.
+            if (WaterGuard.seals(bankGuard, column, y, BANK_CLEARANCE)) {
                 return true;
             }
             int i = (yIndex * CHUNK_SIZE + localX) * CHUNK_SIZE + localZ;

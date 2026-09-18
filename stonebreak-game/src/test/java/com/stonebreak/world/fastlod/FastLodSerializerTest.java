@@ -134,18 +134,22 @@ class FastLodSerializerTest {
     }
 
     /**
-     * A v4 blob has no opening channel at all, so a world cached before this change would
-     * otherwise keep showing ravines and nothing else forever — the store is consulted before
-     * the sampler ever runs. The version bump is what forces the resample.
+     * The store is consulted before the sampler ever runs, so a blob from an older version
+     * would otherwise be shown forever. A v4 blob has no opening channel at all (ravines and
+     * nothing else); v5 and v6 hold heights from before the bank skirt and its noisy lip,
+     * and v7 banks walled to the water beside them rather than to the guard rail.
+     * The version bump is what forces the resample.
      */
     @Test
     void previousVersionBlobsAreRejected() {
         FastLodChunkData data = makeData(FastLodLevel.L2, false);
         byte[] blob = FastLodSerializer.serialize(data);
-        assertEquals(5, blob[4], "version byte moved; update this test and the note below");
-        blob[4] = 4;
-        assertNull(FastLodSerializer.deserialize(data.key(), blob),
-                "a pre-opening blob must miss, not load");
+        assertEquals(8, blob[4], "version byte moved; update this test and the note above");
+        for (byte older = 4; older < 8; older++) {
+            blob[4] = older;
+            assertNull(FastLodSerializer.deserialize(data.key(), blob),
+                    "a v" + older + " blob must miss, not load");
+        }
     }
 
     @Test

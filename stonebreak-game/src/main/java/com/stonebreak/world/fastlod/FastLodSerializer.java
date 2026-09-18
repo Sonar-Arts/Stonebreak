@@ -43,7 +43,28 @@ import java.nio.ByteOrder;
  */
 public final class FastLodSerializer {
 
-    public static final int VERSION = 5;
+    /**
+     * Bumped when the sampled terrain a node holds stops meaning what a stored
+     * node means.
+     *
+     * <p>6: the water carve now grades a bank away from every containment wall
+     * ({@code lake_bank_slope}/{@code lake_bank_reach}), so heights near any
+     * lake rim, river bank or waterfall lip are no longer the heights a cached
+     * node was sampled from. LOD terrain standing where the chunk beneath it
+     * does not is the one artifact this cache can produce, so the version is
+     * what orphans it.
+     *
+     * <p>7: the bank is no longer a plain ramp — the crest holds level with the
+     * water for a noisy one to three columns before it falls, and the fall is
+     * noisy too — and the cave guards beside water seal a noisy footprint, which
+     * moves cave openings near it. Heights cached under 6 are the plain ramp.
+     *
+     * <p>8: banks are walled to the kernel's guard rail ({@code river_guard_reach}),
+     * the highest water within reach upstream, rather than to the water beside
+     * them — so every bank along a stepped river stands taller than a cached node
+     * says — and {@code Density3D} no longer carves near surface water.
+     */
+    public static final int VERSION = 8;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel

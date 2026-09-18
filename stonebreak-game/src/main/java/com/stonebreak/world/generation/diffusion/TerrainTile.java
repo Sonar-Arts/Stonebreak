@@ -88,6 +88,11 @@ public record TerrainTile(
      * {@link #waterLevelAt} and air above it. The roof is always well below the
      * terrain surface, so the ground over a tunnel is never breached.
      *
+     * <p>A DRY column ({@link #waterLevelAt} is {@link #NO_WATER}) can carry one
+     * too: the bulge that widens a tunnel's air past the channel edge. Its floor
+     * is a stone lip level with the top water block beside it, and its void is
+     * all air.
+     *
      * <p>This is also the <em>bed</em> of a tunnelled column, and the one a cave
      * guard must measure from — {@link #heightAt} is the hilltop there, and
      * guarding from it leaves the tunnel open to be drained.

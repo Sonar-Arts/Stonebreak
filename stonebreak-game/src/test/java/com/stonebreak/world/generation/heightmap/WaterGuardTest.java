@@ -25,6 +25,9 @@ class WaterGuardTest {
 
     private static final int CHUNK = WorldConfiguration.CHUNK_SIZE;
     private static final int CLEARANCE = 6;
+    /** The widest and deepest the guard's noise may take it past the fixed rule. */
+    private static final int MAX_RADIUS = 3;
+    private static final int MAX_EXTRA_DEPTH = 3;
 
     private static int idx(int x, int z) {
         return x * CHUNK + z;
@@ -47,7 +50,8 @@ class WaterGuardTest {
         // Bed at y=380: everything from 374 up is off limits in that column.
         assertTrue(WaterGuard.seals(guard, idx(4, 4), 380, CLEARANCE));
         assertTrue(WaterGuard.seals(guard, idx(4, 4), 374, CLEARANCE));
-        assertFalse(WaterGuard.seals(guard, idx(4, 4), 373, CLEARANCE));
+        // Up to MAX_EXTRA_DEPTH deeper, by noise; never further.
+        assertFalse(WaterGuard.seals(guard, idx(4, 4), 373 - MAX_EXTRA_DEPTH, CLEARANCE));
     }
 
     @Test
@@ -60,10 +64,10 @@ class WaterGuardTest {
         assertTrue(WaterGuard.seals(guard, idx(5, 4), 374, CLEARANCE));
         assertTrue(WaterGuard.seals(guard, idx(4, 3), 399, CLEARANCE));
         assertTrue(WaterGuard.seals(guard, idx(4, 5), 380, CLEARANCE));
-        assertFalse(WaterGuard.seals(guard, idx(4, 5), 373, CLEARANCE));
-        // Diagonal and two-away columns never touch the water: open.
-        assertFalse(WaterGuard.seals(guard, idx(3, 3), 380, CLEARANCE));
-        assertFalse(WaterGuard.seals(guard, idx(6, 4), 380, CLEARANCE));
+        assertFalse(WaterGuard.seals(guard, idx(4, 5), 373 - MAX_EXTRA_DEPTH, CLEARANCE));
+        // Past the widest the noise can reach, nothing touches the water: open.
+        assertFalse(WaterGuard.seals(guard, idx(4, 4 + MAX_RADIUS + 1), 380, CLEARANCE));
+        assertFalse(WaterGuard.seals(guard, idx(2, 2), 380, CLEARANCE));
     }
 
     @Test
@@ -96,7 +100,8 @@ class WaterGuardTest {
         heights[idx(9, 8)] = 350;
         water[idx(9, 8)] = 400;
         int[] guard = WaterGuard.guardPlane(heights, water, null, 0, 0);
-        assertEquals(350, guard[idx(8, 8)]);
+        assertTrue(guard[idx(8, 8)] <= 350 && guard[idx(8, 8)] >= 350 - MAX_EXTRA_DEPTH,
+                "anchored to the deeper bed, give or take the noise's extra depth");
     }
 
     @Test
@@ -122,7 +127,8 @@ class WaterGuardTest {
         floors[idx(4, 4)] = 381;
 
         int[] guard = WaterGuard.guardPlane(heights, water, floors, null, 0, 0);
-        assertEquals(381, guard[idx(4, 4)], "the tunnel floor is the bed, not the hilltop");
+        assertTrue(guard[idx(4, 4)] <= 381 && guard[idx(4, 4)] >= 381 - MAX_EXTRA_DEPTH,
+                "the tunnel floor is the bed, not the hilltop");
         assertTrue(WaterGuard.seals(guard, idx(4, 4), 384, CLEARANCE), "the passage is sealed");
         assertTrue(WaterGuard.seals(guard, idx(3, 4), 381, CLEARANCE), "and so are its walls");
 
@@ -139,5 +145,88 @@ class WaterGuardTest {
         int[] heights = new int[CHUNK * CHUNK];
         assertNull(WaterGuard.guardPlane(heights, null, null, 0, 0));
         assertFalse(WaterGuard.seals(null, 0, 380, CLEARANCE));
+    }
+
+    /**
+     * The noisy guard against the fixed rule it replaced, over four chunks read
+     * through a real {@link HeightMapGenerator}, so the chunk borders are in it.
+     *
+     * <p>Superset: every column seals at least from the lowest bed in its
+     * 4-neighbourhood, exactly as before — the bank argument depends on nothing
+     * else. Bounded: no deeper than {@link #MAX_EXTRA_DEPTH} past the lowest bed
+     * within {@link #MAX_RADIUS}, and open where there is none. And actually rough:
+     * both the footprint and the depth vary, or the cave faces are as flat as ever.
+     */
+    @Test
+    void theNoisyGuardIsASupersetOfTheFixedRuleAndBoundedByIt() {
+        int lo = -64;
+        int size = 128;
+        short[] heights = new short[size * size];
+        short[] water = new short[size * size];
+        Arrays.fill(heights, (short) 420);
+        Arrays.fill(water, TerrainTile.NO_WATER);
+        // A river crossing the chunk borders at x=0 and z=0, with a wandering bed.
+        for (int x = -40; x < 40; x++) {
+            for (int z = -3 + (x & 3) / 2; z <= 2; z++) {
+                int i = (x - lo) * size + (z - lo);
+                water[i] = 400;
+                heights[i] = (short) (380 + Math.floorMod(x * 7 + z * 3, 5));
+            }
+        }
+        TerrainTile tile = new TerrainTile(0, 0, lo, lo, lo + size, lo + size, size, size,
+                heights, new short[size * size], water);
+        HeightMapGenerator heightMap = new HeightMapGenerator((x, z) -> tile);
+
+        int widened = 0;
+        java.util.Set<Integer> depths = new java.util.HashSet<>();
+        for (int cx = -1; cx <= 0; cx++) {
+            for (int cz = -1; cz <= 0; cz++) {
+                int[] h = new int[CHUNK * CHUNK];
+                int[] w = new int[CHUNK * CHUNK];
+                for (int x = 0; x < CHUNK; x++) {
+                    for (int z = 0; z < CHUNK; z++) {
+                        h[idx(x, z)] = heightMap.generateHeight(cx * CHUNK + x, cz * CHUNK + z);
+                        w[idx(x, z)] = heightMap.waterLevel(cx * CHUNK + x, cz * CHUNK + z);
+                    }
+                }
+                int[] guard = WaterGuard.guardPlane(h, w, heightMap, cx, cz);
+                for (int x = 0; x < CHUNK; x++) {
+                    for (int z = 0; z < CHUNK; z++) {
+                        int wx = cx * CHUNK + x;
+                        int wz = cz * CHUNK + z;
+                        int fixed = lowestBed(heightMap, wx, wz, 1);
+                        int widest = lowestBed(heightMap, wx, wz, MAX_RADIUS);
+                        int g = guard[idx(x, z)];
+                        if (fixed != WaterGuard.OPEN) {
+                            assertTrue(g <= fixed, "column (" + wx + "," + wz
+                                    + ") seals less than the 4-neighbour rule");
+                            depths.add(fixed - g);
+                        } else if (g != WaterGuard.OPEN) {
+                            widened++;
+                        }
+                        if (widest == WaterGuard.OPEN) {
+                            assertEquals(WaterGuard.OPEN, g, "sealed with no water in reach");
+                        } else {
+                            assertTrue(g >= widest - MAX_EXTRA_DEPTH, "sealed deeper than the noise allows");
+                        }
+                    }
+                }
+            }
+        }
+        assertTrue(widened > 0, "the footprint reaches past the 4-neighbourhood somewhere");
+        assertTrue(depths.size() > 1, "and the depth under the bed varies");
+    }
+
+    private static int lowestBed(HeightMapGenerator heightMap, int wx, int wz, int radius) {
+        int bed = WaterGuard.OPEN;
+        for (int dx = -radius; dx <= radius; dx++) {
+            int span = radius - Math.abs(dx);
+            for (int dz = -span; dz <= span; dz++) {
+                if (heightMap.waterLevel(wx + dx, wz + dz) != TerrainTile.NO_WATER) {
+                    bed = Math.min(bed, heightMap.generateHeight(wx + dx, wz + dz));
+                }
+            }
+        }
+        return bed;
     }
 }
