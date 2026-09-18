@@ -1,13 +1,12 @@
 package com.stonebreak.audio;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
 /**
- * Handles all sound-related functionality for the player.
- * This module manages walking sound timing; the sample for the block
+ * Plays player footsteps when the body animation reports a foot contact.
+ * The sample for the block
  * underfoot comes from that block's SBO {@code sounds[]} data via
  * {@link BlockSounds} — there is no hardcoded block→sample table.
  */
@@ -15,54 +14,16 @@ public class PlayerSounds {
 
     /** Gain scale applied to the ground block's authored step volume. */
     private static final float STEP_VOLUME = 0.3f;
-    // Walking sound system
-    private float walkingSoundTimer;
-    private boolean wasMovingLastFrame;
-    private static final float WALKING_SOUND_INTERVAL = 0.3f;
-
     private final World world;
 
     public PlayerSounds(World world) {
         this.world = world;
-        this.walkingSoundTimer = 0.0f;
-        this.wasMovingLastFrame = false;
-    }
-
-    /**
-     * Updates walking sounds based on player movement.
-     * Should be called every frame during player update.
-     */
-    public void updateWalkingSounds(Vector3f position, Vector3f velocity, boolean onGround, boolean physicallyInWater) {
-        // Calculate horizontal movement speed
-        float horizontalSpeed = (float) Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-        boolean isMoving = horizontalSpeed > 1.0f && onGround && !physicallyInWater;
-
-        if (isMoving) {
-            // If player just started moving, play sound immediately
-            if (!wasMovingLastFrame) {
-                playWalkingSound(position);
-                walkingSoundTimer = 0.0f;
-            } else {
-                walkingSoundTimer += Game.getDeltaTime();
-
-                // Play walking sound at intervals
-                if (walkingSoundTimer >= WALKING_SOUND_INTERVAL) {
-                    playWalkingSound(position);
-                    walkingSoundTimer = 0.0f;
-                }
-            }
-        } else {
-            // Reset timer when not moving
-            walkingSoundTimer = 0.0f;
-        }
-
-        wasMovingLastFrame = isMoving;
     }
 
     /**
      * Plays the appropriate walking sound based on the block type under the player.
      */
-    private void playWalkingSound(Vector3f position) {
+    public void playFootstep(Vector3f position) {
         // Check what block type the player is standing on
         int blockX = (int) Math.floor(position.x);
         int blockY = (int) Math.floor(position.y - 0.1f); // Slightly below feet to get ground block
@@ -74,11 +35,4 @@ public class PlayerSounds {
         BlockSounds.playStepLocal(groundBlock, STEP_VOLUME);
     }
 
-    /**
-     * Resets the walking sound state. Call when player is created or respawned.
-     */
-    public void reset() {
-        walkingSoundTimer = 0.0f;
-        wasMovingLastFrame = false;
-    }
 }

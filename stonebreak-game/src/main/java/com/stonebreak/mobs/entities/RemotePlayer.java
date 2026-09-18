@@ -4,6 +4,9 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.sbe.PlayerStateMapping;
+import com.stonebreak.mobs.sbe.PlayerGaitClock;
+import com.stonebreak.mobs.sbe.SbeEntityRegistry;
+import com.stonebreak.network.packet.player.PlayerStateFlags;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
@@ -22,7 +25,7 @@ public class RemotePlayer extends LivingEntity {
         return false;
     }
 
-    private static final float WALK_THRESHOLD = 0.05f; // blocks/frame to count as walking
+    private static final float WALK_THRESHOLD = 0.5f; // blocks/second, matching the local player
 
     private final int playerId;
     private final String username;
@@ -40,6 +43,7 @@ public class RemotePlayer extends LivingEntity {
 
     private PlayerStateMapping.PlayerMovementState movementState = PlayerStateMapping.PlayerMovementState.IDLE;
     private Vector3f prevPosition;
+    private final PlayerGaitClock gaitClock = new PlayerGaitClock();
 
     /**
      * Body facing / head-swivel logic, shared with the local player's third-person view.
@@ -58,12 +62,11 @@ public class RemotePlayer extends LivingEntity {
     /** Latest replicated movement/action flags ({@code PlayerStateFlags} bits). */
     private volatile byte stateFlags;
     /**
-     * Attack-overlay envelope driven by the replicated ATTACKING flag — the exact pattern
-     * the local {@code Player} uses, so remote swings render with the same pop-free
-     * fade-in/out through the overlay-capable render path.
+     * Full authored punch triggered by the replicated ATTACKING flag, independent
+     * of the short gameplay pulse, matching the local player's body animation.
      */
-    private final com.stonebreak.mobs.sbe.OverlayAnimState attackOverlay =
-        new com.stonebreak.mobs.sbe.OverlayAnimState();
+    private final com.stonebreak.mobs.sbe.PlayerAttackAnimation attackAnimation =
+        new com.stonebreak.mobs.sbe.PlayerAttackAnimation();
 
     /**
      * Splash/ripple state mirrors {@link Player}'s (same particle classes), but is driven from
@@ -95,7 +98,7 @@ public class RemotePlayer extends LivingEntity {
         receivedFirstState = true;
     }
     public byte getStateFlags() { return stateFlags; }
-    public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return attackOverlay; }
+    public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return attackAnimation.overlay(); }
     public com.stonebreak.rendering.effects.WaterSplashParticles getSplashParticles() { return splashParticles; }
     public com.stonebreak.rendering.effects.WaterRippleParticles getRippleParticles() { return rippleParticles; }
 
@@ -133,6 +136,11 @@ public class RemotePlayer extends LivingEntity {
     }
 
     public PlayerStateMapping.PlayerMovementState getMovementState() { return movementState; }
+
+    /** Shared phase for the body and its shadow, retained when changing walk/sprint pace. */
+    public float getBodyAnimationTime() {
+        return gaitClock.isActive() ? gaitClock.timeSeconds() : animationController.getTotalAnimationTime();
+    }
 
     /** Body facing in SBE model space (degrees) — what renderers should rotate the figure by. */
     public float getBodyYaw() { return bodyOrientation.getBodyYaw(); }
@@ -178,7 +186,7 @@ public class RemotePlayer extends LivingEntity {
         float dy = position.y - prevPosition.y;
         float dz = position.z - prevPosition.z;
         float horizDist = (float) Math.sqrt(dx * dx + dz * dz);
-        boolean moving = horizDist > WALK_THRESHOLD;
+        boolean moving = deltaTime > 0f && horizDist / deltaTime > WALK_THRESHOLD;
         prevPosition.set(position);
 
         updateWaterEffects(deltaTime, dx, dy, dz);
@@ -194,24 +202,18 @@ public class RemotePlayer extends LivingEntity {
             bodyOrientation.update(deltaTime, velocityEstimate, lookModelYaw);
         }
 
-        // Replicated flags pick the clip; the displacement heuristic remains the walk/idle
-        // fallback (local-only figures like IllusionDecoy never set flags). Airborne maps to
-        // the jumping clip; sprint/sneak/swim flags are replicated but render as walking
-        // until those clips are authored in SB_Player.sbe.
+        // Replicated flags select land sprint/jump; unflagged local figures still walk.
         byte flags = stateFlags;
-        if (com.stonebreak.network.packet.player.PlayerStateFlags.has(
-                flags, com.stonebreak.network.packet.player.PlayerStateFlags.AIRBORNE)) {
-            movementState = PlayerStateMapping.PlayerMovementState.JUMPING;
-        } else {
-            movementState = moving
-                    ? PlayerStateMapping.PlayerMovementState.WALKING
-                    : PlayerStateMapping.PlayerMovementState.IDLE;
-        }
+        movementState = PlayerStateMapping.locomotion(moving,
+                !PlayerStateFlags.has(flags, PlayerStateFlags.AIRBORNE),
+                PlayerStateFlags.has(flags, PlayerStateFlags.PARTIALLY_IN_WATER)
+                        || PlayerStateFlags.has(flags, PlayerStateFlags.SWIMMING),
+                PlayerStateFlags.has(flags, PlayerStateFlags.SPRINTING));
+        gaitClock.update(deltaTime, PlayerStateMapping.gaitDuration(movementState,
+                SbeEntityRegistry.get(EntityType.REMOTE_PLAYER.getSbeObjectId())));
 
-        // Attack overlay from the replicated flag (~6 packets across a swing at 20 Hz —
-        // a dropped droppable packet delays an edge by ≤50 ms, invisible under the fades).
-        attackOverlay.update(deltaTime, com.stonebreak.network.packet.player.PlayerStateFlags.has(
-                flags, com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING));
+        attackAnimation.update(deltaTime, PlayerStateFlags.has(flags, PlayerStateFlags.ATTACKING),
+                SbeEntityRegistry.get(EntityType.REMOTE_PLAYER.getSbeObjectId()));
 
         animationController.updateAnimations(deltaTime);
     }

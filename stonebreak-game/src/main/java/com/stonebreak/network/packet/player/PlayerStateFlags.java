@@ -3,8 +3,8 @@ package com.stonebreak.network.packet.player;
 /**
  * Bit layout of the movement/action flags byte carried by {@link PlayerStateC2S} /
  * {@link PlayerStateS2C}. Lets remote players render real movement/action clips instead of
- * displacement-guessed walk/idle. Bits without an authored clip yet (sprint/sneak/swim —
- * {@code SB_Player.sbe} currently ships idle/walking/jumping/attacking) still replicate so
+ * displacement-guessed walk/idle. Bits without an authored clip yet (sneak/swim —
+ * {@code SB_Player.sbe} currently ships idle/walking/sprinting/jumping/attacking) still replicate so
  * the clips light up the moment they're authored.
  */
 public final class PlayerStateFlags {

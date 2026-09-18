@@ -12,8 +12,8 @@ import static com.stonebreak.player.PlayerConstants.RAGE_T2_ATTACK_SPEED_BONUS;
 /**
  * Per-tick orchestration of the player's controllers. Sequences the death check,
  * chunk-readiness hold, water state and effects, gravity/integration/ground check,
- * camera placement, class abilities, combat timers, audio, fall damage and body
- * animation in a fixed order. {@link Player} delegates {@link Player#update()} here
+ * camera placement, class abilities, combat timers, body animation, audio and fall
+ * damage in a fixed order. {@link Player} delegates {@link Player#update()} here
  * and keeps construction, state and the facade accessors.
  */
 final class PlayerUpdatePipeline {
@@ -106,9 +106,14 @@ final class PlayerUpdatePipeline {
         c.mana.update(dt);
         c.blockBreaker.update();
 
+        // Advance the pose before audio: both consume this tick's exact gait phase.
+        bodyAnimation.update(dt, c.attack.isAttacking(), state.isOnGround(), state.getVelocity(), camera.getFront(),
+                player.getBaseMovementState(), state.isPhysicallyInWater(),
+                com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
+                        com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER.getSbeObjectId()));
         com.stonebreak.audio.PlayerSounds playerSounds = Game.getPlayerSounds();
-        if (playerSounds != null) {
-            playerSounds.updateWalkingSounds(p, state.getVelocity(), state.isOnGround(), state.isPhysicallyInWater());
+        if (playerSounds != null && bodyAnimation.isFootstepDue()) {
+            playerSounds.playFootstep(p);
         }
         if (Game.getWorld() != null) {
             Game.getSoundSystem().setListenerFromCamera(p, camera.getFront(), camera.getUp());
@@ -119,8 +124,6 @@ final class PlayerUpdatePipeline {
         // body — same flight gate as fall damage, next to it in the sequence.
         c.cactusContact.update(dt, c.flight.isFlying());
         c.deathHandler.processDeathIfNeeded();
-
-        bodyAnimation.update(dt, c.attack.isAttacking(), state.isOnGround(), state.getVelocity(), camera.getFront());
     }
 
     /** Accumulates horizontal travel (walked / sprinted / airborne) and airtime into the statistics. */

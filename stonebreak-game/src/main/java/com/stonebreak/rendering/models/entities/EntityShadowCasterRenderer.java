@@ -83,7 +83,7 @@ final class EntityShadowCasterRenderer {
                 sbeEntityRenderer.renderColored(asset,
                         com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
                         com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState()),
-                        rp.getAnimationController().getTotalAnimationTime(),
+                        rp.getBodyAnimationTime(),
                         rp.getPosition(), rp.getBodyYaw(), rp.getScale(),
                         lightView, lightProj, SHADOW_CASTER_COLOR);
             }

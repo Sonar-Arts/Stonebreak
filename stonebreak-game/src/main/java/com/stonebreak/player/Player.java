@@ -73,7 +73,7 @@ public class Player {
     public enum Perspective { FIRST_PERSON, THIRD_PERSON }
     private Perspective perspective = Perspective.FIRST_PERSON;
     private final PlayerBodyAnimation bodyAnimation = new PlayerBodyAnimation();
-    private static final float WALK_SPEED_THRESHOLD = 0.5f; // blocks/frame
+    private static final float WALK_SPEED_THRESHOLD = 0.5f; // blocks/second
 
     public Player(World world) {
         this.state = new PhysicsState();
@@ -271,7 +271,7 @@ public class Player {
      */
     public float getThirdPersonHeadPitch() { return bodyAnimation.getBodyOrientation().getHeadPitch(camera.getPitch()); }
 
-    /** Continuously advancing animation clock for the body model (Walking). */
+    /** Body clock, synchronized with foot contacts during walking and sprinting. */
     public float getBodyAnimationTime() { return bodyAnimation.getBodyAnimationTime(); }
 
     /**
@@ -280,27 +280,22 @@ public class Player {
      * clock (see {@link #getAttackOverlay()}).
      */
     public float getBodyEventTime() {
-        if (!state.isOnGround()) return bodyAnimation.getJumpEventTime();
+        if (getBaseMovementState() == com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.JUMPING) {
+            return bodyAnimation.getJumpEventTime();
+        }
         return bodyAnimation.getBodyAnimationTime();
     }
 
     /**
-     * The base locomotion state: JUMPING &gt; WALKING &gt; IDLE. Attacking is
+     * The base locomotion state: JUMPING &gt; SPRINTING/WALKING &gt; IDLE. Attacking is
      * NOT considered — it renders as an overlay on top of this, so the legs
      * keep walking mid-swing.
      */
     public com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState getBaseMovementState() {
         Vector3f vel = state.getVelocity();
         float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-        // Sprint-swimming: no dedicated clip is authored yet, so this reuses WALKING as a
-        // placeholder pose — state selection is correct now, the visual will follow once a
-        // real swim animation clip exists in the SB_Player.sbe asset.
-        if (state.isPhysicallyInWater() && c.stamina.isSprinting() && horizSpeed > WALK_SPEED_THRESHOLD) {
-            return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.WALKING;
-        }
-        if (!state.isOnGround()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.JUMPING;
-        if (horizSpeed > WALK_SPEED_THRESHOLD) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.WALKING;
-        return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.IDLE;
+        return com.stonebreak.mobs.sbe.PlayerStateMapping.locomotion(horizSpeed > WALK_SPEED_THRESHOLD,
+                state.isOnGround(), state.isPhysicallyInWater(), c.stamina.isSprinting());
     }
 
     /**
