@@ -79,6 +79,10 @@ public final class CharacterCreationActionHandler {
         state.getCharacterStats().setSelectedBackground(id);
     }
 
+    public void onSelectHair(String hairId) {
+        com.stonebreak.player.PlayerLooks.selectHair(hairId);
+    }
+
     public void onSelectHat(String hatId) {
         com.stonebreak.player.PlayerLooks.selectHat(hatId);
     }

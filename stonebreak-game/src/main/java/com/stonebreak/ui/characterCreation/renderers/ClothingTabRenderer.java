@@ -6,11 +6,11 @@ import com.stonebreak.ui.characterCreation.CharacterCreationActionHandler;
 import com.stonebreak.ui.characterCreation.CharacterCreationLayout;
 import io.github.humbleui.skija.Canvas;
 
-/** Hair choices in the Looks tab. */
-public final class LooksTabRenderer {
+/** Hats choices in the Clothing tab. */
+public final class ClothingTabRenderer {
     private final CosmeticOptionsRenderer options = new CosmeticOptionsRenderer(
-            "Hair", PlayerLooks.HAIR_OPTIONS, PlayerLooks::getSelectedHairId,
-            CharacterCreationActionHandler::onSelectHair);
+            "Hats", PlayerLooks.HAT_OPTIONS, PlayerLooks::getSelectedHatId,
+            CharacterCreationActionHandler::onSelectHat);
 
     public void render(Canvas canvas, MasonryUI ui, CharacterCreationLayout.Rect content,
                        float mx, float my) {
