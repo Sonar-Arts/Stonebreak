@@ -4,6 +4,7 @@ import com.stonebreak.battle.api.BattleEvent;
 import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.api.PromptKind;
 import com.stonebreak.battle.api.TimedGrade;
+import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
 import org.joml.Matrix4f;
 import org.junit.jupiter.api.Test;
@@ -38,9 +39,9 @@ class TimingRingOverlayTest {
         FakeBattleView early = TimedScenes.ringView(0, 0.2f);
         BattleRasterFixture fx = paint(early, CAMERA);
         float outer = TimedLayout.outerRadius(TimedScenes.ring(0, 0.2f), RT);
-        assertTrue(exactAt(fx, CX, CY, outer, TimedTheme.RING_OUTER) > 0, "white outer ring at its radius");
-        assertTrue(exactAt(fx, CX, CY, RT, TimedTheme.RING_TARGET) > 0, "fixed target circle");
-        assertEquals(0, exactAt(fx, CX, CY, outer + 30f, TimedTheme.RING_OUTER), "nothing outside it");
+        assertTrue(exactAt(fx, CX, CY, outer, TimingRingOverlay.RING_WAITING) > 0, "white outer ring at its radius");
+        assertTrue(exactAt(fx, CX, CY, RT, TimingRingOverlay.TARGET) > 0, "fixed target circle");
+        assertEquals(0, exactAt(fx, CX, CY, outer + 30f, TimingRingOverlay.RING_WAITING), "nothing outside it");
         assertEquals(0, fx.countPainted(0, 0, 100, 100), "the ring is local to its target");
 
         // Every bright stroke carries a dark under-stroke: darker-than-snow pixels hug the ring.
@@ -56,13 +57,13 @@ class TimingRingOverlayTest {
     @Test
     void theRingsMeetInGoldAtThePerfectMidpoint() {
         BattleRasterFixture fx = paint(TimedScenes.ringView(1, 0.62f), CAMERA);
-        assertTrue(exactAt(fx, CX, CY, RT, TimedTheme.PERFECT) > 0, "gold outer ring sitting on the target radius");
+        assertTrue(exactAt(fx, CX, CY, RT, TimingRingOverlay.RING_PERFECT) > 0, "gold outer ring sitting on the target radius");
         BattleRasterFixture good = paint(TimedScenes.ringView(1, 0.49f), CAMERA);
         float r = TimedLayout.outerRadius(TimedScenes.ring(1, 0.49f), RT);
-        assertTrue(exactAt(good, CX, CY, r, TimedTheme.RING_OUTER_GOOD) > 0, "blue while only GOOD is on offer");
+        assertTrue(exactAt(good, CX, CY, r, TimingRingOverlay.RING_GOOD) > 0, "green while only GOOD is on offer");
         BattleRasterFixture late = paint(TimedScenes.ringView(1, 0.85f), CAMERA);
         float rl = TimedLayout.outerRadius(TimedScenes.ring(1, 0.85f), RT);
-        assertTrue(exactAt(late, CX, CY, rl, TimedTheme.RING_OUTER_LATE) > 0, "red once the window has passed");
+        assertTrue(exactAt(late, CX, CY, rl, TimingRingOverlay.RING_LATE) > 0, "red once the window has passed");
     }
 
     @Test
@@ -83,11 +84,11 @@ class TimingRingOverlayTest {
     void theRingFollowsTheArchonAndFallsBackToTheCentre() {
         FakeBattleView view = TimedScenes.ringView(0, 0.62f);
         BattleRasterFixture anchored = paint(view, CAMERA);
-        assertTrue(exactAt(anchored, CX, CY, RT, TimedTheme.PERFECT) > 0);
+        assertTrue(exactAt(anchored, CX, CY, RT, TimingRingOverlay.RING_PERFECT) > 0);
 
         TimedLayout.Anchor fallback = TimedLayout.ringAnchor(TimedScenes.LAYOUT, view, null, W, H, TimedScenes.SCALE);
         BattleRasterFixture noCamera = paint(view, null);
-        assertTrue(exactAt(noCamera, W / 2f, H / 2f, fallback.radius(), TimedTheme.PERFECT) > 0, "null matrix → centre");
+        assertTrue(exactAt(noCamera, W / 2f, H / 2f, fallback.radius(), TimingRingOverlay.RING_PERFECT) > 0, "null matrix → centre");
         Matrix4f offScreen = TimedScenes.cameraPlacing(TimedScenes.archonChest(), W + 900f, 300f, PPB, W, H);
         BattleRasterFixture off = paint(view, offScreen);
         assertEquals(0, off.diff(noCamera), "off-screen anchor → the same centred ring");
@@ -105,11 +106,7 @@ class TimingRingOverlayTest {
             BattleRasterFixture fx = TimedScenes.paintLayers(layers, view, CAMERA);
             shots[grade.ordinal()] = fx;
             assertTrue(fx.diff(blank) > 800, grade + " feedback paints");
-            int color = switch (grade) {
-                case PERFECT -> TimedTheme.PERFECT;
-                case GOOD -> TimedTheme.GOOD;
-                case MISS -> TimedTheme.MISS;
-            };
+            int color = BattlePalette.grade(grade);
             assertTrue(fx.countExactly(color, 0, 0, W, H) > 150, grade + " uses its own colour");
             // The word sits above the ring.
             assertTrue(fx.countPainted((int) CX - 120, (int) (CY - RT * 1.4f - 60f), (int) CX + 120, (int) (CY - RT * 1.4f)) > 200,
@@ -129,7 +126,7 @@ class TimingRingOverlayTest {
         TimedScenes.frame(layers, next, 0.3f);
         BattleRasterFixture fx = TimedScenes.paintLayers(layers, next, CAMERA);
         float outer = TimedLayout.outerRadius(TimedScenes.ring(1, 0.1f), RT);
-        assertTrue(exactAt(fx, CX, CY, RT, TimedTheme.RING_TARGET) > 0, "next target circle visible through the burst");
+        assertTrue(exactAt(fx, CX, CY, RT, TimingRingOverlay.TARGET) > 0, "next target circle visible through the burst");
         // The new ring is still fading in, so look for its under-stroke + bright core rather than an exact colour.
         assertTrue(fx.countPainted(Math.round(CX + outer * 0.7071f) - 4, Math.round(CY - outer * 0.7071f) - 4,
                 Math.round(CX + outer * 0.7071f) + 5, Math.round(CY - outer * 0.7071f) + 5) > 20, "next outer ring visible");
@@ -157,8 +154,7 @@ class TimingRingOverlayTest {
         TimedInputLayers layers = new TimedInputLayers(TimedScenes.LAYOUT);
         TimedScenes.frame(layers, parry, 0.016f);
         BattleRasterFixture fx = new BattleRasterFixture(W, H);
-        layers.timingRingLayer().paint(fx.ui, fx.canvas, W, H, TimedScenes.SCALE, TimedScenes.UI_SCALE, parry,
-                com.stonebreak.ui.focusBattle.BattleHudAnimState.NEUTRAL, CAMERA);
+        layers.timingRingLayer().paint(fx.ui, fx.canvas, W, H, TimedScenes.SCALE, TimedScenes.UI_SCALE, parry, null, CAMERA);
         assertEquals(0, fx.countPainted(0, 0, W, H));
     }
 }

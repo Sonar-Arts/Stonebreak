@@ -8,9 +8,8 @@ import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.api.PromptKind;
 import com.stonebreak.battle.api.StatusView;
 import com.stonebreak.battle.api.TimedGrade;
-import com.stonebreak.ui.focusBattle.BattleHudAnimState;
-import com.stonebreak.ui.focusBattle.BattleMenuState;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
+import com.stonebreak.ui.focusBattle.FocusBattleLayout;
 import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
 import io.github.humbleui.skija.Data;
 import io.github.humbleui.skija.EncoderPNG;
@@ -22,14 +21,16 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Renders every representative timed-input state inside the full HUD at 1920x1080, over arena snow
- * and over near-black (the Archon / night sky), and checks each one actually changes the picture.
+ * Renders every representative timed-input state (the four timed layers, underlay first) at
+ * 1920x1080, over arena snow and over near-black (the Archon / night sky), and checks each one
+ * actually changes the picture.
  * With {@code -Dstonebreak.timed.snapshots=<dir>} the frames are also written as PNGs for a human
  * (or an agent) to look at; {@code -Dstonebreak.timed.frames=<dir>} adds real game screenshots as
  * backdrops (files named like the bot's: {@code 014_ring_0.png}, …).
@@ -107,6 +108,7 @@ class TimedSnapshotGalleryTest {
         FakeBattleView combo = TimedScenes.comboView(3, 0.35f, TimedGrade.PERFECT, TimedGrade.GOOD, TimedGrade.PERFECT);
         all.put("combo_1_mid", scene("038_combo_prompt_3.png", null, combo, l -> {
             TimedScenes.frame(l, combo, 0.016f, new BattleEvent.PromptOpened(PromptKind.COMBO));
+            for (int i = 0; i < 3; i++) TimedScenes.frame(l, combo, 0.016f, landed(i));
             TimedScenes.frame(l, combo, 0.5f);
         }));
         FakeBattleView missed = TimedScenes.comboView(2, 0.2f, TimedGrade.PERFECT, TimedGrade.GOOD);
@@ -122,6 +124,7 @@ class TimedSnapshotGalleryTest {
                 TimedGrade.PERFECT, TimedGrade.PERFECT, TimedGrade.GOOD);
         all.put("combo_3_flawless", scene("040_combo_finished.png", null, flawless, l -> {
             TimedScenes.frame(l, flawless, 0.016f, new BattleEvent.PromptOpened(PromptKind.COMBO));
+            for (int i = 0; i < 6; i++) TimedScenes.frame(l, flawless, 0.016f, landed(i));
             TimedScenes.frame(l, flawless, 0.5f);
             flawless.prompt = null;
             TimedScenes.frame(l, flawless, 0.016f, new BattleEvent.PromptResolved(PromptKind.COMBO, TimedGrade.PERFECT, 5));
@@ -143,11 +146,10 @@ class TimedSnapshotGalleryTest {
         everything.monk.hp = 10f;
         everything.monk.statuses.add(new StatusView(BattleStatus.CHILLED, 8f, 1));
         all.put("fx_4_all_three", scene("003_idle_wide.png", null, everything, l -> settle(l, everything)));
-        FakeBattleView cinematic = TimedScenes.comboView(0, 0.1f);
-        all.put("fx_5_letterbox_combo", scene("035_combo_prompt_0.png", null, cinematic, l -> {
-            TimedScenes.frame(l, cinematic, 0.016f, new BattleEvent.PromptOpened(PromptKind.COMBO));
-            settle(l, cinematic);
-        }));
+        // Bars are for the intro and the victory hold only; the fight itself is never letterboxed.
+        FakeBattleView cinematic = new FakeBattleView();
+        cinematic.phase = com.stonebreak.battle.api.BattlePhase.INTRO;
+        all.put("fx_5_letterbox_intro", scene("001_intro.png", null, cinematic, l -> settle(l, cinematic)));
         FakeBattleView defeat = new FakeBattleView();
         defeat.outcome = BattleOutcome.DEFEAT;
         defeat.monk.hp = 0f;
@@ -164,23 +166,23 @@ class TimedSnapshotGalleryTest {
         return all;
     }
 
+    /** One combo blow landing on the Archon: what the strip's counter counts. */
+    private static BattleEvent landed(int hitIndex) {
+        return new BattleEvent.Impact(CombatantId.MONK, CombatantId.ARCHON, hitIndex, 6);
+    }
+
     private static void settle(TimedInputLayers layers, FakeBattleView view) {
         for (int i = 0; i < 30; i++) TimedScenes.frame(layers, view, 0.033f);
     }
 
-    /** Full HUD + the timed layers, over a flat colour or a decoded screenshot. */
-    private static BattleRasterFixture render(Scene scene, int clear, Image backdrop, boolean withLayers) {
-        BattleRasterFixture fx = new BattleRasterFixture(W, H);
-        fx.canvas.clear(clear);
-        if (backdrop != null) fx.canvas.drawImageRect(backdrop, Rect.makeXYWH(0, 0, W, H));
-        SkijaFocusBattleRenderer renderer = new SkijaFocusBattleRenderer(null);
-        if (withLayers) scene.layers().install(renderer);
-        BattleHudAnimState anim = new BattleHudAnimState();
-        // The integrator's animator slides the bottom windows out for the cinematic moments.
-        anim.bottomHudSlideOut = com.stonebreak.ui.focusBattle.BattleHudRules.cinematic(scene.view()) ? 1f : 0f;
-        renderer.paintHud(fx.ui, fx.canvas, W, H, TimedScenes.UI_SCALE, scene.view(), new BattleMenuState(), anim,
-                scene.camera());
-        return fx;
+    /** The four timed layers (underlay first) over a flat colour. */
+    private static BattleRasterFixture render(Scene scene, int clear, boolean withLayers) {
+        if (!withLayers) {
+            BattleRasterFixture blank = new BattleRasterFixture(W, H);
+            blank.canvas.clear(clear);
+            return blank;
+        }
+        return TimedScenes.paintLayers(scene.layers(), scene.view(), scene.camera(), W, H, clear);
     }
 
     @Test
@@ -192,8 +194,8 @@ class TimedSnapshotGalleryTest {
         for (Map.Entry<String, Scene> e : scenes().entrySet()) {
             Scene scene = e.getValue();
             for (int clear : new int[]{SNOW, DARK}) {
-                BattleRasterFixture with = render(scene, clear, null, true);
-                BattleRasterFixture without = render(scene, clear, null, false);
+                BattleRasterFixture with = render(scene, clear, true);
+                BattleRasterFixture without = render(scene, clear, false);
                 assertTrue(with.diff(without) > 400,
                         e.getKey() + " must be visible over " + (clear == SNOW ? "snow" : "dark"));
                 if (outDir != null) write(with, outDir.resolve(e.getKey() + (clear == SNOW ? "_snow" : "_dark") + ".png"));
@@ -213,12 +215,11 @@ class TimedSnapshotGalleryTest {
     private static BattleRasterFixture renderOverFrame(Scene scene, Image backdrop) {
         BattleRasterFixture fx = new BattleRasterFixture(W, H);
         fx.canvas.drawImageRect(backdrop, Rect.makeXYWH(0, 0, W, H));
-        float s = com.stonebreak.ui.focusBattle.FocusBattleLayout.effectiveScale(W, H, TimedScenes.UI_SCALE);
+        float s = FocusBattleLayout.effectiveScale(W, H, TimedScenes.UI_SCALE);
         TimedInputLayers l = scene.layers();
-        for (SkijaFocusBattleRenderer.Layer layer : java.util.List.of(l.screenFxLayer(), l.timingRingLayer(),
+        for (SkijaFocusBattleRenderer.Layer layer : List.of(l.screenFxLayer(), l.timingRingLayer(),
                 l.parryLayer(), l.comboStripLayer())) {
-            layer.paint(fx.ui, fx.canvas, W, H, s, TimedScenes.UI_SCALE, scene.view(), BattleHudAnimState.NEUTRAL,
-                    scene.camera());
+            layer.paint(fx.ui, fx.canvas, W, H, s, TimedScenes.UI_SCALE, scene.view(), null, scene.camera());
         }
         return fx;
     }

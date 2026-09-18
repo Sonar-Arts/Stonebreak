@@ -1,5 +1,8 @@
 package com.stonebreak.ui.focusBattle;
 
+import com.stonebreak.rendering.UI.masonryUI.MMenuList;
+import com.stonebreak.ui.focusBattle.elements.EnemyPlate;
+import com.stonebreak.ui.focusBattle.elements.PartyStatusWindow;
 import com.stonebreak.ui.support.Resolutions;
 import com.stonebreak.ui.support.UiLayoutAssert;
 import com.stonebreak.ui.support.UiLayoutAssert.Rect;
@@ -110,6 +113,22 @@ class FocusBattleLayoutTest {
     }
 
     @Test
+    void theRowHelpersAreTheMenuListsOwnSlotFormula() {
+        sweep((w, h, s, context) -> {
+            float k = FocusBattleLayout.effectiveScale(w, h, s);
+            float[] cmd = FocusBattleLayout.commandWindowRect(w, h, s);
+            MMenuList list = new MMenuList().rows(java.util.Collections.nCopies(
+                    FocusBattleLayout.commandRowCount(), new MMenuList.Row("x"))).scale(k)
+                    .bounds(cmd[0], cmd[1], cmd[2], cmd[3]);
+            for (int i = 0; i < FocusBattleLayout.commandRowCount(); i++) {
+                float[] drawn = list.rowRect(i);
+                float[] slot = FocusBattleLayout.commandRowRect(i, w, h, s);
+                for (int c = 0; c < 4; c++) assertEquals(drawn[c], slot[c], 1e-4f, context + " row " + i);
+            }
+        });
+    }
+
+    @Test
     void theSubmenuOpensBesideTheQiArtsRow() {
         sweep((w, h, s, context) -> {
             float[] cmd = FocusBattleLayout.commandWindowRect(w, h, s);
@@ -123,43 +142,34 @@ class FocusBattleLayoutTest {
     }
 
     @Test
-    void theEnemyGaugeNestsInTheEnemyPlate() {
+    void thePlatesLinesNestInTheEnemyPlate() {
         sweep((w, h, s, context) -> {
             float[] plate = FocusBattleLayout.enemyPlateRect(w, h, s);
             float k = FocusBattleLayout.effectiveScale(w, h, s);
-            Rect outer = rect(plate);
-            float[] gauge = FocusBattleLayout.enemyGaugeRect(w, h, s);
-            UiLayoutAssert.assertPositiveSize(rect(gauge), context + " E6");
-            UiLayoutAssert.assertContains(outer, rect(gauge), context + " E6");
-            UiLayoutAssert.assertContains(outer, rect(FocusBattleLayout.enemyNameRect(plate, k)), context + " name");
-            UiLayoutAssert.assertContains(outer, rect(FocusBattleLayout.enemyHpBarRect(plate, k)), context + " hp");
-            UiLayoutAssert.assertNoOverlap(List.of(rect(FocusBattleLayout.enemyNameRect(plate, k)),
-                    rect(FocusBattleLayout.enemyHpBarRect(plate, k)), rect(gauge)), context + " plate lines");
-            for (boolean telegraph : new boolean[]{false, true}) {
-                UiLayoutAssert.assertContains(rect(gauge), rect(FocusBattleLayout.gaugeBarRect(gauge, telegraph)),
-                        context + " gauge bar");
+            List<Rect> lines = new ArrayList<>();
+            for (float[] line : EnemyPlate.lines(plate, k)) {
+                UiLayoutAssert.assertPositiveSize(rect(line), context + " plate line");
+                UiLayoutAssert.assertContains(rect(plate), rect(line), context + " plate line");
+                lines.add(rect(line));
             }
+            UiLayoutAssert.assertOrderedVertically(lines, context);
+            UiLayoutAssert.assertNoOverlap(lines, context + " plate lines");
         });
     }
 
     @Test
-    void partyCellsNestInThePartyWindowAndDoNotCollide() {
+    void partyRowsNestInThePartyWindowInOrder() {
         sweep((w, h, s, context) -> {
             float[] party = FocusBattleLayout.partyWindowRect(w, h, s);
             float k = FocusBattleLayout.effectiveScale(w, h, s);
             List<Rect> rows = new ArrayList<>();
-            for (int row = 0; row < FocusBattleLayout.PARTY_ROWS; row++) {
-                Rect full = rect(FocusBattleLayout.partyRowRect(party, row, k));
+            for (int row = 0; row < PartyStatusWindow.ROWS; row++) {
+                Rect full = rect(PartyStatusWindow.rowRect(party, row, k));
                 UiLayoutAssert.assertContains(rect(party), full, context + " party row " + row);
                 rows.add(full);
-                float[] label = FocusBattleLayout.partyLabelRect(party, row, k);
-                float[] bar = FocusBattleLayout.partyBarRect(party, row, k);
-                float[] value = FocusBattleLayout.partyValueRect(party, row, k);
-                assertTrue(label[0] + label[2] <= bar[0] + 0.01f && bar[0] + bar[2] <= value[0] + 0.01f,
-                        context + ": caption, gauge and value columns run left to right without overlap");
-                assertTrue(bar[2] > label[2], context + ": the gauge is the widest column");
             }
             UiLayoutAssert.assertOrderedVertically(rows, context);
+            UiLayoutAssert.assertNoOverlap(rows, context + " party rows");
         });
     }
 
@@ -192,9 +202,8 @@ class FocusBattleLayoutTest {
     @Test
     void rowsCompressRatherThanOverflowAShortWindow() {
         float[] squat = {20f, 20f, 240f, 110f};   // far too short for six 30px rows
-        float rowH = FocusBattleLayout.rowHeight(squat, 6, 1f);
-        assertTrue(rowH > 0f && rowH < 30f, "rows compress below the design height, was " + rowH);
         float[] last = FocusBattleLayout.rowRect(squat, 5, 6, 1f);
+        assertTrue(last[3] > 0f && last[3] < 30f, "rows compress below the design height, was " + last[3]);
         assertTrue(last[1] + last[3] <= squat[1] + squat[3], "the last row still ends inside the window");
         float[] first = FocusBattleLayout.rowRect(squat, 0, 6, 1f);
         assertTrue(first[1] >= squat[1], "the first row starts inside the window");

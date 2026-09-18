@@ -298,11 +298,24 @@ public final class FocusBattle implements BattleScreenHost {
         }
     }
 
-    /** {@link #guardHud(String, Runnable)} for calls that report whether they consumed the input. */
-    public static boolean guardHud(String what, java.util.function.BooleanSupplier call) {
-        boolean[] handled = {false};
-        guardHud(what, () -> handled[0] = call.getAsBoolean());
-        return handled[0];
+    /**
+     * {@link #guardHud(String, Runnable)} for calls that report whether they consumed the input.
+     * Deliberately NOT an overload: an expression lambda such as {@code () -> flag = call()} returns
+     * a value, so as an overload it bound to the BooleanSupplier form and the wrapper called itself
+     * until the stack overflowed.
+     */
+    public static boolean guardHudInput(String what, java.util.function.BooleanSupplier call) {
+        try {
+            return call.getAsBoolean();
+        } catch (RuntimeException e) {
+            FocusBattle battle = active;
+            if (battle != null) {
+                battle.failed(what, e);
+            } else {
+                logger.error("Focus battle HUD failed during '{}' with no battle running", what, e);
+            }
+            return false;
+        }
     }
 
     /** True while the freeze-twist-whiteout encounter transition is covering the screen. */
@@ -320,17 +333,16 @@ public final class FocusBattle implements BattleScreenHost {
         if (battle == null || !battle.swirl.active()) {
             return;
         }
-        Renderer renderer = Game.getRenderer();
-        com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend backend =
-                renderer == null ? null : renderer.getSkijaBackend();
-        if (backend == null || !backend.isAvailable()) {
+        // Through the HUD's own MasonryUI frame, like every other battle surface: one sanctioned path
+        // for Skija frame bracketing and the GL state reset that follows it.
+        com.stonebreak.rendering.UI.masonryUI.MasonryUI ui = battle.screen.renderer().ui();
+        if (ui == null || !ui.beginFrame(width, height, 1.0f)) {
             return;
         }
-        backend.beginFrame(width, height, 1.0f);
         try {
-            battle.swirl.paint(backend.getCanvas(), width, height);
+            battle.swirl.paint(ui.canvas(), width, height);
         } finally {
-            backend.endFrame();
+            ui.endFrame();
         }
     }
 

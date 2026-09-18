@@ -1,16 +1,18 @@
 package com.stonebreak.ui.focusBattle;
 
+import com.stonebreak.battle.api.BattleEvent;
+import com.stonebreak.battle.api.BattleOutcome;
 import com.stonebreak.battle.api.BattleView;
 import com.stonebreak.config.Settings;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
+import com.stonebreak.rendering.UI.masonryUI.MBadge;
+import com.stonebreak.rendering.UI.masonryUI.MColor;
+import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.ui.focusBattle.elements.CommandWindow;
-import com.stonebreak.ui.focusBattle.elements.EnemyGaugeBar;
 import com.stonebreak.ui.focusBattle.elements.EnemyPlate;
 import com.stonebreak.ui.focusBattle.elements.HelpStrip;
-import com.stonebreak.ui.focusBattle.elements.ModeTag;
 import com.stonebreak.ui.focusBattle.elements.PartyStatusWindow;
-import com.stonebreak.ui.focusBattle.elements.QiArtsSubmenu;
 import io.github.humbleui.skija.Canvas;
 import org.joml.Matrix4fc;
 
@@ -19,18 +21,19 @@ import java.util.List;
 
 /**
  * Skija/MasonryUI renderer for the Focus battle HUD. Owns one {@link MasonryUI} and draws the whole
- * HUD inside a single {@code beginFrame}/{@code endFrame} pair — never raw GL in between (the
+ * HUD inside a single {@code beginFrame}/{@code endFrame} pair, never raw GL in between (the
  * backend resets sampler state when the frame closes, and only then).
  *
- * <p>The painters are static and take their rect from {@link FocusBattleLayout}; this class only
- * decides <em>what</em> is visible and applies whole-window motion (slides, shakes) from
- * {@link BattleHudAnimState}. {@link #paintHud} is separate from {@link #render} so raster tests can
- * draw the full HUD onto a CPU canvas.
+ * <p>The HUD's windows are stateful compositions over MasonryUI widgets ({@link Windows}); this
+ * class only decides <em>what</em> is visible, hands each window its rect from
+ * {@link FocusBattleLayout} and applies whole-window motion (slides, shakes) from
+ * {@link BattleHudAnimState}. {@link #paintHud} is separate from {@link #render} so raster tests
+ * can draw the full HUD onto a CPU canvas.
  *
- * <p>The remaining elements (E7–E12, E14–E16) plug in as {@link Layer}s: underlays draw beneath the
- * windows (screen FX, letterbox), overlays above them (banner, rings, floaters), and the topmost
- * group above every overlay whoever registered it (result panel, encounter transition) — a modal
- * must not depend on being registered last.
+ * <p>The remaining elements plug in as {@link Layer}s: underlays draw beneath the windows (screen
+ * FX, letterbox), overlays above them (banner, rings, floaters), and the topmost group above every
+ * overlay whoever registered it (result panel, encounter transition): a modal must not depend on
+ * being registered last.
  */
 public final class SkijaFocusBattleRenderer {
 
@@ -46,14 +49,50 @@ public final class SkijaFocusBattleRenderer {
                    float rawUiScale, BattleView view, BattleHudAnimState anim, Matrix4fc viewProjection);
     }
 
+    /**
+     * The HUD's windows: one stateful instance each, owned by whoever drives the HUD (the screen),
+     * which resets them on bind and updates them once per frame; the renderer only draws them.
+     */
+    public static final class Windows {
+        public static final String MODE_ACTIVE = "ACTIVE";
+
+        public final CommandWindow command = new CommandWindow();
+        public final PartyStatusWindow party = new PartyStatusWindow();
+        public final EnemyPlate enemy = new EnemyPlate();
+        /** The ATB mode chip; the text leaves room for a future Wait mode. */
+        public final MBadge modeTag = new MBadge(MODE_ACTIVE).fillColor(MStyle.DROPDOWN_FILL)
+                .textColor(MStyle.TEXT_PRIMARY).fontSize(MStyle.FONT_CAPTION).dot(BattlePalette.ATB);
+
+        public void reset() {
+            command.reset();
+            party.reset();
+            enemy.reset();
+        }
+
+        public void update(float dt, BattleView view, BattleMenuState menu, List<BattleEvent> events) {
+            command.update(dt, view, menu);
+            party.update(dt, view, events);
+            enemy.update(dt, view, events);
+        }
+    }
+
     private final MasonryUI mui;
+    private final Windows windows;
     private final List<Layer> underlays = new ArrayList<>();
     private final List<Layer> overlays = new ArrayList<>();
     private final List<Layer> topmost = new ArrayList<>();
 
+    /** A renderer with windows of its own: enough to draw any view at rest. */
     public SkijaFocusBattleRenderer(SkijaUIBackend backend) {
-        this.mui = new MasonryUI(backend);
+        this(backend, new Windows());
     }
+
+    public SkijaFocusBattleRenderer(SkijaUIBackend backend, Windows windows) {
+        this.mui = new MasonryUI(backend);
+        this.windows = windows != null ? windows : new Windows();
+    }
+
+    public Windows windows() { return windows; }
 
     /** Draws beneath the HUD windows, in registration order. */
     public void addUnderlay(Layer layer) {
@@ -106,50 +145,30 @@ public final class SkijaFocusBattleRenderer {
 
         for (Layer layer : underlays) layer.paint(ui, canvas, w, h, s, uiScale, view, a, viewProjection);
 
-        // Top: mode tag, enemy plate + its gauge (shaken together).
-        ModeTag.paint(ui, canvas, FocusBattleLayout.modeTagRect(w, h, uiScale), ModeTag.ACTIVE, s);
-        float[] plate = FocusBattleLayout.offset(FocusBattleLayout.enemyPlateRect(w, h, uiScale),
-                a.enemyShakeX, a.enemyShakeY);
-        EnemyPlate.paint(ui, canvas, plate, view.archon(), s, a);
-        if (view.archon() != null) {
-            EnemyGaugeBar.paint(ui, canvas, FocusBattleLayout.enemyGaugeRect(plate, s), view.archon().atb(),
-                    view.telegraph(), s, a);
-        }
+        // Top: mode tag and the enemy plate (which recoils when the Archon is hit).
+        float[] tag = FocusBattleLayout.modeTagRect(w, h, uiScale);
+        windows.modeTag.scale(s).bounds(tag[0], tag[1], tag[2], tag[3]).render(ui);
+        windows.enemy.render(ui, FocusBattleLayout.offset(FocusBattleLayout.enemyPlateRect(w, h, uiScale),
+                a.enemyShakeX, a.enemyShakeY), view, s);
 
-        // Bottom: everything here slides out together for the cinematic moments.
-        float[] cmd = FocusBattleLayout.commandWindowRect(w, h, uiScale);
+        // Bottom: everything here slides out together for the cinematic moments, far enough that
+        // the topmost of them (the help strip) clears the bottom edge.
         float[] help = FocusBattleLayout.helpStripRect(w, h, uiScale);
-        // Travel far enough that the topmost of them (the help strip) clears the bottom edge.
-        float out = FocusBattleTheme.clamp01(a.bottomHudSlideOut) * (h - help[1] + 8f * s);
+        float out = MColor.clamp01(a.bottomHudSlideOut) * (h - help[1] + 8f * s);
         // While the help text cross-fades the animator names the line on screen (the outgoing one).
         BattleHelpText.Line line = a.helpLine != null ? a.helpLine : BattleHelpText.lineFor(view, m);
-        HelpStrip.paint(ui, canvas, FocusBattleLayout.offset(help, 0f, out), line, s, a.helpFade);
-        PartyStatusWindow.paint(ui, canvas,
-                FocusBattleLayout.offset(FocusBattleLayout.partyWindowRect(w, h, uiScale), 0f, out), view, s, a);
+        HelpStrip.render(ui, FocusBattleLayout.offset(help, 0f, out), line, s, a.helpFade);
+        windows.party.render(ui, FocusBattleLayout.offset(FocusBattleLayout.partyWindowRect(w, h, uiScale),
+                a.partyShakeX, a.partyShakeY + out), view, s);
 
-        // The command window never leaves the screen while the fight runs: hiding it for every
-        // animation read as the menu flickering away. Between turns it rests in a STATIC state (no
-        // cursor, no submenu, veiled); when the gauge fills it wakes over a short fade, and the moment
-        // a command is chosen it drops straight back to static.
-        boolean active = BattleHudRules.menuLive(view); // same rule input routing uses: never looks live while it is not
-        if (active && m.submenuOpen()) {
-            // Submenu first: it emerges from behind the command window.
-            float[] sub = FocusBattleLayout.submenuRect(w, h, uiScale);
-            float tuck = (1f - FocusBattleTheme.clamp01(a.submenuSlideIn)) * -(sub[2] * 0.5f);
-            canvas.save();
-            try {
-                // Clip at E1's right edge so a half-slid submenu never shows through the glass.
-                canvas.clipRect(io.github.humbleui.types.Rect.makeLTRB(cmd[0] + cmd[2], 0f, w, h));
-                QiArtsSubmenu.paint(ui, canvas, FocusBattleLayout.offset(sub, tuck, out), view, m, s, a);
-            } finally {
-                canvas.restore();
-            }
-        }
-        // ...while the fight runs. Once it is decided there is nothing left to choose: the window goes,
-        // and never sits under the defeat fade or the result panel.
-        if (view.outcome() == com.stonebreak.battle.api.BattleOutcome.NONE) {
-            float veil = active ? 1f - FocusBattleTheme.clamp01(a.commandWake) : 1f;
-            CommandWindow.paint(ui, canvas, FocusBattleLayout.offset(cmd, 0f, out), view, m, s, a, active, veil);
+        // The command window never leaves the screen while the fight runs: between turns it rests in
+        // its static state and wakes over a short fade (BattleHudRules.menuLive decides which). Once
+        // the fight is decided there is nothing left to choose, and it never sits under the defeat
+        // fade or the result panel.
+        if (view.outcome() == BattleOutcome.NONE) {
+            windows.command.render(ui, FocusBattleLayout.offset(FocusBattleLayout.commandWindowRect(w, h, uiScale), 0f, out),
+                    FocusBattleLayout.offset(FocusBattleLayout.submenuRect(w, h, uiScale), 0f, out),
+                    view, m, s, a.commandWake, a.submenuSlideIn);
         }
 
         for (Layer layer : overlays) layer.paint(ui, canvas, w, h, s, uiScale, view, a, viewProjection);

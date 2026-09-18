@@ -36,7 +36,40 @@ public final class MFonts {
         return get(baseSize * com.stonebreak.config.Settings.getInstance().getUiScale());
     }
 
+    /**
+     * {@code baseSize × scale}, for UI that lays itself out at its own scale (a HUD that scales with
+     * the window, a widget capped to fit) rather than at the global UI scale.
+     */
+    public Font get(float baseSize, float scale) {
+        return get(Math.max(MIN_SIZE, baseSize * scale));
+    }
+
+    /**
+     * The largest size at or below {@code size} at which {@code text} fits {@code maxWidth}, never
+     * below {@code minFraction} of {@code size}. Shrinks in whole pixels.
+     */
+    public Font fit(String text, float size, float maxWidth, float minFraction) {
+        float current = Math.max(MIN_SIZE, size);
+        float floor = Math.max(MIN_SIZE, current * Math.max(0f, Math.min(1f, minFraction)));
+        Font font = get(current);
+        while (font != null && current > floor && MPainter.measureWidth(font, text) > maxWidth) {
+            current = Math.max(floor, current - 1f);
+            font = get(current);
+        }
+        return font;
+    }
+
+    /** {@code size}, reduced if a row only {@code rowHeight} tall could not hold it comfortably. */
+    public Font forHeight(float size, float rowHeight) {
+        return get(Math.max(MIN_SIZE, Math.min(size, rowHeight * 0.62f)));
+    }
+
+    private static final float MIN_SIZE = 6f;
+
     public Font get(float size) {
+        // Half-pixel grid: the cache never evicts, and animated or window-derived sizes would
+        // otherwise mint a new native Font for nearly every distinct float.
+        size = Math.round(Math.max(MIN_SIZE, size) * 2f) / 2f;
         Typeface typeface = backend != null ? backend.getMinecraftTypeface() : null;
         if (typeface == null) return null;
         if (typeface != lastTypeface) {

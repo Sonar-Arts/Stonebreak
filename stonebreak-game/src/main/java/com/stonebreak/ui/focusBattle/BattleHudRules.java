@@ -24,6 +24,18 @@ public final class BattleHudRules {
     }
 
     /**
+     * Whether a command's row should look usable. ONE rule for the root window and every submenu: a
+     * row short of a resource is dimmed whether the menu is live or resting; a row that is merely
+     * waiting for the turn is never dimmed on top of the resting veil.
+     */
+    public static boolean rowUsable(BattleView view, com.stonebreak.battle.api.BattleCommand command) {
+        if (view == null || command == null) return true;
+        com.stonebreak.battle.api.CommandAvailability availability = view.availability(command);
+        if (availability == null || availability.available()) return true;
+        return !menuLive(view) && availability.onlyWaitingForTurn();
+    }
+
+    /**
      * True while the camera owns the moment and the battle has not begun: the intro. Letterbox bars
      * are in and the bottom HUD windows are slid out. It is deliberately NOT true for any action
      * animation (not even the Focus Combo): the HUD going away every time something animates read as

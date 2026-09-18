@@ -2,153 +2,79 @@ package com.stonebreak.ui.focusBattle.elements;
 
 import com.stonebreak.battle.api.BattleEvent;
 import com.stonebreak.battle.api.BattleStageLayout;
+import com.stonebreak.battle.api.BattleStatus;
 import com.stonebreak.battle.api.BattleView;
 import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.CombatantView;
 import com.stonebreak.battle.api.PromptKind;
 import com.stonebreak.battle.api.TimedGrade;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
+import com.stonebreak.rendering.UI.masonryUI.MFloatingText;
+import com.stonebreak.rendering.UI.masonryUI.MFloatingText.Lane;
+import com.stonebreak.rendering.UI.masonryUI.MFloatingText.Style;
+import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.stonebreak.rendering.UI.masonryUI.MWorldMarker;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.ui.focusBattle.BattleHudAnimState;
-import com.stonebreak.ui.focusBattle.FlowLayout;
-import com.stonebreak.ui.focusBattle.FlowTheme;
+import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
-import com.stonebreak.ui.focusBattle.FocusBattleTheme;
 import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
-import com.stonebreak.ui.focusBattle.WorldProjection;
 import io.github.humbleui.skija.Canvas;
-import io.github.humbleui.skija.Font;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
- * E11 — floating numbers and words: damage, heals, Qi and Focus gains, timed-input grades, status
- * names and command rejections. Screen-space, drawn inside the HUD's single Skija frame.
+ * E11: floating numbers and words (damage, heals, Qi and Focus gains, timed-input grades, status
+ * names, command rejections). A thin event adapter over one {@link MFloatingText}, which owns the
+ * motion, lanes, stagger, cap and painting. What stays here is the battle's own part: which event
+ * raises which words in which look ({@link #spawnFor}), and where on screen they are born.
  *
- * <p>A floater born from something in the world captures its <b>screen</b> position once — the
- * first time it meets a camera matrix after spawning — and from then on moves purely in screen
- * space (a ballistic arc, then a fade). The cinematic camera cuts constantly; a number that
- * re-projected every frame would teleport with each cut. When the anchor is off-screen the floater
- * starts from its owner's HUD window instead.
- *
- * <p>Deterministic: the scatter of a floater is a function of how many were spawned before it since
- * {@link #reset}, never of a clock or an unseeded random.
+ * <p>A floater takes its <b>screen</b> position once, from the first camera it meets after its event
+ * ({@link #resolvePending}), and then moves purely in screen space: the cinematic camera cuts
+ * constantly, and a number that re-projected every frame would teleport with each cut. When its
+ * body is off-screen it starts from its owner's HUD window instead.
  */
 public final class BattleFloaters implements SkijaFocusBattleRenderer.Layer {
 
-    public static final int MAX_LIVE = 24;
-    public static final float LIFETIME_SECONDS = 0.9f;
+    public static final int MAX_LIVE = MFloatingText.DEFAULT_CAP;
     /** Body height the world anchor sits at (chest/head, where the eye already is on a hit). */
     public static final float ANCHOR_HEIGHT = 0.8f;
 
-    /** Simultaneous floaters on one anchor leave this far apart in time… */
-    private static final float STAGGER_SECONDS = 0.07f;
-    /** …and a run of spawns counts as "simultaneous" until the anchor has been quiet this long. */
-    private static final float STAGGER_MEMORY_SECONDS = 0.3f;
-    private static final float FADE_FROM = 0.55f;
-    private static final float POP_SECONDS = 0.12f;
+    // The looks: library presets recoloured with gameplay semantics. Small numbers are "minor" texts
+    // moved into the number lane.
+    public static final Style DAMAGE = Style.number();
+    public static final Style CRITICAL = Style.emphasis();
+    public static final Style BLOCKED = Style.minor().withLane(Lane.NUMBER);
+    public static final Style PARRIED = Style.word().withColor(BattlePalette.ACCENT_MONK);
+    public static final Style HEAL = Style.number().withColor(MStyle.VITAL_OK);
+    public static final Style QI = Style.minor().withLane(Lane.NUMBER).withColor(BattlePalette.QI);
+    public static final Style FOCUS = Style.word().withColor(BattlePalette.FOCUS);
+    public static final Style REJECT = Style.minor().withLane(Lane.NUMBER).withColor(MStyle.TEXT_ERROR);
 
-    /**
-     * Vertical lane a floater starts in, relative to its anchor. A single blow can raise a number, a
-     * grade word and a status name in the same frame; lanes keep the three from landing on one spot.
-     */
-    public enum Lane {
-        NUMBER(0f), WORD(-58f), STATUS(62f);
-
-        final float offset;
-
-        Lane(float offset) { this.offset = offset; }
+    /** A ring / combo grade word; a miss is said quietly. */
+    public static Style gradeStyle(TimedGrade grade) {
+        Style word = Style.word().withColor(BattlePalette.grade(grade));
+        return grade == TimedGrade.MISS ? word.withFontSize(Style.minor().fontSize()) : word;
     }
 
-    /** Look of a floater: colour, size, lane and how hard it is thrown. */
-    public enum Style {
-        DAMAGE(FlowTheme.FLOAT_DAMAGE, FlowTheme.FS_FLOAT, 1f, Lane.NUMBER),
-        CRITICAL(FlowTheme.FLOAT_CRIT, FlowTheme.FS_FLOAT_CRIT, 1.15f, Lane.NUMBER),
-        BLOCKED(FlowTheme.FLOAT_BLOCK, FlowTheme.FS_FLOAT_SMALL, 0.7f, Lane.NUMBER),
-        PARRIED(FlowTheme.FLOAT_PARRY, FlowTheme.FS_FLOAT_WORD, 0.8f, Lane.WORD),
-        HEAL(FlowTheme.FLOAT_HEAL, FlowTheme.FS_FLOAT, 0.8f, Lane.NUMBER),
-        QI(FlowTheme.FLOAT_QI, FlowTheme.FS_FLOAT_SMALL, 0.7f, Lane.NUMBER),
-        FOCUS(FlowTheme.GOLD, FlowTheme.FS_FLOAT_WORD, 0.75f, Lane.WORD),
-        PERFECT(FlowTheme.FLOAT_PERFECT, FlowTheme.FS_FLOAT_WORD, 0.85f, Lane.WORD),
-        GOOD(FlowTheme.FLOAT_GOOD, FlowTheme.FS_FLOAT_WORD, 0.8f, Lane.WORD),
-        MISS(FlowTheme.FLOAT_MISS, FlowTheme.FS_FLOAT_SMALL, 0.6f, Lane.WORD),
-        STATUS_GOOD(FocusBattleTheme.CHIP_GOOD, FlowTheme.FS_FLOAT_SMALL, 0.7f, Lane.STATUS),
-        STATUS_BAD(FocusBattleTheme.CHIP_BAD, FlowTheme.FS_FLOAT_SMALL, 0.7f, Lane.STATUS),
-        REJECT(FlowTheme.FLOAT_REJECT, FlowTheme.FS_FLOAT_SMALL, 0.55f, Lane.NUMBER);
-
-        final int color;
-        final float fontSize;
-        final float energy;
-        final Lane lane;
-
-        Style(int color, float fontSize, float energy, Lane lane) {
-            this.color = color;
-            this.fontSize = fontSize;
-            this.energy = energy;
-            this.lane = lane;
-        }
-
-        public int color() { return color; }
-        public float fontSize() { return fontSize; }
-        public Lane lane() { return lane; }
+    public static Style statusStyle(BattleStatus status) {
+        return Style.minor().withColor(BattlePalette.status(status));
     }
 
     /** Where a floater starts. */
     public enum Origin { MONK, ARCHON, PARTY_WINDOW, QI_ROW, COMMAND_WINDOW }
 
-    /** One live floater. Positions and velocities are in window pixels once {@link #placed}. */
-    public static final class Floater {
-        final String text;
-        final Style style;
-        final Origin origin;
-        /** World anchor captured at spawn; null for HUD-anchored floaters. */
-        final Vector3f world;
-        final int serial;
-        final int slot;
-        float delay;
-        float age;
-        boolean placed;
-        float x, y, vx, vy, gravity, scale = 1f;
+    /** What one event raises. */
+    public record Spawn(String text, Style style, Origin origin) {}
 
-        Floater(String text, Style style, Origin origin, Vector3f world, int serial, int slot, float delay) {
-            this.text = text;
-            this.style = style;
-            this.origin = origin;
-            this.world = world;
-            this.serial = serial;
-            this.slot = slot;
-            this.delay = delay;
-        }
+    /** A spawn waiting for the first camera it meets; {@code world} is null for HUD-anchored ones. */
+    private record Pending(Spawn spawn, Vector3f world) {}
 
-        public String text() { return text; }
-        public Style style() { return style; }
-        public Origin origin() { return origin; }
-        public boolean placed() { return placed; }
-        public float age() { return age; }
-        /** True once its stagger delay has run out. */
-        public boolean started() { return delay <= 0f; }
-
-        /** Current screen position {@code {x, y}}; meaningful once {@link #placed()}. */
-        public float[] position() {
-            return new float[]{x + vx * age, y + vy * age + 0.5f * gravity * age * age};
-        }
-
-        public float alpha() {
-            float t = age / LIFETIME_SECONDS;
-            return t <= FADE_FROM ? 1f : Math.max(0f, 1f - (t - FADE_FROM) / (1f - FADE_FROM));
-        }
-    }
-
-    private final List<Floater> live = new ArrayList<>();
-    /** Stagger bookkeeping per (origin, lane): how many spawned in the current burst, and how long ago. */
-    private final int[] recent = new int[Origin.values().length * Lane.values().length];
-    private final float[] quiet = new float[Origin.values().length * Lane.values().length];
+    private final MFloatingText text = new MFloatingText().cap(MAX_LIVE);
+    private final List<Pending> pending = new ArrayList<>();
     private BattleStageLayout stage;
-    private int spawned;
     private boolean gradeWords = true;
 
     /**
@@ -164,82 +90,62 @@ public final class BattleFloaters implements SkijaFocusBattleRenderer.Layer {
     }
 
     public void reset() {
-        live.clear();
-        java.util.Arrays.fill(recent, 0);
-        java.util.Arrays.fill(quiet, 0f);
-        spawned = 0;
+        text.clear();
+        pending.clear();
     }
 
-    /** The live floaters, oldest first (read-only; for tests and debugging). */
-    public List<Floater> live() {
-        return Collections.unmodifiableList(live);
+    /** The floaters in flight, oldest first (read-only). */
+    public List<MFloatingText.Floater> live() {
+        return text.live();
     }
 
-    // ─────────────────────────────────────────────── Update + spawn
+    /** Floaters in flight plus those still waiting for a camera. */
+    public int count() {
+        return text.liveCount() + pending.size();
+    }
 
-    /** Ages the live floaters, then spawns this frame's. */
+    // ─────────────────────────────────────────────── Events
+
+    /** Ages the floaters in flight, then queues this frame's. */
     public void update(float dt, BattleView view, List<BattleEvent> events) {
-        float step = Math.max(0f, dt);
-        for (Floater f : live) {
-            if (f.delay > 0f) f.delay -= step;
-            else if (f.placed) f.age += step;
-        }
-        live.removeIf(f -> f.age >= LIFETIME_SECONDS);
-        for (int i = 0; i < recent.length; i++) {
-            quiet[i] += step;
-            if (quiet[i] >= STAGGER_MEMORY_SECONDS) recent[i] = 0;
-        }
+        text.update(dt);
         if (view == null || events == null) return;
-        for (BattleEvent event : events) spawnFor(event, view);
+        for (BattleEvent event : events) {
+            Spawn spawn = spawnFor(event, gradeWords);
+            if (spawn != null) spawn(spawn.text(), spawn.style(), spawn.origin(), view);
+        }
     }
 
-    private void spawnFor(BattleEvent event, BattleView view) {
-        switch (event) {
+    /** The battle's whole vocabulary: the words and look {@code event} raises, or null for none. */
+    public static Spawn spawnFor(BattleEvent event, boolean gradeWords) {
+        return switch (event) {
             case BattleEvent.DamageDealt hit -> {
                 Origin at = originOf(hit.target());
                 BattleEvent.DamageFlavor flavor = hit.flavor() == null ? BattleEvent.DamageFlavor.NORMAL : hit.flavor();
-                switch (flavor) {
-                    case PARRIED -> spawn("PARRY!", Style.PARRIED, at, view);
-                    case BLOCKED -> spawn("BLOCK " + amount(hit.amount()), Style.BLOCKED, at, view);
-                    case CRITICAL -> spawn(amount(hit.amount()) + "!", Style.CRITICAL, at, view);
-                    case NORMAL -> spawn(amount(hit.amount()), Style.DAMAGE, at, view);
-                }
+                yield switch (flavor) {
+                    case PARRIED -> new Spawn("PARRY!", PARRIED, at);
+                    case BLOCKED -> new Spawn("BLOCK " + amount(hit.amount()), BLOCKED, at);
+                    case CRITICAL -> new Spawn(amount(hit.amount()) + "!", CRITICAL, at);
+                    case NORMAL -> new Spawn(amount(hit.amount()), DAMAGE, at);
+                };
             }
-            case BattleEvent.Healed heal -> spawn("+" + amount(heal.amount()), Style.HEAL, originOf(heal.target()), view);
-            case BattleEvent.QiChanged qi -> {
-                if (qi.delta() > 0) spawn("+" + qi.delta() + " Qi", Style.QI, Origin.QI_ROW, view);
-            }
-            case BattleEvent.FocusFull full -> spawn("FOCUS MAX", Style.FOCUS, Origin.MONK, view);
-            case BattleEvent.PromptResolved resolved -> {
-                // A parry's verdict already arrives as PARRIED / BLOCKED damage: one word, not two.
-                if (gradeWords && resolved.kind() != PromptKind.PARRY && resolved.grade() != null) {
-                    spawn(resolved.grade().name(), styleOf(resolved.grade()), Origin.ARCHON, view);
-                }
-            }
-            case BattleEvent.StatusApplied status -> {
-                if (status.status() != null) {
-                    spawn(status.status().label(), status.status().beneficial() ? Style.STATUS_GOOD : Style.STATUS_BAD,
-                            originOf(status.target()), view);
-                }
-            }
-            case BattleEvent.CommandRejected rejected -> {
-                String reason = rejected.reason();
-                if (reason != null && !reason.isEmpty()) spawn(reason, Style.REJECT, Origin.COMMAND_WINDOW, view);
-            }
-            default -> { }
-        }
+            case BattleEvent.Healed heal -> new Spawn("+" + amount(heal.amount()), HEAL, originOf(heal.target()));
+            case BattleEvent.QiChanged qi -> qi.delta() > 0 ? new Spawn("+" + qi.delta() + " Qi", QI, Origin.QI_ROW) : null;
+            case BattleEvent.FocusFull full -> new Spawn("FOCUS MAX", FOCUS, Origin.MONK);
+            // A parry's verdict already arrives as PARRIED / BLOCKED damage: one word, not two.
+            case BattleEvent.PromptResolved resolved ->
+                    gradeWords && resolved.kind() != PromptKind.PARRY && resolved.grade() != null
+                            ? new Spawn(resolved.grade().name(), gradeStyle(resolved.grade()), Origin.ARCHON) : null;
+            case BattleEvent.StatusApplied status -> status.status() == null ? null
+                    : new Spawn(status.status().label(), statusStyle(status.status()), originOf(status.target()));
+            case BattleEvent.CommandRejected rejected -> rejected.reason() == null || rejected.reason().isEmpty() ? null
+                    : new Spawn(rejected.reason(), REJECT, Origin.COMMAND_WINDOW);
+            case null, default -> null;
+        };
     }
 
     private static Origin originOf(CombatantId id) {
         return id == CombatantId.MONK ? Origin.MONK : Origin.ARCHON;
-    }
-
-    private static Style styleOf(TimedGrade grade) {
-        return switch (grade) {
-            case PERFECT -> Style.PERFECT;
-            case GOOD -> Style.GOOD;
-            case MISS -> Style.MISS;
-        };
     }
 
     // Anything that hurt shows at least 1: "0" reads as a miss.
@@ -247,64 +153,75 @@ public final class BattleFloaters implements SkijaFocusBattleRenderer.Layer {
         return String.valueOf(value > 0f ? Math.max(1, Math.round(value)) : 0);
     }
 
-    /** Adds a floater. Public so other HUD layers can speak through the same channel. */
-    public Floater spawn(String text, Style style, Origin origin, BattleView view) {
-        if (text == null || text.isEmpty() || style == null || origin == null) return null;
+    /** Queues a floater. Public so other HUD layers can speak through the same channel. */
+    public void spawn(String words, Style style, Origin origin, BattleView view) {
+        if (words == null || words.isEmpty() || style == null || origin == null) return;
         Vector3f world = null;
         CombatantId body = origin == Origin.MONK ? CombatantId.MONK : origin == Origin.ARCHON ? CombatantId.ARCHON : null;
         if (body != null && stage != null && view != null) {
             CombatantView who = view.combatant(body);
             if (who != null && who.pose() != null) world = stage.bodyPoint(body, who.pose(), ANCHOR_HEIGHT);
         }
-        int burst = origin.ordinal() * Lane.values().length + style.lane.ordinal();
-        int slot = recent[burst]++;
-        quiet[burst] = 0f;
-        Floater f = new Floater(text, style, origin, world, spawned++, slot, slot * STAGGER_SECONDS);
-        live.add(f);
-        while (live.size() > MAX_LIVE) live.remove(0);   // the oldest is the most faded
-        return f;
+        pending.add(new Pending(new Spawn(words, style, origin), world));
+        while (pending.size() > MAX_LIVE) pending.remove(0);
     }
 
     // ─────────────────────────────────────────────── Placement
 
     /**
-     * Gives every not-yet-placed floater its screen position and launch velocity, from the camera
-     * and window of <em>this</em> frame. Later frames never look at the camera again.
+     * The band of the screen floaters live in, {@code {left, top, right, bottom}}: below the action
+     * banner (so a number never sits on the enemy plate) and above the party window. The help strip
+     * and command window are inside it on purpose: the monk often stands behind them, and a number
+     * pinned above them would detach from the body it belongs to.
      */
-    public void resolvePending(int w, int h, float rawUiScale, Matrix4fc viewProjection) {
-        if (w <= 0 || h <= 0) return;
-        float s = FocusBattleLayout.effectiveScale(w, h, rawUiScale);
-        float[] bounds = FlowLayout.floaterBounds(w, h, rawUiScale);
-        for (Floater f : live) {
-            if (f.placed) continue;
-            float[] at = f.world == null ? null : WorldProjection.toScreen(viewProjection, f.world, w, h, 0f);
-            if (at == null) at = hudPoint(f.origin, w, h, rawUiScale);
-            // A fan of slots so simultaneous hits never stack on one spot, in the style's own lane.
-            float dx = (Math.floorMod(f.slot + 1, 3) - 1) * 64f * s;
-            float dy = (f.style.lane.offset - Math.floorMod(f.slot, 4) * 30f) * s;
-            // Alternate sides; the spread comes from the spawn serial, not from a random.
-            float side = (f.serial & 1) == 0 ? 1f : -1f;
-            float spread = 0.45f + 0.55f * (Math.floorMod(f.serial * 7, 5) / 4f);
-            f.vx = side * spread * 62f * s * f.style.energy;
-            f.vy = -(175f + 12f * Math.floorMod(f.serial * 3, 4)) * s * f.style.energy;
-            f.gravity = 520f * s * f.style.energy;
-            // Keep the whole arc inside the band: a floater born at the top edge would otherwise
-            // rise straight into the action banner.
-            float apex = f.vy * f.vy / (2f * f.gravity);
-            f.x = Math.max(bounds[0], Math.min(bounds[2], at[0] + dx));
-            f.y = Math.max(Math.min(bounds[1] + apex, bounds[3]), Math.min(bounds[3], at[1] + dy));
-            f.scale = s;
-            f.placed = true;
-        }
+    public static float[] band(int w, int h, float rawUiScale, float scale) {
+        float[] banner = FocusBattleLayout.actionBannerRect(w, h, rawUiScale);
+        float[] party = FocusBattleLayout.partyWindowRect(w, h, rawUiScale);
+        float margin = 40f * scale;
+        float top = banner[1] + banner[3] + 26f * scale;
+        return new float[]{margin, top, Math.max(margin, w - margin), Math.max(top, party[1] - 18f * scale)};
     }
 
-    private static float[] hudPoint(Origin origin, int w, int h, float rawUiScale) {
+    /** Where {@code origin}'s floaters start when they have no body on screen: its owner's HUD window. */
+    public static float[] hudPoint(Origin origin, int w, int h, float rawUiScale, float scale) {
+        float[] band = band(w, h, rawUiScale, scale);
+        float[] party = FocusBattleLayout.partyWindowRect(w, h, rawUiScale);
         return switch (origin) {
-            case ARCHON -> FlowLayout.enemyFallbackPoint(w, h, rawUiScale);
-            case MONK, PARTY_WINDOW -> FlowLayout.partyFallbackPoint(w, h, rawUiScale);
-            case QI_ROW -> FlowLayout.qiFloaterPoint(w, h, rawUiScale);
-            case COMMAND_WINDOW -> FlowLayout.commandFloaterPoint(w, h, rawUiScale);
+            // Under the banner, top-centre.
+            case ARCHON -> new float[]{w / 2f, Math.min(band[3], band[1] + 44f * scale)};
+            case MONK, PARTY_WINDOW -> new float[]{party[0] + party[2] * 0.5f, band[3]};
+            // The party window's left shoulder, clear of monk damage numbers.
+            case QI_ROW -> new float[]{party[0] + party[2] * 0.18f, band[3]};
+            // Just above the help strip, over the command window's column.
+            case COMMAND_WINDOW -> {
+                float[] cmd = FocusBattleLayout.commandWindowRect(w, h, rawUiScale);
+                float[] help = FocusBattleLayout.helpStripRect(w, h, rawUiScale);
+                yield new float[]{Math.max(band[0] + cmd[2] * 0.5f, cmd[0] + cmd[2] * 0.5f),
+                        Math.max(band[1], help[1] - 18f * scale)};
+            }
         };
+    }
+
+    /**
+     * Gives every queued floater its screen position from the camera and window of <em>this</em>
+     * frame and lets it go. Later frames never look at the camera again.
+     */
+    public void resolvePending(int w, int h, float rawUiScale, Matrix4fc viewProjection) {
+        if (pending.isEmpty() || w <= 0 || h <= 0) return;
+        resolvePending(w, h, rawUiScale, FocusBattleLayout.effectiveScale(w, h, rawUiScale), viewProjection);
+    }
+
+    private void resolvePending(int w, int h, float rawUiScale, float scale, Matrix4fc viewProjection) {
+        if (pending.isEmpty() || w <= 0 || h <= 0) return;
+        float[] band = band(w, h, rawUiScale, scale);
+        text.sides(band[0], band[2]).band(band[1], band[3]);
+        for (Pending p : pending) {
+            float[] hud = hudPoint(p.spawn().origin(), w, h, rawUiScale, scale);
+            MWorldMarker.Anchor at = MWorldMarker.orFallback(
+                    MWorldMarker.project(viewProjection, p.world(), w, h), hud[0], hud[1]);
+            text.spawn(p.spawn().text(), p.spawn().style(), at.x(), at.y());
+        }
+        pending.clear();
     }
 
     // ─────────────────────────────────────────────── Paint
@@ -312,27 +229,8 @@ public final class BattleFloaters implements SkijaFocusBattleRenderer.Layer {
     @Override
     public void paint(MasonryUI ui, Canvas canvas, int windowWidth, int windowHeight, float uiScale,
                       float rawUiScale, BattleView view, BattleHudAnimState anim, Matrix4fc viewProjection) {
-        if (canvas == null || live.isEmpty()) return;
-        resolvePending(windowWidth, windowHeight, rawUiScale, viewProjection);
-        for (Floater f : live) {
-            if (!f.placed || f.delay > 0f) continue;
-            Font font = FocusBattleTheme.font(ui, f.style.fontSize, f.scale);
-            if (font == null) continue;
-            float[] p = f.position();
-            // A long word near an edge (a rejection over the command window) stays fully on screen.
-            float half = MPainter.measureWidth(font, f.text) / 2f + 6f;
-            if (2f * half < windowWidth) p[0] = Math.max(half, Math.min(windowWidth - half, p[0]));
-            // Lands big and settles: the pop sells the hit without moving the number's centre.
-            float pop = 1f + 0.45f * (1f - Math.min(1f, f.age / POP_SECONDS));
-            canvas.save();
-            try {
-                canvas.translate(p[0], p[1]);
-                canvas.scale(pop, pop);
-                FlowTheme.outlinedTextCentered(canvas, f.text, 0f, font.getSize() * 0.36f, font, f.style.color,
-                        f.alpha());
-            } finally {
-                canvas.restore();
-            }
-        }
+        if (canvas == null) return;
+        resolvePending(windowWidth, windowHeight, rawUiScale, uiScale, viewProjection);
+        text.render(ui, uiScale);
     }
 }

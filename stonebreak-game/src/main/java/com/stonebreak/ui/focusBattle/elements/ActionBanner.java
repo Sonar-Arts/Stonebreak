@@ -6,109 +6,73 @@ import com.stonebreak.battle.api.BattleEvent;
 import com.stonebreak.battle.api.BattlePhase;
 import com.stonebreak.battle.api.BattleView;
 import com.stonebreak.battle.api.CombatantId;
+import com.stonebreak.rendering.UI.masonryUI.MBanner;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.ui.focusBattle.BattleHudAnimState;
-import com.stonebreak.ui.focusBattle.FlowTheme;
+import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
-import com.stonebreak.ui.focusBattle.FocusBattleTheme;
 import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
-import com.stonebreak.ui.startupIntro.tween.EasingFunctions;
-import com.stonebreak.ui.startupIntro.tween.EasingType;
 import io.github.humbleui.skija.Canvas;
-import io.github.humbleui.skija.Font;
 import org.joml.Matrix4fc;
 
 import java.util.List;
 
 /**
- * E7 — the FF-style name plate of the action being executed, for either side. Driven by
- * {@link BattleEvent.ActionStarted}: the plate drops in, holds for as long as the action runs (and
- * never less than {@link #MIN_HOLD_SECONDS}, so a free action still reads), then fades.
+ * E7: the name plate of the action being executed, for either side. A thin adapter over one
+ * {@link MBanner}: {@link BattleEvent.ActionStarted} shows it, it is held for as long as that action
+ * is the view's current one (and never less than the banner's minimum hold, so a free action still
+ * reads), then it fades.
  *
- * <p>Archon actions are tinted frost-red, monk actions ice-blue, the Focus Combo gold — the side is
- * legible from the colour before the name is read. Nothing shows during the intro.
+ * <p>The plate's hairline is the acting side's accent, gold for the Focus Combo, so the side reads
+ * from the colour before the name does. Nothing shows during the intro.
  */
 public final class ActionBanner implements SkijaFocusBattleRenderer.Layer {
 
-    public static final float DROP_SECONDS = 0.12f;
-    public static final float MIN_HOLD_SECONDS = 0.9f;
-    public static final float FADE_SECONDS = 0.25f;
+    public static final float DROP_SECONDS = MBanner.DEFAULT_IN_SECONDS;
+    public static final float MIN_HOLD_SECONDS = MBanner.DEFAULT_MIN_HOLD_SECONDS;
+    public static final float FADE_SECONDS = MBanner.DEFAULT_OUT_SECONDS;
 
-    private String name;
+    private final MBanner plate = new MBanner();
     private CombatantId actor;
-    private BattleCommand command;
-    private float age;
-    /** Seconds into the fade; negative while dropping or holding. */
-    private float fadeAge = -1f;
     private boolean suppressed;
 
     public void reset() {
-        name = null;
+        plate.hide();
         actor = null;
-        command = null;
-        age = 0f;
-        fadeAge = -1f;
         suppressed = false;
     }
 
     /** Advances the plate and picks up this frame's {@link BattleEvent.ActionStarted}. */
     public void update(float dt, BattleView view, List<BattleEvent> events) {
         if (view == null) return;
-        float step = Math.max(0f, dt);
         suppressed = view.phase() == BattlePhase.INTRO;
-        if (name != null) {
-            age += step;
-            if (fadeAge >= 0f) fadeAge += step;
-        }
-        boolean finished = false;
+        plate.update(dt);
         if (events != null) {
             for (BattleEvent event : events) {
                 if (event instanceof BattleEvent.ActionStarted started) {
-                    show(started);
-                    finished = false;
-                } else if (event instanceof BattleEvent.ActionFinished done && done.actor() == actor) {
-                    finished = true;
+                    actor = started.actor();
+                    plate.show(started.displayName(), accentOf(started.actor(), started.command()));
                 }
             }
         }
-        if (name == null) return;
-        if (fadeAge < 0f && age >= MIN_HOLD_SECONDS && (finished || !stillRunning(view))) fadeAge = 0f;
-        if (fadeAge >= FADE_SECONDS) reset();
+        ActionView running = view.currentAction();
+        plate.hold(plate.active() && running != null && running.actor() == actor);
     }
 
-    private void show(BattleEvent.ActionStarted started) {
-        name = started.displayName() == null ? "" : started.displayName();
-        actor = started.actor();
-        command = started.command();
-        age = 0f;
-        fadeAge = -1f;
-        if (name.isEmpty()) name = null;
-    }
-
-    private boolean stillRunning(BattleView view) {
-        ActionView action = view.currentAction();
-        return action != null && action.actor() == actor;
+    /** The side's accent, or the Focus gold for the monk's ultimate. */
+    static int accentOf(CombatantId actor, BattleCommand command) {
+        return command == BattleCommand.FOCUS_COMBO ? BattlePalette.FOCUS : BattlePalette.accent(actor);
     }
 
     // ─────────────────────────────────────────────── State (read by tests)
 
-    public boolean visible() { return name != null && !suppressed && alpha() > 0f; }
-    public String text() { return name; }
+    public boolean visible() { return !suppressed && plate.visible(); }
+    public String text() { return plate.text(); }
     /** 0 = above its slot, 1 = seated. */
-    public float dropProgress() {
-        return name == null ? 0f : EasingFunctions.apply(Math.min(1f, age / DROP_SECONDS), EasingType.EaseOutCubic);
-    }
-    public float alpha() {
-        if (name == null) return 0f;
-        float in = Math.min(1f, age / DROP_SECONDS);
-        float out = fadeAge < 0f ? 1f : 1f - Math.min(1f, fadeAge / FADE_SECONDS);
-        return in * out;
-    }
-    /** The plate's accent: frost-red for the Archon, gold for the Focus Combo, else ice-blue. */
-    public int tint() {
-        if (actor == CombatantId.ARCHON) return FlowTheme.FROST_RED;
-        return command == BattleCommand.FOCUS_COMBO ? FlowTheme.GOLD : FlowTheme.MONK_TINT;
-    }
+    public float dropProgress() { return plate.dropProgress(); }
+    public float alpha() { return plate.alpha(); }
+    /** The plate's accent hairline: the acting side's colour, gold for the Focus Combo. */
+    public int tint() { return plate.accent(); }
 
     // ─────────────────────────────────────────────── Paint
 
@@ -117,27 +81,6 @@ public final class ActionBanner implements SkijaFocusBattleRenderer.Layer {
                       float rawUiScale, BattleView view, BattleHudAnimState anim, Matrix4fc viewProjection) {
         if (canvas == null || !visible()) return;
         float[] slot = FocusBattleLayout.actionBannerRect(windowWidth, windowHeight, rawUiScale);
-        float alpha = alpha();
-        float[] r = FocusBattleLayout.offset(slot, 0f, -(1f - dropProgress()) * (slot[3] + 8f * uiScale));
-        int tint = tint();
-        int fill = actor == CombatantId.ARCHON ? FlowTheme.FROST_RED_FILL
-                : command == BattleCommand.FOCUS_COMBO ? FlowTheme.GOLD_FILL : FocusBattleTheme.WINDOW_FILL;
-        FlowTheme.tintedWindow(canvas, r[0], r[1], r[2], r[3], fill, tint, alpha);
-
-        float pad = 30f * uiScale;
-        Font font = FocusBattleTheme.fitFont(ui, name, FlowTheme.FS_BANNER, uiScale, r[2] - 2f * pad);
-        float cy = r[1] + r[3] / 2f;
-        if (font != null) {
-            FocusBattleTheme.textCentered(canvas, name, r[0] + r[2] / 2f,
-                    FocusBattleTheme.baseline(cy, font.getSize()), font,
-                    FocusBattleTheme.fade(FocusBattleTheme.TEXT, alpha));
-        }
-        // Accent bars at both ends, in the side's colour, so the side reads before the name does.
-        float barW = Math.max(2f, 3f * uiScale);
-        float barH = r[3] * 0.5f;
-        int accent = FocusBattleTheme.fade(tint, alpha);
-        FocusBattleTheme.roundedFill(canvas, r[0] + 10f * uiScale, cy - barH / 2f, barW, barH, barW / 2f, accent);
-        FocusBattleTheme.roundedFill(canvas, r[0] + r[2] - 10f * uiScale - barW, cy - barH / 2f, barW, barH,
-                barW / 2f, accent);
+        plate.bounds(slot[0], slot[1], slot[2], slot[3]).scale(uiScale).render(ui);
     }
 }

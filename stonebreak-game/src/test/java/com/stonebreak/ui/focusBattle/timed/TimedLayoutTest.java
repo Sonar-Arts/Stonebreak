@@ -4,7 +4,6 @@ import com.stonebreak.battle.api.EnemyAction;
 import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.api.PromptView;
 import com.stonebreak.battle.api.TelegraphView;
-import com.stonebreak.ui.focusBattle.FocusBattleLayout;
 import org.joml.Matrix4f;
 import org.junit.jupiter.api.Test;
 
@@ -15,7 +14,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** The timing math behind the pictures: if these hold, "press when they meet" is true on screen. */
+/**
+ * The timing math behind the pictures: if these hold, "press when they meet" is true on screen. (The
+ * combo strip's cell geometry and the vignette curve belong to the library widgets and are pinned by
+ * their own tests, {@code MPromptStripTest} and {@code MScreenFxTest}.)
+ */
 class TimedLayoutTest {
 
     private static final float EPS = 1.0e-4f;
@@ -174,81 +177,5 @@ class TimedLayoutTest {
         TimedLayout.Anchor none = TimedLayout.monkAnchor(TimedScenes.LAYOUT, view, null, W, H, SCALE);
         assertFalse(none.anchored());
         assertEquals(W / 2f, none.x(), EPS);
-    }
-
-    // ─────────────────────────────────────────────── E10 combo strip
-
-    @Test
-    void comboCellsSitInsideTheStripInOrderAtEverySize() {
-        int[][] windows = {{1024, 600}, {1280, 720}, {1920, 1080}, {3840, 2160}};
-        for (int[] win : windows) {
-            for (float ui : new float[]{0.75f, 1f, 2f}) {
-                float s = FocusBattleLayout.effectiveScale(win[0], win[1], ui);
-                float[] strip = FocusBattleLayout.comboStripRect(win[0], win[1], ui);
-                float previousRight = strip[0];
-                for (int i = 0; i < 6; i++) {
-                    float[] cell = TimedLayout.comboCellRect(strip, i, 6, s);
-                    float[] big = TimedLayout.scaled(cell, TimedLayout.COMBO_CURRENT_SCALE + 0.04f);
-                    float[] track = TimedLayout.comboTimerTrack(cell, s);
-                    assertTrue(cell[0] >= previousRight, "cells do not overlap at rest");
-                    assertTrue(big[0] >= strip[0] && big[0] + big[2] <= strip[0] + strip[2], "enlarged cell inside strip (x)");
-                    assertTrue(big[1] >= strip[1] && track[1] + track[3] <= strip[1] + strip[3],
-                            "enlarged cell + timer inside strip (y) at " + win[0] + "x" + win[1] + " ui " + ui);
-                    previousRight = cell[0] + cell[2];
-                }
-                float[] first = TimedLayout.comboCellRect(strip, 0, 6, s), last = TimedLayout.comboCellRect(strip, 5, 6, s);
-                assertEquals(first[0] - strip[0], strip[0] + strip[2] - (last[0] + last[2]), 1f, "row is centred");
-                float[] label = TimedLayout.comboLabelRect(strip, s), counter = TimedLayout.comboCounterRect(strip, s);
-                assertTrue(label[0] + label[2] <= first[0] + 1f && counter[0] >= last[0] + last[2] - 1f,
-                        "captions clear the cells");
-            }
-        }
-    }
-
-    @Test
-    void theTimerUnderlineDrainsTowardItsLeftEdge() {
-        float[] track = {100f, 50f, 60f, 5f};
-        assertEquals(1f, TimedLayout.comboTimeLeft(0f, 0.9f), EPS);
-        assertEquals(0.5f, TimedLayout.comboTimeLeft(0.45f, 0.9f), EPS);
-        assertEquals(0f, TimedLayout.comboTimeLeft(2f, 0.9f), EPS);
-        assertEquals(0f, TimedLayout.comboTimeLeft(0.1f, 0f), EPS);
-        float previous = Float.MAX_VALUE;
-        for (int i = 0; i <= 9; i++) {
-            float[] fill = TimedLayout.comboTimerFill(track, TimedLayout.comboTimeLeft(i / 10f, 0.9f));
-            assertEquals(100f, fill[0], 0f);
-            assertTrue(fill[2] < previous);
-            previous = fill[2];
-        }
-    }
-
-    @Test
-    void theStripSlidesFromBelowTheScreenToRest() {
-        float[] strip = FocusBattleLayout.comboStripRect(W, H, 1f);
-        assertTrue(strip[1] + TimedLayout.comboSlideOffset(strip, H, 0f, SCALE) >= H, "fully out = below the window");
-        assertEquals(0f, TimedLayout.comboSlideOffset(strip, H, 1f, SCALE), EPS);
-        assertTrue(TimedLayout.comboSlideOffset(strip, H, 0.5f, SCALE) > 0f);
-    }
-
-    // ─────────────────────────────────────────────── E14 vignette curve
-
-    @Test
-    void vignettesLeaveTheCentreAloneAndNeverExceedTheCap() {
-        for (float peak : new float[]{0.1f, 0.3f, 0.45f, 0.9f, 5f}) {
-            float previous = 0f;
-            for (int i = 0; i <= 150; i++) {
-                float r = i / 100f;
-                float a = TimedLayout.vignetteAlpha(r, peak, 0f);
-                if (r <= TimedLayout.VIGNETTE_CLEAR_RADIUS) assertEquals(0f, a, 0f, "centre 50% untouched at r=" + r);
-                assertTrue(a <= TimedLayout.VIGNETTE_MAX_ALPHA + EPS, "capped");
-                assertTrue(a >= previous - EPS, "monotonic outward");
-                previous = a;
-            }
-        }
-        assertEquals(0.3f, TimedLayout.vignetteAlpha(TimedLayout.VIGNETTE_CORNER_RADIUS, 0.3f, 0.5f), EPS, "peak reached in the corner");
-        assertEquals(0f, TimedLayout.vignetteAlpha(0.8f, 0.3f, 0.82f), 0f, "an edge aura starts further out");
-        assertEquals(0f, TimedLayout.normalisedRadius(W / 2f, H / 2f, W, H), EPS);
-        assertEquals(1f, TimedLayout.normalisedRadius(W, H / 2f, W, H), EPS);
-        assertEquals(TimedLayout.VIGNETTE_CORNER_RADIUS, TimedLayout.normalisedRadius(0f, 0f, W, H), EPS);
-        assertEquals(0.5f, TimedLayout.normalisedRadius(W * 0.75f, H / 2f, W, H), EPS, "the centre 50% is r <= 0.5");
     }
 }

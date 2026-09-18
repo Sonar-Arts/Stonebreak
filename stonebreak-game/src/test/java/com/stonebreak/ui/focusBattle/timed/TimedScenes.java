@@ -11,7 +11,6 @@ import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.api.PromptView;
 import com.stonebreak.battle.api.TelegraphView;
 import com.stonebreak.battle.api.TimedGrade;
-import com.stonebreak.ui.focusBattle.BattleHudAnimState;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
 import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
@@ -106,7 +105,8 @@ final class TimedScenes {
         float s = FocusBattleLayout.effectiveScale(w, h, UI_SCALE);
         for (SkijaFocusBattleRenderer.Layer layer : List.of(layers.screenFxLayer(), layers.timingRingLayer(),
                 layers.parryLayer(), layers.comboStripLayer())) {
-            layer.paint(fx.ui, fx.canvas, w, h, s, UI_SCALE, view, BattleHudAnimState.NEUTRAL, vp);
+            // The timed layers never read the HUD animator's state, so they are painted without one.
+            layer.paint(fx.ui, fx.canvas, w, h, s, UI_SCALE, view, null, vp);
         }
         return fx;
     }

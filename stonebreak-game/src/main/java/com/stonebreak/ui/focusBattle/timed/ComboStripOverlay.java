@@ -2,145 +2,115 @@ package com.stonebreak.ui.focusBattle.timed;
 
 import com.stonebreak.battle.api.ComboDirection;
 import com.stonebreak.battle.api.TimedGrade;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
+import com.stonebreak.rendering.UI.masonryUI.MPromptStrip;
+import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.stonebreak.rendering.UI.masonryUI.MSymbol;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
-import com.stonebreak.ui.focusBattle.FocusBattleTheme;
-import io.github.humbleui.skija.Canvas;
-import io.github.humbleui.skija.Font;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * E10 — the Focus Combo strip. One battle window holding the whole direction string: answered
- * prompts are <b>stamped</b> (gold = PERFECT, white = GOOD, cracked red = MISS), the prompt awaiting
- * input is enlarged, pulsing and underlined by a draining timer, and the ones still to come are
- * dimmed. Arrows are vector glyphs (the UI font has none) with the matching key letter in the
- * cell's corner. The strip slides up when the string opens, stays through the finisher, flashes
- * "FLAWLESS!" on a clean string and slides away.
+ * E10, the Focus Combo strip: a thin adapter that feeds one {@link MPromptStrip} from
+ * {@link TimedInputState}'s snapshot of the string. The widget draws everything (frame, cells,
+ * arrows, key letters, stamps, the draining timer, captions, the flash word) and owns the motion of
+ * its own parts; this class only translates battle vocabulary into the widget's:
  *
- * <p>Painted entirely from {@link TimedInputState}'s snapshot rather than the live prompt: the last
- * grade arrives in the same frame the prompt disappears.
+ * <ul>
+ *   <li>{@link ComboDirection} → arrow glyph + W/A/S/D legend;</li>
+ *   <li>{@link TimedGrade} → {@code RESOLVED_BEST / RESOLVED_OK / RESOLVED_FAIL};</li>
+ *   <li>the landed-blow count → the counter; a flawless finish → the "FLAWLESS!" word.</li>
+ * </ul>
+ *
+ * <p>Fed from the snapshot rather than the live prompt: the last grade arrives in the same frame the
+ * prompt disappears, and the strip stays up through the finisher.
  */
 public final class ComboStripOverlay {
 
-    private ComboStripOverlay() {}
+    static final String CAPTION = "FOCUS COMBO";
+    static final String FLAWLESS_WORD = "FLAWLESS!";
+    public static final float FLAWLESS_SECONDS = 1.2f;
 
-    public static void paint(MasonryUI ui, Canvas canvas, int w, int h, float scale, float rawUiScale,
-                             TimedInputState state) {
-        if (canvas == null || state == null || state.comboSlide <= 0f) return;
-        float[] rest = FocusBattleLayout.comboStripRect(w, h, rawUiScale);
-        float[] strip = FocusBattleLayout.offset(rest, 0f, TimedLayout.comboSlideOffset(rest, h, state.comboSlide, scale));
-        paintStrip(ui, canvas, strip, scale, state);
+    private final MPromptStrip strip = new MPromptStrip()
+            .caption(CAPTION)
+            .accent(BattlePalette.FOCUS)
+            .flashColor(BattlePalette.FOCUS)
+            .flashDuration(FLAWLESS_SECONDS)
+            // Calm while there is time, through amber, to alarm red as the step runs out.
+            .timerColors(MStyle.VITAL_CRIT, MStyle.VITAL_WARN, BattlePalette.ATB)
+            .slide(0f);
+
+    private List<ComboDirection> shown = List.of();
+    private boolean flawlessAnnounced;
+
+    /** The widget, for geometry and state queries ({@code cellRect}, {@code stateOf}, {@code flashRect}). */
+    public MPromptStrip strip() {
+        return strip;
     }
 
-    /** The strip at an explicit rect (raster tests, and the slide above). */
-    public static void paintStrip(MasonryUI ui, Canvas canvas, float[] strip, float s, TimedInputState state) {
-        FocusBattleTheme.battleWindow(canvas, strip);
-        float flawless = state.flawlessAge < 0f ? 0f
-                : TimedTheme.flashEnvelope(state.flawlessAge / TimedInputState.FLAWLESS_SECONDS);
-        if (flawless > 0f) {
-            FocusBattleTheme.roundedStroke(canvas, strip[0] - 2f * s, strip[1] - 2f * s, strip[2] + 4f * s,
-                    strip[3] + 4f * s, 7f * s, FocusBattleTheme.fade(TimedTheme.PERFECT, flawless), Math.max(2f, 3f * s));
-        }
-
-        int count = state.comboSequence.size();
-        for (int i = 0; i < count; i++) {
-            if (i != state.comboIndex) paintCell(ui, canvas, strip, i, count, s, state);
-        }
-        // Current prompt last: it is enlarged and must overlap its neighbours, not the reverse.
-        if (state.comboIndex >= 0 && state.comboIndex < count) {
-            paintCell(ui, canvas, strip, state.comboIndex, count, s, state);
-        }
-        paintCaptions(ui, canvas, strip, s, state);
-
-        if (flawless > 0f) {
-            FocusBattleTheme.roundedFill(canvas, strip[0], strip[1], strip[2], strip[3], FocusBattleTheme.WINDOW_RADIUS,
-                    FocusBattleTheme.fade(TimedTheme.PERFECT_HOT, 0.26f * flawless));
-            paintFlawlessWord(ui, canvas, strip, s, state.flawlessAge);
-        }
+    public void reset() {
+        shown = List.of();
+        flawlessAnnounced = false;
+        strip.steps(List.of()).current(-1).upNext(-1).timer(1f).counter("").slide(0f).flashText(null, -1f);
     }
 
-    // ─────────────────────────────────────────────── Cells
+    /**
+     * Once per frame, after {@link TimedInputState#update}: the widget's own timers advance by
+     * {@code dt}, then this frame's results are fed in (so a fresh stamp or flash starts at age 0).
+     */
+    public void update(TimedInputState state, float dt) {
+        strip.update(dt);
+        if (state == null) return;
 
-    private static void paintCell(MasonryUI ui, Canvas canvas, float[] strip, int i, int count, float s,
-                                  TimedInputState state) {
-        float[] base = TimedLayout.comboCellRect(strip, i, count, s);
-        TimedGrade grade = i < state.comboResults.length ? state.comboResults[i] : null;
-        boolean current = grade == null && i == state.comboIndex;
-        // Between prompts nothing is awaiting input; the one about to open is lit (not enlarged,
-        // no timer) so the eye is already on it when it does.
-        boolean upNext = grade == null && state.comboIndex < 0 && !state.comboFinished
-                && i == state.comboNextIndex();
-        ComboDirection dir = state.comboSequence.get(i);
-        float pulse = 0.5f + 0.5f * (float) Math.sin(state.time * 9.0);
-
-        float k = 1f;
-        if (current) {
-            k = TimedLayout.COMBO_CURRENT_SCALE + 0.04f * pulse;
-        } else if (grade != null && i < state.comboStampAge.length && state.comboStampAge[i] >= 0f) {
-            // The stamp lands big and settles.
-            float t = FocusBattleTheme.clamp01(state.comboStampAge[i] / TimedInputState.COMBO_STAMP_SECONDS);
-            k = 1f + 0.3f * (1f - TimedTheme.easeOutCubic(t));
+        if (!state.comboSequence.equals(shown)) {
+            shown = List.copyOf(state.comboSequence);
+            strip.steps(steps(shown));
         }
-        float[] c = TimedLayout.scaled(base, k);
-        float r = 5f * s;
-        float border = Math.max(1.5f, 2f * s);
+        for (int i = 0; i < shown.size(); i++) {
+            MPromptStrip.State wanted = resolvedState(i < state.comboResults.length ? state.comboResults[i] : null);
+            MPromptStrip.State drawn = strip.stateOf(i);
+            boolean drawnResolved = drawn != MPromptStrip.State.CURRENT && drawn != MPromptStrip.State.UPCOMING;
+            if (wanted != (drawnResolved ? drawn : null)) strip.markResolved(i, wanted);
+        }
 
-        int fill, edge, arrow, letter;
-        if (grade == TimedGrade.PERFECT) {
-            fill = TimedTheme.PERFECT; edge = TimedTheme.PERFECT_HOT; arrow = TimedTheme.CELL_STAMP_INK; letter = arrow;
-        } else if (grade == TimedGrade.GOOD) {
-            fill = 0xFFF2F6FA; edge = 0xFFFFFFFF; arrow = TimedTheme.CELL_STAMP_INK; letter = arrow;
-        } else if (grade == TimedGrade.MISS) {
-            fill = TimedTheme.MISS_DARK; edge = TimedTheme.MISS; arrow = TimedTheme.MISS; letter = TimedTheme.MISS;
-        } else if (current) {
-            fill = TimedTheme.CELL_FILL;
-            edge = FocusBattleTheme.lerpColor(TimedTheme.CELL_BORDER, 0xFFFFFFFF, pulse);
-            arrow = TimedTheme.CELL_ARROW; letter = FocusBattleTheme.TEXT_LABEL;
-        } else if (upNext) {
-            fill = TimedTheme.CELL_FILL; edge = TimedTheme.CELL_BORDER;
-            arrow = 0xD9FFFFFF; letter = FocusBattleTheme.TEXT_LABEL;
+        strip.current(state.comboIndex);
+        // Between prompts nothing is awaiting input; the one about to open is lit (not enlarged, no
+        // timer) so the eye is already on it when it does.
+        strip.upNext(state.comboIndex < 0 && !state.comboFinished ? state.comboNextIndex() : -1);
+        strip.timer(timeLeft(state.comboStepElapsed, state.comboStepDuration));
+        strip.counter(counter(state.comboLanded()));
+        strip.slide(state.comboSlide);
+
+        if (state.comboFlawless()) {
+            if (!flawlessAnnounced) strip.flashText(FLAWLESS_WORD, 0f);
+            flawlessAnnounced = true;
         } else {
-            fill = TimedTheme.CELL_FILL_DIM; edge = TimedTheme.CELL_BORDER_DIM;
-            arrow = TimedTheme.CELL_ARROW_DIM; letter = TimedTheme.CELL_ARROW_DIM;
-        }
-
-        if (current) {
-            FocusBattleTheme.roundedFill(canvas, c[0] - 3f * s, c[1] - 3f * s, c[2] + 6f * s, c[3] + 6f * s, r + 3f * s,
-                    FocusBattleTheme.fade(TimedTheme.CELL_BORDER, 0.22f + 0.2f * pulse));
-        }
-        FocusBattleTheme.roundedFill(canvas, c[0], c[1], c[2], c[3], r, fill);
-        FocusBattleTheme.roundedStroke(canvas, c[0], c[1], c[2], c[3], r, edge, current ? border * 1.4f : border);
-
-        float glyph = c[2] * 0.56f;
-        arrow(canvas, dir, c[0] + c[2] * 0.44f, c[1] + c[3] * 0.46f, glyph, arrow);
-        if (grade == TimedGrade.MISS) crack(canvas, c, s);
-
-        if (ui != null) {
-            Font font = FocusBattleTheme.font(ui, TimedTheme.FS_KEY * k, s);
-            if (font != null) {
-                String key = keyFor(dir);
-                float tw = MPainter.measureWidth(font, key);
-                MPainter.drawString(canvas, key, c[0] + c[2] - tw - 4f * s, c[1] + c[3] - 4f * s, font, letter);
-            }
-        }
-
-        if (current) {
-            float[] track = TimedLayout.comboTimerTrack(base, s);
-            float left = TimedLayout.comboTimeLeft(state.comboStepElapsed, state.comboStepDuration);
-            float[] bar = TimedLayout.comboTimerFill(track, left);
-            FocusBattleTheme.fillRect(canvas, track[0], track[1], track[2], track[3], FocusBattleTheme.BAR_TRACK);
-            FocusBattleTheme.fillRect(canvas, bar[0], bar[1], bar[2], bar[3],
-                    timerColor(left));
-            MPainter.strokeRect(canvas, track[0] + 0.5f, track[1] + 0.5f, track[2] - 1f, track[3] - 1f,
-                    FocusBattleTheme.BAR_OUTLINE, 1f);
+            // A new string (or a reset) takes the stage: the last one's word must not linger over it.
+            if (flawlessAnnounced) strip.flashText(null, -1f);
+            flawlessAnnounced = false;
         }
     }
 
-    /** Calm cyan while there is time, through amber, to alarm red as the step runs out. */
-    static int timerColor(float timeLeft) {
-        float k = FocusBattleTheme.clamp01(timeLeft);
-        return k >= 0.5f ? FocusBattleTheme.lerpColor(TimedTheme.TIMER_MID, TimedTheme.TIMER_FULL, (k - 0.5f) * 2f)
-                : FocusBattleTheme.lerpColor(TimedTheme.TIMER_EMPTY, TimedTheme.TIMER_MID, k * 2f);
+    /** Places the widget for this window: the layout's reserved rect, sliding in from below the screen. */
+    public MPromptStrip layout(int w, int h, float scale, float rawUiScale) {
+        float[] rest = FocusBattleLayout.comboStripRect(w, h, rawUiScale);
+        return strip.scale(scale).bounds(rest[0], rest[1], rest[2], rest[3])
+                .slideDistance(h - rest[1] + 12f * scale);
+    }
+
+    public void paint(MasonryUI ui, int w, int h, float scale, float rawUiScale) {
+        if (ui == null || strip.slide() <= 0f) return;
+        layout(w, h, scale, rawUiScale).render(ui);
+    }
+
+    // ─────────────────────────────────────────────── Battle vocabulary → widget vocabulary
+
+    static List<MPromptStrip.Step> steps(List<ComboDirection> sequence) {
+        List<MPromptStrip.Step> steps = new ArrayList<>(sequence.size());
+        for (ComboDirection dir : sequence) steps.add(new MPromptStrip.Step(glyphFor(dir), keyFor(dir)));
+        return steps;
     }
 
     public static String keyFor(ComboDirection dir) {
@@ -152,78 +122,31 @@ public final class ComboStripOverlay {
         };
     }
 
-    /** Block arrow (head + shaft) centred on {@code (cx, cy)} inside a {@code size} box. */
-    static void arrow(Canvas canvas, ComboDirection dir, float cx, float cy, float size, int color) {
-        // Authored pointing up in a unit box, then turned in quarter steps.
-        float[] unit = {0f, -0.5f, 0.48f, 0.02f, 0.18f, 0.02f, 0.18f, 0.5f, -0.18f, 0.5f, -0.18f, 0.02f, -0.48f, 0.02f};
-        float[] xy = new float[unit.length];
-        for (int i = 0; i < unit.length; i += 2) {
-            float x = unit[i], y = unit[i + 1], rx, ry;
-            switch (dir) {
-                case RIGHT -> { rx = -y; ry = x; }
-                case DOWN -> { rx = -x; ry = -y; }
-                case LEFT -> { rx = y; ry = -x; }
-                default -> { rx = x; ry = y; }
-            }
-            xy[i] = cx + rx * size;
-            xy[i + 1] = cy + ry * size;
-        }
-        TimedTheme.fillPolygon(canvas, xy, color);
+    public static MSymbol glyphFor(ComboDirection dir) {
+        return switch (dir) {
+            case UP -> MSymbol.ARROW_UP;
+            case LEFT -> MSymbol.ARROW_LEFT;
+            case DOWN -> MSymbol.ARROW_DOWN;
+            case RIGHT -> MSymbol.ARROW_RIGHT;
+        };
     }
 
-    /** A fixed fracture across a missed cell (deterministic, like the cancelled cast bar's). */
-    private static void crack(Canvas canvas, float[] c, float s) {
-        float[] xy = {
-                c[0] + c[2] * 0.62f, c[1],
-                c[0] + c[2] * 0.42f, c[1] + c[3] * 0.34f,
-                c[0] + c[2] * 0.60f, c[1] + c[3] * 0.52f,
-                c[0] + c[2] * 0.36f, c[1] + c[3] * 0.78f,
-                c[0] + c[2] * 0.44f, c[1] + c[3]};
-        TimedTheme.haloPolyline(canvas, xy, Math.max(1f, 1.5f * s), 0xFFFFB0A8, 1f, s * 0.5f);
+    /** The stamp a grade earns; null for a cell with no grade yet. */
+    static MPromptStrip.State resolvedState(TimedGrade grade) {
+        if (grade == null) return null;
+        return switch (grade) {
+            case PERFECT -> MPromptStrip.State.RESOLVED_BEST;
+            case GOOD -> MPromptStrip.State.RESOLVED_OK;
+            case MISS -> MPromptStrip.State.RESOLVED_FAIL;
+        };
     }
 
-    // ─────────────────────────────────────────────── Captions
-
-    private static void paintCaptions(MasonryUI ui, Canvas canvas, float[] strip, float s, TimedInputState state) {
-        if (ui == null) return;
-        float[] label = TimedLayout.comboLabelRect(strip, s);
-        Font small = FocusBattleTheme.font(ui, FocusBattleTheme.FS_LABEL, s);
-        if (small != null) {
-            float cy = label[1] + label[3] / 2f;
-            FocusBattleTheme.textCentered(canvas, "FOCUS", label[0] + label[2] / 2f,
-                    FocusBattleTheme.baseline(cy - small.getSize() * 0.62f, small.getSize()), small, FocusBattleTheme.FOCUS);
-            FocusBattleTheme.textCentered(canvas, "COMBO", label[0] + label[2] / 2f,
-                    FocusBattleTheme.baseline(cy + small.getSize() * 0.62f, small.getSize()), small, FocusBattleTheme.FOCUS);
-        }
-        float[] counter = TimedLayout.comboCounterRect(strip, s);
-        int hits = state.comboLanded();
-        Font big = FocusBattleTheme.font(ui, TimedTheme.FS_COUNTER, s);
-        if (big != null && small != null) {
-            float cx = counter[0] + counter[2] / 2f, cy = counter[1] + counter[3] / 2f;
-            int color = hits > 0 ? FocusBattleTheme.TEXT : FocusBattleTheme.TEXT_DISABLED;
-            FocusBattleTheme.textCentered(canvas, Integer.toString(hits), cx,
-                    FocusBattleTheme.baseline(cy - small.getSize() * 0.55f, big.getSize()), big, color);
-            FocusBattleTheme.textCentered(canvas, hits == 1 ? "HIT" : "HITS", cx,
-                    FocusBattleTheme.baseline(cy + big.getSize() * 0.55f, small.getSize()), small,
-                    FocusBattleTheme.TEXT_LABEL);
-        }
+    static String counter(int landed) {
+        return landed + (landed == 1 ? " HIT" : " HITS");
     }
 
-    /** Where the FLAWLESS word is centred; public so tests can look for it. */
-    public static float[] flawlessWordRect(float[] strip, float s) {
-        float h = TimedTheme.FS_BIG * s * 1.5f;
-        return new float[]{strip[0], strip[1] - h - 6f * s, strip[2], h};
-    }
-
-    private static void paintFlawlessWord(MasonryUI ui, Canvas canvas, float[] strip, float s, float age) {
-        if (ui == null) return;
-        float t = FocusBattleTheme.clamp01(age / TimedInputState.FLAWLESS_SECONDS);
-        float pop = 1f + 0.4f * (1f - TimedTheme.easeOutCubic(FocusBattleTheme.clamp01(t / 0.18f)));
-        float fade = 1f - TimedTheme.smoothstep((t - 0.7f) / 0.3f);
-        Font font = FocusBattleTheme.font(ui, TimedTheme.FS_BIG * pop, s);
-        if (font == null) return;
-        float[] rect = flawlessWordRect(strip, s);
-        TimedTheme.outlinedTextCentered(canvas, "FLAWLESS!", rect[0] + rect[2] / 2f,
-                FocusBattleTheme.baseline(rect[1] + rect[3] / 2f, font.getSize()), font, TimedTheme.PERFECT, fade, s);
+    /** Share of the step's time that is left, 1 → 0. */
+    static float timeLeft(float stepElapsed, float stepDuration) {
+        return stepDuration <= 0f ? 0f : 1f - stepElapsed / stepDuration;
     }
 }

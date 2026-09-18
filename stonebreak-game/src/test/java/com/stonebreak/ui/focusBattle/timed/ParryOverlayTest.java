@@ -5,6 +5,7 @@ import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.api.PromptKind;
 import com.stonebreak.battle.api.TimedGrade;
+import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
 import org.joml.Matrix4f;
 import org.junit.jupiter.api.Test;
@@ -39,23 +40,23 @@ class ParryOverlayTest {
         // parryView: window opens at 1.0 s.
         BattleRasterFixture open = paint(TimedScenes.parryView(0f), 0f);
         float wide = TimedLayout.bracketHalfGap(HALF, 0f);
-        assertTrue(spineAt(open, MX - wide, TimedTheme.PARRY_BRACKET) > 20, "left bracket fully open");
-        assertTrue(spineAt(open, MX + wide, TimedTheme.PARRY_BRACKET) > 20, "right bracket fully open");
+        assertTrue(spineAt(open, MX - wide, ParryOverlay.BRACKET) > 20, "left bracket fully open");
+        assertTrue(spineAt(open, MX + wide, ParryOverlay.BRACKET) > 20, "right bracket fully open");
 
         BattleRasterFixture half = paint(TimedScenes.parryView(0.5f), 0f);
         float mid = TimedLayout.bracketHalfGap(HALF, 0.5f);
-        assertTrue(spineAt(half, MX - mid, TimedTheme.PARRY_BRACKET) > 20, "halfway in at half time");
-        assertEquals(0, spineAt(half, MX - wide, TimedTheme.PARRY_BRACKET), "and no longer at the open position");
+        assertTrue(spineAt(half, MX - mid, ParryOverlay.BRACKET) > 20, "halfway in at half time");
+        assertEquals(0, spineAt(half, MX - wide, ParryOverlay.BRACKET), "and no longer at the open position");
 
         BattleRasterFixture shut = paint(TimedScenes.parryView(1.0f), 0f);
         int live = 0;
         for (int x = Math.round(MX - HALF) - 3; x <= Math.round(MX - HALF) + 3; x++) {
             int c = shut.bitmap.getColor(x, Math.round(MY));
-            // Live brackets are gold-to-white: strong red + green.
-            if (((c >> 16) & 0xFF) > 0xE0 && ((c >> 8) & 0xFF) > 0xE0) live++;
+            // Live brackets pulse from the reaction-window gold toward white: strong red, warm green.
+            if (((c >> 16) & 0xFF) > 0xE0 && ((c >> 8) & 0xFF) > 0xC0) live++;
         }
         assertTrue(live > 0, "shut on the monk exactly at the window start");
-        assertEquals(0, spineAt(shut, MX - mid, TimedTheme.PARRY_BRACKET));
+        assertEquals(0, spineAt(shut, MX - mid, ParryOverlay.BRACKET));
     }
 
     @Test
@@ -79,7 +80,7 @@ class ParryOverlayTest {
         assertEquals(W * H, flash.countPainted(0, 0, W, H), "the wash covers every pixel");
         int corner = flash.bitmap.getColor(3, 3);
         assertTrue(((corner >> 16) & 0xFF) > 0x91 && ((corner >> 8) & 0xFF) > 0xBA, "and it is a brightening, white-blue one");
-        assertTrue(flash.countExactly(0xFFFFFFFF, 0, 0, W, H) > 400, "big white PARRY! + ring core");
+        assertTrue(flash.countExactly(ParryOverlay.PARRY_WORD, 0, 0, W, H) > 400, "big white PARRY!");
 
         // The ring expands: later frame, larger radius (its bright core moves away from the monk).
         TimedInputLayers layers = new TimedInputLayers(TimedScenes.LAYOUT);
@@ -118,8 +119,8 @@ class ParryOverlayTest {
         assertEquals(0, block.countPainted(0, 0, W / 3, H));
         assertEquals(0, early.countPainted(0, 0, W / 3, H));
         // TOO EARLY is grey, not a celebration colour.
-        assertTrue(early.countExactly(TimedTheme.NEUTRAL_GREY, 0, 0, W, H) > 100);
-        assertEquals(0, early.countExactly(TimedTheme.PERFECT, 0, 0, W, H));
+        assertTrue(early.countExactly(ParryOverlay.TOO_EARLY_COLOR, 0, 0, W, H) > 100);
+        assertEquals(0, early.countExactly(MStyle.TEXT_ACCENT, 0, 0, W, H));
         // A shield sits on the monk.
         assertTrue(block.bitmap.getColor(Math.round(MX), Math.round(MY)) != BattleRasterFixture.BACKGROUND);
 

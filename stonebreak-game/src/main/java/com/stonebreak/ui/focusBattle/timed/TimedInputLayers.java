@@ -14,6 +14,10 @@ import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
  * them) are one <b>underlay</b>, beneath every HUD window. The ring, parry and combo strip are
  * <b>overlays</b>, in that order. Nothing here reads a clock; all motion comes from
  * {@link #update}'s {@code dt} and the frame's battle events.
+ *
+ * <p>Each overlay is an instance that owns its MasonryUI widgets (the combo strip's
+ * {@code MPromptStrip}, the ring's {@code MPipRow}, the key hints); {@link TimedInputState} holds
+ * what happened in the battle, the widgets hold the motion of their own parts. Both advance here.
  */
 public final class TimedInputLayers {
 
@@ -22,16 +26,20 @@ public final class TimedInputLayers {
     private boolean gradeWords = true;
     private boolean guardWords = true;
 
+    private final TimingRingOverlay ringOverlay = new TimingRingOverlay();
+    private final ParryOverlay parryOverlay = new ParryOverlay();
+    private final ComboStripOverlay comboOverlay = new ComboStripOverlay();
+
     private final SkijaFocusBattleRenderer.Layer screenFx =
             (ui, canvas, w, h, s, raw, view, anim, vp) -> ScreenFxLayer.paint(canvas, w, h, s, view, state);
     private final SkijaFocusBattleRenderer.Layer timingRing =
             (ui, canvas, w, h, s, raw, view, anim, vp) ->
-                    TimingRingOverlay.paint(ui, canvas, w, h, s, view, state, layout(), vp, gradeWords);
+                    ringOverlay.paint(ui, canvas, w, h, s, view, state, layout(), vp, gradeWords);
     private final SkijaFocusBattleRenderer.Layer parry =
             (ui, canvas, w, h, s, raw, view, anim, vp) ->
-                    ParryOverlay.paint(ui, canvas, w, h, s, view, state, layout(), vp, guardWords);
+                    parryOverlay.paint(ui, canvas, w, h, s, view, state, layout(), vp, guardWords);
     private final SkijaFocusBattleRenderer.Layer comboStrip =
-            (ui, canvas, w, h, s, raw, view, anim, vp) -> ComboStripOverlay.paint(ui, canvas, w, h, s, raw, state);
+            (ui, canvas, w, h, s, raw, view, anim, vp) -> comboOverlay.paint(ui, w, h, s, raw);
 
     /** @param layout the stage the ring and parry brackets anchor to; null pins them to their fallbacks */
     public TimedInputLayers(BattleStageLayout layout) {
@@ -50,11 +58,15 @@ public final class TimedInputLayers {
     /** Once per frame, after the battle model's update: consumes {@code view.frameEvents()}. */
     public void update(BattleView view, float dt) {
         state.update(view, dt);
+        ringOverlay.update(view, dt);
+        comboOverlay.update(state, dt);
     }
 
     /** Back to a blank slate (bind, retry). */
     public void reset() {
         state.reset();
+        ringOverlay.reset();
+        comboOverlay.reset();
     }
 
     /**
@@ -75,14 +87,18 @@ public final class TimedInputLayers {
     }
 
     /**
-     * Whether the guard words (the big PARRY!, BLOCK, TOO EARLY) are drawn. Turn off if the
-     * floating-number layer announces them; the flash ring, the shield and the brackets always draw.
+     * Whether the guard words the floating-number layer can announce instead (the big PARRY!, BLOCK)
+     * are drawn. The flash ring, the shield and the brackets always draw, and so does TOO EARLY: it
+     * has no floater twin, so it never rides on this switch.
      */
     public void setGuardWordsEnabled(boolean enabled) {
         this.guardWords = enabled;
     }
 
     public TimedInputState state() { return state; }
+
+    public TimingRingOverlay timingRing() { return ringOverlay; }
+    public ComboStripOverlay comboStrip() { return comboOverlay; }
 
     public SkijaFocusBattleRenderer.Layer screenFxLayer() { return screenFx; }
     public SkijaFocusBattleRenderer.Layer timingRingLayer() { return timingRing; }

@@ -256,7 +256,7 @@ public final class MenuInputRouter {
             }
         }
         com.stonebreak.ui.focusBattle.FocusBattleScreen screen = game.getFocusBattleScreen();
-        boolean handled = screen != null && com.stonebreak.battle.stage.FocusBattle.guardHud("hud key",
+        boolean handled = screen != null && com.stonebreak.battle.stage.FocusBattle.guardHudInput("hud key",
                 () -> screen.handleKeyInput(key, action, mods));
         if (!handled && key == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE
                 && action == org.lwjgl.glfw.GLFW.GLFW_PRESS) {

@@ -15,9 +15,11 @@ import com.stonebreak.battle.api.PromptView;
 import com.stonebreak.config.Settings;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.ui.focusBattle.elements.ActionBanner;
+import com.stonebreak.ui.focusBattle.elements.CommandWindow;
 import com.stonebreak.ui.focusBattle.elements.BattleFloaters;
 import com.stonebreak.ui.focusBattle.elements.EncounterTransition;
-import com.stonebreak.ui.focusBattle.elements.GaugeSparks;
+import com.stonebreak.ui.focusBattle.elements.EnemyPlate;
+import com.stonebreak.ui.focusBattle.elements.PartyStatusWindow;
 import com.stonebreak.ui.focusBattle.elements.ResultPanel;
 import com.stonebreak.ui.focusBattle.elements.TargetCursor;
 import org.joml.Matrix4f;
@@ -64,9 +66,10 @@ import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
  * <p>Commands aimed at the enemy pass through a target step (E8) before they are submitted;
  * commands that act on the monk submit at once, so a reaction Guard is always a single confirm.
  *
- * <p>Motion has one owner: {@link HudAnimator} writes {@link BattleHudAnimState} from each frame's
- * battle events, and the stateful elements (banner, floaters, transition, result panel) are ticked
- * here from the same event list. All of them reset on {@link #bind}, which is also what a retry is.
+ * <p>The screen owns the HUD's windows ({@link SkijaFocusBattleRenderer.Windows}: compositions over
+ * MasonryUI widgets that animate themselves) and ticks them, the frame-level {@link HudAnimator} and
+ * the stateful layers (banner, floaters, transition, result panel) from one event list per frame.
+ * All of them reset on {@link #bind}, which is also what a retry is.
  *
  * <p>Logic paths are GL-free and touch no {@code Game}/{@code Renderer} singleton: the screen is
  * constructed and driven headlessly in tests (a null backend simply renders nothing).
@@ -74,6 +77,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
 public final class FocusBattleScreen {
 
     private final SkijaFocusBattleRenderer renderer;
+    private final SkijaFocusBattleRenderer.Windows windows = new SkijaFocusBattleRenderer.Windows();
     private final BattleMenuState menu = new BattleMenuState();
     private final BattleHudAnimState anim = new BattleHudAnimState();
     private final HudAnimator animator = new HudAnimator(anim);
@@ -97,8 +101,7 @@ public final class FocusBattleScreen {
     private boolean hasViewProjection;
 
     public FocusBattleScreen(SkijaUIBackend backend) {
-        this.renderer = new SkijaFocusBattleRenderer(backend);
-        renderer.addOverlay(new GaugeSparks());
+        this.renderer = new SkijaFocusBattleRenderer(backend, windows);
         renderer.addOverlay(targetCursor);
         renderer.addOverlay(banner);
         // Ring, parry and combo strip sit under the floating numbers so damage stays readable over them.
@@ -123,6 +126,7 @@ public final class FocusBattleScreen {
         consumedEvents = null;
         hasViewProjection = false;
         animator.reset(view, menu);
+        windows.reset();
         banner.reset();
         floaters.reset();
         floaters.setStage(layout);
@@ -142,6 +146,7 @@ public final class FocusBattleScreen {
         consumedEvents = null;
         hasViewProjection = false;
         menu.syncWindowOpen(false);
+        windows.reset();
         floaters.reset();
         floaters.setStage(null);
         timed.setStage(null);
@@ -154,7 +159,13 @@ public final class FocusBattleScreen {
     /** The cursor state (read by the renderer; exposed for tests). */
     public BattleMenuState menuState() { return menu; }
 
-    /** The motion inputs the painters read; {@link #animator()} is their only writer. */
+    public CommandWindow commandWindow() { return windows.command; }
+
+    public PartyStatusWindow partyWindow() { return windows.party; }
+
+    public EnemyPlate enemyPlate() { return windows.enemy; }
+
+    /** Frame-level motion (slides, shakes, fades); {@link #animator()} is its only writer. */
     public BattleHudAnimState animState() { return anim; }
 
     public HudAnimator animator() { return animator; }
@@ -179,6 +190,7 @@ public final class FocusBattleScreen {
         float step = Math.max(0f, dt);
         List<BattleEvent> events = freshEvents();
         animator.update(step, view, menu, events);
+        windows.update(step, view, menu, events);
         banner.update(step, view, events);
         floaters.update(step, view, events);
         timed.update(view, step);
@@ -396,32 +408,29 @@ public final class FocusBattleScreen {
     }
 
     /**
-     * Moves the cursor to the row under the pointer, using the slot formulas the painters draw
-     * with. While the submenu is open a plain hover over the root list is ignored — the pointer
+     * Moves the cursor to the row under the pointer, asking the menu lists themselves
+     * ({@code MMenuList.rowAt}: the rects they draw). While the submenu is open a plain hover over the root list is ignored — the pointer
      * crosses the Qi Arts row on its way into the submenu — but a click there takes over.
      *
      * @return true when the pointer is on a row (which is now the selected one)
      */
     private boolean pointAtRow(float px, float py, int w, int h, boolean click) {
         float uiScale = uiScale();
+        float scale = FocusBattleLayout.effectiveScale(w, h, uiScale);
         if (menu.submenuOpen()) {
-            for (int i = 0; i < FocusBattleLayout.submenuRowCount(); i++) {
-                if (FocusBattleLayout.contains(px, py, FocusBattleLayout.submenuRowRect(i, w, h, uiScale))) {
-                    menu.selectSubmenu(i);
-                    return true;
-                }
+            int row = windows.command.artsRowAt(px, py, FocusBattleLayout.submenuRect(w, h, uiScale), scale);
+            if (row >= 0) {
+                menu.selectSubmenu(row);
+                return true;
             }
             if (!click) return false;
         }
-        for (int i = 0; i < FocusBattleLayout.commandRowCount(); i++) {
-            if (FocusBattleLayout.contains(px, py, FocusBattleLayout.commandRowRect(i, w, h, uiScale))) {
-                boolean wasOpenHere = menu.submenuOpen() && menu.rootIndex() == i;
-                menu.selectRoot(i);
-                // Clicking the opener of an already-open submenu just closes it.
-                return !wasOpenHere;
-            }
-        }
-        return false;
+        int row = windows.command.rootRowAt(px, py, FocusBattleLayout.commandWindowRect(w, h, uiScale), scale);
+        if (row < 0) return false;
+        boolean wasOpenHere = menu.submenuOpen() && menu.rootIndex() == row;
+        menu.selectRoot(row);
+        // Clicking the opener of an already-open submenu just closes it.
+        return !wasOpenHere;
     }
 
     // ─────────────────────────────────────────────── Lifecycle

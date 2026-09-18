@@ -6,9 +6,10 @@ import com.stonebreak.battle.api.BattleStatus;
 import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.api.StatusView;
-import com.stonebreak.ui.focusBattle.BattleHudAnimState;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
-import com.stonebreak.ui.focusBattle.FocusBattleLayout;
+import com.stonebreak.rendering.UI.masonryUI.MColor;
+import com.stonebreak.rendering.UI.masonryUI.MScreenFx;
+import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import org.junit.jupiter.api.Test;
 
 import static com.stonebreak.ui.focusBattle.timed.TimedScenes.H;
@@ -22,6 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ScreenFxLayerTest {
 
     private static final int BG = BattleRasterFixture.BACKGROUND;
+    /** The library's letterbox colour: the deep overlay at full opacity. */
+    private static final int BAR = MColor.withAlpha(MStyle.OVERLAY_DEEP, 1f);
 
     private static TimedInputLayers settled(FakeBattleView view) {
         TimedInputLayers layers = new TimedInputLayers(TimedScenes.LAYOUT);
@@ -31,7 +34,7 @@ class ScreenFxLayerTest {
 
     private static BattleRasterFixture fxOnly(TimedInputLayers layers, FakeBattleView view) {
         BattleRasterFixture fx = new BattleRasterFixture(W, H);
-        layers.screenFxLayer().paint(fx.ui, fx.canvas, W, H, SCALE, UI_SCALE, view, BattleHudAnimState.NEUTRAL, null);
+        layers.screenFxLayer().paint(fx.ui, fx.canvas, W, H, SCALE, UI_SCALE, view, null, null);
         return fx;
     }
 
@@ -52,7 +55,7 @@ class ScreenFxLayerTest {
         int clear = 0, total = 0;
         for (int y = 0; y < H; y += 3) {
             for (int x = 0; x < W; x += 3) {
-                if (TimedLayout.normalisedRadius(x, y, W, H) <= TimedLayout.VIGNETTE_CLEAR_RADIUS - 0.01f) {
+                if (MScreenFx.normalisedRadius(x, y, W, H) <= ScreenFxLayer.CLEAR_RADIUS - 0.01f) {
                     total++;
                     if (fx.bitmap.getColor(x, y) == BG) clear++;
                 }
@@ -73,9 +76,9 @@ class ScreenFxLayerTest {
         view.monk.hp = view.monk.maxHp * 0.1f;
         BattleRasterFixture fx = fxOnly(settled(view), view);
         assertCentreUntouched(fx, "low HP");
-        float corner = coverage(fx, 2, 2, TimedTheme.FX_LOW_HP);
-        float edge = coverage(fx, W / 2, 2, TimedTheme.FX_LOW_HP);
-        assertTrue(corner > 0.2f && corner <= TimedLayout.VIGNETTE_MAX_ALPHA + 0.02f, "corner alpha " + corner);
+        float corner = coverage(fx, 2, 2, ScreenFxLayer.LOW_HP_COLOR);
+        float edge = coverage(fx, W / 2, 2, ScreenFxLayer.LOW_HP_COLOR);
+        assertTrue(corner > 0.2f && corner <= MScreenFx.VIGNETTE_MAX_ALPHA + 0.02f, "corner alpha " + corner);
         assertTrue(edge > 0.05f && edge < corner, "edges tinted, less than corners: " + edge);
         int c = fx.bitmap.getColor(2, 2);
         assertTrue(((c >> 16) & 0xFF) > ((BG >> 16) & 0xFF) && ((c >> 8) & 0xFF) < ((BG >> 8) & 0xFF) - 30
@@ -96,7 +99,7 @@ class ScreenFxLayerTest {
             float peak = ScreenFxLayer.vignettePeaks(view, layers.state())[0];
             min = Math.min(min, peak);
             max = Math.max(max, peak);
-            assertTrue(peak <= TimedLayout.VIGNETTE_MAX_ALPHA + 1.0e-4f);
+            assertTrue(peak <= MScreenFx.VIGNETTE_MAX_ALPHA + 1.0e-4f);
         }
         assertTrue(max - min > 0.08f, "heartbeat swing " + (max - min));
         assertTrue(min > 0.2f, "never fully gone while HP is low");
@@ -139,7 +142,7 @@ class ScreenFxLayerTest {
         assertEquals(BG, fx.bitmap.getColor(W / 2 + (int) (W / 2 * 0.75f), H / 2));
         int corner = fx.bitmap.getColor(2, 2);
         assertTrue((corner & 0xFF) < (BG & 0xFF) && ((corner >> 16) & 0xFF) > ((BG >> 16) & 0xFF), "gold: more red, less blue");
-        assertTrue(coverage(fx, 2, 2, TimedTheme.FX_FOCUS) <= ScreenFxLayer.FOCUS_PEAK + 0.02f);
+        assertTrue(coverage(fx, 2, 2, ScreenFxLayer.FOCUS_COLOR) <= ScreenFxLayer.FOCUS_PEAK + 0.02f);
 
         view.focus = 99f;
         assertEquals(0, fxOnly(settled(view), view).countPainted(0, 0, W, H));
@@ -155,30 +158,31 @@ class ScreenFxLayerTest {
         for (int i = 0; i < 30; i++) {
             TimedScenes.frame(layers, view, 0.03f);
             float[] p = ScreenFxLayer.vignettePeaks(view, layers.state());
-            float stacked = ScreenFxLayer.stacked(p[0], p[1], p[2], 1f);
-            assertTrue(stacked <= TimedLayout.VIGNETTE_MAX_ALPHA + 1.0e-3f, "stacked peak " + stacked);
+            float stacked = MScreenFx.compositeAlpha(p);
+            assertTrue(stacked <= MScreenFx.VIGNETTE_MAX_ALPHA + 1.0e-3f, "stacked peak " + stacked);
             assertTrue(p[0] > 0f && p[1] > 0f && p[2] > 0f, "all three still present");
         }
         assertCentreUntouched(fxOnly(layers, view), "all three");
     }
 
     @Test
-    void theLetterboxBarsAreTheLayoutRects() {
+    void theLetterboxBarsAreTheLibraryRects() {
         FakeBattleView view = new FakeBattleView();
         view.phase = com.stonebreak.battle.api.BattlePhase.INTRO;
         TimedInputLayers layers = new TimedInputLayers(TimedScenes.LAYOUT);
         TimedScenes.frame(layers, view, TimedInputState.LETTERBOX_SECONDS / 2f);
         BattleRasterFixture half = fxOnly(layers, view);
         float amount = ScreenFxLayer.letterboxAmount(layers.state());
-        float[] topHalf = FocusBattleLayout.letterboxTopRect(W, H, amount);
-        assertTrue(topHalf[3] > 0f && topHalf[3] < FocusBattleLayout.letterboxTopRect(W, H, 1f)[3], "easing in");
-        assertEquals((int) (topHalf[3] * W), half.countExactly(0xFF000000, 0, 0, W, H / 2));
+        float[] topHalf = MScreenFx.letterboxTopRect(W, H, amount, MScreenFx.LETTERBOX_FRACTION);
+        assertTrue(topHalf[3] > 0f && topHalf[3] < MScreenFx.letterboxTopRect(W, H, 1f, MScreenFx.LETTERBOX_FRACTION)[3], "easing in");
+        assertEquals((int) (topHalf[3] * W), half.countExactly(BAR, 0, 0, W, H / 2));
 
         TimedScenes.frame(layers, view, TimedInputState.LETTERBOX_SECONDS);
         BattleRasterFixture full = fxOnly(layers, view);
-        float[] top = FocusBattleLayout.letterboxTopRect(W, H, 1f), bottom = FocusBattleLayout.letterboxBottomRect(W, H, 1f);
-        assertEquals((int) (top[2] * top[3]), full.countExactly(0xFF000000, 0, 0, W, (int) top[3]));
-        assertEquals((int) (bottom[2] * bottom[3]), full.countExactly(0xFF000000, 0, (int) bottom[1], W, H));
+        float[] top = MScreenFx.letterboxTopRect(W, H, 1f, MScreenFx.LETTERBOX_FRACTION),
+                bottom = MScreenFx.letterboxBottomRect(W, H, 1f, MScreenFx.LETTERBOX_FRACTION);
+        assertEquals((int) (top[2] * top[3]), full.countExactly(BAR, 0, 0, W, (int) top[3]));
+        assertEquals((int) (bottom[2] * bottom[3]), full.countExactly(BAR, 0, (int) bottom[1], W, H));
         assertEquals(0, full.countPainted(0, (int) top[3], W, (int) bottom[1]), "only the bars");
 
         view.phase = com.stonebreak.battle.api.BattlePhase.RUNNING;
@@ -193,7 +197,7 @@ class ScreenFxLayerTest {
         TimedInputLayers layers = new TimedInputLayers(TimedScenes.LAYOUT);
         TimedScenes.frame(layers, view, 0.016f, new BattleEvent.Ended(BattleOutcome.VICTORY));
         TimedScenes.frame(layers, view, 1f);
-        assertTrue(fxOnly(layers, view).countExactly(0xFF000000, 0, 0, W, H) > W * 100);
+        assertTrue(fxOnly(layers, view).countExactly(BAR, 0, 0, W, H) > W * 100);
         TimedScenes.frame(layers, view, 4f);
         TimedScenes.frame(layers, view, 0.3f);
         assertEquals(0, fxOnly(layers, view).countPainted(0, 0, W, H));
@@ -208,7 +212,7 @@ class ScreenFxLayerTest {
             TimedScenes.frame(layers, view, 0.04f);
             BattleRasterFixture fx = fxOnly(layers, view);
             assertEquals(W * H, fx.countPainted(0, 0, W, H), "full screen");
-            int tint = target == CombatantId.MONK ? TimedTheme.FX_CRIT_TAKEN : TimedTheme.FX_CRIT_DEALT;
+            int tint = target == CombatantId.MONK ? ScreenFxLayer.CRIT_TAKEN_COLOR : ScreenFxLayer.CRIT_DEALT_COLOR;
             assertTrue(coverage(fx, W / 2, H / 2, tint) <= ScreenFxLayer.CRIT_FLASH_PEAK + 0.02f, "subtle");
             TimedScenes.frame(layers, view, TimedInputState.CRIT_FLASH_SECONDS);
             assertEquals(0, fxOnly(layers, view).countPainted(0, 0, W, H), "brief");

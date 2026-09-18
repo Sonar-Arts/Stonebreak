@@ -7,8 +7,9 @@ import com.stonebreak.battle.api.BattlePhase;
 import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.EnemyAction;
 import com.stonebreak.battle.api.FakeBattleView;
+import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
-import com.stonebreak.ui.focusBattle.FlowTheme;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,6 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** E7: the banner's drop / hold / fade timing, its side tint, and that it paints into its rect. */
@@ -108,11 +108,12 @@ class ActionBannerTest {
     @Test
     void theTintNamesTheSide() {
         start(CombatantId.ARCHON, "Glacial Overhead", null, EnemyAction.OVERHEAD, 2f);
-        assertEquals(FlowTheme.FROST_RED, banner.tint());
+        assertEquals(BattlePalette.ACCENT_ARCHON, banner.tint());
         start(CombatantId.MONK, "Strike", BattleCommand.STRIKE, null, 1f);
-        assertEquals(FlowTheme.MONK_TINT, banner.tint());
+        assertEquals(BattlePalette.ACCENT_MONK, banner.tint());
         start(CombatantId.MONK, "Focus Combo", BattleCommand.FOCUS_COMBO, null, 6f);
-        assertEquals(FlowTheme.GOLD, banner.tint());
+        assertEquals(BattlePalette.FOCUS, banner.tint());
+        assertEquals(MStyle.TEXT_ACCENT, banner.tint(), "the Focus Combo wears the house gold");
     }
 
     @Test
@@ -145,8 +146,12 @@ class ActionBannerTest {
         start(CombatantId.ARCHON, "Frost Slash", null, EnemyAction.SLASH, 1.65f);
         run(0.3f);
         BattleRasterFixture archon = paint();
-        assertTrue(archon.diff(monk, rect) > 4000, "the Archon's plate is a different colour and name");
-        assertNotEquals(0, archon.countExactly(FlowTheme.FROST_RED, 0, 0, W, H), "frost-red accents");
+        assertTrue(archon.diff(monk, rect) > 500, "the Archon's plate carries a different accent and name");
+        assertTrue(archon.countExactly(BattlePalette.ACCENT_ARCHON, (int) rect[0], (int) rect[1],
+                (int) (rect[0] + rect[2]), (int) rect[1] + 8) > rect[2] / 2f, "its hairline is the Archon's accent");
+        assertEquals(0, monk.countExactly(BattlePalette.ACCENT_ARCHON, 0, 0, W, H), "which the monk's plate lacks");
+        assertTrue(monk.countExactly(MStyle.HUD_BORDER, (int) rect[0], (int) rect[1], (int) (rect[0] + rect[2]),
+                (int) (rect[1] + rect[3])) > 100, "both are the house HUD frame");
 
         start(CombatantId.MONK, "Strike", BattleCommand.STRIKE, null, 1f);
         BattleRasterFixture dropping = paint();

@@ -8,10 +8,8 @@ import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.api.PromptKind;
 import com.stonebreak.battle.api.StatusView;
 import com.stonebreak.battle.api.TimedGrade;
-import com.stonebreak.ui.focusBattle.BattleMenuState;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
-import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
 import org.joml.Matrix4f;
 import org.junit.jupiter.api.Test;
 
@@ -26,51 +24,36 @@ class TimedInputLayersTest {
 
     private static final Matrix4f CAMERA = TimedScenes.cameraPlacing(TimedScenes.archonChest(), 640f, 300f, 90f, W, H);
 
-    private static BattleRasterFixture hud(TimedInputLayers layers, FakeBattleView view) {
-        BattleRasterFixture fx = new BattleRasterFixture(W, H);
-        SkijaFocusBattleRenderer renderer = new SkijaFocusBattleRenderer(null);
-        if (layers != null) layers.install(renderer);
-        renderer.paintHud(fx.ui, fx.canvas, W, H, UI_SCALE, view, new BattleMenuState(), null, CAMERA);
-        return fx;
-    }
-
     @Test
-    void installedButIdleTheHudIsPixelIdentical() {
+    void idleLayersPaintNothingAtAll() {
         FakeBattleView view = new FakeBattleView();
         view.commandWindowOpen = true;
         TimedInputLayers layers = new TimedInputLayers(TimedScenes.LAYOUT);
         for (int i = 0; i < 10; i++) TimedScenes.frame(layers, view, 0.05f);
-        assertEquals(0, hud(layers, view).diff(hud(null, view)), "no prompt, no trigger → nothing painted");
+        assertEquals(0, TimedScenes.paintLayers(layers, view, CAMERA).countPainted(0, 0, W, H),
+                "no prompt, no trigger → the HUD underneath is pixel-identical");
         assertTrue(layers.state().idle());
     }
 
     @Test
-    void screenFxGoUnderTheWindowsAndPromptsOverThem() {
-        // Underlay: a low-HP vignette must not tint the party window's opaque bar track.
-        FakeBattleView hurt = new FakeBattleView();
+    void theScreenFxAreTheFirstLayerAndThePromptsComeAfter() {
+        // install() registers screenFxLayer as the underlay and these three as overlays, in this order;
+        // the renderer's own tests pin where underlays and overlays sit relative to the windows.
+        FakeBattleView hurt = TimedScenes.comboView(1, 0.2f, TimedGrade.PERFECT);
         hurt.monk.hp = 10f;
-        TimedInputLayers fxLayers = new TimedInputLayers(TimedScenes.LAYOUT);
-        for (int i = 0; i < 30; i++) TimedScenes.frame(fxLayers, hurt, 0.05f);
-        BattleRasterFixture with = hud(fxLayers, hurt), without = hud(null, hurt);
-        assertTrue(with.diff(without, 0, 0, 200, 60) > 1000, "vignette visible in the open corner");
-        float[] party = FocusBattleLayout.partyWindowRect(W, H, UI_SCALE);
-        // The bars' 1px outlines are opaque and unblended: tinted from above they would all change colour.
-        int outlines = without.countExactly(com.stonebreak.ui.focusBattle.FocusBattleTheme.BAR_OUTLINE,
-                (int) party[0], (int) party[1], (int) (party[0] + party[2]), (int) (party[1] + party[3]));
-        assertTrue(outlines > 200);
-        assertEquals(outlines, with.countExactly(com.stonebreak.ui.focusBattle.FocusBattleTheme.BAR_OUTLINE,
-                (int) party[0], (int) party[1], (int) (party[0] + party[2]), (int) (party[1] + party[3])),
-                "opaque HUD pixels are untouched: the vignette is beneath the windows");
-        assertTrue(with.diff(without, (int) party[0] - 40, (int) party[1], (int) party[0] - 4, (int) (party[1] + party[3])) > 500,
-                "while the scene right beside the window is tinted");
+        TimedInputLayers layers = new TimedInputLayers(TimedScenes.LAYOUT);
+        TimedScenes.frame(layers, hurt, 0.016f, new BattleEvent.PromptOpened(PromptKind.COMBO));
+        for (int i = 0; i < 30; i++) TimedScenes.frame(layers, hurt, 0.05f);
 
-        // Overlay: the combo strip covers whatever the HUD put in its rect.
-        FakeBattleView combo = TimedScenes.comboView(1, 0.2f, TimedGrade.PERFECT);
-        TimedInputLayers strip = new TimedInputLayers(TimedScenes.LAYOUT);
-        TimedScenes.frame(strip, combo, 0.016f, new BattleEvent.PromptOpened(PromptKind.COMBO));
-        TimedScenes.frame(strip, combo, 0.5f);
+        BattleRasterFixture fxOnly = new BattleRasterFixture(W, H);
+        layers.screenFxLayer().paint(fxOnly.ui, fxOnly.canvas, W, H, TimedScenes.SCALE, UI_SCALE, hurt, null, CAMERA);
+        assertTrue(fxOnly.countPainted(0, 0, 200, 60) > 1000, "vignette visible in the open corner");
         float[] rect = FocusBattleLayout.comboStripRect(W, H, UI_SCALE);
-        assertTrue(hud(strip, combo).diff(hud(null, combo), rect) > rect[2] * rect[3] * 0.9f);
+        assertEquals(0, fxOnly.countPainted(rect), "the underlay leaves the strip's place alone here");
+
+        BattleRasterFixture all = TimedScenes.paintLayers(layers, hurt, CAMERA);
+        assertTrue(all.diff(fxOnly, rect) > rect[2] * rect[3] * 0.9f, "the strip covers its rect, over the FX");
+        assertEquals(0, all.diff(fxOnly, 0, 0, 200, 60), "and leaves the FX alone elsewhere");
     }
 
     @Test
@@ -154,7 +137,8 @@ class TimedInputLayersTest {
             TimedScenes.frame(l, view, 0.06f);
         }
         BattleRasterFixture a = TimedScenes.paintLayers(with, view, monkCamera), b = TimedScenes.paintLayers(without, view, monkCamera);
-        assertTrue(a.countExactly(0xFFFFFFFF, 0, 0, W, H) > 400 && b.countExactly(0xFFFFFFFF, 0, 0, W, H) == 0, "word gone");
+        assertTrue(a.countExactly(ParryOverlay.PARRY_WORD, 0, 0, W, H) > 400
+                && b.countExactly(ParryOverlay.PARRY_WORD, 0, 0, W, H) == 0, "word gone");
         assertEquals(W * H, b.countPainted(0, 0, W, H), "flash stays");
     }
 

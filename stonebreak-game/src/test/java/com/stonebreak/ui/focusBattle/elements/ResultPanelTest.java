@@ -10,9 +10,11 @@ import com.stonebreak.battle.api.BattleStats;
 import com.stonebreak.battle.api.ComboDirection;
 import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.config.Settings;
+import com.stonebreak.rendering.UI.masonryUI.MResultCard;
+import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.BattleHudRules;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
-import com.stonebreak.ui.focusBattle.FlowTheme;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
 import com.stonebreak.ui.focusBattle.FocusBattleScreen;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -138,22 +141,45 @@ class ResultPanelTest {
     void statsCountUpOverAboutASecond() {
         endAndRaise(BattleOutcome.VICTORY);
         ResultPanel panel = screen.resultPanel();
+        MResultCard card = panel.card();
         assertTrue(panel.countUp() < 0.3f, "just started");
         run(ResultPanel.COUNT_UP_SECONDS / 2f);
         float half = panel.countUp();
         assertTrue(half > 0.3f && half < 1f);
-        List<ResultPanel.Stat> mid = ResultPanel.stats(STATS, 83f, half);
-        int dealtMid = Integer.parseInt(mid.get(1).value());
+        int dealtMid = Integer.parseInt(card.statText(1));
         assertTrue(dealtMid > 0 && dealtMid < 2400, "damage dealt is part-way: " + dealtMid);
+        assertTrue(!card.statText(0).equals("0:00") && !card.statText(0).equals("1:23"),
+                "and so is the clock: " + card.statText(0));
 
         run(ResultPanel.COUNT_UP_SECONDS);
         assertEquals(1f, panel.countUp(), 1e-6f);
-        List<ResultPanel.Stat> done = ResultPanel.stats(STATS, 83f, panel.countUp());
-        assertEquals(List.of("Time", "Damage dealt", "Damage taken", "Parries", "Blocks", "Perfect rings",
-                "Best streak", "Combo hits", "Turns"), done.stream().map(ResultPanel.Stat::label).toList());
-        assertEquals(List.of("1:23", "2400", "96", "4", "2", "7", "5", "6", "11"),
-                done.stream().map(ResultPanel.Stat::value).toList());
-        assertEquals("0:00", ResultPanel.stats(null, 0f, 1f).get(0).value(), "null stats are zeros, not a crash");
+        List<String> shown = new ArrayList<>();
+        for (int i = 0; i < card.statCount(); i++) shown.add(card.statText(i));
+        assertEquals(List.of("1:23", "2400", "96", "4", "2", "7", "5", "6", "11"), shown,
+                "time, damage dealt / taken, parries, blocks, perfect rings, best streak, combo hits, turns");
+    }
+
+    @Test
+    void nullStatsAreZerosNotACrash() {
+        view.phase = BattlePhase.RESULT;
+        view.outcome = BattleOutcome.DEFEAT;
+        view.stats = null;
+        screen.update(DT);
+        run(ResultPanel.DEFEAT_DELAY_SECONDS + ResultPanel.RISE_SECONDS + ResultPanel.COUNT_UP_SECONDS + 0.1f);
+        MResultCard card = screen.resultPanel().card();
+        assertEquals(9, card.statCount());
+        assertEquals("0:00", card.statText(0));
+        assertEquals("0", card.statText(1));
+    }
+
+    @Test
+    void theCountUpStartsWhenTheCardSeatsHoweverLargeTheStep() {
+        end(BattleOutcome.DEFEAT);
+        // One giant step lands past the rise: only the part after seating counts up.
+        screen.update(ResultPanel.DEFEAT_DELAY_SECONDS + ResultPanel.RISE_SECONDS + ResultPanel.COUNT_UP_SECONDS / 2f);
+        ResultPanel panel = screen.resultPanel();
+        assertTrue(panel.interactive());
+        assertTrue(panel.countUp() > 0.3f && panel.countUp() < 1f, "half-way, not finished: " + panel.countUp());
     }
 
     // ── input ────────────────────────────────────────────────────────────────
@@ -255,8 +281,8 @@ class ResultPanelTest {
                 BattleCommand.STRIKE, null, 1f));
         screen.update(DT);
         view.events.clear();
-        assertFalse(screen.floaters().live().isEmpty());
-        assertTrue(screen.animState().enemyHitFlash > 0f);
+        assertEquals(1, screen.floaters().count());
+        assertEquals("Strike", screen.actionBanner().text());
 
         FakeBattleView next = new FakeBattleView();
         next.phase = BattlePhase.INTRO;
@@ -267,10 +293,10 @@ class ResultPanelTest {
         assertEquals(List.of("retry"), host.calls);
         assertFalse(screen.resultPanel().ended(), "the panel is gone");
         assertFalse(screen.resultPanel().visible());
-        assertTrue(screen.floaters().live().isEmpty(), "no floater survives into the new fight");
+        assertEquals(0, screen.floaters().count(), "no floater survives into the new fight");
+        assertEquals(0, screen.resultPanel().focusedIndex());
+        assertEquals(0f, screen.resultPanel().countUp(), 0f, "and the next result counts up from zero again");
         assertFalse(screen.actionBanner().visible());
-        assertEquals(0f, screen.animState().enemyHitFlash, 0f);
-        assertTrue(screen.animState().archonGhostHpFraction < 0f);
         assertEquals(1f, screen.animState().bottomHudSlideOut, 1e-6f, "straight into the new intro's framing");
         assertTrue(screen.animator().secondsSinceEnd() < 0f);
 
@@ -303,22 +329,29 @@ class ResultPanelTest {
         run(ResultPanel.RISE_SECONDS + ResultPanel.COUNT_UP_SECONDS + 0.1f);
         BattleRasterFixture victory = paint(W, H);
         assertTrue(victory.countPainted(rect) > rect[2] * rect[3] * 0.95f, "the panel fills the reserved rect");
+        assertEquals(W * H, victory.countPainted(0, 0, W, H), "and the scrim darkens everything behind it");
         assertTrue(rising.diff(victory, rect) > 20_000, "mid-rise it is still below its seat");
-        assertTrue(victory.countExactly(FlowTheme.GOLD, (int) rect[0], (int) rect[1], (int) (rect[0] + rect[2]),
-                (int) (rect[1] + rect[3] * 0.3f)) > 300, "VICTORY in gold");
+        assertTrue(victory.countExactly(MStyle.TEXT_ACCENT, (int) rect[0], (int) rect[1], (int) (rect[0] + rect[2]),
+                (int) (rect[1] + rect[3] * 0.3f)) > 300, "VICTORY in the house gold");
+        assertTrue(victory.countExactly(MStyle.PANEL_BORDER, (int) rect[0], (int) rect[1], (int) (rect[0] + rect[2]),
+                (int) (rect[1] + rect[3])) > 500, "on the house stone panel");
 
         screen.resultPanel().moveFocus(1);
         BattleRasterFixture moved = paint(W, H);
         float[] first = ResultPanel.buttonRect(0, W, H, 1f);
         float[] second = ResultPanel.buttonRect(1, W, H, 1f);
         assertTrue(moved.diff(victory, first) > 300 && moved.diff(victory, second) > 300, "focus is drawn");
+        assertTrue(moved.countExactly(MStyle.TEXT_ACCENT, (int) second[0], (int) second[1],
+                (int) (second[0] + second[2]), (int) (second[1] + second[3])) > 40, "as the gold label of a selected MButton");
+        assertArrayEquals(second, screen.resultPanel().card().buttonRect(1), 0f,
+                "the hit-test rect is the rect the card paints");
 
         bindAScreen();
         end(BattleOutcome.DEFEAT);
         run(ResultPanel.DEFEAT_DELAY_SECONDS + ResultPanel.RISE_SECONDS + ResultPanel.COUNT_UP_SECONDS + 0.1f);
         BattleRasterFixture defeat = paint(W, H);
-        assertTrue(defeat.countExactly(FlowTheme.FROST_RED, (int) rect[0], (int) rect[1], (int) (rect[0] + rect[2]),
-                (int) (rect[1] + rect[3] * 0.3f)) > 300, "DEFEATED in frost-red");
+        assertTrue(defeat.countExactly(BattlePalette.ACCENT_ARCHON, (int) rect[0], (int) rect[1],
+                (int) (rect[0] + rect[2]), (int) (rect[1] + rect[3] * 0.3f)) > 300, "DEFEATED in the Archon's accent");
         assertTrue(defeat.diff(victory, rect) > 3000);
     }
 

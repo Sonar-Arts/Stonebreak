@@ -1,177 +1,173 @@
 package com.stonebreak.ui.focusBattle.elements;
 
-import com.stonebreak.battle.api.BattleStatus;
+import com.stonebreak.battle.api.BattleEvent;
 import com.stonebreak.battle.api.BattleView;
+import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.CombatantView;
-import com.stonebreak.battle.api.StatusView;
+import com.stonebreak.rendering.UI.masonryUI.MChipRow;
+import com.stonebreak.rendering.UI.masonryUI.MColor;
+import com.stonebreak.rendering.UI.masonryUI.MGauge;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
+import com.stonebreak.rendering.UI.masonryUI.MPipRow;
+import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
-import com.stonebreak.ui.focusBattle.BattleHudAnimState;
-import com.stonebreak.ui.focusBattle.FocusBattleLayout;
-import com.stonebreak.ui.focusBattle.FocusBattleTheme;
+import com.stonebreak.ui.focusBattle.BattlePalette;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
- * E3 — the monk's status window: name and status chips, HP bar with exact numbers, Qi pips, the
- * ATB gauge (flash colour when full) and the Focus gauge with its percentage.
+ * E3: the monk's status window. A HUD frame holding five equal rows: name + status chips, HP, Qi,
+ * ATB and Focus. Every moving part is a library widget this window owns one instance of, so the HP
+ * trail, the hit flash, the Qi pop/spend, the full-ATB blink and the Focus shimmer are the widgets'
+ * own animations; this class only feeds them the view and the frame's battle events.
  *
- * <p>Five equal rows from {@link FocusBattleLayout#partyRowRect}, each split into caption / gauge /
- * value columns, so the bars line up and the window compresses evenly.
+ * <p>The caller passes the rect the window is drawn in (already slid or shaken), so the same
+ * instance renders identically wherever it is put.
  */
 public final class PartyStatusWindow {
 
-    private PartyStatusWindow() {}
+    public static final int ROWS = 5;
+    public static final int ROW_NAME = 0, ROW_HP = 1, ROW_QI = 2, ROW_ATB = 3, ROW_FOCUS = 4;
 
-    public static void paint(MasonryUI ui, Canvas canvas, float[] rect, BattleView view, float uiScale) {
-        paint(ui, canvas, rect, view, uiScale, BattleHudAnimState.NEUTRAL);
+    // Design metrics (multiplied by the HUD scale).
+    private static final float PAD = 10f;
+    private static final float ROW_GAP = 4f;
+    private static final float CAPTION_W = 58f;
+    private static final float VALUE_W = 94f;
+    private static final float NAME_GAP = 10f;
+
+    private final MGauge hp = new MGauge().caption("HP").vitalRamp().ghost(true).barHeight(14f)
+            .valueAsFraction().valuePlacement(MGauge.ValuePlacement.BESIDE);
+    private final MPipRow qi = new MPipRow().color(BattlePalette.QI).pipSize(18f).gap(4f).autoAnimate(true);
+    private final MGauge atb = new MGauge().caption("ATB").fillColor(BattlePalette.ATB)
+            .fullGlow(BattlePalette.ATB_READY).flash(BattlePalette.ATB_READY).flashSeconds(0.45f).barHeight(10f);
+    private final MGauge focus = new MGauge().caption("FOCUS").fillColor(BattlePalette.FOCUS)
+            .fullGlow(BattlePalette.FOCUS).flash(MStyle.TEXT_PRIMARY).flashSeconds(0.6f).barHeight(14f)
+            .valueAsPercent().valuePlacement(MGauge.ValuePlacement.BESIDE);
+    private final MChipRow chips = new MChipRow().align(MChipRow.Align.RIGHT);
+    private final StatusChips chipSource = new StatusChips();
+
+    public MGauge hpGauge() { return hp; }
+    public MPipRow qiPips() { return qi; }
+    public MGauge atbGauge() { return atb; }
+    public MGauge focusGauge() { return focus; }
+    public MChipRow chipRow() { return chips; }
+
+    /** Forgets the last fight: the next values are taken as they are, with no trail, pop or flash. */
+    public void reset() {
+        hp.reset();
+        atb.reset();
+        focus.reset();
+        qi.reset();
     }
 
-    /**
-     * {@code anim} drives the window shake and hit flash, the HP ghost trail, the full-ATB flash,
-     * the Focus shimmer and the Qi pip pop.
-     */
-    public static void paint(MasonryUI ui, Canvas canvas, float[] rect, BattleView view, float uiScale,
-                             BattleHudAnimState anim) {
-        if (canvas == null || view == null || view.monk() == null) return;
-        float[] r = FocusBattleLayout.offset(rect, anim.partyShakeX, anim.partyShakeY);
-        CombatantView monk = view.monk();
+    /** Feeds the view and this frame's events to the widgets, then advances their animations. */
+    public void update(float dt, BattleView view, List<BattleEvent> events) {
+        sync(view);
+        if (events != null) {
+            for (BattleEvent event : events) consume(event);
+        }
+        hp.update(dt);
+        qi.update(dt);
+        atb.update(dt);
+        focus.update(dt);
+    }
 
-        FocusBattleTheme.battleWindow(canvas, r);
-        paintNameRow(ui, canvas, r, view, monk, uiScale);
-        paintHp(ui, canvas, r, monk, uiScale, anim);
-        paintQi(ui, canvas, r, view, uiScale, anim);
-        paintAtb(ui, canvas, r, monk, uiScale, anim);
-        paintFocus(ui, canvas, r, view, uiScale, anim);
-
-        if (anim.partyHitFlash > 0f) {
-            FocusBattleTheme.roundedFill(canvas, r[0], r[1], r[2], r[3], FocusBattleTheme.WINDOW_RADIUS,
-                    FocusBattleTheme.fade(FocusBattleTheme.HIT_FLASH, anim.partyHitFlash * 0.35f));
+    private void consume(BattleEvent event) {
+        switch (event) {
+            case BattleEvent.DamageDealt hit when hit.target() == CombatantId.MONK -> flashOnHit(hp, hit);
+            case BattleEvent.TurnReady ready when ready.who() == CombatantId.MONK -> atb.pulseFlash();
+            case BattleEvent.FocusFull full -> focus.pulseFlash();
+            default -> { }
         }
     }
 
-    private static void paintNameRow(MasonryUI ui, Canvas canvas, float[] rect, BattleView view,
-                                     CombatantView monk, float uiScale) {
-        float[] row = FocusBattleLayout.partyRowRect(rect, FocusBattleLayout.PARTY_ROW_NAME, uiScale);
-        Font font = FocusBattleTheme.font(ui, nameSize(row, uiScale), uiScale);
-        if (font == null) return;
+    /** Red flash on a gauge, as strong as the blow: a parry (the player's win) does not flash at all. */
+    static void flashOnHit(MGauge gauge, BattleEvent.DamageDealt hit) {
+        BattleEvent.DamageFlavor flavor = hit.flavor() == null ? BattleEvent.DamageFlavor.NORMAL : hit.flavor();
+        float strength = switch (flavor) {
+            case CRITICAL -> 1f;
+            case NORMAL -> 0.75f;
+            case BLOCKED -> 0.3f;
+            case PARRIED -> 0f;
+        };
+        if (strength > 0f) gauge.flash(MColor.fade(BattlePalette.HIT_FLASH, strength)).pulseFlash();
+    }
+
+    /** Binds the widgets to the view. Idempotent: the same view twice changes nothing. */
+    private void sync(BattleView view) {
+        CombatantView monk = view == null ? null : view.monk();
+        if (monk == null) return;
+        hp.value(monk.hp(), monk.maxHp())
+                .valueColor(monk.hpFraction() <= 0.25f ? MStyle.VITAL_CRIT : MStyle.TEXT_PRIMARY);
+        qi.count(view.maxQi()).filled(view.qi());
+        atb.fraction(monk.atb());
+        focus.fraction(view.focusFraction()).shimmer(view.focusReady())
+                .valueColor(view.focusReady() ? BattlePalette.FOCUS : MStyle.TEXT_PRIMARY);
+        chips.chips(chipSource.chipsFor(monk.statuses(), view.queuedSurgeHits() > 0));
+    }
+
+    // ─────────────────────────────────────────────── Geometry
+
+    /** Row {@code index} of {@link #ROWS} inside {@code rect}: {@code {x, y, w, h}}. */
+    public static float[] rowRect(float[] rect, int index, float scale) {
+        float pad = PAD * scale, gap = ROW_GAP * scale;
+        float rowH = Math.max(0f, (rect[3] - 2f * pad - (ROWS - 1) * gap) / ROWS);
+        return new float[]{rect[0] + pad, rect[1] + pad + index * (rowH + gap), Math.max(0f, rect[2] - 2f * pad), rowH};
+    }
+
+    // ─────────────────────────────────────────────── Render
+
+    public void render(MasonryUI ui, float[] rect, BattleView view, float scale) {
+        Canvas canvas = ui == null ? null : ui.canvas();
+        if (canvas == null || rect == null || view == null || view.monk() == null || !(scale > 0f)) return;
+        if (!(rect[2] > 0f) || !(rect[3] > 0f)) return;
+        sync(view);
+        MPainter.hudFrame(canvas, rect[0], rect[1], rect[2], rect[3], BattlePalette.accent(CombatantId.MONK), 1f);
+
+        float[] row = rowRect(rect, ROW_HP, scale);
+        // Narrow windows give the columns up proportionally, so the bars never vanish.
+        float captionW = Math.min(CAPTION_W, row[2] / scale * 0.2f);
+        float valueW = Math.min(VALUE_W, row[2] / scale * 0.28f);
+        Font meta = ui.fonts().get(Math.min(MStyle.FONT_META, row[3] / scale * 0.85f), scale);
+
+        paintName(ui, canvas, rowRect(rect, ROW_NAME, scale), view.monk(), scale);
+        place(hp, row, captionW, valueW, scale).render(ui);
+        paintQi(ui, canvas, rowRect(rect, ROW_QI, scale), captionW, valueW, meta, scale);
+        place(atb, rowRect(rect, ROW_ATB, scale), captionW, valueW, scale).render(ui);
+        place(focus, rowRect(rect, ROW_FOCUS, scale), captionW, valueW, scale).render(ui);
+    }
+
+    private static MGauge place(MGauge gauge, float[] row, float captionW, float valueW, float scale) {
+        // A gauge without a value still ends where the others' bars end, so the column stays straight.
+        boolean valueless = gauge.resolvedValueText().isEmpty();
+        float w = valueless ? row[2] - valueW * scale : row[2];
+        return gauge.scale(scale).captionWidth(captionW).valueWidth(valueW).bounds(row[0], row[1], w, row[3]);
+    }
+
+    private void paintName(MasonryUI ui, Canvas canvas, float[] row, CombatantView monk, float scale) {
+        Font font = ui.fonts().get(Math.min(MStyle.FONT_ITEM, row[3] / scale * 0.85f), scale);
         String name = monk.displayName() == null ? "" : monk.displayName();
-        FocusBattleTheme.text(canvas, name, row[0],
-                FocusBattleTheme.baseline(row[1] + row[3] / 2f, font.getSize()), font, FocusBattleTheme.TEXT);
-
-        // The model may list SURGE as a status too; the queued-hit count is the authoritative chip.
-        List<StatusChips.Chip> chips = new ArrayList<>();
-        if (view.queuedSurgeHits() > 0) chips.add(StatusChips.surge(view.queuedSurgeHits()));
-        for (StatusView s : monk.statuses()) {
-            if (s.status() == BattleStatus.SURGE && view.queuedSurgeHits() > 0) continue;
-            chips.add(StatusChips.of(s));
+        float nameEnd = row[0];
+        if (font != null) {
+            MPainter.drawText(canvas, name, row[0], MPainter.baselineFor(row[1] + row[3] / 2f, font.getSize()),
+                    font, MStyle.TEXT_PRIMARY, MPainter.Align.LEFT);
+            nameEnd += MPainter.measureWidth(font, name) + NAME_GAP * scale;
         }
-        float minX = row[0] + MPainter.measureWidth(font, name) + 10f * uiScale;
-        StatusChips.paintRightAligned(ui, canvas, row, minX, chips, uiScale);
+        chips.scale(scale).bounds(row[0], row[1], row[2], row[3]).minX(nameEnd).render(ui);
     }
 
-    private static void paintHp(MasonryUI ui, Canvas canvas, float[] rect, CombatantView monk,
-                                float uiScale, BattleHudAnimState anim) {
-        int row = FocusBattleLayout.PARTY_ROW_HP;
-        caption(ui, canvas, rect, row, "HP", uiScale);
-        float[] bar = inset(FocusBattleLayout.partyBarRect(rect, row, uiScale), 14f * uiScale);
-        float f = monk.hpFraction();
-        FocusBattleTheme.bar(canvas, bar[0], bar[1], bar[2], bar[3], f, FocusBattleTheme.hpColor(f),
-                anim.monkGhostHpFraction, FocusBattleTheme.HP_GHOST);
-        value(ui, canvas, rect, row, Math.round(Math.max(0f, monk.hp())) + "/" + Math.round(monk.maxHp()),
-                f <= 0.25f ? FocusBattleTheme.HP_LOW : FocusBattleTheme.TEXT, uiScale);
-    }
-
-    private static void paintQi(MasonryUI ui, Canvas canvas, float[] rect, BattleView view,
-                                float uiScale, BattleHudAnimState anim) {
-        int row = FocusBattleLayout.PARTY_ROW_QI;
-        caption(ui, canvas, rect, row, "Qi", uiScale);
-        float[] area = FocusBattleLayout.partyBarRect(rect, row, uiScale);
-        int slots = Math.max(0, view.maxQi());
-        if (slots == 0) return;
-        float gap = 4f * uiScale;
-        float size = Math.min(area[3], Math.min(18f * uiScale, (area[2] - (slots - 1) * gap) / slots));
-        if (size <= 0f) return;
-        float y = area[1] + (area[3] - size) / 2f;
-        int filled = Math.max(0, Math.min(slots, view.qi()));
-        for (int i = 0; i < slots; i++) {
-            // The newest pip is the one that pops.
-            float pop = (i == filled - 1) ? anim.qiPipPop * size * 0.35f : 0f;
-            FocusBattleTheme.pip(canvas, area[0] + i * (size + gap) - pop / 2f, y - pop / 2f, size + pop,
-                    i < filled, FocusBattleTheme.QI);
-        }
-        value(ui, canvas, rect, row, filled + "/" + slots, FocusBattleTheme.TEXT_LABEL, uiScale);
-    }
-
-    private static void paintAtb(MasonryUI ui, Canvas canvas, float[] rect, CombatantView monk,
-                                 float uiScale, BattleHudAnimState anim) {
-        int row = FocusBattleLayout.PARTY_ROW_ATB;
-        caption(ui, canvas, rect, row, "ATB", uiScale);
-        float[] bar = inset(FocusBattleLayout.partyBarRect(rect, row, uiScale), 10f * uiScale);
-        float f = FocusBattleTheme.clamp01(monk.atb());
-        int color = f >= 1f
-                ? FocusBattleTheme.lerpColor(FocusBattleTheme.ATB, FocusBattleTheme.ATB_FULL, anim.atbFullFlash)
-                : FocusBattleTheme.ATB;
-        FocusBattleTheme.bar(canvas, bar[0], bar[1], bar[2], bar[3], f, color);
-    }
-
-    private static void paintFocus(MasonryUI ui, Canvas canvas, float[] rect, BattleView view,
-                                   float uiScale, BattleHudAnimState anim) {
-        int row = FocusBattleLayout.PARTY_ROW_FOCUS;
-        caption(ui, canvas, rect, row, "FOCUS", uiScale);
-        float[] bar = inset(FocusBattleLayout.partyBarRect(rect, row, uiScale), 14f * uiScale);
-        float f = view.focusFraction();
-        boolean ready = view.focusReady();
-        FocusBattleTheme.bar(canvas, bar[0], bar[1], bar[2], bar[3], f, FocusBattleTheme.FOCUS);
-        if (ready) {
-            FocusBattleTheme.roundedStroke(canvas, bar[0] - 1f, bar[1] - 1f, bar[2] + 2f, bar[3] + 2f, 1f,
-                    FocusBattleTheme.FOCUS, 1f);
-            paintShimmer(canvas, bar, anim.focusShimmer);
-        }
-        value(ui, canvas, rect, row, Math.round(f * 100f) + "%",
-                ready ? FocusBattleTheme.FOCUS : FocusBattleTheme.TEXT, uiScale);
-    }
-
-    /** Shimmer hook: a bright band at {@code phase} 0..1 across a full Focus bar; negative = none. */
-    private static void paintShimmer(Canvas canvas, float[] bar, float phase) {
-        if (phase < 0f) return;
-        float bandW = bar[2] * 0.12f;
-        float x = bar[0] + (bar[2] + bandW) * FocusBattleTheme.clamp01(phase) - bandW;
-        float left = Math.max(bar[0] + 1f, x);
-        float right = Math.min(bar[0] + bar[2] - 1f, x + bandW);
-        FocusBattleTheme.fillRect(canvas, left, bar[1] + 1f, right - left, bar[3] - 2f,
-                FocusBattleTheme.FOCUS_SHIMMER);
-    }
-
-    // ─────────────────────────────────────────────── Cells
-
-    private static void caption(MasonryUI ui, Canvas canvas, float[] rect, int row, String text, float uiScale) {
-        float[] cell = FocusBattleLayout.partyLabelRect(rect, row, uiScale);
-        Font font = FocusBattleTheme.fitFont(ui, text, FocusBattleTheme.FS_LABEL, uiScale, cell[2] - 4f * uiScale);
-        if (font == null) return;
-        FocusBattleTheme.text(canvas, text, cell[0],
-                FocusBattleTheme.baseline(cell[1] + cell[3] / 2f, font.getSize()), font, FocusBattleTheme.TEXT_LABEL);
-    }
-
-    private static void value(MasonryUI ui, Canvas canvas, float[] rect, int row, String text, int color,
-                              float uiScale) {
-        float[] cell = FocusBattleLayout.partyValueRect(rect, row, uiScale);
-        Font font = FocusBattleTheme.fitFont(ui, text, FocusBattleTheme.FS_VALUE, uiScale, cell[2]);
-        if (font == null) return;
-        FocusBattleTheme.textRight(canvas, text, cell[0] + cell[2],
-                FocusBattleTheme.baseline(cell[1] + cell[3] / 2f, font.getSize()), font, color);
-    }
-
-    private static float nameSize(float[] row, float uiScale) {
-        return Math.min(FocusBattleTheme.FS_NAME, row[3] / Math.max(0.01f, uiScale) * 0.85f);
-    }
-
-    /** Vertically centres a bar of at most {@code maxHeight} inside its cell. */
-    private static float[] inset(float[] cell, float maxHeight) {
-        float h = Math.min(cell[3], maxHeight);
-        return new float[]{cell[0], (float) Math.floor(cell[1] + (cell[3] - h) / 2f), cell[2], (float) Math.floor(h)};
+    /** The Qi row: the gauges' caption and value columns, with pips where they have a bar. */
+    private void paintQi(MasonryUI ui, Canvas canvas, float[] row, float captionW, float valueW, Font meta,
+                         float scale) {
+        float left = row[0] + captionW * scale;
+        qi.scale(scale).bounds(left, row[1], Math.max(0f, row[0] + row[2] - valueW * scale - left), row[3]).render(ui);
+        if (meta == null) return;
+        float baseline = MPainter.baselineFor(row[1] + row[3] / 2f, meta.getSize());
+        MPainter.drawText(canvas, "Qi", row[0], baseline, meta, MStyle.TEXT_SECONDARY, MPainter.Align.LEFT);
+        MPainter.drawText(canvas, qi.filled() + "/" + qi.count(), row[0] + row[2], baseline, meta,
+                MStyle.TEXT_SECONDARY, MPainter.Align.RIGHT);
     }
 }

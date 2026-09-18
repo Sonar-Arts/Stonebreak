@@ -26,6 +26,11 @@ import java.util.List;
  * <p>Why events and not just the view: a prompt disappears from the view the instant it resolves,
  * which is exactly when its feedback has to start. The combo strip in particular outlives its
  * prompt (the last grade, the finisher wait, the FLAWLESS flash), so it keeps its own snapshot.
+ *
+ * <p>What is NOT here: motion a library widget owns. The combo cells' stamp pops, the prompt pulse,
+ * the timer colour and the FLAWLESS word's timeline live in the strip's {@code MPromptStrip}; the
+ * hit pips' pop lives in the ring's {@code MPipRow}. This class only says <em>what happened</em>
+ * (which cell got which grade, that the string was flawless); the overlays feed that to their widgets.
  */
 public final class TimedInputState {
 
@@ -40,11 +45,9 @@ public final class TimedInputState {
     public static final float BLOCK_SECONDS = 0.45f;
     public static final float TOO_EARLY_SECONDS = 0.5f;
     public static final float COMBO_SLIDE_SECONDS = 0.18f;
-    public static final float COMBO_STAMP_SECONDS = 0.16f;
     /** How long the finished strip stays up before sliding out. */
     public static final float COMBO_HOLD_SECONDS = 0.7f;
     public static final float COMBO_FLAWLESS_HOLD_SECONDS = 1.4f;
-    public static final float FLAWLESS_SECONDS = 1.2f;
     public static final float LETTERBOX_SECONDS = 0.25f;
     public static final float FX_EASE_SECONDS = 0.35f;
     public static final float CRIT_FLASH_SECONDS = 0.18f;
@@ -71,11 +74,8 @@ public final class TimedInputState {
     /** 0 = off-screen, 1 = in place (linear; the painter eases it). */
     float comboSlide;
     float comboHold;
-    /** Seconds since the FLAWLESS flash began; negative = none. */
-    float flawlessAge = -1f;
     List<ComboDirection> comboSequence = List.of();
     TimedGrade[] comboResults = new TimedGrade[0];
-    float[] comboStampAge = new float[0];
     /** Index of the prompt awaiting input, or -1 while none is (finisher wait, finished). */
     int comboIndex = -1;
     float comboStepElapsed;
@@ -110,10 +110,8 @@ public final class TimedInputState {
         comboFlawless = false;
         comboSlide = 0f;
         comboHold = 0f;
-        flawlessAge = -1f;
         comboSequence = List.of();
         comboResults = new TimedGrade[0];
-        comboStampAge = new float[0];
         comboIndex = -1;
         comboStepElapsed = 0f;
         comboStepDuration = 0f;
@@ -155,13 +153,6 @@ public final class TimedInputState {
         if (parryFeedback != ParryFeedback.NONE) {
             parryFeedbackAge += dt;
             if (parryFeedbackAge >= parryFeedbackSeconds(parryFeedback)) parryFeedback = ParryFeedback.NONE;
-        }
-        for (int i = 0; i < comboStampAge.length; i++) {
-            if (comboStampAge[i] >= 0f) comboStampAge[i] += dt;
-        }
-        if (flawlessAge >= 0f) {
-            flawlessAge += dt;
-            if (flawlessAge >= FLAWLESS_SECONDS) flawlessAge = -1f;
         }
         if (comboActive && comboFinished) comboHold -= dt;
         boolean comboShown = comboActive && !(comboFinished && comboHold <= 0f);
@@ -208,7 +199,7 @@ public final class TimedInputState {
             case BattleEvent.Impact impact -> {
                 // The authored clip lands each blow a beat AFTER its input is graded, so the strip's
                 // counter follows the blows, not the button presses.
-                if (comboActive && !comboFinished && impact.actor() == com.stonebreak.battle.api.CombatantId.MONK) {
+                if (comboActive && !comboFinished && impact.actor() == CombatantId.MONK) {
                     comboLanded++;
                 }
             }
@@ -218,7 +209,6 @@ public final class TimedInputState {
                     comboFlawless = finished.flawless();
                     comboIndex = -1;
                     comboHold = finished.flawless() ? COMBO_FLAWLESS_HOLD_SECONDS : COMBO_HOLD_SECONDS;
-                    if (finished.flawless()) flawlessAge = 0f;
                 }
             }
             case BattleEvent.DamageDealt damage -> {
@@ -249,27 +239,21 @@ public final class TimedInputState {
         comboFinished = false;
         comboFlawless = false;
         comboHold = 0f;
-        flawlessAge = -1f;
         comboSequence = List.of();
         comboResults = new TimedGrade[0];
-        comboStampAge = new float[0];
         comboIndex = -1;
         comboLanded = 0;
     }
 
     private void ensureComboCapacity(int size) {
         if (comboResults.length >= size) return;
-        int old = comboResults.length;
         comboResults = Arrays.copyOf(comboResults, size);
-        comboStampAge = Arrays.copyOf(comboStampAge, size);
-        Arrays.fill(comboStampAge, old, size, -1f);
     }
 
     private void stampCombo(int index, TimedGrade grade) {
         if (!comboActive || index < 0 || grade == null) return;
         ensureComboCapacity(Math.max(index + 1, comboSequence.size()));
         comboResults[index] = grade;
-        comboStampAge[index] = 0f;
         if (comboIndex == index) comboIndex = -1;
     }
 
@@ -367,7 +351,8 @@ public final class TimedInputState {
     public boolean comboActive() { return comboActive; }
     public boolean comboFinished() { return comboFinished; }
     public float comboSlide() { return comboSlide; }
-    public boolean flawlessShowing() { return flawlessAge >= 0f; }
+    /** True once the current string has finished without a MISS (the strip flashes its word on this). */
+    public boolean comboFlawless() { return comboFinished && comboFlawless; }
     public float lowHp() { return lowHp; }
     public float frost() { return frost; }
     public float focusAura() { return focusAura; }
@@ -380,7 +365,7 @@ public final class TimedInputState {
     /** True when nothing is animating and nothing would be painted for a neutral view. */
     public boolean idle() {
         return ringGrade == null && parryFeedback == ParryFeedback.NONE && !comboActive && comboSlide <= 0f
-                && flawlessAge < 0f && lowHp <= 0f && frost <= 0f && focusAura <= 0f && letterbox <= 0f
+                && lowHp <= 0f && frost <= 0f && focusAura <= 0f && letterbox <= 0f
                 && critFlashAge < 0f && defeatFade <= 0f;
     }
 }

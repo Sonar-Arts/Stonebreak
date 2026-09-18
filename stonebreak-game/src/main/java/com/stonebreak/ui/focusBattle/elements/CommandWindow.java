@@ -3,156 +3,157 @@ package com.stonebreak.ui.focusBattle.elements;
 import com.stonebreak.battle.api.BattleCommand;
 import com.stonebreak.battle.api.BattleMenu;
 import com.stonebreak.battle.api.BattleView;
-import com.stonebreak.battle.api.CommandAvailability;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MSymbol;
+import com.stonebreak.rendering.UI.masonryUI.MColor;
+import com.stonebreak.rendering.UI.masonryUI.MMenuList;
+import com.stonebreak.rendering.UI.masonryUI.MMenuList.Adornment;
+import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
-import com.stonebreak.ui.focusBattle.BattleHudAnimState;
+import com.stonebreak.ui.focusBattle.BattleHudRules;
 import com.stonebreak.ui.focusBattle.BattleMenuState;
+import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
-import com.stonebreak.ui.focusBattle.FocusBattleTheme;
 import io.github.humbleui.skija.Canvas;
-import io.github.humbleui.skija.Font;
+import io.github.humbleui.types.Rect;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * E1 — the root command window: one row per {@link BattleMenu#ROOT} entry with the hand cursor,
- * dimmed unavailable rows, Meditate's remaining charges, the Qi Arts chevron and the Focus Combo
- * row, which shows its fill percentage until the gauge is full and then glows gold with "READY".
+ * E1 + E2: the battle command menu, a composition over two {@link MMenuList}s (the root list and
+ * the Qi Arts submenu). This class owns no drawing: it turns {@link BattleMenu} and the
+ * {@link BattleView} into row <em>data</em> each frame and tells the lists where the cursor is.
  *
- * <p>Rows come from {@link FocusBattleLayout#rowRect}, the same slot formula the screen hit-tests.
+ * <p>The window is on screen for the whole fight. While {@link BattleHudRules#menuLive} is false it
+ * rests in the list's static state (every row listed, no cursor, veiled); on waking the veil fades
+ * with {@code wake}. {@link BattleHudRules#rowUsable} is the one dimming rule for both lists.
+ *
+ * <p>{@link BattleMenuState} stays the state machine; the lists only display it. Hit-testing goes
+ * through {@link MMenuList#rowAt}, the formula the rows are drawn with.
  */
 public final class CommandWindow {
 
-    private CommandWindow() {}
-
-    public static void paint(MasonryUI ui, Canvas canvas, float[] rect, BattleView view,
-                             BattleMenuState menu, float uiScale) {
-        paint(ui, canvas, rect, view, menu, uiScale, BattleHudAnimState.NEUTRAL);
-    }
-
-    /** {@code anim} drives the cursor bob, the selected-row pulse and the Focus-ready glow. */
-    public static void paint(MasonryUI ui, Canvas canvas, float[] rect, BattleView view,
-                             BattleMenuState menu, float uiScale, BattleHudAnimState anim) {
-        paint(ui, canvas, rect, view, menu, uiScale, anim, true, 0f);
-    }
-
-    /** Veil over the resting window: enough to read as "not your turn" without hiding the rows. */
-    static final int STATIC_VEIL = 0x80101820;
-
-    /**
-     * The window is always on screen during a fight. {@code active} = the player may choose now:
-     * cursor and selection are shown. Otherwise it rests in its STATIC state: every row listed, no
-     * cursor, nothing animating, under a veil. Rows a resource shortfall will make unusable (no Qi,
-     * no charges, Focus not full) are dimmed in BOTH states, so nothing changes colour on waking.
-     *
-     * @param veil 0 = awake, 1 = fully veiled; the renderer fades it out as the window wakes
-     */
-    public static void paint(MasonryUI ui, Canvas canvas, float[] rect, BattleView view,
-                             BattleMenuState menu, float uiScale, BattleHudAnimState anim,
-                             boolean active, float veil) {
-        if (canvas == null || view == null || menu == null) return;
-        FocusBattleTheme.battleWindow(canvas, rect);
-
-        List<BattleMenu.Row> rows = BattleMenu.ROOT;
-        for (int i = 0; i < rows.size(); i++) {
-            float[] row = FocusBattleLayout.rowRect(rect, i, rows.size(), uiScale);
-            if (row[3] <= 0f) continue;
-            MenuRowPainter.Mark mark = active ? markFor(menu, i) : MenuRowPainter.Mark.NONE;
-            paintRow(ui, canvas, row, rows.get(i), mark, view, uiScale, anim, active);
-        }
-
-        float amount = FocusBattleTheme.clamp01(veil);
-        if (amount > 0f) {
-            // Same rounded shape as the window's glass, inside its border, at any scale.
-            float inset = FocusBattleTheme.WINDOW_BORDER_WIDTH;
-            float radius = Math.max(0f, Math.min(FocusBattleTheme.WINDOW_RADIUS,
-                    Math.min(rect[2], rect[3]) / 2f) - inset);
-            try (io.github.humbleui.skija.Paint paint = new io.github.humbleui.skija.Paint()
-                    .setColor(FocusBattleTheme.fade(STATIC_VEIL, amount)).setAntiAlias(true)) {
-                canvas.drawRRect(io.github.humbleui.types.RRect.makeXYWH(rect[0] + inset, rect[1] + inset,
-                        rect[2] - 2f * inset, rect[3] - 2f * inset, radius), paint);
-            }
-        }
-    }
-
-    /** Steady READY-glow intensity of the resting window (the live one pulses around this). */
+    /** Glow behind a ready Focus Combo row: pulsing around full while live, steady while resting. */
+    static final float LIVE_READY_GLOW = 1f;
     static final float RESTING_READY_GLOW = 0.7f;
 
-    private static boolean isUsable(BattleView view, BattleCommand command, boolean active) {
-        com.stonebreak.battle.api.CommandAvailability availability = view.availability(command);
-        if (availability == null || availability.available()) return true;
-        return !active && availability.onlyWaitingForTurn();
+    private final MMenuList root = new MMenuList().accent(BattlePalette.ACCENT_MONK);
+    private final MMenuList arts = new MMenuList().accent(BattlePalette.ACCENT_MONK);
+
+    public CommandWindow() {
+        reset();
     }
 
-    private static MenuRowPainter.Mark markFor(BattleMenuState menu, int index) {
-        if (index != menu.rootIndex()) return MenuRowPainter.Mark.NONE;
-        return menu.submenuOpen() ? MenuRowPainter.Mark.HELD : MenuRowPainter.Mark.SELECTED;
+    public MMenuList rootList() { return root; }
+
+    public MMenuList artsList() { return arts; }
+
+    /** Back to a resting menu for a new encounter. */
+    public void reset() {
+        sync(null, null);
     }
 
-    private static void paintRow(MasonryUI ui, Canvas canvas, float[] row, BattleMenu.Row entry,
-                                 MenuRowPainter.Mark mark, BattleView view, float uiScale,
-                                 BattleHudAnimState anim, boolean active) {
-        BattleCommand command = entry.command();
-        boolean focusRow = command == BattleCommand.FOCUS_COMBO;
-        boolean ready = focusRow && view.focusReady();
-        // Resting, affordable commands report only "not your turn"; the veil already says that, so
-        // those rows keep their normal colour. Rows short of a resource dim in both states.
-        boolean available = command == null || isUsable(view, command, active);
+    /** Advances the cursor bob and the ready glow; both hold still while a target is being chosen. */
+    public void update(float dt, BattleView view, BattleMenuState menu) {
+        sync(view, menu);
+        if (menu != null && menu.targeting()) return;
+        root.update(dt);
+        arts.update(dt);
+    }
 
-        // Static means static: the READY glow holds steady while resting and only pulses when live.
-        if (ready) paintReadyGlow(canvas, row, active ? anim.focusReadyGlow : RESTING_READY_GLOW, uiScale);
-        MenuRowPainter.paintBackground(canvas, row, mark, anim, uiScale);
-        MenuRowPainter.paintCursor(canvas, row, mark, anim, uiScale);
+    /**
+     * Draws the menu into {@code commandRect} (and, while open, the submenu into {@code submenuRect});
+     * the caller has already applied any whole-HUD slide to both.
+     *
+     * @param wake          0 = just woken and still veiled, 1 = fully awake
+     * @param submenuSlideIn 0 = submenu tucked behind the command window, 1 = in place
+     */
+    public void render(MasonryUI ui, float[] commandRect, float[] submenuRect, BattleView view,
+                       BattleMenuState menu, float scale, float wake, float submenuSlideIn) {
+        Canvas canvas = ui == null ? null : ui.canvas();
+        if (canvas == null || view == null || commandRect == null) return;
+        sync(view, menu);
+        boolean live = BattleHudRules.menuLive(view);
 
-        float right = MenuRowPainter.adornmentRight(row, uiScale);
-        int color = available ? FocusBattleTheme.TEXT : FocusBattleTheme.TEXT_DISABLED;
-
-        if (entry.opensQiArts()) {
-            float s = row[3] * 0.7f;
-            MSymbol.CHEVRON_RIGHT.drawWithShadow(canvas, right - s, row[1] + (row[3] - s) / 2f, s, s,
-                    FocusBattleTheme.QI, FocusBattleTheme.TEXT_SHADOW);
-            right -= s + 4f * uiScale;
-        } else if (focusRow) {
-            String tag = ready ? "READY" : Math.round(view.focusFraction() * 100f) + "%";
-            int tagColor = ready ? FocusBattleTheme.FOCUS
-                    : FocusBattleTheme.lerpColor(FocusBattleTheme.TEXT_DISABLED, FocusBattleTheme.FOCUS, 0.55f);
-            right = paintTag(ui, canvas, row, right, tag, tagColor, uiScale);
-            if (ready) color = FocusBattleTheme.FOCUS;
-        } else if (command == BattleCommand.MEDITATE) {
-            right = paintTag(ui, canvas, row, right, "x" + Math.max(0, view.meditateCharges()),
-                    available ? FocusBattleTheme.TEXT_LABEL : FocusBattleTheme.TEXT_DISABLED, uiScale);
-        } else if (command != null && command.qiCost() > 0) {
-            right = MenuRowPainter.paintCostPips(canvas, row, right, command.qiCost(),
-                    view.qi() >= command.qiCost(), uiScale) - 4f * uiScale;
+        if (live && menu != null && menu.submenuOpen() && submenuRect != null) {
+            // Submenu first: it emerges from behind the command window, clipped at that window's
+            // right edge so a half-slid list never shows through the frame.
+            float tuck = (1f - MColor.clamp01(submenuSlideIn)) * -(submenuRect[2] * 0.5f);
+            place(arts, FocusBattleLayout.offset(submenuRect, tuck, 0f), scale);
+            int save = canvas.save();
+            try {
+                float edge = commandRect[0] + commandRect[2];
+                canvas.clipRect(Rect.makeLTRB(edge, -1.0e6f, 1.0e6f, 1.0e6f));
+                arts.render(ui);
+            } finally {
+                canvas.restoreToCount(save);
+            }
         }
 
-        MenuRowPainter.paintLabel(ui, canvas, row, entry.label(), color, right, uiScale);
+        place(root, commandRect, scale);
+        root.veil(live ? 1f - MColor.clamp01(wake) : 1f).render(ui);
     }
 
-
-    /** Right-aligned small caption; returns the x it starts at, less a gap. */
-    private static float paintTag(MasonryUI ui, Canvas canvas, float[] row, float right, String tag,
-                                  int color, float uiScale) {
-        Font font = FocusBattleTheme.font(ui, FocusBattleTheme.FS_VALUE, uiScale);
-        if (font == null) return right;
-        FocusBattleTheme.textRight(canvas, tag, right,
-                FocusBattleTheme.baseline(row[1] + row[3] / 2f, font.getSize()), font, color);
-        return right - MPainter.measureWidth(font, tag) - 6f * uiScale;
+    /** Root row under the pointer, or -1; {@code commandRect} as drawn. */
+    public int rootRowAt(float px, float py, float[] commandRect, float scale) {
+        return place(root, commandRect, scale).rowAt(px, py);
     }
 
-    private static void paintReadyGlow(Canvas canvas, float[] row, float strength, float uiScale) {
-        float k = FocusBattleTheme.clamp01(strength);
-        if (k <= 0f) return;
-        float r = 3f * uiScale;
-        // Two stacked translucent fills: a wide soft halo and the row itself.
-        float halo = 2f * uiScale;
-        FocusBattleTheme.roundedFill(canvas, row[0] - halo, row[1] - halo, row[2] + 2f * halo,
-                row[3] + 2f * halo, r + halo, FocusBattleTheme.fade(FocusBattleTheme.FOCUS_GLOW, k * 0.5f));
-        FocusBattleTheme.roundedFill(canvas, row[0], row[1], row[2], row[3], r,
-                FocusBattleTheme.fade(FocusBattleTheme.FOCUS_GLOW, k));
-        FocusBattleTheme.roundedStroke(canvas, row[0], row[1], row[2], row[3], r,
-                FocusBattleTheme.fade(FocusBattleTheme.FOCUS, k), Math.max(1f, uiScale));
+    /** Submenu row under the pointer, or -1; {@code submenuRect} as drawn at rest. */
+    public int artsRowAt(float px, float py, float[] submenuRect, float scale) {
+        return place(arts, submenuRect, scale).rowAt(px, py);
+    }
+
+    private static MMenuList place(MMenuList list, float[] rect, float scale) {
+        return list.scale(scale).bounds(rect[0], rect[1], rect[2], rect[3]);
+    }
+
+    // ─────────────────────────────────────────────── View → row data
+
+    private void sync(BattleView view, BattleMenuState menu) {
+        boolean live = BattleHudRules.menuLive(view);
+        int opener = FocusBattleLayout.qiArtsRowIndex();
+        boolean submenuOpen = menu != null && menu.submenuOpen();
+
+        root.rows(rows(BattleMenu.ROOT, view))
+                .active(live)
+                .cursor(menu == null ? 0 : menu.rootIndex())
+                .held(submenuOpen ? opener : -1)
+                .clearRowGlows();
+        for (int i = 0; i < BattleMenu.ROOT.size(); i++) {
+            boolean ready = BattleMenu.ROOT.get(i).command() == BattleCommand.FOCUS_COMBO
+                    && view != null && view.focusReady();
+            if (ready) root.rowGlow(i, BattlePalette.FOCUS, live ? LIVE_READY_GLOW : RESTING_READY_GLOW);
+        }
+
+        arts.rows(rows(BattleMenu.QI_ARTS, view))
+                .active(live)
+                .cursor(menu == null ? 0 : menu.submenuIndex())
+                .held(-1);
+    }
+
+    static List<MMenuList.Row> rows(List<BattleMenu.Row> entries, BattleView view) {
+        List<MMenuList.Row> rows = new ArrayList<>(entries.size());
+        for (BattleMenu.Row entry : entries) {
+            rows.add(new MMenuList.Row(entry.label(), BattleHudRules.rowUsable(view, entry.command()),
+                    adornment(entry, view)));
+        }
+        return rows;
+    }
+
+    /** What a row shows on its right: decided by what the row <em>is</em>, never by where it sits. */
+    static Adornment adornment(BattleMenu.Row entry, BattleView view) {
+        if (entry.opensQiArts()) return Adornment.chevron(BattlePalette.QI);
+        BattleCommand command = entry.command();
+        if (command == null || view == null) return Adornment.NONE;
+        if (command == BattleCommand.FOCUS_COMBO) {
+            if (view.focusReady()) return Adornment.tag("READY", BattlePalette.FOCUS);
+            return Adornment.tag(Math.round(view.focusFraction() * 100f) + "%",
+                    MColor.lerp(MStyle.TEXT_DISABLED, BattlePalette.FOCUS, 0.55f));
+        }
+        if (command == BattleCommand.MEDITATE) return Adornment.count("x" + Math.max(0, view.meditateCharges()));
+        if (command.qiCost() > 0) {
+            return Adornment.pips(command.qiCost(), BattlePalette.QI, view.qi() >= command.qiCost());
+        }
+        return Adornment.NONE;
     }
 }

@@ -106,7 +106,6 @@ class TimedInputStateTest {
         FakeBattleView second = TimedScenes.comboView(1, 0.1f, TimedGrade.PERFECT);
         frame(state, second, 0.016f, new BattleEvent.PromptResolved(PromptKind.COMBO, TimedGrade.PERFECT, 0));
         assertEquals(TimedGrade.PERFECT, state.comboResults[0]);
-        assertEquals(0f, state.comboStampAge[0], 0f);
         assertEquals(1, state.comboIndex);
         assertEquals(0.1f, state.comboStepElapsed, 0f);
         assertEquals(1, state.comboHits());
@@ -118,7 +117,7 @@ class TimedInputStateTest {
         assertEquals(TimedGrade.MISS, state.comboResults[1]);
         assertEquals(-1, state.comboIndex);
         assertTrue(state.comboFinished());
-        assertFalse(state.flawlessShowing());
+        assertFalse(state.comboFlawless());
         assertEquals(1, state.comboHits(), "a MISS is not a hit");
         assertEquals(1f, state.comboSlide(), 0f, "holds before leaving");
         frame(state, second, TimedInputState.COMBO_HOLD_SECONDS - 0.05f);
@@ -143,13 +142,12 @@ class TimedInputStateTest {
         assertTrue(state.comboActive() && !state.comboFinished(), "waits for the finisher");
         assertEquals(1f, state.comboSlide(), 0f);
         assertEquals(6, state.comboHits());
+        assertFalse(state.comboFlawless(), "not before the finisher has landed");
         frame(state, view, 0.016f, new BattleEvent.ComboFinished(6, true));
-        assertTrue(state.flawlessShowing());
-        frame(state, view, TimedInputState.FLAWLESS_SECONDS - 0.1f);
-        assertTrue(state.flawlessShowing());
+        assertTrue(state.comboFlawless(), "the strip's FLAWLESS word keys off this");
+        frame(state, view, ComboStripOverlay.FLAWLESS_SECONDS + 0.1f);
         assertEquals(1f, state.comboSlide(), 0f, "the strip outlasts its own flash");
-        frame(state, view, 0.2f);
-        assertFalse(state.flawlessShowing());
+        assertTrue(TimedInputState.COMBO_FLAWLESS_HOLD_SECONDS > ComboStripOverlay.FLAWLESS_SECONDS);
     }
 
     @Test
@@ -321,7 +319,7 @@ class TimedInputStateTest {
         assertEquals(a.comboSlide, b.comboSlide, 0f);
         assertEquals(a.lowHpPhase, b.lowHpPhase, 0f);
         assertEquals(a.letterbox, b.letterbox, 0f);
-        assertEquals(a.comboStampAge[1], b.comboStampAge[1], 0f);
+        assertEquals(a.comboResults[1], b.comboResults[1]);
     }
 
     @Test

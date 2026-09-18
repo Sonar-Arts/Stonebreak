@@ -2,8 +2,9 @@ package com.stonebreak.ui.focusBattle.elements;
 
 import com.stonebreak.battle.api.BattlePhase;
 import com.stonebreak.battle.api.FakeBattleView;
+import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
-import com.stonebreak.ui.focusBattle.FlowLayout;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,7 @@ class EncounterTransitionTest {
     private static final int H = 720;
     private static final float UI = 1f;
     private static final float DT = 1f / 60f;
+    private static final float SCALE = FocusBattleLayout.effectiveScale(W, H, UI);
 
     private FakeBattleView view;
     private EncounterTransition transition;
@@ -45,7 +47,9 @@ class EncounterTransitionTest {
         transition.update(0f, view);
         assertEquals(1f, transition.flashAlpha(), 1e-6f);
         BattleRasterFixture first = paint();
-        assertEquals(W * H, first.countExactly(0xFFFFFFFF, 0, 0, W, H), "the first frame is pure white");
+        assertEquals(W * H, first.countExactly(EncounterTransition.FLASH_COLOR, 0, 0, W, H),
+                "the first frame is one wash of the house white");
+        assertEquals(MStyle.TEXT_PRIMARY, EncounterTransition.FLASH_COLOR);
 
         run(0.4f);
         assertEquals(0f, transition.flashAlpha(), 0f, "the flash is over");
@@ -62,7 +66,7 @@ class EncounterTransitionTest {
 
         run(0.3f);
         assertFalse(transition.wipeVisible(), "done by " + EncounterTransition.WIPE_SECONDS + " s");
-        float[] card = FlowLayout.nameCardRect(W, H, UI);
+        float[] card = EncounterTransition.nameCardRect(W, H, SCALE);
         assertEquals(0, paint().countPainted(0, 0, W, (int) card[1]), "the arena is clear above the card band");
     }
 
@@ -73,11 +77,15 @@ class EncounterTransitionTest {
 
         run(0.1f + EncounterTransition.CARD_FADE_IN_SECONDS + 0.1f);
         assertEquals(1f, transition.cardAlpha(), 1e-4f);
-        float[] card = FlowLayout.nameCardRect(W, H, UI);
+        float[] card = EncounterTransition.nameCardRect(W, H, SCALE);
         BattleRasterFixture shown = paint();
-        assertTrue(shown.countPainted(card) > 20_000, "band, title, rule and subtitle");
-        assertTrue(shown.countExactly(0xFFF4FAFF, (int) card[0], (int) card[1], (int) (card[0] + card[2]),
-                (int) (card[1] + card[3] * 0.6f)) > 1500, "large near-white title glyphs");
+        assertTrue(shown.countPainted(card) > card[2] * card[3] * 0.95f, "a HUD frame fills the card");
+        assertTrue(shown.countExactly(MStyle.HUD_BORDER, (int) card[0], (int) card[1], (int) (card[0] + card[2]),
+                (int) (card[1] + card[3])) > 500, "with the house near-black border");
+        assertTrue(shown.countExactly(MStyle.TEXT_ACCENT, (int) card[0], (int) card[1], (int) (card[0] + card[2]),
+                (int) (card[1] + card[3] * 0.6f)) > 1500, "large gold title glyphs");
+        assertTrue(shown.countExactly(BattlePalette.ACCENT_ARCHON, (int) card[0], (int) (card[1] + card[3] * 0.55f),
+                (int) (card[0] + card[2]), (int) (card[1] + card[3] * 0.75f)) > 200, "the rule in the Archon's accent");
 
         view.archon.displayName = "Frost Warden";
         assertTrue(paint().diff(shown, card) > 500, "the title is the enemy's name");
@@ -95,7 +103,8 @@ class EncounterTransitionTest {
     void theCardSitsAboveTheBottomLetterboxAndBelowTheEnemyPlate() {
         int[][] windows = {{1024, 600}, {1280, 720}, {1920, 1080}, {3840, 2160}};
         for (int[] win : windows) {
-            float[] card = FlowLayout.nameCardRect(win[0], win[1], UI);
+            float[] card = EncounterTransition.nameCardRect(win[0], win[1],
+                    FocusBattleLayout.effectiveScale(win[0], win[1], UI));
             float[] bar = FocusBattleLayout.letterboxBottomRect(win[0], win[1], 1f);
             float[] plate = FocusBattleLayout.enemyPlateRect(win[0], win[1], UI);
             assertTrue(card[1] + card[3] <= bar[1], win[0] + "x" + win[1] + " clear of the letterbox");
@@ -159,9 +168,16 @@ class EncounterTransitionTest {
     @Test
     void theSkipHintShowsOnceTheWipeIsDone() {
         run(1.0f);
-        float[] hint = FlowLayout.skipHintAnchor(W, H, UI);
+        float[] row = EncounterTransition.skipHintRect(W, H, SCALE);
+        float[] bar = FocusBattleLayout.letterboxBottomRect(W, H, 1f);
+        assertEquals(bar[1], row[1], 0f, "the help strip is slid out during the intro, so the hint lives in the bottom bar");
+        assertEquals(bar[3], row[3], 0f);
         BattleRasterFixture fx = paint();
-        assertTrue(fx.countPainted((int) hint[0] - 260, (int) hint[1] - 14, (int) hint[0] + 2, (int) hint[1] + 14) > 200,
-                "the help strip is slid out during the intro, so the hint lives in the bottom bar");
+        int right = (int) (row[0] + row[2]);
+        assertTrue(fx.countPainted(right - 160, (int) row[1], right + 2, (int) (row[1] + row[3])) > 400,
+                "a keycap and its label, right-aligned");
+        assertEquals(0, fx.countPainted(0, 0, W, (int) row[1]), "and nothing else");
+        assertTrue(fx.countExactly(MStyle.BUTTON_BORDER, right - 160, (int) row[1], right + 2, (int) (row[1] + row[3])) > 30,
+                "the keycap is a house button surface");
     }
 }
