@@ -28,7 +28,7 @@ public final class HudAnimator {
     public static final float GHOST_HOLD_SECONDS = 0.35f;
     public static final float GHOST_EASE_SECONDS = 0.5f;
     public static final float SHAKE_SECONDS = 0.3f;
-    public static final float COMMAND_SLIDE_SECONDS = 0.15f;
+    public static final float COMMAND_WAKE_SECONDS = 0.15f;
     public static final float SUBMENU_SLIDE_SECONDS = 0.10f;
     public static final float CINEMATIC_SLIDE_SECONDS = 0.25f;
     public static final float ATB_FLASH_SECONDS = 0.45f;
@@ -128,7 +128,7 @@ public final class HudAnimator {
     private float hudScale = 1f;
     private boolean windowWasOpen;
     private boolean submenuWasOpen;
-    private float commandSlide = 1f;
+    private float commandWakeClock = 1f;
     private float submenuSlide = 1f;
     private float atbFlashAge = Float.MAX_VALUE;
     private float focusPulseAge = Float.MAX_VALUE;
@@ -156,7 +156,7 @@ public final class HudAnimator {
         enemyShake.reset();
         windowWasOpen = false;
         submenuWasOpen = false;
-        commandSlide = 1f;
+        commandWakeClock = 1f;
         submenuSlide = 1f;
         atbFlashAge = Float.MAX_VALUE;
         focusPulseAge = Float.MAX_VALUE;
@@ -209,10 +209,11 @@ public final class HudAnimator {
         }
         if (endAge < 0f && view.outcome() != BattleOutcome.NONE) endAge = 0f;
 
-        // Slides: restart on the closed → open edge, then run to rest.
+        // Command window wake-up (a veil fade, not a slide) and the submenu slide: restart on the
+        // closed → open edge, then run to rest.
         boolean windowOpen = view.commandWindowOpen();
-        if (windowOpen && !windowWasOpen) commandSlide = 0f;
-        else commandSlide = Math.min(1f, commandSlide + step / COMMAND_SLIDE_SECONDS);
+        if (windowOpen && !windowWasOpen) commandWakeClock = 0f;
+        else commandWakeClock = Math.min(1f, commandWakeClock + step / COMMAND_WAKE_SECONDS);
         windowWasOpen = windowOpen;
 
         boolean submenuOpen = menu != null && menu.submenuOpen();
@@ -292,7 +293,7 @@ public final class HudAnimator {
         float time = out.time;
         boolean targeting = menu != null && menu.targeting();
 
-        out.commandSlideIn = EasingFunctions.apply(commandSlide, EasingType.EaseOutCubic);
+        out.commandWake = EasingFunctions.apply(commandWakeClock, EasingType.EaseOutCubic);
         out.submenuSlideIn = EasingFunctions.apply(submenuSlide, EasingType.EaseOutCubic);
         // The list cursor holds still while the target cursor has the player's attention.
         out.cursorBob = targeting ? 0f : (float) Math.sin(time * 6.0);

@@ -32,7 +32,7 @@ import java.util.Random;
  */
 public final class BattleState implements BattleSimulation {
 
-    static final String REASON_NOT_YOUR_TURN = "Not your turn";
+    static final String REASON_NOT_YOUR_TURN = com.stonebreak.battle.api.CommandAvailability.NOT_YOUR_TURN;
     static final String REASON_NO_QI = "Not enough Qi";
     static final String REASON_FOCUS_NOT_FULL = "Focus gauge not full";
     static final String REASON_NO_CHARGES = "No charges left";
@@ -252,6 +252,10 @@ public final class BattleState implements BattleSimulation {
             ctx.monk.collapse(MonkClips.DEFEAT, MonkClips.DEFEATED);
             ctx.archon.release(); // finishes its swing, glides home
         }
+        // Status timers only run while the fight does; a decided battle carries none (no expiry events:
+        // Ended terminates everything, see BattleEvent.Ended).
+        ctx.monk.statusSet().clear();
+        ctx.archon.statusSet().clear();
         ctx.raise(new BattleEvent.Ended(now));
         return true;
     }
@@ -340,7 +344,11 @@ public final class BattleState implements BattleSimulation {
 
     /** What the command itself needs, independent of whose turn it is (so the HUD can dim rows early). */
     private CommandAvailability resourceCheck(BattleCommand command) {
-        if (!ctx.qi.canAfford(command.qiCost())) return CommandAvailability.no(REASON_NO_QI);
+        // The turn itself grants Qi. While the gauge is still filling, judge a cost against what the
+        // monk WILL hold when the window opens, or a resting HUD would dim a row that lights up on waking.
+        int qiOnTurn = ctx.monk.gauge().full() ? ctx.qi.value()
+                : Math.min(ctx.qi.max(), ctx.qi.value() + config.resources().qiPerTurn());
+        if (command.qiCost() > qiOnTurn) return CommandAvailability.no(REASON_NO_QI);
         return switch (command) {
             case FOCUS_COMBO -> ctx.focus.full() ? CommandAvailability.OK : CommandAvailability.no(REASON_FOCUS_NOT_FULL);
             case MEDITATE -> ctx.meditateCharges() > 0 ? CommandAvailability.OK : CommandAvailability.no(REASON_NO_CHARGES);

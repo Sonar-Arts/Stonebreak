@@ -140,7 +140,10 @@ public final class ParryOverlay {
 
     private static void paintTooEarly(MasonryUI ui, Canvas canvas, TimedLayout.Anchor a, float age, float s,
                                       boolean words) {
-        if (!words || ui == null) return;
+        // Always drawn, whatever the guard-words switch says: that switch only exists to avoid
+        // duplicating PARRY!/BLOCK with the floating numbers, and nothing else ever explains to the
+        // player why the brackets vanished and the blow was merely blocked.
+        if (ui == null) return;
         float t = FocusBattleTheme.clamp01(age / TimedInputState.TOO_EARLY_SECONDS);
         float fade = 1f - TimedTheme.smoothstep((t - 0.5f) / 0.5f);
         Font font = FocusBattleTheme.font(ui, TimedTheme.FS_PROMPT, s);

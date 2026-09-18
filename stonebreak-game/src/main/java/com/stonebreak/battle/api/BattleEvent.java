@@ -53,5 +53,11 @@ public sealed interface BattleEvent {
 
     record CommandRejected(BattleCommand command, String reason) implements BattleEvent {}
 
+    /**
+     * The battle is decided. This TERMINATES whatever was in flight: no {@link ActionFinished},
+     * {@link PromptResolved} or {@link ComboFinished} follows for an action, prompt or combo string the
+     * deciding blow cut short, and no status expiries are raised (statuses are simply cleared).
+     * Consumers that pair start/finish events must treat {@code Ended} as the closing bracket.
+     */
     record Ended(BattleOutcome outcome) implements BattleEvent {}
 }

@@ -38,7 +38,10 @@ public enum BattleCommand {
     public String displayName() { return displayName; }
     public Category category() { return category; }
     public int qiCost() { return qiCost; }
-    /** False for free actions (Martial Surge) that leave the command window open. */
+    /**
+     * False for free actions (Martial Surge): they cost their Qi and play their animation (the window
+     * rests while it plays) but leave the gauge full, so the window reopens for the real command.
+     */
     public boolean endsTurn() { return endsTurn; }
     public String helpText() { return helpText; }
 }

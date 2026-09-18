@@ -11,8 +11,8 @@ import java.util.List;
  *
  * <p>The cursor wraps in both directions. It resets to the first root row whenever the command
  * window reopens ({@link #syncWindowOpen}), because a fresh turn should never inherit a half-open
- * submenu from the last one; a free action that leaves the window open (Martial Surge) keeps the
- * cursor where it is.
+ * submenu from the last one. That includes the reopening after a free action (Martial Surge): its
+ * animation rests the window for its length, so the cursor comes back on the first root row.
  *
  * <p>Targeting sits <em>on top of</em> the list the command came from: while it is active
  * {@link #level()} answers {@link Level#TARGET}, but the list cursor (and an open submenu) stay

@@ -1,8 +1,5 @@
 package com.stonebreak.ui.focusBattle;
 
-import com.stonebreak.battle.api.ActionView;
-import com.stonebreak.battle.api.BattleCommand;
-import com.stonebreak.battle.api.BattleOutcome;
 import com.stonebreak.battle.api.BattlePhase;
 import com.stonebreak.battle.api.BattleView;
 
@@ -10,24 +7,31 @@ import com.stonebreak.battle.api.BattleView;
 public final class BattleHudRules {
     private BattleHudRules() {}
 
-    /** How long after a victory the cinematic framing (letterbox, hidden command HUD) is held. */
+    /** How long after a victory the cinematic framing (letterbox, bottom HUD slid out) is held. */
     public static final float VICTORY_CINEMATIC_SECONDS = 4.0f;
 
     /**
-     * True while the camera owns the moment: the intro and the Focus Combo. Letterbox bars are in and
-     * the bottom HUD windows (command, party, help) are slid out. The victory hold is time-based and
-     * handled by the caller with {@link #VICTORY_CINEMATIC_SECONDS}, since the view carries no
-     * time-since-end.
+     * True while the command window is what the player's input talks to: the battle is running and
+     * undecided, the monk may choose, and no timed prompt is open. A prompt always outranks the menu
+     * (confirm then means "parry" or "hit the ring"), and the model keeps the window open during an
+     * Archon action, so a guarding monk with a full gauge gets BOTH at once: the window must then look
+     * as static as it behaves. Drawing, the target cursor and input routing all use this one rule.
+     */
+    public static boolean menuLive(BattleView view) {
+        return view != null && view.phase() != BattlePhase.INTRO
+                && view.outcome() == com.stonebreak.battle.api.BattleOutcome.NONE
+                && view.prompt() == null && view.commandWindowOpen();
+    }
+
+    /**
+     * True while the camera owns the moment and the battle has not begun: the intro. Letterbox bars
+     * are in and the bottom HUD windows are slid out. It is deliberately NOT true for any action
+     * animation (not even the Focus Combo): the HUD going away every time something animates read as
+     * jarring in playtests, so during the fight the windows stay put and the command window merely
+     * rests in its static state. The victory hold is time-based and handled by the caller with
+     * {@link #VICTORY_CINEMATIC_SECONDS}, since the view carries no time-since-end.
      */
     public static boolean cinematic(BattleView view) {
-        if (view == null) {
-            return false;
-        }
-        if (view.phase() == BattlePhase.INTRO) {
-            return true;
-        }
-        ActionView action = view.currentAction();
-        return view.outcome() == BattleOutcome.NONE && action != null
-                && action.command() == BattleCommand.FOCUS_COMBO;
+        return view != null && view.phase() == BattlePhase.INTRO;
     }
 }

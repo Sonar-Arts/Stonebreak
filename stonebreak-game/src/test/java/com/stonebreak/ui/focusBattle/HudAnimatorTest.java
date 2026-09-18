@@ -180,23 +180,23 @@ class HudAnimatorTest {
     // ── slides ───────────────────────────────────────────────────────────────
 
     @Test
-    void theCommandWindowSlidesInEachTimeItOpens() {
+    void theCommandWindowWakesEachTimeItOpens() {
         frame(DT);
-        assertEquals(1f, anim.commandSlideIn, 1e-6f, "at rest while closed");
+        assertEquals(1f, anim.commandWake, 1e-6f, "at rest while closed");
 
         view.commandWindowOpen = true;
         frame(DT);
-        assertEquals(0f, anim.commandSlideIn, 1e-6f, "the opening edge parks it off-screen");
-        run(HudAnimator.COMMAND_SLIDE_SECONDS / 2f);
-        assertTrue(anim.commandSlideIn > 0.5f && anim.commandSlideIn < 1f, "ease-out: past halfway at half time");
-        run(HudAnimator.COMMAND_SLIDE_SECONDS);
-        assertEquals(1f, anim.commandSlideIn, 1e-6f);
+        assertEquals(0f, anim.commandWake, 1e-6f, "the opening edge starts it veiled, like the static state");
+        run(HudAnimator.COMMAND_WAKE_SECONDS / 2f);
+        assertTrue(anim.commandWake > 0.5f && anim.commandWake < 1f, "ease-out: past halfway at half time");
+        run(HudAnimator.COMMAND_WAKE_SECONDS);
+        assertEquals(1f, anim.commandWake, 1e-6f);
 
         view.commandWindowOpen = false;
         frame(DT);
         view.commandWindowOpen = true;
         frame(DT);
-        assertEquals(0f, anim.commandSlideIn, 1e-6f, "and again on the next turn");
+        assertEquals(0f, anim.commandWake, 1e-6f, "and again on the next turn");
     }
 
     @Test
@@ -207,7 +207,7 @@ class HudAnimatorTest {
         assertTrue(menu.openSubmenu());
         frame(DT);
         assertEquals(0f, anim.submenuSlideIn, 1e-6f);
-        assertEquals(1f, anim.commandSlideIn, 1e-6f, "the command window stays put");
+        assertEquals(1f, anim.commandWake, 1e-6f, "the command window stays put");
         run(HudAnimator.SUBMENU_SLIDE_SECONDS + DT);
         assertEquals(1f, anim.submenuSlideIn, 1e-6f);
     }
@@ -217,21 +217,23 @@ class HudAnimatorTest {
         frame(DT);
         assertEquals(0f, anim.bottomHudSlideOut, 0f);
 
-        view.phase = BattlePhase.ACTION;
-        view.currentAction = new ActionView(CombatantId.MONK, "Focus Combo", BattleCommand.FOCUS_COMBO, null, 0f, 6f);
+        view.phase = BattlePhase.INTRO;
         run(HudAnimator.CINEMATIC_SLIDE_SECONDS / 2f);
         assertTrue(anim.bottomHudSlideOut > 0f && anim.bottomHudSlideOut < 1f, "sliding");
         run(HudAnimator.CINEMATIC_SLIDE_SECONDS);
-        assertEquals(1f, anim.bottomHudSlideOut, 1e-6f, "gone for the Focus Combo");
+        assertEquals(1f, anim.bottomHudSlideOut, 1e-6f, "gone for the intro");
 
-        view.currentAction = null;
         view.phase = BattlePhase.RUNNING;
         run(HudAnimator.CINEMATIC_SLIDE_SECONDS + DT);
-        assertEquals(0f, anim.bottomHudSlideOut, 1e-6f, "and back afterwards");
+        assertEquals(0f, anim.bottomHudSlideOut, 1e-6f, "and back when the fight begins");
 
-        view.currentAction = new ActionView(CombatantId.MONK, "Strike", BattleCommand.STRIKE, null, 0f, 1f);
-        run(0.3f);
-        assertEquals(0f, anim.bottomHudSlideOut, 0f, "an ordinary action never hides the HUD");
+        // Playtest rule: no action animation ever takes the HUD away, the ultimate included.
+        view.phase = BattlePhase.ACTION;
+        for (BattleCommand command : BattleCommand.values()) {
+            view.currentAction = new ActionView(CombatantId.MONK, command.displayName(), command, null, 0f, 6f);
+            run(0.3f);
+            assertEquals(0f, anim.bottomHudSlideOut, 0f, command + " never hides the HUD");
+        }
     }
 
     @Test
@@ -410,7 +412,7 @@ class HudAnimatorTest {
         assertEquals(0f, anim.partyHitFlash, 0f);
         assertEquals(0f, anim.qiSpendFlash, 0f);
         assertEquals(0f, anim.focusFullPulse, 0f);
-        assertEquals(1f, anim.commandSlideIn, 1e-6f);
+        assertEquals(1f, anim.commandWake, 1e-6f);
         assertEquals(0f, anim.bottomHudSlideOut, 0f);
         assertTrue(animator.secondsSinceEnd() < 0f);
 
@@ -447,7 +449,7 @@ class HudAnimatorTest {
             samples[o + 1] = anim.enemyShakeX;
             samples[o + 2] = anim.enemyShakeY;
             samples[o + 3] = anim.enemyHitFlash;
-            samples[o + 4] = anim.commandSlideIn;
+            samples[o + 4] = anim.commandWake;
             samples[o + 5] = anim.atbFullFlash;
             samples[o + 6] = anim.qiPipPop;
             samples[o + 7] = anim.cursorBob;

@@ -244,12 +244,21 @@ public final class FocusBattleTheme {
      * window, so the font is sized from the scale the geometry used rather than read from Settings.
      */
     public static Font font(MasonryUI ui, float baseSize, float scale) {
-        return ui.fonts().get(Math.max(6f, baseSize * scale));
+        return ui.fonts().get(quantize(Math.max(6f, baseSize * scale)));
+    }
+
+    /**
+     * Half-pixel steps. The font cache never evicts, and several elements animate their text size
+     * every frame (combo cell pulse, stamp pop, FLAWLESS pop) on top of a HUD scale that varies
+     * continuously with the window: unquantised, that mints thousands of native fonts.
+     */
+    public static float quantize(float size) {
+        return Math.round(size * 2f) / 2f;
     }
 
     /** Largest font at or below the design size whose rendering of {@code text} fits {@code maxWidth}. */
     public static Font fitFont(MasonryUI ui, String text, float baseSize, float scale, float maxWidth) {
-        float size = Math.max(6f, baseSize * scale);
+        float size = quantize(Math.max(6f, baseSize * scale)); // stays on the half-pixel grid as it shrinks
         float floor = Math.max(6f, size * MIN_FIT);
         Font font = ui.fonts().get(size);
         while (font != null && size > floor && MPainter.measureWidth(font, text) > maxWidth) {

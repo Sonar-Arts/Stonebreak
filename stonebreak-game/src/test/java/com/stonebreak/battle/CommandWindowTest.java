@@ -86,7 +86,12 @@ class CommandWindowTest {
         BattleDriver d = new BattleDriver(BattleDriver.passiveArchon(BattleDriver.exact()
                 .withResources(BattleConfig.Resources.DEFAULTS.withStartQi(0))), 1).start();
         assertFalse(d.sim.commandWindowOpen());
-        assertEquals("Not enough Qi", d.sim.availability(BattleCommand.SWIFT_STEP).reason());
+        // 0 Qi now, but the coming turn grants 1: a 1-Qi art WILL be affordable, a 2-Qi art will not.
+        // (Judging by today's Qi made a resting HUD dim a row that lit up the moment the window opened.)
+        assertEquals("Not your turn", d.sim.availability(BattleCommand.SWIFT_STEP).reason());
+        assertEquals("Not enough Qi", d.sim.availability(BattleCommand.STUNNING_STRIKE).reason());
+        assertTrue(d.sim.availability(BattleCommand.SWIFT_STEP).onlyWaitingForTurn());
+        assertFalse(d.sim.availability(BattleCommand.STUNNING_STRIKE).onlyWaitingForTurn());
         assertEquals("Focus gauge not full", d.sim.availability(BattleCommand.FOCUS_COMBO).reason());
         assertEquals("Not your turn", d.sim.availability(BattleCommand.STRIKE).reason());
         assertEquals("Not your turn", d.sim.availability(null).reason());

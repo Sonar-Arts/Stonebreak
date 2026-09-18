@@ -150,7 +150,7 @@ public final class EncounterTransition implements SkijaFocusBattleRenderer.Layer
         float tracking = 9f * uiScale;
 
         // Fit the spaced title by hand: fitFont measures unspaced text.
-        float size = FlowTheme.FS_CARD_TITLE * uiScale;
+        float size = com.stonebreak.ui.focusBattle.FocusBattleTheme.quantize(FlowTheme.FS_CARD_TITLE * uiScale);
         Font title = ui.fonts().get(size);
         while (title != null && size > 12f && FlowTheme.spacedWidth(title, name, tracking) > rect[2] * 0.86f) {
             size -= 2f;

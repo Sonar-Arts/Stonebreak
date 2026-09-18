@@ -164,7 +164,8 @@ class ScreenFxLayerTest {
 
     @Test
     void theLetterboxBarsAreTheLayoutRects() {
-        FakeBattleView view = TimedScenes.comboView(0, 0.1f);
+        FakeBattleView view = new FakeBattleView();
+        view.phase = com.stonebreak.battle.api.BattlePhase.INTRO;
         TimedInputLayers layers = new TimedInputLayers(TimedScenes.LAYOUT);
         TimedScenes.frame(layers, view, TimedInputState.LETTERBOX_SECONDS / 2f);
         BattleRasterFixture half = fxOnly(layers, view);
@@ -180,8 +181,7 @@ class ScreenFxLayerTest {
         assertEquals((int) (bottom[2] * bottom[3]), full.countExactly(0xFF000000, 0, (int) bottom[1], W, H));
         assertEquals(0, full.countPainted(0, (int) top[3], W, (int) bottom[1]), "only the bars");
 
-        view.prompt = null;
-        view.currentAction = null;
+        view.phase = com.stonebreak.battle.api.BattlePhase.RUNNING;
         TimedScenes.frame(layers, view, TimedInputState.LETTERBOX_SECONDS + 0.01f);
         assertEquals(0, fxOnly(layers, view).countPainted(0, 0, W, H), "eased back out");
     }

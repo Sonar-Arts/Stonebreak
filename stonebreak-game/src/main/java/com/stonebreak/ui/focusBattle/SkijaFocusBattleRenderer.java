@@ -127,22 +127,29 @@ public final class SkijaFocusBattleRenderer {
         PartyStatusWindow.paint(ui, canvas,
                 FocusBattleLayout.offset(FocusBattleLayout.partyWindowRect(w, h, uiScale), 0f, out), view, s, a);
 
-        if (view.commandWindowOpen()) {
-            float slide = (1f - FocusBattleTheme.clamp01(a.commandSlideIn)) * -(cmd[0] + cmd[2]);
+        // The command window never leaves the screen while the fight runs: hiding it for every
+        // animation read as the menu flickering away. Between turns it rests in a STATIC state (no
+        // cursor, no submenu, veiled); when the gauge fills it wakes over a short fade, and the moment
+        // a command is chosen it drops straight back to static.
+        boolean active = BattleHudRules.menuLive(view); // same rule input routing uses: never looks live while it is not
+        if (active && m.submenuOpen()) {
             // Submenu first: it emerges from behind the command window.
-            if (m.submenuOpen()) {
-                float[] sub = FocusBattleLayout.submenuRect(w, h, uiScale);
-                float tuck = (1f - FocusBattleTheme.clamp01(a.submenuSlideIn)) * -(sub[2] * 0.5f);
-                canvas.save();
-                try {
-                    // Clip at E1's right edge so a half-slid submenu never shows through the glass.
-                    canvas.clipRect(io.github.humbleui.types.Rect.makeLTRB(cmd[0] + cmd[2] + slide, 0f, w, h));
-                    QiArtsSubmenu.paint(ui, canvas, FocusBattleLayout.offset(sub, slide + tuck, out), view, m, s, a);
-                } finally {
-                    canvas.restore();
-                }
+            float[] sub = FocusBattleLayout.submenuRect(w, h, uiScale);
+            float tuck = (1f - FocusBattleTheme.clamp01(a.submenuSlideIn)) * -(sub[2] * 0.5f);
+            canvas.save();
+            try {
+                // Clip at E1's right edge so a half-slid submenu never shows through the glass.
+                canvas.clipRect(io.github.humbleui.types.Rect.makeLTRB(cmd[0] + cmd[2], 0f, w, h));
+                QiArtsSubmenu.paint(ui, canvas, FocusBattleLayout.offset(sub, tuck, out), view, m, s, a);
+            } finally {
+                canvas.restore();
             }
-            CommandWindow.paint(ui, canvas, FocusBattleLayout.offset(cmd, slide, out), view, m, s, a);
+        }
+        // ...while the fight runs. Once it is decided there is nothing left to choose: the window goes,
+        // and never sits under the defeat fade or the result panel.
+        if (view.outcome() == com.stonebreak.battle.api.BattleOutcome.NONE) {
+            float veil = active ? 1f - FocusBattleTheme.clamp01(a.commandWake) : 1f;
+            CommandWindow.paint(ui, canvas, FocusBattleLayout.offset(cmd, 0f, out), view, m, s, a, active, veil);
         }
 
         for (Layer layer : overlays) layer.paint(ui, canvas, w, h, s, uiScale, view, a, viewProjection);

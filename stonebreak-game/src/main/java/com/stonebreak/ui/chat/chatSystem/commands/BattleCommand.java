@@ -13,7 +13,7 @@ public final class BattleCommand implements ChatCommand {
     }
     @Override
     public String getDescription() {
-        return "Start the Focus battle: /battle [stop|leave] (singleplayer)";
+        return "Start the Focus battle: /battle, or /battle leave to return from the arena (singleplayer)";
     }
     @Override
     public void execute(String[] args, ChatMessageManager messages) {
@@ -21,14 +21,11 @@ public final class BattleCommand implements ChatCommand {
             String result;
             if (args.length == 0)
                 result = FocusBattle.start();
-            else if (args.length == 1 && args[0].equalsIgnoreCase("stop"))
-                result = FocusBattle.stop() ? "Focus battle stopped. /battle leave returns to the world."
-                                            : "No Focus battle is running.";
             else if (args.length == 1 && args[0].equalsIgnoreCase("leave"))
                 result = FocusBattle.leave() ? "Returned from Frostbound Crucible."
                                              : "No Focus battle or battle arena is active.";
             else
-                result = "Usage: /battle [stop|leave]";
+                result = "Usage: /battle [leave]";
             messages.addMessage(result, ChatColors.WHITE);
         } catch (RuntimeException e) {
             org.slf4j.LoggerFactory.getLogger(BattleCommand.class).error("Focus battle command failed", e);
@@ -37,7 +34,7 @@ public final class BattleCommand implements ChatCommand {
     }
     @Override
     public List<String> getAutocompleteSuggestions(String[] args, String currentArg) {
-        return List.of("stop", "leave")
+        return List.of("leave")
             .stream()
             .filter(s -> s.startsWith(currentArg.toLowerCase(java.util.Locale.ROOT)))
             .toList();

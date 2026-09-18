@@ -100,6 +100,7 @@ public final class TimedInputState {
 
     public void reset() {
         time = 0f;
+        comboLanded = 0;
         ringGrade = null;
         ringFeedbackAge = 0f;
         parryFeedback = ParryFeedback.NONE;

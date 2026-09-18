@@ -14,8 +14,9 @@ import java.util.List;
  * @param archonHeight   model height in blocks
  * @param strikeDistance how far from the Archon's centre the dashing MONK stops (fist reach)
  * @param archonStrikeDistance how far from the monk's centre the gliding ARCHON stops (sword reach)
- * @param archonStrikeLateral   how far the Archon side-steps (toward its own LEFT) by the end of its
- *                              glide, so a blade swung down its right side comes down on the monk
+ * @param archonStrikeLateral   how far the Archon side-steps by the end of its glide, along
+ *                              {@code facing x up} (world -X in the shipped arena, where it faces +Z),
+ *                              so a blade that is authored off its centre line comes down on the monk
  * @param recoilDistance how far a full recoil pushes an actor away from its opponent
  * @param arenaRadius    horizontal radius (from the midpoint) the camera must stay inside
  * @param floorY         the camera eye must stay above this height
@@ -83,9 +84,11 @@ public record BattleStageLayout(Vector3f monkHome, Vector3f archonHome, float mo
         float recoil = Math.max(0f, Math.min(1f, pose.recoil())) * recoilDistance;
         home.add(new Vector3f(facing).mul(dash - recoil));
         if (id == CombatantId.ARCHON && archonStrikeLateral != 0f) {
-            // facing x up points to the actor's own left when its model is authored facing -Z.
-            Vector3f left = new Vector3f(facing).cross(0f, 1f, 0f);
-            home.add(left.mul(archonStrikeLateral * Math.max(0f, Math.min(1f, pose.dashProgress()))));
+            // Sign matters and is asset-driven, do not "correct" it by eye: the sword is authored at
+            // model x = -0.87 (facing -Z); drawn with yaw 180 that is world +0.87 from the Archon's
+            // centre, so the centre must move along facing x up (world -X here) to put it on the monk.
+            Vector3f side = new Vector3f(facing).cross(0f, 1f, 0f);
+            home.add(side.mul(archonStrikeLateral * Math.max(0f, Math.min(1f, pose.dashProgress()))));
         }
         return home;
     }

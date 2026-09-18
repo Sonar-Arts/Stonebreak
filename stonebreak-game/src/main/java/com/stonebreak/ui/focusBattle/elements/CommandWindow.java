@@ -35,6 +35,23 @@ public final class CommandWindow {
     /** {@code anim} drives the cursor bob, the selected-row pulse and the Focus-ready glow. */
     public static void paint(MasonryUI ui, Canvas canvas, float[] rect, BattleView view,
                              BattleMenuState menu, float uiScale, BattleHudAnimState anim) {
+        paint(ui, canvas, rect, view, menu, uiScale, anim, true, 0f);
+    }
+
+    /** Veil over the resting window: enough to read as "not your turn" without hiding the rows. */
+    static final int STATIC_VEIL = 0x80101820;
+
+    /**
+     * The window is always on screen during a fight. {@code active} = the player may choose now:
+     * cursor and selection are shown. Otherwise it rests in its STATIC state: every row listed, no
+     * cursor, nothing animating, under a veil. Rows a resource shortfall will make unusable (no Qi,
+     * no charges, Focus not full) are dimmed in BOTH states, so nothing changes colour on waking.
+     *
+     * @param veil 0 = awake, 1 = fully veiled; the renderer fades it out as the window wakes
+     */
+    public static void paint(MasonryUI ui, Canvas canvas, float[] rect, BattleView view,
+                             BattleMenuState menu, float uiScale, BattleHudAnimState anim,
+                             boolean active, float veil) {
         if (canvas == null || view == null || menu == null) return;
         FocusBattleTheme.battleWindow(canvas, rect);
 
@@ -42,8 +59,31 @@ public final class CommandWindow {
         for (int i = 0; i < rows.size(); i++) {
             float[] row = FocusBattleLayout.rowRect(rect, i, rows.size(), uiScale);
             if (row[3] <= 0f) continue;
-            paintRow(ui, canvas, row, rows.get(i), markFor(menu, i), view, uiScale, anim);
+            MenuRowPainter.Mark mark = active ? markFor(menu, i) : MenuRowPainter.Mark.NONE;
+            paintRow(ui, canvas, row, rows.get(i), mark, view, uiScale, anim, active);
         }
+
+        float amount = FocusBattleTheme.clamp01(veil);
+        if (amount > 0f) {
+            // Same rounded shape as the window's glass, inside its border, at any scale.
+            float inset = FocusBattleTheme.WINDOW_BORDER_WIDTH;
+            float radius = Math.max(0f, Math.min(FocusBattleTheme.WINDOW_RADIUS,
+                    Math.min(rect[2], rect[3]) / 2f) - inset);
+            try (io.github.humbleui.skija.Paint paint = new io.github.humbleui.skija.Paint()
+                    .setColor(FocusBattleTheme.fade(STATIC_VEIL, amount)).setAntiAlias(true)) {
+                canvas.drawRRect(io.github.humbleui.types.RRect.makeXYWH(rect[0] + inset, rect[1] + inset,
+                        rect[2] - 2f * inset, rect[3] - 2f * inset, radius), paint);
+            }
+        }
+    }
+
+    /** Steady READY-glow intensity of the resting window (the live one pulses around this). */
+    static final float RESTING_READY_GLOW = 0.7f;
+
+    private static boolean isUsable(BattleView view, BattleCommand command, boolean active) {
+        com.stonebreak.battle.api.CommandAvailability availability = view.availability(command);
+        if (availability == null || availability.available()) return true;
+        return !active && availability.onlyWaitingForTurn();
     }
 
     private static MenuRowPainter.Mark markFor(BattleMenuState menu, int index) {
@@ -53,13 +93,16 @@ public final class CommandWindow {
 
     private static void paintRow(MasonryUI ui, Canvas canvas, float[] row, BattleMenu.Row entry,
                                  MenuRowPainter.Mark mark, BattleView view, float uiScale,
-                                 BattleHudAnimState anim) {
+                                 BattleHudAnimState anim, boolean active) {
         BattleCommand command = entry.command();
         boolean focusRow = command == BattleCommand.FOCUS_COMBO;
         boolean ready = focusRow && view.focusReady();
-        boolean available = command == null || isAvailable(view, command);
+        // Resting, affordable commands report only "not your turn"; the veil already says that, so
+        // those rows keep their normal colour. Rows short of a resource dim in both states.
+        boolean available = command == null || isUsable(view, command, active);
 
-        if (ready) paintReadyGlow(canvas, row, anim.focusReadyGlow, uiScale);
+        // Static means static: the READY glow holds steady while resting and only pulses when live.
+        if (ready) paintReadyGlow(canvas, row, active ? anim.focusReadyGlow : RESTING_READY_GLOW, uiScale);
         MenuRowPainter.paintBackground(canvas, row, mark, anim, uiScale);
         MenuRowPainter.paintCursor(canvas, row, mark, anim, uiScale);
 
@@ -88,10 +131,6 @@ public final class CommandWindow {
         MenuRowPainter.paintLabel(ui, canvas, row, entry.label(), color, right, uiScale);
     }
 
-    private static boolean isAvailable(BattleView view, BattleCommand command) {
-        CommandAvailability a = view.availability(command);
-        return a == null || a.available();
-    }
 
     /** Right-aligned small caption; returns the x it starts at, less a gap. */
     private static float paintTag(MasonryUI ui, Canvas canvas, float[] row, float right, String tag,

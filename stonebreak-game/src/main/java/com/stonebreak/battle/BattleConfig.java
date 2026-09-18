@@ -191,7 +191,7 @@ public record BattleConfig(float monkMaxHp, int monkDexterity, Atb atb, Resource
     public record Archon(String displayName, float maxHp, int slashWeight, int overheadWeight, int frostCastWeight,
                          float slashDamage, float overheadDamage, float frostCastDamage, float parryLeadSeconds,
                          float parryLagSeconds, float glideFraction, float glideBackDelay) {
-        public static final Archon DEFAULTS = new Archon("Ice Archon", 2400f, 45, 30, 25, 38f, 60f, 30f,
+        public static final Archon DEFAULTS = new Archon("Ice Archon", 720f, 45, 30, 25, 38f, 60f, 30f,
                 // The blow resolves AT impact, so a post-impact tail could never be hit: the whole
                 // parry window sits before the impact and the HUD marker shows exactly what is pressable.
                 0.25f, 0.0f, 0.6f, 0.4f);

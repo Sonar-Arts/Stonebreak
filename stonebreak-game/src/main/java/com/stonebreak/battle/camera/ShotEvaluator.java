@@ -79,6 +79,7 @@ public final class ShotEvaluator {
     }
 
     private static float wrapPi(float a) {
+        if (!Float.isFinite(a)) return 0f; // the loops below would never end on an infinity
         while (a > Math.PI) a -= (float) (2 * Math.PI);
         while (a < -Math.PI) a += (float) (2 * Math.PI);
         return a;

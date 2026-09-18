@@ -6,8 +6,11 @@ public interface BattleInput {
     void introFinished();
 
     /**
-     * Submits a monk command. Returns false (and raises {@link BattleEvent.CommandRejected}) when the
-     * command window is closed or the command is unavailable.
+     * Submits a monk command. Returns false when the command window is closed or the command is
+     * unavailable, raising {@link BattleEvent.CommandRejected} with the reason; a null command, or any
+     * command once the battle is decided, is refused silently. A Guard submitted during an Archon
+     * telegraph applies immediately (reaction guard): it spends the turn and raises the GUARDING
+     * status and a parry prompt, but no {@code ActionStarted}/{@code ActionFinished}.
      */
     boolean submit(BattleCommand command);
 

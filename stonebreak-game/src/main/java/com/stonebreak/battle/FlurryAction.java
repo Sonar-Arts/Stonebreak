@@ -109,7 +109,12 @@ final class FlurryAction extends BattleAction {
         if (ringOpen && elapsed >= closeTime(ring)) resolve(TimedGrade.MISS, ctx); // ran out unpressed
         openRingIfDue(ctx);
         if (landed < hits && elapsed >= contacts[landed]) land(ctx);
-        if (elapsed >= duration()) finish();
+        if (elapsed >= duration()) {
+            // A ring still open at the very end (only with extreme tuning) resolves as a MISS so its
+            // hit is paid: no blow is ever lost.
+            if (ringOpen) resolve(TimedGrade.MISS, ctx);
+            finish();
+        }
     }
 
     @Override
@@ -119,6 +124,7 @@ final class FlurryAction extends BattleAction {
 
     /** Rings never overlap: the next one opens at its lead time or when the previous one is done, whichever is later. */
     private void openRingIfDue(BattleContext ctx) {
+        while (ring < hits && grades[ring] != null) ring++; // already graded (it landed ungraded): never re-open
         if (ringOpen || ring >= hits || elapsed < nominalOpen(ring)) return;
         ringOpen = true;
         ringOpenedAt = elapsed;

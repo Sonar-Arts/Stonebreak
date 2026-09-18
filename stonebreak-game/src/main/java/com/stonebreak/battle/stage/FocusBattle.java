@@ -143,6 +143,10 @@ public final class FocusBattle implements BattleScreenHost {
         if (game.getFocusBattleScreen() == null) {
             return "The Focus battle screen is not available.";
         }
+        String refusal = arenaRefusal();
+        if (refusal != null) {
+            return refusal; // say so now, not after "An Ice Archon draws near!"
+        }
         // The command runs while the chat box is still open; close it now so the freeze-frame the
         // encounter transition twists is a clean view of the field.
         ChatSystem chat = game.getChatSystem();
@@ -169,9 +173,17 @@ public final class FocusBattle implements BattleScreenHost {
             return;
         }
         startRequested = false;
+        String refusal = arenaRefusal();
+        if (refusal != null || Game.getInstance().getState() != GameState.PLAYING) {
+            // Things changed in the one frame since the request: do not pay for a full-window readback.
+            logger.warn("Focus battle did not start: {}", refusal != null ? refusal : "no longer in gameplay");
+            return;
+        }
         Image still = FrameGrab.backBuffer(width, height);
         String failure = beginNow(still);
         if (failure != null) {
+            // On the failure paths that ran after the swirl took the still, the swirl already closed it;
+            // closing twice is a no-op in Skija.
             if (still != null) {
                 still.close();
             }
@@ -181,6 +193,27 @@ public final class FocusBattle implements BattleScreenHost {
             }
             logger.warn("Focus battle did not start: {}", failure);
         }
+    }
+
+    /**
+     * The cheap preconditions the arena session enforces on entry, checked up front with its wording,
+     * so a refusal is reported instead of an announcement. Null = nothing stands in the way. Entering
+     * an already-active arena session needs none of them.
+     */
+    private static String arenaRefusal() {
+        if (BattleTestSession.isActive()) {
+            return null;
+        }
+        if (com.stonebreak.network.MultiplayerSession.getMode()
+                != com.stonebreak.network.MultiplayerSession.Mode.SINGLEPLAYER) {
+            return "A Focus battle needs a singleplayer world.";
+        }
+        Player player = Game.getPlayer();
+        if (player == null || player.isDead()
+                || !com.stonebreak.network.MultiplayerSession.isLocalPlayerDataReady()) {
+            return "Load a world and respawn before starting a Focus battle.";
+        }
+        return null;
     }
 
     /** @return null on success, otherwise the player-facing reason */
@@ -218,6 +251,12 @@ public final class FocusBattle implements BattleScreenHost {
                     BattleStageLayouts.fromArena(session.world().arena()), screen, player);
             battle.beginEncounter(false);
             battle.swirl.begin(still); // takes ownership of the still
+            // ~30 MB synchronous decode: pay it here, hidden behind the frozen frame, not on whichever
+            // later frame first wants the track (e.g. music switched on in Settings mid-battle).
+            com.stonebreak.audio.MusicManager music = Game.getMusicManager();
+            if (music != null) {
+                music.preload(com.stonebreak.audio.MusicManager.Scene.BATTLE);
+            }
             active = battle;
 
             game.openFocusBattle();
@@ -240,6 +279,30 @@ public final class FocusBattle implements BattleScreenHost {
             }
             return "Could not start the Focus battle: " + e.getMessage();
         }
+    }
+
+    /**
+     * Runs a HUD render or input call under the battle's failure policy: an exception ends the battle
+     * (logged once, reported in chat) instead of escaping into the frame loop and killing the game.
+     */
+    public static void guardHud(String what, Runnable call) {
+        try {
+            call.run();
+        } catch (RuntimeException e) {
+            FocusBattle battle = active;
+            if (battle != null) {
+                battle.failed(what, e);
+            } else {
+                logger.error("Focus battle HUD failed during '{}' with no battle running", what, e);
+            }
+        }
+    }
+
+    /** {@link #guardHud(String, Runnable)} for calls that report whether they consumed the input. */
+    public static boolean guardHud(String what, java.util.function.BooleanSupplier call) {
+        boolean[] handled = {false};
+        guardHud(what, () -> handled[0] = call.getAsBoolean());
+        return handled[0];
     }
 
     /** True while the freeze-twist-whiteout encounter transition is covering the screen. */
@@ -282,21 +345,9 @@ public final class FocusBattle implements BattleScreenHost {
     }
 
     /**
-     * Stops the battle and drops to free roam inside the arena.
-     *
-     * @return false when no battle was running
-     */
-    public static boolean stop() {
-        FocusBattle battle = active;
-        if (battle == null) {
-            return false;
-        }
-        battle.exploreArena();
-        return true;
-    }
-
-    /**
-     * Stops any running battle and leaves the arena session.
+     * Stops any running battle and leaves the arena session. Chat is closed for the whole of a battle,
+     * so in practice {@code /battle leave} is typed from arena free roam after "Explore arena"; a live
+     * fight is left through its result panel or the pause menu's quit.
      *
      * @return false when there was neither a battle nor an arena session to leave
      */
@@ -341,6 +392,8 @@ public final class FocusBattle implements BattleScreenHost {
 
     /** Fresh model + camera, bound to the HUD. Used on start and on retry. */
     private void beginEncounter(boolean bindScreenNow) {
+        stepFailureLogged = false;
+        BattleActors.resetDiagnostics();
         long seed = nextSeed();
         int dexterity = player.getCharacterStats() != null
                 ? player.getCharacterStats().getDexterity() : FALLBACK_DEXTERITY;

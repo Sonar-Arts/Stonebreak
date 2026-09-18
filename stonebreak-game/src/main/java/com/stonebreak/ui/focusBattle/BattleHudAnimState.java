@@ -19,8 +19,11 @@ public final class BattleHudAnimState {
     public float time;
 
     // ── E1 / E2
-    /** 0 = command window fully off-screen left, 1 = in place. */
-    public float commandSlideIn = 1f;
+    /**
+     * 0 = the command window has just become active and is still veiled like its static state,
+     * 1 = fully awake. The window itself never moves: it is on screen for the whole fight.
+     */
+    public float commandWake = 1f;
     /** 0 = submenu tucked behind E1, 1 = in place. */
     public float submenuSlideIn = 1f;
     /** Hand cursor bob, −1..1 (× a few pixels, horizontally). */
@@ -74,6 +77,9 @@ public final class BattleHudAnimState {
     public float targetBob;
 
     // ── Whole HUD
-    /** 0 = bottom windows (E1–E4) in place, 1 = slid out below the screen (Focus Combo, intro). */
+    /**
+     * 0 = bottom windows (E1–E4) in place, 1 = slid out below the screen. Only the pre-fight intro and
+     * the victory hold do this; no action animation ever does (see BattleHudRules.cinematic).
+     */
     public float bottomHudSlideOut;
 }

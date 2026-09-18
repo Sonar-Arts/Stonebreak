@@ -174,8 +174,8 @@ final class BattleContext {
         float spread = 1f + dmg.variance() * (2f * random.nextFloat() - 1f);
         boolean crit = random.nextFloat() < dmg.critChance();
         float amount = wholeDamage(baseDamage * multiplier * spread * (crit ? dmg.critMultiplier() : 1f));
-        archon.takeDamage(amount);
-        stats.damageDealt(amount);
+        // The popup shows the full blow; the running totals count only the HP it actually removed.
+        stats.damageDealt(archon.takeDamage(amount));
         raise(new BattleEvent.DamageDealt(CombatantId.ARCHON, amount, crit ? DamageFlavor.CRITICAL : DamageFlavor.NORMAL));
         // A new hit restarts the flinch. A stunned Archon stays in its stun clips; an attacking one is
         // never hit (actions do not overlap), and a dead one gets its death clip from the battle-end check.
@@ -196,8 +196,7 @@ final class BattleContext {
             focus.gain(res.focusOnParry());
         } else {
             float amount = wholeDamage(guarding ? base * config.damage().guardMultiplier() : base);
-            monk.takeDamage(amount);
-            stats.damageTaken(amount);
+            stats.damageTaken(monk.takeDamage(amount)); // overkill is not damage taken
             if (guarding) stats.block();
             raise(new BattleEvent.DamageDealt(CombatantId.MONK, amount, guarding ? DamageFlavor.BLOCKED : DamageFlavor.NORMAL));
             if (guarding) focus.gain(res.focusOnBlock());

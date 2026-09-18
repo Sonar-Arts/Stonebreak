@@ -186,7 +186,8 @@ public final class FrameRenderer {
             Player player = game.getPlayer();
             org.joml.Matrix4f viewProjection = player == null ? null
                     : new org.joml.Matrix4f(renderer.getProjectionMatrix()).mul(player.getViewMatrix());
-            battleScreen.render(width(), height(), viewProjection);
+            com.stonebreak.battle.stage.FocusBattle.guardHud("hud render",
+                    () -> battleScreen.render(width(), height(), viewProjection));
         }
         // Encounter transition (the frozen field frame twisting to white) covers scene and HUD.
         com.stonebreak.battle.stage.FocusBattle.renderEncounterTransition(width(), height());

@@ -11,7 +11,8 @@ import java.util.Set;
  * menu screen is active (main menu, world select/creation, multiplayer menus, settings) and the
  * battle playlist while a Focus battle is running. Within a scene it advances to the next track
  * whenever the current one finishes (a one-track playlist therefore loops). Changing scene stops the
- * old track at once and starts the new scene's playlist from its first track; {@link Scene#NONE}
+ * old track at once; coming back to a scene resumes its playlist from the NEXT track, as the menu
+ * music always has; {@link Scene#NONE}
  * is silence (ordinary gameplay).
  *
  * <p>Which scene is active is the caller's responsibility to classify, not this class's — see
@@ -41,7 +42,8 @@ public final class MusicManager {
 
     private boolean enabled;
     private Scene playingScene = Scene.NONE;
-    private int currentTrackIndex = -1;
+    /** Last track played per scene, so returning to a scene moves on to its NEXT track. */
+    private final java.util.EnumMap<Scene, Integer> lastTrack = new java.util.EnumMap<>(Scene.class);
 
     public MusicManager(SoundSystem soundSystem) {
         this.soundSystem = soundSystem;
@@ -75,7 +77,6 @@ public final class MusicManager {
                 soundSystem.stopMusic();
             }
             playingScene = wanted;
-            currentTrackIndex = -1; // every scene starts from its first track
         }
         if (wanted == Scene.NONE) {
             return;
@@ -109,11 +110,11 @@ public final class MusicManager {
     }
 
     private int nextTrackIndex(Scene scene) {
-        return (currentTrackIndex + 1) % playlist(scene).size();
+        return (lastTrack.getOrDefault(scene, -1) + 1) % playlist(scene).size();
     }
 
     private void playTrack(Scene scene, int index) {
-        currentTrackIndex = index;
+        lastTrack.put(scene, index);
         soundSystem.playMusic(playlist(scene).get(index).name());
     }
 }

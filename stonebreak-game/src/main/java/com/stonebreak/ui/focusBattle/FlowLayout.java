@@ -36,7 +36,7 @@ public final class FlowLayout {
     /**
      * The band of the screen floaters may spawn in, {@code {left, top, right, bottom}}: below the
      * action banner (so a number never sits on the enemy plate) and above the party window. The help
-     * strip and command window are inside the band on purpose: they come and go, the monk often
+     * strip and command window are inside the band on purpose: the help strip comes and goes and the command window is veiled between turns, the monk often
      * stands behind them, and a number pinned above them would detach from the body it belongs to.
      */
     public static float[] floaterBounds(int w, int h, float uiScale) {

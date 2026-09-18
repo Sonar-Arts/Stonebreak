@@ -40,7 +40,8 @@ public final class StatusChips {
 
     /** The queued Martial Surge chip shown while bonus hits are waiting. */
     public static Chip surge(int queuedHits) {
-        return new Chip(BattleStatus.SURGE.label() + " +" + queuedHits, "", FocusBattleTheme.FOCUS);
+        // No hit count: a queued surge adds a different number of blows to a Strike than to a Flurry.
+        return new Chip(BattleStatus.SURGE.label() + " ready", "", FocusBattleTheme.FOCUS);
     }
 
     public static int colorFor(BattleStatus status) {

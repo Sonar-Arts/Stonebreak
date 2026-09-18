@@ -171,7 +171,10 @@ class TimedInputStateTest {
     @Test
     void theLetterboxFollowsTheCinematicRuleOverAQuarterSecond() {
         TimedInputState state = new TimedInputState();
-        FakeBattleView view = TimedScenes.comboView(0, 0f);
+        assertFalse(BattleHudRules.cinematic(TimedScenes.comboView(0, 0f)),
+                "no action animation is cinematic, the Focus Combo included: the HUD stays");
+        FakeBattleView view = new FakeBattleView();
+        view.phase = BattlePhase.INTRO;
         assertTrue(BattleHudRules.cinematic(view));
         frame(state, view, TimedInputState.LETTERBOX_SECONDS / 2f);
         assertEquals(0.5f, state.letterbox(), 1.0e-4f);
@@ -180,8 +183,7 @@ class TimedInputStateTest {
         assertEquals(1f, state.letterbox(), 0f);
         assertEquals(1f, ScreenFxLayer.letterboxAmount(state), 0f);
 
-        view.prompt = null;
-        view.currentAction = null;
+        view.phase = BattlePhase.RUNNING;
         frame(state, view, TimedInputState.LETTERBOX_SECONDS / 2f);
         assertEquals(0.5f, state.letterbox(), 1.0e-4f, "eases out at the same rate");
         frame(state, view, TimedInputState.LETTERBOX_SECONDS);

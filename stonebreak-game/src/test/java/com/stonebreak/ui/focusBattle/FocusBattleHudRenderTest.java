@@ -31,8 +31,8 @@ class FocusBattleHudRenderTest {
         assertTrue(fx.countPainted(FocusBattleLayout.partyWindowRect(W, H, UI_SCALE)) > 30_000, "E3");
         assertTrue(fx.countPainted(FocusBattleLayout.enemyPlateRect(W, H, UI_SCALE)) > 30_000, "E5");
         assertTrue(fx.countPainted(FocusBattleLayout.modeTagRect(W, H, UI_SCALE)) > 1500, "E13");
-        assertEquals(0, fx.countPainted(FocusBattleLayout.commandWindowRect(W, H, UI_SCALE)),
-                "E1 is hidden until the monk's gauge fills");
+        assertTrue(fx.countPainted(FocusBattleLayout.commandWindowRect(W, H, UI_SCALE)) > 30_000,
+                "E1 rests on screen in its static state even before the monk's gauge fills");
         assertEquals(0, fx.countPainted(FocusBattleLayout.actionBannerRect(W, H, UI_SCALE)),
                 "reserved rects stay empty until Wave 2 fills them");
         assertEquals(0, fx.countPainted(FocusBattleLayout.comboStripRect(W, H, UI_SCALE)));
@@ -61,11 +61,19 @@ class FocusBattleHudRenderTest {
         view.commandWindowOpen = true;
         BattleRasterFixture rest = hud(view, new BattleMenuState(), null);
 
-        BattleHudAnimState sliding = new BattleHudAnimState();
-        sliding.commandSlideIn = 0f;
-        BattleRasterFixture hidden = hud(view, new BattleMenuState(), sliding);
-        assertEquals(0, hidden.countPainted(FocusBattleLayout.commandWindowRect(W, H, UI_SCALE)) > 600 ? 1 : 0,
-                "slide-in 0 parks E1 off the left edge");
+        // The command window never slides away. Waking (0) it still fills its rect, veiled like the
+        // static state; awake (1) the veil is gone and the cursor row is lit.
+        float[] cmd = FocusBattleLayout.commandWindowRect(W, H, UI_SCALE);
+        BattleHudAnimState waking = new BattleHudAnimState();
+        waking.commandWake = 0f;
+        BattleRasterFixture veiled = hud(view, new BattleMenuState(), waking);
+        assertTrue(veiled.countPainted(cmd) > 30_000, "E1 stays in its rect while it wakes");
+        assertTrue(veiled.diff(rest, cmd) > 10_000, "and is veiled until it has woken");
+
+        FakeBattleView resting = new FakeBattleView();
+        BattleRasterFixture staticState = hud(resting, new BattleMenuState(), null);
+        assertTrue(staticState.countPainted(cmd) > 30_000, "between turns E1 is still there");
+        assertTrue(staticState.diff(rest, cmd) > 10_000, "in its static look: veiled, no cursor");
 
         BattleHudAnimState out = new BattleHudAnimState();
         out.bottomHudSlideOut = 1f;
@@ -115,5 +123,22 @@ class FocusBattleHudRenderTest {
                         win[0] + "x" + win[1] + " @" + scale);
             }
         }
+    }
+
+    @Test
+    void theWindowLooksStaticWhileAPromptOwnsTheInput() {
+        // A guarding monk with a full gauge gets the command window AND a parry prompt at once. Confirm
+        // then means "parry", so the window must look exactly as static as it behaves.
+        FakeBattleView resting = new FakeBattleView();
+        resting.prompt = new com.stonebreak.battle.api.PromptView.Parry(0.2f, 0.4f, 0.65f, 0.65f);
+        FakeBattleView both = new FakeBattleView();
+        both.prompt = resting.prompt;
+        both.commandWindowOpen = true;
+        float[] cmd = FocusBattleLayout.commandWindowRect(W, H, UI_SCALE);
+        assertEquals(0, hud(both, new BattleMenuState(), null).diff(hud(resting, new BattleMenuState(), null), cmd),
+                "no cursor, veiled: identical to the resting window");
+        assertTrue(!BattleHudRules.menuLive(both), "a prompt outranks the menu");
+        both.prompt = null;
+        assertTrue(BattleHudRules.menuLive(both));
     }
 }

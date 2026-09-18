@@ -25,10 +25,18 @@ public interface BattleView {
     default float focusFraction() { return maxFocus() <= 0f ? 0f : Math.max(0f, Math.min(1f, focus() / maxFocus())); }
 
     int meditateCharges();
-    /** Bonus hits queued by Martial Surge for the next Strike or Flurry. */
+    /**
+     * Non-zero while a Martial Surge is queued. The value is the bonus a STRIKE would get; a Flurry
+     * gets its own (larger) bonus, so present this as "Surge queued", not as a hit count.
+     */
     int queuedSurgeHits();
 
-    /** True while the monk may submit a command (gauge full, nothing executing, battle running). */
+    /**
+     * True while the monk may submit a command: battle undecided, gauge full, no monk command queued
+     * or executing, and either nothing is executing or it is the ARCHON's action (as in FF7 the player
+     * may input while the enemy animates; that command is queued, except a reaction Guard, which
+     * applies at once).
+     */
     boolean commandWindowOpen();
     CommandAvailability availability(BattleCommand command);
 

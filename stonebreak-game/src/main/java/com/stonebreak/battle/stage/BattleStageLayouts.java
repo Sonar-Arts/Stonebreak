@@ -28,7 +28,7 @@ public final class BattleStageLayouts {
     public static final float ARCHON_STRIKE_DISTANCE = 1.8f;
     /**
      * The overhead comes down along the Archon's right side (authored x = -0.87), not its centre
-     * line, so by the end of its glide it has side-stepped this far to its own left, which puts the
+     * line, so by the end of its glide it has side-stepped this far along facing x up (see BattleStageLayout.feet), which puts the
      * blade line through the monk. (The slash arcs above head height at the centre line in the
      * shipped clip and cannot touch a monk straight ahead at any distance: an asset question.)
      */

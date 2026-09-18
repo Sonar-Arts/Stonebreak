@@ -226,30 +226,122 @@ class FlowHudRenderTest {
     }
 
     @Test
-    void theBottomHudReallyLeavesTheScreenForTheFocusCombo() {
+    void theBottomHudStaysForTheFocusComboAndTheCommandWindowGoesStatic() {
         view.commandWindowOpen = true;
         run(0.4f);
-        assertTrue(hud(null).countPainted(0, H / 2, W, H) > 100_000, "command, help and party windows are up");
+        float[] cmd = FocusBattleLayout.commandWindowRect(W, H, UI);
+        float[] party = FocusBattleLayout.partyWindowRect(W, H, UI);
+        BattleRasterFixture awake = hud(null);
+        assertTrue(awake.countPainted(0, H / 2, W, H) > 100_000, "command, help and party windows are up");
 
+        // The ultimate is chosen: nothing slides away. The command window drops to its static state at
+        // once (veiled, no cursor) and the party window does not move at all.
         view.commandWindowOpen = false;
         view.phase = BattlePhase.ACTION;
         view.currentAction = new ActionView(CombatantId.MONK, "Focus Combo", BattleCommand.FOCUS_COMBO, null, 0f, 6f);
         frame(new BattleEvent.ActionStarted(CombatantId.MONK, "Focus Combo", BattleCommand.FOCUS_COMBO, null, 6f));
-        run(HudAnimator.CINEMATIC_SLIDE_SECONDS / 2f);
-        int half = hud(null).countPainted(0, H / 2, W, H);
-        run(HudAnimator.CINEMATIC_SLIDE_SECONDS);
-        // The cinematic letterbox bar owns the very bottom of the screen now; everything above it is clear.
-        int barTop = (int) Math.floor(FocusBattleLayout.letterboxBottomRect(W, H, UI)[1]);
-        assertEquals(0, hud(null).countPainted(0, H / 2, W, barTop), "E1–E4 are off the bottom edge");
-        assertTrue(half > 0, "having slid there, not vanished");
+        BattleRasterFixture chosen = hud(null);
+        assertTrue(chosen.countPainted(cmd) > 30_000, "E1 is still on screen the very frame the attack is chosen");
+        assertTrue(chosen.diff(awake, cmd) > 10_000, "but already back in its static look");
+        run(HudAnimator.CINEMATIC_SLIDE_SECONDS * 2f);
+        BattleRasterFixture during = hud(null);
+        assertTrue(during.countPainted(cmd) > 30_000, "and it stays while the animation plays");
+        assertTrue(during.countPainted(party) > 30_000, "as does the party window");
+        assertEquals(0, during.diff(chosen, cmd), "static means static: no motion while the animation plays");
 
         float[] banner = FocusBattleLayout.actionBannerRect(W, H, UI);
-        assertTrue(hud(null).countPainted(banner) > 8000, "while the gold banner names the combo");
+        assertTrue(during.countPainted(banner) > 8000, "while the gold banner names the combo");
+    }
 
-        view.currentAction = null;
+    @Test
+    void theStaticWindowHoldsStillEvenWithFocusReadyAndDimsTheSameRowsAsTheLiveOne() {
+        // Between turns the model reports a resource shortfall where there is one, else "not your turn".
+        view.focus = view.maxFocus;
+        view.meditateCharges = 0;
+        for (BattleCommand command : BattleCommand.values()) {
+            view.unavailable.put(command, com.stonebreak.battle.api.CommandAvailability.NOT_YOUR_TURN);
+        }
+        view.unavailable.put(BattleCommand.MEDITATE, "No charges left");
+        view.commandWindowOpen = false;
+        run(0.4f);
+        float[] cmd = FocusBattleLayout.commandWindowRect(W, H, UI);
+        BattleRasterFixture first = hud(null);
+
+        // Painter level (the full HUD also carries the screen-edge Focus aura, which is not the window):
+        // two very different animation phases paint the resting window identically, the live one not.
+        BattleHudAnimState dim = new BattleHudAnimState(), bright = new BattleHudAnimState();
+        dim.focusReadyGlow = 0.2f;
+        bright.focusReadyGlow = 1f;
+        bright.selectedPulse = 1f;
+        bright.cursorBob = 1f;
+        float scale = FocusBattleLayout.effectiveScale(W, H, UI);
+        assertEquals(0, window(dim, false, scale).diff(window(bright, false, scale), cmd),
+                "static means static: nothing in the resting window animates, the READY glow included");
+        assertTrue(window(dim, true, scale).diff(window(bright, true, scale), cmd) > 200,
+                "while the live window does pulse");
+
+        // The exhausted Meditate row is dimmed while resting exactly as it will be on waking...
+        float[] meditate = FocusBattleLayout.rowRect(cmd, 3, FocusBattleLayout.commandRowCount(), FocusBattleLayout.effectiveScale(W, H, UI));
+        view.unavailable.clear();
+        BattleRasterFixture allUsable = hud(null);
+        assertTrue(first.diff(allUsable, meditate) > 50, "a row short of a resource is dimmed in the static state");
+        // ...while a row that is merely waiting for the turn is not greyed out on top of the veil.
+        float[] strike = FocusBattleLayout.rowRect(cmd, 0, FocusBattleLayout.commandRowCount(), FocusBattleLayout.effectiveScale(W, H, UI));
+        assertEquals(0, first.diff(allUsable, strike), "'not your turn' alone never dims a row");
+    }
+
+    private BattleRasterFixture window(BattleHudAnimState state, boolean active, float scale) {
+        BattleRasterFixture fx = new BattleRasterFixture(W, H);
+        com.stonebreak.ui.focusBattle.elements.CommandWindow.paint(fx.ui, fx.canvas,
+                FocusBattleLayout.commandWindowRect(W, H, UI), view, new BattleMenuState(), scale, state,
+                active, active ? 0f : 1f);
+        return fx;
+    }
+
+    @Test
+    void theCommandWindowIsGoneOnceTheBattleIsDecided() {
+        view.commandWindowOpen = false;
+        run(0.4f);
+        float[] cmd = FocusBattleLayout.commandWindowRect(W, H, UI);
+        assertTrue(hud(null).countPainted(cmd) > 30_000, "resting during the fight");
+        // The defeat wash tints the whole screen, so probe for the window's own border colour.
+        assertTrue(hud(null).countExactly(FocusBattleTheme.WINDOW_BORDER, (int) cmd[0], (int) cmd[1],
+                (int) (cmd[0] + cmd[2]), (int) (cmd[1] + cmd[3])) > 100, "its border is there");
+
+        view.phase = BattlePhase.RESULT;
+        view.outcome = com.stonebreak.battle.api.BattleOutcome.DEFEAT;
+        frame(new BattleEvent.Ended(com.stonebreak.battle.api.BattleOutcome.DEFEAT));
+        run(0.5f); // before the result panel rises; a defeat never slides the HUD out
+        assertEquals(0, hud(null).countExactly(FocusBattleTheme.WINDOW_BORDER, (int) cmd[0], (int) cmd[1],
+                        (int) (cmd[0] + cmd[2]), (int) (cmd[1] + cmd[3])),
+                "nothing left to choose: no veiled menu under the defeat fade or the result panel");
+    }
+
+    @Test
+    void theBottomHudLeavesTheScreenOnlyForTheIntro() {
+        view.phase = BattlePhase.INTRO;
+        run(1.4f); // past the encounter flash and iris, before the name card
+        // The letterbox bar owns the very bottom edge during the intro (and the skip hint sits bottom
+        // right); the command window's own area above the bar must be empty.
+        int barTop = (int) Math.floor(FocusBattleLayout.letterboxBottomRect(W, H, 1f)[1]);
+        float[] cmd = FocusBattleLayout.commandWindowRect(W, H, UI);
+        assertEquals(0, hud(null).countPainted((int) cmd[0], (int) cmd[1], (int) (cmd[0] + cmd[2]),
+                        Math.min((int) (cmd[1] + cmd[3]), barTop)),
+                "the bottom HUD is out while the camera introduces the fight");
+        // The help strip and the party window's upper half (clear of the bar and the skip hint) too.
+        float[] help = FocusBattleLayout.helpStripRect(W, H, UI);
+        float[] party = FocusBattleLayout.partyWindowRect(W, H, UI);
+        assertEquals(0, hud(null).countPainted(help), "help strip out");
+        assertEquals(0, hud(null).countPainted((int) party[0], (int) party[1], (int) (party[0] + party[2]),
+                (int) (party[1] + party[3] * 0.4f)), "party window out");
+
         view.phase = BattlePhase.RUNNING;
+        run(HudAnimator.CINEMATIC_SLIDE_SECONDS / 2f);
+        int partyMidSlide = hud(null).countPainted(party);
         run(HudAnimator.CINEMATIC_SLIDE_SECONDS + 2 * DT);
-        assertTrue(hud(null).countPainted(FocusBattleLayout.partyWindowRect(W, H, UI)) > 30_000, "and back");
+        int partyBack = hud(null).countPainted(party);
+        assertTrue(partyBack > 30_000, "and back");
+        assertTrue(partyMidSlide > 0 && partyMidSlide < partyBack, "having slid there, not popped");
     }
 
     @Test

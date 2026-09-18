@@ -141,4 +141,18 @@ class ParryOverlayTest {
         assertTrue(fx.countPainted((int) (a.x() - a.radius() * 3.2f), (int) (a.y() - a.radius() * 2f),
                 (int) (a.x() + a.radius() * 3.2f), (int) (a.y() + a.radius() * 2f)) > 500);
     }
+
+    @Test
+    void tooEarlyIsShownEvenWithTheGuardWordsSwitchedOff() {
+        // The shipped screen turns the guard words off (the floaters own PARRY!/BLOCK). TOO EARLY has no
+        // floater twin, so it must not ride on that switch or a wasted press is never explained.
+        FakeBattleView view = TimedScenes.parryView(0.4f);
+        TimedInputLayers layers = new TimedInputLayers(TimedScenes.LAYOUT);
+        layers.setGuardWordsEnabled(false);
+        TimedScenes.frame(layers, view, 0.016f);
+        view.prompt = null; // the attempt is spent: the brackets go
+        TimedScenes.frame(layers, view, 0.05f, new BattleEvent.PromptResolved(PromptKind.PARRY, TimedGrade.MISS, 0));
+        BattleRasterFixture fx = TimedScenes.paintLayers(layers, view, CAMERA);
+        assertTrue(fx.countPainted(0, 0, W, H) > 300, "the player is told the press was wasted");
+    }
 }

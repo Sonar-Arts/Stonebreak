@@ -102,7 +102,8 @@ public final class CameraDirector {
                     start("INTRO", Situation.INTRO, null, null);
                     return;
                 }
-                if (!rig.finished()) return;
+                // A blocked intro (arena edit) plays WIDE, which never ends: do not hold the battle for it.
+                if (!rig.finished() && !fallbackLive) return;
             }
             introDone = true;
         }
@@ -133,7 +134,8 @@ public final class CameraDirector {
                     monkStarted(a.command());
                 }
             }
-            // Martial Surge as a free action raises no ActionStarted: its status is the only cue.
+            // Belt and braces: Martial Surge raises ActionStarted like any action; should a model ever make
+            // it instantaneous again, its status is the cue. monkStarted() dedups the pair.
             case BattleEvent.StatusApplied s -> {
                 if (s.target() == CombatantId.MONK && s.status() == BattleStatus.SURGE && !ultimateLive) {
                     monkStarted(BattleCommand.MARTIAL_SURGE);
@@ -240,14 +242,15 @@ public final class CameraDirector {
 
     private void resolve(BattleView view, float dt, boolean frozen, boolean promptOpen) {
         if (!resultShown && view.phase() == BattlePhase.RESULT) showResult(view.outcome());
-        if (finisherHold && rig.finished() && (finisherActionDone || view.currentAction() == null)) {
+        if (finisherHold && (rig.finished() || fallbackLive) && (finisherActionDone || view.currentAction() == null)) {
             finisherHold = false;
             ultimateLive = false;
         }
         if (resultShown || ultimateLive) return;
 
         String monkKey = monkCommand == BattleCommand.GUARD ? "GUARD" : "MONK#" + monkSerial;
-        // A sequence made only of timed steps (Swift Step, Martial Surge) ends itself.
+        // A sequence made only of timed steps ends itself (none is authored that way today: every monk
+        // sequence advances on ACTION_FINISHED; kept so a timed-only sequence cannot strand the flag).
         if (monkActionLive && rig.finished() && liveKey.equals(monkKey)) monkActionLive = false;
 
         String key;
@@ -336,7 +339,14 @@ public final class CameraDirector {
         play(choose(wanted), key, wanted, owner, entryOverride);
     }
 
+    /**
+     * True while the live sequence is the WIDE fallback standing in for a situation whose every variant
+     * the stage blocked. WIDE holds forever, so nothing may wait for it to finish.
+     */
+    private boolean fallbackLive;
+
     private void play(ShotSequence sequence, String key, Situation wanted, CombatantId owner, Transition entryOverride) {
+        fallbackLive = sequence == library.wide() && wanted != Situation.IDLE;
         // 180° rule: the way back from the far side of the line is a cut, never a glide through the actors.
         if (entryOverride == null && rig.liveShot().crossesLine() && !sequence.steps().getFirst().shot().crossesLine()) {
             entryOverride = Transition.CUT;

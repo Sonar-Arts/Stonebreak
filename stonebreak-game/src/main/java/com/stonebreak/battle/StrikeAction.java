@@ -71,7 +71,7 @@ final class StrikeAction extends BattleAction {
         int hit = nextHit++;
         ctx.monkHit(damage, 1f, hit, contacts.length);
         ctx.focus.gain(focusPerHit);
-        if (stuns && hit == 0) ctx.stunArchon();
+        if (stuns && hit == 0 && ctx.archon.alive()) ctx.stunArchon(); // never stun a corpse
     }
 
     @Override

@@ -34,6 +34,14 @@ public final class BattleActors {
 
     private static boolean poseFailureLogged;
     private static boolean drawFailureLogged;
+    private static boolean missingAssetLogged;
+
+    /** New encounter: problems are logged once per encounter, not once per JVM. */
+    static void resetDiagnostics() {
+        poseFailureLogged = false;
+        drawFailureLogged = false;
+        missingAssetLogged = false;
+    }
 
     /** Draws both actors when a Focus battle is running; a no-op otherwise. Main (GL) thread only. */
     public static void renderIfActive(EntityRenderer entityRenderer, Matrix4f projection, Matrix4f view) {
@@ -97,6 +105,12 @@ public final class BattleActors {
     /** Rest-pose "feet" height of an asset's model space; 0 (origin at the feet) when unknown. */
     private static float restMinY(String objectId, String variant) {
         SbeEntityAsset asset = SbeEntityRegistry.get(objectId);
+        if (asset == null && !missingAssetLogged) {
+            // The preview renderer skips an unknown object id silently: without this the fight would
+            // run against an invisible opponent with nothing in the log.
+            missingAssetLogged = true;
+            logger.error("Battle actor asset '{}' is not registered; it will not be drawn", objectId);
+        }
         SbeModelGeometry geometry = asset == null ? null : asset.geometryFor(variant);
         return geometry == null ? 0f : geometry.restMinY();
     }

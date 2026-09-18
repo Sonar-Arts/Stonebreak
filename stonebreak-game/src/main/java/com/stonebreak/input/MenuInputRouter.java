@@ -109,7 +109,8 @@ public final class MenuInputRouter {
             // The battle owns every click whether or not the HUD used it: nothing may reach the world.
             case FOCUS_BATTLE -> {
                 withUiCursor((x, y) -> dispatch(game.getFocusBattleScreen(),
-                        s -> s.handleMouseClick(x, y, width, height, button, action)));
+                        s -> com.stonebreak.battle.stage.FocusBattle.guardHud("hud click",
+                                () -> s.handleMouseClick(x, y, width, height, button, action))));
                 yield true;
             }
             default -> false;
@@ -156,7 +157,8 @@ public final class MenuInputRouter {
             case MULTIPLAYER_MENU -> dispatch(game.getMultiplayerMenu(), s -> s.handleMouseMove(x, y, width, height));
             case HOST_WORLD_SELECT -> dispatch(game.getHostWorldScreen(), s -> s.handleMouseMove(x, y, width, height));
             case JOIN_WORLD_SCREEN -> dispatch(game.getJoinWorldScreen(), s -> s.handleMouseMove(x, y, width, height));
-            case FOCUS_BATTLE -> dispatch(game.getFocusBattleScreen(), s -> s.handleMouseMove(x, y, width, height));
+            case FOCUS_BATTLE -> dispatch(game.getFocusBattleScreen(), s -> com.stonebreak.battle.stage.FocusBattle
+                    .guardHud("hud mouse move", () -> s.handleMouseMove(x, y, width, height)));
             default -> { }
         }
     }
@@ -254,7 +256,8 @@ public final class MenuInputRouter {
             }
         }
         com.stonebreak.ui.focusBattle.FocusBattleScreen screen = game.getFocusBattleScreen();
-        boolean handled = screen != null && screen.handleKeyInput(key, action, mods);
+        boolean handled = screen != null && com.stonebreak.battle.stage.FocusBattle.guardHud("hud key",
+                () -> screen.handleKeyInput(key, action, mods));
         if (!handled && key == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE
                 && action == org.lwjgl.glfw.GLFW.GLFW_PRESS) {
             com.stonebreak.battle.stage.FocusBattle.requestPauseMenu();

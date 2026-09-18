@@ -129,7 +129,8 @@ public final class TargetCursor implements SkijaFocusBattleRenderer.Layer {
     @Override
     public void paint(MasonryUI ui, Canvas canvas, int windowWidth, int windowHeight, float uiScale,
                       float rawUiScale, BattleView view, BattleHudAnimState anim, Matrix4fc viewProjection) {
-        if (canvas == null || view == null || menu == null || !menu.targeting() || !view.commandWindowOpen()) return;
+        if (canvas == null || view == null || menu == null || !menu.targeting()
+                || !com.stonebreak.ui.focusBattle.BattleHudRules.menuLive(view)) return;
         Placement p = place(stage, view, viewProjection, windowWidth, windowHeight, rawUiScale);
         paint(ui, canvas, p, view.archon() == null ? "" : view.archon().displayName(), uiScale, anim);
     }

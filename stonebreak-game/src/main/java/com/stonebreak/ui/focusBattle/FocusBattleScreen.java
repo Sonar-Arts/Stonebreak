@@ -323,8 +323,7 @@ public final class FocusBattleScreen {
 
     /** True while the command window is what input is talking to. */
     private boolean menuIsLive() {
-        return view != null && view.phase() != BattlePhase.INTRO && !battleOver() && view.prompt() == null
-                && view.commandWindowOpen();
+        return BattleHudRules.menuLive(view);
     }
 
     private static boolean isConfirm(int key) {

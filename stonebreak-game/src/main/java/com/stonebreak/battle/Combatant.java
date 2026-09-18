@@ -143,13 +143,32 @@ final class Combatant implements CombatantView {
     void release() {
         if (!driven) return;
         float hold = drivenClip.loop() ? 0f
-                : Math.max(0f, Math.min(stance.followThrough(), drivenClip.duration() - drivenClipTime));
+                : Math.max(0f, Math.min(stance.followThrough(), untilNextBlow(drivenClip, drivenClipTime)));
         PoseChain next = new PoseChain().then(drivenClip, drivenClipTime, hold);
         float span = stance.homeSeconds() * drivenDash;
         if (stance.homeClip() != null) {
             next.then(stance.homeClip(), drivenClip == stance.homeClip() ? drivenClipTime : 0f, span);
         }
         undrive(next, hold);
+    }
+
+    /** Beat left between a follow-through and the next authored blow, so it never starts to throw it. */
+    private static final float NEXT_BLOW_MARGIN_SECONDS = 0.12f;
+
+    /**
+     * Seconds the clip may keep playing from {@code clipTime} without starting its NEXT authored blow.
+     * Multi-contact clips (flurry, focus combo) have blows only ~0.5 s apart: a fight won on the first
+     * one must not show the monk throwing the second at an Archon that is already falling.
+     */
+    private static float untilNextBlow(BattleClip clip, float clipTime) {
+        float limit = clip.duration() - clipTime;
+        for (int i = 0; i < clip.cueCount(); i++) {
+            if (clip.cue(i) > clipTime + 1.0e-4f) {
+                limit = Math.min(limit, clip.cue(i) - NEXT_BLOW_MARGIN_SECONDS - clipTime);
+                break;
+            }
+        }
+        return Math.max(0f, limit);
     }
 
     // ---- undriven -------------------------------------------------------------------------------

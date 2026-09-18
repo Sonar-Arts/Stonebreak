@@ -140,7 +140,9 @@ class BattleEndTest {
 
         assertEquals(BattleOutcome.DEFEAT, d.sim.outcome());
         assertEquals(0f, d.sim.monk().hp());
-        assertEquals(38f, d.sim.stats().damageTaken(), "the blow is recorded whole, overkill included");
+        assertEquals(30f, d.sim.stats().damageTaken(), "the totals count HP actually lost: overkill is not damage taken");
+        assertTrue(d.all(BattleEvent.DamageDealt.class).stream().anyMatch(e -> e.amount() == 38f),
+                "while the popup still shows the whole blow");
         assertNull(d.sim.telegraph());
         assertNull(d.sim.prompt());
         assertNull(d.sim.currentAction());
