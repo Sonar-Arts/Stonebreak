@@ -33,8 +33,9 @@ public final class MusicManager {
             new Track("music_whispering_woods", "/songs/menu music/Whispering Woods (Lofi Lullaby).wav")
     );
 
+    // "No More Weakness.wav" remains bundled for future use.
     private static final List<Track> BATTLE_PLAYLIST = List.of(
-            new Track("music_no_more_weakness", "/songs/battle music/No More Weakness.wav")
+            new Track("music_the_deadly_dance", "/songs/battle music/The Deadly Dance.wav")
     );
 
     private final SoundSystem soundSystem;
