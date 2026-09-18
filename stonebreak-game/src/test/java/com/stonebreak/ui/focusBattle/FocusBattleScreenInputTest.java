@@ -186,6 +186,32 @@ class FocusBattleScreenInputTest {
     }
 
     @Test
+    void unguardedDefenseAcceptsClicksAndSpaceWithoutSpendingACommand() {
+        view.phase = BattlePhase.ACTION;
+        view.prompt = new PromptView.Parry(0.5f, 0.41f, 0.66f, 0.66f, false);
+        press(GLFW_KEY_SPACE);
+        screen.handleMouseClick(W / 2.0, H / 2.0, W, H, GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
+        screen.handleKeyInput(GLFW_KEY_SPACE, GLFW_REPEAT, 0);
+        screen.handleMouseClick(W / 2.0, H / 2.0, W, H, GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
+        assertEquals(List.of("confirm", "confirm"), input.calls);
+    }
+
+    @Test
+    void unguardedDefenseKeepsReactionGuardAvailableWithAFullGauge() {
+        view.phase = BattlePhase.ACTION;
+        view.commandWindowOpen = true;
+        view.prompt = new PromptView.Parry(0.2f, 0.41f, 0.66f, 0.66f, false);
+        assertTrue(BattleHudRules.menuLive(view));
+        for (int i = 0; i < 4; i++) press(GLFW_KEY_DOWN);
+        press(GLFW_KEY_ENTER);
+        press(GLFW_KEY_SPACE);
+        float[] guard = centre(FocusBattleLayout.commandRowRect(4, W, H, uiScale()));
+        screen.handleMouseClick(guard[0], guard[1], W, H, GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
+        screen.handleMouseClick(W / 2.0, H / 2.0, W, H, GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
+        assertEquals(List.of("submit GUARD", "confirm", "submit GUARD", "confirm"), input.calls);
+    }
+
+    @Test
     void aPromptOutranksAnOpenCommandWindow() {
         view.commandWindowOpen = true;
         view.prompt = new PromptView.Ring(0, 3, 0.1f, 0.8f, 0.5f, 0.6f, 0.4f, 0.7f);

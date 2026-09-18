@@ -24,7 +24,8 @@ final class ArchonAttackAction extends BattleAction {
     private final float parryPoseTime;
 
     private boolean impacted;
-    private boolean parryAttemptSpent;
+    private boolean defenseAttemptSpent;
+    private boolean blockLanded;
     private boolean parryLanded;
     private boolean parryPosed;
     /** The cue {@link #timeToNextCue()} last counted down to. */
@@ -48,12 +49,7 @@ final class ArchonAttackAction extends BattleAction {
     @Override
     void begin(BattleContext ctx) {
         ctx.raise(new BattleEvent.TelegraphStarted(action, action.impactTime()));
-        if (ctx.monk.has(BattleStatus.GUARDING)) ctx.raise(new BattleEvent.PromptOpened(PromptKind.PARRY));
-    }
-
-    /** Guard went up mid-telegraph: the parry prompt opens late. */
-    void guardRaised(BattleContext ctx) {
-        if (parryPromptOpen(ctx)) ctx.raise(new BattleEvent.PromptOpened(PromptKind.PARRY));
+        ctx.raise(new BattleEvent.PromptOpened(PromptKind.PARRY));
     }
 
     private boolean parryPosePending() {
@@ -85,7 +81,7 @@ final class ArchonAttackAction extends BattleAction {
         if (parryPosePending() && elapsed >= parryPoseTime) startParryPose(ctx);
         if (elapsed >= impactCue()) {
             impacted = true;
-            ctx.archonHit(action, parryLanded);
+            ctx.archonHit(action, parryLanded, blockLanded);
         }
     }
 
@@ -98,25 +94,29 @@ final class ArchonAttackAction extends BattleAction {
         ctx.monk.playFrom(Math.max(0f, elapsed - parryPoseTime), MonkClips.PARRY, MonkClips.GUARD_EXIT);
     }
 
-    private boolean parryPromptOpen(BattleContext ctx) {
-        return !impacted && !parryAttemptSpent && ctx.monk.has(BattleStatus.GUARDING);
+    private boolean defensePromptOpen() {
+        return !impacted && !defenseAttemptSpent;
     }
 
     @Override
     void pressConfirm(BattleContext ctx) {
-        if (!parryPromptOpen(ctx)) return;
+        if (!defensePromptOpen()) return;
         // One attempt per telegraph, so mashing confirm is never a substitute for timing.
-        parryAttemptSpent = true;
+        defenseAttemptSpent = true;
         TimedGrade grade = window.press(elapsed);
-        parryLanded = grade == TimedGrade.PERFECT;
+        boolean onTime = grade == TimedGrade.PERFECT;
+        parryLanded = onTime && ctx.monk.has(BattleStatus.GUARDING);
+        blockLanded = onTime && !parryLanded;
+        if (blockLanded) grade = TimedGrade.GOOD;
         ctx.raise(new BattleEvent.PromptResolved(PromptKind.PARRY, grade, 0));
         if (parryLanded && elapsed >= parryPoseTime) startParryPose(ctx);
     }
 
     @Override
     PromptView prompt(BattleContext ctx) {
-        if (!parryPromptOpen(ctx)) return null;
-        return new PromptView.Parry(elapsed, window.start(), window.end(), action.impactTime());
+        if (!defensePromptOpen()) return null;
+        return new PromptView.Parry(elapsed, window.start(), window.end(), action.impactTime(),
+                ctx.monk.has(BattleStatus.GUARDING));
     }
 
     @Override

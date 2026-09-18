@@ -15,14 +15,14 @@ import io.github.humbleui.skija.Font;
 import org.joml.Matrix4fc;
 
 /**
- * E12, parry prompt and feedback, anchored on the monk.
+ * E12, block/parry timing prompt and feedback, anchored on the monk.
  *
  * <p>While a parry prompt is open, two brackets close on the monk at constant speed and <b>snap
  * shut exactly at the parry window start</b>, then glow gold for as long as the window is open: the
  * same read as the timing ring ("press when they meet"), the same clock and the same
  * {@link BattlePalette#REACT_WINDOW} gold as the enemy cast bar's parry marker. Afterwards: a landed
  * parry throws a flash and an expanding ring across the whole screen ({@link MScreenFx}) with a big
- * "PARRY!"; a guarded hit shows a small shield and "BLOCK"; a wasted press shows a grey "TOO EARLY".
+ * "PARRY!"; a blocked hit shows a small shield and "BLOCK"; a wasted press shows a grey "TOO EARLY".
  *
  * <p>Bracket travel is gameplay and comes from {@link TimedLayout}; words, the key hint, the flash
  * and the ring are the UI library's.
@@ -55,7 +55,7 @@ public final class ParryOverlay {
 
         TimedLayout.Anchor anchor = TimedLayout.monkAnchor(layout, view, viewProjection, w, h, scale);
         if (prompt != null) {
-            paintBrackets(ui, canvas, anchor, TimedLayout.parryTimeline(prompt, view.telegraph()), state.time, scale);
+            paintBrackets(ui, canvas, anchor, TimedLayout.parryTimeline(prompt, view.telegraph()), state.time, scale, prompt.canParry());
         }
         switch (feedback) {
             case PARRY -> paintParry(ui, canvas, w, h, anchor, state.parryFeedbackAge, scale, guardWords);
@@ -74,7 +74,7 @@ public final class ParryOverlay {
     }
 
     private void paintBrackets(MasonryUI ui, Canvas canvas, TimedLayout.Anchor a, TimedLayout.ParryTimeline t,
-                               float time, float s) {
+                               float time, float s, boolean canParry) {
         float closure = TimedLayout.bracketClosure(t);
         boolean live = t.inWindow();
         float half = TimedLayout.bracketHalfGap(a.radius(), closure);
@@ -101,7 +101,8 @@ public final class ParryOverlay {
         if (ui == null) return;
         Font font = ui.fonts().get(MStyle.FONT_ITEM * (live ? 1.2f : 1f), s);
         if (font != null) {
-            MPainter.drawTextOutlined(canvas, live ? "PARRY!" : "PARRY", a.x(), top - 10f * s, font,
+            String label = canParry ? "PARRY" : "BLOCK";
+            MPainter.drawTextOutlined(canvas, live ? label + "!" : label, a.x(), top - 10f * s, font,
                     live ? BRACKET_LIVE : BRACKET, MPainter.Align.CENTER, smallOutline(s));
         }
         hint.scale(s);

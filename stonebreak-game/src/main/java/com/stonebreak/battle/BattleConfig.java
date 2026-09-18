@@ -96,7 +96,7 @@ public record BattleConfig(float monkMaxHp, int monkDexterity, Atb atb, Resource
      * Damage rolls and reactions.
      *
      * @param variance   ± fraction applied to every monk hit
-     * @param guardMultiplier damage the monk takes through an un-parried Guard
+     * @param guardMultiplier damage fraction taken through Guard or a successful timed block
      * @param recoilSeconds   hit-reaction recoil 1→0 (either side)
      * @param recoilRiseSeconds hit-reaction recoil 0→1. Not instant on purpose: the stage moves the
      *                        target by the recoil, so a recoil that jumped to 1 ON the contact frame
@@ -127,7 +127,7 @@ public record BattleConfig(float monkMaxHp, int monkDexterity, Atb atb, Resource
     public record Melee(float dashSeconds, float strikeDamage, int surgeBonusHits, float strikeAtbRestart,
                         float stunningStrikeDamage, float stunSeconds, float stunningStrikeAtbRestart,
                         float standoffEaseSeconds, float kickStandoff, float followThroughSeconds) {
-        public static final Melee DEFAULTS = new Melee(0.45f, 42f, 1, 0.25f, 30f, 5f, 0f, 0.12f, 0.8f, 0.8f);
+        public static final Melee DEFAULTS = new Melee(0.45f, 42f, 1, 0.25f, 30f, 6.5f, 0f, 0.12f, 0.8f, 0.8f);
     }
 
     /**

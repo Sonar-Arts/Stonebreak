@@ -18,8 +18,13 @@ public sealed interface PromptView {
         public float progress() { return duration <= 0f ? 1f : Math.max(0f, Math.min(1f, elapsed / duration)); }
     }
 
-    /** Guard stance is up while an Archon attack is telegraphed; see {@link BattleView#telegraph()}. */
-    record Parry(float elapsed, float windowStart, float windowEnd, float impactTime) implements PromptView {
+    /** Incoming-hit timing: Guard enables a perfect parry; otherwise an on-time press blocks. */
+    record Parry(float elapsed, float windowStart, float windowEnd, float impactTime,
+                 boolean canParry) implements PromptView {
+        public Parry(float elapsed, float windowStart, float windowEnd, float impactTime) {
+            this(elapsed, windowStart, windowEnd, impactTime, true);
+        }
+
         @Override public PromptKind kind() { return PromptKind.PARRY; }
     }
 

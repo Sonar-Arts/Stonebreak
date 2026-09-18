@@ -311,7 +311,7 @@ class BattlePoseTest {
                 PromptView prompt = d.sim.prompt();
                 if (prompt instanceof PromptView.Ring ring && ring.elapsed() >= ring.perfectStart()) {
                     d.sim.pressConfirm();
-                } else if (prompt instanceof PromptView.Parry && (guards % 2 == 1 || d.sim.telegraph().inParryWindow())) {
+                } else if (prompt instanceof PromptView.Parry p && p.canParry() && (guards % 2 == 1 || d.sim.telegraph().inParryWindow())) {
                     d.sim.pressConfirm(); // every other guard far too early: that one only blocks
                 } else if (prompt instanceof PromptView.Combo combo && combo.stepElapsed() > 0.1f + whim.nextInt(5) * 0.1f) {
                     ComboDirection right = combo.sequence().get(combo.index());

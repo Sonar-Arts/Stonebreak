@@ -61,6 +61,15 @@ class TimedInputStateTest {
     // ─────────────────────────────────────────────── E12
 
     @Test
+    void aGoodDefenseShowsBlockFeedbackImmediately() {
+        TimedInputState state = new TimedInputState();
+        frame(state, new FakeBattleView(), 0.016f,
+                new BattleEvent.PromptResolved(PromptKind.PARRY, TimedGrade.GOOD, 0));
+        assertEquals(TimedInputState.ParryFeedback.BLOCK, state.parryFeedback());
+        assertEquals(0f, state.parryFeedbackAge());
+    }
+
+    @Test
     void parryEventsMapToParryBlockAndTooEarly() {
         TimedInputState state = new TimedInputState();
         FakeBattleView view = new FakeBattleView();

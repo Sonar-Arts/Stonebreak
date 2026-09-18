@@ -2,6 +2,7 @@ package com.stonebreak.ui.focusBattle;
 
 import com.stonebreak.battle.api.BattlePhase;
 import com.stonebreak.battle.api.BattleView;
+import com.stonebreak.battle.api.PromptView;
 
 /** Presentation rules more than one HUD layer must agree on. Pure functions of the view. */
 public final class BattleHudRules {
@@ -11,16 +12,15 @@ public final class BattleHudRules {
     public static final float VICTORY_CINEMATIC_SECONDS = 4.0f;
 
     /**
-     * True while the command window is what the player's input talks to: the battle is running and
-     * undecided, the monk may choose, and no timed prompt is open. A prompt always outranks the menu
-     * (confirm then means "parry" or "hit the ring"), and the model keeps the window open during an
-     * Archon action, so a guarding monk with a full gauge gets BOTH at once: the window must then look
-     * as static as it behaves. Drawing, the target cursor and input routing all use this one rule.
+     * Unguarded defense shares input with the command menu: Space/world clicks block, while
+     * Enter/menu clicks select commands. This keeps reaction Guard available during a windup.
+     * Other timed prompts own input exclusively.
      */
     public static boolean menuLive(BattleView view) {
         return view != null && view.phase() != BattlePhase.INTRO
                 && view.outcome() == com.stonebreak.battle.api.BattleOutcome.NONE
-                && view.prompt() == null && view.commandWindowOpen();
+                && (view.prompt() == null || view.prompt() instanceof PromptView.Parry p && !p.canParry())
+                && view.commandWindowOpen();
     }
 
     /**

@@ -58,6 +58,8 @@ class BattleHelpTextTest {
         assertEquals(BattleHelpText.RING_HINT, BattleHelpText.lineFor(view, menu).text());
         view.prompt = new PromptView.Parry(0f, 0.8f, 1f, 1.03f);
         assertEquals(BattleHelpText.PARRY_HINT, BattleHelpText.lineFor(view, menu).text());
+        view.prompt = new PromptView.Parry(0f, 0.8f, 1f, 1.03f, false);
+        assertEquals(BattleHelpText.BLOCK_HINT, BattleHelpText.lineFor(view, menu).text());
         view.prompt = new PromptView.Combo(List.of(ComboDirection.UP), 0, 0f, 1f, List.of());
         assertEquals(BattleHelpText.COMBO_HINT, BattleHelpText.lineFor(view, menu).text());
 

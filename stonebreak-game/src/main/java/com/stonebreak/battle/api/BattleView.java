@@ -55,7 +55,7 @@ public interface BattleView {
      */
     List<BattleEvent> frameEvents();
 
-    /** True while a ring or parry prompt is open: the camera must not cut or move sharply. */
+    /** True while a ring, block, or parry prompt is open: the camera must not cut or move sharply. */
     default boolean promptSafeRequired() {
         PromptView p = prompt();
         return p != null && p.kind() != PromptKind.COMBO;

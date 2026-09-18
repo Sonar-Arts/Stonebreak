@@ -419,13 +419,13 @@ class MonkActionTest {
         assertEquals("stunning_strike", d.sim.monk().pose().sbeState());
         assertEquals(870f, d.sim.archon().hp());
         assertTrue(d.sim.archon().has(BattleStatus.STUNNED));
-        assertTrue(d.log.contains(new BattleEvent.StatusApplied(CombatantId.ARCHON, BattleStatus.STUNNED, 5f)));
+        assertTrue(d.log.contains(new BattleEvent.StatusApplied(CombatantId.ARCHON, BattleStatus.STUNNED, 6.5f)));
         assertEquals(DASH + 1.38f + DASH, d.all(BattleEvent.ActionStarted.class).get(0).duration(), 1.0e-5f);
         d.finishAction();
 
-        // Stunned 1.07 s into a 2.28 s action: 3.79 s of it remain once the gauges run again.
+        // Stunned 1.07 s into a 2.28 s action: 5.29 s of it remain once the gauges run again.
         float frozen = d.sim.archon().atb();
-        d.run(3.7f);
+        d.run(5.2f);
         assertTrue(d.sim.archon().has(BattleStatus.STUNNED));
         assertEquals(frozen, d.sim.archon().atb());
         d.run(0.2f);
@@ -445,10 +445,10 @@ class MonkActionTest {
         BattleDriver d = new BattleDriver(BattleDriver.duel(EnemyAction.SLASH), 1);
         d.sim.introFinished();
         d.sim.stunArchonNow();
-        d.run(4.9f);
+        d.run(6.4f);
         assertNull(d.sim.telegraph());
         assertEquals(0.9f, d.sim.archon().atb(), "frozen where the stun caught it");
-        d.run(0.9f); // stun ends at 5.0 s; stunned_exit runs to 5.9 s
+        d.run(0.9f); // stun ends at 6.5 s; stunned_exit runs to 7.4 s
         assertNull(d.sim.telegraph());
         assertEquals(0.9f, d.sim.archon().atb());
         assertEquals("stunned_exit", d.sim.archon().pose().sbeState());
@@ -473,7 +473,7 @@ class MonkActionTest {
 
         d.step(BattleDriver.DT);
         assertEquals(List.of(
-                new BattleEvent.StatusApplied(CombatantId.ARCHON, BattleStatus.STUNNED, 5f),
+                new BattleEvent.StatusApplied(CombatantId.ARCHON, BattleStatus.STUNNED, 6.5f),
                 new BattleEvent.TelegraphCancelled(EnemyAction.OVERHEAD),
                 new BattleEvent.ActionFinished(CombatantId.ARCHON)), d.log.subList(0, 3));
         assertTrue(d.sim.archon().pose().recoil() > 0f, "it flinches out of the swing");

@@ -31,6 +31,7 @@ public final class EnemyPlate {
 
     public static final String ATB_LABEL = "ATB";
     public static final String PARRY_LABEL = "PARRY";
+    public static final String BLOCK_LABEL = "BLOCK";
     public static final String CANCELLED_LABEL = "CANCELLED";
 
     // Design metrics (multiplied by the HUD scale, compressed together on a short plate).
@@ -90,7 +91,7 @@ public final class EnemyPlate {
         boolean guarding = view.monk() != null && view.monk().has(BattleStatus.GUARDING);
         cast.timeline(t.elapsed(), t.impactTime())
                 .window(t.parryWindowStart(), t.parryWindowEnd())
-                .windowLabel(t.cancelled() ? CANCELLED_LABEL : PARRY_LABEL)
+                .windowLabel(t.cancelled() ? CANCELLED_LABEL : guarding ? PARRY_LABEL : BLOCK_LABEL)
                 .label(t.action() == null ? "" : t.action().displayName())
                 .labelColor(MColor.lerp(MStyle.TEXT_PRIMARY, BattlePalette.CAST_END, t.progress() * 0.6f))
                 .fillRamp(BattlePalette.CAST_START, BattlePalette.CAST_END)

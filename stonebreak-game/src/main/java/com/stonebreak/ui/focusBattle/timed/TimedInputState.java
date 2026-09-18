@@ -189,8 +189,11 @@ public final class TimedInputState {
                         ringFeedbackAge = 0f;
                     }
                     case PARRY -> {
-                        parryFeedback = resolved.grade() == TimedGrade.PERFECT
-                                ? ParryFeedback.PARRY : ParryFeedback.TOO_EARLY;
+                        parryFeedback = switch (resolved.grade()) {
+                            case PERFECT -> ParryFeedback.PARRY;
+                            case GOOD -> ParryFeedback.BLOCK;
+                            case MISS -> ParryFeedback.TOO_EARLY;
+                        };
                         parryFeedbackAge = 0f;
                     }
                     case COMBO -> stampCombo(resolved.index(), resolved.grade());

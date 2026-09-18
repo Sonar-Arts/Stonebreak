@@ -26,6 +26,7 @@ public final class BattleHelpText {
     public static final String INTRO_HINT = "Press Confirm to skip.";
     public static final String RING_HINT = "Press Confirm as the ring closes!";
     public static final String PARRY_HINT = "Press Confirm as the blow lands to parry!";
+    public static final String BLOCK_HINT = "Press Space as the blow lands to halve damage. Guard enables a perfect parry.";
     public static final String COMBO_HINT = "Match each direction in time!";
     public static final String TARGET_HINT = "Choose a target. Confirm to attack, Back to return.";
 
@@ -39,7 +40,7 @@ public final class BattleHelpText {
         PromptView prompt = view.prompt();
         if (prompt instanceof PromptView.Combo) return new Line(COMBO_HINT, false);
         if (prompt instanceof PromptView.Ring) return new Line(RING_HINT, false);
-        if (prompt instanceof PromptView.Parry) return new Line(PARRY_HINT, false);
+        if (prompt instanceof PromptView.Parry p) return new Line(p.canParry() ? PARRY_HINT : BLOCK_HINT, false);
 
         if (view.commandWindowOpen() && menu != null) return menuLine(view, menu);
 

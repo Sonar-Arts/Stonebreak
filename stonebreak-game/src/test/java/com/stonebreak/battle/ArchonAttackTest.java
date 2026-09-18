@@ -47,8 +47,8 @@ class ArchonAttackTest {
         assertEquals(new BattleEvent.ActionStarted(CombatantId.ARCHON, "Glacial Overhead", null,
                 EnemyAction.OVERHEAD, 2.05f), d.log.get(started));
         assertEquals(new BattleEvent.TelegraphStarted(EnemyAction.OVERHEAD, 1.03f), d.log.get(started + 1));
-        assertEquals(0, d.count(BattleEvent.PromptOpened.class), "no parry prompt without Guard");
-        assertNull(d.sim.prompt());
+        assertEquals(1, d.count(BattleEvent.PromptOpened.class));
+        assertFalse(assertInstanceOf(PromptView.Parry.class, d.sim.prompt()).canParry());
 
         TelegraphView t = d.sim.telegraph();
         assertEquals(EnemyAction.OVERHEAD, t.action());
@@ -91,10 +91,74 @@ class ArchonAttackTest {
     }
 
     @Test
+    void unguardedTimingBlocksEveryAttackWithoutPerfectParry() {
+        for (EnemyAction action : EnemyAction.values()) {
+            BattleDriver d = new BattleDriver(BattleDriver.duel(action), 1).start();
+            assertTrue(d.awaitTelegraph());
+            assertFalse(assertInstanceOf(PromptView.Parry.class, d.sim.prompt()).canParry());
+            runToTelegraphTime(d, d.sim.telegraph().impactTime() - 0.1f);
+            d.forget();
+            d.sim.pressConfirm();
+            assertNull(d.sim.prompt());
+            assertFalse(d.sim.monk().has(BattleStatus.GUARDING));
+            assertTrue(d.runUntil(s -> s.telegraph() == null, 1f));
+            assertEquals("block", d.sim.monk().pose().sbeState());
+            d.finishAction();
+            float damage = switch (action) {
+                case SLASH -> 19f;
+                case OVERHEAD -> 30f;
+                case FROST_CAST -> 15f;
+            };
+            assertEquals(List.of(new BattleEvent.PromptResolved(PromptKind.PARRY, TimedGrade.GOOD, 0)),
+                    d.all(BattleEvent.PromptResolved.class));
+            assertEquals(new BattleEvent.DamageDealt(CombatantId.MONK, damage, DamageFlavor.BLOCKED),
+                    d.last(BattleEvent.DamageDealt.class));
+            assertEquals(200f - damage, d.sim.monk().hp());
+            assertEquals(damage, d.sim.stats().damageTaken());
+            assertEquals(5f + 0.15f * damage, d.sim.focus(), 1.0e-5f);
+            assertEquals(0, d.sim.stats().parries());
+            assertEquals(1, d.sim.stats().blocks());
+            assertEquals(action == EnemyAction.FROST_CAST, d.sim.monk().has(BattleStatus.CHILLED));
+        }
+    }
+
+    @Test
+    void earlyUnguardedPressCannotBeRetriedAndLatePressCannotUndoDamage() {
+        BattleDriver d = new BattleDriver(BattleDriver.duel(EnemyAction.SLASH), 1).start();
+        assertTrue(d.awaitTelegraph());
+        d.forget();
+        d.sim.pressConfirm();
+        runToTelegraphTime(d, 0.5f);
+        d.sim.pressConfirm();
+        assertTrue(d.runUntil(s -> s.telegraph() == null, 1f));
+        d.sim.pressConfirm();
+        d.finishAction();
+        assertEquals(List.of(new BattleEvent.PromptResolved(PromptKind.PARRY, TimedGrade.MISS, 0)),
+                d.all(BattleEvent.PromptResolved.class));
+        assertEquals(162f, d.sim.monk().hp());
+        assertEquals(0, d.sim.stats().blocks());
+    }
+
+    @Test
+    void reactionGuardUpgradesTheOpenPromptWithoutOpeningItTwice() {
+        BattleDriver d = new BattleDriver(BattleDriver.duel(EnemyAction.SLASH), 1).start();
+        assertTrue(d.awaitTelegraph());
+        assertTrue(d.sim.submit(BattleCommand.GUARD));
+        assertTrue(assertInstanceOf(PromptView.Parry.class, d.sim.prompt()).canParry());
+        runToTelegraphTime(d, 0.5f);
+        d.sim.pressConfirm();
+        d.finishAction();
+        assertEquals(1, d.count(BattleEvent.PromptOpened.class));
+        assertEquals(1, d.sim.stats().parries());
+        assertEquals(200f, d.sim.monk().hp());
+    }
+
+    @Test
     void parryInsideTheWindowNegatesTheBlow() {
         BattleDriver d = guardedAgainst(EnemyAction.SLASH);
         assertEquals(1, d.count(BattleEvent.PromptOpened.class));
         PromptView.Parry prompt = assertInstanceOf(PromptView.Parry.class, d.sim.prompt());
+        assertTrue(prompt.canParry());
         assertEquals(0.66f, prompt.impactTime());
         assertEquals(0.66f - 0.25f, prompt.windowStart(), 1.0e-6f);
         assertTrue(d.sim.promptSafeRequired());
@@ -170,8 +234,8 @@ class ArchonAttackTest {
 
         // Second attack: no guard any more, full damage.
         d.awaitTelegraph();
-        assertNull(d.sim.prompt());
-        d.sim.pressConfirm(); // nothing to parry with
+        assertFalse(assertInstanceOf(PromptView.Parry.class, d.sim.prompt()).canParry());
+        d.sim.pressConfirm(); // too early to block
         d.finishAction();
         assertEquals(new BattleEvent.DamageDealt(CombatantId.MONK, 60f, DamageFlavor.NORMAL),
                 d.last(BattleEvent.DamageDealt.class));

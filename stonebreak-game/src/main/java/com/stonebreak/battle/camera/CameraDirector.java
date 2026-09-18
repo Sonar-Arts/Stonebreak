@@ -316,6 +316,7 @@ public final class CameraDirector {
         play(choice, liveKey, safe, liveOwner, Transition.CUT);
     }
 
+    /** Both timed blocks and guarded parries need the steady defensive two-shot. */
     private static boolean guardUp(BattleView view) {
         return (view.monk() != null && view.monk().has(BattleStatus.GUARDING)) || view.prompt() instanceof PromptView.Parry;
     }

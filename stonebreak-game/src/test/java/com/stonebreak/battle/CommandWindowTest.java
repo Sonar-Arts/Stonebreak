@@ -238,8 +238,8 @@ class CommandWindowTest {
         assertEquals(1, d.sim.stats().turnsTaken());
 
         d.step(BattleDriver.DT);
-        assertEquals(List.of(new BattleEvent.StatusApplied(CombatantId.MONK, BattleStatus.GUARDING, -1f),
-                new BattleEvent.PromptOpened(PromptKind.PARRY)), d.log);
+        assertEquals(List.of(new BattleEvent.StatusApplied(CombatantId.MONK, BattleStatus.GUARDING, -1f)), d.log,
+                "the existing block prompt upgrades without opening a second prompt");
 
         d.finishAction();
         assertEquals(new BattleEvent.DamageDealt(CombatantId.MONK, 19f, DamageFlavor.BLOCKED),

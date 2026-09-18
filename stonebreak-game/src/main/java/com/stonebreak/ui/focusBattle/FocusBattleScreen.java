@@ -248,6 +248,9 @@ public final class FocusBattleScreen {
             // Press only: a held key must not answer the next prompt too.
             ComboDirection direction = directionOf(key);
             if (press && direction != null && input != null) input.pressDirection(direction);
+        } else if (prompt instanceof PromptView.Parry p && !p.canParry() && menuIsLive()
+                && key != GLFW_KEY_SPACE && key != GLFW_KEY_E) {
+            handleMenuKey(key, press);
         } else if (prompt != null) {
             if (press && isConfirm(key) && input != null) input.pressConfirm();
         } else if (view.commandWindowOpen()) {
@@ -373,6 +376,9 @@ public final class FocusBattleScreen {
             }
         } else if (view.prompt() instanceof PromptView.Combo) {
             // The combo is answered with directions only.
+        } else if (view.prompt() instanceof PromptView.Parry p && !p.canParry() && menuIsLive()
+                && pointAtRow(px, py, windowWidth, windowHeight, true)) {
+            confirmSelection();
         } else if (view.prompt() != null) {
             if (input != null) input.pressConfirm();
         } else if (view.commandWindowOpen()) {

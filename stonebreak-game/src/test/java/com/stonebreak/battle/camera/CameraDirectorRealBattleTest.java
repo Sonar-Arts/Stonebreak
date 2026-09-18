@@ -8,6 +8,7 @@ import com.stonebreak.battle.api.BattleOutcome;
 import com.stonebreak.battle.api.BattlePhase;
 import com.stonebreak.battle.api.BattleStatus;
 import com.stonebreak.battle.api.CombatantId;
+import com.stonebreak.battle.api.EnemyAction;
 import com.stonebreak.battle.api.PromptKind;
 import com.stonebreak.battle.api.PromptView;
 import com.stonebreak.battle.api.TelegraphView;
@@ -151,18 +152,19 @@ class CameraDirectorRealBattleTest {
 
     // ---- Archon attacks ----------------------------------------------------------------------------
 
-    @Test void archonAttacksStartOnTheAttackerCutOnTheBlowAndEndWithTheAction() {
+    @Test void archonAttacksKeepDefenseTimingFramedUntilTheActionEnds() {
         Fight fight = new Fight(defaults(), 7L);
         int melee = 0;
         int casts = 0;
         for (int attack = 0; attack < 4 && fight.sim.phase() != BattlePhase.RESULT; attack++) {
             Frame start = fight.until("Archon attack", 60f, CameraDirectorRealBattleTest::archonStarted);
-            boolean cast = start.situation() == Situation.FROST_CAST;
-            assertTrue(cast || start.situation() == Situation.ARCHON_MELEE, "covered as " + start.situation());
+            boolean cast = fight.sim.telegraph().action() == EnemyAction.FROST_CAST;
+            assertEquals(Situation.GUARD, start.situation(), "every attack offers timed defense");
+            assertTrue(start.promptSafeRequired());
             assertTrue(start.cut(), "an attack opens on a cut");
             ShotSequence sequence = LIBRARY.byName(start.sequence());
             assertEquals(sequence.steps().getFirst().shot().name(), start.shot());
-            assertEquals(CameraShot.Subject.ARCHON, shotOf(start).subject(), "starts on the attacker");
+            assertTrue(shotOf(start).promptSafe(), "the block prompt starts on a safe shot");
 
             Frame blow = fight.until("its impact", 10f, f -> {
                 if (!impact(f, CombatantId.ARCHON)) {
@@ -171,8 +173,8 @@ class CameraDirectorRealBattleTest {
                 }
                 return impact(f, CombatantId.ARCHON);
             });
-            assertTrue(blow.cut(), "the cut lands on the Impact frame");
-            assertEquals(sequence.steps().get(1).shot().name(), blow.shot());
+            assertFalse(blow.cut(), "the defense shot holds through impact");
+            assertEquals(start.shot(), blow.shot());
             assertEquals(CameraShot.Subject.BOTH, shotOf(blow).subject(), "blow and reaction share the frame");
 
             Frame end = fight.until("its end", 10f, f -> {
@@ -191,20 +193,20 @@ class CameraDirectorRealBattleTest {
     @Test void archonGlideKeepsItFramedAndTheLiveImpactShotShowsBothActors() {
         Fight fight = new Fight(defaults(), 7L);
         ShotValidator validator = new ShotValidator(CameraHarness.realLayout());
-        Frame start = fight.until("a melee attack", 120f, f -> archonStarted(f) && f.situation() == Situation.ARCHON_MELEE);
+        Frame start = fight.until("a melee attack", 120f, f -> archonStarted(f) && fight.sim.telegraph().action() != EnemyAction.FROST_CAST);
         float furthest = 0f;
         boolean sawBlow = false;
         for (int i = 0; i < 600; i++) {
             Frame f = fight.step();
-            if (f.situation() != Situation.ARCHON_MELEE) break;
+            if (f.situation() != Situation.GUARD) break;
             StagePoses poses = StagePoses.of(fight.sim);
             furthest = Math.max(furthest, poses.archon().dashProgress());
             CameraFrame live = fight.camera.frame();
             float archon = validator.projectedHeight(live, CombatantId.ARCHON, poses);
-            assertTrue(archon > 0.3f, f.shot() + ": Archon is " + archon + " of the frame at glide " + poses.archon().dashProgress());
+            assertTrue(archon > ShotValidator.TWO_SHOT_MIN_TALLER, f.shot() + ": Archon is " + archon + " of the frame at glide " + poses.archon().dashProgress());
             if (shotOf(f).subject() == CameraShot.Subject.BOTH) {
                 sawBlow = true;
-                assertTrue(validator.projectedHeight(live, CombatantId.MONK, poses) > 0.2f, f.shot() + " lost the monk");
+                assertTrue(validator.projectedHeight(live, CombatantId.MONK, poses) > ShotValidator.TWO_SHOT_MIN_OTHER, f.shot() + " lost the monk");
             }
         }
         assertNotNull(start);
@@ -239,19 +241,21 @@ class CameraDirectorRealBattleTest {
 
     // ---- guard -------------------------------------------------------------------------------------
 
-    @Test void reactionGuardMidTelegraphGetsOneForcedCutToThePromptSafeShotThenFreezes() {
+    @Test void reactionGuardMidTelegraphKeepsTheAlreadySafeDefenseShot() {
         Fight fight = new Fight(defaults(), 7L);
         Frame start = fight.until("an Archon telegraph", 60f, CameraDirectorRealBattleTest::archonStarted);
-        assertNotEquals(Situation.GUARD, start.situation());
+        assertEquals(Situation.GUARD, start.situation());
+        assertTrue(start.promptSafeRequired());
         fight.step();
         fight.step();
         assertNotNull(fight.sim.telegraph(), "still winding up");
         assertTrue(fight.sim.submit(BattleCommand.GUARD), "a full gauge buys an instant guard");
 
         Frame guarded = fight.step();
-        assertTrue(guarded.promptSafeRequired(), "the parry prompt opened with the guard");
+        assertTrue(guarded.promptSafeRequired(), "the block prompt upgraded to parry");
         assertEquals(Situation.GUARD, guarded.situation());
-        assertTrue(guarded.cut(), "one forced cut");
+        assertFalse(guarded.cut(), "raising Guard does not cut an active timing prompt");
+        assertEquals(start.shot(), guarded.shot());
         assertFalse(guarded.blending());
         assertTrue(shotOf(guarded).promptSafe());
 

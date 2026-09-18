@@ -182,12 +182,13 @@ final class BattleContext {
         if (archon.alive() && !archon.driven() && !archon.has(BattleStatus.STUNNED)) archon.play(ArchonClips.HURT);
     }
 
-    /** The Archon's telegraphed blow landing on the monk, through Guard / parry if they are up. */
-    void archonHit(EnemyAction action, boolean parryLanded) {
+    /** Resolves a telegraphed blow against Guard, a perfect parry, or a timed unguarded block. */
+    void archonHit(EnemyAction action, boolean parryLanded, boolean blockLanded) {
         raise(new BattleEvent.Impact(CombatantId.ARCHON, CombatantId.MONK, 0, 1));
         BattleConfig.Resources res = config.resources();
         boolean guarding = monk.has(BattleStatus.GUARDING);
         boolean parried = guarding && parryLanded;
+        boolean blocked = guarding || blockLanded;
         float base = archonScript.damageOf(action);
 
         if (parried) {
@@ -195,15 +196,15 @@ final class BattleContext {
             raise(new BattleEvent.DamageDealt(CombatantId.MONK, 0f, DamageFlavor.PARRIED));
             focus.gain(res.focusOnParry());
         } else {
-            float amount = wholeDamage(guarding ? base * config.damage().guardMultiplier() : base);
+            float amount = wholeDamage(blocked ? base * config.damage().guardMultiplier() : base);
             stats.damageTaken(monk.takeDamage(amount)); // overkill is not damage taken
-            if (guarding) stats.block();
-            raise(new BattleEvent.DamageDealt(CombatantId.MONK, amount, guarding ? DamageFlavor.BLOCKED : DamageFlavor.NORMAL));
-            if (guarding) focus.gain(res.focusOnBlock());
+            if (blocked) stats.block();
+            raise(new BattleEvent.DamageDealt(CombatantId.MONK, amount, blocked ? DamageFlavor.BLOCKED : DamageFlavor.NORMAL));
+            if (blocked) focus.gain(res.focusOnBlock());
             focus.gain(res.focusPerDamageTaken() * amount);
             // Parried blows already have their clip running (timed by the attack so the deflect meets the blade).
             if (monk.alive()) {
-                if (guarding) monk.play(MonkClips.BLOCK, MonkClips.GUARD_EXIT);
+                if (blocked) monk.play(MonkClips.BLOCK, MonkClips.GUARD_EXIT);
                 else monk.play(MonkClips.HURT);
             }
         }

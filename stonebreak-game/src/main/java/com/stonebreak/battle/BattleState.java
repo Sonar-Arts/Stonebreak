@@ -285,7 +285,6 @@ public final class BattleState implements BattleSimulation {
             ctx.stats.turnTaken();
             ctx.monk.gauge().reset(0f);
             ctx.raiseGuard(true);
-            attack.guardRaised(ctx);
         } else if (phase == BattlePhase.RUNNING) {
             startMonkAction(command);
         } else {
