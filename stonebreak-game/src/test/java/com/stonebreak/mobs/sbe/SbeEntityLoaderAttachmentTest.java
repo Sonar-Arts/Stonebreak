@@ -1,6 +1,8 @@
 package com.stonebreak.mobs.sbe;
 
 import com.openmason.engine.format.mesh.ParsedMeshData;
+import com.openmason.engine.format.mesh.ParsedFaceMapping;
+import com.openmason.engine.format.mesh.ParsedMaterialData;
 import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.engine.format.omo.OMOReader;
 import org.junit.jupiter.api.Test;
@@ -144,5 +146,22 @@ class SbeEntityLoaderAttachmentTest {
     void noAttachmentPointsYieldsEmptyList() throws IOException {
         SbeModelGeometry geometry = SbeEntityLoader.buildGeometry(readResult(List.of()));
         assertTrue(geometry.attachmentPoints().isEmpty());
+    }
+
+    @Test
+    void orphanedMaterialImagesAreNotDecodedButReferencedImagesStillAre() throws IOException {
+        OMOReader.ReadResult base = readResult(List.of());
+        // A retired editor material must not be decoded at all, even if its
+        // bytes are no longer a valid image. The same bytes on a drawn face
+        // must still report an asset error rather than silently disappearing.
+        var retired = new ParsedMaterialData(7, "retired", "material_7.png",
+                new byte[]{1, 2, 3}, "OPAQUE", false, -1);
+        var unused = new OMOReader.ReadResult(base.document(), base.meshData(), List.of(),
+                List.of(retired), null, List.of(), List.of());
+        assertTrue(SbeEntityLoader.buildGeometry(unused).materials().isEmpty());
+        var referenced = new OMOReader.ReadResult(base.document(), base.meshData(),
+                List.of(new ParsedFaceMapping(0, 7, 0, 0, 1, 1, 0)),
+                List.of(retired), null, List.of(), List.of());
+        assertThrows(IOException.class, () -> SbeEntityLoader.buildGeometry(referenced));
     }
 }

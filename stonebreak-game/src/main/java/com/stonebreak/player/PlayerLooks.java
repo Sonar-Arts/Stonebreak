@@ -36,7 +36,8 @@ public final class PlayerLooks {
     public static final List<HatOption> HAT_OPTIONS = List.of(
             new HatOption(NO_HAT_ID, "None", null, null),
             new HatOption("TOP_HAT", "Top Hat", "/sbe/Clothing/SB_Tophat.sbe", HAT_SOCKET),
-            new HatOption("MALE_HAIR_1", "Male Hair 1", "/sbe/PlayerCustomize/SB_MHair1.sbe", HAIR_SOCKET));
+            new HatOption("MALE_HAIR_1", "Male Hair 1", "/sbe/PlayerCustomize/SB_MHair1.sbe", HAIR_SOCKET),
+            new HatOption("MALE_HAIR_2", "Male Hair 2", "/sbe/PlayerCustomize/SB_MHair2.sbe", HAIR_SOCKET));
 
     private PlayerLooks() {
         throw new UnsupportedOperationException("Utility class");
