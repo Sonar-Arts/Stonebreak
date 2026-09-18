@@ -58,7 +58,8 @@ class SbeDrawPlanTest {
 
     @Test
     void shippedPlayerAndHairRetainEveryIndexAndMaterialWithOver99PercentFewerDraws() {
-        for (String name : List.of("Mobs/SB_Player", "PlayerCustomize/SB_MHair1", "PlayerCustomize/SB_MHair2")) {
+        for (String name : List.of("Mobs/SB_Player", "PlayerCustomize/SB_MHair1", "PlayerCustomize/SB_MHair2",
+                "Player/SB_FPArm")) {
             var asset = SbeEntityLoader.loadAttachableResource("/sbe/" + name + ".sbe");
             var geometry = asset.geometryFor(null);
             var plan = new SbeDrawPlan(geometry);

@@ -128,7 +128,7 @@ public final class OmoPartRestorer {
                 throw new IllegalArgumentException("Duplicate saved part ID: " + entry.id());
             }
             restored.add(new ModelPartDescriptor(entry.id(), entry.name(), savedTransform,
-                    null, entry.visible(), entry.locked(), entry.parentId()));
+                    null, entry.visible(), entry.locked(), entry.parentId(), entry.boneId()));
         }
 
         // Register the entire hierarchy before evaluating any transform. No parent-first

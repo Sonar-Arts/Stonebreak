@@ -42,6 +42,7 @@ public class PlayerArmRenderer {
     private final ArmGeometry armGeometry;
     private final HandItemRenderer handItemRenderer;
     private final PlayerArmTexture armTexture;
+    private final FirstPersonArmRenderer firstPersonArm = new FirstPersonArmRenderer();
     
     // Reusable matrix to avoid allocations
     private final Matrix4f reusableArmViewModel = new Matrix4f();
@@ -96,6 +97,10 @@ public class PlayerArmRenderer {
      * Renders the player's arm with Minecraft-style positioning and animation using modular components.
      */
     public void renderPlayerArm(Player player) {
+        ItemStack selectedItem = getSelectedItem(player);
+        if (FirstPersonArmPose.usesAuthoredArm(selectedItem) && firstPersonArm.render(player, projectionMatrix)) {
+            return;
+        }
         shaderProgram.bind();
 
         // Enable depth testing for proper rendering
@@ -120,7 +125,6 @@ public class PlayerArmRenderer {
         reusableArmViewModel.identity();
         
         // Determine what item to display
-        ItemStack selectedItem = getSelectedItem(player);
         ItemDisplayInfo displayInfo = determineItemDisplay(selectedItem);
 
         // Apply all animations through the animator component (with item context for attack animations)
@@ -377,6 +381,7 @@ public class PlayerArmRenderer {
      * Cleanup resources when the renderer is destroyed.
      */
     public void cleanup() {
+        firstPersonArm.cleanup();
         armTexture.cleanup();
         armGeometry.cleanup();
         handItemRenderer.cleanup();

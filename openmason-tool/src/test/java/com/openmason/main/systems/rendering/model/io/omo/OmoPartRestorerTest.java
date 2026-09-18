@@ -13,6 +13,25 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 class OmoPartRestorerTest {
+    @Test
+    void loneBoundPartKeepsItsBindingThroughEditsAndSave() {
+        var manager = new ModelPartManager();
+        var entry = new OMOFormat.PartEntry("hand", "fist", 0,0,0, 0,0,0, 0,0,0, 1,1,1,
+                0,3,0,3,0,1,true,false,null,"hand-bone");
+        var mesh = new OMOFormat.MeshData(new float[]{0,0,0, 1,0,0, 0,1,0},
+                null, new int[]{0,1,2}, new int[]{0}, "FLAT");
+        OmoPartRestorer.restore(manager, mesh, List.of(entry), null);
+        var part = manager.getPartById("hand").orElseThrow();
+        assertEquals("hand-bone", part.boneId());
+        assertEquals("hand-bone", part.withName("renamed").withTransform(part.transform())
+                .withMeshRange(part.meshRange()).withVisible(false).withLocked(true).withParent("arm").boneId());
+        var saved = OmoExportAssembler.extractPartEntries(manager, mesh);
+        assertNotNull(saved, "a bound identity part cannot use partless synthesis");
+        assertEquals("hand-bone", saved.getFirst().boneId());
+        OmoPartRestorer.restore(manager, mesh, saved, null);
+        assertEquals("hand-bone", manager.getPartById("hand").orElseThrow().boneId());
+    }
+
     private static OMOFormat.PartEntry entry(String id, String parent, int vertexStart,
                                              int faceStart, int faceCount, float x) {
         return new OMOFormat.PartEntry(id, id, 0, 0, 0, x, 0, 0, 0, 0, 0, 1, 1, 1,
