@@ -2,12 +2,15 @@ package com.openmason.main.systems.menus.animationEditor.controller;
 
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
+import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
+import com.openmason.main.systems.menus.animationEditor.commands.AutoKeyCommand;
 import com.openmason.main.systems.menus.animationEditor.commands.ClipMetaCommands;
 import com.openmason.main.systems.menus.animationEditor.commands.CompositeCommand;
 import com.openmason.main.systems.menus.animationEditor.commands.KeyframeCommands;
 import com.openmason.main.systems.menus.animationEditor.data.AnimationClip;
 import com.openmason.main.systems.menus.animationEditor.data.Easing;
 import com.openmason.main.systems.menus.animationEditor.data.Keyframe;
+import com.openmason.main.systems.menus.animationEditor.data.Track;
 import com.openmason.main.systems.menus.animationEditor.io.OMAClipIO;
 import com.openmason.main.systems.menus.animationEditor.io.OMAFormat;
 import com.openmason.main.systems.menus.animationEditor.preview.AnimationPreviewPipeline;
@@ -23,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * Brokers all mutations between the Animation Editor UI and the underlying
@@ -30,6 +34,11 @@ import java.util.Map;
  * delegates persistence to {@link OMAClipIO}.
  *
  * <p>Decoupled from ImGui — the window calls into it.
+ *
+ * <p><b>Dirty tracking</b> is history-position based: the command on top of
+ * the undo stack at save time is remembered, and the clip is clean whenever
+ * that same command is on top again (so undoing back to the saved state
+ * clears the flag, and undoing past it or redoing away sets it).
  */
 public final class AnimationEditorController {
 
@@ -41,6 +50,13 @@ public final class AnimationEditorController {
 
     private ModelPartManager partManager;
     private AnimationPreviewPipeline preview;
+    /** Where the clip's {@code modelRef} comes from at save time (model file path or name). */
+    private Supplier<String> modelRefSupplier = () -> null;
+
+    /** History top at the last save/load; clean iff it is still the top. */
+    private Command savedTop;
+    /** Set by non-command mutations (e.g. a clip imported from bytes) until the next save. */
+    private boolean forceDirty;
 
     /**
      * Bind the controller to a viewport's part manager. Should be called
@@ -51,7 +67,7 @@ public final class AnimationEditorController {
             this.preview.release();
         }
         this.partManager = partManager;
-        this.preview = partManager != null ? new AnimationPreviewPipeline(partManager) : null;
+        this.preview = newPreview(partManager);
     }
 
     /**
@@ -66,17 +82,33 @@ public final class AnimationEditorController {
             this.preview.abandon();
         }
         this.partManager = newPartManager;
-        this.preview = newPartManager != null ? new AnimationPreviewPipeline(newPartManager) : null;
+        this.preview = newPreview(newPartManager);
 
         if (newPartManager == null) return;
 
         OMAClipIO.rebindTracksByName(state.clip(), newPartManager);
+        if (state.basePreviewClip() != null) {
+            OMAClipIO.rebindTracksByName(state.basePreviewClip(), newPartManager);
+        }
         String selected = state.selectedPartId();
-        if (selected != null && newPartManager.getPartById(selected).isEmpty()) {
+        if (selected != null && newPartManager.getPartById(selected).isEmpty()
+                && state.clip().trackFor(selected) == null) {
             state.setSelectedPartId(null);
         }
         beginSession();
         applyCurrentPose();
+    }
+
+    /** Supplies the model identity written as the clip's {@code modelRef} on save. */
+    public void setModelRefSupplier(Supplier<String> supplier) {
+        this.modelRefSupplier = supplier != null ? supplier : () -> null;
+    }
+
+    private AnimationPreviewPipeline newPreview(ModelPartManager pm) {
+        if (pm == null) return null;
+        AnimationPreviewPipeline p = new AnimationPreviewPipeline(pm);
+        p.setExternalEditListener(this::onExternalPartEdit);
+        return p;
     }
 
     public AnimationEditorState state() { return state; }
@@ -85,10 +117,13 @@ public final class AnimationEditorController {
 
     // ====================== Session ======================
 
+    /** Called once per UI frame by the window. */
     public void beginSession() {
-        if (preview != null && !preview.hasCapturedRestPose()) {
+        if (preview == null) return;
+        if (!preview.hasCapturedRestPose()) {
             preview.captureRestPose();
         }
+        preview.frameTick();
     }
 
     public void endSession() {
@@ -96,11 +131,26 @@ public final class AnimationEditorController {
             preview.release();
         }
         state.setPlaying(false);
+        state.setUnkeyedPartId(null);
     }
 
     public void applyCurrentPose() {
         if (preview == null) return;
-        preview.applyPose(state.clip(), state.playhead());
+        preview.applyPose(state.clip(), state.playhead(), state.basePreviewClip());
+    }
+
+    /**
+     * Put the viewport back at the model's rest pose without ending the
+     * session — call before the model is serialized so the preview pose is
+     * never baked into the .omo. Pair with {@link #resumePreview()}.
+     */
+    public void suspendPreview() {
+        if (preview != null) preview.restoreRestPose();
+    }
+
+    /** Re-apply the preview pose after {@link #suspendPreview()}. */
+    public void resumePreview() {
+        applyCurrentPose();
     }
 
     /**
@@ -125,6 +175,45 @@ public final class AnimationEditorController {
         applyCurrentPose();
     }
 
+    // ====================== Viewport edits (auto-key) ======================
+
+    /**
+     * A part was written by something other than the preview (gizmo,
+     * property panel, model undo). With auto-key on, the pose is upserted as
+     * a keyframe at the playhead — consecutive edits of the same part at the
+     * same time amend one history entry, so a gizmo drag is one undo step.
+     * Otherwise, if the part is showing an animated pose, remember it so the
+     * UI can hint that the edit will be lost on the next scrub.
+     *
+     * @return true when the edit was consumed as a keyframe
+     */
+    private boolean onExternalPartEdit(String partId, PartTransform transform) {
+        if (partManager == null || partManager.getPartById(partId).isEmpty()) return false;
+        if (!state.autoKey()) {
+            if (preview != null && preview.isAnimated(partId)) {
+                state.setUnkeyedPartId(partId);
+            }
+            return false;
+        }
+        float t = state.playhead();
+        Keyframe kf = Keyframe.fromPartTransform(t, transform, currentEasingFor(partId, t));
+        if (history.peekUndo() instanceof AutoKeyCommand top && top.matches(partId, t)) {
+            top.amend(kf);
+            refreshDirty();
+        } else {
+            execute(new AutoKeyCommand(state.clip(), partId, kf));
+        }
+        state.setUnkeyedPartId(null);
+        return true;
+    }
+
+    /** Easing of an existing key at {@code t} on the track, else LINEAR. */
+    private Easing currentEasingFor(String partId, float t) {
+        int idx = indexAtTime(partId, t);
+        if (idx < 0) return Easing.LINEAR;
+        return state.clip().trackFor(partId).get(idx).easing();
+    }
+
     // ====================== Editing ======================
 
     /**
@@ -137,14 +226,33 @@ public final class AnimationEditorController {
     }
 
     public void insertKeyframeAtPlayhead(String partId) {
+        insertKeyframeAt(partId, state.playhead());
+    }
+
+    /**
+     * Insert a keyframe at an arbitrary time capturing the part's pose there:
+     * the part's current viewport transform when {@code time} is the playhead
+     * (so a viewport pose is what gets keyed), otherwise the track's sampled
+     * pose at {@code time} (or the current transform if the track is empty).
+     */
+    public void insertKeyframeAt(String partId, float time) {
         if (partManager == null) return;
         ModelPartDescriptor part = partManager.getPartById(partId).orElse(null);
         if (part == null) {
             logger.warn("Insert keyframe: unknown part {}", partId);
             return;
         }
-        Keyframe kf = Keyframe.fromPartTransform(state.playhead(), part.transform(), Easing.LINEAR);
+        time = Math.min(Math.max(time, 0f), state.clip().duration());
+        Track track = state.clip().trackFor(partId);
+        Keyframe kf;
+        if (Math.abs(time - state.playhead()) < KeyframeSelection.TIME_EPS || track == null) {
+            kf = Keyframe.fromPartTransform(time, part.transform(), Easing.LINEAR);
+        } else {
+            Track.Sample s = track.sample(time);
+            kf = new Keyframe(time, s.position(), s.rotation(), s.scale(), Easing.LINEAR);
+        }
         execute(KeyframeCommands.insert(state.clip(), partId, kf));
+        if (partId.equals(state.unkeyedPartId())) state.setUnkeyedPartId(null);
     }
 
     public void deleteKeyframe(String partId, int index) {
@@ -153,6 +261,18 @@ public final class AnimationEditorController {
 
     public void editKeyframe(String partId, int index, Keyframe newKf) {
         execute(KeyframeCommands.edit(state.clip(), partId, index, newKf));
+    }
+
+    /**
+     * Live-preview a keyframe edit without touching history (the inspector
+     * calls this while a field is being dragged/typed, then commits once with
+     * {@link #editKeyframe} on release). Writes straight into the track.
+     */
+    public void previewKeyframeEdit(String partId, int index, Keyframe newKf) {
+        Track track = state.clip().trackFor(partId);
+        if (track == null || index < 0 || index >= track.size()) return;
+        track.set(index, newKf);
+        applyCurrentPose();
     }
 
     /**
@@ -167,6 +287,52 @@ public final class AnimationEditorController {
         }
         execute(KeyframeCommands.deleteTrack(state.clip(), partId));
         return true;
+    }
+
+    /**
+     * Tracks whose partId matches no part on the bound model — loaded from a
+     * file authored against a different model, or left behind by a part
+     * deletion. Shown as unbound rows so they can be rebound or removed.
+     */
+    public List<Track> orphanTracks() {
+        List<Track> out = new ArrayList<>();
+        for (Track t : state.clip().tracks().values()) {
+            if (partManager == null || partManager.getPartById(t.partId()).isEmpty()) {
+                out.add(t);
+            }
+        }
+        return out;
+    }
+
+    /** Re-key an orphan track under a real part (merging into an existing track). */
+    public boolean rebindTrack(String fromPartId, String toPartId) {
+        if (partManager == null || state.clip().trackFor(fromPartId) == null) return false;
+        ModelPartDescriptor target = partManager.getPartById(toPartId).orElse(null);
+        if (target == null) return false;
+        if (fromPartId.equals(state.selectedPartId())) state.setSelectedPartId(toPartId);
+        execute(KeyframeCommands.rebindTrack(state.clip(), fromPartId, toPartId, target.name()));
+        return true;
+    }
+
+    /** Keyframes sitting past the clip's duration (unreachable on the timeline). */
+    public int keyframesBeyondDuration() {
+        float d = state.clip().duration();
+        int n = 0;
+        for (Track t : state.clip().tracks().values()) {
+            for (Keyframe kf : t.keyframes()) {
+                if (kf.time() > d + KeyframeSelection.TIME_EPS) n++;
+            }
+        }
+        return n;
+    }
+
+    /** Remove every keyframe past the clip's duration, as one undo step. */
+    public void trimKeyframesBeyondDuration() {
+        Command cmd = KeyframeCommands.trimBeyond(state.clip(), state.clip().duration());
+        if (cmd != null) {
+            execute(cmd);
+            state.setSelectedKeyframeIndex(-1);
+        }
     }
 
     /**
@@ -212,6 +378,20 @@ public final class AnimationEditorController {
         state.setSelectedKeyframeIndex(-1);
     }
 
+    /** Select every keyframe on every track (primary = first key of the first track). */
+    public void selectAll() {
+        KeyframeSelection all = new KeyframeSelection();
+        String primaryPart = null;
+        for (Track track : state.clip().tracks().values()) {
+            for (Keyframe kf : track.keyframes()) {
+                all.add(new KeyframeSelection.KeyRef(track.partId(), kf.time()));
+            }
+            if (primaryPart == null && !track.isEmpty()) primaryPart = track.partId();
+        }
+        if (all.isEmpty()) return;
+        state.selectKeyframes(all, primaryPart, 0);
+    }
+
     /**
      * Copy the current selection to the editor clipboard.
      *
@@ -227,8 +407,21 @@ public final class AnimationEditorController {
      * clip duration. One undo step; the pasted keys become the selection.
      */
     public void pasteAtPlayhead() {
-        var clipboard = state.clipboard();
-        if (clipboard.isEmpty()) return;
+        pasteEntries(state.clipboard().entries(), "Paste");
+    }
+
+    /**
+     * Duplicate the selection to the playhead (relative spacing kept) without
+     * disturbing the clipboard. One undo step; the copies become the selection.
+     */
+    public void duplicateSelectionToPlayhead() {
+        KeyframeClipboard temp = new KeyframeClipboard();
+        if (temp.copyFrom(state.clip(), state.selection()) == 0) return;
+        pasteEntries(temp.entries(), "Duplicate");
+    }
+
+    private void pasteEntries(List<KeyframeClipboard.Entry> entries, String verb) {
+        if (entries.isEmpty()) return;
 
         float base = state.playhead();
         float duration = state.clip().duration();
@@ -237,7 +430,7 @@ public final class AnimationEditorController {
         String primaryPart = null;
         float primaryTime = -1f;
 
-        for (KeyframeClipboard.Entry entry : clipboard.entries()) {
+        for (KeyframeClipboard.Entry entry : entries) {
             float t = Math.min(base + entry.keyframe().time(), duration);
             Keyframe kf = entry.keyframe().withTime(t);
             parts.add(KeyframeCommands.insert(state.clip(), entry.partId(), kf));
@@ -247,12 +440,59 @@ public final class AnimationEditorController {
                 primaryTime = t;
             }
         }
-        execute(new CompositeCommand("Paste " + parts.size() + " keyframe(s)", parts));
+        execute(new CompositeCommand(verb + " " + parts.size() + " keyframe(s)", parts));
 
         if (primaryPart != null) {
             int idx = indexAtTime(primaryPart, primaryTime);
             state.selectKeyframes(pasted, primaryPart, idx);
         }
+    }
+
+    /**
+     * Mirror the selected keyframes in time about the selection's own span
+     * ({@code t' = min + max - t}) so the motion plays backwards. Per-track
+     * whole-list replace, one undo step; the selection is re-pointed.
+     */
+    public void reverseSelection() {
+        List<KeyframeSelection.ResolvedKey> resolved = state.selection().resolve(state.clip());
+        if (resolved.size() < 2) return;
+        float min = Float.MAX_VALUE, max = -Float.MAX_VALUE;
+        for (KeyframeSelection.ResolvedKey key : resolved) {
+            min = Math.min(min, key.keyframe().time());
+            max = Math.max(max, key.keyframe().time());
+        }
+        final float lo = min, hi = max;
+
+        Map<String, List<Keyframe>> beforeByPart = new LinkedHashMap<>();
+        Map<String, List<Keyframe>> afterByPart = new LinkedHashMap<>();
+        for (KeyframeSelection.ResolvedKey key : resolved) {
+            Track track = state.clip().trackFor(key.partId());
+            if (track == null) continue;
+            beforeByPart.computeIfAbsent(key.partId(), id -> List.copyOf(track.keyframes()));
+            afterByPart.computeIfAbsent(key.partId(), id -> new ArrayList<>(track.keyframes()));
+        }
+        KeyframeSelection moved = new KeyframeSelection();
+        for (var entry : afterByPart.entrySet()) {
+            List<Keyframe> after = entry.getValue();
+            for (int i = 0; i < after.size(); i++) {
+                Keyframe kf = after.get(i);
+                if (state.selection().contains(entry.getKey(), kf.time())) {
+                    float t = lo + hi - kf.time();
+                    after.set(i, kf.withTime(t));
+                    moved.add(new KeyframeSelection.KeyRef(entry.getKey(), t));
+                }
+            }
+        }
+        moveKeyframes(beforeByPart, afterByPart);
+        String primary = state.selectedPartId();
+        int idx = primary != null ? indexAtTime(primary, lo + hi - primaryTimeOr(primary, lo)) : -1;
+        state.selectKeyframes(moved, primary, idx);
+    }
+
+    private float primaryTimeOr(String partId, float fallback) {
+        Track track = state.clip().trackFor(partId);
+        int idx = state.selectedKeyframeIndex();
+        return (track != null && idx >= 0 && idx < track.size()) ? track.get(idx).time() : fallback;
     }
 
     /**
@@ -272,7 +512,10 @@ public final class AnimationEditorController {
         execute(new CompositeCommand("Set easing " + easing + " on " + parts.size() + " keyframe(s)", parts));
     }
 
-    /** Step the playhead by whole frames at the clip's fps. */
+    /**
+     * Step the playhead by whole frames at the clip's fps. Looping clips wrap
+     * in both directions (stepping back from frame 0 lands on the last frame).
+     */
     public void stepFrames(int delta) {
         AnimationClip clip = state.clip();
         if (clip == null || clip.fps() <= 0f) return;
@@ -280,7 +523,12 @@ public final class AnimationEditorController {
         float frameLen = 1f / clip.fps();
         // Snap the current playhead to a frame first so repeated steps land on the grid.
         float frame = Math.round(state.playhead() * clip.fps());
-        state.setPlayhead((frame + delta) * frameLen);
+        float t = (frame + delta) * frameLen;
+        if (clip.loop() && t < 0f) {
+            float dur = clip.duration();
+            t = ((t % dur) + dur) % dur;
+        }
+        state.setPlayhead(t);
         applyCurrentPose();
     }
 
@@ -294,8 +542,10 @@ public final class AnimationEditorController {
     }
 
     public void setClipName(String name) {
-        if (name == null || name.equals(state.clip().name())) return;
-        execute(ClipMetaCommands.setName(state.clip(), name));
+        if (name == null) return;
+        String trimmed = name.trim();
+        if (trimmed.isEmpty() || trimmed.equals(state.clip().name())) return;
+        execute(ClipMetaCommands.setName(state.clip(), trimmed));
     }
 
     public void setClipFps(float fps) {
@@ -348,10 +598,31 @@ public final class AnimationEditorController {
         execute(ClipMetaCommands.setLayerPriority(state.clip(), priority));
     }
 
+    // ---------- layered preview ----------
+
+    /**
+     * Load a BASE clip the preview layers the current OVERLAY on top of. Not
+     * part of the edited clip or its history — purely a preview aid.
+     *
+     * @return false if the file failed to parse
+     */
+    public boolean loadBasePreviewClip(String filePath) {
+        AnimationClip base = io.load(filePath, partManager);
+        if (base == null) return false;
+        state.setBasePreviewClip(base, filePath);
+        applyCurrentPose();
+        return true;
+    }
+
+    public void clearBasePreviewClip() {
+        state.setBasePreviewClip(null, null);
+        applyCurrentPose();
+    }
+
     public boolean undo() {
         boolean changed = history.undo();
         if (changed) {
-            state.markDirty();
+            refreshDirty();
             applyCurrentPose();
         }
         return changed;
@@ -360,7 +631,7 @@ public final class AnimationEditorController {
     public boolean redo() {
         boolean changed = history.redo();
         if (changed) {
-            state.markDirty();
+            refreshDirty();
             applyCurrentPose();
         }
         return changed;
@@ -368,8 +639,18 @@ public final class AnimationEditorController {
 
     private void execute(Command cmd) {
         history.executeCommand(cmd);
-        state.markDirty();
+        refreshDirty();
         applyCurrentPose();
+    }
+
+    private void refreshDirty() {
+        state.setDirty(forceDirty || history.peekUndo() != savedTop);
+    }
+
+    private void markSaved() {
+        forceDirty = false;
+        savedTop = history.peekUndo();
+        state.markClean();
     }
 
     // ====================== File I/O ======================
@@ -377,15 +658,16 @@ public final class AnimationEditorController {
     public void newClip() {
         state.setClip(AnimationClip.blank());
         state.setFilePath(null);
-        state.markClean();
         history.clear();
+        markSaved();
         applyCurrentPose();
     }
 
     public boolean save() {
         if (state.filePath() == null) return false;
+        stampModelRef();
         boolean ok = io.save(state.clip(), state.filePath(), partManager);
-        if (ok) state.markClean();
+        if (ok) markSaved();
         return ok;
     }
 
@@ -394,10 +676,11 @@ public final class AnimationEditorController {
         // without the .omanim extension, but the serializer always writes with
         // it — the stored path must match the file that actually exists.
         String resolved = OMAFormat.ensureExtension(filePath);
+        stampModelRef();
         boolean ok = io.save(state.clip(), resolved, partManager);
         if (ok) {
             state.setFilePath(resolved);
-            state.markClean();
+            markSaved();
         }
         return ok;
     }
@@ -407,9 +690,43 @@ public final class AnimationEditorController {
         if (loaded == null) return false;
         state.setClip(loaded);
         state.setFilePath(filePath);
-        state.markClean();
         history.clear();
+        markSaved();
         applyCurrentPose();
         return true;
+    }
+
+    /**
+     * The current clip as {@code .omanim} archive bytes (for embedding in an
+     * SBE/SBO state). Null on serialization failure.
+     */
+    public byte[] exportClipBytes() {
+        stampModelRef();
+        return io.toBytes(state.clip(), partManager);
+    }
+
+    /**
+     * Replace the current clip with one parsed from archive bytes (an SBE/SBO
+     * state's embedded clip). The clip has no file path and is reported as
+     * unsaved so the user knows it must be written back explicitly.
+     *
+     * @return false if the bytes failed to parse
+     */
+    public boolean importClipBytes(byte[] omaBytes, String sourceLabel) {
+        AnimationClip loaded = io.fromBytes(omaBytes, sourceLabel, partManager);
+        if (loaded == null) return false;
+        state.setClip(loaded);
+        state.setFilePath(null);
+        history.clear();
+        savedTop = null;
+        forceDirty = true;
+        refreshDirty();
+        applyCurrentPose();
+        return true;
+    }
+
+    private void stampModelRef() {
+        String ref = modelRefSupplier.get();
+        if (ref != null && !ref.isBlank()) state.clip().setModelRef(ref);
     }
 }

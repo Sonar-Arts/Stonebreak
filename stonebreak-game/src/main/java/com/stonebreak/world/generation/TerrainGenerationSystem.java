@@ -14,7 +14,9 @@ import com.stonebreak.world.generation.diffusion.DiffusionBridgeConfig;
 import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.diffusion.TerrainTileSource;
+import com.stonebreak.world.generation.diffusion.VoidTileSource;
 import com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager;
+import com.stonebreak.world.generation.features.CactusGenerator;
 import com.stonebreak.world.generation.features.LimestoneGenerator;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
@@ -55,6 +57,7 @@ public class TerrainGenerationSystem {
     private final OreGenerator oreGenerator;
     private final LimestoneGenerator limestoneGenerator;
     private final VegetationGenerator vegetationGenerator;
+    private final CactusGenerator cactusGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
     private final DeterministicRandom deterministicRandom;
     private final Density3D density3D;
@@ -105,6 +108,18 @@ public class TerrainGenerationSystem {
     }
 
     /**
+     * A terrain system for a world that generates no terrain — the battle-test scene.
+     *
+     * <p>Wired to {@link VoidTileSource}, so constructing one neither starts the
+     * terrain-diffusion services nor re-pins a running pair to this world's seed. The
+     * scene world still needs the object (FastLOD lifecycle, chunk store hook); it never
+     * asks it for a chunk.
+     */
+    public static TerrainGenerationSystem forSceneWorld(long seed) {
+        return new TerrainGenerationSystem(seed, VoidTileSource.INSTANCE);
+    }
+
+    /**
      * Test-only seam: injects a fake {@link TerrainTileSource} instead of the
      * real HTTP-backed bridge client, so terrain-shape logic (cave carving,
      * mesh consistency, etc.) can be exercised offline. Production code must
@@ -119,6 +134,7 @@ public class TerrainGenerationSystem {
         this.biomeManager = new BiomeManager(tileSource);
         this.oreGenerator = new OreGenerator(deterministicRandom, heightMapGenerator, seed);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
+        this.cactusGenerator = new CactusGenerator(deterministicRandom);
         this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, seed);
         this.density3D = new Density3D(seed, heightMapGenerator);
         this.wormCarver = new PerlinWormCarver(seed, heightMapGenerator);
@@ -654,6 +670,7 @@ public class TerrainGenerationSystem {
         // After ores: limestone only replaces stone, so it never eats a vein.
         limestoneGenerator.generate(ctx);
         vegetationGenerator.generate(ctx);
+        cactusGenerator.generate(ctx);
         decorationGenerator.generate(ctx);
 
         // Passive-mob population is owned entirely by EntitySpawner, which is a

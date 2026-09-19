@@ -83,7 +83,9 @@ public final class DynamicLights {
             addTorch(scratch.x, scratch.y, scratch.z, TorchLight.intensity(elapsed), distSq);
         }
 
-        if (player != null && isHoldingTorch(player)) {
+        // A scripted (cinematic) camera is not the player's eye: a carried torch riding it would relight
+        // the scene on every cut. The hand holding the torch is not on screen then either.
+        if (player != null && !player.getCamera().isCinematicActive() && isHoldingTorch(player)) {
             // Carried a little below and ahead of the eye so the hand itself
             // isn't the brightest thing on screen; the held torch runs on the
             // bare world clock (its own phase).

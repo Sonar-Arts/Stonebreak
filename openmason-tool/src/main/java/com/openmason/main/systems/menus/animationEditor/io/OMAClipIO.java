@@ -47,6 +47,24 @@ public final class OMAClipIO {
         return loaded;
     }
 
+    /** Serialize to in-memory archive bytes (SBE/SBO embedding). Null on failure. */
+    public byte[] toBytes(AnimationClip clip, ModelPartManager partManager) {
+        try {
+            return serializer.toBytes(clip, id -> partNameFor(partManager, id));
+        } catch (java.io.IOException ex) {
+            logger.error("Failed to serialize clip '{}' to bytes", clip.name(), ex);
+            return null;
+        }
+    }
+
+    /** Parse archive bytes and rebind against the model, like {@link #load(String, ModelPartManager)}. */
+    public AnimationClip fromBytes(byte[] omaBytes, String sourceLabel, ModelPartManager partManager) {
+        AnimationClip loaded = deserializer.load(omaBytes, sourceLabel);
+        if (loaded == null) return null;
+        rebindTracksByName(loaded, partManager);
+        return loaded;
+    }
+
     private static String partNameFor(ModelPartManager partManager, String partId) {
         if (partManager == null) return null;
         return partManager.getPartById(partId).map(ModelPartDescriptor::name).orElse(null);

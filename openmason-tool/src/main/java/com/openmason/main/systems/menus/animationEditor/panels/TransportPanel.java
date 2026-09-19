@@ -12,9 +12,9 @@ import imgui.type.ImFloat;
 
 /**
  * Transport row: step/play/stop/undo/redo buttons (Mortar-painted when
- * available, ImGui fallback otherwise) followed by speed, loop, snap, and the
- * playhead scrubber — which stay ImGui widgets since Mortar has no
- * drag/combo channel.
+ * available, ImGui fallback otherwise) followed by speed, loop, snap,
+ * auto-key and the playhead scrubber — which stay ImGui widgets since Mortar
+ * has no drag/combo channel.
  *
  * <p>The loop and playhead buffers mirror the clip's truth each frame; both
  * widgets are non-text inputs so per-frame sync from the clip is safe.
@@ -38,6 +38,7 @@ public final class TransportPanel implements AutoCloseable {
     private final MortarRegion region = new MortarRegion();
     private final ImBoolean loopBuf = new ImBoolean(true);
     private final ImBoolean snapBuf = new ImBoolean(true);
+    private final ImBoolean autoKeyBuf = new ImBoolean(false);
     private final ImFloat playheadBuf = new ImFloat(0f);
 
     public TransportPanel(AnimationEditorController controller) {
@@ -59,15 +60,17 @@ public final class TransportPanel implements AutoCloseable {
     }
 
     private void renderMortarButtons(boolean playing) {
-        record Btn(String id, float width, MortarButton.Variant variant) {}
+        boolean canUndo = controller.history().canUndo();
+        boolean canRedo = controller.history().canRedo();
+        record Btn(String id, float width, MortarButton.Variant variant, boolean enabled) {}
         Btn[] buttons = {
-                new Btn("back", STEP_BUTTON_WIDTH, null),          // icon button
+                new Btn("back", STEP_BUTTON_WIDTH, null, true),          // icon button
                 new Btn("play", TRANSPORT_BUTTON_WIDTH, playing ? MortarButton.Variant.PRIMARY
-                                                                : MortarButton.Variant.SECONDARY),
-                new Btn("fwd", STEP_BUTTON_WIDTH, null),           // icon button
-                new Btn("stop", STOP_BUTTON_WIDTH, MortarButton.Variant.SECONDARY),
-                new Btn("undo", UNDO_BUTTON_WIDTH, MortarButton.Variant.SECONDARY),
-                new Btn("redo", UNDO_BUTTON_WIDTH, MortarButton.Variant.SECONDARY),
+                                                                : MortarButton.Variant.SECONDARY, true),
+                new Btn("fwd", STEP_BUTTON_WIDTH, null, true),           // icon button
+                new Btn("stop", STOP_BUTTON_WIDTH, MortarButton.Variant.SECONDARY, true),
+                new Btn("undo", UNDO_BUTTON_WIDTH, MortarButton.Variant.SECONDARY, canUndo),
+                new Btn("redo", UNDO_BUTTON_WIDTH, MortarButton.Variant.SECONDARY, canRedo),
         };
 
         float totalWidth = BUTTON_GAP * (buttons.length - 1);
@@ -81,8 +84,8 @@ public final class TransportPanel implements AutoCloseable {
                 case "fwd" -> new MortarIconButton(">");
                 case "play" -> new MortarButton(playing ? "Pause" : "Play", b.variant());
                 case "stop" -> new MortarButton("Stop", b.variant());
-                case "undo" -> new MortarButton("Undo", b.variant());
-                default -> new MortarButton("Redo", b.variant());
+                case "undo" -> new MortarButton("Undo", b.variant(), b.enabled());
+                default -> new MortarButton("Redo", b.variant(), b.enabled());
             });
             x += b.width() + BUTTON_GAP;
         }
@@ -97,8 +100,8 @@ public final class TransportPanel implements AutoCloseable {
             controller.state().setPlayhead(0f);
             controller.applyCurrentPose();
         }
-        if (input.isClicked("undo")) controller.undo();
-        if (input.isClicked("redo")) controller.redo();
+        if (input.isClicked("undo") && canUndo) controller.undo();
+        if (input.isClicked("redo") && canRedo) controller.redo();
     }
 
     private void renderImGuiButtons(boolean playing) {
@@ -142,11 +145,13 @@ public final class TransportPanel implements AutoCloseable {
         AnimUI.tooltip("Redo (Ctrl+Y).");
     }
 
-    /** Speed / loop / snap / scrubber / frame readout — always ImGui widgets. */
+    /** Speed / loop / snap / auto-key / scrubber / frame readout — always ImGui widgets. */
     private void renderSharedControls(AnimationClip clip) {
         ImGui.setNextItemWidth(SPEED_COMBO_WIDTH);
-        int speedIdx = speedIndex(controller.state().playbackSpeed());
-        if (ImGui.beginCombo("##speed", SPEED_LABELS[speedIdx])) {
+        float speed = controller.state().playbackSpeed();
+        int speedIdx = speedIndex(speed);
+        String speedLabel = speedIdx >= 0 ? SPEED_LABELS[speedIdx] : String.format("%.2gx", speed);
+        if (ImGui.beginCombo("##speed", speedLabel)) {
             for (int i = 0; i < SPEED_LABELS.length; i++) {
                 if (ImGui.selectable(SPEED_LABELS[i], i == speedIdx)) {
                     controller.state().setPlaybackSpeed(SPEED_VALUES[i]);
@@ -171,6 +176,17 @@ public final class TransportPanel implements AutoCloseable {
         AnimUI.tooltip("Snap dragged keyframes to the frame grid (hold Alt to bypass).");
 
         ImGui.sameLine();
+        autoKeyBuf.set(controller.state().autoKey());
+        boolean autoKey = controller.state().autoKey();
+        if (autoKey) ImGui.pushStyleColor(imgui.flag.ImGuiCol.CheckMark, 0.95f, 0.35f, 0.3f, 1f);
+        if (ImGui.checkbox("Auto-key", autoKeyBuf)) {
+            controller.state().setAutoKey(autoKeyBuf.get());
+        }
+        if (autoKey) ImGui.popStyleColor();
+        AnimUI.tooltip("Record mode: moving a part in the viewport (gizmo or Properties) "
+                + "inserts or updates its keyframe at the playhead. One drag = one undo step.");
+
+        ImGui.sameLine();
         ImGui.setNextItemWidth(PLAYHEAD_SLIDER_WIDTH);
         playheadBuf.set(controller.state().playhead());
         if (ImGui.sliderFloat("##playhead", playheadBuf.getData(), 0f, clip.duration(), "%.3f s")) {
@@ -185,11 +201,12 @@ public final class TransportPanel implements AutoCloseable {
                 controller.state().playhead(), clip.duration(), frame, totalFrames));
     }
 
+    /** Index into the preset list, or -1 when the speed was set to a non-preset value. */
     private static int speedIndex(float speed) {
         for (int i = 0; i < SPEED_VALUES.length; i++) {
             if (Math.abs(SPEED_VALUES[i] - speed) < 1e-3f) return i;
         }
-        return 2; // 1x
+        return -1;
     }
 
     @Override

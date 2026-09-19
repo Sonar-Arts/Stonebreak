@@ -43,6 +43,16 @@ public record TextureArrayAdapter(BlockTextureArray textureArray)
         return textureArray.getBlockFaceLayer(bt, stateName, face);
     }
 
+    @Override
+    public float getBlockFaceLayerForAuthoredFace(IBlockType blockType, String stateName,
+                                                   int authoredFaceId, int mmsFace) {
+        BlockType bt = unwrap(blockType);
+        if (bt == null || authoredFaceId < 0) {
+            return getBlockFaceLayer(blockType, stateName, mmsFace);
+        }
+        return textureArray.getBlockFaceLayerForAuthoredFace(bt, stateName, authoredFaceId, mmsFace);
+    }
+
     private static BlockType unwrap(IBlockType blockType) {
         if (blockType instanceof BlockType direct) {
             return direct;

@@ -33,7 +33,8 @@ public final class MPainter {
     }
 
     public static void fillRoundedRect(Canvas canvas, float x, float y, float w, float h, float r, int color) {
-        try (Paint p = new Paint().setColor(color)) {
+        // Anti-aliased: without it every pill (badges, gauge tracks) had stair-stepped ends.
+        try (Paint p = new Paint().setColor(color).setAntiAlias(true)) {
             canvas.drawRRect(RRect.makeXYWH(x, y, w, h, r), p);
         }
     }
@@ -98,6 +99,56 @@ public final class MPainter {
                 MStyle.PANEL_FILL, MStyle.PANEL_BORDER,
                 MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW, MStyle.PANEL_DROP_SHADOW,
                 MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
+    }
+
+    /**
+     * HUD-weight frame for chrome drawn over the 3D scene: the stone panel's construction (drop
+     * shadow, bevel, speckle, near-black border) on the darker translucent {@code MStyle.HUD_*} fill.
+     * {@code accent} (0 = none) adds a 2px hairline along the inside of the top edge: a per-context
+     * tint (an encounter's colour, a faction) without repainting the frame. {@code alpha} fades the
+     * whole frame for slide/fade transitions.
+     */
+    public static void hudFrame(Canvas canvas, float x, float y, float w, float h, int accent, float alpha) {
+        if (canvas == null || w <= 0f || h <= 0f || alpha <= 0f) return;
+        float r = Math.min(MStyle.PANEL_RADIUS, Math.min(w, h) / 2f);
+        stoneSurface(canvas, x, y, w, h, r,
+                MColor.fade(MStyle.HUD_FILL, alpha), MColor.fade(MStyle.HUD_BORDER, alpha),
+                MColor.fade(MStyle.HUD_HIGHLIGHT, alpha), MColor.fade(MStyle.HUD_SHADOW, alpha),
+                MColor.fade(MStyle.HUD_DROP_SHADOW, alpha),
+                MColor.fade(MStyle.HUD_NOISE_DARK, alpha), MColor.fade(MStyle.HUD_NOISE_LIGHT, alpha));
+        if ((accent & 0xFF000000) != 0 && w > 12f && h > 8f) {
+            fillRoundedRect(canvas, x + 4f, y + 2.5f, w - 8f, 2f, 1f, MColor.fade(accent, alpha));
+        }
+    }
+
+    public static void hudFrame(Canvas canvas, float x, float y, float w, float h) {
+        hudFrame(canvas, x, y, w, h, 0, 1f);
+    }
+
+    /** Veil for a frame that is on screen but not interactive; same rounded shape, inside the border. */
+    public static void hudVeil(Canvas canvas, float x, float y, float w, float h, float amount) {
+        if (canvas == null || amount <= 0f || w <= 3f || h <= 3f) return;
+        float inset = 1.5f;
+        float r = Math.max(0f, Math.min(MStyle.PANEL_RADIUS, Math.min(w, h) / 2f) - inset);
+        fillRoundedRect(canvas, x + inset, y + inset, w - 2f * inset, h - 2f * inset, r,
+                MColor.fade(MStyle.HUD_VEIL, amount));
+    }
+
+    // ─────────────────────────────────────────────── Circles
+
+    public static void fillCircle(Canvas canvas, float cx, float cy, float radius, int color) {
+        if (canvas == null || radius <= 0f || (color & 0xFF000000) == 0) return;
+        try (Paint p = new Paint().setColor(color).setAntiAlias(true)) {
+            canvas.drawCircle(cx, cy, radius, p);
+        }
+    }
+
+    public static void strokeCircle(Canvas canvas, float cx, float cy, float radius, int color, float width) {
+        if (canvas == null || radius <= 0f || width <= 0f || (color & 0xFF000000) == 0) return;
+        try (Paint p = new Paint().setColor(color).setAntiAlias(true)
+                .setMode(PaintMode.STROKE).setStrokeWidth(width)) {
+            canvas.drawCircle(cx, cy, radius, p);
+        }
     }
 
     /**
@@ -399,5 +450,47 @@ public final class MPainter {
         drawString(canvas, text, x + 2f, y + 2f, font, soft);
         drawString(canvas, text, x + 1f, y + 1f, font, shadow);
         drawString(canvas, text, x,       y,       font, color);
+    }
+
+    /** Horizontal anchoring of a line of text relative to the x it is given. */
+    public enum Align { LEFT, CENTER, RIGHT }
+
+    private static float alignedX(Font font, String text, float x, Align align) {
+        if (align == null || align == Align.LEFT) return x;
+        float width = measureWidth(font, text);
+        return align == Align.CENTER ? x - width / 2f : x - width;
+    }
+
+    /**
+     * Shadowed text with alignment, in the house style. Unlike the older helpers the shadow follows
+     * the text colour's own alpha, so fading a label fades its shadow with it instead of leaving a
+     * dark ghost behind.
+     */
+    public static void drawText(Canvas canvas, String text, float x, float y, Font font, int color, Align align) {
+        if (canvas == null || font == null || text == null || text.isEmpty() || (color & 0xFF000000) == 0) return;
+        float left = alignedX(font, text, x, align);
+        int shadow = MColor.fade(MStyle.TEXT_SHADOW, ((color >>> 24) & 0xFF) / 255f);
+        drawStringWithShadow(canvas, text, left, y, font, color, shadow);
+    }
+
+    /**
+     * Text with a dark outline, for words drawn straight over the scene with no frame behind them
+     * (floating numbers, prompts). One rule for every such word: a stroked pass under the fill.
+     */
+    public static void drawTextOutlined(Canvas canvas, String text, float x, float y, Font font, int color,
+                                        Align align, float outlineWidth) {
+        if (canvas == null || font == null || text == null || text.isEmpty() || (color & 0xFF000000) == 0) return;
+        float left = alignedX(font, text, x, align);
+        int outline = MColor.fade(MStyle.OUTLINE_DARK, ((color >>> 24) & 0xFF) / 255f);
+        try (Paint stroke = new Paint().setColor(outline).setAntiAlias(true)
+                .setMode(PaintMode.STROKE).setStrokeWidth(Math.max(1f, outlineWidth))) {
+            canvas.drawString(text, left, y, font, stroke);
+        }
+        drawString(canvas, text, left, y, font, color);
+    }
+
+    /** Baseline that vertically centres a line of {@code fontPx} text on {@code centreY}. */
+    public static float baselineFor(float centreY, float fontPx) {
+        return centreY + fontPx * 0.36f;
     }
 }

@@ -21,7 +21,13 @@ public enum Easing {
     /** Fast start, decelerating to a soft stop (cubic). */
     EASE_OUT,
     /** Slow start and soft stop, fast through the middle (cubic). */
-    EASE_IN_OUT;
+    EASE_IN_OUT,
+    /**
+     * Hold: the outgoing pose is kept for the whole segment and the next
+     * keyframe's pose snaps in at its time. For blinks, gear ticks, sprite
+     * flips — anything that must not tween.
+     */
+    STEP;
 
     /**
      * Remap a normalized segment parameter through this curve.
@@ -41,6 +47,7 @@ public enum Easing {
             case EASE_IN_OUT -> x < 0.5f
                     ? 4f * x * x * x
                     : 1f - cube(-2f * x + 2f) / 2f;
+            case STEP -> x >= 1f ? 1f : 0f;
         };
     }
 

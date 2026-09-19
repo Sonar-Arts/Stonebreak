@@ -9,10 +9,15 @@ import imgui.ImGui;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.function.Consumer;
+
 /**
  * New / Open / Save / Save As row plus a right-aligned save status. Routes
  * file operations through {@link FileDialogService} so the native picker is
  * used consistently with the rest of the tool.
+ *
+ * <p>New and Open go through an optional <em>discard guard</em> (installed
+ * by the window) that asks about unsaved changes first.
  *
  * <p>Buttons are Mortar-painted when a Skija context exists (Save turns
  * PRIMARY when there are unsaved changes); the ImGui widgets remain as the
@@ -29,6 +34,8 @@ public final class FileBarPanel implements AutoCloseable {
     private final AnimationEditorController controller;
     private final MortarRegion region = new MortarRegion();
     private FileDialogService fileDialogService;
+    /** Runs the given action now, or after the user confirms discarding unsaved changes. */
+    private Consumer<Runnable> discardGuard = Runnable::run;
 
     public FileBarPanel(AnimationEditorController controller) {
         this.controller = controller;
@@ -36,6 +43,10 @@ public final class FileBarPanel implements AutoCloseable {
 
     public void setFileDialogService(FileDialogService service) {
         this.fileDialogService = service;
+    }
+
+    public void setDiscardGuard(Consumer<Runnable> guard) {
+        this.discardGuard = guard != null ? guard : Runnable::run;
     }
 
     public void render() {
@@ -72,21 +83,21 @@ public final class FileBarPanel implements AutoCloseable {
         MortarFrameResult input = region.render();
         region.update(ImGui.getIO().getDeltaTime());
 
-        if (input.isClicked("new")) controller.newClip();
-        if (input.isClicked("open")) promptOpen();
+        if (input.isClicked("new")) requestNew();
+        if (input.isClicked("open")) requestOpen();
         if (input.isClicked("save") && canSave) requestSave();
         if (input.isClicked("saveAs")) promptSaveAs();
     }
 
     private void renderImGuiFallback() {
         if (ImGui.button("New")) {
-            controller.newClip();
+            requestNew();
         }
-        AnimUI.tooltip("Discard current clip and start a new untitled animation.");
+        AnimUI.tooltip("Start a new untitled animation (asks first if there are unsaved changes).");
 
         ImGui.sameLine();
         if (ImGui.button("Open...")) {
-            promptOpen();
+            requestOpen();
         }
         AnimUI.tooltip("Load an .omanim animation from disk.");
 
@@ -107,6 +118,14 @@ public final class FileBarPanel implements AutoCloseable {
             promptSaveAs();
         }
         AnimUI.tooltip("Save the current clip to a new .omanim file.");
+    }
+
+    public void requestNew() {
+        discardGuard.accept(controller::newClip);
+    }
+
+    public void requestOpen() {
+        discardGuard.accept(this::promptOpen);
     }
 
     /**
@@ -157,7 +176,7 @@ public final class FileBarPanel implements AutoCloseable {
     private String saveStatusLabel() {
         boolean hasPath = controller.state().filePath() != null;
         boolean dirty = controller.state().dirty();
-        if (!hasPath) return "[unsaved]";
+        if (!hasPath) return dirty ? "[unsaved]" : "[new]";
         return dirty ? "[modified]" : "[saved]";
     }
 

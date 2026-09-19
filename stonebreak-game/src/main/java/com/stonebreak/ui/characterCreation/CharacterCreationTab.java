@@ -4,7 +4,8 @@ public enum CharacterCreationTab {
     BACKGROUND,
     ABILITY_SCORE,
     TALENTS,
-    LOOKS;
+    LOOKS,
+    CLOTHING;
 
     public String displayName() {
         return switch (this) {
@@ -12,6 +13,7 @@ public enum CharacterCreationTab {
             case ABILITY_SCORE  -> "Ability Score";
             case TALENTS        -> "Talents";
             case LOOKS          -> "Looks";
+            case CLOTHING       -> "Clothing";
         };
     }
 }

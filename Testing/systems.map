@@ -20,7 +20,7 @@ cco	openmason-engine	com/openmason/engine/voxel/cco/**/*Test
 mms	openmason-engine	com/openmason/engine/voxel/mms/**/*Test
 sbo	openmason-engine	com/openmason/engine/voxel/sbo/**/*Test
 lighting	openmason-engine	com/openmason/engine/voxel/lighting/**/*Test
-lighting	stonebreak-game	com/stonebreak/rendering/lighting/**/*Test
+lighting	stonebreak-game	com/stonebreak/rendering/lighting/**/*Test,com/stonebreak/world/lighting/**/*Test
 engine-util	openmason-engine	com/openmason/engine/util/**/*Test
 cearl	openmason-engine	com/openmason/engine/cearl/**/*Test,com/openmason/engine/vram/**/*Test
 cearl	stonebreak-game	com/stonebreak/rendering/vram/**/*Test
@@ -38,7 +38,8 @@ core	stonebreak-game	com/stonebreak/core/**/*Test,com/stonebreak/config/**/*Test
 items	stonebreak-game	com/stonebreak/items/**/*Test
 crafting	stonebreak-game	com/stonebreak/crafting/**/*Test
 mobs	stonebreak-game	com/stonebreak/mobs/**/*Test,com/stonebreak/rendering/models/**/*Test
-player	stonebreak-game	com/stonebreak/player/**/*Test,com/stonebreak/rpg/**/*Test
+player	stonebreak-game	com/stonebreak/player/**/*Test,com/stonebreak/rpg/**/*Test,com/stonebreak/rendering/player/**/*Test,com/stonebreak/battletest/**/*Test
+battle	stonebreak-game	com/stonebreak/battle/**/*Test
 ui	stonebreak-game	com/stonebreak/ui/**/*Test,com/stonebreak/rendering/UI/**/*Test
 chunks	stonebreak-game	com/stonebreak/world/chunk/**/*Test,!com/stonebreak/world/chunk/api/**,!com/stonebreak/world/chunk/ChunkWaterLayerTest,!com/stonebreak/world/chunk/WaterMeshSplitTest,com/stonebreak/world/LoadingPerformanceIntegrationTest
 fastlod	stonebreak-game	com/stonebreak/world/fastlod/**/*Test,com/stonebreak/rendering/gameWorld/**/*Test
@@ -50,6 +51,8 @@ bench	stonebreak-game	com/stonebreak/world/bench/**/*Test
 # ---- tool ----
 mcp	openmason-tool	com/openmason/main/systems/mcp/**/*Test
 assets	openmason-tool	com/openmason/main/systems/assets/**/*Test
+tool-io	openmason-tool	com/openmason/main/systems/io/**/*Test
+tool-services	openmason-tool	com/openmason/main/systems/services/**/*Test
 assistant	openmason-tool	com/openmason/main/systems/assistant/**/*Test
 anim-editor	openmason-tool	com/openmason/main/systems/menus/animationEditor/**/*Test
 tool-ui	openmason-tool	com/openmason/main/systems/menus/dialogs/**/*Test,com/openmason/main/systems/menus/textureCreator/**/*Test,com/openmason/main/systems/mortar/**/*Test

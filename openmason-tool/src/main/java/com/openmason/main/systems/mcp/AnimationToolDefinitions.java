@@ -21,10 +21,14 @@ import static com.openmason.main.systems.mcp.McpArgs.reqString;
 public final class AnimationToolDefinitions {
 
     private final AnimationEditingService editor;
+    private final com.openmason.main.systems.io.AssetWriteService writes;
     private final ObjectMapper mapper;
 
-    public AnimationToolDefinitions(AnimationEditingService editor, ObjectMapper mapper) {
+    public AnimationToolDefinitions(AnimationEditingService editor,
+                                    com.openmason.main.systems.io.AssetWriteService writes,
+                                    ObjectMapper mapper) {
         this.editor = editor;
+        this.writes = writes;
         this.mapper = mapper;
     }
 
@@ -223,12 +227,26 @@ public final class AnimationToolDefinitions {
 
         registry.register(new McpTool(
                 "anim_save",
-                "Save the current clip: to file_path when given, else to its existing path "
-                        + "(false if the clip has no path yet).",
-                schema().str("file_path", "Absolute file path (typically ending in .oma)").build(),
+                "Save the current clip as .omanim. file_path: absolute, project:<rel> or a bare "
+                        + "name (see save_targets). Without it: re-save the clip's own file, or open "
+                        + "the in-app Save Sheet. Risky writes ask the user.",
+                schema().str("file_path", "Target .omanim path")
+                        .bool("prompt", "Always ask the user in the in-app Save Sheet")
+                        .bool("overwrite", "Acknowledge replacing an existing file")
+                        .build(),
                 args -> {
                     String path = optString(args, "file_path");
-                    return path != null ? editor.saveAs(path) : editor.save();
+                    boolean prompt = McpArgs.optBool(args, "prompt", false);
+                    String current = editor.currentFilePath();
+                    com.openmason.main.systems.io.AssetWriteService.Writer writer =
+                            p -> editor.saveAs(p.toString());
+                    if (path == null && !prompt && current != null) {
+                        return writes.saveInPlace(com.openmason.main.systems.io.WriteKind.OMANIM,
+                                current, p -> editor.save());
+                    }
+                    return writes.save(com.openmason.main.systems.io.AssetWriteService.WriteRequest.of(
+                            com.openmason.main.systems.io.WriteKind.OMANIM, path, prompt,
+                            McpArgs.optBool(args, "overwrite", false), "animation"), writer);
                 }));
 
         registry.register(new McpTool(

@@ -28,6 +28,8 @@ import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import com.openmason.main.systems.menus.AboutMenuHandler;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import com.openmason.main.systems.services.StatusService;
+import imgui.ImGui;
+import imgui.ImGuiViewport;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,6 +83,12 @@ public class TextureCreatorImGui {
 
     // Face texture resize dialog (wired in after viewport is available)
     private FaceTextureResizeDialog faceTextureResizeDialog;
+
+    // Reference-viewport centre for texture-editor modals: the main viewport when
+    // docked, the popped-out editor host window's viewport when windowed (set
+    // each frame by whichever render path runs).
+    private float dialogRefCenterX = -1.0f;
+    private float dialogRefCenterY = -1.0f;
 
     /**
      * Create texture creator UI with dependency injection.
@@ -435,6 +443,10 @@ public class TextureCreatorImGui {
         panelRenderer.renderToolOptionsBar();
         panelRenderer.renderDockSpace();
         panelRenderer.renderAllPanels();
+        // Docked into the main window: modals centre on the main viewport.
+        ImGuiViewport mainVp = ImGui.getMainViewport();
+        dialogRefCenterX = mainVp.getCenterX();
+        dialogRefCenterY = mainVp.getCenterY();
         renderDialogs();
 
         // Render closeable windows (visibility managed by windowState)
@@ -486,6 +498,12 @@ public class TextureCreatorImGui {
      */
     public void renderWindowedPanels() {
         panelRenderer.renderAllPanels();
+        // Inside the popped-out editor host window: modals centre on ITS viewport,
+        // not the main window (a current window is active here, so getWindowViewport
+        // is safe and returns the editor's OS-window viewport).
+        ImGuiViewport hostVp = ImGui.getWindowViewport();
+        dialogRefCenterX = hostVp.getPosX() + hostVp.getSizeX() / 2.0f;
+        dialogRefCenterY = hostVp.getPosY() + hostVp.getSizeY() / 2.0f;
         renderDialogs();
 
         // Render closeable windows
@@ -504,6 +522,10 @@ public class TextureCreatorImGui {
      * Render dialogs.
      */
     private void renderDialogs() {
+        newTextureDialog.setReferenceViewportCenter(dialogRefCenterX, dialogRefCenterY);
+        importPNGDialog.setReferenceViewportCenter(dialogRefCenterX, dialogRefCenterY);
+        omtImportDialog.setReferenceViewportCenter(dialogRefCenterX, dialogRefCenterY);
+        exportFormatDialog.setReferenceViewportCenter(dialogRefCenterX, dialogRefCenterY);
         newTextureDialog.render();
         importPNGDialog.render();
         omtImportDialog.render();

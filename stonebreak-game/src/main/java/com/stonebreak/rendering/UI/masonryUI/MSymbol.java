@@ -30,7 +30,11 @@ public enum MSymbol {
     CHEVRON_UP, CHEVRON_DOWN, CHEVRON_LEFT, CHEVRON_RIGHT,
     PLUS, MINUS, CROSS, CHECK,
     GEAR, MAGNIFIER, WARNING, INFO,
-    STAR, HEART, LOCK, PLAY, PAUSE;
+    STAR, HEART, LOCK, PLAY, PAUSE,
+    /** Solid block arrows: direction prompts, where a chevron is too light to read at a glance. */
+    ARROW_UP, ARROW_DOWN, ARROW_LEFT, ARROW_RIGHT,
+    /** Pointing hand (points right): the list cursor of a keyboard/gamepad-driven menu. */
+    HAND_POINT;
 
     /**
      * Draws this symbol centered in the box {@code (x, y, w, h)}. Ignores
@@ -80,6 +84,11 @@ public enum MSymbol {
                 fillRect(canvas, color, cx - 0.24f * s, cy - 0.3f * s, 0.17f * s, 0.6f * s);
                 fillRect(canvas, color, cx + 0.07f * s, cy - 0.3f * s, 0.17f * s, 0.6f * s);
             }
+            case ARROW_UP -> drawArrow(canvas, cx, cy, s, color, 0f, -1f);
+            case ARROW_DOWN -> drawArrow(canvas, cx, cy, s, color, 0f, 1f);
+            case ARROW_LEFT -> drawArrow(canvas, cx, cy, s, color, -1f, 0f);
+            case ARROW_RIGHT -> drawArrow(canvas, cx, cy, s, color, 1f, 0f);
+            case HAND_POINT -> drawHand(canvas, cx, cy, s, color);
         }
     }
 
@@ -95,6 +104,28 @@ public enum MSymbol {
     }
 
     // ─────────────────────────────────────────────── Composite symbols
+
+    /** Block arrow pointing along the unit axis {@code (dx, dy)}: a triangular head on a short shaft. */
+    private static void drawArrow(Canvas canvas, float cx, float cy, float s, int color, float dx, float dy) {
+        float px = -dy, py = dx; // perpendicular
+        float tip = 0.36f * s, neck = 0.02f * s, tail = 0.34f * s, headHalf = 0.32f * s, shaftHalf = 0.13f * s;
+        fillPolygon(canvas, color,
+                cx + dx * tip, cy + dy * tip,
+                cx + dx * neck + px * headHalf, cy + dy * neck + py * headHalf,
+                cx + dx * neck + px * shaftHalf, cy + dy * neck + py * shaftHalf,
+                cx - dx * tail + px * shaftHalf, cy - dy * tail + py * shaftHalf,
+                cx - dx * tail - px * shaftHalf, cy - dy * tail - py * shaftHalf,
+                cx + dx * neck - px * shaftHalf, cy + dy * neck - py * shaftHalf,
+                cx + dx * neck - px * headHalf, cy + dy * neck - py * headHalf);
+    }
+
+    /** Pointing hand, index finger to the right: a fist block with the finger extended past it. */
+    private static void drawHand(Canvas canvas, float cx, float cy, float s, int color) {
+        // Cuff, fist, extended index finger; chunky rectangles to suit the pixel-art UI.
+        fillRect(canvas, color, cx - 0.40f * s, cy - 0.16f * s, 0.14f * s, 0.40f * s);
+        fillRect(canvas, color, cx - 0.24f * s, cy - 0.22f * s, 0.34f * s, 0.50f * s);
+        fillRect(canvas, color, cx + 0.06f * s, cy - 0.22f * s, 0.36f * s, 0.17f * s);
+    }
 
     private static void drawGear(Canvas canvas, float cx, float cy, float s, int color) {
         // Thick-stroked ring for the wheel, radial stubs for the teeth. The

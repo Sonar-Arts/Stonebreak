@@ -296,6 +296,11 @@ public final class AnimationEditingService {
         return await(MainThreadExecutor.submit(() -> requireController().save()));
     }
 
+    /** The clip's own file path, or null when it has never been saved. */
+    public String currentFilePath() {
+        return await(MainThreadExecutor.submit(() -> requireController().state().filePath()));
+    }
+
     public boolean saveAs(String filePath) {
         return await(MainThreadExecutor.submit(() -> requireController().saveAs(filePath)));
     }

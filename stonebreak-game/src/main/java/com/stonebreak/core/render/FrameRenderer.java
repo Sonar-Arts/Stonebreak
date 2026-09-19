@@ -129,6 +129,7 @@ public final class FrameRenderer {
             case JOIN_WORLD_SCREEN -> {
                 if (game.getJoinWorldScreen() != null) game.getJoinWorldScreen().render(width, height);
             }
+            case FOCUS_BATTLE -> renderFocusBattle(game, renderer);
             default -> renderInGame(game, renderer);
         }
 
@@ -138,6 +139,13 @@ public final class FrameRenderer {
     // ─── In-game ──────────────────────────────────────────────────────────────
 
     private void renderInGame(Game game, Renderer renderer) {
+        // A battle paused from its root menu (PAUSED, or STATISTICS/GLOSSARY opened from there) still
+        // owns the screen: the hotbar and chat must not appear underneath the pause menu.
+        if (com.stonebreak.battle.stage.FocusBattle.isActive()) {
+            renderFocusBattle(game, renderer);
+            return;
+        }
+
         logFirstRender(game);
 
         if (!resetOpenGLState()) {
@@ -152,6 +160,43 @@ public final class FrameRenderer {
         renderGameUI(game, renderer);
         renderFullscreenMenus(game);
         renderer.renderOverlay(game, width(), height());
+        renderModalMenus(game, renderer);
+        // A requested Focus battle begins here: this finished field frame becomes the freeze-frame
+        // its encounter transition twists away.
+        com.stonebreak.battle.stage.FocusBattle.afterFieldFrame(width(), height());
+    }
+
+    /**
+     * Focus battle frame: the same 3D world pass as {@link #renderInGame} (so the arena goes through
+     * the identical post-processing path), then only the battle HUD. No crosshair, hotbar, chat,
+     * world-space markers or underwater tint; modal menus (pause) still float on top.
+     */
+    private void renderFocusBattle(Game game, Renderer renderer) {
+        logFirstRender(game);
+
+        if (!resetOpenGLState()) {
+            return;
+        }
+
+        renderWorld(game, renderer);
+
+        com.stonebreak.ui.focusBattle.FocusBattleScreen battleScreen = game.getFocusBattleScreen();
+        if (battleScreen != null && renderer != null) {
+            // Projection x view of the live (cinematic) camera: world-anchored HUD elements follow every cut.
+            // The anchors are BattleStageLayout points in absolute world coordinates, so this is the
+            // absolute view matrix, not the RenderOrigin-rebased one the scene passes use — otherwise
+            // every world-anchored element (target cursor, damage floaters) misses by a 64-block grid
+            // step whenever the shot's eye leaves the origin's cell.
+            Player player = game.getPlayer();
+            org.joml.Matrix4f viewProjection = player == null ? null
+                    : new org.joml.Matrix4f(renderer.getProjectionMatrix())
+                            .mul(player.getCamera().getAbsoluteViewMatrix());
+            com.stonebreak.battle.stage.FocusBattle.guardHud("hud render",
+                    () -> battleScreen.render(width(), height(), viewProjection));
+        }
+        // Encounter transition (the frozen field frame twisting to white) covers scene and HUD.
+        com.stonebreak.battle.stage.FocusBattle.renderEncounterTransition(width(), height());
+
         renderModalMenus(game, renderer);
     }
 

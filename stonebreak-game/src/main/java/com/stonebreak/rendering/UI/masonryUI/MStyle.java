@@ -64,10 +64,45 @@ public final class MStyle {
     public static final int SCROLLBAR_THUMB       = 0xFF8C8C8C;
     public static final int SCROLLBAR_THUMB_EDGE  = 0xFFB4B4B4;
 
+    // ─────────────────────────────────────────────── HUD frames
+    // In-world HUD chrome drawn OVER the 3D scene (battle windows, boss bars, prompts). Same
+    // construction as the stone panels (drop shadow, bevel, speckle, near-black border) so it reads
+    // as the same game, but a darker, slightly translucent fill so it stays legible over any scene
+    // and does not block the view like a menu panel would.
+    public static final int HUD_FILL        = 0xE02A2A2E;
+    public static final int HUD_BORDER      = 0xFF141414;
+    public static final int HUD_HIGHLIGHT   = 0x2CFFFFFF;
+    public static final int HUD_SHADOW      = 0x66000000;
+    public static final int HUD_DROP_SHADOW = 0x70000000;
+    public static final int HUD_NOISE_DARK  = 0x24000000;
+    public static final int HUD_NOISE_LIGHT = 0x12FFFFFF;
+    /** Veil laid over a HUD frame that is present but not interactive right now. */
+    public static final int HUD_VEIL        = 0x80141416;
+    /** Row the cursor is on (list rows inside HUD frames and menus). */
+    public static final int ROW_CURRENT     = DROPDOWN_ITEM_CURRENT;
+    /** Row whose submenu is open: the cursor has moved on but the path stays marked. */
+    public static final int ROW_HELD        = 0x663C5090;
+
+    // ─────────────────────────────────────────────── Gauges
+    public static final int GAUGE_TRACK   = SLIDER_TRACK;
+    public static final int GAUGE_OUTLINE = BUTTON_BORDER;
+    /** Pale trail a gauge leaves behind a sudden drop. */
+    public static final int GAUGE_GHOST   = 0xFFF4F0E0;
+    /** Health-style ramp: comfortable / getting low / critical. */
+    public static final int VITAL_OK   = 0xFF5EC46A;
+    public static final int VITAL_WARN = 0xFFF2B33D;
+    public static final int VITAL_CRIT = 0xFFE5484D;
+
+    // ─────────────────────────────────────────────── Text drawn straight over the scene
+    public static final int TEXT_WARN    = 0xFFFFB45A;
+    /** Outline for words with no frame behind them (floating numbers, prompts): legibility, not decoration. */
+    public static final int OUTLINE_DARK = 0xF0101010;
+
     // ─────────────────────────────────────────────── Default font sizes
     public static final float FONT_TITLE    = 36f;
     public static final float FONT_BUTTON   = 20f;
     public static final float FONT_ITEM     = 18f;
     public static final float FONT_META     = 14f;
     public static final float FONT_DROPDOWN = 18f;
+    public static final float FONT_CAPTION  = 12f;
 }

@@ -1,10 +1,14 @@
 package com.openmason.main.systems.scene;
 
+import com.openmason.engine.rendering.viewer.gizmo.GizmoState;
 import com.openmason.engine.rendering.viewer.scene.ModelInstance;
+import com.openmason.main.systems.services.commands.ModelCommand;
+import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -13,8 +17,13 @@ import java.util.function.Supplier;
  * Everything the Scene Viewer's UI can do, in one place.
  *
  * <p>The views call these rather than mutating the document directly, so selection,
- * gizmo state and the dirty flag stay consistent no matter which surface triggered the
- * change (viewport click, outliner row, or toolbar button).
+ * gizmo state, the undo history and the dirty flag stay consistent no matter which
+ * surface triggered the change (viewport click, outliner row, toolbar button, shortcut,
+ * or an MCP tool).
+ *
+ * <p>Every mutation is recorded in the scene's command history: placement, delete and
+ * duplicate as lifecycle entries, rename / visibility / lock as property entries, typed
+ * transforms as transform entries — the same kind a gizmo drag records.
  */
 public class SceneViewerActions {
 
@@ -38,6 +47,8 @@ public class SceneViewerActions {
         this.document = document;
         this.selection = selection;
         this.controller = controller;
+        // The outline pass follows the selection, primary first.
+        this.controller.setOutlinedInstances(this::selectedPrimaryFirst);
     }
 
     public void setProjectRootSupplier(Supplier<Path> supplier) {
@@ -60,13 +71,64 @@ public class SceneViewerActions {
         return !selection.isEmpty();
     }
 
-    private List<ModelInstance> selected() {
+    /** Selected instances in scene order. */
+    public List<ModelInstance> selected() {
         return selection.resolve(document.instances());
     }
 
-    private ModelInstance primary() {
+    /** Selected instances with the primary first — the order the outline pass wants. */
+    private List<ModelInstance> selectedPrimaryFirst() {
+        List<ModelInstance> ordered = selected();
+        ModelInstance primary = primary();
+        if (primary == null || ordered.isEmpty() || ordered.get(0) == primary) {
+            return ordered;
+        }
+        List<ModelInstance> out = new ArrayList<>(ordered.size());
+        out.add(primary);
+        for (ModelInstance instance : ordered) {
+            if (instance != primary) {
+                out.add(instance);
+            }
+        }
+        return out;
+    }
+
+    public ModelInstance primary() {
         String id = selection.primary();
         return id == null ? null : document.scene().byId(id);
+    }
+
+    // ------------------------------------------------------------ selection
+
+    public void selectAll() {
+        selection.clear();
+        for (ModelInstance instance : document.instances()) {
+            selection.toggle(instance.id());
+        }
+        syncGizmoToSelection();
+    }
+
+    public void clearSelection() {
+        selection.clear();
+        syncGizmoToSelection();
+    }
+
+    /** Replace the selection with one instance (outliner / MCP). */
+    public void select(String instanceId) {
+        selection.select(instanceId);
+        syncGizmoToSelection();
+    }
+
+    /** Keep the gizmo pointed at the primary and the outline on the whole selection. */
+    public void syncGizmoToSelection() {
+        ModelInstance primary = primary();
+        List<ModelInstance> followers = new ArrayList<>();
+        for (ModelInstance instance : selected()) {
+            if (instance != primary) {
+                followers.add(instance);
+            }
+        }
+        controller.setGizmoSelection(primary, followers);
     }
 
     // ------------------------------------------------------------- mutations
@@ -78,6 +140,8 @@ public class SceneViewerActions {
     /** Place a model that has already been loaded into the document. */
     public ModelInstance place(SceneModelRef model, String name, float x, float y, float z) {
         ModelInstance instance = sceneService.placeInstance(model, name, x, y, z);
+        controller.commandHistory().pushCompleted(
+                SceneInstanceLifecycleCommand.added(document, instance, "Place " + instance.name()));
         selection.select(instance.id());
         syncGizmoToSelection();
         return instance;
@@ -88,15 +152,16 @@ public class SceneViewerActions {
         if (targets.isEmpty()) {
             return;
         }
-        ModelInstance last = null;
+        List<ModelCommand> parts = new ArrayList<>();
+        selection.clear();
         for (ModelInstance source : targets) {
-            last = document.duplicateInstance(source, DUPLICATE_OFFSET);
+            ModelInstance copy = document.duplicateInstance(source, DUPLICATE_OFFSET);
+            parts.add(SceneInstanceLifecycleCommand.added(document, copy, "Duplicate " + source.name()));
+            selection.toggle(copy.id());
         }
-        if (last != null) {
-            selection.select(last.id());
-            syncGizmoToSelection();
-            markDirty();
-        }
+        pushCompleted(parts, parts.size() == 1 ? parts.get(0).getDescription() : "Duplicate Instances");
+        syncGizmoToSelection();
+        markDirty();
     }
 
     public void deleteSelected() {
@@ -104,34 +169,117 @@ public class SceneViewerActions {
         if (targets.isEmpty()) {
             return;
         }
-        java.util.Set<String> removedIds = new java.util.HashSet<>();
+        List<ModelCommand> parts = new ArrayList<>();
         for (ModelInstance instance : targets) {
             if (instance.isLocked()) {
                 continue; // a locked instance is protected from deletion too
             }
-            document.removeInstance(instance);
+            SceneInstanceLifecycleCommand removal =
+                    SceneInstanceLifecycleCommand.removed(document, instance, "Delete " + instance.name());
+            removal.execute();
+            parts.add(removal);
             selection.remove(instance.id());
-            removedIds.add(instance.id());
         }
-        if (removedIds.isEmpty()) {
+        if (parts.isEmpty()) {
             return; // everything selected was locked — nothing changed
         }
-        // A deleted instance's transform history is meaningless; leaving the entries
-        // would hand out Ctrl+Z steps that visibly do nothing.
-        controller.commandHistory().removeIf(cmd ->
-                cmd instanceof SceneInstanceTransformCommand c && removedIds.contains(c.instanceId()));
+        // Earlier entries for these instances stay: undoing the delete puts the same
+        // objects (same ids) back, and those entries become meaningful again.
+        pushCompleted(parts, parts.size() == 1 ? parts.get(0).getDescription() : "Delete Instances");
         syncGizmoToSelection();
         markDirty();
     }
 
-    public void focusSelected() {
-        controller.focusOn(primary());
+    public void rename(ModelInstance instance, String newName) {
+        if (instance == null || newName == null) {
+            return;
+        }
+        String trimmed = newName.trim();
+        if (trimmed.isEmpty() || trimmed.equals(instance.name())) {
+            return;
+        }
+        execute(new SceneInstancePropertyCommand(instance.id(), document.scene()::byId,
+                SceneInstancePropertyCommand.Property.NAME, instance.name(), trimmed));
     }
 
-    /** Keep the gizmo pointed at whatever the primary selection is now. */
-    public void syncGizmoToSelection() {
-        controller.setGizmoInstance(primary());
+    public void setVisible(ModelInstance instance, boolean visible) {
+        if (instance == null || instance.isVisible() == visible) {
+            return;
+        }
+        execute(new SceneInstancePropertyCommand(instance.id(), document.scene()::byId,
+                SceneInstancePropertyCommand.Property.VISIBLE, instance.isVisible(), visible));
     }
+
+    public void setLocked(ModelInstance instance, boolean locked) {
+        if (instance == null || instance.isLocked() == locked) {
+            return;
+        }
+        execute(new SceneInstancePropertyCommand(instance.id(), document.scene()::byId,
+                SceneInstancePropertyCommand.Property.LOCKED, instance.isLocked(), locked));
+        // Locking the primary takes it away from the gizmo; unlocking gives it back.
+        syncGizmoToSelection();
+    }
+
+    /**
+     * Record a transform edit that was applied live (inspector drag, MCP call) as one
+     * undo entry, from the pose before the edit to the instance's pose now.
+     */
+    public void commitTransform(ModelInstance instance,
+                                Vector3f oldPos, Vector3f oldRot, Vector3f oldScale,
+                                String description) {
+        if (instance == null) {
+            return;
+        }
+        var t = instance.transform();
+        Vector3f newPos = new Vector3f(t.getPositionX(), t.getPositionY(), t.getPositionZ());
+        Vector3f newRot = new Vector3f(t.getRotationX(), t.getRotationY(), t.getRotationZ());
+        Vector3f newScale = new Vector3f(t.getScaleX(), t.getScaleY(), t.getScaleZ());
+        if (newPos.equals(oldPos, 1e-6f) && newRot.equals(oldRot, 1e-6f) && newScale.equals(oldScale, 1e-6f)) {
+            return;
+        }
+        controller.commandHistory().pushCompleted(new SceneInstanceTransformCommand(
+                instance.id(), document.scene()::byId, description,
+                oldPos, oldRot, oldScale, newPos, newRot, newScale));
+        syncGizmoToSelection();
+        markDirty();
+    }
+
+    /** Set an instance's full transform as one undoable step. */
+    public void setTransform(ModelInstance instance, Vector3f position, Vector3f rotation, Vector3f scale) {
+        if (instance == null || instance.isLocked()) {
+            return;
+        }
+        var t = instance.transform();
+        Vector3f oldPos = new Vector3f(t.getPositionX(), t.getPositionY(), t.getPositionZ());
+        Vector3f oldRot = new Vector3f(t.getRotationX(), t.getRotationY(), t.getRotationZ());
+        Vector3f oldScale = new Vector3f(t.getScaleX(), t.getScaleY(), t.getScaleZ());
+        if (position != null) t.setPosition(position.x, position.y, position.z);
+        if (rotation != null) t.setRotation(rotation.x, rotation.y, rotation.z);
+        if (scale != null) t.setScale(scale.x, scale.y, scale.z);
+        commitTransform(instance, oldPos, oldRot, oldScale, "Transform " + instance.name());
+    }
+
+    // ---------------------------------------------------------------- camera
+
+    /** Frame the selection, or the whole scene when nothing is selected. */
+    public void focusSelected() {
+        List<ModelInstance> targets = selected();
+        if (targets.isEmpty()) {
+            controller.focusOn((ModelInstance) null);
+        } else {
+            controller.focusOn(targets);
+        }
+    }
+
+    public void frameAll() {
+        controller.focusOn((ModelInstance) null);
+    }
+
+    public void resetView() {
+        controller.resetView();
+    }
+
+    // ---------------------------------------------------------------- models
 
     public void importMissingModels() {
         Path root = projectRootSupplier.get();
@@ -157,14 +305,30 @@ public class SceneViewerActions {
         onEditModelRequested.accept(ref.sourcePath().toString());
     }
 
+    // ----------------------------------------------------------------- gizmo
+
     /** Current gizmo mode (translate / rotate / scale). */
-    public com.openmason.engine.rendering.viewer.gizmo.GizmoState.Mode gizmoMode() {
+    public GizmoState.Mode gizmoMode() {
         return controller.gizmoState().getCurrentMode();
     }
 
-    public void setGizmoMode(com.openmason.engine.rendering.viewer.gizmo.GizmoState.Mode mode) {
+    public void setGizmoMode(GizmoState.Mode mode) {
         controller.gizmoState().setCurrentMode(mode);
     }
+
+    /**
+     * Shortcut variant: ignored while the camera is in first-person mode, where W/E/R
+     * would collide with the WASD fly keys the camera controller polls directly.
+     */
+    public void setGizmoModeFromShortcut(GizmoState.Mode mode) {
+        if (controller.camera().getCameraMode()
+                == com.openmason.engine.rendering.viewer.camera.ViewerCamera.CameraMode.FIRST_PERSON) {
+            return;
+        }
+        setGizmoMode(mode);
+    }
+
+    // ------------------------------------------------------------------ undo
 
     public boolean canUndo() {
         return controller.commandHistory().canUndo();
@@ -174,14 +338,21 @@ public class SceneViewerActions {
         return controller.commandHistory().canRedo();
     }
 
-    /** Undo the last gizmo transform in this scene. */
+    public String undoDescription() {
+        return controller.commandHistory().getUndoDescription();
+    }
+
+    public String redoDescription() {
+        return controller.commandHistory().getRedoDescription();
+    }
+
+    /** Undo the last scene edit. */
     public void undo() {
         if (!canUndo()) {
             return;
         }
         controller.commandHistory().undo();
-        syncGizmoToSelection();
-        markDirty();
+        afterHistoryMove();
     }
 
     public void redo() {
@@ -189,11 +360,34 @@ public class SceneViewerActions {
             return;
         }
         controller.commandHistory().redo();
+        afterHistoryMove();
+    }
+
+    /** An undo may have removed or restored instances: drop stale ids, re-aim the gizmo. */
+    private void afterHistoryMove() {
+        for (String id : selection.selectedIds()) {
+            if (document.scene().byId(id) == null) {
+                selection.remove(id);
+            }
+        }
         syncGizmoToSelection();
         markDirty();
     }
 
     public void markDirty() {
         sceneService.markDirty();
+    }
+
+    private void execute(ModelCommand command) {
+        controller.commandHistory().executeCommand(command);
+        markDirty();
+    }
+
+    private void pushCompleted(List<ModelCommand> parts, String description) {
+        if (parts.size() == 1) {
+            controller.commandHistory().pushCompleted(parts.get(0));
+        } else {
+            controller.commandHistory().pushCompleted(new SceneCompositeCommand(description, parts));
+        }
     }
 }

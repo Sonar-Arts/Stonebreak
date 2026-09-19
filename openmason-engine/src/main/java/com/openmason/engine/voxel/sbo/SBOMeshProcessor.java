@@ -156,18 +156,29 @@ public class SBOMeshProcessor {
                 meshData.indices()
         );
 
-        return buildBlockStamp(blockType, stateName, processed, uvProvider, layerProvider);
+        // The authored face ids ride along for the texture layers: interior
+        // geometry's triangles are mapped to their own materials in the SBO's
+        // face textures (a cactus's thorn boxes carry per-triangle authored ids
+        // past 5), and must not borrow the geometric MMS face's layer.
+        return buildBlockStamp(blockType, stateName, processed, meshData.triangleToFaceId(),
+                uvProvider, layerProvider);
     }
 
     /**
      * Build a BlockStamp by bucketing triangles per face and remapping UVs to atlas space.
      * Boundary-flush and interior triangles go to separate bucket sets so the emitter can
      * cull the former and always draw the latter.
+     *
+     * @param authoredTriFaces each triangle's original authored face id from the SBO's
+     *                         face mappings (nullable / shorter than the mesh → the
+     *                         uniform per-MMS-face layer is used, the shipped behaviour)
      */
     private BlockStamp buildBlockStamp(IBlockType blockType, String stateName,
                                         SBONormalComputer.ProcessedMesh mesh,
+                                        int[] authoredTriFaces,
                                         ITextureCoordProvider uvProvider,
                                         ILayerIndexProvider layerProvider) {
+        boolean hasAuthoredFaces = authoredTriFaces != null && authoredTriFaces.length >= mesh.triangleCount();
         float[] verts = mesh.vertices();
         float[] norms = mesh.normals();
         float[] uvs = mesh.texCoords();
@@ -227,6 +238,16 @@ public class SBOMeshProcessor {
                 coveredArea[face] += planeArea(verts, tri, SBOFaceConventions.axisOf(face));
             }
 
+            // Interior triangles ride their OWN material's layer (via the
+            // triangle's authored face id) — a detail face must not borrow the
+            // block's side texture. Flush triangles keep the uniform per-MMS-face
+            // layer, so cube-shaped stamps are texture-identical to the shipped path.
+            float triLayer = faceLayer[face];
+            if (bucket == 1 && hasAuthoredFaces) {
+                triLayer = layerProvider.getBlockFaceLayerForAuthoredFace(
+                        blockType, stateName, authoredTriFaces[tri], face);
+            }
+
             for (int v = 0; v < 3; v++) {
                 int srcIdx = tri * 3 + v;
                 int pOff = srcIdx * 3;
@@ -247,6 +268,8 @@ public class SBOMeshProcessor {
                 // Remap UVs from SBO [0,1] to atlas bounds
                 texCoords[bucket][face][dstTOff] = au1 + uvs[tOff] * (au2 - au1);
                 texCoords[bucket][face][dstTOff + 1] = av1 + uvs[tOff + 1] * (av2 - av1);
+
+                layers[bucket][face][dstVert] = triLayer;
 
                 insert[bucket][face]++;
             }

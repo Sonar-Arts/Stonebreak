@@ -245,6 +245,15 @@ public final class TextureEditingService {
         }));
     }
 
+    /** The open .omt project's path, or null when the canvas is untitled / a face region. */
+    public String currentProjectPath() {
+        return await(MainThreadExecutor.submit(() -> {
+            TextureCreatorController c = requireController();
+            var st = c.getState();
+            return st.hasFilePath() && st.isProjectFile() ? st.getCurrentFilePath() : null;
+        }));
+    }
+
     /** Save the editor's layer stack as a {@code .omt} texture project. */
     public boolean saveProject(String filePath) {
         return await(MainThreadExecutor.submit(() -> requireController().saveProject(filePath)));

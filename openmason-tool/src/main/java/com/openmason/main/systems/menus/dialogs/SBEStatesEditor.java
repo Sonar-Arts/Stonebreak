@@ -59,6 +59,7 @@ public final class SBEStatesEditor implements AutoCloseable {
     private final Consumer<Consumer<String>> omaPicker;
 
     private final List<Row> rows = new ArrayList<>();
+    private AnimationClipBridge animBridge;
 
     private final MortarRegionPool headerPool = new MortarRegionPool();
 
@@ -68,6 +69,11 @@ public final class SBEStatesEditor implements AutoCloseable {
         this.onDirty = onDirty != null ? onDirty : () -> {};
         this.omoPicker = omoPicker;
         this.omaPicker = omaPicker;
+    }
+
+    /** Link to the Animation Editor for in-memory clip round trips (optional). */
+    public void setAnimationBridge(AnimationClipBridge bridge) {
+        this.animBridge = bridge;
     }
 
     // ========================================================================
@@ -268,6 +274,40 @@ public final class SBEStatesEditor implements AutoCloseable {
                 () -> pickModel(row), () -> clearModel(row));
         EditorWidgets.assetSlot("Clip:", row.clipSourceLabel, row.clipBytes,
                 () -> pickClip(row), () -> clearClip(row));
+        renderEditorBridge(row);
+    }
+
+    /** "From editor" / "Edit in editor" buttons — clip round trip without a file. */
+    private void renderEditorBridge(Row row) {
+        if (animBridge == null) return;
+        ImGui.pushID("animBridge");
+        ImGui.indent(20.0f);
+        ImGui.textDisabled("");
+        ImGui.sameLine(80.0f);
+        if (ImGui.smallButton("From editor")) {
+            byte[] bytes = animBridge.fromEditor().get();
+            if (bytes != null) {
+                row.clipBytes = bytes;
+                row.clipSourceLabel = "(editor: " + animBridge.editorClipName().get() + ")";
+                onDirty.run();
+            }
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Embed the clip currently open in the Animation Editor as this state's clip.");
+        }
+        if (row.hasClip()) {
+            ImGui.sameLine();
+            if (ImGui.smallButton("Edit in editor")) {
+                String label = row.clipSourceLabel != null ? row.clipSourceLabel : "(embedded)";
+                animBridge.openInEditor().accept(row.clipBytes, "SBE state '" + row.name.get().trim() + "' " + label);
+            }
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Open this state's embedded clip in the Animation Editor. "
+                        + "Use 'From editor' afterwards to write the edited clip back.");
+            }
+        }
+        ImGui.unindent(20.0f);
+        ImGui.popID();
     }
 
     // ========================================================================

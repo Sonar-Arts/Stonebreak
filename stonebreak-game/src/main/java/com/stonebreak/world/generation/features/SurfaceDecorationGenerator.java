@@ -195,6 +195,11 @@ public class SurfaceDecorationGenerator {
 
     private void placeOnSurface(World world, int worldX, int worldZ, BlockType expected, BlockType replacement) {
         int y = heightMap.generateHeight(worldX, worldZ) - 1;
+        // Never swap the block a cactus stands on: cacti are placed on sand before this
+        // pass, and a gravel patch would leave the formation rooted in gravel.
+        if (world.getBlockAt(worldX, y + 1, worldZ) == BlockType.CACTUS) {
+            return;
+        }
         if (world.getBlockAt(worldX, y, worldZ) == expected) {
             world.setBlockAt(worldX, y, worldZ, replacement);
         }

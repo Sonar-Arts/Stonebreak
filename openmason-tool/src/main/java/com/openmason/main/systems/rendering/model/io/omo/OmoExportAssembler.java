@@ -70,7 +70,7 @@ public final class OmoExportAssembler {
                     range != null ? range.faceStart() : 0,
                     range != null ? range.faceCount() : 0,
                     part.visible(), part.locked(),
-                    part.parentId()
+                    part.parentId(), part.boneId()
             ));
         }
 
@@ -137,7 +137,7 @@ public final class OmoExportAssembler {
     public static boolean hasNonDefaultTransform(Iterable<ModelPartDescriptor> parts) {
         for (ModelPartDescriptor part : parts) {
             PartTransform t = part.transform();
-            if (part.parentId() != null) return true;
+            if (part.parentId() != null || part.boneId() != null) return true;
             if (!t.origin().equals(0f, 0f, 0f)) return true;
             if (!t.position().equals(0f, 0f, 0f)) return true;
             if (!t.rotation().equals(0f, 0f, 0f)) return true;

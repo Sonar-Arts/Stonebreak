@@ -1,6 +1,7 @@
 package com.stonebreak.blocks;
 
 import com.openmason.engine.format.sbo.SBOFormat;
+import com.openmason.engine.rendering.cbr.models.BlockDefinition;
 import com.openmason.engine.voxel.IBlockType;
 import com.stonebreak.blocks.registry.BlockRegistry;
 import com.stonebreak.items.Item;
@@ -15,10 +16,11 @@ import java.util.Map;
 /**
  * Defines all block types in the game.
  *
- * <p><strong>Registry-backed.</strong> The 33 SBO-backed blocks
+ * <p><strong>Registry-backed.</strong> The SBO-backed blocks
  * (STONE, GRASS, ...) pull all their data — id, hardness, atlas coords,
- * solid/breakable flags — from {@link BlockRegistry} at class-init time.
- * The SBO files under {@code sbo/blocks/} are the single source of truth.
+ * solid/breakable flags, render pass and transparency
+ * ({@link BlockRenderTraits}) — from {@link BlockRegistry} at class-init
+ * time. The SBO files under {@code sbo/blocks/} are the single source of truth.
  *
  * <p>{@code AIR} and {@code WATER} are hardcoded sentinels: AIR has no SBO
  * (it's the empty-space null), and WATER has engine-side physics that
@@ -57,8 +59,10 @@ public final class BlockType implements Item, IBlockType {
 
     // ----- Hardcoded sentinels (no SBO exists for these). -----------------
 
-    public static final BlockType AIR = createSentinel("AIR", 0, "Air", false, false, -1, -1, 0.0f, null);
-    public static final BlockType WATER = createSentinel("WATER", 8, "Water", false, false, 9, 0, 0.0f, "stonebreak:water");
+    public static final BlockType AIR = createSentinel("AIR", 0, "Air", false, false, -1, -1, 0.0f, null,
+            new BlockRenderTraits(BlockDefinition.RenderLayer.OPAQUE, true, false));
+    public static final BlockType WATER = createSentinel("WATER", 8, "Water", false, false, 9, 0, 0.0f, "stonebreak:water",
+            new BlockRenderTraits(BlockDefinition.RenderLayer.TRANSLUCENT, true, false));
 
     // ----- SBO-backed blocks. Data comes from the gameProperties block of
     //       each SBO under sbo/blocks/. The objectId arg below is what's
@@ -125,6 +129,10 @@ public final class BlockType implements Item, IBlockType {
     // Ground/Side states with looping flicker clips drawn by
     // AnimatedBlockRenderer; emits a pulsing point light (rendering/lighting).
     public static final BlockType TORCH_PLACED = fromRegistry("stonebreak:torch_placed", "TORCH_PLACED");
+    // Cactus: sparse desert feature (world/generation/features/CactusGenerator) that
+    // stacks per-cell; the lower cell's top face is culled when a cactus sits above
+    // (Renderer instance cull policy) and contact rules live in blocks/cactus/.
+    public static final BlockType CACTUS = fromRegistry("stonebreak:cactus", "CACTUS");
 
     // ----- Promote any SBO entries that didn't match a static-final field
     //       above. New SBOs dropped into sbo/blocks/ become BlockType
@@ -139,7 +147,8 @@ public final class BlockType implements Item, IBlockType {
             SBOFormat.GameProperties gp = entry.properties();
             BlockType bt = new BlockType(
                     enumName, gp.numericId(), entry.displayName(),
-                    gp.solid(), gp.breakable(), gp.atlasX(), gp.atlasY(), gp.hardness());
+                    gp.solid(), gp.breakable(), gp.atlasX(), gp.atlasY(), gp.hardness(),
+                    BlockRenderTraits.from(entry));
             registerInternal(bt);
             BY_OBJECT_ID.put(entry.objectId(), bt);
         }
@@ -167,9 +176,11 @@ public final class BlockType implements Item, IBlockType {
     private final int atlasX;
     private final int atlasY;
     private final float hardness;
+    /** Render pass + occlusion behaviour, resolved from the SBO (see {@link BlockRenderTraits}). */
+    private final BlockRenderTraits renderTraits;
 
     private BlockType(String enumName, int id, String name, boolean solid, boolean breakable,
-                      int atlasX, int atlasY, float hardness) {
+                      int atlasX, int atlasY, float hardness, BlockRenderTraits renderTraits) {
         this.enumName = enumName;
         this.id = id;
         this.name = name;
@@ -178,6 +189,7 @@ public final class BlockType implements Item, IBlockType {
         this.atlasX = atlasX;
         this.atlasY = atlasY;
         this.hardness = hardness;
+        this.renderTraits = renderTraits == null ? BlockRenderTraits.OPAQUE_CUBE : renderTraits;
     }
 
     /**
@@ -185,8 +197,9 @@ public final class BlockType implements Item, IBlockType {
      * blocks whose data is engine-defined rather than asset-defined.
      */
     private static BlockType createSentinel(String enumName, int id, String name, boolean solid, boolean breakable,
-                                            int atlasX, int atlasY, float hardness, String objectId) {
-        BlockType bt = new BlockType(enumName, id, name, solid, breakable, atlasX, atlasY, hardness);
+                                            int atlasX, int atlasY, float hardness, String objectId,
+                                            BlockRenderTraits renderTraits) {
+        BlockType bt = new BlockType(enumName, id, name, solid, breakable, atlasX, atlasY, hardness, renderTraits);
         registerInternal(bt);
         if (objectId != null) {
             BY_OBJECT_ID.put(objectId, bt);
@@ -207,7 +220,8 @@ public final class BlockType implements Item, IBlockType {
         SBOFormat.GameProperties gp = entry.properties();
         BlockType bt = new BlockType(
                 enumName, gp.numericId(), entry.displayName(),
-                gp.solid(), gp.breakable(), gp.atlasX(), gp.atlasY(), gp.hardness());
+                gp.solid(), gp.breakable(), gp.atlasX(), gp.atlasY(), gp.hardness(),
+                BlockRenderTraits.from(entry));
         registerInternal(bt);
         BY_OBJECT_ID.put(objectId, bt);
         return bt;
@@ -221,12 +235,13 @@ public final class BlockType implements Item, IBlockType {
      */
     public static synchronized BlockType register(String enumName, int id, String name,
                                                   boolean solid, boolean breakable,
-                                                  int atlasX, int atlasY, float hardness) {
+                                                  int atlasX, int atlasY, float hardness,
+                                                  BlockRenderTraits renderTraits) {
         BlockType existing = BY_NAME.get(enumName);
         if (existing != null) return existing;
         BlockType byIdExisting = BY_ID.get(id);
         if (byIdExisting != null) return byIdExisting;
-        BlockType bt = new BlockType(enumName, id, name, solid, breakable, atlasX, atlasY, hardness);
+        BlockType bt = new BlockType(enumName, id, name, solid, breakable, atlasX, atlasY, hardness, renderTraits);
         registerInternal(bt);
         return bt;
     }
@@ -305,20 +320,60 @@ public final class BlockType implements Item, IBlockType {
         return this == AIR;
     }
 
+    /**
+     * Whether neighbouring blocks must keep the faces that border this block
+     * (it cannot hide them). Sourced from the SBO — see {@link BlockRenderTraits}
+     * — so a new see-through block only needs its asset flagged, never a code
+     * change. The one code-side exception is foliage, whose transparency the
+     * player can switch off ("Leaf Transparency" setting): with it off, leaves
+     * become plain opaque cubes.
+     */
     public boolean isTransparent() {
-        if (this == LEAVES || this == PINE_LEAVES || this == ELM_LEAVES) {
+        if (isLeaves()) {
             try {
                 return Settings.getInstance().getLeafTransparency();
             } catch (Exception e) {
                 return true;
             }
         }
-        // OAK_DOOR / TORCH_PLACED are transparent for meshing purposes: their
-        // models are drawn dynamically (AnimatedBlockRenderer), so neighbouring
-        // blocks must keep the faces that border the cell.
-        return this == AIR || this == WATER || this == ROSE || this == DANDELION
-                || this == WILDGRASS || this == ICE || this == SNOW || this == OAK_DOOR
-                || this == TORCH_PLACED;
+        return renderTraits.transparent();
+    }
+
+    /**
+     * {@link #isTransparent()} as authored in the asset, ignoring the leaf
+     * transparency user setting. For rules that must not flip with a visual
+     * preference (e.g. sky-light occlusion).
+     */
+    public boolean isAuthoredTransparent() {
+        return renderTraits.transparent();
+    }
+
+    /**
+     * The chunk render pass this block's mesh geometry belongs to: OPAQUE,
+     * CUTOUT (alpha-tested) or TRANSLUCENT (alpha-blended, sorted). Resolved
+     * from the SBO, with foliage forced OPAQUE while the leaf transparency
+     * setting is off.
+     */
+    public BlockDefinition.RenderLayer getRenderLayer() {
+        if (isLeaves() && !isTransparent()) {
+            return BlockDefinition.RenderLayer.OPAQUE;
+        }
+        return renderTraits.renderLayer();
+    }
+
+    /** True when this block is drawn in the alpha-blended translucent pass (ice, glass). */
+    public boolean isTranslucent() {
+        return getRenderLayer() == BlockDefinition.RenderLayer.TRANSLUCENT;
+    }
+
+    /** True when the SBO embeds per-state animation clips (drawn per frame, not baked). */
+    public boolean isAnimated() {
+        return renderTraits.animated();
+    }
+
+    /** The raw SBO-resolved render traits (no user-setting overrides applied). */
+    public BlockRenderTraits getRenderTraits() {
+        return renderTraits;
     }
 
     @Override
@@ -401,6 +456,19 @@ public final class BlockType implements Item, IBlockType {
      */
     public boolean isLeaves() {
         return this == LEAVES || this == PINE_LEAVES || this == ELM_LEAVES;
+    }
+
+    /**
+     * True when this block can hold up a placed torch (issue #247). Full-cube
+     * solids only: foliage decays away (leaves never support a torch) and the
+     * door's panel swings on its state change (the type never changes, so a
+     * torch mounted on it would hang off the moved panel). The raw
+     * {@link #isSolid()} flag still governs the pop sweep's "cell still holds
+     * things up" early-return and the apply gate — only the placement-time
+     * support tests use this predicate.
+     */
+    public boolean canHoldTorch() {
+        return solid && !isLeaves() && this != OAK_DOOR;
     }
 
     /**

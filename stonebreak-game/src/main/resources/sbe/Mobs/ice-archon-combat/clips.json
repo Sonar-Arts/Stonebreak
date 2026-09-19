@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "objectId": "stonebreak:ice_archon",
+  "authoredForward": [
+    0,
+    0,
+    -1
+  ],
+  "legacyAttackImpactsSeconds": {
+    "attack_slash": 0.66,
+    "attack_overhead": 1.03,
+    "attack_frost_cast": 1.11
+  },
+  "clips": [
+    {
+      "state": "combat_idle",
+      "durationSeconds": 3.2,
+      "loop": true,
+      "startPose": "combat_idle",
+      "endPose": "combat_idle",
+      "cueSeconds": []
+    },
+    {
+      "state": "hurt",
+      "durationSeconds": 0.76,
+      "loop": false,
+      "startPose": "combat_idle",
+      "endPose": "combat_idle",
+      "cueSeconds": [
+        0.13
+      ]
+    },
+    {
+      "state": "stunned_enter",
+      "durationSeconds": 0.66,
+      "loop": false,
+      "startPose": "combat_idle",
+      "endPose": "stunned",
+      "cueSeconds": []
+    },
+    {
+      "state": "stunned",
+      "durationSeconds": 2.8,
+      "loop": true,
+      "startPose": "stunned",
+      "endPose": "stunned",
+      "cueSeconds": []
+    },
+    {
+      "state": "stunned_exit",
+      "durationSeconds": 0.9,
+      "loop": false,
+      "startPose": "stunned",
+      "endPose": "combat_idle",
+      "cueSeconds": []
+    },
+    {
+      "state": "death",
+      "durationSeconds": 3.1,
+      "loop": false,
+      "startPose": "combat_idle",
+      "endPose": "defeated",
+      "cueSeconds": [
+        1.82
+      ]
+    },
+    {
+      "state": "defeated",
+      "durationSeconds": 2.4,
+      "loop": true,
+      "startPose": "defeated",
+      "endPose": "defeated",
+      "cueSeconds": []
+    }
+  ]
+}

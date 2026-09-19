@@ -93,6 +93,11 @@ public class SBEEditorWindow {
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenAudioDialog(cb::accept); });
     }
 
+    /** Link the states editor to the Animation Editor (in-memory clip round trips). */
+    public void setAnimationBridge(AnimationClipBridge bridge) {
+        statesEditor.setAnimationBridge(bridge);
+    }
+
     // ========================================================================
     // Open / show
     // ========================================================================
@@ -120,11 +125,46 @@ public class SBEEditorWindow {
      * just-exported file straight to this editor so the export form acts as
      * the "start screen" and the full editor carries on from there.
      */
-    public void openFile(String pathStr) {
-        loadFile(pathStr);
+    public boolean openFile(String pathStr) {
+        return loadFile(pathStr);
     }
 
-    private void loadFile(String pathStr) {
+    // ---- Agent seams (MCP sbe_editor_*) ------------------------------------
+
+    public Path currentPath() { return currentPath; }
+
+    public boolean isDirty() { return dirty; }
+
+    public boolean hasDocument() { return loadedManifest != null; }
+
+    /** The manifest as currently edited in the form (null when nothing is loaded). */
+    public SBEFormat.Document snapshotDocument() {
+        return loadedManifest == null ? null : buildEditedDocument();
+    }
+
+    /** Replace the edited manifest (embedded bytes kept), refresh the form, mark dirty, show. */
+    public void applyDocument(SBEFormat.Document doc) {
+        this.loadedManifest = doc;
+        populateBuffers(doc, loadedStateAssetBytes);
+        this.dirty = true;
+        this.visible.set(true);
+    }
+
+    /** Null when the draft can be written; otherwise the first blocking problem. */
+    public String validateForWrite() {
+        if (loadedManifest == null) return "nothing is loaded in the SBE editor";
+        String err = statesEditor.validate();
+        if (err == null) err = variantsEditor.validate();
+        if (err == null) err = soundsEditor.validate();
+        return err;
+    }
+
+    /** Write the draft to {@code pathStr} (no validation, no dialog); true on success. */
+    public boolean writeDocumentTo(String pathStr) {
+        return performWrite(pathStr);
+    }
+
+    private boolean loadFile(String pathStr) {
         try {
             Path path = Path.of(pathStr);
             SBEParser.RawParse raw = parser.parseRaw(path);
@@ -139,9 +179,11 @@ public class SBEEditorWindow {
             if (statusService != null) {
                 statusService.updateStatus("Opened SBE: " + path.getFileName());
             }
+            return true;
         } catch (IOException e) {
             logger.error("Failed to load SBE {}", pathStr, e);
             if (statusService != null) statusService.updateStatus("Failed to open SBE");
+            return false;
         }
     }
 
@@ -301,6 +343,10 @@ public class SBEEditorWindow {
             return;
         }
 
+        performWrite(pathStr);
+    }
+
+    private boolean performWrite(String pathStr) {
         SBEFormat.Document edited = buildEditedDocument();
         java.util.Map<String, byte[]> assetBytes = new java.util.LinkedHashMap<>();
         assetBytes.putAll(statesEditor.stateAssetBytesByFilename());
@@ -320,6 +366,7 @@ public class SBEEditorWindow {
         } else if (statusService != null) {
             statusService.updateStatus("Failed to save SBE");
         }
+        return ok;
     }
 
     private SBEFormat.Document buildEditedDocument() {

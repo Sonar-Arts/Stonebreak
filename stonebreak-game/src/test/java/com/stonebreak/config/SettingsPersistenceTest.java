@@ -30,6 +30,7 @@ class SettingsPersistenceTest {
         s.setMusicEnabled(false);
         s.setArmModelType("SLIM");
         s.setSelectedHat("TOP_HAT");
+        s.setSelectedHair("MALE_HAIR_2");
         s.setCrosshairStyle("DOT");
         s.setCrosshairSize(24.0f);
         s.setCrosshairThickness(3.0f);
@@ -66,6 +67,7 @@ class SettingsPersistenceTest {
         assertEquals(expected.getMusicEnabled(), actual.getMusicEnabled());
         assertEquals(expected.getArmModelType(), actual.getArmModelType());
         assertEquals(expected.getSelectedHat(), actual.getSelectedHat());
+        assertEquals(expected.getSelectedHair(), actual.getSelectedHair());
         assertEquals(expected.getCrosshairStyle(), actual.getCrosshairStyle());
         assertEquals(expected.getCrosshairSize(), actual.getCrosshairSize(), EPS);
         assertEquals(expected.getCrosshairThickness(), actual.getCrosshairThickness(), EPS);
@@ -123,7 +125,7 @@ class SettingsPersistenceTest {
     @Test
     void serialisedTreeHasOneFieldPerSetting() {
         ObjectNode tree = fullyPopulated().toJson();
-        assertEquals(34, tree.size());
+        assertEquals(35, tree.size());
         assertTrue(tree.has("windowWidth"));
         assertTrue(tree.has("uiScale"));
         assertTrue(tree.has("multiplayerUsername"));
@@ -210,5 +212,50 @@ class SettingsPersistenceTest {
         loaded.setSlimArms(false);
         assertFalse(loaded.isSlimArms());
         assertEquals("REGULAR", loaded.getArmModelType());
+    }
+
+    @Test
+    void legacyHairSelectionMovesToHairSlot() throws Exception {
+        for (String id : new String[]{"MALE_HAIR_1", "male_hair_2"}) {
+            Settings loaded = new Settings();
+            loaded.apply(MAPPER.readTree("{\"selectedHat\":\"" + id + "\"}"));
+            assertEquals("NONE", loaded.getSelectedHat());
+            assertEquals(id.toUpperCase(java.util.Locale.ROOT), loaded.getSelectedHair());
+            Settings roundTrip = new Settings();
+            roundTrip.apply(loaded.toJson());
+            assertEquals(loaded.toJson(), roundTrip.toJson());
+        }
+    }
+
+    @Test
+    void explicitHairChoiceWinsOverLegacyHatValue() throws Exception {
+        for (String id : new String[]{"NONE", "MALE_HAIR_2"}) {
+            Settings loaded = new Settings();
+            loaded.apply(MAPPER.readTree("{\"selectedHat\":\"MALE_HAIR_1\",\"selectedHair\":\"" + id + "\"}"));
+            assertEquals("NONE", loaded.getSelectedHat());
+            assertEquals(id, loaded.getSelectedHair());
+        }
+    }
+
+    @Test
+    void legacyHatAndAbsentHairKeepTheirOwnDefaults() throws Exception {
+        Settings loaded = new Settings();
+        loaded.apply(MAPPER.readTree("{\"selectedHat\":\"TOP_HAT\"}"));
+        assertEquals("TOP_HAT", loaded.getSelectedHat());
+        assertEquals("NONE", loaded.getSelectedHair());
+    }
+
+    @Test
+    void changingOrClearingOneSlotPreservesTheOther() {
+        Settings settings = new Settings();
+        settings.setSelectedHat("TOP_HAT");
+        settings.setSelectedHair("MALE_HAIR_1");
+        settings.setSelectedHat(null);
+        assertEquals("NONE", settings.getSelectedHat());
+        assertEquals("MALE_HAIR_1", settings.getSelectedHair());
+        settings.setSelectedHat("TOP_HAT");
+        settings.setSelectedHair(" ");
+        assertEquals("TOP_HAT", settings.getSelectedHat());
+        assertEquals("NONE", settings.getSelectedHair());
     }
 }

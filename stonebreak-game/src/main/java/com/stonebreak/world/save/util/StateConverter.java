@@ -33,6 +33,8 @@ public final class StateConverter {
      * Single source of truth for player state conversion.
      */
     public static PlayerData toPlayerData(Player player, String worldName) {
+        PlayerData persistent = com.stonebreak.battletest.BattleTestSession.persistentPlayerData(player);
+        if (persistent != null) return persistent;
         // Build combined inventory (9 hotbar + 27 main)
         ItemStack[] combinedInventory = new ItemStack[36];
         Inventory inventory = player.getInventory();

@@ -292,6 +292,57 @@ public final class ChunkRegionRenderer {
         };
     }
 
+    /**
+     * Whether a chunk with this legacy-handle layout carries a legacy handle the
+     * given layer's fallback pass must reach. Pure over the three presence flags
+     * (package-private for tests — {@code MmsRenderableHandle} is final and
+     * GL-thread-only, so the routing is pinned over flags, not instances).
+     *
+     * <ul>
+     *   <li><b>WATER</b> — the water legacy handle draws via {@code chunk.renderWater()}.</li>
+     *   <li><b>ATLAS</b> — the atlas legacy handle draws via {@code chunk.render()},
+     *   which also draws the legacy stamp handle alongside it — so an atlas-drawn
+     *   chunk must not ALSO join the stamp fallback, or both handles draw twice.</li>
+     *   <li><b>STAMP</b> — a legacy stamp handle whose chunk has no legacy atlas
+     *   handle (region-resident atlas, or an empty atlas): the stamp fallback is
+     *   the only place it is otherwise reached, because {@code chunk.render()}
+     *   draws no atlas geometry when the atlas mesh is region-resident — no
+     *   double-draw. u32 stamp meshes refuse region residency at upload (see
+     *   {@link #upload}), so this is the path every &gt;65,536-vertex stamp mesh
+     *   renders through.</li>
+     * </ul>
+     */
+    static boolean needsLegacyDraw(boolean hasWaterLegacy, boolean hasAtlasLegacy,
+                                   boolean hasStampLegacy, int layer) {
+        return switch (layer) {
+            case LAYER_WATER -> hasWaterLegacy;
+            case LAYER_ATLAS -> hasAtlasLegacy;
+            case LAYER_STAMP -> hasStampLegacy && !hasAtlasLegacy;
+            default -> false;
+        };
+    }
+
+    /**
+     * Whether {@code chunk} carries a legacy STAMP handle that no region path
+     * draws: u32 stamp meshes refuse region residency at upload, and the stamp
+     * pass only covers region-resident stamps — so an atlas-resident chunk
+     * carrying one must draw it in the legacy fallback or its stamp geometry
+     * never renders (the shipped draw hole that made &gt;65,536-vertex stamp
+     * meshes — e.g. ~40 cacti — vanish while their block data and lighting
+     * heightmap stayed intact). The guard also excludes a chunk that carries a
+     * legacy atlas handle (an atlas-DRAWN chunk already drew its stamp
+     * alongside the atlas — the fallback would double-draw it); atlas-resident
+     * chunks never carry a legacy atlas handle (an atlas upload sets exactly
+     * one representation), so the guard is dead-code-safe for the u32-stamp
+     * layout. Pure over the chunk's handle layout; package-private for tests.
+     */
+    static boolean drawsOrphanedLegacyStamp(Chunk chunk, int layer) {
+        return layer == LAYER_ATLAS
+            && chunk.getStampRenderableHandle() != null
+            && chunk.getRegionStampHandle() == null
+            && chunk.getMmsRenderableHandle() == null;
+    }
+
     private Map<Long, MmsChunkRegion> regionsFor(int layer) {
         return switch (layer) {
             case LAYER_WATER -> waterRegions;
@@ -318,13 +369,19 @@ public final class ChunkRegionRenderer {
                 handle = null;
             }
             if (handle == null) {
-                // Legacy stamp handles are drawn by chunk.render() with the atlas.
-                boolean hasLegacy = layer == LAYER_WATER
-                    ? chunk.getWaterRenderableHandle() != null
-                    : layer == LAYER_ATLAS
-                        && (chunk.getMmsRenderableHandle() != null
-                            || chunk.getStampRenderableHandle() != null);
-                if (hasLegacy) {
+                // Legacy-handle routing (see {@link #needsLegacyDraw}): water via
+                // chunk.renderWater(); the atlas legacy handle via chunk.render()
+                // (which also draws the legacy stamp handle alongside it — so an
+                // atlas-drawn chunk must not also join the stamp fallback, or both
+                // draw twice); an orphaned legacy STAMP handle via chunk.render()
+                // here — the stamp fallback is the only place it is otherwise
+                // reached, because chunk.render() draws no atlas geometry when the
+                // atlas mesh is region-resident (no double-draw). u32 stamp meshes
+                // refuse region residency at upload (see {@link #upload}), so this
+                // is the path every >65,536-vertex stamp mesh renders through.
+                if (needsLegacyDraw(chunk.getWaterRenderableHandle() != null,
+                        chunk.getMmsRenderableHandle() != null,
+                        chunk.getStampRenderableHandle() != null, layer)) {
                     legacyFallback.add(chunk);
                 }
                 continue;
@@ -465,7 +522,19 @@ public final class ChunkRegionRenderer {
             }
             MmsRegionMeshHandle handle = regionHandle(chunk, layer);
             if (handle != null && !handle.isClosed() && !handle.region().isDeleted()) {
-                continue; // Drawn by the region path.
+                // Drawn by the region path on this layer — but a legacy STAMP
+                // handle is never drawn by the region paths (see
+                // {@link #drawsOrphanedLegacyStamp}); an atlas-resident chunk
+                // carrying one must draw it here or its stamp geometry never
+                // renders. chunk.render() draws no atlas geometry when the atlas
+                // mesh is region-resident (no double-draw), and an atlas-drawn
+                // chunk already drew its stamp alongside the atlas in
+                // {@link #drawChunks}' atlas fallback.
+                if (drawsOrphanedLegacyStamp(chunk, layer)) {
+                    chunk.render();
+                    frameLegacyDraws++;
+                }
+                continue;
             }
             if (layer == LAYER_WATER) {
                 if (chunk.getWaterRenderableHandle() != null) {

@@ -1,7 +1,10 @@
-# Bones (animation skeleton)
+# Bones (rigging skeleton)
 
-Bones form a hierarchy used by the animation editor; they don't deform the mesh
-directly (parts bind to bones by name at animation time).
+Bones are a modelling-side rig hierarchy saved in the .omo (v1.6+); they don't
+deform the mesh. **Animation does not key bones**: `.omanim` tracks key parts
+directly (by part id, name as fallback), and the game samples parts. Use bones
+to author and visualise a hierarchy; give parts a parent (`set_part_parent`)
+if you want them to move together in an animation.
 
 - `bone_list` — id, name, parent, plus resolved world head/tail positions.
 - `bone_create {name, parent_bone_id?, origin?, position?, rotation?, endpoint?}`

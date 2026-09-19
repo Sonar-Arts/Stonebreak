@@ -5,6 +5,8 @@ import imgui.ImColor;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
+import imgui.ImVec4;
+import imgui.flag.ImGuiCol;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,25 +37,46 @@ public class ImportPNGDialog {
     private static final float PREVIEW_SIZE = 180.0f; // Square preview area
     private static final float PREVIEW_SPACING = 30.0f;
 
-    // Visual styling constants (reused from NewTextureDialog)
-    private static final int BACKGROUND_COLOR = ImColor.rgba(245, 245, 245, 255);
-    private static final int GRID_COLOR = ImColor.rgba(200, 200, 200, 255);
-    private static final int BORDER_COLOR = ImColor.rgba(120, 120, 120, 255);
-    private static final int FACE_COLOR = ImColor.rgba(100, 150, 255, 255);
-    private static final int NON_EDITABLE_COLOR = ImColor.rgba(200, 200, 200, 200);
-    private static final int PREVIEW_BORDER_COLOR = ImColor.rgba(200, 200, 200, 255);
-    private static final int RADIO_BORDER_SELECTED = ImColor.rgba(100, 150, 255, 255);
-    private static final int RADIO_BG_SELECTED = ImColor.rgba(100, 150, 255, 40);
-    private static final int RADIO_BORDER_UNSELECTED = ImColor.rgba(160, 160, 160, 255);
-    private static final int RADIO_BG_UNSELECTED = ImColor.rgba(240, 240, 240, 255);
+    // Visual styling — preview chrome derived from the active theme/style scope
+    // every frame (theme-derived like NewTextureDialog; never hardcode
+    // light-theme greys here). Warning/info are fixed semantic-status colors
+    // that read on dark and light (tokens come with the color-token issue).
+    private int backgroundColor;
+    private int gridColor;
+    private int borderColor;
+    private int faceColor;
+    private int nonEditableColor;
+    private int previewBorderColor;
+    private int radioBorderSelected;
+    private int radioBgSelected;
+    private int radioBorderUnselected;
+    private int radioBgUnselected;
     private static final int WARNING_COLOR = ImColor.rgba(255, 150, 0, 255);
     private static final int INFO_COLOR = ImColor.rgba(100, 180, 100, 255);
+
+    // Reference-viewport centre for modal positioning (main viewport when docked,
+    // the popped-out editor host window's viewport when windowed). -1 = main viewport.
+    private float refCenterX = -1.0f;
+    private float refCenterY = -1.0f;
 
     /**
      * Create import PNG dialog.
      */
     public ImportPNGDialog() {
         logger.debug("Import PNG dialog created");
+    }
+
+    /**
+     * Set the reference-viewport centre used for modal positioning.
+     * Called each frame by the texture editor's render path (docked = main
+     * viewport, windowed = the popped-out editor host window's viewport).
+     *
+     * @param centerX reference viewport centre X
+     * @param centerY reference viewport centre Y
+     */
+    public void setReferenceViewportCenter(float centerX, float centerY) {
+        this.refCenterX = centerX;
+        this.refCenterY = centerY;
     }
 
     /**
@@ -106,6 +129,10 @@ public class ImportPNGDialog {
             return;
         }
 
+        // Derive visual styling from the current theme/style scope (works in both
+        // the dark editor scope and a light global theme)
+        refreshStyleColors();
+
         // Set window size constraints
         ImGui.setNextWindowSizeConstraints(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT,
                                           MAX_WINDOW_WIDTH, MAX_WINDOW_HEIGHT);
@@ -113,40 +140,39 @@ public class ImportPNGDialog {
         // Set initial size and position only on first open
         if (needsPositioning) {
             ImGui.setNextWindowSize(DIALOG_WIDTH, DIALOG_HEIGHT);
+            float centerX = refCenterX >= 0 ? refCenterX : ImGui.getMainViewport().getCenterX();
+            float centerY = refCenterY >= 0 ? refCenterY : ImGui.getMainViewport().getCenterY();
             ImGui.setNextWindowPos(
-                ImGui.getMainViewport().getCenterX() - DIALOG_WIDTH / 2.0f,
-                ImGui.getMainViewport().getCenterY() - DIALOG_HEIGHT / 2.0f
+                centerX - DIALOG_WIDTH / 2.0f,
+                centerY - DIALOG_HEIGHT / 2.0f
             );
             needsPositioning = false;
         }
 
         if (ImGui.beginPopupModal("Import PNG Texture")) {
 
-            // Header
+            // Header (theme Text color — legible in every theme)
             ImGui.spacing();
             String headerText = "Import PNG Texture";
             ImVec2 headerSize = ImGui.calcTextSize(headerText);
             ImGui.setCursorPosX((DIALOG_WIDTH - headerSize.x) / 2.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, ImColor.rgba(80, 80, 80, 255));
+            ImVec2 headerPos = ImGui.getCursorScreenPos();
             ImGui.text(headerText);
-            ImGui.popStyleColor();
+            ImGui.getWindowDrawList().addText(headerPos.x + 0.5f, headerPos.y,
+                    ImGui.getColorU32(ImGuiCol.Text), headerText);
             ImGui.spacing();
 
             // Show detected dimensions
             String detectedText = String.format("Detected: %dx%d", sourceWidth, sourceHeight);
             ImVec2 detectedSize = ImGui.calcTextSize(detectedText);
             ImGui.setCursorPosX((DIALOG_WIDTH - detectedSize.x) / 2.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, ImColor.rgba(100, 100, 100, 255));
-            ImGui.text(detectedText);
-            ImGui.popStyleColor();
+            ImGui.textDisabled(detectedText);
 
             ImGui.spacing();
             String subText = "Choose target canvas size";
             ImVec2 subSize = ImGui.calcTextSize(subText);
             ImGui.setCursorPosX((DIALOG_WIDTH - subSize.x) / 2.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, ImColor.rgba(140, 140, 140, 255));
-            ImGui.text(subText);
-            ImGui.popStyleColor();
+            ImGui.textDisabled(subText);
 
             ImGui.spacing();
             ImGui.spacing();
@@ -227,7 +253,7 @@ public class ImportPNGDialog {
 
             drawList.addRect(cursorPos.x - 1, cursorPos.y - 1,
                            cursorPos.x + PREVIEW_SIZE + 1, cursorPos.y + PREVIEW_SIZE + 1,
-                           PREVIEW_BORDER_COLOR, 2.0f, 0, 1.0f);
+                           previewBorderColor, 2.0f, 0, 1.0f);
 
             renderPreviewFor16x16(cursorPos.x, cursorPos.y, PREVIEW_SIZE);
             ImGui.dummy(PREVIEW_SIZE, PREVIEW_SIZE);
@@ -292,7 +318,7 @@ public class ImportPNGDialog {
 
             drawList.addRect(cursorPos.x - 1, cursorPos.y + yOffset - 1,
                            cursorPos.x + previewWidth + 1, cursorPos.y + yOffset + previewHeight + 1,
-                           PREVIEW_BORDER_COLOR, 2.0f, 0, 1.0f);
+                           previewBorderColor, 2.0f, 0, 1.0f);
 
             renderPreviewFor64x48(cursorPos.x, cursorPos.y + yOffset, previewWidth, previewHeight);
             ImGui.dummy(PREVIEW_SIZE, PREVIEW_SIZE);
@@ -349,7 +375,7 @@ public class ImportPNGDialog {
         ImDrawList drawList = ImGui.getWindowDrawList();
 
         // Draw background
-        drawList.addRectFilled(x, y, x + size, y + size, BACKGROUND_COLOR);
+        drawList.addRectFilled(x, y, x + size, y + size, backgroundColor);
 
         // Draw grid lines
         int gridLines = 16;
@@ -357,7 +383,7 @@ public class ImportPNGDialog {
 
         for (int i = 0; i <= gridLines; i++) {
             float offset = i * cellSize;
-            int lineColor = (i % 4 == 0) ? BORDER_COLOR : GRID_COLOR;
+            int lineColor = (i % 4 == 0) ? borderColor : gridColor;
             float lineThickness = (i % 4 == 0) ? 1.2f : 0.75f;
 
             drawList.addLine(x + offset, y, x + offset, y + size, lineColor, lineThickness);
@@ -374,10 +400,10 @@ public class ImportPNGDialog {
         drawList.addRectFilled(
             textX - padding, textY - padding,
             textX + textSize.x + padding, textY + textSize.y + padding,
-            ImColor.rgba(255, 255, 255, 220), 3.0f
+            labelPadColor(), 3.0f
         );
 
-        drawList.addText(textX, textY, ImColor.rgba(100, 100, 100, 255), label);
+        drawList.addText(textX, textY, ImGui.getColorU32(ImGuiCol.Text), label);
     }
 
     /**
@@ -387,7 +413,7 @@ public class ImportPNGDialog {
         ImDrawList drawList = ImGui.getWindowDrawList();
 
         // Draw background
-        drawList.addRectFilled(x, y, x + width, y + height, BACKGROUND_COLOR);
+        drawList.addRectFilled(x, y, x + width, y + height, backgroundColor);
 
         // Calculate face positions
         float faceWidth = width / 4.0f;
@@ -414,23 +440,24 @@ public class ImportPNGDialog {
      * Draw non-editable region (reused from NewTextureDialog).
      */
     private void drawNonEditableRegion(ImDrawList drawList, float x, float y, float w, float h) {
-        drawList.addRectFilled(x, y, x + w, y + h, NON_EDITABLE_COLOR);
-        drawList.addLine(x, y, x + w, y + h, GRID_COLOR, 0.75f);
-        drawList.addLine(x + w, y, x, y + h, GRID_COLOR, 0.75f);
+        drawList.addRectFilled(x, y, x + w, y + h, nonEditableColor);
+        drawList.addLine(x, y, x + w, y + h, gridColor, 0.75f);
+        drawList.addLine(x + w, y, x, y + h, gridColor, 0.75f);
     }
 
     /**
      * Draw face rectangle with label (reused from NewTextureDialog).
      */
     private void drawFaceRectangle(ImDrawList drawList, float x, float y, float w, float h, String label) {
-        drawList.addRectFilled(x, y, x + w, y + h, ImColor.rgba(100, 150, 255, 25));
-        drawList.addRect(x, y, x + w, y + h, FACE_COLOR, 0, 0, 1.2f);
+        ImVec4 accent = getAccentColor();
+        drawList.addRectFilled(x, y, x + w, y + h, ImColor.rgba(accent.x, accent.y, accent.z, 0.10f));
+        drawList.addRect(x, y, x + w, y + h, faceColor, 0, 0, 1.2f);
 
         ImVec2 textSize = ImGui.calcTextSize(label);
         float textX = x + (w - textSize.x) / 2.0f;
         float textY = y + (h - textSize.y) / 2.0f;
 
-        drawList.addText(textX, textY, FACE_COLOR, label);
+        drawList.addText(textX, textY, faceColor, label);
     }
 
     /**
@@ -439,12 +466,73 @@ public class ImportPNGDialog {
     private void drawRadioButtonBorder(ImDrawList drawList, float centerX, float centerY,
                                       float radius, boolean selected) {
         if (selected) {
-            drawList.addCircleFilled(centerX, centerY, radius + 1.5f, RADIO_BG_SELECTED);
-            drawList.addCircle(centerX, centerY, radius + 1.5f, RADIO_BORDER_SELECTED, 0, 1.5f);
+            drawList.addCircleFilled(centerX, centerY, radius + 1.5f, radioBgSelected);
+            drawList.addCircle(centerX, centerY, radius + 1.5f, radioBorderSelected, 0, 1.5f);
         } else {
-            drawList.addCircleFilled(centerX, centerY, radius + 1.5f, RADIO_BG_UNSELECTED);
-            drawList.addCircle(centerX, centerY, radius + 1.5f, RADIO_BORDER_UNSELECTED, 0, 1.2f);
+            drawList.addCircleFilled(centerX, centerY, radius + 1.5f, radioBgUnselected);
+            drawList.addCircle(centerX, centerY, radius + 1.5f, radioBorderUnselected, 0, 1.2f);
         }
+    }
+
+    // ========================================================================
+    // Theme-derived styling
+    // ========================================================================
+
+    /**
+     * Recomputes the preview chrome colors from the current style. Called at
+     * the top of render() so the dialog follows the active theme and the
+     * texture editor's style scope (NewTextureDialog's approach — never
+     * hardcode light-theme greys here).
+     */
+    private void refreshStyleColors() {
+        ImVec4 frameBg = ImGui.getStyle().getColor(ImGuiCol.FrameBg);
+        if (frameBg == null) {
+            frameBg = new ImVec4(0.18f, 0.18f, 0.18f, 1.0f);
+        }
+
+        backgroundColor = shiftedFrameBg(frameBg, 0.05f);
+        gridColor = shiftedFrameBg(frameBg, 0.12f);
+        borderColor = shiftedFrameBg(frameBg, 0.22f);
+        nonEditableColor = shiftedFrameBg(frameBg, 0.12f, 200);
+        previewBorderColor = shiftedFrameBg(frameBg, 0.22f);
+        radioBgUnselected = shiftedFrameBg(frameBg, 0.12f);
+
+        ImVec4 accent = getAccentColor();
+        radioBorderSelected = ImColor.rgba(accent.x, accent.y, accent.z, 1.0f);
+        radioBgSelected = ImColor.rgba(accent.x, accent.y, accent.z, 0.16f);
+        radioBorderUnselected = shiftedFrameBg(frameBg, 0.22f);
+        faceColor = ImColor.rgba(accent.x, accent.y, accent.z, 1.0f);
+    }
+
+    private int shiftedFrameBg(ImVec4 frameBg, float shift) {
+        return shiftedFrameBg(frameBg, shift, 255);
+    }
+
+    private int shiftedFrameBg(ImVec4 frameBg, float shift, int alpha) {
+        return ImColor.rgba(
+                Math.min(1.0f, frameBg.x + shift),
+                Math.min(1.0f, frameBg.y + shift),
+                Math.min(1.0f, frameBg.z + shift),
+                alpha / 255.0f);
+    }
+
+    private int labelPadColor() {
+        ImVec4 frameBg = ImGui.getStyle().getColor(ImGuiCol.FrameBg);
+        if (frameBg == null) {
+            frameBg = new ImVec4(0.18f, 0.18f, 0.18f, 1.0f);
+        }
+        return shiftedFrameBg(frameBg, 0.02f, 220);
+    }
+
+    /**
+     * Get the accent color from the current theme (HeaderActive, as in NewTextureDialog).
+     */
+    private ImVec4 getAccentColor() {
+        ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+        if (accent == null || (accent.x == 0 && accent.y == 0 && accent.z == 0)) {
+            accent = new ImVec4(0.36f, 0.61f, 0.84f, 1.0f);
+        }
+        return accent;
     }
 
     /**

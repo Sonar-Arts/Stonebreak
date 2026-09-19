@@ -120,6 +120,12 @@ public class SBOEditorWindow {
         this.dropsSection = new SBODropsSection(() -> dirty = true);
     }
 
+    /** Link the states editor to the Animation Editor (in-memory clip round trips). */
+    public void setAnimationBridge(AnimationClipBridge bridge) {
+        statesEditor.setAnimationBridge(bridge);
+    }
+
+
     /**
      * Open the editor: prompts for an SBO file, loads it on success.
      */
@@ -145,11 +151,59 @@ public class SBOEditorWindow {
      * just-exported file straight to this editor so the export form acts as
      * the "start screen" and the full editor carries on from there.
      */
-    public void openFile(String pathStr) {
-        loadFile(pathStr);
+    public boolean openFile(String pathStr) {
+        return loadFile(pathStr);
     }
 
-    private void loadFile(String pathStr) {
+    // ---- Agent seams (MCP sbo_editor_*) ------------------------------------
+
+    /** The file the editor is showing, or null. */
+    public Path currentPath() { return currentPath; }
+
+    public boolean isDirty() { return dirty; }
+
+    public boolean hasDocument() { return loadedManifest != null; }
+
+    /** The manifest as currently edited in the form (null when nothing is loaded). */
+    public SBOFormat.Document snapshotDocument() {
+        return loadedManifest == null ? null : buildEditedDocument();
+    }
+
+    /**
+     * Replace the edited manifest (embedded bytes are kept) and refresh the
+     * form; marks the draft dirty and shows the window so the human sees it.
+     */
+    public void applyDocument(SBOFormat.Document doc) {
+        this.loadedManifest = doc;
+        populateBuffers(doc);
+        this.dirty = true;
+        this.visible.set(true);
+    }
+
+    /** Null when the draft can be written; otherwise the first blocking problem. */
+    public String validateForWrite() {
+        if (loadedManifest == null) return "nothing is loaded in the SBO editor";
+        String err = statesEditor.validate();
+        if (err == null) err = soundsEditor.validate();
+        if (err == null) err = dropsSection.validate();
+        if (err != null) return err;
+        if (hasGameProperties) {
+            NumericIdValidator.Result result = NumericIdValidator.validate(
+                    currentDomain(), numericId.get(), objectId.get().trim());
+            if (result instanceof NumericIdValidator.Result.Conflict c) {
+                return "numeric_id_conflict: " + c.numericId() + " is taken by "
+                        + c.existingObjectId() + " — change gameProperties.numericId";
+            }
+        }
+        return null;
+    }
+
+    /** Write the draft to {@code pathStr} (no validation, no dialog); true on success. */
+    public boolean writeDocumentTo(String pathStr) {
+        return performWrite(pathStr);
+    }
+
+    private boolean loadFile(String pathStr) {
         try {
             Path path = Path.of(pathStr);
             SBOParser.RawParse raw = parser.parseRaw(path);
@@ -165,9 +219,11 @@ public class SBOEditorWindow {
             if (statusService != null) {
                 statusService.updateStatus("Opened SBO: " + path.getFileName());
             }
+            return true;
         } catch (IOException e) {
             logger.error("Failed to load SBO {}", pathStr, e);
             if (statusService != null) statusService.updateStatus("Failed to open SBO");
+            return false;
         }
     }
 
@@ -384,7 +440,7 @@ public class SBOEditorWindow {
         performWrite(pathStr);
     }
 
-    private void performWrite(String pathStr) {
+    private boolean performWrite(String pathStr) {
         SBOFormat.Document edited = buildEditedDocument();
         byte[] effectiveDefaultBytes = statesEditor.defaultBytes(loadedDefaultBytes);
         java.util.Map<String, byte[]> effectiveStateBytes = statesEditor.hasStates()
@@ -410,6 +466,7 @@ public class SBOEditorWindow {
         } else if (statusService != null) {
             statusService.updateStatus("Failed to save SBO");
         }
+        return ok;
     }
 
     private SBOFormat.Document buildEditedDocument() {

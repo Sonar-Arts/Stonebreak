@@ -11,6 +11,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RenderMeshBuilderTest {
 
     @Test
+    void tinyTexturedQuadKeepsItsFullUvRegion() {
+        EditableMesh mesh = new EditableMesh();
+        mesh.addVertex(new org.joml.Vector3f(0, 1.68f, 0));
+        mesh.addVertex(new org.joml.Vector3f(0.0001f, 1.68f, 0));
+        mesh.addVertex(new org.joml.Vector3f(0.0001f, 1.6801f, 0));
+        mesh.addVertex(new org.joml.Vector3f(0, 1.6801f, 0));
+        mesh.addFace(new int[]{0, 1, 2, 3});
+        RenderMesh render = RenderMeshBuilder.build(mesh, null);
+        float min = 1, max = 0;
+        for (float uv : render.texCoords()) { min = Math.min(min, uv); max = Math.max(max, uv); }
+        assertEquals(0, min, 1e-6f);
+        assertEquals(1, max, 1e-6f);
+    }
+
+    @Test
     void cubeDerivesToLegacyLayout() {
         EditableMesh mesh = TestMeshes.cube();
         RenderMesh rm = RenderMeshBuilder.build(mesh, new FaceTextureManager());

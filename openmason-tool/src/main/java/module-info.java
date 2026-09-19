@@ -68,6 +68,7 @@ module com.openmason {
     opens com.openmason.main.systems.menus.animationEditor.io to com.fasterxml.jackson.databind;
     opens com.openmason.main.systems.rendering.model.io.omo to com.fasterxml.jackson.databind;
     opens com.openmason.main.systems.mcp to com.fasterxml.jackson.databind;
+    opens com.openmason.main.systems.io to com.fasterxml.jackson.databind;
 
     // Scripting system: Jackson serializes the script result/summary records;
     // GraalPy host interop reflects on the @HostAccess.Export bridge methods.

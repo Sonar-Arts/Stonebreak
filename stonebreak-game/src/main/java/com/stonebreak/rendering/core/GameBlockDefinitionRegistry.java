@@ -32,12 +32,12 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
     }
 
     /**
-     * Construct a registry that consults the supplied SBO bridge when
-     * determining render layers. Blocks backed by an SBO with a declared
-     * render layer (OPAQUE / CUTOUT / TRANSLUCENT) honor that declaration.
+     * Construct the registry. Render layers are resolved by
+     * {@link BlockType#getRenderLayer()} from each block's SBO, so the bridge
+     * is no longer consulted for them; the parameter is kept so existing call
+     * sites (and future SBO-driven lookups) stay stable.
      *
-     * @param sboBlockBridge optional SBO bridge; if {@code null}, legacy
-     *                       hardcoded render-layer rules are used.
+     * @param sboBlockBridge optional SBO bridge; may be {@code null}
      */
     public GameBlockDefinitionRegistry(SBOBlockBridge sboBlockBridge) {
         this.definitionsByResourceId = new ConcurrentHashMap<>();
@@ -115,39 +115,19 @@ public class GameBlockDefinitionRegistry implements BlockDefinitionRegistry {
     }
     
     /**
-     * Determines the appropriate render layer for a block type.
+     * Determines the render layer for a block type. The SBO is the source of
+     * truth ({@link BlockType#getRenderLayer()} — manifest {@code renderLayer},
+     * authored face materials, and the leaf-transparency setting for foliage);
+     * there is no per-block list here. Cross-plane geometry can never be drawn
+     * opaque (its empty texels would show as black), so a flower whose asset
+     * says OPAQUE is lifted to CUTOUT.
      */
     private BlockDefinition.RenderLayer determineRenderLayer(BlockType blockType) {
-        // SBO-declared render layer takes precedence when the block has
-        // an SBO override. This lets content authors mark a block as
-        // TRANSLUCENT (e.g. ice) from the .sbo manifest without code changes.
-        if (sboBlockBridge != null && sboBlockBridge.isSBOBlock(blockType)) {
-            BlockDefinition.RenderLayer sboLayer = sboBlockBridge.getRenderLayer(blockType);
-            if (sboLayer != null) {
-                return sboLayer;
-            }
-        }
-
-        // Flowers are always CUTOUT — sourced from BlockType.isFlower().
-        if (blockType.isFlower()) {
+        BlockDefinition.RenderLayer layer = blockType.getRenderLayer();
+        if (layer == BlockDefinition.RenderLayer.OPAQUE && blockType.isFlower()) {
             return BlockDefinition.RenderLayer.CUTOUT;
         }
-        if (blockType == BlockType.ICE) {
-            // Ice has partial-alpha textures that must alpha-blend, not
-            // alpha-test. Fallback when the SBO does not declare explicitly.
-            return BlockDefinition.RenderLayer.TRANSLUCENT;
-        }
-        if (blockType == BlockType.LEAVES || blockType == BlockType.PINE_LEAVES
-                || blockType == BlockType.ELM_LEAVES) {
-            // Leaf blocks use cutout only when transparency is enabled;
-            // when disabled, use opaque to show the black spots.
-            try {
-                return blockType.isTransparent() ? BlockDefinition.RenderLayer.CUTOUT : BlockDefinition.RenderLayer.OPAQUE;
-            } catch (Exception e) {
-                return BlockDefinition.RenderLayer.CUTOUT;
-            }
-        }
-        return BlockDefinition.RenderLayer.OPAQUE;
+        return layer;
     }
     
     /**

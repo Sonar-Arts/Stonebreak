@@ -32,10 +32,9 @@ public class Settings {
     // Player model settings
     private String armModelType = "REGULAR"; // "REGULAR" or "SLIM"
 
-    // Cosmetic hat mounted on the player model's hat socket ("NONE" = bare head).
-    // Valid ids are defined by com.stonebreak.player.PlayerLooks.HAT_OPTIONS;
-    // unknown ids fall back to NONE at apply time.
+    // Hair and clothing are independent cosmetic slots.
     private String selectedHat = "NONE";
+    private String selectedHair = "NONE";
 
     // Crosshair settings
     private String crosshairStyle = "SIMPLE_CROSS";
@@ -137,6 +136,7 @@ public class Settings {
             boolField("musicEnabled", Settings::getMusicEnabled, Settings::setMusicEnabled),
             stringField("armModelType", Settings::getArmModelType, Settings::setArmModelType),
             stringField("selectedHat", Settings::getSelectedHat, Settings::setSelectedHat),
+            stringField("selectedHair", Settings::getSelectedHair, Settings::setSelectedHair),
             stringField("crosshairStyle", Settings::getCrosshairStyle, Settings::setCrosshairStyle),
             floatField("crosshairSize", Settings::getCrosshairSize, Settings::setCrosshairSize),
             floatField("crosshairThickness", Settings::getCrosshairThickness, Settings::setCrosshairThickness),
@@ -218,6 +218,12 @@ public class Settings {
                 field.read().accept(this, node);
             }
         }
+        // Older files stored hair in the single hat slot. An explicit new hair choice wins.
+        var legacyHair = com.stonebreak.player.PlayerLooks.hairOptionFor(selectedHat);
+        if (!legacyHair.id().equals(com.stonebreak.player.PlayerLooks.NO_HAIR_ID)) {
+            if (!root.path("selectedHair").isTextual()) setSelectedHair(legacyHair.id());
+            setSelectedHat("NONE");
+        }
     }
 
     public void saveSettings() {
@@ -257,6 +263,7 @@ public class Settings {
     public String getArmModelType() { return armModelType; }
     public boolean isSlimArms() { return "SLIM".equals(armModelType); }
     public String getSelectedHat() { return selectedHat; }
+    public String getSelectedHair() { return selectedHair; }
     
     // Crosshair getters
     public String getCrosshairStyle() { return crosshairStyle; }
@@ -332,6 +339,10 @@ public class Settings {
         this.selectedHat = (hatId == null || hatId.isBlank()) ? "NONE" : hatId;
     }
     
+    public void setSelectedHair(String hairId) {
+        this.selectedHair = (hairId == null || hairId.isBlank()) ? "NONE" : hairId;
+    }
+
     // Crosshair setters
     public void setCrosshairStyle(String style) {
         this.crosshairStyle = style;

@@ -21,9 +21,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -240,14 +242,6 @@ public final class SbeEntityLoader {
         // faceId -> [indexStart, indexCount] from the triangle->face map
         Map<Integer, int[]> faceIndexRange = buildFaceIndexRanges(mesh.triangleToFaceId());
 
-        // materialId -> decoded texture
-        Map<Integer, MaterialImage> materials = new HashMap<>();
-        for (ParsedMaterialData material : omo.materials()) {
-            if (material.texturePng() != null) {
-                materials.put(material.materialId(), decodePng(material.texturePng()));
-            }
-        }
-
         // Parts
         List<SbePart> parts = new ArrayList<>();
         for (OMOFormat.PartEntry pe : omo.parts()) {
@@ -290,6 +284,21 @@ public final class SbeEntityLoader {
                     new Vector3f(0, 0, 0),
                     new Vector3f(1, 1, 1),
                     allFaces));
+        }
+
+        // Saved editor documents retain orphaned materials. Avoid decoding
+        // their PNGs and retaining pixel arrays the renderer will never use.
+        Set<Integer> usedMaterials = new HashSet<>();
+        for (SbePart part : parts) {
+            for (SbeFace face : part.faces()) {
+                if (face.indexCount() > 0) usedMaterials.add(face.materialId());
+            }
+        }
+        Map<Integer, MaterialImage> materials = new HashMap<>();
+        for (ParsedMaterialData material : omo.materials()) {
+            if (usedMaterials.contains(material.materialId()) && material.texturePng() != null) {
+                materials.put(material.materialId(), decodePng(material.texturePng()));
+            }
         }
 
         // Mesh and UVs are used exactly as authored in the OMO — no remapping.

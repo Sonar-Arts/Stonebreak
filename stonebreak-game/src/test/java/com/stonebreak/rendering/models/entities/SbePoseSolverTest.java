@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -251,5 +252,78 @@ class SbePoseSolverTest {
                 .translate(-px, -py, -pz)
                 .translate(localPos);
         assertMatrixEquals(expected, actual);
+    }
+
+    @Test
+    void headTurnMovesFacialChildrenAndGrandchildrenButNotBody() {
+        Vector3f neck = new Vector3f(0, 1.5f, 0);
+        SbePart body = part("body", "torso", new Vector3f());
+        SbePart head = new SbePart("head", "head", "body", new Vector3f(),
+                neck, new Vector3f(), new Vector3f(1), List.of());
+        SbePart eye = new SbePart("eye", "eye", "head", new Vector3f(),
+                new Vector3f(0.1f, 0.2f, 0.2f), new Vector3f(), new Vector3f(1), List.of());
+        SbePart pupil = new SbePart("pupil", "pupil", "eye", new Vector3f(),
+                new Vector3f(0, 0, 0.01f), new Vector3f(), new Vector3f(1), List.of());
+        // Children first: inheritance must not depend on serialized part order.
+        SbeModelGeometry g = geometry(List.of(pupil, eye, head, body), List.of());
+        SbeEntityAsset a = asset(g, Map.of());
+        Matrix4f base = SbePoseSolver.baseMatrix(new Vector3f(3, 2, 1), 25, new Vector3f(2));
+        Map<String, Matrix4f> matrices = new HashMap<>();
+        SbePoseSolver.forEachPartMatrix(g, a, null, base, 45, -20,
+                (m, p) -> matrices.put(p.id(), new Matrix4f(m)));
+
+        Matrix4f expected = new Matrix4f(base).translate(neck)
+                .rotateY((float) Math.toRadians(45)).rotateX((float) Math.toRadians(-20))
+                .translate(0, -1.5f, 0);
+        assertMatrixEquals(expected, matrices.get("head"));
+        assertMatrixEquals(expected, matrices.get("eye"));
+        assertMatrixEquals(expected, matrices.get("pupil"));
+        assertMatrixEquals(base, matrices.get("body"));
+    }
+
+    @Test
+    void headTurnFollowsAnimatedNeckAndPreservesChildAnimationAndSockets() {
+        SbePart body = new SbePart("body", "torso", null, new Vector3f(),
+                new Vector3f(1, 0, 0), new Vector3f(0, 15, 0), new Vector3f(1), List.of());
+        SbePart head = new SbePart("head", "head", "body", new Vector3f(0, 0.1f, 0),
+                new Vector3f(0, 1.5f, 0), new Vector3f(5, 0, 0), new Vector3f(1), List.of());
+        SbePart jaw = new SbePart("jaw", "jaw", "head", new Vector3f(),
+                new Vector3f(0, 0.1f, 0.2f), new Vector3f(), new Vector3f(1), List.of());
+        Vector3f socketPos = new Vector3f(1, 1.7f, 0.3f);
+        SbeModelGeometry g = geometry(List.of(jaw, head, body), List.of(
+                new SbeAttachmentPoint("socket", "mouth", "jaw", "jaw", socketPos, new Vector3f())));
+        Vector3f bodyPos = new Vector3f(1.2f, 0.4f, -0.1f);
+        Vector3f bodyRot = new Vector3f(0, 35, 20);
+        Vector3f headPos = new Vector3f(0.1f, 1.6f, 0);
+        Vector3f headRot = new Vector3f(10, 5, -5);
+        Vector3f jawRot = new Vector3f(20, 0, 0);
+        ParsedAnimClip clip = new ParsedAnimClip("Walk", 24, 1, true, List.of(
+                constantClip("body", "torso", bodyPos, bodyRot).tracks().getFirst(),
+                constantClip("head", "head", headPos, headRot).tracks().getFirst(),
+                constantClip("jaw", "jaw", jaw.restPos(), jawRot).tracks().getFirst()));
+        SbeEntityAsset a = asset(g, Map.of("Walk", clip));
+        AnimState anim = AnimState.single("Walk", 0.5f);
+        Matrix4f base = SbePoseSolver.baseMatrix(new Vector3f(3, 2, 1), 25, new Vector3f(1));
+        Map<String, Matrix4f> matrices = new HashMap<>();
+        SbePoseSolver.forEachPartMatrix(g, a, anim, base, 40, -15,
+                (m, p) -> matrices.put(p.id(), new Matrix4f(m)));
+
+        // Compare transformed rest-space geometry with a directly posed hierarchy.
+        Matrix4f restBody = applyPartTransform(new Matrix4f(), body.restPos(), body.restRot(), body.restOrigin());
+        Matrix4f restHead = applyPartTransform(new Matrix4f(restBody), head.restPos(), head.restRot(), head.restOrigin());
+        Matrix4f restJaw = applyPartTransform(new Matrix4f(restHead), jaw.restPos(), jaw.restRot(), jaw.restOrigin());
+        Matrix4f posedBody = applyPartTransform(new Matrix4f(base), bodyPos, bodyRot, body.restOrigin());
+        Matrix4f posedHead = new Matrix4f(posedBody).translate(headPos).translate(head.restOrigin())
+                .rotateY((float) Math.toRadians(40)).rotateX((float) Math.toRadians(-15))
+                .rotateXYZ((float) Math.toRadians(10), (float) Math.toRadians(5), (float) Math.toRadians(-5))
+                .translate(0, -0.1f, 0);
+        Matrix4f posedJaw = applyPartTransform(new Matrix4f(posedHead), jaw.restPos(), jawRot, jaw.restOrigin());
+        Matrix4f expectedJawDelta = new Matrix4f(posedJaw).mul(new Matrix4f(restJaw).invert());
+        assertMatrixEquals(posedBody, new Matrix4f(matrices.get("body")).mul(restBody));
+        assertMatrixEquals(posedHead, new Matrix4f(matrices.get("head")).mul(restHead));
+        assertMatrixEquals(posedJaw, new Matrix4f(matrices.get("jaw")).mul(restJaw));
+        Matrix4f socket = SbePoseSolver.socketWorldMatrix(a, null, anim, base, 40, -15, "mouth", new Matrix4f());
+        assertNotNull(socket);
+        assertMatrixEquals(expectedJawDelta.translate(socketPos), socket);
     }
 }

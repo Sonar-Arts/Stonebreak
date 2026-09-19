@@ -75,6 +75,9 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     /** Invoked with a .OMSC path to open it in the Scene Viewer (wired in mainOpenMason). */
     private java.util.function.Consumer<java.nio.file.Path> openSceneCallback;
 
+    /** The Scene Viewer, once composed; null in headless/snapshot construction. */
+    private com.openmason.main.systems.scene.SceneViewerImGuiInterface sceneViewer;
+
     private PreferencesWindow preferencesWindow; // Initialized after components
     private SBOExportWindow sboExportWindow; // Initialized after components
     private SBEExportWindow sbeExportWindow; // Initialized after components
@@ -604,6 +607,17 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         return approvalGate;
     }
 
+    /** Save Sheet gate for agent-initiated file writes (null until UI wiring). */
+    private com.openmason.main.systems.mcp.approval.SaveSheetGate saveSheetGate;
+
+    public void setSaveSheetGate(com.openmason.main.systems.mcp.approval.SaveSheetGate gate) {
+        this.saveSheetGate = gate;
+    }
+
+    public com.openmason.main.systems.mcp.approval.SaveSheetGate getSaveSheetGate() {
+        return saveSheetGate;
+    }
+
     /** Model/session state (loaded flag, dirty flag, source). */
     public com.openmason.main.systems.stateHandling.ModelState getModelState() {
         return modelState;
@@ -611,6 +625,15 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
     public ModelOperationService getModelOperations() {
         return modelOperations;
+    }
+
+    public void setSceneViewer(com.openmason.main.systems.scene.SceneViewerImGuiInterface sceneViewer) {
+        this.sceneViewer = sceneViewer;
+    }
+
+    /** The Scene Viewer (scene service, document, actions), or null before composition. */
+    public com.openmason.main.systems.scene.SceneViewerImGuiInterface getSceneViewer() {
+        return sceneViewer;
     }
 
     // Convenience methods for backward compatibility

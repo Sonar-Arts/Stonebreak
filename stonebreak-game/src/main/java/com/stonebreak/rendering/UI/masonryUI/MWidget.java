@@ -26,13 +26,25 @@ public abstract class MWidget {
     public MWidget scaleText(boolean v) { this.scaleText = v; return this; }
     public boolean isScaleText() { return scaleText; }
 
-    /** UI scale to apply to this widget's text/offsets, or 1.0 when not scale-aware. */
+    /**
+     * Explicit scale for this widget's text and internal metrics; 0 = not set. Takes precedence over
+     * {@link #scaleText}. For UI that lays itself out at its own scale (a HUD that grows with the
+     * window, a panel capped to fit) instead of the global UI scale; it also keeps the widget free
+     * of the Settings singleton, so it renders identically in headless tests.
+     */
+    protected float explicitScale = 0f;
+
+    public MWidget scale(float scale) { this.explicitScale = Math.max(0f, scale); return this; }
+
+    /** Scale to apply to this widget's text/offsets: the explicit one, else the UI scale, else 1. */
     protected float textScale() {
+        if (explicitScale > 0f) return explicitScale;
         return scaleText ? com.stonebreak.config.Settings.getInstance().getUiScale() : 1f;
     }
 
-    /** Fetches a font at {@code baseSize}, scaled by the UI scale when {@link #scaleText} is set. */
+    /** Fetches a font at {@code baseSize} times {@link #textScale()}. */
     protected io.github.humbleui.skija.Font fontFor(MasonryUI ui, float baseSize) {
+        if (explicitScale > 0f) return ui.fonts().get(baseSize, explicitScale);
         return scaleText ? ui.fonts().getScaled(baseSize) : ui.fonts().get(baseSize);
     }
 

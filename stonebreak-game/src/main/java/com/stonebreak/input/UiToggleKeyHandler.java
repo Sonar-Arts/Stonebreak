@@ -26,10 +26,47 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_T;
  */
 final class UiToggleKeyHandler {
 
+    private static final int[] TOGGLE_KEYS = {GLFW_KEY_ESCAPE, GLFW_KEY_E, GLFW_KEY_C, GLFW_KEY_T, GLFW_KEY_Q};
+
     private final KeyEdgeTracker keys;
+    /** Keys handed over while held; each stays inert until it is seen released. */
+    private final java.util.BitSet suppressedUntilReleased = new java.util.BitSet();
 
     UiToggleKeyHandler(KeyEdgeTracker keys) {
         this.keys = keys;
+    }
+
+    /**
+     * These keys are not polled during a Focus battle (its HUD takes key events instead), so the
+     * edge tracker is stale when polling resumes and a key still held from the battle would read as
+     * a new press: Escape would close the pause menu it just opened, E would open the inventory on
+     * leaving the result panel. Marked keys do nothing until released.
+     */
+    void suppressUntilReleased() {
+        for (int key : TOGGLE_KEYS) {
+            suppressedUntilReleased.set(key);
+        }
+    }
+
+    /** {@link KeyEdgeTracker#pressedOnce} that honours {@link #suppressUntilReleased()}. */
+    private boolean pressed(int key) {
+        boolean fired = keys.pressedOnce(key); // always poll so the edge tracker stays in sync
+        if (suppressedUntilReleased.get(key)) {
+            if (!keys.isDown(key)) {
+                suppressedUntilReleased.clear(key);
+            }
+            return false;
+        }
+        return fired;
+    }
+
+    /**
+     * True while a Focus battle is running, including while it sits under the pause menu. Inventory,
+     * character sheet, chat and item drop would switch to states that simulate the parked player, so
+     * they stay off until the battle ends. Escape is exempt: it must still drive the pause menu.
+     */
+    private static boolean battleOwnsToggles() {
+        return com.stonebreak.battle.stage.FocusBattle.isActive();
     }
 
     /**
@@ -38,11 +75,16 @@ final class UiToggleKeyHandler {
      * via the key callback, so an open chat swallows the press here.
      */
     void pollEscape() {
-        if (!keys.pressedOnce(GLFW_KEY_ESCAPE)) {
+        if (!pressed(GLFW_KEY_ESCAPE)) {
             return;
         }
 
         Game game = Game.getInstance();
+
+        // The battle HUD handles its own Escape through key events (back / open pause menu).
+        if (game.getState() == GameState.FOCUS_BATTLE) {
+            return;
+        }
 
         // The "Save changes?" prompt is modal: Escape dismisses it and stays in the panel.
         SaveChangesDialog saveDialog = game.getSaveChangesDialog();
@@ -103,7 +145,7 @@ final class UiToggleKeyHandler {
 
     /** E toggles the inventory, unless another UI surface already owns the screen. */
     void pollInventoryToggle() {
-        if (!keys.pressedOnce(GLFW_KEY_E)) {
+        if (!pressed(GLFW_KEY_E) || battleOwnsToggles()) {
             return;
         }
 
@@ -137,7 +179,7 @@ final class UiToggleKeyHandler {
 
     /** C toggles the character sheet; closes an open inventory first so the two never stack. */
     void pollCharacterToggle() {
-        if (!keys.pressedOnce(GLFW_KEY_C)) {
+        if (!pressed(GLFW_KEY_C) || battleOwnsToggles()) {
             return;
         }
 
@@ -181,7 +223,7 @@ final class UiToggleKeyHandler {
 
     /** T opens chat from gameplay-adjacent states. */
     void pollChatOpen() {
-        if (!keys.pressedOnce(GLFW_KEY_T)) {
+        if (!pressed(GLFW_KEY_T) || battleOwnsToggles()) {
             return;
         }
 
@@ -205,7 +247,7 @@ final class UiToggleKeyHandler {
 
     /** Q drops a single item from the selected hotbar slot. */
     void pollItemDrop() {
-        if (!keys.pressedOnce(GLFW_KEY_Q)) {
+        if (!pressed(GLFW_KEY_Q) || battleOwnsToggles()) {
             return;
         }
 

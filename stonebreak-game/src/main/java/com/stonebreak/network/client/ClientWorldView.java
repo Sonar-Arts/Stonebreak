@@ -163,6 +163,11 @@ public final class ClientWorldView {
 
     // ─── Per-frame pump (game thread) ─────────────────────────────────────────
 
+    public void suspendClock() {
+        lastTickNs = System.nanoTime();
+        tickAccumulatorNs = 0;
+    }
+
     public void tick() {
         networkClient.inboundQueue().drain(this::dispatch);
 

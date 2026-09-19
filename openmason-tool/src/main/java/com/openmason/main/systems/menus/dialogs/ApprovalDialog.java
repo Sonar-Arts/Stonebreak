@@ -28,7 +28,7 @@ public final class ApprovalDialog {
     }
 
     public void render() {
-        McpApprovalGate.Pending pending = gate.pending();
+        var pending = gate.pending();
         if (pending == null) {
             return;
         }

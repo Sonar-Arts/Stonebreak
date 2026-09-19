@@ -39,6 +39,8 @@ public class ChatCommandExecutor {
         registerCommand(new TimeSetCommand());
         registerCommand(new AttachCommand());
         registerCommand(new TeleportCommand());
+        registerCommand(new BattleTestCommand());
+        registerCommand(new BattleCommand());
     }
 
     /**

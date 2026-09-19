@@ -107,6 +107,10 @@ public class CollisionHandler {
                     position.x + halfWidth, playerHeadY, checkMaxZ)) {
                 continue;
             }
+            if (canStepOntoSceneBox(b)) {
+                stepUpHeight = Math.max(stepUpHeight, b[4] - position.y);
+                continue;
+            }
             if (velocity.x < 0) {
                 float candidate = b[3] + halfWidth;
                 if (!collisionOccurred || candidate > correctedPositionX) correctedPositionX = candidate;
@@ -289,6 +293,10 @@ public class CollisionHandler {
                     checkMaxX, playerHeadY, position.z + halfWidth)) {
                 continue;
             }
+            if (canStepOntoSceneBox(b)) {
+                stepUpHeight = Math.max(stepUpHeight, b[4] - position.y);
+                continue;
+            }
             if (velocity.z < 0) {
                 float candidate = b[5] + halfWidth;
                 if (!collisionOccurred || candidate > correctedPositionZ) correctedPositionZ = candidate;
@@ -388,9 +396,19 @@ public class CollisionHandler {
      * collides). Positions come from the world's AnimatedBlockRegistry, so
      * this is a short sparse list, not a scan.
      */
+    private boolean canStepOntoSceneBox(float[] box) {
+        float rise = box[4] - state.getPosition().y;
+        if (!state.isOnGround() || rise <= 0 || rise > .3f) return false;
+        for (float[] sceneBox : world.getStaticCollisionBoxes(state.getPosition(), 4)) {
+            if (java.util.Arrays.equals(sceneBox, box)) return true;
+        }
+        return false;
+    }
+
     private java.util.List<float[]> nearbyDoorPanels() {
         java.util.List<float[]> panels = new java.util.ArrayList<>(2);
         Vector3f position = state.getPosition();
+        panels.addAll(world.getStaticCollisionBoxes(position, 4));
         addNearbyStalagmiteBoxes(panels, position);
         for (com.openmason.engine.util.BlockPos pos : world.getAnimatedBlockRegistry().positions()) {
             // Quick reject: a posed model reaches at most ~2 blocks from its anchor.

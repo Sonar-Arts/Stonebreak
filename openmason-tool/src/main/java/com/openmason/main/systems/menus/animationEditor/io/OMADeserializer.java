@@ -33,8 +33,27 @@ public final class OMADeserializer {
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public AnimationClip load(String filePath) {
-        try (FileInputStream fis = new FileInputStream(filePath);
-             ZipInputStream zis = new ZipInputStream(fis)) {
+        try (FileInputStream fis = new FileInputStream(filePath)) {
+            return read(fis, filePath);
+        } catch (IOException ex) {
+            logger.error("Failed to load .oma file {}", filePath, ex);
+            return null;
+        }
+    }
+
+    /** Parse an in-memory {@code .omanim} archive (e.g. one embedded in an SBE state). */
+    public AnimationClip load(byte[] omaBytes, String sourceLabel) {
+        if (omaBytes == null) return null;
+        try {
+            return read(new java.io.ByteArrayInputStream(omaBytes), sourceLabel);
+        } catch (IOException ex) {
+            logger.error("Failed to parse .oma bytes ({})", sourceLabel, ex);
+            return null;
+        }
+    }
+
+    private AnimationClip read(java.io.InputStream in, String source) throws IOException {
+        try (ZipInputStream zis = new ZipInputStream(in)) {
 
             Map<String, byte[]> entries = new HashMap<>();
             ZipEntry entry;
@@ -45,7 +64,7 @@ public final class OMADeserializer {
 
             byte[] manifestBytes = entries.get(OMAFormat.MANIFEST_FILENAME);
             if (manifestBytes == null) {
-                logger.error("No manifest in .oma archive: {}", filePath);
+                logger.error("No manifest in .oma archive: {}", source);
                 return null;
             }
 
@@ -78,11 +97,8 @@ public final class OMADeserializer {
             }
 
             logger.info("Loaded animation clip '{}' ({} tracks) from {}",
-                    clip.name(), clip.tracks().size(), filePath);
+                    clip.name(), clip.tracks().size(), source);
             return clip;
-        } catch (IOException ex) {
-            logger.error("Failed to load .oma file {}", filePath, ex);
-            return null;
         }
     }
 

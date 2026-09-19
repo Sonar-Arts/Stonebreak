@@ -62,10 +62,11 @@ public class SBOHandMeshRegistry {
 
         for (BlockType type : BlockType.values()) {
             boolean animated = com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(type);
-            // Multi-face models: doors, stairs and stalagmites need per-triangle layers.
-            // A stalagmite item is always a size-1 stalagmite, which is the SBO's
+            // Multi-face models: doors, stairs, stalagmites and cacti need per-triangle
+            // layers. A stalagmite item is always a size-1 stalagmite, which is the SBO's
             // default model — so drops, icons and the held item show that shape.
-            boolean multiFace = animated || type.isStairs() || type == BlockType.LIMESTONE_STALAGMITE;
+            boolean multiFace = animated || type.isStairs()
+                    || type == BlockType.LIMESTONE_STALAGMITE || type == BlockType.CACTUS;
             if (!type.isFlower() && !multiFace) continue;
             if (!bridge.isSBOBlock(type)) continue;
 
@@ -203,10 +204,18 @@ public class SBOHandMeshRegistry {
         float[] deVerts = processed.vertices();
         float[] deUvs = processed.texCoords();
         int[] triFaces = processed.triangleFaces();
+        boolean[] triFlush = processed.triangleFlush();
+        // Interior detail triangles ride their own authored material's layer, the
+        // same rule the chunk mesher applies (SBOMeshProcessor), so the held item
+        // and the placed block texture identically.
+        int[] authoredFaces = mesh.triangleToFaceId();
+        boolean hasAuthoredFaces = authoredFaces != null && authoredFaces.length >= triFaces.length;
 
         float[] out = new float[indices.length * 6];
         for (int tri = 0; tri < triFaces.length; tri++) {
-            float layer = textureArray.getBlockFaceLayer(type, triFaces[tri]);
+            float layer = (!triFlush[tri] && hasAuthoredFaces)
+                    ? textureArray.getBlockFaceLayerForAuthoredFace(type, null, authoredFaces[tri], triFaces[tri])
+                    : textureArray.getBlockFaceLayer(type, triFaces[tri]);
             for (int corner = 0; corner < 3; corner++) {
                 int vi = tri * 3 + corner;
                 int s = vi * 3;

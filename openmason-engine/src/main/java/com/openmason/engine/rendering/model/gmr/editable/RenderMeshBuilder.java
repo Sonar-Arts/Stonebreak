@@ -152,6 +152,8 @@ public final class RenderMeshBuilder {
 
         int n = loop.length;
         Vector3f normal = PolygonTriangulator.newellNormal(loop);
+        // Tangent-frame validation expects a direction, not an area-scaled normal.
+        if (normal.lengthSquared() > 0) normal.normalize();
         Vector3f[] frame = FaceProjectionUtil.computeTangentFrame(normal);
         if (frame == null) {
             // Degenerate face — center of the region for every corner.

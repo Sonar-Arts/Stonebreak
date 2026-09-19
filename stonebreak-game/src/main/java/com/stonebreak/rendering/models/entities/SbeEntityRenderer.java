@@ -2,10 +2,10 @@ package com.stonebreak.rendering.models.entities;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
 import com.openmason.engine.rendering.RenderOrigin;
+import com.openmason.engine.rendering.model.IndexedDrawBatch;
 import com.stonebreak.mobs.sbe.AnimState;
 import com.stonebreak.mobs.sbe.MaterialImage;
 import com.stonebreak.mobs.sbe.SbeEntityAsset;
-import com.stonebreak.mobs.sbe.SbeFace;
 import com.stonebreak.mobs.sbe.SbeModelGeometry;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import org.joml.Matrix4f;
@@ -36,7 +36,7 @@ import static org.lwjgl.system.MemoryUtil.memFree;
  * <p>Given a decoded {@link SbeEntityAsset} plus a variant name, a state name,
  * an animation time and a world transform, it renders the model — selecting the
  * variant geometry, sampling the state's animation clip per part, and drawing
- * each face with its own material texture. It knows nothing about cows or any
+ * cached contiguous material batches for each part. It knows nothing about cows or any
  * specific entity type; callers supply the entity-specific bindings.
  *
  * <p>GPU resources are uploaded lazily, per asset, on first render (on the GL
@@ -64,6 +64,7 @@ public final class SbeEntityRenderer {
         int vbo;
         int uvVbo;
         int ebo;
+        SbeDrawPlan drawPlan;
         final Map<Integer, Integer> materialTextures = new HashMap<>();
     }
 
@@ -338,12 +339,10 @@ public final class SbeEntityRenderer {
         SbePoseSolver.forEachPartMatrix(geometry, asset, anim, baseMatrix,
                 headYawDeg, headPitchDeg, (partMatrix, part) -> {
             shader.setUniform("model", partMatrix);
-            for (SbeFace face : part.faces()) {
-                Integer textureId = gpu.materialTextures.get(face.materialId());
-                if (textureId == null) continue;
-                GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
-                GL11.glDrawElements(GL11.GL_TRIANGLES, face.indexCount(),
-                        GL11.GL_UNSIGNED_INT, (long) face.indexStart() * Integer.BYTES);
+            for (IndexedDrawBatch batch : gpu.drawPlan.forPart(part).textured()) {
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, gpu.materialTextures.get(batch.materialId()));
+                GL11.glDrawElements(GL11.GL_TRIANGLES, batch.indexCount(),
+                        GL11.GL_UNSIGNED_INT, batch.byteOffset());
             }
         });
 
@@ -409,9 +408,9 @@ public final class SbeEntityRenderer {
         SbePoseSolver.forEachPartMatrix(geometry, asset, AnimState.single(stateName, animationTime),
                 base, 0f, 0f, (partMatrix, part) -> {
             wireShader.setUniform("model", partMatrix);
-            for (SbeFace face : part.faces()) {
-                GL11.glDrawElements(GL11.GL_TRIANGLES, face.indexCount(),
-                        GL11.GL_UNSIGNED_INT, (long) face.indexStart() * Integer.BYTES);
+            for (IndexedDrawBatch batch : gpu.drawPlan.forPart(part).untextured()) {
+                GL11.glDrawElements(GL11.GL_TRIANGLES, batch.indexCount(),
+                        GL11.GL_UNSIGNED_INT, batch.byteOffset());
             }
         });
 
@@ -502,9 +501,9 @@ public final class SbeEntityRenderer {
         SbePoseSolver.forEachPartMatrix(geometry, asset, anim, baseMatrix,
                 headYawDeg, headPitchDeg, (partMatrix, part) -> {
             wireShader.setUniform("model", partMatrix);
-            for (SbeFace face : part.faces()) {
-                GL11.glDrawElements(GL11.GL_TRIANGLES, face.indexCount(),
-                        GL11.GL_UNSIGNED_INT, (long) face.indexStart() * Integer.BYTES);
+            for (IndexedDrawBatch batch : gpu.drawPlan.forPart(part).untextured()) {
+                GL11.glDrawElements(GL11.GL_TRIANGLES, batch.indexCount(),
+                        GL11.GL_UNSIGNED_INT, batch.byteOffset());
             }
         });
 
@@ -588,6 +587,7 @@ public final class SbeEntityRenderer {
 
     private VariantGpu uploadVariant(SbeModelGeometry geometry) {
         VariantGpu gpu = new VariantGpu();
+        gpu.drawPlan = new SbeDrawPlan(geometry);
 
         gpu.vao = GL30.glGenVertexArrays();
         gpu.vbo = GL15.glGenBuffers();
@@ -627,9 +627,10 @@ public final class SbeEntityRenderer {
         memFree(uvBuffer);
         memFree(indexBuffer);
 
-        // Upload one texture per material.
-        for (Map.Entry<Integer, MaterialImage> entry : geometry.materials().entrySet()) {
-            gpu.materialTextures.put(entry.getKey(), uploadTexture(entry.getValue()));
+        // OMO files can retain many unused editor materials. Only upload the
+        // textures actually referenced by this geometry's textured batches.
+        for (int materialId : gpu.drawPlan.materialIds()) {
+            gpu.materialTextures.put(materialId, uploadTexture(geometry.materials().get(materialId)));
         }
         return gpu;
     }

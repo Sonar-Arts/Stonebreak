@@ -29,6 +29,9 @@ public final class GameShutdown {
      * @param worldUpdateExecutor  the executor owned by {@link Game} that must be stopped
      */
     public static void shutdown(Game game, ExecutorService worldUpdateExecutor) {
+        // Release the battle's camera/FOV/screen bindings while the arena session still exists.
+        com.stonebreak.battle.stage.FocusBattle.shutdown();
+        com.stonebreak.battletest.BattleTestSession.leave();
         logger.debug("Starting Game cleanup...");
 
         if (Game.getWorld() != null) {
@@ -45,6 +48,9 @@ public final class GameShutdown {
         }
         if (game.getGlossaryScreen() != null) {
             game.getGlossaryScreen().cleanup();
+        }
+        if (game.getFocusBattleScreen() != null) {
+            game.getFocusBattleScreen().cleanup();
         }
         if (Game.getSoundSystem() != null) {
             Game.getSoundSystem().cleanup();

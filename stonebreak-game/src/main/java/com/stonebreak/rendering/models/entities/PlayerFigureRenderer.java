@@ -45,7 +45,7 @@ final class PlayerFigureRenderer {
         if (asset == null) return;
 
         // The BASE clip is pure locomotion (jump one-shots use event-relative
-        // time; looping walk uses the continuous clock). Attacking plays as an
+        // time; walk/sprint use the foot-contact clock). Attacking plays as an
         // OVERLAY on top: it owns only the parts its clip masks (authored in
         // the .omanim layer metadata), so the legs keep walking mid-swing. The
         // overlay envelope handles fade-in and pop-free early-exit fade-out.
@@ -129,7 +129,7 @@ final class PlayerFigureRenderer {
                 headYaw,
                 headPitch,
                 com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState()),
-                rp.getAnimationController().getTotalAnimationTime(),
+                rp.getBodyAnimationTime(),
                 overlayState,
                 overlayTime,
                 overlayWeight,

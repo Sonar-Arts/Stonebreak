@@ -44,6 +44,13 @@ public class SceneService {
     private Runnable onSceneChanged = () -> { };
     private Runnable onSceneReplaced = () -> { };
 
+    // View-state bridge: the camera and display toggles live in the viewer, which the
+    // service must not depend on. Suppliers are read at save, consumers fed at open.
+    private java.util.function.Supplier<OMSCFormat.CameraState> cameraOut = () -> null;
+    private java.util.function.Supplier<OMSCFormat.ViewportState> viewportOut = () -> null;
+    private java.util.function.Consumer<OMSCFormat.CameraState> cameraIn = c -> { };
+    private java.util.function.Consumer<OMSCFormat.ViewportState> viewportIn = v -> { };
+
     public SceneService(ModelCache modelCache) {
         this.modelCache = java.util.Objects.requireNonNull(modelCache, "modelCache");
         this.resolver = new SceneModelResolver(modelCache);
@@ -66,6 +73,20 @@ public class SceneService {
      */
     public void setOnSceneReplaced(Runnable callback) {
         this.onSceneReplaced = callback != null ? callback : () -> { };
+    }
+
+    /**
+     * Connect the viewer's camera and display state so they round-trip through the file.
+     * Any argument may be null to leave that direction unwired.
+     */
+    public void setViewStateBridge(java.util.function.Supplier<OMSCFormat.CameraState> cameraOut,
+                                   java.util.function.Supplier<OMSCFormat.ViewportState> viewportOut,
+                                   java.util.function.Consumer<OMSCFormat.CameraState> cameraIn,
+                                   java.util.function.Consumer<OMSCFormat.ViewportState> viewportIn) {
+        this.cameraOut = cameraOut != null ? cameraOut : () -> null;
+        this.viewportOut = viewportOut != null ? viewportOut : () -> null;
+        this.cameraIn = cameraIn != null ? cameraIn : c -> { };
+        this.viewportIn = viewportIn != null ? viewportIn : v -> { };
     }
 
     private void changed() {
@@ -109,6 +130,8 @@ public class SceneService {
         document.setSceneName(parsed.sceneName());
         document.setCurrentScenePath(filePath);
         document.setCreatedAt(parsed.manifest().createdAt());
+        document.setAuthor(parsed.manifest().author());
+        document.setDescription(parsed.manifest().description());
 
         for (OMSCFormat.ModelRef ref : parsed.models()) {
             document.registerModel(resolver.resolve(ref, parsed.bytesFor(ref.modelId()), projectRoot));
@@ -117,10 +140,12 @@ public class SceneService {
         for (OMSCFormat.InstanceEntry entry : parsed.instances()) {
             SceneModelRef model = document.modelBySessionId(entry.modelId());
             if (model == null || model.handle() == null) {
-                // The model could not be resolved at all. Keeping the instance out of the
-                // engine scene avoids a null handle, but it is still recorded in the
-                // document's model list so the user is told what is missing.
-                logger.warn("Skipping instance '{}': model '{}' is unavailable", entry.name(), entry.modelId());
+                // The model could not be resolved at all. There is nothing to render or
+                // pick, but the placement is kept on paper so the next save does not
+                // silently drop it; the outliner lists it as missing.
+                logger.warn("Instance '{}' kept as an orphan: model '{}' is unavailable",
+                        entry.name(), entry.modelId());
+                document.addOrphanInstance(entry);
                 continue;
             }
             ModelInstance instance = document.addInstance(model, entry.name());
@@ -132,10 +157,20 @@ public class SceneService {
             instance.setLocked(entry.locked());
         }
 
+        // The saved viewpoint and display toggles, when the file carries them (a 1.0 file
+        // written before they were persisted has neither, and the viewer keeps its own).
+        if (parsed.manifest().camera() != null) {
+            cameraIn.accept(parsed.manifest().camera());
+        }
+        if (parsed.manifest().viewport() != null) {
+            viewportIn.accept(parsed.manifest().viewport());
+        }
+
         document.clearDirty();
         onSceneChanged.run();
-        logger.info("Opened scene '{}' ({} instances, {} models)",
-                document.sceneName(), document.instances().size(), document.models().size());
+        logger.info("Opened scene '{}' ({} instances, {} models, {} orphaned placements)",
+                document.sceneName(), document.instances().size(), document.models().size(),
+                document.orphanInstances().size());
         return true;
     }
 
@@ -163,12 +198,41 @@ public class SceneService {
         return false;
     }
 
-    private boolean writeTo(String filePath, Path projectRoot) {
-        OMSCFormat.Document doc = extractState(projectRoot);
-        Map<String, byte[]> bytes = collectModelBytes();
-        if (bytes == null) {
+    /**
+     * Save without asking: to the current path when there is one, otherwise into the
+     * project's {@code Scenes/} folder under the scene's name (uniquified against files
+     * already there, so an untitled scene never overwrites a sibling). This is the
+     * save-on-exit / save-with-project path, where a modal Save As would be a second
+     * dialog stacked on the first.
+     *
+     * @return false when there is no project to save into either
+     */
+    public boolean saveIntoProject(Path projectRoot) {
+        if (document.hasCurrentScene()) {
+            return saveScene(projectRoot);
+        }
+        if (projectRoot == null) {
+            logger.warn("Cannot save untitled scene '{}': no project is open", document.sceneName());
             return false;
         }
+        ProjectLayout.ensureScaffold(projectRoot);
+        Path scenesDir = ProjectLayout.scenesDir(projectRoot);
+        String base = safeFileName(document.sceneName());
+        Path target = scenesDir.resolve(base + OMSCFormat.FILE_EXTENSION);
+        for (int n = 2; java.nio.file.Files.exists(target) && n < 10_000; n++) {
+            target = scenesDir.resolve(base + " " + n + OMSCFormat.FILE_EXTENSION);
+        }
+        return saveSceneAs(target.toString(), projectRoot);
+    }
+
+    private static String safeFileName(String name) {
+        String cleaned = name == null ? "" : name.replaceAll("[\\/:*?\"<>|]", "_").trim();
+        return cleaned.isEmpty() ? "Untitled Scene" : cleaned;
+    }
+
+    private boolean writeTo(String filePath, Path projectRoot) {
+        Map<String, byte[]> bytes = collectModelBytes();
+        OMSCFormat.Document doc = extractState(projectRoot, bytes.keySet());
         if (serializer.save(doc, bytes, filePath)) {
             document.clearDirty();
             logger.info("Saved scene to {}", filePath);
@@ -179,8 +243,21 @@ public class SceneService {
 
     /** Build the format document from the live scene, anchoring paths at the project root. */
     public OMSCFormat.Document extractState(Path projectRoot) {
+        return extractState(projectRoot, null);
+    }
+
+    /**
+     * @param saveable session ids of the models whose bytes are available for embedding;
+     *                 null means all. A model outside the set — and every placement of
+     *                 it — is left out, because the format cannot record a model it has
+     *                 no bytes for.
+     */
+    private OMSCFormat.Document extractState(Path projectRoot, java.util.Set<String> saveable) {
         List<OMSCFormat.ModelRef> models = new ArrayList<>();
         for (SceneModelRef ref : document.models()) {
+            if (saveable != null && !saveable.contains(ref.sessionId())) {
+                continue;
+            }
             String storedPath = ref.sourcePath() != null
                     ? ProjectPaths.relativize(projectRoot, ref.sourcePath().toString())
                     : ref.relativePath();
@@ -196,7 +273,7 @@ public class SceneService {
         List<OMSCFormat.InstanceEntry> instances = new ArrayList<>();
         for (ModelInstance instance : document.instances()) {
             SceneModelRef ref = document.modelFor(instance);
-            if (ref == null) {
+            if (ref == null || (saveable != null && !saveable.contains(ref.sessionId()))) {
                 continue;
             }
             var t = instance.transform();
@@ -208,15 +285,21 @@ public class SceneService {
                             t.getScaleX(), t.getScaleY(), t.getScaleZ()),
                     instance.isVisible(), instance.isLocked()));
         }
+        // Placements whose model never loaded ride along untouched.
+        for (OMSCFormat.InstanceEntry orphan : document.orphanInstances()) {
+            if (saveable == null || saveable.contains(orphan.modelId())) {
+                instances.add(orphan);
+            }
+        }
 
         String now = LocalDateTime.now().format(TIMESTAMP);
         return new OMSCFormat.Document(
                 OMSCFormat.FORMAT_VERSION,
-                document.sceneName(), null, null,
+                document.sceneName(), document.author(), document.description(),
                 document.createdAt() != null ? document.createdAt() : now,
                 now,
                 models, instances,
-                null, null);
+                cameraOut.get(), viewportOut.get());
     }
 
     /**
@@ -240,8 +323,14 @@ public class SceneService {
                 data = ref.embeddedBytes();
             }
             if (data == null) {
-                logger.error("No bytes available for model '{}'; cannot save", ref.sourceName());
-                return null;
+                // Neither a file nor an embedded copy: the format has nothing to write
+                // for this model, so it and its placements are dropped from this save
+                // rather than failing the whole scene. Loud, because it is data loss.
+                logger.error("No bytes available for model '{}'; its {} placement(s) are not saved",
+                        ref.sourceName(), document.instancesOf(ref.sessionId()).size()
+                                + document.orphanInstances().stream()
+                                        .filter(o -> o.modelId().equals(ref.sessionId())).count());
+                continue;
             }
             bytes.put(ref.sessionId(), data);
         }
@@ -306,6 +395,7 @@ public class SceneService {
                 ModelHandle fresh = modelCache.acquire(path);
                 document.replaceHandle(ref.sessionId(), fresh);
                 ref.setStatus(ResolutionStatus.REFERENCED);
+                document.adoptOrphans(ref.sessionId());
                 modelCache.release(old);
                 onSceneChanged.run();
                 logger.info("Reloaded scene model {}", path.getFileName());

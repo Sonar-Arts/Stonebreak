@@ -93,7 +93,6 @@ public class ShaderProgram {
         try {
             vertexShaderId = shaderCompiler.compileShader(shaderCode, GL_VERTEX_SHADER);
             resourceManager.registerShader(vertexShaderId, GL_VERTEX_SHADER);
-            glAttachShader(programId, vertexShaderId);
         } catch (ShaderCompilationException e) {
             LOGGER.log(Level.SEVERE, "Failed to create vertex shader: " + e.getMessage(), e);
             throw new RuntimeException("Failed to create vertex shader", e);
@@ -107,7 +106,6 @@ public class ShaderProgram {
         try {
             fragmentShaderId = shaderCompiler.compileShader(shaderCode, GL_FRAGMENT_SHADER);
             resourceManager.registerShader(fragmentShaderId, GL_FRAGMENT_SHADER);
-            glAttachShader(programId, fragmentShaderId);
         } catch (ShaderCompilationException e) {
             LOGGER.log(Level.SEVERE, "Failed to create fragment shader: " + e.getMessage(), e);
             throw new RuntimeException("Failed to create fragment shader", e);
@@ -120,7 +118,6 @@ public class ShaderProgram {
     public void createGeometryShader(String shaderCode) {
         try {
             geometryShaderId = geometryShaderSupport.createGeometryShader(shaderCode);
-            glAttachShader(programId, geometryShaderId);
         } catch (ShaderCompilationException e) {
             LOGGER.log(Level.SEVERE, "Failed to create geometry shader: " + e.getMessage(), e);
             throw new RuntimeException("Failed to create geometry shader", e);
@@ -162,7 +159,8 @@ public class ShaderProgram {
             int[] actualShaderIds = new int[count];
             System.arraycopy(shaderIds, 0, actualShaderIds, 0, count);
 
-            // Link using the compiler
+            // The compiler owns attachment/detachment; attaching here as well
+            // produces GL_INVALID_OPERATION (shader already attached).
             shaderCompiler.linkProgram(programId, actualShaderIds);
 
             // Clean up individual shaders after linking

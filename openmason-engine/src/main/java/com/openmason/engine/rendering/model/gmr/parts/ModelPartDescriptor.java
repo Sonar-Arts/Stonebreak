@@ -21,6 +21,7 @@ package com.openmason.engine.rendering.model.gmr.parts;
  * @param meshRange Vertex/index/face range in the combined buffer (null before first rebuild)
  * @param visible   Whether this part is rendered
  * @param locked    Whether this part is protected from editing
+ * @param boneId    Optional skeleton binding preserved across edits and serialization
  * @param parentId  ID of the parent part for hierarchical transforms; null = root
  */
 public record ModelPartDescriptor(
@@ -30,8 +31,14 @@ public record ModelPartDescriptor(
         MeshRange meshRange,
         boolean visible,
         boolean locked,
-        String parentId
+        String parentId,
+        String boneId
 ) {
+
+    public ModelPartDescriptor(String id, String name, PartTransform transform,
+                               MeshRange meshRange, boolean visible, boolean locked, String parentId) {
+        this(id, name, transform, meshRange, visible, locked, parentId, null);
+    }
 
     /**
      * Backward-compatible constructor for callers that don't specify a parent.
@@ -49,7 +56,7 @@ public record ModelPartDescriptor(
      * @return Updated descriptor
      */
     public ModelPartDescriptor withName(String newName) {
-        return new ModelPartDescriptor(id, newName, transform, meshRange, visible, locked, parentId);
+        return new ModelPartDescriptor(id, newName, transform, meshRange, visible, locked, parentId, boneId);
     }
 
     /**
@@ -59,7 +66,7 @@ public record ModelPartDescriptor(
      * @return Updated descriptor
      */
     public ModelPartDescriptor withTransform(PartTransform newTransform) {
-        return new ModelPartDescriptor(id, name, newTransform, meshRange, visible, locked, parentId);
+        return new ModelPartDescriptor(id, name, newTransform, meshRange, visible, locked, parentId, boneId);
     }
 
     /**
@@ -69,7 +76,7 @@ public record ModelPartDescriptor(
      * @return Updated descriptor
      */
     public ModelPartDescriptor withMeshRange(MeshRange newRange) {
-        return new ModelPartDescriptor(id, name, transform, newRange, visible, locked, parentId);
+        return new ModelPartDescriptor(id, name, transform, newRange, visible, locked, parentId, boneId);
     }
 
     /**
@@ -79,7 +86,7 @@ public record ModelPartDescriptor(
      * @return Updated descriptor
      */
     public ModelPartDescriptor withVisible(boolean newVisible) {
-        return new ModelPartDescriptor(id, name, transform, meshRange, newVisible, locked, parentId);
+        return new ModelPartDescriptor(id, name, transform, meshRange, newVisible, locked, parentId, boneId);
     }
 
     /**
@@ -89,7 +96,7 @@ public record ModelPartDescriptor(
      * @return Updated descriptor
      */
     public ModelPartDescriptor withLocked(boolean newLocked) {
-        return new ModelPartDescriptor(id, name, transform, meshRange, visible, newLocked, parentId);
+        return new ModelPartDescriptor(id, name, transform, meshRange, visible, newLocked, parentId, boneId);
     }
 
     /**
@@ -100,7 +107,7 @@ public record ModelPartDescriptor(
      * @return Updated descriptor
      */
     public ModelPartDescriptor withParent(String newParentId) {
-        return new ModelPartDescriptor(id, name, transform, meshRange, visible, locked, newParentId);
+        return new ModelPartDescriptor(id, name, transform, meshRange, visible, locked, newParentId, boneId);
     }
 
     /**

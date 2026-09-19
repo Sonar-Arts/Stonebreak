@@ -42,8 +42,26 @@ public class NewTextureDialog {
     private static final float FIELD_WIDTH = 140.0f;
     private static final float PREVIEW_SIZE = 80.0f;
 
+    // Reference-viewport centre for modal positioning (main viewport when docked,
+    // the popped-out editor host window's viewport when windowed). -1 = main viewport.
+    private float refCenterX = -1.0f;
+    private float refCenterY = -1.0f;
+
     public NewTextureDialog() {
         logger.debug("New texture dialog created");
+    }
+
+    /**
+     * Set the reference-viewport centre used for modal positioning.
+     * Called each frame by the texture editor's render path (docked = main
+     * viewport, windowed = the popped-out editor host window's viewport).
+     *
+     * @param centerX reference viewport centre X
+     * @param centerY reference viewport centre Y
+     */
+    public void setReferenceViewportCenter(float centerX, float centerY) {
+        this.refCenterX = centerX;
+        this.refCenterY = centerY;
     }
 
     /**
@@ -86,9 +104,11 @@ public class NewTextureDialog {
 
         if (needsPositioning) {
             ImGui.setNextWindowSize(DIALOG_WIDTH, DIALOG_HEIGHT);
+            float centerX = refCenterX >= 0 ? refCenterX : ImGui.getMainViewport().getCenterX();
+            float centerY = refCenterY >= 0 ? refCenterY : ImGui.getMainViewport().getCenterY();
             ImGui.setNextWindowPos(
-                    ImGui.getMainViewport().getCenterX() - DIALOG_WIDTH / 2.0f,
-                    ImGui.getMainViewport().getCenterY() - DIALOG_HEIGHT / 2.0f
+                    centerX - DIALOG_WIDTH / 2.0f,
+                    centerY - DIALOG_HEIGHT / 2.0f
             );
             needsPositioning = false;
         }

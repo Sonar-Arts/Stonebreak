@@ -26,12 +26,24 @@ public final class McpToolRegistryFactory {
                                         ToolCapabilities capabilities) {
         McpToolRegistry registry = new McpToolRegistry();
 
+        // Every file write goes through one sandbox + policy + Save Sheet seam.
+        com.openmason.main.systems.io.AssetWriteService writes =
+                new com.openmason.main.systems.io.AssetWriteService(mainInterface,
+                        new com.openmason.main.systems.io.WriteSandbox(
+                                com.openmason.main.systems.io.WriteRoots.forInterface(mainInterface)),
+                        com.openmason.main.systems.menus.preferences.AssistantPreferences::writePolicy);
+        new SaveToolDefinitions(writes, mapper).registerAll(registry);
+        ModelFileService modelFiles = new ModelFileService(mainInterface, writes);
+        new ModelFileToolDefinitions(modelFiles, mapper).registerAll(registry);
+        new AssetExportToolDefinitions(new AssetExportService(mainInterface, writes, modelFiles), mapper)
+                .registerAll(registry);
+
         ModelEditingService editor = new ModelEditingService(mainInterface);
         new OpenMasonToolDefinitions(editor, mapper).registerAll(registry);
 
         TextureEditingService textureEditor = new TextureEditingService(mainInterface);
         CanvasCaptureService canvasCapture = new CanvasCaptureService(mainInterface);
-        new TextureToolDefinitions(textureEditor, canvasCapture, mapper).registerAll(registry);
+        new TextureToolDefinitions(textureEditor, canvasCapture, writes, mapper).registerAll(registry);
 
         FaceTextureEditingService faceTextureEditor = new FaceTextureEditingService(mainInterface);
         new FaceTextureToolDefinitions(faceTextureEditor, mapper).registerAll(registry);
@@ -43,10 +55,13 @@ public final class McpToolRegistryFactory {
         new AttachmentToolDefinitions(attachmentEditor, mapper).registerAll(registry);
 
         AnimationEditingService animationEditor = new AnimationEditingService(mainInterface);
-        new AnimationToolDefinitions(animationEditor, mapper).registerAll(registry);
+        new AnimationToolDefinitions(animationEditor, writes, mapper).registerAll(registry);
 
         ViewportCaptureService viewportCapture = new ViewportCaptureService(mainInterface);
         new ViewportToolDefinitions(viewportCapture, mapper).registerAll(registry);
+
+        SceneEditingService sceneEditor = new SceneEditingService(mainInterface);
+        new SceneToolDefinitions(sceneEditor, writes, mapper).registerAll(registry);
 
         com.openmason.main.systems.scripting.mcp.ScriptingService scripting =
                 new com.openmason.main.systems.scripting.mcp.ScriptingService(mainInterface, mapper);

@@ -69,4 +69,14 @@ class TrackSampleTest {
         assertEquals(8f * 0.015625f, s.position().x, EPS);
         assertEquals(90f * 0.015625f, s.rotation().y, EPS);
     }
+
+    @Test
+    void stepEasingHoldsTheOutgoingPoseUntilTheNextKey() {
+        Track track = new Track("p");
+        track.upsert(new Keyframe(0f, new Vector3f(0, 0, 0), new Vector3f(), new Vector3f(1, 1, 1), Easing.STEP));
+        track.upsert(new Keyframe(1f, new Vector3f(10, 0, 0), new Vector3f(), new Vector3f(1, 1, 1), Easing.LINEAR));
+        assertEquals(0f, track.sample(0.5f).position().x, 1e-6f);
+        assertEquals(0f, track.sample(0.99f).position().x, 1e-6f);
+        assertEquals(10f, track.sample(1f).position().x, 1e-6f);
+    }
 }

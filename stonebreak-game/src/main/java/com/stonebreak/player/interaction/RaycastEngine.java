@@ -137,8 +137,12 @@ public class RaycastEngine {
      */
     public float distanceToFirstSolid(Vector3f origin, Vector3f direction, float maxDistance) {
         List<PanelTarget> panels = doorPanelsNear(origin, maxDistance);
+        List<float[]> sceneBoxes = world.getStaticCollisionBoxes(origin, maxDistance);
         for (float d = 0; d < maxDistance; d += STEP_SIZE) {
             Vector3f p = new Vector3f(direction).mul(d).add(origin);
+            for (float[] box : sceneBoxes) {
+                if (insidePanel(box, p)) return d;
+            }
             for (PanelTarget panel : panels) {
                 if (insidePanel(panel.box, p)) {
                     return d; // a door blocks line-of-sight exactly where its panel is

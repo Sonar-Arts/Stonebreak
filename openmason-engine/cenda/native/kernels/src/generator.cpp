@@ -37,6 +37,12 @@ constexpr int CAVERN_CONNECTOR_RADIUS = 5;
  * biome caveIntensity no longer gates caves at all, only the overhang band. */
 constexpr int DENSITY_CAVE_FLOOR = 8;
 constexpr int DENSITY_OVERHANG_DEPTH = 16;
+/* Density3D.WATER_CLEARANCE — the band carve is a per-block test that carves exactly
+ * the cell it samples (it never reaches up like a mask-carver blob), so the one block
+ * that matters is the carve at bed-1: the plane anchors at the wet column's terrain
+ * top (= its first water cell's y), and carving bed-1 is the seabed/bank-wall breach
+ * that pours WaterSim down the hole. See the Java for the full note. */
+constexpr int DENSITY_WATER_CLEARANCE = 1;
 
 /* Density3D.PEAK_DAMP_* — the altitude taper on the overhang band. That band is a
  * silhouette decision rather than a depth one, so unlike everything else here it is
@@ -496,7 +502,11 @@ float densityPeakDamp(int surfaceHeight) {
 /* Density3D.solidInOverhangBand — the biome rule, now a UNION with the cave test
  * rather than a branch that short-circuits it. `n` is the channel the biome selected:
  * crag when it is flagged CK_BIOME_CRAG_SURFACE, cheese otherwise. The caller picks,
- * so each backend samples its own way. */
+ * so each backend samples its own way. The carve decision alone is gated only on
+ * depth and intensity, so the caller ALSO applies the density water gate
+ * (cenda::gen::waterGuardSeals + DENSITY_WATER_CLEARANCE) — the same WaterGuard
+ * plane the mask carvers go through, keeping the band out of the ground beneath and
+ * beside standing water. */
 bool solidInOverhangBand(const ChunkGenCtx& c, float n, int biomeIdx, int surfaceHeight) {
     const float intensity = c.biomeOverhang[static_cast<size_t>(biomeIdx)]
         * densityPeakDamp(surfaceHeight);
@@ -527,11 +537,13 @@ bool densitySolidAt(const ChunkGenCtx& c, float cheese, float s1, float s2,
 
 /* Density3D.Field.isSolid — chunk-local, volumes laid out
  * [(y - CAVE_FLOOR)*256 + localX*16 + localZ]. volume == nullptr means the
- * whole chunk is below the cave floor (prepareChunk returned null): solid. */
+ * whole chunk is below the cave floor (prepareChunk returned null): solid.
+ * `waterGuard` is the chunk's WaterGuard plane — the same one the mask carvers
+ * go through; null suppresses nothing. */
 bool densitySolid(const ChunkGenCtx& c, int localX, int y, int localZ,
                   int surfaceHeight, int biomeIdx, const float* cheeseVol,
                   const float* spag1Vol, const float* spag2Vol, const float* cragVol,
-                  int yCount, const int32_t* table) {
+                  int yCount, const int32_t* table, const int32_t* waterGuard) {
     if (y < DENSITY_CAVE_FLOOR || y >= surfaceHeight) {
         return true;
     }
@@ -551,7 +563,8 @@ bool densitySolid(const ChunkGenCtx& c, int localX, int y, int localZ,
         const bool crag =
             (c.biomeFlags[static_cast<size_t>(biomeIdx)] & CK_BIOME_CRAG_SURFACE) != 0
             && cragVol != nullptr;
-        if (!solidInOverhangBand(c, crag ? cragVol[i] : cheese, biomeIdx, surfaceHeight)) {
+        if (!solidInOverhangBand(c, crag ? cragVol[i] : cheese, biomeIdx, surfaceHeight)
+                && !cenda::gen::waterGuardSeals(waterGuard, col, y, DENSITY_WATER_CLEARANCE)) {
             return false;
         }
     }
@@ -589,12 +602,14 @@ void pruneUnsupportedFormations(uint64_t* formations, SupportFn&& solidAt) {
 int16_t determineBlock(const ChunkGenCtx& c, int worldX, int y, int worldZ,
                        int height, int biomeIdx, const float* cheeseVol,
                        const float* spag1Vol, const float* spag2Vol, const float* cragVol,
-                       int yCount, const int32_t* table, int localX, int localZ) {
+                       int yCount, const int32_t* table, const int32_t* waterGuard,
+                       int localX, int localZ) {
     if (y == 0) {
         return c.bedrockId;
     }
     if (y < height && !densitySolid(c, localX, y, localZ, height, biomeIdx,
-                                    cheeseVol, spag1Vol, spag2Vol, cragVol, yCount, table)) {
+                                    cheeseVol, spag1Vol, spag2Vol, cragVol, yCount, table,
+                                    waterGuard)) {
         return c.airId;
     }
     const uint8_t flags = c.biomeFlags[static_cast<size_t>(biomeIdx)];
@@ -822,7 +837,9 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
 
     /* Every carver is in and the density volumes exist, so a formation's anchor can
      * finally be tested against the chunk as it will actually be written — the same
-     * point TerrainGenerationSystem prunes at, and the same predicate. */
+     * point TerrainGenerationSystem prunes at, and the same predicate (whose density
+     * test applies the density water gate against the plane computed above, exactly
+     * as the block fill below does). */
     if (anyA || anyB) {
         pruneUnsupportedFormations(formMask, [&](int lx, int ly, int lz) -> bool {
             if (ly <= 0) return true; /* bedrock floor */
@@ -831,7 +848,8 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
             if (ly >= h) return false; /* sky or open water above the surface */
             if (testBit(caveMask, (lx << 12) | (ly << 4) | lz)) return false;
             return densitySolid(*ctx, lx, ly, lz, h, biomes[col],
-                                cheeseVol, spag1Vol, spag2Vol, cragVol, yCount, table);
+                                cheeseVol, spag1Vol, spag2Vol, cragVol, yCount, table,
+                                waterGuard);
         });
     }
 
@@ -857,7 +875,7 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
                 } else {
                     block = determineBlock(*ctx, worldX, y, worldZ, height, biomeIdx,
                                            cheeseVol, spag1Vol, spag2Vol, cragVol, yCount,
-                                           table, x, z);
+                                           table, waterGuard, x, z);
                 }
                 if (block != ctx->airId) {
                     out_blocks[y * 256 + z * 16 + x] = block;

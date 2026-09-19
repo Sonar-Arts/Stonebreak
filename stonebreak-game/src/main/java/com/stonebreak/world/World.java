@@ -59,6 +59,7 @@ public class World {
     private final ChunkErrorReporter errorReporter;
     private final WaterSim waterSim;
     private final LeafDecaySystem leafDecay;
+    private final com.stonebreak.blocks.cactus.CactusContactSystem cactusContact;
     private final com.stonebreak.world.generation.features.FeatureQueue featureQueue;
 
     // Extracted collaborators (see their class docs): mesh scheduling, FastLOD lifecycle,
@@ -78,6 +79,13 @@ public class World {
     // entity state arrives from the server. Set only via createClientView(); the
     // authoritative/singleplayer world is never render-only. Drives GameLoop's update branch.
     private volatile boolean renderOnly = false;
+
+    // Torch support sweep re-entry guard (issue #247): popping an unsupported torch removes
+    // it through setBlockAt, which re-enters this funnel for the torch's own cell. The
+    // re-entry sweep always terminates empty (no torch's support is ever a torch — placement
+    // rejects non-solid supports), but the guard skips the redundant scan. World mutations
+    // are confined to the server tick thread / main loop, so plain visibility suffices.
+    private volatile boolean sweepingTorches = false;
 
     // Per-world entity spawner used for initial mob spawning during chunk generation. The
     // headless server world sets this to ITS OWN spawner so generated mobs land in the server's
@@ -148,6 +156,19 @@ public class World {
      * @param testMode If true, skips MmsAPI/rendering initialization (for tests only)
      */
     protected World(WorldConfiguration config, long seed, boolean testMode) {
+        this(config, seed, testMode, true);
+    }
+
+    /**
+     * As above, with {@code generatesTerrain} false for a world that renders a scene of
+     * its own and never asks the generator for a chunk (the battle-test arena). Such a
+     * world gets {@link TerrainGenerationSystem#forSceneWorld}: building the real one
+     * starts the terrain-diffusion services and re-pins a running pair to THIS world's
+     * seed, which makes every tile request the live world has in flight fail with
+     * {@code 400 "this bridge instance is pinned to seed ..."} — entering a battle broke
+     * chunk generation for the world you came from.
+     */
+    protected World(WorldConfiguration config, long seed, boolean testMode, boolean generatesTerrain) {
         this.config = config;
 
         // In production runs, align the world config with the latest persisted
@@ -164,7 +185,9 @@ public class World {
             }
         }
 
-        this.terrainSystem = new TerrainGenerationSystem(seed);
+        this.terrainSystem = generatesTerrain
+            ? new TerrainGenerationSystem(seed)
+            : TerrainGenerationSystem.forSceneWorld(seed);
         this.snowLayerManager = new SnowLayerManager();
         // Per-world furnace registry (see getFurnaceRegistry). The smelting manager comes
         // from the Game singleton when available; in bare unit tests it is null and the
@@ -247,11 +270,12 @@ public class World {
         }
 
         this.meshScheduler = new ChunkMeshScheduler(meshPipeline, neighborCoordinator, chunkStore);
+        this.cactusContact = new com.stonebreak.blocks.cactus.CactusContactSystem(this);
         this.fastLod = new FastLodLifecycle(config, terrainSystem);
         this.networkChunkInstaller = new NetworkChunkInstaller(
                 chunkStore, snowLayerManager, furnaceRegistry, animatedBlockRegistry, meshScheduler);
         this.updates = new WorldUpdateOrchestrator(
-                this, waterSim, leafDecay, furnaceRegistry, chunkStore, chunkManager, meshScheduler, fastLod);
+                this, waterSim, leafDecay, cactusContact, furnaceRegistry, chunkStore, chunkManager, meshScheduler, fastLod);
 
         // Chunk listeners (wired for BOTH the headless server world and rendered worlds).
         // Water simulation load runs only on authoritative worlds (a render-only client
@@ -435,6 +459,11 @@ public class World {
     /**
      * Gets the block type at the specified world position.
      */
+    /** Additional static model colliders, queried locally by player physics. Ordinary voxel worlds have none. */
+    public java.util.List<float[]> getStaticCollisionBoxes(org.joml.Vector3f position, float range) {
+        return java.util.List.of();
+    }
+
     public BlockType getBlockAt(int x, int y, int z) {
         if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
             return BlockType.AIR;
@@ -617,6 +646,27 @@ public class World {
         }
 
         animatedBlockRegistry.onBlockChanged(x, y, z, previous, blockType);
+
+        // Torch support sweep (issue #247): torches held up by the block that just
+        // changed — a break, a decay, or any edit leaving a non-solid cell — pop off
+        // with it, whatever removed the support. Authoritative worlds only: client
+        // render views learn of pops through the server's queued block broadcast.
+        // findUnsupported self-gates on solid cells (one read for placements), so the
+        // sweep costs the same neighbour scan breaks already paid in applyAccepted.
+        // Pops remove the torch through THIS funnel (the re-entry guard skips the
+        // redundant sweep for the torch's own cell), and popUnsupported reports the
+        // AIR write through the replication sink so remote clients observe it through
+        // the same per-section batches as sim edits — save-dirty is automatic via
+        // Chunk#setBlock. Host edits round-trip through applyAccepted afterwards; its
+        // pop sweep then finds nothing (idempotent, no second drop).
+        if (!renderOnly && !sweepingTorches) {
+            sweepingTorches = true;
+            try {
+                com.stonebreak.blocks.torch.TorchBlock.popUnsupported(this, x, y, z);
+            } finally {
+                sweepingTorches = false;
+            }
+        }
 
         // Multiplayer: forward locally-driven block edits (player modifications) to the local
         // client, which sends them to the authoritative server as intents. Inbound network

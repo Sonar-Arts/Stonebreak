@@ -65,6 +65,17 @@ public class BlockTextureArray {
     /** Per-state face-layer overrides. {@code (blockType, stateName) → 6 layer indices}.
      *  Missing entries fall back to {@link #blockFaceLayers}. */
     private final Map<BlockType, Map<String, int[]>> stateBlockFaceLayers = new IdentityHashMap<>();
+    /**
+     * Per-block authored-face→layer table: a triangle's ORIGINAL authored face id
+     * (which can exceed the six MMS faces — a shaped model with 3D detail carries
+     * per-triangle authored ids past 5) → the layer of the material that face is
+     * mapped to. Interior geometry rides its own material's layer instead of
+     * borrowing the geometric MMS face's side texture. Missing entries fall back
+     * to {@link #blockFaceLayers}.
+     */
+    private final Map<BlockType, Map<Integer, Float>> authoredFaceLayers = new IdentityHashMap<>();
+    /** Per-state authored-face overrides. {@code (blockType, stateName) → authored-face → layer}. */
+    private final Map<BlockType, Map<String, Map<Integer, Float>>> stateAuthoredFaceLayers = new IdentityHashMap<>();
 
     /** Decoded ARGB pixels of every layer, retained for UI icon creation. */
     private final List<int[]> layerPixels;
@@ -98,7 +109,8 @@ public class BlockTextureArray {
                 blockFaceLayers.put(block, faceLayers);
                 continue;
             }
-            BufferedImage[] faces = resolveFaceImages(block, bridge, extractor);
+            FaceResolution resolution = resolveFaceImages(block, bridge, extractor, layers, dedup);
+            BufferedImage[] faces = resolution.faces();
             for (int f = 0; f < 6; f++) {
                 int[] px = (faces[f] != null) ? toTile(faces[f]) : null;
                 if (px == null) {
@@ -108,6 +120,14 @@ public class BlockTextureArray {
                 }
             }
             blockFaceLayers.put(block, faceLayers);
+            // Authored-face layers: interior geometry's triangles ride their own
+            // material's layer (via the triangle's authored face id) — recorded
+            // here so state-aware emit picks them up.
+            if (!resolution.authoredFaceLayers().isEmpty()) {
+                authoredFaceLayers.put(block, resolution.authoredFaceLayers());
+                logger.info("Registered {} authored-face layer(s) for {}",
+                        resolution.authoredFaceLayers().size(), block.name());
+            }
 
             // SBO 1.3+ state variants: for each named state (e.g. "Lit"), the
             // variant carries its own materials list inside its embedded OMO.
@@ -116,11 +136,13 @@ public class BlockTextureArray {
             SBOParseResult sbo = (bridge != null) ? bridge.getSBODefinition(block) : null;
             if (sbo != null && sbo.hasStates() && !sbo.stateOmoData().isEmpty()) {
                 Map<String, int[]> perStateLayers = new HashMap<>();
+                Map<String, Map<Integer, Float>> perStateAuthored = new HashMap<>();
                 for (Map.Entry<String, OMOReader.ReadResult> e : sbo.stateOmoData().entrySet()) {
                     String stateName = e.getKey();
                     OMOReader.ReadResult variant = e.getValue();
                     if (variant == null) continue;
-                    BufferedImage[] variantFaces = resolveVariantFaceImages(variant, faces);
+                    FaceResolution variantResolution = resolveVariantFaceImages(variant, faces, layers, dedup);
+                    BufferedImage[] variantFaces = variantResolution.faces();
                     int[] variantLayers = new int[6];
                     boolean anyDifferent = false;
                     for (int f = 0; f < 6; f++) {
@@ -137,11 +159,17 @@ public class BlockTextureArray {
                     if (anyDifferent) {
                         perStateLayers.put(stateName, variantLayers);
                     }
+                    if (!variantResolution.authoredFaceLayers().isEmpty()) {
+                        perStateAuthored.put(stateName, variantResolution.authoredFaceLayers());
+                    }
                 }
                 if (!perStateLayers.isEmpty()) {
                     stateBlockFaceLayers.put(block, perStateLayers);
                     logger.info("Registered {} state-variant texture set(s) for {}",
                             perStateLayers.size(), block.name());
+                }
+                if (!perStateAuthored.isEmpty()) {
+                    stateAuthoredFaceLayers.put(block, perStateAuthored);
                 }
             }
         }
@@ -176,19 +204,27 @@ public class BlockTextureArray {
     // Layer resolution
     // ------------------------------------------------------------------
 
+    /** Per-block face resolution: the six MMS face images plus the authored-face→layer table. */
+    private record FaceResolution(BufferedImage[] faces, Map<Integer, Float> authoredFaceLayers) {}
+
     /**
      * Resolve the six face images of an SBO block, mirroring the per-face
-     * material lookup the legacy {@code SBOTextureIntegrator} performed.
+     * material lookup the legacy {@code SBOTextureIntegrator} performed — and
+     * record the authored-face→layer table for interior geometry: every face
+     * mapping past the six MMS faces (a shaped model's 3D detail) interns its
+     * mapped material as an additional layer so the detail triangles ride their
+     * own material instead of borrowing the block's side texture.
      */
-    private BufferedImage[] resolveFaceImages(BlockType block, SBOBlockBridge bridge,
-                                              SBOTextureExtractor extractor) {
+    private FaceResolution resolveFaceImages(BlockType block, SBOBlockBridge bridge,
+                                             SBOTextureExtractor extractor,
+                                             List<int[]> layers, Map<Integer, List<Integer>> dedup) {
         BufferedImage[] faces = new BufferedImage[6];
         if (bridge == null || !bridge.isSBOBlock(block)) {
-            return faces;
+            return new FaceResolution(faces, Map.of());
         }
         SBOParseResult sbo = bridge.getSBODefinition(block);
         if (sbo == null) {
-            return faces;
+            return new FaceResolution(faces, Map.of());
         }
 
         Map<Integer, BufferedImage> materialTextures = extractor.extractMaterialTexturesByMaterialId(sbo);
@@ -234,7 +270,24 @@ public class BlockTextureArray {
             }
             faces[mmsFace] = faceTexture;
         }
-        return faces;
+
+        // Authored-face→layer table: EVERY mapping (not just the six MMS faces)
+        // — a shaped model's detail faces carry authored ids past 5, each mapped
+        // to its own material. Materials without embedded PNG bytes (e.g. the
+        // cactus's black-tint thorn tints) are skipped — those faces fall back
+        // to the geometric MMS face's layer.
+        // Last mapping wins for a duplicated face id, exactly like faceToMaterialId
+        // above — the flush and interior halves of one face must agree.
+        Map<Integer, Float> authoredFaceLayers = new HashMap<>();
+        for (ParsedFaceMapping mapping : sbo.faceMappings()) {
+            BufferedImage mapped = materialTextures.get(mapping.materialId());
+            if (mapped == null) {
+                continue;
+            }
+            float layer = internLayer(toTile(mapped), layers, dedup);
+            authoredFaceLayers.put(mapping.faceId(), layer);
+        }
+        return new FaceResolution(faces, authoredFaceLayers);
     }
 
     /**
@@ -243,8 +296,9 @@ public class BlockTextureArray {
      * those to look up per-face textures. Faces not remapped by the variant
      * fall back to {@code baseFaces}.
      */
-    private BufferedImage[] resolveVariantFaceImages(OMOReader.ReadResult variant,
-                                                     BufferedImage[] baseFaces) {
+    private FaceResolution resolveVariantFaceImages(OMOReader.ReadResult variant,
+                                                    BufferedImage[] baseFaces,
+                                                    List<int[]> layers, Map<Integer, List<Integer>> dedup) {
         BufferedImage[] faces = new BufferedImage[6];
 
         Map<Integer, BufferedImage> materialTextures = new HashMap<>();
@@ -283,7 +337,21 @@ public class BlockTextureArray {
             }
             faces[mmsFace] = faceTexture;
         }
-        return faces;
+
+        // Authored-face→layer table for the variant's interior geometry, the
+        // same rule the base block records.
+        Map<Integer, Float> authoredFaceLayers = new HashMap<>();
+        if (variant.faceMappings() != null) {
+            for (ParsedFaceMapping mapping : variant.faceMappings()) {
+                BufferedImage mapped = materialTextures.get(mapping.materialId());
+                if (mapped == null) {
+                    continue;
+                }
+                float layer = internLayer(toTile(mapped), layers, dedup);
+                authoredFaceLayers.put(mapping.faceId(), layer);
+            }
+        }
+        return new FaceResolution(faces, authoredFaceLayers);
     }
 
     /** Intern a tile by pixel content, returning an existing or fresh layer index. */
@@ -425,6 +493,34 @@ public class BlockTextureArray {
             }
         }
         return getBlockFaceLayer(block, face);
+    }
+
+    /**
+     * Layer index for a triangle's ORIGINAL authored face id (which can exceed
+     * the six MMS faces). Interior geometry rides its own material's layer;
+     * falls back to the geometric MMS face's layer when the authored face has
+     * no mapped material, when no state variant exists for this state, or when
+     * the arguments are invalid.
+     */
+    public float getBlockFaceLayerForAuthoredFace(BlockType block, String stateName,
+                                                   int authoredFaceId, int mmsFace) {
+        Map<Integer, Float> byFace = null;
+        if (stateName != null && block != null) {
+            Map<String, Map<Integer, Float>> byState = stateAuthoredFaceLayers.get(block);
+            if (byState != null) {
+                byFace = byState.get(stateName);
+            }
+        }
+        if (byFace == null && block != null) {
+            byFace = authoredFaceLayers.get(block);
+        }
+        if (byFace != null) {
+            Float layer = byFace.get(authoredFaceId);
+            if (layer != null) {
+                return layer;
+            }
+        }
+        return getBlockFaceLayer(block, stateName, mmsFace);
     }
 
     /** Layer index of the animated water texture. */

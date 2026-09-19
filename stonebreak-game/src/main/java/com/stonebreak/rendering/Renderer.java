@@ -241,19 +241,11 @@ public class Renderer {
                         sboCullingService.setFaceOcclusionPolicy(
                                 sboRendererAPI.getStampCache()::occludesFace);
 
-                        // Translucency policy: consult the CBR block registry
-                        // (populated after this method returns) for the block's
-                        // resolved render layer. Deferred lookup via `this`
-                        // reference — the predicate is only invoked later at
-                        // chunk-mesh time, by which point blockRegistry is set.
-                        java.util.function.Predicate<com.openmason.engine.voxel.IBlockType> translucencyPolicy = block -> {
-                            if (!(block instanceof com.stonebreak.blocks.BlockType bt)) return false;
-                            if (blockRegistry == null) return false;
-                            String resourceId = "stonebreak:" + bt.name().toLowerCase();
-                            return blockRegistry.getDefinition(resourceId)
-                                    .map(def -> def.getRenderLayer() == com.openmason.engine.rendering.cbr.models.BlockDefinition.RenderLayer.TRANSLUCENT)
-                                    .orElse(false);
-                        };
+                        // Translucency policy: the block's SBO-resolved render
+                        // layer (BlockRenderTraits) — no code-side list of
+                        // translucent block types.
+                        java.util.function.Predicate<com.openmason.engine.voxel.IBlockType> translucencyPolicy = block ->
+                                block instanceof com.stonebreak.blocks.BlockType bt && bt.isTranslucent();
 
                         sboCullingService.setTranslucencyPolicy(translucencyPolicy);
 
@@ -277,18 +269,28 @@ public class Renderer {
 
                         MmsFaceCullingService cullingForNeighborLookup = sboCullingService;
 
-                        // Per-face cull policy: cull an ice block's top face
-                        // when a snow layer sits directly on it. Snow's bottom
-                        // face is coplanar with ice's top face — rendering both
-                        // produces z-fighting at that shared plane.
+                        // Per-face cull policy: cull a translucent block's
+                        // (ice, glass) top face when a snow layer sits directly
+                        // on it. Snow's bottom face is coplanar with that top
+                        // face — rendering both produces z-fighting at the
+                        // shared plane, and the translucent pass cannot depth-
+                        // resolve it.
+                        //
+                        // Cactus stacks: cull the lower cactus's top face when a
+                        // cactus sits directly above, so stacked formations don't
+                        // emit geometry that can never be seen. Authoritative
+                        // regardless of the asset's authored geometry.
                         pendingSBOEmitter.setInstanceFaceCullPolicy((block, lx, ly, lz, face, chunkData) -> {
                             if (face != 0) return false; // top face only
                             if (!(block instanceof com.stonebreak.blocks.BlockType bt)) return false;
-                            if (bt != com.stonebreak.blocks.BlockType.ICE) return false;
+                            boolean translucent = bt.isTranslucent();
+                            if (!translucent && bt != com.stonebreak.blocks.BlockType.CACTUS) return false;
                             com.openmason.engine.voxel.IBlockType above =
                                     cullingForNeighborLookup.getAdjacentBlock(lx, ly + 1, lz, chunkData);
-                            return above instanceof com.stonebreak.blocks.BlockType ab
-                                    && ab == com.stonebreak.blocks.BlockType.SNOW;
+                            if (!(above instanceof com.stonebreak.blocks.BlockType ab)) return false;
+                            return translucent
+                                    ? ab == com.stonebreak.blocks.BlockType.SNOW
+                                    : ab == com.stonebreak.blocks.BlockType.CACTUS;
                         });
 
                         logger.debug("[Renderer] SBO Renderer API: {} block types processed (emitter deferred)", processed);
@@ -406,6 +408,17 @@ public class Renderer {
             skijaBackend.resize(width, height);
         }
         postPipeline.resize(width, height);
+    }
+
+    /** Scripted-camera FOV (degrees). Pair every use with {@link #resetFov()}. */
+    public void setCinematicFov(float degrees) {
+        configManager.setFieldOfViewDegrees(degrees);
+    }
+
+    /** Restores the default gameplay field of view. */
+    public void resetFov() {
+        configManager.setFieldOfViewDegrees(
+                com.openmason.engine.rendering.gl.RenderingConfigurationManager.DEFAULT_FOV_DEGREES);
     }
 
     public int getWindowWidth() {
@@ -585,7 +598,8 @@ public class Renderer {
         org.joml.Vector3f sunDirection = timeOfDay != null
                 ? timeOfDay.getSunDirection()
                 : new org.joml.Vector3f(0.7f, 0.1f, 0.5f).normalize();
-        float godRayStrength = com.stonebreak.config.Settings.getInstance().getGodRaysEnabled()
+        float godRayStrength = !com.stonebreak.battletest.BattleTestSession.isActive()
+                && com.stonebreak.config.Settings.getInstance().getGodRaysEnabled()
                 ? computeGodRayStrength(sunDirection)
                 : 0.0f;
 

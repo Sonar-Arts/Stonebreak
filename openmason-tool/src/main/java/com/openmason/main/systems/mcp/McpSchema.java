@@ -40,6 +40,9 @@ public final class McpSchema {
 
     public McpSchema bool(String name, String description) { return prop(name, "boolean", description); }
 
+    /** Free-form JSON object property (structure documented in the tool description). */
+    public McpSchema obj(String name, String description) { return prop(name, "object", description); }
+
     /** String property constrained to an enum of allowed values. */
     public McpSchema enumStr(String name, String description, String... values) {
         ObjectNode def = mapper.createObjectNode();

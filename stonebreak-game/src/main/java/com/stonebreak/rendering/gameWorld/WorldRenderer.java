@@ -108,7 +108,37 @@ public class WorldRenderer {
     /**
      * Renders the 3D world including chunks, entities, and world effects.
      */
+    private final com.stonebreak.battletest.BattleTestRenderer battleRenderer =
+            new com.stonebreak.battletest.BattleTestRenderer();
+    private boolean battleWasRendered;
+
     public void renderWorld(World world, Player player, float totalTime) {
+        var battle = com.stonebreak.battletest.BattleTestSession.current();
+        if (battle != null) {
+            shadowMapRenderer.suspend();
+            com.stonebreak.rendering.lighting.DynamicLights.update(
+                    world, player, player.getCamera().getPosition(), totalTime);
+            // The arena scene mesh is baked in ABSOLUTE world coordinates (arena.json and the
+            // authored OMO), so it must not be drawn through the RenderOrigin-rebased view matrix
+            // the rest of the frame uses: as soon as the camera leaves the origin's 64-block cell —
+            // which the battle camera does the moment a shot sits at negative x or z — the whole
+            // arena is drawn a grid step away from the actors, which the SBE path rebases correctly.
+            // The arena lives within a few tens of blocks of world zero, so the absolute matrix
+            // costs no precision here.
+            battleRenderer.render(battle.mesh(), projectionMatrix,
+                    player.getCamera().getAbsoluteViewMatrix(),
+                    player.getCamera().getPosition(), totalTime);
+            battleWasRendered = true;
+            renderEntities(player);
+            com.stonebreak.battle.stage.BattleActors.renderIfActive(entityRenderer, projectionMatrix, player.getViewMatrix());
+            effectsRenderer.renderAll(player);
+            renderPlayerArm(player);
+            return;
+        }
+        if (battleWasRendered) {
+            battleRenderer.close();
+            battleWasRendered = false;
+        }
         // Debug: Log first call
         if (debugRenderWorldCount < 1) {
             System.out.println("[WorldRenderer.renderWorld] Called! world=" + (world != null) + " player=" + (player != null));
@@ -307,6 +337,7 @@ public class WorldRenderer {
      * post-processing scene framebuffer (whose depth the god rays read) is still bound.
      */
     public void renderCloudOcclusion(Player player, float totalTime) {
+        if (com.stonebreak.battletest.BattleTestSession.isActive()) return;
         if (!com.stonebreak.config.Settings.getInstance().getCloudsEnabled()) {
             return;
         }
@@ -799,6 +830,7 @@ public class WorldRenderer {
      * Clean up OpenGL resources used by the world renderer.
      */
     public void cleanup() {
+        battleRenderer.close();
         if (skyRenderer != null) {
             skyRenderer.cleanup();
         }

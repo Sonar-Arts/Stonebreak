@@ -24,6 +24,15 @@ public class Camera {
     // Euler angles
     private float yaw;
     private float pitch;
+
+    // Cinematic override (battle camera). While active the camera answers from an explicit
+    // eye/target/roll instead of the player-driven position + Euler angles; the player-driven
+    // state is left untouched so clearing the override restores first/third person exactly.
+    private boolean cinematicActive;
+    private final Vector3f cinematicEye = new Vector3f();
+    private final Vector3f cinematicFront = new Vector3f(0.0f, 0.0f, -1.0f);
+    private final Vector3f cinematicUp = new Vector3f(0.0f, 1.0f, 0.0f);
+    private final Vector3f cinematicRight = new Vector3f(1.0f, 0.0f, 0.0f);
     
     /**
      * Creates a camera with default values.
@@ -65,8 +74,8 @@ public class Camera {
      */
     public Matrix4f getViewMatrix() {
         Vector3f eye = getRenderPosition(new Vector3f());
-        Vector3f target = eye.add(front, new Vector3f());
-        return new Matrix4f().lookAt(eye, target, up);
+        Vector3f target = eye.add(getFront(), new Vector3f());
+        return new Matrix4f().lookAt(eye, target, getUp());
     }
 
     /**
@@ -76,20 +85,29 @@ public class Camera {
      * in world coordinates and the error is provably harmless.
      */
     public Matrix4f getAbsoluteViewMatrix() {
+        if (cinematicActive) {
+            Vector3f cinematicTarget = new Vector3f(cinematicEye).add(cinematicFront);
+            return new Matrix4f().lookAt(cinematicEye, cinematicTarget, cinematicUp);
+        }
+        // Create a temporary "look at" point that is position + front
         Vector3f target = new Vector3f();
         position.add(front, target);
         return new Matrix4f().lookAt(position, target, up);
     }
 
-    /** The camera position in render space — where {@link #getViewMatrix()} puts the eye. */
+    /**
+     * The camera position in render space — where {@link #getViewMatrix()} puts
+     * the eye, which is the scripted eye while a cinematic is running.
+     */
     public Vector3f getRenderPosition(Vector3f dest) {
-        return RenderOrigin.toRender(position, dest);
+        return RenderOrigin.toRender(getPosition(), dest);
     }
     
     /**
      * Processes input received from a mouse input system.
      */
     public void processMouseMovement(float xOffset, float yOffset) {
+        if (cinematicActive) return; // scripted camera: mouse look is ignored
         yaw += xOffset;
         pitch += yOffset;
         
@@ -134,30 +152,74 @@ public class Camera {
      * Gets the camera position.
      */
     public Vector3f getPosition() {
-        return position;
+        return cinematicActive ? cinematicEye : position;
     }
     
     /**
      * Gets the camera's front vector.
      */
     public Vector3f getFront() {
-        return front;
+        return cinematicActive ? cinematicFront : front;
     }
     
     /**
      * Gets the camera's up vector.
      */
     public Vector3f getUp() {
-        return up;
+        return cinematicActive ? cinematicUp : up;
     }
     
     /**
      * Gets the camera's right vector.
      */
     public Vector3f getRight() {
-        return right;
+        return cinematicActive ? cinematicRight : right;
     }
     
+    /**
+     * Takes the camera over for a scripted shot. While active, {@link #getViewMatrix()},
+     * {@link #getPosition()} and the basis vectors answer from this eye/target/roll and mouse
+     * look is ignored. The player-driven position and Euler angles are not modified, so
+     * {@link #clearCinematicView()} restores the normal view exactly.
+     *
+     * @param eye     world-space camera position
+     * @param target  world-space look-at point (must differ from {@code eye})
+     * @param rollDeg roll about the view axis in degrees (0 = level horizon)
+     */
+    public void setCinematicView(Vector3f eye, Vector3f target, float rollDeg) {
+        Vector3f f = new Vector3f(target).sub(eye);
+        if (f.lengthSquared() < 1.0e-10f) {
+            f.set(cinematicFront); // degenerate request: keep the previous direction
+        }
+        f.normalize();
+        Vector3f r = new Vector3f(f).cross(worldUp);
+        if (r.lengthSquared() < 1.0e-8f) {
+            r.set(1.0f, 0.0f, 0.0f); // looking straight up/down: pick a stable right axis
+        }
+        r.normalize();
+        Vector3f u = new Vector3f(r).cross(f).normalize();
+        if (rollDeg != 0.0f) {
+            float a = (float) Math.toRadians(rollDeg);
+            r.rotateAxis(a, f.x, f.y, f.z);
+            u.rotateAxis(a, f.x, f.y, f.z);
+        }
+        cinematicEye.set(eye);
+        cinematicFront.set(f);
+        cinematicRight.set(r);
+        cinematicUp.set(u);
+        cinematicActive = true;
+    }
+
+    /** Ends a scripted shot; the player-driven camera state resumes unchanged. */
+    public void clearCinematicView() {
+        cinematicActive = false;
+    }
+
+    /** True while a scripted shot owns the view. */
+    public boolean isCinematicActive() {
+        return cinematicActive;
+    }
+
     /**
      * Resets the camera to default orientation for a new world.
      */
