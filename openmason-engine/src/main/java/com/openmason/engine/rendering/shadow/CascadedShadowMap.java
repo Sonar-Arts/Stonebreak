@@ -77,6 +77,11 @@ public final class CascadedShadowMap implements AutoCloseable {
      * depth-only scene next.
      */
     public void beginCascade(int index) {
+        bindLayer(index);
+        glClear(GL_DEPTH_BUFFER_BIT);
+    }
+
+    private void bindLayer(int index) {
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
         glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                 depthTextureArray, 0, index);
@@ -89,12 +94,29 @@ public final class CascadedShadowMap implements AutoCloseable {
             }
         }
         glViewport(0, 0, resolution, resolution);
-        glClear(GL_DEPTH_BUFFER_BIT);
     }
 
     /** Unbinds the shadow FBO. The caller restores its own framebuffer and viewport. */
     public void endShadowPass() {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    /**
+     * Seeds a working depth layer from a cached layer before drawing moving casters.
+     * Both maps must have the same dimensions. Leaves the destination bound for rendering;
+     * as with beginCascade, the caller restores framebuffer/viewport state after the pass.
+     */
+    public void copyLayerTo(int index, CascadedShadowMap destination) {
+        if (destination == this || destination.resolution != resolution
+                || index < 0 || index >= cascadeCount || index >= destination.cascadeCount) {
+            throw new IllegalArgumentException("Incompatible shadow depth copy");
+        }
+        destination.bindLayer(index); // Full depth blit overwrites the layer; no redundant clear.
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+        glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthTextureArray, 0, index);
+        glBlitFramebuffer(0, 0, resolution, resolution, 0, 0, resolution, resolution,
+                GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+        glBindFramebuffer(GL_FRAMEBUFFER, destination.fbo);
     }
 
     /** Binds the depth array for receiver-side sampling on the given texture unit. */

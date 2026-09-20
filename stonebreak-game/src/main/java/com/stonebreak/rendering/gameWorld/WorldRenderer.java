@@ -50,6 +50,9 @@ public class WorldRenderer {
     private final CloudRenderer cloudRenderer;
     private final com.stonebreak.rendering.gameWorld.water.WaterRenderer waterRenderer;
     private final com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer shadowMapRenderer;
+    private final com.stonebreak.rendering.gameWorld.shadow.TorchShadowRenderer torchShadowRenderer;
+    private final com.stonebreak.rendering.lighting.TorchIndirectLighting torchIndirectLighting =
+            new com.stonebreak.rendering.lighting.TorchIndirectLighting();
     private final FastLodRenderPass lodRenderPass;
     // Shared region arenas for FastLOD nodes (multidraw batching); created
     // lazily on the GL thread once region rendering is known to be enabled.
@@ -98,6 +101,7 @@ public class WorldRenderer {
         if (animatedBlockRenderer != null) {
             animatedBlockRenderer.setShadowMapRenderer(shadowMapRenderer);
         }
+        this.torchShadowRenderer = new com.stonebreak.rendering.gameWorld.shadow.TorchShadowRenderer(blockTextureArray);
         this.lodRenderPass = new FastLodRenderPass();
         this.fishingLineRenderer = new com.stonebreak.rendering.models.entities.FishingLineRenderer(shaderProgram, projectionMatrix);
         this.waterRenderer = new com.stonebreak.rendering.gameWorld.water.WaterRenderer();
@@ -116,6 +120,8 @@ public class WorldRenderer {
         var battle = com.stonebreak.battletest.BattleTestSession.current();
         if (battle != null) {
             shadowMapRenderer.suspend();
+            torchShadowRenderer.suspend();
+            torchIndirectLighting.suspend();
             com.stonebreak.rendering.lighting.DynamicLights.update(
                     world, player, player.getCamera().getPosition(), totalTime);
             battleRenderer.render(battle.mesh(), projectionMatrix, player.getViewMatrix(),
@@ -177,7 +183,10 @@ public class WorldRenderer {
         // Cascaded sun-shadow depth pre-pass. Runs before anything samples the
         // shadow map this frame; restores the caller's framebuffer and viewport,
         // so it is safe even when the post-fx scene FBO is already bound.
+        if (entityRenderer != null) entityRenderer.prepareShadowCasters(world);
+        torchIndirectLighting.update(world);
         shadowMapRenderer.renderShadowPass(world, player, sunDirection, entityRenderer, reusableLoadedChunks);
+        torchShadowRenderer.render(world, player, reusableLoadedChunks, entityRenderer, animatedBlockRenderer, totalTime);
         checkGLError("After shadow depth pre-pass");
 
         // Render sky first (before world geometry for proper depth testing)
@@ -824,6 +833,8 @@ public class WorldRenderer {
         if (cloudRenderer != null) {
             cloudRenderer.cleanup();
         }
+        torchShadowRenderer.close();
+        torchIndirectLighting.close();
         if (shadowMapRenderer != null) {
             shadowMapRenderer.cleanup();
         }

@@ -46,7 +46,7 @@ import java.util.Set;
  * stream-in) start past the clip's end so they hold the settled pose rather
  * than replaying the transition.
  *
- * <p>V1 limits: these blocks receive cascaded shadows but do not cast them,
+ * <p>These blocks cast live torch shadows and receive cascaded sun shadows,
  * and they are skipped beyond {@link #MAX_RENDER_DISTANCE}.
  */
 public final class AnimatedBlockRenderer {
@@ -55,6 +55,9 @@ public final class AnimatedBlockRenderer {
 
     private static final float MAX_RENDER_DISTANCE = 96f;
     private static final float MAX_RENDER_DISTANCE_SQ = MAX_RENDER_DISTANCE * MAX_RENDER_DISTANCE;
+    private static final org.joml.Vector4f SHADOW_COLOR = new org.joml.Vector4f(1f);
+    private final org.joml.FrustumIntersection shadowFrustum = new org.joml.FrustumIntersection();
+    private final Matrix4f shadowViewProjection = new Matrix4f();
 
     private final SbeEntityRenderer sbeRenderer = new SbeEntityRenderer();
     private final Vector3f unitScale = new Vector3f(1f, 1f, 1f);
@@ -102,6 +105,19 @@ public final class AnimatedBlockRenderer {
      */
     public void render(World world, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                        Vector3f cameraPos, float totalTime) {
+        renderBlocks(world, viewMatrix, projectionMatrix, cameraPos, totalTime, MAX_RENDER_DISTANCE_SQ, false);
+    }
+
+    /** Live door/animated-block shadows. Emissive torches are excluded to avoid enclosing their light. */
+    public void renderShadowCasters(World world, Matrix4f view, Matrix4f projection,
+                                    Vector3f lightPosition, float radius, float totalTime) {
+        float reach = radius + 2f; // include models extending beyond their anchor cell
+        shadowFrustum.set(projection.mul(view, shadowViewProjection));
+        renderBlocks(world, view, projection, lightPosition, totalTime, reach * reach, true);
+    }
+
+    private void renderBlocks(World world, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                              Vector3f cameraPos, float totalTime, float distanceSquared, boolean shadow) {
         if (bridge == null || world == null) return;
 
         Set<BlockPos> positions = world.getAnimatedBlockRegistry().positions();
@@ -109,19 +125,21 @@ public final class AnimatedBlockRenderer {
             if (!playbacks.isEmpty()) playbacks.clear();
             return;
         }
-        playbacks.keySet().retainAll(positions);
+        if (!shadow) playbacks.keySet().retainAll(positions);
 
         for (BlockPos pos : positions) {
             float dx = pos.x() + 0.5f - cameraPos.x;
             float dy = pos.y() + 0.5f - cameraPos.y;
             float dz = pos.z() + 0.5f - cameraPos.z;
-            if (dx * dx + dy * dy + dz * dz > MAX_RENDER_DISTANCE_SQ) continue;
+            if (dx * dx + dy * dy + dz * dz > distanceSquared) continue;
+            if (shadow && !shadowFrustum.testSphere(pos.x() + .5f, pos.y() + 1f, pos.z() + .5f, 2f)) continue;
 
             BlockType type = world.getBlockAt(pos.x(), pos.y(), pos.z());
             if (!AnimatedBlockRegistry.isAnimatedType(type)) {
                 playbacks.remove(pos); // stale index entry — block is gone
                 continue;
             }
+            if (shadow && com.stonebreak.blocks.torch.TorchBlock.isTorch(type)) continue;
             SbeEntityAsset asset = assetFor(type);
             if (asset == null) continue;
 
@@ -175,6 +193,12 @@ public final class AnimatedBlockRenderer {
             float elapsed = totalTime - playback.startTime;
 
             reusablePosition.set(pos.x() + anchorX, pos.y(), pos.z() + anchorZ);
+            if (shadow) {
+                sbeRenderer.renderColored(asset, SbeEntityAsset.DEFAULT_VARIANT,
+                        renderState, elapsed, reusablePosition, yaw, unitScale,
+                        viewMatrix, projectionMatrix, SHADOW_COLOR);
+                continue;
+            }
             // A torch is its own light source: it never reads as unlit.
             sbeRenderer.setSelfGlow(torch ? TORCH_SELF_GLOW : 0f);
             sbeRenderer.render(asset, SbeEntityAsset.DEFAULT_VARIANT,

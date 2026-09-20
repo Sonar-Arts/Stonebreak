@@ -259,6 +259,11 @@ public class EntityRenderer {
         shadowCasterRenderer.render(player, lightView, lightProj, cascadeCenter, cascadeRadius);
     }
 
+    /** Collect casters once before rendering any of the frame's sun/torch shadow views. */
+    public void prepareShadowCasters(com.stonebreak.world.World world) {
+        if (initialized) shadowCasterRenderer.prepare(world);
+    }
+
     /**
      * Network-shadow entities (remote players, replicated mobs/drops) are intentionally
      * NOT removed when their chunk unloads client-side (the server owns their lifecycle —

@@ -3,6 +3,7 @@ package com.stonebreak.rendering.models.entities;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
 import org.joml.Matrix4f;
+import org.joml.FrustumIntersection;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
@@ -18,10 +19,30 @@ final class EntityShadowCasterRenderer {
 
     private final SbeEntityRenderer sbeEntityRenderer;
     private final SbeMobRenderer mobRenderer;
+    private final Matrix4f lightViewProjection = new Matrix4f();
+    private final FrustumIntersection lightFrustum = new FrustumIntersection();
+    private final Vector3f unitScale = new Vector3f(1f);
+    private record Caster(Entity entity, Vector3f position, float height, float bound) {}
+    private final java.util.List<Caster> casters = new java.util.ArrayList<>();
 
     EntityShadowCasterRenderer(SbeEntityRenderer sbeEntityRenderer, SbeMobRenderer mobRenderer) {
         this.sbeEntityRenderer = sbeEntityRenderer;
         this.mobRenderer = mobRenderer;
+    }
+
+    /** One entity snapshot for all sun cascades and all torch faces this frame. */
+    void prepare(com.stonebreak.world.World world) {
+        casters.clear();
+        var manager = com.stonebreak.core.Game.getEntityManager();
+        if (manager == null) return;
+        for (Entity entity : manager.getAllEntities()) {
+            if (!entity.isAlive() || !EntityRenderer.isInRenderableChunk(entity, world)) continue;
+            if (!SbeMobRenderer.handles(entity) && entity.getType() != EntityType.REMOTE_PLAYER
+                    && entity.getType() != EntityType.ILLUSION_DECOY) continue;
+            float height = entity.getHeight();
+            float bound = Math.max(height, Math.max(entity.getWidth(), entity.getLength())) + 1f;
+            casters.add(new Caster(entity, entity.getPosition(), height, bound));
+        }
     }
 
     /**
@@ -34,31 +55,29 @@ final class EntityShadowCasterRenderer {
                 Vector3f cascadeCenter, float cascadeRadius) {
         float cullRadius = cascadeRadius + 8.0f;
         float cullRadiusSq = cullRadius * cullRadius;
-        com.stonebreak.mobs.entities.EntityManager entityManager =
-                com.stonebreak.core.Game.getEntityManager();
-        com.stonebreak.world.World world = com.stonebreak.core.Game.getWorld();
-        if (entityManager != null) {
-            for (Entity entity : entityManager.getAllEntities()) {
-                if (!entity.isAlive()) continue;
-                if (!EntityRenderer.isInRenderableChunk(entity, world)) continue;
-                Vector3f pos = entity.getPosition();
-                float dx = pos.x - cascadeCenter.x;
-                float dz = pos.z - cascadeCenter.z;
-                if (dx * dx + dz * dz > cullRadiusSq) continue;
-                renderEntityShadow(entity, lightView, lightProj);
-            }
+        lightFrustum.set(lightProj.mul(lightView, lightViewProjection));
+        for (Caster caster : casters) {
+            Vector3f pos = caster.position;
+            float dx = pos.x - cascadeCenter.x;
+            float dz = pos.z - cascadeCenter.z;
+            if (dx * dx + dz * dz > cullRadiusSq) continue;
+            // Especially important for six point-light views: only animate/draw a model
+            // into faces it can touch. Padding includes limbs beyond the collision box.
+            if (!lightFrustum.testSphere(pos.x, pos.y + caster.height * .5f, pos.z, caster.bound)) continue;
+            renderEntityShadow(caster.entity, lightView, lightProj);
         }
 
         // The local player always casts — including first person, where the body
         // model isn't drawn to screen but its shadow still should be.
-        if (player != null) {
+        if (player != null && lightFrustum.testSphere(player.getPosition().x,
+                player.getPosition().y + 1f, player.getPosition().z, 2f)) {
             com.stonebreak.mobs.sbe.SbeEntityAsset asset = SbeRenderSupport.playerAsset();
             if (asset != null) {
                 sbeEntityRenderer.renderColored(asset,
                         com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
                         com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(player.getBaseMovementState()),
                         player.getBodyEventTime(),
-                        player.getPosition(), player.getBodyYaw(), new Vector3f(1f, 1f, 1f),
+                        player.getPosition(), player.getBodyYaw(), unitScale,
                         lightView, lightProj, SHADOW_CASTER_COLOR);
             }
         }

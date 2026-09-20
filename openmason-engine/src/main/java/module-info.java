@@ -42,6 +42,7 @@ module openmason.engine {
     exports com.openmason.engine.rendering.sky;
     exports com.openmason.engine.rendering.sky.clouds;
     exports com.openmason.engine.rendering.shadow;
+    exports com.openmason.engine.rendering.lighting;
     exports com.openmason.engine.rendering.postfx;
     exports com.openmason.engine.rendering.postfx.effects;
     exports com.openmason.engine.rendering.viewer;

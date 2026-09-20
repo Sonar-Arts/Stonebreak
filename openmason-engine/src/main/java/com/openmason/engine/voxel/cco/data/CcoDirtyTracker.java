@@ -1,6 +1,7 @@
 package com.openmason.engine.voxel.cco.data;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Thread-safe dirty flag tracker for CCO chunks.
@@ -12,6 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class CcoDirtyTracker {
     private final AtomicBoolean meshDirty;
     private final AtomicBoolean dataDirty;
+    private final AtomicLong blockRevision = new AtomicLong();
 
     public CcoDirtyTracker() {
         this.meshDirty = new AtomicBoolean(false);
@@ -25,7 +27,11 @@ public final class CcoDirtyTracker {
     public void markBlockChanged() {
         meshDirty.set(true);
         dataDirty.set(true);
+        blockRevision.incrementAndGet();
     }
+
+    /** Monotonic block/state revision for derived caches; independent of save/remesh flag clearing. */
+    public long blockRevision() { return blockRevision.get(); }
 
     /**
      * Marks only the mesh as dirty without marking data for save.

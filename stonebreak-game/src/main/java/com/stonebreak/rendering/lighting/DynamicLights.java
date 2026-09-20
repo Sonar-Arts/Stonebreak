@@ -6,142 +6,173 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.torch.TorchBlock;
 import com.stonebreak.blocks.torch.TorchState;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.player.Camera;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.models.blocks.AnimatedBlockRenderer;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
+import org.lwjgl.BufferUtils;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.FloatBuffer;
+import java.util.Map;
+import java.util.WeakHashMap;
 
-/**
- * Per-frame set of dynamic point lights, uploaded to every lit shader (world,
- * water, SBE entities) through the shared {@code point_lights.glsl} uniforms.
- *
- * <p>Sources, gathered once per frame by {@link #update}:
- * <ul>
- *   <li>every placed torch the world's {@code AnimatedBlockRegistry} tracks,
- *       lit at its ember with the intensity of its own flicker phase (the same
- *       phase {@link AnimatedBlockRenderer} plays the clip at);</li>
- *   <li>a torch in the player's hand, carried just below the eye.</li>
- * </ul>
- * The shaders take at most {@link PointLightGlsl#MAX_LIGHTS}; when more are in
- * range the nearest to the camera win. Render-thread only — a static snapshot
- * is the simplest way for the three independent renderers to agree on one
- * light set per frame.
- */
+import static org.lwjgl.opengl.GL20.*;
+
+/** Render-thread snapshot shared by terrain, water and entity lighting. */
 public final class DynamicLights {
+    private static final float MAX_DISTANCE_SQ = 64f * 64f;
+    /** Held-torch ember offset in the camera's own basis (right hand, below the view axis). */
+    private static final float HELD_FORWARD = 0.35f;
+    private static final float HELD_RIGHT = 0.30f;
+    private static final float HELD_UP = -0.25f;
+    private static final NearestLightSources nearest = new NearestLightSources(PointLightGlsl.MAX_LIGHTS);
+    private static final Vector3f[] positions = new Vector3f[PointLightGlsl.MAX_LIGHTS];
+    private static final FloatBuffer positionData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
+    private static final FloatBuffer colorData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
+    private static final Map<ShaderProgram, Upload> uploads = new WeakHashMap<>();
+    private static int count;
+    private static long frame;
+    private static boolean held;
+    private static boolean shadowsEnabled;
+    private static boolean indirectEnabled;
 
-    /** Torches beyond this distance from the camera are not considered. */
-    private static final float MAX_DISTANCE = 64f;
-    private static final float MAX_DISTANCE_SQ = MAX_DISTANCE * MAX_DISTANCE;
-
-    private record Light(float x, float y, float z, float radius,
-                         float r, float g, float b, float distSq) {}
-
-    private static final List<Light> lights = new ArrayList<>();
-    private static final List<Light> candidates = new ArrayList<>();
-    private static final Vector3f scratch = new Vector3f();
-    private static final Vector4f scratchPos = new Vector4f();
-    private static final Vector3f scratchColor = new Vector3f();
-    private static final String[] POS_NAMES = new String[PointLightGlsl.MAX_LIGHTS];
-    private static final String[] COLOR_NAMES = new String[PointLightGlsl.MAX_LIGHTS];
+    /** Cached locations and last uploaded frame; repeated entity draws need no light uploads. */
+    private static final class Upload {
+        final int countLocation, positionLocation, colorLocation, shadowLocation, samplerLocation;
+        final int indirectLocation, indirectSamplerLocation;
+        long frame = -1;
+        Upload(ShaderProgram shader) {
+            int program = shader.getProgramId();
+            countLocation = glGetUniformLocation(program, "u_pointLightCount");
+            positionLocation = glGetUniformLocation(program, "u_pointLightPos[0]");
+            colorLocation = glGetUniformLocation(program, "u_pointLightColor[0]");
+            shadowLocation = glGetUniformLocation(program, "u_pointShadowsEnabled");
+            samplerLocation = glGetUniformLocation(program, "u_pointShadowMap");
+            indirectLocation = glGetUniformLocation(program, "u_pointIndirectEnabled");
+            indirectSamplerLocation = glGetUniformLocation(program, "u_pointIndirectMap");
+        }
+    }
 
     static {
-        for (int i = 0; i < PointLightGlsl.MAX_LIGHTS; i++) {
-            POS_NAMES[i] = "u_pointLightPos[" + i + "]";
-            COLOR_NAMES[i] = "u_pointLightColor[" + i + "]";
-        }
+        for (int i = 0; i < positions.length; i++) positions[i] = new Vector3f();
     }
 
     private DynamicLights() {}
 
-    /**
-     * Rebuild the frame's light set.
-     *
-     * @param totalTime {@code Game.getTotalTimeElapsed()} — the clip clock
-     */
+    /** Select nearest placed sources, reserving one slot for the held torch. */
     public static void update(World world, Player player, Vector3f cameraPos, float totalTime) {
-        candidates.clear();
-        lights.clear();
-        if (world == null || cameraPos == null) return;
-
-        for (BlockPos pos : world.getAnimatedBlockRegistry().positions()) {
-            BlockType type = world.getBlockAt(pos.x(), pos.y(), pos.z());
-            if (!TorchBlock.isTorch(type)) continue;
-            float dx = pos.x() + 0.5f - cameraPos.x;
-            float dy = pos.y() + 0.5f - cameraPos.y;
-            float dz = pos.z() + 0.5f - cameraPos.z;
-            float distSq = dx * dx + dy * dy + dz * dz;
-            if (distSq > MAX_DISTANCE_SQ) continue;
-
-            TorchState state = TorchState.parse(world.getBlockStateAt(pos.x(), pos.y(), pos.z()));
-            state.emberPosition(pos.x(), pos.y(), pos.z(), scratch);
-            float elapsed = totalTime + AnimatedBlockRenderer.loopPhaseOffset(pos, TorchLight.CLIP_DURATION);
-            addTorch(scratch.x, scratch.y, scratch.z, TorchLight.intensity(elapsed), distSq);
+        frame++;
+        count = 0;
+        shadowsEnabled = false;
+        indirectEnabled = false;
+        held = world != null && player != null && !player.getCamera().isCinematicActive() && isHoldingTorch(player);
+        positionData.clear();
+        colorData.clear();
+        nearest.clear(PointLightGlsl.MAX_LIGHTS - (held ? 1 : 0));
+        if (world != null && cameraPos != null) {
+            for (BlockPos pos : world.getAnimatedBlockRegistry().positions()) {
+                float dx = pos.x() + 0.5f - cameraPos.x;
+                float dy = pos.y() + 0.5f - cameraPos.y;
+                float dz = pos.z() + 0.5f - cameraPos.z;
+                float distance = dx * dx + dy * dy + dz * dz;
+                // Reject distant sources before querying blocks or parsing their state.
+                if (distance <= MAX_DISTANCE_SQ && TorchBlock.isTorch(world.getBlockAt(pos.x(), pos.y(), pos.z()))) {
+                    nearest.offer(pos, distance);
+                }
+            }
+            if (held) {
+                heldTorchPosition(world, player, positions[count]);
+                addTorch(totalTime);
+            }
+            for (int i = 0; i < nearest.size(); i++) {
+                BlockPos pos = nearest.get(i);
+                TorchState.parse(world.getBlockStateAt(pos.x(), pos.y(), pos.z()))
+                        .emberPosition(pos.x(), pos.y(), pos.z(), positions[count]);
+                addTorch(totalTime + AnimatedBlockRenderer.loopPhaseOffset(pos, TorchLight.CLIP_DURATION));
+            }
         }
-
-        // A scripted (cinematic) camera is not the player's eye: a carried torch riding it would relight
-        // the scene on every cut. The hand holding the torch is not on screen then either.
-        if (player != null && !player.getCamera().isCinematicActive() && isHoldingTorch(player)) {
-            // Carried a little below and ahead of the eye so the hand itself
-            // isn't the brightest thing on screen; the held torch runs on the
-            // bare world clock (its own phase).
-            Vector3f eye = player.getCamera().getPosition();
-            Vector3f forward = player.getCamera().getFront();
-            float x = eye.x + forward.x * 0.3f;
-            float y = eye.y - 0.25f;
-            float z = eye.z + forward.z * 0.3f;
-            addTorch(x, y, z, TorchLight.intensity(totalTime), 0f);
-        }
-
-        if (candidates.size() > PointLightGlsl.MAX_LIGHTS) {
-            candidates.sort((a, b) -> Float.compare(a.distSq, b.distSq));
-        }
-        for (int i = 0; i < candidates.size() && i < PointLightGlsl.MAX_LIGHTS; i++) {
-            lights.add(candidates.get(i));
-        }
+        positionData.flip();
+        colorData.flip();
     }
 
-    private static void addTorch(float x, float y, float z, float intensity, float distSq) {
-        float k = TorchLight.PEAK * intensity;
-        candidates.add(new Light(x, y, z, TorchLight.RADIUS,
-                TorchLight.COLOR_R * k, TorchLight.COLOR_G * k, TorchLight.COLOR_B * k, distSq));
+    /**
+     * The held torch's ember, built in the camera's own basis so it tracks pitch as well
+     * as yaw. The rendered torch is view-space geometry; the previous world-space offset
+     * used the unflattened forward vector, so looking up or down collapsed the ember onto
+     * the eye and the light appeared to swim (and sat inside the player's own head).
+     * Pulled back toward the eye when the offset would land inside a block, which would
+     * otherwise black the torch out whenever the player faces a nearby wall.
+     */
+    private static void heldTorchPosition(World world, Player player, Vector3f out) {
+        Camera camera = player.getCamera();
+        Vector3f eye = camera.getPosition();
+        for (float scale = 1f; scale >= 0.5f; scale *= 0.5f) {
+            out.set(eye)
+                    .fma(HELD_FORWARD * scale, camera.getFront())
+                    .fma(HELD_RIGHT * scale, camera.getRight())
+                    .fma(HELD_UP * scale, camera.getUp());
+            if (!isSolidAt(world, out)) return;
+        }
+        out.set(eye);
     }
 
-    /** True when the player's selected hotbar item is the torch item. */
+    private static boolean isSolidAt(World world, Vector3f p) {
+        BlockType block = world.getBlockAt((int) Math.floor(p.x), (int) Math.floor(p.y), (int) Math.floor(p.z));
+        return block != null && block.isSolid();
+    }
+
+    private static void addTorch(float elapsed) {
+        Vector3f p = positions[count];
+        positionData.put(p.x).put(p.y).put(p.z).put(TorchLight.RADIUS);
+        float k = TorchLight.PEAK * TorchLight.intensity(elapsed);
+        colorData.put(TorchLight.COLOR_R * k).put(TorchLight.COLOR_G * k).put(TorchLight.COLOR_B * k).put(count);
+        count++;
+    }
+
     public static boolean isHoldingTorch(Player player) {
         if (player == null || player.getInventory() == null) return false;
         ItemStack selected = player.getInventory().getSelectedHotbarSlot();
         return selected != null && !selected.isEmpty() && TorchBlock.isTorchItem(selected.getItem());
     }
 
-    /** Number of lights in the current frame's set. */
-    public static int count() {
-        return lights.size();
-    }
+    public static int count() { return count; }
 
     /**
-     * Upload the frame's lights to a bound shader that includes
-     * {@code point_lights.glsl}. Uses the tolerant auto-registering setters, so
-     * no {@code createUniform} bookkeeping is needed per element.
+     * Slot of the held torch's light, or {@code -1} when none is held. Always slot 0 —
+     * {@link #update} reserves it before the placed sources. Callers that draw the local
+     * player as a shadow caster must skip this light: it rides the camera, so the player's
+     * own body would stamp a head/torso shadow over everything they look at.
      */
+    public static int heldTorchIndex() { return held && count > 0 ? 0 : -1; }
+
+    public static Vector3f position(int index, Vector3f out) { return out.set(positions[index]); }
+
+    /** Called after the depth pass, before any receiver renders. */
+    public static void enableShadows() { shadowsEnabled = true; }
+    public static void enableIndirectLight() { indirectEnabled = true; }
+
+    /** Two packed array uploads per shader per frame, regardless of entity/draw count. */
     public static void applyTo(ShaderProgram shader) {
         if (shader == null) return;
-        int n = lights.size();
-        shader.setInt("u_pointLightCount", n);
-        for (int i = 0; i < n; i++) {
-            Light l = lights.get(i);
-            scratchPos.set(l.x, l.y, l.z, l.radius);
-            scratchColor.set(l.r, l.g, l.b);
-            shader.setVec4(POS_NAMES[i], scratchPos);
-            shader.setVec3(COLOR_NAMES[i], scratchColor);
+        Upload upload = uploads.computeIfAbsent(shader, Upload::new);
+        if (upload.frame == frame) return;
+        glUniform1i(upload.countLocation, count);
+        if (count > 0) {
+            glUniform4fv(upload.positionLocation, positionData);
+            glUniform4fv(upload.colorLocation, colorData);
         }
+        glUniform1i(upload.shadowLocation, shadowsEnabled ? 1 : 0);
+        glUniform1i(upload.samplerLocation, POINT_SHADOW_TEXTURE_UNIT);
+        glUniform1i(upload.indirectLocation, indirectEnabled ? 1 : 0);
+        glUniform1i(upload.indirectSamplerLocation, INDIRECT_TEXTURE_UNIT);
+        upload.frame = frame;
     }
 
-    /** Light level (0..1) a held torch gives the player's own arm/item, on top of the sky sample. */
-    public static float heldTorchLight() {
-        return 0.9f;
-    }
+    /** Separate from the sun map (5), pulled quads (7) and block textures (0/1). */
+    public static final int POINT_SHADOW_TEXTURE_UNIT = 6;
+    public static final int INDIRECT_TEXTURE_UNIT = 8;
+
+    /** Light level supplied to the player's arm/item, whose vertices aren't in world space. */
+    public static float heldTorchLight() { return 0.9f; }
 }
