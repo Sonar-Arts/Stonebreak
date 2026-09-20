@@ -77,7 +77,7 @@ public final class MmsWaterQuadCodec {
     }
 
     public static int word3(int w, int h) {
-        return word3(w, h, NO_FLOW);
+        return word3(w, h, NO_FLOW, 0);
     }
 
     /** "This water does not run", the value {@link #word3(int, int, int)} takes for still water. */
@@ -90,10 +90,24 @@ public final class MmsWaterQuadCodec {
      *             which is what every caller that never sets it wants.
      */
     public static int word3(int w, int h, int flow) {
+        return word3(w, h, flow, 0);
+    }
+
+    /**
+     * @param flow  the river flow octant, as above.
+     * @param depth how much water stands between this face and the solid floor
+     *              under it, in whole blocks, saturating at 255. The fragment
+     *              shader hides the seabed with it: a shallow column stays
+     *              see-through, a deep one reads as opaque water from outside.
+     *              0 means "unknown/shallow", which is what every caller that
+     *              never sets it wants.
+     */
+    public static int word3(int w, int h, int flow, int depth) {
         check(w, 1, 16, "w");
         check(h, 1, 16, "h");
         check(flow, NO_FLOW, 7, "flow");
-        return (w - 1) | ((h - 1) << 4) | ((flow + 1) << 8);
+        check(depth, 0, 255, "depth");
+        return (w - 1) | ((h - 1) << 4) | ((flow + 1) << 8) | (depth << 12);
     }
 
     private static void check(int v, int lo, int hi, String what) {
@@ -150,6 +164,16 @@ public final class MmsWaterQuadCodec {
         return ((w3 >>> 8) & 0xF) - 1;
     }
 
+    /** Water-column depth in whole blocks (0..255). See {@link #word3(int,int,int,int)}. */
+    public static int depth(int w3) {
+        return (w3 >>> 12) & 0xFF;
+    }
+
+    /** {@link #depth(int)} of the quad at index {@code q}. */
+    public static float depth(ByteBuffer quads, int q) {
+        return depth(quads.getInt(q * QUAD_BYTES + 12));
+    }
+
     public static float position(ByteBuffer quads, int q, int corner, int axis,
                                  float originX, float originY, float originZ) {
         int w0 = quads.getInt(q * QUAD_BYTES);
@@ -184,11 +208,17 @@ public final class MmsWaterQuadCodec {
      * The {@link MmsBufferLayout#packFlags} word a vertex of this corner
      * carries: {@code (surface, falling, source, flow)}.
      *
-     * <p>This is the CPU-side twin of what {@code water.vert} builds from the
-     * same record, and it has to stay that way — it is what a reader of the
-     * mesh (tests, tooling) sees in place of the GPU's own decode. The flow
-     * code rides as EIGHTHS here, matching the per-vertex mesh path, because
-     * the flag slots are normalised to [0,1] bytes.
+     * <p>This is the CPU-side expansion of a pulled record into the flag word
+     * the PER-VERTEX mesh path carries, which is what a reader of the mesh
+     * (tests, tooling) sees in place of the GPU's own decode. So the flow code
+     * rides as EIGHTHS here: {@link MmsBufferLayout#packFlags} normalises every
+     * slot to a [0,1] byte, and {@code water.vert} scales that branch back out
+     * with {@code floor(flags.w * 8.0 + 0.5)}.
+     *
+     * <p>Deliberately NOT the same number {@code water.vert} puts in
+     * {@code flags.w} when it pulls this record itself — there it reads the
+     * code straight out of word3, unscaled. The shader knows which path it is
+     * on and decodes accordingly; do not "fix" one side to match the other.
      */
     public static int flags(ByteBuffer quads, int q, int corner) {
         int w0 = quads.getInt(q * QUAD_BYTES);

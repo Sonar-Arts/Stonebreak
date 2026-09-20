@@ -28,6 +28,7 @@ import java.util.List;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL20.*;
+import com.stonebreak.rendering.gameWorld.UnderwaterFog;
 
 /**
  * Specialized renderer for block and item drops in the world.
@@ -95,7 +96,11 @@ public class DropRenderer {
             int camX = (int) Math.floor(cameraPos.x);
             int camY = (int) Math.floor(cameraPos.y);
             int camZ = (int) Math.floor(cameraPos.z);
-            if (world.isPositionUnderwater(camX, camY, camZ)) fogDensity = 0.15f;
+            // Depth-scaled, so a drop dissolves at the same range as the
+            // seabed behind it (see UnderwaterFog).
+            if (world.isPositionUnderwater(camX, camY, camZ)) {
+                fogDensity = UnderwaterFog.density(cameraPos.y);
+            }
         }
         // Render space: the fragment stage differences it against fragPos.
         shaderProgram.setUniform("u_cameraPos", cameraPos != null
@@ -163,7 +168,11 @@ public class DropRenderer {
             int camX = (int) Math.floor(cameraPos.x);
             int camY = (int) Math.floor(cameraPos.y);
             int camZ = (int) Math.floor(cameraPos.z);
-            if (world.isPositionUnderwater(camX, camY, camZ)) fogDensity = 0.15f;
+            // Depth-scaled, so a drop dissolves at the same range as the
+            // seabed behind it (see UnderwaterFog).
+            if (world.isPositionUnderwater(camX, camY, camZ)) {
+                fogDensity = UnderwaterFog.density(cameraPos.y);
+            }
         }
         // Render space: the fragment stage differences it against fragPos.
         shaderProgram.setUniform("u_cameraPos", cameraPos != null
@@ -252,7 +261,8 @@ public class DropRenderer {
 
             // Apply fog if camera is underwater (affects all drops)
             if (cameraUnderwater) {
-                fogDensity = 0.15f; // Moderate fog density for nice underwater effect
+                // Depth-scaled, matching the terrain/water fog (UnderwaterFog).
+                fogDensity = UnderwaterFog.density(cameraPos.y);
             }
         }
 

@@ -35,9 +35,12 @@ final class ChunkSaveCodec {
     // ===== Snapshot (save) =====
 
     /**
-     * Extracts water metadata from the chunk's own water layer. Only
-     * non-source (flowing/falling) cells exist there; sources re-derive
-     * from the block array on load. Falling persists as (level 1, true).
+     * Extracts water metadata from the chunk's own water layer. A plain source
+     * has no entry there — it re-derives from the block array on load — so what
+     * this collects is the flowing and falling cells, plus the worldgen river
+     * surfaces, which ARE sources but carry a direction the block array cannot
+     * hold. Falling persists as (level 1, true); a river persists as its own
+     * value (see below).
      *
      * @param blocksCopy the atomic block copy the snapshot will carry
      */

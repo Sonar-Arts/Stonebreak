@@ -526,18 +526,18 @@ public class World {
     // ===== Water state (chunk-owned water layer) =====
 
     /**
-     * Water flow value at a world position, read from the chunk's water layer:
-     * 0 = source, 1-7 = flowing level, {@link com.stonebreak.world.chunk.ChunkWaterLayer#FALLING}
-     * (8) = falling, -1 = not water or chunk not loaded.
+     * The RAW water-layer value at a world position, exactly as the layer
+     * stores it, or -1 when the cell is not loaded water.
      *
-     * <p>A worldgen river surface reports SOURCE, which is what it is — the
-     * direction it also carries is a rendering concern and is read through the
-     * water layer directly (see {@link com.stonebreak.world.chunk.ChunkWaterLayer#isRiver}).
-     * Normalising here keeps every "how much water" caller — submersion depth,
-     * surface height, the source test below — on the 0..8 vocabulary they were
-     * written against.
+     * <p>Raw means a worldgen river surface reports {@code RIVER + octant}
+     * (9..16) rather than the source it behaves as. Almost nothing wants that:
+     * {@link #getWaterLevelAt} is the "how much water" question and
+     * {@link #getRiverFlowAt} the "which way" one, and both are derived from
+     * this. It is public for the one caller that asks both about the same cell
+     * — the mesher — which would otherwise walk the chunk map twice per water
+     * block to get two halves of one value.
      */
-    public int getWaterLevelAt(int x, int y, int z) {
+    public int getWaterValueAt(int x, int y, int z) {
         if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
             return -1;
         }
@@ -551,8 +551,23 @@ public class World {
         if (chunk.getBlock(localX, y, localZ) != BlockType.WATER) {
             return -1;
         }
-        return com.stonebreak.world.chunk.ChunkWaterLayer.level(
-            chunk.getWaterLayer().get(localX, y, localZ));
+        return chunk.getWaterLayer().get(localX, y, localZ);
+    }
+
+    /**
+     * Water flow value at a world position, read from the chunk's water layer:
+     * 0 = source, 1-7 = flowing level, {@link com.stonebreak.world.chunk.ChunkWaterLayer#FALLING}
+     * (8) = falling, -1 = not water or chunk not loaded.
+     *
+     * <p>A worldgen river surface reports SOURCE, which is what it is — the
+     * direction it also carries is a rendering concern and is read through
+     * {@link #getRiverFlowAt}. Normalising here keeps every "how much water"
+     * caller — submersion depth, surface height, the source test below — on the
+     * 0..8 vocabulary they were written against.
+     */
+    public int getWaterLevelAt(int x, int y, int z) {
+        int value = getWaterValueAt(x, y, z);
+        return value < 0 ? -1 : com.stonebreak.world.chunk.ChunkWaterLayer.level(value);
     }
 
     /**
@@ -564,22 +579,17 @@ public class World {
      * says which way it is moving, which a source block cannot.
      */
     public int getRiverFlowAt(int x, int y, int z) {
-        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
-            return -1;
-        }
-        Chunk chunk = getChunkIfLoaded(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
-                                       Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE));
-        if (chunk == null) {
-            return -1;
-        }
-        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
-        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
-        if (chunk.getBlock(localX, y, localZ) != BlockType.WATER) {
-            return -1;
-        }
-        int value = chunk.getWaterLayer().get(localX, y, localZ);
-        return com.stonebreak.world.chunk.ChunkWaterLayer.isRiver(value)
-            ? com.stonebreak.world.chunk.ChunkWaterLayer.octant(value)
+        return riverFlowOf(getWaterValueAt(x, y, z));
+    }
+
+    /**
+     * {@link #getRiverFlowAt} for a value already read through
+     * {@link #getWaterValueAt}, so a caller that also needs the level does not
+     * pay for a second lookup of the same cell.
+     */
+    public static int riverFlowOf(int waterValue) {
+        return waterValue >= 0 && com.stonebreak.world.chunk.ChunkWaterLayer.isRiver(waterValue)
+            ? com.stonebreak.world.chunk.ChunkWaterLayer.octant(waterValue)
             : -1;
     }
 

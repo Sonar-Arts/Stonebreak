@@ -4,6 +4,7 @@ import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.mobs.entities.Entity;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import com.stonebreak.rendering.gameWorld.UnderwaterFog;
 
 /**
  * Last-resort entity visual: a white, world-lit unit cube scaled/rotated by the
@@ -31,7 +32,9 @@ final class FallbackCubeRenderer {
         if (world != null && cameraPos != null
                 && world.isPositionUnderwater((int) Math.floor(cameraPos.x),
                         (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z))) {
-            fogDensity = 0.15f;
+            // Scaled by depth, so an entity dissolves at the same range as the
+            // seabed behind it (see UnderwaterFog).
+            fogDensity = UnderwaterFog.density(cameraPos.y);
         }
 
         pipeline.begin(fallbackTexture, viewMatrix, projectionMatrix,

@@ -11,6 +11,9 @@
 //                        z: source flag, w: river flow code in EIGHTHS
 //                        (0 = still water, k/8 = octant k-1), because the
 //                        per-vertex flag bytes are normalised to [0,1]
+//   location 4 (layer) = water-column depth in whole blocks (water is
+//                        untextured, so the texture-layer slot carries the
+//                        depth the fragment stage hides the seabed with)
 // Positions are render-space (chunk meshes carry no model matrix; their origin
 // attribute is baked relative to RenderOrigin). uRenderOrigin.xy is that
 // origin's world XZ, for the few places that need the absolute coordinate
@@ -19,6 +22,7 @@ layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec2 aUV;
 layout (location = 2) in vec3 aNormal;
 layout (location = 3) in vec4 aFlags;
+layout (location = 4) in float aLayer;
 // Per-mesh origin + position scale (compact vertex formats; identity otherwise).
 // w < -2.5 = pulled water quads (MmsWaterQuadCodec) read from u_quads by gl_VertexID.
 layout (location = 5) in vec4 aOrigin;
@@ -37,7 +41,8 @@ const vec3 QUAD_NORMAL[6] = vec3[6](
 const int QUAD_UAXIS[6] = int[6](0, 0, 0, 0, 2, 2);
 const int QUAD_VAXIS[6] = int[6](2, 2, 1, 1, 1, 1);
 
-void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, out bool sheet) {
+void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags,
+                   out bool sheet, out float depth) {
     int qi = gl_VertexID >> 2;
     int corner = gl_VertexID & 3;
     uvec4 q = texelFetch(u_quads, qi);
@@ -64,6 +69,8 @@ void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags,
     float surface = float((q.z >> (uint(corner) * 8u)) & 255u) / 255.0;
     // word3 bits 8..11: the flow code straight, no eighths needed here.
     float flow = float((q.w >> 8u) & 15u);
+    // word3 bits 12..19: water-column depth in whole blocks (MmsWaterQuadCodec).
+    depth = float((q.w >> 12u) & 255u);
     flags = vec4(surface, falling, source, flow);
 }
 
@@ -82,6 +89,10 @@ out vec2 vUV;
 out float vFalling;
 out float vSource;
 out float vSurfaceHeight;
+// How much water stands between this face and the floor under it, in blocks.
+// Per-quad (one value for the whole cell / LOD sheet rectangle), so flat —
+// interpolating it would smear a shoreline's shallows into the deep next to it.
+flat out float vWaterDepth;
 // 0 = still water; 1..8 = a river running in octant 0..7 (0 = +X, then
 // counter-clockwise in eighths of a turn). Flat: a cell runs one way, and
 // interpolating a direction across a quad would smear two rivers together
@@ -111,8 +122,9 @@ void main() {
     vec4 flagsIn;
     bool sheet = false;
     float flowCode;
+    float depth;
     if (aOrigin.w < -2.5) {
-        pullWaterQuad(pos, uvIn, nrmIn, flagsIn, sheet);
+        pullWaterQuad(pos, uvIn, nrmIn, flagsIn, sheet, depth);
         pos += aOrigin.xyz;
         flowCode = flagsIn.w;
     } else {
@@ -120,6 +132,8 @@ void main() {
         uvIn = aUV;
         nrmIn = aNormal;
         flagsIn = aFlags;
+        // Per-vertex water meshes carry the depth in the layer slot.
+        depth = aLayer;
         // The per-vertex path carries the code in eighths (see the header).
         flowCode = floor(flagsIn.w * 8.0 + 0.5);
     }
@@ -176,5 +190,6 @@ void main() {
     vFalling = falling;
     vSource = flagsIn.z;
     vSurfaceHeight = surfH;
+    vWaterDepth = depth;
     vFlow = flowCode;
 }

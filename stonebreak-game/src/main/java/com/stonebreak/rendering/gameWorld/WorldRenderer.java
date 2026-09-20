@@ -36,7 +36,8 @@ import com.stonebreak.world.World;
  * This renderer handles all world rendering without UI elements.
  */
 public class WorldRenderer {
-    
+
+
     // Dependencies
     private final ShaderProgram shaderProgram;
     private final BlockTextureArray blockTextureArray;
@@ -188,8 +189,33 @@ public class WorldRenderer {
         shadowMapRenderer.renderShadowPass(world, player, sunDirection, entityRenderer, reusableLoadedChunks);
         checkGLError("After shadow depth pre-pass");
 
-        // Render sky first (before world geometry for proper depth testing)
-        skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), sunDirection, skyColor);
+        // Underwater changes what the BACKGROUND is, so it has to be decided
+        // before the sky pass rather than with the fog parameters further down.
+        Vector3f cameraPos = player.getCamera().getPosition();
+        boolean cameraUnderwater = world.isPositionUnderwater(
+                (int) Math.floor(cameraPos.x), (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z));
+
+        if (cameraUnderwater) {
+            // Fog alone cannot hide the horizon, because it only tints pixels
+            // something was drawn to. The sky gradient and the sun disc are
+            // drawn at full brightness and never fogged, and wherever no chunk
+            // has loaded there is no fragment at all — so in a deep ocean the
+            // far water ends in a bright band of sky exactly where visibility
+            // is supposed to have run out. Skip the sky and fill the frame with
+            // the colour the fog saturates to, so "further than 20 blocks" and
+            // "nothing rendered there" are the same colour.
+            float[] previousClear = new float[4];
+            glGetFloatv(GL_COLOR_CLEAR_VALUE, previousClear);
+            glClearColor(UnderwaterFog.COLOR.x, UnderwaterFog.COLOR.y, UnderwaterFog.COLOR.z, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            // Put back whatever the clear colour was — FrameRenderer clears
+            // with it before this method is reached, and the next frame may be
+            // above water.
+            glClearColor(previousClear[0], previousClear[1], previousClear[2], previousClear[3]);
+        } else {
+            // Render sky first (before world geometry for proper depth testing)
+            skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), sunDirection, skyColor);
+        }
         checkGLError("After sky rendering");
 
         // Ensure proper depth function for world geometry
@@ -210,13 +236,15 @@ public class WorldRenderer {
         com.stonebreak.config.Settings settings = com.stonebreak.config.Settings.getInstance();
         float fogStart = 0f, fogEnd = 0f;
         Vector3f fogColor = skyColor;
-        Vector3f cameraPos = player.getCamera().getPosition();
-        boolean cameraUnderwater = world.isPositionUnderwater(
-                (int) Math.floor(cameraPos.x), (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z));
+        // Underwater the fog is a VOLUME around the eye, so it is measured as a
+        // sphere; the atmospheric fog keeps its horizontal measure, which is
+        // what makes a distant peak fade with its base instead of pulling clear
+        // of the haze as the camera climbs.
+        boolean fogSpherical = cameraUnderwater;
         if (cameraUnderwater) {
-            fogStart = 4.0f;
-            fogEnd = 20.0f;
-            fogColor = new Vector3f(0.05f, 0.2f, 0.35f);
+            fogStart = UnderwaterFog.start(cameraPos.y);
+            fogEnd = UnderwaterFog.end(cameraPos.y);
+            fogColor = UnderwaterFog.COLOR;
         } else if (settings.getLodEnabled() && settings.getLodDistance() > 0) {
             fogStart = settings.getRenderDistance() * (float) WorldConfiguration.CHUNK_SIZE;
             fogEnd = (settings.getRenderDistance() + settings.getLodDistance())
@@ -224,7 +252,7 @@ public class WorldRenderer {
         }
 
         // Set common uniforms for world rendering
-        setupWorldUniforms(player, fogColor, fogStart, fogEnd);
+        setupWorldUniforms(player, fogColor, fogStart, fogEnd, fogSpherical);
         // Water animation setting — consumed by the dedicated water renderer
         // (waves + flow scroll) and the LOD sea-sheet drift (u_time).
         boolean waterAnimationEnabled = settings.getWaterShaderEnabled();
@@ -306,7 +334,7 @@ public class WorldRenderer {
         // them — physically correct compositing.
         waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
                 player.getCamera().getPosition(), totalTime, sunDirection,
-                ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd,
+                ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd, fogSpherical,
                 reusableLodWater, lodRegionBatcher, lodStamp);
         checkGLError("After water pass");
 
@@ -316,7 +344,10 @@ public class WorldRenderer {
         // terrain/water below instead of being overwritten by it (clouds do
         // not write depth, so anything drawn later at the same pixels would
         // win regardless of distance if this ran before the world passes).
-        if (com.stonebreak.config.Settings.getInstance().getCloudsEnabled()) {
+        // Not underwater, for the same reason the sky is skipped there: clouds
+        // are never fogged, and they draw into exactly the gaps that have no
+        // water in front of them to depth-reject them — the unloaded horizon.
+        if (!cameraUnderwater && com.stonebreak.config.Settings.getInstance().getCloudsEnabled()) {
             cloudRenderer.renderClouds(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, ambientLightLevel);
             checkGLError("After cloud rendering");
         }
@@ -369,7 +400,7 @@ public class WorldRenderer {
      * Set up common uniforms for world rendering.
      */
     private void setupWorldUniforms(Player player, Vector3f skyColor,
-                                    float fogStart, float fogEnd) {
+                                    float fogStart, float fogEnd, boolean fogSpherical) {
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
         shaderProgram.setUniform("modelMatrix", new Matrix4f()); // Identity for world chunks
@@ -414,6 +445,7 @@ public class WorldRenderer {
         shaderProgram.setUniform("u_fogColor", skyColor);
         shaderProgram.setUniform("u_fogStart", fogStart);
         shaderProgram.setUniform("u_fogEnd", fogEnd);
+        shaderProgram.setUniform("u_fogSpherical", fogSpherical);
     }
     
     /**

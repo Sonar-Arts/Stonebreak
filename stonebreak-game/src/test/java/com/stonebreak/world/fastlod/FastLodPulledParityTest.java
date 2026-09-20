@@ -296,6 +296,53 @@ class FastLodPulledParityTest {
         }
     }
 
+    /**
+     * The greedy merge folds equal cells into one record, and a record carries
+     * ONE water depth — so cells that stand differently deep must not merge, or
+     * a shoal would be swallowed by the deep water beside it and read as
+     * bottomless.
+     */
+    @Test
+    void sheetCellsOfDifferentDepthDoNotMerge() {
+        FastLodLevel level = FastLodLevel.L2;
+        int stride = level.stride();
+        int[] heights = new int[stride * stride];
+        // Half the node is a shoal 2 blocks down, half is 30 blocks down.
+        for (int ix = 0; ix < stride; ix++) {
+            for (int iz = 0; iz < stride; iz++) {
+                heights[ix * stride + iz] = iz < stride / 2 ? 318 : 290;
+            }
+        }
+        BlockType[] surface = new BlockType[level.cellCount()];
+        java.util.Arrays.fill(surface, BlockType.SAND);
+        int[] waterLevels = new int[level.cellCount()];
+        java.util.Arrays.fill(waterLevels, 320);
+        FastLodChunkData d = new FastLodChunkData(
+            FastLodKey.of(level, 0, 0), heights, waterLevels, surface,
+            level.emitsTrees() ? new TreeSample[level.cellCount()] : null);
+
+        MmsVertexFormat.override(MmsVertexFormat.QUAD16);
+        MmsMeshData sheet = mesher().build(d).waterMesh();
+        assertNotNull(sheet);
+
+        java.nio.ByteBuffer quads = java.nio.ByteBuffer.wrap(sheet.getPackedVertexData())
+            .order(java.nio.ByteOrder.nativeOrder());
+        int deep = 0;
+        int shoal = 0;
+        for (int q = 0; q < sheet.getVertexCount() / 4; q++) {
+            int depth = com.openmason.engine.voxel.mms.mmsCore.MmsWaterQuadCodec.depth(
+                quads.getInt(q * com.openmason.engine.voxel.mms.mmsCore.MmsWaterQuadCodec.QUAD_BYTES + 12));
+            if (depth == 2) {
+                shoal++;
+            } else if (depth == 16) {
+                deep++;
+            } else {
+                throw new AssertionError("a merged record blended two depths: " + depth);
+            }
+        }
+        assertTrue(shoal > 0 && deep > 0, "both halves survive the merge: " + shoal + " / " + deep);
+    }
+
     /** A lake perched above y=511 used to throw straight out of WATERQUAD16's word0. */
     @Test
     void waterSheetHighInTheColumnStillEmitsQuads() {

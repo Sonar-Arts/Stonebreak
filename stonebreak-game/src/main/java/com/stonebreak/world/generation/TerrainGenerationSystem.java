@@ -523,7 +523,13 @@ public class TerrainGenerationSystem {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 int idx = x * CHUNK_SIZE + z;
                 int octant = riverFlows[idx];
-                if (octant == TerrainTile.NO_FLOW) {
+                // Anything outside 0..7 means "no direction", not just the
+                // TerrainTile.NO_FLOW sentinel. The carve kernel emits only -1
+                // or an octant, but this plane also arrives from other tile
+                // sources, and ChunkWaterLayer.set REJECTS the value a bad
+                // octant would build — which would surface as an exception on a
+                // worldgen worker, mid chunk, rather than as a missing marker.
+                if (octant < 0 || octant > 7) {
                     continue;
                 }
                 int top = waterLevels[idx] - 1;

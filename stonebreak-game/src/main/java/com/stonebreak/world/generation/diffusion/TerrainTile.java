@@ -50,19 +50,6 @@ public record TerrainTile(
     }
 
     /**
-     * A tile with tunnels but no flow plane — the shape every caller wrote
-     * before rivers carried a direction, kept so a test fixture that only
-     * cares about tunnels does not have to say so three times.
-     */
-    public TerrainTile(int tileX, int tileZ, int worldI1, int worldJ1, int worldI2, int worldJ2,
-                       int width, int height,
-                       short[] blockHeights, short[] biomeIds, short[] waterLevels,
-                       short[] riverFloors, short[] riverRoofs) {
-        this(tileX, tileZ, worldI1, worldJ1, worldI2, worldJ2, width, height,
-                blockHeights, biomeIds, waterLevels, riverFloors, riverRoofs, null);
-    }
-
-    /**
      * Water level for a column: the first y that is <em>not</em> water, so a column
      * holds water for {@code height <= y < waterLevel}. {@link #NO_WATER} means the
      * column holds none at all.

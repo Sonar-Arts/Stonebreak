@@ -58,7 +58,7 @@ class TerrainTileTest {
         short[] floors = {-1, 357, -1, -1, -1, -1};
         short[] roofs = {-1, 365, -1, -1, -1, -1};
         TerrainTile tile = new TerrainTile(0, 0, 10, 20, 12, 23, 3, 2,
-                heights, biomes, water, floors, roofs);
+                heights, biomes, water, floors, roofs, null);
 
         assertEquals(357, tile.riverFloorAt(10, 21));
         assertEquals(365, tile.riverRoofAt(10, 21));

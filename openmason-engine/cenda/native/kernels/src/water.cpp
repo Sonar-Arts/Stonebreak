@@ -1689,8 +1689,14 @@ int32_t ck_carve_water(int64_t seed,
      *
      * Runs on `s.water`, which is complete over the stamp range by now, and
      * writes only `s.flow`, which nothing else reads — so it can sit before
-     * the rail without disturbing anything it does. The one-column inset keeps
-     * the 8-neighbour reads inside the range. */
+     * the rail without disturbing anything it does.
+     *
+     * The one-column inset keeps the 8-neighbour reads inside the range, and it
+     * costs the emitted tile nothing, which is worth stating so nobody widens
+     * it back out: `stampLo <= bankLo <= T-1`, and `stampHi >= bankHi >= 2T+1`
+     * unless the window itself ends first, so both skipped edges lie OUTSIDE
+     * `[T, 2T)`. Every column this call actually emits is corrected; the two
+     * columns that are not are guard-rail margin the output never reads. */
     {
         static constexpr int OCTANT_X[8] = {1, 1, 0, -1, -1, -1, 0, 1};
         static constexpr int OCTANT_Z[8] = {0, 1, 1, 1, 0, -1, -1, -1};

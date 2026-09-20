@@ -63,6 +63,14 @@ public final class FastLodMesher {
      * per cell rather than a single global plane — see {@link
      * FastLodChunkData#waterLevelAt}.
      */
+    /**
+     * Cap on the water-column depth baked into a sheet, matching the near-water
+     * mesher's ({@code MmsCcoAdapter.MAX_WATER_DEPTH}). The shader saturates at
+     * 12 blocks, and capping keeps deep ocean cells identical so the greedy
+     * merge below can still fold them into one rectangle.
+     */
+    private static final int MAX_WATER_DEPTH = 16;
+
     private static final float WATER_SURFACE_OFFSET = -0.125f;
     /** Surface-height fraction baked into water sheet flags (water.vert). */
     private static final float WATER_SURFACE_FRACTION = 0.875f;
@@ -213,8 +221,13 @@ public final class FastLodMesher {
                 if (submerged) {
                     // Water sheet quad. Flag semantics per water.vert:
                     // x = surface-height fraction, y = falling, w = light.
+                    // The layer slot carries the water-column depth in blocks
+                    // (water is untextured); near water bakes the same number
+                    // per cell, so the seabed fades identically on both sides
+                    // of the LOD handover.
                     float waterSurfaceY = waterLevel + WATER_SURFACE_OFFSET;
-                    ww.topQuadFlat(wx, waterSurfaceY, wz, cellSize, 0, WATER_SURFACE_FRACTION);
+                    ww.topQuadFlat(wx, waterSurfaceY, wz, cellSize,
+                            Math.min(waterLevel - terrainH, MAX_WATER_DEPTH), WATER_SURFACE_FRACTION);
                 }
 
                 if (notches) {
@@ -765,6 +778,8 @@ public final class FastLodMesher {
         private final float originX, originZ;
         private final int n, cellSize, baseX, baseZ;
         private final boolean[] present;
+        /** Water-column depth per cell, in blocks — merged cells must agree on it. */
+        private final int[] depth;
         private float sheetY;
         private float sheetFlag;
         private int pending;
@@ -781,6 +796,7 @@ public final class FastLodMesher {
             this.baseX = baseX;
             this.baseZ = baseZ;
             this.present = new boolean[n * n];
+            this.depth = new int[n * n];
         }
 
         boolean hasPending() {
@@ -796,8 +812,13 @@ public final class FastLodMesher {
                         continue;
                     }
                     int maxCells = Math.max(1, 16 / cellSize); // record extents are capped at 16 blocks
+                    // Depth is one value per record, so only cells that stand
+                    // equally deep may merge — otherwise a shoreline's shallows
+                    // would be swallowed by the deep cell they merged with.
+                    int cellDepth = depth[cell];
                     int dz = 1;
-                    while (iz + dz < n && dz < maxCells && present[cell + dz] && !done[cell + dz]) {
+                    while (iz + dz < n && dz < maxCells && present[cell + dz] && !done[cell + dz]
+                            && depth[cell + dz] == cellDepth) {
                         dz++;
                     }
                     int dx = 1;
@@ -805,7 +826,7 @@ public final class FastLodMesher {
                     while (ix + dx < n && dx < maxCells) {
                         for (int k = 0; k < dz; k++) {
                             int c = (ix + dx) * n + iz + k;
-                            if (!present[c] || done[c]) {
+                            if (!present[c] || done[c] || depth[c] != cellDepth) {
                                 break outer;
                             }
                         }
@@ -816,13 +837,14 @@ public final class FastLodMesher {
                             done[(ix + a) * n + iz + k] = true;
                         }
                     }
-                    emit(baseX + ix * cellSize, baseZ + iz * cellSize, dx * cellSize, dz * cellSize);
+                    emit(baseX + ix * cellSize, baseZ + iz * cellSize, dx * cellSize, dz * cellSize,
+                            cellDepth);
                 }
             }
             return quads.build();
         }
 
-        private void emit(float wx, float wz, int w, int h) {
+        private void emit(float wx, float wz, int w, int h, int cellDepth) {
             float y = sheetY;
             int cellY = (int) Math.floor(y) + 1; // sheet sits 0.125 below the cell's top: cell = SEA_LEVEL
             int qx = Math.round(wx - originX);
@@ -836,7 +858,7 @@ public final class FastLodMesher {
                     MmsWaterQuadCodec.word0(qx, cellY, qz, 0, false, false, true),
                     MmsWaterQuadCodec.word1(cellY, y, y, y, y),
                     MmsWaterQuadCodec.word2(sheetFlag, sheetFlag, sheetFlag, sheetFlag),
-                    MmsWaterQuadCodec.word3(w, h))) {
+                    MmsWaterQuadCodec.word3(w, h, MmsWaterQuadCodec.NO_FLOW, cellDepth))) {
                 return;
             }
             idxCount += 6;
@@ -850,6 +872,7 @@ public final class FastLodMesher {
             int ix = Math.round((wx - baseX) / cellSize);
             int iz = Math.round((wz - baseZ) / cellSize);
             present[ix * n + iz] = true;
+            depth[ix * n + iz] = Math.max(layer, 0);  // the water-column depth; see the caller
             sheetY = y;
             sheetFlag = xFlag;
             pending++;

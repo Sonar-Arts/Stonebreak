@@ -187,6 +187,25 @@ class FastLodMesherTest {
     }
 
     @Test
+    void waterSheetCarriesTheColumnDepthInTheLayerSlot() {
+        // Water is untextured: the layer channel carries how much water stands
+        // over the seabed, and the shader hides the bottom with it (see
+        // water.frag's MURK_FULL_DEPTH). Near water bakes the same number per
+        // cell, so a shore looks the same on both sides of the LOD handover.
+        FastLodMesher.Result shallow = mesher.build(l4Data(filled(9, SEA_LEVEL - 3), BlockType.SAND, SEA_LEVEL));
+        for (float layer : shallow.waterMesh().getLayerIndices()) {
+            assertEquals(3f, layer, EPS, "3 blocks of water over the seabed");
+        }
+
+        // Capped, like the near-water mesher's scan: past the cap the shader
+        // reads everything as equally deep anyway.
+        FastLodMesher.Result abyss = mesher.build(l4Data(filled(9, SEA_LEVEL - 200), BlockType.SAND, SEA_LEVEL));
+        for (float layer : abyss.waterMesh().getLayerIndices()) {
+            assertEquals(16f, layer, EPS, "deep ocean saturates the baked depth");
+        }
+    }
+
+    @Test
     void coastalCliffSkirtDescendsToRealSeabed() {
         // Land cliff at 336 dropping into a submerged neighbor at 306: the skirt
         // follows the REAL heights (336 → 306) — the seabed is ordinary terrain

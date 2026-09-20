@@ -701,6 +701,12 @@ public class MmsCcoAdapter {
      * faces share the (v0,v1,v2,v3) = (·,·,top,top) order below; the bottom
      * face winds the other way.
      */
+    /**
+     * How far down {@link #waterColumnDepth} counts. The water shader treats
+     * everything past 12 blocks as equally deep.
+     */
+    private static final int MAX_WATER_DEPTH = 16;
+
     private static final float[] WATER_UVS_TOP_AND_SIDES = {0, 1, 1, 1, 1, 0, 0, 0};
     private static final float[] WATER_UVS_BOTTOM = {0, 0, 1, 0, 1, 1, 0, 1};
 
@@ -709,7 +715,9 @@ public class MmsCcoAdapter {
      * variable height geometry. Water-mesh vertex semantics (consumed by the
      * dedicated water shader, not the world shader): tex = face-local UV,
      * flags.x = surface-height fraction, flags.y = falling flag,
-     * flags.z = source flag, flags.w = light, layer = unused (0).
+     * flags.z = source flag, flags.w = the river flow code in eighths
+     * (0 = still water, k/8 = octant k-1), layer = the water-column depth in
+     * whole blocks (water carries no texture layer).
      */
     private void addWaterBlockWithCulling(MmsMeshBuilder builder,
                                          int lx, int ly, int lz, int chunkX, int chunkZ,
@@ -728,18 +736,34 @@ public class MmsCcoAdapter {
         int blockZ = (int) Math.floor(worldZ);
 
         // Per-cell flow state from the chunk-owned water layer (the sim SOT).
-        int flowValue = world != null ? world.getWaterLevelAt(blockX, blockY, blockZ)
-                                      : com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE;
+        // ONE raw read answers both questions about the cell — how much water it
+        // holds, and which way that water runs — because they are two halves of
+        // the same stored value. Asking World for each separately walked the
+        // chunk map twice for every water block in the chunk.
+        int waterValue = world != null ? world.getWaterValueAt(blockX, blockY, blockZ)
+                                       : com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE;
+        int flowValue = waterValue < 0
+                ? -1
+                : com.stonebreak.world.chunk.ChunkWaterLayer.level(waterValue);
         float fallingFlag = flowValue == com.stonebreak.world.chunk.ChunkWaterLayer.FALLING ? 1.0f : 0.0f;
         float sourceFlag = flowValue == com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE ? 1.0f : 0.0f;
         // Which way a worldgen river runs over this cell, -1 for still water.
         // Purely a look: the cell is a source and renders at source height.
-        int riverFlow = world != null ? world.getRiverFlowAt(blockX, blockY, blockZ) : -1;
+        int riverFlow = World.riverFlowOf(waterValue);
+
+        // How deep the water stands here — the shader hides the seabed with it.
+        // Scanned at most once per cell, and only once a face of it actually
+        // survives culling: a fully buried water cell (most of an ocean) would
+        // otherwise pay for a scan nothing ever reads.
+        int columnDepth = -1;
 
         // Check each face for culling (water has special culling rules)
         for (int face = 0; face < 6; face++) {
             if (!shouldRenderWaterFace(lx, ly, lz, face, chunkData)) {
                 continue; // Face is culled
+            }
+            if (columnDepth < 0) {
+                columnDepth = waterColumnDepth(lx, ly, lz, chunkData);
             }
 
             // Generate water-specific geometry with variable heights
@@ -762,7 +786,7 @@ public class MmsCcoAdapter {
                             MmsWaterQuadCodec.word0(qx, blockY, qz, face, fallingFlag > 0.5f, sourceFlag > 0.5f),
                             MmsWaterQuadCodec.word1(blockY, vertices[1], vertices[4], vertices[7], vertices[10]),
                             MmsWaterQuadCodec.word2(waterFlags[0], waterFlags[1], waterFlags[2], waterFlags[3]),
-                            MmsWaterQuadCodec.word3(1, 1, riverFlow))) {
+                            MmsWaterQuadCodec.word3(1, 1, riverFlow, columnDepth))) {
                     continue;
                 }
                 // Out of range / full: fall back to the per-vertex water mesh below.
@@ -781,7 +805,9 @@ public class MmsCcoAdapter {
                     // The per-vertex flags are packed as [0,1] bytes, so the
                     // flow code (0 = still, 1..8 = octant + 1) rides as eighths
                     // and the shader multiplies it back out.
-                    waterFlags[i], fallingFlag, sourceFlag, (riverFlow + 1) / 8.0f, 0.0f
+                    // Water is untextured, so the layer slot carries the
+                    // column depth (see water.vert's location 4).
+                    waterFlags[i], fallingFlag, sourceFlag, (riverFlow + 1) / 8.0f, columnDepth
                 );
             }
             builder.endFace();
@@ -857,6 +883,24 @@ public class MmsCcoAdapter {
      * Determines if a water face should be rendered based on adjacent blocks.
      * Water has special culling rules to prevent water-to-water culling.
      */
+    /**
+     * Depth of the water column at a cell, in whole blocks: the cell itself
+     * plus every water cell straight below it, stopping at the first block
+     * that isn't water. Capped at {@link #MAX_WATER_DEPTH} — the shader
+     * saturates well before that, so walking a whole trench down would be
+     * counting for nothing.
+     */
+    private static int waterColumnDepth(int lx, int ly, int lz, CcoChunkData chunkData) {
+        int depth = 0;
+        for (int y = ly; y >= 0 && depth < MAX_WATER_DEPTH; y--) {
+            if (chunkData.getBlock(lx, y, lz) != BlockType.WATER) {
+                break;
+            }
+            depth++;
+        }
+        return depth;
+    }
+
     private boolean shouldRenderWaterFace(int lx, int ly, int lz, int face, CcoChunkData chunkData) {
         // Get adjacent block coordinates
         int adjX = lx + getFaceOffsetX(face);
