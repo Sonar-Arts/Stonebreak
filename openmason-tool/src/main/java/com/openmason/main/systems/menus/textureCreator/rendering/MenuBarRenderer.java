@@ -1,6 +1,7 @@
 package com.openmason.main.systems.menus.textureCreator.rendering;
 
 import com.openmason.main.systems.LogoManager;
+import com.openmason.main.systems.keybinds.KeybindRegistry;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorController;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorState;
 import com.openmason.main.systems.menus.textureCreator.coordinators.FileOperationsCoordinator;
@@ -207,16 +208,19 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
      */
     private void renderFileMenu() {
         if (ImGui.beginMenu("File")) {
-            if (ImGui.menuItem("New", "Ctrl+N")) {
+            if (ImGui.menuItem("New...", shortcut("texture.new_texture"))) {
                 newTextureDialog.show();
             }
-            if (ImGui.menuItem("Open Project...", "Ctrl+O")) {
+            if (ImGui.menuItem("Open Project...", shortcut("texture.open_project"))) {
                 fileOperations.openProject();
             }
-            if (ImGui.menuItem("Save Project", "Ctrl+S")) {
+            if (ImGui.menuItem("Save Project", shortcut("texture.save_project"))) {
                 fileOperations.saveProject();
             }
-            if (ImGui.menuItem("Save Project As...", "Ctrl+Shift+S")) {
+            // Save Project As: removed keybind (Ctrl+Shift+S now viewport grid snapping).
+            // Lookup the retired ID so the shortcut column stays empty and can never
+            // promise a key that is not registered.
+            if (ImGui.menuItem("Save Project As...", shortcut("texture.save_project_as"))) {
                 fileOperations.saveProjectAs();
             }
 
@@ -227,7 +231,8 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
             }
 
             if (ImGui.beginMenu("Export")) {
-                if (ImGui.menuItem("Export...", "Ctrl+E")) {
+                // Export: removed keybind (Ctrl+E now viewport edge subdivision).
+                if (ImGui.menuItem("Export...", shortcut("texture.export"))) {
                     exportFormatDialog.show(format -> {
                         switch (format) {
                             case PNG: fileOperations.exportPNG(); break;
@@ -274,16 +279,16 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
             boolean hasSelection = state.getCurrentSelection() != null &&
                                  !state.getCurrentSelection().isEmpty();
 
-            if (ImGui.menuItem("Undo", "Ctrl+Z", false, canUndo)) {
+            if (ImGui.menuItem("Undo", shortcut("texture.undo"), false, canUndo)) {
                 controller.undo();
             }
-            if (ImGui.menuItem("Redo", "Ctrl+Y", false, canRedo)) {
+            if (ImGui.menuItem("Redo", shortcut("texture.redo"), false, canRedo)) {
                 controller.redo();
             }
 
             ImGui.separator();
 
-            if (ImGui.menuItem("Delete Selection", "Del", false, hasSelection)) {
+            if (ImGui.menuItem("Delete Selection", shortcut("texture.delete_selection"), false, hasSelection)) {
                 controller.deleteSelection();
             }
 
@@ -330,17 +335,17 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
 
             ImGui.separator();
 
-            ImGui.menuItem("Grid", "G", state.getShowGrid());
+            ImGui.menuItem("Grid", shortcut("texture.toggle_grid"), state.getShowGrid());
 
             ImGui.separator();
 
-            if (ImGui.menuItem("Zoom In", "+")) {
+            if (ImGui.menuItem("Zoom In", shortcut("texture.zoom_in"))) {
                 controller.getCanvasState().zoomIn(ZOOM_FACTOR);
             }
-            if (ImGui.menuItem("Zoom Out", "-")) {
+            if (ImGui.menuItem("Zoom Out", shortcut("texture.zoom_out"))) {
                 controller.getCanvasState().zoomOut(ZOOM_FACTOR);
             }
-            if (ImGui.menuItem("Reset View", "0")) {
+            if (ImGui.menuItem("Reset View", shortcut("texture.reset_view"))) {
                 controller.getCanvasState().resetView();
             }
 
@@ -419,11 +424,22 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
             }
         }
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Open preferences window (Ctrl+,)");
+            ImGui.setTooltip(String.format("Open preferences window (%s)",
+                    shortcut("texture.toggle_preferences")));
         }
 
         // Remove transparent button styling
         popTransparentButtonStyle();
+    }
+
+    /**
+     * Resolve a menu shortcut column from the central keybind registry.
+     * Derived via {@link KeybindRegistry#getShortcutDisplayName(String)} so the
+     * labels can never drift from the keys actually registered; removed or
+     * non-keybindable entries render an empty column.
+     */
+    private String shortcut(String actionId) {
+        return KeybindRegistry.getInstance().getShortcutDisplayName(actionId);
     }
 
     /**
