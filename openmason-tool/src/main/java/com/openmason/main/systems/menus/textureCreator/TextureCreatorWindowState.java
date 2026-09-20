@@ -33,12 +33,6 @@ public class TextureCreatorWindowState implements HelpWindowVisibilityState {
     // ========================================
 
     /**
-     * Preferences window visibility.
-     * Shows texture creator settings like grid opacity, cube net overlay, etc.
-     */
-    private final ImBoolean showPreferencesWindow = new ImBoolean(false);
-
-    /**
      * Noise filter window visibility.
      * Shows noise generation controls and preview.
      */
@@ -88,14 +82,6 @@ public class TextureCreatorWindowState implements HelpWindowVisibilityState {
     // ========================================
 
     /**
-     * Get preferences window visibility flag.
-     * @return ImBoolean reference for ImGui binding
-     */
-    public ImBoolean getShowPreferencesWindow() {
-        return showPreferencesWindow;
-    }
-
-    /**
      * Get noise filter window visibility flag.
      * @return ImBoolean reference for ImGui binding
      */
@@ -138,14 +124,6 @@ public class TextureCreatorWindowState implements HelpWindowVisibilityState {
     public void toggleColorPanel() {
         showColorPanel.set(!showColorPanel.get());
         logger.debug("Color panel visibility toggled to: {}", showColorPanel.get());
-    }
-
-    /**
-     * Toggle preferences window visibility.
-     */
-    public void togglePreferencesWindow() {
-        showPreferencesWindow.set(!showPreferencesWindow.get());
-        logger.debug("Preferences window visibility toggled to: {}", showPreferencesWindow.get());
     }
 
     /**

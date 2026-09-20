@@ -50,6 +50,7 @@ public class TextureEditorKeybindActions {
      * @param newTextureDialog   the new texture dialog
      * @param fileOperations     the file operations coordinator
      * @param exportFormatDialog the export format dialog
+     * @param preferencesOpener  opens the shared unified preferences window (same callback as the menu-bar Preferences buttons)
      * @param windowState        the window state manager
      * @param controller         the texture editor controller
      * @param state              the texture editor state
@@ -61,6 +62,7 @@ public class TextureEditorKeybindActions {
             NewTextureDialog newTextureDialog,
             FileOperationsCoordinator fileOperations,
             ExportFormatDialog exportFormatDialog,
+            Runnable preferencesOpener,
             TextureCreatorWindowState windowState,
             TextureCreatorController controller,
             TextureCreatorState state,
@@ -105,10 +107,10 @@ public class TextureEditorKeybindActions {
 
         registry.registerAction(new KeybindAction(
                 "texture.toggle_preferences",
-                "Toggle Preferences",
+                "Open Preferences",
                 "Window",
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_COMMA),
-                windowState::togglePreferencesWindow
+                preferencesOpener
         ));
 
         // ========== Edit ==========

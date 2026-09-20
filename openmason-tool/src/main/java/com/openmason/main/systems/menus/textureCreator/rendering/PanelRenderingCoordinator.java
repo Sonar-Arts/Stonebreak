@@ -317,18 +317,6 @@ public class PanelRenderingCoordinator {
     }
 
     /**
-     * Render preferences window.
-     * Window is closeable - clicking (x) button will hide it.
-     */
-    public void renderPreferencesWindow() {
-        if (windowState.getShowPreferencesWindow().get()) {
-            if (ImGui.begin("Preferences", windowState.getShowPreferencesWindow())) {
-            }
-            ImGui.end();
-        }
-    }
-
-    /**
      * Render noise filter window.
      * Window is closeable - clicking (x) button will hide it.
      */
