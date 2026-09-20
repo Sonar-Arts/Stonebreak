@@ -487,9 +487,25 @@ public class NativeWaterTilesTest {
                     boolean wetBefore = b.waterLevelAt(x, z) > SEA;
                     if (wetNow && !wetBefore) extraWet++;
                     if (wetNow) {
-                        assertTrue(a.heightAt(x, z) < a.waterLevelAt(x, z),
-                                "a wet column must sit below its own surface at ("
-                                        + x + "," + z + ")");
+                        // Unless the river runs UNDER it. A tunnelled column
+                        // keeps every block of its ground by design, so its
+                        // height is the hill over the passage and stands well
+                        // above the water in it; what has to be below the
+                        // surface there is the tunnel FLOOR. Before the
+                        // step-pool surface (§5.8b) this fixture happened to
+                        // tunnel nowhere, which is why the simpler assertion
+                        // held -- it was a property of the fixture, not of the
+                        // kernel.
+                        int floor = a.riverFloorAt(x, z);
+                        if (floor >= 0) {
+                            assertTrue(floor < a.waterLevelAt(x, z),
+                                    "a tunnelled column's floor must sit below its water at ("
+                                            + x + "," + z + ")");
+                        } else {
+                            assertTrue(a.heightAt(x, z) < a.waterLevelAt(x, z),
+                                    "a wet column must sit below its own surface at ("
+                                            + x + "," + z + ")");
+                        }
                     }
                 }
             }

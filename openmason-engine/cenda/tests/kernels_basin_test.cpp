@@ -477,6 +477,85 @@ void testMinLakeAreaDiscardsPuddlesButKeepsTheFill() {
 
 /** Ocean is an outlet, never a basin: ground below sea level keeps its own
  *  elevation and cannot be filled into a lake. */
+/**
+ * A pond a distributary dies in can be promoted to a lake — and only where
+ * this region owns the whole of it.
+ *
+ * `promoteComponent` is the single exception to "lakes come from the fill and
+ * nowhere else", and it is not really an exception: the fill FOUND this
+ * hollow, filled it, and then `minLakeArea` trimmed it for being small. All
+ * this does is stop trimming that one. So what has to hold is that the pond it
+ * emits is indistinguishable from the lake `solve` would have emitted at a
+ * lower threshold: same surface, same depths, and no ground moved.
+ *
+ * The ownership gate is the other half, and the one that would be expensive to
+ * get wrong. A promotion mutates planes this region publishes, and the region
+ * next door has no idea a branch ended here — so a pond straddling the line
+ * between two owned rectangles would be water on one side and dry on the
+ * other, permanently. Refusing is free: the branch just peters out.
+ */
+void testAPondCanBePromotedButOnlyWhereItIsOwned() {
+    constexpr int32_t N = 48;
+    Field f(N, 100.0f);
+    f.rect(0, N - 1, 45, 47, OCEAN);
+    f.rect(20, 21, 20, 21, 80.0f);   /* a 4-cell puddle: under the threshold */
+
+    const bp::Grid g = f.grid();
+    const bp::Config cfg{0.5f, 9, 0.0f};  /* 9 cells: the puddle is not a lake */
+    bp::Solution s;
+    bp::solve(g, cfg, s);
+    check(s.basins.empty(), "promote: the puddle starts out as no lake at all");
+
+    const auto k = static_cast<size_t>(20) * static_cast<size_t>(N) + static_cast<size_t>(20);
+    const int32_t comp = s.label[k];
+    check(comp >= 0, "promote: but the fill did find it");
+    const float levelBefore = s.filled[k];
+
+    /* The same solve at a threshold that keeps it, as the reference. */
+    bp::Solution reference;
+    bp::solve(g, bp::Config{0.5f, 4, 0.0f}, reference);
+    check(reference.basins.size() == 1, "promote: the reference solve keeps it");
+
+    /* Refused: the owned rectangle excludes the puddle. Cells are one block
+     * wide here, so the rectangle is in the same units as the indices. */
+    bp::Solution refused = s;
+    check(!bp::promoteComponent(g, refused, cfg, comp, 0, 0, 10, 10),
+          "a pond outside the owned rectangle is refused");
+    bool untouched = refused.basins.empty();
+    for (size_t i = 0; i < refused.depth.size(); ++i) {
+        if (refused.depth[i] != s.depth[i] || refused.basinAt[i] != s.basinAt[i]) {
+            untouched = false;
+        }
+    }
+    check(untouched, "and a refused promotion changes nothing at all");
+
+    /* Accepted: the rectangle contains it. */
+    check(bp::promoteComponent(g, s, cfg, comp, 0, 0, N, N),
+          "a pond this region owns whole is promoted");
+    check(s.basins.size() == 1, "promote: and it becomes exactly one lake");
+    check(s.basinAt[k] >= 0 && s.depth[k] > 0.0f, "promote: its cells are stampable water");
+    check(s.filled[k] == levelBefore, "promote: the fill surface is not touched");
+
+    bool sameAsReference = true;
+    for (size_t i = 0; i < s.depth.size(); ++i) {
+        if (s.depth[i] != reference.depth[i]) {
+            sameAsReference = false;
+        }
+        if ((s.basinAt[i] >= 0) != (reference.basinAt[i] >= 0)) {
+            sameAsReference = false;
+        }
+    }
+    check(sameAsReference,
+          "a promoted pond is the lake a lower threshold would have emitted");
+    check(s.basins[0].level == reference.basins[0].level
+              && s.basins[0].area == reference.basins[0].area
+              && s.basins[0].spillX == reference.basins[0].spillX
+              && s.basins[0].spillZ == reference.basins[0].spillZ,
+          "down to its level, area and spill point");
+    std::printf("pond promotion ok (level %.1f, area %d cells)\n",
+                static_cast<double>(s.basins[0].level), s.basins[0].area);
+}
+
 void testOceanIsNeverALake() {
     constexpr int32_t N = 48;
     Field f(N, 100.0f);
@@ -824,6 +903,7 @@ int main() {
     testNestedBasinFillsToItsOwnRim();
     testHaloIndependence();
     testMinLakeAreaDiscardsPuddlesButKeepsTheFill();
+    testAPondCanBePromotedButOnlyWhereItIsOwned();
     testOceanIsNeverALake();
     testBoxDownsampleAverages();
     testBasinTooWideForL1IsNotEmittedByL1();

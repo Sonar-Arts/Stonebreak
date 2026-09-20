@@ -637,6 +637,127 @@ inline Grid windowFor(const Level& lv, int64_t regionX, int64_t regionZ, const f
  *  water over the ground they share. The rim is also what the spill point needs:
  *  it is a cell just outside the basin, so a window that holds the basin but not
  *  its rim has not seen its outlet. */
+/**
+ * Emit one sub-lake depression as a real lake.
+ *
+ * ═══ Why this exists, and why it is the ONLY exception ═══
+ *
+ * "One source of lakes, not three" is a rule this codebase paid for: lakes
+ * come from the depression fill, and the excavator that used to dig them is
+ * gone. A distributary that runs out of descent needs somewhere to end, and
+ * the honest answer is not to dig it a pond — it is to notice that the fill
+ * already FOUND a hollow there and merely trimmed it for being small. This
+ * promotes that hollow. Nothing is excavated, no surface is invented: the
+ * level is the fill's own spill level and the water is `filled - raw`, exactly
+ * as `solve` would have written it had `minLakeArea` been lower here.
+ *
+ * ═══ The ownership gate, which is not optional ═══
+ *
+ * A promotion mutates the planes this region publishes, and the neighbouring
+ * region does not know a branch ended here. So a pond that straddles the
+ * boundary between two regions' OWNED ground would be water on one side of the
+ * line and dry on the other, for ever. Promotion is therefore refused unless
+ * the whole component lies inside the owned rectangle — and a refused
+ * promotion costs nothing worse than a stream that peters out without a pool,
+ * which is what the branch would have done anyway.
+ *
+ * Returns false if the component cannot be promoted, for any reason.
+ */
+inline bool promoteComponent(const Grid& g, Solution& s, const Config& cfg,
+                             int32_t comp, int64_t ownedX0, int64_t ownedZ0,
+                             int64_t ownedX1, int64_t ownedZ1) {
+    if (comp < 0 || comp >= static_cast<int32_t>(s.componentSpill.size())) {
+        return false;
+    }
+    const int32_t spill = s.componentSpill[static_cast<size_t>(comp)];
+    if (spill < 0) {
+        return false;
+    }
+    /* The component's own statistics, recomputed. `solve` keeps only the spill
+     * and the volume per component — the rest went with the trim — and a
+     * depression is small by definition, so one pass over the window to
+     * recover them is cheaper than carrying six vectors for every puddle in
+     * the region. Row-major, like every other statistic here, so the result
+     * does not depend on visit order. */
+    int32_t minI = g.cells, minJ = g.cells, maxI = -1, maxJ = -1;
+    int32_t area = 0;
+    float level = 0.0f;
+    float floorH = 0.0f;
+    bool any = false;
+    for (int32_t i = 0; i < g.cells; ++i) {
+        for (int32_t j = 0; j < g.cells; ++j) {
+            const auto k = static_cast<size_t>(i) * static_cast<size_t>(g.cells)
+                + static_cast<size_t>(j);
+            if (s.label[k] != comp) {
+                continue;
+            }
+            minI = std::min(minI, i);
+            maxI = std::max(maxI, i);
+            minJ = std::min(minJ, j);
+            maxJ = std::max(maxJ, j);
+            const float d = s.filled[k] - g.raw[k];
+            if (!any) {
+                level = s.filled[k];
+                floorH = g.raw[k];
+                any = true;
+            } else {
+                level = std::max(level, s.filled[k]);
+                floorH = std::min(floorH, g.raw[k]);
+            }
+            if (d > cfg.minLakeDepth) {
+                ++area;
+            }
+        }
+    }
+    if (!any || area <= 0) {
+        return false;
+    }
+    /* Owned whole, in world coordinates — see the gate above. A cell's ground
+     * spans `cellBlocks`, so the far edge is the cell's origin plus that. */
+    const int64_t bx0 = g.worldX(minI);
+    const int64_t bz0 = g.worldZ(minJ);
+    const int64_t bx1 = g.worldX(maxI) + g.cellBlocks;
+    const int64_t bz1 = g.worldZ(maxJ) + g.cellBlocks;
+    if (bx0 < ownedX0 || bz0 < ownedZ0 || bx1 > ownedX1 || bz1 > ownedZ1) {
+        return false;
+    }
+
+    Basin b;
+    b.level = level;
+    b.floor = floorH;
+    b.area = area;
+    b.volume = s.componentVolume[static_cast<size_t>(comp)];
+    b.spillI = spill / g.cells;
+    b.spillJ = spill % g.cells;
+    b.spillX = g.worldX(b.spillI);
+    b.spillZ = g.worldZ(b.spillJ);
+    b.cellBlocks = g.cellBlocks;
+    b.minI = minI;
+    b.minJ = minJ;
+    b.maxI = maxI;
+    b.maxJ = maxJ;
+    b.touchesBorder = false; /* it is inside the owned rect, which is inside the window */
+    const auto idx = static_cast<int32_t>(s.basins.size());
+    s.basins.push_back(b);
+
+    for (int32_t i = minI; i <= maxI; ++i) {
+        for (int32_t j = minJ; j <= maxJ; ++j) {
+            const auto k = static_cast<size_t>(i) * static_cast<size_t>(g.cells)
+                + static_cast<size_t>(j);
+            if (s.label[k] != comp) {
+                continue;
+            }
+            const float d = s.filled[k] - g.raw[k];
+            if (d <= cfg.minLakeDepth) {
+                continue; /* shoreline: the fill touched it, the lake does not */
+            }
+            s.basinAt[k] = idx;
+            s.depth[k] = d;
+        }
+    }
+    return true;
+}
+
 inline bool ownsBasin(const Basin& b, const Level& lv) {
     return !b.touchesBorder && b.spanBlocks() + 2 * b.cellBlocks <= lv.haloBlocks;
 }

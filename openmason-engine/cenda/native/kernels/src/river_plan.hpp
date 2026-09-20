@@ -58,6 +58,7 @@ namespace cenda::river {
 
 constexpr uint64_t SALT_RIVER = 0x52495645525F4B00ULL;  /* "RIVER_K"  */
 constexpr uint64_t SALT_MEANDER = 0x4D45414E44455200ULL; /* "MEANDER" */
+constexpr uint64_t SALT_BRANCH = 0x4252414E43480000ULL;  /* "BRANCH"  */
 
 struct Config {
     /* ── Sources (§5.2) ── */
@@ -129,6 +130,30 @@ struct Config {
     /* A drop of at least this much over one step is a waterfall: a vertical
      * step in the water surface, with nothing carved to ramp it. */
     float waterfallMinDrop = 6.0f;
+    /* ── §5.8b: the step-pool surface ──
+     *
+     * How far a POOL's flat surface may sit below the ramp it replaces, in
+     * blocks. `stepPool` walks the route levelling runs of vertices to the
+     * lowest surface in the run, and closes a run once the descent since its
+     * head reaches this; so this is both the pool's depth budget and, divided
+     * by the local slope, its length.
+     *
+     * Why it is bounded by the carve's `tunnel_min_roof` (4) and not by taste:
+     * a pool lower than its own ground by more than that makes `ck_carve_water`
+     * tunnel (`raw - tunnel_min_roof > surf`), and a pool that tunnels for most
+     * of its length is an underground river, not a pool. The default leaves a
+     * block of margin for the fine terrain the coarse DEM averaged away.
+     *
+     * Zero disables the pass and restores the continuous ramp. */
+    float poolMaxDrop = 3.0f;
+    /* The smallest drop `stepPool` hands to the stamper as a STEP rather than
+     * as a ramp — see `stepDrop()`. */
+    float poolStepDrop = 1.0f;
+    /* A pool never runs further than this, whatever the terrain does. A dead
+     * flat reach has no descent to close a pool with, and carrying one level
+     * across a kilometre of it would put the whole reach at the level of its
+     * far end. In blocks along the route. */
+    float poolMaxRun = 512.0f;
 
     /* ── Width and bed depth (§5.5) ──
      *
@@ -154,6 +179,55 @@ struct Config {
     /* §5.8's plunge basin: a short widening at a waterfall's foot, and no
      * flood fill. Applied to the falling vertex and the one below it. */
     float plungeWiden = 1.6f;
+    /* And a deepening, so the foot of a fall is a POOL rather than a wide
+     * stretch of the same shallow bed. Multiplies `bedDepth` at the same two
+     * vertices. The cut stays inside the channel, which is ground the carve
+     * already owns, so nothing here lowers terrain the river does not run in. */
+    float plungeDeepen = 1.8f;
+
+    /* ── Distributary branches (§5.10) ──
+     *
+     * A branch leaves a trunk and runs away from it to its own ending: another
+     * lake, the sea, or a pond it dies in. It is planned by the region that
+     * owns the TRUNK'S source, walked by the same walker, and charged against
+     * the same distance budget — so it inherits every seam property the trunk
+     * has, and needs nothing at all from the stamper, where heights already
+     * merge by min and water by max and two channels crossing is therefore
+     * order-independent (§5.9).
+     *
+     * Zero `branchChance` disables the feature entirely. */
+    float branchChance = 0.45f;
+    /* Anchors are considered at these fractions along the trunk. Not at the
+     * head, where a branch is just a second outlet for the same lake, and not
+     * at the tail, where it has no room left to become anything. */
+    float branchFirst = 0.25f;
+    float branchLast = 0.85f;
+    float branchSpacing = 0.18f;
+    /* How far off the trunk's heading a branch leaves, in radians: about 26 to
+     * 69 degrees, the range TerraForged's forks use and roughly what a real
+     * anabranch does. Sharper reads as a fork in a road; shallower and the two
+     * channels run side by side for a kilometre. */
+    float branchAngleMin = 0.45f;
+    float branchAngleMax = 1.20f;
+    /* A branch only leaves where the trunk runs gently. Distributaries are a
+     * lowland and alluvial-fan feature: on a steep reach all the water is in
+     * one channel, and a second one cut across the fall line reads as a canal.
+     * Blocks of descent per block travelled, on the coarse surface. */
+    float branchMaxSlope = 0.05f;
+    /* And it must GET somewhere: a branch whose tip comes back within this
+     * distance of where it left is a loop around an island, not a channel. */
+    float branchMinSpread = 96.0f;
+    /* A branch is smaller than what it left. Width scales by this, and the
+     * volume `classify` sizes it from by the second. Neither feeds back into
+     * the trunk — nothing in this file accumulates discharge. */
+    float branchWidthFrac = 0.6f;
+    float branchDrainedFrac = 0.35f;
+    /* How many vertices at a dying branch's end taper away, and what fraction
+     * of its width the last one keeps. This is the "withers into a pond" of
+     * the brief: the channel narrows and shallows rather than stopping
+     * mid-stride at full width. */
+    int32_t branchTaperPoints = 6;
+    float branchTaperFloor = 0.25f;
 
     /* ── Sub-cell refinement (§6) ── */
     /* Midpoint subdivisions applied to the finished polyline. Two levels turns
@@ -195,6 +269,24 @@ struct Config {
      * slack is what refinement can add to the distance from the source, which
      * is bounded by the displacement of one step summed over the levels.
      */
+    /**
+     * The drop at which the water surface STEPS instead of ramping.
+     *
+     * Two callers, and they must agree or a step gets subdivided back into the
+     * ramp it exists to replace: `refine` refuses to split such a segment, and
+     * `ck_carve_water` holds the upstream level over its first half and the
+     * downstream level over its second.
+     *
+     * With the step-pool pass on, every drop that survives it is a pool
+     * boundary — inside a pool the surface is flat and the drop is exactly zero
+     * — so the threshold only has to clear the noise. With the pass off it must
+     * stay what it always was, or an ordinary block of descent would start
+     * reading as a fall.
+     */
+    float stepDrop() const {
+        return poolMaxDrop > 0.0f ? poolStepDrop : waterfallMinDrop;
+    }
+
     float maxReach(const basin::Level& lv) const {
         const float slack = 2.0f * refineAmp * stepLen * static_cast<float>(refineLevels + 1);
         return static_cast<float>(stepBudget(lv)) * stepLen + slack;
@@ -208,6 +300,7 @@ enum class End : uint8_t {
     Budget,   /* hit the step cap. No terminus lake is dug (§5.4)        */
     Window,   /* would have left the window that owns it                 */
     Stalled,  /* no descending step exists. Should be unreachable inland */
+    Pond,     /* a distributary came to rest in a hollow the fill found   */
 };
 
 /** What kind of ground a reach runs through, and therefore how it is carved. */
@@ -256,6 +349,16 @@ struct Route {
      * (0.000 blocks error) and upstream drainage area is not. It will look
      * right without being right, which is the correct trade. */
     double drained = 0.0;
+    /* A DISTRIBUTARY: a channel that left a trunk and descended on its own.
+     * Not a tributary — nothing here flows INTO another river, because sizing
+     * that needs the upstream drainage area §2.2 proves no bounded window can
+     * agree on. A branch is the same walk from a different start, and it
+     * carries nothing back to its parent. */
+    bool branch = false;
+    /* The sub-lake depression a dying branch came to rest in, or -1. The one
+     * place this planner asks for a new lake, and it asks for one the FILL
+     * already found rather than digging anything. */
+    int32_t terminalPond = -1;
 };
 
 namespace detail {
@@ -354,6 +457,455 @@ inline Vec2 descent(const basin::Grid& g, const float* filled, float x, float z,
     const float dx = sampleBilinear(g, filled, x + h, z) - sampleBilinear(g, filled, x - h, z);
     const float dz = sampleBilinear(g, filled, x, z + h) - sampleBilinear(g, filled, x, z - h);
     return normalize(Vec2{-dx, -dz});
+}
+
+/**
+ * Walk one route downhill from a start until it reaches water, leaves the
+ * window, or spends its budget.
+ *
+ * Pulled out of `plan` so that a DISTRIBUTARY can use it unchanged. A branch
+ * is not a different kind of river — it is the same descent from a different
+ * start — and the moment there are two walkers there are two sets of rules
+ * about climbing, about re-entering a lake and about leaving the window, which
+ * is exactly the drift this codebase cannot afford.
+ *
+ * `travelled` is carried IN rather than starting at zero. A branch inherits
+ * what its trunk has already spent, so the shared budget bounds the distance
+ * from the TRUNK'S SOURCE to the branch's last vertex — and that is the number
+ * `maxReach` promises a consumer, which searches one halo from a route's source
+ * and must find every vertex of everything that source produced.
+ *
+ * `sourceIndex` is the basin the walk may not flow back into (-1 for a branch,
+ * which starts on open water rather than in a lake). `stopAtPond` ends the walk
+ * at the first sub-lake depression instead of crossing it: that is what gives a
+ * dying distributary somewhere to end.
+ */
+struct WalkStart {
+    float x = 0.0f;
+    float z = 0.0f;
+    float surf = 0.0f;
+    Vec2 heading{};
+    double drained = 0.0;
+    float travelled = 0.0f;
+    int32_t sourceIndex = -1;
+    bool stopAtPond = false;
+};
+
+inline void walk(const basin::Grid& g, const basin::Solution& s, const basin::Level& lv,
+                 int64_t seed, const Config& cfg, const WalkStart& st, Route& r) {
+    const int32_t budget = cfg.stepBudget(lv);
+    /* The stencil reaches one step either side of a sample, so a route must
+     * stop before its next step could read outside the window. */
+    const float edge = 2.0f * cfg.stepLen;
+    const auto windowX0 = static_cast<float>(g.originX) + edge;
+    const auto windowZ0 = static_cast<float>(g.originZ) + edge;
+    const float windowX1 =
+        static_cast<float>(g.originX + static_cast<int64_t>(g.cells) * g.cellBlocks) - edge;
+    const float windowZ1 =
+        static_cast<float>(g.originZ + static_cast<int64_t>(g.cells) * g.cellBlocks) - edge;
+
+    float x = st.x;
+    float z = st.z;
+    float surf = st.surf;
+    Vec2 heading = st.heading;
+    double drained = st.drained;
+    const int32_t sourceIndex = st.sourceIndex;
+
+    if (r.points.empty()) {
+        Vertex first{};
+        first.x = x;
+        first.z = z;
+        first.surf = surf;
+        first.drained = static_cast<float>(drained);
+        r.points.push_back(first);
+    }
+
+    /* The budget is a DISTANCE, not a step count. A step is one stepLen,
+     * but the discrete fallback moves to a cell centre and a flat crossing
+     * jumps the width of a pond, so counting steps would let a route travel
+     * further than `maxReach` says — and `maxReach` is what tells a
+     * consumer how far away a source can be and still reach its ground. */
+    const float reach = cfg.maxReach(lv);
+    float travelled = st.travelled;
+    int32_t lastCrossed = -1;
+    for (int32_t step = 0; step < budget; ++step) {
+        if (travelled + cfg.stepLen > reach) {
+            r.ending = End::Budget;
+            break;
+        }
+        const detail::Vec2 grad = detail::descent(g, s.filled.data(), x, z, cfg.stepLen);
+        const detail::Vec2 desired = detail::normalize(detail::Vec2{
+            cfg.wInertia * heading.x + cfg.wDescent * grad.x,
+            cfg.wInertia * heading.z + cfg.wDescent * grad.z});
+        const float phi = cfg.meanderAmp
+            * detail::meanderNoise(seed, x, z, cfg.meanderFreq);
+
+        /* Never up, and never back into its own lake.
+         *
+         * §5.1 says a route that DESCENDS cannot climb, and that is true of
+         * the surface — but the heading is inertia plus a meander turn, and
+         * either can point at rising ground. The source basin needs its own
+         * guard for a different reason: its surface is flat at exactly the
+         * spill level, so a step into it is level rather than rising and
+         * the never-up rule would wave it through. A river that turns round
+         * and flows back into the lake it came out of is a two-point stub,
+         * and on real terrain that was most of them.
+         *
+         * Three candidate sources are tried in order; see each below. */
+        const detail::Vec2 steered = detail::rotate(desired, phi);
+        bool moved = false;
+        float nx = 0.0f, nz = 0.0f, nsurf = 0.0f;
+        detail::Vec2 taken{};
+
+        /* A candidate is admissible if it does not climb, does not go back
+         * into the source lake, and does not fall back into the pond just
+         * crossed (whose spill is a rim cell, so the pond is right beside
+         * the route and one meander turn is enough to re-enter it). */
+        const auto admit = [&](detail::Vec2 cand) {
+            if (cand.x == 0.0f && cand.z == 0.0f) {
+                return false;
+            }
+            const float cx2 = x + cfg.stepLen * cand.x;
+            const float cz2 = z + cfg.stepLen * cand.z;
+            const float csurf = detail::sampleBilinear(g, s.filled.data(), cx2, cz2);
+            if (csurf > surf) {
+                return false;
+            }
+            const int32_t ccell = detail::cellAt(g, cx2, cz2);
+            if (ccell >= 0) {
+                /* `sourceIndex >= 0` matters: ordinary ground carries
+                 * `basinAt == -1`, so a walk with NO source lake — a
+                 * distributary, which starts on the river rather than in a
+                 * basin — would otherwise read every candidate as "back inside
+                 * my own lake" and stall on its very first step. */
+                if (sourceIndex >= 0
+                        && s.basinAt[static_cast<size_t>(ccell)] == sourceIndex) {
+                    return false;
+                }
+                if (lastCrossed >= 0 && s.label[static_cast<size_t>(ccell)] == lastCrossed) {
+                    return false;
+                }
+            }
+            nx = cx2;
+            nz = cz2;
+            nsurf = csurf;
+            taken = cand;
+            return true;
+        };
+
+        /* 1. The steered step: inertia, descent and the meander turn. This
+         *    is the one that produces sinuosity, and almost always the one
+         *    that is taken. */
+        moved = admit(steered);
+
+        /* 2. A fan around steepest descent, tried nearest-first, for where
+         *    the meander turned into rising ground. */
+        if (!moved) {
+            const detail::Vec2 axis = (grad.x != 0.0f || grad.z != 0.0f) ? grad : heading;
+            static constexpr float FAN[] = {0.0f, 0.35f, -0.35f, 0.7f, -0.7f,
+                                            1.05f, -1.05f, 1.4f, -1.4f, 1.75f, -1.75f,
+                                            2.1f, -2.1f, 2.6f, -2.6f, 3.1f};
+            for (float off : FAN) {
+                if (admit(detail::rotate(axis, off))) {
+                    moved = true;
+                    break;
+                }
+            }
+        }
+
+        /* 3. The discrete fallback, and the reason a route cannot get
+         *    stuck on ground the fill produced. Priority-Flood guarantees
+         *    every CELL has a non-ascending neighbour leading to an outlet;
+         *    a continuous walk sampling bilinearly at a fixed 16-block
+         *    radius has no such guarantee, and on real terrain three routes
+         *    in four died in narrow filled valleys the fan stepped straight
+         *    over. Falling back to the lowest neighbouring cell hands the
+         *    walk back to the field's own guarantee. Ties break by
+         *    neighbour order, which is fixed, so this stays canonical. */
+        if (!moved) {
+            const int32_t here = detail::cellAt(g, x, z);
+            if (here >= 0) {
+                const int32_t ci = here / g.cells;
+                const int32_t cj = here % g.cells;
+                float best = surf;
+                int32_t bi = -1, bj = -1;
+                for (int d = 0; d < 8; ++d) {
+                    const int32_t ni = ci + basin::detail::DI[d];
+                    const int32_t nj = cj + basin::detail::DJ[d];
+                    if (ni < 0 || ni >= g.cells || nj < 0 || nj >= g.cells) {
+                        continue;
+                    }
+                    const auto nk = static_cast<size_t>(ni) * static_cast<size_t>(g.cells)
+                        + static_cast<size_t>(nj);
+                    if (sourceIndex >= 0 && s.basinAt[nk] == sourceIndex) {
+                        continue;
+                    }
+                    if (lastCrossed >= 0 && s.label[nk] == lastCrossed) {
+                        continue;
+                    }
+                    if (s.filled[nk] <= best) {
+                        best = s.filled[nk];
+                        bi = ni;
+                        bj = nj;
+                    }
+                }
+                if (bi >= 0) {
+                    nx = static_cast<float>(g.worldX(bi))
+                        + static_cast<float>(g.cellBlocks) * 0.5f;
+                    nz = static_cast<float>(g.worldZ(bj))
+                        + static_cast<float>(g.cellBlocks) * 0.5f;
+                    nsurf = best;
+                    taken = detail::normalize(detail::Vec2{nx - x, nz - z});
+                    moved = taken.x != 0.0f || taken.z != 0.0f;
+                }
+            }
+        }
+
+        if (!moved) {
+            r.ending = End::Stalled;
+            break;
+        }
+
+        if (nx < windowX0 || nx > windowX1 || nz < windowZ0 || nz > windowZ1) {
+            r.ending = End::Window;
+            break;
+        }
+
+        travelled += std::hypot(nx - x, nz - z);
+        x = nx;
+        z = nz;
+        surf = nsurf;
+        heading = taken;
+        {
+            Vertex v{};
+            v.x = x;
+            v.z = z;
+            v.surf = surf;
+            v.drained = static_cast<float>(drained);
+            r.points.push_back(v);
+        }
+
+        if (surf <= cfg.seaLevel) {
+            r.ending = End::Sea; /* a mouth */
+            break;
+        }
+
+        const int32_t cell = detail::cellAt(g, x, z);
+        if (cell < 0) {
+            r.ending = End::Window;
+            break;
+        }
+        if (s.basinAt[static_cast<size_t>(cell)] >= 0) {
+            /* Into a lake. The route ends at the shore; that lake gets its
+             * own outlet river if it qualifies, which is how a chain of
+             * lakes connects without a confluence graph. */
+            r.ending = End::Lake;
+            break;
+        }
+        const int32_t comp = s.label[static_cast<size_t>(cell)];
+        if (comp >= 0 && comp < static_cast<int32_t>(s.componentSpill.size())
+                && st.stopAtPond) {
+            /* A dying distributary has found somewhere to die: a hollow the
+             * fill raised but then trimmed for being too small to be a lake.
+             * `plan` promotes it afterwards, so the pond at the end of a
+             * branch is still the FILL's pond — this asks for one, it never
+             * digs one. */
+            r.terminalPond = comp;
+            r.ending = End::Pond;
+            break;
+        }
+        if (comp >= 0 && comp < static_cast<int32_t>(s.componentSpill.size())) {
+            /* A depression the fill raised but that is too small to be a
+             * lake. Its surface is flat, so there is no gradient to follow
+             * across it — but the fill already knows where it drains, so
+             * the route crosses to that spill in one straight reach, which
+             * is what the water does. Wandering the flat looking for the
+             * exit is the alternative, and it is both slower and not
+             * canonical. */
+            const int32_t sp = s.componentSpill[static_cast<size_t>(comp)];
+            if (sp < 0) {
+                r.ending = End::Stalled;
+                break;
+            }
+            lastCrossed = comp;
+            const float sx = static_cast<float>(g.worldX(sp / g.cells))
+                + static_cast<float>(g.cellBlocks) * 0.5f;
+            const float sz = static_cast<float>(g.worldZ(sp % g.cells))
+                + static_cast<float>(g.cellBlocks) * 0.5f;
+            const detail::Vec2 across = detail::normalize(detail::Vec2{sx - x, sz - z});
+            if (across.x == 0.0f && across.z == 0.0f) {
+                r.ending = End::Stalled;
+                break;
+            }
+            if (sx < windowX0 || sx > windowX1 || sz < windowZ0 || sz > windowZ1) {
+                r.ending = End::Window;
+                break;
+            }
+            travelled += std::hypot(sx - x, sz - z);
+            heading = across;
+            x = sx;
+            z = sz;
+            surf = detail::sampleBilinear(g, s.filled.data(), x, z);
+            /* §5.5's "drained += basin.volume each time the route passes
+             * through a basin". With termination at every lake this is the
+             * only place it can happen: the ponds a river threads on its
+             * way down, each too small to stop it. */
+            drained += s.componentVolume[static_cast<size_t>(comp)];
+            Vertex v{};
+            v.x = x;
+            v.z = z;
+            v.surf = surf;
+            v.drained = static_cast<float>(drained);
+            r.points.push_back(v);
+        }
+
+        if (step + 1 == budget) {
+            r.ending = End::Budget;
+        }
+    }
+
+
+    r.drained = drained;
+}
+
+/**
+ * Narrow and shallow the last stretch of a channel that simply stops.
+ *
+ * A trunk ends at water — the sea, or a lake — and needs nothing. A
+ * DISTRIBUTARY often ends because it ran out of budget or out of descent, and
+ * a channel four blocks wide that stops mid-stride at full width reads as a
+ * cut-off pipe. Real ones do the opposite: they lose their banks, spread, and
+ * disappear into marsh. Tapering the width and the bed over the last few
+ * vertices is the cheapest honest version of that, and it costs the stamper
+ * nothing — the cross-section it already interpolates just runs to nearly
+ * nothing.
+ */
+inline void taper(const Config& cfg, Route& r) {
+    const auto n = static_cast<int32_t>(r.points.size());
+    const int32_t k = std::min(cfg.branchTaperPoints, n - 1);
+    if (k <= 0) {
+        return;
+    }
+    for (int32_t i = 0; i < k; ++i) {
+        /* 1 at the first tapered vertex, `branchTaperFloor` at the last. */
+        const float t = static_cast<float>(i + 1) / static_cast<float>(k);
+        const float f = 1.0f + (cfg.branchTaperFloor - 1.0f) * t;
+        Vertex& v = r.points[static_cast<size_t>(n - k + i)];
+        v.width *= f;
+        v.bedDepth *= f;
+    }
+}
+
+/**
+ * Plan the distributaries that leave one trunk.
+ *
+ * ═══ What makes a branch legitimate here ═══
+ *
+ * Three things, and all three are geometry rather than taste:
+ *
+ *   1. It must LEAVE. The first step is the trunk's heading rotated by a real
+ *      angle, and it is only taken if the walker admits it — that is, if the
+ *      terrain genuinely descends that way. Where it does not, there is no
+ *      branch, which is why these appear on flats and fans and not across the
+ *      fall line of a mountainside. The slope gate says the same thing in
+ *      advance, cheaply.
+ *   2. It must GET somewhere. A branch whose tip returns within
+ *      `branchMinSpread` of its anchor is discarded: that is an island, not a
+ *      channel, and the stamper would merge it back into the trunk anyway.
+ *   3. It must stay INSIDE THE BUDGET. The walk carries the trunk's travelled
+ *      distance, so the same `maxReach` that bounds the trunk bounds the
+ *      branch's furthest vertex from the trunk's source. A consumer searching
+ *      one halo around a source still finds everything that source made.
+ *
+ * Every hash is keyed on the ANCHOR'S WORLD POSITION, never on a vertex index
+ * — the index depends on where refinement happened to put points, and the
+ * world position does not.
+ */
+inline void planBranches(const basin::Grid& g, const basin::Solution& s,
+                         const basin::Level& lv, int64_t seed, const Config& cfg,
+                         const Route& trunk, std::vector<Route>& out) {
+    const auto n = static_cast<int32_t>(trunk.points.size());
+    if (cfg.branchChance <= 0.0f || n < 4) {
+        return;
+    }
+    /* Arc length along the trunk, so an anchor fraction means the same thing
+     * on a straight reach and a meandering one, and so the branch can inherit
+     * the distance already spent. */
+    std::vector<float> along(static_cast<size_t>(n), 0.0f);
+    for (int32_t i = 1; i < n; ++i) {
+        along[static_cast<size_t>(i)] = along[static_cast<size_t>(i - 1)]
+            + std::hypot(trunk.points[static_cast<size_t>(i)].x
+                             - trunk.points[static_cast<size_t>(i - 1)].x,
+                         trunk.points[static_cast<size_t>(i)].z
+                             - trunk.points[static_cast<size_t>(i - 1)].z);
+    }
+    const float total = along[static_cast<size_t>(n - 1)];
+    if (total <= 0.0f) {
+        return;
+    }
+
+    float next = cfg.branchFirst;
+    for (int32_t i = 1; i + 1 < n; ++i) {
+        const float f = along[static_cast<size_t>(i)] / total;
+        if (f < next) {
+            continue;
+        }
+        if (f > cfg.branchLast) {
+            break;
+        }
+        const Vertex& a = trunk.points[static_cast<size_t>(i)];
+        const auto keyX = static_cast<int64_t>(std::lround(a.x));
+        const auto keyZ = static_cast<int64_t>(std::lround(a.z));
+        const uint64_t h = basin::hashCell(seed, keyX, keyZ, SALT_BRANCH);
+        next = f + cfg.branchSpacing * (0.5f + basin::hash01(h >> 8));
+        if (basin::hash01(h) >= cfg.branchChance) {
+            continue;
+        }
+
+        /* The trunk's own gradient here, over the segment either side. */
+        const Vertex& prev = trunk.points[static_cast<size_t>(i - 1)];
+        const Vertex& post = trunk.points[static_cast<size_t>(i + 1)];
+        const float span = std::hypot(post.x - prev.x, post.z - prev.z);
+        if (span <= 0.0f) {
+            continue;
+        }
+        if ((prev.surf - post.surf) / span > cfg.branchMaxSlope) {
+            continue;
+        }
+
+        const Vec2 headingAlong = normalize(Vec2{post.x - prev.x, post.z - prev.z});
+        if (headingAlong.x == 0.0f && headingAlong.z == 0.0f) {
+            continue;
+        }
+        const float sweep = cfg.branchAngleMin
+            + (cfg.branchAngleMax - cfg.branchAngleMin) * basin::hash01(h >> 16);
+        const float side = basin::hash01(h >> 24) < 0.5f ? -1.0f : 1.0f;
+
+        Route br;
+        br.branch = true;
+        br.sourceId = trunk.sourceId;
+        br.sourceX = trunk.sourceX;
+        br.sourceZ = trunk.sourceZ;
+        WalkStart st{};
+        st.x = a.x;
+        st.z = a.z;
+        st.surf = a.surf;
+        st.heading = rotate(headingAlong, side * sweep);
+        st.drained = static_cast<double>(a.drained) * cfg.branchDrainedFrac;
+        st.travelled = along[static_cast<size_t>(i)];
+        st.sourceIndex = -1;  /* it starts on the river, not in a lake */
+        st.stopAtPond = true; /* and it is allowed to die in one       */
+        walk(g, s, lv, seed, cfg, st, br);
+
+        if (static_cast<int32_t>(br.points.size()) < cfg.minPoints) {
+            continue;
+        }
+        const Vertex& tip = br.points.back();
+        if (std::hypot(tip.x - a.x, tip.z - a.z) < cfg.branchMinSpread) {
+            continue; /* came back to where it started: an island, not a channel */
+        }
+        out.push_back(std::move(br));
+    }
 }
 
 } // namespace detail
@@ -463,8 +1015,8 @@ inline void refine(int64_t seed, const Config& cfg, Route& r) {
             const Vertex& a = r.points[i];
             const Vertex& b = r.points[i + 1];
             out.push_back(a);
-            if (b.drop >= cfg.waterfallMinDrop) {
-                continue; /* leave a fall as the single step it is */
+            if (b.drop >= cfg.stepDrop()) {
+                continue; /* leave a step as the single step it is */
             }
             const float dx = b.x - a.x;
             const float dz = b.z - a.z;
@@ -497,7 +1049,7 @@ inline void refine(int64_t seed, const Config& cfg, Route& r) {
          * them; the split segments each carry half the original descent. */
         for (size_t i = 0; i < r.points.size(); ++i) {
             r.points[i].drop = i == 0 ? 0.0f : r.points[i - 1].surf - r.points[i].surf;
-            r.points[i].waterfall = r.points[i].drop >= cfg.waterfallMinDrop;
+            r.points[i].waterfall = r.points[i].drop >= cfg.stepDrop();
         }
     }
 }
@@ -515,13 +1067,117 @@ inline void refine(int64_t seed, const Config& cfg, Route& r) {
 inline void applyPlungePools(const Config& cfg, Route& r) {
     const auto n = r.points.size();
     for (size_t i = 0; i < n; ++i) {
-        if (!r.points[i].waterfall) {
+        /* Against `waterfallMinDrop`, not the flag: with the step-pool pass on
+         * the flag marks every pool boundary, and a one-block step is a riffle,
+         * not a fall with a basin under it. */
+        if (r.points[i].drop < cfg.waterfallMinDrop) {
             continue;
         }
         r.points[i].width *= cfg.plungeWiden;
+        r.points[i].bedDepth *= cfg.plungeDeepen;
         if (i + 1 < n) {
             r.points[i + 1].width *= cfg.plungeWiden;
+            r.points[i + 1].bedDepth *= cfg.plungeDeepen;
         }
+    }
+}
+
+/**
+ * §5.8b: make the descent a STAIRCASE of flat pools and steps rather than one
+ * continuous ramp.
+ *
+ * ═══ Why this is about BANKS, not about scenery ═══
+ *
+ * `ck_carve_water` walls every dry column beside the river up to the GUARD
+ * RAIL — the highest water within `river_guard_reach` wet steps — because
+ * `WaterSim` cascades a flowing layer down a stepped surface and a reach
+ * settles toward the level upstream of it (water.cpp's "The guard rail"). On a
+ * ramp that rail is not a detail: the freeboard it adds is the river's own
+ * SLOPE times that reach. Measured on a 0.25-per-block flank while the reach
+ * was 32, 383,822 blocks of ground were raised at the default and 29,393 with
+ * the rail off — **92 % of every wall on that flank was the ramp's slope,
+ * multiplied by 32.** The rail has since been cut to a 12-step reach and
+ * capped at three blocks of lift, which takes most of the rest; this pass is
+ * what makes the remainder affordable, because a pool has no slope to
+ * multiply by whatever the reach is.
+ *
+ * A flat pool has no slope, so it has no freeboard. That is the whole idea:
+ * spend the descent in a few steps the sim must be walled for anyway, and buy
+ * flat water — and therefore bare ground — in between.
+ *
+ * ═══ Why the level is the MINIMUM over the pool ═══
+ *
+ * A run is levelled DOWN to the lowest surface in it, never up. Two reasons,
+ * and both are load-bearing:
+ *
+ *   1. The stepped surface is then everywhere <= the ramp it replaces. The rail
+ *      is a max of water levels and the wall is raised to the rail, so a
+ *      pointwise-lower surface can only produce a pointwise-lower wall. Banks
+ *      can shrink and cannot grow — which is the one property that makes this
+ *      safe to land without re-deriving containment.
+ *   2. Levelling UP perches water over ground that has already fallen away,
+ *      which is the wall this pass exists to remove.
+ *
+ * The cost is paid on the other side: the pool's own head sits below its
+ * ground, and past `tunnel_min_roof` the carve tunnels instead. `poolMaxDrop`
+ * is what keeps that cut shallow enough to stay an open channel.
+ *
+ * ═══ Where the falls come from ═══
+ *
+ * Nowhere new. A run closes as soon as the descent since its head reaches the
+ * budget, so a reach that descends gently yields short pools and low steps,
+ * and one that meets a real drop in the coarse DEM closes AT that drop and
+ * hands the whole of it to a single step. `classify`'s existing
+ * `waterfallMinDrop` then decides which of those steps are waterfalls, and
+ * `refine` already refuses to subdivide them. Big falls appear where the
+ * terrain has big falls — "waterfalls at greater heights when possible" — and
+ * nothing else has to be taught what a waterfall is.
+ *
+ * Runs before `refine`, so the falls it creates are the ones refinement is
+ * asked to preserve, and the flat runs are what gets subdivided for meanders.
+ * The route's FIRST vertex keeps its own surface: it is the source lake's
+ * spill, and dropping it would start the river below the lake it drains.
+ */
+inline void stepPool(const Config& cfg, Route& r) {
+    const auto n = r.points.size();
+    if (cfg.poolMaxDrop <= 0.0f || n < 3) {
+        return;
+    }
+    size_t head = 1; /* [0] is the spill: the lake's own surface, not a pool */
+    while (head < n) {
+        size_t tail = head;
+        float run = 0.0f;
+        while (tail + 1 < n) {
+            /* The surface never rises along a route, so the descent since the
+             * head is also the depth of the cut this pool would ask for. */
+            if (r.points[head].surf - r.points[tail + 1].surf > cfg.poolMaxDrop) {
+                break;
+            }
+            const float seg = std::hypot(r.points[tail + 1].x - r.points[tail].x,
+                                         r.points[tail + 1].z - r.points[tail].z);
+            if (run + seg > cfg.poolMaxRun) {
+                break;
+            }
+            run += seg;
+            ++tail;
+        }
+        const float level = r.points[tail].surf; /* the minimum: surf never rises */
+        for (size_t k = head; k <= tail; ++k) {
+            r.points[k].surf = level;
+        }
+        head = tail + 1;
+    }
+    /* The drops moved, so the flags that read them have to be rebuilt.
+     *
+     * EVERY pool boundary is flagged, not just the tall ones. The flag means
+     * "the surface steps here rather than ramping", and after this pass that is
+     * true of all of them: a pool is flat, so whatever descent the route had is
+     * now concentrated at its ends. Ramping one instead would spread a
+     * three-block drop across a four-block segment, which is the tilted
+     * cross-section `testTheChannelIsLevelAcrossItsWidth` exists to forbid. */
+    for (size_t i = 0; i < n; ++i) {
+        r.points[i].drop = i == 0 ? 0.0f : r.points[i - 1].surf - r.points[i].surf;
+        r.points[i].waterfall = r.points[i].drop >= cfg.stepDrop();
     }
 }
 
@@ -588,21 +1244,24 @@ inline void plan(const basin::Grid& g, const basin::Solution& s, const basin::Le
     if (s.filled.empty() || g.raw == nullptr) {
         return;
     }
-    const int32_t budget = cfg.stepBudget(lv);
     const int64_t ownedX0 = regionX * lv.regionBlocks;
     const int64_t ownedZ0 = regionZ * lv.regionBlocks;
     const int64_t ownedX1 = ownedX0 + lv.regionBlocks;
     const int64_t ownedZ1 = ownedZ0 + lv.regionBlocks;
 
-    /* The stencil reaches one step either side of a sample, so a route must
-     * stop before its next step could read outside the window. */
-    const float edge = 2.0f * cfg.stepLen;
-    const auto windowX0 = static_cast<float>(g.originX) + edge;
-    const auto windowZ0 = static_cast<float>(g.originZ) + edge;
-    const float windowX1 =
-        static_cast<float>(g.originX + static_cast<int64_t>(g.cells) * g.cellBlocks) - edge;
-    const float windowZ1 =
-        static_cast<float>(g.originZ + static_cast<int64_t>(g.cells) * g.cellBlocks) - edge;
+    /* Every route, trunk or branch, is finished the same way — one place, so
+     * a branch can never quietly miss a pass the trunks get. */
+    const auto finish = [&](Route& r) {
+        detail::classify(g, cfg, r);
+        detail::stepPool(cfg, r);
+        detail::refine(seed, cfg, r);
+        detail::applyPlungePools(cfg, r);
+        if (r.branch && r.ending != End::Lake && r.ending != End::Sea) {
+            /* It did not arrive anywhere; let it wither instead of stopping. */
+            detail::taper(cfg, r);
+        }
+        out.push_back(std::move(r));
+    };
 
     for (const basin::Basin& b : s.basins) {
         /* Owned by this region, by the spill cell's world coordinates. */
@@ -672,239 +1331,30 @@ inline void plan(const basin::Grid& g, const basin::Solution& s, const basin::Le
             continue; /* nowhere to go at all */
         }
 
-        /* The budget is a DISTANCE, not a step count. A step is one stepLen,
-         * but the discrete fallback moves to a cell centre and a flat crossing
-         * jumps the width of a pond, so counting steps would let a route travel
-         * further than `maxReach` says — and `maxReach` is what tells a
-         * consumer how far away a source can be and still reach its ground. */
-        const float reach = cfg.maxReach(lv);
-        float travelled = 0.0f;
-        int32_t lastCrossed = -1;
-        for (int32_t step = 0; step < budget; ++step) {
-            if (travelled + cfg.stepLen > reach) {
-                r.ending = End::Budget;
-                break;
-            }
-            const detail::Vec2 grad = detail::descent(g, s.filled.data(), x, z, cfg.stepLen);
-            const detail::Vec2 desired = detail::normalize(detail::Vec2{
-                cfg.wInertia * heading.x + cfg.wDescent * grad.x,
-                cfg.wInertia * heading.z + cfg.wDescent * grad.z});
-            const float phi = cfg.meanderAmp
-                * detail::meanderNoise(seed, x, z, cfg.meanderFreq);
-
-            /* Never up, and never back into its own lake.
-             *
-             * §5.1 says a route that DESCENDS cannot climb, and that is true of
-             * the surface — but the heading is inertia plus a meander turn, and
-             * either can point at rising ground. The source basin needs its own
-             * guard for a different reason: its surface is flat at exactly the
-             * spill level, so a step into it is level rather than rising and
-             * the never-up rule would wave it through. A river that turns round
-             * and flows back into the lake it came out of is a two-point stub,
-             * and on real terrain that was most of them.
-             *
-             * Three candidate sources are tried in order; see each below. */
-            const detail::Vec2 steered = detail::rotate(desired, phi);
-            bool moved = false;
-            float nx = 0.0f, nz = 0.0f, nsurf = 0.0f;
-            detail::Vec2 taken{};
-
-            /* A candidate is admissible if it does not climb, does not go back
-             * into the source lake, and does not fall back into the pond just
-             * crossed (whose spill is a rim cell, so the pond is right beside
-             * the route and one meander turn is enough to re-enter it). */
-            const auto admit = [&](detail::Vec2 cand) {
-                if (cand.x == 0.0f && cand.z == 0.0f) {
-                    return false;
-                }
-                const float cx2 = x + cfg.stepLen * cand.x;
-                const float cz2 = z + cfg.stepLen * cand.z;
-                const float csurf = detail::sampleBilinear(g, s.filled.data(), cx2, cz2);
-                if (csurf > surf) {
-                    return false;
-                }
-                const int32_t ccell = detail::cellAt(g, cx2, cz2);
-                if (ccell >= 0) {
-                    if (s.basinAt[static_cast<size_t>(ccell)] == sourceIndex) {
-                        return false;
-                    }
-                    if (lastCrossed >= 0 && s.label[static_cast<size_t>(ccell)] == lastCrossed) {
-                        return false;
-                    }
-                }
-                nx = cx2;
-                nz = cz2;
-                nsurf = csurf;
-                taken = cand;
-                return true;
-            };
-
-            /* 1. The steered step: inertia, descent and the meander turn. This
-             *    is the one that produces sinuosity, and almost always the one
-             *    that is taken. */
-            moved = admit(steered);
-
-            /* 2. A fan around steepest descent, tried nearest-first, for where
-             *    the meander turned into rising ground. */
-            if (!moved) {
-                const detail::Vec2 axis = (grad.x != 0.0f || grad.z != 0.0f) ? grad : heading;
-                static constexpr float FAN[] = {0.0f, 0.35f, -0.35f, 0.7f, -0.7f,
-                                                1.05f, -1.05f, 1.4f, -1.4f, 1.75f, -1.75f,
-                                                2.1f, -2.1f, 2.6f, -2.6f, 3.1f};
-                for (float off : FAN) {
-                    if (admit(detail::rotate(axis, off))) {
-                        moved = true;
-                        break;
-                    }
-                }
-            }
-
-            /* 3. The discrete fallback, and the reason a route cannot get
-             *    stuck on ground the fill produced. Priority-Flood guarantees
-             *    every CELL has a non-ascending neighbour leading to an outlet;
-             *    a continuous walk sampling bilinearly at a fixed 16-block
-             *    radius has no such guarantee, and on real terrain three routes
-             *    in four died in narrow filled valleys the fan stepped straight
-             *    over. Falling back to the lowest neighbouring cell hands the
-             *    walk back to the field's own guarantee. Ties break by
-             *    neighbour order, which is fixed, so this stays canonical. */
-            if (!moved) {
-                const int32_t here = detail::cellAt(g, x, z);
-                if (here >= 0) {
-                    const int32_t ci = here / g.cells;
-                    const int32_t cj = here % g.cells;
-                    float best = surf;
-                    int32_t bi = -1, bj = -1;
-                    for (int d = 0; d < 8; ++d) {
-                        const int32_t ni = ci + basin::detail::DI[d];
-                        const int32_t nj = cj + basin::detail::DJ[d];
-                        if (ni < 0 || ni >= g.cells || nj < 0 || nj >= g.cells) {
-                            continue;
-                        }
-                        const auto nk = static_cast<size_t>(ni) * static_cast<size_t>(g.cells)
-                            + static_cast<size_t>(nj);
-                        if (s.basinAt[nk] == sourceIndex) {
-                            continue;
-                        }
-                        if (lastCrossed >= 0 && s.label[nk] == lastCrossed) {
-                            continue;
-                        }
-                        if (s.filled[nk] <= best) {
-                            best = s.filled[nk];
-                            bi = ni;
-                            bj = nj;
-                        }
-                    }
-                    if (bi >= 0) {
-                        nx = static_cast<float>(g.worldX(bi))
-                            + static_cast<float>(g.cellBlocks) * 0.5f;
-                        nz = static_cast<float>(g.worldZ(bj))
-                            + static_cast<float>(g.cellBlocks) * 0.5f;
-                        nsurf = best;
-                        taken = detail::normalize(detail::Vec2{nx - x, nz - z});
-                        moved = taken.x != 0.0f || taken.z != 0.0f;
-                    }
-                }
-            }
-
-            if (!moved) {
-                r.ending = End::Stalled;
-                break;
-            }
-
-            if (nx < windowX0 || nx > windowX1 || nz < windowZ0 || nz > windowZ1) {
-                r.ending = End::Window;
-                break;
-            }
-
-            travelled += std::hypot(nx - x, nz - z);
-            x = nx;
-            z = nz;
-            surf = nsurf;
-            heading = taken;
-            {
-                Vertex v{};
-                v.x = x;
-                v.z = z;
-                v.surf = surf;
-                v.drained = static_cast<float>(drained);
-                r.points.push_back(v);
-            }
-
-            if (surf <= cfg.seaLevel) {
-                r.ending = End::Sea; /* a mouth */
-                break;
-            }
-
-            const int32_t cell = detail::cellAt(g, x, z);
-            if (cell < 0) {
-                r.ending = End::Window;
-                break;
-            }
-            if (s.basinAt[static_cast<size_t>(cell)] >= 0) {
-                /* Into a lake. The route ends at the shore; that lake gets its
-                 * own outlet river if it qualifies, which is how a chain of
-                 * lakes connects without a confluence graph. */
-                r.ending = End::Lake;
-                break;
-            }
-            const int32_t comp = s.label[static_cast<size_t>(cell)];
-            if (comp >= 0 && comp < static_cast<int32_t>(s.componentSpill.size())) {
-                /* A depression the fill raised but that is too small to be a
-                 * lake. Its surface is flat, so there is no gradient to follow
-                 * across it — but the fill already knows where it drains, so
-                 * the route crosses to that spill in one straight reach, which
-                 * is what the water does. Wandering the flat looking for the
-                 * exit is the alternative, and it is both slower and not
-                 * canonical. */
-                const int32_t sp = s.componentSpill[static_cast<size_t>(comp)];
-                if (sp < 0) {
-                    r.ending = End::Stalled;
-                    break;
-                }
-                lastCrossed = comp;
-                const float sx = static_cast<float>(g.worldX(sp / g.cells))
-                    + static_cast<float>(g.cellBlocks) * 0.5f;
-                const float sz = static_cast<float>(g.worldZ(sp % g.cells))
-                    + static_cast<float>(g.cellBlocks) * 0.5f;
-                const detail::Vec2 across = detail::normalize(detail::Vec2{sx - x, sz - z});
-                if (across.x == 0.0f && across.z == 0.0f) {
-                    r.ending = End::Stalled;
-                    break;
-                }
-                if (sx < windowX0 || sx > windowX1 || sz < windowZ0 || sz > windowZ1) {
-                    r.ending = End::Window;
-                    break;
-                }
-                travelled += std::hypot(sx - x, sz - z);
-                heading = across;
-                x = sx;
-                z = sz;
-                surf = detail::sampleBilinear(g, s.filled.data(), x, z);
-                /* §5.5's "drained += basin.volume each time the route passes
-                 * through a basin". With termination at every lake this is the
-                 * only place it can happen: the ponds a river threads on its
-                 * way down, each too small to stop it. */
-                drained += s.componentVolume[static_cast<size_t>(comp)];
-                Vertex v{};
-                v.x = x;
-                v.z = z;
-                v.surf = surf;
-                v.drained = static_cast<float>(drained);
-                r.points.push_back(v);
-            }
-
-            if (step + 1 == budget) {
-                r.ending = End::Budget;
-            }
-        }
-
+        detail::WalkStart st{};
+        st.x = x;
+        st.z = z;
+        st.surf = surf;
+        st.heading = heading;
+        st.drained = drained;
+        st.sourceIndex = sourceIndex;
+        detail::walk(g, s, lv, seed, cfg, st, r);
+        drained = r.drained;
         r.drained = drained;
-        if (static_cast<int32_t>(r.points.size()) >= cfg.minPoints) {
-            detail::classify(g, cfg, r);
-            detail::refine(seed, cfg, r);
-            detail::applyPlungePools(cfg, r);
-            out.push_back(std::move(r));
+        if (static_cast<int32_t>(r.points.size()) < cfg.minPoints) {
+            continue;
+        }
+        /* The trunk, then whatever leaves it. Branches are planned from the
+         * RAW polyline, before `refine` moves midpoints sideways and before
+         * `stepPool` levels the surface: an anchor keyed on a refined vertex
+         * would move whenever refinement did, and the slope gate wants the
+         * descent the terrain has rather than the staircase §5.8b makes of it. */
+        std::vector<Route> branches;
+        detail::planBranches(g, s, lv, seed, cfg, r, branches);
+
+        finish(r);
+        for (Route& br : branches) {
+            finish(br);
         }
     }
 }

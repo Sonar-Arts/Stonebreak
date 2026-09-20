@@ -97,6 +97,10 @@ void readRiverParams(const float* params, int32_t n, rp::Config& cfg) {
      * and [29]/[30] its bank skirt; the plan reads none of them. [28] is the
      * plan's again. */
     if (n > 28) cfg.lakeLinkReach = static_cast<int32_t>(params[28]);
+    /* [29]-[31] are the carve's bank skirt and guard rail. */
+    if (n > 32) cfg.poolMaxDrop = params[32];
+    if (n > 33) cfg.poolMaxRun = params[33];
+    if (n > 34) cfg.plungeDeepen = params[34];
     /* [24] and [25] are the tunnel knobs, which only the carve reads. The two
      * carve-only slots that used to sit at [10] and [14] went with the valley
      * pull; the indices after them shifted down to close the holes. */
@@ -185,12 +189,12 @@ int32_t ck_solve_basins(int64_t seed,
     }
 
     const auto n = static_cast<size_t>(cells) * static_cast<size_t>(cells);
-    std::memcpy(out_filled, s.filled.data(), n * sizeof(float));
-    std::memcpy(out_depth, s.depth.data(), n * sizeof(float));
-
     if (out_vertices == nullptr || out_route_starts == nullptr
             || out_river_counts == nullptr || max_routes <= 0 || max_vertices <= 0) {
-        return withheld; /* lakes only */
+        /* Lakes only: nothing can promote a pond, so publish and go. */
+        std::memcpy(out_filled, s.filled.data(), n * sizeof(float));
+        std::memcpy(out_depth, s.depth.data(), n * sizeof(float));
+        return withheld;
     }
     out_river_counts[0] = 0;
     out_river_counts[1] = 0;
@@ -200,6 +204,24 @@ int32_t ck_solve_basins(int64_t seed,
     readRiverParams(params, n_params, rcfg);
     std::vector<rp::Route>& routes = tlsRoutes;
     rp::plan(g, s, lv, regionX, regionZ, seed, rcfg, routes);
+
+    /* A distributary that came to rest in a hollow asks for that hollow to be
+     * a pond (§5.10). The planner only NAMES it — promotion belongs to the
+     * basin layer, which owns what a lake is — and it happens here, before the
+     * planes are published, because `promoteComponent` writes into `depth` and
+     * `basinAt` and a copy taken earlier would not have it. That ordering was
+     * a live bug the day this was written: the memcpy used to sit above
+     * `rp::plan`, so anything the planner changed never reached the caller. */
+    for (const rp::Route& r : routes) {
+        if (r.terminalPond >= 0) {
+            bp::promoteComponent(g, s, cfg, r.terminalPond,
+                                 regionX * lv.regionBlocks, regionZ * lv.regionBlocks,
+                                 (regionX + 1) * lv.regionBlocks,
+                                 (regionZ + 1) * lv.regionBlocks);
+        }
+    }
+    std::memcpy(out_filled, s.filled.data(), n * sizeof(float));
+    std::memcpy(out_depth, s.depth.data(), n * sizeof(float));
 
     /* Packed out, stopping at either cap rather than overflowing. A caller
      * that sees its counts pinned at the caps should raise them; silently

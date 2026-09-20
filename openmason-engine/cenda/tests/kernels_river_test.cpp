@@ -147,6 +147,29 @@ bool neverUp(const std::vector<rp::Route>& routes) {
     return true;
 }
 
+/* How many TRUNKS a plan holds — routes that came out of a lake's spill point.
+ * The rest are distributaries (§5.10), which leave a trunk rather than a lake
+ * and so are not what a "one lake, one river" rule is counting. */
+size_t trunks(const std::vector<rp::Route>& routes) {
+    size_t n = 0;
+    for (const rp::Route& r : routes) {
+        if (!r.branch) {
+            ++n;
+        }
+    }
+    return n;
+}
+
+/* The first trunk, or nullptr. */
+const rp::Route* firstTrunk(const std::vector<rp::Route>& routes) {
+    for (const rp::Route& r : routes) {
+        if (!r.branch) {
+            return &r;
+        }
+    }
+    return nullptr;
+}
+
 /* ── Tests ──────────────────────────────────────────────────────────────── */
 
 void testALakeSpillsARiverToTheSea() {
@@ -165,11 +188,11 @@ void testALakeSpillsARiverToTheSea() {
     std::vector<rp::Route> routes;
     rp::plan(sv.grid, sv.solution, bp::LEVEL_L1, 0, 0, 777, cfg, routes);
 
-    check(routes.size() == 1, "coastal pit: one lake, one river");
-    if (routes.empty()) {
+    check(trunks(routes) == 1, "coastal pit: one lake, one river");
+    if (firstTrunk(routes) == nullptr) {
         return;
     }
-    const rp::Route& r = routes[0];
+    const rp::Route& r = *firstTrunk(routes);
     /* §5.2: rivers begin at spill points and nowhere else. */
     check(r.sourceX == b.spillX && r.sourceZ == b.spillZ,
           "the river starts at the lake's spill cell");
@@ -216,9 +239,14 @@ void testSourceGatingRemovesRiversWithoutMovingTheSurvivors() {
     bool subset = true;
     bool identical = true;
     for (const rp::Route& f : few) {
+        /* Trunks only: a distributary shares its trunk's `sourceId`, so
+         * matching on that alone would pair a trunk with a branch. */
+        if (f.branch) {
+            continue;
+        }
         const rp::Route* match = nullptr;
         for (const rp::Route& m : many) {
-            if (m.sourceId == f.sourceId) {
+            if (!m.branch && m.sourceId == f.sourceId) {
                 match = &m;
                 break;
             }
@@ -261,11 +289,122 @@ void testAreaThresholdRejectsSmallLakes() {
 
     cfg.minRiverLakeArea = area;
     rp::plan(sv.grid, sv.solution, bp::LEVEL_L1, 0, 0, 5, cfg, routes);
-    check(routes.size() == 1, "a lake exactly at the threshold spills a river");
+    check(trunks(routes) == 1, "a lake exactly at the threshold spills a river");
 
     cfg.minRiverLakeArea = area + 1;
     rp::plan(sv.grid, sv.solution, bp::LEVEL_L1, 0, 0, 5, cfg, routes);
     check(routes.empty(), "a lake below the threshold spills nothing");
+}
+
+/**
+ * §5.10: distributaries leave a trunk, run away from it, and stay inside the
+ * budget the trunk was planned against.
+ *
+ * What is pinned, in order of how much it would cost to get wrong:
+ *
+ *   1. The BUDGET. A branch inherits the distance its trunk had already spent,
+ *      so `maxReach` still bounds the furthest vertex from the trunk's SOURCE.
+ *      Break this and a consumer searching one halo around a source silently
+ *      misses part of a river, and two neighbouring tiles disagree for ever.
+ *   2. The switch. `branchChance = 0` must reproduce the old world exactly —
+ *      trunk for trunk, vertex for vertex.
+ *   3. The slope gate. Distributaries are a lowland feature; on a steep flank
+ *      all the water is in one channel.
+ *   4. They are SMALLER than what they left, and they do not feed back into
+ *      it: a trunk's own vertices are identical with branches on and off.
+ */
+void testDistributariesLeaveATrunk() {
+    const Plain plain = coastalPit();
+    const Solved sv = solveRegion(plain, 0, 0);
+
+    rp::Config on;
+    on.seaLevel = SEA;
+    on.riverKeepFraction = 1.0f;
+    rp::Config off = on;
+    off.branchChance = 0.0f;
+
+    std::vector<rp::Route> withBranches;
+    std::vector<rp::Route> without;
+    rp::plan(sv.grid, sv.solution, bp::LEVEL_L1, 0, 0, 777, on, withBranches);
+    rp::plan(sv.grid, sv.solution, bp::LEVEL_L1, 0, 0, 777, off, without);
+
+    size_t branches = 0;
+    for (const rp::Route& r : withBranches) {
+        if (r.branch) {
+            ++branches;
+        }
+    }
+    check(branches > 0, "a gently tilted plain grows distributaries");
+    check(trunks(withBranches) == trunks(without),
+          "and they do not change how many trunks there are");
+    check(without.size() == trunks(without), "branchChance 0 plans no branches at all");
+
+    /* 2. The trunk is untouched, vertex for vertex. */
+    const rp::Route* a = firstTrunk(withBranches);
+    const rp::Route* b = firstTrunk(without);
+    bool trunkUnchanged = a != nullptr && b != nullptr && a->points.size() == b->points.size();
+    if (trunkUnchanged) {
+        for (size_t i = 0; i < a->points.size(); ++i) {
+            if (a->points[i].x != b->points[i].x || a->points[i].z != b->points[i].z
+                    || a->points[i].surf != b->points[i].surf
+                    || a->points[i].width != b->points[i].width) {
+                trunkUnchanged = false;
+            }
+        }
+    }
+    check(trunkUnchanged, "a trunk is identical whether or not it sprouts branches");
+
+    /* 1. The budget, measured as the consumer measures it. */
+    const float cap = on.maxReach(bp::LEVEL_L1);
+    float furthest = 0.0f;
+    bool narrower = true;
+    bool tapered = true;
+    for (const rp::Route& r : withBranches) {
+        for (const rp::Vertex& v : r.points) {
+            furthest = std::max(furthest, std::hypot(v.x - static_cast<float>(r.sourceX),
+                                                     v.z - static_cast<float>(r.sourceZ)));
+        }
+        if (!r.branch) {
+            continue;
+        }
+        check(r.sourceId == a->sourceId, "a branch is keyed to the trunk's own source");
+        /* 4. Smaller than the trunk's widest, and dying away at the end. */
+        float widest = 0.0f;
+        for (const rp::Vertex& v : r.points) {
+            widest = std::max(widest, v.width);
+        }
+        float trunkWidest = 0.0f;
+        for (const rp::Vertex& v : a->points) {
+            trunkWidest = std::max(trunkWidest, v.width);
+        }
+        if (widest >= trunkWidest) {
+            narrower = false;
+        }
+        if (r.ending != rp::End::Lake && r.ending != rp::End::Sea
+                && r.points.back().width >= widest) {
+            tapered = false;
+        }
+    }
+    check(furthest <= cap, "every branch vertex is inside the trunk's own reach");
+    check(narrower, "a branch is narrower than the trunk it left");
+    check(tapered, "and one that arrives nowhere withers instead of stopping");
+
+    /* 3. The slope gate: the same fixture tilted into a flank grows none. */
+    const Plain steep{0.25f, 1100.0f, 200.0f, 140.0f, {{400, 2048}}};
+    const Solved sv2 = solveRegion(steep, 0, 0);
+    std::vector<rp::Route> onFlank;
+    rp::plan(sv2.grid, sv2.solution, bp::LEVEL_L1, 0, 0, 777, on, onFlank);
+    size_t flankBranches = 0;
+    for (const rp::Route& r : onFlank) {
+        if (r.branch) {
+            ++flankBranches;
+        }
+    }
+    check(trunks(onFlank) > 0, "the flank fixture still has a river");
+    check(flankBranches == 0, "but a steep flank keeps its water in one channel");
+
+    std::printf("distributaries ok (%zu branches off %zu trunks, furthest vertex %.0f of %.0f; "
+                "none on a 0.25 flank)\n", branches, trunks(withBranches), furthest, cap);
 }
 
 void testOnlyTheOwningRegionEmitsARoute() {
@@ -281,7 +420,7 @@ void testOnlyTheOwningRegionEmitsARoute() {
     const Solved owner = solveRegion(plain, 0, 0);
     std::vector<rp::Route> mine;
     rp::plan(owner.grid, owner.solution, bp::LEVEL_L1, 0, 0, 99, cfg, mine);
-    check(mine.size() == 1, "the owning region emits the river");
+    check(trunks(mine) == 1, "the owning region emits the river");
 
     const Solved neighbour = solveRegion(plain, 1, 0);
     std::vector<rp::Route> theirs;
@@ -483,7 +622,11 @@ void testAWaterfallIsFlaggedAndNothingIsRampedToIt() {
             if (v.drop != expected) {
                 dropsAgree = false;
             }
-            if (v.waterfall != (v.drop >= cfg.waterfallMinDrop)) {
+            /* Against `stepDrop()`, not `waterfallMinDrop`: the flag means
+             * "the surface steps here rather than ramping", and with the
+             * step-pool pass on every pool boundary is one. Which of those
+             * steps is tall enough to be a FALL is asserted separately below. */
+            if (v.waterfall != (v.drop >= cfg.stepDrop())) {
                 flagsAgree = false;
             }
             if (v.waterfall) {
@@ -496,11 +639,58 @@ void testAWaterfallIsFlaggedAndNothingIsRampedToIt() {
         }
     }
     check(dropsAgree, "each vertex records the descent into it, and it never climbs");
-    check(flagsAgree, "the waterfall flag is exactly the drop threshold");
+    check(flagsAgree, "the step flag is exactly the step threshold");
     check(falls > 0, "a 12-block riser is a waterfall");
+
+    /* ── The step-pool pass, on the fixture built to have real risers ──
+     *
+     * The point of §5.8b is that the descent ends up IN the risers rather than
+     * spread along the treads: a tread is dead flat, so the guard rail adds it
+     * no freeboard and the banks beside it are bare ground. */
+    int flatTreads = 0;
+    int tallFalls = 0;
+    float tallest = 0.0f;
+    for (const rp::Route& r : routes) {
+        for (const rp::Vertex& v : r.points) {
+            if (v.drop == 0.0f) {
+                ++flatTreads;
+            }
+            if (v.drop >= cfg.waterfallMinDrop) {
+                ++tallFalls;
+                tallest = std::max(tallest, v.drop);
+            }
+        }
+    }
+    check(flatTreads > 0, "step-pool: the treads between risers are dead flat");
+    check(tallFalls > 0, "step-pool: a riser survives as one tall fall");
+    check(tallest >= 6.0f, "step-pool: and it is not subdivided into a ramp");
+
+    /* The same route with the pass off must still descend, and must do it
+     * WITHOUT flat runs — otherwise the comparison above proves nothing. */
+    rp::Config ramp = cfg;
+    ramp.poolMaxDrop = 0.0f;
+    std::vector<rp::Route> ramped;
+    rp::plan(g, s, lv, 0, 0, 8080, ramp, ramped);
+    int rampFlats = 0;
+    int rampPoints = 0;
+    for (const rp::Route& r : ramped) {
+        for (size_t i = 1; i < r.points.size(); ++i) {
+            ++rampPoints;
+            if (r.points[i].drop == 0.0f) {
+                ++rampFlats;
+            }
+        }
+    }
+    check(rampPoints > 0, "step-pool: the ramp control plans a route too");
+    check(flatTreads > rampFlats, "step-pool: pooling is what makes the flat water");
+    std::printf("step-pool ok (%d flat vertices with pools vs %d without; "
+                "%d falls, tallest %.1f)\n", flatTreads, rampFlats, tallFalls, tallest);
+
     /* Raising the threshold above the riser must remove them all — the flag is
-     * a measurement of the terrain, not a property the router invented. */
+     * a measurement of the terrain, not a property the router invented. With
+     * the pass off, `stepDrop()` is `waterfallMinDrop` again. */
     rp::Config high = cfg;
+    high.poolMaxDrop = 0.0f;
     high.waterfallMinDrop = 100.0f;
     std::vector<rp::Route> calm;
     rp::plan(g, s, lv, 0, 0, 8080, high, calm);
@@ -816,6 +1006,7 @@ int main() {
     testALakeSpillsARiverToTheSea();
     testSourceGatingRemovesRiversWithoutMovingTheSurvivors();
     testAreaThresholdRejectsSmallLakes();
+    testDistributariesLeaveATrunk();
     testOnlyTheOwningRegionEmitsARoute();
     testARiverEndsAtTheLakeItFlowsInto();
     testOceanIsNeverASource();

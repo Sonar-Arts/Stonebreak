@@ -77,14 +77,27 @@ public final class BasinCache {
      * plan. The knob itself lives at params[28] and takes the kernel's default,
      * like every index past [4] — {@link #riverParams()} says why — so the
      * fingerprint cannot see it and the version is what orphans the caches.
+     *
+     * <p>5: three planner changes land together, and none of them is visible to
+     * the fingerprint for the same reason. The step-pool surface (§5.8b) makes
+     * a river a staircase of flat pools and falls instead of a ramp, so every
+     * cached route's surfaces are wrong for this build; distributary branches
+     * (§5.10) add routes that cached region simply does not have; and a branch
+     * that dies in a hollow promotes it to a pond, which changes the cached
+     * lake planes too.
      */
-    private static final int DISK_VERSION = 4;
+    private static final int DISK_VERSION = 5;
     private static final int HEADER_BYTES = 24;
 
     /* Caps on one region's river plan. The kernel stops at these rather than
      * overflowing, and a region that hits one is telling us the world is far
      * denser than measured (region (0,0) of the real fixture: 4 routes, ~1,900
-     * vertices after refinement). */
+     * vertices after refinement).
+     *
+     * Distributaries (§5.10) multiply the route count — measured on the test
+     * fixtures, about five branches per trunk on gentle ground and none at all
+     * on a steep flank — so the headroom here matters more than it did. At 4
+     * trunks a region that is roughly 24 routes against a cap of 512. */
     private static final int MAX_ROUTES = 512;
     private static final int MAX_VERTICES = 262144;
 

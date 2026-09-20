@@ -63,8 +63,14 @@ public final class FastLodSerializer {
      * the highest water within reach upstream, rather than to the water beside
      * them — so every bank along a stepped river stands taller than a cached node
      * says — and {@code Density3D} no longer carves near surface water.
+     *
+     * <p>9: the same banks come back DOWN. A river's surface is now a staircase
+     * of flat pools rather than a ramp (§5.8b), and the guard rail that walls
+     * those banks was retuned against the flow sim — a 12-step reach, capped at
+     * three blocks over the water beside it, where 8 raised ten times the ground
+     * for the same containment. Heights cached under 8 are the tall ones.
      */
-    public static final int VERSION = 8;
+    public static final int VERSION = 9;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel

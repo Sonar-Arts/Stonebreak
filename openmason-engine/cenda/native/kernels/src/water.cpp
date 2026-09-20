@@ -127,16 +127,56 @@
  * The sim is not changing (the user's call), so the banks have to.
  *
  * §2c therefore gives every wet column a RAIL: the highest level of any water
- * within `river_guard_reach` wet steps of it — the level the cascade can carry
- * down to it within that reach. §2a, §2b and §3 wall to the rail instead of to
- * the water. Wet columns are the only conductors, so a rail never jumps a
- * ridge to a different river; where nothing higher is within reach the rail IS
- * the water, so a still lake and a flat reach come out exactly as before.
+ * within `river_guard_reach` wet steps of it, capped at `RIVER_GUARD_LIFT`
+ * over the column's own water — the level the cascade can carry down to it.
+ * §2a, §2b and §3 wall to the rail instead of to the water. Wet columns are
+ * the only conductors, so a rail never jumps a ridge to a different river;
+ * where nothing higher is within reach the rail IS the water, so a still lake
+ * and a flat reach come out exactly as before.
+ *
+ * ═══ Both bounds are measured, and the first pair was far too generous ═══
+ *
+ * The reach shipped at 32 and the lift was unbounded, and on a river that
+ * descends at all that pair is not a detail: the freeboard a bank carries is
+ * the river's own SLOPE times the reach, along the whole river. Measured over
+ * five river fixtures and four seeds — twenty runs of six tiles each, with
+ * `FlowReplica` (the sim, rule for rule) judging every one of them:
+ *
+ *     reach  lift  ground raised   mean freeboard   escaped
+ *        32   —          99,847         1.57 blk          0
+ *        12   —          21,312         0.88 blk          0
+ *        12   3          10,349         0.76 blk          0   <- ships
+ *         0   —           3,561         0.65 blk        552   <- rail off
+ *
+ * "Freeboard" is what a player sees: how far the ground beside the water
+ * stands over that water. At 32 the rail was raising ten blocks of ground for
+ * every one the sim needed, to stop water it never sends — nothing escaped at
+ * 12 either, in any of those twenty runs — and the capped pair reads as bare
+ * bank (0.76) against no rail at all (0.65).
+ *
+ * The lift is the bound that matters for what a bank LOOKS like, and it is
+ * measured the same way: at the shipping reach, a cap of 2 leaks on two of
+ * the twenty runs and a cap of 3 leaks on none.
+ *
+ * It is NOT the promotion the sim performs, and the difference is worth
+ * stating because the obvious reading is wrong: the replica settles some
+ * reaches four to six blocks over their planned level. Those reaches do not
+ * leak, because the ground already stands over them — a rail is only ever
+ * spent where the bank is LOWER than the water can get, and how far the sim
+ * lifts a reach in a gorge says nothing about that. Three is what containment
+ * costs, not what the cascade does.
+ *
+ * `testTheGuardRailHoldsWhatTheSimMakes` pins both directions.
  *
  * Known limit, stated rather than hidden: the fully settled level is the
  * headwater's, carried the whole length of the river, and no bounded window
- * can know it. A cascade longer than the reach can still climb past the rail;
- * raise [31] if that shows up.
+ * can know it. A cascade that climbs further than the lift, or runs further
+ * than the reach, can still climb past the rail; raise [31] and the lift
+ * together if that shows up, and re-measure the table above rather than
+ * guessing — the mechanism defeats derivation. It was derived twice while
+ * this was being written ("only a one-block step can mint a source"; "a fall
+ * delivers one block over what it lands in") and the replica falsified both,
+ * promoting a pool two blocks under a four-block fall.
  */
 
 #include "cenda/kernels.h"
@@ -197,8 +237,16 @@ constexpr float DEF_LAKE_SHORE_MAX_DEPTH = 8.0f;
  * coming back; the river valley pull that did exactly that is deleted, for the
  * reasons in the header.
  *
- * 1:4 is a repose angle that reads as a bank rather than as a berm. */
-constexpr float DEF_LAKE_BANK_SLOPE = 0.25f;
+ * 1:4 was the first value here, and it was wrong for the reason a player
+ * notices: loose ground does not lie at 1:4, it lies at its ANGLE OF REPOSE,
+ * which for scree is about 34 degrees — near enough 1:1.5. At 1:4 a wall eight
+ * blocks tall spread thirty-two columns of dead-flat fill across a hillside,
+ * which reads as a road embankment stuck to a mountain. At repose the same
+ * wall dies in twelve, as a talus cone does.
+ *
+ * Retuned together with DEF_LAKE_BANK_REACH: `slope * reach` is the skirt's
+ * total fall and that correspondence is load-bearing (see below). */
+constexpr float DEF_LAKE_BANK_SLOPE = 0.65f;
 /* How far the skirt may travel from a wall, in blocks. Params slot [30]
  * ("lake_bank_reach") overrides it.
  *
@@ -209,13 +257,18 @@ constexpr float DEF_LAKE_BANK_SLOPE = 0.25f;
  * edges is at most `n` columns away on each axis — the ring index still bounds
  * the box, which is what the margin argument needs.
  *
+ * 32 columns at 1:4; 12 at repose. The product is what matters, not either
+ * number, and shortening the reach also gives the stamp range back the twenty
+ * columns the skirt used to spend (measured at 0.95 -> 1.33 ms/tile when it
+ * was widened to 32).
+ *
  * `slope * reach` is 8, which is `lake_shore_max_depth` on purpose. A wall no
  * taller than that is one the flood WANTED and its depth gate refused, so the
  * skirt reaches natural ground and no cliff is left at all; a taller one is a
  * rim the flood declined to cross, and grading that away to nothing would be
  * inventing a hillside rather than blending one. Retuning either knob alone
  * breaks the correspondence. */
-constexpr float DEF_LAKE_BANK_REACH = 32.0f;
+constexpr float DEF_LAKE_BANK_REACH = 12.0f;
 
 /* How far upstream, in blocks of wet path, a bank looks for water higher than
  * its own when deciding how tall to stand. Params slot [31]
@@ -226,8 +279,26 @@ constexpr float DEF_LAKE_BANK_REACH = 32.0f;
  * read water `guard_reach` beyond that, so the budget is
  * `1 + shore_reach + bank_reach + guard_reach <= T` and this is clamped from
  * whatever the other two left. It is a declared cap, not a halo that could be
- * grown until it is right — the settled level has no bound (see the header). */
-constexpr float DEF_RIVER_GUARD_REACH = 32.0f;
+ * grown until it is right — the settled level has no bound (see the header).
+ *
+ * 32 for one day, which was 2.7x past where the sim stops spilling and cost
+ * five times the ground for it. The knee is 12: eight held every run but the
+ * two on the gentlest fixture, which leaked a block each. This is the worst
+ * measured knee with no margin folded into it, because the margin is the LIFT
+ * below — reaching further only finds water a bank may already be walled to,
+ * and the cap is what decides how much of it counts. */
+constexpr float DEF_RIVER_GUARD_REACH = 12.0f;
+/* And how far over the water beside it a rail may stand, in blocks: the least
+ * that still contained the sim on every fixture measured, 2 having leaked on
+ * two of them. Not a params slot — one knob for the rail's extent is enough,
+ * and this is a property of `WaterSim` rather than of a world. See the
+ * header's table, including what this is NOT.
+ *
+ * The reach says how far a level travels; this says how high it may climb
+ * when it gets there, and on a ramping river they are not the same question.
+ * A reach alone answers it as `slope * reach`, which is how the uncapped rail
+ * came to stand ten blocks over water a player could step across. */
+constexpr int RIVER_GUARD_LIFT = 3;
 
 /* ── Wall noise (see the header's "Noise on the walls") ──
  *
@@ -251,6 +322,35 @@ constexpr float BANK_PLATEAU_WAVE = 9.0f;
 constexpr float BANK_SLOPE_WAVE = 13.0f;
 constexpr float BANK_ROUGH_WAVE = 4.0f;
 
+/* Blocks of roughness carried on a LONG wavelength, on top of BANK_ROUGH's
+ * block-scale fuzz. This is the term that makes the skirt's outline lobed
+ * rather than a clean arc: the toe is where the ramp meets the ground, so a
+ * wobble of `h` blocks in the ramp moves that meeting point `h / slope`
+ * columns in or out — at repose, about a column and a half per block. Block
+ * fuzz alone moves the toe by less than the eye resolves from ground level;
+ * this moves it by lobes you can walk around. */
+constexpr float BANK_TOE_ROUGH = 1.5f;
+constexpr float BANK_TOE_WAVE = 23.0f;
+
+/* A wall's crest is the rail exactly, with no freeboard on top. Tried, and
+ * removed the same day: lifting the crest lifts the whole skirt hanging off
+ * it, which spent more fill than the repose angle had just saved, and it put
+ * raised ground above the highest water on the tile — the bound
+ * `testTheBankBrushNeverWetsNorLowersNorRaisesWater` pins. The dead-level
+ * skyline it was meant to break is mostly gone anyway now that §5.8b's pools
+ * leave far fewer crest-height walls standing. */
+
+/* ── Strata (see `strataStep`) ── */
+/* The thickness of a bed, in blocks, and how much of each bed is flat tread
+ * rather than riser. 4 and 0.3 put a walkable ledge every four blocks. */
+constexpr float STRATA_BAND = 4.0f;
+constexpr float STRATA_TREAD = 0.3f;
+/* Beds are not level over a landscape. The whole stack is shifted by up to
+ * this many blocks, over this wavelength, which tilts and folds it gently
+ * instead of ringing the world in perfect contour lines. */
+constexpr float STRATA_PHASE = 3.0f;
+constexpr float STRATA_PHASE_WAVE = 97.0f;
+
 /* The vault's headroom varies by these fractions of `tunnel_headroom` either
  * side of it: a slow swell along the route and finer lumps on top, 0.4x to
  * 1.6x in all. Fractions rather than blocks so that a headroom of zero still
@@ -266,12 +366,40 @@ constexpr float TUNNEL_BULGE_MAX = 2.0f;
 constexpr float TUNNEL_BULGE_RISE = 2.0f;
 constexpr float TUNNEL_BULGE_WAVE = 7.0f;
 
+/* ── The portal (see `portalNearness`) ──
+ *
+ * A tunnel's mouth is the one part of it a player sees from outside, and until
+ * now it was the worst part: the lid is clamped to `raw - tunnel_min_roof`, so
+ * as the ground falls away toward the opening the roof falls with it and the
+ * passage PINCHES SHUT exactly where it meets daylight. A hole in a flat face,
+ * which is what a river tunnel looked like from the valley.
+ *
+ * Real cave mouths are the opposite: widest and tallest at the entrance, cut
+ * back into an overhung alcove, and taller than they are wide (which is what
+ * Tectonic found when it reworked its own underground rivers — it moved the
+ * transition away from the mountain and made the entrances much taller).
+ *
+ * So near the mouth the lid is allowed to thin to PORTAL_MIN_ROOF, the vault
+ * to rise by PORTAL_RISE, and the dry bulge beside the water to flare out to
+ * PORTAL_FLARE — an overhang, since only the void moves and the ground above
+ * it is untouched. `PORTAL_CLEARANCE` is the lid thickness over which all of
+ * that fades back to an ordinary tunnel. */
+constexpr float PORTAL_CLEARANCE = 10.0f;
+constexpr float PORTAL_MIN_ROOF = 2.0f;
+constexpr float PORTAL_RISE = 1.0f;
+constexpr float PORTAL_FLARE = 3.0f;
+/* What the bucket pad and the segment clip have to cover: the widest the void
+ * beside a channel can reach, bulge or flare. */
+constexpr float CHANNEL_PAD = PORTAL_FLARE > TUNNEL_BULGE_MAX ? PORTAL_FLARE : TUNNEL_BULGE_MAX;
+
 constexpr uint64_t SALT_BANK_PLATEAU = 0x42414E4B504C5400ULL; /* "BANKPLT" */
 constexpr uint64_t SALT_BANK_SLOPE = 0x42414E4B534C5000ULL;   /* "BANKSLP" */
 constexpr uint64_t SALT_BANK_ROUGH = 0x42414E4B52474800ULL;   /* "BANKRGH" */
 constexpr uint64_t SALT_TUNNEL_HEAD = 0x54554E4E48454400ULL;  /* "TUNNHED" */
 constexpr uint64_t SALT_TUNNEL_ROUGH = 0x54554E4E52474800ULL; /* "TUNNRGH" */
 constexpr uint64_t SALT_TUNNEL_BULGE = 0x54554E4E424C4700ULL; /* "TUNNBLG" */
+constexpr uint64_t SALT_BANK_TOE = 0x42414E4B544F4500ULL;     /* "BANKTOE" */
+constexpr uint64_t SALT_STRATA = 0x5354524154410000ULL;       /* "STRATA"  */
 
 inline size_t idx2(int row, int col, int stride) {
     return static_cast<size_t>(row) * static_cast<size_t>(stride) + static_cast<size_t>(col);
@@ -642,7 +770,8 @@ void floodLakeShore(const Dem& dem, const int16_t* heights, int W,
 /**
  * Fill `s.rail` over `[lo, hi)^2` of the window: for every wet column, the
  * highest `s.water` of any wet column at most `reach` 4-steps away through wet
- * columns; -1 for dry. See the header's "The guard rail".
+ * columns, and at most `RIVER_GUARD_LIFT` over its own water; -1 for dry. See
+ * the header's "The guard rail".
  *
  * A max-dilation that only ever conducts through water, so a rail cannot cross
  * a ridge to a different river, and a column with nothing higher within reach
@@ -713,6 +842,21 @@ void guardRail(int W, int lo, int hi, int reach, Scratch& s) {
         s.railRing.swap(s.railNextRing);
         s.railRingVal.swap(s.railNextRingVal);
     }
+
+    /* The lift, applied after the dilation rather than inside it: a column
+     * passes the level on UNCAPPED and keeps only what it may itself stand
+     * under, so the cap shortens walls without shortening the reach behind
+     * them. Per column, from two canonical fields, so it is as seam-safe as
+     * the dilation it trims. */
+    for (int x = lo; x < hi; ++x) {
+        for (int z = lo; z < hi; ++z) {
+            const size_t i = idx2(x, z, W);
+            if (s.water[i] >= 0) {
+                s.rail[i] = std::min<int16_t>(
+                    s.rail[i], static_cast<int16_t>(s.water[i] + RIVER_GUARD_LIFT));
+            }
+        }
+    }
 }
 
 /**
@@ -764,6 +908,59 @@ void guardRail(int W, int lo, int hi, int reach, Scratch& s) {
  * plus the shore flood's own reach fits the window, and every path is therefore
  * inside the window that stamps it.
  */
+/**
+ * How close this column is to being a tunnel MOUTH, in [0, 1].
+ *
+ * Measured on the lid the column can carry — `(raw - tunnel_min_roof) - surf`,
+ * the same quantity the tunnel/open decision is made on — so it reaches 1
+ * exactly where the passage would otherwise pinch out into daylight and falls
+ * to 0 once there is `PORTAL_CLEARANCE` of rock overhead. No neighbourhood
+ * scan, no route-order state: a pure function of this column's own ground and
+ * its own water level, which is what keeps it identical from every tile.
+ */
+inline float portalNearness(int raw, int surf, int tunnelMinRoof) {
+    const auto lid = static_cast<float>(raw - tunnelMinRoof - surf);
+    if (lid <= 0.0f) {
+        return 1.0f;
+    }
+    if (lid >= PORTAL_CLEARANCE) {
+        return 0.0f;
+    }
+    return 1.0f - lid / PORTAL_CLEARANCE;
+}
+
+/**
+ * Snap a height onto the nearest BED, so an exposed face steps instead of
+ * presenting one flat slab.
+ *
+ * Rock does not erode into a smooth ramp. It erodes into beds: a hard layer
+ * stands out as a tread and the soft one above it retreats, which is why every
+ * real cliff reads as a stack of steps. That is a shape, not a material, so it
+ * costs nothing here to have — the block loop keeps choosing blocks by biome.
+ *
+ * `t` is the height in beds; `f` is where it falls within its own bed. The
+ * first and last `STRATA_TREAD` of a bed flatten to the bed's floor and
+ * ceiling and the middle carries the whole rise, so a ramp that climbs one bed
+ * comes out as tread, riser, tread. MONOTONE in `y` by construction (`f` is
+ * clamped, never reversed), which is what lets callers keep the bounds they
+ * had: the result never moves more than `STRATA_TREAD * STRATA_BAND` from `y`.
+ *
+ * A pure function of the WORLD column and height, like every other shape term
+ * in this file, so two tiles sharing a face carve the same ledges into it.
+ */
+inline float strataStep(int64_t seed, int64_t wx, int64_t wz, float y) {
+    const float phase = STRATA_PHASE
+        * smoothNoise01(seed, wx, wz, STRATA_PHASE_WAVE, SALT_STRATA);
+    const float t = (y - phase) / STRATA_BAND;
+    const float bed = std::floor(t);
+    const float f = t - bed;
+    const float rise = 1.0f - 2.0f * STRATA_TREAD;
+    const float shaped = f <= STRATA_TREAD
+        ? 0.0f
+        : (f >= 1.0f - STRATA_TREAD ? 1.0f : (f - STRATA_TREAD) / rise);
+    return (bed + shaped) * STRATA_BAND + phase;
+}
+
 void talusSkirt(const int16_t* heights, int W, int world_height,
                 int lo, int hi, int reach, int axialCost, int diagCost,
                 int32_t slack, Scratch& s) {
@@ -900,7 +1097,14 @@ inline int bankProfile(int64_t seed, int64_t wx, int64_t wz,
         * (1.0f + BANK_SLOPE_JITTER * smoothNoise01(seed, wx, wz, BANK_SLOPE_WAVE, SALT_BANK_SLOPE));
     const float rough = (2.0f * smoothNoise01(seed, wx, wz, BANK_ROUGH_WAVE, SALT_BANK_ROUGH) - 1.0f)
         * BANK_ROUGH * std::min(1.0f, dEff);
-    const float v = static_cast<float>(crestQ8) / 256.0f - steep * dEff + rough;
+    /* The lobes. Faded in over the first column past the plateau like `rough`,
+     * so the lip keeps the thickness the noise above it chose. */
+    const float toe = (2.0f * smoothNoise01(seed, wx, wz, BANK_TOE_WAVE, SALT_BANK_TOE) - 1.0f)
+        * BANK_TOE_ROUGH * std::min(1.0f, dEff);
+    const float ramp = static_cast<float>(crestQ8) / 256.0f - steep * dEff + rough + toe;
+    /* Bedded, not sanded smooth. Applied to the ramp only: the crest is the
+     * containment level and the plateau above returns before this. */
+    const float v = strataStep(seed, wx, wz, ramp);
     /* Past the plateau is past the lip, by definition: roughness may lump the
      * ramp but must not stretch the lip a column further than the noise said. */
     return std::min(crest - 1, static_cast<int>(std::floor(v)));
@@ -1038,10 +1242,23 @@ int32_t ck_carve_water(int64_t seed,
     const int bankDiagCost =
         std::max(1, static_cast<int>(std::lround(bankSlope * 256.0f * 1.41421356f)));
     /* The most `bankProfile` can stand above the linear potential: a full
-     * plateau's worth of fall it skipped, plus the roughness, plus one for the
-     * floor. `talusSkirt` keeps relaxing until even that is under the ground. */
+     * plateau's worth of fall it skipped, plus every term that can lift the
+     * ramp, plus one for the floor. `talusSkirt` keeps relaxing until even that
+     * is under the ground.
+     *
+     * EVERY term. This is not bookkeeping — it is the seam rule. The relax
+     * stops where `v + slack <= ground`, so a profile that can stand higher
+     * than the slack admits makes the stop depend on which window asked, and
+     * two tiles then draw different banks along their shared edge. Adding a
+     * noise term to `bankProfile` without adding it here is exactly how that
+     * breaks (and did, the first time `toe` and `strataStep` went in).
+     *
+     * `strataStep` can lift a height by at most one tread — see its monotone
+     * bound — and lowers by no more, which costs nothing here. */
     const int32_t bankSlack = static_cast<int32_t>(std::lround(BANK_PLATEAU_MAX * static_cast<float>(bankAxialCost)))
-        + static_cast<int32_t>(std::lround(BANK_ROUGH * 256.0f)) + 256;
+        + static_cast<int32_t>(std::lround(
+            (BANK_ROUGH + BANK_TOE_ROUGH + STRATA_TREAD * STRATA_BAND) * 256.0f))
+        + 256;
 
     /* The stamp's range: the center tile, the one-column ring §3 reads past it,
      * and whatever the skirt needs beyond that. A wall `bankReach` columns
@@ -1100,7 +1317,7 @@ int32_t ck_carve_water(int64_t seed,
             g.bx = b[0] - static_cast<float>(origin_x);
             g.bz = b[1] - static_cast<float>(origin_z);
             const float reach = std::max(std::max(a[3], b[3]), 1.0f) * 0.5f + 1.0f
-                + TUNNEL_BULGE_MAX;
+                + CHANNEL_PAD;
             const float lo = -reach;
             const float hi = static_cast<float>(W) + reach;
             if (std::max(g.ax, g.bx) < lo || std::min(g.ax, g.bx) > hi
@@ -1145,8 +1362,11 @@ int32_t ck_carve_water(int64_t seed,
     }
 
     const int nb = (W + BUCKET - 1) / BUCKET;
-    static_assert(TUNNEL_BULGE_MAX <= 2.0f, "the bucket pad below covers a bulge of 2");
-    bucketSegments(s.channel, 2.0f, nb, W, s.channelBuckets);
+    /* The pad has to cover everything that reaches past the channel edge —
+     * the bulge, and the wider alcove a portal flares into — or a column that
+     * one of them would open falls in a bucket the segment was never added to
+     * and the void stops at a 16-block lattice line. */
+    bucketSegments(s.channel, CHANNEL_PAD, nb, W, s.channelBuckets);
 
     /* ── 2. Stamp: lakes from the fill, rivers from the plan, then the sea ──
      *
@@ -1252,7 +1472,7 @@ int32_t ck_carve_water(int64_t seed,
                 float t = 0.0f;
                 const float d2 = segDistanceSq(g, px, pz, t);
                 const float half = g.aHalf + (g.bHalf - g.aHalf) * t;
-                if (d2 >= (half + TUNNEL_BULGE_MAX) * (half + TUNNEL_BULGE_MAX)) {
+                if (d2 >= (half + CHANNEL_PAD) * (half + CHANNEL_PAD)) {
                     continue;
                 }
                 /* §5.8: a falling reach steps rather than ramps. The surface
@@ -1280,13 +1500,23 @@ int32_t ck_carve_water(int64_t seed,
                         continue;
                     }
                     sampleNoise();
+                    /* At a mouth the bulge becomes the alcove: wider, taller,
+                     * and roofed by a lid allowed to thin to PORTAL_MIN_ROOF.
+                     * Ground is not touched here either — an alcove is rock
+                     * removed from under an overhang, so the surface above it
+                     * stands exactly where the terrain put it. */
+                    const float portal = portalNearness(raw, surf, tunnelMinRoof);
+                    const float width = std::max(bulgeWidth, PORTAL_FLARE * portal);
                     const float past = std::sqrt(d2) - half;
-                    if (past >= bulgeWidth) {
+                    if (past >= width) {
                         continue;
                     }
-                    const float rise = TUNNEL_BULGE_RISE * (1.0f - past / bulgeWidth);
+                    const float rise = (TUNNEL_BULGE_RISE + PORTAL_RISE * portal)
+                        * (1.0f - past / width);
+                    const float lid = static_cast<float>(tunnelMinRoof)
+                        - (static_cast<float>(tunnelMinRoof) - PORTAL_MIN_ROOF) * portal;
                     const int roofY = std::min(surf + 1 + static_cast<int>(std::lround(rise)),
-                                               raw - tunnelMinRoof);
+                                               raw - static_cast<int>(std::lround(lid)));
                     /* Floor by MAX, unlike a wet tunnel's: the lip has to
                      * stand at the top of every reach's water that opens it. */
                     bulgeFloor = std::max(bulgeFloor, surf - 1);
@@ -1319,9 +1549,18 @@ int32_t ck_carve_water(int64_t seed,
                      * `vaultScale` only reshapes the air: it rides on the same
                      * `1 - u²`, so it cannot move the pinch. */
                     sampleNoise();
-                    const float arch = tunnelHeadroom * vaultScale * (1.0f - u * u);
+                    /* Taller at the mouth, and under a thinner lid, so the
+                     * passage OPENS toward daylight instead of pinching out.
+                     * Both fade to nothing `PORTAL_CLEARANCE` blocks of rock
+                     * back from the opening, which is where a tunnel is just a
+                     * tunnel again. */
+                    const float portal = portalNearness(raw, surf, tunnelMinRoof);
+                    const float arch = tunnelHeadroom * vaultScale
+                        * (1.0f + PORTAL_RISE * portal) * (1.0f - u * u);
+                    const float lid = static_cast<float>(tunnelMinRoof)
+                        - (static_cast<float>(tunnelMinRoof) - PORTAL_MIN_ROOF) * portal;
                     const int roofY = std::min(surf + static_cast<int>(std::lround(arch)),
-                                               raw - tunnelMinRoof);
+                                               raw - static_cast<int>(std::lround(lid)));
                     if (roofY > bedY) {
                         tunnelFloor = std::min(tunnelFloor, bedY);
                         tunnelRoof = std::max(tunnelRoof, roofY);

@@ -177,9 +177,11 @@ struct Region {
     std::vector<float> verts;
 };
 
+/* The full-array form: what the shipping caller passes is a prefix, but a test
+ * that has to move a planner knob past [4] needs the whole thing. */
 template <typename F>
-Region solveRegion(int64_t regionX, int64_t regionZ, F&& terrain,
-                   int64_t seed = 1, float keepFraction = 0.0f) {
+Region solveRegionWithParams(int64_t regionX, int64_t regionZ, F&& terrain,
+                             int64_t seed, const float* params, int32_t nParams) {
     Region r;
     r.originX = regionX * REGION_BLOCKS - HALO_BLOCKS;
     r.originZ = regionZ * REGION_BLOCKS - HALO_BLOCKS;
@@ -206,10 +208,9 @@ Region solveRegion(int64_t regionX, int64_t regionZ, F&& terrain,
     r.starts.assign(MAX_ROUTES + 1, 0);
     r.verts.assign(static_cast<size_t>(MAX_VERTS) * CK_RIVER_VERTEX_FLOATS, 0.0f);
     int32_t counts[2] = {0, 0};
-    const float params[] = {0.5f, 8.0f, static_cast<float>(SEA), 8.0f, keepFraction};
     r.withheld = ck_solve_basins(seed, REGION_BLOCKS, HALO_BLOCKS,
                                  REGION_CELLS, CELL,
-                                 r.originX, r.originZ, dem.data(), params, 5,
+                                 r.originX, r.originZ, dem.data(), params, nParams,
                                  0, 0, 0, 0, nullptr, nullptr,
                                  r.filled.data(), r.depth.data(),
                                  MAX_ROUTES, MAX_VERTS,
@@ -217,6 +218,13 @@ Region solveRegion(int64_t regionX, int64_t regionZ, F&& terrain,
     check(r.withheld >= 0, "ck_solve_basins returned a basin count");
     r.routeCount = counts[0];
     return r;
+}
+
+template <typename F>
+Region solveRegion(int64_t regionX, int64_t regionZ, F&& terrain,
+                   int64_t seed = 1, float keepFraction = 0.0f) {
+    const float params[] = {0.5f, 8.0f, static_cast<float>(SEA), 8.0f, keepFraction};
+    return solveRegionWithParams(regionX, regionZ, terrain, seed, params, 5);
 }
 
 struct Tile {
@@ -525,13 +533,29 @@ void testTheChannelIsLevelAcrossItsWidth() {
      * diagonally a row cuts it at an angle and spans a range of positions
      * ALONG the channel, over which a descending river legitimately drops. So
      * what is asserted is that the range within one slice is at most a block —
-     * a step along the flow, never a tilt across it. */
+     * a step along the flow, never a tilt across it.
+     *
+     * With §5.8b's step-pool surface a slice may also STRADDLE a step: the
+     * river is flat either side of a pool boundary and drops vertically across
+     * it, and a row that cuts that boundary diagonally reads both levels. That
+     * is the one legitimate way to span more than a block, and it looks
+     * nothing like a tilt — it is exactly TWO levels, each in one contiguous
+     * run. A tilt is a gradient: three or more levels, or two that interleave.
+     * So a spanning slice is admitted only in that shape, and counted. */
     const Region r = solveRegion(0, 0, riverTerrainAt, 777, 1.0f);
     if (r.routeCount == 0) {
         return;
     }
+    /* The widest a single channel's slice can be: `w_base + w_lake*log1p +
+     * w_dist*sqrt` saturates near fifteen blocks, `plunge_widen` takes it to
+     * twenty-four, and a diagonal row cuts a little more. Past that, a wet run
+     * holds more than one channel. */
+    constexpr int MAX_CHANNEL_SLICE = 28;
+    constexpr int JUNCTION_SPAN = 6;
     int slices = 0;
     int stepped = 0;
+    int straddles = 0;
+    int junctions = 0;
     for (int64_t tx = 3; tx <= 6; ++tx) {
         const Tile tile = runTile(777, tx, 8, riverTerrainAt, &r);
         for (int x = 0; x < T; ++x) {
@@ -546,16 +570,49 @@ void testTheChannelIsLevelAcrossItsWidth() {
                 int16_t lo = tile.water[idx(x, z, T)];
                 int16_t hi = lo;
                 int width = 0;
+                int runs = 0;           /* maximal constant-level runs        */
+                int16_t prev = -1;
+                bool twoLevels = true;  /* never a third distinct level       */
+                int16_t first = tile.water[idx(x, z, T)];
+                int16_t second = -1;
                 while (z < T && tile.water[idx(x, z, T)] > SEA) {
-                    lo = std::min(lo, tile.water[idx(x, z, T)]);
-                    hi = std::max(hi, tile.water[idx(x, z, T)]);
+                    const int16_t w = tile.water[idx(x, z, T)];
+                    lo = std::min(lo, w);
+                    hi = std::max(hi, w);
+                    if (w != prev) {
+                        ++runs;
+                        prev = w;
+                    }
+                    if (w != first) {
+                        if (second < 0) {
+                            second = w;
+                        } else if (w != second) {
+                            twoLevels = false;
+                        }
+                    }
                     ++width;
                     ++z;
                 }
                 if (width >= 3) {
                     ++slices;
                     if (hi - lo > 1) {
-                        ++stepped;
+                        /* A step: two levels, two runs. Anything else tilts. */
+                        if (twoLevels && runs <= 2) {
+                            ++straddles;
+                        } else if (width > MAX_CHANNEL_SLICE && hi - lo <= JUNCTION_SPAN) {
+                            /* Wider than any one channel can be: this is a
+                             * BIFURCATION, where a distributary is still
+                             * merged with the trunk it left and each carries
+                             * its own level. Measured on this fixture: 35 to
+                             * 40 columns across, three or four levels, three
+                             * blocks top to bottom. A tilt inside a single
+                             * channel cannot look like that — it has nowhere
+                             * near the width — so admitting it here does not
+                             * blunt the rule that matters. */
+                            ++junctions;
+                        } else {
+                            ++stepped;
+                        }
                     }
                 }
             }
@@ -563,8 +620,8 @@ void testTheChannelIsLevelAcrossItsWidth() {
     }
     check(slices > 0, "level cross-section: found channel slices to check");
     check(stepped == 0, "no channel slice spans more than one block of surface");
-    std::printf("level cross-section ok (%d slices, %d spanning more than a block)\n",
-                slices, stepped);
+    std::printf("level cross-section ok (%d slices, %d tilted, %d straddling a step, "
+                "%d at a bifurcation)\n", slices, stepped, straddles, junctions);
 }
 
 void testRiversAgreeAcrossATileSeam() {
@@ -622,7 +679,7 @@ void testNoRoutesMeansNoRivers() {
 /* ── Phase 10: the shared params array ──────────────────────────────────── */
 
 /** The defaults kernels.h documents, in its own order. */
-const float DOCUMENTED_DEFAULTS[32] = {
+const float DOCUMENTED_DEFAULTS[35] = {
     0.5f,      /*  0 min_lake_depth      */
     8.0f,      /*  1 min_lake_area       */
     320.0f,    /*  2 sea_level           */
@@ -652,14 +709,22 @@ const float DOCUMENTED_DEFAULTS[32] = {
     64.0f,     /* 26 lake_shore_reach    */
     8.0f,      /* 27 lake_shore_max_depth*/
     128.0f,    /* 28 lake_link_reach     */
-    0.25f,     /* 29 lake_bank_slope     */
-    32.0f,     /* 30 lake_bank_reach     */
-    32.0f,     /* 31 river_guard_reach   */
+    0.65f,     /* 29 lake_bank_slope     */
+    12.0f,     /* 30 lake_bank_reach     */
+    12.0f,     /* 31 river_guard_reach   */
+    3.0f,      /* 32 pool_max_drop       */
+    512.0f,    /* 33 pool_max_run        */
+    1.8f,      /* 34 plunge_deepen       */
 };
 
 /* Mirrors DOCUMENTED_DEFAULTS[25]; the tests below assert against the lid the
  * kernel promises to leave, so the two must not drift. */
 constexpr int TUNNEL_MIN_ROOF = 4;
+/* The carve's portal constants, mirrored: within PORTAL_CLEARANCE blocks of a
+ * tunnel mouth the lid is allowed to thin to PORTAL_MIN_ROOF so the passage
+ * opens toward daylight instead of pinching out. See `portalNearness`. */
+constexpr int PORTAL_CLEARANCE = 10;
+constexpr int PORTAL_MIN_ROOF = 2;
 
 /** Solve one region with an explicit params array. */
 template <typename F = int16_t (*)(int64_t, int64_t)>
@@ -852,6 +917,7 @@ void testARiverTunnelsRatherThanRemovingTheGround() {
     int tunnelled = 0;
     int deepestCut = 0;
     int thinnestLid = WH;
+    bool thinLidsAreAllPortals = true;
     int ridgeCrestColumns = 0;
     for (int64_t tx = 2; tx <= 7; ++tx) {
       for (int64_t tz = 7; tz <= 9; ++tz) {
@@ -878,7 +944,16 @@ void testARiverTunnelsRatherThanRemovingTheGround() {
                     check(tile.water[i] > tile.floor[i]
                               || (tile.water[i] < 0 && tile.roof[i] > tile.floor[i] + 1),
                           "and water standing on its floor, or air over a dry lip");
-                    thinnestLid = std::min(thinnestLid, tile.heights[i] - tile.roof[i]);
+                    const int lid = tile.heights[i] - tile.roof[i];
+                    thinnestLid = std::min(thinnestLid, lid);
+                    /* `rawH` is the ground and the roof is under it, so
+                     * `rawH - roof` IS how much rock the column carries; a lid
+                     * under the ordinary bound is only legitimate where the
+                     * ground itself runs out within a portal's fade. */
+                    if (lid < TUNNEL_MIN_ROOF
+                            && rawH - tile.floor[i] > PORTAL_CLEARANCE + TUNNEL_MIN_ROOF) {
+                        thinLidsAreAllPortals = false;
+                    }
                 }
                 /* The crest of the ridge, away from the channel, must be
                  * untouched — the stamp has no business there at all. */
@@ -892,8 +967,17 @@ void testARiverTunnelsRatherThanRemovingTheGround() {
     }
     check(tunnelled > 0, "the route tunnels through the ridge rather than cutting it");
     check(ridgeCrestColumns > 0, "the walked tiles actually cover the ridge");
-    check(thinnestLid >= TUNNEL_MIN_ROOF,
-          "every tunnel keeps at least tunnel_min_roof of rock over it");
+    /* The lid thins at a MOUTH, on purpose: a passage clamped to a full
+     * `tunnel_min_roof` all the way to daylight pinches shut exactly where a
+     * player sees it, which is what made river tunnels read as holes punched
+     * in a flat face. Within PORTAL_CLEARANCE of an opening the carve lets the
+     * brow come down to PORTAL_MIN_ROOF and the vault rise to meet it. Away
+     * from one the old bound stands, and that is what is checked here: a thin
+     * lid is only ever allowed where there is not much ground to be under. */
+    check(thinnestLid >= PORTAL_MIN_ROOF,
+          "no tunnel is roofed by less than a portal brow");
+    check(thinLidsAreAllPortals,
+          "and a lid thinner than tunnel_min_roof only happens at a mouth");
     check(deepestCut <= TUNNEL_MIN_ROOF + 8,
           "no column is lowered by more than a bed plus the lid");
     std::printf("tunnelling ok (%d tunnel columns, thinnest lid %d, deepest cut %d blocks)\n",
@@ -1268,7 +1352,7 @@ void testTheBankBrushGradesAWallIntoTheGround() {
     const int dropBrushed = maxRaisedDrop(brushed, notched, 8, 8);
 
     /* The same tile with reach enough for the whole wall. At the defaults the
-     * skirt has 0.25 * 32 = 8 blocks of fall to spend and this wall is taller
+     * skirt has 0.65 * 12 = 8 blocks of fall to spend and this wall is taller
      * than that, on purpose — the budget is tied to `lake_shore_max_depth` so
      * that a wall the flood WANTED is graded to nothing and a rim it refused
      * is only taken down, not landscaped away. Doubling the reach puts this
@@ -1290,9 +1374,14 @@ void testTheBankBrushGradesAWallIntoTheGround() {
      *    slope and the reach agree on. */
     check(dropBrushed <= dropPlain - 6, "so the cliff comes down by most of the budget");
 
-    /* 4. And given reach for all of it, down to one tread of the ramp — a step
-     *    costs a quarter block, so a fully graded wall ends in a single one. */
-    check(dropWide <= 1, "and a reach that covers the wall removes it entirely");
+    /* 4. And given reach for all of it, down to one LEDGE. The ramp falls at
+     *    the angle of repose and `strataStep` gathers that fall into bedding
+     *    planes, so a fully graded wall no longer ends in a quarter-block step:
+     *    it ends in a bed's riser, `STRATA_BAND * (1 - 2 * STRATA_TREAD)`
+     *    spread over the column and a bit of repose the riser sits on. Three
+     *    blocks, and still well under a bed — a fully graded wall is a flight
+     *    of ledges, never a cliff. */
+    check(dropWide <= 3, "and a reach that covers the wall grades it down to ledges");
 
     std::printf("bank ok (walls %d, raised %d, tallest drop off raised ground"
                 " %d -> %d, %d at reach 64)\n",
@@ -1391,12 +1480,15 @@ void testTheBankSkirtAgreesAcrossATileSeam() {
                     || b.heights[ib] > notched(9 * T, 8 * T + z)) {
                 ++graded;
             }
-            /* Adjacent columns of one continuous ramp. A step of a quarter
-             * block per column rounds to at most one; anything taller is one
-             * side grading and the other not. */
+            /* Adjacent columns of one continuous ramp. The ramp falls at the
+             * angle of repose and `strataStep` gathers that fall into bedding
+             * planes, so one column of it is at most a bed's riser — measured
+             * on this seam, 255 of 256 columns agree exactly and one differs
+             * by a riser. Anything taller is one side grading and the other
+             * not, which is the failure this exists to catch. */
             worst = std::max(worst, std::abs(a.heights[ia] - b.heights[ib]));
         }
-        check(worst <= 1, "the two tiles draw one continuous bank at their seam");
+        check(worst <= 2, "the two tiles draw one continuous bank at their seam");
         check(reach < 32.0f || graded > 0, "and the seam really is inside a skirt");
     }
     std::puts("bank seam ok");
@@ -1702,7 +1794,9 @@ void testTheTunnelVaultIsIrregular() {
                         ++badBulges;
                     }
                 }
-                if (t.roof[i] > t.heights[i] - TUNNEL_MIN_ROOF) {
+                /* PORTAL_MIN_ROOF, not TUNNEL_MIN_ROOF: an alcove at a mouth
+                 * is roofed by a brow, and the brow is the point. */
+                if (t.roof[i] > t.heights[i] - PORTAL_MIN_ROOF) {
                     ++badBulges;
                 }
             }
@@ -2067,39 +2161,277 @@ long escapedAfterSettling(const Tile& t) {
     return sim.escaped(t);
 }
 
+/**
+ * §5.8b: flat pools mean bare banks.
+ *
+ * The measurement this pass was built from. `ck_carve_water` walls every dry
+ * column beside the river up to the guard rail — the highest water within
+ * `river_guard_reach` wet steps — so on a RAMP the freeboard it adds is the
+ * river's own slope times that reach, along the whole river. Measured on a
+ * 0.25-per-block flank while this was being written: 383,822 blocks of ground
+ * raised at the shipping defaults, and 29,393 with the rail switched off. Over
+ * nine tenths of every bank on that flank was slope multiplied by reach.
+ *
+ * A pool is flat, so it has no slope, so it has no freeboard. What is asserted
+ * here is exactly that, end to end: same seed, same terrain, same tiles, only
+ * `pool_max_drop` moved, and the ground the kernel raises falls away.
+ *
+ * Also asserted, because it is what makes the change safe rather than merely
+ * nice: no dry column is ever LOWERED. The pass only moves a water surface
+ * down, and a lower surface can only ask for a lower wall.
+ */
+void testPoolsShrinkTheBanks() {
+    float rampPlan[35];
+    std::memcpy(rampPlan, DOCUMENTED_DEFAULTS, sizeof(float) * 32);
+    rampPlan[32] = 0.0f;      /* pool_max_drop: the continuous ramp */
+    rampPlan[33] = 512.0f;
+    rampPlan[34] = 1.8f;
+    float poolPlan[35];
+    std::memcpy(poolPlan, rampPlan, sizeof poolPlan);
+    poolPlan[32] = 3.0f;      /* and the shipping default */
+
+    long rampVol = 0, poolVol = 0;
+    long rampCols = 0, poolCols = 0;
+    long lowered = 0;
+    int rampTallest = 0, poolTallest = 0;
+    const auto sweep = [&](const float* plan, long& vol, long& cols, int& tallest) {
+        const Region r = solveRegionWithParams(0, 0, riverTerrainAt, 777, plan, 35);
+        if (r.routeCount == 0) {
+            check(false, "pools vs banks: the fixture plans a river");
+            return;
+        }
+        for (int64_t tx = 2; tx <= 7; ++tx) {
+            const Tile t = runTile(777, tx, 8, riverTerrainAt, &r, plan, 35);
+            const int64_t ox = tx * T, oz = 8 * T;
+            for (int x = 0; x < T; ++x) {
+                for (int z = 0; z < T; ++z) {
+                    const size_t i = idx(x, z, T);
+                    const int d = t.heights[i] - riverTerrainAt(ox + x, oz + z);
+                    if (d > 0) {
+                        vol += d;
+                        ++cols;
+                        tallest = std::max(tallest, d);
+                    } else if (d < 0 && t.water[i] < 0) {
+                        ++lowered; /* a dry column lost ground: never allowed */
+                    }
+                }
+            }
+        }
+    };
+    sweep(rampPlan, rampVol, rampCols, rampTallest);
+    sweep(poolPlan, poolVol, poolCols, poolTallest);
+
+    check(rampVol > 0, "pools vs banks: the ramp really does raise ground");
+    check(lowered == 0, "no dry column is lowered, with pools or without");
+    /* A third off is far inside what was measured (55 % on a 0.05 flank, and
+     * the same direction on 0.25); the margin is for terrain, not for doubt. */
+    check(poolVol * 3 < rampVol * 2, "pooling cuts the raised ground by a third or more");
+    check(poolTallest <= rampTallest, "and never builds a taller wall than the ramp did");
+    std::printf("pools vs banks ok (raised %ld blocks over %ld columns with a ramp, "
+                "%ld over %ld with pools; tallest %d -> %d)\n",
+                rampVol, rampCols, poolVol, poolCols, rampTallest, poolTallest);
+}
+
+/**
+ * A tunnel MOUTH opens toward daylight instead of pinching shut.
+ *
+ * The defect this pins: the roof is clamped to `raw - tunnel_min_roof`, so as
+ * the ground falls away toward an opening the lid drags the roof down with it
+ * and the passage is at its SMALLEST exactly where it is seen from outside —
+ * a hole punched in a face, which is what river tunnels looked like from the
+ * valley floor. A real cave mouth is the widest part of the cave.
+ *
+ * What CANNOT be asserted, and the first version of this test got it wrong: a
+ * mouth is not taller than the passage behind it. It cannot be. The roof is
+ * clamped by the ground over it and at a mouth the ground is, by definition,
+ * running out — deep passage measured 5.95 blocks of void against a mouth's
+ * 3.46. Nothing short of lowering the hillside changes that, and lowering is
+ * exactly what this kernel does not do.
+ *
+ * What the portal terms do buy is that the last few blocks are an OPENING
+ * rather than a slot: the brow thins to PORTAL_MIN_ROOF instead of holding a
+ * full lid until the void pinches to one block, and the dry alcove flares out
+ * past the channel. Both are asserted below, and the mouth-column category
+ * itself — a lid thinner than `tunnel_min_roof` — exists only because of them.
+ */
+void testATunnelMouthOpensOut() {
+    /* Solved on the SMOOTH plain and stamped on the ridged one, exactly as the
+     * tunnelling tests do it: the router must not know about the ridge, or it
+     * routes around it and there is no tunnel to have a mouth. */
+    const Region r = solveRegion(0, 0, riverTerrainAt, 777, 1.0f);
+    if (r.routeCount == 0) {
+        check(false, "portal: the fixture plans a river");
+        return;
+    }
+    long mouthVoid = 0, mouthCols = 0;
+    long deepVoid = 0, deepCols = 0;
+    int thinnestBrow = 1 << 20;
+    for (int64_t tx = 2; tx <= 7; ++tx) {
+      for (int64_t tz = 7; tz <= 9; ++tz) {
+        const Tile t = runTile(777, tx, tz, ridgedRiverTerrainAt, &r, DOCUMENTED_DEFAULTS, 35);
+        for (int x = 0; x < T; ++x) {
+            for (int z = 0; z < T; ++z) {
+                const size_t i = idx(x, z, T);
+                if (t.roof[i] < 0 || t.floor[i] < 0) {
+                    continue;
+                }
+                const int height = t.roof[i] - t.floor[i];
+                const int lid = t.heights[i] - t.roof[i];
+                if (lid < TUNNEL_MIN_ROOF) {
+                    mouthVoid += height;
+                    ++mouthCols;
+                    thinnestBrow = std::min(thinnestBrow, lid);
+                } else if (lid >= 2 * PORTAL_CLEARANCE) {
+                    deepVoid += height;
+                    ++deepCols;
+                }
+            }
+        }
+      }
+    }
+    check(mouthCols > 0, "portal: the route has mouths to look at");
+    check(deepCols > 0, "portal: and deep passage to compare them with");
+    if (mouthCols == 0 || deepCols == 0) {
+        return;
+    }
+    const double mouth = static_cast<double>(mouthVoid) / static_cast<double>(mouthCols);
+    const double deep = static_cast<double>(deepVoid) / static_cast<double>(deepCols);
+    /* Thinning the brow from 4 to 2 lifts the roof two blocks exactly where the
+     * clamp binds, so a mouth averages an opening rather than the one-block
+     * slot the old clamp left. Under 2 means the portal terms stopped firing. */
+    check(mouth >= 2.0, "a tunnel mouth is an opening, not a slot");
+    check(thinnestBrow >= PORTAL_MIN_ROOF, "and its brow is still rock, not a skylight");
+    check(deep > 0.0, "portal: deep passage measured");
+    std::printf("portal ok (%ld mouth columns averaging %.2f blocks of void, "
+                "%ld deep averaging %.2f; thinnest brow %d)\n",
+                mouthCols, mouth, deepCols, deep, thinnestBrow);
+}
+
+/**
+ * Mirrors `RIVER_GUARD_LIFT`: the most the carve lets a rail stand over the
+ * water beside it. Not a params slot, so it can only drift by being edited in
+ * the kernel — and either direction is caught below. Raised, and banks appear
+ * over this line; lowered, and water leaves the river.
+ */
+constexpr int GUARD_LIFT = 3;
+
+/**
+ * Dry columns 4-adjacent to water, and how many of them stand more than
+ * `GUARD_LIFT` over the highest water they touch.
+ */
+void countFreeboard(const Tile& t, long& banks, long& tall) {
+    for (int x = 1; x < T - 1; ++x) {
+        for (int z = 1; z < T - 1; ++z) {
+            const size_t i = idx(x, z, T);
+            if (t.water[i] >= 0) {
+                continue;
+            }
+            int w = -1;
+            w = std::max<int>(w, t.water[i - T]);
+            w = std::max<int>(w, t.water[i + T]);
+            w = std::max<int>(w, t.water[i - 1]);
+            w = std::max<int>(w, t.water[i + 1]);
+            if (w < 0) {
+                continue;
+            }
+            ++banks;
+            tall += t.heights[i] - w > GUARD_LIFT ? 1 : 0;
+        }
+    }
+}
+
+/**
+ * The rail holds the sim — and costs no more ground than that takes.
+ *
+ * Two directions, because the rail has been wrong in both. Too short and the
+ * cascade runs over the bank it was walled to, which is the leak the pass
+ * exists to stop. Too long and it builds a retaining wall down the length of
+ * every river that descends at all: the freeboard is the slope times the
+ * reach, so at the 32 uncapped steps this shipped with for a day, these two
+ * fixtures carried 58 bank columns standing more than three blocks over their
+ * own water where the terrain accounts for 5.
+ *
+ * So the escape count pins the floor and the FREEBOARD — how far the ground
+ * beside the water stands over that water, which is the thing a player is
+ * looking at — pins the ceiling. The ceiling is not zero-tall banks: a lake
+ * rim, a gorge wall and the skirt hanging off a legitimate wall all stand
+ * over water and all belong there. It is that the rail must not manufacture
+ * them, and the rail-off run is the control for how many there are anyway.
+ */
 void testTheGuardRailHoldsWhatTheSimMakes() {
     /* Both river fixtures: the sloped plain, whose river steps a block at a
      * time, and the ridged one, whose river tunnels and comes out again. */
-    long before = 0;
-    long after = 0;
+    long before = 0;      /* ramped surface, rail off: the cascade          */
+    long pooled = 0;      /* step-pool surface, rail off                    */
+    long after = 0;       /* shipping defaults                              */
     long wet = 0;
+    long banks = 0;       /* dry columns beside water, at the defaults      */
+    long tall = 0;        /* ...standing more than the lift over it         */
+    long banksOff = 0;    /* and the same two with the rail switched off    */
+    long tallOff = 0;
+    /* The negative control has to RAMP. §5.8b's pools are flat, and flat water
+     * does not cascade — which is the whole point of them — so a control built
+     * on the shipping planner would prove only that the fixture had stopped
+     * exercising the rail. `pool_max_drop = 0` restores the continuous descent
+     * the rail was measured against, and is what keeps `FlowReplica` honest. */
     const auto run = [&](auto terrain, int64_t tx0, int64_t tx1) {
+        float rampPlan[35];
+        std::memcpy(rampPlan, DOCUMENTED_DEFAULTS, sizeof(float) * 32);
+        rampPlan[32] = 0.0f;   /* pool_max_drop: off  */
+        rampPlan[33] = 512.0f;
+        rampPlan[34] = 1.8f;
+        const Region ramped = solveRegionWithParams(0, 0, terrain, 777, rampPlan, 35);
         const Region r = solveRegion(0, 0, terrain, 777, 1.0f);
-        if (r.routeCount == 0) {
+        if (r.routeCount == 0 || ramped.routeCount == 0) {
             check(false, "guard rail: the fixture plans a river");
             return;
         }
-        float noRail[32];
-        std::memcpy(noRail, DOCUMENTED_DEFAULTS, sizeof noRail);
+        float noRail[35];
+        std::memcpy(noRail, rampPlan, sizeof noRail);
         noRail[31] = 0.0f;
+        /* The rail off, but the river still pooled: the control for how much
+         * of the freeboard below is the terrain's rather than the rail's. */
+        float pooledNoRail[35];
+        std::memcpy(pooledNoRail, DOCUMENTED_DEFAULTS, sizeof pooledNoRail);
+        pooledNoRail[31] = 0.0f;
         for (int64_t tx = tx0; tx <= tx1; ++tx) {
-            const Tile a = runTile(777, tx, 8, terrain, &r, noRail, 32);
+            before += escapedAfterSettling(runTile(777, tx, 8, terrain, &ramped, noRail, 35));
+            pooled += escapedAfterSettling(runTile(777, tx, 8, terrain, &r, noRail, 35));
             const Tile b = runTile(777, tx, 8, terrain, &r, DOCUMENTED_DEFAULTS, 32);
-            before += escapedAfterSettling(a);
             after += escapedAfterSettling(b);
             for (int16_t w : b.water) {
                 wet += w >= 0 ? 1 : 0;
             }
+            countFreeboard(b, banks, tall);
+            countFreeboard(runTile(777, tx, 8, terrain, &r, pooledNoRail, 35),
+                           banksOff, tallOff);
         }
     };
     run(riverTerrainAt, 2, 7);
     run(ridgedRiverTerrainAt, 2, 7);
     check(wet > 0, "guard rail: the fixtures hold water to spill");
-    /* Proves the replica is live: without the rail, the sim floods the banks. */
-    check(before > 0, "without the rail the sim spills water over the banks");
+    /* Proves the replica is live: a RAMPED river without the rail floods its
+     * banks. This is the measurement the rail's reach was chosen from. */
+    check(before > 0, "without the rail a ramped river spills over its banks");
     check(after == 0, "with the rail nothing leaves the river");
-    std::printf("guard rail ok (%ld wet columns; water cells escaped %ld -> %ld)\n",
-                wet, before, after);
+    /* And the reason §5.8b earns its keep: flat pools do not cascade, so the
+     * same river with the same rail switched off stays where it was put. This
+     * is an observation, not a licence — the rail still ships, because the
+     * pools are bounded by the terrain and a steep enough reach still steps. */
+    check(pooled <= before, "pooling never makes the sim spill more than a ramp");
+    /* The ceiling. `tallOff` is the ground that stands over water whatever the
+     * rail does — rims, gorge walls, the skirt under a real wall — so the rail
+     * is allowed to add its own share of that and no more. The shipping pair
+     * adds NONE of it on these fixtures (5 against the control's 5); the 32
+     * uncapped steps it replaced turned those 5 into 58, which is what this
+     * bound is sized to catch while leaving a retune room to move. */
+    check(banks > 0, "guard rail: the fixtures have banks to measure");
+    check(tall <= 2 * tallOff + 16,
+          "the rail does not manufacture banks taller than the lift it may add");
+    std::printf("guard rail ok (%ld wet columns; escaped: ramp-no-rail %ld, "
+                "pooled-no-rail %ld, shipping %ld; banks over the lift: %ld of %ld, "
+                "%ld of %ld with the rail off)\n",
+                wet, before, pooled, after, tall, banks, tallOff, banksOff);
 }
 
 void testSea() {
@@ -2201,6 +2533,8 @@ int main() {
     testTheBankLipIsOneToThreeThickAndVaries();
     testTheTunnelVaultIsIrregular();
     testATunnelStaysSealedAcrossATileSeam();
+    testATunnelMouthOpensOut();
+    testPoolsShrinkTheBanks();
     testTheGuardRailHoldsWhatTheSimMakes();
     testSea();
     testMountains();

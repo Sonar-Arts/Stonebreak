@@ -249,10 +249,13 @@ int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
  *   26   lake_shore_reach      blocks         64  carve   (clamped to T-1)
  *   27   lake_shore_max_depth  blocks          8  carve
  *   28   lake_link_reach       blocks        128  solve
- *   29   lake_bank_slope       blocks/blk   0.25  carve
- *   30   lake_bank_reach       blocks         32  carve   (clamped to
+ *   29   lake_bank_slope       blocks/blk   0.65  carve
+ *   30   lake_bank_reach       blocks         12  carve   (clamped to
  *                                                          T-1-lake_shore_reach)
- *   31   river_guard_reach     blocks         32  carve   (clamped to T-1-[26]-[30])
+ *   31   river_guard_reach     blocks         12  carve   (clamped to T-1-[26]-[30])
+ *   32   pool_max_drop         blocks        3.0  solve   (0 = ramp, no pools)
+ *   33   pool_max_run          blocks        512  solve
+ *   34   plunge_deepen         multiplier    1.8  solve
  *
  * Six deliberate departures from §8's table:
  *
@@ -307,6 +310,12 @@ int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
  *   many wet steps — rather than to the column's own level. It shares the
  *   margin: `1 + [26] + [30] + [31] <= tile_size`. A declared cap, not a halo:
  *   a cascade longer than it can still overtop.
+ *
+ *   It shipped at 32 for a day and was retuned to 12 on 2026-09-19, against
+ *   the flow sim itself: nothing spilled at 12 in any of twenty measured runs,
+ *   and 32 raised ten blocks of ground for every one containment needed. The
+ *   height a rail may add is capped separately, inside the carve, and is not a
+ *   knob — water.cpp's "The guard rail" has the measurements for both.
  *
  *   The ownership lattice — cell/region/halo, i.e. which region emits which
  *   column — is NOT here. It is passed per call (see ck_solve_basins) because
