@@ -8,7 +8,9 @@
 //                        flow coordinates in world space instead
 //   location 3 (flags) = x: surface-height fraction (0..0.875, sewn corner
 //                        heights baked by MmsWaterGenerator), y: falling flag,
-//                        z: source flag, w: light (currently 1.0)
+//                        z: source flag, w: river flow code in EIGHTHS
+//                        (0 = still water, k/8 = octant k-1), because the
+//                        per-vertex flag bytes are normalised to [0,1]
 // Positions are render-space (chunk meshes carry no model matrix; their origin
 // attribute is baked relative to RenderOrigin). uRenderOrigin.xy is that
 // origin's world XZ, for the few places that need the absolute coordinate
@@ -60,7 +62,9 @@ void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags,
     uv = vec2(a, face >= 2 ? 1.0 - b : b);
     nrm = QUAD_NORMAL[face];
     float surface = float((q.z >> (uint(corner) * 8u)) & 255u) / 255.0;
-    flags = vec4(surface, falling, source, 1.0);
+    // word3 bits 8..11: the flow code straight, no eighths needed here.
+    float flow = float((q.w >> 8u) & 15u);
+    flags = vec4(surface, falling, source, flow);
 }
 
 uniform mat4 uProjection;
@@ -78,6 +82,11 @@ out vec2 vUV;
 out float vFalling;
 out float vSource;
 out float vSurfaceHeight;
+// 0 = still water; 1..8 = a river running in octant 0..7 (0 = +X, then
+// counter-clockwise in eighths of a turn). Flat: a cell runs one way, and
+// interpolating a direction across a quad would smear two rivers together
+// wherever they meet.
+flat out float vFlow;
 
 // Sum of directional sine waves (height-only — no horizontal displacement, since the
 // CPU-side corner-sewing in MmsWaterGenerator only guarantees adjacent blocks agree on
@@ -101,14 +110,18 @@ void main() {
     vec3 nrmIn;
     vec4 flagsIn;
     bool sheet = false;
+    float flowCode;
     if (aOrigin.w < -2.5) {
         pullWaterQuad(pos, uvIn, nrmIn, flagsIn, sheet);
         pos += aOrigin.xyz;
+        flowCode = flagsIn.w;
     } else {
         pos = aOrigin.xyz + aPos * aOrigin.w;
         uvIn = aUV;
         nrmIn = aNormal;
         flagsIn = aFlags;
+        // The per-vertex path carries the code in eighths (see the header).
+        flowCode = floor(flagsIn.w * 8.0 + 0.5);
     }
     float surfH = flagsIn.x;
     float falling = flagsIn.y;
@@ -163,4 +176,5 @@ void main() {
     vFalling = falling;
     vSource = flagsIn.z;
     vSurfaceHeight = surfH;
+    vFlow = flowCode;
 }

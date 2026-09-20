@@ -2,6 +2,7 @@ package com.stonebreak.world.generation;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.ChunkWaterLayer;
 import com.stonebreak.world.generation.diffusion.TunnelledRiverTileSource;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -43,6 +45,74 @@ public class RiverTunnelGenerationTest {
 
     private static TerrainGenerationSystem terrain() {
         return new TerrainGenerationSystem(SEED, new TunnelledRiverTileSource());
+    }
+
+    /**
+     * The river's top water block is MARKED as running water.
+     *
+     * Same journey as everything else in this class, and the same reason to
+     * test it here: the kernel's own flow plane is pinned in
+     * {@code kernels_water_test.cpp}, and what is not pinned anywhere else is
+     * whether it survives {@code TerrainTile} -> {@code HeightMapGenerator} ->
+     * the block loop and lands on the right cell.
+     *
+     * <p>Only the TOP block, and only in the channel. The marker is what lets
+     * the renderer tell a reach from a pond; it is a
+     * {@link ChunkWaterLayer#RIVER} value, which everything else reads as the
+     * source the cell already was, so the blocks themselves are unchanged —
+     * asserted by the rest of this class still passing.
+     */
+    @Test
+    public void theRiverSurfaceIsMarkedAsRunningWater() {
+        TerrainGenerationSystem terrain = terrain();
+        List<String> problems = new ArrayList<>();
+        int marked = 0;
+
+        for (int[] c : CHUNKS) {
+            Chunk chunk = terrain.generateTerrainOnly(c[0], c[1]).chunk();
+            for (int lx = 0; lx < CHUNK; lx++) {
+                for (int lz = 0; lz < CHUNK; lz++) {
+                    int wz = c[1] * CHUNK + lz;
+                    int top = TunnelledRiverTileSource.SURFACE - 1;
+                    boolean wet = TunnelledRiverTileSource.inChannel(wz);
+                    int value = chunk.getWaterLayer().get(lx, top, lz);
+                    if (wet) {
+                        if (!ChunkWaterLayer.isRiver(value)) {
+                            problems.add("channel column (" + lx + "," + lz + ") in chunk ("
+                                    + c[0] + "," + c[1] + ") is not marked: " + value);
+                        } else {
+                            assertEquals(TunnelledRiverTileSource.FLOW_OCTANT,
+                                    ChunkWaterLayer.octant(value),
+                                    "the channel runs along +X");
+                            ++marked;
+                        }
+                    } else if (ChunkWaterLayer.isRiver(value)) {
+                        problems.add("dry column (" + lx + "," + lz + ") in chunk ("
+                                + c[0] + "," + c[1] + ") claims to run");
+                    }
+                }
+            }
+        }
+        assertTrue(problems.isEmpty(), () -> String.join("\n", problems));
+        assertTrue(marked > 0, "the fixture has a channel to mark");
+    }
+
+    /** And nothing BELOW the surface is marked: a river runs on top, not throughout. */
+    @Test
+    public void onlyTheSurfaceBlockIsMarked() {
+        TerrainGenerationSystem terrain = terrain();
+        for (int[] c : CHUNKS) {
+            Chunk chunk = terrain.generateTerrainOnly(c[0], c[1]).chunk();
+            for (int lx = 0; lx < CHUNK; lx++) {
+                for (int lz = 0; lz < CHUNK; lz++) {
+                    for (int y = 0; y < TunnelledRiverTileSource.SURFACE - 1; y++) {
+                        assertFalse(ChunkWaterLayer.isRiver(chunk.getWaterLayer().get(lx, y, lz)),
+                                "only the top water block carries the marker (" + lx + "," + y
+                                        + "," + lz + ")");
+                    }
+                }
+            }
+        }
     }
 
     /**

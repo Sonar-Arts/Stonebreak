@@ -62,6 +62,15 @@ public class HeightMapGenerator {
     }
 
     /**
+     * Which way the water over a column runs, or {@link TerrainTile#NO_FLOW}.
+     *
+     * @see TerrainTile#riverFlowAt
+     */
+    public int riverFlow(int x, int z) {
+        return tileSource.getTile(x, z).riverFlowAt(x, z);
+    }
+
+    /**
      * Fills a 16x16 final-height grid for the given chunk, indexed [x*16+z].
      * A chunk (16 blocks) always fits inside a single bridge tile (256
      * blocks by default, always a multiple of CHUNK_SIZE), so this resolves
@@ -102,6 +111,21 @@ public class HeightMapGenerator {
      */
     public void populateChunkHeights(int chunkX, int chunkZ, int[] out, int[] outWaterLevels,
                                      int[] outRiverFloors, int[] outRiverRoofs) {
+        populateChunkHeights(chunkX, chunkZ, out, outWaterLevels, outRiverFloors, outRiverRoofs, null);
+    }
+
+    /**
+     * As {@link #populateChunkHeights(int, int, int[], int[], int[], int[])},
+     * and fills the co-located river flow directions when {@code outRiverFlows}
+     * is non-null — {@link TerrainTile#NO_FLOW} for every column whose water
+     * does not run.
+     *
+     * <p>Same tile for all five planes, same reason: they describe one column
+     * between them and must not be able to disagree about which tile it is.
+     */
+    public void populateChunkHeights(int chunkX, int chunkZ, int[] out, int[] outWaterLevels,
+                                     int[] outRiverFloors, int[] outRiverRoofs,
+                                     int[] outRiverFlows) {
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
         TerrainTile tile = tileSource.getTile(baseX, baseZ);
@@ -119,6 +143,9 @@ public class HeightMapGenerator {
                 }
                 if (outRiverRoofs != null) {
                     outRiverRoofs[idx] = tile.riverRoofAt(worldX, worldZ);
+                }
+                if (outRiverFlows != null) {
+                    outRiverFlows[idx] = tile.riverFlowAt(worldX, worldZ);
                 }
             }
         }

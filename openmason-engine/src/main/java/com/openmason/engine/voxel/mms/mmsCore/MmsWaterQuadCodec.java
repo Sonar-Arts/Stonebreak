@@ -17,13 +17,14 @@ import java.nio.ByteBuffer;
  * word1: 4 × u8 vertex Y offsets from (y − 1) in 1/128 block, corner order =
  *        MmsCuboidGenerator.FACE_VERTEX_OFFSETS (the water generator's order)
  * word2: 4 × u8 per-corner surface-height flags (aFlags.x, 0..1 → 0..255)
- * word3: (w−1):4 | (h−1):4 | spare   in-plane extent (1 for near water, the
- *        cell size for LOD sheets)
+ * word3: (w−1):4 | (h−1):4 | flow:4 | spare   in-plane extent (1 for near
+ *        water, the cell size for LOD sheets), then the river flow octant
+ *        biased by one (0 = still water, 1..8 = octant 0..7)
  * </pre>
  *
  * The shader (`water.vert`, {@code aOrigin.w < -2.5}) rebuilds the corner
  * position from the table, the vertex Y from word1, and the flags vector
- * {@code (surface, falling, source, light=1)} the fragment stage expects.
+ * {@code (surface, falling, source, flow)} the fragment stage expects.
  */
 public final class MmsWaterQuadCodec {
 
@@ -76,9 +77,23 @@ public final class MmsWaterQuadCodec {
     }
 
     public static int word3(int w, int h) {
+        return word3(w, h, NO_FLOW);
+    }
+
+    /** "This water does not run", the value {@link #word3(int, int, int)} takes for still water. */
+    public static final int NO_FLOW = -1;
+
+    /**
+     * @param flow the river flow octant 0..7 (0 = +X, counter-clockwise in
+     *             eighths of a turn), or {@link #NO_FLOW} for still water.
+     *             Stored biased by one so that a zeroed record reads as still,
+     *             which is what every caller that never sets it wants.
+     */
+    public static int word3(int w, int h, int flow) {
         check(w, 1, 16, "w");
         check(h, 1, 16, "h");
-        return (w - 1) | ((h - 1) << 4);
+        check(flow, NO_FLOW, 7, "flow");
+        return (w - 1) | ((h - 1) << 4) | ((flow + 1) << 8);
     }
 
     private static void check(int v, int lo, int hi, String what) {
@@ -130,6 +145,11 @@ public final class MmsWaterQuadCodec {
         return ((w3 >>> 4) & 0xF) + 1;
     }
 
+    /** River flow octant 0..7, or {@link #NO_FLOW} for still water. */
+    public static int flow(int w3) {
+        return ((w3 >>> 8) & 0xF) - 1;
+    }
+
     public static float position(ByteBuffer quads, int q, int corner, int axis,
                                  float originX, float originY, float originZ) {
         int w0 = quads.getInt(q * QUAD_BYTES);
@@ -160,10 +180,21 @@ public final class MmsWaterQuadCodec {
         return MmsLodQuadCodec.faceNormal(face(quads.getInt(q * QUAD_BYTES)), c);
     }
 
-    /** The {@link MmsBufferLayout#packFlags} word a vertex of this corner carries: (surface, falling, source, 1). */
+    /**
+     * The {@link MmsBufferLayout#packFlags} word a vertex of this corner
+     * carries: {@code (surface, falling, source, flow)}.
+     *
+     * <p>This is the CPU-side twin of what {@code water.vert} builds from the
+     * same record, and it has to stay that way — it is what a reader of the
+     * mesh (tests, tooling) sees in place of the GPU's own decode. The flow
+     * code rides as EIGHTHS here, matching the per-vertex mesh path, because
+     * the flag slots are normalised to [0,1] bytes.
+     */
     public static int flags(ByteBuffer quads, int q, int corner) {
         int w0 = quads.getInt(q * QUAD_BYTES);
         int w2 = quads.getInt(q * QUAD_BYTES + 8);
-        return MmsBufferLayout.packFlags(surface(w2, corner), falling(w0) ? 1f : 0f, source(w0) ? 1f : 0f, 1f);
+        int w3 = quads.getInt(q * QUAD_BYTES + 12);
+        return MmsBufferLayout.packFlags(surface(w2, corner), falling(w0) ? 1f : 0f,
+            source(w0) ? 1f : 0f, (flow(w3) + 1) / 8f);
     }
 }

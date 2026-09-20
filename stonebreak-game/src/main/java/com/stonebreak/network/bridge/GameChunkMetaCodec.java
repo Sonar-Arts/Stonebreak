@@ -1,5 +1,6 @@
 package com.stonebreak.network.bridge;
 
+import com.stonebreak.world.chunk.ChunkWaterLayer;
 import com.stonebreak.world.chunk.utils.LocalBlockKey;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -70,7 +71,7 @@ public final class GameChunkMetaCodec {
                 out.writeByte(LocalBlockKey.x(key));
                 out.writeShort(LocalBlockKey.y(key));
                 out.writeByte(LocalBlockKey.z(key));
-                out.writeByte(Math.max(1, Math.min(8, e.getValue())));
+                out.writeByte(Math.max(1, Math.min(ChunkWaterLayer.MAX_VALUE, e.getValue())));
             }
 
             Map<Integer, String> states = blockStates != null ? blockStates : Map.of();
@@ -92,7 +93,7 @@ public final class GameChunkMetaCodec {
                 out.writeByte(LocalBlockKey.x(key));
                 out.writeShort(LocalBlockKey.y(key));
                 out.writeByte(LocalBlockKey.z(key));
-                out.writeByte(Math.max(1, Math.min(8, e.getValue())));
+                out.writeByte(Math.max(1, Math.min(ChunkWaterLayer.MAX_VALUE, e.getValue())));
             }
             return buffer.toByteArray();
         } catch (IOException e) {
@@ -153,7 +154,8 @@ public final class GameChunkMetaCodec {
                 int y = in.readUnsignedShort();
                 int z = in.readUnsignedByte();
                 int value = in.readUnsignedByte();
-                water.put(LocalBlockKey.pack(x, y, z), Math.max(1, Math.min(8, value)));
+                water.put(LocalBlockKey.pack(x, y, z),
+                        Math.max(1, Math.min(ChunkWaterLayer.MAX_VALUE, value)));
             }
         } else {
             water = Map.of();

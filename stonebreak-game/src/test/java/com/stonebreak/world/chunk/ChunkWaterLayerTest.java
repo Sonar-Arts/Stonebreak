@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /** Encoding and invariant behavior of the chunk-owned water layer. */
 class ChunkWaterLayerTest {
@@ -61,7 +62,32 @@ class ChunkWaterLayerTest {
     void rejectsOutOfRangeValues() {
         ChunkWaterLayer layer = new ChunkWaterLayer();
         assertThrows(IllegalArgumentException.class, () -> layer.set(0, 0, 0, -1));
-        assertThrows(IllegalArgumentException.class, () -> layer.set(0, 0, 0, 9));
+        assertThrows(IllegalArgumentException.class, () -> layer.set(0, 0, 0,
+                ChunkWaterLayer.MAX_VALUE + 1));
+    }
+
+    @Test
+    void aRiverValueIsASourceThatKnowsWhichWayItRuns() {
+        ChunkWaterLayer layer = new ChunkWaterLayer();
+        for (int octant = 0; octant < 8; octant++) {
+            int value = ChunkWaterLayer.river(octant);
+            layer.set(3, 40, 5, value);
+            assertEquals(value, layer.get(3, 40, 5));
+            assertTrue(ChunkWaterLayer.isRiver(value));
+            assertEquals(octant, ChunkWaterLayer.octant(value));
+            // The whole safety argument: every rule outside the renderer reads
+            // it as the source block it is, so nothing about how water moves
+            // depends on the marker.
+            assertEquals(ChunkWaterLayer.SOURCE, ChunkWaterLayer.level(value));
+        }
+    }
+
+    @Test
+    void ordinaryValuesAreNotRivers() {
+        for (int value = 0; value <= ChunkWaterLayer.FALLING; value++) {
+            assertFalse(ChunkWaterLayer.isRiver(value));
+            assertEquals(value, ChunkWaterLayer.level(value));
+        }
     }
 
     @Test

@@ -100,4 +100,18 @@ class PulledQuadWorldHeightTest {
         assertFalse(MmsWaterQuadCodec.source(plain));
         assertFalse(MmsWaterQuadCodec.sheet(plain));
     }
+
+    @Test
+    void waterQuadCarriesTheRiverFlowOctant() {
+        // word3's spare bits carry which way a river runs, biased by one so a
+        // zeroed record — every caller that never sets it — reads as still.
+        assertEquals(MmsWaterQuadCodec.NO_FLOW, MmsWaterQuadCodec.flow(MmsWaterQuadCodec.word3(1, 1)));
+        for (int octant = 0; octant < 8; octant++) {
+            int w3 = MmsWaterQuadCodec.word3(16, 9, octant);
+            assertEquals(octant, MmsWaterQuadCodec.flow(w3));
+            // ...without disturbing the extent packed beside it.
+            assertEquals(16, MmsWaterQuadCodec.width(w3));
+            assertEquals(9, MmsWaterQuadCodec.height(w3));
+        }
+    }
 }

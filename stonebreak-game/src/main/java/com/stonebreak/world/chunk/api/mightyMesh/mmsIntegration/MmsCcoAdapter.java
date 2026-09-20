@@ -732,6 +732,9 @@ public class MmsCcoAdapter {
                                       : com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE;
         float fallingFlag = flowValue == com.stonebreak.world.chunk.ChunkWaterLayer.FALLING ? 1.0f : 0.0f;
         float sourceFlag = flowValue == com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE ? 1.0f : 0.0f;
+        // Which way a worldgen river runs over this cell, -1 for still water.
+        // Purely a look: the cell is a source and renders at source height.
+        int riverFlow = world != null ? world.getRiverFlowAt(blockX, blockY, blockZ) : -1;
 
         // Check each face for culling (water has special culling rules)
         for (int face = 0; face < 6; face++) {
@@ -759,7 +762,7 @@ public class MmsCcoAdapter {
                             MmsWaterQuadCodec.word0(qx, blockY, qz, face, fallingFlag > 0.5f, sourceFlag > 0.5f),
                             MmsWaterQuadCodec.word1(blockY, vertices[1], vertices[4], vertices[7], vertices[10]),
                             MmsWaterQuadCodec.word2(waterFlags[0], waterFlags[1], waterFlags[2], waterFlags[3]),
-                            MmsWaterQuadCodec.word3(1, 1))) {
+                            MmsWaterQuadCodec.word3(1, 1, riverFlow))) {
                     continue;
                 }
                 // Out of range / full: fall back to the per-vertex water mesh below.
@@ -775,7 +778,10 @@ public class MmsCcoAdapter {
                     vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
                     texCoords[tIdx], texCoords[tIdx + 1],
                     normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                    waterFlags[i], fallingFlag, sourceFlag, 1.0f, 0.0f
+                    // The per-vertex flags are packed as [0,1] bytes, so the
+                    // flow code (0 = still, 1..8 = octant + 1) rides as eighths
+                    // and the shader multiplies it back out.
+                    waterFlags[i], fallingFlag, sourceFlag, (riverFlow + 1) / 8.0f, 0.0f
                 );
             }
             builder.endFace();

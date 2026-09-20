@@ -116,6 +116,13 @@ public final class TunnelledRiverTileSource implements TerrainTileSource {
         return isTunnel(worldX, worldZ) ? TUNNEL_ROOF : TerrainTile.NO_TUNNEL;
     }
 
+    /** The channel runs along +X, so every wet column reports octant 0. */
+    public static final int FLOW_OCTANT = 0;
+
+    public static int riverFlow(int worldX, int worldZ) {
+        return inChannel(worldZ) ? FLOW_OCTANT : TerrainTile.NO_FLOW;
+    }
+
     private static TerrainTile buildTile(int tileX, int tileZ) {
         int i1 = tileX * TILE_SIZE;
         int j1 = tileZ * TILE_SIZE;
@@ -124,6 +131,7 @@ public final class TunnelledRiverTileSource implements TerrainTileSource {
         short[] waterLevels = new short[TILE_SIZE * TILE_SIZE];
         short[] riverFloors = new short[TILE_SIZE * TILE_SIZE];
         short[] riverRoofs = new short[TILE_SIZE * TILE_SIZE];
+        short[] riverFlows = new short[TILE_SIZE * TILE_SIZE];
         // Row-major with row = i = world X, col = j = world Z.
         for (int row = 0; row < TILE_SIZE; row++) {
             int worldX = i1 + row;
@@ -135,9 +143,11 @@ public final class TunnelledRiverTileSource implements TerrainTileSource {
                 waterLevels[idx] = (short) waterLevel(worldX, worldZ);
                 riverFloors[idx] = (short) riverFloor(worldX, worldZ);
                 riverRoofs[idx] = (short) riverRoof(worldX, worldZ);
+                riverFlows[idx] = (short) riverFlow(worldX, worldZ);
             }
         }
         return new TerrainTile(tileX, tileZ, i1, j1, i1 + TILE_SIZE, j1 + TILE_SIZE,
-                TILE_SIZE, TILE_SIZE, heights, biomes, waterLevels, riverFloors, riverRoofs);
+                TILE_SIZE, TILE_SIZE, heights, biomes, waterLevels, riverFloors, riverRoofs,
+                riverFlows);
     }
 }

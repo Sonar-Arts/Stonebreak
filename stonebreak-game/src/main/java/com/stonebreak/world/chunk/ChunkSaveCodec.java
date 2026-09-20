@@ -48,6 +48,10 @@ final class ChunkSaveCodec {
             // Guard against racing the sim: only persist cells whose block
             // (in this atomic copy) is still water.
             if (blocksCopy.get(localX, y, localZ) == BlockType.WATER) {
+                // A river marker persists as its own value: it is worldgen
+                // state that cannot be re-derived on load (the block is a
+                // plain source, like every other worldgen water block), so
+                // losing it would turn every saved river back into a pond.
                 boolean falling = value == ChunkWaterLayer.FALLING;
                 waterMetadata.put(localX + "," + y + "," + localZ,
                     new ChunkData.WaterBlockData(
@@ -127,7 +131,7 @@ final class ChunkSaveCodec {
             var data = entry.getValue();
             int value = data.falling()
                 ? ChunkWaterLayer.FALLING
-                : Math.min(ChunkWaterLayer.MAX_FLOW_LEVEL, Math.max(0, data.level()));
+                : Math.min(ChunkWaterLayer.MAX_VALUE, Math.max(0, data.level()));
             if (value > 0) {
                 waterLayer.set(localX, y, localZ, value);
             }

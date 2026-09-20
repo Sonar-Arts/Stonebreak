@@ -232,6 +232,7 @@ struct Tile {
     std::vector<int16_t> water;
     std::vector<int16_t> floor;
     std::vector<int16_t> roof;
+    std::vector<int16_t> flow;
 };
 
 /**
@@ -275,6 +276,7 @@ Tile runTile(int64_t seed, int64_t tileX, int64_t tileZ, F&& terrain, const Regi
     t.water.resize(t.heights.size());
     t.floor.resize(t.heights.size());
     t.roof.resize(t.heights.size());
+    t.flow.resize(t.heights.size());
     const int32_t rc = ck_carve_water(seed, T,
                                       static_cast<int32_t>(originX), static_cast<int32_t>(originZ),
                                       window.data(), SEA, WH,
@@ -286,7 +288,7 @@ Tile runTile(int64_t seed, int64_t tileX, int64_t tileZ, F&& terrain, const Regi
                                       region == nullptr ? nullptr : region->verts.data(),
                                       params, nParams,
                                       t.heights.data(), t.water.data(),
-                                      t.floor.data(), t.roof.data());
+                                      t.floor.data(), t.roof.data(), t.flow.data());
     check(rc == 0, "ck_carve_water returned 0");
     return t;
 }
@@ -653,6 +655,147 @@ void testRiversAgreeAcrossATileSeam() {
     std::printf("river seam ok (%d straddling columns)\n", compared);
 }
 
+/**
+ * Every river column knows which way it runs, and the direction is the
+ * river's own.
+ *
+ * The plane exists so the game can tell a river from a pond: worldgen water is
+ * source blocks either way, so without it a reach and a lake are the same
+ * thing to everything downstream of the kernel. What has to hold for it to be
+ * worth reading:
+ *
+ *   - it is set only on water (a direction on dry ground would seed flow into
+ *     the wall the containment rule just built);
+ *   - it never points UPHILL. Step one column the way it points and the water
+ *     there does not stand higher — not rarely, NEVER. This is the kernel's
+ *     §2d invariant and it is exact rather than statistical: the octant is a
+ *     rounding of the route's real tangent, and §2d turns it to the nearest
+ *     octant that does not ascend wherever the rounding put it uphill. Before
+ *     that pass this fixture climbed on 48 of 16,492 running columns, almost
+ *     all of them a single one-block step on a diagonal reach, so a tolerance
+ *     here would have hidden exactly the defect the pass exists to remove;
+ *   - a LAKE carries none. Flat water has no downstream, and the rule that
+ *     gives it none (the winning reach's surface against the level emitted) is
+ *     the same rule that keeps the sea out of it.
+ */
+void testEveryRiverColumnKnowsWhichWayItRuns() {
+    /* Octant k is 45k degrees of atan2(dz, dx): 0 = +x, counter-clockwise. */
+    static constexpr int OX[8] = {1, 1, 0, -1, -1, -1, 0, 1};
+    static constexpr int OZ[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+
+    const Region r = solveRegion(0, 0, riverTerrainAt, 777, 1.0f);
+    if (r.routeCount == 0) {
+        check(false, "river flow: the fixture plans a river");
+        return;
+    }
+    long wet = 0, running = 0, onDry = 0, descends = 0, climbs = 0;
+    long seamCompared = 0, seamDisagreed = 0;
+    long acrossSeam = 0;
+    for (int64_t tx = 2; tx <= 7; ++tx) {
+        const Tile t = runTile(777, tx, 8, riverTerrainAt, &r);
+        for (int x = 0; x < T; ++x) {
+            for (int z = 0; z < T; ++z) {
+                const size_t i = idx(x, z, T);
+                wet += t.water[i] >= 0 ? 1 : 0;
+                const int16_t f = t.flow[i];
+                if (f < 0) {
+                    continue;
+                }
+                ++running;
+                check(f < 8, "a flow octant is 0..7");
+                if (t.water[i] < 0) {
+                    ++onDry;
+                    continue;
+                }
+                const int nx = x + OX[f];
+                const int nz = z + OZ[f];
+                if (nx < 0 || nx >= T || nz < 0 || nz >= T) {
+                    continue;
+                }
+                const size_t n = idx(nx, nz, T);
+                if (t.water[n] < 0) {
+                    continue;
+                }
+                if (t.water[n] > t.water[i]) {
+                    ++climbs;
+                } else {
+                    ++descends;
+                }
+            }
+        }
+        /* Facing columns across a seam are one block apart on the same reach,
+         * so they run the same way. Disagreement here is the signature of an
+         * order-dependent choice: the two tiles bucket the segments
+         * differently and there is nothing else for them to differ on. */
+        const Tile b = runTile(777, tx + 1, 8, riverTerrainAt, &r);
+        for (int z = 0; z < T; ++z) {
+            const int16_t fa = t.flow[idx(T - 1, z, T)];
+            const int16_t fb = b.flow[idx(0, z, T)];
+            if (fa < 0 || fb < 0) {
+                continue;
+            }
+            ++seamCompared;
+            /* One octant of slack: they are different columns on a curving
+             * route, not the same column twice. */
+            const int d = std::abs(fa - fb);
+            seamDisagreed += (d == 0 || d == 1 || d == 7) ? 0 : 1;
+        }
+        /* The uphill rule ACROSS the seam, which the per-tile sweep above
+         * cannot see: it skips any column whose step leaves the tile, and on a
+         * 256-block tile that is every edge column pointing outward. The
+         * kernel checked those against its own window copy of the neighbour,
+         * so what is verified here is that the copy and the neighbour tile's
+         * own emission agree — if they ever did not, the guarantee would hold
+         * inside a tile and break exactly at the seams. */
+        for (int z = 0; z < T; ++z) {
+            const int16_t f = t.flow[idx(T - 1, z, T)];
+            if (f < 0 || OX[f] != 1) {
+                continue;
+            }
+            const int nz = z + OZ[f];
+            if (nz < 0 || nz >= T) {
+                continue;
+            }
+            const int16_t there = b.water[idx(0, nz, T)];
+            if (there < 0) {
+                continue;
+            }
+            ++acrossSeam;
+            check(there <= t.water[idx(T - 1, z, T)],
+                  "a river leaving a tile does not flow uphill into the next one");
+        }
+    }
+    check(wet > 0 && running > 0, "river flow: the fixture has running water");
+    check(onDry == 0, "a flow direction is never set on a dry column");
+    check(descends > 0, "river flow: there are steps to judge");
+    check(climbs == 0, "no river column ever flows uphill");
+    /* The floor is here so that "no climbing" cannot be satisfied by giving up:
+     * blanking the direction of every awkward column would pass the line above
+     * and leave the river static, which is the whole defect this plane was
+     * added to fix. 16,492 of 38,164 wet columns run on these fixtures (the
+     * rest is lake and sea), and §2d costs none of them. */
+    check(running * 3 > wet, "and most of the river still knows which way it runs");
+    check(seamCompared > 0, "a river straddled a seam to compare directions");
+    check(seamDisagreed * 20 < seamCompared, "facing columns agree which way the river runs");
+    check(acrossSeam > 0, "a river crossed a tile seam to judge the uphill rule on");
+
+    /* And a lake is flat water: no column in the bowl claims a direction. */
+    auto bowl = [](int64_t x, int64_t z) { return bowlTerrainAt(x, z, 2048, 2048); };
+    const Region lake = solveRegion(0, 0, bowl);
+    long lakeWet = 0, lakeRunning = 0;
+    const Tile bowlTile = runTile(3, 8, 8, bowl, &lake);  /* covers (2048, 2048) */
+    for (size_t i = 0; i < bowlTile.water.size(); ++i) {
+        lakeWet += bowlTile.water[i] >= 0 ? 1 : 0;
+        lakeRunning += bowlTile.flow[i] >= 0 ? 1 : 0;
+    }
+    check(lakeWet > 0, "river flow: the bowl holds water to judge");
+    check(lakeRunning == 0, "still water carries no direction");
+    std::printf("river flow ok (%ld of %ld wet columns run; %ld descend, %ld climb; "
+                "%ld seam pairs, %ld disagree, %ld crossing; %ld lake columns, %ld running)\n",
+                running, wet, descends, climbs, seamCompared, seamDisagreed, acrossSeam,
+                lakeWet, lakeRunning);
+}
+
 void testNoRoutesMeansNoRivers() {
     /* The gate all the way through: with the keep fraction at zero the region
      * plans nothing, and the tile is exactly the lakes-only result. */
@@ -796,6 +939,7 @@ void testDocumentedDefaultsAreTheRealDefaults() {
     std::vector<int16_t> outW(outH.size());
     std::vector<int16_t> outF(outH.size());
     std::vector<int16_t> outR(outH.size());
+    std::vector<int16_t> outFlow(outH.size());
     std::vector<int16_t> win(static_cast<size_t>(W) * W);
     const int64_t ox = 3 * T;
     const int64_t oz = 7 * T;
@@ -817,11 +961,12 @@ void testDocumentedDefaultsAreTheRealDefaults() {
                    win.data(), SEA, WH, SPAN_CELLS, CELL, spanF.data(), spanD.data(),
                    none.routeCount, none.starts.data(), none.verts.data(),
                    DOCUMENTED_DEFAULTS, 32, outH.data(), outW.data(),
-                   outF.data(), outR.data());
+                   outF.data(), outR.data(), outFlow.data());
     check(std::memcmp(a.heights.data(), outH.data(), outH.size() * 2) == 0
               && std::memcmp(a.water.data(), outW.data(), outW.size() * 2) == 0
               && std::memcmp(a.floor.data(), outF.data(), outF.size() * 2) == 0
-              && std::memcmp(a.roof.data(), outR.data(), outR.size() * 2) == 0,
+              && std::memcmp(a.roof.data(), outR.data(), outR.size() * 2) == 0
+              && std::memcmp(a.flow.data(), outFlow.data(), outFlow.size() * 2) == 0,
           "the carve reads the same array's defaults, not a second table");
     std::puts("params ABI ok");
 }
@@ -2514,6 +2659,7 @@ int main() {
     testARiverIsStampedIntoTheGround();
     testTheChannelIsLevelAcrossItsWidth();
     testRiversAgreeAcrossATileSeam();
+    testEveryRiverColumnKnowsWhichWayItRuns();
     testNoRoutesMeansNoRivers();
     testDocumentedDefaultsAreTheRealDefaults();
     testTunnelKnobsAreLiveOnTheCarve();

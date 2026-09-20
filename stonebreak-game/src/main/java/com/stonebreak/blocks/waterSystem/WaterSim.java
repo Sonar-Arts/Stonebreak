@@ -450,12 +450,26 @@ public final class WaterSim {
         return !(block == BlockType.WATER && waterAt(posKey) == SOURCE);
     }
 
-    /** Water state at the cell: EMPTY when not water, else the layer value. */
+    /**
+     * Water state at the cell: EMPTY when not water, else the layer value in
+     * the 0..8 vocabulary this engine's rules are written in.
+     *
+     * <p>A worldgen river surface ({@link ChunkWaterLayer#RIVER}+octant) is a
+     * SOURCE that also records which way it runs, and it is normalised here so
+     * that it reads as one EVERYWHERE — spread, dissipation, the hole search,
+     * the infinite-source rule, {@link #canFlowInto}. That is deliberate and it
+     * is the whole safety argument for the marker: the flow rules never see it,
+     * so nothing about how far water travels changes, and the containment the
+     * water kernel's banks are measured against still holds exactly. The marker
+     * survives the sim for the same reason — a cell that reads as a source is
+     * never rewritten by {@link #onScheduledUpdate}.
+     */
     private int waterAt(long posKey) {
         if (!isWithinWorld(unpackY(posKey)) || blockAt(posKey) != BlockType.WATER) {
             return EMPTY;
         }
-        return flow.getWater(unpackX(posKey), unpackY(posKey), unpackZ(posKey));
+        return ChunkWaterLayer.level(
+            flow.getWater(unpackX(posKey), unpackY(posKey), unpackZ(posKey)));
     }
 
     /** Horizontal flow strength: sources and falling columns are full strength (0). */

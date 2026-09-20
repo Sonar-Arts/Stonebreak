@@ -29,7 +29,7 @@ import java.nio.file.Path;
 public final class CendaKernels {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CendaKernels.class);
-    private static final int EXPECTED_ABI = 8;
+    private static final int EXPECTED_ABI = 9;
 
     private static final boolean AVAILABLE;
     private static final String SIMD_LEVEL;
@@ -204,7 +204,8 @@ public final class CendaKernels {
                         ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS));
                 zstdBound = linker.downcallHandle(
                     find(lookup, "ck_zstd_bound"),
                     FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
@@ -778,7 +779,8 @@ public final class CendaKernels {
                                  int routeCount, int[] routeStarts, float[] vertices,
                                  float[] params,
                                  short[] outHeights, short[] outWater,
-                                 short[] outRiverFloor, short[] outRiverRoof) {
+                                 short[] outRiverFloor, short[] outRiverRoof,
+                                 short[] outRiverFlow) {
         int window = 3 * tileSize;
         if (heights3x3.length != window * window) {
             throw new IllegalArgumentException("heights3x3 must be (3*tileSize)^2 = "
@@ -790,7 +792,8 @@ public final class CendaKernels {
                 + " shorts, were " + outHeights.length + " / " + outWater.length);
         }
         if ((outRiverFloor != null && outRiverFloor.length != tileArea)
-                || (outRiverRoof != null && outRiverRoof.length != tileArea)) {
+                || (outRiverRoof != null && outRiverRoof.length != tileArea)
+                || (outRiverFlow != null && outRiverFlow.length != tileArea)) {
             throw new IllegalArgumentException("river planes must be tileSize^2 = " + tileArea
                 + " shorts when present");
         }
@@ -829,6 +832,8 @@ public final class CendaKernels {
                 ? MemorySegment.NULL : scratch(8, (long) tileArea * Short.BYTES);
             MemorySegment outRoofSeg = outRiverRoof == null
                 ? MemorySegment.NULL : scratch(9, (long) tileArea * Short.BYTES);
+            MemorySegment outFlowSeg = outRiverFlow == null
+                ? MemorySegment.NULL : scratch(10, (long) tileArea * Short.BYTES);
             int nParams = params == null ? 0 : params.length;
             int rc = (int) CARVE_WATER.invokeExact(
                 seed, tileSize, originX, originZ,
@@ -838,7 +843,7 @@ public final class CendaKernels {
                 withRivers ? routeCount : 0, startsSeg, vertsSeg,
                 paramsSeg, nParams,
                 outHeightsSeg, outWaterSeg,
-                outFloorSeg, outRoofSeg);
+                outFloorSeg, outRoofSeg, outFlowSeg);
             if (rc == 0) {
                 MemorySegment.copy(outHeightsSeg, ValueLayout.JAVA_SHORT, 0L, outHeights, 0, tileArea);
                 MemorySegment.copy(outWaterSeg, ValueLayout.JAVA_SHORT, 0L, outWater, 0, tileArea);
@@ -847,6 +852,9 @@ public final class CendaKernels {
                 }
                 if (outRiverRoof != null) {
                     MemorySegment.copy(outRoofSeg, ValueLayout.JAVA_SHORT, 0L, outRiverRoof, 0, tileArea);
+                }
+                if (outRiverFlow != null) {
+                    MemorySegment.copy(outFlowSeg, ValueLayout.JAVA_SHORT, 0L, outRiverFlow, 0, tileArea);
                 }
             }
             return rc;

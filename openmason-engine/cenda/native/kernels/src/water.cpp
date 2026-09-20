@@ -588,6 +588,10 @@ struct Scratch {
     std::vector<int32_t> bankCrest;
     std::vector<int32_t> bankRingCrest;
     std::vector<int32_t> bankNextRingCrest;
+    /* Which way the river over this column RUNS, as an octant 0..7 of
+     * (dx, dz), or -1 where the column's level was not set by a channel —
+     * dry ground, a lake, the sea. See `riverOctant`. */
+    std::vector<int8_t> flow;
     /* §2c's guard rail per column, -1 for dry, plus the rings of its
      * relaxation and the values they were pushed with. */
     std::vector<int16_t> rail;
@@ -909,6 +913,21 @@ void guardRail(int W, int lo, int hi, int reach, Scratch& s) {
  * inside the window that stamps it.
  */
 /**
+ * The octant of (dx, dz) a reach runs toward: 0 = +x, then counter-clockwise
+ * through +z in eighths of a turn, so 8 directions at 45 degrees.
+ *
+ * Eight is what the renderer can use and what a water surface can show. The
+ * quantisation is done HERE rather than on the Java side because the direction
+ * is a property of the route, and the route is only in scope in this file.
+ */
+inline int8_t riverOctant(float dx, float dz) {
+    /* [-pi, pi] -> [0, 8), rounded to the nearest octant and wrapped. */
+    const float turns = std::atan2(dz, dx) * (4.0f / 3.14159265358979323846f);
+    int oct = static_cast<int>(std::lround(turns)) & 7;
+    return static_cast<int8_t>(oct);
+}
+
+/**
  * How close this column is to being a tunnel MOUTH, in [0, 1].
  *
  * Measured on the lid the column can carry — `(raw - tunnel_min_roof) - surf`,
@@ -1152,7 +1171,8 @@ int32_t ck_carve_water(int64_t seed,
                        const float* vertices,
                        const float* params, int32_t n_params,
                        int16_t* out_heights, int16_t* out_water,
-                       int16_t* out_river_floor, int16_t* out_river_roof) {
+                       int16_t* out_river_floor, int16_t* out_river_roof,
+                       int16_t* out_river_flow) {
     /* Read only by the wall noise (the header's "Noise on the walls"). The
      * water itself still has no hashed mechanism of its own: the DEM span and
      * the routes are addressed in world coordinates and everything else is a
@@ -1279,6 +1299,7 @@ int32_t ck_carve_water(int64_t seed,
     s.water.assign(N, -1);
     s.floor.assign(N, -1);
     s.roof.assign(N, -1);
+    s.flow.assign(N, -1);
 
     /* ── 1a. Where the lakes are, at block resolution ──
      *
@@ -1436,6 +1457,16 @@ int32_t ck_carve_water(int64_t seed,
             bool noiseReady = false;
             float vaultScale = 1.0f;
             float bulgeWidth = 0.0f;
+            /* The reach this column's water level came from, and which way it
+             * runs. Chosen CANONICALLY — highest surface, then nearest, then
+             * the segment's own endpoints lexicographically — so two tiles
+             * that share the column pick the same reach whatever order their
+             * buckets hand the segments over in. Anything order-dependent here
+             * would make the flow direction flip along a tile seam. */
+            int flowSurf = -1;
+            float flowDist2 = 0.0f;
+            float flowKey[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            int8_t flowDir = -1;
             const auto sampleNoise = [&]() {
                 if (noiseReady) {
                     return;
@@ -1569,6 +1600,29 @@ int32_t ck_carve_water(int64_t seed,
                     carved = std::min(carved, bedY);
                 }
                 water = std::max(water, surf);
+
+                /* ...and record which way it runs, by the canonical rule. */
+                const float key[4] = {g.ax, g.az, g.bx, g.bz};
+                bool better = surf > flowSurf;
+                if (!better && surf == flowSurf) {
+                    better = d2 < flowDist2;
+                    if (!better && d2 == flowDist2) {
+                        for (int k = 0; k < 4 && !better; ++k) {
+                            if (key[k] != flowKey[k]) {
+                                better = key[k] < flowKey[k];
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (better) {
+                    flowSurf = surf;
+                    flowDist2 = d2;
+                    for (int k = 0; k < 4; ++k) {
+                        flowKey[k] = key[k];
+                    }
+                    flowDir = riverOctant(g.bx - g.ax, g.bz - g.az);
+                }
             }
 
             carved = std::clamp(carved, 1, world_height - 1);
@@ -1599,6 +1653,72 @@ int32_t ck_carve_water(int64_t seed,
             s.water[i] = static_cast<int16_t>(water);
             s.floor[i] = hasTunnel ? static_cast<int16_t>(tunnelFloor) : static_cast<int16_t>(-1);
             s.roof[i] = hasTunnel ? static_cast<int16_t>(tunnelRoof) : static_cast<int16_t>(-1);
+            /* A column RUNS only where a channel set the level it ended up
+             * with. A lake the river passes through, and any column the sea
+             * raised afterwards, are flat water and carry no direction — which
+             * falls straight out of comparing the winning reach's surface
+             * against the level actually emitted. */
+            s.flow[i] = (water >= 0 && flowSurf == water) ? flowDir : static_cast<int8_t>(-1);
+        }
+    }
+
+    /* ── 2d. No river flows uphill ──
+     *
+     * A route's tangent is a real direction; an OCTANT is one of eight, and
+     * the rounding is not free. On a reach running diagonally across a step,
+     * the nearest octant can point at the column the river just came down
+     * from — so the surface would scroll UPSTREAM, over the step, which is the
+     * one thing a moving surface must never do. Measured before this pass: 48
+     * of 16,492 running columns on the two river fixtures, almost all of them
+     * a single one-block step on a diagonal reach.
+     *
+     * The rule is local and exact, and it is the same one the test asserts:
+     * step one column along the emitted octant and the water there does not
+     * stand higher. Where the tangent already satisfies it — 99.7 % of columns
+     * — it is kept untouched, so this changes direction only where direction
+     * was wrong. Otherwise the octant turns to the nearest one that does, in a
+     * fixed order (+1, -1, +2, -2, ...) so the result is a pure function of
+     * the column and stays identical from every tile that stamps it.
+     *
+     * Every one of those 48 had at least two octants to turn to, and no column
+     * on either fixture runs out — but if one ever did, it would be a column
+     * whose every neighbour stands over it, and the honest answer for it is
+     * that its water is not going anywhere: it reports still. That keeps the
+     * invariant absolute rather than best-effort, at the cost of one cell that
+     * stops scrolling.
+     *
+     * Runs on `s.water`, which is complete over the stamp range by now, and
+     * writes only `s.flow`, which nothing else reads — so it can sit before
+     * the rail without disturbing anything it does. The one-column inset keeps
+     * the 8-neighbour reads inside the range. */
+    {
+        static constexpr int OCTANT_X[8] = {1, 1, 0, -1, -1, -1, 0, 1};
+        static constexpr int OCTANT_Z[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+        /* Nearest first, and +k before -k so ties are decided the same way
+         * everywhere. 4 is the about-face, and is reached only when nothing
+         * else worked. */
+        static constexpr int TURN[8] = {0, 1, -1, 2, -2, 3, -3, 4};
+        for (int x = stampLo + 1; x < stampHi - 1; ++x) {
+            for (int z = stampLo + 1; z < stampHi - 1; ++z) {
+                const size_t i = idx2(x, z, W);
+                const int8_t oct = s.flow[i];
+                if (oct < 0) {
+                    continue;
+                }
+                const int here = s.water[i];
+                int8_t chosen = -1;
+                for (const int turn : TURN) {
+                    const int k = (oct + turn) & 7;
+                    const size_t n = idx2(x + OCTANT_X[k], z + OCTANT_Z[k], W);
+                    /* Dry ground cannot be flowed up into, so it qualifies —
+                     * the rule is about water standing over water. */
+                    if (s.water[n] <= here) {
+                        chosen = static_cast<int8_t>(k);
+                        break;
+                    }
+                }
+                s.flow[i] = chosen;
+            }
         }
     }
 
@@ -1681,6 +1801,9 @@ int32_t ck_carve_water(int64_t seed,
             }
             if (out_river_roof != nullptr) {
                 out_river_roof[oi] = s.roof[wi];
+            }
+            if (out_river_flow != nullptr) {
+                out_river_flow[oi] = s.flow[wi];
             }
         }
     }

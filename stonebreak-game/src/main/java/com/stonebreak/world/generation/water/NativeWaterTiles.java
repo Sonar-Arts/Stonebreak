@@ -215,12 +215,13 @@ public final class NativeWaterTiles implements TerrainTileSource, AutoCloseable 
         short[] outWater = new short[t * t];
         short[] outFloor = new short[t * t];
         short[] outRoof = new short[t * t];
+        short[] outFlow = new short[t * t];
         int rc = CendaKernels.carveWater(seed, t,
             originX, originZ, window,
             WorldConfiguration.SEA_LEVEL, WorldConfiguration.WORLD_HEIGHT,
             demCells, BasinCache.CELL_BLOCKS, demFilled, demDepth,
             rivers.routeCount(), rivers.starts(), rivers.vertices(),
-            null, outHeights, outWater, outFloor, outRoof);
+            null, outHeights, outWater, outFloor, outRoof, outFlow);
         if (rc != 0) {
             // MIN_VALUE = library vanished mid-run; negatives = bad-args bugs.
             // Either way raw passthrough beats a failed world load, loudly.
@@ -232,7 +233,7 @@ public final class NativeWaterTiles implements TerrainTileSource, AutoCloseable 
             center.tileX(), center.tileZ(),
             center.worldI1(), center.worldJ1(), center.worldI2(), center.worldJ2(),
             center.width(), center.height(),
-            outHeights, center.biomeIds(), outWater, outFloor, outRoof);
+            outHeights, center.biomeIds(), outWater, outFloor, outRoof, outFlow);
     }
 
     /** Routes near one tile's window, packed the way the kernel wants them. */

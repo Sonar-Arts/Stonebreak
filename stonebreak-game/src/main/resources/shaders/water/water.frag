@@ -17,6 +17,8 @@ in vec3 vNormal;
 in float vFalling;
 in float vSource;
 in float vSurfaceHeight;
+// 0 = still water; 1..8 = a river running in octant 0..7. See water.vert.
+flat in float vFlow;
 
 uniform vec3 uSunDirection;
 uniform float uAmbientLight;
@@ -41,6 +43,11 @@ uniform float uLodFade;
 #include "/shaders/lighting/point_lights.glsl"
 
 out vec4 fragColor;
+
+// How fast a river's surface pattern travels, in lattice units per second.
+// The ambient drift is 0.06; a reach wants to read as moving without turning
+// into a conveyor belt, and this is about four times the drift.
+const float RIVER_DRIFT = 0.25;
 
 // 4x4 Bayer thresholds for the LOD crossfade dither (same table as the world
 // shader so terrain and water dissolve with an identical pattern).
@@ -88,7 +95,19 @@ void main() {
     vec2 p;
     if (horizontal) {
         // Top/bottom: world-space XZ with a slow directional drift.
-        p = absPos.xz * 0.35 + vec2(t * 0.060, t * 0.045);
+        //
+        // A river's surface drifts DOWNSTREAM instead, and faster: the whole
+        // point of the flow code is that a reach does not read like the ocean
+        // it eventually joins. The lattice itself stays anchored to the world
+        // (only the offset moves), so neighbouring cells of the same reach
+        // still share one unbroken pattern, and the direction is flat-shaded
+        // so a confluence steps between directions instead of smearing them.
+        vec2 drift = vec2(t * 0.060, t * 0.045);
+        if (vFlow > 0.5) {
+            float a = (vFlow - 1.0) * 0.78539816;  // octant -> radians
+            drift = -vec2(cos(a), sin(a)) * t * RIVER_DRIFT;
+        }
+        p = absPos.xz * 0.35 + drift;
     } else {
         // Sides: world-space face coords — U runs along the face plane,
         // V is world height. Continuous across adjacent blocks, so a wide

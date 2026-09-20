@@ -1,6 +1,7 @@
 package com.stonebreak.network;
 
 import com.stonebreak.network.bridge.GameChunkMetaCodec;
+import com.stonebreak.world.chunk.ChunkWaterLayer;
 import com.stonebreak.world.chunk.utils.LocalBlockKey;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -83,10 +84,24 @@ class GameChunkMetaCodecTest {
     }
 
     @Test
-    void waterValuesClampTo1Through8() throws Exception {
+    void waterValuesClampToTheLayersRange() throws Exception {
         Map<Integer, Integer> water = Map.of(LocalBlockKey.pack(1, 2, 3), 200);
         GameChunkMetaCodec.ChunkMeta meta = GameChunkMetaCodec.decode(GameChunkMetaCodec.encode(null, null, water));
-        assertEquals(8, meta.waterLevels().get(LocalBlockKey.pack(1, 2, 3)));
+        assertEquals(ChunkWaterLayer.MAX_VALUE, meta.waterLevels().get(LocalBlockKey.pack(1, 2, 3)));
+    }
+
+    @Test
+    void aRiverMarkerSurvivesTheWire() throws Exception {
+        // River surfaces are worldgen state a client cannot re-derive: the
+        // block is a plain source like any other. Clamping them away would
+        // turn every replicated river back into a pond.
+        int key = LocalBlockKey.pack(4, 70, 9);
+        for (int octant = 0; octant < 8; octant++) {
+            Map<Integer, Integer> water = Map.of(key, ChunkWaterLayer.river(octant));
+            GameChunkMetaCodec.ChunkMeta meta =
+                GameChunkMetaCodec.decode(GameChunkMetaCodec.encode(null, null, water));
+            assertEquals(ChunkWaterLayer.river(octant), meta.waterLevels().get(key));
+        }
     }
 
     @Test

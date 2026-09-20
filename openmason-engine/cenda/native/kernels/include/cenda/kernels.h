@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-#define CK_ABI_VERSION 8
+#define CK_ABI_VERSION 9
 
 /* ABI handshake — Java refuses to use the lib if this doesn't match. */
 int32_t ck_abi_version(void);
@@ -497,6 +497,30 @@ int32_t ck_solve_basins(int64_t seed,
  * like a breached riverbed, so the cave guard must read `out_river_floor` as
  * the bed of a tunnelled column, not `out_heights`.
  *
+ * `out_river_flow` is which way the water over a column RUNS: an octant of
+ * (dx, dz) in 0..7 (0 = +x, counter-clockwise in eighths of a turn), or -1
+ * where nothing runs. It is set only where a CHANNEL decided the column's
+ * level — a lake the river crosses and anything the sea raised are flat water
+ * and report -1, which falls out of comparing the winning reach's surface
+ * against the level emitted. The direction is the route's own, quantised here
+ * because the route is in scope only inside the kernel; the reach is picked
+ * canonically (highest surface, then nearest, then endpoints lexicographic)
+ * so two tiles sharing a column never disagree about which way it flows.
+ *
+ * GUARANTEED: a river never runs uphill. Step one column along the octant and
+ * the water there never stands higher than the column it came from. An octant
+ * is a rounding of the route's real tangent and the rounding alone violated
+ * this on 48 of 16,492 running columns, so §2d turns any such column to the
+ * nearest octant that does not ascend; a column with no such octant at all —
+ * none was found on any fixture — reports -1 rather than a direction it would
+ * have to break the rule to keep. The check is made against the window, so it
+ * holds for columns pointing out of the tile too, not just inside it.
+ *
+ * It carries NO containment meaning. Worldgen water is still source blocks and
+ * the invariant above is unchanged: this plane tells the game which water is a
+ * river, so the surface can read as moving instead of as a pond, and nothing
+ * about how far water travels depends on it.
+ *
  * params: the shared water params array above. The carve reads [24]-[27] and
  * [29]-[31]; the rest belong to the solve. Sea level arrives as the
  * `sea_level` argument, NOT through [2]; the solve reads [2].
@@ -515,7 +539,8 @@ int32_t ck_carve_water(int64_t seed,
                        const float* vertices,
                        const float* params, int32_t n_params,
                        int16_t* out_heights, int16_t* out_water,
-                       int16_t* out_river_floor, int16_t* out_river_roof);
+                       int16_t* out_river_floor, int16_t* out_river_roof,
+                       int16_t* out_river_flow);
 
 /* ════════════════════════ zstd codec ════════════════════════ */
 

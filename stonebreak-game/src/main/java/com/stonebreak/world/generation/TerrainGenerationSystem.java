@@ -7,6 +7,7 @@ import com.stonebreak.world.DeterministicRandom;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.ChunkWaterLayer;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
@@ -416,11 +417,14 @@ public class TerrainGenerationSystem {
         // and the feature pass correctly plants on the hilltop.
         int[] riverFloors = new int[CHUNK_SIZE * CHUNK_SIZE];
         int[] riverRoofs = new int[CHUNK_SIZE * CHUNK_SIZE];
+        // Which way the water over each column runs, for the water layer's
+        // river markers below. NO_FLOW for still water and for dry ground.
+        int[] riverFlows = new int[CHUNK_SIZE * CHUNK_SIZE];
         BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
 
         // Shape first (noise-driven), then skin with biomes. Biomes do not influence shape.
         heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels,
-                riverFloors, riverRoofs);
+                riverFloors, riverRoofs, riverFlows);
         updateLoadingProgress("Determining Biomes");
         biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
 
@@ -489,11 +493,46 @@ public class TerrainGenerationSystem {
         }
 
         Chunk chunk = new Chunk(chunkX, chunkZ, storage);
+        markRiverSurface(chunk, storage, waterLevels, riverFlows);
         // One mesh+data dirty mark replaces the per-setBlock marks. The caller
         // clears data-dirty for waterless chunks, exactly as before.
         chunk.getCcoDirtyTracker().markBlockChanged();
         chunk.setFeaturesPopulated(false);
         return new TerrainResult(chunk, new ColumnProfile(heights, biomes, waterLevels));
+    }
+
+    /**
+     * Marks the top water block of every column a river RUNS through, so the
+     * surface reads as moving water rather than as a pond.
+     *
+     * <p>Only the top block, and only where the kernel says the column's level
+     * came from a channel — a lake the river crosses, and the sea, are flat
+     * water and get nothing. The marker is a {@link ChunkWaterLayer#RIVER}
+     * value, which every rule outside the renderer reads as the source it
+     * already was, so this adds no behaviour: worldgen water is still source
+     * blocks and the carve's containment argument is untouched.
+     *
+     * <p>The block is re-read from storage rather than derived from the water
+     * level: a cave or a tunnel roof can have taken the cell the level implies,
+     * and a marker on a block that is not water would outlive its own column.
+     */
+    private static void markRiverSurface(Chunk chunk, CcoBlockStorage storage,
+                                         int[] waterLevels, int[] riverFlows) {
+        ChunkWaterLayer layer = chunk.getWaterLayer();
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                int idx = x * CHUNK_SIZE + z;
+                int octant = riverFlows[idx];
+                if (octant == TerrainTile.NO_FLOW) {
+                    continue;
+                }
+                int top = waterLevels[idx] - 1;
+                if (top < 0 || top >= WORLD_HEIGHT || storage.get(x, top, z) != BlockType.WATER) {
+                    continue;
+                }
+                layer.set(x, top, z, ChunkWaterLayer.river(octant));
+            }
+        }
     }
 
     /**

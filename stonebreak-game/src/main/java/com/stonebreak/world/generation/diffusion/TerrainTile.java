@@ -32,7 +32,8 @@ public record TerrainTile(
         short[] biomeIds,
         short[] waterLevels,
         short[] riverFloors,
-        short[] riverRoofs
+        short[] riverRoofs,
+        short[] riverFlows
 ) {
 
     /**
@@ -45,7 +46,20 @@ public record TerrainTile(
                        int width, int height,
                        short[] blockHeights, short[] biomeIds, short[] waterLevels) {
         this(tileX, tileZ, worldI1, worldJ1, worldI2, worldJ2, width, height,
-                blockHeights, biomeIds, waterLevels, null, null);
+                blockHeights, biomeIds, waterLevels, null, null, null);
+    }
+
+    /**
+     * A tile with tunnels but no flow plane — the shape every caller wrote
+     * before rivers carried a direction, kept so a test fixture that only
+     * cares about tunnels does not have to say so three times.
+     */
+    public TerrainTile(int tileX, int tileZ, int worldI1, int worldJ1, int worldI2, int worldJ2,
+                       int width, int height,
+                       short[] blockHeights, short[] biomeIds, short[] waterLevels,
+                       short[] riverFloors, short[] riverRoofs) {
+        this(tileX, tileZ, worldI1, worldJ1, worldI2, worldJ2, width, height,
+                blockHeights, biomeIds, waterLevels, riverFloors, riverRoofs, null);
     }
 
     /**
@@ -64,6 +78,12 @@ public record TerrainTile(
      * {@link #riverFloorAt} and {@link #riverRoofAt}.
      */
     public static final short NO_TUNNEL = -1;
+
+    /**
+     * Sentinel for "the water over this column does not run": dry ground, a
+     * lake, the sea. @see #riverFlowAt
+     */
+    public static final short NO_FLOW = -1;
 
     public short heightAt(int worldX, int worldZ) {
         return blockHeights[indexOf(worldX, worldZ)];
@@ -104,6 +124,24 @@ public record TerrainTile(
     /** @see #riverFloorAt */
     public short riverRoofAt(int worldX, int worldZ) {
         return riverRoofs == null ? NO_TUNNEL : riverRoofs[indexOf(worldX, worldZ)];
+    }
+
+    /**
+     * Which way the water over this column RUNS, as an octant 0..7 of
+     * {@code (dx, dz)} — 0 is +X, counter-clockwise in eighths of a turn — or
+     * {@link #NO_FLOW} where nothing runs.
+     *
+     * <p>Set only where a river CHANNEL decided the column's level: a lake the
+     * river crosses and anything the sea raised are flat water and report
+     * {@link #NO_FLOW}. This is what lets the game tell a reach from a pond at
+     * all — worldgen water is source blocks either way, so without it they are
+     * the same thing to everything downstream of the carve.
+     *
+     * <p>It carries no containment meaning. The water is still a source block
+     * and the kernel's invariant is unchanged; this only says which of it moves.
+     */
+    public short riverFlowAt(int worldX, int worldZ) {
+        return riverFlows == null ? NO_FLOW : riverFlows[indexOf(worldX, worldZ)];
     }
 
     private int indexOf(int worldX, int worldZ) {
