@@ -93,6 +93,7 @@ public class WaterRenderer {
             shader.createUniform("uFogColor");
             shader.createUniform("uFogStart");
             shader.createUniform("uFogEnd");
+            shader.createUniform("uFogSpherical");
             shader.createUniform("uLodFade");
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize water shader", e);
@@ -117,8 +118,11 @@ public class WaterRenderer {
      * @param ambientLight      ambient light level 0..1 from TimeOfDay
      * @param wavesEnabled      water animation setting (freezes waves + scroll)
      * @param fogColor          atmospheric fog color (sky color from TimeOfDay)
-     * @param fogStart          horizontal distance where fog begins (blocks)
-     * @param fogEnd            horizontal distance of full fog; {@code <= fogStart} disables
+     * @param fogStart          distance where fog begins (blocks)
+     * @param fogEnd            distance of full fog; {@code <= fogStart} disables
+     * @param fogSpherical      measure those distances as a sphere around the
+     *                          eye instead of a vertical cylinder — true
+     *                          underwater, where the fog is a volume
      * @param lodWater          crossfading FastLOD water-sheet nodes for this frame
      *                          (nullable/empty when LOD is off); fully-faded sheets
      *                          come through {@code lodBatcher}'s buckets instead
@@ -130,7 +134,7 @@ public class WaterRenderer {
     public void render(List<Chunk> chunksBackToFront, Matrix4f projection, Matrix4f view,
                        Vector3f cameraPos, float time, Vector3f sunDirection,
                        float ambientLight, boolean wavesEnabled,
-                       Vector3f fogColor, float fogStart, float fogEnd,
+                       Vector3f fogColor, float fogStart, float fogEnd, boolean fogSpherical,
                        List<LodWaterNode> lodWater,
                        com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher lodBatcher,
                        int lodStamp) {
@@ -179,6 +183,7 @@ public class WaterRenderer {
         shader.setUniform("uFogColor", fogColor);
         shader.setUniform("uFogStart", fogStart);
         shader.setUniform("uFogEnd", fogEnd);
+        shader.setUniform("uFogSpherical", fogSpherical);
 
         // Two sub-passes make water self-occluding, like ice: looking through
         // water never shows other water faces (flowing step faces, far walls,

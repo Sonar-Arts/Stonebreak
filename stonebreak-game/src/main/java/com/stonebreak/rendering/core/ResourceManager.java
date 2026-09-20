@@ -99,8 +99,12 @@ public class ResourceManager {
         shaderProgram.createUniform("u_fogColor");
         shaderProgram.createUniform("u_fogStart");
         shaderProgram.createUniform("u_fogEnd");
+        // Cylinder by default (atmospheric haze); the underwater fog turns this
+        // on so the volume closes in overhead and underfoot too.
+        shaderProgram.createUniform("u_fogSpherical");
         shaderProgram.setUniform("u_fogStart", 0.0f);
         shaderProgram.setUniform("u_fogEnd", 0.0f);
+        shaderProgram.setUniform("u_fogSpherical", false);
         // Shadow map sampler MUST be moved off unit 0 immediately: it is a
         // sampler2DArrayShadow, and leaving it on the same unit as the 2D
         // texture_sampler makes every draw GL_INVALID_OPERATION on strict

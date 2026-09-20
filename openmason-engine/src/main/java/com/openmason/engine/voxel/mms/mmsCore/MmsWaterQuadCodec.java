@@ -17,8 +17,10 @@ import java.nio.ByteBuffer;
  * word1: 4 × u8 vertex Y offsets from (y − 1) in 1/128 block, corner order =
  *        MmsCuboidGenerator.FACE_VERTEX_OFFSETS (the water generator's order)
  * word2: 4 × u8 per-corner surface-height flags (aFlags.x, 0..1 → 0..255)
- * word3: (w−1):4 | (h−1):4 | spare   in-plane extent (1 for near water, the
- *        cell size for LOD sheets)
+ * word3: (w−1):4 | (h−1):4 | flow:4 | depth:8 | spare   in-plane extent
+ *        (1 for near water, the cell size for LOD sheets), the river flow
+ *        octant biased by one (0 = still water, 1..8 = octant 0..7), then how
+ *        deep the water column under this face stands, in whole blocks
  * </pre>
  *
  * The shader (`water.vert`, {@code aOrigin.w < -2.5}) rebuilds the corner
@@ -75,9 +77,39 @@ public final class MmsWaterQuadCodec {
     }
 
     public static int word3(int w, int h) {
+        return word3(w, h, NO_FLOW, 0);
+    }
+
+    /** "This water does not run", the value {@link #word3(int, int, int)} takes for still water. */
+    public static final int NO_FLOW = -1;
+
+    /**
+     * @param flow the river flow octant 0..7 (0 = +X, counter-clockwise in
+     *             eighths of a turn), or {@link #NO_FLOW} for still water.
+     *             Stored biased by one so that a zeroed record reads as still,
+     *             which is what every caller that never sets it wants. Nothing
+     *             in this branch marks a river yet — the field is carried so the
+     *             record stays byte-identical to Project-Heracles', which does.
+     */
+    public static int word3(int w, int h, int flow) {
+        return word3(w, h, flow, 0);
+    }
+
+    /**
+     * @param flow  the river flow octant, as above.
+     * @param depth how much water stands between this face and the solid floor
+     *              under it, in whole blocks, saturating at 255. The fragment
+     *              shader hides the seabed with it: a shallow column stays
+     *              see-through, a deep one reads as opaque water from outside.
+     *              0 means "unknown/shallow", which is what every caller that
+     *              never sets it wants.
+     */
+    public static int word3(int w, int h, int flow, int depth) {
         check(w, 1, 16, "w");
         check(h, 1, 16, "h");
-        return (w - 1) | ((h - 1) << 4);
+        check(flow, NO_FLOW, 7, "flow");
+        check(depth, 0, 255, "depth");
+        return (w - 1) | ((h - 1) << 4) | ((flow + 1) << 8) | (depth << 12);
     }
 
     private static void check(int v, int lo, int hi, String what) {
@@ -127,6 +159,21 @@ public final class MmsWaterQuadCodec {
 
     public static int height(int w3) {
         return ((w3 >>> 4) & 0xF) + 1;
+    }
+
+    /** River flow octant 0..7, or {@link #NO_FLOW} for still water. */
+    public static int flow(int w3) {
+        return ((w3 >>> 8) & 0xF) - 1;
+    }
+
+    /** Water-column depth in whole blocks (0..255). See {@link #word3(int,int,int,int)}. */
+    public static int depth(int w3) {
+        return (w3 >>> 12) & 0xFF;
+    }
+
+    /** {@link #depth(int)} of the quad at index {@code q}. */
+    public static float depth(ByteBuffer quads, int q) {
+        return depth(quads.getInt(q * QUAD_BYTES + 12));
     }
 
     public static float position(ByteBuffer quads, int q, int corner, int axis,

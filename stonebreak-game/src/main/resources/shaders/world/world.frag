@@ -39,6 +39,13 @@ uniform float u_playerLight;
 uniform vec3 u_fogColor;
 uniform float u_fogStart;
 uniform float u_fogEnd;
+// Whether that fog is measured as a SPHERE around the eye rather than as a
+// vertical cylinder. Underwater it must be: the CPU reuses these same
+// uniforms for a 4..20 block murky fog, and a cylinder leaves the sea floor
+// below you and the surface above you arriving unfogged. Above water it stays
+// false, where the cylinder is what makes a distant peak fade with its base
+// instead of pulling clear of the haze as you climb toward it.
+uniform bool u_fogSpherical;
 // FastLOD crossfade opacity (1.0 = solid). <1 engages the
 // screen-door dither below so LOD nodes dissolve over/under the
 // native chunk mesh without blending or depth artifacts.
@@ -186,12 +193,15 @@ void main() {
 
         // Atmospheric distance fog — dissolves the far LOD ring into
         // the sky. Horizontal distance so tall peaks fade with their
-        // bases; skipped for player-held geometry (arm-local fragPos)
-        // and disabled by the CPU (fogEnd=0) when LOD is off or the
-        // underwater fog owns the look.
+        // bases, except underwater (u_fogSpherical), where the fog is a
+        // volume around the eye and up/down must fade like sideways does;
+        // skipped for player-held geometry (arm-local fragPos) and
+        // disabled by the CPU (fogEnd=0) when LOD is off.
         if (!u_isUIElement && u_playerLight < 0.0 && u_fogEnd > u_fogStart) {
-            float horizDist = length(fragPos.xz - u_viewPos.xz);
-            float fogF = smoothstep(u_fogStart, u_fogEnd, horizDist);
+            float fogDist = u_fogSpherical
+                    ? length(fragPos - u_viewPos)
+                    : length(fragPos.xz - u_viewPos.xz);
+            float fogF = smoothstep(u_fogStart, u_fogEnd, fogDist);
             fragColor = vec4(mix(fragColor.rgb, u_fogColor, fogF), fragColor.a);
         }
 

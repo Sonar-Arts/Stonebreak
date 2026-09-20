@@ -28,6 +28,7 @@ import static org.lwjgl.system.MemoryUtil.memAllocFloat;
 import static org.lwjgl.system.MemoryUtil.memAllocInt;
 import static org.lwjgl.system.MemoryUtil.memAlloc;
 import static org.lwjgl.system.MemoryUtil.memFree;
+import com.stonebreak.rendering.gameWorld.UnderwaterFog;
 
 /**
  * Entity-blind renderer for SBE-driven mobs.
@@ -318,7 +319,9 @@ public final class SbeEntityRenderer {
         if (world != null && cameraPos != null
                 && world.isPositionUnderwater((int) Math.floor(cameraPos.x),
                         (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z))) {
-            fogDensity = 0.15f;
+            // Scaled by depth, so an entity dissolves at the same range as the
+            // seabed behind it (see UnderwaterFog).
+            fogDensity = UnderwaterFog.density(cameraPos.y);
         }
         shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f());
         shader.setUniform("underwaterFogDensity", fogDensity);

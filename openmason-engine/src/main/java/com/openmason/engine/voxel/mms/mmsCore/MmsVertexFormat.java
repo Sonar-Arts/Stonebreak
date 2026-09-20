@@ -289,7 +289,11 @@ public enum MmsVertexFormat {
             case COMPACT20 -> src.getShort(base + 14) & 0xFFFF;
             case QUAD16 -> MmsQuadCodec.layer(src, i >> 2);
             case LODQUAD16 -> MmsLodQuadCodec.layer(src, i >> 2);
-            case WATERQUAD16 -> 0f;
+            // Water carries the column depth in the layer slot, not a texture
+            // layer — water is untextured (procedural surface), and the
+            // per-vertex water path feeds the same channel water.vert reads
+            // out of word3 when it pulls.
+            case WATERQUAD16 -> MmsWaterQuadCodec.depth(src, i >> 2);
         };
     }
 

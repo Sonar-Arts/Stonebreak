@@ -17,6 +17,8 @@ in vec3 vNormal;
 in float vFalling;
 in float vSource;
 in float vSurfaceHeight;
+// Blocks of water between this face and the floor under it, baked per quad.
+flat in float vWaterDepth;
 
 uniform vec3 uSunDirection;
 uniform float uAmbientLight;
@@ -29,6 +31,10 @@ uniform bool uWavesEnabled;
 uniform vec3 uFogColor;
 uniform float uFogStart;
 uniform float uFogEnd;
+// Sphere rather than cylinder — see u_fogSpherical in world.frag. Kept in step
+// with the world shader so a water surface and the terrain behind it fade
+// together whichever way the eye is pointing.
+uniform bool uFogSpherical;
 // FastLOD crossfade opacity (1.0 = solid). FastLOD water sheets render
 // through this same shader; while their node dissolves in/out this drives a
 // screen-door dither matching the world shader's terrain fade, so a node's
@@ -38,6 +44,16 @@ uniform float uLodFade;
 #include "/shaders/lighting/point_lights.glsl"
 
 out vec4 fragColor;
+
+// Column depth (blocks) at which the floor below the water is fully hidden
+// from outside, and the colour a column that deep reads as. Shallows stay
+// see-through, so a reef or a stream bed is still readable from the bank.
+const float MURK_FULL_DEPTH = 12.0;
+// Deep water still reads as WATER, just water you cannot see into: the tint
+// only darkens the surface a shade, and it is the opacity below that does the
+// actual hiding. Mixing all the way to an abyss colour turns an ocean into a
+// flat black hole in the world.
+const vec3 MURK_COLOR = vec3(0.10, 0.30, 0.54);
 
 // 4x4 Bayer thresholds for the LOD crossfade dither (same table as the world
 // shader so terrain and water dissolve with an identical pattern).
@@ -118,6 +134,18 @@ void main() {
     vec3 shallow = vec3(0.42, 0.68, 0.92);
     vec3 baseColor = mix(deep, shallow, pattern);
 
+    // Depth murk. Looking INTO the water from outside, the floor disappears
+    // the deeper it lies: the surface tints toward MURK_COLOR and stops
+    // letting the seabed through over the first MURK_FULL_DEPTH blocks of
+    // column depth. Only from outside — the same face seen from below is the
+    // surface you look UP through, and how far that stays visible is the
+    // underwater fog's job (WorldRenderer), not this one's. The transition is
+    // smoothed over a quarter block so a camera bobbing at the waterline
+    // doesn't flip between the two readings.
+    float outside = smoothstep(-0.05, 0.20, uCameraPos.y - vWorldPos.y);
+    float murk = smoothstep(0.0, MURK_FULL_DEPTH, vWaterDepth) * outside;
+    baseColor = mix(baseColor, MURK_COLOR, murk * 0.7);
+
     vec3 L = normalize(uSunDirection);
     vec3 V = normalize(uCameraPos - vWorldPos);
 
@@ -136,20 +164,25 @@ void main() {
     // Falling columns read better slightly denser; streaks denser still.
     alpha = max(alpha, vFalling * 0.62);
     alpha = clamp(alpha + streaks * 0.4, 0.0, 0.92);
+    // ...and past the Fresnel clamp for deep water: the point of the murk is
+    // that nothing behind it comes through.
+    alpha = mix(alpha, 1.0, murk);
 
     vec3 color = baseColor * (ambient + diffuse) + vec3(1.0) * spec + vec3(streaks);
     // Torchlight on the water surface.
     color = applyPointLight(color, baseColor,
             pointLightContribution(vWorldPos, N, pointLightWeight(uAmbientLight, 1.0, 1.0)));
 
-    // Distance fog toward the sky color (horizontal distance, matching the
-    // world shader) — alpha untouched so the blend over terrain stays correct.
+    // Distance fog toward the sky color, measured exactly as the world shader
+    // measures it — alpha untouched so the blend over terrain stays correct.
     // Native water and FastLOD sheets share this shader, so the near/far
     // water handover needs no color matching: both sides ARE the same code
     // blending over real geometry (native seabed vs LOD seabed).
     if (uFogEnd > uFogStart) {
-        float horizDist = length(vWorldPos.xz - uCameraPos.xz);
-        float fogF = smoothstep(uFogStart, uFogEnd, horizDist);
+        float fogDist = uFogSpherical
+                ? length(vWorldPos - uCameraPos)
+                : length(vWorldPos.xz - uCameraPos.xz);
+        float fogF = smoothstep(uFogStart, uFogEnd, fogDist);
         color = mix(color, uFogColor, fogF);
     }
 

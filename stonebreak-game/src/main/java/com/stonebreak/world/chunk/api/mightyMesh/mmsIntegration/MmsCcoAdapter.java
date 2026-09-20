@@ -705,11 +705,18 @@ public class MmsCcoAdapter {
     private static final float[] WATER_UVS_BOTTOM = {0, 0, 1, 0, 1, 1, 0, 1};
 
     /**
+     * How far down {@link #waterColumnDepth} counts. The water shader treats
+     * everything past 12 blocks as equally deep.
+     */
+    private static final int MAX_WATER_DEPTH = 16;
+
+    /**
      * Adds a water block to the WATER mesh builder with face culling and
      * variable height geometry. Water-mesh vertex semantics (consumed by the
      * dedicated water shader, not the world shader): tex = face-local UV,
      * flags.x = surface-height fraction, flags.y = falling flag,
-     * flags.z = source flag, flags.w = light, layer = unused (0).
+     * flags.z = source flag, flags.w = light, layer = water-column depth in
+     * blocks (water is untextured, so the texture-layer slot carries it).
      */
     private void addWaterBlockWithCulling(MmsMeshBuilder builder,
                                          int lx, int ly, int lz, int chunkX, int chunkZ,
@@ -733,10 +740,19 @@ public class MmsCcoAdapter {
         float fallingFlag = flowValue == com.stonebreak.world.chunk.ChunkWaterLayer.FALLING ? 1.0f : 0.0f;
         float sourceFlag = flowValue == com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE ? 1.0f : 0.0f;
 
+        // How deep the water stands here — the shader hides the seabed with it.
+        // Scanned at most once per cell, and only once a face of it actually
+        // survives culling: a fully buried water cell (most of an ocean) would
+        // otherwise pay for a scan nothing ever reads.
+        int columnDepth = -1;
+
         // Check each face for culling (water has special culling rules)
         for (int face = 0; face < 6; face++) {
             if (!shouldRenderWaterFace(lx, ly, lz, face, chunkData)) {
                 continue; // Face is culled
+            }
+            if (columnDepth < 0) {
+                columnDepth = waterColumnDepth(lx, ly, lz, chunkData);
             }
 
             // Generate water-specific geometry with variable heights
@@ -759,7 +775,7 @@ public class MmsCcoAdapter {
                             MmsWaterQuadCodec.word0(qx, blockY, qz, face, fallingFlag > 0.5f, sourceFlag > 0.5f),
                             MmsWaterQuadCodec.word1(blockY, vertices[1], vertices[4], vertices[7], vertices[10]),
                             MmsWaterQuadCodec.word2(waterFlags[0], waterFlags[1], waterFlags[2], waterFlags[3]),
-                            MmsWaterQuadCodec.word3(1, 1))) {
+                            MmsWaterQuadCodec.word3(1, 1, MmsWaterQuadCodec.NO_FLOW, columnDepth))) {
                     continue;
                 }
                 // Out of range / full: fall back to the per-vertex water mesh below.
@@ -775,7 +791,9 @@ public class MmsCcoAdapter {
                     vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
                     texCoords[tIdx], texCoords[tIdx + 1],
                     normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                    waterFlags[i], fallingFlag, sourceFlag, 1.0f, 0.0f
+                    // Water is untextured, so the layer slot carries the
+                    // column depth (see water.vert's location 4).
+                    waterFlags[i], fallingFlag, sourceFlag, 1.0f, columnDepth
                 );
             }
             builder.endFace();
@@ -845,6 +863,24 @@ public class MmsCcoAdapter {
      */
     private float sampleVertexLight(float vx, float vy, float vz, int face) {
         return com.openmason.engine.voxel.lighting.VertexLightSampler.sampleCombined(shadowContext, vx, vy, vz, face);
+    }
+
+    /**
+     * Depth of the water column at a cell, in whole blocks: the cell itself
+     * plus every water cell straight below it, stopping at the first block
+     * that isn't water. Capped at {@link #MAX_WATER_DEPTH} — the shader
+     * saturates well before that, so walking a whole trench down would be
+     * counting for nothing.
+     */
+    private static int waterColumnDepth(int lx, int ly, int lz, CcoChunkData chunkData) {
+        int depth = 0;
+        for (int y = ly; y >= 0 && depth < MAX_WATER_DEPTH; y--) {
+            if (chunkData.getBlock(lx, y, lz) != BlockType.WATER) {
+                break;
+            }
+            depth++;
+        }
+        return depth;
     }
 
     /**

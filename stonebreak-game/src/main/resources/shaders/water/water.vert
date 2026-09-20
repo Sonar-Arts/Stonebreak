@@ -9,11 +9,15 @@
 //   location 3 (flags) = x: surface-height fraction (0..0.875, sewn corner
 //                        heights baked by MmsWaterGenerator), y: falling flag,
 //                        z: source flag, w: light (currently 1.0)
+//   location 4 (layer) = water-column depth in whole blocks (water is
+//                        untextured, so the texture-layer slot carries the
+//                        depth the fragment stage hides the seabed with)
 // Positions are world-space (chunk meshes carry no model matrix).
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec2 aUV;
 layout (location = 2) in vec3 aNormal;
 layout (location = 3) in vec4 aFlags;
+layout (location = 4) in float aLayer;
 // Per-mesh origin + position scale (compact vertex formats; identity otherwise).
 // w < -2.5 = pulled water quads (MmsWaterQuadCodec) read from u_quads by gl_VertexID.
 layout (location = 5) in vec4 aOrigin;
@@ -30,7 +34,8 @@ const vec3 QUAD_NORMAL[6] = vec3[6](
 const int QUAD_UAXIS[6] = int[6](0, 0, 0, 0, 2, 2);
 const int QUAD_VAXIS[6] = int[6](2, 2, 1, 1, 1, 1);
 
-void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, out bool sheet) {
+void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags,
+                   out bool sheet, out float depth) {
     int qi = gl_VertexID >> 2;
     int corner = gl_VertexID & 3;
     uvec4 q = texelFetch(u_quads, qi);
@@ -55,6 +60,8 @@ void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags,
     uv = vec2(a, face >= 2 ? 1.0 - b : b);
     nrm = QUAD_NORMAL[face];
     float surface = float((q.z >> (uint(corner) * 8u)) & 255u) / 255.0;
+    // word3 bits 12..19: water-column depth in whole blocks (MmsWaterQuadCodec).
+    depth = float((q.w >> 12u) & 255u);
     flags = vec4(surface, falling, source, 1.0);
 }
 
@@ -73,6 +80,10 @@ out vec2 vUV;
 out float vFalling;
 out float vSource;
 out float vSurfaceHeight;
+// How much water stands between this face and the floor under it, in blocks.
+// Per-quad (one value for the whole cell / LOD sheet rectangle), so flat —
+// interpolating it would smear a shoreline's shallows into the deep next to it.
+flat out float vWaterDepth;
 
 // Sum of directional sine waves (height-only — no horizontal displacement, since the
 // CPU-side corner-sewing in MmsWaterGenerator only guarantees adjacent blocks agree on
@@ -96,14 +107,17 @@ void main() {
     vec3 nrmIn;
     vec4 flagsIn;
     bool sheet = false;
+    float depth;
     if (aOrigin.w < -2.5) {
-        pullWaterQuad(pos, uvIn, nrmIn, flagsIn, sheet);
+        pullWaterQuad(pos, uvIn, nrmIn, flagsIn, sheet, depth);
         pos += aOrigin.xyz;
     } else {
         pos = aOrigin.xyz + aPos * aOrigin.w;
         uvIn = aUV;
         nrmIn = aNormal;
         flagsIn = aFlags;
+        // Per-vertex water meshes carry the depth in the layer slot.
+        depth = aLayer;
     }
     float surfH = flagsIn.x;
     float falling = flagsIn.y;
@@ -156,4 +170,5 @@ void main() {
     vFalling = falling;
     vSource = flagsIn.z;
     vSurfaceHeight = surfH;
+    vWaterDepth = depth;
 }

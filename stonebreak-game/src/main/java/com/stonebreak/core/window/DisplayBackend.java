@@ -43,7 +43,9 @@ public final class DisplayBackend {
             // Open Kernel Module build; same libEGL_nvidia SIGSEGV as 595.71.05.
             "595.84",
             // Open Kernel Module build; still unfixed on the 595 branch.
-            "595.91.07"
+            "595.91.07",
+            // Open Kernel Module build; still unfixed on the 595 branch.
+            "595.99.02"
     );
 
     /**
