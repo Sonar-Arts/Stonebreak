@@ -3,7 +3,6 @@ package com.stonebreak.mobs.entities;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.util.DropSpawnResolver;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
@@ -33,9 +32,6 @@ public class BlockDrop extends Entity {
     private boolean hasInitialStackCount = false; // Whether this drop was created with an intentional stack count
     
     // Physics constants for drops (reworked for moderately floaty effect)
-    /** Downward bias on the ground probe so a drop resting exactly on a block surface
-     *  still samples the block below it (see checkWorldCollision). */
-    private static final float GROUND_PROBE_BIAS = 0.01f;
     private static final float DROP_GRAVITY = 12.0f; // Moderate downward acceleration
     private static final float DROP_AIR_RESISTANCE = 0.995f; // Much less air resistance than default 0.98f
     private static final float DROP_BOUNCE = 0.4f; // Slightly more bouncy
@@ -147,68 +143,42 @@ public class BlockDrop extends Entity {
     }
     
     /**
-     * Simple collision detection with the world.
+     * Simple collision detection with the world — one shared pass for both drops
+     * (issue #265), backed by the single BlockShape solidity/height rule so drops
+     * fall through flowers, wildgrass, torches and water and rest correctly on
+     * snow layers and stairs.
      */
     private void checkWorldCollision(Vector3f oldPosition) {
-        // Check if we hit the ground (simplified). The probe is biased down a hair:
-        // the rest snap below puts the drop's bottom at exactly blockY + 1.0, where an
-        // unbiased floor(bottom) sampled the AIR block above the ground — onGround
-        // flipped false every other tick and the drop oscillated ~3 cm forever at the
-        // server's 20 Hz (broadcast to clients as visible jitter).
-        int blockX = (int) Math.floor(position.x);
-        int blockY = (int) Math.floor(position.y - height/2 - GROUND_PROBE_BIAS);
-        int blockZ = (int) Math.floor(position.z);
+        DropWorldCollision.Result result = DropWorldCollision.resolveGround(
+                world, position, oldPosition, width, length, height);
+        inWater = result.inWater();
 
-        // Check if there's a solid block below
-        if (world != null) {
-            // Embedded check FIRST: when the drop's own cell is solid (e.g. the drop rose
-            // into a tree trunk or was pushed sideways into a log), the legacy probe below
-            // sampled that solid cell as "ground" and snapped the drop ON TOP of it —
-            // climbing block-by-block until reaching air above the canopy (issue #225).
-            // A drop that entered the solid cell through its TOP face this tick (a fast
-            // fall onto a narrow block — one 20 Hz tick moves a fast drop further than
-            // half its height) is a NORMAL landing: come to rest on the cell's top
-            // surface like any other landing instead of being pushed off sideways.
-            int cellY = (int) Math.floor(position.y);
-            if (DropSpawnResolver.isEmbedded(world, blockX, cellY, blockZ)) {
-                if (oldPosition.y >= cellY + 1.0f) {
-                    landOnTop(cellY);
-                } else {
-                    // Entered through a side or the bottom face: escape out the nearest
-                    // open side. Escape also zeroes the horizontal speed — keeping it made
-                    // the drop bounce off the wall and back (onGround=false also turns off
-                    // ground friction, so anything still pushing it re-embeds it forever).
-                    Vector3f escape = DropSpawnResolver.resolveEscape(world, blockX, cellY, blockZ, oldPosition);
-                    if (escape != null) {
-                        position.set(escape);
-                        velocity.x = 0;
-                        velocity.z = 0;
-                        velocity.y = 0; // No pop on escape — the resolver guaranteed a passable cell
-                    }
-                    onGround = false;
-                }
-            } else {
-                BlockType blockBelow = world.getBlockAt(blockX, blockY, blockZ);
-                if (blockBelow != null && blockBelow != BlockType.AIR && blockBelow != BlockType.WATER) {
-                    landOnTop(blockY);
-                } else {
-                    onGround = false;
-                }
+        switch (result.outcome()) {
+            case GROUNDED -> {
+                position.y = result.restCentreY();
+                applyBounce();
             }
-
-            // Check if the drop is in water
-            BlockType blockAtPosition = world.getBlockAt(blockX, (int) Math.floor(position.y), blockZ);
-            inWater = (blockAtPosition == BlockType.WATER);
+            case ESCAPED -> {
+                // Escape also zeroes the horizontal speed — keeping it made the drop
+                // bounce off the wall and back (onGround=false also turns off ground
+                // friction, so anything still pushing it re-embeds it forever).
+                position.set(result.escapeCentre());
+                velocity.x = 0;
+                velocity.z = 0;
+                velocity.y = 0; // No pop on escape — the resolver guaranteed a passable cell
+                onGround = false;
+            }
+            case AIRBORNE -> onGround = false;
         }
     }
-    
+
     /**
-     * Snap the drop's bottom onto the top surface of the block ending at {@code blockY}
-     * and apply the floaty bounce.
+     * Floaty bounce off the surface the drop came to rest on. The rest snap is done by
+     * {@link DropWorldCollision}; this applies the bounce its resolution leaves in
+     * {@code velocity.y}.
      */
-    private void landOnTop(int blockY) {
+    private void applyBounce() {
         onGround = true;
-        position.y = blockY + 1.0f + height/2;
 
         // Custom bounce effect for floaty drops
         if (velocity.y < 0) {

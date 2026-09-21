@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.entities;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.stairs.StairShape;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
@@ -91,6 +92,101 @@ class DropSettlingTest {
         return world;
     }
 
+    /** Ground plane (solid at y <= 63) with a single non-collidable cell at (8, 64, 8):
+     *  a flower, a placed torch or another passable block, air above it. */
+    private static World passableCellWorld(BlockType cellBlock) {
+        World world = mock(World.class);
+        EntityManager em = mock(EntityManager.class);
+        when(em.getAllEntities()).thenReturn(List.of());
+        when(world.getEntityManager()).thenReturn(em);
+        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
+            int x = inv.getArgument(0);
+            int y = inv.getArgument(1);
+            int z = inv.getArgument(2);
+            if (x == 8 && z == 8 && y == GROUND_TOP_Y) {
+                return cellBlock; // The flower / placed torch
+            }
+            return y < GROUND_TOP_Y ? BlockType.DIRT : BlockType.AIR;
+        });
+        return world;
+    }
+
+    /** Ground plane with a 1-layer snow block at (8, 64, 8), air above it. */
+    private static World snowWorld() {
+        World world = mock(World.class);
+        EntityManager em = mock(EntityManager.class);
+        when(em.getAllEntities()).thenReturn(List.of());
+        when(world.getEntityManager()).thenReturn(em);
+        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
+            int x = inv.getArgument(0);
+            int y = inv.getArgument(1);
+            int z = inv.getArgument(2);
+            if (x == 8 && z == 8 && y == GROUND_TOP_Y) {
+                return BlockType.SNOW;
+            }
+            return y < GROUND_TOP_Y ? BlockType.DIRT : BlockType.AIR;
+        });
+        when(world.getSnowHeight(anyInt(), anyInt(), anyInt())).thenReturn(0.125f);
+        return world;
+    }
+
+    /** Ground plane with an oak stair at (8, 64, 8) (default facing), air above it. */
+    private static World stairWorld() {
+        World world = mock(World.class);
+        EntityManager em = mock(EntityManager.class);
+        when(em.getAllEntities()).thenReturn(List.of());
+        when(world.getEntityManager()).thenReturn(em);
+        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
+            int x = inv.getArgument(0);
+            int y = inv.getArgument(1);
+            int z = inv.getArgument(2);
+            if (x == 8 && z == 8 && y == GROUND_TOP_Y) {
+                return BlockType.OAK_STAIRS;
+            }
+            return y < GROUND_TOP_Y ? BlockType.DIRT : BlockType.AIR;
+        });
+        return world;
+    }
+
+    /** Ground plane (solid at y <= 63) with a multi-layer snow column at (9, 64, 9)
+     *  of the given layer height sitting on it; air elsewhere. */
+    private static World snowStepWorld(float snowHeight) {
+        World world = mock(World.class);
+        EntityManager em = mock(EntityManager.class);
+        when(em.getAllEntities()).thenReturn(List.of());
+        when(world.getEntityManager()).thenReturn(em);
+        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
+            int x = inv.getArgument(0);
+            int y = inv.getArgument(1);
+            int z = inv.getArgument(2);
+            if (x == 9 && z == 9 && y == GROUND_TOP_Y) {
+                return BlockType.SNOW; // The multi-layer snow column, on the plane
+            }
+            return y < GROUND_TOP_Y ? BlockType.DIRT : BlockType.AIR;
+        });
+        when(world.getSnowHeight(anyInt(), anyInt(), anyInt())).thenReturn(snowHeight);
+        return world;
+    }
+
+    /**
+     * Run the drop long enough to land and bleed off every bounce (15 s of server
+     * ticks), then verify it comes to a COMPLETE rest at the server's 20 Hz tick.
+     * Returns the rest Y.
+     */
+    private static float runToCompleteRest(Entity drop) {
+        for (int i = 0; i < 300; i++) {
+            drop.update(SERVER_TICK);
+        }
+        float restY = drop.getPosition().y;
+        for (int i = 0; i < 20; i++) {
+            drop.update(SERVER_TICK);
+            assertEquals(restY, drop.getPosition().y, 1e-6f,
+                "resting drop must not move (tick " + i + ")");
+        }
+        assertTrue(drop.isOnGround(), "settled drop must stay grounded");
+        return restY;
+    }
+
     private static void assertSettles(Entity drop) {
         // Plenty of time to land and bleed off every bounce (15 s of server ticks).
         for (int i = 0; i < 300; i++) {
@@ -179,6 +275,128 @@ class DropSettlingTest {
                 "drop must rest with its bottom on the pillar's top surface");
             assertEquals(8.5f, drop.getPosition().x, 1e-3f, "drop must not be pushed off the pillar (x)");
             assertEquals(8.5f, drop.getPosition().z, 1e-3f, "drop must not be pushed off the pillar (z)");
+        }
+    }
+
+    /**
+     * Issue #265 core repro: a drop resolved into a flower cell (the #225 spawn rule
+     * allows flowers) used to be snapped by the ground probe on the next tick to rest
+     * ON TOP OF the flower cell — the probe sampled the flower as full-height ground —
+     * floating a full block above the real ground. Flowers are passable AND never act
+     * as ground: the drop falls through to the block below and rests inside the flower
+     * cell with its bottom on the ground surface.
+     */
+    @Test
+    void dropResolvedIntoFlowerCellFallsThroughToTheGroundBelow() {
+        World world = passableCellWorld(BlockType.ROSE);
+        for (Entity drop : List.of(
+                BlockDrop.createDropWithVelocity(
+                        world, new Vector3f(8.5f, 64.5f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f)),
+                new ItemDrop(world, new Vector3f(8.5f, 64.5f, 8.5f), ItemType.STICK, 1))) {
+            drop.setVelocity(new Vector3f(0f, 0f, 0f));
+            float restY = runToCompleteRest(drop);
+            assertEquals(GROUND_TOP_Y + drop.getHeight() / 2f, restY, 1e-3f,
+                "drop must rest INSIDE the flower cell on the ground below (restY=" + restY + ")");
+        }
+    }
+
+    /**
+     * Predates #225: drops landing on any non-solid, non-water block rest one block up
+     * in the air. A placed torch is passable AND never ground: the drop falls through
+     * the torch cell to the block below.
+     */
+    @Test
+    void dropFallsThroughPlacedTorchCell() {
+        World world = passableCellWorld(BlockType.TORCH_PLACED);
+        for (Entity drop : List.of(
+                BlockDrop.createDropWithVelocity(
+                        world, new Vector3f(8.5f, 64.5f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f)),
+                new ItemDrop(world, new Vector3f(8.5f, 64.5f, 8.5f), ItemType.STICK, 1))) {
+            drop.setVelocity(new Vector3f(0f, 0f, 0f));
+            float restY = runToCompleteRest(drop);
+            assertEquals(GROUND_TOP_Y + drop.getHeight() / 2f, restY, 1e-3f,
+                "drop must fall through the torch cell and rest on the ground below (restY=" + restY + ")");
+        }
+    }
+
+    /**
+     * Issue #265: resting height follows BlockShape.collisionHeight — a drop thrown
+     * onto a 1-layer snow block rests ON the snow surface (1/8 of a block), not at
+     * full-block height. The old ground rule counted the snow cell as full-height
+     * ground and rested the drop a full block up.
+     */
+    @Test
+    void dropRestsOnTheSnowSurfaceNotAtFullBlockHeight() {
+        World world = snowWorld();
+        for (Entity drop : List.of(
+                BlockDrop.createDropWithVelocity(
+                        world, new Vector3f(8.5f, 65.5f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f)),
+                new ItemDrop(world, new Vector3f(8.5f, 65.5f, 8.5f), ItemType.STICK, 1))) {
+            drop.setVelocity(new Vector3f(0f, 0f, 0f));
+            float restY = runToCompleteRest(drop);
+            assertEquals(GROUND_TOP_Y + 0.125f + drop.getHeight() / 2f, restY, 1e-3f,
+                "drop must rest ON the 1-layer snow surface (restY=" + restY + ")");
+        }
+    }
+
+    /**
+     * Issue #265: a drop landing on a stair rests on the tallest step its footprint
+     * overlaps — the one BlockShape rule — with its bottom on that surface, grounded
+     * and without oscillating. The rest height must follow the shape's answer, not a
+     * hardcoded full block.
+     */
+    @Test
+    void dropLandingOnStairRestsOnTheTallestStepItsFootprintOverlaps() {
+        World world = stairWorld();
+        for (Entity drop : List.of(
+                BlockDrop.createDropWithVelocity(
+                        world, new Vector3f(8.5f, 65.5f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f)),
+                new ItemDrop(world, new Vector3f(8.5f, 65.5f, 8.5f), ItemType.STICK, 1))) {
+            drop.setVelocity(new Vector3f(0f, 0f, 0f));
+            float restY = runToCompleteRest(drop);
+            float step = StairShape.stepHeight(world, 8, GROUND_TOP_Y, 8, BlockType.OAK_STAIRS,
+                    8.375f, 8.375f, 8.625f, 8.625f);
+            assertTrue(step > 0f, "the stair must leave a solid step under the drop's footprint");
+            assertEquals(GROUND_TOP_Y + step + drop.getHeight() / 2f, restY, 1e-3f,
+                "drop must rest on the tallest step its footprint overlaps (restY=" + restY + ")");
+        }
+    }
+
+    /**
+     * Measured regression for the sideways step-up (issue #265 review): a drop resting
+     * on a full block (centre at cellY + 0.125) that slides into a multi-layer snow
+     * column taller than that used to be teleported backwards to the previous cell's
+     * centre with velocity zeroed — snow was eligible for the #225 sideways-escape once
+     * it became eligible for the embedded path. A partial-height cell entered from the
+     * side is a step-up, not an embedment: the drop climbs onto the snow and rides
+     * over, never teleporting back.
+     */
+    @Test
+    void dropSlidingIntoMultiLayerSnowStepsUpInsteadOfTeleportingBack() {
+        for (float snowHeight : new float[]{0.125f, 0.375f, 0.750f}) {
+            World world = snowStepWorld(snowHeight);
+            Entity drop = new ItemDrop(world, new Vector3f(8.9f, 64.125f, 9.5f), ItemType.STICK, 1);
+            drop.setVelocity(new Vector3f(3f, 0f, 0f));
+            // The drop must actually STEP onto the snow: at some tick its centre is inside
+            // the snow cell at exactly the snow-surface rest height. The escape path (the
+            // bug reinstated) teleports it to the previous cell's centre — never at the
+            // surface inside the snow cell — so the x condition is what rules that out.
+            float snowSurfaceRestY = GROUND_TOP_Y + snowHeight + drop.getHeight() / 2f;
+            boolean steppedOntoSnow = false;
+            for (int i = 0; i < 300 && !steppedOntoSnow; i++) {
+                drop.update(SERVER_TICK);
+                steppedOntoSnow = drop.getPosition().x >= 9.0f
+                        && Math.abs(drop.getPosition().y - snowSurfaceRestY) < 1e-4f;
+            }
+            assertTrue(steppedOntoSnow, "drop must step onto the snow surface inside the snow cell (y="
+                + drop.getPosition().y + ")");
+            float restY = runToCompleteRest(drop);
+            assertTrue(drop.getPosition().x > 9.0f,
+                "drop must cross into/past the snow cell, not teleport back to x=8.5 (x="
+                    + drop.getPosition().x + ")");
+            assertTrue(drop.isOnGround(), "sliding drop must stay grounded");
+            assertEquals(GROUND_TOP_Y + drop.getHeight() / 2f, restY, 1e-3f,
+                "drop must end resting on the plane beside the snow (restY=" + restY + ")");
         }
     }
 

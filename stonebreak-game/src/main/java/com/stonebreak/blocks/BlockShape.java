@@ -1,5 +1,6 @@
 package com.stonebreak.blocks;
 
+import com.openmason.engine.voxel.IVoxelWorld;
 import com.stonebreak.blocks.stairs.StairShape;
 import com.stonebreak.world.World;
 
@@ -30,7 +31,8 @@ public final class BlockShape {
     /**
      * Collision height of the cell under a world-space XZ footprint, in blocks above the cell
      * floor. Snow answers with its layer height, stairs with the tallest step the footprint
-     * overlaps, everything else with a full block or nothing.
+     * overlaps, everything else with a full block or nothing. A null block (out of bounds —
+     * the {@link IVoxelWorld#getBlockAt} contract) answers nothing: passable, never ground.
      *
      * <p>Animated blocks (doors) are deliberately <b>not</b> special-cased here: whether their
      * cell collides is the caller's policy, because only a caller that also resolves against the
@@ -39,6 +41,9 @@ public final class BlockShape {
     public static float collisionHeight(World world, int x, int y, int z,
                                         float minX, float minZ, float maxX, float maxZ) {
         BlockType block = world.getBlockAt(x, y, z);
+        if (block == null) {
+            return 0f;
+        }
         if (block == BlockType.SNOW) {
             return world.getSnowHeight(x, y, z);
         }

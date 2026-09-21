@@ -7,16 +7,18 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link BlockShape#collisionHeight} is the one rule player collision, entity collision, placement
- * validation and navigation all stand on — it exists because three copies of it had already
- * drifted. These tests pin the dispatch itself: full blocks answer a full block, air answers
- * nothing, snow answers its layer height, and stairs answer through {@link StairShape} with the
- * caller's footprint honoured. If this rule bends, mobs plan routes their own physics refuses.
+ * validation, navigation and now drop landing all stand on — it exists because three copies of it
+ * had already drifted. These tests pin the dispatch itself: full blocks answer a full block, air
+ * and null blocks answer nothing, snow answers its layer height, and stairs answer through
+ * {@link StairShape} with the caller's footprint honoured. If this rule bends, mobs plan routes
+ * their own physics refuses.
  */
 class BlockShapeTest {
 
@@ -31,6 +33,15 @@ class BlockShapeTest {
         world = new TestWorld(new WorldConfiguration(8, 4), 1L, true);
         chunk = new Chunk(0, 0);
         world.setChunk(0, 0, chunk);
+    }
+
+    @Test
+    void aNullBlockAnswersNothing() {
+        // The IVoxelWorld#getBlockAt contract returns null out of bounds: a null block
+        // must answer nothing — passable, never ground — not throw.
+        var mocked = Mockito.mock(com.stonebreak.world.World.class);
+        Mockito.when(mocked.getBlockAt(3, Y, 3)).thenReturn(null);
+        assertEquals(0.0f, BlockShape.collisionHeight(mocked, 3, Y, 3), EPS);
     }
 
     @Test
