@@ -3,10 +3,12 @@ package com.stonebreak.ui.worldSelect.renderers;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.stonebreak.ui.worldSelect.SectionBounds;
 import com.stonebreak.ui.worldSelect.WorldSelectLayout;
 import com.stonebreak.ui.worldSelect.handlers.WorldInputHandler;
+import com.stonebreak.ui.worldSelect.managers.WorldBackupService;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
-import com.stonebreak.ui.worldSelect.managers.WorldSizeService;
+import com.stonebreak.ui.worldSelect.managers.WorldStatsService;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
 import com.stonebreak.world.save.model.WorldData;
 import io.github.humbleui.skija.Canvas;
@@ -51,10 +53,18 @@ public final class SkijaWorldSelectRenderer {
     private static final int COLOR_INPUT_BORDER      = 0xFF505050;
     private static final int COLOR_INPUT_BORDER_HOT  = 0xFF6496FF;
 
+    /**
+     * ASCII stand-ins: the bundled Minecraft typeface has no glyphs for the typographic
+     * em dash / ellipsis / middle dot, which draw as tofu boxes.
+     */
+    private static final String UNKNOWN  = "Unknown";
+    private static final String ELLIPSIS = "...";
+
     private final SkijaUIBackend backend;
     private final WorldStateManager stateManager;
     private final WorldDiscoveryManager discoveryManager;
     private final WorldInputHandler inputHandler;
+    private final WorldBackupService backupService;
 
     private Font fontTitle;
     private Font fontSubtitle;
@@ -71,11 +81,13 @@ public final class SkijaWorldSelectRenderer {
     public SkijaWorldSelectRenderer(SkijaUIBackend backend,
                                     WorldStateManager stateManager,
                                     WorldDiscoveryManager discoveryManager,
-                                    WorldInputHandler inputHandler) {
+                                    WorldInputHandler inputHandler,
+                                    WorldBackupService backupService) {
         this.backend = backend;
         this.stateManager = stateManager;
         this.discoveryManager = discoveryManager;
         this.inputHandler = inputHandler;
+        this.backupService = backupService;
     }
 
     private void ensureFonts(float scale) {
@@ -122,6 +134,7 @@ public final class SkijaWorldSelectRenderer {
             drawWorldList(canvas, layout);
             drawScrollbar(canvas, layout);
             drawActionButtons(canvas, layout);
+            drawInfoCard(canvas, layout);
 
             if (stateManager.isShowCreateDialog()) {
                 drawCreateDialog(canvas, layout, windowWidth, windowHeight);
@@ -198,7 +211,7 @@ public final class SkijaWorldSelectRenderer {
     private void drawWorldList(Canvas canvas, WorldSelectLayout layout) {
         List<String> worlds = stateManager.getWorldList();
         if (worlds.isEmpty()) {
-            drawCenteredString(canvas, "No worlds yet — click 'Create New World' to begin.",
+            drawCenteredString(canvas, "No worlds yet - click 'Create New World' to begin.",
                     layout.centerX, layout.listY + layout.listHeight / 2f,
                     fontItem, COLOR_TEXT_SECONDARY);
             return;
@@ -238,7 +251,7 @@ public final class SkijaWorldSelectRenderer {
         // scan for this world finishes, then it stays cached.
         long sizeBytes = discoveryManager.getWorldSizeBytes(name);
         if (sizeBytes >= 0) {
-            String size = WorldSizeService.formatSize(sizeBytes);
+            String size = WorldStatsService.formatSize(sizeBytes);
             float sizeX = x + layout.listWidth - 18f - measureWidthSafe(fontMeta, size);
             drawString(canvas, size, sizeX + 1, nameY + 1, fontMeta, COLOR_TEXT_SHADOW);
             drawString(canvas, size, sizeX, nameY, fontMeta, COLOR_TEXT_SECONDARY);
@@ -258,7 +271,7 @@ public final class SkijaWorldSelectRenderer {
             }
         }
         if (data.getSeed() != 0) {
-            if (sb.length() > 0) sb.append("   ·   ");
+            if (sb.length() > 0) sb.append("   -   ");
             sb.append("Seed: ").append(data.getSeed());
         }
         return sb.length() == 0 ? null : sb.toString();
@@ -375,6 +388,139 @@ public final class SkijaWorldSelectRenderer {
         drawMinecraftButton(canvas, "Cancel", layout.confirmCancelX, layout.confirmButtonY,
                 layout.dialogButtonWidth, layout.dialogButtonHeight,
                 "confirm-cancel".equals(hov), true);
+    }
+
+    // ─────────────────────────────────────────────────────────── Hover info card
+
+    /**
+     * Draws the sticky info card for the world the cursor is resting on. The card is
+     * anchored to its row by {@link WorldSelectLayout#cardBounds(int)}; the same bounds
+     * drive hit-testing, so what is clickable is exactly what is drawn.
+     */
+    private void drawInfoCard(Canvas canvas, WorldSelectLayout layout) {
+        String world = stateManager.getCardWorld();
+        if (world == null) return;
+        int visibleRow = stateManager.getCardIndex() - stateManager.getScrollOffset();
+        if (visibleRow < 0 || visibleRow >= WorldSelectLayout.ITEMS_PER_PAGE) return;
+
+        SectionBounds card = layout.cardBounds(visibleRow);
+        float s = layout.uiScale;
+        drawMinecraftPanel(canvas, card.x, card.y, card.width, card.height);
+
+        float left = card.x + layout.cardPadding;
+        float right = card.getRight() - layout.cardPadding;
+        float innerWidth = right - left;
+
+        // Title
+        String title = ellipsize(world, fontItem, innerWidth);
+        drawString(canvas, title, left + 1, card.y + 21f * s, fontItem, COLOR_TEXT_SHADOW);
+        drawString(canvas, title, left, card.y + 20f * s, fontItem, COLOR_TEXT_ACCENT);
+        try (Paint p = new Paint().setColor(COLOR_ITEM_BORDER)) {
+            canvas.drawRect(Rect.makeXYWH(left, card.y + 30f * s, innerWidth, 1f), p);
+        }
+
+        // Info rows
+        WorldData data = discoveryManager.getWorldData(world);
+        WorldStatsService.Stats stats = discoveryManager.getWorldStats(world);
+        String pending = "Measuring...";
+
+        float rowY = card.y + 52f * s;
+        rowY = drawCardRow(canvas, left, right, rowY, layout,
+                "Size", stats == null ? pending : WorldStatsService.formatSize(stats.bytes()));
+        rowY = drawCardRow(canvas, left, right, rowY, layout,
+                "Chunks", stats == null ? pending : String.format("%,d", stats.chunkCount()));
+        rowY = drawCardRow(canvas, left, right, rowY, layout,
+                "Seed", data == null ? UNKNOWN : Long.toString(data.getSeed()));
+        rowY = drawCardRow(canvas, left, right, rowY, layout,
+                "Created", data == null ? UNKNOWN : formatDate(data.getCreatedTime()));
+        rowY = drawCardRow(canvas, left, right, rowY, layout,
+                "Last played", data == null ? UNKNOWN : formatDate(data.getLastPlayed()));
+        drawCardRow(canvas, left, right, rowY, layout,
+                "Play time", data == null ? UNKNOWN : formatPlayTime(data.getTotalPlayTimeMillis()));
+
+        // Buttons
+        String hov = stateManager.getHoveredCardButton();
+        WorldBackupService.Status status = backupService.getStatus(world);
+        boolean backupRunning = status.state() == WorldBackupService.State.RUNNING;
+
+        SectionBounds folderBtn = layout.cardOpenFolderBounds(card);
+        SectionBounds backupBtn = layout.cardBackupBounds(card);
+        drawCardButton(canvas, "Open Folder", folderBtn, "card-folder".equals(hov), true);
+        drawCardButton(canvas, backupRunning ? "Backing Up" : "Back Up", backupBtn,
+                !backupRunning && "card-backup".equals(hov), !backupRunning);
+
+        // Status line, plus a progress bar while a backup is running
+        if (status.state() != WorldBackupService.State.IDLE) {
+            int color = switch (status.state()) {
+                case FAILED -> COLOR_TEXT_ERROR;
+                case DONE -> COLOR_TEXT_ACCENT;
+                default -> COLOR_TEXT_SECONDARY;
+            };
+            float statusY = card.getBottom() - layout.cardPadding - 6f * s;
+            drawString(canvas, ellipsize(status.message(), fontMeta, innerWidth),
+                    left, statusY, fontMeta, color);
+            if (backupRunning) {
+                float barY = card.getBottom() - layout.cardPadding + 1f * s;
+                try (Paint track = new Paint().setColor(0x80000000);
+                     Paint fill = new Paint().setColor(COLOR_ITEM_SELECTED)) {
+                    canvas.drawRect(Rect.makeXYWH(left, barY, innerWidth, 3f * s), track);
+                    canvas.drawRect(Rect.makeXYWH(left, barY, innerWidth * status.progress(), 3f * s), fill);
+                }
+            }
+        }
+    }
+
+    /** Draws one "label ..... value" line and returns the baseline of the next one. */
+    private float drawCardRow(Canvas canvas, float left, float right, float baselineY,
+                              WorldSelectLayout layout, String label, String value) {
+        drawString(canvas, label, left, baselineY, fontMeta, COLOR_TEXT_SECONDARY);
+        float labelEnd = left + measureWidthSafe(fontMeta, label) + 8f;
+        String shown = ellipsize(value, fontMeta, Math.max(0f, right - labelEnd));
+        float valueX = right - measureWidthSafe(fontMeta, shown);
+        drawString(canvas, shown, valueX + 1, baselineY + 1, fontMeta, COLOR_TEXT_SHADOW);
+        drawString(canvas, shown, valueX, baselineY, fontMeta, COLOR_TEXT_PRIMARY);
+        return baselineY + layout.cardLineHeight;
+    }
+
+    private void drawCardButton(Canvas canvas, String text, SectionBounds bounds, boolean highlight, boolean enabled) {
+        int fill = !enabled ? MStyle.BUTTON_FILL_DIS
+                : (highlight ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL);
+        MPainter.stoneSurface(canvas, bounds.x, bounds.y, bounds.width, bounds.height, MStyle.BUTTON_RADIUS,
+                fill, MStyle.BUTTON_BORDER,
+                MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, MStyle.BUTTON_DROP_SHADOW,
+                MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
+        int textColor = enabled ? (highlight ? COLOR_TEXT_ACCENT : COLOR_TEXT_PRIMARY) : COLOR_TEXT_DISABLED;
+        MPainter.drawCenteredStringWithShadow(canvas, text, bounds.getCenterX(),
+                bounds.getCenterY() + 5f, fontMeta, textColor, COLOR_TEXT_SHADOW);
+    }
+
+    private static String formatDate(LocalDateTime dt) {
+        if (dt == null) return UNKNOWN;
+        LocalDateTime now = LocalDateTime.now();
+        if (dt.toLocalDate().equals(now.toLocalDate())) {
+            return String.format("Today %d:%02d", dt.getHour(), dt.getMinute());
+        }
+        return String.format("%d/%d/%d", dt.getMonthValue(), dt.getDayOfMonth(), dt.getYear());
+    }
+
+    private static String formatPlayTime(long millis) {
+        if (millis <= 0L) return "0m";
+        long minutes = millis / 60_000L;
+        if (minutes < 1L) return "< 1m";
+        long hours = minutes / 60L;
+        if (hours < 1L) return minutes + "m";
+        return hours + "h " + (minutes % 60L) + "m";
+    }
+
+    /** Shortens text with a trailing ellipsis until it fits {@code maxWidth}. */
+    private static String ellipsize(String text, Font font, float maxWidth) {
+        if (text == null || text.isEmpty()) return "";
+        if (measureWidthSafe(font, text) <= maxWidth) return text;
+        String truncated = text;
+        while (truncated.length() > 1 && measureWidthSafe(font, truncated + ELLIPSIS) > maxWidth) {
+            truncated = truncated.substring(0, truncated.length() - 1);
+        }
+        return truncated + ELLIPSIS;
     }
 
     private void drawInputField(Canvas canvas, float x, float y, WorldSelectLayout layout,

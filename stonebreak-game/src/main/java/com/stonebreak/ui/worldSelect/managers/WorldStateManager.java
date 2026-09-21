@@ -23,6 +23,18 @@ public class WorldStateManager {
     private boolean showDeleteDialog = false;
     private String worldPendingDelete = null;
 
+    // ===== HOVER CARD STATE =====
+    /** How long the cursor must rest on a row before its info card appears. */
+    public static final long CARD_OPEN_DELAY_MS = 350L;
+    /** Grace period after the cursor leaves both the row and the card, so you can cross the seam. */
+    public static final long CARD_CLOSE_DELAY_MS = 220L;
+
+    private int cardIndex = -1;
+    private int pendingCardIndex = -1;
+    private long pendingSinceMs = 0L;
+    private long leavingSinceMs = 0L;
+    private String hoveredCardButton = null;
+
     // ===== SCROLL STATE =====
     private static final int ITEMS_PER_PAGE = 8;
     private static final int SCROLL_SPEED = 1;
@@ -46,6 +58,7 @@ public class WorldStateManager {
 
         // Reset hover state
         hoveredIndex = -1;
+        closeCard();
 
         // Adjust scroll to keep selection visible
         adjustScrollToSelection();
@@ -116,11 +129,103 @@ public class WorldStateManager {
     public void clearHover() {
         hoveredIndex = -1;
         hoveredButton = null;
+        closeCard();
     }
 
     public String getHoveredButton() { return hoveredButton; }
 
     public void setHoveredButton(String key) { this.hoveredButton = key; }
+
+    // ===== HOVER CARD MANAGEMENT =====
+
+    /**
+     * Index of the world whose info card is open, or -1 when none is.
+     */
+    public int getCardIndex() {
+        return cardIndex;
+    }
+
+    /** Name of the world whose info card is open, or null when none is. */
+    public String getCardWorld() {
+        if (cardIndex < 0 || cardIndex >= worldList.size()) {
+            return null;
+        }
+        return worldList.get(cardIndex);
+    }
+
+    public boolean isCardOpen() {
+        return getCardWorld() != null;
+    }
+
+    public String getHoveredCardButton() {
+        return hoveredCardButton;
+    }
+
+    public void setHoveredCardButton(String key) {
+        this.hoveredCardButton = key;
+    }
+
+    /**
+     * Feeds the card state machine one cursor sample.
+     *
+     * <p>The card is sticky: it stays open while the cursor is over its anchor row
+     * <em>or</em> over the card itself, which is what makes the buttons inside it
+     * reachable. Leaving both starts the close grace period rather than closing at once.
+     *
+     * @param rowIndex  world row under the cursor, or -1 for none
+     * @param overCard  true when the cursor is inside the open card's bounds
+     * @param nowMs     current wall-clock time
+     */
+    public void updateCardHover(int rowIndex, boolean overCard, long nowMs) {
+        if (overCard || (cardIndex >= 0 && rowIndex == cardIndex)) {
+            pendingCardIndex = -1;
+            leavingSinceMs = 0L;
+            return;
+        }
+
+        if (rowIndex >= 0) {
+            if (pendingCardIndex != rowIndex) {
+                pendingCardIndex = rowIndex;
+                pendingSinceMs = nowMs;
+            }
+            // Moved onto a different row: the old card is no longer what the cursor is asking about
+            if (cardIndex >= 0) {
+                cardIndex = -1;
+                hoveredCardButton = null;
+            }
+            leavingSinceMs = 0L;
+            return;
+        }
+
+        pendingCardIndex = -1;
+        if (cardIndex >= 0 && leavingSinceMs == 0L) {
+            leavingSinceMs = nowMs;
+        }
+    }
+
+    /**
+     * Advances the open/close delays. Called once a frame, since a card must still open
+     * when the cursor rests without producing further move events.
+     */
+    public void tickCard(long nowMs) {
+        if (pendingCardIndex >= 0 && nowMs - pendingSinceMs >= CARD_OPEN_DELAY_MS) {
+            cardIndex = pendingCardIndex < worldList.size() ? pendingCardIndex : -1;
+            pendingCardIndex = -1;
+            leavingSinceMs = 0L;
+        }
+        if (cardIndex >= 0 && leavingSinceMs != 0L && nowMs - leavingSinceMs >= CARD_CLOSE_DELAY_MS) {
+            closeCard();
+        }
+    }
+
+    /** Closes the card immediately and forgets any pending open. */
+    public void closeCard() {
+        cardIndex = -1;
+        pendingCardIndex = -1;
+        pendingSinceMs = 0L;
+        leavingSinceMs = 0L;
+        hoveredCardButton = null;
+    }
 
     // ===== SCROLL MANAGEMENT =====
 
@@ -130,7 +235,12 @@ public class WorldStateManager {
 
     public void setScrollOffset(int offset) {
         int maxScroll = Math.max(0, worldList.size() - ITEMS_PER_PAGE);
-        scrollOffset = Math.max(0, Math.min(offset, maxScroll));
+        int clamped = Math.max(0, Math.min(offset, maxScroll));
+        if (clamped != scrollOffset) {
+            // The card is anchored to a row's on-screen position, so scrolling strands it
+            closeCard();
+        }
+        scrollOffset = clamped;
     }
 
     public void scrollUp() {
@@ -155,17 +265,19 @@ public class WorldStateManager {
     private void adjustScrollToSelection() {
         if (worldList.isEmpty()) return;
 
+        // Route every change through setScrollOffset so bounds clamping and the
+        // card-invalidation it performs cannot be bypassed.
+        int target = scrollOffset;
         // If selection is above visible area, scroll up
         if (selectedIndex < scrollOffset) {
-            scrollOffset = selectedIndex;
+            target = selectedIndex;
         }
         // If selection is below visible area, scroll down
         else if (selectedIndex >= scrollOffset + ITEMS_PER_PAGE) {
-            scrollOffset = selectedIndex - ITEMS_PER_PAGE + 1;
+            target = selectedIndex - ITEMS_PER_PAGE + 1;
         }
 
-        // Ensure scroll stays within bounds
-        setScrollOffset(scrollOffset);
+        setScrollOffset(target);
     }
 
     public boolean isIndexVisible(int index) {
@@ -187,6 +299,7 @@ public class WorldStateManager {
     }
 
     public void openCreateDialog() {
+        closeCard();
         showCreateDialog = true;
         newWorldName = "";
         newWorldSeed = "";
@@ -208,6 +321,7 @@ public class WorldStateManager {
 
     public void openDeleteDialog(String worldName) {
         if (worldName == null || worldName.isEmpty()) return;
+        closeCard();
         this.showDeleteDialog = true;
         this.worldPendingDelete = worldName;
     }
@@ -279,6 +393,7 @@ public class WorldStateManager {
         selectedIndex = 0;
         hoveredIndex = -1;
         scrollOffset = 0;
+        closeCard();
         closeCreateDialog();
         closeDeleteDialog();
     }

@@ -35,6 +35,21 @@ public final class WorldSelectLayout {
     public static final float CONFIRM_DIALOG_WIDTH = 460f;
     public static final float CONFIRM_DIALOG_HEIGHT = 200f;
 
+    /** Info card shown while the cursor rests on a world row. */
+    public static final float CARD_WIDTH = 342f;
+    public static final float CARD_HEIGHT = 256f;
+    public static final float CARD_PADDING = 14f;
+    public static final float CARD_BUTTON_HEIGHT = 30f;
+    public static final float CARD_BUTTON_GAP = 10f;
+    /** Card row spacing, also used to reserve the status line under the buttons. */
+    public static final float CARD_LINE_HEIGHT = 20f;
+    /** Overlap between the anchor row and the card, so the cursor never crosses a gap. */
+    public static final float CARD_OVERLAP = 8f;
+    /** Indent of the card's left edge from the list's, lining it up under the world name. */
+    public static final float CARD_INDENT = 36f;
+    /** Keep-out margin from the window edges. */
+    public static final float CARD_MARGIN = 8f;
+
     // Scaled instance dimensions (read these instead of the static constants at render/hit-test time)
     public final float itemHeight;
     public final float listWidth;
@@ -52,6 +67,13 @@ public final class WorldSelectLayout {
     public final float dialogButtonHeight;
     public final float confirmDialogWidth;
     public final float confirmDialogHeight;
+    public final float cardWidth;
+    public final float cardHeight;
+    public final float cardPadding;
+    public final float cardButtonHeight;
+    public final float cardButtonGap;
+    public final float cardLineHeight;
+    public final float uiScale;
 
     public final int windowWidth;
     public final int windowHeight;
@@ -109,6 +131,13 @@ public final class WorldSelectLayout {
         this.dialogButtonHeight= DIALOG_BUTTON_HEIGHT* s;
         this.confirmDialogWidth = CONFIRM_DIALOG_WIDTH * s;
         this.confirmDialogHeight= CONFIRM_DIALOG_HEIGHT* s;
+        this.cardWidth          = CARD_WIDTH          * s;
+        this.cardHeight         = CARD_HEIGHT         * s;
+        this.cardPadding        = CARD_PADDING        * s;
+        this.cardButtonHeight   = CARD_BUTTON_HEIGHT  * s;
+        this.cardButtonGap      = CARD_BUTTON_GAP     * s;
+        this.cardLineHeight     = CARD_LINE_HEIGHT    * s;
+        this.uiScale            = s;
 
         this.windowWidth = width;
         this.windowHeight = height;
@@ -157,6 +186,57 @@ public final class WorldSelectLayout {
 
     public static WorldSelectLayout compute(int width, int height) {
         return new WorldSelectLayout(width, height);
+    }
+
+    /**
+     * Bounds of the hover info card anchored to a row, where {@code visibleRow} is the
+     * row's 0-based position on the current page (world index minus scroll offset).
+     *
+     * <p>The card hangs below the row and overlaps it slightly so the cursor can travel
+     * from row to card without passing over anything else, and flips above the row when
+     * there is not enough space below.
+     */
+    public SectionBounds cardBounds(int visibleRow) {
+        float rowTop = listY + visibleRow * itemHeight;
+        float rowBottom = rowTop + itemHeight;
+        float margin = CARD_MARGIN * uiScale;
+
+        float x = clamp(listX + CARD_INDENT * uiScale, margin, windowWidth - cardWidth - margin);
+
+        float overlap = CARD_OVERLAP * uiScale;
+        float y = rowBottom - overlap;
+        if (y + cardHeight > windowHeight - margin) {
+            y = rowTop + overlap - cardHeight;
+        }
+        y = clamp(y, margin, Math.max(margin, windowHeight - cardHeight - margin));
+
+        return new SectionBounds(x, y, cardWidth, cardHeight);
+    }
+
+    /** "Open Folder" button inside the card. */
+    public SectionBounds cardOpenFolderBounds(SectionBounds card) {
+        return new SectionBounds(card.x + cardPadding, cardButtonRowY(card),
+                cardButtonWidth(card), cardButtonHeight);
+    }
+
+    /** "Back Up" button inside the card. */
+    public SectionBounds cardBackupBounds(SectionBounds card) {
+        float w = cardButtonWidth(card);
+        return new SectionBounds(card.x + cardPadding + w + cardButtonGap, cardButtonRowY(card),
+                w, cardButtonHeight);
+    }
+
+    private float cardButtonWidth(SectionBounds card) {
+        return (card.width - cardPadding * 2f - cardButtonGap) / 2f;
+    }
+
+    private float cardButtonRowY(SectionBounds card) {
+        // Buttons sit one line above the bottom padding, leaving that line for the status text
+        return card.getBottom() - cardPadding - cardLineHeight - cardButtonHeight;
+    }
+
+    private static float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(value, max));
     }
 
     public boolean hitItem(double mouseX, double mouseY, int rowsVisible, int scrollOffset, int totalItems, int[] outIndex) {

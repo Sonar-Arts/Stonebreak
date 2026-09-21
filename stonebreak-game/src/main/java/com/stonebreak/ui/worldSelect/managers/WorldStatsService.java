@@ -14,22 +14,42 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 
 /**
- * Computes on-disk sizes of world directories off the render thread.
+ * Computes on-disk statistics of world directories off the render thread.
  *
- * <p>A world's size is the sum of every file under its directory (region files, the
- * fastlod cache, the json metadata). Walking that tree touches hundreds of files, so it
- * is far too slow to do while drawing a frame: sizes are computed by a single background
- * worker and cached. Callers get {@link #PENDING} until a result lands, and the cached
- * value from then on.
+ * <p>A world's size is the sum of every file under its directory (chunk files, the
+ * fastlod cache, the json metadata) and its chunk count is how many {@code .sbc} files
+ * it holds. Walking that tree touches hundreds of files, so it is far too slow to do
+ * while drawing a frame: stats are computed by a single background worker and cached.
+ * Callers get {@link #PENDING} (or {@code null} from {@link #getStats}) until a result
+ * lands, and the cached value from then on.
  */
-public final class WorldSizeService {
+public final class WorldStatsService {
 
     /** Returned while the size of a world is still being computed. */
     public static final long PENDING = -1L;
 
-    private final Map<String, Long> sizeCache = new ConcurrentHashMap<>();
+    /** Suffix of a saved chunk file, per {@code com.stonebreak.world.save.io.ChunkStorage}. */
+    private static final String CHUNK_SUFFIX = ".sbc";
+
+    /** What a completed walk of one world directory found. */
+    public record Stats(long bytes, int chunkCount) {}
+
+    /** Resolves a world name to the directory to measure. */
+    private final Function<String, Path> worldDirResolver;
+
+    public WorldStatsService() {
+        this(WorldStorage::worldDir);
+    }
+
+    /** Test seam: measure world directories from somewhere other than the save folder. */
+    public WorldStatsService(Function<String, Path> worldDirResolver) {
+        this.worldDirResolver = worldDirResolver;
+    }
+
+    private final Map<String, Stats> statsCache = new ConcurrentHashMap<>();
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
 
     /**
@@ -45,15 +65,15 @@ public final class WorldSizeService {
     });
 
     /**
-     * Size of the named world in bytes, or {@link #PENDING} if it is not known yet.
-     * The first call for a world schedules the background walk that computes it.
+     * Stats for the named world, or {@code null} if they are not known yet.
+     * The first call for a world schedules the background walk that computes them.
      */
-    public long getSizeBytes(String worldName) {
+    public Stats getStats(String worldName) {
         if (worldName == null || worldName.isBlank()) {
-            return PENDING;
+            return null;
         }
 
-        Long cached = sizeCache.get(worldName);
+        Stats cached = statsCache.get(worldName);
         if (cached != null) {
             return cached;
         }
@@ -62,22 +82,30 @@ public final class WorldSizeService {
             long startedAt = generation.get();
             worker.execute(() -> {
                 try {
-                    long bytes = directorySize(WorldStorage.worldDir(worldName));
+                    Stats stats = walk(worldDirResolver.apply(worldName));
                     if (generation.get() == startedAt) {
-                        sizeCache.put(worldName, bytes);
+                        statsCache.put(worldName, stats);
                     }
                 } finally {
                     inFlight.remove(worldName);
                 }
             });
         }
-        return PENDING;
+        return null;
     }
 
-    /** Drops every cached size; the next request for a world re-walks it. */
+    /**
+     * Size of the named world in bytes, or {@link #PENDING} if it is not known yet.
+     */
+    public long getSizeBytes(String worldName) {
+        Stats stats = getStats(worldName);
+        return stats == null ? PENDING : stats.bytes();
+    }
+
+    /** Drops every cached result; the next request for a world re-walks it. */
     public void invalidateAll() {
         generation.incrementAndGet();
-        sizeCache.clear();
+        statsCache.clear();
     }
 
     /** Stops the background worker. Safe to call more than once. */
@@ -111,17 +139,21 @@ public final class WorldSizeService {
         return number + " " + units[unit];
     }
 
-    private static long directorySize(Path dir) {
+    private static Stats walk(Path dir) {
         if (!Files.isDirectory(dir)) {
-            return 0L;
+            return new Stats(0L, 0);
         }
         final long[] total = {0L};
+        final int[] chunks = {0};
         try {
             Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                     if (attrs.isRegularFile()) {
                         total[0] += attrs.size();
+                        if (file.getFileName().toString().endsWith(CHUNK_SUFFIX)) {
+                            chunks[0]++;
+                        }
                     }
                     return FileVisitResult.CONTINUE;
                 }
@@ -135,6 +167,6 @@ public final class WorldSizeService {
         } catch (IOException e) {
             System.err.println("Error measuring world size for " + dir + ": " + e.getMessage());
         }
-        return total[0];
+        return new Stats(total[0], chunks[0]);
     }
 }

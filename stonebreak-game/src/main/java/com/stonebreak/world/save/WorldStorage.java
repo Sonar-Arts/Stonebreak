@@ -22,6 +22,7 @@ public final class WorldStorage {
 
     private static final String APP_DIR_NAME = "Stonebreak";
     private static final String WORLDS_DIR_NAME = "worlds";
+    private static final String BACKUPS_DIR_NAME = "backups";
 
     private WorldStorage() {
     }
@@ -29,6 +30,18 @@ public final class WorldStorage {
     /** Base directory that contains one subdirectory per world. */
     public static Path worldsRoot() {
         return appDataDir().resolve(WORLDS_DIR_NAME);
+    }
+
+    /**
+     * Directory that holds manual world backups, a sibling of {@link #worldsRoot()}.
+     *
+     * <p>Backups live outside the worlds directory on purpose: world discovery treats every
+     * subdirectory of {@code worlds/} as a candidate world, and a world's measured on-disk
+     * size is the walk of its own directory. Keeping archives here stops a backup from
+     * showing up as a world or inflating the size of the world it was taken from.
+     */
+    public static Path backupsRoot() {
+        return appDataDir().resolve(BACKUPS_DIR_NAME);
     }
 
     /** Directory for a single named world. */
