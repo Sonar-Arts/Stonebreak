@@ -524,6 +524,14 @@ public final class ClientWorldView {
         connection.send(new EntityDamageC2S(targetNetworkId, amount, (byte) source.ordinal()), false);
     }
 
+    /** Local shear on a replicated sheep: forward the shear intent to the authoritative server. */
+    public void sendEntityShear(int targetNetworkId) {
+        if (connection == null || targetNetworkId < 0) {
+            return;
+        }
+        connection.send(new com.stonebreak.network.packet.entity.EntityShearC2S(targetNetworkId), false);
+    }
+
     /**
      * Local chat submission: send to the server. The server broadcasts to everyone INCLUDING
      * the sender, so there is no optimistic local echo (that would double-print).
@@ -603,6 +611,8 @@ public final class ClientWorldView {
             case EntityMoveS2C mv -> entityHandler.applyDelta(mv);
             case EntityTeleportS2C t -> entityHandler.applyTeleport(t);
             case EntityAnimS2C a -> entityHandler.applyAnim(a.networkId(), a.state());
+            case com.stonebreak.network.packet.entity.EntityVariantS2C v ->
+                entityHandler.applyVariant(v.networkId(), v.variant());
             case KeepAliveS2C ka -> {
                 lastRttMs = ka.lastRttMs();
                 ClientConnection conn = connection;

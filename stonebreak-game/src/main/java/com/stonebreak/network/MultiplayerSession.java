@@ -416,6 +416,18 @@ public final class MultiplayerSession {
         }
     }
 
+    /**
+     * Local shear on a replicated sheep: forward the shear intent to the
+     * authoritative server (see {@code SheepShearing.tryShear} — the caller
+     * already applied the predicted visual swap to its shadow).
+     */
+    public static void onLocalEntityShear(Entity target) {
+        ClientWorldView c = getClient();
+        if (c != null && target != null && target.getNetworkId() >= 0) {
+            c.sendEntityShear(target.getNetworkId());
+        }
+    }
+
     /** Hook from the chat UI for a locally-submitted message — routed via the local client. */
     public static void submitChat(String text) {
         ClientWorldView c = getClient();

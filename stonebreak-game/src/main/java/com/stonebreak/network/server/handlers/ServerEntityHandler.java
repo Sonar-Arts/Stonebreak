@@ -7,12 +7,14 @@ import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.mobs.sbe.EntityAnimResolver;
+import com.stonebreak.mobs.sheep.Sheep;
 import com.stonebreak.network.packet.entity.EntityAnimS2C;
 import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
 import com.stonebreak.network.packet.entity.EntityMoveS2C;
 import com.stonebreak.network.packet.entity.EntitySpawnS2C;
 import com.stonebreak.network.packet.entity.EntityTeleportS2C;
+import com.stonebreak.network.packet.entity.EntityVariantS2C;
 import com.stonebreak.network.server.ServerPlayer;
 import com.stonebreak.network.server.ServerWorldContext;
 import com.openmason.engine.net.protocol.Packet;
@@ -57,12 +59,20 @@ public final class ServerEntityHandler {
     /** Upper bound on a single client-reported hit, to contain buggy/hostile clients. */
     private static final float MAX_DAMAGE_AMOUNT = 100f;
 
+    /** Tolerant shear-range gate — the client raycast owns the precise targeting. */
+    private static final float MAX_SHEAR_RANGE_SQ = 8f * 8f;
+    /** Per-player shear rate limit, to contain buggy/hostile EntityShearC2S spam. */
+    private static final long SHEAR_RATE_LIMIT_NANOS = 500_000_000L;
+
     private final AtomicInteger nextNetworkId = new AtomicInteger(1);
     private final Map<Integer, Entity> byNetworkId = new ConcurrentHashMap<>();
     private final Map<Integer, float[]> lastBroadcast = new ConcurrentHashMap<>();
     private final Map<Integer, Integer> ticksSinceResync = new ConcurrentHashMap<>();
     /** Last SBE animation-state name broadcast per entity, so we only resend on change. */
     private final Map<Integer, String> lastAnimState = new ConcurrentHashMap<>();
+
+    /** Last appearance variant broadcast per entity, so we only resend on change. */
+    private final Map<Integer, String> lastVariantState = new ConcurrentHashMap<>();
     /** playerId → network ids this player has been sent a spawn for (their interest set). */
     private final Map<Integer, Set<Integer>> interestByPlayer = new ConcurrentHashMap<>();
 
@@ -73,6 +83,7 @@ public final class ServerEntityHandler {
         lastBroadcast.clear();
         ticksSinceResync.clear();
         lastAnimState.clear();
+        lastVariantState.clear();
         interestByPlayer.clear();
         EntityManager em = ctx.entityManager();
         if (em != null) {
@@ -89,6 +100,7 @@ public final class ServerEntityHandler {
         lastBroadcast.clear();
         ticksSinceResync.clear();
         lastAnimState.clear();
+        lastVariantState.clear();
         interestByPlayer.clear();
     }
 
@@ -123,6 +135,7 @@ public final class ServerEntityHandler {
         lastBroadcast.remove(id);
         ticksSinceResync.remove(id);
         lastAnimState.remove(id);
+        lastVariantState.remove(id);
         for (Set<Integer> known : interestByPlayer.values()) {
             known.remove(id);
         }
@@ -181,6 +194,8 @@ public final class ServerEntityHandler {
             // Replicate animation/behavior state on change (independent of movement — a mob can
             // change state while stationary, e.g. Idle -> Grazing).
             broadcastAnimIfChanged(e, ctx);
+            // Replicate appearance variant on change (shear swap, wool regrowth via grazing).
+            broadcastVariantIfChanged(e, ctx);
 
             int id = e.getNetworkId();
             float[] last = lastBroadcast.get(id);
@@ -270,6 +285,56 @@ public final class ServerEntityHandler {
             sp.send(new com.stonebreak.network.packet.player.KillCreditS2C(
                 le.getType().ordinal(), dealt, killed, killed ? le.getXpReward() : 0), false);
         }
+    }
+
+    /**
+     * Authoritative shear application. Validates species/range, the held item (from the
+     * cached {@code PlayerHeldItemC2S} relay) and a per-player rate limit, then shears
+     * the real sheep; the variant change replicates to interested players via
+     * {@code broadcastVariantIfChanged} on the next tick.
+     *
+     * <p>Every rejection echoes the sheep's real variant back to the requesting player:
+     * the client predicted a sheared swap before sending, and the echo rolls that back so
+     * an edge-of-reach shear while moving can't render a sheared sheep forever. See
+     * {@code SheepShearing.tryShear}.
+     */
+    public void handleEntityShear(ServerPlayer sp, com.stonebreak.network.packet.entity.EntityShearC2S pkt,
+                                  ServerWorldContext ctx) {
+        Entity e = byNetworkId.get(pkt.targetNetworkId());
+        if (!(e instanceof Sheep sheep) || !sheep.isAlive()) {
+            return; // unknown id (despawn raced the click) — the despawn shadow removal corrects the client
+        }
+        long now = System.nanoTime();
+        if (now - sp.lastShearNanos() < SHEAR_RATE_LIMIT_NANOS) {
+            // Echo the real variant even here: tryShear short-circuits on isSheared(), so
+            // the client never retries a throttled click — without the echo a predicted
+            // swap on a throttled second sheep would render sheared forever.
+            sp.send(new EntityVariantS2C(pkt.targetNetworkId(), sheep.getTextureVariant()), false);
+            return; // rate-limited
+        }
+        sp.markShearRequest(now);
+        // Server-side shears requirement: the held item comes from the cached
+        // PlayerHeldItemC2S relay (the client relays held-item changes).
+        if (sp.heldItemId() != com.stonebreak.items.ItemType.SHEARS.getId()) {
+            sp.send(new EntityVariantS2C(pkt.targetNetworkId(), sheep.getTextureVariant()), false);
+            return;
+        }
+        Vector3f p = e.getPosition();
+        float dx = p.x - sp.x();
+        float dy = p.y - sp.y();
+        float dz = p.z - sp.z();
+        if (dx * dx + dy * dy + dz * dz > MAX_SHEAR_RANGE_SQ) {
+            // Range gate measures against the last reported position — an edge-of-reach
+            // shear while moving lands here. Echo the real variant so the client reverts
+            // its predicted swap instead of rendering a sheared sheep forever.
+            sp.send(new EntityVariantS2C(pkt.targetNetworkId(), sheep.getTextureVariant()), false);
+            return;
+        }
+        if (sheep.isSheared()) {
+            sp.send(new EntityVariantS2C(pkt.targetNetworkId(), sheep.getTextureVariant()), false); // idempotent echo
+            return;
+        }
+        sheep.shear();
     }
 
     /**
@@ -494,6 +559,12 @@ public final class ServerEntityHandler {
         Vector3f p = e.getPosition();
         lastBroadcast.put(e.getNetworkId(), new float[]{p.x, p.y, p.z, e.getRotation().y});
         ticksSinceResync.put(e.getNetworkId(), 0);
+        if (e instanceof LivingEntity le) {
+            // Seed the variant tracker with what the EntitySpawnS2C metadata already
+            // carried — otherwise the first tick broadcasts one redundant variant
+            // packet per living entity.
+            lastVariantState.put(e.getNetworkId(), le.getTextureVariant());
+        }
     }
 
     private static boolean isReplicable(Entity e) {
@@ -512,6 +583,25 @@ public final class ServerEntityHandler {
         if (!state.equals(lastAnimState.get(id))) {
             lastAnimState.put(id, state);
             sendToInterested(ctx, id, new EntityAnimS2C(id, state), false);
+        }
+    }
+
+    /**
+     * Replicates a living entity's appearance variant on change (e.g. a sheep's
+     * shear swap or wool regrowth via grazing) as {@link EntityVariantS2C}.
+     * Covers the server-side mutation uniformly — {@code handleEntityShear} and
+     * the AI-driven regrowth both mutate the real sheep's variant, and this
+     * broadcasts it to interested players on the next tick.
+     */
+    private void broadcastVariantIfChanged(Entity e, ServerWorldContext ctx) {
+        if (!(e instanceof LivingEntity le)) {
+            return; // drops/projectiles carry no variant
+        }
+        String variant = le.getTextureVariant();
+        int id = e.getNetworkId();
+        if (!variant.equals(lastVariantState.get(id))) {
+            lastVariantState.put(id, variant);
+            sendToInterested(ctx, id, new EntityVariantS2C(id, variant), false);
         }
     }
 

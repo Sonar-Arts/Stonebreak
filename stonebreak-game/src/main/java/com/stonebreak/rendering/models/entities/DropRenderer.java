@@ -126,6 +126,10 @@ public class DropRenderer {
                 renderDrop(drop, shaderProgram, viewMatrix, world);
             } else if (drop instanceof com.stonebreak.mobs.entities.ItemDrop) {
                 // Item drops: voxelized uses u_useSolidColor (ignores render pass), fallback uses u_isUIElement
+                BlockType stackBlock = getBlockTypeFromDrop(drop);
+                if (stackBlock != BlockType.AIR && isTransparentBlock(stackBlock)) {
+                    continue; // transparent block stack, handled by renderTransparentDrops
+                }
                 glDisable(GL_BLEND);
                 renderDrop(drop, shaderProgram, viewMatrix, world);
             }
@@ -184,12 +188,19 @@ public class DropRenderer {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         for (Entity drop : drops) {
-            if (!(drop instanceof com.stonebreak.mobs.entities.BlockDrop bd)) continue;
-            if (!drop.isAlive() || !bd.shouldRender()) continue;
-            BlockType bt = bd.getBlockType();
-            if (bt == null || !isTransparentBlock(bt)) continue; // only transparent blocks
-
-            renderDrop(drop, shaderProgram, viewMatrix, world);
+            if (!drop.isAlive()) continue;
+            if (drop instanceof com.stonebreak.mobs.entities.BlockDrop bd) {
+                if (!bd.shouldRender()) continue;
+                BlockType bt = bd.getBlockType();
+                if (bt == null || !isTransparentBlock(bt)) continue; // only transparent blocks
+                renderDrop(drop, shaderProgram, viewMatrix, world);
+            } else if (drop instanceof com.stonebreak.mobs.entities.ItemDrop id) {
+                // Item drops carrying a transparent block stack render here too.
+                if (!id.shouldRender()) continue;
+                BlockType stackBlock = getBlockTypeFromDrop(drop);
+                if (stackBlock == BlockType.AIR || !isTransparentBlock(stackBlock)) continue; // only transparent block stacks
+                renderDrop(drop, shaderProgram, viewMatrix, world);
+            }
         }
 
         // Restore view matrix (renderDrop overwrites it with view*model per drop)
@@ -555,6 +566,12 @@ public class DropRenderer {
     private void renderItemDrop(Entity drop, ShaderProgram shaderProgram) {
         ItemType itemType = getItemTypeFromDrop(drop);
         if (itemType == null) {
+            // ItemStack-backed drops of a block id render as blocks: asItemType() is
+            // null for block stacks, and skipping here would leave them invisible.
+            BlockType blockType = getBlockTypeFromDrop(drop);
+            if (blockType != null && blockType != BlockType.AIR) {
+                renderBlockDrop(drop, shaderProgram);
+            }
             return;
         }
 
@@ -626,6 +643,16 @@ public class DropRenderer {
     private BlockType getBlockTypeFromDrop(Entity drop) {
         if (drop instanceof com.stonebreak.mobs.entities.BlockDrop blockDrop) {
             return blockDrop.getBlockType();
+        }
+        if (drop instanceof com.stonebreak.mobs.entities.ItemDrop itemDrop) {
+            // ItemStack-backed drops of a block id (e.g. a block-typed stack) carry
+            // their block type on the stack — asItemType() is null for them, so the
+            // item path alone would silently skip rendering.
+            com.stonebreak.items.ItemStack stack = itemDrop.getItemStack();
+            BlockType blockType = stack != null ? stack.asBlockType() : null;
+            if (blockType != null) {
+                return blockType;
+            }
         }
         return BlockType.AIR; // Default fallback
     }

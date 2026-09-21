@@ -33,6 +33,9 @@ public final class ServerPlayer {
     /** Last reported held block/item id. 0 = empty/air. */
     private int heldItemId = 0;
 
+    /** Nanos of this player's last authoritative shear request (containment rate limit). */
+    private long lastShearNanos = 0L;
+
     // Per-player chunk-view tracker (was ChunkSynchronizer.PlayerView). Stores the chunk
     // VERSION last sent to this player so the server re-streams a chunk when it changes
     // server-side (player edits, water flow). Absent key = never sent. Primitive-keyed —
@@ -88,6 +91,9 @@ public final class ServerPlayer {
 
     public int heldItemId() { return heldItemId; }
     public void setHeldItemId(int id) { this.heldItemId = id; }
+
+    public long lastShearNanos() { return lastShearNanos; }
+    public void markShearRequest(long nanos) { this.lastShearNanos = nanos; }
 
     /** Render distance reported by this client (ViewDistanceC2S), clamped to the
      *  allowed range. Drives this player's chunk-streaming view radius. */
