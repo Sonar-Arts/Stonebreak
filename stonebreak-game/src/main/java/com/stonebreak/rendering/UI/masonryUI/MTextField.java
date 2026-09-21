@@ -2,8 +2,6 @@ package com.stonebreak.rendering.UI.masonryUI;
 
 import static org.lwjgl.glfw.GLFW.*;
 
-import com.stonebreak.core.Game;
-
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Paint;
@@ -439,18 +437,11 @@ public final class MTextField extends MWidget {
     }
 
     private void copyToClipboard(String s) {
-        try {
-            long window = Game.getInstance().getWindow();
-            if (window != 0) glfwSetClipboardString(window, s);
-        } catch (Exception ignored) {}
+        MClipboard.write(s);
     }
 
     private String getClipboard() {
-        try {
-            long window = Game.getInstance().getWindow();
-            if (window != 0) return glfwGetClipboardString(window);
-        } catch (Exception ignored) {}
-        return null;
+        return MClipboard.read();
     }
 
     private void drawValidationIndicator(Canvas canvas, float ix, float iy, float size, boolean valid) {

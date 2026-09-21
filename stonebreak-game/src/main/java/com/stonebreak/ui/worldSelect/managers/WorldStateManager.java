@@ -362,6 +362,14 @@ public class WorldStateManager {
         }
     }
 
+    /** Appends every character the field accepts, dropping the rest (paste). */
+    public void appendToWorldName(String text) {
+        if (text == null) return;
+        for (int i = 0; i < text.length(); i++) {
+            appendToWorldName(text.charAt(i));
+        }
+    }
+
     public void removeLastCharacterFromWorldName() {
         if (!newWorldName.isEmpty()) {
             newWorldName = newWorldName.substring(0, newWorldName.length() - 1);
@@ -374,6 +382,14 @@ public class WorldStateManager {
             if (newWorldSeed.length() < 20) { // Reasonable limit
                 newWorldSeed += character;
             }
+        }
+    }
+
+    /** Appends every character the field accepts, dropping the rest (paste). */
+    public void appendToWorldSeed(String text) {
+        if (text == null) return;
+        for (int i = 0; i < text.length(); i++) {
+            appendToWorldSeed(text.charAt(i));
         }
     }
 
