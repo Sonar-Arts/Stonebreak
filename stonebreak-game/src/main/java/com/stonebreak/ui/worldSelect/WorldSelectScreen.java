@@ -1,6 +1,7 @@
 package com.stonebreak.ui.worldSelect;
 
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
+import com.stonebreak.ui.worldSelect.managers.WorldBackupService;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
 import com.stonebreak.ui.worldSelect.handlers.WorldInputHandler;
@@ -20,6 +21,7 @@ public class WorldSelectScreen {
     // ===== MODULAR COMPONENTS =====
     private final WorldStateManager stateManager;
     private final WorldDiscoveryManager discoveryManager;
+    private final WorldBackupService backupService;
     private final WorldActionHandler actionHandler;
     private final WorldInputHandler inputHandler;
     private final WorldMouseHandler mouseHandler;
@@ -34,16 +36,18 @@ public class WorldSelectScreen {
         // Initialize managers
         this.stateManager = new WorldStateManager();
         this.discoveryManager = new WorldDiscoveryManager();
+        this.backupService = new WorldBackupService();
 
         // Initialize action handler
-        this.actionHandler = new WorldActionHandler(stateManager, discoveryManager);
+        this.actionHandler = new WorldActionHandler(stateManager, discoveryManager, backupService);
 
         // Initialize input handlers
         this.inputHandler = new WorldInputHandler(stateManager, actionHandler);
         this.mouseHandler = new WorldMouseHandler(stateManager, actionHandler, inputHandler);
 
         // Skija-backed renderer
-        this.skijaRenderer = new SkijaWorldSelectRenderer(skijaBackend, stateManager, discoveryManager, inputHandler);
+        this.skijaRenderer = new SkijaWorldSelectRenderer(skijaBackend, stateManager, discoveryManager,
+                inputHandler, backupService);
 
         initializeCallbacks();
         refreshWorlds();
@@ -153,12 +157,16 @@ public class WorldSelectScreen {
      * or end a NanoVG frame around this call.
      */
     public void render(int width, int height) {
+        // The hover card opens and closes on a delay, so its state machine has to advance
+        // even on frames where the cursor produced no move events.
+        stateManager.tickCard(System.currentTimeMillis());
         skijaRenderer.render(width, height);
     }
 
     public void dispose() {
         if (skijaRenderer != null) skijaRenderer.dispose();
         if (discoveryManager != null) discoveryManager.dispose();
+        if (backupService != null) backupService.shutdown();
     }
 
     // ===== PUBLIC API (COMPATIBILITY) =====
@@ -182,6 +190,21 @@ public class WorldSelectScreen {
      */
     public int getScrollOffset() {
         return stateManager.getScrollOffset();
+    }
+
+    /**
+     * Opens the folder of the given world (or the worlds folder itself when null)
+     * in the OS file manager.
+     */
+    public void openWorldFolder(String worldName) {
+        actionHandler.openWorldFolder(worldName);
+    }
+
+    /**
+     * Starts a background backup of the named world into the backups folder.
+     */
+    public void backupWorld(String worldName) {
+        actionHandler.backupWorld(worldName);
     }
 
     /**

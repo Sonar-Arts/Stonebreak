@@ -2,8 +2,10 @@ package com.stonebreak.ui.worldSelect.handlers;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
+import com.stonebreak.ui.worldSelect.managers.WorldBackupService;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
+import com.stonebreak.util.SystemFileBrowser;
 import com.stonebreak.world.save.model.WorldData;
 import org.joml.Vector3f;
 
@@ -18,15 +20,18 @@ public class WorldActionHandler {
 
     private final WorldStateManager stateManager;
     private final WorldDiscoveryManager discoveryManager;
+    private final WorldBackupService backupService;
 
     // Callbacks for screen transitions
     private Runnable onReturnToMainMenu;
     private Runnable onWorldLoaded;
     private Runnable onRefreshWorlds;
 
-    public WorldActionHandler(WorldStateManager stateManager, WorldDiscoveryManager discoveryManager) {
+    public WorldActionHandler(WorldStateManager stateManager, WorldDiscoveryManager discoveryManager,
+                              WorldBackupService backupService) {
         this.stateManager = stateManager;
         this.discoveryManager = discoveryManager;
+        this.backupService = backupService;
     }
 
     // ===== CALLBACK SETUP =====
@@ -314,6 +319,37 @@ public class WorldActionHandler {
         } finally {
             refreshWorlds();
         }
+    }
+
+    // ===== WORLD FOLDER / BACKUP ACTIONS =====
+
+    /**
+     * Shows the named world's folder in the OS file manager. Falls back to the worlds
+     * root when that world has no directory, so the button still does something useful.
+     */
+    public void openWorldFolder(String worldName) {
+        java.nio.file.Path dir = worldName == null || worldName.isBlank()
+                ? discoveryManager.getWorldsDirectory()
+                : com.stonebreak.world.save.WorldStorage.worldDir(worldName);
+        if (!java.nio.file.Files.isDirectory(dir)) {
+            // On a fresh install the worlds folder has not been created yet; make it
+            // rather than telling the player the folder does not exist.
+            discoveryManager.ensureWorldsDirectoryExists();
+            dir = discoveryManager.getWorldsDirectory();
+        }
+        SystemFileBrowser.open(dir);
+    }
+
+    /**
+     * Starts a background zip of the named world into the backups folder. Progress and the
+     * result are polled from the backup service by the renderer.
+     */
+    public void backupWorld(String worldName) {
+        if (worldName == null || worldName.isBlank()) {
+            System.err.println("Cannot back up world: invalid name");
+            return;
+        }
+        backupService.backup(worldName);
     }
 
     // ===== UTILITY METHODS =====
