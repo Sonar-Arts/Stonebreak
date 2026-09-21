@@ -8,6 +8,7 @@ import com.stonebreak.rendering.UI.masonryUI.MButton;
 import com.stonebreak.rendering.UI.masonryUI.MItemSlot;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.stonebreak.rendering.UI.masonryUI.MSymbol;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.sbe.EntityAttachments;
@@ -119,7 +120,7 @@ public class CharacterRenderCoordinator {
     this.ui           = new MasonryUI(renderer.getSkijaBackend());
     for (int i = 0; i < 6; i++) {
       scorePlusButtons[i]  = new MButton("+").fontSize(MStyle.FONT_META);
-      scoreMinusButtons[i] = new MButton("−").fontSize(MStyle.FONT_META);
+      scoreMinusButtons[i] = new MButton("-").fontSize(MStyle.FONT_META);
     }
   }
 
@@ -588,7 +589,6 @@ public class CharacterRenderCoordinator {
     Font abbrevFont = ui.fonts().getScaled(MStyle.FONT_META);
     Font valueFont  = ui.fonts().getScaled(MStyle.FONT_BUTTON);
     Font modFont    = ui.fonts().getScaled(MStyle.FONT_META);
-    Font btnFont    = ui.fonts().getScaled(MStyle.FONT_META);
 
     for (int i = 0; i < 6; i++) {
       int col = i % 3;
@@ -625,9 +625,10 @@ public class CharacterRenderCoordinator {
           minusFill, MStyle.BUTTON_BORDER,
           MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
           MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
+      // Vector glyph, not text: the UI typeface has no minus sign, so a drawn "−" came out as a
+      // hollow .notdef box.
       int minusTextColor = minusEnabled ? MStyle.TEXT_PRIMARY : MStyle.TEXT_DISABLED;
-      MPainter.drawCenteredStringWithShadow(canvas, "−",
-          tx + 2f + btnW / 2f, btnY + btnH * 0.72f, btnFont, minusTextColor, MStyle.TEXT_SHADOW);
+      MSymbol.MINUS.drawWithShadow(canvas, tx + 2f, btnY, btnW, btnH, minusTextColor, MStyle.TEXT_SHADOW);
 
       // [+] button (right side)
       scorePlusButtons[i].bounds(tx + tileW - btnW - 2f, btnY, btnW, btnH);
@@ -641,8 +642,8 @@ public class CharacterRenderCoordinator {
           MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
           MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
       int plusTextColor = plusEnabled ? MStyle.TEXT_PRIMARY : MStyle.TEXT_DISABLED;
-      MPainter.drawCenteredStringWithShadow(canvas, "+",
-          tx + tileW - btnW - 2f + btnW / 2f, btnY + btnH * 0.72f, btnFont, plusTextColor, MStyle.TEXT_SHADOW);
+      MSymbol.PLUS.drawWithShadow(canvas, tx + tileW - btnW - 2f, btnY, btnW, btnH,
+          plusTextColor, MStyle.TEXT_SHADOW);
 
       int mod = stats.getModifier(scores[i]);
       String modStr = (mod >= 0 ? "+" : "") + mod;

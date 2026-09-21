@@ -4,6 +4,7 @@ import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rendering.UI.masonryUI.MButton;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.stonebreak.rendering.UI.masonryUI.MSymbol;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
 import com.stonebreak.ui.characterCreation.CharacterCreationActionHandler;
@@ -13,7 +14,10 @@ import io.github.humbleui.skija.Font;
 
 /**
  * Renders the Ability Score tab: a 3x2 grid of stat tiles each with a name
- * abbreviation, current score, modifier, and [−]/[+] buttons.
+ * abbreviation, current score, modifier, and [-]/[+] buttons.
+ *
+ * <p>The two buttons carry {@link MSymbol} vector glyphs rather than text: the UI typeface has
+ * no minus sign, so a drawn "−" came out as the font's hollow {@code .notdef} box.
  */
 public final class AbilityScoreTabRenderer {
 
@@ -34,7 +38,7 @@ public final class AbilityScoreTabRenderer {
     public AbilityScoreTabRenderer() {
         for (int i = 0; i < 6; i++) {
             plusButtons[i]  = new MButton("+").fontSize(MStyle.FONT_META);
-            minusButtons[i] = new MButton("−").fontSize(MStyle.FONT_META);
+            minusButtons[i] = new MButton("-").fontSize(MStyle.FONT_META);
         }
     }
 
@@ -97,9 +101,7 @@ public final class AbilityScoreTabRenderer {
                 minusFill, MStyle.BUTTON_BORDER,
                 MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
                 MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
-            MPainter.drawCenteredStringWithShadow(canvas, "−",
-                tx + 2f + BTN_W / 2f, btnY + BTN_H * 0.72f,
-                metaFont,
+            MSymbol.MINUS.drawWithShadow(canvas, tx + 2f, btnY, BTN_W, BTN_H,
                 minusEnabled ? MStyle.TEXT_PRIMARY : MStyle.TEXT_DISABLED,
                 MStyle.TEXT_SHADOW);
 
@@ -116,15 +118,13 @@ public final class AbilityScoreTabRenderer {
                 plusFill, MStyle.BUTTON_BORDER,
                 MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
                 MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
-            MPainter.drawCenteredStringWithShadow(canvas, "+",
-                plusX + BTN_W / 2f, btnY + BTN_H * 0.72f,
-                metaFont,
+            MSymbol.PLUS.drawWithShadow(canvas, plusX, btnY, BTN_W, BTN_H,
                 plusEnabled ? MStyle.TEXT_PRIMARY : MStyle.TEXT_DISABLED,
                 MStyle.TEXT_SHADOW);
 
             // Background bonus badge
             if (bgBonuses[i] != 0) {
-                String bonusStr = (bgBonuses[i] > 0 ? "+" : "−") + Math.abs(bgBonuses[i]);
+                String bonusStr = (bgBonuses[i] > 0 ? "+" : "-") + Math.abs(bgBonuses[i]);
                 int bonusColor = bgBonuses[i] > 0 ? MStyle.TEXT_ACCENT : MStyle.TEXT_ERROR;
                 MPainter.drawCenteredStringWithShadow(canvas, bonusStr,
                     tileCX, ty + 74f, metaFont, bonusColor, MStyle.TEXT_SHADOW);

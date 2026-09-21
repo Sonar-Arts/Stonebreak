@@ -19,6 +19,10 @@ import io.github.humbleui.types.Rect;
  * All of the Stonebreak Skija renderers had been re-implementing trapezoid-fan
  * bevels and measure-text-safe fallbacks inline; this class is the single
  * place that knows how to draw them. Widgets stay small and focused.
+ *
+ * <p>Text drawn and measured here passes through {@link MGlyphs}: the UI typeface covers
+ * little beyond ASCII, so typographic characters are folded to stand-ins rather than
+ * vanishing from the line.
  */
 public final class MPainter {
 
@@ -404,9 +408,14 @@ public final class MPainter {
     /**
      * Skija's native measureTextWidth blows up on empty strings and lone
      * surrogates. Every widget text layout goes through this helper instead.
+     *
+     * <p>Measures the same string {@link #drawString} would paint — the {@link MGlyphs} ASCII
+     * fold is applied here too, so a label containing an unsupported character still centres
+     * on the width it actually occupies.
      */
     public static float measureWidth(Font font, String text) {
         if (font == null || text == null || text.isEmpty()) return 0f;
+        text = MGlyphs.ascii(text);
         for (int i = 0; i < text.length(); i++) {
             if (Character.isSurrogate(text.charAt(i))) return 0f;
         }
@@ -415,6 +424,7 @@ public final class MPainter {
 
     public static void drawString(Canvas canvas, String text, float x, float y, Font font, int color) {
         if (font == null || text == null || text.isEmpty()) return;
+        text = MGlyphs.ascii(text);
         try (Paint p = new Paint().setColor(color)) {
             canvas.drawString(text, x, y, font, p);
         }
@@ -480,6 +490,7 @@ public final class MPainter {
     public static void drawTextOutlined(Canvas canvas, String text, float x, float y, Font font, int color,
                                         Align align, float outlineWidth) {
         if (canvas == null || font == null || text == null || text.isEmpty() || (color & 0xFF000000) == 0) return;
+        text = MGlyphs.ascii(text);
         float left = alignedX(font, text, x, align);
         int outline = MColor.fade(MStyle.OUTLINE_DARK, ((color >>> 24) & 0xFF) / 255f);
         try (Paint stroke = new Paint().setColor(outline).setAntiAlias(true)
