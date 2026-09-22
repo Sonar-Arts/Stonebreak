@@ -59,17 +59,45 @@
  *
  * In their place, one per-column decision taken against the fine `raw`:
  *
- *     roof = min(surf + headroom·(1 - u²),  raw - tunnel_min_roof)
- *     roof >  surf  ->  TUNNEL: floor/roof planes, `carved` untouched
- *     roof <= surf  ->  OPEN:   `carved = surf - cut`, as before
+ *     raw - tunnel_min_roof >  surf_top + tunnel_min_air
+ *         -> TUNNEL: roof = min(max(surf_top + headroom·(1 - u²),
+ *                                   surf_top + tunnel_min_air),
+ *                               raw - tunnel_min_roof),
+ *                    floor/roof planes, `carved` untouched
+ *     otherwise
+ *         -> OPEN:   `carved = surf - cut`, as before
  *
  * The roof arches on the same `u` the bed is cut on, so the WATER'S void
- * pinches shut exactly where the channel does. The only thing opened past the
- * channel edge is the dry bulge above the waterline (see "Noise on the walls"),
- * which sits on a stone lip at the top water block.
+ * narrows toward the channel edge — but it does not pinch SHUT. It stops at
+ * `tunnel_min_air`, because the block loop makes the roof plane itself stone
+ * and the air a column delivers is `roof - water`: with the arch alone that
+ * was nil along both sides of every tunnel, and one or two blocks under any
+ * hill barely taller than the lid. A passage the river fills to its ceiling is
+ * not a passage. Nothing outside the half-width is opened by that floor, so
+ * what holds the water in is unchanged. The only thing opened past the channel
+ * edge is the dry bulge above the waterline (see "Noise on the walls"), which
+ * sits on a stone lip at the top water block.
  * `tunnel_min_roof` is the thinnest lid that reads as rock rather than debris,
- * and clamping the roof to `raw - it` makes it the only ground the stamp may
- * still take: about four blocks, against the unbounded amount it replaced.
+ * and clamping the roof to `raw - it` bounds what the stamp may still take.
+ *
+ * ═══ `surf_top`: the void spans a fall, the water does not (2026-09-21) ═══
+ *
+ * `surf` STEPS at the middle of a falling segment — §5.8's whole point, and
+ * right for the water and the bed. It was wrong for the VOID. The roof, the
+ * lid test and the portal were all read off the stepped value, so downstream
+ * of a drop the ceiling sat at `bSurf + arch` while the reach above poured in
+ * at `aSurf`; for any drop taller than the arch the two voids were not even
+ * connected, and the river simply stopped against rock. So those three read
+ * `surf_top` — the higher of the segment's two levels — and one shaft spans
+ * the drop. Away from a step `surf_top == surf` and nothing moves.
+ *
+ * A column that cannot carry a lid over `surf_top` now takes the OPEN branch
+ * and is cut to the water: the fall breaks the surface instead of being roofed
+ * over mid-air. That is the excavation budget, and it is declared rather than
+ * unbounded: `tunnel_min_roof + tunnel_min_air + the bed`, plus the drop where
+ * a plunge is cut open. With pooling on every pool boundary carries the
+ * waterfall flag, but those drops are at most `pool_max_drop` and the air
+ * floor already clears them, so ordinary riffles cost nothing.
  *
  * ═══ Containment (the WaterSim invariant) ═══
  *
@@ -86,9 +114,12 @@
  * The rule above is not negotiable, so the wall it produces cannot be removed;
  * it can only stop being a CLIFF. §1a's shore flood shrinks the walled set by
  * wetting the ground the coarse mask cut off, but a lake with no outlet has to
- * be walled at its spill lip, and a waterfall has to be walled at its drop.
- * §2b therefore grades the ground away from whatever §3 raises, at a repose
- * angle, out to wherever the ramp meets the terrain that was already there.
+ * be walled at its spill lip, and a waterfall has to be walled BESIDE its
+ * drop. §2b therefore grades the ground away from whatever §3 raises, at a
+ * repose angle, out to wherever the ramp meets the terrain that was already
+ * there — everywhere except at a real plunge, where a repose terrace across
+ * the drop is a mound of stone in front of the water and the bare crest is
+ * what a waterfall should have. See `talusSkirt`.
  *
  * That skirt is the one thing in this file that ADDS ground, and it adds it
  * because nothing here may take any away: the crest is pinned at the waterline
@@ -189,9 +220,26 @@
 namespace {
 
 /* Blocks of air between the river surface and the tunnel roof, measured at the
- * centreline; the roof arches down to meet the surface at the channel edge.
+ * centreline; the roof arches down toward the surface at the channel edge, but
+ * never below `tunnel_min_air` of it.
  * Params slot [24] ("tunnel_headroom") overrides it. */
 constexpr float DEF_TUNNEL_HEADROOM = 5.0f;
+/* The FLOOR under that arch: the least air a tunnelled column may carry over
+ * its water, anywhere across the channel. [24] is the vault's target at the
+ * centreline and may exceed this; this is what the sides get.
+ * Params slot [35] ("tunnel_min_air") overrides it.
+ *
+ * It exists because the arch rides on `1 - u^2` and so went to ZERO at the
+ * channel edge, and the block loop makes the roof plane itself stone: the air
+ * a column actually delivers is `roof - water`, which was nil along both sides
+ * of every tunnel and 1-2 blocks under any hill barely taller than
+ * `tunnel_min_roof`. A river you cannot see along is not a tunnel.
+ *
+ * It is also half of the tunnel/open predicate: a column is only worth
+ * tunnelling if its ground can carry a lid AND this much air under it. Ground
+ * that cannot takes the open branch and is cut to the water line, exactly as
+ * shorter ground already was. */
+constexpr float DEF_TUNNEL_MIN_AIR = 3.0f;
 /* The thinnest rock lid that still reads as ground rather than as debris.
  * Because the roof is clamped to `raw - this`, it doubles as the excavation
  * budget: the most ground the stamp may take from a column it tunnels under.
@@ -202,6 +250,17 @@ constexpr float DEF_TUNNEL_HEADROOM = 5.0f;
  * it, so a small value roofs a river with one-block lids wherever it does. This
  * is the knob to raise if that shows up. */
 constexpr float DEF_TUNNEL_MIN_ROOF = 4.0f;
+
+/* A drop of at least this much over one step is a real PLUNGE rather than a
+ * pool boundary. Params slot [12] ("waterfall_min_drop") overrides it, and it
+ * is the plan's own knob — `river_plan.hpp` classifies on the same number.
+ * With pooling on, EVERY pool boundary carries the waterfall flag (the flag
+ * means "the surface steps here"), so the flag alone cannot tell a one-block
+ * riffle from a cliff and the drop has to be measured. */
+constexpr float DEF_WATERFALL_MIN_DROP = 6.0f;
+/* How far past the channel a plunge holds the talus skirt off. See
+ * "A plunge is not graded" below. */
+constexpr float PLUNGE_SKIRT_PAD = 2.0f;
 
 /* How far past the coarse lake mask the shore flood may travel, in blocks.
  * Params slot [26] ("lake_shore_reach") overrides it.
@@ -391,6 +450,11 @@ constexpr float PORTAL_FLARE = 3.0f;
 /* What the bucket pad and the segment clip have to cover: the widest the void
  * beside a channel can reach, bulge or flare. */
 constexpr float CHANNEL_PAD = PORTAL_FLARE > TUNNEL_BULGE_MAX ? PORTAL_FLARE : TUNNEL_BULGE_MAX;
+/* ...and what the bucket pad and the segment clip must ACTUALLY cover: the
+ * widest void, plus the plunge mask that reaches a little further still. One
+ * constant for both, because a mask truncated on a bucket line is exactly the
+ * lattice artifact CHANNEL_PAD exists to prevent. */
+constexpr float STAMP_PAD = CHANNEL_PAD + PLUNGE_SKIRT_PAD;
 
 constexpr uint64_t SALT_BANK_PLATEAU = 0x42414E4B504C5400ULL; /* "BANKPLT" */
 constexpr uint64_t SALT_BANK_SLOPE = 0x42414E4B534C5000ULL;   /* "BANKSLP" */
@@ -582,6 +646,10 @@ struct Scratch {
     std::vector<int32_t> bankNextRing;
     std::vector<int32_t> bankRingVal;
     std::vector<int32_t> bankNextRingVal;
+    /* Columns under or beside a real PLUNGE, which the talus skirt steps
+     * around. One byte per column rather than a set, because the stamp writes
+     * it column-by-column and the skirt reads it the same way. */
+    std::vector<uint8_t> plunge;
     /* The crest of the wall each `bank` value descends from, Q8. Together
      * they give the path distance back — `(crest - bank) / cost` — which is
      * what the noisy profile at emission is a function of. */
@@ -980,6 +1048,23 @@ inline float strataStep(int64_t seed, int64_t wx, int64_t wz, float y) {
     return (bed + shaped) * STRATA_BAND + phase;
 }
 
+/**
+ * The bank skirt: grade the ground away from every wall §3 raises, at a repose
+ * angle, out to wherever the ramp meets the terrain that was already there.
+ *
+ * ── A plunge is not graded ──
+ *
+ * `s.plunge` is a hard barrier here, exactly like a wet column, and for the
+ * opposite reason to the usual one. The skirt exists to stop a bank reading as
+ * a CLIFF — but at a waterfall a cliff is the point, and a twelve-block repose
+ * terrace laid across the drop is a mound of stone in front of the falling
+ * water. §3's containment raise is untouched by this: the crest the invariant
+ * demands still stands, it simply stops being the head of a cone.
+ *
+ * Safe by construction, not by measurement: the skirt only ever ADDS ground
+ * (`h = max(h, want)` in the dry branch at emission), so declining to lay it
+ * cannot spring water. Nothing else consults `s.bank`.
+ */
 void talusSkirt(const int16_t* heights, int W, int world_height,
                 int lo, int hi, int reach, int axialCost, int diagCost,
                 int32_t slack, Scratch& s) {
@@ -1002,7 +1087,7 @@ void talusSkirt(const int16_t* heights, int W, int world_height,
     for (int x = lo + 1; x < hi - 1; ++x) {
         for (int z = lo + 1; z < hi - 1; ++z) {
             const size_t i = idx2(x, z, W);
-            if (s.water[i] >= 0) {
+            if (s.water[i] >= 0 || s.plunge[i] != 0) {
                 continue;
             }
             int need = -1;
@@ -1039,7 +1124,7 @@ void talusSkirt(const int16_t* heights, int W, int world_height,
                     return;
                 }
                 const size_t ni = idx2(nx, nz, W);
-                if (s.water[ni] >= 0) {
+                if (s.water[ni] >= 0 || s.plunge[ni] != 0) {
                     return;
                 }
                 const int32_t v = cv - cost;
@@ -1191,21 +1276,31 @@ int32_t ck_carve_water(int64_t seed,
     const size_t N = static_cast<size_t>(W) * static_cast<size_t>(W);
 
     /* The shared water params array (kernels.h documents it). The carve reads
-     * exactly SEVEN of its entries — [24]-[27] and [29]-[31]; the rest belong to
-     * the plan, and sea level arrives as its own argument rather than [2].
+     * exactly NINE of its entries — [12], [24]-[27], [29]-[31] and [35]; the
+     * rest belong to the plan, and sea level arrives as its own argument rather
+     * than [2].
      *
      * Each is one idea in one slot, and this is the only place any of them is
      * consumed. `bank_tolerance` and `valley_radius` used to live at [10] and
      * [14] and were read here; the pull they shaped is gone, so they are gone
-     * with it rather than left as knobs that look live. */
+     * with it rather than left as knobs that look live.
+     *
+     * [12] is the plan's own `waterfall_min_drop` and is read here rather than
+     * duplicated: the carve has to tell a real PLUNGE from an ordinary pool
+     * boundary (with pooling on, every one of those carries the waterfall flag
+     * too), and a second threshold that had to agree with that one would be a
+     * second place for it to drift. */
+    float waterfallMinDropF = DEF_WATERFALL_MIN_DROP;
     float tunnelHeadroom = DEF_TUNNEL_HEADROOM;
     float tunnelMinRoofF = DEF_TUNNEL_MIN_ROOF;
+    float tunnelMinAirF = DEF_TUNNEL_MIN_AIR;
     float shoreReachF = DEF_LAKE_SHORE_REACH;
     float shoreMaxDepthF = DEF_LAKE_SHORE_MAX_DEPTH;
     float bankSlopeF = DEF_LAKE_BANK_SLOPE;
     float bankReachF = DEF_LAKE_BANK_REACH;
     float guardReachF = DEF_RIVER_GUARD_REACH;
     if (params != nullptr) {
+        if (n_params > 12) waterfallMinDropF = params[12];
         if (n_params > 24) tunnelHeadroom = params[24];
         if (n_params > 25) tunnelMinRoofF = params[25];
         if (n_params > 26) shoreReachF = params[26];
@@ -1213,12 +1308,18 @@ int32_t ck_carve_water(int64_t seed,
         if (n_params > 29) bankSlopeF = params[29];
         if (n_params > 30) bankReachF = params[30];
         if (n_params > 31) guardReachF = params[31];
+        if (n_params > 35) tunnelMinAirF = params[35];
     }
     tunnelHeadroom = std::clamp(tunnelHeadroom, 0.0f, static_cast<float>(world_height));
     /* At least one block of lid: a roof flush with the surface is not a roof,
      * and it would let the void breach the ground it is supposed to run under. */
     const int tunnelMinRoof =
         std::max(1, static_cast<int>(std::lround(tunnelMinRoofF)));
+    /* Zero is legal and means "the arch is the only thing holding the roof up",
+     * which is what this kernel did before the floor existed. */
+    const int tunnelMinAir = std::clamp(
+        static_cast<int>(std::lround(tunnelMinAirF)), 0, world_height);
+    const float waterfallMinDrop = std::max(0.0f, waterfallMinDropF);
 
     /* The DEM span is optional: without it the tile gets sea-level-only water,
      * which is the same graceful degradation as an absent kernels library. It
@@ -1300,6 +1401,7 @@ int32_t ck_carve_water(int64_t seed,
     s.floor.assign(N, -1);
     s.roof.assign(N, -1);
     s.flow.assign(N, -1);
+    s.plunge.assign(N, 0);
 
     /* ── 1a. Where the lakes are, at block resolution ──
      *
@@ -1338,7 +1440,7 @@ int32_t ck_carve_water(int64_t seed,
             g.bx = b[0] - static_cast<float>(origin_x);
             g.bz = b[1] - static_cast<float>(origin_z);
             const float reach = std::max(std::max(a[3], b[3]), 1.0f) * 0.5f + 1.0f
-                + CHANNEL_PAD;
+                + STAMP_PAD;
             const float lo = -reach;
             const float hi = static_cast<float>(W) + reach;
             if (std::max(g.ax, g.bx) < lo || std::min(g.ax, g.bx) > hi
@@ -1387,7 +1489,7 @@ int32_t ck_carve_water(int64_t seed,
      * the bulge, and the wider alcove a portal flares into — or a column that
      * one of them would open falls in a bucket the segment was never added to
      * and the void stops at a 16-block lattice line. */
-    bucketSegments(s.channel, CHANNEL_PAD, nb, W, s.channelBuckets);
+    bucketSegments(s.channel, STAMP_PAD, nb, W, s.channelBuckets);
 
     /* ── 2. Stamp: lakes from the fill, rivers from the plan, then the sea ──
      *
@@ -1503,8 +1605,27 @@ int32_t ck_carve_water(int64_t seed,
                 float t = 0.0f;
                 const float d2 = segDistanceSq(g, px, pz, t);
                 const float half = g.aHalf + (g.bHalf - g.aHalf) * t;
-                if (d2 >= (half + CHANNEL_PAD) * (half + CHANNEL_PAD)) {
+                if (d2 >= (half + STAMP_PAD) * (half + STAMP_PAD)) {
                     continue;
+                }
+                /* A real PLUNGE holds §2b's talus off this column (see "A
+                 * plunge is not graded"). Measured on the drop rather than
+                 * taken from `g.falls`, because with pooling on every pool
+                 * boundary carries that flag and a one-block riffle wants its
+                 * skirt like any other bank. Marked over the whole falling
+                 * segment and a little past the channel: the cone the mask is
+                 * there to stop is laid on the walls beside the fall, not on
+                 * the fall itself.
+                 *
+                 * Seam-safe for the same reason everything else here is — it
+                 * is a pure function of the segment and the world column. Any
+                 * column within `half + STAMP_PAD` of a segment is inside the
+                 * clip of every window that holds the column, which is what
+                 * widening the clip and the bucket pad together buys: two
+                 * tiles sharing a column mark it identically, so the skirt's
+                 * geodesic sees the same barriers from both sides. */
+                if (g.falls && g.aSurf - g.bSurf >= waterfallMinDrop) {
+                    s.plunge[i] = 1;
                 }
                 /* §5.8: a falling reach steps rather than ramps. The surface
                  * takes the upstream level for the upper half and the
@@ -1520,6 +1641,18 @@ int32_t ck_carve_water(int64_t seed,
                  * point is at this `t` shares the level, so a channel never
                  * steps sideways across its own width. */
                 const int surf = static_cast<int>(std::lround(surfF));
+                /* The WATER and the BED follow that step; the VOID must not.
+                 * The reach above pours in at ITS level, so rock left between
+                 * the two voids DAMS the fall — the downstream ceiling sat at
+                 * `bSurf + arch` while the water arrives at `aSurf`, and for
+                 * any drop taller than the arch the two are not even
+                 * connected. So the roof, the lid test and the portal are all
+                 * decided on the HIGHER of the segment's two levels and one
+                 * shaft spans the drop. Away from a step this IS `surf` and
+                 * nothing changes. */
+                const int surfTop = g.falls
+                    ? static_cast<int>(std::lround(std::max(g.aSurf, g.bSurf)))
+                    : surf;
                 if (d2 >= half * half) {
                     /* Past the channel: only the bulge lives here. It widens a
                      * tunnel's AIR, never its water — the floor is a stone lip
@@ -1562,36 +1695,58 @@ int32_t ck_carve_water(int64_t seed,
                 const int bedY = surf - std::max(1, static_cast<int>(std::lround(cut)));
 
                 /* Tunnel or open is decided by the COLUMN, not by the roof: is
-                 * there enough ground standing over this reach's water to make a
-                 * lid out of? Deciding it on the roof instead is a trap worth
-                 * recording — the arch goes to zero at the channel edge, so
-                 * every rim column fell to the open branch and was cut to the
-                 * water line even with forty blocks of hill on it. That is the
-                 * original defect, moved to the edge of the channel. */
-                if (raw - tunnelMinRoof > surf) {
+                 * there enough ground standing over this reach's water to make
+                 * a lid out of AND carry the air the passage promises?
+                 * Deciding it on the roof instead is a trap worth recording —
+                 * the arch goes to zero at the channel edge, so every rim
+                 * column fell to the open branch and was cut to the water line
+                 * even with forty blocks of hill on it. That is the original
+                 * defect, moved to the edge of the channel.
+                 *
+                 * `surfTop + tunnelMinAir`, not `surf`: a column that cannot
+                 * roof the level pouring INTO it has no business roofing it at
+                 * all, and the open branch below cuts it to the water so the
+                 * fall breaks the surface instead of hitting rock. The budget
+                 * that costs is bounded and declared —
+                 * `tunnel_min_roof + tunnel_min_air + the bed`, plus the drop
+                 * at a plunge — against the unbounded excavation this branch
+                 * replaced. */
+                if (raw - tunnelMinRoof > surfTop + tunnelMinAir) {
                     /* The ground stands and the river runs under it. `carved` is
                      * deliberately untouched: this is the whole point.
                      *
                      * The roof arches on the same `u` the bed is cut on, so the
-                     * void pinches shut exactly where the channel does and no
-                     * column outside the half-width is opened BELOW the water
-                     * — that, and not a containment rule, is what holds it in.
+                     * void narrows toward the channel edge and no column
+                     * outside the half-width is opened BELOW the water — that,
+                     * and not a containment rule, is what holds it in. It no
+                     * longer pinches SHUT: `tunnelMinAir` holds the vault open
+                     * the whole width, which costs nothing there because every
+                     * column inside the half-width is the river's own.
                      * The clamp to `raw - tunnelMinRoof` keeps a lid on it, and
                      * `vaultScale` only reshapes the air: it rides on the same
-                     * `1 - u²`, so it cannot move the pinch. */
+                     * `1 - u²`, so it cannot move the edge. */
                     sampleNoise();
                     /* Taller at the mouth, and under a thinner lid, so the
                      * passage OPENS toward daylight instead of pinching out.
                      * Both fade to nothing `PORTAL_CLEARANCE` blocks of rock
                      * back from the opening, which is where a tunnel is just a
                      * tunnel again. */
-                    const float portal = portalNearness(raw, surf, tunnelMinRoof);
+                    const float portal = portalNearness(raw, surfTop, tunnelMinRoof);
                     const float arch = tunnelHeadroom * vaultScale
                         * (1.0f + PORTAL_RISE * portal) * (1.0f - u * u);
                     const float lid = static_cast<float>(tunnelMinRoof)
                         - (static_cast<float>(tunnelMinRoof) - PORTAL_MIN_ROOF) * portal;
-                    const int roofY = std::min(surf + static_cast<int>(std::lround(arch)),
-                                               raw - static_cast<int>(std::lround(lid)));
+                    /* `tunnelMinAir` is the floor the arch may not sink below,
+                     * and it cannot breach the ground: the branch was entered
+                     * on `raw - tunnelMinRoof > surfTop + tunnelMinAir`, and
+                     * `lid <= tunnelMinRoof`, so `raw - lid` is strictly above
+                     * it. It only ever opens AIR, and only inside the
+                     * half-width — the "nothing outside the channel is opened
+                     * below the water" argument above is untouched. */
+                    const int roofY = std::min(
+                        std::max(surfTop + static_cast<int>(std::lround(arch)),
+                                 surfTop + tunnelMinAir),
+                        raw - static_cast<int>(std::lround(lid)));
                     if (roofY > bedY) {
                         tunnelFloor = std::min(tunnelFloor, bedY);
                         tunnelRoof = std::max(tunnelRoof, roofY);

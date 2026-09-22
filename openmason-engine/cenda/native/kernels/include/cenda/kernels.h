@@ -232,7 +232,7 @@ int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
  *    9   meander_amp           radians      0.35  solve
  *   10   gorge_max_depth       blocks         24  solve
  *   11   gorge_max_width       blocks         96  solve
- *   12   waterfall_min_drop    blocks          6  solve
+ *   12   waterfall_min_drop    blocks          6  solve, carve
  *   13   w_base                blocks          4  solve
  *   14   w_lake                blocks          3  solve
  *   15   w_dist                blocks          2  solve
@@ -256,6 +256,7 @@ int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
  *   32   pool_max_drop         blocks        3.0  solve   (0 = ramp, no pools)
  *   33   pool_max_run          blocks        512  solve
  *   34   plunge_deepen         multiplier    1.8  solve
+ *   35   tunnel_min_air        blocks          3  carve
  *
  * Six deliberate departures from §8's table:
  *
@@ -271,6 +272,21 @@ int64_t ck_generate_chunk(void* ctx, int32_t chunk_x, int32_t chunk_z,
  *
  *   vol_scale and dist_scale are new. §5.5's width formula divides by both and
  *   §8's table forgot them; a width term without its scale is not a knob.
+ *
+ *   tunnel_min_air is new (2026-09-21) and is the floor under [24]'s arch,
+ *   which rides on `1 - u^2` and so went to ZERO at the channel edge; since
+ *   the block loop makes the roof plane itself stone, a tunnel delivered no
+ *   air at all along its sides. It is half of the tunnel/open predicate as
+ *   well as a clamp — ground that cannot carry a lid AND this much air is cut
+ *   open instead of roofed — so unlike [24] it does decide WHETHER a column
+ *   tunnels, and [24] still does not.
+ *
+ *   waterfall_min_drop at [12] is read by the carve as well as the plan, and
+ *   is the one place the difference between a plunge and a pool boundary is
+ *   defined. The carve needs it because with pooling on every pool boundary
+ *   carries CK_RIVER_FLAG_WATERFALL, so the flag alone cannot tell a
+ *   one-block riffle from a cliff; it holds the talus skirt off a real
+ *   plunge, which would otherwise be paved over by its own banks.
  *
  *   bank_tolerance and valley_radius are GONE, and tunnel_headroom and
  *   tunnel_min_roof replace them (2026-09-07). Both belonged to the valley
@@ -480,8 +496,13 @@ int32_t ck_solve_basins(int64_t seed,
  * void is `floor < y < roof`, holding water below `out_water[i]` and air above;
  * -1 in both means no tunnel, which is the great majority of columns. The roof
  * is always at least `tunnel_min_roof` below `out_heights[i]`, so the ground
- * over a tunnel is never breached, and the water's void pinches shut at the
- * channel edge. A DRY column (`out_water[i] == -1`) may still carry a void:
+ * over a tunnel is never breached, and at least `tunnel_min_air` above
+ * `out_water[i]`, so a wet passage always carries air over its river — the
+ * void narrows toward the channel edge but does not pinch shut. Where the
+ * river STEPS, the void is sized on the level ABOVE the step rather than on
+ * the column's own, so one shaft spans the drop and a fall is not dammed by
+ * its own roof; a column whose ground cannot carry that shaft is cut open
+ * instead, and the fall breaks the surface. A DRY column (`out_water[i] == -1`) may still carry a void:
  * the bulge that widens a tunnel's air past the channel. Its floor is a stone
  * lip at the top water block of every wet 4-neighbour, so it holds no water
  * and opens nothing below the surface. The vault's height and the bulge are
@@ -492,7 +513,8 @@ int32_t ck_solve_basins(int64_t seed,
  * worldgen water is source blocks, so a violation is a permanent spring.
  * Wet-next-to-wet at differing levels is a waterfall and is deliberately
  * allowed. A tunnel is contained by the rock
- * around it rather than by this rule — hence the roof clamp and the pinch.
+ * around it rather than by this rule — hence the roof clamp, and the arch that
+ * narrows to nothing at the channel edge.
  * NOTE for the caller: a carver that breaks into a tunnel drains it exactly
  * like a breached riverbed, so the cave guard must read `out_river_floor` as
  * the bed of a tunnelled column, not `out_heights`.

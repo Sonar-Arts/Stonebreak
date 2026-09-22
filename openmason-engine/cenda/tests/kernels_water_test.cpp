@@ -360,6 +360,41 @@ int16_t ridgedRiverTerrainAt(int64_t x, int64_t z) {
     return static_cast<int16_t>(riverTerrainAt(x, z) + 44.0 * std::exp(-d * d));
 }
 
+/* `riverTerrainAt`'s plain, cut into a STAIRCASE of the same mean gradient:
+ * 240-block treads and 12-block risers instead of a 0.05 ramp.
+ *
+ * The ramp fixtures cannot exercise a waterfall at all. At 0.05 a 16-block
+ * route step drops 0.8 blocks, so every step is a pool boundary and nothing
+ * ever reaches `waterfall_min_drop`. A riser hands one step the whole 12, which
+ * is what §5.8 was written for and the only way to test what happens at one.
+ *
+ * Same pit and the same coast, so the route still sources and still ends in
+ * the sea; only the profile between them changes. */
+int16_t stairRiverTerrainAt(int64_t x, int64_t z) {
+    const double tread = std::floor(static_cast<double>(x) / 240.0);
+    double base = 420.0 - 12.0 * tread;
+    const double dx = static_cast<double>(x - 400);
+    const double dz = static_cast<double>(z - 2048);
+    const double r = std::sqrt(dx * dx + dz * dz);
+    if (r < 200.0) {
+        base -= 40.0 * (1.0 - r / 200.0);
+    }
+    return static_cast<int16_t>(base);
+}
+
+/* The staircase with a broad ridge over it — a fall UNDER standing ground.
+ *
+ * Built the same way `ridgedRiverTerrainAt` is, and for the same reason: the
+ * region is solved on the bare staircase, so the route plans its drops on a
+ * DEM that knows nothing about the ridge, and the carve is then handed ground
+ * that has one. Wide (about 600 blocks) rather than tall, so that whatever the
+ * router's step phase turns out to be, the ridge covers several risers and the
+ * test cannot go vacuous on a fixture alignment. */
+int16_t stairRidgedRiverTerrainAt(int64_t x, int64_t z) {
+    const double d = (static_cast<double>(x) - 1200.0) / 200.0;
+    return static_cast<int16_t>(stairRiverTerrainAt(x, z) + 44.0 * std::exp(-d * d));
+}
+
 /* ── Tests ──────────────────────────────────────────────────────────────── */
 
 void testDeterminism() {
@@ -822,7 +857,7 @@ void testNoRoutesMeansNoRivers() {
 /* ── Phase 10: the shared params array ──────────────────────────────────── */
 
 /** The defaults kernels.h documents, in its own order. */
-const float DOCUMENTED_DEFAULTS[35] = {
+const float DOCUMENTED_DEFAULTS[36] = {
     0.5f,      /*  0 min_lake_depth      */
     8.0f,      /*  1 min_lake_area       */
     320.0f,    /*  2 sea_level           */
@@ -858,11 +893,19 @@ const float DOCUMENTED_DEFAULTS[35] = {
     3.0f,      /* 32 pool_max_drop       */
     512.0f,    /* 33 pool_max_run        */
     1.8f,      /* 34 plunge_deepen       */
+    3.0f,      /* 35 tunnel_min_air      */
 };
 
 /* Mirrors DOCUMENTED_DEFAULTS[25]; the tests below assert against the lid the
  * kernel promises to leave, so the two must not drift. */
 constexpr int TUNNEL_MIN_ROOF = 4;
+/* Mirrors DOCUMENTED_DEFAULTS[35]: the least air a tunnelled column carries
+ * over its water, and — with the lid — half of the tunnel/open predicate, so
+ * it is part of what the stamp may take from a column it declines to roof. */
+constexpr int TUNNEL_MIN_AIR = 3;
+/* Mirrors DOCUMENTED_DEFAULTS[12]: the drop that makes a step a real plunge
+ * rather than a pool boundary. */
+constexpr int WATERFALL_MIN_DROP = 6;
 /* The carve's portal constants, mirrored: within PORTAL_CLEARANCE blocks of a
  * tunnel mouth the lid is allowed to thin to PORTAL_MIN_ROOF so the passage
  * opens toward daylight instead of pinching out. See `portalNearness`. */
@@ -1123,10 +1166,235 @@ void testARiverTunnelsRatherThanRemovingTheGround() {
           "no tunnel is roofed by less than a portal brow");
     check(thinLidsAreAllPortals,
           "and a lid thinner than tunnel_min_roof only happens at a mouth");
-    check(deepestCut <= TUNNEL_MIN_ROOF + 8,
-          "no column is lowered by more than a bed plus the lid");
+    /* The budget grew by `tunnel_min_air` on 2026-09-21 and that is the whole
+     * of the change: a column is only roofed if its ground can carry a lid AND
+     * the air the passage promises, so the ground that stands between the two
+     * thresholds is now cut like any shorter ground is. Measured on this
+     * fixture: 8 blocks before, 14 after, against a bound of 15. */
+    check(deepestCut <= TUNNEL_MIN_ROOF + TUNNEL_MIN_AIR + 8,
+          "no column is lowered by more than a bed plus the lid and the air");
     std::printf("tunnelling ok (%d tunnel columns, thinnest lid %d, deepest cut %d blocks)\n",
                 tunnelled, thinnestLid, deepestCut);
+}
+
+void testATunnelCarriesAirOverItsWater() {
+    /* The reported defect: "the tunnel isn't tall enough for the water to flow
+     * uninterrupted."
+     *
+     * The air a tunnelled column actually delivers is `roof - water`, because
+     * the block loop makes the roof plane itself stone. The vault rides on
+     * `1 - u^2`, so it went to ZERO at the channel edge — every tunnel was
+     * roofed flush with its own water along both sides — and the lid clamp
+     * pinned it to a block or two under any hill barely taller than
+     * `tunnel_min_roof`. Measured on this fixture before [35] existed: a
+     * minimum of 0.
+     *
+     * Gated on `flow >= 0`, which is exactly "a channel set the level this
+     * column ended up with". A lake or the sea may raise `water` after the
+     * roofs are decided, and a tunnel that happens to run under a lake is not
+     * what this promises anything about. */
+    const Region r = solveRegion(0, 0, riverTerrainAt, 777, 1.0f);
+    check(r.routeCount > 0, "tunnel air: the fixture plans a river");
+    if (r.routeCount == 0) {
+        return;
+    }
+
+    float airless[36];
+    float roomy[36];
+    std::memcpy(airless, DOCUMENTED_DEFAULTS, sizeof airless);
+    std::memcpy(roomy, DOCUMENTED_DEFAULTS, sizeof roomy);
+    airless[35] = 0.0f;
+    roomy[35] = 6.0f;
+
+    int running = 0;
+    int thinnest = WH;
+    int thinnestAirless = WH;
+    int thinnestRoomy = WH;
+    int roomyTunnels = 0;
+    int baseTunnels = 0;
+    for (int64_t tx = 2; tx <= 7; ++tx) {
+      for (int64_t tz = 7; tz <= 9; ++tz) {
+        const Tile base = runTile(777, tx, tz, ridgedRiverTerrainAt, &r, DOCUMENTED_DEFAULTS, 36);
+        const Tile none = runTile(777, tx, tz, ridgedRiverTerrainAt, &r, airless, 36);
+        const Tile wide = runTile(777, tx, tz, ridgedRiverTerrainAt, &r, roomy, 36);
+        for (size_t i = 0; i < base.heights.size(); ++i) {
+            baseTunnels += base.roof[i] >= 0 ? 1 : 0;
+            roomyTunnels += wide.roof[i] >= 0 ? 1 : 0;
+            if (base.roof[i] >= 0 && base.flow[i] >= 0) {
+                ++running;
+                thinnest = std::min(thinnest, base.roof[i] - base.water[i]);
+            }
+            if (none.roof[i] >= 0 && none.flow[i] >= 0) {
+                thinnestAirless = std::min(thinnestAirless, none.roof[i] - none.water[i]);
+            }
+            if (wide.roof[i] >= 0 && wide.flow[i] >= 0) {
+                thinnestRoomy = std::min(thinnestRoomy, wide.roof[i] - wide.water[i]);
+            }
+        }
+      }
+    }
+    check(running > 0, "the fixture has tunnelled river columns to measure");
+    check(thinnest >= TUNNEL_MIN_AIR,
+          "every tunnelled river column carries at least tunnel_min_air of air");
+    /* The slot is live in BOTH directions, and the negative control is the
+     * behaviour this test was written against: at [35] = 0 the arch is the
+     * only thing holding the roof up and the sides close on the water. */
+    check(thinnestAirless < TUNNEL_MIN_AIR,
+          "[35] at zero gives the old pinched vault back (the slot is live)");
+    check(thinnestRoomy >= 6, "[35] at six is honoured too");
+    /* Unlike [24], it decides whether a column is worth roofing at all: ground
+     * that cannot carry a lid AND the air is cut open instead. */
+    check(roomyTunnels < baseTunnels,
+          "and more air means fewer columns qualify to tunnel, not thinner lids");
+    std::printf("tunnel air ok (%d running tunnel columns; thinnest air %d, "
+                "%d at [35]=0, %d at [35]=6; %d tunnels -> %d)\n",
+                running, thinnest, thinnestAirless, thinnestRoomy,
+                baseTunnels, roomyTunnels);
+}
+
+void testAWaterfallIsNotDammedByItsOwnRoof() {
+    /* The other half of the report: a fall that runs into the terrain it is
+     * tunnelling through gets interrupted.
+     *
+     * The surface STEPS at the middle of a falling segment, and the roof used
+     * to be sized on that stepped value — so downstream of a drop the ceiling
+     * sat at `bSurf + arch` while the reach above arrived at `aSurf`, and for
+     * any drop taller than the arch the two voids were not connected at all.
+     * The water had nowhere to fall to.
+     *
+     * The rule asserted is the one `WaterSim` actually needs: the top water
+     * block of a higher wet neighbour, `wUp - 1`, must not be SOLID here. A
+     * column with no tunnel is open above its own water and admits it for
+     * free; a tunnelled one has to hold it inside `floor < y < roof`. */
+    const Region r = solveRegion(0, 0, stairRiverTerrainAt, 777, 1.0f);
+    check(r.routeCount > 0, "waterfall: the staircase fixture plans a river");
+    if (r.routeCount == 0) {
+        return;
+    }
+
+    int steps = 0;
+    int plunges = 0;
+    int plungesUnderGround = 0;
+    int dammed = 0;
+    int tallestDrop = 0;
+    for (int64_t tx = 2; tx <= 7; ++tx) {
+      for (int64_t tz = 7; tz <= 9; ++tz) {
+        const Tile tile = runTile(777, tx, tz, stairRidgedRiverTerrainAt, &r,
+                                  DOCUMENTED_DEFAULTS, 36);
+        for (int x = 1; x < T - 1; ++x) {
+            for (int z = 1; z < T - 1; ++z) {
+                const size_t i = idx(x, z, T);
+                const int w = tile.water[i];
+                if (w < 0) {
+                    continue;
+                }
+                const size_t nb[4] = {i - static_cast<size_t>(T), i + static_cast<size_t>(T),
+                                      i - 1, i + 1};
+                for (size_t n : nb) {
+                    const int wUp = tile.water[n];
+                    /* Only a RIVER step: `flow >= 0` means a channel set that
+                     * neighbour's level, so a lake perched over a passage is
+                     * not read as a fall into it. */
+                    if (wUp <= w || tile.flow[n] < 0) {
+                        continue;
+                    }
+                    ++steps;
+                    const int drop = wUp - w;
+                    tallestDrop = std::max(tallestDrop, drop);
+                    const bool plunge = drop >= WATERFALL_MIN_DROP;
+                    plunges += plunge ? 1 : 0;
+                    const bool admits = tile.roof[i] < 0
+                        ? tile.heights[i] <= wUp - 1
+                        : (tile.floor[i] < wUp - 1 && wUp - 1 < tile.roof[i]);
+                    if (plunge && tile.roof[i] >= 0) {
+                        ++plungesUnderGround;
+                    }
+                    if (!admits) {
+                        ++dammed;
+                    }
+                }
+            }
+        }
+      }
+    }
+    check(steps > 0, "the staircase actually steps");
+    check(plunges > 0, "and some of those steps are real plunges");
+    /* The guard against a vacuous pass, which is the failure mode this whole
+     * fixture exists to avoid: a fall over OPEN ground was never dammed, so a
+     * run that happens to tunnel nowhere proves nothing. */
+    check(plungesUnderGround > 0,
+          "and some of the plunges are under standing ground, which is the case at issue");
+    /* Measured with the fix backed out (`surfTop = surf`): 133 of these 184
+     * steps were dammed, 106 plunges tunnelled. The check bites. */
+    check(dammed == 0, "no step is walled off from the reach pouring into it");
+    std::printf("waterfall ok (%d river steps, %d plunges, %d of them tunnelled, "
+                "tallest drop %d, %d dammed)\n",
+                steps, plunges, plungesUnderGround, tallestDrop, dammed);
+}
+
+void testAPlungeIsNotPavedOverByItsOwnBanks() {
+    /* The rest of the report: "whenever the terrain is next to the waterfall I
+     * would like it to tunnel the terrain without interrupting the waterfall."
+     *
+     * §3 has to wall a fall — a dry column below the water line is a permanent
+     * spring — but §2b then graded a twelve-block repose terrace off that
+     * crest and across the drop, which is a mound of stone standing in front
+     * of the falling water. `s.plunge` is now a barrier to the skirt, so a
+     * real plunge keeps the bare crest the invariant demands and nothing more.
+     *
+     * The control is [12] itself: the carve reads `waterfall_min_drop` to tell
+     * a plunge from a pool boundary, so setting it out of reach turns the mask
+     * off and nothing else in the carve changes. Both runs share ONE region,
+     * so the routes, the flags and the plunge widening are bit-identical and
+     * the only difference on the ground is the skirt. */
+    const Region r = solveRegion(0, 0, stairRiverTerrainAt, 777, 1.0f);
+    check(r.routeCount > 0, "plunge skirt: the staircase fixture plans a river");
+    if (r.routeCount == 0) {
+        return;
+    }
+
+    float paved[36];
+    std::memcpy(paved, DOCUMENTED_DEFAULTS, sizeof paved);
+    paved[12] = 4096.0f;   /* no drop is ever a plunge, so nothing is masked */
+
+    long maskedFill = 0;
+    long pavedFill = 0;
+    int spared = 0;
+    int tallerWithMask = 0;
+    for (int64_t tx = 2; tx <= 7; ++tx) {
+      for (int64_t tz = 7; tz <= 9; ++tz) {
+        const Tile masked = runTile(777, tx, tz, stairRidgedRiverTerrainAt, &r,
+                                    DOCUMENTED_DEFAULTS, 36);
+        const Tile all = runTile(777, tx, tz, stairRidgedRiverTerrainAt, &r, paved, 36);
+        for (int x = 0; x < T; ++x) {
+            for (int z = 0; z < T; ++z) {
+                const size_t i = idx(x, z, T);
+                const int raw = stairRidgedRiverTerrainAt(tx * T + x, tz * T + z);
+                maskedFill += std::max(0, masked.heights[i] - raw);
+                pavedFill += std::max(0, all.heights[i] - raw);
+                if (masked.heights[i] < all.heights[i]) {
+                    ++spared;
+                }
+                /* The mask only ever DECLINES to add ground, so it can never
+                 * raise a column the unmasked run left alone. A failure here
+                 * would mean the barrier had diverted a skirt somewhere else
+                 * rather than stopping it. */
+                if (masked.heights[i] > all.heights[i]) {
+                    ++tallerWithMask;
+                }
+            }
+        }
+      }
+    }
+    check(pavedFill > 0, "the staircase fixture does build banks to compare");
+    check(spared > 0, "the plunge mask spares ground the skirt would have laid");
+    check(tallerWithMask == 0, "and it never raises a column instead");
+    /* Measured on this fixture: 165 blocks of fill down to 47, over 97
+     * columns. Small in absolute terms because a staircase is mostly open
+     * ground — what it pins is the direction and that the mask is live. */
+    check(maskedFill < pavedFill, "so a plunge carries less fill than it used to");
+    std::printf("plunge skirt ok (fill %ld -> %ld blocks, %d columns spared)\n",
+                pavedFill, maskedFill, spared);
 }
 
 void testATunnelIsSealedByTheRockAroundIt() {
@@ -2084,6 +2352,35 @@ public:
         return true;
     }
 
+    /**
+     * Cells of FALLING water inside a tunnel shell, once settled.
+     *
+     * A river's own reaches are source blocks, so nothing about the planes
+     * says whether water can MOVE through them — only the sim does, and this
+     * is the instrument for asking it. Restricted to `floor < y < roof`
+     * because a fall out in the open was never in question: the case at issue
+     * is a drop under standing ground, where the void used to stop at the
+     * downstream level and the water had nowhere to go.
+     */
+    long fallingInTunnels(const Tile& t) const {
+        long n = 0;
+        for (int x = 1; x < T - 1; ++x) {
+            for (int z = 1; z < T - 1; ++z) {
+                const size_t c = idx(x, z, T);
+                if (t.roof[c] < 0) {
+                    continue;
+                }
+                const int lo = std::max(t.floor[c] + 1, y0_);
+                const int hi = std::min<int>(t.roof[c], y0_ + ny_);
+                for (int y = lo; y < hi; ++y) {
+                    const size_t k = static_cast<size_t>(at(x, y, z));
+                    n += (block_[k] == WATER && state_[k] == FALLING) ? 1 : 0;
+                }
+            }
+        }
+        return n;
+    }
+
     /** Water cells standing in columns the planes call dry, off the edge ring. */
     long escaped(const Tile& t) const {
         long n = 0;
@@ -2306,6 +2603,14 @@ long escapedAfterSettling(const Tile& t) {
     return sim.escaped(t);
 }
 
+/** Settle a tile and count the water that is FALLING inside a tunnel. */
+long fallsInTunnelsAfterSettling(const Tile& t) {
+    FlowReplica sim(t);
+    const bool settled = sim.settle(400L * 1000L * 1000L);
+    check(settled, "the flow replica reaches a fixed point");
+    return sim.fallingInTunnels(t);
+}
+
 /**
  * §5.8b: flat pools mean bare banks.
  *
@@ -2503,6 +2808,45 @@ void countFreeboard(const Tile& t, long& banks, long& tall) {
  * over water and all belong there. It is that the rail must not manufacture
  * them, and the rail-off run is the control for how many there are anyway.
  */
+void testWaterActuallyFallsInsideATunnel() {
+    /* The planes can satisfy every static check and still carry a dead river,
+     * so the last word belongs to the sim: settle the stamped tile under
+     * `FlowReplica` and count the water that is FALLING inside a tunnel shell.
+     *
+     * What this pins is CONTAINMENT UNDER MOTION, not the dam. Opening a shaft
+     * over a fall adds air above a river, and the argument that air above a
+     * river cannot spring it is exactly the kind of claim this file does not
+     * take on faith. The dam itself is pinned next door by
+     * `testAWaterfallIsNotDammedByItsOwnRoof`, which counts 133 walled steps
+     * with `surfTop` backed out and 0 with it.
+     *
+     * The motion figure is recorded rather than asserted, because it does NOT
+     * go to zero without the fix: 161 falling cells with `surfTop` backed out
+     * against 315 with it. Short drops — pool steps inside the air floor, and
+     * the open-to-tunnel transitions — always did fall. It is the tall ones
+     * under standing ground that did not. */
+    const Region r = solveRegion(0, 0, stairRiverTerrainAt, 777, 1.0f);
+    check(r.routeCount > 0, "tunnel falls: the staircase fixture plans a river");
+    if (r.routeCount == 0) {
+        return;
+    }
+
+    long falling = 0;
+    long escaped = 0;
+    for (int64_t tx = 2; tx <= 7; ++tx) {
+        const Tile tile = runTile(777, tx, 8, stairRidgedRiverTerrainAt, &r,
+                                  DOCUMENTED_DEFAULTS, 36);
+        falling += fallsInTunnelsAfterSettling(tile);
+        escaped += escapedAfterSettling(tile);
+    }
+    check(falling > 0, "water falls through the tunnelled drops rather than standing on rock");
+    /* And the shafts did not cost containment: opening air ABOVE a river does
+     * not change what holds it in, and this is where that claim is paid for. */
+    check(escaped == 0, "and nothing escaped the river to do it");
+    std::printf("tunnel falls ok (%ld falling cells inside tunnels, %ld escaped)\n",
+                falling, escaped);
+}
+
 void testTheGuardRailHoldsWhatTheSimMakes() {
     /* Both river fixtures: the sloped plain, whose river steps a block at a
      * time, and the ridged one, whose river tunnels and comes out again. */
@@ -2664,6 +3008,10 @@ int main() {
     testDocumentedDefaultsAreTheRealDefaults();
     testTunnelKnobsAreLiveOnTheCarve();
     testARiverTunnelsRatherThanRemovingTheGround();
+    testATunnelCarriesAirOverItsWater();
+    testAWaterfallIsNotDammedByItsOwnRoof();
+    testAPlungeIsNotPavedOverByItsOwnBanks();
+    testWaterActuallyFallsInsideATunnel();
     testATunnelIsSealedByTheRockAroundIt();
     testEachDensityKnobMovesInTheDocumentedDirection();
     testTheShoreFollowsTheGroundNotTheCellLattice();
