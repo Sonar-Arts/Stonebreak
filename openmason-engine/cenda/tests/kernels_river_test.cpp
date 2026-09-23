@@ -389,6 +389,42 @@ void testDistributariesLeaveATrunk() {
     check(narrower, "a branch is narrower than the trunk it left");
     check(tapered, "and one that arrives nowhere withers instead of stopping");
 
+    /* 5. The fork is FLUSH with the trunk's pool. The trunk is levelled down
+     *    by §5.8b's step-pool pass after the branch has already copied its
+     *    anchor's raw surface, so a branch that kept that surface starts above
+     *    the water it leaves — up to `poolMaxDrop` of perched water in the
+     *    trunk's own channel at every fork, since the stamp merges water by
+     *    max. The branch's first vertex IS the anchor, which refinement keeps,
+     *    so the trunk vertex at the same XZ is the level it must match. */
+    size_t junctions = 0;
+    size_t perched = 0;
+    bool branchesDescend = true;
+    for (const rp::Route& r : withBranches) {
+        if (!r.branch) {
+            continue;
+        }
+        for (size_t i = 1; i < r.points.size(); ++i) {
+            if (r.points[i].surf > r.points[i - 1].surf) {
+                branchesDescend = false;
+            }
+        }
+        const rp::Vertex& head = r.points.front();
+        for (const rp::Route& t : withBranches) {
+            if (t.branch || t.sourceId != r.sourceId) {
+                continue;
+            }
+            for (const rp::Vertex& v : t.points) {
+                if (v.x == head.x && v.z == head.z) {
+                    ++junctions;
+                    perched += head.surf > v.surf ? 1 : 0;
+                }
+            }
+        }
+    }
+    check(junctions > 0, "every branch was matched to the trunk vertex it left from");
+    check(perched == 0, "no branch starts above the trunk pool it leaves");
+    check(branchesDescend, "and a branch's surface never rises downstream");
+
     /* 3. The slope gate: the same fixture tilted into a flank grows none. */
     const Plain steep{0.25f, 1100.0f, 200.0f, 140.0f, {{400, 2048}}};
     const Solved sv2 = solveRegion(steep, 0, 0);
@@ -404,7 +440,8 @@ void testDistributariesLeaveATrunk() {
     check(flankBranches == 0, "but a steep flank keeps its water in one channel");
 
     std::printf("distributaries ok (%zu branches off %zu trunks, furthest vertex %.0f of %.0f; "
-                "none on a 0.25 flank)\n", branches, trunks(withBranches), furthest, cap);
+                "%zu junctions, %zu perched; none on a 0.25 flank)\n",
+                branches, trunks(withBranches), furthest, cap, junctions, perched);
 }
 
 void testOnlyTheOwningRegionEmitsARoute() {

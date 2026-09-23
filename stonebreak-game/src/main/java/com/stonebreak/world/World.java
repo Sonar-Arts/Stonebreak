@@ -532,7 +532,7 @@ public class World {
      * <p>Raw means a worldgen river surface reports {@code RIVER + octant}
      * (9..16) rather than the source it behaves as. Almost nothing wants that:
      * {@link #getWaterLevelAt} is the "how much water" question and
-     * {@link #getRiverFlowAt} the "which way" one, and both are derived from
+     * {@link #riverFlowOf} the "which way" one, and both are derived from
      * this. It is public for the one caller that asks both about the same cell
      * — the mesher — which would otherwise walk the chunk map twice per water
      * block to get two halves of one value.
@@ -561,7 +561,7 @@ public class World {
      *
      * <p>A worldgen river surface reports SOURCE, which is what it is — the
      * direction it also carries is a rendering concern and is read through
-     * {@link #getRiverFlowAt}. Normalising here keeps every "how much water"
+     * {@link #riverFlowOf}. Normalising here keeps every "how much water"
      * caller — submersion depth, surface height, the source test below — on the
      * 0..8 vocabulary they were written against.
      */
@@ -571,21 +571,13 @@ public class World {
     }
 
     /**
-     * The flow octant of a worldgen river surface at this position — 0..7 of
-     * {@code (dx, dz)}, 0 = +X, counter-clockwise in eighths of a turn — or -1
-     * where the water does not run (still water, or not water at all).
+     * The flow octant of a worldgen river surface — 0..7 of {@code (dx, dz)},
+     * 0 = +X, counter-clockwise in eighths of a turn — for a value read
+     * through {@link #getWaterValueAt}, or -1 where the water does not run
+     * (still water, or not water at all).
      *
      * <p>Rendering only. The cell is a source block and behaves as one; this
      * says which way it is moving, which a source block cannot.
-     */
-    public int getRiverFlowAt(int x, int y, int z) {
-        return riverFlowOf(getWaterValueAt(x, y, z));
-    }
-
-    /**
-     * {@link #getRiverFlowAt} for a value already read through
-     * {@link #getWaterValueAt}, so a caller that also needs the level does not
-     * pay for a second lookup of the same cell.
      */
     public static int riverFlowOf(int waterValue) {
         return waterValue >= 0 && com.stonebreak.world.chunk.ChunkWaterLayer.isRiver(waterValue)

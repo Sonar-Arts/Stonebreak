@@ -820,12 +820,19 @@ inline void taper(const Config& cfg, Route& r) {
  * Every hash is keyed on the ANCHOR'S WORLD POSITION, never on a vertex index
  * — the index depends on where refinement happened to put points, and the
  * world position does not.
+ *
+ * `pooledSurf` is the trunk's surface AFTER §5.8b's step-pool pass, one per
+ * raw vertex. The walk and the gates read the raw surface; the branch's WATER
+ * is capped at the pooled level of its anchor, so the fork sits flush with the
+ * pool it leaves instead of up to `poolMaxDrop` above it.
  */
 inline void planBranches(const basin::Grid& g, const basin::Solution& s,
                          const basin::Level& lv, int64_t seed, const Config& cfg,
-                         const Route& trunk, std::vector<Route>& out) {
+                         const Route& trunk, const std::vector<float>& pooledSurf,
+                         std::vector<Route>& out) {
     const auto n = static_cast<int32_t>(trunk.points.size());
-    if (cfg.branchChance <= 0.0f || n < 4) {
+    if (cfg.branchChance <= 0.0f || n < 4
+            || pooledSurf.size() != trunk.points.size()) {
         return;
     }
     /* Arc length along the trunk, so an anchor fraction means the same thing
@@ -903,6 +910,15 @@ inline void planBranches(const basin::Grid& g, const basin::Solution& s,
         const Vertex& tip = br.points.back();
         if (std::hypot(tip.x - a.x, tip.z - a.z) < cfg.branchMinSpread) {
             continue; /* came back to where it started: an island, not a channel */
+        }
+        /* Flush with the trunk's pool, not its raw ramp. The trunk is levelled
+         * DOWN by `stepPool` after this, and water merges by max, so a branch
+         * left at `a.surf` perches up to `poolMaxDrop` of water in the trunk's
+         * own channel at the fork. Capping at a constant keeps the walk's
+         * never-rising surface never-rising, so `stepPool` still holds. */
+        const float junction = pooledSurf[static_cast<size_t>(i)];
+        for (Vertex& v : br.points) {
+            v.surf = std::min(v.surf, junction);
         }
         out.push_back(std::move(br));
     }
@@ -1143,7 +1159,9 @@ inline void stepPool(const Config& cfg, Route& r) {
     if (cfg.poolMaxDrop <= 0.0f || n < 3) {
         return;
     }
-    size_t head = 1; /* [0] is the spill: the lake's own surface, not a pool */
+    /* [0] is the spill — the lake's own surface, not a pool — or, on a
+     * branch, the fork, already capped to the trunk's pooled level there. */
+    size_t head = 1;
     while (head < n) {
         size_t tail = head;
         float run = 0.0f;
@@ -1339,8 +1357,6 @@ inline void plan(const basin::Grid& g, const basin::Solution& s, const basin::Le
         st.drained = drained;
         st.sourceIndex = sourceIndex;
         detail::walk(g, s, lv, seed, cfg, st, r);
-        drained = r.drained;
-        r.drained = drained;
         if (static_cast<int32_t>(r.points.size()) < cfg.minPoints) {
             continue;
         }
@@ -1350,7 +1366,20 @@ inline void plan(const basin::Grid& g, const basin::Solution& s, const basin::Le
          * would move whenever refinement did, and the slope gate wants the
          * descent the terrain has rather than the staircase §5.8b makes of it. */
         std::vector<Route> branches;
-        detail::planBranches(g, s, lv, seed, cfg, r, branches);
+        if (cfg.branchChance > 0.0f) {
+            /* What `finish` will level the trunk to, per raw vertex, so a
+             * branch can join the pool rather than the ramp. `classify` does
+             * not touch `surf`, so pooling a copy here gives the same levels
+             * `finish(r)` produces below. */
+            Route pooled = r;
+            detail::stepPool(cfg, pooled);
+            std::vector<float> pooledSurf;
+            pooledSurf.reserve(pooled.points.size());
+            for (const Vertex& v : pooled.points) {
+                pooledSurf.push_back(v.surf);
+            }
+            detail::planBranches(g, s, lv, seed, cfg, r, pooledSurf, branches);
+        }
 
         finish(r);
         for (Route& br : branches) {

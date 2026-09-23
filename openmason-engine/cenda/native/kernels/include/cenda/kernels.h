@@ -496,9 +496,14 @@ int32_t ck_solve_basins(int64_t seed,
  * void is `floor < y < roof`, holding water below `out_water[i]` and air above;
  * -1 in both means no tunnel, which is the great majority of columns. The roof
  * is always at least `tunnel_min_roof` below `out_heights[i]`, so the ground
- * over a tunnel is never breached, and at least `tunnel_min_air` above
- * `out_water[i]`, so a wet passage always carries air over its river — the
- * void narrows toward the channel edge but does not pinch shut. Where the
+ * over a tunnel is never breached. It is at least `tunnel_min_air` above the
+ * surface of the reach that TUNNELLED the column, so a wet passage carries air
+ * over its river — the void narrows toward the channel edge but does not
+ * pinch shut. That is a floor on the reach's level, NOT on `out_water[i]`, and
+ * the two differ in two cases: where a second reach runs OPEN across the same
+ * column (a tight meander, a confluence) the roof is clamped a full lid under
+ * that reach's cut and may carry less air, or none; and where a lake or the
+ * sea stands higher than the reach, `out_water[i]` is that level. Where the
  * river STEPS, the void is sized on the level ABOVE the step rather than on
  * the column's own, so one shaft spans the drop and a fall is not dammed by
  * its own roof; a column whose ground cannot carry that shaft is cut open
@@ -514,7 +519,7 @@ int32_t ck_solve_basins(int64_t seed,
  * Wet-next-to-wet at differing levels is a waterfall and is deliberately
  * allowed. A tunnel is contained by the rock
  * around it rather than by this rule — hence the roof clamp, and the arch that
- * narrows to nothing at the channel edge.
+ * opens nothing outside the channel's half-width below the water.
  * NOTE for the caller: a carver that breaks into a tunnel drains it exactly
  * like a breached riverbed, so the cave guard must read `out_river_floor` as
  * the bed of a tunnelled column, not `out_heights`.

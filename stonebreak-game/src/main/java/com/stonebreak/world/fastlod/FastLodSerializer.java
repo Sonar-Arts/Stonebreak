@@ -69,8 +69,14 @@ public final class FastLodSerializer {
      * those banks was retuned against the flow sim — a 12-step reach, capped at
      * three blocks over the water beside it, where 8 raised ten times the ground
      * for the same containment. Heights cached under 8 are the tall ones.
+     *
+     * <p>10: tunnels carry air, and a plunge keeps its cliff. The carve's
+     * tunnel/open predicate now asks for {@code tunnel_min_air} over the level
+     * ABOVE a step, so ground too thin for that is cut open to the water where
+     * a v9 node kept it; and a real plunge no longer takes the talus skirt, so
+     * the mound a v9 node shows in front of every waterfall is gone.
      */
-    public static final int VERSION = 9;
+    public static final int VERSION = 10;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel

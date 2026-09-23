@@ -536,6 +536,15 @@ void testAPondCanBePromotedButOnlyWhereItIsOwned() {
     check(s.basinAt[k] >= 0 && s.depth[k] > 0.0f, "promote: its cells are stampable water");
     check(s.filled[k] == levelBefore, "promote: the fill surface is not touched");
 
+    /* Idempotent. Two distributaries of one trunk can die in the same hollow,
+     * and `ck_solve_basins` promotes once per route — the second must find the
+     * lake already there rather than register it again. */
+    const int32_t owner = s.basinAt[k];
+    check(bp::promoteComponent(g, s, cfg, comp, 0, 0, N, N),
+          "promoting a pond that is already a lake still reports a lake");
+    check(s.basins.size() == 1, "promote: a second promotion adds no second lake");
+    check(s.basinAt[k] == owner, "promote: and does not re-point its cells");
+
     bool sameAsReference = true;
     for (size_t i = 0; i < s.depth.size(); ++i) {
         if (s.depth[i] != reference.depth[i]) {

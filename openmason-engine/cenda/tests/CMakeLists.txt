@@ -31,6 +31,10 @@ if(CENDA_BUILD_KERNELS)
     add_test(NAME kernels_river COMMAND kernels_river)
 
     add_executable(kernels_water kernels_water_test.cpp)
+    # For river_octant.hpp: the flow-plane test steps along the kernel's own
+    # octant table rather than a copy of it.
+    target_include_directories(kernels_water PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../native/kernels/src)
     target_link_libraries(kernels_water PRIVATE cenda_kernels cenda_warnings)
     add_test(NAME kernels_water COMMAND kernels_water)
 endif()

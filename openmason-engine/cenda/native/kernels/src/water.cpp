@@ -212,6 +212,7 @@
 
 #include "cenda/kernels.h"
 #include "basin_plan.hpp"
+#include "river_octant.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -410,6 +411,24 @@ constexpr float STRATA_TREAD = 0.3f;
 constexpr float STRATA_PHASE = 3.0f;
 constexpr float STRATA_PHASE_WAVE = 97.0f;
 
+/* ── The shore gate's warp (see `floodLakeShore`) ──
+ *
+ * How far, in blocks, the shore flood's `filled` lookup may be displaced along
+ * each axis: a slow swell plus a finer wobble. Half a cell in all, which is the
+ * shoreline tolerance `lakeLevelAt` already owes the lattice, so a gate wall
+ * moves at most half a cell off the edge it used to stand on.
+ *
+ * The wavelengths are what keep the displaced lookup MONOTONE along each axis:
+ * smoothstep value noise has a peak slope of 1.5 x its range over its wave, so
+ * these give 1.5 * 12 / 48 + 1.5 * 4 / 16 = 0.75 blocks of displacement per
+ * block, under 1. At or past 1 the lookup folds back on itself, and a column
+ * between two claimed ones could read a cell they did not — a one-column dry
+ * hole in the lake that §3 then raises into a pillar. */
+constexpr float SHORE_WARP = 6.0f;
+constexpr float SHORE_WARP_WAVE = 48.0f;
+constexpr float SHORE_WARP_FINE = 2.0f;
+constexpr float SHORE_WARP_FINE_WAVE = 16.0f;
+
 /* The vault's headroom varies by these fractions of `tunnel_headroom` either
  * side of it: a slow swell along the route and finer lumps on top, 0.4x to
  * 1.6x in all. Fractions rather than blocks so that a headroom of zero still
@@ -464,6 +483,10 @@ constexpr uint64_t SALT_TUNNEL_ROUGH = 0x54554E4E52474800ULL; /* "TUNNRGH" */
 constexpr uint64_t SALT_TUNNEL_BULGE = 0x54554E4E424C4700ULL; /* "TUNNBLG" */
 constexpr uint64_t SALT_BANK_TOE = 0x42414E4B544F4500ULL;     /* "BANKTOE" */
 constexpr uint64_t SALT_STRATA = 0x5354524154410000ULL;       /* "STRATA"  */
+constexpr uint64_t SALT_SHORE_X = 0x53484F5245580000ULL;      /* "SHOREX"  */
+constexpr uint64_t SALT_SHORE_Z = 0x53484F52455A0000ULL;      /* "SHOREZ"  */
+constexpr uint64_t SALT_SHORE_FX = 0x53484F5245465800ULL;     /* "SHOREFX" */
+constexpr uint64_t SALT_SHORE_FZ = 0x53484F5245465A00ULL;     /* "SHOREFZ" */
 
 inline size_t idx2(int row, int col, int stride) {
     return static_cast<size_t>(row) * static_cast<size_t>(stride) + static_cast<size_t>(col);
@@ -547,6 +570,36 @@ inline int lakeLevelAt(const Dem& dem, int x, int z) {
         }
     }
     return level;
+}
+
+/**
+ * The DEM cell the shore flood's `filled` gate reads for window column (x, z):
+ * the cell under the column, displaced by up to half a cell of smooth noise.
+ *
+ * Undisplaced, every column of a cell reads the same answer, so wherever the
+ * gate refuses the flood the refusal line is the cell's border — and §3 then
+ * walls that line flush to the water: a straight, axis-aligned wall with a
+ * right-angle corner wherever two refused cells meet, and the skirt extrudes
+ * it into a terrace. The displacement moves the line off the lattice without
+ * moving it more than half a cell from where the fill put it.
+ *
+ * A pure function of the WORLD column, so every tile whose window holds a
+ * column reads the same cell for it — the seam rule, as for all the wall noise.
+ */
+inline size_t shoreGateCell(const Dem& dem, int64_t seed, int64_t originX, int64_t originZ,
+                            int x, int z) {
+    const int64_t wx = originX + x;
+    const int64_t wz = originZ + z;
+    const auto warp = [&](uint64_t salt, uint64_t fineSalt) {
+        const float coarse = smoothNoise01(seed, wx, wz, SHORE_WARP_WAVE, salt) * 2.0f - 1.0f;
+        const float fine = smoothNoise01(seed, wx, wz, SHORE_WARP_FINE_WAVE, fineSalt) * 2.0f - 1.0f;
+        return static_cast<int>(std::lround(coarse * SHORE_WARP + fine * SHORE_WARP_FINE));
+    };
+    const int ci = std::clamp(floorDivInt(x + warp(SALT_SHORE_X, SALT_SHORE_FX), dem.cellBlocks),
+                              0, dem.cells - 1);
+    const int cj = std::clamp(floorDivInt(z + warp(SALT_SHORE_Z, SALT_SHORE_FZ), dem.cellBlocks),
+                              0, dem.cells - 1);
+    return idx2(ci, cj, dem.cells);
 }
 
 /* ── Rivers ─────────────────────────────────────────────────────────────── */
@@ -698,6 +751,12 @@ thread_local Scratch tls;
  * real blocks cross the level — connectivity, at block resolution, the way the
  * water itself would find it.
  *
+ * Except where the fill's `filled` gate stops it instead (see the claim below):
+ * there the real ground is still under the level and the shore is a wall, and
+ * the gate is a per-cell answer, so it read the lattice straight back in — a
+ * cell-edge wall with right-angle corners, which the skirt then extruded into
+ * a flat terrace. `shoreGateCell` warps the lookup so that wall wanders.
+ *
  * What is deliberately NOT changed by this: the level. It is still one integer
  * per basin, still straight from the fill, still never interpolated. A flood
  * cannot tilt a surface, which is why this can be a pure widening of the wet
@@ -718,7 +777,8 @@ thread_local Scratch tls;
  */
 void floodLakeShore(const Dem& dem, const int16_t* heights, int W,
                     int world_height, int lo, int hi,
-                    int reach, int maxDepth, Scratch& s) {
+                    int reach, int maxDepth,
+                    int64_t seed, int64_t originX, int64_t originZ, Scratch& s) {
     const size_t N = static_cast<size_t>(W) * static_cast<size_t>(W);
     s.lakeWater.assign(N, -1);
 
@@ -820,10 +880,13 @@ void floodLakeShore(const Dem& dem, const int16_t* heights, int W,
                      * the basin `filled` IS the level; on the shore ring it is
                      * the ground, which is why that ring stays reachable; one
                      * cell past the spill it is already below, which is where
-                     * this stops. Repair a shoreline, never discover a basin. */
-                    const int cellI = std::clamp(nx / dem.cellBlocks, 0, dem.cells - 1);
-                    const int cellJ = std::clamp(nz / dem.cellBlocks, 0, dem.cells - 1);
-                    if (std::lround(dem.filled[idx2(cellI, cellJ, dem.cells)]) < level) {
+                     * this stops. Repair a shoreline, never discover a basin.
+                     *
+                     * Read through `shoreGateCell`'s warp rather than straight
+                     * down: the gate is a per-cell answer, and read straight it
+                     * walls the lake on the cell lattice. */
+                    const size_t cell = shoreGateCell(dem, seed, originX, originZ, nx, nz);
+                    if (std::lround(dem.filled[cell]) < level) {
                         return;
                     }
                     s.lakeWater[ni] = static_cast<int16_t>(level);
@@ -980,21 +1043,6 @@ void guardRail(int W, int lo, int hi, int reach, Scratch& s) {
  * plus the shore flood's own reach fits the window, and every path is therefore
  * inside the window that stamps it.
  */
-/**
- * The octant of (dx, dz) a reach runs toward: 0 = +x, then counter-clockwise
- * through +z in eighths of a turn, so 8 directions at 45 degrees.
- *
- * Eight is what the renderer can use and what a water surface can show. The
- * quantisation is done HERE rather than on the Java side because the direction
- * is a property of the route, and the route is only in scope in this file.
- */
-inline int8_t riverOctant(float dx, float dz) {
-    /* [-pi, pi] -> [0, 8), rounded to the nearest octant and wrapped. */
-    const float turns = std::atan2(dz, dx) * (4.0f / 3.14159265358979323846f);
-    int oct = static_cast<int>(std::lround(turns)) & 7;
-    return static_cast<int8_t>(oct);
-}
-
 /**
  * How close this column is to being a tunnel MOUTH, in [0, 1].
  *
@@ -1415,7 +1463,8 @@ int32_t ck_carve_water(int64_t seed,
         const int floodLo = std::max(0, stampLo - shoreReach);
         const int floodHi = std::min(W, stampHi + shoreReach);
         floodLakeShore(dem, heights3x3, W, world_height,
-                       floodLo, floodHi, shoreReach, shoreMaxDepth, s);
+                       floodLo, floodHi, shoreReach, shoreMaxDepth,
+                       seed, origin_x, origin_z, s);
     } else {
         s.lakeWater.assign(N, -1);
     }
@@ -1776,7 +1825,7 @@ int32_t ck_carve_water(int64_t seed,
                     for (int k = 0; k < 4; ++k) {
                         flowKey[k] = key[k];
                     }
-                    flowDir = riverOctant(g.bx - g.ax, g.bz - g.az);
+                    flowDir = cenda::river::riverOctant(g.bx - g.ax, g.bz - g.az);
                 }
             }
 
@@ -1853,8 +1902,6 @@ int32_t ck_carve_water(int64_t seed,
      * `[T, 2T)`. Every column this call actually emits is corrected; the two
      * columns that are not are guard-rail margin the output never reads. */
     {
-        static constexpr int OCTANT_X[8] = {1, 1, 0, -1, -1, -1, 0, 1};
-        static constexpr int OCTANT_Z[8] = {0, 1, 1, 1, 0, -1, -1, -1};
         /* Nearest first, and +k before -k so ties are decided the same way
          * everywhere. 4 is the about-face, and is reached only when nothing
          * else worked. */
@@ -1870,7 +1917,7 @@ int32_t ck_carve_water(int64_t seed,
                 int8_t chosen = -1;
                 for (const int turn : TURN) {
                     const int k = (oct + turn) & 7;
-                    const size_t n = idx2(x + OCTANT_X[k], z + OCTANT_Z[k], W);
+                    const size_t n = idx2(x + cenda::river::OCTANT_DX[k], z + cenda::river::OCTANT_DZ[k], W);
                     /* Dry ground cannot be flowed up into, so it qualifies —
                      * the rule is about water standing over water. */
                     if (s.water[n] <= here) {

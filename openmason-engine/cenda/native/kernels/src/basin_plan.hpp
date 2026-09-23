@@ -661,7 +661,8 @@ inline Grid windowFor(const Level& lv, int64_t regionX, int64_t regionZ, const f
  * promotion costs nothing worse than a stream that peters out without a pool,
  * which is what the branch would have done anyway.
  *
- * Returns false if the component cannot be promoted, for any reason.
+ * Idempotent: a component that is already a lake is left alone and reports
+ * true. Returns false if the component cannot be promoted, for any reason.
  */
 inline bool promoteComponent(const Grid& g, Solution& s, const Config& cfg,
                              int32_t comp, int64_t ownedX0, int64_t ownedZ0,
@@ -690,6 +691,12 @@ inline bool promoteComponent(const Grid& g, Solution& s, const Config& cfg,
                 + static_cast<size_t>(j);
             if (s.label[k] != comp) {
                 continue;
+            }
+            /* Already a lake: two branches of one trunk can die in the same
+             * hollow, and each asks. Registering it twice would leave a
+             * phantom basin behind and re-point every cell at it. */
+            if (s.basinAt[k] >= 0) {
+                return true;
             }
             minI = std::min(minI, i);
             maxI = std::max(maxI, i);

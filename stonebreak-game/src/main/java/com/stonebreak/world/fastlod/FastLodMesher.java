@@ -50,7 +50,8 @@ import java.util.Arrays;
  * per-cell water level, not a separate rule). Its vertex flags follow the
  * water-mesh semantics documented in {@code shaders/water/water.vert}:
  * flags.x = surface-height fraction (0.875), flags.y = falling (0), flags.w =
- * light (1). Because the sheet is rendered by the same water shader over a
+ * river flow code (0 = still water — an LOD sheet never runs; 1.0 would read
+ * as a river in octant 7). Because the sheet is rendered by the same water shader over a
  * real LOD seabed, fresnel transparency, waves, specular and fog are all
  * continuous with native water.
  */
@@ -220,7 +221,7 @@ public final class FastLodMesher {
 
                 if (submerged) {
                     // Water sheet quad. Flag semantics per water.vert:
-                    // x = surface-height fraction, y = falling, w = light.
+                    // x = surface-height fraction, y = falling, w = flow code (0 = still).
                     // The layer slot carries the water-column depth in blocks
                     // (water is untextured); near water bakes the same number
                     // per cell, so the seabed fades identically on both sides
@@ -903,15 +904,17 @@ public final class FastLodMesher {
 
         /**
          * Flat-up top quad. Terrain never uses this anymore; the water writer
-         * emits sheets with it ({@code xFlag} = surface-height fraction).
+         * emits sheets with it ({@code xFlag} = surface-height fraction, and
+         * flags.w = 0: still water, since water.vert reads that slot as the
+         * river flow code).
          */
         void topQuadFlat(float wx, float y, float wz, int cellSize, int layer, float xFlag) {
             float x1 = wx + cellSize;
             float z1 = wz + cellSize;
-            int v0 = pushVert(wx, y, wz, 0f, 0f, 0, 1, 0, xFlag, 0f, 1f, layer);
-                    pushVert(x1, y, wz, 1f, 0f, 0, 1, 0, xFlag, 0f, 1f, layer);
-                    pushVert(x1, y, z1, 1f, 1f, 0, 1, 0, xFlag, 0f, 1f, layer);
-                    pushVert(wx, y, z1, 0f, 1f, 0, 1, 0, xFlag, 0f, 1f, layer);
+            int v0 = pushVert(wx, y, wz, 0f, 0f, 0, 1, 0, xFlag, 0f, 0f, layer);
+                    pushVert(x1, y, wz, 1f, 0f, 0, 1, 0, xFlag, 0f, 0f, layer);
+                    pushVert(x1, y, z1, 1f, 1f, 0, 1, 0, xFlag, 0f, 0f, layer);
+                    pushVert(wx, y, z1, 0f, 1f, 0, 1, 0, xFlag, 0f, 0f, layer);
             pushQuadIndices(v0);
         }
 

@@ -28,6 +28,7 @@
  */
 
 #include "cenda/kernels.h"
+#include "river_octant.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -714,9 +715,10 @@ void testRiversAgreeAcrossATileSeam() {
  *     the same rule that keeps the sea out of it.
  */
 void testEveryRiverColumnKnowsWhichWayItRuns() {
-    /* Octant k is 45k degrees of atan2(dz, dx): 0 = +x, counter-clockwise. */
-    static constexpr int OX[8] = {1, 1, 0, -1, -1, -1, 0, 1};
-    static constexpr int OZ[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+    /* Octant k is 45k degrees of atan2(dz, dx): 0 = +x, counter-clockwise —
+     * the kernel's own table, so the test steps exactly where §2d does. */
+    const auto& OX = cenda::river::OCTANT_DX;
+    const auto& OZ = cenda::river::OCTANT_DZ;
 
     const Region r = solveRegion(0, 0, riverTerrainAt, 777, 1.0f);
     if (r.routeCount == 0) {
@@ -1736,6 +1738,77 @@ void testTheShoreAgreesAcrossATileSeam() {
         check(wetPairs > 0, "and the seam actually crosses the lake");
     }
     std::puts("shore seam ok");
+}
+
+/* The bowl with its block surface sunk a few blocks under the coarse one, all
+ * the way out past the rim. The fill spills the lake at the smooth rim, but the
+ * real ground beyond the spill still sits under that level for a stretch, so
+ * the flood walks out over it until the fill's `filled` gate says "downstream"
+ * — which is the gate, and not the ground, deciding where the wall stands.
+ * That is the in-game case: a lake ending in a straight wall and a terrace. */
+int16_t sunkenRimBowlAt(int64_t x, int64_t z, int64_t bx, int64_t bz) {
+    return static_cast<int16_t>(bowlTerrainAt(x, z, bx, bz) - 3);
+}
+
+void testTheShoreWallIsNotOnTheCellLattice() {
+    /* The wall the `filled` gate sets used to stand exactly on a cell edge: the
+     * gate read one cell per 16x16 block of columns, so every column of a cell
+     * got the same answer and the refusal line was the cell's border — a
+     * straight wall with a right-angle corner where two refused cells met, and
+     * the skirt extruded it into a terrace. `shoreGateCell` warps the lookup.
+     *
+     * The spill runs down +X across the seam between tiles 8 and 9, so both
+     * are measured, and the reach is lifted to T-1 so that the GATE places the
+     * wall rather than the reach cap. Measured before the warp: all 256 walls
+     * in one straight line down x = 2304, every one on a cell edge. */
+    auto smooth = [](int64_t x, int64_t z) { return bowlTerrainAt(x, z, 2048, 2048); };
+    auto sunken = [](int64_t x, int64_t z) { return sunkenRimBowlAt(x, z, 2048, 2048); };
+    const Region r = solveRegion(0, 0, smooth);
+    check(r.withheld == 0, "L1 owns the bowl");
+
+    float p[31];
+    std::memcpy(p, DOCUMENTED_DEFAULTS, sizeof p);
+    p[26] = static_cast<float>(T - 1);
+    p[30] = 0.0f;   /* walls only: the skirt would count as raised ground */
+
+    int walls = 0;
+    int onEdge = 0;
+    std::vector<bool> rowWalled(2 * T, false);
+    for (int64_t tileX = 8; tileX <= 9; ++tileX) {
+        const Tile t = runTile(3, tileX, 8, sunken, &r, p, 31);
+        for (int x = 0; x < T; ++x) {
+            for (int z = 0; z < T; ++z) {
+                if (t.heights[idx(x, z, T)] <= sunken(tileX * T + x, 8 * T + z)) {
+                    continue;
+                }
+                ++walls;
+                rowWalled[static_cast<size_t>((tileX - 8) * T + x)] = true;
+                /* A gate wall is the first refused column, which is the first
+                 * or last of its cell along the axis the flood was crossing. */
+                const int cx = x % CELL;
+                const int cz = z % CELL;
+                if (cx == 0 || cx == CELL - 1 || cz == 0 || cz == CELL - 1) {
+                    ++onEdge;
+                }
+            }
+        }
+    }
+    int rows = 0;
+    for (bool w : rowWalled) {
+        rows += w ? 1 : 0;
+    }
+
+    /* 1. The fixture really has a gate-drawn wall, and a long one. */
+    check(walls > 3 * CELL, "the sunken rim leaves a wall for the gate to place");
+    /* 2. Off the lattice. A random column is on an edge row or column 23% of
+     *    the time (1 - (14/16)^2); a lattice wall is on one every time. */
+    check(onEdge * 2 < walls, "the wall does not follow the cell edges");
+    /* 3. And it wanders. The spill runs along Z, so a lattice wall is one row
+     *    of X; a warp that only shifted it would be one row too. 9 measured,
+     *    of the 16 a half-cell warp either way can reach. */
+    check(rows >= CELL / 4, "and it wanders across rows rather than holding one");
+    std::printf("shore lattice ok (%d walls, %d on a cell edge, across %d rows)\n",
+                walls, onEdge, rows);
 }
 
 /* ── The bank skirt ─────────────────────────────────────────────────────── */
@@ -3017,6 +3090,7 @@ int main() {
     testTheShoreFollowsTheGroundNotTheCellLattice();
     testTheShoreFloodRefusesADeepNotch();
     testTheShoreAgreesAcrossATileSeam();
+    testTheShoreWallIsNotOnTheCellLattice();
     testTheBankBrushGradesAWallIntoTheGround();
     testTheBankBrushNeverWetsNorLowersNorRaisesWater();
     testTheBankSkirtAgreesAcrossATileSeam();

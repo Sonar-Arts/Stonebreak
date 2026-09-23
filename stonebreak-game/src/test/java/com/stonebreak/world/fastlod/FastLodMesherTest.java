@@ -172,14 +172,16 @@ class FastLodMesherTest {
     @Test
     void waterSheetFlagsFollowWaterVertContract() {
         // water.vert semantics: flags.x = surface-height fraction (0.875),
-        // flags.y = falling (0), flags.w = light (1); normals straight up.
+        // flags.y = falling (0), flags.w = flow code (0 = still water: an
+        // LOD sheet never runs, and 1.0 would decode as a river in octant 7);
+        // normals straight up.
         FastLodMesher.Result result = mesher.build(l4Data(filled(9, 296), BlockType.SAND, SEA_LEVEL));
         MmsMeshData sheet = result.waterMesh();
         assertNotNull(sheet);
         // 1/255 tolerance: the flag is a u8 on the GPU in every packed format.
         for (float f : sheet.getWaterHeightFlags()) assertEquals(0.875f, f, 1f / 255f);
         for (float f : sheet.getAlphaTestFlags()) assertEquals(0f, f, EPS);
-        for (float f : sheet.getLightValues()) assertEquals(1f, f, EPS);
+        for (float f : sheet.getLightValues()) assertEquals(0f, f, EPS);
         float[] normals = sheet.getVertexNormals();
         for (int v = 0; v < 4; v++) {
             assertEquals(1f, normals[v * 3 + 1], EPS);

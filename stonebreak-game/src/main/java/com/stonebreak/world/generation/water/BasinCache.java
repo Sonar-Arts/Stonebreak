@@ -85,8 +85,13 @@ public final class BasinCache {
      * (§5.10) add routes that cached region simply does not have; and a branch
      * that dies in a hollow promotes it to a pond, which changes the cached
      * lake planes too.
+     *
+     * <p>6: a branch's surface is capped at the trunk's POOLED level where it
+     * forks, rather than the raw ramp level the trunk had before §5.8b levelled
+     * it. A v5 branch starts up to {@code pool_max_drop} above the pool it
+     * leaves, which perches water in the trunk's channel at every fork.
      */
-    private static final int DISK_VERSION = 5;
+    private static final int DISK_VERSION = 6;
     private static final int HEADER_BYTES = 24;
 
     /* Caps on one region's river plan. The kernel stops at these rather than

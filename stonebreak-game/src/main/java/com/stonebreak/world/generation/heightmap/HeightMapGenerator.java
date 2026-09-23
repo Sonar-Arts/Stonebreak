@@ -62,15 +62,6 @@ public class HeightMapGenerator {
     }
 
     /**
-     * Which way the water over a column runs, or {@link TerrainTile#NO_FLOW}.
-     *
-     * @see TerrainTile#riverFlowAt
-     */
-    public int riverFlow(int x, int z) {
-        return tileSource.getTile(x, z).riverFlowAt(x, z);
-    }
-
-    /**
      * Fills a 16x16 final-height grid for the given chunk, indexed [x*16+z].
      * A chunk (16 blocks) always fits inside a single bridge tile (256
      * blocks by default, always a multiple of CHUNK_SIZE), so this resolves
