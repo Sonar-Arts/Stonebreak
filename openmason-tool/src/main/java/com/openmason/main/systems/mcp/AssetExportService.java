@@ -41,7 +41,10 @@ import java.util.concurrent.TimeoutException;
  *       build, the same validation, and the write sandbox / Save Sheet. The
  *       model is saved as .omo first when it has to be (the serializers read
  *       it from disk). The written file is handed to the matching editor
- *       window, exactly as the UI export does.</li>
+ *       window, exactly as the UI export does. {@code sbo_export} with
+ *       {@code source: "texture"} is the Texture Editor's Export SBO: the
+ *       current .omt (saved first when needed) or an explicit {@code omt}
+ *       becomes a texture-only SBO.</li>
  *   <li>{@code sbo_editor_*} / {@code sbe_editor_*}: drive the editor windows
  *       the human sees — open a shipped asset, read/patch the draft manifest,
  *       save through the sandbox (a shipped asset lives under game resources,
@@ -58,26 +61,76 @@ public final class AssetExportService {
     private final MainImGuiInterface mainInterface;
     private final AssetWriteService writes;
     private final ModelFileService modelFiles;
+    private final TextureEditingService textures;
     private final SBOSerializer sboSerializer = new SBOSerializer();
     private final SBESerializer sbeSerializer = new SBESerializer();
 
     public AssetExportService(MainImGuiInterface mainInterface, AssetWriteService writes,
-                              ModelFileService modelFiles) {
+                              ModelFileService modelFiles, TextureEditingService textures) {
         this.mainInterface = mainInterface;
         this.writes = writes;
         this.modelFiles = modelFiles;
+        this.textures = textures;
     }
 
     // ================================================================ export
 
     public Map<String, Object> exportSbo(JsonNode params, String filePath, boolean prompt,
                                          boolean overwrite) {
+        if (AssetExportBuilder.isTextureSource(params)) {
+            return exportSboTexture(params, filePath, prompt, overwrite);
+        }
         OmoOnDisk omo = ensureOmoOnDisk("sbo");
         if (omo.failure() != null) {
             return omo.failure();
         }
         SBOFormat.ExportParameters p = AssetExportBuilder.sbo(params, omo.path(), omo.modelName(),
                 writes.sandbox()::resolveExisting);
+        validateSbo(p, false);
+        String compat = sboClipCompatibility(p);
+        if (compat != null) {
+            throw new IllegalArgumentException("clip_incompatible: " + compat);
+        }
+        Path omoPath = omo.path();
+        return writeSbo(p, filePath, prompt, overwrite, "Model: " + omoPath.getFileName(),
+                target -> sboSerializer.export(p, omoPath, target.toString()));
+    }
+
+    /**
+     * The Texture Editor's Export SBO: a texture-only SBO from {@code params.omt}
+     * or the editor's current .omt (saved first when needed), with the same
+     * defaults and checks as {@code SBOExportWindow.showForTexture()}.
+     */
+    private Map<String, Object> exportSboTexture(JsonNode params, String filePath, boolean prompt,
+                                                 boolean overwrite) {
+        Path omtPath;
+        if (params.hasNonNull("omt")) {
+            omtPath = writes.sandbox().resolveExisting(params.get("omt").asText());
+            if (!omtPath.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".omt")) {
+                throw new IllegalArgumentException("invalid_params: omt must be a .omt file, got "
+                        + omtPath.getFileName());
+            }
+        } else {
+            OmtOnDisk omt = ensureOmtOnDisk();
+            if (omt.failure() != null) {
+                return omt.failure();
+            }
+            omtPath = omt.path();
+        }
+        SBOFormat.ExportParameters p = AssetExportBuilder.sboTexture(params, omtPath,
+                omtPath.getFileName().toString(), writes.sandbox()::resolveExisting);
+        validateSbo(p, true);
+        Path source = omtPath;
+        return writeSbo(p, filePath, prompt, overwrite, "Texture: " + source.getFileName(),
+                target -> sboSerializer.exportTexture(p, source, target.toString()));
+    }
+
+    /**
+     * Parameter validity + numeric-ID rules shared by both sources: blocks
+     * (chunk saves) and texture items (ItemRegistry) need an ID > 0, and a
+     * taken ID is refused with the next free one.
+     */
+    private static void validateSbo(SBOFormat.ExportParameters p, boolean texture) {
         String err = p.getValidationError();
         if (!err.isEmpty()) {
             throw new IllegalArgumentException("invalid_params: " + err);
@@ -88,6 +141,10 @@ public final class AssetExportService {
             if (domain == NumericIdValidator.Domain.BLOCK && id <= 0) {
                 throw new IllegalArgumentException("invalid_params: numericId must be > 0 for blocks");
             }
+            if (texture && domain == NumericIdValidator.Domain.ITEM && id <= 0) {
+                throw new IllegalArgumentException("invalid_params: numericId must be > 0 for texture items "
+                        + "(ItemRegistry keys on it)");
+            }
             NumericIdValidator.Result vr = NumericIdValidator.validate(domain, id, p.getObjectId());
             if (vr instanceof NumericIdValidator.Result.Conflict c) {
                 throw new IllegalArgumentException("numeric_id_conflict: " + c.numericId()
@@ -96,19 +153,19 @@ public final class AssetExportService {
                         + NumericIdValidator.suggestNextFreeId(domain) + ")");
             }
         }
-        String compat = sboClipCompatibility(p);
-        if (compat != null) {
-            throw new IllegalArgumentException("clip_incompatible: " + compat);
-        }
+    }
+
+    private Map<String, Object> writeSbo(SBOFormat.ExportParameters p, String filePath, boolean prompt,
+                                         boolean overwrite, String sourceDetail,
+                                         AssetWriteService.Writer writer) {
         String folder = GameResourceDirs.sboFolderFor(p.getObjectType().getId());
         String suggested = GameResourceDirs.suggestedFileName(p.getObjectName(), "sbo", "object.sbo");
-        Path omoPath = omo.path();
         WriteOutcome out = writes.save(
                 WriteRequest.of(WriteKind.SBO, filePath, prompt, overwrite, suggested)
                         .withSuggestedRoot(WriteRoot.GAME_RESOURCES, relativeToGame(folder, "sbo/blocks"))
                         .withDetails(List.of("Object: " + p.getObjectId() + " (" + p.getObjectType().getId() + ")",
-                                "Model: " + omoPath.getFileName())),
-                target -> sboSerializer.export(p, omoPath, target.toString()));
+                                sourceDetail)),
+                writer);
         Map<String, Object> result = outcomeMap(out, "exported");
         result.put("objectId", p.getObjectId());
         if (out.ok()) {
@@ -273,6 +330,38 @@ public final class AssetExportService {
         }
         String[] info = onMain(() -> new String[]{st.getCurrentOMOFilePath(), st.getCurrentModelPath()});
         return new OmoOnDisk(Path.of(info[0]), info[1], null);
+    }
+
+    private record OmtOnDisk(Path path, Map<String, Object> failure) {
+    }
+
+    /** The texture editor's .omt, saving first (in place or via the Save Sheet) when needed. */
+    private OmtOnDisk ensureOmtOnDisk() {
+        if (textures == null) {
+            throw new IllegalStateException("Texture editor unavailable — is the UI running?");
+        }
+        TextureEditingService.ProjectSnapshot s = textures.projectSnapshot();
+        if (s.faceRegionActive()) {
+            throw new IllegalArgumentException("face_region_active: the texture editor is editing a model "
+                    + "face, not a standalone texture — pass params.omt, or tex_close_editor and "
+                    + "tex_load_project a .omt first");
+        }
+        if (s.path() != null && !s.dirty()) {
+            return new OmtOnDisk(Path.of(s.path()), null);
+        }
+        AssetWriteService.Writer writer = p -> textures.saveProject(p.toString());
+        WriteOutcome saved = s.path() != null
+                ? writes.saveInPlace(WriteKind.OMT, s.path(), writer)
+                : writes.save(WriteRequest.of(WriteKind.OMT, null, false, false, "texture")
+                        .withDetails(List.of("Needed before the .sbo export — the exporter reads the .omt from disk.")),
+                        writer);
+        if (!saved.ok()) {
+            Map<String, Object> fail = outcomeMap(saved, "exported");
+            fail.put("reason", "texture_save_" + (saved.reason() == null ? saved.status() : saved.reason()));
+            fail.put("message", "the texture must be saved as .omt first: " + saved.message());
+            return new OmtOnDisk(null, fail);
+        }
+        return new OmtOnDisk(Path.of(saved.path()), null);
     }
 
     private String sboClipCompatibility(SBOFormat.ExportParameters params) {

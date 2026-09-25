@@ -227,6 +227,54 @@ class AssetExportBuilderTest {
     }
 
     @Test
+    void textureSourceDefaultsMirrorTheTextureContextWindow() throws Exception {
+        Path omt = tmp.resolve("Iron Sword.omt");
+        Files.write(omt, new byte[]{1});
+        SBOFormat.ExportParameters p = AssetExportBuilder.sboTexture(
+                json("{\"source\":\"texture\"}"), omt, omt.getFileName().toString(), this::resolve);
+        assertEquals("Iron Sword", p.getObjectName());
+        assertEquals("stonebreak:iron_sword", p.getObjectId());
+        assertEquals(SBOFormat.ObjectType.ITEM, p.getObjectType());
+        assertNotNull(p.getGameProperties(), "items always get game properties");
+        assertTrue(p.getGameProperties().numericId() > 0, "next free item id is suggested");
+        assertEquals(AssetExportBuilder.spriteGameProperties(null, p.getGameProperties().numericId()),
+                p.getGameProperties());
+
+        SBOFormat.ExportParameters states = AssetExportBuilder.sboTexture(
+                json("{\"states\":[{\"name\":\"idle\"},{\"name\":\"alt\",\"omt\":\"Alt.omt\"}]}"),
+                omt, "Iron Sword.omt", this::resolve);
+        assertEquals(omt.toString(), states.getStates().get(0).sourcePath());
+        assertEquals(tmp.resolve("Alt.omt").toString(), states.getStates().get(1).sourcePath());
+    }
+
+    @Test
+    void textureSourceSelectionAndRefusals() throws Exception {
+        assertFalse(AssetExportBuilder.isTextureSource(null));
+        assertFalse(AssetExportBuilder.isTextureSource(json("{}")));
+        assertFalse(AssetExportBuilder.isTextureSource(json("{\"source\":\"model\"}")));
+        assertTrue(AssetExportBuilder.isTextureSource(json("{\"source\":\"Texture\"}")));
+        assertTrue(AssetExportBuilder.isTextureSource(json("{\"omt\":\"a.omt\"}")), "an omt implies texture");
+        assertThrows(IllegalArgumentException.class,
+                () -> AssetExportBuilder.isTextureSource(json("{\"source\":\"model\",\"omt\":\"a.omt\"}")));
+        assertThrows(IllegalArgumentException.class,
+                () -> AssetExportBuilder.isTextureSource(json("{\"source\":\"sprite\"}")));
+
+        Path omt = tmp.resolve("t.omt");
+        for (String locked : new String[]{"block", "entity"}) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                    () -> AssetExportBuilder.sboTexture(json("{\"objectType\":\"" + locked + "\"}"),
+                            omt, "t.omt", this::resolve));
+            assertTrue(e.getMessage().contains("needs a model"), e.getMessage());
+        }
+        assertEquals(SBOFormat.ObjectType.DECORATION, AssetExportBuilder.sboTexture(
+                json("{\"objectType\":\"decoration\"}"), omt, "t.omt", this::resolve).getObjectType());
+        assertThrows(IllegalArgumentException.class, () -> AssetExportBuilder.sboTexture(
+                json("{\"states\":[{\"name\":\"a\",\"clip\":\"x.omanim\"}]}"), omt, "t.omt", this::resolve));
+        assertThrows(IllegalArgumentException.class, () -> AssetExportBuilder.sboTexture(
+                json("{\"states\":[{\"name\":\"a\",\"omo\":\"x.omo\"}]}"), omt, "t.omt", this::resolve));
+    }
+
+    @Test
     void wrongExtensionOrMissingSourceFileIsRefusedBeforeSerializing() throws Exception {
         assertThrows(IllegalArgumentException.class, () -> AssetExportBuilder.sbo(
                 json("{\"states\":[{\"name\":\"a\",\"clip\":\"missing.omanim\"}]}"), omo, "x",

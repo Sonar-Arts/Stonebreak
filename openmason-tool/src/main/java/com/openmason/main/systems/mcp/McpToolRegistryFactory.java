@@ -35,13 +35,13 @@ public final class McpToolRegistryFactory {
         new SaveToolDefinitions(writes, mapper).registerAll(registry);
         ModelFileService modelFiles = new ModelFileService(mainInterface, writes);
         new ModelFileToolDefinitions(modelFiles, mapper).registerAll(registry);
-        new AssetExportToolDefinitions(new AssetExportService(mainInterface, writes, modelFiles), mapper)
-                .registerAll(registry);
+        TextureEditingService textureEditor = new TextureEditingService(mainInterface);
+        new AssetExportToolDefinitions(new AssetExportService(mainInterface, writes, modelFiles, textureEditor),
+                mapper).registerAll(registry);
 
         ModelEditingService editor = new ModelEditingService(mainInterface);
         new OpenMasonToolDefinitions(editor, mapper).registerAll(registry);
 
-        TextureEditingService textureEditor = new TextureEditingService(mainInterface);
         CanvasCaptureService canvasCapture = new CanvasCaptureService(mainInterface);
         new TextureToolDefinitions(textureEditor, canvasCapture, writes, mapper).registerAll(registry);
 

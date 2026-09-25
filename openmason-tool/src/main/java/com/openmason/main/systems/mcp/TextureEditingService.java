@@ -254,6 +254,20 @@ public final class TextureEditingService {
         }));
     }
 
+    /**
+     * What an export of the current canvas needs to know: its .omt path (null
+     * when untitled / a PNG session), whether it has unsaved edits, and whether
+     * the canvas is a model-face session rather than a standalone texture.
+     */
+    public ProjectSnapshot projectSnapshot() {
+        return await(MainThreadExecutor.submit(() -> {
+            TextureCreatorController c = requireController();
+            var st = c.getState();
+            String path = st.hasFilePath() && st.isProjectFile() ? st.getCurrentFilePath() : null;
+            return new ProjectSnapshot(path, st.hasUnsavedChanges(), c.isFaceRegionActive());
+        }));
+    }
+
     /** Save the editor's layer stack as a {@code .omt} texture project. */
     public boolean saveProject(String filePath) {
         return await(MainThreadExecutor.submit(() -> requireController().saveProject(filePath)));
@@ -789,6 +803,8 @@ public final class TextureEditingService {
     public record EditorStatus(boolean windowVisible, boolean faceRegionActive, int faceMaterialId,
                                int[] faceRegionPx, CanvasInfo canvas, String currentTool,
                                String symmetry, int[] selection) {}
+
+    public record ProjectSnapshot(String path, boolean dirty, boolean faceRegionActive) {}
 
     public record ToolStatus(String currentTool, List<String> availableTools, int[] currentColor) {}
 }

@@ -296,7 +296,7 @@ public class SBOExportWindow {
         boolean changed = false;
         if (ImGui.beginCombo("Object Type", OBJECT_TYPE_LABELS[objectTypeIndex.get()])) {
             for (int i = 0; i < OBJECT_TYPE_LABELS.length; i++) {
-                boolean allowed = allowedForTexture(SBOFormat.ObjectType.values()[i]);
+                boolean allowed = AssetExportBuilder.textureObjectTypeAllowed(SBOFormat.ObjectType.values()[i]);
                 int flags = allowed ? ImGuiSelectableFlags.None : ImGuiSelectableFlags.Disabled;
                 if (ImGui.selectable(OBJECT_TYPE_LABELS[i], i == objectTypeIndex.get(), flags)
                         && i != objectTypeIndex.get()) {
@@ -310,11 +310,6 @@ public class SBOExportWindow {
             ImGui.endCombo();
         }
         return changed;
-    }
-
-    /** Object types a texture-only SBO can be. Blocks and entities need a model. */
-    private static boolean allowedForTexture(SBOFormat.ObjectType type) {
-        return type != SBOFormat.ObjectType.BLOCK && type != SBOFormat.ObjectType.ENTITY;
     }
 
     private void renderGamePropertiesTab() {
