@@ -8,9 +8,11 @@
 // so wide waterfalls are seamless across neighboring columns — the pattern
 // scrolls downward, fast and vertically streaked on falling sheets, gentle on
 // ordinary flowing sides. Fine detail, normal perturbation and specular all
-// fade with distance to prevent shimmer/aliasing. Fresnel-style view-angle
-// alpha: looking straight down is see-through, grazing angles read as a
-// reflective sheet. Culling is disabled by the WaterRenderer, so
+// fade with distance to prevent shimmer/aliasing. Colour and opacity come
+// from the water's DENSITY: how much water the eye ray crosses before it
+// reaches the opaque scene behind the surface (Beer-Lambert), so thin water is
+// light and clear and thick water darkens until the floor is gone. A
+// Fresnel-style term still turns grazing angles into a reflective sheet. Culling is disabled by the WaterRenderer, so
 // gl_FrontFacing flips the normal for underwater views.
 in vec3 vWorldPos;
 in vec3 vNormal;
@@ -18,6 +20,7 @@ in float vFalling;
 in float vSource;
 in float vSurfaceHeight;
 // Blocks of water between this face and the floor under it, baked per quad.
+// Only a fallback for thickness where the scene behind is sky (see main).
 flat in float vWaterDepth;
 // 0 = still water; 1..8 = a river running in octant 0..7. See water.vert.
 flat in float vFlow;
@@ -45,6 +48,11 @@ uniform bool uFogSpherical;
 // screen-door dither matching the world shader's terrain fade, so a node's
 // seabed and its water sheet fade together.
 uniform float uLodFade;
+// Opaque-scene depth, copied by WaterRenderer before the water prepass, plus
+// what it takes to turn a sample back into an eye distance.
+uniform sampler2D uSceneDepth;
+uniform mat4 uInvProjection;
+uniform vec4 uViewport; // x, y, width, height
 
 #include "/shaders/lighting/point_lights.glsl"
 
@@ -55,12 +63,18 @@ out vec4 fragColor;
 // into a conveyor belt, and this is about four times the drift.
 const float RIVER_DRIFT = 0.25;
 
-// Column depth (blocks) at which the floor below the water is fully hidden
-// from outside, and the colour a column that deep reads as. Shallows stay
-// see-through, so a reef or a stream bed is still readable from the bank.
-const float MURK_FULL_DEPTH = 12.0;
+// Water density, per block of water the eye ray crosses (see main).
+// DENSITY drives opacity: 1 - exp(-0.22 * 10) — about 90% of the floor is
+// hidden behind 10 blocks of water. ABSORB drives colour, per channel: red
+// dies first, then green, so thin water keeps the bright surface blue and
+// thick water sinks toward MURK_COLOR.
+const float DENSITY = 0.22;
+const vec3 ABSORB = vec3(0.30, 0.16, 0.10);
+// Opacity of a film of water with nothing behind it to speak of — the very
+// top of the water, a shoreline's lip. Low, so shallows stay see-through.
+const float SURFACE_ALPHA = 0.25;
 // Deep water still reads as WATER, just water you cannot see into: the tint
-// only darkens the surface a shade, and it is the opacity below that does the
+// only darkens the surface a shade, and it is the opacity that does the
 // actual hiding. Mixing all the way to an abyss colour turns an ocean into a
 // flat black hole in the world.
 const vec3 MURK_COLOR = vec3(0.10, 0.30, 0.54);
@@ -163,20 +177,43 @@ void main() {
     vec3 shallow = vec3(0.42, 0.68, 0.92);
     vec3 baseColor = mix(deep, shallow, pattern);
 
-    // Depth murk. Looking INTO the water from outside, the floor disappears
-    // the deeper it lies: the surface tints toward MURK_COLOR and stops
-    // letting the seabed through over the first MURK_FULL_DEPTH blocks of
-    // column depth. Only from outside — the same face seen from below is the
-    // surface you look UP through, and how far that stays visible is the
-    // underwater fog's job (WorldRenderer), not this one's. The transition is
-    // smoothed over a quarter block so a camera bobbing at the waterline
-    // doesn't flip between the two readings.
+    // Density. Looking INTO the water from outside, what hides the floor is
+    // how much water the eye looks THROUGH: the distance along this pixel's
+    // ray from the surface to the opaque scene behind it (the depth copy taken
+    // before any water was drawn). Per pixel, so a sloping bed, a shoreline or
+    // a sheer drop-off fades continuously instead of stepping per column, and
+    // a grazing look across shallows crosses more water than one straight
+    // down. Light that crosses d blocks keeps exp(-k * d) of itself, per
+    // channel for the colour and overall for the opacity.
+    //
+    // Only from outside — the same face seen from below is the surface you
+    // look UP through, and how far that stays visible is the underwater fog's
+    // job (WorldRenderer), not this one's. The transition is smoothed over a
+    // quarter block so a camera bobbing at the waterline doesn't flip between
+    // the two readings.
+    vec3 V = normalize(uCameraPos - vWorldPos);
+    vec2 sceneUv = (gl_FragCoord.xy - uViewport.xy) / uViewport.zw;
+    float sceneZ = texture(uSceneDepth, sceneUv).r;
+    float thickness;
+    if (sceneZ < 1.0) {
+        vec4 scene = uInvProjection * vec4(vec3(sceneUv, sceneZ) * 2.0 - 1.0, 1.0);
+        thickness = max(length(scene.xyz / scene.w) - dist, 0.0);
+    } else {
+        // Sky behind the surface (a falling sheet off a cliff, water seen
+        // through its side against the horizon): the ray leaves the water
+        // somewhere the depth copy cannot see, so estimate from the column.
+        thickness = horizontal ? vWaterDepth / max(abs(V.y), 0.02) : vWaterDepth;
+    }
     float outside = smoothstep(-0.05, 0.20, uCameraPos.y - vWorldPos.y);
-    float murk = smoothstep(0.0, MURK_FULL_DEPTH, vWaterDepth) * outside;
-    baseColor = mix(baseColor, MURK_COLOR, murk * 0.7);
+    vec3 transmit = mix(vec3(1.0), exp(-ABSORB * thickness), outside);
+    float opacity = (1.0 - exp(-DENSITY * thickness)) * outside;
+    // The murk carries the surface pattern too, at the same relative
+    // contrast as deep-vs-shallow above: thick water is darker, not flat —
+    // tinting to a single colour wiped the ripples off every lake and ocean.
+    vec3 murk = MURK_COLOR * mix(0.72, 1.28, pattern);
+    baseColor = mix(murk, baseColor, transmit);
 
     vec3 L = normalize(uSunDirection);
-    vec3 V = normalize(uCameraPos - vWorldPos);
 
     float ambient = uAmbientLight * 0.55;
     float diffuse = max(dot(N, L), 0.0) * 0.6 * uAmbientLight;
@@ -186,16 +223,18 @@ void main() {
     // White rivulet highlights on falling sheets.
     float streaks = smoothstep(0.60, 0.85, n) * vFalling * 0.30 * uAmbientLight;
 
-    // Fresnel-style soft-edge transparency. Higher floor keeps the water
-    // reading as a bright surface (legacy look) instead of tinted terrain.
+    // Fresnel-style soft-edge transparency on top of the density: grazing
+    // angles read as a reflective sheet however thin the water. From outside
+    // the floor is the low SURFACE_ALPHA — density supplies the rest; from
+    // below it stays the legacy 0.62 so the underside still reads as a
+    // bright surface.
     float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-    float alpha = mix(0.62, 0.90, fres);
+    float alpha = mix(mix(0.62, SURFACE_ALPHA, outside), 0.90, fres);
     // Falling columns read better slightly denser; streaks denser still.
     alpha = max(alpha, vFalling * 0.62);
-    alpha = clamp(alpha + streaks * 0.4, 0.0, 0.92);
-    // ...and past the Fresnel clamp for deep water: the point of the murk is
-    // that nothing behind it comes through.
-    alpha = mix(alpha, 1.0, murk);
+    // Past the 0.92 clamp for thick water: the point of the density is that
+    // nothing behind enough of it comes through.
+    alpha = max(clamp(alpha + streaks * 0.4, 0.0, 0.92), mix(SURFACE_ALPHA, 1.0, opacity));
 
     vec3 color = baseColor * (ambient + diffuse) + vec3(1.0) * spec + vec3(streaks);
     // Torchlight on the water surface.
