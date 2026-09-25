@@ -87,7 +87,7 @@ public final class AssetExportBuilder {
         return params;
     }
 
-    /** Merge a partial {@code gameProperties} object over the export window's defaults. */
+    /** Merge a partial {@code gameProperties} object over the model export defaults. */
     public static SBOFormat.GameProperties gameProperties(JsonNode gp, boolean isBlock, int numericId) {
         JsonNode g = gp == null || gp.isNull() ? com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode() : gp;
         int atlasX = g.path("atlasX").asInt(Integer.MIN_VALUE);
@@ -110,6 +110,30 @@ public final class AssetExportBuilder {
                 g.path("maxStackSize").asInt(64),
                 text(g, "category", isBlock ? "BLOCKS" : "MATERIALS").toUpperCase(Locale.ROOT),
                 g.path("placeable").asBoolean(isBlock));
+    }
+
+    /**
+     * Merge a partial {@code gameProperties} object over the texture-only
+     * (sprite item) defaults: not solid, breakable, no atlas tile, CUTOUT layer
+     * with transparency, max stack 64, TOOLS category, not placeable. These are
+     * the values the SBT-to-SBO migration emits for sprite items.
+     */
+    public static SBOFormat.GameProperties spriteGameProperties(JsonNode gp, int numericId) {
+        SBOFormat.GameProperties defaults = new SBOFormat.GameProperties(
+                numericId,
+                /* hardness    */ 0.0f,
+                /* solid       */ false,
+                /* breakable   */ true,
+                /* atlasX      */ -1,
+                /* atlasY      */ -1,
+                /* renderLayer */ "CUTOUT",
+                /* transparent */ true,
+                /* flower      */ false,
+                /* stackable   */ false,
+                /* maxStack    */ 64,
+                /* category    */ "TOOLS",
+                /* placeable   */ false);
+        return gp == null || gp.isNull() ? defaults : patchGameProperties(defaults, gp);
     }
 
     /** Merge a partial {@code gameProperties} patch over an existing record. */

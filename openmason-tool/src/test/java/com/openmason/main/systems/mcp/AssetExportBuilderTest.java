@@ -180,6 +180,53 @@ class AssetExportBuilderTest {
     }
 
     @Test
+    void spriteDefaultsMatchTheTextureOnlyPayload() throws Exception {
+        SBOFormat.GameProperties gp = AssetExportBuilder.spriteGameProperties(null, 1234);
+        assertEquals(1234, gp.numericId());
+        assertEquals(0f, gp.hardness(), 1e-6);
+        assertFalse(gp.solid());
+        assertTrue(gp.breakable());
+        assertEquals(-1, gp.atlasX());
+        assertEquals(-1, gp.atlasY());
+        assertEquals("CUTOUT", gp.renderLayerOrDefault());
+        assertTrue(gp.transparent());
+        assertEquals(64, gp.maxStackSize());
+        assertEquals("TOOLS", gp.categoryOrDefault());
+        assertFalse(gp.placeable());
+
+        SBOFormat.GameProperties patched = AssetExportBuilder.spriteGameProperties(
+                json("{\"maxStackSize\":1,\"category\":\"food\"}"), 1234);
+        assertEquals(1, patched.maxStackSize());
+        assertEquals("FOOD", patched.categoryOrDefault());
+        assertEquals("CUTOUT", patched.renderLayerOrDefault(), "unnamed fields keep the sprite default");
+    }
+
+    @Test
+    void textureOnlyItemRoundTripsWithSpriteDefaults() throws Exception {
+        Path omt = tmp.resolve("Sword.omt");
+        Files.write(omt, new byte[]{1, 2, 3, 4});
+        SBOFormat.ExportParameters p = new SBOFormat.ExportParameters();
+        p.setObjectId("stonebreak:test_sword");
+        p.setObjectName("Test Sword");
+        p.setObjectType(SBOFormat.ObjectType.ITEM);
+        p.setObjectPack("default");
+        p.setAuthor("tester");
+        p.setGameProperties(AssetExportBuilder.spriteGameProperties(null, 4321));
+        assertTrue(p.isValid(), p.getValidationError());
+
+        Path out = tmp.resolve("test_sword.sbo");
+        assertTrue(new SBOSerializer().exportTexture(p, omt, out.toString()));
+
+        SBOFormat.Document doc = new SBOParser().parseRaw(out).manifest();
+        assertEquals("item", doc.objectType());
+        assertNull(doc.omoFilename(), "texture-only SBOs carry no model");
+        assertNotNull(doc.textureFilename());
+        assertEquals(4321, doc.gameProperties().numericId());
+        assertEquals("CUTOUT", doc.gameProperties().renderLayerOrDefault());
+        assertFalse(doc.gameProperties().placeable());
+    }
+
+    @Test
     void wrongExtensionOrMissingSourceFileIsRefusedBeforeSerializing() throws Exception {
         assertThrows(IllegalArgumentException.class, () -> AssetExportBuilder.sbo(
                 json("{\"states\":[{\"name\":\"a\",\"clip\":\"missing.omanim\"}]}"), omo, "x",

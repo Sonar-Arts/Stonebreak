@@ -4,6 +4,7 @@ import com.openmason.engine.format.sbe.AnimationCompatibility;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParser;
 import com.openmason.engine.format.sbo.SBOSerializer;
+import com.openmason.main.systems.mcp.AssetExportBuilder;
 import com.openmason.main.systems.menus.dialogs.validation.NumericIdConflictPopup;
 import com.openmason.main.systems.menus.dialogs.validation.NumericIdValidator;
 import com.openmason.main.systems.menus.dialogs.validation.TakenIdsPopup;
@@ -12,6 +13,8 @@ import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
+import imgui.flag.ImGuiHoveredFlags;
+import imgui.flag.ImGuiSelectableFlags;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 import imgui.type.ImInt;
@@ -28,6 +31,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Export "start screen" for Stonebreak Object ({@code .sbo}) files.
@@ -39,6 +43,12 @@ import java.util.function.Consumer;
  * SBO editor so the remaining metadata (recipes, sounds, drops, ...) is
  * authored in place. Every field is reset on {@link #show()}; nothing leaks
  * between exports.
+ *
+ * <p>Two sources share this one window: the model viewer opens it with
+ * {@link #show()} (payload = the current {@code .omo}), the Texture Editor with
+ * {@link #showForTexture()} (payload = the current {@code .omt}, written as a
+ * texture-only SBO; defaults to an Item, and the model-only object types are
+ * locked).
  */
 public class SBOExportWindow {
 
@@ -53,18 +63,26 @@ public class SBOExportWindow {
     };
     private static final String[] TAB_LABELS = { "Metadata", "Game Properties", "States" };
 
+    /** What the export wraps: the viewport model or the texture editor's canvas. */
+    private enum Source { MODEL, TEXTURE }
+
     private final ImBoolean visible;
     private final ModelState modelState;
     private final StatusService statusService;
     private final FileDialogService fileDialogService;
     private final SBOSerializer serializer = new SBOSerializer();
-    private final SBOStatesSection statesSection;
+    private final SBOStatesSection modelStates;
+    private final SBOStatesSection textureStates;
     private final NumericIdConflictPopup conflictPopup = new NumericIdConflictPopup();
     private final TakenIdsPopup takenIdsPopup = new TakenIdsPopup();
 
     /** Same Mortar chrome as the editors, in export mode. */
     private final EditorChrome chrome = new EditorChrome("sbo_export");
     private int selectedTab;
+    private Source source = Source.MODEL;
+
+    /** Current texture editor {@code .omt} (null when unsaved or not a project file). */
+    private Supplier<String> omtPathSupplier = () -> null;
 
     // Form buffers
     private final ImString objectId = new ImString(256);
@@ -92,12 +110,23 @@ public class SBOExportWindow {
         this.modelState = modelState;
         this.statusService = statusService;
         this.fileDialogService = fileDialogService;
-        this.statesSection = new SBOStatesSection(
+        this.modelStates = new SBOStatesSection(
                 /* modelKind */ true,
                 callback -> fileDialogService.showOpenOMOInProjectDialog(callback::accept),
                 callback -> fileDialogService.showOpenOMADialog(callback::accept),
                 modelState::getCurrentOMOFilePath
         );
+        this.textureStates = new SBOStatesSection(
+                /* modelKind */ false,
+                callback -> fileDialogService.showOpenOMTInProjectDialog(callback::accept),
+                /* clipPicker */ null, // texture-only SBOs cannot carry animation clips
+                () -> omtPathSupplier.get()
+        );
+    }
+
+    /** Wire the texture editor's current {@code .omt} (texture-context source). */
+    public void setOMTPathSupplier(Supplier<String> supplier) {
+        this.omtPathSupplier = supplier != null ? supplier : () -> null;
     }
 
     /** Wire the post-export handoff (typically {@code sboEditorWindow::openFile}). */
@@ -109,12 +138,28 @@ public class SBOExportWindow {
      * Shows the window with a clean form, pre-populated from the current model.
      */
     public void show() {
+        open(Source.MODEL);
+    }
+
+    /**
+     * Shows the window in texture context: the current {@code .omt} becomes a
+     * texture-only SBO, defaulting to an Item exported into {@code sbo/items}.
+     */
+    public void showForTexture() {
+        open(Source.TEXTURE);
+    }
+
+    private void open(Source newSource) {
+        source = newSource;
         resetForm();
-        prepopulateFromModel();
+        if (source == Source.TEXTURE) {
+            objectTypeIndex.set(SBOFormat.ObjectType.ITEM.ordinal());
+        }
+        prepopulateFromSource();
         suggestNumericIdForType();
         visible.set(true);
         centerOnNextFrame = true;
-        logger.debug("SBO export window shown");
+        logger.debug("SBO export window shown ({} source)", source);
     }
 
     public void hide() {
@@ -135,7 +180,8 @@ public class SBOExportWindow {
         description.set("");
         numericId.set(-1);
         lastSuggestedDomainIndex = -1;
-        statesSection.reset();
+        modelStates.reset();
+        textureStates.reset();
         validationMessage = "";
         selectedTab = 0;
     }
@@ -187,22 +233,36 @@ public class SBOExportWindow {
         ImGui.end();
     }
 
+    private boolean textureSource() {
+        return source == Source.TEXTURE;
+    }
+
+    /** The states section matching the payload kind (OMO states vs OMT states). */
+    private SBOStatesSection states() {
+        return textureSource() ? textureStates : modelStates;
+    }
+
+    /** The current source file ({@code .omt} in texture context, else {@code .omo}), or null. */
+    private String currentSourcePath() {
+        String path = textureSource() ? omtPathSupplier.get() : modelState.getCurrentOMOFilePath();
+        return path != null && !path.isBlank() ? path : null;
+    }
+
     private String sourceSuffix() {
-        String omo = modelState.getCurrentOMOFilePath();
-        return (omo != null && !omo.isBlank()) ? " - " + Path.of(omo).getFileName() : "";
+        String path = currentSourcePath();
+        return path != null ? " - " + Path.of(path).getFileName() : "";
     }
 
     private String sourceLabel() {
-        String omo = modelState.getCurrentOMOFilePath();
-        return (omo != null && !omo.isBlank())
-                ? "Model: " + Path.of(omo).getFileName()
-                : "Model not saved as .OMO";
+        String path = currentSourcePath();
+        if (textureSource()) {
+            return path != null ? "Texture: " + Path.of(path).getFileName() : "Texture not saved as .OMT";
+        }
+        return path != null ? "Model: " + Path.of(path).getFileName() : "Model not saved as .OMO";
     }
 
     private boolean canExport() {
-        if (statesSection.isEnabled()) return true;
-        String omo = modelState.getCurrentOMOFilePath();
-        return omo != null && !omo.isBlank();
+        return states().isEnabled() || currentSourcePath() != null;
     }
 
     private void renderMetadataTab() {
@@ -211,7 +271,7 @@ public class SBOExportWindow {
         ImGui.inputTextWithHint("Object Name", "e.g. Oak Planks", objectName);
 
         EditorWidgets.sectionLabel("Classification");
-        if (ImGui.combo("Object Type", objectTypeIndex, OBJECT_TYPE_LABELS)) {
+        if (renderObjectTypeCombo()) {
             suggestNumericIdForType();
         }
         ImGui.textDisabled("Exports into " + describeTargetFolder());
@@ -223,6 +283,40 @@ public class SBOExportWindow {
         ImGui.inputTextMultiline("##desc", description, -1, 80);
     }
 
+    /**
+     * Object Type combo. In texture context the model-only types (Block,
+     * Entity) are listed but locked, since a texture-only payload has no mesh.
+     *
+     * @return true when the selection changed
+     */
+    private boolean renderObjectTypeCombo() {
+        if (!textureSource()) {
+            return ImGui.combo("Object Type", objectTypeIndex, OBJECT_TYPE_LABELS);
+        }
+        boolean changed = false;
+        if (ImGui.beginCombo("Object Type", OBJECT_TYPE_LABELS[objectTypeIndex.get()])) {
+            for (int i = 0; i < OBJECT_TYPE_LABELS.length; i++) {
+                boolean allowed = allowedForTexture(SBOFormat.ObjectType.values()[i]);
+                int flags = allowed ? ImGuiSelectableFlags.None : ImGuiSelectableFlags.Disabled;
+                if (ImGui.selectable(OBJECT_TYPE_LABELS[i], i == objectTypeIndex.get(), flags)
+                        && i != objectTypeIndex.get()) {
+                    objectTypeIndex.set(i);
+                    changed = true;
+                }
+                if (!allowed && ImGui.isItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) {
+                    ImGui.setTooltip("Needs a model - export it from the model viewer (Tools > Export SBO...)");
+                }
+            }
+            ImGui.endCombo();
+        }
+        return changed;
+    }
+
+    /** Object types a texture-only SBO can be. Blocks and entities need a model. */
+    private static boolean allowedForTexture(SBOFormat.ObjectType type) {
+        return type != SBOFormat.ObjectType.BLOCK && type != SBOFormat.ObjectType.ENTITY;
+    }
+
     private void renderGamePropertiesTab() {
         EditorWidgets.sectionLabel("Identity");
         ImGui.pushItemWidth(140);
@@ -232,23 +326,27 @@ public class SBOExportWindow {
         if (ImGui.smallButton("Taken IDs...##exp_taken")) {
             takenIdsPopup.open(currentDomain());
         }
-        ImGui.textDisabled(blockSelected()
-                ? "Required for blocks - unique across all blocks (chunk saves reference it)."
+        ImGui.textDisabled(numericIdRequired()
+                ? blockSelected()
+                        ? "Required for blocks - unique across all blocks (chunk saves reference it)."
+                        : "Required for sprite items - unique across all items (ItemRegistry keys on it)."
                 : currentDomain() == NumericIdValidator.Domain.ITEM
                         ? "Unique across all items; -1 skips the gameProperties block."
                         : "Optional for this object type; -1 skips the gameProperties block.");
         renderConflictHint();
 
         EditorWidgets.sectionLabel("Defaults");
-        ImGui.textDisabled(blockSelected()
-                ? "Hardness 1.0, solid, breakable, OPAQUE layer, first free atlas tile."
-                : "Hardness 1.0, stackable x64, MATERIALS category.");
+        ImGui.textDisabled(textureSource()
+                ? "Hardness 0, not solid, CUTOUT layer, max stack 64, TOOLS category, no atlas tile."
+                : blockSelected()
+                        ? "Hardness 1.0, solid, breakable, OPAQUE layer, first free atlas tile."
+                        : "Hardness 1.0, stackable x64, MATERIALS category.");
         ImGui.textDisabled("Everything else (recipes, smelting, sounds, drops) is authored in the");
         ImGui.textDisabled("SBO Editor, which opens automatically after the export.");
     }
 
     private void renderStatesTab() {
-        statesSection.render(ImGui.getCursorPosX(), 100.0f, 360.0f, 6.0f);
+        states().render(ImGui.getCursorPosX(), 100.0f, 360.0f, 6.0f);
     }
 
     private void renderConflictHint() {
@@ -278,6 +376,12 @@ public class SBOExportWindow {
         return currentDomain() == NumericIdValidator.Domain.BLOCK;
     }
 
+    /** Blocks (chunk saves) and texture items (ItemRegistry) cannot load without an ID. */
+    private boolean numericIdRequired() {
+        return blockSelected()
+                || (textureSource() && currentDomain() == NumericIdValidator.Domain.ITEM);
+    }
+
     /**
      * Re-suggest the numeric ID whenever the type's ID domain changes, so a
      * block gets the next free block ID and an item the next free item ID.
@@ -295,10 +399,10 @@ public class SBOExportWindow {
     // Export Logic
     // ========================================
 
-    private void prepopulateFromModel() {
-        String modelPath = modelState.getCurrentModelPath();
-        if (modelPath != null && !modelPath.isBlank()) {
-            String fileName = Path.of(modelPath).getFileName().toString();
+    private void prepopulateFromSource() {
+        String sourcePath = textureSource() ? omtPathSupplier.get() : modelState.getCurrentModelPath();
+        if (sourcePath != null && !sourcePath.isBlank()) {
+            String fileName = Path.of(sourcePath).getFileName().toString();
             String nameWithoutExt = fileName.contains(".")
                     ? fileName.substring(0, fileName.lastIndexOf('.'))
                     : fileName;
@@ -308,8 +412,10 @@ public class SBOExportWindow {
     }
 
     private void performExport() {
-        if (blockSelected() && numericId.get() <= 0) {
-            validationMessage = "Numeric ID must be > 0 for blocks (required for chunk save references)";
+        if (numericIdRequired() && numericId.get() <= 0) {
+            validationMessage = blockSelected()
+                    ? "Numeric ID must be > 0 for blocks (required for chunk save references)"
+                    : "Numeric ID must be > 0 for items (required for ItemRegistry to load this SBO)";
             selectedTab = 1;
             return;
         }
@@ -332,31 +438,36 @@ public class SBOExportWindow {
         }
         validationMessage = "";
 
-        // Resolve the OMO file path. When states are enabled, the default
-        // state's path is the legacy/default asset; otherwise we use the
-        // currently loaded model's OMO path.
-        String omoPathStr;
-        if (statesSection.isEnabled()) {
-            omoPathStr = params.getStates().stream()
+        // Resolve the payload file (.omo, or .omt in texture context). When
+        // states are enabled, the default state's path is the legacy/default
+        // asset; otherwise we use the currently open source file.
+        String sourcePathStr;
+        if (states().isEnabled()) {
+            sourcePathStr = params.getStates().stream()
                     .filter(s -> s.name().equals(params.getDefaultStateName()))
                     .map(SBOFormat.StateSpec::sourcePath)
                     .findFirst().orElse("");
         } else {
-            omoPathStr = modelState.getCurrentOMOFilePath();
+            sourcePathStr = currentSourcePath();
         }
-        if (omoPathStr == null || omoPathStr.isBlank()) {
-            validationMessage = "Model must be saved as .OMO before exporting to .SBO";
-            statusService.updateStatus("Export failed: model not saved as .OMO");
+        if (sourcePathStr == null || sourcePathStr.isBlank()) {
+            String kind = textureSource() ? "Texture must be saved as .OMT" : "Model must be saved as .OMO";
+            validationMessage = kind + " before exporting to .SBO";
+            statusService.updateStatus(textureSource()
+                    ? "Export failed: texture not saved as .OMT"
+                    : "Export failed: model not saved as .OMO");
             return;
         }
 
-        Path omoPath = Path.of(omoPathStr);
+        Path sourcePath = Path.of(sourcePathStr);
 
-        String compatError = validateClipCompatibility(params);
-        if (compatError != null) {
-            validationMessage = compatError;
-            statusService.updateStatus("Export blocked: animation/model mismatch");
-            return;
+        if (!textureSource()) {
+            String compatError = validateClipCompatibility(params);
+            if (compatError != null) {
+                validationMessage = compatError;
+                statusService.updateStatus("Export blocked: animation/model mismatch");
+                return;
+            }
         }
 
         String typeLabel = OBJECT_TYPE_LABELS[objectTypeIndex.get()];
@@ -364,7 +475,9 @@ public class SBOExportWindow {
         String fileName = GameResourceDirs.suggestedFileName(objectName.get(), "sbo", "object.sbo");
 
         fileDialogService.showSaveSBODialog(fileName, targetDir, filePath -> {
-            boolean success = serializer.export(params, omoPath, filePath);
+            boolean success = textureSource()
+                    ? serializer.exportTexture(params, sourcePath, filePath)
+                    : serializer.export(params, sourcePath, filePath);
             if (success) {
                 statusService.updateStatus("Exported SBO: " + Path.of(filePath).getFileName());
                 logger.info("SBO export successful: {}", filePath);
@@ -418,10 +531,11 @@ public class SBOExportWindow {
         params.setObjectPack(objectPack.get().trim());
         params.setAuthor(author.get().trim());
         params.setDescription(description.get().trim());
-        if (statesSection.isEnabled()) {
+        SBOStatesSection states = states();
+        if (states.isEnabled()) {
             params.setStatesEnabled(true);
-            params.setStates(statesSection.toStateSpecs());
-            params.setDefaultStateName(statesSection.getDefaultStateName());
+            params.setStates(states.toStateSpecs());
+            params.setDefaultStateName(states.getDefaultStateName());
         }
         if (numericId.get() >= 0) {
             params.setGameProperties(buildDefaultGameProperties());
@@ -431,28 +545,15 @@ public class SBOExportWindow {
 
     /**
      * Minimal {@code GameProperties} populated from the form's Numeric ID and
-     * sensible defaults for the selected object type. The full set of
-     * properties (atlas coords, hardness, render layer, etc.) is authored
-     * later via the SBO Editor.
+     * the defaults for the selected object type and source, shared with the
+     * MCP {@code sbo_export} path through {@link AssetExportBuilder}. The full
+     * set of properties (atlas coords, hardness, render layer, etc.) is
+     * authored later via the SBO Editor.
      */
     private SBOFormat.GameProperties buildDefaultGameProperties() {
-        boolean isBlock = blockSelected();
-        int[] slot = isBlock ? findFreeAtlasSlot() : new int[]{-1, -1};
-        return new SBOFormat.GameProperties(
-                numericId.get(),
-                /* hardness    */ 1.0f,
-                /* solid       */ isBlock,
-                /* breakable   */ true,
-                /* atlasX      */ slot[0],
-                /* atlasY      */ slot[1],
-                /* renderLayer */ "OPAQUE",
-                /* transparent */ false,
-                /* flower      */ false,
-                /* stackable   */ true,
-                /* maxStack    */ 64,
-                /* category    */ isBlock ? "BLOCKS" : "MATERIALS",
-                /* placeable   */ isBlock
-        );
+        return textureSource()
+                ? AssetExportBuilder.spriteGameProperties(null, numericId.get())
+                : AssetExportBuilder.gameProperties(null, blockSelected(), numericId.get());
     }
 
     /** Release the Mortar chrome region. Must run with a current GL context. */
