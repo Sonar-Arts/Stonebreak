@@ -96,7 +96,7 @@ public final class ServerLevel {
             timeTicks = TimeOfDay.NOON;
         }
 
-        World world = World.createHeadless(new WorldConfiguration(), seed);
+        World world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType());
         if (worldData.getSpawnPosition() != null) {
             world.setSpawnPosition(worldData.getSpawnPosition());
         }

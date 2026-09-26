@@ -1,0 +1,259 @@
+package com.stonebreak.world.generation;
+
+import com.openmason.engine.cenda.CendaKernels;
+import com.openmason.engine.voxel.IBlockType;
+import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
+import com.openmason.engine.voxel.cco.data.palette.CcoPaletteSection;
+import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
+import com.stonebreak.blocks.BlockType;
+import com.stonebreak.world.generation.biomes.BiomeSurfaceConfig;
+import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.heightmap.Density3D;
+import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
+import com.stonebreak.world.generation.noise.NoiseRouter;
+import com.stonebreak.world.lighting.BlockOpacity;
+import com.stonebreak.world.operations.WorldConfiguration;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Front-end for the fused native chunk generator ({@code ck_generate_chunk}):
+ * assembles the create-time context from the SAME sources the Java path uses
+ * ({@link NoiseRouter} channel packing, {@link HeightMapGenerator} splines,
+ * {@link Density3D} node params, {@link TerrainGenerationSystem}'s biome block
+ * switches, {@link BiomeSurfaceConfig}, {@link BlockOpacity}), then turns
+ * kernel output into paletted CCO storage via the bulk section-install path —
+ * no 65k per-cell {@code storage.set} calls.
+ *
+ * <p>Gated by {@link TerrainGenerationSystem}'s constructor on the native
+ * noise backend; any kernel failure falls back to the legacy path there.
+ */
+public final class CendaChunkGenerator {
+
+    private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
+    private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
+    private static final int SECTION_VOLUME = 4096;
+    private static final int SECTION_COUNT = WORLD_HEIGHT / 16;
+
+    /** Kernel biome-flag bits (lockstep with cenda/kernels.h). */
+    private static final byte FLAG_MAGMA = 1;
+    private static final byte FLAG_DRY_BELOW_SEA = 2;
+    /** Biome reads the crag channel in the overhang band — see BiomeSurfaceConfig.Entry. */
+    private static final byte FLAG_CRAG_SURFACE = 4;
+
+    private static final ThreadLocal<short[]> BLOCKS_SCRATCH =
+        ThreadLocal.withInitial(() -> new short[CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT]);
+    private static final ThreadLocal<int[]> ORDINALS_SCRATCH =
+        ThreadLocal.withInitial(() -> new int[CHUNK_SIZE * CHUNK_SIZE]);
+
+    /** Kernel output for one chunk: bulk-built storage + the sky heightmap. */
+    public record Result(CcoBlockStorage storage, int[] heightmap) {}
+
+    private CendaChunkGenerator() {
+    }
+
+    /**
+     * Creates the fused generation context for a world seed. Returns 0 when the
+     * native kernels are unavailable or context creation fails; the caller then
+     * stays on the legacy path. Register cleanup via
+     * {@code TerrainNoise.destroyChunkGenOnCollect}.
+     */
+    /**
+     * Guards the fused path against a kernel that has fallen behind the Java carve stack:
+     * if {@code generator.cpp} cannot reproduce the terrain the legacy path produces, the
+     * context is refused outright rather than silently generating a different world in
+     * whichever chunks happen to take the fused path.
+     *
+     * <p>Flip to true in the same change that lands the kernel port;
+     * {@code FusedChunkGenParityTest} is the gate that says it is allowed.
+     */
+    private static final boolean KERNEL_HAS_CAVE_MODEL = true;
+
+    public static long createContext(long seed) {
+        if (!CendaKernels.isAvailable() || !KERNEL_HAS_CAVE_MODEL) {
+            return 0L;
+        }
+        NoiseRouter.ShapeChannelParams ch = NoiseRouter.shapeChannelParams(seed);
+        Density3D.NodeParams[] density = Density3D.nodeParams(seed);
+        int[] densitySeeds = new int[density.length];
+        int[] densityOctaves = new int[density.length];
+        float[] densityGain = new float[density.length];
+        float[] densityLacunarity = new float[density.length];
+        float[] densityFreq = new float[density.length];
+        for (int i = 0; i < density.length; i++) {
+            densitySeeds[i] = density[i].seed();
+            densityOctaves[i] = density[i].octaves();
+            densityGain[i] = density[i].gain();
+            densityLacunarity[i] = density[i].lacunarity();
+            densityFreq[i] = density[i].frequency();
+        }
+
+        BiomeType[] biomes = BiomeType.values();
+        short[] surfaceIds = new short[biomes.length];
+        short[] subsurfaceIds = new short[biomes.length];
+        float[] caveIntensity = new float[biomes.length];
+        float[] overhangIntensity = new float[biomes.length];
+        byte[] flags = new byte[biomes.length];
+        List<BlockType> emitted = new ArrayList<>(List.of(
+            BlockType.AIR, BlockType.WATER, BlockType.STONE, BlockType.BEDROCK, BlockType.MAGMA));
+        for (int i = 0; i < biomes.length; i++) {
+            BlockType surface = TerrainGenerationSystem.surfaceBlock(biomes[i]);
+            BlockType subsurface = TerrainGenerationSystem.subsurfaceBlock(biomes[i]);
+            surfaceIds[i] = (short) surface.getId();
+            subsurfaceIds[i] = (short) subsurface.getId();
+            emitted.add(surface);
+            emitted.add(subsurface);
+            BiomeSurfaceConfig.Entry cfg = BiomeSurfaceConfig.get(biomes[i]);
+            caveIntensity[i] = cfg.caveIntensity;
+            overhangIntensity[i] = cfg.overhangIntensity;
+            if (biomes[i] == BiomeType.RED_SAND_DESERT) {
+                flags[i] = FLAG_MAGMA | FLAG_DRY_BELOW_SEA;
+            }
+            if (cfg.cragSurface) {
+                flags[i] |= FLAG_CRAG_SURFACE;
+            }
+        }
+
+        int maxId = 0;
+        for (BlockType type : emitted) {
+            maxId = Math.max(maxId, type.getId());
+        }
+        byte[] opacity = new byte[maxId + 1];
+        for (BlockType type : emitted) {
+            opacity[type.getId()] = BlockOpacity.isOpaque(type) ? (byte) 1 : 0;
+        }
+
+        int[] blockIds = {
+            BlockType.AIR.getId(), BlockType.WATER.getId(), BlockType.STONE.getId(),
+            BlockType.BEDROCK.getId(), BlockType.MAGMA.getId(),
+        };
+
+        return CendaKernels.chunkGenCreate(seed,
+            ch.seeds(), ch.octaves(), ch.gain(), ch.lacunarity(), ch.freq(), ch.xOff(), ch.zOff(),
+            HeightMapGenerator.splineXs(), HeightMapGenerator.splineYs(),
+            HeightMapGenerator.splineSizes(), HeightMapGenerator.DETAIL_AMPLITUDE,
+            densitySeeds, densityOctaves, densityGain, densityLacunarity, densityFreq,
+            Density3D.thresholdSplineXs(), Density3D.thresholdSplineYs(),
+            Density3D.thresholdSplineSizes(),
+            blockIds,
+            surfaceIds, subsurfaceIds, caveIntensity, overhangIntensity, flags,
+            TerrainGenerationSystem.MAGMA_FEATURE.hashCode(),
+            TerrainGenerationSystem.MAGMA_CHANCE,
+            opacity);
+    }
+
+    /**
+     * Generates one chunk through the fused kernel. Heights and biomes are the
+     * Java-computed column profile ({@code [x*16+z]}). Returns null on any
+     * kernel failure (caller falls back to the legacy path).
+     */
+    /**
+     * @param surfaceCarveMask ravine/sinkhole mask from the Java carvers, or null — the
+     *                         kernel has no port of their shape grammar (see kernels.h)
+     */
+    public static Result generate(long ctx, int chunkX, int chunkZ,
+                                  int[] heights, BiomeType[] biomes,
+                                  long[] surfaceCarveMask) {
+        int[] ordinals = ORDINALS_SCRATCH.get();
+        for (int i = 0; i < ordinals.length; i++) {
+            BiomeType biome = biomes[i];
+            if (biome == null) {
+                return null;
+            }
+            ordinals[i] = biome.ordinal();
+        }
+        short[] blocks = BLOCKS_SCRATCH.get();
+        int[] heightmap = new int[CHUNK_SIZE * CHUNK_SIZE];
+        long nonAir = CendaKernels.generateChunk(ctx, chunkX, chunkZ, heights, ordinals,
+            surfaceCarveMask, blocks, heightmap);
+        if (nonAir < 0) {
+            return null;
+        }
+        for (int i = 0; i < heightmap.length; i++) {
+            heightmap[i] += StandardTerrain.Y_OFFSET;
+        }
+        return new Result(buildStorage(blocks), heightmap);
+    }
+
+    /**
+     * Bulk-installs the kernel's flat block volume into paletted storage.
+     * The kernel's {@code y*256 + z*16 + x} layout is exactly 16 concatenated
+     * CCO sections, so each 4096-slice installs wholesale: uniform sections
+     * stay in the ~32-byte tier (all-air slices keep the createEmpty fill),
+     * mixed sections go through {@link CcoPaletteSection#fromPaletteData}.
+     */
+    private static CcoBlockStorage buildStorage(short[] blocks) {
+        // The kernel emits the Standard frame; it lands SECTION_OFFSET sections up.
+        CcoPalettedChunkStorage storage = StandardTerrain.newLiftedStorage();
+        short airId = (short) BlockType.AIR.getId();
+        short[] paletteIds = new short[16];
+        // Small-palette sections pack into the nibble tier, which copies — so the
+        // byte index array can be one reusable scratch instead of 4 KiB garbage
+        // per section. Wider palettes hand the array over (ownership transfer).
+        byte[] scratch = null;
+        for (int section = 0; section < SECTION_COUNT; section++) {
+            int base = section * SECTION_VOLUME;
+            short first = blocks[base];
+            boolean uniform = true;
+            for (int i = 1; i < SECTION_VOLUME; i++) {
+                if (blocks[base + i] != first) {
+                    uniform = false;
+                    break;
+                }
+            }
+            if (uniform) {
+                if (first != airId) {
+                    storage.replaceSection(section + StandardTerrain.SECTION_OFFSET,
+                        new CcoPaletteSection(CHUNK_SIZE * CHUNK_SIZE, BlockType.getById(first)));
+                }
+                continue;
+            }
+            // Terrain emits at most ~13 distinct ids per chunk — linear palette
+            // scan beats any map here.
+            int paletteSize = 0;
+            if (scratch == null) {
+                scratch = new byte[SECTION_VOLUME];
+            }
+            byte[] indices = scratch;
+            for (int i = 0; i < SECTION_VOLUME; i++) {
+                short id = blocks[base + i];
+                int idx = -1;
+                for (int p = 0; p < paletteSize; p++) {
+                    if (paletteIds[p] == id) {
+                        idx = p;
+                        break;
+                    }
+                }
+                if (idx < 0) {
+                    if (paletteSize == paletteIds.length) {
+                        short[] grown = new short[paletteIds.length * 2];
+                        System.arraycopy(paletteIds, 0, grown, 0, paletteIds.length);
+                        paletteIds = grown;
+                    }
+                    paletteIds[paletteSize] = id;
+                    idx = paletteSize++;
+                }
+                indices[i] = (byte) idx;
+            }
+            IBlockType[] palette = new IBlockType[paletteSize];
+            for (int p = 0; p < paletteSize; p++) {
+                palette[p] = BlockType.getById(paletteIds[p]);
+            }
+            storage.replaceSection(section + StandardTerrain.SECTION_OFFSET,
+                CcoPaletteSection.fromPaletteData(CHUNK_SIZE * CHUNK_SIZE, palette, indices));
+            if (!CcoPaletteSection.packsToNibbles(paletteSize)) {
+                scratch = null; // the section kept this array; next one needs a fresh one
+            }
+        }
+        // The kernel's y = 0 bedrock floor is interior rock once lifted.
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                if (storage.get(x, StandardTerrain.Y_OFFSET, z) == BlockType.BEDROCK) {
+                    storage.set(x, StandardTerrain.Y_OFFSET, z, BlockType.STONE);
+                }
+            }
+        }
+        return storage;
+    }
+}

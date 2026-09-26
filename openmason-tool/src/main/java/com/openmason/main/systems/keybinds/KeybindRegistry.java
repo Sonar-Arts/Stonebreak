@@ -172,6 +172,26 @@ public class KeybindRegistry {
     }
 
     /**
+     * Gets the human-readable shortcut string for an action's current keybind
+     * (custom or default), derived via {@link ShortcutKey#getDisplayName()} so
+     * menu labels can never drift from the registered keys.
+     * <p>
+     * Null-safe: actions without a registered binding (removed keybinds, or
+     * menu entries that were never keybindable) render an empty string.
+     * </p>
+     *
+     * @param actionId the action ID
+     * @return the current shortcut display name, or "" if the action is not registered
+     */
+    public synchronized String getShortcutDisplayName(String actionId) {
+        KeybindAction action = actions.get(actionId);
+        if (action == null) {
+            return "";
+        }
+        return customBindings.getOrDefault(actionId, action.getDefaultKey()).getDisplayName();
+    }
+
+    /**
      * Gets an action by its ID.
      *
      * @param actionId the action ID

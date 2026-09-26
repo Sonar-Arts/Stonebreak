@@ -1,12 +1,17 @@
 package com.stonebreak.ui.terrainMapper.visualization;
 
 /**
- * Enumerates every preview mode available in the terrain mapper.
- * Order determines sidebar button order.
+ * Every preview mode the terrain mapper knows. Which of them a generator offers, and in
+ * what sidebar order, is {@link GeneratorPreview#modes()}.
  */
 public enum VisualizerKind {
     HEIGHT("Height"),
     TOPOGRAPHY("Topography"),
+    CONTINENTALNESS("Continentalness"),
+    EROSION("Erosion"),
+    PEAKS_VALLEYS("Peaks & Valleys"),
+    TEMPERATURE("Temperature"),
+    MOISTURE("Moisture"),
     BIOME("Biome"),
     WATER("Water");
 

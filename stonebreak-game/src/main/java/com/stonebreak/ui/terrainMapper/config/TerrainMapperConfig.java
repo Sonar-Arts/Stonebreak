@@ -23,6 +23,11 @@ public final class TerrainMapperConfig {
     public static final int MAX_SEED_LENGTH = 20;
     public static final float MODE_BUTTON_HEIGHT = 34f;
     public static final float MODE_BUTTON_SPACING = 6f;
+    /** Mode buttons sit two to a row, so their labels run a size below a full-width button's. */
+    public static final float MODE_BUTTON_FONT_SIZE = 16f;
+    public static final int MODE_BUTTON_COLUMNS = 2;
+    /** Hover text on the Diffusion Generation button. */
+    public static final String DIFFUSION_WARNING = "WARNING! Diffusion generation may take a few minutes";
 
     // ─────────────────────────────────────────────── Footer buttons
     public static final float FOOTER_BUTTON_WIDTH = 180f;

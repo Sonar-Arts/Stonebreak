@@ -2,7 +2,6 @@ package com.stonebreak.world.generation;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.generation.diffusion.DryHillsTileSource;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -56,15 +55,34 @@ public class CaveVolumeTest {
      *   <li>0.102 volume / 0.44 roomy — after widening the worm bore and the cavern blobs,
      *       and stretching the spaghetti wavelength so the same carved share is spent on
      *       fewer, larger passages instead of more crawlways
+     *   <li>0.129 volume / 0.411 roomy — the same carvers on this branch's 256-tall world.
+     *       Volume reads higher because the depth ranges are compressed into a ~114-block rock
+     *       column rather than a ~400-block one, so the same features occupy a larger share of
+     *       it; roominess is unchanged because feature <em>size</em> did not scale with the
+     *       world and must not, which is what the first attempt at this port got wrong
+     *       (shrinking the wavelengths and blob radii took roominess to 0.318).
+     *   <li>0.116 volume / 0.427 roomy — after the worm-carver backend-parity fix
+     *       (GitHub issue #244): the native backend's worm carve now uses the same FastNoise2
+     *       heading/radius the Java fallback does, so tunnels match across machines. Native
+     *       volume dropped slightly (12.17% to 11.60%) and roominess rose (41.4% to 42.7%);
+     *       Java-backend values are unchanged. Floor re-based under the new lower — a
+     *       deliberate carve change with re-measured values, not a tuning regression.
      * </ul>
+     *
+     * <p>Every density-driven figure here is quoted for both backends and the floor set under
+     * the lower. {@code Density3D} samples Java simplex per point and FastNoise2 in the batched
+     * fill; {@code TerrainNoiseParityTest} pins point-vs-batched agreement <em>within</em> a
+     * backend, which is the invariant FastLOD needs, but the two backends are different noise
+     * functions and carve ~6% differently in aggregate. A floor measured on only one of them
+     * fails on whichever machine has the other.
      */
-    private static final double MIN_CARVED_FRACTION = 0.098;
-    private static final double MIN_ROOMY_FRACTION = 0.41;
+    private static final double MIN_CARVED_FRACTION = 0.115;   // measured 0.1160 native / 0.1289 Java
+    private static final double MIN_ROOMY_FRACTION = 0.400;    // measured 0.427 native / 0.411 Java
 
     @Test
     public void cavesAreLargeEnoughToPlayIn() {
         TerrainGenerationSystem terrain =
-                new TerrainGenerationSystem(SEED, new DryHillsTileSource());
+                new TerrainGenerationSystem(SEED, new DryHillsHeightMap(SEED));
 
         int sizeX = REGION * CHUNK;
         int sizeZ = REGION * CHUNK;
@@ -72,12 +90,12 @@ public class CaveVolumeTest {
         int maxSurface = 0;
         for (int x = 0; x < sizeX; x++) {
             for (int z = 0; z < sizeZ; z++) {
-                int h = DryHillsTileSource.height(x, z);
+                int h = DryHillsHeightMap.height(x, z);
                 surface[x * sizeZ + z] = h;
                 maxSurface = Math.max(maxSurface, h);
             }
         }
-        int yCap = Math.min(maxSurface, WorldConfiguration.WORLD_HEIGHT);
+        int yCap = Math.min(maxSurface, StandardTerrain.WORLD_HEIGHT);
 
         boolean[] air = new boolean[sizeX * sizeZ * yCap];
         long standSpots = 0;
@@ -90,18 +108,18 @@ public class CaveVolumeTest {
                         int x = cx * CHUNK + lx;
                         int z = cz * CHUNK + lz;
                         int top = Math.min(surface[x * sizeZ + z], yCap);
-                        if (chunk.getBlock(lx, top - 1, lz) == BlockType.AIR) {
+                        if (StandardFrame.block(chunk, lx, top - 1, lz) == BlockType.AIR) {
                             openColumns++;   // a cave broke the ground open in this column
                         }
                         for (int y = 1; y < top; y++) {
-                            if (chunk.getBlock(lx, y, lz) != BlockType.AIR) {
+                            if (StandardFrame.block(chunk, lx, y, lz) != BlockType.AIR) {
                                 continue;
                             }
                             air[index(x, y, z, sizeZ, yCap)] = true;
-                            boolean floor = chunk.getBlock(lx, y - 1, lz) != BlockType.AIR;
+                            boolean floor = StandardFrame.block(chunk, lx, y - 1, lz) != BlockType.AIR;
                             boolean headroom = true;
                             for (int h = 1; h < PLAYER_HEIGHT && headroom; h++) {
-                                headroom = chunk.getBlock(lx, y + h, lz) == BlockType.AIR;
+                                headroom = StandardFrame.block(chunk, lx, y + h, lz) == BlockType.AIR;
                             }
                             if (floor && headroom) {
                                 standSpots++;

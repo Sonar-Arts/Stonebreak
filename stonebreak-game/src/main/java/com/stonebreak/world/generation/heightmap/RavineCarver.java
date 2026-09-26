@@ -1,6 +1,6 @@
 package com.stonebreak.world.generation.heightmap;
 
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
+import com.stonebreak.world.generation.StandardTerrain;
 import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -95,8 +95,8 @@ public final class RavineCarver {
     private static final int RAVINE_CHUNK_DIVISOR = 450;
 
     /** Depth below the local surface that the ravine floor reaches. */
-    private static final int DEPTH_MIN = 45;
-    private static final int DEPTH_MAX = 110;
+    private static final int DEPTH_MIN = 25;
+    private static final int DEPTH_MAX = 60;
 
     /** Half-width at the ravine's midpoint, in blocks. Tapers to nothing at the ends. */
     private static final float HALF_WIDTH_MIN = 2.5f;
@@ -178,7 +178,7 @@ public final class RavineCarver {
      * How high above its floor the ravine cuts. Generous — it must reach the surface from
      * the deepest floor, and the per-column surface clamp trims the excess.
      */
-    private static final int OVERCUT = 160;
+    private static final int OVERCUT = 70;
 
     /** Widest half-width any ravine can reach: full width, peak wobble, full rim flare. */
     private static final float MAX_HALF_WIDTH =
@@ -218,7 +218,7 @@ public final class RavineCarver {
             (int) Math.ceil(MAX_REACH / WorldConfiguration.CHUNK_SIZE) + 1;
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
-    private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+    private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
 
     private final long seed;
     private final HeightMapGenerator heightMapGenerator;
@@ -253,21 +253,10 @@ public final class RavineCarver {
                 ^ ((long) cz * 0xC2B2AE3D27D4EB4FL);
     }
 
-    /** Carve mask for the target chunk, packed by {@link LocalBlockKey#pack(int,int,int)}. */
+    /** Carve mask for the target chunk, packed by {@code CarveMaskKey.pack(x, y, z)}. */
     public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels) {
-        return carveMaskForChunk(chunkX, chunkZ, targetHeights, waterLevels, null);
-    }
-
-    /**
-     * As {@link #carveMaskForChunk(int, int, int[], int[])}, also keeping clear of the river
-     * TUNNELS in {@code riverFloors}. A tunnelled column's height is the ground
-     * standing over the river, so without this the guard measures from the hilltop
-     * and leaves the passage itself open to be carved into and drained.
-     */
-    public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels,
-                                    int[] riverFloors) {
         int[] waterGuard =
-                WaterGuard.guardPlane(targetHeights, waterLevels, riverFloors, heightMapGenerator, chunkX, chunkZ);
+                WaterGuard.guardPlane(targetHeights, waterLevels, heightMapGenerator, chunkX, chunkZ);
         BitSet mask = new BitSet();
         for (int dcx = -SCAN_RADIUS; dcx <= SCAN_RADIUS; dcx++) {
             for (int dcz = -SCAN_RADIUS; dcz <= SCAN_RADIUS; dcz++) {
@@ -297,10 +286,8 @@ public final class RavineCarver {
                                         int[] targetHeights, int[] waterLevels) {
         BitSet mask = new BitSet();
         if (!hasRavine(srcCx, srcCz)) return mask;
-        // No river planes here: this entry point exists so a test can drive one named
-        // ravine directly, and it has no tile to read tunnels from.
         int[] waterGuard = WaterGuard.guardPlane(
-                targetHeights, waterLevels, null, heightMapGenerator, targetCx, targetCz);
+                targetHeights, waterLevels, heightMapGenerator, targetCx, targetCz);
         carveRavine(srcCx, srcCz, targetCx, targetCz, targetHeights, waterGuard, mask);
         return mask;
     }
@@ -503,7 +490,7 @@ public final class RavineCarver {
                     float lateral = (u - shear * t) * sinDip;
                     if (vSq + lateral * lateral >= radius * radius) continue;
                     if (WaterGuard.seals(waterGuard, idx, by, waterClearance)) continue;
-                    mask.set(LocalBlockKey.pack(bx, by, bz));
+                    mask.set(CarveMaskKey.pack(bx, by, bz));
                 }
             }
         }

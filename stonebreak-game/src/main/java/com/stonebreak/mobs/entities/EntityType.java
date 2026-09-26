@@ -20,7 +20,7 @@ public enum EntityType {
         0.55f, 0.875f, 1.075f, 0.55f, "stonebreak:Sheep",
         LivingEntity.DamageSource.FIRE,
         "Dry wool catches fire instantly.",
-        new String[]{"Default"},
+        new String[]{"Default", "Sheared"},
         new String[0]),
     // legHeight is 0: the SB_Chicken.sbe model's origin sits at the feet, so the
     // entity position (placed at groundSurface + legHeight) must rest on the

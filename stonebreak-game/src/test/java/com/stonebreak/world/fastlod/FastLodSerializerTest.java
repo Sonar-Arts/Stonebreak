@@ -1,7 +1,7 @@
 package com.stonebreak.world.fastlod;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeKind;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
@@ -91,7 +91,7 @@ class FastLodSerializerTest {
     /**
      * The cave-mouth channel survives the round trip, sentinel included. The sentinel needs
      * its own wire value: in memory "no opening" is an int
-     * ({@link TerrainGenerationSystem#NO_OPENING}) and the field on the wire is i16.
+     * ({@link DiffusionTerrainGenerator#NO_OPENING}) and the field on the wire is i16.
      */
     @Test
     void roundTripCarriesTheCaveOpeningChannel() {
@@ -102,7 +102,7 @@ class FastLodSerializerTest {
         byte[] cover = new byte[cells];
         for (int i = 0; i < cells; i++) {
             boolean open = (i % 4 == 1);
-            floor[i] = open ? 250 + i : TerrainGenerationSystem.NO_OPENING;
+            floor[i] = open ? 250 + i : DiffusionTerrainGenerator.NO_OPENING;
             cover[i] = (byte) (open ? Math.min(255, 30 + i * 7) : 0);
         }
         FastLodChunkData original = new FastLodChunkData(base.key(), base.rawHeights(),
@@ -116,7 +116,7 @@ class FastLodSerializerTest {
         assertArrayEquals(cover, restored.rawOpeningCoverage());
         for (int i = 0; i < cells; i++) {
             if (i % 4 != 1) {
-                assertEquals(TerrainGenerationSystem.NO_OPENING, restored.rawOpeningFloor()[i],
+                assertEquals(DiffusionTerrainGenerator.NO_OPENING, restored.rawOpeningFloor()[i],
                         "sentinel must survive the i16 narrowing at cell " + i);
             }
         }

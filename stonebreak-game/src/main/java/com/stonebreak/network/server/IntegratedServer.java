@@ -318,6 +318,8 @@ public final class IntegratedServer {
             case PlayerHeldItemC2S h -> playerHandler.handleHeldItem(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
             case EntityDamageC2S ed -> entityHandler.handleEntityDamage(sp, ed, ctx);
+            case com.stonebreak.network.packet.entity.EntityShearC2S es ->
+                entityHandler.handleEntityShear(sp, es, ctx);
             case com.stonebreak.network.packet.entity.ProjectileSpawnC2S ps2 ->
                 entityHandler.handleProjectileSpawn(sp, ps2, ctx);
             case PlayerDataC2S pd -> { if (!sp.isLocal()) sp.setPlayerDataBlob(pd.json()); }
@@ -409,7 +411,7 @@ public final class IntegratedServer {
         Vector3f spawn = ctx.spawn();
 
         // 1. Welcome: who you are + the seed + the authoritative spawn.
-        sp.send(new WelcomeS2C(sp.playerId(), ctx.worldSeed(), spawn.x, spawn.y, spawn.z));
+        sp.send(new WelcomeS2C(sp.playerId(), ctx.worldSeed(), ctx.generatorType(), spawn.x, spawn.y, spawn.z));
         TimeSyncS2C timeSync = currentTimeSync();
         if (timeSync != null) {
             sp.send(timeSync, false);

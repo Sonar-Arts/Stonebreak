@@ -1,6 +1,6 @@
 package com.stonebreak.world.generation.heightmap;
 
-import com.stonebreak.world.generation.diffusion.TerrainTile;
+import com.stonebreak.world.generation.StandardTerrain;
 import com.stonebreak.world.generation.noise.NoiseChannel2D;
 import com.stonebreak.world.generation.noise.TerrainNoise;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -57,13 +57,13 @@ public final class CaveWaterTable {
     /** How strongly the table follows surface relief. 0 = flat at sea level, 1 = parallel to terrain. */
     private static final float DAMP = 0.40f;
     /** Amplitude of the low-frequency wobble, in blocks. */
-    private static final float WOBBLE = 10f;
+    private static final float WOBBLE = 5f;
     /** Minimum rock roof over the topmost gallery, so galleries never breach the surface. */
-    private static final int MIN_ROOF = 12;
+    private static final int MIN_ROOF = 10;
     /** Half-height of a gallery band, in blocks. */
-    public static final int BAND = 10;
+    public static final int BAND = 5;
     /** Vertical gap between successive former water tables. */
-    private static final int LEVEL_SPACING = 55;
+    private static final int LEVEL_SPACING = 22;
     /** Number of stacked storeys (present table plus former stands). */
     private static final int STOREYS = 3;
     /** Lowest permitted table — keeps the deepest gallery band clear of the bedrock floor. */
@@ -71,7 +71,9 @@ public final class CaveWaterTable {
     /** Wobble wavelength: long enough that the table reads as regional, not per-chunk. */
     private static final float SCALE = 1f / 220f;
 
-    private static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
+    private static final int SEA_LEVEL = StandardTerrain.SEA_LEVEL;
+    /** @see WorldConfiguration#NO_WATER */
+    private static final int NO_WATER = WorldConfiguration.NO_WATER;
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
     private final NoiseChannel2D wobble;
@@ -88,7 +90,7 @@ public final class CaveWaterTable {
      * heights/waterLevels grids.
      *
      * @param heights     final surface height per column
-     * @param waterLevels per-column water level, or {@link TerrainTile#NO_WATER}
+     * @param waterLevels per-column water level, or {@link WorldConfiguration#NO_WATER}
      */
     public int[] tableForChunk(int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
         int baseX = chunkX * CHUNK_SIZE;
@@ -102,7 +104,7 @@ public final class CaveWaterTable {
 
         int[] table = new int[CHUNK_SIZE * CHUNK_SIZE];
         for (int i = 0; i < table.length; i++) {
-            int water = waterLevels == null ? TerrainTile.NO_WATER : waterLevels[i];
+            int water = waterLevels == null ? NO_WATER : waterLevels[i];
             table[i] = resolve(heights[i], water, noise[i]);
         }
         return table;
@@ -139,7 +141,7 @@ public final class CaveWaterTable {
      */
     private static int resolve(int surface, int waterLevel, float wobbleNoise) {
         int table;
-        if (waterLevel != TerrainTile.NO_WATER && waterLevel > 0) {
+        if (waterLevel != NO_WATER && waterLevel > 0) {
             table = waterLevel;
         } else {
             table = Math.round(SEA_LEVEL + (surface - SEA_LEVEL) * DAMP + wobbleNoise * WOBBLE);

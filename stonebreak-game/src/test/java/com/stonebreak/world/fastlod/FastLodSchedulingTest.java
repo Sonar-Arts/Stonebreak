@@ -3,7 +3,7 @@ package com.stonebreak.world.fastlod;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,7 +66,7 @@ class FastLodSchedulingTest {
     @BeforeEach
     void setUp() {
         WorldConfiguration config = new WorldConfiguration(INNER, WORKERS, RANGE, true);
-        TerrainGenerationSystem terrain = mock(TerrainGenerationSystem.class);
+        DiffusionTerrainGenerator terrain = mock(DiffusionTerrainGenerator.class);
         when(terrain.getFinalTerrainHeightAt(anyInt(), anyInt())).thenReturn(336);
         when(terrain.getSurfaceBlockAt(anyInt(), anyInt())).thenReturn(BlockType.GRASS);
         when(terrain.getTreeAt(anyInt(), anyInt())).thenReturn(null);

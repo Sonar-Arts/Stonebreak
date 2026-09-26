@@ -114,6 +114,11 @@ public class TextureCreatorState {
         return currentFilePath != null && !currentFilePath.trim().isEmpty();
     }
 
+    /** True when the canvas changed since the last save/load. */
+    public boolean hasUnsavedChanges() {
+        return unsavedChanges;
+    }
+
     /**
      * Mark as saved (clears unsaved changes flag).
      */

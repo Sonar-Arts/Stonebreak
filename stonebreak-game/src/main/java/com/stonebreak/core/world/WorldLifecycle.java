@@ -95,8 +95,9 @@ public final class WorldLifecycle {
      * generation disabled and no save service. Its contents stream in from the authoritative
      * server. MmsAPI must already be initialized.
      */
-    public World createClientWorldInstance(long seed) {
-        return World.createClientView(new WorldConfiguration(), seed);
+    public World createClientWorldInstance(long seed,
+                                           com.stonebreak.world.generation.TerrainGeneratorType generatorType) {
+        return World.createClientView(new WorldConfiguration(), seed, generatorType);
     }
 
     /**

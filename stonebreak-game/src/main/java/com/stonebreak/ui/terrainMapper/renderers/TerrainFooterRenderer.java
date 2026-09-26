@@ -60,7 +60,9 @@ public final class TerrainFooterRenderer {
         Font meta = ui.fonts().get(MStyle.FONT_META);
         float textY = footer.y() + footer.height() / 2f + 4f;
 
-        String modeLabel = "Mode: " + state.getActiveVisualizer().displayName();
+        String modeLabel = state.getActiveVisualizer() == null
+                ? "Mode: none"
+                : "Mode: " + state.getActiveVisualizer().displayName();
         // Start past every left-anchored button so the text never overlaps them.
         float modeX = footer.x() + TerrainMapperConfig.FOOTER_BUTTON_GAP
                 + LEFT_BUTTON_COUNT * (TerrainMapperConfig.FOOTER_BUTTON_WIDTH

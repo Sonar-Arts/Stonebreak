@@ -2,7 +2,7 @@ package com.stonebreak.world.save.io;
 
 import com.openmason.engine.cenda.CendaKernels;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.save.model.ChunkData;
 import org.junit.jupiter.api.Tag;
@@ -26,7 +26,7 @@ class ChunkCodecZstdTest {
     void zstdRoundTripPreservesEveryBlock() throws Exception {
         assumeTrue(CendaKernels.isAvailable(), "Cenda kernels not built");
 
-        var chunk = new TerrainGenerationSystem(1337L).generateTerrainOnly(2, -3).chunk();
+        var chunk = new DiffusionTerrainGenerator(1337L).generateTerrainOnly(2, -3).chunk();
         ChunkData data = ChunkData.builder()
             .chunkX(2)
             .chunkZ(-3)

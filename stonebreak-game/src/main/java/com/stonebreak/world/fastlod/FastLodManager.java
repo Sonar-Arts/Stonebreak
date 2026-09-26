@@ -6,7 +6,7 @@ import com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.ArrayList;
@@ -109,7 +109,7 @@ public final class FastLodManager {
     private volatile long lastPlayerColumn = packColumn(0, 0);
 
     public FastLodManager(WorldConfiguration config,
-                          TerrainGenerationSystem terrain,
+                          TerrainGenerator terrain,
                           BlockTextureArray textureArray,
                           FastLodStore store) {
         this(config, terrain, textureArray, store,
@@ -128,7 +128,7 @@ public final class FastLodManager {
 
     /** Test seam: injectable executor (e.g. same-thread) and GL-free uploader. */
     FastLodManager(WorldConfiguration config,
-                   TerrainGenerationSystem terrain,
+                   TerrainGenerator terrain,
                    BlockTextureArray textureArray,
                    FastLodStore store,
                    ExecutorService executor,
@@ -145,7 +145,7 @@ public final class FastLodManager {
      * assertions without changing the real per-frame budget used in production.
      */
     FastLodManager(WorldConfiguration config,
-                   TerrainGenerationSystem terrain,
+                   TerrainGenerator terrain,
                    BlockTextureArray textureArray,
                    FastLodStore store,
                    ExecutorService executor,

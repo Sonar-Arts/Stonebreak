@@ -9,6 +9,7 @@ import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager.Active
 import com.stonebreak.ui.terrainMapper.managers.TerrainPreviewLoader;
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 
 import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT;
 import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
@@ -44,7 +45,7 @@ public final class TerrainMouseHandler {
     public void handleMouseMove(double mouseX, double mouseY, int windowWidth, int windowHeight) {
         float mx = (float) mouseX;
         float my = (float) mouseY;
-        TerrainMapperLayout layout = new TerrainMapperLayout(windowWidth, windowHeight);
+        TerrainMapperLayout layout = new TerrainMapperLayout(windowWidth, windowHeight, state.getModeButtons().size());
 
         updateHoverStates(mx, my);
 
@@ -70,7 +71,7 @@ public final class TerrainMouseHandler {
                 float dx = mx - pressStartX;
                 float dy = my - pressStartY;
                 if (dx * dx + dy * dy < CLICK_THRESHOLD_PX * CLICK_THRESHOLD_PX) {
-                    TerrainMapperLayout releaseLayout = new TerrainMapperLayout(windowWidth, windowHeight);
+                    TerrainMapperLayout releaseLayout = new TerrainMapperLayout(windowWidth, windowHeight, state.getModeButtons().size());
                     TerrainMapperLayout.Rect map = releaseLayout.map();
                     float cx = map.centerX();
                     float cz = map.y() + map.height() / 2f;
@@ -86,13 +87,16 @@ public final class TerrainMouseHandler {
         }
         if (action != GLFW_PRESS) return;
 
-        TerrainMapperLayout layout = new TerrainMapperLayout(windowWidth, windowHeight);
+        TerrainMapperLayout layout = new TerrainMapperLayout(windowWidth, windowHeight, state.getModeButtons().size());
 
         if (state.getBackButton().handleClick(mx, my)) return;
         if (state.getCharacterButton().handleClick(mx, my)) return;
         if (state.getCreateButton().handleClick(mx, my)) return;
         if (state.getSimulateSeedButton().handleClick(mx, my)) return;
 
+        for (MCategoryButton<TerrainGeneratorType> generator : state.getGeneratorButtons()) {
+            if (generator.handleClick(mx, my)) return;
+        }
         for (MCategoryButton<VisualizerKind> mode : state.getModeButtons()) {
             if (mode.handleClick(mx, my)) return;
         }
@@ -129,7 +133,8 @@ public final class TerrainMouseHandler {
         // dimensions; we just pull them from Game for consistency.
         TerrainMapperLayout layout = new TerrainMapperLayout(
                 com.stonebreak.core.Game.getWindowWidth(),
-                com.stonebreak.core.Game.getWindowHeight());
+                com.stonebreak.core.Game.getWindowHeight(),
+                state.getModeButtons().size());
         TerrainMapperLayout.Rect map = layout.map();
         if (!map.contains(mx, my)) return;
         float factor = delta > 0
@@ -146,6 +151,9 @@ public final class TerrainMouseHandler {
         state.getCharacterButton().updateHover(mx, my);
         state.getCreateButton().updateHover(mx, my);
         state.getSimulateSeedButton().updateHover(mx, my);
+        for (MCategoryButton<TerrainGeneratorType> generator : state.getGeneratorButtons()) {
+            generator.updateHover(mx, my);
+        }
         for (MCategoryButton<VisualizerKind> mode : state.getModeButtons()) {
             mode.updateHover(mx, my);
             mode.setSelected(mode.tag() == state.getActiveVisualizer());

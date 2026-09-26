@@ -31,7 +31,7 @@ public final class SkijaTerrainMapperRenderer {
         if (!ui.isAvailable()) return;
         if (!ui.beginFrame(windowWidth, windowHeight, 1.0f)) return;
         try {
-            TerrainMapperLayout layout = new TerrainMapperLayout(windowWidth, windowHeight);
+            TerrainMapperLayout layout = new TerrainMapperLayout(windowWidth, windowHeight, state.getModeButtons().size());
             Canvas canvas = ui.canvas();
             if (canvas != null) {
                 MPainter.fillRect(canvas, 0, 0, windowWidth, windowHeight, 0xFF151515);

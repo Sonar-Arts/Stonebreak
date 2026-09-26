@@ -7,7 +7,7 @@ import com.openmason.engine.voxel.IVoxelChunkData;
 import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.api.voxel.ChunkDataAdapter;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -25,7 +25,7 @@ class VoxelChunkBulkCodecTest {
 
     @Test
     void bulkEncodeIsByteIdenticalAndBulkDecodeCellIdentical() {
-        var chunk = new TerrainGenerationSystem(555L).generateTerrainOnly(4, -9).chunk();
+        var chunk = new DiffusionTerrainGenerator(555L).generateTerrainOnly(4, -9).chunk();
         ChunkDataAdapter bulkView = new ChunkDataAdapter(chunk);
 
         // Per-cell view: same data, but WITHOUT the sections interface, so the

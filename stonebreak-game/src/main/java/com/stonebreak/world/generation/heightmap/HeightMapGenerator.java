@@ -1,171 +1,181 @@
 package com.stonebreak.world.generation.heightmap;
 
-import com.stonebreak.world.generation.diffusion.TerrainTile;
-import com.stonebreak.world.generation.diffusion.TerrainTileSource;
+import com.stonebreak.world.generation.StandardTerrain;
+import com.openmason.engine.util.SplineInterpolator;
+import com.stonebreak.world.generation.noise.NoiseRouter;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
- * Terrain height, sourced from the diffusion terrain bridge (plan.md Phase 2)
- * instead of the old continentalness/peaks-valleys/erosion noise splines.
+ * Generates terrain height from three independent noise channels routed through {@link NoiseRouter}:
+ * <ul>
+ *   <li><b>Continentalness</b> → base elevation spline (land/ocean).</li>
+ *   <li><b>Peaks/Valleys</b> → signed mountain offset spline.</li>
+ *   <li><b>Erosion</b> → peak strength (0 = flat, 1 = full peaks).</li>
+ * </ul>
+ * A low-amplitude detail noise adds ±3 block fuzz for surface texture.
  *
- * <p>A diffusion tile carries a single elevation value per column — there is
- * no equivalent of the old layered base/shape/detail decomposition, so
- * {@link #baseHeight}, {@link #shapedHeight}, and {@link #generateHeight} all
- * return the same tile-sourced value now. They remain three separate methods
- * only because {@code BiomeManager}, the cave carvers, surface decoration,
- * and the terrain-mapper debug visualizers still address them by name.
+ * Biomes do NOT contribute to terrain shape. They are selected to match the shape
+ * downstream via {@code BiomeSelector}.
+ *
+ * Final height = base(C) + pv(PV) * peakStrength(E) + detail
  */
 public class HeightMapGenerator {
-    private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+    private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
+    private static final int SEA_LEVEL = StandardTerrain.SEA_LEVEL;
 
-    private final TerrainTileSource tileSource;
+    /** Max absolute detail offset in blocks. Keeps biomes from looking samey. */
+    public static final float DETAIL_AMPLITUDE = 3f;
 
-    public HeightMapGenerator(TerrainTileSource tileSource) {
-        this.tileSource = tileSource;
+    // Spline control points, exported so the native carver's terrain context
+    // evaluates the EXACT same height formula. Order: base(C), peak(PV),
+    // erosion->peakStrength(E).
+    //
+    // base: continentalness → elevation (blocks) — previous deep-ocean/coast/
+    // inland profile, compressed so peaks have headroom.
+    // peak: PV → signed offset; steep midrange so typical |pv| ~ 0.2–0.4 still
+    // produces visible hills instead of flat ground.
+    // strength: erosion → peak multiplier, biased high so mountains appear by
+    // default; only strong positive erosion flattens them into plateaus.
+    private static final double[][] BASE_POINTS = {
+        {-1.0, 70}, {-0.8, 20}, {-0.4, 58}, {-0.2, 66},
+        {0.1, 72}, {0.3, 88}, {0.7, 100}, {1.0, 115}};
+    private static final double[][] PEAK_POINTS = {
+        {-1.0, -20}, {-0.3, -5}, {0.0, 0}, {0.15, 10},
+        {0.3, 25}, {0.5, 55}, {0.7, 85}, {1.0, 110}};
+    private static final double[][] STRENGTH_POINTS = {
+        {-1.0, 1.00}, {-0.3, 0.95}, {0.2, 0.80}, {0.6, 0.35}, {1.0, 0.10}};
+
+    private final NoiseRouter noise;
+    private final SplineInterpolator baseSpline;
+    private final SplineInterpolator peakSpline;
+    private final SplineInterpolator erosionToPeakStrength;
+
+    public HeightMapGenerator(NoiseRouter noise) {
+        this.noise = noise;
+        this.baseSpline = splineOf(BASE_POINTS);
+        this.peakSpline = splineOf(PEAK_POINTS);
+        this.erosionToPeakStrength = splineOf(STRENGTH_POINTS);
     }
 
-    /** Same value as {@link #generateHeight} — see class javadoc. */
+    private static SplineInterpolator splineOf(double[][] points) {
+        SplineInterpolator spline = new SplineInterpolator();
+        for (double[] point : points) {
+            spline.addPoint(point[0], point[1]);
+        }
+        return spline;
+    }
+
+    /** Concatenated spline X coordinates (base, peak, strength) for the native carver. */
+    public static double[] splineXs() {
+        return concatColumn(0);
+    }
+
+    /** Concatenated spline Y coordinates (base, peak, strength) for the native carver. */
+    public static double[] splineYs() {
+        return concatColumn(1);
+    }
+
+    /** Per-spline point counts (base, peak, strength) for the native carver. */
+    public static int[] splineSizes() {
+        return new int[]{BASE_POINTS.length, PEAK_POINTS.length, STRENGTH_POINTS.length};
+    }
+
+    private static double[] concatColumn(int column) {
+        double[] out = new double[BASE_POINTS.length + PEAK_POINTS.length + STRENGTH_POINTS.length];
+        int i = 0;
+        for (double[][] points : new double[][][]{BASE_POINTS, PEAK_POINTS, STRENGTH_POINTS}) {
+            for (double[] point : points) {
+                out[i++] = point[column];
+            }
+        }
+        return out;
+    }
+
+    /** Base elevation from continentalness alone (ignores PV/erosion/detail). */
     public int baseHeight(int x, int z) {
-        return generateHeight(x, z);
+        return clampToWorld((int) baseSpline.interpolate(noise.continentalness(x, z)));
     }
 
-    /** Same value as {@link #generateHeight} — see class javadoc. */
+    /** Elevation including peaks/valleys but without surface detail (debug + biome temperature). */
     public int shapedHeight(int x, int z) {
-        return generateHeight(x, z);
+        return shapedFromChannels(noise.continentalness(x, z), noise.peaksValleys(x, z), noise.erosion(x, z));
     }
 
-    /** Final surface height, read directly from the bridge's tile data. */
+    /** {@link #shapedHeight} from already-sampled channel values (batched paths). */
+    public int shapedFromChannels(float c, float pv, float e) {
+        float base = (float) baseSpline.interpolate(c);
+        float peak = (float) peakSpline.interpolate(pv);
+        float strength = (float) erosionToPeakStrength.interpolate(e);
+        return clampToWorld(Math.round(base + peak * strength));
+    }
+
+    /** Final surface height including detail noise. */
     public int generateHeight(int x, int z) {
-        return clampToWorld(tileSource.getTile(x, z).heightAt(x, z));
-    }
-
-    /** Water level at a column, or {@link TerrainTile#NO_WATER}. */
-    public int waterLevel(int x, int z) {
-        return tileSource.getTile(x, z).waterLevelAt(x, z);
+        return heightFromChannels(noise.continentalness(x, z), noise.peaksValleys(x, z),
+            noise.erosion(x, z), noise.detail(x, z));
     }
 
     /**
-     * Floor of the river tunnel through a column, or {@link TerrainTile#NO_TUNNEL}.
-     *
-     * <p>This, not {@link #generateHeight}, is the bed of a tunnelled column:
-     * the height there is the ground standing over the river, so a cave guard
-     * measuring from the height leaves the tunnel itself open.
+     * The single height formula, shared by the per-point path and the batched
+     * chunk path so both produce identical results from identical channel values.
      */
-    public int riverFloor(int x, int z) {
-        return tileSource.getTile(x, z).riverFloorAt(x, z);
-    }
-
-    /** @see #riverFloor */
-    public int riverRoof(int x, int z) {
-        return tileSource.getTile(x, z).riverRoofAt(x, z);
+    public int heightFromChannels(float c, float pv, float e, float d) {
+        float base = (float) baseSpline.interpolate(c);
+        float peak = (float) peakSpline.interpolate(pv);
+        float strength = (float) erosionToPeakStrength.interpolate(e);
+        float detail = d * DETAIL_AMPLITUDE;
+        return clampToWorld(Math.round(base + peak * strength + detail));
     }
 
     /**
      * Fills a 16x16 final-height grid for the given chunk, indexed [x*16+z].
-     * A chunk (16 blocks) always fits inside a single bridge tile (256
-     * blocks by default, always a multiple of CHUNK_SIZE), so this resolves
-     * one tile for the whole chunk rather than one HTTP round trip per column.
+     * Channels are batch-filled (one SIMD call each on the native backend)
+     * and combined per cell — values match {@link #generateHeight} exactly.
      */
     public void populateChunkHeights(int chunkX, int chunkZ, int[] out) {
-        populateChunkHeights(chunkX, chunkZ, out, null);
-    }
-
-    /**
-     * As {@link #populateChunkHeights(int, int, int[])}, and fills the co-located water
-     * levels when {@code outWaterLevels} is non-null.
-     *
-     * <p>One method rather than two passes because the two planes come from the same
-     * resolved tile and must not be able to disagree about which tile that was — the
-     * same reason {@code BiomeManager.populateChunkBiomes} reuses the clamped heights
-     * rather than re-resolving them.
-     *
-     * <p>The water level is <em>not</em> clamped to the world column the way the height
-     * is: the bridge already emits it inside {@code [0, world_height)} or as
-     * {@link TerrainTile#NO_WATER}, and clamping a negative sentinel to 1 would turn
-     * "no water here" into "one block of water at bedrock".
-     */
-    public void populateChunkHeights(int chunkX, int chunkZ, int[] out, int[] outWaterLevels) {
-        populateChunkHeights(chunkX, chunkZ, out, outWaterLevels, null, null);
-    }
-
-    /**
-     * As {@link #populateChunkHeights(int, int, int[], int[])}, and fills the
-     * co-located river-tunnel planes when they are non-null: the void a river
-     * runs through where it passes under standing ground, as
-     * {@code outRiverFloors < y < outRiverRoofs}, or
-     * {@link TerrainTile#NO_TUNNEL} in both for a column that has none.
-     *
-     * <p>All four planes come from the one resolved tile for the same reason the
-     * first two do: they describe one column between them and must not be able
-     * to disagree about which tile that column came from.
-     */
-    public void populateChunkHeights(int chunkX, int chunkZ, int[] out, int[] outWaterLevels,
-                                     int[] outRiverFloors, int[] outRiverRoofs) {
-        populateChunkHeights(chunkX, chunkZ, out, outWaterLevels, outRiverFloors, outRiverRoofs, null);
-    }
-
-    /**
-     * As {@link #populateChunkHeights(int, int, int[], int[], int[], int[])},
-     * and fills the co-located river flow directions when {@code outRiverFlows}
-     * is non-null — {@link TerrainTile#NO_FLOW} for every column whose water
-     * does not run.
-     *
-     * <p>Same tile for all five planes, same reason: they describe one column
-     * between them and must not be able to disagree about which tile it is.
-     */
-    public void populateChunkHeights(int chunkX, int chunkZ, int[] out, int[] outWaterLevels,
-                                     int[] outRiverFloors, int[] outRiverRoofs,
-                                     int[] outRiverFlows) {
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
-        TerrainTile tile = tileSource.getTile(baseX, baseZ);
-        for (int x = 0; x < CHUNK_SIZE; x++) {
-            for (int z = 0; z < CHUNK_SIZE; z++) {
-                int idx = x * CHUNK_SIZE + z;
-                int worldX = baseX + x;
-                int worldZ = baseZ + z;
-                out[idx] = clampToWorld(tile.heightAt(worldX, worldZ));
-                if (outWaterLevels != null) {
-                    outWaterLevels[idx] = tile.waterLevelAt(worldX, worldZ);
-                }
-                if (outRiverFloors != null) {
-                    outRiverFloors[idx] = tile.riverFloorAt(worldX, worldZ);
-                }
-                if (outRiverRoofs != null) {
-                    outRiverRoofs[idx] = tile.riverRoofAt(worldX, worldZ);
-                }
-                if (outRiverFlows != null) {
-                    outRiverFlows[idx] = tile.riverFlowAt(worldX, worldZ);
-                }
-            }
+        int cells = CHUNK_SIZE * CHUNK_SIZE;
+        float[] c = new float[cells];
+        float[] pv = new float[cells];
+        float[] e = new float[cells];
+        float[] d = new float[cells];
+        noise.fillShapeChannels(baseX, baseZ, CHUNK_SIZE, CHUNK_SIZE, 1, c, pv, e, d);
+        for (int i = 0; i < cells; i++) {
+            out[i] = heightFromChannels(c[i], pv[i], e[i], d[i]);
         }
     }
 
     /**
-     * Fills an arbitrary rectangle of final heights, indexed {@code [(x-minX)*sizeZ + (z-minZ)]}.
-     *
-     * <p>Unlike {@link #populateChunkHeights} this may span tiles, so it holds the last tile it
-     * resolved and re-resolves only when a column falls outside it. That is the whole point of
-     * the method: {@code getTile} on the production cache is a concurrent-map lookup plus LRU
-     * bookkeeping per call, and a caller that needs a haloed patch around a chunk would
-     * otherwise pay it thousands of times per chunk on the generation threads instead of once
-     * per tile the patch actually touches.
+     * Fills a 16x16 final-height grid AND the co-located water plane the cave
+     * carvers guard against. Indices match {@link #populateChunkHeights}.
      */
-    public void populateHeightPatch(int minX, int minZ, int sizeX, int sizeZ, int[] out) {
-        TerrainTile tile = null;
-        for (int x = 0; x < sizeX; x++) {
-            int worldX = minX + x;
-            for (int z = 0; z < sizeZ; z++) {
-                int worldZ = minZ + z;
-                if (tile == null || worldX < tile.worldI1() || worldX >= tile.worldI2()
-                        || worldZ < tile.worldJ1() || worldZ >= tile.worldJ2()) {
-                    tile = tileSource.getTile(worldX, worldZ);
-                }
-                out[x * sizeZ + z] = clampToWorld(tile.heightAt(worldX, worldZ));
-            }
+    public void populateChunkHeights(int chunkX, int chunkZ, int[] out, int[] outWaterLevels) {
+        populateChunkHeights(chunkX, chunkZ, out);
+        if (outWaterLevels == null) {
+            return;
+        }
+        for (int i = 0; i < out.length; i++) {
+            outWaterLevels[i] = waterLevelFor(out[i]);
         }
     }
+
+    /**
+     * Water level for a column, or {@link WorldConfiguration#NO_WATER} when it is dry.
+     *
+     * <p>This branch has no rivers or lakes — the only standing water is the ocean that
+     * {@code determineBlockType} fills in below {@code SEA_LEVEL}. So a column is wet
+     * exactly when its surface is submerged, and its water level is sea level.
+     */
+    public int waterLevel(int x, int z) {
+        return waterLevelFor(generateHeight(x, z));
+    }
+
+    private static int waterLevelFor(int height) {
+        return height < SEA_LEVEL ? SEA_LEVEL : WorldConfiguration.NO_WATER;
+    }
+
 
     private static int clampToWorld(int height) {
         return Math.max(1, Math.min(height, WORLD_HEIGHT - 1));

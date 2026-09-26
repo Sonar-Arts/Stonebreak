@@ -1,7 +1,7 @@
 package com.stonebreak.world.generation.heightmap;
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
-import com.stonebreak.world.generation.NoiseGenerator;
-import com.stonebreak.world.generation.diffusion.TerrainTile;
+import com.stonebreak.world.generation.StandardTerrain;
+import com.stonebreak.world.generation.noise.NoiseChannel3D;
+import com.stonebreak.world.generation.noise.TerrainNoise;
 
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -35,7 +35,7 @@ public final class PerlinWormCarver {
      * anything. Note the cost is quadratic — {@link #SCAN_RADIUS} grows with this, and the
      * per-chunk source scan is O(SCAN_RADIUS^2).
      */
-    private static final int MAX_STEPS = 90;
+    private static final int MAX_STEPS = 70;
     /** Distance per step in blocks. */
     private static final float STEP_SIZE = 1.0f;
 
@@ -131,7 +131,7 @@ public final class PerlinWormCarver {
     /** Chunk radius to scan when searching for a cavern to feed into. */
     private static final int CAVERN_CONNECTOR_RADIUS = 5;
     /** Step budget for a cavern connector — caverns may sit further out than worm-chunk neighbors. */
-    private static final int CAVERN_CONNECTOR_MAX_STEPS = 110;
+    private static final int CAVERN_CONNECTOR_MAX_STEPS = 85;
     /** Per-step lerp factor steering the connector toward its target (dominates noise drift). */
     private static final float CONNECTOR_BIAS = 0.55f;
     /** Step budget for a connector — enough to bridge {@link #CONNECTOR_SEARCH_RADIUS} chunks plus slack. */
@@ -157,8 +157,8 @@ public final class PerlinWormCarver {
      * actually matters: "60 blocks down from where you are standing" is meaningful at any
      * terrain height, whereas "y=180" is near-surface in one world and unreachable in another.
      */
-    private static final int ORIGIN_DEPTH_MIN = 20;
-    private static final int ORIGIN_DEPTH_MAX = 140;
+    private static final int ORIGIN_DEPTH_MIN = 12;
+    private static final int ORIGIN_DEPTH_MAX = 60;
     /** Termination Y bounds. */
     private static final int Y_FLOOR = 6;
     /** Stop carving once well above the local surface — the carver has fully breached. */
@@ -171,11 +171,13 @@ public final class PerlinWormCarver {
     private static final int WATER_CLEARANCE = (int) Math.ceil(BASE_RADIUS + RADIUS_AMP) + 1;
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
-    private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+    /** @see WorldConfiguration#NO_WATER */
+    private static final int NO_WATER = WorldConfiguration.NO_WATER;
+    private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
 
     private final long seed;
-    private final NoiseGenerator headingNoise;
-    private final NoiseGenerator radiusNoise;
+    private final NoiseChannel3D headingNoise;
+    private final NoiseChannel3D radiusNoise;
     private final HeightMapGenerator heightMapGenerator;
     private final CaveWaterTable waterTable;
     private CavernCarver cavernCarver;
@@ -183,8 +185,14 @@ public final class PerlinWormCarver {
 
     public PerlinWormCarver(long seed, HeightMapGenerator heightMapGenerator) {
         this.seed = seed;
-        this.headingNoise = new NoiseGenerator(seed + 41, 1, 0.5, 2.0);
-        this.radiusNoise = new NoiseGenerator(seed + 113, 1, 0.5, 2.0);
+        // Heading/radius go through the TerrainNoise seam so the Java fallback walker
+        // evaluates them from the SAME FastNoise2 nodes the native walker's context
+        // carries (GitHub issue #244): on the native backend both backends then carve
+        // identical tunnels from the same seed, and on the Java backend this stays the
+        // original byte-exact simplex. Call sites pass raw world coordinates — the
+        // wavelength scale lives in the factory, mirroring CaveWaterTable's wobble.
+        this.headingNoise = TerrainNoise.channel3D(seed + 41, 1, 0.5, 2.0, HEADING_SCALE);
+        this.radiusNoise = TerrainNoise.channel3D(seed + 113, 1, 0.5, 2.0, RADIUS_SCALE);
         this.heightMapGenerator = heightMapGenerator;
         this.waterTable = new CaveWaterTable(seed, heightMapGenerator);
     }
@@ -227,7 +235,7 @@ public final class PerlinWormCarver {
     }
 
     /**
-     * Builds the carve mask for a chunk. Bits use {@link LocalBlockKey#pack(int,int,int)} packed local
+     * Builds the carve mask for a chunk. Bits use {@code CarveMaskKey.pack(x, y, z)} packed local
      * positions; set bits should be replaced with AIR
      * by the caller (only when the block would otherwise be solid).
      */
@@ -241,18 +249,7 @@ public final class PerlinWormCarver {
      * suppresses nothing.
      */
     public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels) {
-        return carveMaskForChunk(chunkX, chunkZ, targetHeights, waterLevels, null);
-    }
-
-    /**
-     * As {@link #carveMaskForChunk(int, int, int[], int[])}, also keeping clear of the river
-     * TUNNELS in {@code riverFloors}. A tunnelled column's height is the ground
-     * standing over the river, so without this the guard measures from the hilltop
-     * and leaves the passage itself open to be carved into and drained.
-     */
-    public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels,
-                                    int[] riverFloors) {
-        int[] waterGuard = WaterGuard.guardPlane(targetHeights, waterLevels, riverFloors, heightMapGenerator, chunkX, chunkZ);
+        int[] waterGuard = WaterGuard.guardPlane(targetHeights, waterLevels, heightMapGenerator, chunkX, chunkZ);
         BitSet mask = new BitSet();
         for (int dcx = -SCAN_RADIUS; dcx <= SCAN_RADIUS; dcx++) {
             for (int dcz = -SCAN_RADIUS; dcz <= SCAN_RADIUS; dcz++) {
@@ -515,8 +512,8 @@ public final class PerlinWormCarver {
         CaveWaterTable.Zone zone = CaveWaterTable.Zone.PHREATIC;
 
         for (int step = 0; step < seg.stepBudget; step++) {
-            float yawNoise = headingNoise.noise3D(x * HEADING_SCALE, y * HEADING_SCALE, z * HEADING_SCALE);
-            float pitchNoise = headingNoise.noise3D((x + 1024f) * HEADING_SCALE, y * HEADING_SCALE, (z + 1024f) * HEADING_SCALE);
+            float yawNoise = headingNoise.sample(x, y, z);
+            float pitchNoise = headingNoise.sample(x + 1024f, y, z + 1024f);
             yaw += yawNoise * YAW_DRIFT;
             pitch += pitchNoise * PITCH_DRIFT + UPWARD_BIAS;
 
@@ -582,13 +579,13 @@ public final class PerlinWormCarver {
             // water instead. WaterGuard.seals still does the precise per-cell sealing below;
             // this is only the coarse early-out for the walk.
             int water = heightMapGenerator.waterLevel(wxi, wzi);
-            if (water != TerrainTile.NO_WATER && surface <= water + WATER_CLEARANCE) break;
+            if (water != NO_WATER && surface <= water + WATER_CLEARANCE) break;
             if (wyi > surface + BREACH_OVERHEAD) break;
 
             // Zone for the NEXT step, reusing the surface/water this step already resolved.
             zone = CaveWaterTable.zoneAt(waterTable.tableFrom(wxi, wzi, surface, water), wyi);
 
-            float radius = BASE_RADIUS + radiusNoise.noise3D(x * RADIUS_SCALE, y * RADIUS_SCALE, z * RADIUS_SCALE) * RADIUS_AMP;
+            float radius = BASE_RADIUS + radiusNoise.sample(x, y, z) * RADIUS_AMP;
             if (radius < MIN_RADIUS) radius = MIN_RADIUS;
             carveEllipsoid(wxi, wyi, wzi, radius, targetCx, targetCz,
                     targetHeights, waterGuard, mask);
@@ -657,7 +654,7 @@ public final class PerlinWormCarver {
                     int by = wy + oy;
                     if (by < 1 || by >= WORLD_HEIGHT) continue;
                     if (WaterGuard.seals(waterGuard, idx, by, WATER_CLEARANCE)) continue;
-                    mask.set(LocalBlockKey.pack(bx, by, bz));
+                    mask.set(CarveMaskKey.pack(bx, by, bz));
                 }
             }
         }

@@ -1,7 +1,7 @@
 package com.stonebreak.world.fastlod;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeKind;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
 
@@ -80,7 +80,7 @@ public final class FastLodSerializer {
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel
-     * ({@link TerrainGenerationSystem#NO_OPENING}) is an int and the field is i16, so it
+     * ({@link TerrainGenerator#NO_OPENING}) is an int and the field is i16, so it
      * needs its own value; no real floor can reach Short.MIN_VALUE.
      */
     private static final short OPEN_NONE = Short.MIN_VALUE;
@@ -134,7 +134,7 @@ public final class FastLodSerializer {
             buf.put((byte) 1);
             for (int i = 0; i < cellsLen; i++) {
                 int v = openFloor[i];
-                buf.putShort((short) (v == TerrainGenerationSystem.NO_OPENING
+                buf.putShort((short) (v == TerrainGenerator.NO_OPENING
                         ? OPEN_NONE : clampShort(v)));
             }
             buf.put(openCover, 0, cellsLen);
@@ -213,7 +213,7 @@ public final class FastLodSerializer {
             for (int i = 0; i < cellsLen; i++) {
                 short v = buf.getShort();
                 openFloor[i] = (v == OPEN_NONE)
-                        ? TerrainGenerationSystem.NO_OPENING : v;
+                        ? TerrainGenerator.NO_OPENING : v;
             }
             openCover = new byte[cellsLen];
             buf.get(openCover);

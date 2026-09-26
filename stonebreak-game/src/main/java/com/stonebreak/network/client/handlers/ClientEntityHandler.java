@@ -149,6 +149,20 @@ public final class ClientEntityHandler {
         }
     }
 
+    /**
+     * Applies the authoritative appearance variant of a replicated entity
+     * (e.g. a sheared sheep's {@code "Sheared"} SBE variant). Idempotent —
+     * the shearing client's predicted swap already set the same value, and
+     * unknown variants fall back to the base model in the renderer.
+     */
+    public void applyVariant(int networkId, String variant) {
+        Entity e = byNetworkId.get(networkId);
+        if (e instanceof com.stonebreak.mobs.entities.LivingEntity le
+                && variant != null && !variant.isBlank()) {
+            le.setTextureVariant(variant);
+        }
+    }
+
     public void applyAbsolute(int networkId, float x, float y, float z, float yaw) {
         Entity e = byNetworkId.get(networkId);
         if (e == null) {

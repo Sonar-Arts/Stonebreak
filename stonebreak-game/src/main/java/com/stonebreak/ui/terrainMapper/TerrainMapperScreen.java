@@ -7,7 +7,6 @@ import com.stonebreak.ui.terrainMapper.handlers.TerrainInputHandler;
 import com.stonebreak.ui.terrainMapper.handlers.TerrainMouseHandler;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
 import com.stonebreak.ui.terrainMapper.renderers.SkijaTerrainMapperRenderer;
-import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
 
 /**
@@ -43,10 +42,6 @@ public final class TerrainMapperScreen {
         state.getCharacterButton().onClick(actionHandler::goToCharacterCreation);
         state.getSimulateSeedButton().onClick(actionHandler::simulateSeed);
         state.getCreateButton().onClick(actionHandler::createWorld);
-        for (var button : state.getModeButtons()) {
-            VisualizerKind tag = button.tag();
-            button.onClick(() -> state.setActiveVisualizer(tag));
-        }
         state.getSetSpawnButton().onClick(state::clearSpawnPoint);
         state.getCenterOnSpawnButton().onClick(actionHandler::centerOnSpawn);
     }

@@ -8,9 +8,11 @@ import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
 import com.stonebreak.network.packet.entity.EntityMoveS2C;
 import com.stonebreak.network.packet.entity.EntityResyncC2S;
-import com.stonebreak.network.packet.entity.ProjectileSpawnC2S;
+import com.stonebreak.network.packet.entity.EntityShearC2S;
 import com.stonebreak.network.packet.entity.EntitySpawnS2C;
 import com.stonebreak.network.packet.entity.EntityTeleportS2C;
+import com.stonebreak.network.packet.entity.EntityVariantS2C;
+import com.stonebreak.network.packet.entity.ProjectileSpawnC2S;
 import com.stonebreak.network.packet.handshake.DisconnectC2S;
 import com.stonebreak.network.packet.handshake.HandshakeC2S;
 import com.stonebreak.network.packet.handshake.KeepAliveC2S;
@@ -94,6 +96,7 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 18, TimeSetC2S.class, TimeSetC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 19, BlockToggleC2S.class, BlockToggleC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 20, CharacterCreationC2S.class, CharacterCreationC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 21, EntityShearC2S.class, EntityShearC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);
@@ -120,6 +123,7 @@ public final class StonebreakProtocol {
         r.register(PLAY, CLIENTBOUND, 22, BlockStateS2C.class, BlockStateS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 23, KillCreditS2C.class, KillCreditS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 24, NeedsCharacterCreationS2C.class, NeedsCharacterCreationS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 25, EntityVariantS2C.class, EntityVariantS2C.CODEC);
 
         return r;
     }

@@ -7,7 +7,7 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.ChunkStatus;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.generation.ColumnProfile;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.features.FeatureQueue;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.save.SaveService;
@@ -28,7 +28,7 @@ import java.util.function.Consumer;
  * Follows SOLID, KISS, YAGNI, and DRY principles.
  */
 public class WorldChunkStore {
-    private final TerrainGenerationSystem terrainSystem;
+    private final TerrainGenerator terrainSystem;
     private final WorldConfiguration config;
     private final MmsMeshPipeline meshPipeline;
     private final Map<ChunkPosition, Chunk> chunks;
@@ -64,7 +64,7 @@ public class WorldChunkStore {
     // all chunks). Default true: the authoritative/singleplayer world generates terrain.
     private volatile boolean terrainGenerationEnabled = true;
 
-    public WorldChunkStore(TerrainGenerationSystem terrainSystem,
+    public WorldChunkStore(TerrainGenerator terrainSystem,
                           WorldConfiguration config,
                           MmsMeshPipeline meshPipeline,
                           com.stonebreak.world.World world,
@@ -108,7 +108,7 @@ public class WorldChunkStore {
     /**
      * Enable/disable local terrain generation. A client render-view world disables it so
      * {@link #generate} returns empty chunks waiting to be filled by streamed network data
-     * instead of running {@code TerrainGenerationSystem}. Authoritative/singleplayer worlds
+     * instead of running {@code TerrainGenerator}. Authoritative/singleplayer worlds
      * leave it enabled.
      */
     public void setTerrainGenerationEnabled(boolean enabled) {
@@ -531,7 +531,7 @@ public class WorldChunkStore {
 
             // Generate terrain ONLY - features will be populated later via queue
             // This prevents recursive chunk generation during mesh building
-            TerrainGenerationSystem.TerrainResult result = terrainSystem.generateTerrainOnly(x, z);
+            TerrainGenerator.TerrainResult result = terrainSystem.generateTerrainOnly(x, z);
             if (result == null || result.chunk() == null) {
                 System.err.println("CRITICAL: Failed to generate chunk at (" + x + ", " + z + ")");
                 return null;

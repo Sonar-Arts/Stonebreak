@@ -1,7 +1,7 @@
 package com.stonebreak.ui.terrainMapper;
 
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
-import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 
 /**
  * Pure layout math. Given a window size, computes the rectangular regions
@@ -26,11 +26,13 @@ public final class TerrainMapperLayout {
     private final Rect title;
     private final Rect worldNameField;
     private final Rect seedField;
+    private final Rect generatorListStart;
     private final Rect modeListStart;
     private final Rect spawnButton;
     private final Rect centerOnSpawnButton;
 
-    public TerrainMapperLayout(int windowWidth, int windowHeight) {
+    /** @param modeCount mode buttons the selected generator shows (0 before one is picked) */
+    public TerrainMapperLayout(int windowWidth, int windowHeight, int modeCount) {
         float w = Math.max(1, windowWidth);
         float h = Math.max(1, windowHeight);
         float footerY = h - TerrainMapperConfig.FOOTER_HEIGHT;
@@ -57,11 +59,15 @@ public final class TerrainMapperLayout {
         this.seedField = new Rect(pad, cursorY, innerWidth, TerrainMapperConfig.TEXT_FIELD_HEIGHT);
         cursorY = seedField.bottom() + TerrainMapperConfig.SIDEBAR_SECTION_GAP + 16f;
 
+        // Generator choice sits above the modes: the modes are the chosen generator's.
+        this.generatorListStart = new Rect(pad, cursorY, innerWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
+        cursorY = rowY(generatorListStart, TerrainGeneratorType.values().length)
+                + TerrainMapperConfig.SIDEBAR_SECTION_GAP + 16f;
+
         this.modeListStart = new Rect(pad, cursorY, innerWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
 
-        int modeCount = VisualizerKind.values().length;
-        float spawnSectionY = modeListStart.y()
-                + modeCount * (TerrainMapperConfig.MODE_BUTTON_HEIGHT + TerrainMapperConfig.MODE_BUTTON_SPACING)
+        int modeRows = (modeCount + TerrainMapperConfig.MODE_BUTTON_COLUMNS - 1) / TerrainMapperConfig.MODE_BUTTON_COLUMNS;
+        float spawnSectionY = rowY(modeListStart, modeRows)
                 + TerrainMapperConfig.SIDEBAR_SECTION_GAP + 16f;
         this.spawnButton = new Rect(pad, spawnSectionY, innerWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
         this.centerOnSpawnButton = new Rect(pad,
@@ -76,13 +82,33 @@ public final class TerrainMapperLayout {
     public Rect worldNameField() { return worldNameField; }
     public Rect seedField() { return seedField; }
 
-    /** Position of the first mode button; subsequent buttons stack beneath it. */
+    /** Position of the first generator button; the rest stack beneath it, full width. */
+    public Rect firstGeneratorButton() { return generatorListStart; }
+
+    /** Top of the n-th generator button. */
+    public float generatorButtonY(int index) {
+        return rowY(generatorListStart, index);
+    }
+
+    /** Position of the first mode button; the rest fill a {@code MODE_BUTTON_COLUMNS}-wide grid. */
     public Rect firstModeButton() { return modeListStart; }
 
-    /** Top-left of the n-th mode button. */
+    /** Left of the n-th mode button. */
+    public float modeButtonX(int index) {
+        float columnWidth = (modeListStart.width() - TerrainMapperConfig.MODE_BUTTON_SPACING)
+                / TerrainMapperConfig.MODE_BUTTON_COLUMNS;
+        int column = index % TerrainMapperConfig.MODE_BUTTON_COLUMNS;
+        return modeListStart.x() + column * (columnWidth + TerrainMapperConfig.MODE_BUTTON_SPACING);
+    }
+
+    /** Top of the n-th mode button. */
     public float modeButtonY(int index) {
-        return modeListStart.y()
-                + index * (TerrainMapperConfig.MODE_BUTTON_HEIGHT + TerrainMapperConfig.MODE_BUTTON_SPACING);
+        return rowY(modeListStart, index / TerrainMapperConfig.MODE_BUTTON_COLUMNS);
+    }
+
+    /** Top of row {@code row} of a button list starting at {@code first}. */
+    private static float rowY(Rect first, int row) {
+        return first.y() + row * (TerrainMapperConfig.MODE_BUTTON_HEIGHT + TerrainMapperConfig.MODE_BUTTON_SPACING);
     }
 
     public Rect spawnButton() { return spawnButton; }

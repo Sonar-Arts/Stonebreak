@@ -6,6 +6,7 @@ import com.stonebreak.ui.terrainMapper.components.TerrainMapViewport;
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerRegistry;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +33,8 @@ public final class TerrainMapperStateManager {
     private final MButton characterButton;
     private final MButton createButton;
     private final MButton simulateSeedButton;
+    private final List<MCategoryButton<TerrainGeneratorType>> generatorButtons = new ArrayList<>();
+    /** The selected generator's modes; empty until one is picked. See {@link #selectGenerator}. */
     private final List<MCategoryButton<VisualizerKind>> modeButtons = new ArrayList<>();
     private final MButton setSpawnButton;
     private final MButton centerOnSpawnButton;
@@ -50,7 +53,8 @@ public final class TerrainMapperStateManager {
     private long seedDirtyAtNanos;
 
     // ─────────────────────────────────────────────── Visualization
-    private VisualizerKind activeVisualizer = VisualizerKind.HEIGHT;
+    /** Null until a generator is picked. */
+    private VisualizerKind activeVisualizer;
     private final VisualizerRegistry visualizers;
 
     // ─────────────────────────────────────────────── Viewport + preview
@@ -81,18 +85,19 @@ public final class TerrainMapperStateManager {
                 .arrow(MButton.Arrow.LEFT)
                 .size(TerrainMapperConfig.FOOTER_BUTTON_WIDTH, TerrainMapperConfig.FOOTER_BUTTON_HEIGHT);
         this.createButton = new MButton("Create World")
+                .enabled(false)
                 .size(TerrainMapperConfig.FOOTER_BUTTON_WIDTH, TerrainMapperConfig.FOOTER_BUTTON_HEIGHT);
         this.simulateSeedButton = new MButton("Simulate Seed")
                 .size(TerrainMapperConfig.FOOTER_BUTTON_WIDTH, TerrainMapperConfig.FOOTER_BUTTON_HEIGHT);
 
-        for (VisualizerKind kind : VisualizerKind.values()) {
-            MCategoryButton<VisualizerKind> button = new MCategoryButton<>(kind, kind.displayName());
-            button.size(TerrainMapperConfig.SIDEBAR_WIDTH - TerrainMapperConfig.SIDEBAR_PADDING * 2f,
-                    TerrainMapperConfig.MODE_BUTTON_HEIGHT);
-            modeButtons.add(button);
+        float btnWidth = TerrainMapperConfig.SIDEBAR_WIDTH - TerrainMapperConfig.SIDEBAR_PADDING * 2f;
+        for (TerrainGeneratorType type : TerrainGeneratorType.values()) {
+            MCategoryButton<TerrainGeneratorType> button = new MCategoryButton<>(type, type.displayName());
+            button.size(btnWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
+            button.onClick(() -> selectGenerator(type));
+            generatorButtons.add(button);
         }
 
-        float btnWidth = TerrainMapperConfig.SIDEBAR_WIDTH - TerrainMapperConfig.SIDEBAR_PADDING * 2f;
         this.setSpawnButton = new MButton("Click map to set spawn")
                 .enabled(false)
                 .size(btnWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
@@ -107,6 +112,7 @@ public final class TerrainMapperStateManager {
     public MButton getCharacterButton() { return characterButton; }
     public MButton getCreateButton() { return createButton; }
     public MButton getSimulateSeedButton() { return simulateSeedButton; }
+    public List<MCategoryButton<TerrainGeneratorType>> getGeneratorButtons() { return generatorButtons; }
     public List<MCategoryButton<VisualizerKind>> getModeButtons() { return modeButtons; }
     public MButton getSetSpawnButton() { return setSpawnButton; }
     public MButton getCenterOnSpawnButton() { return centerOnSpawnButton; }
@@ -222,6 +228,42 @@ public final class TerrainMapperStateManager {
     }
 
     public VisualizerRegistry getVisualizers() { return visualizers; }
+
+    // ─────────────────────────────────────────────── Generator
+
+    /** The generator the new world will use, or null before the player has picked one. */
+    public TerrainGeneratorType getSelectedGenerator() { return visualizers.generatorType(); }
+
+    /**
+     * Picks the generator: its mode buttons replace the previous set and the first mode is
+     * shown. Leaving Diffusion stops its services; picking it starts nothing here — the first
+     * preview job does, off the render thread.
+     */
+    public void selectGenerator(TerrainGeneratorType type) {
+        if (type == visualizers.generatorType()) return;
+        visualizers.selectGenerator(type);
+        rebuildModeButtons();
+        createButton.setEnabled(type != null);
+    }
+
+    /** Stops the Diffusion services if this screen started them — the player is leaving without a world. */
+    public void stopGeneratorServices() {
+        visualizers.stopServices();
+    }
+
+    private void rebuildModeButtons() {
+        modeButtons.clear();
+        float width = (TerrainMapperConfig.SIDEBAR_WIDTH - TerrainMapperConfig.SIDEBAR_PADDING * 2f
+                - TerrainMapperConfig.MODE_BUTTON_SPACING) / 2f;
+        for (VisualizerKind kind : visualizers.modes()) {
+            MCategoryButton<VisualizerKind> button = new MCategoryButton<>(kind, kind.displayName());
+            button.size(width, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
+            button.fontSize(TerrainMapperConfig.MODE_BUTTON_FONT_SIZE);
+            button.onClick(() -> setActiveVisualizer(kind));
+            modeButtons.add(button);
+        }
+        activeVisualizer = modeButtons.isEmpty() ? null : modeButtons.get(0).tag();
+    }
 
     // ─────────────────────────────────────────────── Seed
 
@@ -353,7 +395,11 @@ public final class TerrainMapperStateManager {
         worldName = "";
         errorMessage = null;
         activeField = ActiveField.WORLD_NAME;
-        activeVisualizer = VisualizerKind.HEIGHT;
+        // Forget the generator without stopping its services: reset() also runs on the way into
+        // a world just created, which may be about to use them. Back stops them first.
+        visualizers.clearGenerator();
+        rebuildModeButtons();
+        createButton.setEnabled(false);
         dragging = false;
         hasHoverValue = false;
         clearSpawnPoint();

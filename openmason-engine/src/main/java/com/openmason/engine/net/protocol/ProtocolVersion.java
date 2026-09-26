@@ -12,8 +12,11 @@ public final class ProtocolVersion {
 
     /** Current wire protocol version. 2 = multiplayer refinement batch (keepalive,
      *  time sync, chunk meta payload, player state flags, projectile replication).
-     *  3 = BlockChangeC2S carries an optional client-proposed placement state. */
-    public static final int CURRENT = 3;
+     *  3 = BlockChangeC2S carries an optional client-proposed placement state.
+     *  4 = entity appearance-variant channel (EntityShearC2S, EntityVariantS2C — the
+     *  handshake is exact-equality, so 3 peers can never join a 4 world and choke on
+     *  an unknown packet id). */
+    public static final int CURRENT = 4;
 
     private ProtocolVersion() {}
 }

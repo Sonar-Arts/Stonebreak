@@ -12,10 +12,31 @@ public final class BiomeSurfaceConfig {
     public static final class Entry {
         public final float caveIntensity;
         public final float overhangIntensity;
+        /**
+         * Which noise channel drives this biome's overhang band.
+         *
+         * <p>False (the default) reads the <em>cheese</em> channel, whose wavelength is chosen
+         * for big underground chambers. True reads the dedicated <em>crag</em> channel, which
+         * is roughly a quarter of that wavelength.
+         *
+         * <p>The distinction exists because the band is a silhouette decision, and silhouette
+         * wants a different scale than chambers do. At the cheese wavelength an intensity that
+         * should read as a broken cliff face instead lands as one 40-80 block bite out of the
+         * hillside — the same fraction of blocks carved, arriving as one crater rather than as
+         * many crags. STONY_PEAKS carries the highest overhangIntensity in the table, so it is
+         * the biome where that difference stops being subtle, and it is the only biome that
+         * opts in. Everything else keeps the cheese channel and is bit-for-bit unchanged.
+         */
+        public final boolean cragSurface;
 
         public Entry(float caveIntensity, float overhangIntensity) {
+            this(caveIntensity, overhangIntensity, false);
+        }
+
+        public Entry(float caveIntensity, float overhangIntensity, boolean cragSurface) {
             this.caveIntensity = caveIntensity;
             this.overhangIntensity = overhangIntensity;
+            this.cragSurface = cragSurface;
         }
     }
 
@@ -25,7 +46,7 @@ public final class BiomeSurfaceConfig {
     private static final Entry SNOWY_PLAINS     = new Entry(0.18f, 0.08f);
     private static final Entry TUNDRA           = new Entry(0.22f, 0.18f);
     private static final Entry TAIGA            = new Entry(0.22f, 0.15f);
-    private static final Entry STONY_PEAKS      = new Entry(0.30f, 0.35f);
+    private static final Entry STONY_PEAKS      = new Entry(0.30f, 0.35f, true);
     private static final Entry BEACH            = new Entry(0.00f, 0.00f);
     private static final Entry ICE_FIELDS       = new Entry(0.00f, 0.00f);
     private static final Entry BADLANDS         = new Entry(0.28f, 0.32f);

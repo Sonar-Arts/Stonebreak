@@ -875,7 +875,9 @@ public class Game {
      * Builds the client render world for a joined session. See
      * {@link com.stonebreak.core.world.ClientWorldBuilder}.
      */
-    public void startClientWorld(String worldName, long seed, org.joml.Vector3f spawn) {
-        clientWorldBuilder.start(worldName, seed, spawn);
+    public void startClientWorld(String worldName, long seed,
+                                 com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                 org.joml.Vector3f spawn) {
+        clientWorldBuilder.start(worldName, seed, generatorType, spawn);
     }
 }

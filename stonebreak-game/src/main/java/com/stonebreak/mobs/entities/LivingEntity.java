@@ -449,6 +449,16 @@ public abstract class LivingEntity extends Entity {
     /** Appearance variant rendered from the SBE asset. */
     public String getTextureVariant() { return textureVariant; }
 
+    /**
+     * Swaps this entity's appearance variant (e.g. a sheared sheep's
+     * {@code "Sheared"} SBE variant). Authoritative mutations go through
+     * {@code Sheep.shear()}; the client applies replicated changes to its
+     * shadows through this setter.
+     */
+    public void setTextureVariant(String textureVariant) {
+        this.textureVariant = textureVariant;
+    }
+
     /** Client shadow: apply the server's replicated animation state to the (otherwise frozen) AI. */
     @Override
     public void applyNetworkState(String sbeStateName) {
