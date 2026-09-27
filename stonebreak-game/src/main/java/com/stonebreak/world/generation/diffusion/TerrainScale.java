@@ -43,23 +43,18 @@ public final class TerrainScale {
     /**
      * Environment for the terrain services (bridge and model server alike), so both map
      * metres to blocks identically and agree with {@link WorldConfiguration}.
-     *
-     * @param downscaleCapable whether the model server understands {@code downscale}
-     *        (DaedalusTGM-Exp does; the legacy diffusion upstream does not and keeps 15 m blocks)
      */
-    public static Map<String, String> serviceEnvironment(boolean downscaleCapable) {
+    public static Map<String, String> serviceEnvironment() {
         Map<String, String> env = new LinkedHashMap<>();
         env.put("TERRAIN_BRIDGE_WORLD_HEIGHT", String.valueOf(WorldConfiguration.WORLD_HEIGHT));
         env.put("TERRAIN_BRIDGE_SEA_LEVEL", String.valueOf(WorldConfiguration.SEA_LEVEL));
         for (int i = 0; i < CURVE_RATE_KEYS.length; i++) {
             env.put(CURVE_RATE_KEYS[i], format(CURVE_RATES[i]));
         }
-        if (downscaleCapable) {
-            env.put("TERRAIN_BRIDGE_SCALE", "1");
-            env.put("TERRAIN_BRIDGE_DOWNSCALE", String.valueOf(DOWNSCALE));
-            env.put("TERRAIN_BRIDGE_HORIZONTAL_METERS_PER_BLOCK", format(HORIZONTAL_METERS_PER_BLOCK));
-            env.put("TERRAIN_BRIDGE_METERS_PER_BLOCK", format(HORIZONTAL_METERS_PER_BLOCK));
-        }
+        env.put("TERRAIN_BRIDGE_SCALE", "1");
+        env.put("TERRAIN_BRIDGE_DOWNSCALE", String.valueOf(DOWNSCALE));
+        env.put("TERRAIN_BRIDGE_HORIZONTAL_METERS_PER_BLOCK", format(HORIZONTAL_METERS_PER_BLOCK));
+        env.put("TERRAIN_BRIDGE_METERS_PER_BLOCK", format(HORIZONTAL_METERS_PER_BLOCK));
         return env;
     }
 

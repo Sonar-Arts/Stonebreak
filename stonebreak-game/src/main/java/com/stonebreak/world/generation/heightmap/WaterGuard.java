@@ -26,7 +26,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * bed anchor covers both.
  *
  * <p>Neighbors outside the 16x16 chunk are resolved through the
- * {@link HeightMapGenerator}'s tile source — the same resolved tiles the chunk's
+ * {@link SurfaceHeights} — the same terrain the chunk's
  * own planes came from — so a river hugging a chunk border is guarded from both sides.
  * The clearance is each carver's own {@code WATER_CLEARANCE}, derived from its blob
  * radius: the distance that matters is how far a carve reaches up from the y it was
@@ -61,7 +61,7 @@ public final class WaterGuard {
      *                      the chunk only
      */
     public static int[] guardPlane(int[] targetHeights, int[] waterLevels,
-                                   HeightMapGenerator heightMap, int chunkX, int chunkZ) {
+                                   SurfaceHeights heightMap, int chunkX, int chunkZ) {
         if (waterLevels == null) {
             return null;
         }
@@ -83,7 +83,7 @@ public final class WaterGuard {
     }
 
     private static int consider(int guard, int x, int z, int[] heights, int[] waterLevels,
-                                HeightMapGenerator heightMap, int baseX, int baseZ) {
+                                SurfaceHeights heightMap, int baseX, int baseZ) {
         if (x >= 0 && x < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) {
             int idx = x * CHUNK_SIZE + z;
             if (waterLevels[idx] != NO_WATER) {

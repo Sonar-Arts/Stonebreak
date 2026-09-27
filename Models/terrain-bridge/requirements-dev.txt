@@ -1,3 +1,7 @@
 -r requirements.txt
 pytest>=8.0
 pytest-asyncio>=0.24
+# hydrology/ (fill + flow) is not used by the running bridge; it is kept for
+# DaedalusTGM-Exp's training-data build, and its tests need these.
+numba>=0.59          # priority-flood fill; heap-driven, does not vectorise
+scipy>=1.11

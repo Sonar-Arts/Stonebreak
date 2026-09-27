@@ -8,7 +8,12 @@ from bridge.cache import TileCache
 from bridge.config import BridgeConfig
 from bridge.queue import GpuWorkQueue, TilePending
 from bridge.tiling import TileId
-from bridge.water import SeaLevelWater
+from bridge.water import UpstreamWater
+
+
+def _dry(h, w):
+    """A water-surface plane with no river anywhere."""
+    return np.full((h, w), UpstreamWater.WATER_NONE, dtype=np.int16)
 
 
 class _FakeClient:
@@ -24,7 +29,7 @@ class _FakeClient:
     def __repr__(self):
         return f"_FakeClient(calls={len(self.calls)})"
 
-    def fetch_tile(self, i1, j1, i2, j2, lod=1):
+    def fetch_tile_with_water(self, i1, j1, i2, j2, lod=1):
         self.concurrent += 1
         self.max_concurrent = max(self.max_concurrent, self.concurrent)
         self.calls.append((i1, j1, i2, j2))
@@ -35,13 +40,13 @@ class _FakeClient:
             h = w = i2 - i1
             elev = np.full((h, w), self.elevation_m, dtype=np.int16)
             biome = np.full((h, w), 1, dtype=np.int16)
-            return elev, biome
+            return elev, biome, _dry(h, w), None
         finally:
             self.concurrent -= 1
 
 
 class _GatedClient:
-    """A fetch_tile that blocks until the test releases it. Lets a test observe
+    """A fetch that blocks until the test releases it. Lets a test observe
     "the job is still running" deterministically instead of racing a sleep against
     a timeout."""
 
@@ -52,13 +57,13 @@ class _GatedClient:
     def release(self) -> None:
         self._gate.set()
 
-    def fetch_tile(self, i1, j1, i2, j2, lod=1):
+    def fetch_tile_with_water(self, i1, j1, i2, j2, lod=1):
         self.calls.append((i1, j1, i2, j2))
         self._gate.wait()
         h = w = i2 - i1
         elev = np.full((h, w), 30, dtype=np.int16)
         biome = np.full((h, w), 1, dtype=np.int16)
-        return elev, biome
+        return elev, biome, _dry(h, w), None
 
 
 def _cfg(tmp_path):
@@ -82,7 +87,7 @@ async def test_concurrent_requests_for_same_tile_dedupe(tmp_path):
     cfg = _cfg(tmp_path)
     cache = TileCache(cfg)
     client = _FakeClient()
-    q = GpuWorkQueue(cfg, cache, client, SeaLevelWater(cfg))
+    q = GpuWorkQueue(cfg, cache, client, UpstreamWater(cfg))
     q.start()
 
     tile = TileId(seed=1, tile_x=0, tile_z=0, scale=2)
@@ -92,27 +97,27 @@ async def test_concurrent_requests_for_same_tile_dedupe(tmp_path):
     assert client.max_concurrent == 1  # never called concurrently
     for (block_height, biome, water_level, *river), _from_cache in results:
         assert block_height.shape == biome.shape == water_level.shape == (4, 4)
-        # No 3D river planes from a sea-level source: all three are the -1 sentinel.
+        # No 3D river planes from the model: all three are the -1 sentinel.
         assert len(river) == 3 and all((p == -1).all() for p in river)
 
     await q.stop()
 
 
 @pytest.mark.asyncio
-async def test_the_water_plane_is_the_old_sea_level_rule_per_column(tmp_path):
-    """With hydrology off, `y < waterLevel` has to place exactly the blocks
-    `y < SEA_LEVEL` used to. Land above sea level carries the -1 "no water" sentinel;
+async def test_without_rivers_the_water_plane_is_the_sea_level_rule_per_column(tmp_path):
+    """With no river in the tile, `y < waterLevel` has to place exactly the blocks
+    `y < SEA_LEVEL` would. Land above sea level carries the -1 "no water" sentinel;
     anything below carries sea level itself."""
     cfg = _cfg(tmp_path)
     tile = TileId(seed=1, tile_x=0, tile_z=0, scale=2)
 
-    q = GpuWorkQueue(cfg, TileCache(cfg), _FakeClient(elevation_m=30), SeaLevelWater(cfg))
+    q = GpuWorkQueue(cfg, TileCache(cfg), _FakeClient(elevation_m=30), UpstreamWater(cfg))
     q.start()
     (heights, _, water, *_), _ = await q.get_tile(tile)
     assert (heights > cfg.sea_level).all() and (water == -1).all()
     await q.stop()
 
-    q = GpuWorkQueue(cfg, TileCache(cfg), _FakeClient(elevation_m=-500), SeaLevelWater(cfg))
+    q = GpuWorkQueue(cfg, TileCache(cfg), _FakeClient(elevation_m=-500), UpstreamWater(cfg))
     q.start()
     (heights, _, water, *_), _ = await q.get_tile(TileId(seed=1, tile_x=9, tile_z=0, scale=2))
     assert (heights < cfg.sea_level).all() and (water == cfg.sea_level).all()
@@ -122,13 +127,11 @@ async def test_the_water_plane_is_the_old_sea_level_rule_per_column(tmp_path):
 @pytest.mark.asyncio
 async def test_max_wait_s_times_out_without_disturbing_the_job(tmp_path):
     """A caller that gives up after `max_wait_s` must not cancel or duplicate the
-    underlying job -- that job is the (potentially minutes-long) cold hydrology solve
-    the cold-start fix (Rivers and lakes plan.md section 19) exists to not repeat. A
-    second, more patient caller for the same tile has to land on the same in-flight
+    underlying job -- a slow tile must not be generated twice. A second, more patient caller for the same tile has to land on the same in-flight
     work and get the real result once it finishes, with only one upstream fetch."""
     cfg = _cfg(tmp_path)
     client = _GatedClient()
-    q = GpuWorkQueue(cfg, TileCache(cfg), client, SeaLevelWater(cfg))
+    q = GpuWorkQueue(cfg, TileCache(cfg), client, UpstreamWater(cfg))
     q.start()
 
     tile = TileId(seed=1, tile_x=0, tile_z=0, scale=2)
@@ -156,7 +159,7 @@ async def test_second_request_after_completion_is_a_cache_hit(tmp_path):
     cfg = _cfg(tmp_path)
     cache = TileCache(cfg)
     client = _FakeClient()
-    q = GpuWorkQueue(cfg, cache, client, SeaLevelWater(cfg))
+    q = GpuWorkQueue(cfg, cache, client, UpstreamWater(cfg))
     q.start()
 
     tile = TileId(seed=1, tile_x=0, tile_z=0, scale=2)

@@ -10,8 +10,8 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.diffusion.DryHillsTileSource;
 import com.stonebreak.world.generation.features.LimestoneGenerator;
 import com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator;
-import com.stonebreak.world.generation.diffusion.heightmap.CavernCarver;
-import com.stonebreak.world.generation.diffusion.heightmap.MegaCavernCarver;
+import com.stonebreak.world.generation.heightmap.CavernCarver;
+import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -41,7 +41,8 @@ public class LimestoneDistributionTest {
         HeightMapGenerator heights = new HeightMapGenerator(tiles);
         CavernCarver caverns = new CavernCarver(SEED, heights);
         return new Setup(new DiffusionTerrainGenerator(SEED, tiles),
-                new LimestoneGenerator(SEED, heights, caverns, new MegaCavernCarver(SEED, heights)),
+                new LimestoneGenerator(SEED, heights, caverns::computeCavernOrigin,
+                        new MegaCavernCarver(SEED, heights)::computeCavernOrigin),
                 caverns);
     }
 

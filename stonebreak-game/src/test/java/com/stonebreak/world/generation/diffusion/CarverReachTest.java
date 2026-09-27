@@ -1,10 +1,10 @@
 package com.stonebreak.world.generation.diffusion;
 
-import com.stonebreak.world.generation.diffusion.heightmap.CavernCarver;
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
-import com.stonebreak.world.generation.diffusion.heightmap.MegaCavernCarver;
-import com.stonebreak.world.generation.diffusion.heightmap.RavineCarver;
-import com.stonebreak.world.generation.diffusion.heightmap.SinkholeCarver;
+import com.stonebreak.world.generation.heightmap.CavernCarver;
+import com.stonebreak.world.generation.heightmap.CarveMaskKey;
+import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
+import com.stonebreak.world.generation.heightmap.RavineCarver;
+import com.stonebreak.world.generation.heightmap.SinkholeCarver;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -146,8 +146,8 @@ public class CarverReachTest {
                         int tcz = cz + dcz;
                         BitSet m = mask.at(tcx, tcz);
                         for (int bit = m.nextSetBit(0); bit >= 0; bit = m.nextSetBit(bit + 1)) {
-                            double wx = tcx * CHUNK + LocalBlockKey.x(bit);
-                            double wz = tcz * CHUNK + LocalBlockKey.z(bit);
+                            double wx = tcx * CHUNK + CarveMaskKey.x(bit);
+                            double wz = tcz * CHUNK + CarveMaskKey.z(bit);
                             double d = Math.hypot(wx - o[0], wz - o[2]);
                             if (d > worstReach) {
                                 worstReach = d;

@@ -156,20 +156,20 @@ public class DiffusionTerrainClient {
         }
 
         /**
-         * True while a "still solving" 503 (plan section 19) should keep being polled on its
-         * own patient budget, separate from both {@link #tolerateUnreachable} above and the
-         * ordinary {@code maxRetries} ladder: the bridge is up and answering, it just isn't
-         * done with a cold L0/L1 solve yet, which can take far longer than either of those
-         * budgets was ever meant to cover.
+         * True while a "still generating" 503 should keep being polled on its own patient
+         * budget, separate from both {@link #tolerateUnreachable} above and the ordinary
+         * {@code maxRetries} ladder: the bridge is up and answering, it just hasn't finished
+         * the tile within its bounded wait (a cold model can take far longer than either of
+         * those budgets was ever meant to cover).
          */
         boolean tolerateSolving(int worldX, int worldZ) {
             long now = System.nanoTime();
             solvingAttempts++;
             if (!solvingWaiting) {
                 solvingWaiting = true;
-                solvingExpiresAtNanos = now + config.hydrologySolveGraceMs() * 1_000_000L;
-                LOG.info(() -> "terrain bridge is still solving hydrology for tile (" + worldX + ","
-                        + worldZ + "); polling for up to " + config.hydrologySolveGraceMs() + "ms");
+                solvingExpiresAtNanos = now + config.tilePendingGraceMs() * 1_000_000L;
+                LOG.info(() -> "terrain bridge is still generating tile (" + worldX + ","
+                        + worldZ + "); polling for up to " + config.tilePendingGraceMs() + "ms");
                 return true;
             }
             return now < solvingExpiresAtNanos;
@@ -215,21 +215,21 @@ public class DiffusionTerrainClient {
                                 return;
                             }
                             if (isSolvingStatus(response)) {
-                                // Doesn't touch attemptNumber: a cold solve isn't a transient
+                                // Doesn't touch attemptNumber: a slow tile isn't a transient
                                 // error to burn the fast ladder on, and isn't a dead connection
                                 // either — it gets its own patient, non-consuming budget.
                                 if (deadline.tolerateSolving(worldX, worldZ)) {
-                                    long retryAfterMs = parseRetryAfterMs(response, config.solvePollIntervalMs());
+                                    long retryAfterMs = parseRetryAfterMs(response, config.pendingPollIntervalMs());
                                     retryScheduler.schedule(
                                             () -> attemptFetch(worldX, worldZ, attemptNumber, result, deadline),
                                             retryAfterMs, TimeUnit.MILLISECONDS);
                                     return;
                                 }
                                 result.completeExceptionally(new TerrainBridgeException(
-                                        "terrain bridge is still solving hydrology for (" + worldX + ","
+                                        "terrain bridge is still generating tile (" + worldX + ","
                                         + worldZ + ") after " + deadline.solvingAttempts() + " polls over "
-                                        + config.hydrologySolveGraceMs() + "ms — the bridge is reachable but"
-                                        + " a cold region/tile solve is taking longer than expected;"
+                                        + config.tilePendingGraceMs() + "ms — the bridge is reachable but"
+                                        + " the tile is taking longer than expected;"
                                         + " check the bridge's own logs"));
                                 return;
                             }
@@ -266,7 +266,7 @@ public class DiffusionTerrainClient {
                         String waited = unreachable && deadline.waited()
                                 ? " (" + deadline.connectAttempts() + " connect attempts over "
                                   + config.unreachableGraceMs() + "ms; is the terrain service"
-                                  + " running? see Dev Working/terrain-diffusion-spike/logs)"
+                                  + " running? see Models/logs)"
                                 : "";
                         result.completeExceptionally(new TerrainBridgeException(
                                 "terrain bridge unreachable for (" + worldX + "," + worldZ + ") after " +

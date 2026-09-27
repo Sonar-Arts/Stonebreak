@@ -77,9 +77,9 @@ public final class CaveWaterTable {
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
     private final NoiseChannel2D wobble;
-    private final HeightMapGenerator heightMap;
+    private final SurfaceHeights heightMap;
 
-    public CaveWaterTable(long seed, HeightMapGenerator heightMap) {
+    public CaveWaterTable(long seed, SurfaceHeights heightMap) {
         // Seed offset distinct from Density3D (+17) and the worm channels (+41, +113).
         this.wobble = TerrainNoise.channel2D(seed + 8191, 2, 0.5, 2.0, SCALE, 0f, 0f, 0, 0);
         this.heightMap = heightMap;

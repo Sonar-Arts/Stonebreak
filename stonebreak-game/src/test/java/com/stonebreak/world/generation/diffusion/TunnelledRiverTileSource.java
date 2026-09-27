@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * A river running west to east that meets a hill and TUNNELS under it, as
- * {@code ck_carve_water} now stamps one.
+ * the terrain model serves one (riverFloor/riverRoof planes).
  *
  * <p>This fake exists because the tunnel planes cannot be reached from
  * {@link FakeTerrainTileSource}: that one has no rivers at all, so every column

@@ -12,29 +12,4 @@ if(CENDA_BUILD_KERNELS)
     add_executable(kernels_chunk kernels_chunk_test.cpp)
     target_link_libraries(kernels_chunk PRIVATE cenda_kernels cenda_warnings)
     add_test(NAME kernels_chunk COMMAND kernels_chunk)
-
-    # basin_plan.hpp is header-only and depends on nothing but the standard
-    # library, so its tests need neither the shared lib nor FastNoise.
-    add_executable(kernels_basin kernels_basin_test.cpp)
-    target_include_directories(kernels_basin PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../native/kernels/src)
-    target_link_libraries(kernels_basin PRIVATE cenda_warnings)
-    add_test(NAME kernels_basin COMMAND kernels_basin)
-
-    # river_plan.hpp is header-only too, and deliberately depends on no noise
-    # backend — the meander is built from basin_plan.hpp's hash — so the whole
-    # routing layer stays testable with nothing linked.
-    add_executable(kernels_river kernels_river_test.cpp)
-    target_include_directories(kernels_river PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../native/kernels/src)
-    target_link_libraries(kernels_river PRIVATE cenda_warnings)
-    add_test(NAME kernels_river COMMAND kernels_river)
-
-    add_executable(kernels_water kernels_water_test.cpp)
-    # For river_octant.hpp: the flow-plane test steps along the kernel's own
-    # octant table rather than a copy of it.
-    target_include_directories(kernels_water PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../native/kernels/src)
-    target_link_libraries(kernels_water PRIVATE cenda_kernels cenda_warnings)
-    add_test(NAME kernels_water COMMAND kernels_water)
 endif()

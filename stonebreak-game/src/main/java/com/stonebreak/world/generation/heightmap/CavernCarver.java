@@ -71,9 +71,9 @@ public final class CavernCarver {
     private static final int WATER_CLEARANCE = (int) Math.ceil(BASE_RADIUS * 1.20f) + 1;
 
     private final long seed;
-    private final HeightMapGenerator heightMapGenerator;
+    private final SurfaceHeights heightMapGenerator;
 
-    public CavernCarver(long seed, HeightMapGenerator heightMapGenerator) {
+    public CavernCarver(long seed, SurfaceHeights heightMapGenerator) {
         this.seed = seed;
         this.heightMapGenerator = heightMapGenerator;
     }

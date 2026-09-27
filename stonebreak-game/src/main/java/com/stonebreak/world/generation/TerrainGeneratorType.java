@@ -17,10 +17,10 @@ public enum TerrainGeneratorType {
     },
 
     /**
-     * Experimental: terrain from the model served by the local terrain services — on this
-     * branch DaedalusTGM-Exp by default ({@code -Dstonebreak.terrainService.backend}). Building
-     * one starts the model server and bridge, which can take minutes on a cold machine. The
-     * constant keeps Heracles' name: it is what world.json and the handshake carry.
+     * Experimental: terrain from DaedalusTGM-Exp, served by the local terrain services
+     * ({@code Models/}). Building one starts the model server and bridge, which can take
+     * minutes on a cold machine. The constant keeps Heracles' name: it is what world.json
+     * and the handshake carry.
      */
     DIFFUSION("DaedalusTGM-Exp") {
         @Override

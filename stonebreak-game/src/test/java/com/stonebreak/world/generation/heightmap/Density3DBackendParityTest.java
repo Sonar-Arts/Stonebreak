@@ -1,4 +1,4 @@
-package com.stonebreak.world.generation.diffusion.heightmap;
+package com.stonebreak.world.generation.heightmap;
 
 import com.openmason.engine.cenda.CendaKernels;
 import com.stonebreak.world.generation.noise.TerrainNoise;

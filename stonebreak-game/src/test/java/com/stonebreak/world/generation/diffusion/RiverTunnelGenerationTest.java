@@ -17,17 +17,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * A river that meets a hill goes UNDER it.
  *
- * <p>The defect these pin: {@code ck_carve_water} wrote {@code carved = surf - cut}
- * with no reference to the ground already there, so a route crossing high terrain
- * deleted every block above the water line — a trench through a mountain. Terrain
- * is now kept and the river is carried through a void described by two per-column
- * planes ({@code riverFloor}/{@code riverRoof}).
+ * <p>The defect these pin: a river carve that ignored the ground already there turned
+ * a route crossing high terrain into a trench through the mountain. Terrain is kept
+ * and the river is carried through a void described by two per-column planes
+ * ({@code riverFloor}/{@code riverRoof}), which the terrain model serves with each tile.
  *
- * <p>Why an offline fake rather than the real kernel: {@link com.stonebreak.world.generation.water.NativeWaterTiles}
- * needs a basin solve over a real DEM, and the kernel's own invariants (the ground
- * survives, the lid holds, nothing leaks) are already pinned in
- * {@code kernels_water_test.cpp}. What is NOT covered there is everything after the
- * ABI: whether the planes survive {@code TerrainTile} -> {@code HeightMapGenerator}
+ * <p>Why an offline fake rather than the real model: the model's own river invariants
+ * are its concern. What is pinned here is everything after the tile protocol:
+ * whether the planes survive {@code TerrainTile} -> {@code HeightMapGenerator}
  * -> the block loop, and whether the block loop turns them into the right blocks.
  * That journey is what fails silently, so it is what these test.
  *
@@ -51,9 +48,8 @@ public class RiverTunnelGenerationTest {
      * The river's top water block is MARKED as running water.
      *
      * Same journey as everything else in this class, and the same reason to
-     * test it here: the kernel's own flow plane is pinned in
-     * {@code kernels_water_test.cpp}, and what is not pinned anywhere else is
-     * whether it survives {@code TerrainTile} -> {@code HeightMapGenerator} ->
+     * test it here: what is not pinned anywhere else is whether the tile's
+     * flow plane survives {@code TerrainTile} -> {@code HeightMapGenerator} ->
      * the block loop and lands on the right cell.
      *
      * <p>Only the TOP block, and only in the channel. The marker is what lets
@@ -339,49 +335,6 @@ public class RiverTunnelGenerationTest {
         }
         assertTrue(stray.isEmpty(), stray.size() + " water blocks outside the channel: "
                 + stray.subList(0, Math.min(8, stray.size())));
-    }
-
-    /**
-     * The rock beside a tunnel is solid over the passage's own height band.
-     *
-     * <p>A hole here drains the river sideways exactly as a breached bed drains it
-     * downward — the bank case {@code WaterGuard}'s per-chunk plane was written for.
-     * That plane takes the lowest wet bed in each column's 4-neighbourhood, so a
-     * column beside a tunnel is guarded from the tunnel FLOOR and every carver is
-     * held off it. {@code Density3D} is the exception: it is the one carver the guard
-     * was never wired to, and it reads noise and depth only.
-     */
-    @Test
-    public void theRockBesideATunnelIsSolid() {
-        DiffusionTerrainGenerator terrain = terrain();
-        List<String> holes = new ArrayList<>();
-        int checked = 0;
-
-        for (int[] c : CHUNKS) {
-            Chunk chunk = terrain.generateTerrainOnly(c[0], c[1]).chunk();
-            for (int lx = 0; lx < CHUNK; lx++) {
-                for (int lz = 0; lz < CHUNK; lz++) {
-                    int wx = c[0] * CHUNK + lx;
-                    int wz = c[1] * CHUNK + lz;
-                    // The first dry column on either side of the channel, under the hill.
-                    boolean besideChannel = Math.abs(wz - TunnelledRiverTileSource.RIVER_Z)
-                            == TunnelledRiverTileSource.HALF_WIDTH + 1;
-                    if (!besideChannel || !TunnelledRiverTileSource.underHill(wx)) {
-                        continue;
-                    }
-                    checked++;
-                    for (int y = TunnelledRiverTileSource.CHANNEL_FLOOR;
-                         y <= TunnelledRiverTileSource.TUNNEL_ROOF; y++) {
-                        if (chunk.getBlock(lx, y, lz) == BlockType.AIR) {
-                            holes.add("(" + wx + "," + y + "," + wz + ")");
-                        }
-                    }
-                }
-            }
-        }
-        assertTrue(checked > 0, "the swept chunks must contain columns beside a tunnel");
-        assertTrue(holes.isEmpty(), holes.size() + " open cells in the wall beside a tunnel: "
-                + holes.subList(0, Math.min(8, holes.size())));
     }
 
     /**

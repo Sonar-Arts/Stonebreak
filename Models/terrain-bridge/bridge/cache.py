@@ -4,14 +4,11 @@ Caches the already-converted, servable payload rather than raw upstream
 elevation — conversion is a cheap, pure function (height_mapping.py), so
 there is nothing to gain from caching pre-conversion, and caching post-
 conversion means a cache hit is a straight file read with no recompute.
-Since Phase 8 that argument is stronger, not weaker: the water plane is the
-output of a carve against an L1 solve, which is emphatically not cheap.
 
 Tiles are stored under a subdirectory fingerprinted by every knob that
 affects the output (scale, tile size, meters/block, sea level, world height,
-noise, the elevation curve, and — via `extra` — the hydrology knobs, which
-live in `hydrology/` and are hashed there so this module needs no import from
-it). A config change therefore starts a fresh cache namespace instead of
+noise, the elevation curve, the water source's `fingerprint` via `extra`, and
+the model identity). A config change therefore starts a fresh cache namespace instead of
 silently serving tiles that no longer match the current mapping.
 """
 from __future__ import annotations
@@ -62,7 +59,7 @@ def _config_fingerprint(cfg: BridgeConfig, extra: str = "") -> str:
         # Appended only when set, so existing namespaces keep their hashes.
         raw += f"|downscale={cfg.downscale}"
     if cfg.upstream_id:
-        # Appended only when set, so the stock model's namespace keeps its old hash.
+        # Appended only when set, so namespaces from before the field existed keep their hashes.
         raw += f"|upstream={cfg.upstream_id}"
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 

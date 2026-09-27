@@ -1,10 +1,9 @@
-"""FastAPI adapter in front of upstream's terrain_diffusion minecraft_api server.
+"""FastAPI adapter in front of the DaedalusTGM-Exp model server (`/terrain`).
 
 Contract for the Java client (plan.md section 5, Phase 1):
   POST /generate_heightmap  {world_x, world_z, seed?} -> binary tile + headers
   GET  /health               -> model/queue/cache status
   POST /prefetch             {world_x, world_z}        -> fire-and-forget warm
-  POST /coarse_elevation    {chunk_x, chunk_z, seed?} -> float32 block heights
 
 The tile body is bare concatenated int16-LE planes with no header bytes of its
 own, so a consumer that expects a different plane count mis-slices it into
@@ -21,7 +20,6 @@ from pydantic import BaseModel
 
 from . import water as water_module
 from .cache import PLANES, TileCache
-from .coarse import CoarseElevation
 from .config import BridgeConfig
 from .queue import GpuWorkQueue, TilePending
 from .tiling import TileId, tile_bounds, tile_containing
@@ -36,21 +34,17 @@ log = logging.getLogger("terrain_bridge")
 
 cfg = BridgeConfig.from_env()
 water = water_module.build(cfg)
-# The hydrology knobs are hashed inside `hydrology/`, so the tile cache takes their
-# digest rather than importing the package to compute one — that import is what pulls
-# numba, and `TERRAIN_BRIDGE_HYDROLOGY=0` must not pay for it.
 cache = TileCache(cfg, water.fingerprint)
 client = UpstreamClient(cfg)
 work_queue = GpuWorkQueue(cfg, cache, client, water)
-coarse = CoarseElevation(cfg, client)
 
 app = FastAPI(title="Stonebreak Terrain Bridge")
 
 
 class TileCoordRequest(BaseModel):
     """`lod` > 1 asks for a far-zoom preview tile: world_x/world_z are then SAMPLE coordinates
-    (world blocks // lod) and each sample stands for lod x lod blocks. Only upstreams that
-    downscale (DaedalusTGM-Exp) serve it; the terrain mapper uses it when zoomed out."""
+    (world blocks // lod) and each sample stands for lod x lod blocks. Needs
+    TERRAIN_BRIDGE_DOWNSCALE > 1; the terrain mapper uses it when zoomed out."""
     world_x: int
     world_z: int
     seed: int | None = None
@@ -60,17 +54,9 @@ class TileCoordRequest(BaseModel):
 def _tile_for(req: TileCoordRequest) -> TileId:
     if req.lod != 1 and (req.lod < 1 or req.lod & (req.lod - 1) or cfg.downscale == 1):
         raise HTTPException(status_code=400, detail=f"lod {req.lod} unsupported: a power of two, "
-                            "and only with a downscaling upstream (DaedalusTGM-Exp)")
+                            "and only with TERRAIN_BRIDGE_DOWNSCALE > 1")
     tile_x, tile_z = tile_containing(req.world_x, req.world_z, cfg.tile_size_blocks)
     return TileId(seed=cfg.seed, tile_x=tile_x, tile_z=tile_z, scale=cfg.scale, lod=req.lod)
-
-
-class CoarseChunkRequest(BaseModel):
-    """A chunk is addressed by ID, never by bounding box — see coarse.py."""
-
-    chunk_x: int
-    chunk_z: int
-    seed: int | None = None
 
 
 def _require_matching_seed(seed: int | None) -> None:
@@ -115,7 +101,6 @@ def health():
         # so the old `meters_per_block` field described nothing and is gone rather than
         # left reporting 15.0 (plan section 10.7).
         "horizontal_meters_per_block": cfg.horizontal_meters_per_block,
-        "hydrology": cfg.hydrology_enabled,
         "cache": cache.stats(),
         "cache_namespace": cache.root.name,
         "queue_depth": work_queue.queue_depth(),
@@ -130,8 +115,8 @@ async def generate_heightmap(req: TileCoordRequest):
     try:
         planes, from_cache = await work_queue.get_tile(tile, max_wait_s=cfg.max_wait_s)
     except TilePending:
-        # A cold L0/L1 solve can run for minutes -- far longer than any one HTTP
-        # request should be held open (plan section 16.10 / 18.5). The job keeps
+        # A slow tile (a cold model's first ones run ~30 s) must not hold the HTTP
+        # request open indefinitely. The job keeps
         # running on the queue regardless of this request giving up on it; the
         # client is expected to poll again after Retry-After and land on the same
         # in-flight job rather than start a second one.
@@ -164,40 +149,6 @@ async def generate_heightmap(req: TileCoordRequest):
     resp.headers["X-Sea-Level"] = str(cfg.sea_level)
     resp.headers["X-Cache-Hit"] = "1" if from_cache else "0"
     resp.headers["X-Lod"] = str(tile.lod)
-    return resp
-
-
-@app.post("/coarse_elevation")
-async def coarse_elevation(req: CoarseChunkRequest):
-    """One coarse chunk: fractional block heights, row = world X, col = world Z.
-
-    Fractional on purpose — quantising to whole blocks makes 40 % of land
-    perfectly flat at 15 m per block, which turns the caller's downhill routing
-    into a distance field (hydrology/README.md). Do not round these.
-
-    Generation is a single square GPU request and runs off the event loop; the
-    store serialises so concurrent callers on the same cold chunk wait rather
-    than each starting one.
-    """
-    _require_matching_seed(req.seed)
-    try:
-        cells = await asyncio.to_thread(coarse.chunk, req.chunk_x, req.chunk_z)
-    except UpstreamError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-    n = coarse.cells_per_chunk
-    resp = Response(content=cells.tobytes(), media_type="application/octet-stream")
-    resp.headers["X-Protocol-Version"] = str(PROTOCOL_VERSION)
-    resp.headers["X-Dtype"] = "float32-le"
-    resp.headers["X-Height"] = str(n)
-    resp.headers["X-Width"] = str(n)
-    resp.headers["X-Chunk-X"] = str(req.chunk_x)
-    resp.headers["X-Chunk-Z"] = str(req.chunk_z)
-    resp.headers["X-Chunk-Blocks"] = str(cfg.coarse_chunk_blocks)
-    resp.headers["X-Cell-Blocks"] = str(cfg.coarse_cell_blocks)
-    resp.headers["X-Sea-Level"] = str(cfg.sea_level)
     return resp
 
 

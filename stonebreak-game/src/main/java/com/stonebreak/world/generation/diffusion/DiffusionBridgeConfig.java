@@ -19,11 +19,8 @@ public record DiffusionBridgeConfig(
         long maxBackoffMs,
         int maxCachedTiles,
         long unreachableGraceMs,
-        long hydrologySolveGraceMs,
-        long solvePollIntervalMs,
-        int coarseChunkBlocks,
-        int coarseCellBlocks,
-        int maxCachedCoarseChunks
+        long tilePendingGraceMs,
+        long pendingPollIntervalMs
 ) {
     public static DiffusionBridgeConfig fromSystemProperties() {
         return new DiffusionBridgeConfig(
@@ -34,17 +31,9 @@ public record DiffusionBridgeConfig(
                 System.getProperty("stonebreak.terrainBridge.url", "http://localhost:8180"),
                 Integer.getInteger("stonebreak.terrainBridge.tileSizeBlocks", 256),
                 Long.getLong("stonebreak.terrainBridge.connectTimeoutMs", 5_000L),
-                // Was 35 s, then 300 s while a single request had to cover an entire cold
-                // solve end to end — and even 300 s didn't cover the worst case (an L1 tile
-                // whose halo straddles four unsolved L0 regions, ~1160 s after the section 18
-                // halo widening). Rivers and lakes plan.md section 19 replaces "one request
-                // covers the whole solve" with polling: the bridge itself now bounds how long
-                // it will hold `/generate_heightmap` open on an unfinished tile
-                // (`TERRAIN_BRIDGE_MAX_WAIT_S`, default 20 s) and answers 503 + `Retry-After`
-                // instead of hanging, while the job keeps running regardless. This timeout only
-                // has to clear one such round trip — an ordinary tile (about a second) or one
-                // bounded wait-then-503 — with margin for network and queueing delay, not the
-                // solve itself. `hydrologySolveGraceMs` below is what covers the solve.
+                // Only has to clear one round trip: an ordinary tile, or the bridge's bounded
+                // wait (TERRAIN_BRIDGE_MAX_WAIT_S, default 20 s) that ends in 503 + Retry-After
+                // for a tile still generating. tilePendingGraceMs below covers the generation.
                 Long.getLong("stonebreak.terrainBridge.requestTimeoutMs", 30_000L),
                 Integer.getInteger("stonebreak.terrainBridge.maxRetries", 3),
                 Long.getLong("stonebreak.terrainBridge.initialBackoffMs", 250L),
@@ -59,31 +48,16 @@ public record DiffusionBridgeConfig(
                 // services are genuinely absent (a fetch is not allowed to hang a chunk worker
                 // forever). See DiffusionTerrainClient.attemptFetch.
                 Long.getLong("stonebreak.terrainBridge.unreachableGraceMs", 60_000L),
-                // Patient budget for a bridge that keeps answering "still solving" (503 +
-                // Retry-After) rather than one that isn't there at all — separate from both
-                // unreachableGraceMs above and the fast maxRetries ladder, because neither fits:
-                // the bridge is up and answering, just not done, and a normal transient-error
-                // retry (a couple of seconds) would give up long before a cold L0 region (up to
-                // ~290 s) or the worst-case four-region spawn tile (~1160 s projected, section
-                // 18.2) finishes. 30 minutes is comfortable margin over that projection; it costs
-                // nothing when unused since polls are cheap on both ends (plan section 19).
-                Long.getLong("stonebreak.terrainBridge.hydrologySolveGraceMs", 1_800_000L),
+                // Patient budget for a bridge that keeps answering "still generating" (503 +
+                // Retry-After) rather than one that isn't there at all -- separate from both
+                // unreachableGraceMs above and the fast maxRetries ladder, because the bridge is
+                // up and answering, just not done (a cold model's first tile takes ~30 s).
+                // Costs nothing when unused since polls are cheap on both ends.
+                Long.getLong("stonebreak.terrainBridge.tilePendingGraceMs", 1_800_000L),
                 // Fallback poll interval, used only if a 503 arrives without a parseable
                 // Retry-After header — the bridge always sends one, so this is a safety net,
                 // not the number that actually paces polling in practice.
-                Long.getLong("stonebreak.terrainBridge.solvePollIntervalMs", 5_000L),
-                // Coarse-elevation chunking, for the river walker's DEM. Both MUST equal the
-                // bridge's TERRAIN_BRIDGE_COARSE_CHUNK_BLOCKS / _CELL_BLOCKS, exactly like
-                // tileSizeBlocks: the chunk size fixes the canonical upstream request shape, and
-                // upstream is only deterministic per shape (Models/terrain-bridge/bridge/tiling.py), so a
-                // mismatch would fetch differently-shaped ground and put seams back. CoarseDem
-                // verifies both against the response headers rather than trusting them.
-                Integer.getInteger("stonebreak.terrainBridge.coarseChunkBlocks", 2048),
-                Integer.getInteger("stonebreak.terrainBridge.coarseCellBlocks", 16),
-                // A chunk is 128x128 floats = 64 KB at the defaults, and one tile's DEM window
-                // spans ~5.7 km, so it touches at most 4x4 of them. 64 keeps several tiles' worth
-                // resident (~4 MB) so ordinary movement never re-fetches.
-                Integer.getInteger("stonebreak.terrainBridge.maxCachedCoarseChunks", 64)
+                Long.getLong("stonebreak.terrainBridge.pendingPollIntervalMs", 5_000L)
         );
     }
 }

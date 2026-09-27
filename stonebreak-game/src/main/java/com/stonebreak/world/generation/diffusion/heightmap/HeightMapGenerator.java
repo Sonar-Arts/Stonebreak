@@ -1,22 +1,25 @@
 package com.stonebreak.world.generation.diffusion.heightmap;
 
 import com.stonebreak.world.generation.features.ColumnHeights;
+import com.stonebreak.world.generation.heightmap.SurfaceHeights;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.diffusion.TerrainTileSource;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
- * Terrain height, sourced from the diffusion terrain bridge (plan.md Phase 2)
- * instead of the old continentalness/peaks-valleys/erosion noise splines.
+ * Terrain height for the DaedalusTGM-Exp world, read from the terrain bridge's tiles —
+ * the tile-backed counterpart of Standard's noise
+ * {@link com.stonebreak.world.generation.heightmap.HeightMapGenerator}. As a
+ * {@link com.stonebreak.world.generation.heightmap.SurfaceHeights} it drives Standard's
+ * cave stack, so both worlds carve with the same code.
  *
- * <p>A diffusion tile carries a single elevation value per column — there is
- * no equivalent of the old layered base/shape/detail decomposition, so
- * {@link #baseHeight}, {@link #shapedHeight}, and {@link #generateHeight} all
- * return the same tile-sourced value now. They remain three separate methods
- * only because {@code BiomeManager}, the cave carvers, surface decoration,
- * and the terrain-mapper debug visualizers still address them by name.
+ * <p>A tile carries a single elevation value per column — there is no layered
+ * base/shape/detail decomposition, so {@link #baseHeight}, {@link #shapedHeight}, and
+ * {@link #generateHeight} all return the same tile-sourced value. They remain separate
+ * methods only because {@code BiomeManager}, surface decoration and the terrain-mapper
+ * debug visualizers still address them by name.
  */
-public class HeightMapGenerator implements ColumnHeights {
+public class HeightMapGenerator implements ColumnHeights, SurfaceHeights {
     private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
@@ -43,6 +46,7 @@ public class HeightMapGenerator implements ColumnHeights {
     }
 
     /** Water level at a column, or {@link TerrainTile#NO_WATER}. */
+    @Override
     public int waterLevel(int x, int z) {
         return tileSource.getTile(x, z).waterLevelAt(x, z);
     }

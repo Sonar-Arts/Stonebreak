@@ -156,7 +156,7 @@ class HeightCurve:
         a left inverse of `to_block_height` -- that one floors and clamps, so what
         comes back is the *bottom* of the block's elevation band, and a column
         clamped at 0 or `world_height - 1` is unrecoverable. For reading a tile
-        cache back as a DEM (`hydrology/io.py`), not for round-tripping.
+        cache back as a DEM or building test fixtures, not for round-tripping.
         """
         elev_grid, block_grid = _curve_table(self)
         return np.interp(np.asarray(block_height, dtype=np.float64), block_grid, elev_grid)

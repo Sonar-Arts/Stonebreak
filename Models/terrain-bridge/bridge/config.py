@@ -41,10 +41,8 @@ class BridgeConfig:
     cache_max_bytes: int
     upstream_timeout_s: float
 
-    # Horizontal cell size (native_resolution / scale). Distinct from
-    # meters_per_block even though both are 15.0 at scale=2 -- after the Phase 5
-    # curve the vertical mapping is non-linear and the two diverge. Drainage area
-    # in hydrology/depth.py needs this one, not the vertical rate.
+    # Horizontal cell size in metres per block. Distinct from meters_per_block: the
+    # vertical mapping is the non-linear curve below, not one rate.
     horizontal_meters_per_block: float = 15.0
 
     # Elevation -> block height curve knots (see height_mapping.HeightCurve).
@@ -59,66 +57,28 @@ class BridgeConfig:
     midland_blend_m: float = 150.0
     highland_blend_m: float = 300.0
 
-    # Inland water (Phase 8). Off leaves the bridge exactly as it was through Phase 7 --
-    # a sea-level-only water plane, no `hydrology` import, and therefore no numba/LLVM in
-    # the service's dependency footprint (plan section 4.1). On, the first tile in an
-    # unsolved L1 macro-tile pays that tile's solve (~17 s, one per 256 terrain tiles)
-    # and the first tile in an unsolved L0 region pays the region's (~200 s, one per
-    # 4096); both are cached to disk and neither recurs.
-    hydrology_enabled: bool = True
-
-    # The two knobs plan sections 14.11 and 15.15 both flag as most likely to want
-    # retuning once water is actually visible in-game. Their defaults are the ones the
-    # already-solved regions and tiles were built under, so leaving them alone changes
-    # no namespace.
-    l0_max_raise_m: float = 100.0
-    river_threshold_cells: float = 10_000.0
-
-    # Carve shape -- see hydrology/carve.py's CarveParams for what each one buys.
-    bank_margin_blocks: int = 48
-    min_water_blocks: int = 1
-
-    # Coarse elevation chunks (bridge/coarse.py) -- the field the game's river
-    # walker descends. The chunk size fixes the canonical request shape, which is
-    # what makes a chunk deterministic; changing either knob rotates the coarse
-    # cache namespace. `coarse_cell_blocks` must divide `coarse_chunk_blocks` and
-    # be a whole number of native pixels (a multiple of `scale`).
-    coarse_chunk_blocks: int = 2048
-    coarse_cell_blocks: int = 16
-
-    # Cold-start bound (Rivers and lakes plan.md section 16.10 / 18.5). A cold L1 solve
-    # is ~17 s and a cold L0 region ~200-290 s; the worst case, an L1 tile whose halo
-    # straddles four unsolved L0 regions, is ~1160 s. That is far too long to hold one
-    # HTTP request open. `/generate_heightmap` instead blocks at most `max_wait_s` on an
-    # unfinished tile, then answers 503 with `Retry-After: solve_retry_after_s` -- the
-    # job itself keeps running on the queue regardless of who is or isn't still waiting
-    # on it, so a client that polls again lands on the same in-flight job rather than
-    # starting a second one. The Java client's patient poll budget is a separate,
-    # generous knob (`hydrologySolveGraceMs`) that covers the whole worst case; this one
-    # only bounds a single request/response round trip.
+    # `/generate_heightmap` blocks at most `max_wait_s` on an unfinished tile (a cold
+    # model's first tiles run ~30 s), then answers 503 with `Retry-After:
+    # solve_retry_after_s` -- the job itself keeps running on the queue regardless of who
+    # is or isn't still waiting on it, so a client that polls again lands on the same
+    # in-flight job rather than starting a second one. The Java client's patient poll
+    # budget is a separate knob (`tilePendingGraceMs`); this one only bounds a single
+    # request/response round trip.
     max_wait_s: float = 20.0
     solve_retry_after_s: int = 5
 
-    # Identity of the model behind `upstream_url`, joined into the tile-cache fingerprint
-    # when set. Empty for the stock upstream model, so its existing cache namespace is
-    # unchanged; any other generator (e.g. terrain-slm) gets its own, instead of silently
-    # being served tiles the stock model cached for the same seed.
+    # Identity of the model behind `upstream_url` (e.g. "slm:checkpoints/v3"), joined into
+    # the tile-cache fingerprint when set, so a different model or version never gets
+    # served tiles another one cached for the same seed.
     upstream_id: str = ""
-
-    # Where inland water comes from: "" (hydrology_enabled decides: the L0/L1 solve or
-    # sea level only) or "upstream" -- the model server returns a river water-surface
-    # plane with each tile (`/terrain?...&water=1`, terrain-slm) and the bridge only maps
-    # it through the height curve. No solve, no macro-window fetches.
-    water_source: str = ""
 
     # Native pixels per block along each axis, for worlds coarser than the model grid.
     # `scale` upsamples (blocks per native pixel); `downscale` averages D x D native pixels
     # into one block (only with scale == 1). The 1:4 world uses scale=1, downscale=2:
-    # 60 m blocks from the 30 m model. Only upstreams that speak `downscale` (terrain-slm).
+    # 60 m blocks from the 30 m model.
     downscale: int = 1
 
-    # 3D rivers (protocol v3): ask an upstream that supplies water (`water_source=upstream`) for
-    # its river tunnel floor/roof and flow-octant planes too (`/terrain?...&river3d=1`), and pass
+    # 3D rivers (protocol v3): ask the model server for its river tunnel floor/roof and flow-octant planes too (`/terrain?...&river3d=1`), and pass
     # them through to the game. Off: those planes are sent as -1 (no tunnels, no flow).
     river3d: bool = True
 
@@ -177,17 +137,9 @@ class BridgeConfig:
             shore_blend_m=_env_float("TERRAIN_BRIDGE_SHORE_BLEND_M", 60.0),
             midland_blend_m=_env_float("TERRAIN_BRIDGE_MIDLAND_BLEND_M", 150.0),
             highland_blend_m=_env_float("TERRAIN_BRIDGE_HIGHLAND_BLEND_M", 300.0),
-            hydrology_enabled=_env_bool("TERRAIN_BRIDGE_HYDROLOGY", True),
-            l0_max_raise_m=_env_float("TERRAIN_BRIDGE_L0_MAX_RAISE_M", 100.0),
-            river_threshold_cells=_env_float("TERRAIN_BRIDGE_RIVER_THRESHOLD_CELLS", 10_000.0),
-            bank_margin_blocks=_env_int("TERRAIN_BRIDGE_BANK_MARGIN_BLOCKS", 48),
-            min_water_blocks=_env_int("TERRAIN_BRIDGE_MIN_WATER_BLOCKS", 1),
-            coarse_chunk_blocks=_env_int("TERRAIN_BRIDGE_COARSE_CHUNK_BLOCKS", 2048),
-            coarse_cell_blocks=_env_int("TERRAIN_BRIDGE_COARSE_CELL_BLOCKS", 16),
             max_wait_s=_env_float("TERRAIN_BRIDGE_MAX_WAIT_S", 20.0),
             solve_retry_after_s=_env_int("TERRAIN_BRIDGE_SOLVE_RETRY_AFTER_S", 5),
             upstream_id=os.environ.get("TERRAIN_BRIDGE_UPSTREAM_ID", ""),
-            water_source=os.environ.get("TERRAIN_BRIDGE_WATER_SOURCE", "").strip().lower(),
             downscale=_env_int("TERRAIN_BRIDGE_DOWNSCALE", 1),
             river3d=_env_bool("TERRAIN_BRIDGE_RIVER3D", True),
         )

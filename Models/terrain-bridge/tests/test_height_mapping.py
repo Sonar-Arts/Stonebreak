@@ -188,7 +188,7 @@ def test_to_elevation_recovers_the_bottom_of_each_block_band():
     the two ends bounds it -- taking only the end the sample happens to sit at is
     not enough where the rate moves fast within one block, which it does across
     the shoreline blend (12 m/block to 4 m/block over 120 m; see plan section
-    10.6). This is the bound `hydrology/io.py` relies on when it calls a tile
+    10.6). This is the bound a caller relies on when it calls a tile
     cache a usable DEM.
     """
     curve = _curve()
@@ -204,7 +204,7 @@ def test_to_elevation_recovers_the_bottom_of_each_block_band():
 
 
 def test_to_elevation_disagrees_with_the_pre_phase5_linear_mapping():
-    """Guard for `hydrology/io.py`: the old inverse is not a valid substitute.
+    """Guard: the old linear inverse is not a valid substitute.
 
     Reading Phase-5 tiles back with `(blocks - sea_level) * meters_per_block` --
     what `stitch_tile_cache` used to do -- overstates lowland elevation several

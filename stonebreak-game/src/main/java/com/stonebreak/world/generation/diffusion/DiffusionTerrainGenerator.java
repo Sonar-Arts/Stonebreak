@@ -26,19 +26,19 @@ import com.stonebreak.world.generation.features.LimestoneGenerator;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator;
-import com.stonebreak.world.generation.diffusion.heightmap.Density3D;
 import com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator;
-import com.stonebreak.world.generation.diffusion.heightmap.CavernCarver;
-import com.stonebreak.world.generation.diffusion.heightmap.MegaCavernCarver;
-import com.stonebreak.world.generation.diffusion.heightmap.PerlinWormCarver;
-import com.stonebreak.world.generation.diffusion.heightmap.RavineCarver;
-import com.stonebreak.world.generation.diffusion.heightmap.SinkholeCarver;
+import com.stonebreak.world.generation.heightmap.CarveMaskKey;
+import com.stonebreak.world.generation.heightmap.CavernCarver;
+import com.stonebreak.world.generation.heightmap.Density3D;
+import com.stonebreak.world.generation.heightmap.FormationSupport;
+import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
+import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
+import com.stonebreak.world.generation.heightmap.RavineCarver;
+import com.stonebreak.world.generation.heightmap.SinkholeCarver;
+import com.stonebreak.world.generation.heightmap.WaterGuard;
 import com.stonebreak.world.generation.noise.TerrainNoise;
-import com.stonebreak.world.generation.water.BasinCache;
-import com.stonebreak.world.generation.water.NativeWaterTiles;
 
 import java.util.BitSet;
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
 import com.stonebreak.world.generation.terrain.MobGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.ui.LoadProgressTracker;
@@ -78,32 +78,11 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
     private final Object animalRandomLock = new Object();
 
     public DiffusionTerrainGenerator(long seed) {
-        this(withServicesRunning(seed), productionTileSource(seed));
+        this(withServicesRunning(seed), new DiffusionTileCache(DiffusionBridgeConfig.fromSystemProperties(), seed));
     }
 
     /**
-     * The production tile chain: the HTTP-backed bridge cache, wrapped — when the
-     * native water backend is selected ({@code -Dstonebreak.water.backend=native},
-     * the default) — in {@link NativeWaterTiles}, which stamps lakes per tile
-     * from the depression fill {@link BasinCache} solves per region. With the
-     * wrapper active
-     * the bridge runs with its hydrological solve disabled (the process manager
-     * sets {@code TERRAIN_BRIDGE_HYDROLOGY=0} from the same property), so raw
-     * tiles carry sea-level-only water and cost sub-second GPU time instead of
-     * the L0/L1 macro-region solves.
-     */
-    private static TerrainTileSource productionTileSource(long seed) {
-        DiffusionBridgeConfig config = DiffusionBridgeConfig.fromSystemProperties();
-        DiffusionTileCache rawTiles = new DiffusionTileCache(config, seed);
-        if (!NativeWaterTiles.nativeBackendSelected()) {
-            return rawTiles;
-        }
-        return new NativeWaterTiles(rawTiles, BasinCache.production(config, seed), seed,
-            config.tileSizeBlocks(), config.maxCachedTiles());
-    }
-
-    /**
-     * Blocks until the local terrain-diffusion services are up and pinned to {@code seed}
+     * Blocks until the local terrain services are up and pinned to {@code seed}
      * (starting/restarting them if needed — see {@link TerrainServiceProcessManager}), then
      * returns the seed unchanged. A pass-through so it can sit in the constructor-delegation
      * chain above without a separate init block.
@@ -134,13 +113,17 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
         this.cactusGenerator = new CactusGenerator(deterministicRandom);
         this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, seed);
-        this.density3D = new Density3D(seed, heightMapGenerator);
+        // The cave stack is Standard's (generation.heightmap), read through this world's tile
+        // heights. Peak damping is off: its knots are fitted to the noise terrain's summits
+        // (y ~100-145), and the model's highlands stand far higher.
+        this.density3D = new Density3D(seed, heightMapGenerator, false);
         this.wormCarver = new PerlinWormCarver(seed, heightMapGenerator);
         this.cavernCarver = new CavernCarver(seed, heightMapGenerator);
         this.megaCavernCarver = new MegaCavernCarver(seed, heightMapGenerator);
         this.ravineCarver = new RavineCarver(seed, heightMapGenerator);
         this.sinkholeCarver = new SinkholeCarver(seed, heightMapGenerator);
-        this.limestoneGenerator = new LimestoneGenerator(seed, heightMapGenerator, cavernCarver, megaCavernCarver);
+        this.limestoneGenerator = new LimestoneGenerator(seed, heightMapGenerator,
+            cavernCarver::computeCavernOrigin, megaCavernCarver::computeCavernOrigin);
         this.wormCarver.setCavernCarver(cavernCarver);
         this.wormCarver.setMegaCavernCarver(megaCavernCarver);
         // Lets a sinkhole cut to exactly the depth that opens into a real tunnel.
@@ -149,13 +132,8 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
     }
 
     /**
-     * Releases whatever the tile chain holds open — with the native water
-     * backend that is {@link NativeWaterTiles}, and through it the
-     * {@link BasinCache}'s escalation and prefetch threads.
-     *
-     * <p>Called from {@code World.cleanup()}. Nothing here is required for a
-     * clean JVM exit (the threads are daemons), but a session that loads
-     * several worlds leaked a pair of them and a region cache every time.
+     * Releases whatever the tile source holds open (the bridge client's cache and
+     * prefetch executor). Called from {@code World.cleanup()}.
      */
     public void shutdown() {
         if (tileSource instanceof AutoCloseable closeable) {
@@ -417,9 +395,14 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                 riverFloors, riverRoofs, riverFlows);
         biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
 
-        CarveMasks masks = buildCarveMasks(chunkX, chunkZ, heights, waterLevels, riverFloors);
+        CarveMasks masks = buildCarveMasks(chunkX, chunkZ, heights, waterLevels);
         BitSet caveMask = masks.caveMask();
         BitSet formationMask = masks.formationMask();
+        // One WaterGuard plane for the whole pass, threaded into the density field and every
+        // solid probe so the overhang band is sealed against standing water exactly as the
+        // carvers are.
+        int[] waterGuardPlane =
+                WaterGuard.guardPlane(heights, waterLevels, heightMapGenerator, chunkX, chunkZ);
 
         // Write terrain into paletted storage directly instead of 65k
         // chunk.setBlock calls (each of which churns dirty flags, per-block
@@ -429,12 +412,14 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         CcoBlockStorage storage = CcoFactory.createEmptyStorage(BlockType.AIR);
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
-        // Three SIMD volume fills instead of a per-block simplex sample per solid cell. With
-        // a surface near y=400 the per-point path costs ~100k Java noise samples per chunk;
-        // this path was written for exactly that and had simply never been called. Null on
-        // the Java backend, where determineBlockType falls back to per-point isSolid.
+        // SIMD volume fills instead of a per-block simplex sample per solid cell. Null on the
+        // Java backend, where determineBlockType falls back to per-point isSolid.
         Density3D.Field densityField =
-                density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels, riverFloors, riverRoofs);
+                density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels, biomes, waterGuardPlane);
+        // Each cavern grew its formations against its own mask; only now, every carver in and
+        // the density field prepared, is it known which anchors are still standing.
+        FormationSupport.prune(formationMask, formationSupport(heights, biomes, riverFloors, riverRoofs,
+                caveMask, densityField, waterGuardPlane, baseX, baseZ));
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 int idx = x * CHUNK_SIZE + z;
@@ -446,22 +431,14 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                 int worldX = baseX + x;
                 int worldZ = baseZ + z;
                 for (int y = 0; y < WORLD_HEIGHT; y++) {
-                    int bit = LocalBlockKey.pack(x, y, z);
+                    int bit = CarveMaskKey.pack(x, y, z);
                     BlockType block;
-                    if (riverRoof > riverFloor && y >= riverFloor && y <= riverRoof) {
-                        // A river running under standing ground. This has to beat every
-                        // mask below it: a cavern or worm that wins one of these cells
-                        // opens the passage, and worldgen water is a source block, so the
-                        // river would then drain forever.
-                        //
-                        // The branch owns the SHELL as well as the void. `riverFloor` is
-                        // the bed the kernel cut and `riverRoof` the lid it left, and
-                        // neither is safe by being underground: unlike a surface riverbed
-                        // — which IS the column's surface height, so nothing carves it —
-                        // a tunnel bed sits tens of blocks down, in the middle of cave
-                        // country. Density3D is the one carver WaterGuard does not cover
-                        // (it reads noise and depth, no water plane), and it was hollowing
-                        // the bed out from underneath.
+                    if (inRiverVoid(riverFloor, riverRoof, y)) {
+                        // Water under standing ground (the model's river planes: an undercut
+                        // bank or overhang). Beats every mask below it, and owns the shell as
+                        // well as the void: a carver winning one of these cells would open the
+                        // passage, and worldgen water is a source block, so the river would
+                        // drain forever.
                         block = (y == riverFloor || y == riverRoof)
                                 ? BlockType.STONE
                                 : (y < waterLevel ? BlockType.WATER : BlockType.AIR);
@@ -471,7 +448,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                         continue; // carved to air — already the uniform fill
                     } else {
                         block = determineBlockType(worldX, y, worldZ, height, waterLevel, biome,
-                                densityField, x, z);
+                                densityField, waterGuardPlane, x, z);
                     }
                     if (block != BlockType.AIR) {
                         storage.set(x, y, z, block);
@@ -531,7 +508,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
 
     /**
      * The masks that decide solidity for one chunk, in the order the block loop
-     * applies them: a river tunnel beats everything, then {@code formationMask}
+     * applies them: a river void beats everything, then {@code formationMask}
      * beats {@code caveMask}, and {@code caveMask} beats the {@code Density3D}
      * test in {@link #determineBlockType}.
      */
@@ -543,22 +520,60 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      * surface the block loop writes — a drift that showed up as ravines rendering flat at
      * distance and then popping into a trench at the chunk seam.
      */
-    private CarveMasks buildCarveMasks(int chunkX, int chunkZ, int[] heights, int[] waterLevels,
-                                       int[] riverFloors) {
-        BitSet caveMask = wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels, riverFloors);
+    private CarveMasks buildCarveMasks(int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
+        BitSet caveMask = wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
         CavernCarver.Result cavernResult =
-                cavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels, riverFloors);
+                cavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
         MegaCavernCarver.Result megaCavernResult =
-                megaCavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels, riverFloors);
+                megaCavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
         caveMask.or(cavernResult.carveMask);
         caveMask.or(megaCavernResult.carveMask);
         // Entrances. Unlike the carvers above, these two are anchored to the surface and cut
         // downward, so they open the network to the sky by construction rather than by luck.
-        caveMask.or(ravineCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels, riverFloors));
-        caveMask.or(sinkholeCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels, riverFloors));
+        caveMask.or(ravineCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels));
+        caveMask.or(sinkholeCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels));
         BitSet formationMask = cavernResult.formationMask;
         formationMask.or(megaCavernResult.formationMask);
         return new CarveMasks(caveMask, formationMask);
+    }
+
+    /** Whether {@code y} lies in a river void under standing ground (floor and roof included). */
+    private static boolean inRiverVoid(int riverFloor, int riverRoof, int y) {
+        return riverRoof > riverFloor && y >= riverFloor && y <= riverRoof;
+    }
+
+    /**
+     * The head of the block fill as a predicate: whether a chunk-local cell holds a block a
+     * formation can hang from. Shared with {@link #buildSurfaceProfile} so a pillar the block
+     * loop deletes cannot stop the surface profile's descent. Mirrors the fill's branch order:
+     * river void (only its stone shell is solid), then the cave mask, then the density test.
+     */
+    private FormationSupport.Support formationSupport(int[] heights, BiomeType[] biomes,
+                                                      int[] riverFloors, int[] riverRoofs,
+                                                      BitSet caveMask, Density3D.Field densityField,
+                                                      int[] waterGuardPlane, int baseX, int baseZ) {
+        return (lx, ly, lz) -> {
+            if (ly <= 0) {
+                return true; // bedrock floor
+            }
+            int col = lx * CHUNK_SIZE + lz;
+            int riverFloor = riverFloors[col];
+            int riverRoof = riverRoofs[col];
+            if (inRiverVoid(riverFloor, riverRoof, ly)) {
+                return ly == riverFloor || ly == riverRoof;
+            }
+            int columnHeight = heights[col];
+            if (ly >= columnHeight) {
+                return false; // sky or open water above the surface — nothing to hang from
+            }
+            if (caveMask.get(CarveMaskKey.pack(lx, ly, lz))) {
+                return false;
+            }
+            return (densityField != null)
+                ? densityField.isSolid(lx, ly, lz, columnHeight, biomes[col])
+                : density3D.isSolid(baseX + lx, ly, baseZ + lz, columnHeight, biomes[col],
+                    waterGuardPlane, col);
+        };
     }
 
     /**
@@ -595,14 +610,20 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
 
         // The same masks the block loop builds, from the same planes — the parity
         // contract below is only worth anything if the inputs match too.
-        CarveMasks masks = buildCarveMasks(chunkX, chunkZ, heights, waterLevels, riverFloors);
+        CarveMasks masks = buildCarveMasks(chunkX, chunkZ, heights, waterLevels);
         BitSet caveMask = masks.caveMask();
         BitSet formationMask = masks.formationMask();
+        int[] waterGuardPlane =
+                WaterGuard.guardPlane(heights, waterLevels, heightMapGenerator, chunkX, chunkZ);
         Density3D.Field densityField =
-                density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels, riverFloors, riverRoofs);
+                density3D.prepareChunk(chunkX, chunkZ, heights, waterLevels, biomes, waterGuardPlane);
 
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
+        // Same prune the block fill applies: an unsupported pillar is cleared before it can
+        // stop the descent on a column the chunk leaves open.
+        FormationSupport.prune(formationMask, formationSupport(heights, biomes, riverFloors, riverRoofs,
+                caveMask, densityField, waterGuardPlane, baseX, baseZ));
         int[] profile = new int[CHUNK_SIZE * CHUNK_SIZE];
         boolean[] carved = new boolean[CHUNK_SIZE * CHUNK_SIZE];
         for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -616,13 +637,14 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                 // y == 0 is always BEDROCK, so this terminates with profile >= 1 — the same
                 // floor HeightMapGenerator.clampToWorld imposes on the raw height.
                 while (y > 0) {
-                    int bit = LocalBlockKey.pack(x, y, z);
+                    int bit = CarveMaskKey.pack(x, y, z);
                     if (formationMask.get(bit)) {
                         break;
                     }
                     boolean solid = (densityField != null)
                             ? densityField.isSolid(x, y, z, height, biome)
-                            : density3D.isSolid(worldX, y, worldZ, height, biome);
+                            : density3D.isSolid(worldX, y, worldZ, height, biome,
+                                waterGuardPlane, idx);
                     if (caveMask.get(bit) || !solid) {
                         y--;
                         continue;
@@ -722,13 +744,15 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      */
     private BlockType determineBlockType(int worldX, int y, int worldZ, int height,
                                          int waterLevel, BiomeType biome,
-                                         Density3D.Field densityField, int localX, int localZ) {
+                                         Density3D.Field densityField, int[] waterGuardPlane,
+                                         int localX, int localZ) {
         if (y == 0) {
             return BlockType.BEDROCK;
         }
         boolean carved = densityField != null
                 ? !densityField.isSolid(localX, y, localZ, height, biome)
-                : !density3D.isSolid(worldX, y, worldZ, height, biome);
+                : !density3D.isSolid(worldX, y, worldZ, height, biome,
+                    waterGuardPlane, localX * CHUNK_SIZE + localZ);
         if (y < height && carved) {
             return BlockType.AIR;
         }

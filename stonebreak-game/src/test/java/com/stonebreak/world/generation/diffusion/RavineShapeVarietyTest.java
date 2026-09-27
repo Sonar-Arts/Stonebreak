@@ -1,10 +1,10 @@
 package com.stonebreak.world.generation.diffusion;
 
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
+import com.stonebreak.world.generation.heightmap.CarveMaskKey;
 import com.stonebreak.world.generation.diffusion.DryHillsTileSource;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator;
-import com.stonebreak.world.generation.diffusion.heightmap.RavineCarver;
+import com.stonebreak.world.generation.heightmap.RavineCarver;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -171,10 +171,10 @@ public class RavineShapeVarietyTest {
                 }
                 BitSet mask = carver.carveMaskForChunkFrom(scx, scz, cx, cz, heights, water);
                 for (int b = mask.nextSetBit(0); b >= 0; b = mask.nextSetBit(b + 1)) {
-                    int gx = (dcx + r) * CHUNK + LocalBlockKey.x(b);
-                    int gz = (dcz + r) * CHUNK + LocalBlockKey.z(b);
+                    int gx = (dcx + r) * CHUNK + CarveMaskKey.x(b);
+                    int gz = (dcz + r) * CHUNK + CarveMaskKey.z(b);
                     int i = gx * size + gz;
-                    int y = LocalBlockKey.y(b);
+                    int y = CarveMaskKey.y(b);
                     minY[i] = Math.min(minY[i], y);
                     maxY[i] = Math.max(maxY[i], y);
                     levelCount[y]++;

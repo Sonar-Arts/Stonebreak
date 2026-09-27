@@ -8,12 +8,9 @@ import com.stonebreak.ui.terrainMapper.visualization.impl.diffusion.TopographyVi
 import com.stonebreak.ui.terrainMapper.visualization.impl.diffusion.WaterVisualizer;
 import com.stonebreak.world.generation.diffusion.DiffusionBridgeConfig;
 import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
-import com.stonebreak.world.generation.diffusion.TerrainTileSource;
 import com.stonebreak.world.generation.diffusion.biomes.BiomeManager;
 import com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager;
-import com.stonebreak.world.generation.water.BasinCache;
-import com.stonebreak.world.generation.water.NativeWaterTiles;
 
 import java.util.EnumMap;
 import java.util.List;
@@ -46,15 +43,8 @@ final class DiffusionPreview implements GeneratorPreview {
     @Override
     public Built build(long seed, PreviewSampleStore store) {
         DiffusionBridgeConfig config = DiffusionBridgeConfig.fromSystemProperties();
-        // Same tile chain the world generator uses (DiffusionTerrainGenerator
-        // .productionTileSource): with the native water backend the preview
-        // must show the fill-derived lakes, not the raw sea-level plane the
-        // bridge serves when its hydrology is off.
-        TerrainTileSource tiles = new DiffusionTileCache(config, seed);
-        if (NativeWaterTiles.nativeBackendSelected()) {
-            tiles = new NativeWaterTiles(tiles, BasinCache.production(config, seed),
-                seed, config.tileSizeBlocks(), config.maxCachedTiles());
-        }
+        // Same tile source the world generator uses.
+        DiffusionTileCache tiles = new DiffusionTileCache(config, seed);
         HeightMapGenerator heightMap = new HeightMapGenerator(tiles);
         BiomeManager biomes = new BiomeManager(tiles);
 
@@ -77,24 +67,19 @@ final class DiffusionPreview implements GeneratorPreview {
                     heightMap.riverFloor(x, z), heightMap.riverRoof(x, z), heightMap.riverFlow(x, z));
         };
 
-        DiffusionTileCache overview = TerrainServiceProcessManager.modelSuppliesWater()
-                ? new DiffusionTileCache(config, seed, TerrainMapperConfig.OVERVIEW_LOD)
-                : null;
-        AutoCloseable tileChain = tiles instanceof AutoCloseable closeable ? closeable : null;
+        DiffusionTileCache overview = new DiffusionTileCache(config, seed, TerrainMapperConfig.OVERVIEW_LOD);
         AutoCloseable resources = () -> {
-            if (tileChain != null) tileChain.close();
-            if (overview != null) overview.close();
+            tiles.close();
+            overview.close();
         };
         return new Built(visualizers, new PreviewSource(seed, columns, store,
-                overview == null ? null : overviewColumns(overview),
-                TerrainMapperConfig.OVERVIEW_MIN_SPACING), resources);
+                overviewColumns(overview), TerrainMapperConfig.OVERVIEW_MIN_SPACING), resources);
     }
 
     /**
      * Columns for far zoom: coarse tiles of {@link TerrainMapperConfig#OVERVIEW_LOD} blocks per
      * sample, straight from the model's 240 m cells (no refiner or river pipeline), so a zoomed-out
-     * view costs a few coarse tiles instead of thousands of full ones. Only DaedalusTGM-Exp serves
-     * them; on other backends the preview keeps sampling full tiles at every zoom.
+     * view costs a few coarse tiles instead of thousands of full ones.
      */
     private static TerrainColumns overviewColumns(DiffusionTileCache overview) {
         int lod = TerrainMapperConfig.OVERVIEW_LOD;

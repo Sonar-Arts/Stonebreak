@@ -3,7 +3,7 @@ package com.stonebreak.world.generation.diffusion;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.diffusion.DryHillsTileSource;
-import com.stonebreak.world.generation.diffusion.heightmap.CaveWaterTable;
+import com.stonebreak.world.generation.heightmap.CaveWaterTable;
 import com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;

@@ -27,7 +27,7 @@ planes). The game reaches it through the shared tile adapter in [`../terrain-bri
 |---|---|
 | Model (official) | DaedalusTGM-Exp (`terrain_slm.MODEL_NAME`) |
 | Python package / project | `terrain_slm` / `terrain-slm` (uv) |
-| Game backend key | `-Dstonebreak.terrainService.backend=slm` (the default) |
+| Game world generator | `TerrainGeneratorType.DIFFUSION` (bridge cache namespace `slm:<model dir>`) |
 | Model id (`/health`, logs) | `DaedalusTGM-Exp/<checkpoint dir>:p<planner step>:r<refiner step>:l<relief step>` |
 
 ## Quickstart

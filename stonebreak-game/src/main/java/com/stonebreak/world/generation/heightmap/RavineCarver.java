@@ -221,10 +221,10 @@ public final class RavineCarver {
     private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
 
     private final long seed;
-    private final HeightMapGenerator heightMapGenerator;
+    private final SurfaceHeights heightMapGenerator;
     private final NoiseGenerator pathNoise;
 
-    public RavineCarver(long seed, HeightMapGenerator heightMapGenerator) {
+    public RavineCarver(long seed, SurfaceHeights heightMapGenerator) {
         this.seed = seed;
         this.heightMapGenerator = heightMapGenerator;
         this.pathNoise = new NoiseGenerator(seed + 577, 1, 0.5, 2.0);

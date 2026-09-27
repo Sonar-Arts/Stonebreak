@@ -1,6 +1,6 @@
-package com.stonebreak.world.generation.diffusion.heightmap;
+package com.stonebreak.world.generation.heightmap;
 
-import com.stonebreak.world.generation.diffusion.DryHillsHeightMap;
+import com.stonebreak.world.generation.DryHillsHeightMap;
 
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;

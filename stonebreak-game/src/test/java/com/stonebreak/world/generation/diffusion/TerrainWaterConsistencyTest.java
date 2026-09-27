@@ -2,13 +2,13 @@ package com.stonebreak.world.generation.diffusion;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
+import com.stonebreak.world.generation.heightmap.CarveMaskKey;
 import com.stonebreak.world.generation.diffusion.FakeTerrainTileSource;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
-import com.stonebreak.world.generation.diffusion.heightmap.CavernCarver;
+import com.stonebreak.world.generation.heightmap.CavernCarver;
 import com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator;
-import com.stonebreak.world.generation.diffusion.heightmap.MegaCavernCarver;
-import com.stonebreak.world.generation.diffusion.heightmap.PerlinWormCarver;
+import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
+import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -195,7 +195,7 @@ public class TerrainWaterConsistencyTest {
                         // actually keeps its own radius-derived clearance, which is larger.
                         int bed = h[idx];
                         for (int y = Math.max(1, bed - 1); y < WORLD_HEIGHT; y++) {
-                            if (guarded.get(LocalBlockKey.pack(lx, y, lz))) {
+                            if (guarded.get(CarveMaskKey.pack(lx, y, lz))) {
                                 breaches.add(String.format(
                                         "chunk(%d,%d) column(%d,%d) bed=%d level=%d carved at y=%d",
                                         cx, cz, lx, lz, bed, w[idx], y));

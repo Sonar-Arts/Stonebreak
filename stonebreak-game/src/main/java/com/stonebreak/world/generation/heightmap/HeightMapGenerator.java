@@ -19,7 +19,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
  *
  * Final height = base(C) + pv(PV) * peakStrength(E) + detail
  */
-public class HeightMapGenerator {
+public class HeightMapGenerator implements SurfaceHeights {
     private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
     private static final int SEA_LEVEL = StandardTerrain.SEA_LEVEL;

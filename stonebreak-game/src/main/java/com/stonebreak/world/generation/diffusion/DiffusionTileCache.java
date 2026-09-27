@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * resolved tiles. Failures are never cached — the next probe gets a fresh
  * attempt rather than being stuck behind a stale failure.
  */
-public class DiffusionTileCache implements TerrainTileSource {
+public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
 
     private record TileKey(int tileX, int tileZ) {}
 
@@ -97,6 +97,7 @@ public class DiffusionTileCache implements TerrainTileSource {
         }
     }
 
+    @Override
     public void close() {
         client.close();
     }

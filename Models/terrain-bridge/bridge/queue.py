@@ -1,7 +1,6 @@
 """Serializes all upstream `/terrain` calls behind one consumer.
 
-Upstream's own Flask server runs single-threaded (`app.run(..., threaded=False)`
-in minecraft_api.py) specifically because one GPU can't usefully serve
+The model server generates on one GPU under a lock, so it can't usefully serve
 concurrent inference requests. Letting several chunk-worker threads hit it at
 once wouldn't parallelize anything — it would just queue at the TCP socket
 instead of the application, with no visibility into depth or per-tile
@@ -38,9 +37,8 @@ class TilePending(Exception):
     The job itself is untouched -- it is still queued or running, and still tracked
     in `_inflight`, exactly as if nobody had timed out on it. This only means the
     caller gave up *waiting*, so `POST /generate_heightmap` can answer without
-    holding the HTTP connection open for however long a cold hydrology solve takes
-    (up to ~1160s for the worst-case four-region spawn tile -- see `Dev Working/
-    Rivers and lakes plan.md` section 16.10 / 18.5). A second call for the same tile,
+    holding the HTTP connection open for however long a slow tile takes (a cold
+    model's first tiles run ~30 s). A second call for the same tile,
     including a client's own retry, finds the same in-flight job rather than
     starting a duplicate one.
     """
@@ -51,19 +49,9 @@ class TilePending(Exception):
 
 
 def _water_summary(report: dict) -> str:
-    """The two numbers worth a log line per tile: how wet, and how much was repaired.
-
-    `containment_repairs` is the one to watch — it is the count of dry columns raised to
-    hold water back (plan section 4.5), and a tile where it is large is a tile whose
-    banks the carve is fighting rather than following.
-    """
     if not report:
         return ""
-    return (
-        f", water {report.get('wet_columns', 0)} cols"
-        f" ({report.get('channel_columns', 0)} channel)"
-        f", {report.get('containment_repairs', 0)} repairs"
-    )
+    return f", water {report.get('wet_columns', 0)} cols"
 
 
 class GpuWorkQueue:
@@ -95,12 +83,11 @@ class GpuWorkQueue:
     async def get_tile(
         self, tile: TileId, max_wait_s: float | None = None
     ) -> tuple[tuple[np.ndarray, np.ndarray, np.ndarray], bool]:
-        """Returns ((block_height, biome, water_level), from_cache).
+        """Returns ((block_height, biome, water_level, river floor, roof, flow), from_cache).
 
         `max_wait_s`, if given, bounds how long this call blocks on a tile that
         isn't cached yet -- it does not bound the job, which keeps running
-        regardless of whether anyone is still waiting on it (a cold hydrology solve
-        can outlast any one caller's patience several times over). Raises
+        regardless of whether anyone is still waiting on it. Raises
         `TilePending` on expiry rather than cancelling the shared future: other
         callers, including a client's own retry for the same tile, may still be
         awaiting it.
@@ -135,25 +122,12 @@ class GpuWorkQueue:
             start = time.monotonic()
             try:
                 bounds = tile_bounds(job.tile.tile_x, job.tile.tile_z, self._cfg.tile_size_blocks)
-                surface = None
-                river = None
-                if getattr(self._water, "wants_surface", False):
-                    elev, biome, surface, river = await loop.run_in_executor(
-                        None, self._client.fetch_tile_with_water, *bounds, job.tile.lod
-                    )
-                else:
-                    elev, biome = await loop.run_in_executor(
-                        None, self._client.fetch_tile, *bounds, job.tile.lod
-                    )
-                # The carve runs on this same consumer rather than in parallel: solving
-                # an unsolved L1 macro-tile means generating 9.4 M native pixels
-                # upstream, and racing that against tile generation would contend for
-                # the one GPU the queue exists to serialize.
-                if surface is None:
-                    planes_call = (self._water.planes, bounds, elev)
-                else:
-                    planes_call = (self._water.planes, bounds, elev, surface, river)
-                block_height, water_level, report = await loop.run_in_executor(None, *planes_call)
+                elev, biome, surface, river = await loop.run_in_executor(
+                    None, self._client.fetch_tile_with_water, *bounds, job.tile.lod
+                )
+                block_height, water_level, report = await loop.run_in_executor(
+                    None, self._water.planes, bounds, elev, surface, river
+                )
                 river = river if river is not None else no_river_planes(block_height.shape)
                 await loop.run_in_executor(
                     None, self._cache.put, job.tile, block_height, biome, water_level, river

@@ -1,6 +1,5 @@
-package com.stonebreak.world.generation.diffusion.heightmap;
+package com.stonebreak.world.chunk.utils;
 
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -10,21 +9,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The carve-mask packing is an ABI, not a convenience.
+ * The chunk-local block key is an ABI, not a convenience.
  *
- * <p>Every carver writes its carve {@code BitSet} with {@link LocalBlockKey#pack}, the block
- * fill in {@code DiffusionTerrainGenerator} reads it back, and the carvers' own anchor and
- * collision math decodes it with {@link LocalBlockKey#x} / {@link LocalBlockKey#z}. A change
- * to the bit assignment that is not mirrored everywhere does not fail loudly — it relocates
- * carved blocks, which reads downstream as "the caves look wrong" with nothing pointing at the
- * cause.
+ * <p>{@link LocalBlockKey#pack} keys per-block chunk state (animated blocks, furnaces, the
+ * water layer, chunk metadata in saves and on the network), and those are decoded with
+ * {@link LocalBlockKey#x} / {@link LocalBlockKey#z}. A change to the bit assignment that is
+ * not mirrored everywhere does not fail loudly — it relocates that state onto other blocks,
+ * or misreads every save written before it. (Cave carve masks use {@code CarveMaskKey}, the
+ * native kernel's layout, not this one.)
  *
  * <p>So this pins the layout itself rather than any behaviour built on it: the literal bit
  * expression, the roundtrip over every cell a chunk can hold, that no two cells collide, and
  * that the full world height survives the packing (y is unmasked above x/z, so it is not
  * truncated the way a fixed-width field would be).
  */
-class LocalBlockKeyMaskTest {
+class LocalBlockKeyLayoutTest {
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
     private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;

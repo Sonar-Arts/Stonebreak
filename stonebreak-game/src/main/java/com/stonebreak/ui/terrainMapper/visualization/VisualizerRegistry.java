@@ -111,8 +111,8 @@ public final class VisualizerRegistry {
 
     /** Rebuild every visualizer against a fresh seed. Does not touch the services — see {@link #ensureServices()}. */
     public void rebuild(long newSeed) {
-        // The outgoing Diffusion chain owns a BasinCache with two background threads of
-        // its own; dropping the reference alone leaked them every seed change.
+        // The outgoing preview owns bridge clients (HTTP + retry executor); dropping the
+        // reference alone leaked them every seed change.
         closeResources();
         this.seed = newSeed;
         if (generator == null) {

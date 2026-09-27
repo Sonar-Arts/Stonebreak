@@ -157,19 +157,8 @@ QWEN.md
 /Models/terrain-bridge/venv/
 /Models/terrain-bridge/tile_cache/
 /Models/**/__pycache__/
-# The upstream diffusion model install it talks to lives in
-# Dev Working/terrain-diffusion-spike/ (checkout + venv + global rasters, ~7.5 GB);
-# no rule needed here, /Dev Working/ above already covers it. Setup steps are in
-# that directory's README.md.
+# Terrain service logs (TerrainServiceProcessManager's default -Dstonebreak.terrainService.logDir).
+/Models/logs/
 
 # Stray mirror of the absolute repo path (tool writing absolute paths as relative)
 /mnt/
-
-# Basin (depression-fill) solver cache
-# Regenerated on demand by BasinCache from the terrain itself, so it is derived
-# data, not source: each `basins_<fingerprint>` subdirectory is keyed to one set
-# of solver parameters and is orphaned the moment any rung is retuned. The L1-L4
-# .plane files run to ~100 MB per fingerprint and churn every session, which is
-# exactly what a repo should not carry. Override the location with
-# -Dstonebreak.water.basinCacheDir=... if you want it outside the working tree.
-/cache/basins/

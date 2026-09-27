@@ -197,6 +197,8 @@ public final class Density3D {
     private final int spag2Seed;
     private final int cragSeed;
     private final CaveWaterTable waterTable;
+    /** Whether {@link #peakDamp} applies; see {@link #Density3D(long, SurfaceHeights, boolean)}. */
+    private final boolean peakDampEnabled;
 
     /**
      * Cheese carve threshold as a function of depth below the local surface. Above the first
@@ -204,7 +206,18 @@ public final class Density3D {
      */
     private final SplineInterpolator cheeseThreshold;
 
-    public Density3D(long seed, HeightMapGenerator heightMapGenerator) {
+    public Density3D(long seed, SurfaceHeights heightMapGenerator) {
+        this(seed, heightMapGenerator, true);
+    }
+
+    /**
+     * @param peakDampEnabled whether the overhang band tapers with altitude ({@link #peakDamp}).
+     *        Its knots are fitted to the noise terrain's summit heights (the fused kernel
+     *        mirrors it for Standard); a terrain whose peaks sit elsewhere passes false and
+     *        keeps the biome's full intensity at every height.
+     */
+    public Density3D(long seed, SurfaceHeights heightMapGenerator, boolean peakDampEnabled) {
+        this.peakDampEnabled = peakDampEnabled;
         this.cheeseJava = new NoiseGenerator(seed + 17, 2, 0.5, 2.0);
         this.spag1Java = new NoiseGenerator(seed + 331, 2, 0.5, 2.0);
         this.spag2Java = new NoiseGenerator(seed + 733, 2, 0.5, 2.0);
@@ -433,8 +446,10 @@ public final class Density3D {
      * @param n the already-selected channel sample for this biome — crag if the biome opts in,
      *          cheese otherwise. Selected by the caller so each backend samples its own way.
      */
-    private static boolean solidInOverhangBand(float n, Entry cfg, int surfaceHeight) {
-        float intensity = cfg.overhangIntensity * peakDamp(surfaceHeight);
+    private boolean solidInOverhangBand(float n, Entry cfg, int surfaceHeight) {
+        float intensity = peakDampEnabled
+            ? cfg.overhangIntensity * peakDamp(surfaceHeight)
+            : cfg.overhangIntensity;
         if (intensity <= 0f) {
             return true;
         }
@@ -503,7 +518,7 @@ public final class Density3D {
                 // crag is non-null whenever any column opts in, and only an opted-in column
                 // can reach this branch with cragSurface set.
                 float band = (cfg.cragSurface && crag != null) ? crag[i] : cheese[i];
-                if (!solidInOverhangBand(band, cfg, surfaceHeight)
+                if (!owner.solidInOverhangBand(band, cfg, surfaceHeight)
                         && !WaterGuard.seals(waterGuardPlane, column, y, WATER_CLEARANCE)) {
                     return false;
                 }

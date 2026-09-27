@@ -117,7 +117,7 @@ class DiffusionTerrainClientTest {
         });
         DiffusionBridgeConfig config = new DiffusionBridgeConfig(
                 "http://localhost:" + server.getAddress().getPort(),
-                256, 2000, 5000, 0, 10, 50, 64, 5_000L, 5_000L, 50L, 2048, 16, 64);
+                256, 2000, 5000, 0, 10, 50, 64, 5_000L, 5_000L, 50L);
         DiffusionTerrainClient preview = new DiffusionTerrainClient(config, 42L, 8);
         client = new DiffusionTerrainClient(config, 42L);
         try {
@@ -133,7 +133,7 @@ class DiffusionTerrainClientTest {
     @Test
     void aLevelOfDetailMustBeAPowerOfTwo() {
         DiffusionBridgeConfig config = new DiffusionBridgeConfig("http://localhost:1",
-                256, 2000, 5000, 0, 10, 50, 64, 5_000L, 5_000L, 50L, 2048, 16, 64);
+                256, 2000, 5000, 0, 10, 50, 64, 5_000L, 5_000L, 50L);
         assertThrows(IllegalArgumentException.class, () -> new DiffusionTerrainClient(config, 1L, 6));
     }
 
@@ -214,9 +214,8 @@ class DiffusionTerrainClientTest {
 
     @Test
     void pollsThroughASolvingResponseInsteadOfExhaustingTheRetryLadder() throws Exception {
-        // The cold-start scenario (Rivers and lakes plan.md section 19): a cold hydrology solve
-        // can run for minutes, far longer than the fast maxRetries ladder was ever meant to
-        // cover. maxRetries is 0 here -- surviving repeated 503s must come from the dedicated
+        // The cold-start scenario: a cold model's first tiles can outlast the bridge's bounded
+        // wait, far longer than the fast maxRetries ladder was ever meant to cover. maxRetries is 0 here -- surviving repeated 503s must come from the dedicated
         // solving budget, not from the normal retry count.
         AtomicInteger attempts = new AtomicInteger();
         server = startServer(exchange -> {
@@ -243,7 +242,7 @@ class DiffusionTerrainClientTest {
         client = newClient(server.getAddress().getPort(), 0, 5_000L, 150L, 20L);
         CompletionException ex = assertThrows(CompletionException.class, () -> client.fetchTile(0, 0).join());
         TerrainBridgeException failure = assertInstanceOf(TerrainBridgeException.class, ex.getCause());
-        assertTrue(failure.getMessage().contains("still solving hydrology"),
+        assertTrue(failure.getMessage().contains("still generating tile"),
                 "unexpected message: " + failure.getMessage());
     }
 
@@ -303,12 +302,11 @@ class DiffusionTerrainClientTest {
     }
 
     private static DiffusionTerrainClient newClient(int port, int maxRetries, long unreachableGraceMs,
-                                                      long hydrologySolveGraceMs, long solvePollIntervalMs) {
+                                                      long tilePendingGraceMs, long pendingPollIntervalMs) {
         DiffusionBridgeConfig config = new DiffusionBridgeConfig(
                 "http://localhost:" + port,
                 256, 2000, 5000, maxRetries, 10, 50, 64, unreachableGraceMs,
-                hydrologySolveGraceMs, solvePollIntervalMs,
-                2048, 16, 64);
+                tilePendingGraceMs, pendingPollIntervalMs);
         return new DiffusionTerrainClient(config, 42L);
     }
 

@@ -1,7 +1,0 @@
-# Extra dependencies for the offline hydrology tooling (scripts/ visualisation
-# and GeoTIFF export). The solver stack itself (numba, scipy) moved into
-# requirements.txt when Phase 8 put the carve in the request path — the running
-# bridge imports `hydrology` at startup unless TERRAIN_BRIDGE_HYDROLOGY=0.
--r requirements.txt
-rasterio>=1.3        # GeoTIFF in/out with georeference passthrough
-matplotlib>=3.8      # scripts/test_water_overlay.py only

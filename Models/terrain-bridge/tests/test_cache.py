@@ -69,13 +69,12 @@ def test_config_change_gets_isolated_namespace(tmp_path):
     assert cache_b.get(tile) is None  # different fingerprint => different directory
 
 
-def test_hydrology_knobs_get_their_own_namespace(tmp_path):
-    """The carve's knobs live in `hydrology/` and reach the tile cache as a digest, so
-    this is the only place a change to them can be caught before a stale tile is served
-    with the wrong river in it."""
+def test_water_source_fingerprint_gets_its_own_namespace(tmp_path):
+    """The water source reaches the tile cache as a digest (`extra`), so this is the only
+    place a change to it can be caught before a stale tile is served with the wrong river
+    in it."""
     cfg = _cfg(tmp_path)
     assert TileCache(cfg, "aaaaaaaaaaaa").root != TileCache(cfg, "bbbbbbbbbbbb").root
-    # And "hydrology off" is its own namespace, not a subset of any of them.
     assert TileCache(cfg, "").root != TileCache(cfg, "aaaaaaaaaaaa").root
 
 

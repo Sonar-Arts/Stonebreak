@@ -1,10 +1,10 @@
 package com.stonebreak.world.generation.diffusion;
 
-import com.stonebreak.world.generation.diffusion.heightmap.CavernCarver;
-import com.stonebreak.world.generation.diffusion.heightmap.MegaCavernCarver;
-import com.stonebreak.world.generation.diffusion.heightmap.PerlinWormCarver;
-import com.stonebreak.world.generation.diffusion.heightmap.RavineCarver;
-import com.stonebreak.world.generation.diffusion.heightmap.SinkholeCarver;
+import com.stonebreak.world.generation.heightmap.CavernCarver;
+import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
+import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
+import com.stonebreak.world.generation.heightmap.RavineCarver;
+import com.stonebreak.world.generation.heightmap.SinkholeCarver;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 

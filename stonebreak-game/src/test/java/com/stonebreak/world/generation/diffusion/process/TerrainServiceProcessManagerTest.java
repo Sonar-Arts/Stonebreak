@@ -88,20 +88,8 @@ class TerrainServiceProcessManagerTest {
     @Test
     void matchingSeedPasses() {
         TerrainServiceProcessManager.verifySeed("{\"seed\": -7, \"scale\":2}", -7L, "terrain-bridge", "url");
-        // Upstream's /health carries no seed, so it opts out with a null expectation.
-        TerrainServiceProcessManager.verifySeed("{\"status\":\"ok\"}", null, "upstream", "url");
-    }
-
-    @Test
-    void backendDefaultsSwitchInterpreterModuleAndModel() {
-        TerrainServiceProcessManager.BackendDefaults up = TerrainServiceProcessManager.BackendDefaults.of("upstream");
-        TerrainServiceProcessManager.BackendDefaults slm = TerrainServiceProcessManager.BackendDefaults.of("slm");
-        assertTrue(up.module().equals(TerrainServiceProcessManager.UPSTREAM_MODULE));
-        assertTrue(up.model().equals("xandergos/terrain-diffusion-30m"));
-        assertTrue(slm.module().equals(TerrainServiceProcessManager.SLM_MODULE));
-        assertTrue(slm.pythonExe().startsWith("Models/DaedalusTGM-Exp/"));
-        assertTrue(slm.repoDir().equals("Models/DaedalusTGM-Exp"));
-        assertFalse(up.logName().equals(slm.logName()));
+        // The model server's /health carries no seed, so it opts out with a null expectation.
+        TerrainServiceProcessManager.verifySeed("{\"status\":\"ok\"}", null, "model server", "url");
     }
 
     @Test
@@ -112,34 +100,9 @@ class TerrainServiceProcessManagerTest {
     }
 
     @Test
-    void unknownBackendFailsLoudly() {
-        assertThrows(TerrainBridgeException.class, () -> TerrainServiceProcessManager.BackendDefaults.of("nope"));
-    }
-
-    @Test
-    void slmIsTheDefaultBackendAndDisablesTheNativeRiverPass() {
-        String prev = System.getProperty("stonebreak.terrainService.backend");
-        try {
-            System.setProperty("stonebreak.terrainService.backend", "slm");
-            assertTrue(TerrainServiceProcessManager.modelSuppliesWater());
-            assertFalse(com.stonebreak.world.generation.water.NativeWaterTiles.nativeBackendSelected());
-            System.setProperty("stonebreak.terrainService.backend", "upstream");
-            assertFalse(TerrainServiceProcessManager.modelSuppliesWater());
-            System.clearProperty("stonebreak.terrainService.backend");
-            assertTrue(TerrainServiceProcessManager.modelSuppliesWater(), "slm is the default generator");
-        } finally {
-            if (prev == null) {
-                System.clearProperty("stonebreak.terrainService.backend");
-            } else {
-                System.setProperty("stonebreak.terrainService.backend", prev);
-            }
-        }
-    }
-
-    @Test
     void servicesGetTheOneToFourScaleAndTheGameWorldDimensions() {
         java.util.Map<String, String> env =
-                com.stonebreak.world.generation.diffusion.TerrainScale.serviceEnvironment(true);
+                com.stonebreak.world.generation.diffusion.TerrainScale.serviceEnvironment();
         assertTrue(env.get("TERRAIN_BRIDGE_WORLD_HEIGHT").equals(
                 String.valueOf(com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT)));
         assertTrue(env.get("TERRAIN_BRIDGE_SEA_LEVEL").equals(
@@ -147,7 +110,5 @@ class TerrainServiceProcessManagerTest {
         assertTrue(env.get("TERRAIN_BRIDGE_DOWNSCALE").equals("2"), "60 m blocks from a 30 m model");
         assertTrue(env.get("TERRAIN_BRIDGE_LOWLAND_METERS_PER_BLOCK").equals("16"));
         assertTrue(env.get("TERRAIN_BRIDGE_HIGHLAND_METERS_PER_BLOCK").equals("38"));
-        assertFalse(com.stonebreak.world.generation.diffusion.TerrainScale.serviceEnvironment(false)
-                .containsKey("TERRAIN_BRIDGE_DOWNSCALE"), "the legacy upstream cannot downscale");
     }
 }

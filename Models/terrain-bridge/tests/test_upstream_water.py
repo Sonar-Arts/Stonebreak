@@ -15,14 +15,11 @@ def _cfg(**kw):
 
 
 def test_build_selects_upstream_water():
-    assert isinstance(water_module.build(_cfg(water_source="upstream")), water_module.UpstreamWater)
-    assert isinstance(water_module.build(_cfg(water_source="sea")), water_module.SeaLevelWater)
-    with pytest.raises(ValueError):
-        water_module.build(_cfg(water_source="lava"))
+    assert isinstance(water_module.build(_cfg()), water_module.UpstreamWater)
 
 
 def test_river_levels_follow_the_curve_and_sea_rule_still_applies():
-    cfg = _cfg(water_source="upstream")
+    cfg = _cfg()
     w = water_module.UpstreamWater(cfg)
     curve = HeightCurve.from_config(cfg)
     elev = np.array([[200, 200, -50], [200, 200, 200]], dtype=np.int16)
@@ -37,7 +34,7 @@ def test_river_levels_follow_the_curve_and_sea_rule_still_applies():
 
 
 def test_surface_at_or_below_ground_stays_dry():
-    w = water_module.UpstreamWater(_cfg(water_source="upstream"))
+    w = water_module.UpstreamWater(_cfg())
     elev = np.array([[300]], dtype=np.int16)
     _, levels, _ = w.planes((0, 0, 1, 1), elev, np.array([[299]], dtype=np.int16))
     assert levels[0, 0] == -1
@@ -59,8 +56,6 @@ def test_three_plane_payload_parses(monkeypatch):
     elev, biome, surf, river = client.fetch_tile_with_water(0, 0, 2, 2)
     assert np.array_equal(elev, planes[0]) and np.array_equal(biome, planes[1]) and np.array_equal(surf, planes[2])
     assert river is None  # a three-plane upstream has no 3D river planes
-    e2, b2 = client.fetch_tile(0, 0, 2, 2)  # two-plane callers ignore the extra plane
-    assert np.array_equal(e2, planes[0]) and np.array_equal(b2, planes[1])
 
 
 def test_downscale_is_sent_and_namespaced(monkeypatch, tmp_path):
