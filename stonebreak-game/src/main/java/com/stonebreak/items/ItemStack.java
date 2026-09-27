@@ -40,6 +40,15 @@ public class ItemStack {
      * Creates an ItemStack from a block type ID (backwards compatibility).
      * @param blockTypeId The block type ID
      * @param count The quantity
+     *
+     * <p><strong>Renderer-path warning:</strong> a numeric id silently accepts either a
+     * block or an item id — this constructor resolves {@link BlockType#getById} first, so a
+     * block id yields a BlockType-backed stack whose {@code asItemType()} is null. That is
+     * fine for pickup/persistence, but ItemStack-backed {@code ItemDrop}s of block ids
+     * render via the block-drop path only ({@code DropRenderer.renderItemDrop} falls back
+     * to it). Prefer a BlockDrop for block drops — see {@code DeathHandler} and
+     * {@code ServerPlayerHandler.handleDropItem}, which resolve {@code BlockType.getById}
+     * before spawning a drop entity.
      */
     public ItemStack(int blockTypeId, int count) {
         // First try to find it as a BlockType

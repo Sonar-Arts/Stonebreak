@@ -26,7 +26,6 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
     private final ImBoolean showSBOExportWindow = new ImBoolean(false);
     private final ImBoolean showSBEExportWindow = new ImBoolean(false);
     private final ImBoolean showSBTExportWindow = new ImBoolean(false);
-    private final ImBoolean showSBOTextureExportWindow = new ImBoolean(false);
 
     // Getters
 
@@ -72,10 +71,6 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
 
     public ImBoolean getShowSBTExportWindow() {
         return showSBTExportWindow;
-    }
-
-    public ImBoolean getShowSBOTextureExportWindow() {
-        return showSBOTextureExportWindow;
     }
 
     // Toggle methods
@@ -124,7 +119,6 @@ public class UIVisibilityState implements HelpWindowVisibilityState {
         showSBOExportWindow.set(false);
         showSBEExportWindow.set(false);
         showSBTExportWindow.set(false);
-        showSBOTextureExportWindow.set(false);
     }
 
     /**

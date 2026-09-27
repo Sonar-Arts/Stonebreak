@@ -17,9 +17,10 @@ import java.nio.ByteBuffer;
  * word1: 4 × u8 vertex Y offsets from (y − 1) in 1/128 block, corner order =
  *        MmsCuboidGenerator.FACE_VERTEX_OFFSETS (the water generator's order)
  * word2: 4 × u8 per-corner surface-height flags (aFlags.x, 0..1 → 0..255)
- * word3: (w−1):4 | (h−1):4 | flow:4 | spare   in-plane extent (1 for near
- *        water, the cell size for LOD sheets), then the river flow octant
- *        biased by one (0 = still water, 1..8 = octant 0..7)
+ * word3: (w−1):4 | (h−1):4 | flow:4 | depth:8 | spare   in-plane extent
+ *        (1 for near water, the cell size for LOD sheets), the river flow
+ *        octant biased by one (0 = still water, 1..8 = octant 0..7), then how
+ *        deep the water column under this face stands, in whole blocks
  * </pre>
  *
  * The shader (`water.vert`, {@code aOrigin.w < -2.5}) rebuilds the corner

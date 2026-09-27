@@ -1,40 +1,46 @@
 package com.stonebreak.util;
 
-import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.BlockShape;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
 /**
- * Resolves passable spawn and escape cells for item and block drops (issue #225).
+ * Resolves passable spawn and escape cells for item and block drops (issues #225
+ * and #265).
  *
- * <p>A drop must never rest inside a solid block. When a block is broken the drop
- * spawns into the nearest adjacent passable cell (air or non-collidable, e.g. flowers
- * or water) — preferably the one nearest the breaker — instead of blindly offsetting
- * into whatever happens to be above. When a drop ends up embedded inside a solid cell
- * anyway (e.g. it rose into a tree trunk), it escapes out the nearest side instead of
- * the legacy surfacing behavior that climbed block-by-block to the canopy.</p>
+ * <p>A drop must never rest inside a collidable block. When a block is broken the
+ * drop spawns into the nearest adjacent passable cell (air or non-collidable, e.g.
+ * flowers, water or placed torches) — preferably the one nearest the breaker —
+ * instead of blindly offsetting into whatever happens to be above. When a drop ends
+ * up embedded inside a collidable cell anyway (e.g. it rose into a tree trunk), it
+ * escapes out the nearest side instead of the legacy surfacing behavior that climbed
+ * block-by-block to the canopy.</p>
+ *
+ * <p>One solidity rule with the drops' landing pass (issue #265): passability is
+ * backed by {@link BlockShape#collisionHeight} — a cell is passable exactly where its
+ * collision height is 0 — so the two can never drift: non-collidable cells (flowers,
+ * wildgrass, placed torches, water) are passable AND never act as ground, and
+ * collidable partial-height cells (snow layers, stairs) never host a spawn.</p>
  */
 public final class DropSpawnResolver {
 
     private DropSpawnResolver() {
     }
 
-    /** A drop can occupy air or a non-collidable cell (flowers, water); never a solid block. */
+    /**
+     * A drop can occupy air or a non-collidable cell (flowers, water, placed torches);
+     * never a collidable one. One solidity rule with the drops' landing pass (issue
+     * #265), backed by {@link BlockShape#collisionHeight} — the whole-cell form, because
+     * the drop would occupy the whole cell; a null block (out of bounds) answers nothing.
+     */
     public static boolean isPassable(World world, int x, int y, int z) {
-        if (world == null) {
-            return true;
-        }
-        BlockType block = world.getBlockAt(x, y, z);
-        return block == null || block == BlockType.AIR || !block.isSolid();
+        return world == null || BlockShape.collisionHeight(world, x, y, z) <= 0f;
     }
 
-    /** True when the drop's own cell is solid — the drop is embedded inside a block. */
+    /** True when the drop's own cell collides — the drop is embedded inside a block
+     *  (trunk, snow, stairs; a snow or stair cell collides at partial height). */
     public static boolean isEmbedded(World world, int x, int y, int z) {
-        if (world == null) {
-            return false;
-        }
-        BlockType block = world.getBlockAt(x, y, z);
-        return block != null && block != BlockType.AIR && block.isSolid();
+        return world != null && BlockShape.collisionHeight(world, x, y, z) > 0f;
     }
 
     /**

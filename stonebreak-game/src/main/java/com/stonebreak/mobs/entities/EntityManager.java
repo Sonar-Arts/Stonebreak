@@ -271,11 +271,10 @@ public class EntityManager {
             }
             case CHICKEN -> new com.stonebreak.mobs.chicken.Chicken(world, position);
             case GOOSE -> new com.stonebreak.mobs.goose.Goose(world, position);
-            case SHEEP -> {
-                String[] variants = type.getTextureVariants();
-                String textureVariant = variants[(int)(Math.random() * variants.length)];
-                yield new com.stonebreak.mobs.sheep.Sheep(world, position, textureVariant);
-            }
+            case SHEEP -> new com.stonebreak.mobs.sheep.Sheep(world, position);
+            // Sheep always spawn with wool (the "default" fallback): unlike cows, a
+            // random variant pick here would spawn ~half of them already sheared
+            // now that "Sheared" is a registered appearance variant.
             // Projectiles (FIRE_BOLT, ARROW, BOBBER) require a launch direction and
             // are spawned via their dedicated spawn* methods, not this generic path.
             default -> {

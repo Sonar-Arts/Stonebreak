@@ -84,6 +84,12 @@ public class TextureCreatorImGui {
     // Face texture resize dialog (wired in after viewport is available)
     private FaceTextureResizeDialog faceTextureResizeDialog;
 
+    // Late-bound preferences sink (wired in via setPreferencesCallback): shared by
+    // the menu-bar Preferences buttons AND the Ctrl+, keybind so both open the
+    // same unified preferences window. Warns if invoked before wiring.
+    private Runnable onOpenPreferences = () ->
+            logger.warn("Preferences requested before the unified preferences window was wired");
+
     // Reference-viewport centre for texture-editor modals: the main viewport when
     // docked, the popped-out editor host window's viewport when windowed (set
     // each frame by whichever render path runs).
@@ -243,13 +249,13 @@ public class TextureCreatorImGui {
         state.setCurrentTool(toolbarPanel.getCurrentTool());
 
         // Wire up callbacks for both menu bar renderers
-        menuBarRenderer.setOnPreferencesToggle(windowState::togglePreferencesWindow);
+        menuBarRenderer.setOnPreferencesToggle(this::requestPreferences);
         menuBarRenderer.setOnNoiseFilterToggle(windowState::toggleNoiseFilterWindow);
         menuBarRenderer.setOnSymmetryToggle(windowState::toggleSymmetryWindow);
         menuBarRenderer.setOnLayersPanelToggle(windowState::toggleLayersPanel, windowState.getShowLayersPanel());
         menuBarRenderer.setOnColorPanelToggle(windowState::toggleColorPanel, windowState.getShowColorPanel());
 
-        windowedMenuBarRenderer.setOnPreferencesToggle(windowState::togglePreferencesWindow);
+        windowedMenuBarRenderer.setOnPreferencesToggle(this::requestPreferences);
         windowedMenuBarRenderer.setOnNoiseFilterToggle(windowState::toggleNoiseFilterWindow);
         windowedMenuBarRenderer.setOnSymmetryToggle(windowState::toggleSymmetryWindow);
         windowedMenuBarRenderer.setOnLayersPanelToggle(windowState::toggleLayersPanel, windowState.getShowLayersPanel());
@@ -291,6 +297,7 @@ public class TextureCreatorImGui {
                 newTextureDialog,
                 fileOperations,
                 exportFormatDialog,
+                this::requestPreferences,
                 windowState,
                 controller,
                 state,
@@ -336,19 +343,35 @@ public class TextureCreatorImGui {
     }
 
     /**
-     * Set callback for opening external preferences window.
+     * Set callback for opening the external preferences window.
      * <p>
      * When set, this callback replaces the internal preferences panel toggle.
-     * This allows integration with the unified preferences system.
+     * This allows integration with the unified preferences system. The callback
+     * is stored and shared by the menu-bar buttons AND the Ctrl+, keybind, so
+     * both open the same unified preferences window.
      * </p>
      *
      * @param callback the callback to invoke when preferences is requested
      */
     public void setPreferencesCallback(Runnable callback) {
         if (callback != null) {
-            menuBarRenderer.setOnPreferencesToggle(callback);
-            windowedMenuBarRenderer.setOnPreferencesToggle(callback);
+            this.onOpenPreferences = callback;
+            menuBarRenderer.setOnPreferencesToggle(this::requestPreferences);
+            windowedMenuBarRenderer.setOnPreferencesToggle(this::requestPreferences);
             logger.debug("External preferences callback set");
+        }
+    }
+
+    /**
+     * Requests the preferences window through the late-bound callback installed
+     * by {@link #setPreferencesCallback(Runnable)}. Null-safe: warns if invoked
+     * before the unified preferences system was wired.
+     */
+    private void requestPreferences() {
+        if (onOpenPreferences != null) {
+            onOpenPreferences.run();
+        } else {
+            logger.warn("Preferences requested before the unified preferences window was wired");
         }
     }
 
@@ -507,7 +530,6 @@ public class TextureCreatorImGui {
         renderDialogs();
 
         // Render closeable windows
-        panelRenderer.renderPreferencesWindow();
         panelRenderer.renderNoiseFilterWindow();
         panelRenderer.renderSymmetryWindow();
 

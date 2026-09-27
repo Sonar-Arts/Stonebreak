@@ -77,8 +77,13 @@ public class WaterRenderer {
         }
     }
 
-    /** Texture unit of the opaque-scene depth copy (5 = shadow map, 7 = MMS quads). */
-    public static final int SCENE_DEPTH_TEXTURE_UNIT = 6;
+    /**
+     * Texture unit of the opaque-scene depth copy. Must not share a unit with any
+     * sampler point_lights.glsl pulls in (5 = sun shadow map, 6 = torch shadow
+     * array, 7 = MMS quads, 8 = torch indirect atlas): two sampler types on one
+     * unit fail every water draw with GL_INVALID_OPERATION once torches are lit.
+     */
+    public static final int SCENE_DEPTH_TEXTURE_UNIT = 9;
 
     private final ShaderProgram shader;
     private final Matrix4f invProjection = new Matrix4f();

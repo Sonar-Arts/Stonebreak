@@ -23,11 +23,12 @@ public final class AssetExportToolDefinitions {
     public void registerAll(McpToolRegistry registry) {
         registry.register(new McpTool(
                 "sbo_export",
-                "Export the model editor's model as a new .sbo. Saves the .omo first if needed. "
-                        + "params shape: describe_api topic=saving (objectId/objectName/objectType/"
-                        + "gameProperties/states/sounds/drops; missing fields get the export window's "
-                        + "defaults). Target defaults to game:sbo/<type>/ and asks the user; the result "
-                        + "opens in the SBO editor.",
+                "Export the model editor's model as a new .sbo; params.source=\"texture\" exports the "
+                        + "texture editor's .omt (or params.omt) as a texture-only item instead. Saves the "
+                        + ".omo/.omt first if needed. params shape: describe_api topic=saving (objectId/"
+                        + "objectName/objectType/gameProperties/states/sounds/drops; missing fields get the "
+                        + "export window's defaults). Target defaults to game:sbo/<type>/ and asks the user; "
+                        + "the result opens in the SBO editor.",
                 exportSchema("Target .sbo path").build(),
                 args -> service.exportSbo(params(args), optString(args, "file_path"),
                         optBool(args, "prompt", false), optBool(args, "overwrite", false))));

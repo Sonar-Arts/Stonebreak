@@ -42,6 +42,14 @@ variation}]`, `drops{drops[{objectId, min, max, chance}], toolOverrides[{tool, d
 drops nothing; absent = game default). Missing fields get the export window's defaults: next free `numericId`,
 a free atlas slot, `stonebreak:<slug>` id, the OS user as author.
 
+**Texture-only SBO** (the Texture Editor's Export SBO) — `sbo_export` with `source: "texture"`: the payload is
+the texture editor's open `.omt` (saved first when untitled or dirty; refused while a model-face session is
+open) or an explicit `omt` path inside a root (implies the texture source). `objectType` defaults to `item`;
+`block`/`entity` are refused (they need a model). Items need `numericId > 0` (next free item id by default).
+`gameProperties` merge over sprite defaults: hardness 0, not solid, CUTOUT + transparent, no atlas tile,
+`maxStackSize` 64, `TOOLS`, not placeable. `states[{name, omt?}]` take `.omt` sources and no `clip`.
+Exports into `game:sbo/items/` and opens in the SBO editor.
+
 **`sbe_export` params** — `objectId`, `objectName`, `entityType` (mob|npc|projectile|vehicle|other), `objectPack`,
 `author`, `description`, `states[{name, model?, clip?}]`, `variants[{name, model?}]`, `sounds[…]`.
 

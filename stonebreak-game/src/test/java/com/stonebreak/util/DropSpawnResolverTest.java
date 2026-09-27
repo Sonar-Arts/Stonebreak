@@ -185,4 +185,46 @@ class DropSpawnResolverTest {
         assertTrue(DropSpawnResolver.isPassable(world, BROKEN_X, BROKEN_Y + 1, BROKEN_Z), "water is passable");
         assertFalse(DropSpawnResolver.isPassable(world, BROKEN_X, BROKEN_Y - 1, BROKEN_Z), "solid is not passable");
     }
+
+    /**
+     * Issue #265: one solidity rule backed by BlockShape.collisionHeight. Non-collidable
+     * cells (flowers, wildgrass, placed torches, water) are passable AND never act as
+     * ground; collidable partial-height cells (snow layers, stairs) never host a spawn.
+     */
+    @Test
+    void isPassableAllowsFlowersAndPlacedTorchesButNotSnow() {
+        World world = worldWith((x, y, z) -> {
+            if (y == BROKEN_Y) {
+                return BlockType.ROSE;
+            }
+            if (y == BROKEN_Y + 1) {
+                return BlockType.TORCH_PLACED;
+            }
+            if (y == BROKEN_Y - 1) {
+                return BlockType.SNOW;
+            }
+            return BlockType.AIR;
+        });
+        when(world.getSnowHeight(anyInt(), anyInt(), anyInt())).thenReturn(0.125f);
+        assertTrue(DropSpawnResolver.isPassable(world, BROKEN_X, BROKEN_Y, BROKEN_Z), "a flower is passable");
+        assertTrue(DropSpawnResolver.isPassable(world, BROKEN_X, BROKEN_Y + 1, BROKEN_Z),
+            "a placed torch is passable");
+        assertFalse(DropSpawnResolver.isPassable(world, BROKEN_X, BROKEN_Y - 1, BROKEN_Z),
+            "snow is collidable partial-height ground and never hosts a spawn");
+    }
+
+    /**
+     * Issue #265: a snow cell collides at partial height — it embeds a drop the same
+     * way a trunk does, and the drop rests ON the snow surface instead of inside it.
+     */
+    @Test
+    void isEmbeddedMatchesCollidablePartialHeightCells() {
+        World world = worldWith((x, y, z) ->
+                (y == BROKEN_Y) ? BlockType.SNOW : BlockType.AIR);
+        when(world.getSnowHeight(anyInt(), anyInt(), anyInt())).thenReturn(0.125f);
+        assertTrue(DropSpawnResolver.isEmbedded(world, BROKEN_X, BROKEN_Y, BROKEN_Z),
+            "a snow cell collides at partial height and embeds the drop");
+        assertFalse(DropSpawnResolver.isEmbedded(world, BROKEN_X, BROKEN_Y + 1, BROKEN_Z),
+            "air does not embed the drop");
+    }
 }

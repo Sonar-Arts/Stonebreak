@@ -13,6 +13,7 @@ import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.FishingBobber;
 import com.stonebreak.mobs.entities.FishingManager;
 import com.stonebreak.mobs.entities.LivingEntity;
+import com.stonebreak.mobs.sheep.SheepShearing;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.network.packet.entity.ProjectileSpawnC2S;
 import com.stonebreak.player.Player;
@@ -104,6 +105,11 @@ final class WorldMouseHandler {
                 }
                 return;
             }
+        }
+
+        // Shears shear the sheep under the crosshair (before block placement).
+        if (!held.isEmpty() && SheepShearing.tryShear(player, held)) {
+            return;
         }
 
         interactOrPlaceBlock(player);

@@ -88,6 +88,14 @@ public final class ItemType implements Item {
     public static final ItemType ARROW = fromRegistry("stonebreak:arrow", "ARROW");
     public static final ItemType CLAY_CHUNK = fromRegistry("stonebreak:clay_chunk", "CLAY_CHUNK");
 
+    /**
+     * Shears (SBO 1.8, texture-only). Right-clicking a sheep with these shears
+     * it — see {@code SheepShearing.tryShear}. numericId 1034: the SBO shipped
+     * with 1001, which collides with the hardcoded STICK sentinel and got the
+     * registry promotion skipped.
+     */
+    public static final ItemType SHEARS = fromRegistry("stonebreak:shears", "SHEARS");
+
     // ----- SBO state name constants for the wooden bucket. ----------------
 
     public static final String BUCKET_STATE_EMPTY = "sb_wooden_bucket_empty";

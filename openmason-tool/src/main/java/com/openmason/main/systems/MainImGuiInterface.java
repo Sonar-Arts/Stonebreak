@@ -22,7 +22,6 @@ import com.openmason.main.systems.menus.dialogs.SBEExportWindow;
 import com.openmason.main.systems.menus.dialogs.SBEEditorWindow;
 import com.openmason.main.systems.menus.dialogs.SBOEditorWindow;
 import com.openmason.main.systems.menus.dialogs.SBOExportWindow;
-import com.openmason.main.systems.menus.dialogs.SBOTextureExportWindow;
 import com.openmason.main.systems.menus.dialogs.SBTExportWindow;
 import com.openmason.main.systems.menus.preferences.PreferencesWindow;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
@@ -82,7 +81,6 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     private SBOExportWindow sboExportWindow; // Initialized after components
     private SBEExportWindow sbeExportWindow; // Initialized after components
     private SBTExportWindow sbtExportWindow; // Initialized after components
-    private SBOTextureExportWindow sboTextureExportWindow; // Initialized after components
     private SBOEditorWindow sboEditorWindow; // Initialized after components
     private SBEEditorWindow sbeEditorWindow; // Initialized after components
     private final AboutDialog aboutDialog;
@@ -270,15 +268,6 @@ public class MainImGuiInterface implements ProjectBrowserListener {
                     fileDialogService
             );
 
-            // Texture-only SBO export (sprite items). Same OMT-path lifecycle
-            // as the SBT window; wired in setTextureCreatorImGui().
-            this.sboTextureExportWindow = new SBOTextureExportWindow(
-                    uiVisibilityState.getShowSBOTextureExportWindow(),
-                    themeManager,
-                    statusService,
-                    fileDialogService
-            );
-
             // SBO editor — for opening and editing existing .sbo files
             this.sboEditorWindow = new SBOEditorWindow(fileDialogService, statusService);
             toolsMenuHandler.setSBOEditorWindow(sboEditorWindow);
@@ -305,7 +294,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
             toolsMenuHandler.setModelState(modelState);
             toolsMenuHandler.setStatusService(statusService);
             toolsMenuHandler.setModelOperations(modelOperations);
-            logger.debug("SBO, SBE, SBT, SBO-texture export windows and SBO/SBE editors initialized");
+            logger.debug("SBO, SBE, SBT export windows and SBO/SBE editors initialized");
         } catch (Exception e) {
             logger.error("Failed to initialize components", e);
         }
@@ -752,10 +741,6 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     /**
      * Gets the SBT export window for external rendering.
      */
-    public SBOTextureExportWindow getSBOTextureExportWindow() {
-        return sboTextureExportWindow;
-    }
-
     public SBTExportWindow getSBTExportWindow() {
         return sbtExportWindow;
     }
@@ -866,7 +851,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
             logger.warn("Cannot set TextureCreatorImGui - unified preferences window not initialized");
         }
 
-        // Wire the SBT export OMT-path source — only project (.OMT) files are
+        // Wire the SBT/SBO export OMT-path source — only project (.OMT) files are
         // valid sources, never arbitrary PNG-backed sessions.
         java.util.function.Supplier<String> omtPathSupplier = () -> {
             if (textureCreatorImGui == null) return null;
@@ -879,14 +864,15 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         if (sbtExportWindow != null) {
             sbtExportWindow.setOMTPathSupplier(omtPathSupplier);
         }
-        if (sboTextureExportWindow != null) {
-            sboTextureExportWindow.setOMTPathSupplier(omtPathSupplier);
+        if (sboExportWindow != null) {
+            sboExportWindow.setOMTPathSupplier(omtPathSupplier);
         }
         if (textureCreatorImGui != null && sbtExportWindow != null) {
             textureCreatorImGui.setSBTExportTrigger(sbtExportWindow::show, omtPathSupplier);
         }
-        if (textureCreatorImGui != null && sboTextureExportWindow != null) {
-            textureCreatorImGui.setSBOExportTrigger(sboTextureExportWindow::show);
+        if (textureCreatorImGui != null && sboExportWindow != null) {
+            // Same export UI as the model viewer, in item/texture context.
+            textureCreatorImGui.setSBOExportTrigger(sboExportWindow::showForTexture);
         }
         if (textureCreatorImGui != null && sboEditorWindow != null) {
             textureCreatorImGui.setSBOEditorTrigger(sboEditorWindow::openWithDialog);

@@ -42,12 +42,65 @@ public final class AssetExportBuilder {
      */
     public static SBOFormat.ExportParameters sbo(JsonNode p, Path defaultOmo, String defaultName,
                                                  Function<String, Path> files) {
+        return sbo(p, defaultOmo, defaultName, files, false);
+    }
+
+    /**
+     * Texture-context twin of {@link #sbo}: the payload is a {@code .omt}, the
+     * object type defaults to {@code item} (block/entity are refused — they need
+     * a model), game properties get the {@link #spriteGameProperties sprite
+     * defaults}, and states take {@code omt} sources and cannot carry clips.
+     * Mirrors {@code SBOExportWindow.showForTexture()}.
+     *
+     * @param defaultOmt  the texture's on-disk .omt (used for every state without {@code omt})
+     */
+    public static SBOFormat.ExportParameters sboTexture(JsonNode p, Path defaultOmt, String defaultName,
+                                                        Function<String, Path> files) {
+        return sbo(p, defaultOmt, defaultName, files, true);
+    }
+
+    /**
+     * Whether an {@code sbo_export} call targets the texture editor's .omt:
+     * {@code source: "texture"}, or an explicit {@code omt} file.
+     */
+    public static boolean isTextureSource(JsonNode p) {
+        if (p == null) {
+            return false;
+        }
+        String source = text(p, "source", null);
+        if (source == null) {
+            return p.hasNonNull("omt");
+        }
+        return switch (source.toLowerCase(Locale.ROOT)) {
+            case "texture", "omt" -> true;
+            case "model", "omo" -> {
+                if (p.hasNonNull("omt")) {
+                    throw new IllegalArgumentException("invalid_params: omt is only valid with source \"texture\"");
+                }
+                yield false;
+            }
+            default -> throw new IllegalArgumentException(
+                    "invalid_params: source must be \"model\" or \"texture\", got \"" + source + "\"");
+        };
+    }
+
+    /** Object types a texture-only SBO can be. Blocks and entities need a model. */
+    public static boolean textureObjectTypeAllowed(SBOFormat.ObjectType type) {
+        return type != SBOFormat.ObjectType.BLOCK && type != SBOFormat.ObjectType.ENTITY;
+    }
+
+    private static SBOFormat.ExportParameters sbo(JsonNode p, Path defaultSource, String defaultName,
+                                                  Function<String, Path> files, boolean texture) {
         JsonNode n = p == null ? com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode() : p;
         SBOFormat.ExportParameters params = new SBOFormat.ExportParameters();
         String name = text(n, "objectName", cleanName(defaultName));
         params.setObjectName(name);
         params.setObjectId(text(n, "objectId", "stonebreak:" + slug(name)));
-        SBOFormat.ObjectType type = SBOFormat.ObjectType.fromId(text(n, "objectType", "block"));
+        SBOFormat.ObjectType type = SBOFormat.ObjectType.fromId(text(n, "objectType", texture ? "item" : "block"));
+        if (texture && !textureObjectTypeAllowed(type)) {
+            throw new IllegalArgumentException("invalid_params: objectType " + type.getId()
+                    + " needs a model — a texture-only SBO can be item|decoration|particle|other");
+        }
         params.setObjectType(type);
         params.setObjectPack(text(n, "objectPack", "default"));
         params.setAuthor(text(n, "author", defaultAuthor()));
@@ -61,19 +114,30 @@ public final class AssetExportBuilder {
             int numericId = n.hasNonNull("numericId") ? n.get("numericId").asInt()
                     : gp != null && gp.hasNonNull("numericId") ? gp.get("numericId").asInt()
                     : NumericIdValidator.suggestNextFreeId(domain);
-            params.setGameProperties(gameProperties(gp, type == SBOFormat.ObjectType.BLOCK, numericId));
+            params.setGameProperties(texture
+                    ? spriteGameProperties(gp, numericId)
+                    : gameProperties(gp, type == SBOFormat.ObjectType.BLOCK, numericId));
         }
 
+        String sourceKey = texture ? "omt" : "omo";
         JsonNode states = n.get("states");
         if (states != null && states.isArray() && states.size() > 0) {
             List<SBOFormat.StateSpec> specs = new ArrayList<>();
             for (JsonNode s : states) {
                 String stateName = text(s, "name", "");
-                String omo = s.hasNonNull("omo") ? files.apply(s.get("omo").asText()).toString()
-                        : defaultOmo != null ? defaultOmo.toString() : "";
+                if (texture && s.hasNonNull("omo")) {
+                    throw new IllegalArgumentException("invalid_params: state '" + stateName
+                            + "' — texture-only states take omt, not omo");
+                }
+                if (texture && s.hasNonNull("clip")) {
+                    throw new IllegalArgumentException("invalid_params: state '" + stateName
+                            + "' — texture-only SBOs cannot carry animation clips");
+                }
+                String source = s.hasNonNull(sourceKey) ? files.apply(s.get(sourceKey).asText()).toString()
+                        : defaultSource != null ? defaultSource.toString() : "";
                 String clip = s.hasNonNull("clip") ? files.apply(s.get("clip").asText()).toString() : null;
                 SBOFormat.LoopMode loop = loopMode(text(s, "loop", null));
-                specs.add(new SBOFormat.StateSpec(stateName, omo, clip, loop));
+                specs.add(new SBOFormat.StateSpec(stateName, source, clip, loop));
             }
             params.setStatesEnabled(true);
             params.setStates(specs);
@@ -87,7 +151,7 @@ public final class AssetExportBuilder {
         return params;
     }
 
-    /** Merge a partial {@code gameProperties} object over the export window's defaults. */
+    /** Merge a partial {@code gameProperties} object over the model export defaults. */
     public static SBOFormat.GameProperties gameProperties(JsonNode gp, boolean isBlock, int numericId) {
         JsonNode g = gp == null || gp.isNull() ? com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode() : gp;
         int atlasX = g.path("atlasX").asInt(Integer.MIN_VALUE);
@@ -110,6 +174,30 @@ public final class AssetExportBuilder {
                 g.path("maxStackSize").asInt(64),
                 text(g, "category", isBlock ? "BLOCKS" : "MATERIALS").toUpperCase(Locale.ROOT),
                 g.path("placeable").asBoolean(isBlock));
+    }
+
+    /**
+     * Merge a partial {@code gameProperties} object over the texture-only
+     * (sprite item) defaults: not solid, breakable, no atlas tile, CUTOUT layer
+     * with transparency, max stack 64, TOOLS category, not placeable. These are
+     * the values the SBT-to-SBO migration emits for sprite items.
+     */
+    public static SBOFormat.GameProperties spriteGameProperties(JsonNode gp, int numericId) {
+        SBOFormat.GameProperties defaults = new SBOFormat.GameProperties(
+                numericId,
+                /* hardness    */ 0.0f,
+                /* solid       */ false,
+                /* breakable   */ true,
+                /* atlasX      */ -1,
+                /* atlasY      */ -1,
+                /* renderLayer */ "CUTOUT",
+                /* transparent */ true,
+                /* flower      */ false,
+                /* stackable   */ false,
+                /* maxStack    */ 64,
+                /* category    */ "TOOLS",
+                /* placeable   */ false);
+        return gp == null || gp.isNull() ? defaults : patchGameProperties(defaults, gp);
     }
 
     /** Merge a partial {@code gameProperties} patch over an existing record. */
