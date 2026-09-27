@@ -16,8 +16,8 @@ import numpy as np
 import pytest
 from scipy import ndimage
 
-from hydrology import fixtures as fx
-from hydrology.fill import fill_depressions
+from terrain_slm.data.hydrology import fixtures as fx
+from terrain_slm.data.hydrology.fill import fill_depressions
 
 CAPS = [30.0, 10.0, 2.0, 0.5]
 DEMS = [

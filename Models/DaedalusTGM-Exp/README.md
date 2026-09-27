@@ -18,8 +18,8 @@ sampler** (1.55M; texture without averaging) and **hydrology sidecar** (0.40M; d
 flow directions) → **synth** → **refiner** (0.34M, flow matching) → summit soft cap → **river
 pipeline** (swappable stages: centrelines, 3–16-block channels, **learned banks** (0.24M), bed,
 containment, then block stages with **undercuts, overhangs and flow** in the game's 3D tunnel
-planes). The game reaches it through the shared tile adapter in [`../terrain-bridge/`](../terrain-bridge/)
-(tile protocol v3).
+planes). The game runs it as one child process, `python -m terrain_slm.tgmpipe`, and talks binary
+frames over its stdin/stdout (see [`../README.md`](../README.md)).
 
 ## Names
 
@@ -27,8 +27,8 @@ planes). The game reaches it through the shared tile adapter in [`../terrain-bri
 |---|---|
 | Model (official) | DaedalusTGM-Exp (`terrain_slm.MODEL_NAME`) |
 | Python package / project | `terrain_slm` / `terrain-slm` (uv) |
-| Game world generator | `TerrainGeneratorType.DIFFUSION` (bridge cache namespace `slm:<model dir>`) |
-| Model id (`/health`, logs) | `DaedalusTGM-Exp/<checkpoint dir>:p<planner step>:r<refiner step>:l<relief step>` |
+| Game world generator | `TerrainGeneratorType.DIFFUSION`, served by `TGMPipe` |
+| Model id (READY handshake, logs) | `DaedalusTGM-Exp/<checkpoint dir>:p<planner step>:r<refiner step>:l<relief step>` |
 
 ## Quickstart
 
@@ -38,22 +38,21 @@ Run everything from this folder (`Models/DaedalusTGM-Exp/`).
 # Environment (Python 3.12, torch cu128)
 uv sync
 
-# Tests (37; GPU tests pick cuda:1 when two GPUs are present)
+# Tests (154; GPU tests pick cuda:1 when two GPUs are present)
 .venv/bin/python -m pytest -q
 ```
 
 ### Playing
 
-Nothing to do by hand. Stonebreak's `TerrainServiceProcessManager` launches this server and the
-bridge with the model in `checkpoints/v3`. Both get the same `TERRAIN_BRIDGE_*` scale settings
-from `TerrainScale`.
+Nothing to do by hand. Stonebreak's `TGMPipe` launches `python -m terrain_slm.tgmpipe` with the
+model in `checkpoints/v3` and hands it the world's scale (`TerrainScale`) in the handshake. The
+service's log is `Models/logs/tgmpipe.log`.
 
-To run the server by hand:
-
-```bash
-.venv/bin/python -m terrain_slm.serve.upstream_api checkpoints/v3 --port 8010 --seed 0
-curl localhost:8010/health
-```
+The service speaks only the terrain protocol on stdio (`terrain_slm/tgmpipe/protocol.py`), so it is not
+run by hand. To see it work, run its tests: `tests/test_tgmpipe_process.py` drives the real service
+the way the game does, and `tests/test_tgmpipe.py` covers the plumbing without a model. From the game
+side, `mvn -pl stonebreak-game test -Dtest=TGMPipeLiveTest -Dstonebreak.tgmpipe.live=true`
+(the live test is opt-in: it needs this venv, the model and a CUDA device).
 
 ### Data
 
@@ -67,8 +66,7 @@ great_plains, norway and east_africa.
 .venv/bin/python -m terrain_slm.data.water --region alps     # water masks for the bank model
 ```
 
-Building a region's drainage uses the bridge's `hydrology` package, found through
-`terrain_slm/paths.py`. WorldClim is read from `Dev Working/terrain-diffusion-spike/`.
+Building a region's drainage uses `terrain_slm/data/hydrology/` (depression fill, D8 flow). WorldClim is read from `Dev Working/terrain-diffusion-spike/`.
 
 ### Training
 
@@ -93,14 +91,15 @@ Optional models load when their file is in the model dir (`relief.pt`, `hydro.pt
 1. Copy each run's `best.pt` into a **new** checkpoint directory as `planner.pt`, `refiner.pt`
    and `relief.pt`. `relief.pt` is optional: without it, the generator runs the old pipeline
    with no relief sampler.
-2. Point the game at the new directory: `TerrainServiceProcessManager.BackendDefaults`, or
-   `-Dstonebreak.terrainService.model=`.
+2. Point the game at the new directory: `TGMPipe.DEFAULT_MODEL`, or
+   `-Dstonebreak.tgmpipe.model=`.
 3. Un-ignore the new directory in `.gitignore`: copy the two `!/checkpoints/v3...` lines. The
    shipping model is committed (about 9 MB, plain git), so a fresh clone generates terrain as-is.
 
-Always use a new directory name. The bridge's tile cache is keyed on `slm:<model dir>`, so
-reusing a name serves tiles made by the previous model. This applies to any generator change,
-including edits to the controls.
+The service's disk cache needs no care: its namespace hashes the world config, every checkpoint's
+training step and the generator's source (everything under `terrain_slm/` except `train/`, `eval/`,
+`export/` and `tgmpipe/`), so a retrained model or an edited pipeline starts a fresh namespace on its
+own. Old namespaces age out under the one byte budget (`--disk-cache`, 8 GB).
 
 ### Evaluating
 
@@ -112,7 +111,7 @@ including edits to the controls.
 ## Layout
 
 ```
-terrain_slm/        package: data/ synth/ models/ river/ train/ world/ serve/ eval/ · paths.py · device.py · biomes.py
+terrain_slm/        package: data/ synth/ models/ river/ train/ world/ tgmpipe/ eval/ · paths.py · device.py · biomes.py
 tests/              pytest suite
 scripts/            download_region.py
 configs/

@@ -6,11 +6,10 @@ import com.stonebreak.ui.terrainMapper.visualization.impl.diffusion.HeightVisual
 import com.stonebreak.ui.terrainMapper.visualization.impl.diffusion.RiverVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.impl.diffusion.TopographyVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.impl.diffusion.WaterVisualizer;
-import com.stonebreak.world.generation.diffusion.DiffusionBridgeConfig;
 import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
 import com.stonebreak.world.generation.diffusion.biomes.BiomeManager;
 import com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator;
-import com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager;
+import com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe;
 
 import java.util.EnumMap;
 import java.util.List;
@@ -18,8 +17,8 @@ import java.util.Map;
 
 /**
  * Diffusion Generation's modes, read through the same tile chain the world generator uses.
- * Owns the terrain-diffusion services for the mapper: they start the first time a preview
- * needs them and stop when the player picks another generator.
+ * Owns TGMPipe for the mapper: it starts the first time a preview needs it and
+ * stops when the player picks another generator. Preview tiles queue behind a world's.
  */
 final class DiffusionPreview implements GeneratorPreview {
 
@@ -42,15 +41,14 @@ final class DiffusionPreview implements GeneratorPreview {
 
     @Override
     public Built build(long seed, PreviewSampleStore store) {
-        DiffusionBridgeConfig config = DiffusionBridgeConfig.fromSystemProperties();
         // Same tile source the world generator uses.
-        DiffusionTileCache tiles = new DiffusionTileCache(config, seed);
+        DiffusionTileCache tiles = new DiffusionTileCache(seed, 1, TGMPipe.PRIORITY_PREVIEW);
         HeightMapGenerator heightMap = new HeightMapGenerator(tiles);
         BiomeManager biomes = new BiomeManager(tiles);
 
         // HEIGHT, TOPOGRAPHY, WATER and RIVERS deliberately share one HeightMapGenerator: they are
         // renderings of the same resolved tile, so a second generator would only double the
-        // tile traffic to the bridge for identical data.
+        // tile traffic to the service for identical data.
         Map<VisualizerKind, NoiseVisualizer> visualizers = new EnumMap<>(VisualizerKind.class);
         visualizers.put(VisualizerKind.HEIGHT, new HeightVisualizer(heightMap));
         visualizers.put(VisualizerKind.TOPOGRAPHY, new TopographyVisualizer(heightMap));
@@ -67,7 +65,8 @@ final class DiffusionPreview implements GeneratorPreview {
                     heightMap.riverFloor(x, z), heightMap.riverRoof(x, z), heightMap.riverFlow(x, z));
         };
 
-        DiffusionTileCache overview = new DiffusionTileCache(config, seed, TerrainMapperConfig.OVERVIEW_LOD);
+        DiffusionTileCache overview = new DiffusionTileCache(seed, TerrainMapperConfig.OVERVIEW_LOD,
+                TGMPipe.PRIORITY_PREVIEW);
         AutoCloseable resources = () -> {
             tiles.close();
             overview.close();
@@ -102,14 +101,15 @@ final class DiffusionPreview implements GeneratorPreview {
     }
 
     /**
-     * Boots (or re-pins) the local services for {@code seed}, blocking for up to a couple of
-     * minutes on a cold machine. Worker thread only — see {@code TerrainPreviewLoader}.
+     * Boots TGMPipe if it is not up (any seed is served; {@code seed} needs nothing),
+     * blocking for up to a minute or so on a cold machine. Worker thread only — see
+     * {@code TerrainPreviewLoader}.
      */
     @Override
     public void startServices(long seed) {
         synchronized (serviceLock) {
             if (active) {
-                TerrainServiceProcessManager.getInstance().ensureRunningForSeed(seed);
+                TGMPipe.getInstance().ensureRunning();
             }
         }
     }
@@ -122,7 +122,7 @@ final class DiffusionPreview implements GeneratorPreview {
         Thread stopper = new Thread(() -> {
             synchronized (serviceLock) {
                 if (!active) {
-                    TerrainServiceProcessManager.getInstance().shutdown();
+                    TGMPipe.getInstance().shutdown();
                 }
             }
         }, "terrain-mapper-diffusion-stop");

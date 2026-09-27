@@ -17,9 +17,8 @@ public enum TerrainGeneratorType {
     },
 
     /**
-     * Experimental: terrain from DaedalusTGM-Exp, served by the local terrain services
-     * ({@code Models/}). Building one starts the model server and bridge, which can take
-     * minutes on a cold machine. The constant keeps Heracles' name: it is what world.json
+     * Experimental: terrain from DaedalusTGM-Exp, served by TGMPipe
+     * ({@code Models/}). Building one starts TGMPipe if it is not already running. The constant keeps Heracles' name: it is what world.json
      * and the handshake carry.
      */
     DIFFUSION("DaedalusTGM-Exp") {

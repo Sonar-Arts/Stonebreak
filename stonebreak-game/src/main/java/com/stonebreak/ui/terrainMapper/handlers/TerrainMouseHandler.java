@@ -165,7 +165,7 @@ public final class TerrainMouseHandler {
     /**
      * Reads the hovered value out of the published preview snapshot rather than resampling.
      * This runs inside the GLFW cursor callback on the main thread, so it must never touch the
-     * terrain bridge — a single {@code visualizer.sample()} here can block on a diffusion
+     * TGMPipe — a single {@code visualizer.sample()} here can block on a diffusion
      * inference and stall the whole game just from moving the mouse. Reading the snapshot also
      * guarantees the number in the footer is exactly the one behind the pixel under the cursor,
      * including while a fresh sample is still in flight.

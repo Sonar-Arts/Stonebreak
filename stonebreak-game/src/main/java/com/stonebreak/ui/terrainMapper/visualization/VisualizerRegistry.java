@@ -98,7 +98,7 @@ public final class VisualizerRegistry {
 
     /**
      * Brings up whatever the selected generator's previews read from, blocking until it is
-     * healthy — for Diffusion, the local CUDA model server and bridge (~a minute cold). Called by
+     * healthy — for Diffusion, TGMPipe (up to a minute cold). Called by
      * {@code TerrainPreviewLoader}'s worker as the first step of each sampling job, never from
      * the render path. A cheap no-op once running, and always for Standard.
      */

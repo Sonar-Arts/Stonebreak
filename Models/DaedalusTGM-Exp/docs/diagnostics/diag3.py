@@ -1,8 +1,6 @@
 import os, sys, numpy as np, torch, json
-env={"TERRAIN_BRIDGE_WORLD_HEIGHT":"256","TERRAIN_BRIDGE_SEA_LEVEL":"64","TERRAIN_BRIDGE_OCEAN_METERS_PER_BLOCK":"48","TERRAIN_BRIDGE_LOWLAND_METERS_PER_BLOCK":"16","TERRAIN_BRIDGE_MIDLAND_METERS_PER_BLOCK":"40","TERRAIN_BRIDGE_HIGHLAND_METERS_PER_BLOCK":"96","TERRAIN_BRIDGE_SCALE":"1","TERRAIN_BRIDGE_DOWNSCALE":"2"}
-os.environ.update(env); sys.path.insert(0,"../terrain-bridge")
-from bridge.config import BridgeConfig; from bridge.height_mapping import HeightCurve
-c=HeightCurve.from_config(BridgeConfig.from_env(seed=0))
+from dataclasses import replace; from terrain_slm.world.world_config import WorldConfig
+c=replace(WorldConfig.GAME, midland_m_per_block=40, highland_m_per_block=96).curve()  # the v1 curve this diagnosed
 print("lowland_top",c.lowland_top_m,"highland_base",c.highland_base_m)
 E=np.array([0,100,300,600,1000,1500,2000,2500,3000,4000,4800],float)
 print("elev->y", dict(zip(E.astype(int).tolist(), c.to_block_height(E).tolist())))

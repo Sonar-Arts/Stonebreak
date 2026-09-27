@@ -22,26 +22,15 @@ import torch
 import torch.nn.functional as F
 
 from terrain_slm.data import descriptors as D
-from terrain_slm.paths import BRIDGE_DIR
+from terrain_slm.world.world_config import WorldConfig
 from terrain_slm.world import generator as G
 from terrain_slm.device import default_device
 
-# The game's TerrainScale values (keep in step with TerrainScale.CURVE_RATES).
-GAME_ENV = {
-    "TERRAIN_BRIDGE_WORLD_HEIGHT": "256", "TERRAIN_BRIDGE_SEA_LEVEL": "64",
-    "TERRAIN_BRIDGE_OCEAN_METERS_PER_BLOCK": "48", "TERRAIN_BRIDGE_LOWLAND_METERS_PER_BLOCK": "16",
-    "TERRAIN_BRIDGE_MIDLAND_METERS_PER_BLOCK": "24", "TERRAIN_BRIDGE_HIGHLAND_METERS_PER_BLOCK": "38",
-}
 BLOCKS = 1024
 
 
 def game_curve():
-    for k, v in GAME_ENV.items():
-        os.environ.setdefault(k, v)
-    sys.path.insert(0, str(BRIDGE_DIR))
-    from bridge.config import BridgeConfig
-    from bridge.height_mapping import HeightCurve
-    return HeightCurve.from_config(BridgeConfig.from_env(seed=0))
+    return WorldConfig.GAME.curve()
 
 
 def block_stats(y: np.ndarray) -> dict:

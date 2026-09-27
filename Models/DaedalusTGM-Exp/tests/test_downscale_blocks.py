@@ -1,6 +1,5 @@
 """1:4 world path (downscale=2): the river pipeline's block stages against the game's curve,
 including the 3D river planes (tunnel floor / roof, flow octants). Skips without a model."""
-import os
 from pathlib import Path
 
 import numpy as np
@@ -11,50 +10,45 @@ MODEL = Path(__file__).resolve().parents[1] / "checkpoints/v3"
 DEV = "cuda:1" if torch.cuda.device_count() > 1 else ("cuda" if torch.cuda.is_available() else "cpu")
 pytestmark = pytest.mark.skipif(not (MODEL / "planner.pt").exists(), reason="no packaged model")
 
-ENV_1_TO_4 = {
-    "TERRAIN_BRIDGE_WORLD_HEIGHT": "256", "TERRAIN_BRIDGE_SEA_LEVEL": "64",
-    "TERRAIN_BRIDGE_OCEAN_METERS_PER_BLOCK": "48", "TERRAIN_BRIDGE_LOWLAND_METERS_PER_BLOCK": "16",
-    "TERRAIN_BRIDGE_MIDLAND_METERS_PER_BLOCK": "24", "TERRAIN_BRIDGE_HIGHLAND_METERS_PER_BLOCK": "38",
-}
-
-
 @pytest.fixture(scope="module")
 def api():
-    old = {k: os.environ.get(k) for k in ENV_1_TO_4}
-    os.environ.update(ENV_1_TO_4)
-    from terrain_slm.river.scale import BlockScale
-    from terrain_slm.serve import upstream_api as A
     from terrain_slm.world.generator import WorldGenerator
+    from terrain_slm.world.tiles import TileBuilder
+    from terrain_slm.world.world_config import WorldConfig
 
-    A.CURVE = A._bridge_curve(7)
-    A.GEN = WorldGenerator(MODEL, seed=7, device=DEV)
-    A.GEN.set_block_scale(BlockScale.from_curve(A.CURVE, DEV))
-    yield A
-    for k, v in old.items():
-        if v is None:
-            os.environ.pop(k, None)
-        else:
-            os.environ[k] = v
+    gen = WorldGenerator(MODEL, seed=7, device=DEV)
+    builder = TileBuilder(gen, WorldConfig.GAME)
+    gen.use_seed(7)
+    return builder
 
 
-def _blocks(A, elev, water, river):
-    """What the bridge would send the game: block heights, water levels, tunnel planes."""
-    h = A.CURVE.to_block_height(elev.cpu().numpy())
-    wv = water.cpu().numpy()
-    wet = ~np.isnan(wv)
-    lv = np.where(wet, A.CURVE.to_block_height(np.nan_to_num(wv)), -1)
+def _blocks(api, out):
+    """Block heights, river water levels (-1 dry), wet mask and tunnel planes, as numpy."""
+    height, _, level, wet, river = out
+    top = api.world.world_height - 1
+    h = height.clamp(0, top).cpu().numpy()
+    wet = wet.cpu().numpy()
+    lv = np.where(wet, level.clamp(0, top).cpu().numpy(), -1)
     floor, roof, flow = (p.cpu().numpy() for p in river)
     return h, lv, wet, floor, roof, flow
 
 
 def test_tile_matches_bigger_request(api):
-    e1, _, w1, r1 = api._downsampled(0, 0, 64, 64, 2)
-    e2, _, w2, r2 = api._downsampled(-32, -32, 96, 96, 2)
+    b1 = _blocks(api, api._blocks(0, 0, 64, 64, 2))
     crop = lambda t: t[32:96, 32:96]
-    b1 = _blocks(api, e1, w1, r1)
-    b2 = _blocks(api, crop(e2), crop(w2), tuple(crop(p) for p in r2))
+    b2 = tuple(crop(x) for x in _blocks(api, api._blocks(-32, -32, 96, 96, 2)))
     for x, y in zip(b1, b2):
         assert np.array_equal(x, y)
+
+
+def test_tile_planes_follow_the_water_rule(api):
+    planes = api.build(7, 0, 0, 1)
+    assert planes.shape == (6, api.world.tile_size, api.world.tile_size) and planes.dtype == np.int16
+    h, _, water, floor, roof, flow = planes
+    sea = api.world.sea_level
+    assert (water[h < sea] >= sea).all(), "a column below sea level holds no sea"
+    wet = water >= 0
+    assert ((water[wet] > h[wet]) | (floor[wet] >= 0)).all(), "water level at or under dry ground"
 
 
 def _solid(h, lv, floor, roof, y):
@@ -65,8 +59,7 @@ def _solid(h, lv, floor, roof, y):
 
 
 def test_block_rivers_hold_their_water_in_3d(api):
-    elev, _, water, river = api._downsampled(-256, -256, 256, 256, 2)
-    h, lv, wet, floor, roof, flow = _blocks(api, elev, water, river)
+    h, lv, wet, floor, roof, flow = _blocks(api, api._blocks(-256, -256, 256, 256, 2))
     assert wet.mean() > 0.002, "no rivers in a 30 km square at 1:4"
     tunnel = roof > floor
     # Every wet column holds at least one water block: open columns above their ground,
@@ -78,7 +71,7 @@ def test_block_rivers_hold_their_water_in_3d(api):
     # sea, or ANOTHER WET COLUMN of the same river: never dry air, an undercut's air pocket or a
     # tunnel. A wet neighbour one block lower is the river flowing downhill (a one-block cascade
     # that stays in the channel); anything taller would be a waterfall inside a river.
-    sea = elev.cpu().numpy() <= 0.5
+    sea = h < api.world.sea_level
     for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
         nb = lambda a: np.roll(a, (di, dj), (0, 1))
         y = lv - 1
@@ -93,8 +86,7 @@ def test_block_rivers_hold_their_water_in_3d(api):
 
 
 def test_river_planes_are_well_formed(api):
-    elev, _, water, river = api._downsampled(-256, -256, 256, 256, 2)
-    h, lv, wet, floor, roof, flow = _blocks(api, elev, water, river)
+    h, lv, wet, floor, roof, flow = _blocks(api, api._blocks(-256, -256, 256, 256, 2))
     tunnel = roof > floor
     assert ((floor == -1) == (roof == -1)).all()
     assert (h[tunnel] >= roof[tunnel] + 1).all(), "a tunnel roof breaches the surface"
@@ -104,14 +96,12 @@ def test_river_planes_are_well_formed(api):
 
 
 def test_far_zoom_overview_matches_itself_and_the_contract(api):
-    """lod-8 preview blocks (d = 16 px = 2 cells per sample): same planes as a full tile, request-
+    """lod-8 preview samples (d = 16 px = 2 cells per sample): same planes as a full tile, request-
     independent, rivers flowing, no tunnels; far cheaper than full tiles."""
-    e1, b1, w1, r1 = api._overview(0, 0, 32, 32, 16)
-    e2, b2, w2, r2 = api._overview(-16, -16, 48, 48, 16)
+    h1, b1, l1, w1, r1 = api._overview(0, 0, 32, 32, 16)
+    h2, b2, l2, w2, r2 = api._overview(-16, -16, 48, 48, 16)
     crop = lambda t: t[16:48, 16:48]
-    assert torch.equal(e1, crop(e2)) and torch.equal(b1, crop(b2))
-    assert torch.equal(torch.isnan(w1), torch.isnan(crop(w2)))
+    assert torch.equal(h1, crop(h2)) and torch.equal(b1, crop(b2)) and torch.equal(w1, crop(w2))
     floor, roof, flow = r1
     assert (floor == -1).all() and (roof == -1).all()
-    wet = ~torch.isnan(w1)
-    assert (flow[~wet] == -1).all() and (flow[wet] >= 0).float().mean() > 0.9
+    assert (flow[~w1] == -1).all() and (flow[w1] >= 0).float().mean() > 0.9

@@ -15,7 +15,7 @@ import java.util.stream.IntStream;
  * decides when and on which thread a sample happens, and hears back through a {@link SamplingSink}.
  *
  * <p>This is the slow part: every sample the {@link com.stonebreak.ui.terrainMapper.visualization.PreviewSampleStore}
- * doesn't already hold can reach through to the terrain bridge, so a call may block for many
+ * doesn't already hold can reach through to TGMPipe, so a call may block for many
  * seconds. Ground seen before, in any mode, is served from that store instead. {@link TerrainPreviewLoader} is the only caller and always
  * invokes it on its worker thread.
  *
@@ -57,7 +57,7 @@ public final class TerrainPreviewSampler {
      * @return the finished snapshot, or null if {@code sink} abandoned the work part-way — in
      *         which case the rows already handed to {@link SamplingSink#partial} stand as the
      *         last word on this request
-     * @throws com.stonebreak.world.generation.diffusion.TerrainBridgeException if the terrain
+     * @throws com.stonebreak.world.generation.diffusion.TGMPipeException if the terrain
      *         bridge fails mid-sample; the caller decides how to recover.
      */
     public PreviewSnapshot sample(SampleRequest request, SamplingSink sink) {

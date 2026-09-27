@@ -18,10 +18,8 @@ exactly in its interior; a sum of logistics was tried first and rejected,
 because its tails never vanish and the lowland band never actually reaches its
 configured rate.
 
-Lowlands get ~4 m/block so river incision (5-20 m) and lake depth (2-30 m) are
-legible at all -- see `Dev Working/Rivers and lakes plan.md` Phase 5. The ocean
-floor keeps a coarser rate deliberately: at 4 m/block a 1024-block column
-bottoms out at -1280 m and flattens the whole abyssal plain onto y=0.
+The game owns the knobs (`TerrainScale` in stonebreak-game, sent in the service
+handshake as a `WorldConfig`); the model only evaluates the curve.
 """
 from __future__ import annotations
 
@@ -30,7 +28,6 @@ from functools import lru_cache
 
 import numpy as np
 
-from .config import BridgeConfig
 
 # The integration grid. Wide enough that both endpoints already fall outside
 # the block column (asserted in _curve_table), so np.interp's edge clamping can
@@ -106,19 +103,20 @@ class HeightCurve:
             )
 
     @staticmethod
-    def from_config(cfg: BridgeConfig) -> "HeightCurve":
+    def from_world(w) -> "HeightCurve":
+        """The curve of a `world_config.WorldConfig`."""
         return HeightCurve(
-            ocean_meters_per_block=cfg.ocean_meters_per_block,
-            lowland_meters_per_block=cfg.lowland_meters_per_block,
-            midland_meters_per_block=cfg.midland_meters_per_block,
-            highland_meters_per_block=cfg.highland_meters_per_block,
-            lowland_top_m=cfg.lowland_top_m,
-            highland_base_m=cfg.highland_base_m,
-            shore_blend_m=cfg.shore_blend_m,
-            midland_blend_m=cfg.midland_blend_m,
-            highland_blend_m=cfg.highland_blend_m,
-            sea_level=cfg.sea_level,
-            world_height=cfg.world_height,
+            ocean_meters_per_block=w.ocean_m_per_block,
+            lowland_meters_per_block=w.lowland_m_per_block,
+            midland_meters_per_block=w.midland_m_per_block,
+            highland_meters_per_block=w.highland_m_per_block,
+            lowland_top_m=w.lowland_top_m,
+            highland_base_m=w.highland_base_m,
+            shore_blend_m=w.shore_blend_m,
+            midland_blend_m=w.midland_blend_m,
+            highland_blend_m=w.highland_blend_m,
+            sea_level=w.sea_level,
+            world_height=w.world_height,
         )
 
     def rate(self, elev_m: np.ndarray) -> np.ndarray:

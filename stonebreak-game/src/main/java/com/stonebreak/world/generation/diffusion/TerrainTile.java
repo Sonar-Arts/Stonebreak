@@ -1,23 +1,20 @@
 package com.stonebreak.world.generation.diffusion;
 
 /**
- * One decoded tile from the terrain bridge's {@code POST /generate_heightmap}
- * response: a {@code height x width} grid of already-mapped block heights,
- * the co-located (still vanilla-Minecraft, unmapped — see plan.md Phase 4)
- * biome ids, and the per-column water level, row-major with
+ * One decoded tile from TGMPipe (a TILE_DATA frame, see
+ * {@link com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipeProtocol}): a
+ * {@code height x width} grid of block heights, the co-located biome ids, the
+ * per-column water level and the river planes, row-major with
  * row = worldX - worldI1, col = worldZ - worldJ1.
  *
- * <p>Upstream crops as {@code elev_up[crop_i1:crop_i2, crop_j1:crop_j2]} and
- * reports {@code h, w = elev.shape} (see minecraft_api.py {@code _get_upsampled}),
- * so <em>rows are the i axis</em> — which the bridge maps to world X
- * ({@code i1 = tile_x * tile_size}, see Models/terrain-bridge/bridge/tiling.py) — and
- * columns are the j axis, i.e. world Z. Getting this backwards transposes each
+ * <p><em>Rows are the i axis</em> — world X ({@code i1 = tile_x * tile_size}, see
+ * {@code terrain_slm/world/tiles.py}) — and columns are the j axis, i.e. world Z. Getting this backwards transposes each
  * tile about its own diagonal; because tiles are square no length check ever
  * catches it, and the only symptom is tile-sized terrain patches that don't
  * line up at their seams.
  *
  * <p>Careful with the canonical constructor: it takes {@code width} <em>before</em>
- * {@code height}, while the wire headers are read {@code X-Height} first.
+ * {@code height}, while the wire header carries rows first.
  */
 public record TerrainTile(
         int tileX,
@@ -38,7 +35,7 @@ public record TerrainTile(
 
     /**
      * A tile with no river tunnels in it. Every source of tiles other than the
-     * water carve — the bridge client, the test fixtures — produces one of
+     * water carve — the service decoder, the test fixtures — produces one of
      * these, so the two planes are nullable rather than allocated and filled
      * with a sentinel per tile.
      */
@@ -138,8 +135,7 @@ public record TerrainTile(
             throw new IllegalStateException(
                     "world (" + worldX + "," + worldZ + ") is outside tile (" + tileX + "," + tileZ +
                     ") bounds i[" + worldI1 + "," + worldI2 + ") j[" + worldJ1 + "," + worldJ2 + ") — " +
-                    "likely a Java/bridge tile-size mismatch (DiffusionBridgeConfig.tileSizeBlocks " +
-                    "must equal the bridge's TERRAIN_BRIDGE_TILE_SIZE)");
+                    "likely a tile-size mismatch between the tile cache and TerrainScale.TILE_SIZE_BLOCKS");
         }
         return row * width + col;
     }

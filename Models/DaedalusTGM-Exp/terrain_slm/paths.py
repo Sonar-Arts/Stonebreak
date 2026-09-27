@@ -7,4 +7,4 @@ from pathlib import Path
 MODEL_DIR = Path(__file__).resolve().parents[1]     # Models/DaedalusTGM-Exp
 MODELS_DIR = MODEL_DIR.parent                        # Models/
 REPO_DIR = MODELS_DIR.parent                         # repository root
-BRIDGE_DIR = MODELS_DIR / "terrain-bridge"           # shared tile adapter (HeightCurve, hydrology)
+TILE_CACHE_DIR = MODELS_DIR / "tile_cache"          # the service's on-disk tile cache (gitignored)

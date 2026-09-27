@@ -58,7 +58,7 @@ public final class TerrainFooterRenderer {
 
     /** Resolved once: the backend and model come from system properties fixed at launch. */
     private static final String DIFFUSION_BACKEND =
-            com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager.generatorLabel();
+            com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe.generatorLabel();
 
     /** The selected generator; the model generator also names the backend and model it runs. */
     private String terrainLabel() {

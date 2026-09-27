@@ -26,7 +26,7 @@ import numpy as np
 
 from terrain_slm.data import glo30
 from terrain_slm.data.descriptors import CELL_PX
-from terrain_slm.paths import BRIDGE_DIR, REPO_DIR
+from terrain_slm.paths import REPO_DIR
 from terrain_slm.device import default_device
 
 WORLDCLIM_DIR = REPO_DIR / "Dev Working/terrain-diffusion-spike/repo/data/global"
@@ -107,9 +107,8 @@ def build_climate(region, hc, wc) -> dict[str, np.ndarray]:
 
 
 def build_hydrology(coarse: np.ndarray, precip_mm: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
-    sys.path.insert(0, str(BRIDGE_DIR))
-    from hydrology.fill import fill_depressions, ocean_mask
-    from hydrology.flow import d8_receivers, flow_accumulation
+    from terrain_slm.data.hydrology.fill import fill_depressions, ocean_mask
+    from terrain_slm.data.hydrology.flow import d8_receivers, flow_accumulation
 
     invalid = ocean_mask(coarse.astype(np.float64))
     filled = fill_depressions(coarse, invalid=invalid)

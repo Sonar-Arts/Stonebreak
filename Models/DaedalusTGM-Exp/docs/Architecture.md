@@ -1,8 +1,8 @@
 # DaedalusTGM-Exp: Terrain Generation Model Architecture
 
 **Branch:** `Project-Daedalus` (off Project-Heracles) · **As of:** 2026-09-27 (v3: hydrology sidecar, river pipeline with learned 3D banks, MaskGIT descriptors)
-**Name:** **DaedalusTGM-Exp** (Daedalus Terrain Generation Model, experimental): the official name of the model and its server. Code identifiers keep their original names: Python package `terrain_slm`, backend key `-Dstonebreak.terrainService.backend=slm`. The name appears in `terrain_slm.MODEL_NAME`, the server's `/health` (`"name"`), its `model_id` (`DaedalusTGM-Exp/v3:p…:r…:l…:h…:b…:g…`), its log prefix, and `TerrainServiceProcessManager.SLM_MODEL_NAME` (Java logs)
-**Home:** `Models/DaedalusTGM-Exp/` (this model: code, training, server, checkpoints, reports, docs) · `Models/terrain-bridge/` (shared tile adapter) · Java process manager + world constants
+**Name:** **DaedalusTGM-Exp** (Daedalus Terrain Generation Model, experimental): the official name of the model (the process that serves it to the game is **TGMPipe**). Code identifiers keep their original names: Python package `terrain_slm`. The name appears in `terrain_slm.MODEL_NAME`, the service's READY handshake (`"name"`), its `model_id` (`DaedalusTGM-Exp/v3:p…:r…:l…:h…:b…:g…`), its log, and `TGMPipe.MODEL_NAME` (Java)
+**Home:** `Models/DaedalusTGM-Exp/` (this model: code, training, TGMPipe, checkpoints, reports, docs) · Java `TGMPipe` + world constants (`TerrainScale`)
 **Plan / history:** [`Terrain-SLM-Plan.md`](Terrain-SLM-Plan.md) (§13 onward is the running log)
 
 ---
@@ -11,7 +11,7 @@
 
 | | |
 |---|---|
-| Default generator | **DaedalusTGM-Exp v3** (`TerrainServiceProcessManager.DEFAULT_BACKEND = "slm"`, model dir `checkpoints/v3`, tracked in git, ~18 MB); the diffusion upstream is reachable only via `-Dstonebreak.terrainService.backend=upstream` |
+| Default generator | **DaedalusTGM-Exp v3** (`TGMPipe.DEFAULT_MODEL`, model dir `checkpoints/v3`, tracked in git, ~18 MB) |
 | Controls | **v2**: continents + long, winding **mountain ranges** (spines, spurs, foothills) + climate archetypes (§6) |
 | Relief sampler | **new**: flow-matching conv UNet on 240 m cells, **425,033 params**, 11 min; samples valley networks onto the smooth trend (§7) |
 | Planner (the "SLM") | **R1**: ViT d176 × 4 layers × 4 heads, **1,558,656 params** (unchanged; now fed a valley-rich trend) |
@@ -54,7 +54,7 @@ Per request, the model server runs:
 Minecraft (1.18+) uses 1 m blocks, sea level y 63 and a build limit of y 320. Its mountain peaks usually top out around y 200–260, which is 150–200 m above the sea. A range spans a few hundred to a couple of thousand blocks. Measured against real terrain, that is roughly 15–20 m of reality per block on both axes, with the vertical exaggerated a further ~2–3× (jagged peaks climb 2–3 blocks per block).
 
 ### What we do
-Blocks are 60 m horizontally: the model's 30 m pixels are averaged 2×2 (`TerrainScale.DOWNSCALE`). A 100 km range is therefore ~1,700 blocks long, similar to a large Minecraft range. Height is set by the bridge's `HeightCurve`, using per-band metres-per-block rates (`TerrainScale.CURVE_RATES`):
+Blocks are 60 m horizontally: the model's 30 m pixels are averaged 2×2 (`TerrainScale.DOWNSCALE`). A 100 km range is therefore ~1,700 blocks long, similar to a large Minecraft range. Height is set by the `HeightCurve` (`world/height_curve.py`, knobs from the game's `TerrainScale`), using per-band metres-per-block rates (`TerrainScale.CURVE_RATES`):
 
 | Band | Rate (m/block) | Vertical exaggeration vs 60 m horizontal |
 |---|---|---|
@@ -69,9 +69,9 @@ Blocks are 60 m horizontally: the model's 30 m pixels are averaged 2×2 (`Terrai
 
 The old curve (48/16/40/96, a straight 1:4 of the diffusion-era rates) put 4 km at y 174 and turned a real 35° slope into 0.44 blocks of rise per block. Under that curve, even real Alps data looked like rolling hills.
 
-**Summit soft cap** (`generator.soft_cap_peaks`): above 4300 m, elevation approaches 5150 m (y ~254) but never reaches it. The rare summit taller than the curve allows is rounded rather than sheared flat at the build limit. It is applied in the model server, so the bridge, water and biomes all see the same ground.
+**Summit soft cap** (`generator.soft_cap_peaks`): above 4300 m, elevation approaches 5150 m (y ~254) but never reaches it. The rare summit taller than the curve allows is rounded rather than sheared flat at the build limit. It is applied in the generator, so blocks, water and biomes all see the same ground.
 
-`TerrainScale.serviceEnvironment()` emits one set of `TERRAIN_BRIDGE_*` values (world height, sea level, curve rates, scale/downscale, horizontal m/block) to **both** the bridge and the model server, so they map metres to blocks identically. The curve rates are part of the bridge's tile-cache fingerprint.
+`TerrainScale.worldConfigJson()` sends the whole world scale (world height, sea level, horizontal m/block, downscale, tile size, curve rates and knots) in the service handshake; the service parses it strictly into a `WorldConfig` (`world/world_config.py`, which also holds `WorldConfig.GAME` for offline work) and rejects a missing or unknown key. The config is part of the disk-cache namespace.
 
 ---
 
@@ -263,9 +263,8 @@ Reads the **final coarse height** (planner output) plus climate and predicts, pe
 
 The game's `TerrainTile` already supports per-column river tunnels: `riverFloor`/`riverRoof` (stone shells, water below the column's water level and air above inside), plus `riverFlow` octants. `HeightMapGenerator`, chunk filling, `WaterGuard`, the carvers and the water simulation all read them. v3 carries them from the model to the game:
 
-- **Model server:** `/terrain?...&water=1&river3d=1` appends three int16 planes in **blocks** (floor, roof, flow; −1 = none).
-- **Bridge** (`PROTOCOL_VERSION` 3, cache schema 4, 6 planes): passes them through (`TERRAIN_BRIDGE_RIVER3D`, default on). `UpstreamWater` keeps water under overhangs, whose height is the bank top above the water.
-- **Java** (`DiffusionTerrainClient` v3): decodes 6 planes. All-empty river planes become `null`, which `TerrainTile` already supports.
+- **Service** (`world/tiles.py`): every tile carries six int16 planes in **blocks**: height, biome, water level, tunnel floor, roof, flow (−1 = none). The water rule keeps water under overhangs, whose height is the bank top above the water.
+- **Java** (`TGMPipeProtocol.decodeTile`): all-empty river planes become `null`, which `TerrainTile` already supports.
 
 Containment in 3D (tested): a water block never meets dry air, an undercut's air pocket or a tunnel sideways. A wet neighbour at most one block lower is the river flowing.
 
@@ -283,34 +282,33 @@ Copernicus GLO-30 is an *edited* DSM: water wider than ~183 m is flattened to it
 
 Learned banks against the deterministic levees (61 km mountain square): banks slope naturally into the water instead of ending in 1-block walls, and block-level containment raises 1,795 columns instead of 2,780. Because learned banks are gentle at the water, they leave fewer tall walls to undercut, hence the 3-block trigger.
 
-## 12. Serving (`serve/upstream_api.py`) and bridge (`Models/terrain-bridge/`)
+## 12. Serving: TGMPipe (`tgmpipe/`, `world/tiles.py`)
 
-**Server:** a drop-in for upstream's `minecraft_api` (same CLI flags, `/health`, `/terrain?i1&j1&i2&j2&scale&downscale&noise&elev_only&water&river3d&format`).
-- With `downscale=2`: runs the river pipeline over the request plus `BLOCK_MARGIN`. It returns heights and water as **mid-band metres** (the bridge's curve maps them back to exactly the blocks decided here), plus, with `river3d=1`, the three river planes in blocks.
-- The live bridge curve is passed to the generator (`set_block_scale`), and the startup log prints the river chain.
-- Biomes come from upstream's classifier, vendored verbatim.
-- Knobs (env): `TERRAIN_SLM_T_START` 0.6, `TERRAIN_SLM_STEPS` 8, `TERRAIN_SLM_AMP_SCALE` 1.0, `TERRAIN_SLM_RIVER_THRESHOLD` (model default: 5.5 with hydro, 4.5 relief-only, 3.3 without either), `TERRAIN_SLM_DEVICE`.
+One child process of the game, `python -m terrain_slm.tgmpipe`, spoken to over its stdin/stdout. It replaced a two-process HTTP stack (model server + FastAPI bridge, 2026-09-27) that converted every block height to metres and back, pinned one seed per process pair, and made slow tiles poll with 503 + Retry-After.
 
-**Bridge:**
-- `TERRAIN_BRIDGE_WATER_SOURCE=upstream` takes the model's water; `TERRAIN_BRIDGE_RIVER3D` (default on) the 3D planes.
-- Protocol v3, 6 planes; the cache schema bump rotates old caches.
-- `TERRAIN_BRIDGE_UPSTREAM_ID` (= `slm:<model dir>`) and the curve rates are part of the tile-cache fingerprint. **Any generator change needs a new model dir name**, or the bridge will serve old cached tiles.
+- **Protocol** (`tgmpipe/protocol.py` ⇄ Java `TGMPipeProtocol`, v1): length-prefixed binary frames. HELLO (world config) → READY (model id); TILE (id, seed, tile x/z, lod, priority) → TILE_DATA (6 planes) or TILE_ERROR; CANCEL; STATUS. stdout carries frames only: fd 1 is redirected to stderr (the log) at startup.
+- **Tiles** (`world/tiles.py`, `TileBuilder`): the river pipeline's block stages decide blocks against the handshake's curve, and the tile is sent as those blocks directly (no metres round trip). Tiles are `tile_size` samples square, each `downscale × lod` native pixels; the canonical bounds are the only shape ever built for a tile, so tiles meet without seams.
+- **Any seed per request.** Every generator cache is keyed by seed and `WorldGenerator.use_seed` just switches it, so one loaded model serves the world and the terrain mapper at once.
+- **Scheduling** (`tgmpipe/scheduler.py`): one job per distinct tile however many requests wait on it; most urgent priority first (world 0, preview 1); a request cancelled before its job starts leaves it, and an unwanted job is dropped unrun. Threads: reader → front (disk-cache hits answered immediately, misses queued, cancels, in order) → GPU (one tile at a time) → back (cache write + send, so the GPU starts the next tile at once).
+- **Disk cache** (`tgmpipe/tile_cache.py`, `Models/tile_cache/`): tiles as they go on the wire. The namespace hashes the world config, the model id (every checkpoint's step) and the generator source (all of `terrain_slm/` except `train/`, `eval/`, `export/`, `tgmpipe/`), so retraining or editing the pipeline never serves stale terrain. One LRU byte budget (`--disk-cache`, 8 GB) spans all namespaces.
+- **Lifecycle:** exits when stdin closes (the game exited, crashed or was killed), so it never outlives the game. Java `TGMPipe` restarts it if it dies while running and re-sends in-flight tiles (3 restarts / 10 min), and kills a service that sends nothing for 10 min with tiles pending.
+- Biomes come from upstream's classifier, vendored verbatim. Knobs (env or flags): `TERRAIN_SLM_T_START` 0.6, `TERRAIN_SLM_STEPS` 8, `TERRAIN_SLM_AMP_SCALE` 1.0, `TERRAIN_SLM_RIVER_THRESHOLD` (model default: 5.5 with hydro, 4.5 relief-only, 3.3 without either), `TERRAIN_SLM_DEVICE`.
 
 **Timing** (one RTX PRO 6000): first tile of a new world **28.7 s** cold (relief, hydro and descriptor windows warm up), then about **1.5 s** per tile. Planner windows are generated in fixed batches of 32 (`PLANNER_BATCH`; inputs computed once over the batch's bounding box, bit-identical to one at a time): per-window launch overhead was ~31 ms, now a coarse tile's 2,145 windows take seconds, not a minute.
 
-**Far-zoom preview tiles (`lod`).** A tile request may carry `lod` (world blocks per sample, a power of two). Coordinates are then in sample units (world // lod), so the 256×256 tile shape is unchanged and a tile covers 256·lod blocks. The bridge asks for `downscale × lod` native pixels per sample and caches under `…_lod{n}` (existing keys unchanged). At 8 px or more per sample (whole 240 m cells), the model server answers from the cell fields alone (`_overview`): coarse height, hydro rivers (one sample wide) with D8 flow, and biomes; no descriptor sampling, synth, refiner or river pipeline. An 8,192-block square takes 17 s cold (0.6 s per tile once windows are warm), against ~11 min of full tiles. For the terrain mapper zoomed out only, never for chunks.
+**Far-zoom preview tiles (`lod`).** A tile request may carry `lod` (world blocks per sample, a power of two). Coordinates are then in sample units (world // lod), so the 256×256 tile shape is unchanged and a tile covers 256·lod blocks. Each sample is `downscale × lod` native pixels, and the disk cache keys `lod` separately. At 8 px or more per sample (whole 240 m cells), the service answers from the cell fields alone (`TileBuilder._overview`): coarse height, hydro rivers (one sample wide) with D8 flow, and biomes; no descriptor sampling, synth, refiner or river pipeline. An 8,192-block square takes 17 s cold (0.6 s per tile once windows are warm), against ~11 min of full tiles. For the terrain mapper zoomed out only, never for chunks.
 
 ## 13. Game integration (Java)
 
 | Where | What |
 |---|---|
-| `TerrainServiceProcessManager` | `DEFAULT_BACKEND="slm"`, model dir **`checkpoints/v3`**, `SLM_MODEL_NAME`, `MODELS_DIR`/`BRIDGE_DIR`/`SLM_DIR` |
-| `DiffusionTerrainClient` | tile protocol **v3**: 6 planes → `TerrainTile` river floor/roof/flow (null when empty); optional `lod` for far-zoom preview tiles |
+| `tgmpipe/TGMPipe` | launches `python -m terrain_slm.tgmpipe` (model dir **`checkpoints/v3`**), handshake, restart + re-send, stall watchdog; `requestTile(seed, x, z, lod, priority)`; finds `Models/` from the repo root or a module dir |
+| `tgmpipe/TGMPipeProtocol`, `TGMPipeConnection` | frame codec; one multiplexed connection, tiles pushed when done, CANCEL for withdrawn requests |
+| `DiffusionTileCache` | per seed + lod + priority; floorDiv bucketing, in-flight de-dup, LRU; `close()` withdraws what is still in flight |
 | Terrain mapper | **Rivers** mode (`RiverVisualizer`: flow octant as hue, red undercuts, orange overhangs); footer and loading line name the model (`generatorLabel()`); at 8+ blocks per sample it reads `lod`-8 overview tiles (`VisualizerRegistry.overviewColumns`, `TerrainMapperConfig.OVERVIEW_*`), and `PreviewSampleStore` keeps full-detail and overview levels apart |
-| `TerrainScale` | 60 m blocks (`DOWNSCALE` 2), `CURVE_RATES` {48, 16, 24, 38} |
+| `TerrainScale` | 60 m blocks (`DOWNSCALE` 2), `TILE_SIZE_BLOCKS` 256, `CURVE_RATES` {48, 16, 24, 38}, `CURVE_KNOTS`; `worldConfigJson()` for the handshake |
 | `TerrainMapperConfig.TOPO_LAND_CEILING` | 240 |
 | `WorldConfiguration` | 256 / 64; `HeightMapGenerator` clamps surfaces to y 255 and reads the tile's river planes |
-| `NativeWaterTiles.nativeBackendSelected()` | false on slm (no basin solver / coarse DEM) |
 | Engine | `VoxelChunkCodec.CHUNK_H = 256`, `CloudRenderer.CLOUD_Y = 192` |
 
 ## 14. Verification
@@ -322,6 +320,7 @@ Learned banks against the deterministic levees (61 km mountain square): banks sl
 - **Bridge tests: 294** (291 + 3 for protocol v3: river planes round-trip the cache, six-plane payloads pass through with `river3d` sent, water under an overhang survives the mapping).
 - **Java:** `DiffusionTerrainClientTest` (14, incl. two new for river planes), `DiffusionTileCacheTest`, `TerrainTileTest`, `TerrainServiceProcessManagerTest`, `TopographyVisualizerTest`, `WaterVisualizerTest`.
 - **End to end:** model server + bridge from their `Models/` paths; a mountain tile came back over protocol 3 with 6 planes, 3,821 wet columns (5.8%), all flowing.
+- **TGMPipe (2026-09-27, replaced the bridge):** `test_tgmpipe.py` (protocol, scheduler, disk cache, the service loop against a fake builder), `test_tgmpipe_process.py` (the real service as a child process: handshake, a real tile, a disk-cache hit, stdout carries frames only, exit on stdin close, a bad handshake reported as FATAL), `test_height_curve.py` + `test_hydrology_*.py` (moved from the bridge). Java: `TGMPipeConnectionTest` (fake service on pipes), `DiffusionTileCacheTest`, `TerrainScaleTest` (handshake keys = Python `WorldConfig` fields), and opt-in `TGMPipeLiveTest` (`-Dstonebreak.tgmpipe.live=true`: real model; two seeds from one process, cancel, crash → restart → re-send, shutdown). Service start ~1 s after model load.
 - **Mountain report v3** (`reports/v3/`, seeds 0–3): heights and relief unchanged from v2 (y 231–232, 147–165 blocks); rivers 0.6–4.8% of the square (v2: 0.2–2.5%) with 3–16-block widths.
 
 ## 15. Known limitations and next steps
@@ -351,20 +350,19 @@ Scripts: `docs/diagnostics/diag1..7.py` (run from `Models/DaedalusTGM-Exp/`; out
 ```
 Models/
 ├── README.md                 index of models and shared services
-├── terrain-bridge/           shared tile adapter (protocol v3: 6 planes)
-│   ├── bridge/               water.py (UpstreamWater) · config.py · height_mapping.py · cache.py · queue.py
-│   └── hydrology/            D8 fill/flow (also used by data/build.py)
+├── tile_cache/               TGMPipe's disk cache (ignored)
+├── logs/                     tgmpipe.log (ignored)
 └── DaedalusTGM-Exp/          this model (uv project, Python package terrain_slm)
     ├── README.md             quickstart: setup, serve, train, evaluate, test
     ├── terrain_slm/
     │   ├── paths.py · device.py   cross-folder paths; default training device
-    │   ├── data/             glo30.py · build.py · descriptors.py · water.py (v3: water masks from flat DSM water)
+    │   ├── data/             glo30.py · build.py · descriptors.py · water.py (v3: water masks from flat DSM water) · hydrology/ (D8 fill/flow)
     │   ├── synth/            noise.py
     │   ├── models/           planner.py · refiner.py · relief.py · hydro.py (v3) · descgit.py (v3)
     │   ├── river/            (v3) scale.py · field.py · geometry.py · banks.py · contain.py · blocks.py · pipeline.py
     │   ├── train/            planner_data · train_planner · train_refiner · train_relief · train_hydro · train_banks · train_descgit
-    │   ├── world/            generator.py (controls, relief/hydro/descriptor windows, soft cap, river pipeline)
-    │   ├── serve/            upstream_api.py (river3d planes)
+    │   ├── world/            generator.py (controls, windows, soft cap, rivers; seed-keyed caches) · tiles.py (blocks) · world_config.py · height_curve.py
+    │   ├── tgmpipe/          service.py (TGMPipe, stdio, `python -m terrain_slm.tgmpipe`) · protocol.py · scheduler.py · tile_cache.py
     │   ├── eval/             sheet.py · mountains.py
     │   └── biomes.py         vendored classifier
     ├── tests/                46 tests
@@ -372,6 +370,6 @@ Models/
     ├── checkpoints/v3/       planner · refiner · relief · hydro · bank · descgit (.pt), TRACKED (~18 MB); v2/ tracked; runs ignored
     ├── reports/              ignored
     └── docs/                 Architecture.md · Terrain-SLM-Plan.md · Remote-Training.md · system-overview.{png,py} · diagnostics/
-stonebreak-game/.../world/generation/diffusion/{TerrainScale, DiffusionTerrainClient, TerrainTile}.java
-stonebreak-game/.../world/generation/diffusion/process/TerrainServiceProcessManager.java
+stonebreak-game/.../world/generation/diffusion/{TerrainScale, DiffusionTileCache, TerrainTile}.java
+stonebreak-game/.../world/generation/diffusion/tgmpipe/{TGMPipe, TGMPipeConnection, TGMPipeProtocol}.java
 ```

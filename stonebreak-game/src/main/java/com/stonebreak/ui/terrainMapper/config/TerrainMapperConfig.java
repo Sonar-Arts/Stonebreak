@@ -88,18 +88,18 @@ public final class TerrainMapperConfig {
     public static final long ZOOM_COOLDOWN_NANOS = 180_000_000L;
 
     /**
-     * Quiet period after the last seed edit before the visualizers are rebuilt. Rebuilding
-     * restarts the two local terrain-diffusion processes (they can't be reseeded in place —
-     * see TerrainServiceProcessManager), so typing a seed character-by-character must not
-     * trigger one restart per keystroke.
+     * Quiet period after the last seed edit before the visualizers are rebuilt. The terrain
+     * service serves any seed without restarting, but every rebuild throws away the sampled
+     * picture and queues fresh tiles, so typing a seed character-by-character must not trigger
+     * one rebuild per keystroke.
      */
     public static final long SEED_APPLY_DELAY_NANOS = 500_000_000L;
 
     // ─────────────────────────────────────────────── Topography visualizer
     /**
      * Block height that maps to the top (white) of the topography land ramp; anything higher
-     * clamps to white. Set where the highest terrain lands: the bridge's height curve
-     * (Models/terrain-bridge/bridge/height_mapping.py, rates from {@code TerrainScale}) puts 4500 m
+     * clamps to white. Set where the highest terrain lands: the height curve
+     * ({@code terrain_slm/world/height_curve.py}, knobs from {@code TerrainScale}) puts 4500 m
      * summits at about y 236, and the terrain model soft-caps peaks just under the build limit.
      */
     public static final int TOPO_LAND_CEILING = 240;

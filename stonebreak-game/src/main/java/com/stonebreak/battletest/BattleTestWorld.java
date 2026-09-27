@@ -11,7 +11,7 @@ import org.joml.Vector3f;
 public final class BattleTestWorld extends World {
     private final BattleTestArena arena;
     public BattleTestWorld(BattleTestArena arena) {
-        super(new WorldConfiguration(), 0L, true, TerrainGeneratorType.STANDARD); // never touches the terrain services
+        super(new WorldConfiguration(), 0L, true, TerrainGeneratorType.STANDARD); // never touches TGMPipe
         this.arena = arena;
         setSpawnPosition(arena.playerSpawn().position());
     }

@@ -9,7 +9,7 @@ Pipeline per request:
   over the 128 px overlap): synth -> refiner SDEdit  ->  native heights.
 
 Every intermediate is computed in a canonical shape from a fixed lattice, so a pixel's
-value never depends on which request asked for it (the bridge's seam requirement).
+value never depends on which request asked for it (tiles must meet without seams).
 """
 from __future__ import annotations
 
@@ -282,8 +282,16 @@ class WorldGenerator:
         return m, k.get("step", 0)
 
     def set_block_scale(self, scale: BlockScale) -> None:
-        """The game's metres<->blocks mapping (the model server passes the bridge's live curve)."""
+        """The game's metres<->blocks mapping (the service passes the one from its handshake)."""
         self.scale = scale
+
+    def use_seed(self, seed: int) -> None:
+        """Generate for `seed` from now on (hold `lock` across this and the calls it is for).
+
+        The weights do not depend on the seed and every cache is keyed by it, so switching seeds
+        costs nothing: one loaded model serves the world and the terrain mapper side by side, and
+        the old seed's entries simply age out of the LRUs."""
+        self.seed = seed
 
     # ---------------------------------------------------------------- window blending (cells)
     @staticmethod
@@ -353,7 +361,7 @@ class WorldGenerator:
             floor = torch.minimum(smooth, torch.full_like(smooth, RELIEF_FLOOR_M))
             out = torch.where(smooth > 0, torch.maximum(out, floor), out)
             return out[0, 0]
-        return self._relief_windows.get_or((wi, wj), run)
+        return self._relief_windows.get_or((self.seed, wi, wj), run)
 
     def trend(self, ci0: int, cj0: int, hc: int, wc: int) -> torch.Tensor:
         """The planner's trend for cells [ci0, ci0+hc) x [cj0, cj0+wc): the procedural trend
@@ -422,14 +430,14 @@ class WorldGenerator:
                 sea = ((-trend) / 150.0).clamp(0, 1)
                 height = (1 - sea) * height + sea * torch.minimum(height, trend)
                 val = torch.cat([height[None], desc, river[None], logacc[None]], dim=0)
-                self._windows.get_or((wi, wj), lambda v=val: v)
+                self._windows.get_or((self.seed, wi, wj), lambda v=val: v)
 
     def _window(self, wi: int, wj: int) -> torch.Tensor:
         """Planner output for the canonical window whose top-left cell is (wi*STRIDE, wj*STRIDE):
         (11, WIN, WIN) = [height_m, desc(8, raw units), river_prob, log1p(upslope cells)]."""
-        if (wi, wj) not in self._windows:
+        if (self.seed, wi, wj) not in self._windows:
             self._run_planner_windows([(wi, wj)])
-        return self._windows.get_or((wi, wj), lambda: None)
+        return self._windows.get_or((self.seed, wi, wj), lambda: None)
 
     def _planner_cells(self, ci0: int, cj0: int, hc: int, wc: int) -> torch.Tensor:
         """Blended planner output (11, hc, wc) for cells [ci0, ci0+hc) x [cj0, cj0+wc)."""
@@ -439,7 +447,7 @@ class WorldGenerator:
         band = max(1, (self._windows.cap // 2) // max(1, len(wjs)))
         for r in range(0, len(wis), band):
             self._run_planner_windows([(wi, wj) for wi in wis[r : r + band] for wj in wjs
-                                       if (wi, wj) not in self._windows])
+                                       if (self.seed, wi, wj) not in self._windows])
         out = torch.zeros(11, hc, wc, device=self.device)
         u = torch.arange(WIN, device=self.device, dtype=torch.float32)
         w1 = torch.sin(math.pi * (u + 0.5) / WIN) ** 2  # sums to 1 at stride WIN/2
@@ -489,7 +497,7 @@ class WorldGenerator:
             sa, ss = DG.sample(self.descgit, x, a, s, known, keys, steps=DG_STEPS)
             core = lambda t: t[0, DG_RING : DG_RING + DG_CORE, DG_RING : DG_RING + DG_CORE]
             return core(sa), core(ss)
-        return self._dg_windows.get_or((wi, wj), run)
+        return self._dg_windows.get_or((self.seed, wi, wj), run)
 
     def sampled_desc(self, ci0: int, cj0: int, hc: int, wc: int) -> torch.Tensor:
         """(8, hc, wc) raw descriptors sampled by the MaskGIT sampler (hard core ownership)."""
@@ -523,7 +531,7 @@ class WorldGenerator:
                 out = self.hydro(x)[0].float()
             return torch.stack([out[HY.OUT_LOGACC] * P.LOGACC_SCALE, torch.sigmoid(out[HY.OUT_RIVER]),
                                 out[HY.OUT_D8].argmax(0).float()])
-        return self._hydro_windows.get_or((wi, wj), run)
+        return self._hydro_windows.get_or((self.seed, wi, wj), run)
 
     def drainage(self, ci0: int, cj0: int, hc: int, wc: int) -> dict:
         """Per-cell drainage: the hydro sidecar's when loaded (logacc, river, d8), else None."""
@@ -590,7 +598,7 @@ class WorldGenerator:
                 x = R.sample(self.refiner, cond, noise, steps=self.cfg.steps,
                              x_start=(synth - base) / scale, t_start=self.cfg.t_start)
                 return (base + scale * x)[0, 0]
-        return self._regions.get_or((ri, rj), run)
+        return self._regions.get_or((self.seed, ri, rj), run)
 
     def native(self, i1: int, j1: int, i2: int, j2: int) -> torch.Tensor:
         """Elevation (m) for native pixels [i1, i2) x [j1, j2), blended across regions."""

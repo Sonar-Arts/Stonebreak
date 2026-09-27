@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * water from its strict assertion ({@code continue; // water / non-unit geometry — out of
  * scope}), because water is meshed with variable height and fails the integer-unit-quad
  * test the whole reconstruction is built on. So every regression in the water plane's
- * journey from the bridge to a placed block would pass that test silently.
+ * journey from TGMPipe to a placed block would pass that test silently.
  *
  * <p>The fake tile source puts its lakes <em>above</em> sea level on purpose. At sea level
  * the new rule and the old one agree by construction, so a test that only saw ocean would
@@ -99,8 +99,9 @@ public class TerrainWaterConsistencyTest {
      *
      * <p>Stated strictly — no air beside water at all — which holds here because the fake's
      * lakes are level. Real terrain has waterfalls, where a step-down beside a lower water
-     * body is deliberate; that case is the bridge's to police, and
-     * {@code Models/terrain-bridge/tests/test_carve.py} does, on both sides of a tile seam.
+     * body is deliberate; that case is TGMPipe's to police, and
+     * {@code Models/DaedalusTGM-Exp/tests/test_downscale_blocks.py} does (3D containment, river
+     * steps of at most one block).
      */
     @Test
     public void noWaterBlockIsExposedToAirBesideIt() {

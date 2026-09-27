@@ -9,8 +9,8 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * Translates the vanilla-Minecraft biome ids baked into diffusion-bridge
  * tiles into Stonebreak's own {@link BiomeType} registry (plan.md Phase 4).
  *
- * <p>Those ids come from terrain-bridge's upstream classifier
- * ({@code minecraft_api.py}'s {@code _classify_biome()}, itself a Python
+ * <p>Those ids come from TGMPipe's vendored upstream classifier
+ * ({@code terrain_slm/biomes.py}'s {@code _classify_biome()}, itself a Python
  * sibling of terrain-diffusion-mc's {@code BiomeClassifier.java}) — climate
  * classification already happened server-side before the tile ever reaches
  * Java, so this class is a lookup table, not a second classifier. Stonebreak
@@ -88,7 +88,7 @@ final class DiffusionBiomeMapper {
         return switch (id) {
             // Ocean ids. The classifier's land/ocean split (elev < 0m) lines up
             // exactly with our own height < SEA_LEVEL split — both reduce to the
-            // same formula, see Models/terrain-bridge/bridge/height_mapping.py — so these
+            // same formula, see terrain_slm/world/height_curve.py — so these
             // ids reliably mean "this column is underwater"; the surface/subsurface
             // block resolved from the returned biome becomes the seafloor material.
             case 41, 44 -> BiomeType.BEACH;       // warm_ocean, ocean -> sandy seafloor

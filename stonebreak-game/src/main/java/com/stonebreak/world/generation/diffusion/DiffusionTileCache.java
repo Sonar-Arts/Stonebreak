@@ -1,5 +1,7 @@
 package com.stonebreak.world.generation.diffusion;
 
+import com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe;
+
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -8,39 +10,59 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Java-side tile cache in front of {@link DiffusionTerrainClient}: buckets
- * world coordinates the same way the bridge does ({@code Math.floorDiv},
- * see Models/terrain-bridge/bridge/tiling.py), de-dupes concurrent in-flight
- * requests for the same tile (two chunk-worker threads landing on the same
- * tile share one HTTP call), and bounds memory with LRU eviction over
- * resolved tiles. Failures are never cached — the next probe gets a fresh
- * attempt rather than being stuck behind a stale failure.
+ * Tile cache in front of the {@link TGMPipe} for one seed and level of detail: buckets
+ * coordinates into tiles ({@code Math.floorDiv}, so negative coordinates land in the right tile),
+ * shares one request among every thread that lands on the same tile, and bounds memory with LRU
+ * eviction over resolved tiles. Failures are never cached — the next probe asks again.
+ *
+ * <p>Closing it withdraws every request still in flight: the service drops them if it has not
+ * started them, and their waiters get {@link TileRequestCancelledException}.
  */
 public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
 
+    /** Where tiles come from: TGMPipe in production, a stub in tests. */
+    @FunctionalInterface
+    public interface TileFetcher {
+        CompletableFuture<TerrainTile> fetch(long seed, int tileX, int tileZ, int lod, int priority);
+    }
+
     private record TileKey(int tileX, int tileZ) {}
 
-    private final DiffusionBridgeConfig config;
-    private final DiffusionTerrainClient client;
+    private final TileFetcher fetcher;
+    private final long seed;
+    private final int lod;
+    private final int priority;
+    private final int tileSize;
+    private final int maxCachedTiles;
     private final ConcurrentHashMap<TileKey, CompletableFuture<TerrainTile>> tiles = new ConcurrentHashMap<>();
     private final LinkedHashMap<TileKey, Boolean> lru = new LinkedHashMap<>(16, 0.75f, true);
     private final Object lruLock = new Object();
+    private volatile boolean closed;
 
-    public DiffusionTileCache(DiffusionBridgeConfig config, long seed) {
-        this(config, new DiffusionTerrainClient(config, seed));
+    /** Full-detail tiles for the world's chunks. */
+    public DiffusionTileCache(long seed) {
+        this(seed, 1, TGMPipe.PRIORITY_WORLD);
     }
 
     /**
-     * A cache of far-zoom preview tiles: {@code lod} world blocks per sample, and every coordinate
-     * in sample units (world blocks / lod). For the terrain mapper zoomed out; never for chunks.
+     * @param lod world blocks per sample (a power of two). Above 1, every coordinate given or
+     *            returned is in SAMPLE units (world blocks / lod): the terrain mapper zoomed out.
      */
-    public DiffusionTileCache(DiffusionBridgeConfig config, long seed, int lod) {
-        this(config, new DiffusionTerrainClient(config, seed, lod));
+    public DiffusionTileCache(long seed, int lod, int priority) {
+        this(TGMPipe.getInstance()::requestTile, seed, lod, priority, TerrainScale.TILE_SIZE_BLOCKS,
+                Integer.getInteger("stonebreak.tgmpipe.maxCachedTiles", 64));
     }
 
-    DiffusionTileCache(DiffusionBridgeConfig config, DiffusionTerrainClient client) {
-        this.config = config;
-        this.client = client;
+    DiffusionTileCache(TileFetcher fetcher, long seed, int lod, int priority, int tileSize, int maxCachedTiles) {
+        if (lod < 1 || Integer.bitCount(lod) != 1) {
+            throw new IllegalArgumentException("lod must be a power of two, got " + lod);
+        }
+        this.fetcher = fetcher;
+        this.seed = seed;
+        this.lod = lod;
+        this.priority = priority;
+        this.tileSize = tileSize;
+        this.maxCachedTiles = maxCachedTiles;
     }
 
     @Override
@@ -52,13 +74,17 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
             if (cause instanceof RuntimeException re) {
                 throw re;
             }
-            throw new TerrainBridgeException("failed to fetch tile for (" + worldX + "," + worldZ + ")", cause);
+            throw new TGMPipeException("failed to fetch tile for (" + worldX + "," + worldZ + ")", cause);
         }
     }
 
     public CompletableFuture<TerrainTile> getTileAsync(int worldX, int worldZ) {
-        TileKey key = keyFor(worldX, worldZ);
-        CompletableFuture<TerrainTile> future = tiles.computeIfAbsent(key, k -> client.fetchTile(worldX, worldZ));
+        if (closed) {
+            return CompletableFuture.failedFuture(new TileRequestCancelledException("tile cache is closed"));
+        }
+        TileKey key = new TileKey(Math.floorDiv(worldX, tileSize), Math.floorDiv(worldZ, tileSize));
+        CompletableFuture<TerrainTile> future = tiles.computeIfAbsent(key,
+                k -> fetcher.fetch(seed, k.tileX(), k.tileZ(), lod, priority));
         future.whenComplete((tile, err) -> {
             if (err != null) {
                 tiles.remove(key, future);
@@ -66,30 +92,20 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
                 touch(key);
             }
         });
+        if (closed) {
+            withdraw(); // raced close(): don't leave this one running for nobody
+        }
         return future;
-    }
-
-    /** Fire-and-forget warm for a tile the player is heading toward. */
-    public void prefetch(int worldX, int worldZ) {
-        client.prefetch(worldX, worldZ);
-    }
-
-    private TileKey keyFor(int worldX, int worldZ) {
-        int tileX = Math.floorDiv(worldX, config.tileSizeBlocks());
-        int tileZ = Math.floorDiv(worldZ, config.tileSizeBlocks());
-        return new TileKey(tileX, tileZ);
     }
 
     private void touch(TileKey key) {
         TileKey evicted = null;
         synchronized (lruLock) {
             lru.put(key, Boolean.TRUE);
-            if (lru.size() > config.maxCachedTiles()) {
+            if (lru.size() > maxCachedTiles) {
                 Iterator<Map.Entry<TileKey, Boolean>> it = lru.entrySet().iterator();
-                if (it.hasNext()) {
-                    evicted = it.next().getKey();
-                    it.remove();
-                }
+                evicted = it.next().getKey();
+                it.remove();
             }
         }
         if (evicted != null) {
@@ -97,8 +113,15 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
         }
     }
 
+    private void withdraw() {
+        TileRequestCancelledException cancelled = new TileRequestCancelledException("tile cache closed");
+        tiles.values().forEach(f -> f.completeExceptionally(cancelled));
+        tiles.clear();
+    }
+
     @Override
     public void close() {
-        client.close();
+        closed = true;
+        withdraw();
     }
 }

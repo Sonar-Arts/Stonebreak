@@ -2,7 +2,7 @@ package com.stonebreak.ui.terrainMapper.managers;
 
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerRegistry;
-import com.stonebreak.world.generation.diffusion.StaleSeedException;
+import com.stonebreak.world.generation.diffusion.TileRequestCancelledException;
 import io.github.humbleui.skija.ColorAlphaType;
 import io.github.humbleui.skija.ColorType;
 import io.github.humbleui.skija.Image;
@@ -27,14 +27,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * behind it. This is what makes the visualizer buttons feel like buttons — a zoomed-out pass is
  * thousands of diffusion tiles on a single-GPU queue, so "wait your turn" means tens of minutes.
  *
- * <p>The sampler is faked: the real one would need the terrain bridge, and what is under test
+ * <p>The sampler is faked: the real one would need TGMPipe, and what is under test
  * here is the loader's scheduling, not terrain production. The snapshots it returns still carry a
  * real (1x1) raster image, because handing images back for closing is part of what the loader
  * does with a published snapshot. Requests are told apart by their visualizer instance, which is
  * what distinguishes them in production too — a reseed installs fresh ones. The registry is real
- * but with service autostart switched off — the same escape hatch developers use to run the two
- * Python services by hand — so {@code ensureServices()} is the no-op it is meant to be once they
- * are up.
+ * but has no generator picked, so {@code ensureServices()} starts nothing.
  */
 class TerrainPreviewLoaderTest {
 
@@ -50,9 +48,7 @@ class TerrainPreviewLoaderTest {
     private static VisualizerRegistry registry;
 
     @BeforeAll
-    static void withoutLaunchingTerrainServices() {
-        // Must be set before TerrainServiceProcessManager's singleton reads it.
-        System.setProperty("stonebreak.terrainService.autostart", "false");
+    static void setUpRegistry() {
         registry = new VisualizerRegistry(1234L);
     }
 
@@ -77,7 +73,7 @@ class TerrainPreviewLoaderTest {
         PreviewSnapshot sample(SampleRequest request, SamplingSink sink) {
             started.countDown();
             try {
-                // Stands in for the bridge round trips a real pass blocks on.
+                // Stands in for the TGMPipe tiles a real pass blocks on.
                 release.await(5, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -251,16 +247,16 @@ class TerrainPreviewLoaderTest {
     }
 
     @Test
-    void aPassRejectedForAStaleSeedIsNotReportedAsFailure() throws InterruptedException {
-        // The bridge 400s a pass still asking for the seed it started under, which happens
-        // routinely while a reseed hands over. That is superseded work, not breakage: the map must
-        // keep the picture it has and say nothing, or the user gets "Terrain preview failed" for a
-        // seed change that worked.
+    void aPassWhoseTilesWereWithdrawnIsNotReportedAsFailure() throws InterruptedException {
+        // A pass still sampling the seed it started under has its tile cache closed when the
+        // registry is rebuilt for a new seed, which withdraws its tiles. That is superseded work,
+        // not breakage: the map must keep the picture it has and say nothing, or the user gets
+        // "Terrain preview failed" for a seed change that worked.
         CountDownLatch rejected = new CountDownLatch(1);
         TerrainPreviewLoader reseeding = new TerrainPreviewLoader((request, sink) -> {
             if (request.zoom() == 1f) return snapshotFor(request, true);
             rejected.countDown();
-            throw new StaleSeedException("this bridge instance is pinned to seed 1; got 2");
+            throw new TileRequestCancelledException("tile cache closed");
         });
         try {
             reseeding.request(requestFor(ONE_SEED, 1f));

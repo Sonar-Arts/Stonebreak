@@ -9,7 +9,7 @@ import java.util.Map;
  * Deterministic, fully offline {@link TerrainTileSource} for tests. Mirrors
  * the real bridge's tile-bucketing shape (256-block tiles, floorDiv bucketing)
  * without any network call, so terrain-shape logic (cave carving, mesh
- * consistency) can be exercised without a live terrain bridge.
+ * consistency) can be exercised without a live TGMPipe.
  *
  * <p>Since Phase 8 it also carries a water plane, and the inland part of it is a
  * lattice of lakes rather than a flat sea. Water that only ever sat at

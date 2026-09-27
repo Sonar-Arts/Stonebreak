@@ -10,7 +10,6 @@ dependencies = [
     "numba>=0.61",
     "rasterio>=1.4",
     "pyfastnoiselite==0.0.6",
-    "flask>=3.0",
     "matplotlib>=3.9",
     "pillow>=10.0",
     "requests>=2.32",

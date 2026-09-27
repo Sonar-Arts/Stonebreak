@@ -1,8 +1,8 @@
 package com.stonebreak.ui.terrainMapper.managers;
 
-import com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager;
-import com.stonebreak.world.generation.diffusion.StaleSeedException;
-import com.stonebreak.world.generation.diffusion.TerrainBridgeException;
+import com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe;
+import com.stonebreak.world.generation.diffusion.TGMPipeException;
+import com.stonebreak.world.generation.diffusion.TileRequestCancelledException;
 import io.github.humbleui.skija.Image;
 
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -16,9 +16,9 @@ import java.util.logging.Logger;
  * Runs terrain preview sampling off the render thread and publishes finished images back to it.
  *
  * <p>Everything this class exists to move off the main thread blocks for a <em>long</em> time.
- * {@code VisualizerRegistry.ensureServices()} boots a CUDA model server and a FastAPI bridge and
- * can take a minute; each individual sample can reach through to that bridge for a diffusion
- * inference with a 35 s request timeout. Previously both happened inline in
+ * {@code VisualizerRegistry.ensureServices()} boots TGMPipe (the CUDA terrain model) and can
+ * take a minute on a cold machine; each individual sample can reach through to it for a tile
+ * that takes a second or more to generate. Previously both happened inline in
  * {@code TerrainMapRenderer.render()}, which is exactly why opening the terrain mapper froze
  * the game. Now the render thread only ever calls {@link #request} (non-blocking) and reads
  * {@link #snapshot()} (a volatile field), so it never waits on terrain at all — the map simply
@@ -46,7 +46,7 @@ public final class TerrainPreviewLoader {
     /**
      * The sampling step as this class depends on it — {@link TerrainPreviewSampler#sample} is the
      * implementation. Narrowed to a function so the scheduling here can be exercised without a
-     * live terrain bridge behind it.
+     * live TGMPipe behind it.
      */
     @FunctionalInterface
     public interface Sampling {
@@ -129,7 +129,7 @@ public final class TerrainPreviewLoader {
             case IDLE -> "Preparing terrain preview...";
             // The first tiles of a new seed warm the model (relief, drainage and descriptor
             // windows): ~30 s on the default model, then about a second per tile.
-            case STARTING_SERVICES -> "Starting " + TerrainServiceProcessManager.generatorLabel()
+            case STARTING_SERVICES -> "Starting " + TGMPipe.generatorLabel()
                     + " (the first tiles take ~30 s)...";
             // Names the visualizer: with a previous mode's image still on the map, "Sampling
             // terrain..." gives no way to tell a mode switch that is working from one that isn't.
@@ -251,18 +251,12 @@ public final class TerrainPreviewLoader {
     private void runJob(SampleRequest request, int startedAt) {
         JobSink sink = new JobSink(startedAt);
         try {
-            // Checked BEFORE ensureServices(), not just before sampling. That call pins the
-            // terrain services to this request's seed, restarting both processes when it differs
-            // from whatever is pinned — so an abandoned job doing it anyway is not merely wasted
-            // work, it re-pins a seed nobody wants any more. That is what made leaving the mapper
-            // screen restart the services for its throwaway seed (TerrainMapperStateManager.reset
-            // bumps the generation precisely to prevent this) and then get restarted straight back
-            // by the world's own ensureRunningForSeed, killing every tile fetch in flight across
-            // both windows.
+            // Checked BEFORE ensureServices(), not just before sampling: an abandoned job must not
+            // boot a TGMPipe process the player has already walked away from.
             if (sink.abandoned()) return;
             phase = Phase.STARTING_SERVICES;
             request.registry().ensureServices();
-            // Re-checked after: booting a CUDA model server can take a minute, which is ample time
+            // Re-checked after: booting the CUDA TGMPipe can take a minute, which is ample time
             // for the user to switch visualizer, drag the map, or leave the screen entirely.
             if (sink.abandoned()) return;
             samplingLabel = request.visualizer().displayName();
@@ -275,11 +269,11 @@ public final class TerrainPreviewLoader {
                 // over the core (now the backdrop) with identical pixels, so nothing flickers.
                 sampleAndPublish(request, sink, startedAt);
             }
-        } catch (StaleSeedException e) {
-            // Not a failure: the bridge is pinned to a seed this pass is no longer sampling for.
-            // A pass in flight when the seed changes keeps drawing tiles from the registry it
-            // started with, so its requests carry the old seed until it notices it was abandoned —
-            // and its result is unwanted either way. Treated like abandonment: keep the last good
+        } catch (TileRequestCancelledException e) {
+            // Not a failure: the pass's tile cache was closed under it. A pass in flight when the
+            // seed changes keeps drawing tiles from the registry it started with until it notices
+            // it was abandoned, and rebuilding that registry closes its caches — its tiles are
+            // withdrawn from the service, and its result is unwanted either way. Treated like abandonment: keep the last good
             // image and publish no "preview failed" message for what is normal hand-off. Backed off
             // only so a screen somehow stuck in this state cannot re-request every frame.
             retryAfterNanos = System.nanoTime() + FAILURE_BACKOFF_NANOS;
@@ -287,11 +281,10 @@ public final class TerrainPreviewLoader {
             // and leaving it on SAMPLING would leave "Sampling ..." on screen with nothing running.
             PreviewSnapshot standing = snapshot;
             phase = (standing != null && standing.complete()) ? Phase.READY : Phase.IDLE;
-            LOG.log(Level.FINE, "terrain preview pass dropped: bridge re-pinned to another seed", e);
-        } catch (TerrainBridgeException e) {
-            // The preview is a convenience view, not world data, so a bridge blip (typically the
-            // services restarting for a new seed) must not take the game down the way it rightly
-            // does during chunk generation. Keep the last good image and back off before retrying.
+            LOG.log(Level.FINE, "terrain preview pass dropped: its tiles were withdrawn", e);
+        } catch (TGMPipeException e) {
+            // The preview is a convenience view, not world data, so a service failure must not
+            // take the game down the way it rightly does during chunk generation. Keep the last good image and back off before retrying.
             retryAfterNanos = System.nanoTime() + FAILURE_BACKOFF_NANOS;
             failureMessage = "Terrain preview failed: " + e.getMessage();
             phase = Phase.FAILED;

@@ -24,7 +24,7 @@ import com.stonebreak.ui.terrainMapper.visualization.VisualizerRegistry;
  * {@link PreviewSampleStore} already holds.
  *
  * @param registry kept so the worker can call {@link VisualizerRegistry#ensureServices()} —
- *                 the blocking terrain-service boot — off the render thread
+ *                 the blocking TGMPipe boot — off the render thread
  * @param widthPx/heightPx the visible map rect
  * @param marginPx extra pixels sampled beyond every edge of the visible rect, so a pan lands on
  *                 terrain that is already there. Zero samples exactly what is visible.

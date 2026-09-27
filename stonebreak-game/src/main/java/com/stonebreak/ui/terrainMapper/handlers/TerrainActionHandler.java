@@ -112,9 +112,9 @@ public final class TerrainActionHandler {
         state.reset();
         // Leave this screen immediately: state.reset() above already blanked the world-name
         // field and randomized the seed for the mapper's own next use, and until GameState
-        // moves off TERRAIN_MAPPER the screen keeps rendering and ticking — which re-triggers
-        // TerrainServiceProcessManager.ensureRunningForSeed for that throwaway seed, racing the
-        // world we just asked to start. LoadingScreen.show() is idempotent; startClientWorld
+        // moves off TERRAIN_MAPPER the screen keeps rendering and ticking — which would start
+        // sampling that throwaway seed, queueing preview tiles beside the world we just asked
+        // to start. LoadingScreen.show() is idempotent; startClientWorld
         // calls it again once WelcomeS2C actually arrives.
         Game.getInstance().getLoadingScreen().show();
         // Two-world model: start the integrated server (it will load the just-written world)

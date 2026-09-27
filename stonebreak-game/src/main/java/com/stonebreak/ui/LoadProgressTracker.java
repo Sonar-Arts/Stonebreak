@@ -34,7 +34,7 @@ import java.util.function.LongSupplier;
 public final class LoadProgressTracker {
 
     public enum Phase {
-        SERVICES("Starting terrain services", 30.0),
+        SERVICES("Starting TGMPipe", 30.0),
         SPAWN_SEARCH("Finding a spawn point", 5.0),
         PREGEN("Generating spawn area", 20.0),
         STREAM("Entering world", 2.0);

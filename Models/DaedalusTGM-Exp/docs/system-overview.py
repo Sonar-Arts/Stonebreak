@@ -64,8 +64,8 @@ ax.text(W / 2, 34.15, "DaedalusTGM-Exp — system overview (v3)", ha="center", v
 group(0.4, 26.9, 17.2, 6.75, "Stonebreak (Java)", "#fbeefe", "#a23fb0")
 sl = box(4.2, 32.55, "ServerLevel.createAndLoad", w=5.6, h=0.85)
 tg = box(12.8, 32.55, "TerrainGenerationSystem", w=5.6, h=0.85)
-pm = box(4.2, 30.9, "TerrainServiceProcessManager", "backend=slm → DaedalusTGM-Exp · checkpoints/v3", w=6.8, h=1.15)
-dc = box(13.2, 30.9, "DiffusionTileCache + DiffusionTerrainClient", "tile protocol v3: 6 int16 planes → TerrainTile",
+pm = box(4.2, 30.9, "TGMPipe", "one child process · checkpoints/v3 · restarts on crash", w=6.8, h=1.15)
+dc = box(13.2, 30.9, "DiffusionTileCache (seed · lod · priority)", "TGMPipeProtocol: 6 int16 planes → TerrainTile",
          w=7.6, h=1.15)
 ts = box(4.6, 28.2, "TerrainScale + WorldConfiguration", "60 m blocks · 256 tall, sea y 64\ncurve 48/16/24/38 m/block",
          w=5.6, h=1.5)
@@ -74,25 +74,25 @@ hm = box(10.7, 28.2, "HeightMapGenerator → chunk fill", "river floor/roof: und
 arrow((sl["r"], sl["cy"]), (tg["l"], tg["cy"]))
 arrow((tg["l"] + 0.8, tg["b"]), (pm["cx"] + 1.5, pm["t"]))
 arrow((tg["cx"] + 0.4, tg["b"]), (dc["cx"], dc["t"]))
-arrow((ts["cx"], ts["t"]), (ts["cx"], pm["b"]), "TERRAIN_BRIDGE_* env", loff=(0.2, 0.0))
+arrow((ts["cx"], ts["t"]), (ts["cx"], pm["b"]), "world config (handshake)", loff=(0.2, 0.0))
 arrow((dc["l"] + 1.6, dc["b"]), (hm["cx"] + 0.8, hm["t"]))
 
 # ---------------------------------------------------------------- services
-br = box(12.9, 25.0, "terrain-bridge (FastAPI) · protocol v3",
-         "HeightCurve metres → blocks · keeps water under overhangs\n"
-         "river planes passed through · cache keyed on slm:<model dir> + curve",
+br = box(12.9, 25.0, "stdin/stdout frames · terrain protocol v1",
+         "any seed per request · priority queue · cancel · pushed when done\n"
+         "disk cache keyed on world config + model id + generator source",
          w=9.4, h=1.75, fc=SERVICE)
-srv = box(12.9, 22.0, "DaedalusTGM-Exp model server (Flask, cuda:1)",
-          "terrain_slm.serve.upstream_api · runs the generator and the block stages\n"
-          "returns heights + water (metres) and river floor/roof/flow (blocks)",
+srv = box(12.9, 22.0, "TGMPipe · DaedalusTGM-Exp on cuda:1",
+          "python -m terrain_slm.tgmpipe · world/tiles.py: generator + block stages\n"
+          "blocks: height, biome, water, river floor/roof/flow",
           w=9.4, h=1.75, fc=SERVICE)
 arrow((16.3, dc["b"]), (16.3, br["t"]))
-ax.text(16.15, 26.35, "POST /generate_heightmap", fontsize=12, va="center", ha="right", family="monospace",
+ax.text(16.15, 26.35, "TILE (seed, x, z, lod, prio)", fontsize=12, va="center", ha="right", family="monospace",
         bbox=dict(fc="#eeeeee", ec="none", pad=3))
-arrow((br["cx"], br["b"]), (br["cx"], srv["t"]), "GET /terrain?…&water=1&river3d=1", loff=(-0.15, 0.0), ha="right")
-for tgt in (br, srv):
+arrow((br["cx"], br["b"]), (br["cx"], srv["t"]), "one process: no ports", loff=(-0.15, 0.0), ha="right")
+for tgt in (srv,):
     arrow((1.1, pm["b"]), (tgt["l"], tgt["cy"]), dashed=True, color="#777", conn="angle,angleA=-90,angleB=180,rad=0")
-ax.text(1.25, 26.2, "launches\n(same env)", fontsize=13, color="#555", style="italic", va="center")
+ax.text(1.25, 26.2, "launches\n(one child)", fontsize=13, color="#555", style="italic", va="center")
 
 # ---------------------------------------------------------------- world generator
 group(0.4, 0.4, 17.2, 20.0, "DaedalusTGM-Exp WorldGenerator — per request", "#e8fbf6", "#1b8f73")

@@ -1,11 +1,9 @@
 import os, sys, math, json, numpy as np, torch, torch.nn.functional as F
 from pathlib import Path
-os.environ.update({"TERRAIN_BRIDGE_WORLD_HEIGHT":"256","TERRAIN_BRIDGE_SEA_LEVEL":"64","TERRAIN_BRIDGE_OCEAN_METERS_PER_BLOCK":"48","TERRAIN_BRIDGE_LOWLAND_METERS_PER_BLOCK":"16","TERRAIN_BRIDGE_MIDLAND_METERS_PER_BLOCK":"40","TERRAIN_BRIDGE_HIGHLAND_METERS_PER_BLOCK":"96","TERRAIN_BRIDGE_SCALE":"1","TERRAIN_BRIDGE_DOWNSCALE":"2"})
-sys.path.insert(0,"../terrain-bridge")
-from bridge.config import BridgeConfig; from bridge.height_mapping import HeightCurve
 import terrain_slm.world.generator as G
 from terrain_slm.data import descriptors as D
-curve=HeightCurve.from_config(BridgeConfig.from_env(seed=0))
+from dataclasses import replace; from terrain_slm.world.world_config import WorldConfig
+curve=replace(WorldConfig.GAME, midland_m_per_block=40, highland_m_per_block=96).curve()  # the v1 curve this diagnosed
 dev="cuda:1"; SEED=0; SP="reports/diagnostics/"; __import__("os").makedirs(SP, exist_ok=True)  # run from Models/DaedalusTGM-Exp
 orig=G.procedural_controls
 def fixed(ci0,cj0,hc,wc,seed,device):

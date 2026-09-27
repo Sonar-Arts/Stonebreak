@@ -3,7 +3,6 @@ package com.stonebreak.ui.terrainMapper.managers;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerRegistry;
 import com.stonebreak.world.generation.TerrainGeneratorType;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -16,15 +15,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The mapper offers nothing until a generator is picked, then exactly that generator's modes.
- * Building the Diffusion previews does no I/O; autostart is off so nothing here could launch
- * the terrain services even by accident.
+ * Building the Diffusion previews does no I/O and starts nothing: TGMPipe only starts
+ * from {@code ensureServices()}, which nothing here calls.
  */
 class GeneratorSelectionTest {
-
-    @BeforeAll
-    static void withoutLaunchingTerrainServices() {
-        System.setProperty("stonebreak.terrainService.autostart", "false");
-    }
 
     @Test
     void registryIsEmptyUntilAGeneratorIsPicked() {

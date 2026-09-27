@@ -1,9 +1,7 @@
 """DEM hydrology primitives: depression fill and D8 flow accumulation.
 
-The running bridge does not import this package -- rivers come from the terrain model
-with each tile (`bridge/water.py`'s `UpstreamWater`). What remains is used offline by
-DaedalusTGM-Exp's training-data build (`terrain_slm/data/build.py`, drainage targets),
-which puts this directory on `sys.path`.
+Offline only: the training-data build (`terrain_slm/data/build.py`) derives its drainage
+targets with these. The running service never imports them (rivers come from the model).
 
 Convention: elevation <= 0 or NaN is ocean.
 """

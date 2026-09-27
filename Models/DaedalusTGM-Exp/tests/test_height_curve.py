@@ -1,12 +1,10 @@
-import os
-
 import numpy as np
 import pytest
 
-from bridge.height_mapping import HeightCurve
+from terrain_slm.world.height_curve import HeightCurve
+from terrain_slm.world.world_config import WorldConfig
 
-# The Phase 5 defaults, mirrored from BridgeConfig so a knob default changing
-# without the regression values below being revisited shows up as a failure.
+# A fixed knob set the regression values below were computed against (the pre-1:4 curve).
 _DEFAULTS = dict(
     ocean_meters_per_block=12.0,
     lowland_meters_per_block=4.0,
@@ -26,13 +24,24 @@ def _curve(**overrides) -> HeightCurve:
     return HeightCurve(**{**_DEFAULTS, **overrides})
 
 
-def test_config_defaults_match_the_curve_defaults_used_here(monkeypatch):
-    from bridge.config import BridgeConfig
+def test_world_config_maps_every_knob():
+    w = WorldConfig.GAME
+    c = HeightCurve.from_world(w)
+    assert (c.ocean_meters_per_block, c.lowland_meters_per_block, c.midland_meters_per_block,
+            c.highland_meters_per_block) == (w.ocean_m_per_block, w.lowland_m_per_block,
+                                             w.midland_m_per_block, w.highland_m_per_block)
+    assert (c.lowland_top_m, c.highland_base_m, c.shore_blend_m, c.midland_blend_m, c.highland_blend_m) == (
+        w.lowland_top_m, w.highland_base_m, w.shore_blend_m, w.midland_blend_m, w.highland_blend_m)
+    assert (c.sea_level, c.world_height) == (w.sea_level, w.world_height)
 
-    for name in [k for k in os.environ if k.startswith("TERRAIN_BRIDGE_")]:
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("TERRAIN_BRIDGE_SEED", "1")  # required, unrelated to the curve
-    assert HeightCurve.from_config(BridgeConfig.from_env()) == _curve()
+
+def test_world_config_round_trips_and_rejects_drift():
+    w = WorldConfig.GAME
+    assert WorldConfig.from_dict(w.to_dict()) == w
+    with pytest.raises(ValueError, match="missing"):
+        WorldConfig.from_dict({k: v for k, v in w.to_dict().items() if k != "sea_level"})
+    with pytest.raises(ValueError, match="unknown"):
+        WorldConfig.from_dict({**w.to_dict(), "sea_levle": 64})
 
 
 def test_sea_level_maps_to_configured_sea_level():

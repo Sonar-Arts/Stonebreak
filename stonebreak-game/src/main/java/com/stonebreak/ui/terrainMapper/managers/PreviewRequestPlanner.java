@@ -16,7 +16,7 @@ import com.stonebreak.ui.terrainMapper.visualization.VisualizerRegistry;
  * core sits over tiles the old one has just fetched.
  *
  * <p>Pure state, no threads and no Skija, so it is called from the render thread and tested
- * without a terrain bridge.
+ * without a TGMPipe process.
  */
 public final class PreviewRequestPlanner {
 

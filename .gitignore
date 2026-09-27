@@ -151,13 +151,11 @@ QWEN.md
 # OpenCode
 .opencode/
 
-# Terrain models (Models/): the shared bridge's venv + on-disk tile cache. Each model folder
-# carries its own .gitignore for its venv, data, checkpoints and reports
-# (Models/DaedalusTGM-Exp/.gitignore).
-/Models/terrain-bridge/venv/
-/Models/terrain-bridge/tile_cache/
+# Terrain models (Models/): the terrain service's on-disk tile cache. Each model folder ignores
+# its own data, checkpoints and environment (Models/DaedalusTGM-Exp/.gitignore).
+/Models/tile_cache/
 /Models/**/__pycache__/
-# Terrain service logs (TerrainServiceProcessManager's default -Dstonebreak.terrainService.logDir).
+# Terrain service log (TGMPipe's default -Dstonebreak.tgmpipe.logDir).
 /Models/logs/
 
 # Stray mirror of the absolute repo path (tool writing absolute paths as relative)

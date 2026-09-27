@@ -72,7 +72,7 @@ class TerrainTileTest {
     }
 
     /**
-     * Every tile source except the water carve — the bridge client and the test
+     * Every tile source except the water carve — the TGMPipe decoder and the test
      * fakes — builds tiles with the eleven-argument constructor and has no tunnels
      * to report. Those tiles must answer the tunnel questions rather than throwing,
      * so the block loop can ask unconditionally.

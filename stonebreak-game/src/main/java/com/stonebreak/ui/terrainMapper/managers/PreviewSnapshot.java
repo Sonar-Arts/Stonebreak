@@ -60,7 +60,7 @@ public record PreviewSnapshot(
     /**
      * Raw sampled value at a world position, or {@link Float#NaN} if that position falls
      * outside what this snapshot covers. Lets the hover readout report exactly the value
-     * behind the pixel under the cursor without touching the terrain bridge.
+     * behind the pixel under the cursor without touching TGMPipe.
      */
     public float valueAt(float worldX, float worldZ) {
         float spacing = request.spacing();

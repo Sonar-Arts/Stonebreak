@@ -291,12 +291,12 @@ public final class TerrainMapperStateManager {
     /**
      * Rebuilds the visualizers if the seed changed and has been stable for
      * {@link TerrainMapperConfig#SEED_APPLY_DELAY_NANOS}. Called from the render path, so a
-     * screen that is no longer being drawn (after {@link #reset()}, say) never restarts the
-     * terrain services behind the back of whoever owns them now.
+     * screen that is no longer being drawn (after {@link #reset()}, say) never starts sampling
+     * behind the back of whoever owns the screen now.
      *
      * <p>Safe to call per frame: {@code rebuild} only allocates a tile cache and a couple of
-     * generators, with no I/O. Booting the terrain services for the new seed — the part that
-     * blocks for up to two minutes — is deliberately <em>not</em> done here; it happens on
+     * generators, with no I/O. Booting TGMPipe — the part that can block for a
+     * minute on a cold machine — is deliberately <em>not</em> done here; it happens on
      * {@link TerrainPreviewLoader}'s worker thread as the first step of each sampling job.
      */
     public void applyPendingSeed() {
@@ -414,9 +414,8 @@ public final class TerrainMapperStateManager {
         visualizers.clearPreviewData();
         seedText = Long.toString(new java.util.Random().nextLong());
         // Deliberately deferred, not rebuilt here: reset() runs on the way *out* of this screen
-        // (back, or world created), and rebuilding would restart the terrain services for a
-        // throwaway random seed — racing the world's own ensureRunningForSeed and killing the
-        // bridge out from under any tile fetch still in flight.
+        // (back, or world created), and rebuilding would start sampling a throwaway random
+        // seed, queueing preview tiles nobody will look at.
         refreshSeed();
     }
 

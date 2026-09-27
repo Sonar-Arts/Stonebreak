@@ -7,7 +7,7 @@ import com.stonebreak.world.generation.diffusion.TerrainTileSource;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
- * Terrain height for the DaedalusTGM-Exp world, read from the terrain bridge's tiles —
+ * Terrain height for the DaedalusTGM-Exp world, read from TGMPipe's tiles —
  * the tile-backed counterpart of Standard's noise
  * {@link com.stonebreak.world.generation.heightmap.HeightMapGenerator}. As a
  * {@link com.stonebreak.world.generation.heightmap.SurfaceHeights} it drives Standard's
@@ -39,7 +39,7 @@ public class HeightMapGenerator implements ColumnHeights, SurfaceHeights {
         return generateHeight(x, z);
     }
 
-    /** Final surface height, read directly from the bridge's tile data. */
+    /** Final surface height, read directly from the service's tile data. */
     @Override
     public int generateHeight(int x, int z) {
         return clampToWorld(tileSource.getTile(x, z).heightAt(x, z));
@@ -92,7 +92,7 @@ public class HeightMapGenerator implements ColumnHeights, SurfaceHeights {
      * rather than re-resolving them.
      *
      * <p>The water level is <em>not</em> clamped to the world column the way the height
-     * is: the bridge already emits it inside {@code [0, world_height)} or as
+     * is: the service already emits it inside {@code [0, world_height)} or as
      * {@link TerrainTile#NO_WATER}, and clamping a negative sentinel to 1 would turn
      * "no water here" into "one block of water at bedrock".
      */

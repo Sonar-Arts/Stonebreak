@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * visualizer sits behind tens of minutes of work with nothing on screen to show for it.
  *
  * <p>The visualizer here is a counter, not terrain: it records how many samples were taken so
- * abandonment can be measured, and never touches the bridge.
+ * abandonment can be measured, and never touches TGMPipe.
  */
 class TerrainPreviewSamplerTest {
 

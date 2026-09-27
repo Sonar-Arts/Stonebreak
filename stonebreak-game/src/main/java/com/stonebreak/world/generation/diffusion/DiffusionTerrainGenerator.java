@@ -16,11 +16,9 @@ import com.stonebreak.world.chunk.ChunkWaterLayer;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.diffusion.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import com.stonebreak.world.generation.diffusion.DiffusionBridgeConfig;
-import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.diffusion.TerrainTileSource;
-import com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager;
+import com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe;
 import com.stonebreak.world.generation.features.CactusGenerator;
 import com.stonebreak.world.generation.features.LimestoneGenerator;
 import com.stonebreak.world.generation.features.OreGenerator;
@@ -78,17 +76,16 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
     private final Object animalRandomLock = new Object();
 
     public DiffusionTerrainGenerator(long seed) {
-        this(withServicesRunning(seed), new DiffusionTileCache(DiffusionBridgeConfig.fromSystemProperties(), seed));
+        this(withServicesRunning(seed), new DiffusionTileCache(seed));
     }
 
     /**
-     * Blocks until the local terrain services are up and pinned to {@code seed}
-     * (starting/restarting them if needed — see {@link TerrainServiceProcessManager}), then
-     * returns the seed unchanged. A pass-through so it can sit in the constructor-delegation
+     * Blocks until TGMPipe is up (starting it if needed — see
+     * {@link TGMPipe}), then returns the seed unchanged. A pass-through so it can sit in the constructor-delegation
      * chain above without a separate init block.
      */
     private static long withServicesRunning(long seed) {
-        TerrainServiceProcessManager.getInstance().ensureRunningForSeed(seed, fraction ->
+        TGMPipe.getInstance().ensureRunning(fraction ->
             LoadingScreen.report(t -> {
                 t.beginPhase(LoadProgressTracker.Phase.SERVICES);
                 t.setPhaseFraction(fraction);
@@ -98,7 +95,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
 
     /**
      * Test-only seam: injects a fake {@link TerrainTileSource} instead of the
-     * real HTTP-backed bridge client, so terrain-shape logic (cave carving,
+     * TGMPipe, so terrain-shape logic (cave carving,
      * mesh consistency, etc.) can be exercised offline. Production code must
      * always go through {@link #DiffusionTerrainGenerator(long)} — no fallback
      * path, see plan.md Phase 2.
@@ -132,8 +129,8 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
     }
 
     /**
-     * Releases whatever the tile source holds open (the bridge client's cache and
-     * prefetch executor). Called from {@code World.cleanup()}.
+     * Releases the tile source (withdrawing any tile requests still in flight). Called from
+     * {@code World.cleanup()}.
      */
     public void shutdown() {
         if (tileSource instanceof AutoCloseable closeable) {
@@ -304,7 +301,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      * no tree, exactly as {@code VegetationGenerator} finds when it reads the real block.
      *
      * <p>On the diffusion generator the batching win lives one layer down: the
-     * heights come from bridge tiles that {@code DiffusionTileCache} already
+     * heights come from service tiles that {@code DiffusionTileCache} already
      * serves whole, so a straight per-column loop touches each tile once and
      * needs no separate grid-fill path. The carve profiles behind it are cached per chunk,
      * which is what keeps a grid that spills into its neighbours from rebuilding their masks.

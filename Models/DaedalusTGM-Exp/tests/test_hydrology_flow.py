@@ -7,9 +7,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from hydrology import fixtures as fx
-from hydrology.fill import fill_depressions, ocean_mask
-from hydrology.flow import d8_receivers, flow_accumulation
+from terrain_slm.data.hydrology import fixtures as fx
+from terrain_slm.data.hydrology.fill import fill_depressions, ocean_mask
+from terrain_slm.data.hydrology.flow import d8_receivers, flow_accumulation
 
 
 def route(z, weights=None):
