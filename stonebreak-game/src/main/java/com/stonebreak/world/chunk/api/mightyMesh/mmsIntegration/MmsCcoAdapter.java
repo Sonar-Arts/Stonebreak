@@ -23,6 +23,7 @@ import com.openmason.engine.voxel.mms.mmsGeometry.MmsCrossGenerator;
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsGreedyMesher;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsWaterGenerator;
 import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
+import com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.slf4j.Logger;
@@ -970,6 +971,16 @@ public class MmsCcoAdapter {
 
         // Get adjacent block (handles chunk boundaries via world)
         BlockType adjacentBlock = getAdjacentBlock(adjX, adjY, adjZ, chunkData);
+
+        // A shaped neighbour (stair, stalagmite) that doesn't fill the shared
+        // plane can't hide this face — culling it opens a see-through hole
+        // around the shape. Only a full-plane neighbour culls. Mirrors
+        // MmsFaceCullingService's one-way occlusion rule and the Cenda class
+        // table's shaped-is-transparent flag — keep in lockstep.
+        if (sboStampEmitter != null
+                && !sboStampEmitter.getCache().occludesFace(adjacentBlock, SBOFaceConventions.opposite(face))) {
+            return true;
+        }
 
         // Face culling logic
         return shouldRenderAgainst(blockType, adjacentBlock);
