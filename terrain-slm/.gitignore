@@ -1,0 +1,57 @@
+# terrain-slm: only code, configs, tests and small fixtures are tracked.
+# Plan: Dev Working/docs/Terrain-SLM-Plan.md (local only).
+#
+# Datasets, checkpoints and run output live on /mnt/extrastorage and are usually
+# symlinked in. Root-level entries deliberately have NO trailing slash: git treats a
+# symlink as a file, so `/data/` would miss a `data -> /mnt/extrastorage/...` link.
+# They are also root-anchored so they never match the code packages of the same name
+# (terrain_slm/data/, terrain_slm/export/).
+
+# --- Python environment (uv) -------------------------------------------------
+# uv.lock stays tracked: it is what makes the env reproducible.
+/venv
+/.venv
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# --- Data (GLO-30 DEM, WorldClim, derived shards) ----------------------------
+/data
+/shards
+*.tif
+*.tiff
+*.h5
+*.hdf5
+*.zarr/
+*.npy
+*.npz
+
+# --- Training output ---------------------------------------------------------
+/checkpoints
+/runs
+/wandb
+/logs
+/reports
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# --- Export for Cenda (weights binaries + golden tensors) --------------------
+/artifacts
+*.onnx
+*.engine
+
+# --- Profiling ---------------------------------------------------------------
+*.ncu-rep
+*.nsys-rep
+*.qdrep
+*.sqlite
+*.prof
+
+# --- Small hand-made fixtures used by unit tests stay tracked ----------------
+!tests/fixtures/**

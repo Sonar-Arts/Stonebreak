@@ -3,3 +3,25 @@ cmake-build-*/
 .cache/
 .idea/
 __pycache__/
+
+# CUDA (native/nn_cuda, libcenda_nn_cuda.so): nvcc --keep / -save-temps
+# intermediates and PTX/cubin dumps land next to the sources when kernels are
+# inspected by hand. The real build output already goes to build/.
+*.ptx
+*.cubin
+*.fatbin
+*.fatbin.c
+*.module_id
+*.cudafe1.*
+*.ii
+*.reg.c
+*.stub.c
+
+# Nsight Compute / Systems profiles
+*.ncu-rep
+*.nsys-rep
+*.qdrep
+*.sqlite
+
+# Weights and golden tensors exported from terrain-slm (regenerated, never source)
+/native/nn_cuda/tests/goldens/
