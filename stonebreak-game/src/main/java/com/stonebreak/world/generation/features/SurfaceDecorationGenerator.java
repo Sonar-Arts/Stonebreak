@@ -7,7 +7,6 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.ChunkGenerationContext;
 import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
@@ -29,9 +28,9 @@ public class SurfaceDecorationGenerator {
     private static final float BADLANDS_COBBLE_CHANCE = 0.06f; // cumulative
 
     private final DeterministicRandom rng;
-    private final HeightMapGenerator heightMap;
+    private final ColumnHeights heightMap;
 
-    public SurfaceDecorationGenerator(DeterministicRandom rng, HeightMapGenerator heightMap,
+    public SurfaceDecorationGenerator(DeterministicRandom rng, ColumnHeights heightMap,
                                       long worldSeed) {
         this.rng = rng;
         this.heightMap = heightMap;

@@ -20,7 +20,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Launches and supervises the two local Python processes {@code TerrainGenerationSystem}
+ * Launches and supervises the two local Python processes {@code DiffusionTerrainGenerator}
  * depends on for a "no fallback" terrain source (plan.md Phase 2): upstream's
  * {@code terrain_diffusion.inference.minecraft_api} model server, and {@code terrain-bridge}'s
  * FastAPI adapter in front of it. Without this, a player would have to hand-start both in

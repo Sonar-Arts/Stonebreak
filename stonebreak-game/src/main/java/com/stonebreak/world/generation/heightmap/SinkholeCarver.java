@@ -1,8 +1,7 @@
 package com.stonebreak.world.generation.heightmap;
 
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
+import com.stonebreak.world.generation.StandardTerrain;
 import com.stonebreak.world.generation.NoiseGenerator;
-import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.BitSet;
@@ -65,7 +64,9 @@ public final class SinkholeCarver {
             (int) Math.ceil(MAX_REACH / WorldConfiguration.CHUNK_SIZE) + 1;
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
-    private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+    /** @see WorldConfiguration#NO_WATER */
+    private static final int NO_WATER = WorldConfiguration.NO_WATER;
+    private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
     private static final int WATER_CLEARANCE = (int) Math.ceil(MOUTH_RADIUS_MAX) + 2;
 
     private final long seed;
@@ -104,21 +105,10 @@ public final class SinkholeCarver {
                 ^ ((long) cz * 0xC2B2AE3D27D4EB4FL);
     }
 
-    /** Carve mask for the target chunk, packed by {@link LocalBlockKey#pack(int,int,int)}. */
+    /** Carve mask for the target chunk, packed by {@code CarveMaskKey.pack(x, y, z)}. */
     public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels) {
-        return carveMaskForChunk(chunkX, chunkZ, targetHeights, waterLevels, null);
-    }
-
-    /**
-     * As {@link #carveMaskForChunk(int, int, int[], int[])}, also keeping clear of the river
-     * TUNNELS in {@code riverFloors}. A tunnelled column's height is the ground
-     * standing over the river, so without this the guard measures from the hilltop
-     * and leaves the passage itself open to be carved into and drained.
-     */
-    public BitSet carveMaskForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels,
-                                    int[] riverFloors) {
         int[] waterGuard =
-                WaterGuard.guardPlane(targetHeights, waterLevels, riverFloors, heightMapGenerator, chunkX, chunkZ);
+                WaterGuard.guardPlane(targetHeights, waterLevels, heightMapGenerator, chunkX, chunkZ);
         BitSet mask = new BitSet();
         for (int dcx = -SCAN_RADIUS; dcx <= SCAN_RADIUS; dcx++) {
             for (int dcz = -SCAN_RADIUS; dcz <= SCAN_RADIUS; dcz++) {
@@ -140,7 +130,7 @@ public final class SinkholeCarver {
         int fallbackDepth = DEPTH_MIN + rng.nextInt(DEPTH_MAX - DEPTH_MIN);
 
         // Never open a shaft in a column that holds water.
-        if (heightMapGenerator.waterLevel(ox, oz) != TerrainTile.NO_WATER) return;
+        if (heightMapGenerator.waterLevel(ox, oz) != NO_WATER) return;
 
         int surface = heightMapGenerator.generateHeight(ox, oz);
         int floor = surface - fallbackDepth;
@@ -189,7 +179,7 @@ public final class SinkholeCarver {
                     if (radius <= 0f || dist >= radius) continue;
                     if (by < 1 || by >= WORLD_HEIGHT) continue;
                     if (WaterGuard.seals(waterGuard, idx, by, WATER_CLEARANCE)) continue;
-                    mask.set(LocalBlockKey.pack(bx, by, bz));
+                    mask.set(CarveMaskKey.pack(bx, by, bz));
                 }
             }
         }

@@ -6,7 +6,6 @@ import com.stonebreak.world.fastlod.FastLodChunkData;
 import com.stonebreak.world.fastlod.FastLodKey;
 import com.stonebreak.world.fastlod.FastLodLevel;
 import com.stonebreak.world.fastlod.FastLodSampler;
-import com.stonebreak.world.generation.diffusion.DryHillsTileSource;
 import com.stonebreak.world.generation.heightmap.Density3D;
 import com.stonebreak.world.generation.heightmap.RavineCarver;
 import com.stonebreak.world.generation.noise.TerrainNoise;
@@ -59,7 +58,7 @@ public class FastLodCarveParityTest {
 
     @Test
     public void lodHeightIsTheTopOfTheRealColumn() {
-        TerrainGenerationSystem terrain = new TerrainGenerationSystem(SEED, new DryHillsTileSource());
+        TerrainGenerationSystem terrain = new TerrainGenerationSystem(SEED, new DryHillsHeightMap(SEED));
         FastLodSampler sampler = new FastLodSampler(terrain);
 
         int carvedColumns = 0;
@@ -124,7 +123,7 @@ public class FastLodCarveParityTest {
         assumeTrue(TerrainNoise.backend() == TerrainNoise.Backend.NATIVE,
                 "needs the Cenda kernels; the Java backend has only one density path to agree with");
 
-        TerrainGenerationSystem terrain = new TerrainGenerationSystem(SEED, new DryHillsTileSource());
+        TerrainGenerationSystem terrain = new TerrainGenerationSystem(SEED, new DryHillsHeightMap(SEED));
         FastLodSampler sampler = new FastLodSampler(terrain);
 
         int compared = 0;
@@ -163,7 +162,7 @@ public class FastLodCarveParityTest {
      */
     @Test
     public void aRavineIsCutIntoLodTerrain() {
-        TerrainGenerationSystem terrain = new TerrainGenerationSystem(SEED, new DryHillsTileSource());
+        TerrainGenerationSystem terrain = new TerrainGenerationSystem(SEED, new DryHillsHeightMap(SEED));
         FastLodSampler sampler = new FastLodSampler(terrain);
         // hasRavine is a pure hash of seed and chunk coords, so a throwaway carver answers it
         // for the system under test without needing access to its private one.

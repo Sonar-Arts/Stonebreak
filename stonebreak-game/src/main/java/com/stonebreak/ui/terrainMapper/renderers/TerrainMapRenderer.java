@@ -55,6 +55,14 @@ public final class TerrainMapRenderer {
         MPainter.fillRect(canvas, mapRect.x(), mapRect.y(), mapRect.width(), mapRect.height(), 0xFF0E0E0E);
 
         state.applyPendingSeed();
+        if (state.getSelectedGenerator() == null) {
+            // Nothing to preview until a generator is picked — and nothing started for one.
+            MPainter.drawCenteredString(canvas, "Choose a terrain generator", mapRect.centerX(),
+                    mapRect.y() + mapRect.height() / 2f, ui.fonts().get(MStyle.FONT_ITEM), MStyle.TEXT_SECONDARY);
+            MPainter.strokeRect(canvas, mapRect.x(), mapRect.y(), mapRect.width(), mapRect.height(),
+                    MStyle.PANEL_BORDER, 2f);
+            return;
+        }
         loader.request(buildRequest(mapRect));
 
         // Oldest first: the last full picture, then whatever the running pass has filled in over

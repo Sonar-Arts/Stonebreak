@@ -1,6 +1,6 @@
 package com.stonebreak.world.generation.heightmap;
 
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
+import com.stonebreak.world.generation.StandardTerrain;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.BitSet;
@@ -53,7 +53,7 @@ public final class MegaCavernCarver {
     public static final int SCAN_RADIUS = (int) Math.ceil(MAX_REACH / WorldConfiguration.CHUNK_SIZE) + 1;
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
-    private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+    private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
     /** Vertical clearance {@link WaterGuard} keeps below a wet column's bed — prevents underwater breach. */
     private static final int WATER_CLEARANCE = (int) Math.ceil(BASE_RADIUS * 1.20f) + 1;
 
@@ -136,7 +136,7 @@ public final class MegaCavernCarver {
 
     /**
      * Builds the megacavern carve mask and formation (stalagmite/stalactite) mask for
-     * the target chunk. Both bitsets use {@link LocalBlockKey#pack(int,int,int)} packed local positions.
+     * the target chunk. Both bitsets use {@code CarveMaskKey.pack(x, y, z)} packed local positions.
      * Caller must apply formationMask as STONE
      * after applying carveMask as AIR (or apply formations inside the carved volume).
      */
@@ -150,18 +150,7 @@ public final class MegaCavernCarver {
      * suppresses nothing.
      */
     public Result buildForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels) {
-        return buildForChunk(chunkX, chunkZ, targetHeights, waterLevels, null);
-    }
-
-    /**
-     * As {@link #buildForChunk(int, int, int[], int[])}, also keeping clear of the river
-     * TUNNELS in {@code riverFloors}. A tunnelled column's height is the ground
-     * standing over the river, so without this the guard measures from the hilltop
-     * and leaves the passage itself open to be carved into and drained.
-     */
-    public Result buildForChunk(int chunkX, int chunkZ, int[] targetHeights, int[] waterLevels,
-                                    int[] riverFloors) {
-        int[] waterGuard = WaterGuard.guardPlane(targetHeights, waterLevels, riverFloors, heightMapGenerator, chunkX, chunkZ);
+        int[] waterGuard = WaterGuard.guardPlane(targetHeights, waterLevels, heightMapGenerator, chunkX, chunkZ);
         BitSet carve = new BitSet();
         for (int dcx = -SCAN_RADIUS; dcx <= SCAN_RADIUS; dcx++) {
             for (int dcz = -SCAN_RADIUS; dcz <= SCAN_RADIUS; dcz++) {
@@ -229,7 +218,7 @@ public final class MegaCavernCarver {
                     if (by < 1 || by >= WORLD_HEIGHT) continue;
                     if (by >= surface) continue;
                     if (WaterGuard.seals(waterGuard, idx, by, WATER_CLEARANCE)) continue;
-                    mask.set(LocalBlockKey.pack(bx, by, bz));
+                    mask.set(CarveMaskKey.pack(bx, by, bz));
                 }
             }
         }
@@ -241,16 +230,34 @@ public final class MegaCavernCarver {
         int baseZ = chunkZ * CHUNK_SIZE;
         for (int bx = 0; bx < CHUNK_SIZE; bx++) {
             for (int bz = 0; bz < CHUNK_SIZE; bz++) {
+                // The TALLEST CONTIGUOUS run of carved cells, not the column's overall
+                // min and max. A column that clips two separate blobs has solid rock
+                // between them; anchoring to the global extremes grew a pillar out of the
+                // lower void, through that rock, and out into the upper one, where its tip
+                // reads as a formation floating in mid-air. A run's own ends are the floor
+                // and ceiling of one room, which is what a formation actually stands on.
                 int floorY = -1;
                 int ceilY = -1;
-                for (int by = 1; by < WORLD_HEIGHT; by++) {
-                    if (carve.get(LocalBlockKey.pack(bx, by, bz))) {
-                        if (floorY < 0) floorY = by;
-                        ceilY = by;
+                int runStart = -1;
+                for (int by = 1; by <= WORLD_HEIGHT; by++) {
+                    if (by < WORLD_HEIGHT && carve.get(CarveMaskKey.pack(bx, by, bz))) {
+                        if (runStart < 0) runStart = by;
+                        continue;
+                    }
+                    if (runStart >= 0) {
+                        // Strictly taller, so ties keep the lowest run and the choice is
+                        // a pure function of the mask.
+                        if (by - 1 - runStart > ceilY - floorY) {
+                            floorY = runStart;
+                            ceilY = by - 1;
+                        }
+                        runStart = -1;
                     }
                 }
+                // floorY < 0 covers both "no carve here" and "no run taller than one cell":
+                // the initial -1/-1 pair scores 0, which nothing one cell tall can beat.
+                if (floorY < 0) continue;
                 int gap = ceilY - floorY;
-                if (floorY < 0 || gap < 1) continue;
 
                 int worldX = baseX + bx;
                 int worldZ = baseZ + bz;
@@ -265,20 +272,23 @@ public final class MegaCavernCarver {
                     stalactiteH = (int) ((long) stalactiteH * gap / total);
                 }
 
-                // The scan above starts at by=1, so floorY >= 1 and floorY - 1 is in range.
-                if (stalagH > 0 && !carve.get(LocalBlockKey.pack(bx, floorY - 1, bz))) {
+                // Both anchors are solid within this carver's own mask by construction —
+                // a run ends exactly where the carve stops — so the local checks the
+                // column-wide scan used to need are gone. Whether they are still solid once
+                // the worms, ravines, sinkholes and noise field have had their turn is
+                // settled afterwards, by {@link FormationSupport#prune}.
+                if (stalagH > 0) {
                     for (int h = 0; h < stalagH; h++) {
                         int by = floorY + h;
                         if (by > ceilY) break;
-                        formations.set(LocalBlockKey.pack(bx, by, bz));
+                        formations.set(CarveMaskKey.pack(bx, by, bz));
                     }
                 }
-                if (stalactiteH > 0 && ceilY < WORLD_HEIGHT - 1
-                        && !carve.get(LocalBlockKey.pack(bx, ceilY + 1, bz))) {
+                if (stalactiteH > 0) {
                     for (int h = 0; h < stalactiteH; h++) {
                         int by = ceilY - h;
                         if (by < floorY) break;
-                        formations.set(LocalBlockKey.pack(bx, by, bz));
+                        formations.set(CarveMaskKey.pack(bx, by, bz));
                     }
                 }
             }

@@ -2,7 +2,6 @@ package com.stonebreak.world.generation;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.generation.diffusion.DryHillsTileSource;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -66,12 +65,12 @@ public class CaveReachabilityTest {
      * <p>Never 1.0: isolated pockets are a legitimate outcome of noise carving, and a region
      * this size clips tunnel systems at its own edges.
      */
-    private static final double MIN_REACHABLE_FRACTION = 0.28;
+    private static final double MIN_REACHABLE_FRACTION = 0.94;  // measured 0.9692 native / 0.9804 Java
 
     @Test
     public void carvedVolumeIsReachableFromTheSurface() {
         TerrainGenerationSystem terrain =
-                new TerrainGenerationSystem(SEED, new DryHillsTileSource());
+                new TerrainGenerationSystem(SEED, new DryHillsHeightMap(SEED));
 
         int sizeX = REGION * CHUNK;
         int sizeZ = REGION * CHUNK;
@@ -82,12 +81,12 @@ public class CaveReachabilityTest {
         int maxSurface = 0;
         for (int x = 0; x < sizeX; x++) {
             for (int z = 0; z < sizeZ; z++) {
-                int h = DryHillsTileSource.height(x, z);
+                int h = DryHillsHeightMap.height(x, z);
                 surface[x * sizeZ + z] = h;
                 maxSurface = Math.max(maxSurface, h);
             }
         }
-        int yCap = Math.min(maxSurface + 2, WorldConfiguration.WORLD_HEIGHT);
+        int yCap = Math.min(maxSurface + 2, StandardTerrain.WORLD_HEIGHT);
 
         boolean[] air = new boolean[sizeX * sizeZ * yCap];
         for (int cx = 0; cx < REGION; cx++) {
@@ -98,7 +97,7 @@ public class CaveReachabilityTest {
                         int x = cx * CHUNK + lx;
                         int z = cz * CHUNK + lz;
                         for (int y = 0; y < yCap; y++) {
-                            if (chunk.getBlock(lx, y, lz) == BlockType.AIR) {
+                            if (StandardFrame.block(chunk, lx, y, lz) == BlockType.AIR) {
                                 air[index(x, y, z, sizeZ, yCap)] = true;
                             }
                         }

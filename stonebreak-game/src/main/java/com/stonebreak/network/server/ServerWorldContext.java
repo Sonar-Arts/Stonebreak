@@ -1,5 +1,6 @@
 package com.stonebreak.network.server;
 
+import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.server.ConnectionRegistry;
 import com.stonebreak.mobs.entities.EntityManager;
@@ -47,6 +48,12 @@ public final class ServerWorldContext {
     public long worldSeed() {
         ServerLevel level = serverLevel;
         return level != null ? level.seed() : 0L;
+    }
+
+    /** The world's terrain generator, so the client builds the same one for its view. */
+    public TerrainGeneratorType generatorType() {
+        ServerLevel level = serverLevel;
+        return level != null ? level.world().getGeneratorType() : TerrainGeneratorType.STANDARD;
     }
 
     /** Authoritative world spawn (saved player/world spawn), or a sane default. */

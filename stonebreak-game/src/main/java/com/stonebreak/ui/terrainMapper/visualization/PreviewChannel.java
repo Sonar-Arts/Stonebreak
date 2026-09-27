@@ -13,7 +13,7 @@ public enum PreviewChannel {
     /** {@code BiomeType} ordinal. */
     BIOME,
     /** River feature code: flow octant, still water, undercut, overhang or dry ({@link
-     *  com.stonebreak.ui.terrainMapper.visualization.impl.RiverVisualizer#code}). */
+     *  com.stonebreak.ui.terrainMapper.visualization.impl.diffusion.RiverVisualizer#code}). */
     RIVER;
 
     public static final int COUNT = values().length;

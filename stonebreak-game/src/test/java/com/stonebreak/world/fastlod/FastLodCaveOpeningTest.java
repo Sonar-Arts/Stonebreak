@@ -4,7 +4,7 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,7 +71,7 @@ class FastLodCaveOpeningTest {
 
     private static int[] noOpenings(FastLodLevel level) {
         int[] f = new int[level.cellCount()];
-        Arrays.fill(f, TerrainGenerationSystem.NO_OPENING);
+        Arrays.fill(f, DiffusionTerrainGenerator.NO_OPENING);
         return f;
     }
 
@@ -190,7 +190,7 @@ class FastLodCaveOpeningTest {
     void theFinestLevelEmitsNoNotches() {
         FastLodChunkData data = flat(FastLodLevel.L0, null, null);
         assertFalse(data.hasOpenings());
-        assertEquals(TerrainGenerationSystem.NO_OPENING, data.openingFloorAt(0, 0));
+        assertEquals(DiffusionTerrainGenerator.NO_OPENING, data.openingFloorAt(0, 0));
         assertEquals(0, data.openingCoverageAt(0, 0));
         assertNotNull(mesher.build(data).mesh());
     }

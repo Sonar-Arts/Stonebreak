@@ -1,5 +1,6 @@
 package com.stonebreak.core.world;
 
+import com.stonebreak.world.generation.TerrainGeneratorType;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.joml.Vector3f;
@@ -72,7 +73,7 @@ public final class ClientWorldBuilder {
         return !pending && Game.getWorld() != null && Game.getEntityManager() != null;
     }
 
-    public void start(String worldName, long seed, Vector3f spawn) {
+    public void start(String worldName, long seed, TerrainGeneratorType generatorType, Vector3f spawn) {
         // The client never persists — drop any save service so the chunk store stays read-only.
         SaveService previous = game.getSaveService();
         if (previous != null) {
@@ -95,7 +96,7 @@ public final class ClientWorldBuilder {
 
         int buildGeneration = generation.incrementAndGet();
         pending = true;
-        new Thread(() -> build(buildGeneration, seed, spawn), "ClientWorld-Build").start();
+        new Thread(() -> build(buildGeneration, seed, generatorType, spawn), "ClientWorld-Build").start();
     }
 
     /** True while {@code buildGeneration} is still the latest build AND the session is alive. */
@@ -103,10 +104,10 @@ public final class ClientWorldBuilder {
         return buildGeneration == generation.get() && MultiplayerSession.isInWorld();
     }
 
-    private void build(int buildGeneration, long seed, Vector3f spawn) {
+    private void build(int buildGeneration, long seed, TerrainGeneratorType generatorType, Vector3f spawn) {
         try {
             LoadingScreen.report(t -> t.beginPhase(LoadProgressTracker.Phase.STREAM));
-            World renderWorld = worldLifecycle.createClientWorldInstance(seed);
+            World renderWorld = worldLifecycle.createClientWorldInstance(seed, generatorType);
             if (!installWorld(buildGeneration, renderWorld)) {
                 return;
             }

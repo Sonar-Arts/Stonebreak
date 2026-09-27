@@ -18,7 +18,8 @@ import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
 import com.stonebreak.world.chunk.utils.WorldChunkStore;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.TerrainGenerator;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.fastlod.FastLodManager;
 import com.stonebreak.world.leaves.LeafDecaySystem;
@@ -32,7 +33,8 @@ import com.stonebreak.world.operations.WorldConfiguration;
 public class World {
     // Configuration and core systems
     private final WorldConfiguration config;
-    private final TerrainGenerationSystem terrainSystem;
+    private final TerrainGenerator terrainSystem;
+    private final TerrainGeneratorType generatorType;
     private final ChunkManager chunkManager;
     private final SnowLayerManager snowLayerManager;
     private final com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry;
@@ -126,8 +128,9 @@ public class World {
      * server. Block data, generation, water, and feature population work; rendering does not.
      * The server drives chunk loading via {@code getChunkAt} (no {@code chunkManager}).
      */
-    public static World createHeadless(WorldConfiguration config, long seed) {
-        return new World(config, seed, true);
+    public static World createHeadless(WorldConfiguration config, long seed,
+                                       TerrainGeneratorType generatorType) {
+        return new World(config, seed, true, generatorType);
     }
 
     /**
@@ -139,8 +142,9 @@ public class World {
      * {@code SaveService} (never persists locally). The seed is still used to construct the
      * terrain system (cheap, deterministic) but it is never invoked because generation is off.
      */
-    public static World createClientView(WorldConfiguration config, long seed) {
-        World w = new World(config, seed, false); // full rendering pipeline, no testMode
+    public static World createClientView(WorldConfiguration config, long seed,
+                                         TerrainGeneratorType generatorType) {
+        World w = new World(config, seed, false, generatorType); // full rendering pipeline, no testMode
         w.renderOnly = true;
         w.chunkStore.setTerrainGenerationEnabled(false);
         return w;
@@ -156,19 +160,17 @@ public class World {
      * @param testMode If true, skips MmsAPI/rendering initialization (for tests only)
      */
     protected World(WorldConfiguration config, long seed, boolean testMode) {
-        this(config, seed, testMode, true);
+        this(config, seed, testMode, TerrainGeneratorType.STANDARD);
     }
 
     /**
-     * As above, with {@code generatesTerrain} false for a world that renders a scene of
-     * its own and never asks the generator for a chunk (the battle-test arena). Such a
-     * world gets {@link TerrainGenerationSystem#forSceneWorld}: building the real one
-     * starts the terrain-diffusion services and re-pins a running pair to THIS world's
-     * seed, which makes every tile request the live world has in flight fail with
-     * {@code 400 "this bridge instance is pinned to seed ..."} — entering a battle broke
-     * chunk generation for the world you came from.
+     * As above, with the terrain generator chosen explicitly. Building a
+     * {@link TerrainGeneratorType#DIFFUSION} generator starts the terrain-diffusion services
+     * and pins them to this seed, so only a world that really generates diffusion terrain
+     * may ask for one.
      */
-    protected World(WorldConfiguration config, long seed, boolean testMode, boolean generatesTerrain) {
+    protected World(WorldConfiguration config, long seed, boolean testMode,
+                    TerrainGeneratorType generatorType) {
         this.config = config;
 
         // In production runs, align the world config with the latest persisted
@@ -185,9 +187,8 @@ public class World {
             }
         }
 
-        this.terrainSystem = generatesTerrain
-            ? new TerrainGenerationSystem(seed)
-            : TerrainGenerationSystem.forSceneWorld(seed);
+        this.generatorType = generatorType;
+        this.terrainSystem = generatorType.create(seed);
         this.snowLayerManager = new SnowLayerManager();
         // Per-world furnace registry (see getFurnaceRegistry). The smelting manager comes
         // from the Game singleton when available; in bare unit tests it is null and the
@@ -774,7 +775,11 @@ public class World {
      * sample (biome, climate, the height stages). Queried directly rather than mirrored
      * here, so adding a terrain channel needs no change to this class.
      */
-    public TerrainGenerationSystem terrain() {
+    public TerrainGeneratorType getGeneratorType() {
+        return generatorType;
+    }
+
+    public TerrainGenerator terrain() {
         return terrainSystem;
     }
 
@@ -917,7 +922,7 @@ public class World {
         spawnPosition.set(0, 100, 0);
 
         // Clear any additional world state that may persist between worlds
-        // Note: TerrainGenerationSystem seed cannot be changed, so fresh World instances
+        // Note: the TerrainGenerator seed cannot be changed, so fresh World instances
         // should be used for complete isolation instead
 
         System.out.println("World data cleared for world switching");

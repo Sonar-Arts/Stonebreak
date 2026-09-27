@@ -105,13 +105,12 @@ public final class ServerLevel {
         // A first visit (spawn search + pre-gen) loads very differently from a return to saved
         // player data, so each gets its own timing history for the loading screen's estimate.
         // Keyed on player data, not on the world existing: the terrain mapper writes world.json
-        // before the first boot, so a brand-new world already "exists" here. (Heracles also keys
-        // on the generator type; this branch has only the one generator.)
+        // before the first boot, so a brand-new world already "exists" here.
         boolean returning = existing && lr.getPlayerData() != null;
-        String loadProfile = returning ? "returning" : "new";
+        String loadProfile = worldData.getGeneratorType() + "." + (returning ? "returning" : "new");
         LoadingScreen.report(t -> t.setProfile(loadProfile));
 
-        World world = World.createHeadless(new WorldConfiguration(), seed);
+        World world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType());
         if (worldData.getSpawnPosition() != null) {
             world.setSpawnPosition(worldData.getSpawnPosition());
         }

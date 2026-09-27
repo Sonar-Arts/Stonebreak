@@ -24,7 +24,7 @@ import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
  *   footprint rather than probed at one representative point, because that is the only way
  *   an opening a few blocks across survives a 16-block cell. {@code openingFloor} is the
  *   lowest carved floor inside the cell (world Y) or {@link
- *   com.stonebreak.world.generation.TerrainGenerationSystem#NO_OPENING}; {@code
+ *   com.stonebreak.world.generation.TerrainGenerator#NO_OPENING}; {@code
  *   openingCoverage} is the carved share of the footprint, 0..255, which sizes the notch.
  *   Both are null at {@link FastLodLevel#L0}, where a cell is one column and its carve is
  *   already in {@code heights}.</li>
@@ -118,12 +118,12 @@ public final class FastLodChunkData {
 
     /**
      * Lowest carved floor inside this cell (world Y), or {@link
-     * com.stonebreak.world.generation.TerrainGenerationSystem#NO_OPENING} when the cell has
+     * com.stonebreak.world.generation.TerrainGenerator#NO_OPENING} when the cell has
      * no cave mouth worth drawing — including at every level that carries no opening channel.
      */
     public int openingFloorAt(int ix, int iz) {
         if (openingFloor == null) {
-            return com.stonebreak.world.generation.TerrainGenerationSystem.NO_OPENING;
+            return com.stonebreak.world.generation.TerrainGenerator.NO_OPENING;
         }
         return openingFloor[ix * key.level().cellsPerAxis() + iz];
     }
@@ -138,7 +138,7 @@ public final class FastLodChunkData {
     public boolean hasOpenings() {
         if (openingFloor == null) return false;
         for (int v : openingFloor) {
-            if (v != com.stonebreak.world.generation.TerrainGenerationSystem.NO_OPENING) return true;
+            if (v != com.stonebreak.world.generation.TerrainGenerator.NO_OPENING) return true;
         }
         return false;
     }

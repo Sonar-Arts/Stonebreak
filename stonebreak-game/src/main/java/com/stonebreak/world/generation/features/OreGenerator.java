@@ -5,7 +5,6 @@ import com.stonebreak.world.DeterministicRandom;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.ChunkGenerationContext;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.Random;
@@ -98,10 +97,10 @@ public class OreGenerator {
     private static final float CRYSTAL_CHANCE = 0.02f;
 
     private final DeterministicRandom rng;
-    private final HeightMapGenerator heightMapGenerator;
+    private final ColumnHeights heightMapGenerator;
     private final long seed;
 
-    public OreGenerator(DeterministicRandom rng, HeightMapGenerator heightMapGenerator, long seed) {
+    public OreGenerator(DeterministicRandom rng, ColumnHeights heightMapGenerator, long seed) {
         this.rng = rng;
         this.heightMapGenerator = heightMapGenerator;
         this.seed = seed;

@@ -3,7 +3,7 @@ package com.stonebreak.world.fastlod;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,7 +46,7 @@ class FastLodManagerLogicTest {
     private static final int RING_NODES = 48;   // 7x7 minus the player column
 
     private WorldConfiguration config;
-    private TerrainGenerationSystem terrain;
+    private DiffusionTerrainGenerator terrain;
     private ManualExecutor executor;
     private FastLodManager manager;
 
@@ -56,7 +56,7 @@ class FastLodManagerLogicTest {
     @BeforeEach
     void setUp() {
         config = new WorldConfiguration(INNER, 1, RANGE, true);
-        terrain = mock(TerrainGenerationSystem.class);
+        terrain = mock(DiffusionTerrainGenerator.class);
         when(terrain.getFinalTerrainHeightAt(anyInt(), anyInt())).thenAnswer(inv -> {
             if (terrainFails.get()) throw new RuntimeException("simulated terrain failure");
             // Above SEA_LEVEL (320), so nodes are dry land: one terrain handle

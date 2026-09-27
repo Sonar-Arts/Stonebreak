@@ -25,11 +25,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * incomplete future rather than {@code computeIfAbsent}: the build is milliseconds of work
  * and holding a map bin for it would stall unrelated chunks that hash to the same bin.
  */
-final class SurfaceProfileCache {
+public final class SurfaceProfileCache {
 
     /** Builds the profile for one chunk. Must be deterministic and thread-safe. */
     @FunctionalInterface
-    interface Builder {
+    public interface Builder {
         Profile build(int chunkX, int chunkZ);
     }
 
@@ -42,7 +42,7 @@ final class SurfaceProfileCache {
      *                 16x16 columns and needs to tell "part of this cell is a cave mouth"
      *                 from "part of this cell is downhill" — the heights alone cannot.
      */
-    record Profile(int[] surfaceY, boolean[] carved) {}
+    public record Profile(int[] surfaceY, boolean[] carved) {}
 
     /**
      * Sized to the largest ring the settings allow, because a miss is not a cheap
@@ -65,12 +65,12 @@ final class SurfaceProfileCache {
     private final LinkedHashMap<Long, Boolean> lru = new LinkedHashMap<>(16, 0.75f, true);
     private final Object lruLock = new Object();
 
-    SurfaceProfileCache(Builder builder) {
+    public SurfaceProfileCache(Builder builder) {
         this.builder = builder;
     }
 
     /** Profile for a chunk, indexed {@code [x * CHUNK_SIZE + z]}. Never null. */
-    Profile get(int chunkX, int chunkZ) {
+    public Profile get(int chunkX, int chunkZ) {
         Long key = key(chunkX, chunkZ);
         CompletableFuture<Profile> future = profiles.get(key);
         if (future == null) {

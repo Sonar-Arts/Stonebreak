@@ -1,59 +1,94 @@
 package com.stonebreak.ui.terrainMapper.visualization;
 
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
-import com.stonebreak.ui.terrainMapper.visualization.impl.BiomeVisualizer;
-import com.stonebreak.ui.terrainMapper.visualization.impl.HeightVisualizer;
-import com.stonebreak.ui.terrainMapper.visualization.impl.TopographyVisualizer;
-import com.stonebreak.ui.terrainMapper.visualization.impl.RiverVisualizer;
-import com.stonebreak.ui.terrainMapper.visualization.impl.WaterVisualizer;
-import com.stonebreak.world.generation.biomes.BiomeManager;
-import com.stonebreak.world.generation.diffusion.DiffusionBridgeConfig;
-import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
-import com.stonebreak.world.generation.diffusion.TerrainTileSource;
-import com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager;
-import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
-import com.stonebreak.world.generation.water.BasinCache;
-import com.stonebreak.world.generation.water.NativeWaterTiles;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 
-import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Lazily binds every {@link VisualizerKind} to a concrete {@link NoiseVisualizer}
- * built around a seeded {@link DiffusionTileCache}. Rebuild with {@link #rebuild(long)}
- * when the seed changes; everything downstream (cache, renderer) reads through
- * this registry so a single rebuild swaps all channels atomically.
+ * Binds the selected generator's {@link VisualizerKind}s to concrete {@link NoiseVisualizer}s
+ * for one seed. Nothing is bound until {@link #selectGenerator} is called. Rebuild with
+ * {@link #rebuild(long)} when the seed changes; everything downstream (cache, renderer) reads
+ * through this registry so a single rebuild swaps all channels atomically.
  */
 public final class VisualizerRegistry {
 
-    private final Map<VisualizerKind, NoiseVisualizer> visualizers = new EnumMap<>(VisualizerKind.class);
+    private final StandardPreview standard = new StandardPreview();
+    private final DiffusionPreview diffusion = new DiffusionPreview();
+
     /**
      * Outlives {@link #rebuild}: values are keyed by seed, so switching back to a seed already
      * explored shows its terrain again without resampling. Emptied only by {@link #clearPreviewData()}.
+     * Only Diffusion caches (Standard is cheaper to resample than to store), so the key needs
+     * no generator in it.
      */
     private final PreviewSampleStore previewStore =
             new PreviewSampleStore(TerrainMapperConfig.PREVIEW_CACHE_BUDGET_BYTES);
+    private TerrainGeneratorType generatorType;
+    private GeneratorPreview generator;
+    private Map<VisualizerKind, NoiseVisualizer> visualizers = Map.of();
     private PreviewSource previewSource;
+    /** What the current visualizers read through, so {@link #rebuild} can release it instead of leaking its threads. */
+    private AutoCloseable resources;
     private long seed;
-    /** The tile chain the current visualizers read through, so {@link #rebuild}
-     *  can release the previous one instead of leaking its threads. */
-    private TerrainTileSource tileSource;
-    /** The far-zoom overview chain (null on backends that cannot serve it). */
-    private DiffusionTileCache overviewSource;
 
     public VisualizerRegistry(long seed) {
-        rebuild(seed);
+        this.seed = seed;
     }
 
     public long seed() { return seed; }
 
-    public NoiseVisualizer get(VisualizerKind kind) {
-        return visualizers.get(kind);
+    /** The selected generator, or null before the player has picked one. */
+    public TerrainGeneratorType generatorType() { return generatorType; }
+
+    /** The selected generator's modes in sidebar order; empty before one is picked. */
+    public List<VisualizerKind> modes() {
+        return generator == null ? List.of() : generator.modes();
     }
 
-    /** Cached terrain values for the current seed. Replaced, together with the visualizers, by {@link #rebuild}. */
+    public NoiseVisualizer get(VisualizerKind kind) {
+        return kind == null ? null : visualizers.get(kind);
+    }
+
+    /** Cached terrain values for the current seed, or null when the generator caches nothing. */
     public PreviewSource previewSource() {
         return previewSource;
+    }
+
+    /**
+     * Switches generator and rebuilds against the current seed. Leaving Diffusion stops its
+     * services; picking it does not start them — the first preview job does, off the render
+     * thread (see {@link #ensureServices()}).
+     */
+    public void selectGenerator(TerrainGeneratorType type) {
+        if (type == generatorType) return;
+        if (generatorType == TerrainGeneratorType.DIFFUSION) {
+            diffusion.stopServices();
+        }
+        generatorType = type;
+        generator = previewFor(type);
+        if (type == TerrainGeneratorType.DIFFUSION) {
+            diffusion.activate();
+        }
+        rebuild(seed);
+    }
+
+    /**
+     * Forgets the selection without touching the services — for leaving the screen into the
+     * world just created, which may be about to use them.
+     */
+    public void clearGenerator() {
+        generatorType = null;
+        generator = null;
+        rebuild(seed);
+    }
+
+    /** Stops the Diffusion services if this screen started them. Leaves the selection alone. */
+    public void stopServices() {
+        if (generatorType == TerrainGeneratorType.DIFFUSION) {
+            diffusion.stopServices();
+        }
     }
 
     /** Forgets every sampled value, for every seed. Called when the mapper is closed. */
@@ -62,99 +97,52 @@ public final class VisualizerRegistry {
     }
 
     /**
-     * Starts (or restarts) the local terrain-diffusion services for the current seed, blocking
-     * until they are healthy. Deliberately not called from {@link #rebuild} or the constructor:
-     * this registry is built during game init, and booting a CUDA model server there would cost
-     * every launch ~a minute for a screen the player may never open.
-     *
-     * <p>Called instead by {@code TerrainPreviewLoader}'s worker thread as the first step of
-     * each sampling job, so the services come up when the mapper is actually shown without the
-     * ~minute-long boot stalling the render thread. Never call it from the render path. It is a
-     * cheap no-op once they are running for this seed.
+     * Brings up whatever the selected generator's previews read from, blocking until it is
+     * healthy — for Diffusion, the local CUDA model server and bridge (~a minute cold). Called by
+     * {@code TerrainPreviewLoader}'s worker as the first step of each sampling job, never from
+     * the render path. A cheap no-op once running, and always for Standard.
      */
     public void ensureServices() {
-        TerrainServiceProcessManager.getInstance().ensureRunningForSeed(seed);
+        GeneratorPreview current = generator;
+        if (current != null) {
+            current.startServices(seed);
+        }
     }
 
     /** Rebuild every visualizer against a fresh seed. Does not touch the services — see {@link #ensureServices()}. */
     public void rebuild(long newSeed) {
-        // The outgoing chain owns a BasinCache with two background threads of
+        // The outgoing Diffusion chain owns a BasinCache with two background threads of
         // its own; dropping the reference alone leaked them every seed change.
-        closeTileSource();
+        closeResources();
         this.seed = newSeed;
-        DiffusionBridgeConfig config = DiffusionBridgeConfig.fromSystemProperties();
-        // Same tile chain the world generator uses (TerrainGenerationSystem
-        // .productionTileSource): with the native water backend the preview
-        // must show the fill-derived lakes, not the raw sea-level plane the
-        // bridge serves when its hydrology is off.
-        TerrainTileSource tileCache = new DiffusionTileCache(config, newSeed);
-        if (NativeWaterTiles.nativeBackendSelected()) {
-            tileCache = new NativeWaterTiles(tileCache, BasinCache.production(config, newSeed),
-                newSeed, config.tileSizeBlocks(), config.maxCachedTiles());
+        if (generator == null) {
+            visualizers = Map.of();
+            previewSource = null;
+            return;
         }
-        this.tileSource = tileCache;
-        HeightMapGenerator heightMap = new HeightMapGenerator(tileCache);
-        BiomeManager biomes = new BiomeManager(tileCache);
-
-        // HEIGHT, TOPOGRAPHY, WATER and RIVERS deliberately share one HeightMapGenerator: they are
-        // renderings of the same resolved tile, so a second generator would only double the
-        // tile traffic to the bridge for identical data.
-        visualizers.put(VisualizerKind.HEIGHT, new HeightVisualizer(heightMap));
-        visualizers.put(VisualizerKind.TOPOGRAPHY, new TopographyVisualizer(heightMap));
-        visualizers.put(VisualizerKind.BIOME, new BiomeVisualizer(biomes));
-        visualizers.put(VisualizerKind.WATER, new WaterVisualizer(heightMap));
-        visualizers.put(VisualizerKind.RIVERS, new RiverVisualizer(heightMap));
-
-        // Must agree with each visualizer's sample() for its channel — the cache stands in for it.
-        TerrainColumns columns = (x, z, out) -> {
-            out[PreviewChannel.HEIGHT.ordinal()] = heightMap.generateHeight(x, z);
-            out[PreviewChannel.WATER.ordinal()] = heightMap.waterLevel(x, z);
-            out[PreviewChannel.BIOME.ordinal()] = biomes.getBiome(x, z).ordinal();
-            out[PreviewChannel.RIVER.ordinal()] = RiverVisualizer.code(heightMap.waterLevel(x, z),
-                    heightMap.riverFloor(x, z), heightMap.riverRoof(x, z), heightMap.riverFlow(x, z));
-        };
-        this.previewSource = new PreviewSource(newSeed, columns, previewStore,
-                overviewColumns(config, newSeed), TerrainMapperConfig.OVERVIEW_MIN_SPACING);
+        GeneratorPreview.Built built = generator.build(newSeed, previewStore);
+        visualizers = built.visualizers();
+        previewSource = built.source();
+        resources = built.resources();
     }
 
-    /**
-     * Columns for far zoom: coarse tiles of {@link TerrainMapperConfig#OVERVIEW_LOD} blocks per
-     * sample, straight from the model's 240 m cells (no refiner or river pipeline), so a zoomed-out
-     * view costs a few coarse tiles instead of thousands of full ones. Only DaedalusTGM-Exp serves
-     * them; on other backends the preview keeps sampling full tiles at every zoom.
-     */
-    private TerrainColumns overviewColumns(DiffusionBridgeConfig config, long seed) {
-        if (!TerrainServiceProcessManager.modelSuppliesWater()) {
-            return null;
-        }
-        int lod = TerrainMapperConfig.OVERVIEW_LOD;
-        overviewSource = new DiffusionTileCache(config, seed, lod);
-        HeightMapGenerator heights = new HeightMapGenerator(overviewSource);
-        BiomeManager biomes = new BiomeManager(overviewSource);
-        return (x, z, out) -> {
-            int sx = Math.floorDiv(x, lod);
-            int sz = Math.floorDiv(z, lod);
-            out[PreviewChannel.HEIGHT.ordinal()] = heights.generateHeight(sx, sz);
-            out[PreviewChannel.WATER.ordinal()] = heights.waterLevel(sx, sz);
-            out[PreviewChannel.BIOME.ordinal()] = biomes.getBiome(sx, sz).ordinal();
-            out[PreviewChannel.RIVER.ordinal()] = RiverVisualizer.code(heights.waterLevel(sx, sz),
-                    heights.riverFloor(sx, sz), heights.riverRoof(sx, sz), heights.riverFlow(sx, sz));
+    private GeneratorPreview previewFor(TerrainGeneratorType type) {
+        if (type == null) return null;
+        return switch (type) {
+            case STANDARD -> standard;
+            case DIFFUSION -> diffusion;
         };
     }
 
-    /** Releases the current tile chain. Safe to call more than once. */
-    private void closeTileSource() {
-        if (tileSource instanceof AutoCloseable closeable) {
+    /** Releases the current resources. Safe to call more than once. */
+    private void closeResources() {
+        if (resources != null) {
             try {
-                closeable.close();
+                resources.close();
             } catch (Exception e) {
-                System.err.println("[VisualizerRegistry] tile source close failed: " + e);
+                System.err.println("[VisualizerRegistry] preview resources close failed: " + e);
             }
         }
-        tileSource = null;
-        if (overviewSource != null) {
-            overviewSource.close();
-            overviewSource = null;
-        }
+        resources = null;
     }
 }

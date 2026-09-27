@@ -1,7 +1,7 @@
 package com.stonebreak.world.fastlod;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -17,9 +17,9 @@ public final class FastLodSampler {
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
-    private final TerrainGenerationSystem terrain;
+    private final TerrainGenerator terrain;
 
-    public FastLodSampler(TerrainGenerationSystem terrain) {
+    public FastLodSampler(TerrainGenerator terrain) {
         this.terrain = terrain;
     }
 
@@ -60,7 +60,7 @@ public final class FastLodSampler {
         }
 
         // Cave mouths, aggregated over each cell's footprint rather than point-probed —
-        // see TerrainGenerationSystem.sampleCellOpenings for why the heights cannot carry
+        // see TerrainGenerator.sampleCellOpenings for why the heights cannot carry
         // this. Skipped at L0, where a cell is one column and its carve is already the
         // height, so the finest band pays nothing and draws exactly what it drew before.
         int[] openingFloor = null;

@@ -26,7 +26,7 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration.CendaMesher;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration.MmsCcoAdapter;
 import com.stonebreak.world.generation.TerrainGenStats;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
 import com.stonebreak.world.generation.noise.TerrainNoise;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -91,7 +91,7 @@ public final class ChunkFootprintLab {
     private final ChunkRamProbe ramProbe = new ChunkRamProbe();
     private final AllocMeter threads = new AllocMeter();
 
-    private TerrainGenerationSystem terrain;
+    private DiffusionTerrainGenerator terrain;
     private TestWorld world;
     private MmsCcoAdapter adapter;
     private final List<String> notes = new ArrayList<>();
@@ -108,7 +108,7 @@ public final class ChunkFootprintLab {
         com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(
             new com.openmason.engine.voxel.VoxelWorldConfig(CHUNK, WORLD_HEIGHT,
                 WorldConfiguration.SEA_LEVEL));
-        terrain = new TerrainGenerationSystem(config.seed());
+        terrain = new DiffusionTerrainGenerator(config.seed());
         world = new TestWorld(new WorldConfiguration(Math.max(8, config.tier() + 2), 4),
             config.seed(), true);
         adapter = new MmsCcoAdapter(new StubTextureMapper(), world);

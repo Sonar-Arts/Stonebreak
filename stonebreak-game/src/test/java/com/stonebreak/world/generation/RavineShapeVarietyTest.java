@@ -1,8 +1,6 @@
 package com.stonebreak.world.generation;
 
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
-import com.stonebreak.world.generation.diffusion.DryHillsTileSource;
-import com.stonebreak.world.generation.diffusion.TerrainTile;
+import com.stonebreak.world.generation.heightmap.CarveMaskKey;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.heightmap.RavineCarver;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -61,10 +59,10 @@ public class RavineShapeVarietyTest {
      * mechanism being switched off, not a target to tune against. Measured at the time of
      * writing: depth 0.49, elongation 0.43, wall profile 0.16, lean 1.17.
      */
-    private static final double MIN_DEPTH_CV = 0.10;
-    private static final double MIN_ELONGATION_CV = 0.20;
-    private static final double MIN_WALL_PROFILE_CV = 0.10;
-    private static final double MIN_LEAN_CV = 0.30;
+    private static final double MIN_DEPTH_CV = 0.40;        // measured 0.47
+    private static final double MIN_ELONGATION_CV = 0.38;   // measured 0.45
+    private static final double MIN_WALL_PROFILE_CV = 0.13; // measured 0.16
+    private static final double MIN_LEAN_CV = 0.80;         // measured 0.97
 
     /**
      * At least one sample must lean this far — {@code cot(dip)}, so 0.30 is a dip of 73&deg;.
@@ -79,12 +77,12 @@ public class RavineShapeVarietyTest {
      * show up in a sample this size — this is a floor on "some ravine visibly slants", not on
      * reaching {@code DIP_MIN_DEG}.
      */
-    private static final double MIN_PEAK_LEAN = 0.30;
+    private static final double MIN_PEAK_LEAN = 0.60;       // measured 0.72
 
     @Test
     public void ravinesDifferInShapeAndNotOnlyInSize() {
-        DryHillsTileSource src = new DryHillsTileSource();
-        RavineCarver carver = new RavineCarver(SEED, new HeightMapGenerator(src));
+        DryHillsHeightMap src = new DryHillsHeightMap(SEED);
+        RavineCarver carver = new RavineCarver(SEED, src);
 
         List<Shape> shapes = new ArrayList<>();
         for (int cx = 0; cx < SEARCH_CHUNKS && shapes.size() < MIN_SAMPLES; cx++) {
@@ -157,7 +155,7 @@ public class RavineShapeVarietyTest {
 
         int[] heights = new int[CHUNK * CHUNK];
         int[] water = new int[CHUNK * CHUNK];
-        Arrays.fill(water, TerrainTile.NO_WATER);
+        Arrays.fill(water, WorldConfiguration.NO_WATER);
 
         for (int dcx = -r; dcx <= r; dcx++) {
             for (int dcz = -r; dcz <= r; dcz++) {
@@ -166,15 +164,15 @@ public class RavineShapeVarietyTest {
                 for (int lx = 0; lx < CHUNK; lx++) {
                     for (int lz = 0; lz < CHUNK; lz++) {
                         heights[lx * CHUNK + lz] =
-                                DryHillsTileSource.height(cx * CHUNK + lx, cz * CHUNK + lz);
+                                DryHillsHeightMap.height(cx * CHUNK + lx, cz * CHUNK + lz);
                     }
                 }
                 BitSet mask = carver.carveMaskForChunkFrom(scx, scz, cx, cz, heights, water);
                 for (int b = mask.nextSetBit(0); b >= 0; b = mask.nextSetBit(b + 1)) {
-                    int gx = (dcx + r) * CHUNK + LocalBlockKey.x(b);
-                    int gz = (dcz + r) * CHUNK + LocalBlockKey.z(b);
+                    int gx = (dcx + r) * CHUNK + CarveMaskKey.x(b);
+                    int gz = (dcz + r) * CHUNK + CarveMaskKey.z(b);
                     int i = gx * size + gz;
-                    int y = LocalBlockKey.y(b);
+                    int y = CarveMaskKey.y(b);
                     minY[i] = Math.min(minY[i], y);
                     maxY[i] = Math.max(maxY[i], y);
                     levelCount[y]++;

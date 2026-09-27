@@ -7,7 +7,7 @@ import org.joml.Vector3f;
 
 import com.stonebreak.world.fastlod.FastLodManager;
 import com.stonebreak.world.fastlod.FastLodStore;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
@@ -18,12 +18,12 @@ import com.stonebreak.world.operations.WorldConfiguration;
  */
 final class FastLodLifecycle {
     private final WorldConfiguration config;
-    private final TerrainGenerationSystem terrainSystem;
+    private final TerrainGenerator terrainSystem;
 
     // Lazily constructed once the render-thread hands us a texture atlas.
     private volatile FastLodManager fastLodManager;
 
-    FastLodLifecycle(WorldConfiguration config, TerrainGenerationSystem terrainSystem) {
+    FastLodLifecycle(WorldConfiguration config, TerrainGenerator terrainSystem) {
         this.config = config;
         this.terrainSystem = terrainSystem;
     }
@@ -88,7 +88,7 @@ final class FastLodLifecycle {
      * this, but render-only worlds skip the chunk manager entirely (chunks stream from the
      * server), so without this call the LOD manager is created by the render pass yet never
      * schedules a single node — distant terrain simply never appears. The sampler reads the
-     * local deterministic TerrainGenerationSystem (seeded from the server's WelcomeS2C world
+     * local deterministic TerrainGenerator (seeded from the server's WelcomeS2C world
      * seed), so client-side LOD matches server terrain without any chunk streaming. Runs on
      * the same logic-thread executor that ticks full-world updateRing — threading contract
      * unchanged.

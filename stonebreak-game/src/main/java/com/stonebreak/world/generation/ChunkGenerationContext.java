@@ -50,7 +50,7 @@ public final class ChunkGenerationContext {
      * Water level at this column, or {@link
      * com.stonebreak.world.generation.diffusion.TerrainTile#NO_WATER}. A column
      * is submerged exactly when this exceeds {@link #height}, the same test
-     * {@code TerrainGenerationSystem.determineBlockType} places water by.
+     * {@code TerrainGenerator.determineBlockType} places water by.
      */
     public int waterLevel(int localX, int localZ) {
         return waterLevelMap[localX * SIZE + localZ];

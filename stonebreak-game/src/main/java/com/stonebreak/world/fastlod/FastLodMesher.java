@@ -233,7 +233,7 @@ public final class FastLodMesher {
 
                 if (notches) {
                     int floor = data.openingFloorAt(ix, iz);
-                    if (floor != com.stonebreak.world.generation.TerrainGenerationSystem.NO_OPENING
+                    if (floor != com.stonebreak.world.generation.TerrainGenerator.NO_OPENING
                             && floor < terrainH) {
                         emitCaveNotch(w, wx, wz, cellSize, terrainH, floor,
                                 data.openingCoverageAt(ix, iz));

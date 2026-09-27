@@ -2,7 +2,6 @@ package com.stonebreak.world.generation;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.generation.diffusion.DryHillsTileSource;
 import com.stonebreak.world.generation.heightmap.CaveWaterTable;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -40,13 +39,13 @@ public class CaveStoreyStructureTest {
      * currently produces, so ordinary retuning does not trip it and switching the mechanism
      * off does.
      */
-    private static final double MIN_GALLERY_ENRICHMENT = 1.15;
+    private static final double MIN_GALLERY_ENRICHMENT = 1.65;  // measured 1.699 native / 1.844 Java
 
     @Test
     public void carvedVolumeClustersIntoWaterTableStoreys() {
-        DryHillsTileSource src = new DryHillsTileSource();
+        DryHillsHeightMap src = new DryHillsHeightMap(SEED);
         TerrainGenerationSystem terrain = new TerrainGenerationSystem(SEED, src);
-        HeightMapGenerator heightMap = new HeightMapGenerator(src);
+        HeightMapGenerator heightMap = src;
         CaveWaterTable waterTable = new CaveWaterTable(SEED, heightMap);
 
         int[] heights = new int[CHUNK * CHUNK];
@@ -72,7 +71,7 @@ public class CaveStoreyStructureTest {
                             float w = CaveWaterTable.galleryWeight(t, y);
                             allWeight += w;
                             allCount++;
-                            if (chunk.getBlock(lx, y, lz) == BlockType.AIR) {
+                            if (StandardFrame.block(chunk, lx, y, lz) == BlockType.AIR) {
                                 carvedWeight += w;
                                 carvedCount++;
                             }
