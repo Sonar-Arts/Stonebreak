@@ -1,83 +1,126 @@
-"""River pass: channels follow the flow ridge, water never stands above a dry bank, weak
-flow stays dry, ground only changes in the channel (cut) and its levee ring (raised)."""
+"""River pipeline stages (terrain_slm.river) on synthetic valleys: geometry in blocks, water that
+never spills, stages that swap like parts, and the bank model's gate."""
 import math
 
 import torch
 
-from terrain_slm.world import rivers as RV
+from terrain_slm.river import pipeline as RP
+from terrain_slm.river.banks import BankNet, LearnedBanks, LeveeBanks
+from terrain_slm.river.field import Drainage, RiverConfig, RiverContext, RiverField
+from terrain_slm.river.geometry import CP, ridge_lines
+from terrain_slm.river.scale import BlockScale
 
 DEV = "cuda:1" if torch.cuda.device_count() > 1 else ("cuda" if torch.cuda.is_available() else "cpu")
-CP = RV.CP
+THR = 4.5
+SCALE = BlockScale.game_default(DEV)
+HP = RP.HALO_PX
 
 
-def _valley(hc=40, wc=40, peak=RV.LOG_THRESHOLD + 1.5):
-    """A valley running along columns at the block's centre row, and a matching flow ridge."""
+def _valley(hc=64, wc=64, peak=THR + 1.5, slope=0.8):
+    """A valley running along the columns at the block's centre row, and a matching flow ridge."""
     h, w = hc * CP, wc * CP
     rows = torch.arange(h, device=DEV, dtype=torch.float32).view(-1, 1)
     cols = torch.arange(w, device=DEV, dtype=torch.float32).view(1, -1)
     centre = h / 2
-    heights = 300.0 + 0.8 * (rows - centre).abs() + 0.02 * cols  # V valley, gentle downstream tilt
+    heights = 300.0 + slope * (rows - centre).abs() + 0.02 * cols
     crow = torch.arange(hc, device=DEV, dtype=torch.float32).view(-1, 1)
-    logacc = peak - 0.9 * ((crow + 0.5) * CP - centre).abs() / CP
-    logacc = logacc.expand(hc, wc).contiguous()
+    logacc = (peak - 0.9 * ((crow + 0.5) * CP - centre).abs() / CP).expand(hc, wc).contiguous()
     return heights.expand(h, w).contiguous(), logacc
 
 
-def _dry_neighbour_violations(carved, surface):
-    wet = ~torch.isnan(surface)
-    top = torch.nan_to_num(surface, nan=-1e9)
+def _run(heights, logacc, pipe=None, cfg=RiverConfig(log_threshold=THR)):
+    pipe = pipe or RP.default_pipeline(None)
+    return pipe.run(heights, Drainage(logacc, (0, 0)), (0, 0), SCALE, cfg), pipe
+
+
+def _spills(f: RiverField) -> int:
+    wet = f.wet
+    top = torch.where(wet, f.top, torch.full_like(f.top, -1e9))
     bad = 0
     for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
         nb_wet = torch.roll(wet, (di, dj), (0, 1))
-        nb_ground = torch.roll(carved, (di, dj), (0, 1))
-        bad += int((wet & ~nb_wet & (nb_ground < top - 1e-3)).sum())
+        nb_ground = torch.roll(f.carved, (di, dj), (0, 1))
+        m = wet & ~nb_wet & (nb_ground < top - 1e-3)
+        bad += int(m[HP:-HP, HP:-HP].sum())
     return bad
 
 
-def test_channel_follows_the_valley_and_never_spills():
+def test_channel_follows_the_valley_is_sized_in_blocks_and_never_spills():
     heights, logacc = _valley()
-    carved, surface = RV.carve(heights, logacc, (0, 0), (0, 0))
-    inner = (slice(RV.HALO_PX, -RV.HALO_PX), slice(RV.HALO_PX, -RV.HALO_PX))
-    wet = ~torch.isnan(surface[inner])
-    assert wet.any(), "no river where the flow ridge is strong"
-    rows = torch.nonzero(wet)[:, 0].float() + RV.HALO_PX
-    centre = heights.shape[0] / 2
-    assert (rows - centre).abs().max().item() <= 6, "water strayed from the valley floor"
-    # Most columns along the valley carry water (continuity).
-    assert wet.any(dim=0).float().mean().item() > 0.9
-    assert _dry_neighbour_violations(carved[inner], surface[inner]) == 0
-    raised = carved > heights + 1e-4
-    near = torch.nn.functional.max_pool2d((~torch.isnan(surface)).float()[None, None],
-                                          2 * RV.LEVEE_PX + 3, 1, RV.LEVEE_PX + 1)[0, 0] > 0
-    assert not (raised & ~near).any(), "ground raised away from any river"
+    (f, ctx), _ = _run(heights, logacc)
+    wet = f.wet[HP:-HP, HP:-HP]
+    assert wet.any(dim=0).float().mean() > 0.9, "the river should run the whole valley"
+    rows = torch.nonzero(wet)[:, 0].float() + HP
+    assert (rows - heights.shape[0] / 2).abs().max() <= 12, "water strayed from the valley floor"
+    # 1.5 log units above the threshold: 3 + 1.8 * 1.5 = 5.7 blocks wide, give or take a pixel.
+    width_blocks = wet.sum(0).float().mean() / SCALE.px_per_block
+    assert 4.5 <= width_blocks <= 7.0, width_blocks
+    assert _spills(f) == 0
 
 
-def test_river_across_a_slope_holds_water_behind_levees():
-    heights, logacc = _valley()
-    rows = torch.arange(heights.shape[0], device=DEV, dtype=torch.float32).view(-1, 1)
-    tilted = 300.0 + 0.5 * rows + 0.0 * heights  # plain slope: no valley under the flow ridge
-    carved, surface = RV.carve(tilted.expand_as(heights).contiguous(), logacc, (0, 0), (0, 0))
-    inner = (slice(RV.HALO_PX, -RV.HALO_PX), slice(RV.HALO_PX, -RV.HALO_PX))
-    assert (~torch.isnan(surface[inner])).any(dim=0).float().mean().item() > 0.8
-    assert _dry_neighbour_violations(carved[inner], surface[inner]) == 0
+def test_bigger_flow_makes_a_wider_deeper_river():
+    small, _ = _run(*_valley(peak=THR + 1.0))
+    big, _ = _run(*_valley(peak=THR + 5.0))
+    width = lambda f: f[0].wet[HP:-HP, HP:-HP].sum(0).float().mean()
+    depth = lambda f: (f[0].top - f[0].carved)[f[0].wet].mean()
+    assert width(big) > 2 * width(small)
+    assert depth(big) > depth(small)
 
 
 def test_weak_flow_stays_dry():
-    heights, logacc = _valley(peak=RV.LOG_THRESHOLD - 0.5)
-    _, surface = RV.carve(heights, logacc, (0, 0), (0, 0))
-    assert torch.isnan(surface).all()
+    (f, _), _ = _run(*_valley(peak=THR - 0.5))
+    assert not f.wet.any()
+
+
+def test_river_across_a_plain_slope_still_holds_its_water():
+    heights, logacc = _valley()
+    rows = torch.arange(heights.shape[0], device=DEV, dtype=torch.float32).view(-1, 1)
+    tilted = (300.0 + 0.5 * rows).expand_as(heights).contiguous()  # no valley under the flow ridge
+    (f, _), _ = _run(tilted, logacc)
+    assert _spills(f) == 0
 
 
 def test_ridge_lines_follow_a_diagonal_ridge_thinly():
     n = 256
     i = torch.arange(n, device=DEV, dtype=torch.float32)
-    d = (i.view(-1, 1) - i.view(1, -1)).abs()  # distance-like offset from the diagonal
-    line, _ = RV.ridge_lines(RV.LOG_THRESHOLD + 2.0 - 0.1 * d)
+    d = (i.view(-1, 1) - i.view(1, -1)).abs()
+    line, _ = ridge_lines(THR + 2.0 - 0.1 * d, THR, 8.0)
     inner = line[32:-32, 32:-32]
     rows = torch.arange(inner.shape[0], device=DEV)
-    # On (or within a pixel of) the diagonal, never far from it, and thin.
     near = inner[rows, rows] | inner[rows, (rows + 1).clamp(max=inner.shape[1] - 1)]
-    assert near.float().mean().item() > 0.95
+    assert near.float().mean() > 0.95
     off = torch.nonzero(inner)
-    assert (off[:, 0] - off[:, 1]).abs().max().item() <= 2
-    assert inner.sum().item() <= 3 * inner.shape[0]
+    assert (off[:, 0] - off[:, 1]).abs().max() <= 2
+    assert inner.sum() <= 3 * inner.shape[0]
+
+
+def test_stages_swap_like_parts():
+    """Replacing the bank stage (learned <-> levee) or dropping the guard changes only what those
+    stages do: the channel the other stages decide is identical."""
+    heights, logacc = _valley()
+    a, pa = _run(heights, logacc, RP.default_pipeline(None))
+    model = BankNet().to(DEV).eval()
+    b, pb = _run(heights, logacc, RP.default_pipeline(model))
+    assert torch.equal(a[0].channel, b[0].channel) and torch.equal(a[0].line, b[0].line)
+    assert "banks" in pa.describe() and "banks" in pb.describe()
+    custom = RP.RiverPipeline(native=[s for s in pa.native if s.name != "guard"], blocks=pa.blocks)
+    c, _ = _run(heights, logacc, custom)
+    assert "guard_raised_px" not in c[1].stats and torch.equal(c[0].channel, a[0].channel)
+
+
+def test_learned_banks_are_a_no_op_without_a_river():
+    heights, logacc = _valley(peak=THR - 2.0)
+    ctx = RiverContext(SCALE, RiverConfig(log_threshold=THR), Drainage(logacc, (0, 0)), (0, 0))
+    f = RiverField(ground=heights, channel=torch.zeros_like(heights, dtype=torch.bool), carved=heights)
+    out = LearnedBanks(BankNet().to(DEV).eval())(f, ctx)
+    assert torch.equal(out.carved, heights) and not out.band.any()
+
+
+def test_block_columns_carry_river_depth_in_blocks():
+    (f, ctx), pipe = _run(*_valley(peak=THR + 5.0))
+    cols = pipe.columns(f, ctx, 2)
+    m = RP.BLOCK_MARGIN
+    wet = cols.wet[HP // 2 : -HP // 2, HP // 2 : -HP // 2]
+    depth = (cols.water - cols.height)[HP // 2 : -HP // 2, HP // 2 : -HP // 2][wet]
+    assert depth.min() >= 1 and depth.float().mean() >= 2.0
+    assert (cols.flow[cols.wet] >= 0).float().mean() > 0.9

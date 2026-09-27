@@ -19,12 +19,12 @@ The owner builds the package:
 
 ```bash
 # in Models/DaedalusTGM-Exp/
-.venv/bin/python scripts/package_training_data.py --no-dem   # ~1.2 GB: relief sampler + planner
-.venv/bin/python scripts/package_training_data.py            # ~6.5 GB: also the refiner
+.venv/bin/python scripts/package_training_data.py --no-dem   # ~1.2 GB: relief sampler, planner, hydro sidecar, MaskGIT
+.venv/bin/python scripts/package_training_data.py            # ~6.5 GB: also the refiner and the bank model
 ```
 
 The package is `dist/DaedalusTGM-Exp-data-<date>[-cells].tar`. It contains only each region's
-`meta.json`, `cells.npz` and (for the refiner) `dem.npy`, plus checksums and a manifest with the
+`meta.json`, `cells.npz` and (for the refiner and bank model) `dem.npy` + `water.npz`, plus checksums and a manifest with the
 data attribution. Please don't rebuild the data yourself: that needs a 4.8 GB raw download and
 climate rasters that are not in the repo.
 
@@ -51,6 +51,9 @@ Use a descriptive `--out` directory per experiment:
 .venv/bin/python -m terrain_slm.train.train_relief  --out checkpoints/relief_r1_<you>
 .venv/bin/python -m terrain_slm.train.train_planner --out checkpoints/planner_<you> --dim 176 --depth 4 --steps 40000
 .venv/bin/python -m terrain_slm.train.train_refiner --out checkpoints/refiner_<you> --steps 30000   # needs the DEM package
+.venv/bin/python -m terrain_slm.train.train_hydro   --out checkpoints/hydro_<you>                  # cells only, ~8 min
+.venv/bin/python -m terrain_slm.train.train_banks   --out checkpoints/bank_<you>                   # DEM package (water.npz), ~6 min
+.venv/bin/python -m terrain_slm.train.train_descgit --out checkpoints/descgit_<you>                # cells only, ~20 min
 ```
 
 Each run writes `best.pt`, `last.pt` and `log.jsonl` to its `--out` directory. The eval lines

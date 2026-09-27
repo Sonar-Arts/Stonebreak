@@ -56,8 +56,9 @@ def test_three_plane_payload_parses(monkeypatch):
 
     client = uc.UpstreamClient(_cfg())
     monkeypatch.setattr(client._session, "get", lambda *a, **k: R())
-    elev, biome, surf = client.fetch_tile_with_water(0, 0, 2, 2)
+    elev, biome, surf, river = client.fetch_tile_with_water(0, 0, 2, 2)
     assert np.array_equal(elev, planes[0]) and np.array_equal(biome, planes[1]) and np.array_equal(surf, planes[2])
+    assert river is None  # a three-plane upstream has no 3D river planes
     e2, b2 = client.fetch_tile(0, 0, 2, 2)  # two-plane callers ignore the extra plane
     assert np.array_equal(e2, planes[0]) and np.array_equal(b2, planes[1])
 
@@ -85,3 +86,44 @@ def test_downscale_is_sent_and_namespaced(monkeypatch, tmp_path):
 def test_downscale_requires_scale_one():
     with pytest.raises(ValueError):
         _cfg(scale=2, downscale=2)
+
+
+def test_six_plane_payload_passes_river_planes_through(monkeypatch):
+    from bridge import upstream_client as uc
+
+    planes = [np.arange(4, dtype="<i2").reshape(2, 2) + 10 * k for k in range(6)]
+    sent = {}
+
+    class R:
+        status_code = 200
+        headers = {"X-Height": "2", "X-Width": "2", "X-Dtype": "int16-le"}
+        content = b"".join(p.tobytes() for p in planes)
+
+    client = uc.UpstreamClient(_cfg())
+
+    def get(url, params=None, **k):
+        sent.update(params or {})
+        return R()
+
+    monkeypatch.setattr(client._session, "get", get)
+    *_, river = client.fetch_tile_with_water(0, 0, 2, 2)
+    assert sent.get("river3d") == 1
+    for want, have in zip(planes[3:], river):
+        assert np.array_equal(want, have)
+
+
+def test_water_under_an_overhang_survives_the_mapping():
+    """A wet column under an overhang reports the bank's full height, above its own water;
+    its tunnel floor marks it as water all the same."""
+    from bridge.water import UpstreamWater
+
+    w = UpstreamWater(_cfg())
+    curve = w._curve
+    s = w._sea_level
+    ground = curve.to_elevation(np.array([[s + 10.5, s + 30.5]]))   # open channel, overhang column
+    surface = curve.to_elevation(np.array([[s + 15.5, s + 15.5]]))
+    floor = np.array([[-1, s + 9]], dtype=np.int16)
+    river = (floor, np.array([[-1, s + 18]], dtype=np.int16), np.array([[2, 2]], dtype=np.int16))
+    heights, water, _ = w.planes((0, 0, 1, 2), ground, surface.astype(np.int16), river)
+    assert heights[0, 1] > water[0, 1] > 0      # the overhang keeps its height and its water
+    assert water[0, 0] > heights[0, 0]

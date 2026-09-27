@@ -87,7 +87,7 @@ public final class TerrainServiceProcessManager {
                         UPSTREAM_MODULE, "xandergos/terrain-diffusion-30m", "minecraft_api.log");
                 case "slm" -> new BackendDefaults(
                         SLM_DIR + "/.venv/bin/python", SLM_DIR,
-                        SLM_MODULE, "checkpoints/v2", "terrain_slm.log");
+                        SLM_MODULE, "checkpoints/v3", "terrain_slm.log");
                 default -> throw new TerrainBridgeException("unknown -Dstonebreak.terrainService.backend="
                         + backend + " (expected upstream or slm)");
             };

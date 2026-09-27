@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .cache import TileCache
+from .cache import TileCache, no_river_planes
 from .config import BridgeConfig
 from .tiling import TileId, tile_bounds
 from .upstream_client import UpstreamClient
@@ -136,8 +136,9 @@ class GpuWorkQueue:
             try:
                 bounds = tile_bounds(job.tile.tile_x, job.tile.tile_z, self._cfg.tile_size_blocks)
                 surface = None
+                river = None
                 if getattr(self._water, "wants_surface", False):
-                    elev, biome, surface = await loop.run_in_executor(
+                    elev, biome, surface, river = await loop.run_in_executor(
                         None, self._client.fetch_tile_with_water, *bounds
                     )
                 else:
@@ -151,13 +152,14 @@ class GpuWorkQueue:
                 if surface is None:
                     planes_call = (self._water.planes, bounds, elev)
                 else:
-                    planes_call = (self._water.planes, bounds, elev, surface)
+                    planes_call = (self._water.planes, bounds, elev, surface, river)
                 block_height, water_level, report = await loop.run_in_executor(None, *planes_call)
+                river = river if river is not None else no_river_planes(block_height.shape)
                 await loop.run_in_executor(
-                    None, self._cache.put, job.tile, block_height, biome, water_level
+                    None, self._cache.put, job.tile, block_height, biome, water_level, river
                 )
                 if not job.future.done():
-                    job.future.set_result((block_height, biome, water_level))
+                    job.future.set_result((block_height, biome, water_level, *river))
                 log.info(
                     "tile %s generated in %.1f ms (queue depth %d)%s",
                     job.tile.cache_key(),

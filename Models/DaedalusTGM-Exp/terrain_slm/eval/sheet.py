@@ -72,7 +72,7 @@ def slope_hist(z: np.ndarray) -> np.ndarray:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", type=Path, default=Path("data"), help="directory holding the region builds")
-    ap.add_argument("--model", type=Path, default=Path("checkpoints/v2"))
+    ap.add_argument("--model", type=Path, default=Path("checkpoints/v3"))
     ap.add_argument("--device", default=default_device())
     ap.add_argument("--t-start", type=float, default=0.5)
     ap.add_argument("--out", type=Path, default=Path("reports"))

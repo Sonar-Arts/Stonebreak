@@ -90,8 +90,10 @@ async def test_concurrent_requests_for_same_tile_dedupe(tmp_path):
 
     assert len(client.calls) == 1  # only one upstream fetch for 5 concurrent requests
     assert client.max_concurrent == 1  # never called concurrently
-    for (block_height, biome, water_level), _from_cache in results:
+    for (block_height, biome, water_level, *river), _from_cache in results:
         assert block_height.shape == biome.shape == water_level.shape == (4, 4)
+        # No 3D river planes from a sea-level source: all three are the -1 sentinel.
+        assert len(river) == 3 and all((p == -1).all() for p in river)
 
     await q.stop()
 
@@ -106,13 +108,13 @@ async def test_the_water_plane_is_the_old_sea_level_rule_per_column(tmp_path):
 
     q = GpuWorkQueue(cfg, TileCache(cfg), _FakeClient(elevation_m=30), SeaLevelWater(cfg))
     q.start()
-    (heights, _, water), _ = await q.get_tile(tile)
+    (heights, _, water, *_), _ = await q.get_tile(tile)
     assert (heights > cfg.sea_level).all() and (water == -1).all()
     await q.stop()
 
     q = GpuWorkQueue(cfg, TileCache(cfg), _FakeClient(elevation_m=-500), SeaLevelWater(cfg))
     q.start()
-    (heights, _, water), _ = await q.get_tile(TileId(seed=1, tile_x=9, tile_z=0, scale=2))
+    (heights, _, water, *_), _ = await q.get_tile(TileId(seed=1, tile_x=9, tile_z=0, scale=2))
     assert (heights < cfg.sea_level).all() and (water == cfg.sea_level).all()
     await q.stop()
 
@@ -137,7 +139,7 @@ async def test_max_wait_s_times_out_without_disturbing_the_job(tmp_path):
     assert len(client.calls) == 1  # timing out did not cancel or duplicate the job
 
     client.release()
-    (heights, _, _water), from_cache = await q.get_tile(tile)  # unbounded wait
+    (heights, _, _water, *_), from_cache = await q.get_tile(tile)  # unbounded wait
     assert from_cache is False
     assert heights.shape == (4, 4)
     assert len(client.calls) == 1  # still only the one upstream fetch

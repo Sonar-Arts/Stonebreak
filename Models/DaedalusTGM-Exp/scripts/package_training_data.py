@@ -3,7 +3,7 @@
     .venv/bin/python scripts/package_training_data.py              # all regions, with DEMs (~6.5 GB)
     .venv/bin/python scripts/package_training_data.py --no-dem     # cells only (~1.2 GB): relief + planner
 
-Allowlist only: each region's meta.json, cells.npz and (unless --no-dem) dem.npy. Nothing else
+Allowlist only: each region's meta.json, cells.npz and (unless --no-dem) dem.npy + water.npz. Nothing else
 under data/ is ever packed: no logs, no raw downloads, no symlinks. The tar extracts to
 data/<region>/... at the model root, with data/SHA256SUMS (check with `sha256sum -c data/SHA256SUMS`)
 and data/MANIFEST.json (regions, sizes, source commit, data attribution).
@@ -21,7 +21,8 @@ from pathlib import Path
 
 from terrain_slm.paths import MODEL_DIR
 
-ALLOWED = ("meta.json", "cells.npz", "dem.npy")
+ALLOWED = ("meta.json", "cells.npz", "dem.npy", "water.npz")
+OPTIONAL = ("water.npz",)   # bank-model water masks (data/water.py); regions without water have none
 ATTRIBUTION = {
     "elevation": "Produced using Copernicus WorldDEM-30 (c) DLR e.V. 2010-2014 and (c) Airbus Defence and "
                  "Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved.",
@@ -69,12 +70,15 @@ def main() -> None:
     missing = sorted(set(regions) - set(built))
     if missing:
         raise SystemExit(f"not built: {missing} (built: {built})")
-    wanted = [n for n in ALLOWED if not (args.no_dem and n == "dem.npy")]
+    # Only the refiner and the bank model read the DEM; the bank model also needs water.npz.
+    wanted = [n for n in ALLOWED if not (args.no_dem and n in ("dem.npy", "water.npz"))]
 
     files = []
     for r in regions:
         for n in wanted:
             p = data / r / n
+            if n in OPTIONAL and not p.exists():
+                continue
             if p.is_symlink() or not p.is_file():
                 raise SystemExit(f"refusing {p}: missing or a symlink")
             files.append((f"data/{r}/{n}", p))

@@ -29,7 +29,7 @@ from .upstream_client import UpstreamClient, UpstreamError
 
 # Bumped whenever the tile body's plane count or layout changes. 1 was
 # (block height, biome); 2 adds the per-column water level.
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("terrain_bridge")

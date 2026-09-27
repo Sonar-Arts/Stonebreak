@@ -38,12 +38,16 @@ public class DiffusionTerrainClient {
     /**
      * Tile-body layout this build understands. Must match {@code PROTOCOL_VERSION} in
      * Models/terrain-bridge/bridge/main.py. v1 was (block height, biome); v2 adds the per-column
-     * water level.
+     * water level; v3 adds the 3D river planes (tunnel floor, tunnel roof, flow octant).
      */
-    private static final int PROTOCOL_VERSION = 2;
+    private static final int PROTOCOL_VERSION = 3;
 
-    /** int16 planes in a v2 body, in order: block height, biome id, water level. */
-    private static final int PLANES = 3;
+    /**
+     * int16 planes in a v3 body, in order: block height, biome id, water level, river tunnel
+     * floor, river tunnel roof, river flow octant (the last three -1 where there is none; see
+     * {@link TerrainTile#riverFloorAt}).
+     */
+    private static final int PLANES = 6;
 
     private final DiffusionBridgeConfig config;
     private final long seed;
@@ -356,7 +360,7 @@ public class DiffusionTerrainClient {
 
         byte[] body = response.body();
         int cells = height * width;
-        long expected = (long) cells * 2L * PLANES; // block height + biome + water level
+        long expected = (long) cells * 2L * PLANES;
         if (body.length != expected) {
             throw new IllegalStateException("unexpected payload size for " + height + "x" + width +
                     ": got " + body.length + ", expected " + expected);
@@ -366,9 +370,27 @@ public class DiffusionTerrainClient {
         short[] blockHeights = readPlane(buf, cells);
         short[] biomeIds = readPlane(buf, cells);
         short[] waterLevels = readPlane(buf, cells);
+        short[] riverFloors = readPlane(buf, cells);
+        short[] riverRoofs = readPlane(buf, cells);
+        short[] riverFlows = readPlane(buf, cells);
 
+        // Most tiles carry no tunnels (and many no rivers at all): keep TerrainTile's null
+        // planes for those rather than three arrays of sentinels.
+        boolean anyTunnel = !allEqual(riverFloors, TerrainTile.NO_TUNNEL);
         return new TerrainTile(tileX, tileZ, i1, j1, i2, j2, width, height,
-                blockHeights, biomeIds, waterLevels);
+                blockHeights, biomeIds, waterLevels,
+                anyTunnel ? riverFloors : null,
+                anyTunnel ? riverRoofs : null,
+                allEqual(riverFlows, TerrainTile.NO_FLOW) ? null : riverFlows);
+    }
+
+    private static boolean allEqual(short[] plane, short value) {
+        for (short v : plane) {
+            if (v != value) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static short[] readPlane(ByteBuffer buf, int cells) {

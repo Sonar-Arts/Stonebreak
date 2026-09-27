@@ -36,10 +36,27 @@ def test_miss_then_hit(tmp_path):
 
     got = cache.get(tile)
     assert got is not None
-    got_h, got_b, got_water = got
+    got_h, got_b, got_water, *river = got
     np.testing.assert_array_equal(got_h, h)
     np.testing.assert_array_equal(got_b, b)
     np.testing.assert_array_equal(got_water, water)
+    # A put without river planes stores the -1 sentinel in all three.
+    assert len(river) == 3 and all((p == -1).all() for p in river)
+
+
+def test_river_planes_round_trip(tmp_path):
+    cache = TileCache(_cfg(tmp_path))
+    tile = TileId(seed=1, tile_x=3, tile_z=-2, scale=2)
+    h = np.array([[70, 71], [72, 73]], dtype=np.int16)
+    b = np.zeros((2, 2), dtype=np.int16)
+    water = np.array([[-1, 69], [-1, -1]], dtype=np.int16)
+    floor = np.array([[68, -1], [-1, -1]], dtype=np.int16)
+    roof = np.array([[71, -1], [-1, -1]], dtype=np.int16)
+    flow = np.array([[-1, 5], [-1, -1]], dtype=np.int16)
+    cache.put(tile, h, b, water, (floor, roof, flow))
+    got = cache.get(tile)
+    for want, have in zip((h, b, water, floor, roof, flow), got):
+        np.testing.assert_array_equal(have, want)
 
 
 def test_config_change_gets_isolated_namespace(tmp_path):

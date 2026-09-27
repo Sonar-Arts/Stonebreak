@@ -73,7 +73,14 @@ def main() -> None:
     ap.add_argument("--depth", type=int, default=2)
     ap.add_argument("--heads", type=int, default=4)
     ap.add_argument("--eval-every", type=int, default=1000)
+    ap.add_argument("--loss-w", default="", help="override loss weights, e.g. river=0,logacc=0 (ablations)")
     args = ap.parse_args()
+    for kv in filter(None, args.loss_w.split(",")):
+        k, v = kv.split("=")
+        if k not in LOSS_W:
+            raise SystemExit(f"unknown loss term {k!r} (have {sorted(LOSS_W)})")
+        LOSS_W[k] = float(v)
+    print(f"loss weights {LOSS_W}", flush=True)
     torch.manual_seed(0)
     args.out.mkdir(parents=True, exist_ok=True)
 

@@ -117,6 +117,11 @@ class BridgeConfig:
     # 60 m blocks from the 30 m model. Only upstreams that speak `downscale` (terrain-slm).
     downscale: int = 1
 
+    # 3D rivers (protocol v3): ask an upstream that supplies water (`water_source=upstream`) for
+    # its river tunnel floor/roof and flow-octant planes too (`/terrain?...&river3d=1`), and pass
+    # them through to the game. Off: those planes are sent as -1 (no tunnels, no flow).
+    river3d: bool = True
+
     def __post_init__(self) -> None:
         if self.downscale < 1:
             raise ValueError(f"downscale must be >= 1, got {self.downscale}")
@@ -184,4 +189,5 @@ class BridgeConfig:
             upstream_id=os.environ.get("TERRAIN_BRIDGE_UPSTREAM_ID", ""),
             water_source=os.environ.get("TERRAIN_BRIDGE_WATER_SOURCE", "").strip().lower(),
             downscale=_env_int("TERRAIN_BRIDGE_DOWNSCALE", 1),
+            river3d=_env_bool("TERRAIN_BRIDGE_RIVER3D", True),
         )

@@ -7,7 +7,7 @@ import torch
 from terrain_slm.models import relief as RL
 from terrain_slm.world import generator as G
 
-MODEL = Path(__file__).resolve().parents[1] / "checkpoints/v2"
+MODEL = Path(__file__).resolve().parents[1] / "checkpoints/v3"
 DEV = "cuda:1" if torch.cuda.device_count() > 1 else ("cuda" if torch.cuda.is_available() else "cpu")
 
 

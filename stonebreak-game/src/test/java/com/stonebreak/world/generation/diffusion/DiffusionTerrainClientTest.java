@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DiffusionTerrainClientTest {
 
     /** Must track DiffusionTerrainClient's own constant, and terrain-bridge's. */
-    private static final int PROTOCOL_VERSION = 2;
+    private static final int PROTOCOL_VERSION = 3;
 
     private HttpServer server;
     private DiffusionTerrainClient client;
@@ -74,6 +74,38 @@ class DiffusionTerrainClientTest {
         assertEquals(460, tile.waterLevelAt(11, 20));
         // The "no water" sentinel has to survive as a negative short, not as 65535.
         assertEquals(TerrainTile.NO_WATER, tile.waterLevelAt(10, 21));
+    }
+
+    @Test
+    void parsesTheRiverTunnelAndFlowPlanes() throws IOException {
+        // One undercut bank column (dry, tunnel 69..72) and one flowing river column.
+        server = startServer(exchange -> respondTile(exchange, 200, 2, 2, 0, 0, 10, 20, 12, 22,
+                new short[]{80, 66, 70, 70}, new short[]{1, 2, 3, 4},
+                new short[]{-1, 70, -1, -1},
+                new short[]{69, -1, -1, -1}, new short[]{72, -1, -1, -1}, new short[]{-1, 5, -1, -1},
+                PROTOCOL_VERSION));
+
+        client = newClient(3);
+        TerrainTile tile = client.fetchTile(10, 20).join();
+
+        assertEquals(69, tile.riverFloorAt(10, 20));
+        assertEquals(72, tile.riverRoofAt(10, 20));
+        assertEquals(TerrainTile.NO_TUNNEL, tile.riverFloorAt(10, 21));
+        assertEquals(5, tile.riverFlowAt(10, 21));
+        assertEquals(TerrainTile.NO_FLOW, tile.riverFlowAt(11, 21));
+    }
+
+    @Test
+    void aTileWithNoRiverPlanesReportsNone() throws IOException {
+        server = startServer(exchange -> respondTile(exchange, 200, 2, 2, 0, 0, 10, 20, 12, 22,
+                new short[]{10, 20, 30, 40}, new short[]{1, 2, 3, 4}));
+
+        client = newClient(3);
+        TerrainTile tile = client.fetchTile(10, 20).join();
+
+        assertEquals(TerrainTile.NO_TUNNEL, tile.riverFloorAt(11, 21));
+        assertEquals(TerrainTile.NO_TUNNEL, tile.riverRoofAt(11, 21));
+        assertEquals(TerrainTile.NO_FLOW, tile.riverFlowAt(11, 21));
     }
 
     @Test
@@ -318,13 +350,25 @@ class DiffusionTerrainClientTest {
                                      int i1, int j1, int i2, int j2,
                                      short[] blockHeights, short[] biomeIds, short[] waterLevels,
                                      Integer protocolVersion) {
+        short[] none = new short[blockHeights.length];
+        java.util.Arrays.fill(none, (short) -1);
+        respondTile(exchange, status, width, height, tileX, tileZ, i1, j1, i2, j2,
+                blockHeights, biomeIds, waterLevels, none, none, none, protocolVersion);
+    }
+
+    private static void respondTile(com.sun.net.httpserver.HttpExchange exchange, int status,
+                                     int width, int height, int tileX, int tileZ,
+                                     int i1, int j1, int i2, int j2,
+                                     short[] blockHeights, short[] biomeIds, short[] waterLevels,
+                                     short[] riverFloors, short[] riverRoofs, short[] riverFlows,
+                                     Integer protocolVersion) {
         try {
             ByteBuffer buf = ByteBuffer
-                    .allocate((blockHeights.length + biomeIds.length + waterLevels.length) * 2)
+                    .allocate(blockHeights.length * 2 * 6)
                     .order(ByteOrder.LITTLE_ENDIAN);
-            for (short v : blockHeights) buf.putShort(v);
-            for (short v : biomeIds) buf.putShort(v);
-            for (short v : waterLevels) buf.putShort(v);
+            for (short[] plane : new short[][]{blockHeights, biomeIds, waterLevels, riverFloors, riverRoofs, riverFlows}) {
+                for (short v : plane) buf.putShort(v);
+            }
             byte[] payload = buf.array();
 
             if (protocolVersion != null) {

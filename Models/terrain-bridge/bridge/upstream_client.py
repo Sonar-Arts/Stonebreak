@@ -43,12 +43,20 @@ class UpstreamClient:
 
     def fetch_tile_with_water(
         self, i1: int, j1: int, i2: int, j2: int
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, tuple[np.ndarray, ...] | None]:
         """Like `fetch_tile`, plus the model's river water-surface plane (int16 metres,
-        WATER_NONE where dry). Only upstreams that speak `water=1` (terrain-slm) do."""
+        WATER_NONE where dry) and, with `river3d`, its river tunnel floor / roof / flow-octant
+        planes (int16 BLOCKS, -1 where none) -- or None. Only upstreams that speak `water=1`
+        (DaedalusTGM-Exp) do."""
         params = self._tile_params(i1, j1, i2, j2)
         params["water"] = 1
-        return self._fetch_planes(params, water=True)
+        if self._cfg.river3d:
+            params["river3d"] = 1
+        planes = self._fetch_raw(params, timeout=self._cfg.upstream_timeout_s)
+        if len(planes) < 3:
+            raise UpstreamError("upstream returned no water plane (does it speak water=1?)")
+        river = tuple(planes[3:6]) if self._cfg.river3d and len(planes) >= 6 else None
+        return planes[0], planes[1], planes[2], river
 
     def _tile_params(self, i1: int, j1: int, i2: int, j2: int) -> dict:
         params = {
@@ -126,10 +134,12 @@ class UpstreamClient:
         w = int(r.headers["X-Width"])
         body = r.content
         plane = h * w * 2
-        if len(body) not in (plane, plane * 2, plane * 3):
+        # 1 (elev_only), 2 (elev + biome), 3 (+ water surface) or 6 (+ river tunnel floor,
+        # roof and flow octant) planes.
+        if len(body) not in (plane, plane * 2, plane * 3, plane * 6):
             raise UpstreamError(
                 f"unexpected payload size for {h}x{w}: got {len(body)}, "
-                f"expected {plane}, {plane * 2} or {plane * 3}"
+                f"expected {plane} x 1, 2, 3 or 6 planes"
             )
         return [
             np.frombuffer(body[k : k + plane], dtype="<i2").reshape(h, w).copy()

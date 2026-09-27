@@ -33,10 +33,18 @@ from .tiling import TileId
 #   1: linear elevation -> block height
 #   2: integrated rate curve (height_mapping.HeightCurve)
 #   3: third plane, per-column water level (Phase 8)
-SCHEMA_VERSION = 3
+#   4: 3D river planes: tunnel floor, tunnel roof, flow octant (protocol v3)
+SCHEMA_VERSION = 4
 
-#: Planes in a cached payload, in order: block height, biome id, water level.
-PLANES = 3
+#: Planes in a cached payload, in order: block height, biome id, water level, river tunnel
+#: floor, river tunnel roof, river flow octant (the last three -1 where there is none).
+PLANES = 6
+#: The river planes' "nothing here" value (TerrainTile.NO_TUNNEL / NO_FLOW).
+NO_RIVER = -1
+
+
+def no_river_planes(shape) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    return tuple(np.full(shape, NO_RIVER, dtype=np.int16) for _ in range(3))
 
 
 def _config_fingerprint(cfg: BridgeConfig, extra: str = "") -> str:
@@ -73,7 +81,7 @@ class TileCache:
     def _path(self, tile: TileId) -> Path:
         return self._root / f"{tile.cache_key()}.bin"
 
-    def get(self, tile: TileId) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    def get(self, tile: TileId) -> tuple[np.ndarray, ...] | None:
         path = self._path(tile)
         try:
             data = path.read_bytes()
@@ -102,11 +110,13 @@ class TileCache:
         block_height: np.ndarray,
         biome: np.ndarray,
         water_level: np.ndarray,
+        river: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
     ) -> None:
         h, w = block_height.shape
+        river = river if river is not None else no_river_planes((h, w))
         header = np.array([h, w], dtype="<u4").tobytes()
         payload = header + b"".join(
-            plane.astype("<i2").tobytes() for plane in (block_height, biome, water_level)
+            plane.astype("<i2").tobytes() for plane in (block_height, biome, water_level, *river)
         )
         path = self._path(tile)
         tmp = path.with_suffix(".tmp")

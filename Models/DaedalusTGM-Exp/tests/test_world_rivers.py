@@ -1,5 +1,5 @@
 """Generated terrain with rivers: request-shape independence and no spills on real output.
-Skips when no packaged model is present (checkpoints/v2)."""
+Skips when no packaged model is present (checkpoints/v3)."""
 from pathlib import Path
 
 import pytest
@@ -7,7 +7,7 @@ import torch
 
 from terrain_slm.world.generator import WorldGenerator
 
-MODEL = Path(__file__).resolve().parents[1] / "checkpoints/v2"
+MODEL = Path(__file__).resolve().parents[1] / "checkpoints/v3"
 DEV = "cuda:1" if torch.cuda.device_count() > 1 else ("cuda" if torch.cuda.is_available() else "cpu")
 pytestmark = pytest.mark.skipif(not (MODEL / "planner.pt").exists(), reason="no packaged model")
 

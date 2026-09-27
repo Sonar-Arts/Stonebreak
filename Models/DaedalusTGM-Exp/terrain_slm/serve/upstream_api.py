@@ -5,15 +5,17 @@ Speaks the exact contract terrain-bridge's UpstreamClient uses:
   GET /terrain?i1&j1&i2&j2[&scale=1][&downscale=1][&noise=1.0][&elev_only=0][&water=0][&format=json]
       -> elevation int16 LE (floor of metres), then biome id int16 LE (unless elev_only),
          then -- only with water=1 -- the river water SURFACE int16 LE (floor of metres,
-         WATER_NONE where dry); headers X-Height / X-Width / X-Dtype: int16-le.
-Elevation always has the rivers carved in (terrain_slm.world.rivers), whether or not the
+         WATER_NONE where dry), then -- only with water=1&river3d=1 on the downscale path --
+         the 3D river planes in BLOCKS: tunnel floor, tunnel roof, flow octant (-1 = none);
+         headers X-Height / X-Width / X-Dtype: int16-le.
+Elevation always has the rivers carved in (terrain_slm.river pipeline), whether or not the
 water plane is requested, so every client sees the same ground.
 
 `downscale=D` (with scale=1) serves blocks coarser than the 30 m model grid: each block
-averages D x D native pixels (the 1:4 world is D=2, 60 m blocks). That path also settles
-water at BLOCK resolution against the bridge's own height curve (built from the same
-TERRAIN_BRIDGE_* environment the bridge reads): at least one block of water per river
-column, and dry neighbours raised to the water level, so nothing spills once quantised.
+averages D x D native pixels (the 1:4 world is D=2, 60 m blocks). That path runs the river
+pipeline's block stages against the bridge's own height curve (built from the same
+TERRAIN_BRIDGE_* environment the bridge reads): quantise, contain (dry neighbours raised to
+the water), undercut banks and overhangs, flow octants -- so nothing spills once quantised.
 Coordinates are in target-resolution pixels; native pixels are 30 m, `scale` upsamples
 (bilinear + upstream's slope-scaled detail noise), and biomes come from upstream's own
 classifier (vendored in terrain_slm.biomes) so ids stay game-compatible.
@@ -36,12 +38,13 @@ from flask import Flask, Response, jsonify, request
 from terrain_slm import MODEL_NAME
 from terrain_slm import biomes as B
 from terrain_slm.paths import BRIDGE_DIR, MODEL_DIR
-from terrain_slm.world import rivers as RV
+from terrain_slm.river import pipeline as RP
+from terrain_slm.river.scale import BlockScale
 from terrain_slm.world.generator import GenConfig, WorldGenerator
 
 NATIVE_M = 30.0
 WATER_NONE = -32768
-CURVE = None  # bridge HeightCurve, for block-resolution water settling (downscale path)
+CURVE = None  # bridge HeightCurve: the game's metres->blocks mapping (downscale path)
 
 
 def _bridge_curve(seed: int):
@@ -56,61 +59,37 @@ def _bridge_curve(seed: int):
     return HeightCurve.from_config(BridgeConfig.from_env(seed=seed))
 
 
-def _downsampled(i1: int, j1: int, i2: int, j2: int, d: int, want_water: bool):
-    """Blocks of d x d native pixels, with water settled at block resolution.
+def _downsampled(i1: int, j1: int, i2: int, j2: int, d: int):
+    """Blocks of d x d native pixels, built by the river pipeline's block stages.
 
-    Computes one block of margin all round (for the classifier's slope and the neighbour
-    rule), then crops. Returns (elev_m, biome, water_m or None), all (h, w).
+    Runs the pipeline over the request plus BLOCK_MARGIN columns (the block stages look at
+    neighbours), then crops. Heights and water levels come back as MID-BAND metres, so the
+    bridge's own curve maps them to exactly the blocks decided here; the river planes are
+    already blocks. Returns (elev_m, biome, water_m (NaN dry), (floor, roof, flow)), all (h, w).
     """
-    h, w = i2 - i1, j2 - j1
-    n1, m1 = (i1 - 1) * d, (j1 - 1) * d
-    elev_n, surf_n = GEN.terrain(n1, m1, (i2 + 1) * d, (j2 + 1) * d)
-    pool = lambda x: torch.nn.functional.avg_pool2d(x[None, None], d)[0, 0]
-    minpool = lambda x: -torch.nn.functional.max_pool2d(-x[None, None], d)[0, 0]
-    wet_n = ~torch.isnan(surf_n)
-    wet_frac = pool(wet_n.float())
-    wet = wet_frac >= 0.25
-    # Riverbed = the channel floor inside the block, not the bank average; water top = the
-    # lowest wet surface in it (conservative).
-    bed = minpool(elev_n)
-    top = minpool(torch.where(wet_n, surf_n, torch.full_like(surf_n, float("inf"))))
-    elev = torch.where(wet, bed, pool(elev_n))
-    wet = wet & torch.isfinite(top) & (elev > 0.5)
-
-    ci0, cj0 = n1, m1
-    clim_n = GEN.climate_native(ci0, cj0, ci0 + (h + 2) * d, cj0 + (w + 2) * d, elev_n)
+    mb = RP.BLOCK_MARGIN
+    n1, m1, n2, m2 = (i1 - mb) * d, (j1 - mb) * d, (i2 + mb) * d, (j2 + mb) * d
+    field, ctx = GEN.river_field(n1, m1, n2, m2)
+    cols = GEN.river.columns(field, ctx, d)
+    sc = GEN.scale
+    mid = lambda b: sc.to_metres(b.float() + 0.5)
+    elev = mid(cols.height)
+    water = torch.where(cols.wet, mid(cols.water), torch.full_like(elev, float("nan")))
+    clim_n = GEN.climate_native(n1, m1, n2, m2, field.carved)
     climate = torch.nn.functional.avg_pool2d(clim_n[None], d)[0]
+    crop = lambda x: x[..., mb:-mb, mb:-mb]
+    pad1 = lambda x: x[..., mb - 1 : -(mb - 1), mb - 1 : -(mb - 1)]
+    biome = B._classify_biome(crop(elev), crop(climate), i1, j1, elev_padded=pad1(elev), pixel_size_m=NATIVE_M * d)
+    river = tuple(crop(p) for p in (cols.floor, cols.roof, cols.flow))
+    return crop(elev), biome, crop(water), river
 
-    water = None
-    if CURVE is not None:
-        c = CURVE
-        hb = torch.from_numpy(c.to_block_height(elev.cpu().numpy()).astype(np.int32)).to(elev.device)
-        lb = torch.from_numpy(c.to_block_height(torch.nan_to_num(top, posinf=0.0).cpu().numpy())
-                              .astype(np.int32)).to(elev.device)
-        lb = torch.where(wet, torch.maximum(lb, hb + 1), torch.zeros_like(lb))
-        # Neighbour rule at block resolution: a dry column beside water must stand at least
-        # as high as that water, or the water would pour into it. One local pass: raise it.
-        held = torch.nn.functional.max_pool2d(torch.where(wet, lb, torch.full_like(lb, -1))[None, None].float(),
-                                              3, 1, 1)[0, 0].int()
-        dry_beside = (~wet) & (held >= 0) & (elev > 0.5)
-        hb = torch.where(dry_beside, torch.maximum(hb, held), hb)
-        # Back to metres that land mid-band on exactly those blocks.
-        to_m = lambda b: torch.from_numpy(c.to_elevation(b.cpu().numpy().astype(np.float64) + 0.5)
-                                          .astype(np.float32)).to(elev.device)
-        land = elev > 0.5
-        elev = torch.where(land | wet, to_m(hb), elev)
-        water = torch.where(wet, to_m(lb), torch.full_like(elev, float("nan")))
-    elif want_water:
-        water = torch.where(wet, top, torch.full_like(top, float("nan")))
 
-    crop = lambda x: x[..., 1:-1, 1:-1]
-    biome = B._classify_biome(crop(elev), crop(climate), i1, j1, elev_padded=elev, pixel_size_m=NATIVE_M * d)
-    return crop(elev), biome, (crop(water) if water is not None else None)
 app = Flask(__name__)
 GEN: WorldGenerator | None = None
 
 
-def _binary(elev: torch.Tensor, biome: torch.Tensor | None, water: torch.Tensor | None = None) -> Response:
+def _binary(elev: torch.Tensor, biome: torch.Tensor | None, water: torch.Tensor | None = None,
+            river: tuple[torch.Tensor, ...] | None = None) -> Response:
     e = np.clip(np.floor(elev.detach().float().cpu().numpy()), -32767, 32767).astype("<i2")
     payload = e.tobytes()
     if biome is not None:
@@ -119,6 +98,9 @@ def _binary(elev: torch.Tensor, biome: torch.Tensor | None, water: torch.Tensor 
         wv = water.detach().float().cpu().numpy()
         wi = np.where(np.isnan(wv), WATER_NONE, np.clip(np.floor(wv), -32767, 32767)).astype("<i2")
         payload += wi.tobytes()
+    if river is not None:
+        for plane in river:  # already blocks: tunnel floor, tunnel roof, flow octant (-1 = none)
+            payload += plane.detach().cpu().numpy().astype("<i2").tobytes()
     resp = Response(payload, mimetype="application/octet-stream")
     resp.headers["X-Height"] = str(e.shape[0])
     resp.headers["X-Width"] = str(e.shape[1])
@@ -206,15 +188,17 @@ def terrain():
         i1, j1, i2, j2 = _quad()
         as_json = request.args.get("format") == "json"
         want_water = request.args.get("water", default=0, type=int) == 1
+        want_river3d = want_water and request.args.get("river3d", default=0, type=int) == 1
         down = request.args.get("downscale", default=1, type=int)
         if down < 1 or (down > 1 and scale != 1):
             raise ValueError("downscale must be >= 1 and needs scale=1")
         if down > 1:
             with GEN.lock:
-                elev, biome, water = _downsampled(i1, j1, i2, j2, down, want_water)
+                elev, biome, water, river = _downsampled(i1, j1, i2, j2, down)
             if request.args.get("elev_only", default=0, type=int) == 1:
                 return _json(elev) if as_json else _binary(elev, None)
-            return _json(elev) if as_json else _binary(elev, biome, water if want_water else None)
+            return _json(elev) if as_json else _binary(elev, biome, water if want_water else None,
+                                                      river if want_river3d else None)
         if scale == 1:
             with GEN.lock:
                 if request.args.get("elev_only", default=0, type=int) == 1:
@@ -238,7 +222,7 @@ def terrain():
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("model_path", nargs="?", default="checkpoints/v2")
+    ap.add_argument("model_path", nargs="?", default="checkpoints/v3")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--port", type=int, default=int(os.getenv("PORT", "8010")))
     ap.add_argument("--host", default="127.0.0.1")
@@ -280,6 +264,9 @@ def main(argv=None):
                          GenConfig(t_start=args.t_start, steps=args.steps, amp_scale=args.amp_scale,
                                    river_log_threshold=args.river_threshold),
                          cache_regions=regions)
+    if CURVE is not None:
+        GEN.set_block_scale(BlockScale.from_curve(CURVE, device))
+    print(f"[{MODEL_NAME}] rivers: {GEN.river.describe()}", flush=True)
     print(f"[{MODEL_NAME}] model {GEN.model_id} on {device}, seed {args.seed}, "
           f"t_start {args.t_start}, steps {args.steps}, river threshold {GEN.cfg.river_log_threshold}, "
           f"{regions} cached regions", flush=True)

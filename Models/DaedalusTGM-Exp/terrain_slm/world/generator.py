@@ -26,9 +26,14 @@ from terrain_slm import MODEL_NAME
 from terrain_slm.data import descriptors as D
 from terrain_slm.models import planner as P
 from terrain_slm.models import refiner as R
+from terrain_slm.models import descgit as DG
+from terrain_slm.models import hydro as HY
 from terrain_slm.models import relief as RL
 from terrain_slm.synth import noise as S
-from terrain_slm.world import rivers as RV
+from terrain_slm.river import pipeline as RP
+from terrain_slm.river.banks import BankConfig, BankNet
+from terrain_slm.river.field import Drainage, RiverConfig, RiverField
+from terrain_slm.river.scale import BlockScale
 
 CP = D.CELL_PX
 WIN = 64  # planner window, cells
@@ -43,6 +48,15 @@ RELIEF_EXT = RELIEF_CORE + 2 * RELIEF_APRON  # 448 cells = 108 km
 RELIEF_NOISE_STREAM = 8191
 RIVER_THRESHOLD_RELIEF = 4.5
 RIVER_THRESHOLD_SMOOTH = 3.3
+RIVER_THRESHOLD_HYDRO = 5.5   # hydro drainage is realistic: 5.5 gives ~1-5% water on land with 3-16 block rivers
+# Descriptor sampler (MaskGIT) tiling: 64-cell windows around 32-cell cores, sampled in a fixed
+# 4-phase checkerboard. A window conditions only on the cores of earlier-phase neighbours, so the
+# dependency chain is at most 3 windows deep (request-independent) and nothing is cross-faded.
+DG_CORE = 32
+DG_RING = 16
+DG_WIN = DG_CORE + 2 * DG_RING
+DG_STEPS = 12
+DG_SMOOTH_CELLS = 0.7   # softens codebook quantisation (mostly the smooth coarse bands)
 RELIEF_FLOOR_M = 30.0  # sampled valleys never push inland ground below this (no inland seas)
 # Summit soft cap: above the knee, height approaches knee + span but never reaches it, so the
 # rare summit taller than the world's height curve allows is rounded, not sheared flat at
@@ -184,7 +198,7 @@ class GenConfig:
     t_start: float = 0.6  # 0 = refiner generates from noise, 1 = pure synth
     steps: int = 8
     amp_scale: float = 1.0
-    # River density knob (log1p upslope cells); the training definition is RV.LOG_THRESHOLD.
+    # River density knob (log1p upslope cells); the training definition is log1p(434) ~ 6.08.
     # None = calibrated default for the model: on a smooth trend the planner under-predicts
     # drainage and needs 3.3 to reach the Alps' ~3% river cells; on a relief-sampled trend
     # its drainage is realistic, 3.3 draws a looping mesh and 4.5 gives ~2% tree-like rivers.
@@ -233,15 +247,86 @@ class WorldGenerator:
             self.relief = RL.Relief(RL.ReliefConfig(**lc)).to(device).eval()
             self.relief.load_state_dict(lk["model"])
             rel_step = lk.get("step", 0)
-        self.model_id = f"{MODEL_NAME}/{model_dir.name}:p{pk.get('step', 0)}:r{rk.get('step', 0)}:l{rel_step}"
+        # Optional hydrology sidecar (drainage from the final coarse height) and bank model
+        # (the learned bank stage of the river pipeline).
+        self.hydro, hyd_step = self._optional(model_dir / "hydro.pt", lambda c: HY.Hydro(HY.HydroConfig(**c)))
+        self.banks, bank_step = self._optional(model_dir / "bank.pt", lambda c: BankNet(BankConfig(**c)))
+        self.descgit, dg_step = self._optional(model_dir / "descgit.pt", lambda c: DG.DescGit(DG.DescGitConfig(**c)))
+        self.model_id = (f"{MODEL_NAME}/{model_dir.name}:p{pk.get('step', 0)}:r{rk.get('step', 0)}:l{rel_step}"
+                         f":h{hyd_step}:b{bank_step}:g{dg_step}")
+        self._dg_windows = _LRU(8192)
         if cfg.river_log_threshold is None:
             from dataclasses import replace
-            self.cfg = replace(cfg, river_log_threshold=RIVER_THRESHOLD_RELIEF if self.relief is not None
-                               else RIVER_THRESHOLD_SMOOTH)
+            thr = (RIVER_THRESHOLD_HYDRO if self.hydro is not None else
+                   RIVER_THRESHOLD_RELIEF if self.relief is not None else RIVER_THRESHOLD_SMOOTH)
+            self.cfg = replace(cfg, river_log_threshold=thr)
+        self.river = RP.default_pipeline(self.banks)
+        self.river_cfg = RiverConfig(log_threshold=self.cfg.river_log_threshold)
+        self.scale = BlockScale.game_default(device)
+        self._hydro_windows = _LRU(64)
         self._relief_windows = _LRU(64)
         self._windows = _LRU(4096)
         self._regions = _LRU(cache_regions)
         self.lock = threading.RLock()
+
+    def _optional(self, path: Path, build):
+        if not path.exists():
+            return None, "none"
+        k = torch.load(path, map_location=self.device, weights_only=False)
+        c = dict(k["config"])
+        if "channels" in c:
+            c["channels"] = tuple(c["channels"])
+        m = build(c).to(self.device).eval()
+        m.load_state_dict(k["model"])
+        return m, k.get("step", 0)
+
+    def set_block_scale(self, scale: BlockScale) -> None:
+        """The game's metres<->blocks mapping (the model server passes the bridge's live curve)."""
+        self.scale = scale
+
+    # ---------------------------------------------------------------- window blending (cells)
+    @staticmethod
+    def _fade(ext: int, apron: int, device) -> torch.Tensor:
+        ramp = 2 * apron
+        t = (torch.arange(ramp, device=device, dtype=torch.float32) + 0.5) / ramp
+        wv = torch.ones(ext, device=device)
+        wv[:ramp] = torch.sin(0.5 * math.pi * t) ** 2
+        wv[-ramp:] = torch.cos(0.5 * math.pi * t) ** 2
+        return wv[:, None] * wv[None, :]
+
+    def _blend(self, ci0: int, cj0: int, hc: int, wc: int, fetch, channels: int) -> torch.Tensor:
+        """Cross-fade canonical RELIEF_EXT-cell windows (core RELIEF_CORE, apron RELIEF_APRON):
+        `fetch(wi, wj)` -> (channels, EXT, EXT). Returns (channels, hc, wc)."""
+        out = torch.zeros(channels, hc, wc, device=self.device)
+        ext = RELIEF_EXT
+        w2 = self._fade(ext, RELIEF_APRON, self.device)
+        for wi in range(math.floor((ci0 - ext + RELIEF_APRON) / RELIEF_CORE),
+                        math.floor((ci0 + hc - 1 + RELIEF_APRON) / RELIEF_CORE) + 1):
+            for wj in range(math.floor((cj0 - ext + RELIEF_APRON) / RELIEF_CORE),
+                            math.floor((cj0 + wc - 1 + RELIEF_APRON) / RELIEF_CORE) + 1):
+                a0, b0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
+                r0, r1 = max(ci0, a0), min(ci0 + hc, a0 + ext)
+                s0, s1 = max(cj0, b0), min(cj0 + wc, b0 + ext)
+                if r0 >= r1 or s0 >= s1:
+                    continue
+                win = fetch(wi, wj)
+                out[:, r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] += (
+                    win[:, r0 - a0 : r1 - a0, s0 - b0 : s1 - b0] * w2[r0 - a0 : r1 - a0, s0 - b0 : s1 - b0])
+        return out
+
+    def _owned(self, ci0: int, cj0: int, hc: int, wc: int, fetch) -> torch.Tensor:
+        """Categorical window output, taken from the window whose CORE owns each cell (classes
+        cannot be cross-faded). `fetch(wi, wj)` -> (EXT, EXT)."""
+        out = torch.zeros(hc, wc, dtype=torch.long, device=self.device)
+        for wi in range(math.floor(ci0 / RELIEF_CORE), math.floor((ci0 + hc - 1) / RELIEF_CORE) + 1):
+            for wj in range(math.floor(cj0 / RELIEF_CORE), math.floor((cj0 + wc - 1) / RELIEF_CORE) + 1):
+                a0, b0 = wi * RELIEF_CORE, wj * RELIEF_CORE
+                r0, r1 = max(ci0, a0), min(ci0 + hc, a0 + RELIEF_CORE)
+                s0, s1 = max(cj0, b0), min(cj0 + wc, b0 + RELIEF_CORE)
+                win = fetch(wi, wj)
+                oa, ob = a0 - RELIEF_APRON, b0 - RELIEF_APRON
+                out[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = win[r0 - oa : r1 - oa, s0 - ob : s1 - ob]
+        return out
 
     # ---------------------------------------------------------------- relief (cells)
     def _relief_window(self, wi: int, wj: int) -> torch.Tensor:
@@ -274,44 +359,29 @@ class WorldGenerator:
         plus sampled valley-scale relief (plain procedural trend without a relief model)."""
         if self.relief is None:
             return procedural_controls(ci0, cj0, hc, wc, self.seed, self.device)["trend"]
-        out = torch.zeros(hc, wc, device=self.device)
-        ext, ramp = RELIEF_EXT, 2 * RELIEF_APRON
-        u = torch.arange(ramp, device=self.device, dtype=torch.float32)
-        wv = torch.ones(ext, device=self.device)
-        t = (u + 0.5) / ramp
-        wv[:ramp] = torch.sin(0.5 * math.pi * t) ** 2
-        wv[-ramp:] = torch.cos(0.5 * math.pi * t) ** 2
-        w2 = wv[:, None] * wv[None, :]
-        for wi in range(math.floor((ci0 - ext + RELIEF_APRON) / RELIEF_CORE),
-                        math.floor((ci0 + hc - 1 + RELIEF_APRON) / RELIEF_CORE) + 1):
-            for wj in range(math.floor((cj0 - ext + RELIEF_APRON) / RELIEF_CORE),
-                            math.floor((cj0 + wc - 1 + RELIEF_APRON) / RELIEF_CORE) + 1):
-                a0, b0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
-                r0, r1 = max(ci0, a0), min(ci0 + hc, a0 + ext)
-                s0, s1 = max(cj0, b0), min(cj0 + wc, b0 + ext)
-                if r0 >= r1 or s0 >= s1:
-                    continue
-                win = self._relief_window(wi, wj)
-                out[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] += (
-                    win[r0 - a0 : r1 - a0, s0 - b0 : s1 - b0] * w2[r0 - a0 : r1 - a0, s0 - b0 : s1 - b0])
-        return out
+        return self._blend(ci0, cj0, hc, wc, lambda wi, wj: self._relief_window(wi, wj)[None], 1)[0]
 
     # ---------------------------------------------------------------- planner (cells)
+    def _planner_input(self, ci0: int, cj0: int, n: int) -> tuple[torch.Tensor, dict]:
+        """The planner's (and descriptor sampler's) input for n x n cells from (ci0, cj0)."""
+        c = procedural_controls(ci0, cj0, n, n, self.seed, self.device)
+        c["trend"] = self.trend(ci0, cj0, n, n)
+        x = torch.zeros(1, P.N_IN, n, n, device=self.device)
+        x[0, P.IN_TREND] = c["trend"] / P.HEIGHT_SCALE_M
+        for k, name in enumerate(P.CLIMATE_NAMES):
+            x[0, P.IN_T0 + k] = P.climate_input(name, c[name])
+        x[0, P.IN_WILD] = (c["wild"] - P.WILD_NORM[0]) / P.WILD_NORM[1]
+        x[0, P.IN_HAS_TREND] = 1.0
+        x[0, P.IN_HAS_CLIMATE] = 1.0
+        x[0, P.IN_HAS_WILD] = 1.0
+        return x, c
+
     def _window(self, wi: int, wj: int) -> torch.Tensor:
         """Planner output for the canonical window whose top-left cell is (wi*STRIDE, wj*STRIDE):
         (11, WIN, WIN) = [height_m, desc(8, raw units), river_prob, log1p(upslope cells)]."""
         def run():
             ci0, cj0 = wi * STRIDE, wj * STRIDE
-            c = procedural_controls(ci0, cj0, WIN, WIN, self.seed, self.device)
-            c["trend"] = self.trend(ci0, cj0, WIN, WIN)
-            x = torch.zeros(1, P.N_IN, WIN, WIN, device=self.device)
-            x[0, P.IN_TREND] = c["trend"] / P.HEIGHT_SCALE_M
-            for k, name in enumerate(P.CLIMATE_NAMES):
-                x[0, P.IN_T0 + k] = P.climate_input(name, c[name])
-            x[0, P.IN_WILD] = (c["wild"] - P.WILD_NORM[0]) / P.WILD_NORM[1]
-            x[0, P.IN_HAS_TREND] = 1.0
-            x[0, P.IN_HAS_CLIMATE] = 1.0
-            x[0, P.IN_HAS_WILD] = 1.0
+            x, c = self._planner_input(ci0, cj0, WIN)
             with torch.no_grad():
                 out = self.planner(x)[0].float()
             # A light blur hides the 4-cell patch grid of the ViT head; window edges (where the
@@ -327,8 +397,8 @@ class WorldGenerator:
             return torch.cat([height[None], desc, river[None], logacc[None]], dim=0)
         return self._windows.get_or((wi, wj), run)
 
-    def cells(self, ci0: int, cj0: int, hc: int, wc: int) -> dict:
-        """Blended planner fields + controls for cells [ci0, ci0+hc) x [cj0, cj0+wc)."""
+    def _planner_cells(self, ci0: int, cj0: int, hc: int, wc: int) -> torch.Tensor:
+        """Blended planner output (11, hc, wc) for cells [ci0, ci0+hc) x [cj0, cj0+wc)."""
         out = torch.zeros(11, hc, wc, device=self.device)
         u = torch.arange(WIN, device=self.device, dtype=torch.float32)
         w1 = torch.sin(math.pi * (u + 0.5) / WIN) ** 2  # sums to 1 at stride WIN/2
@@ -343,10 +413,98 @@ class WorldGenerator:
                 win = self._window(wi, wj)
                 out[:, r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] += (
                     win[:, r0 - a0 : r1 - a0, s0 - b0 : s1 - b0] * w2[r0 - a0 : r1 - a0, s0 - b0 : s1 - b0])
+        return out
+
+    # ---------------------------------------------------------------- descriptors (cells)
+    @staticmethod
+    def _dg_phase(wi: int, wj: int) -> int:
+        return (wi & 1) + 2 * (wj & 1)
+
+    def _dg_window(self, wi: int, wj: int) -> tuple[torch.Tensor, torch.Tensor]:
+        """Sampled descriptor tokens (amp, shape) for the core cells [wi*DG_CORE, +DG_CORE) x
+        [wj*DG_CORE, +DG_CORE), conditioned on earlier-phase neighbours' cores."""
+        def run():
+            ci0, cj0 = wi * DG_CORE - DG_RING, wj * DG_CORE - DG_RING
+            x, _ = self._planner_input(ci0, cj0, DG_WIN)
+            a = torch.full((1, DG_WIN, DG_WIN), DG.K_AMP, dtype=torch.long, device=self.device)
+            s = torch.full((1, DG_WIN, DG_WIN), DG.K_SHAPE, dtype=torch.long, device=self.device)
+            known = torch.zeros(1, DG_WIN, DG_WIN, dtype=torch.bool, device=self.device)
+            me = self._dg_phase(wi, wj)
+            for di in (-1, 0, 1):
+                for dj in (-1, 0, 1):
+                    if (di, dj) == (0, 0) or self._dg_phase(wi + di, wj + dj) >= me:
+                        continue
+                    na, ns = self._dg_window(wi + di, wj + dj)
+                    # Neighbour core in this window's coordinates, clipped to the window.
+                    r0, c0 = DG_RING + di * DG_CORE, DG_RING + dj * DG_CORE
+                    rr0, rr1 = max(0, r0), min(DG_WIN, r0 + DG_CORE)
+                    cc0, cc1 = max(0, c0), min(DG_WIN, c0 + DG_CORE)
+                    a[0, rr0:rr1, cc0:cc1] = na[rr0 - r0 : rr1 - r0, cc0 - c0 : cc1 - c0]
+                    s[0, rr0:rr1, cc0:cc1] = ns[rr0 - r0 : rr1 - r0, cc0 - c0 : cc1 - c0]
+                    known[0, rr0:rr1, cc0:cc1] = True
+            ii = torch.arange(ci0, ci0 + DG_WIN, device=self.device, dtype=torch.int64).view(-1, 1)
+            jj = torch.arange(cj0, cj0 + DG_WIN, device=self.device, dtype=torch.int64).view(1, -1)
+            keys = S._hash32(S._hash32(ii ^ (self.seed * 0x9E3779B1 & S._MASK32)) ^ jj)[None]
+            sa, ss = DG.sample(self.descgit, x, a, s, known, keys, steps=DG_STEPS)
+            core = lambda t: t[0, DG_RING : DG_RING + DG_CORE, DG_RING : DG_RING + DG_CORE]
+            return core(sa), core(ss)
+        return self._dg_windows.get_or((wi, wj), run)
+
+    def sampled_desc(self, ci0: int, cj0: int, hc: int, wc: int) -> torch.Tensor:
+        """(8, hc, wc) raw descriptors sampled by the MaskGIT sampler (hard core ownership)."""
+        m = 2
+        a0, b0, h, w = ci0 - m, cj0 - m, hc + 2 * m, wc + 2 * m
+        a = torch.zeros(h, w, dtype=torch.long, device=self.device)
+        s = torch.zeros(h, w, dtype=torch.long, device=self.device)
+        for wi in range(math.floor(a0 / DG_CORE), math.floor((a0 + h - 1) / DG_CORE) + 1):
+            for wj in range(math.floor(b0 / DG_CORE), math.floor((b0 + w - 1) / DG_CORE) + 1):
+                ca, cs = self._dg_window(wi, wj)
+                r0, c0 = wi * DG_CORE, wj * DG_CORE
+                rr0, rr1 = max(a0, r0), min(a0 + h, r0 + DG_CORE)
+                cc0, cc1 = max(b0, c0), min(b0 + w, c0 + DG_CORE)
+                a[rr0 - a0 : rr1 - a0, cc0 - b0 : cc1 - b0] = ca[rr0 - r0 : rr1 - r0, cc0 - c0 : cc1 - c0]
+                s[rr0 - a0 : rr1 - a0, cc0 - b0 : cc1 - b0] = cs[rr0 - r0 : rr1 - r0, cc0 - c0 : cc1 - c0]
+        d = self.descgit.codebook.decode(a[None], s[None])
+        d = D.blur(d, DG_SMOOTH_CELLS)[0, :, m:-m, m:-m]
+        return d * self.desc_std.view(-1, 1, 1) + self.desc_mean.view(-1, 1, 1)
+
+    # ---------------------------------------------------------------- hydrology (cells)
+    def _hydro_window(self, wi: int, wj: int) -> torch.Tensor:
+        """Hydro sidecar on the planner's final coarse height for one canonical window:
+        (3, EXT, EXT) = [log1p(upslope cells), river probability, D8 class (as float)]."""
+        def run():
+            ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
+            n = RELIEF_EXT
+            height = self._planner_cells(ci0, cj0, n, n)[0]
+            c = procedural_controls(ci0, cj0, n, n, self.seed, self.device)
+            x = HY.build_input(height[None, None], {k: c[k][None, None] for k in P.CLIMATE_NAMES})
+            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16, enabled=x.is_cuda):
+                out = self.hydro(x)[0].float()
+            return torch.stack([out[HY.OUT_LOGACC] * P.LOGACC_SCALE, torch.sigmoid(out[HY.OUT_RIVER]),
+                                out[HY.OUT_D8].argmax(0).float()])
+        return self._hydro_windows.get_or((wi, wj), run)
+
+    def drainage(self, ci0: int, cj0: int, hc: int, wc: int) -> dict:
+        """Per-cell drainage: the hydro sidecar's when loaded (logacc, river, d8), else None."""
+        if self.hydro is None:
+            return {}
+        fields = self._blend(ci0, cj0, hc, wc, lambda wi, wj: self._hydro_window(wi, wj)[:2], 2)
+        d8 = self._owned(ci0, cj0, hc, wc, lambda wi, wj: self._hydro_window(wi, wj)[2].long())
+        return {"logacc": fields[0], "river": fields[1], "d8": d8}
+
+    def cells(self, ci0: int, cj0: int, hc: int, wc: int) -> dict:
+        """Blended planner fields + controls for cells [ci0, ci0+hc) x [cj0, cj0+wc); drainage
+        (logacc, river, d8) from the hydro sidecar when one is loaded."""
+        out = self._planner_cells(ci0, cj0, hc, wc)
         ctrl = procedural_controls(ci0, cj0, hc, wc, self.seed, self.device)
         ctrl["trend_raw"] = ctrl["trend"]
         ctrl["trend"] = self.trend(ci0, cj0, hc, wc)
-        return {"height": out[0], "desc": out[1:9], "river": out[9], "logacc": out[10], **ctrl}
+        res = {"height": out[0], "desc": out[1:9], "river": out[9], "logacc": out[10], "d8": None, **ctrl}
+        res.update(self.drainage(ci0, cj0, hc, wc))
+        if self.descgit is not None:
+            res["desc_planner"] = res["desc"]
+            res["desc"] = self.sampled_desc(ci0, cj0, hc, wc)
+        return res
 
     # ---------------------------------------------------------------- pixels
     def _region(self, ri: int, rj: int) -> torch.Tensor:
@@ -408,18 +566,27 @@ class WorldGenerator:
                         reg[r0 - a0 : r1 - a0, s0 - b0 : s1 - b0] * w2[r0 - a0 : r1 - a0, s0 - b0 : s1 - b0])
             return out
 
-    def terrain(self, i1: int, j1: int, i2: int, j2: int) -> tuple[torch.Tensor, torch.Tensor]:
-        """Final native terrain with rivers: (carved elevation m, water surface m / NaN dry)."""
+    def river_field(self, i1: int, j1: int, i2: int, j2: int):
+        """Run the river pipeline over native pixels [i1, i2) x [j1, j2): (RiverField cropped to
+        the request, RiverContext whose px_origin is (i1, j1))."""
         with self.lock:
-            hp = RV.HALO_PX
+            hp = RP.HALO_PX
             a1, b1, a2, b2 = i1 - hp, j1 - hp, i2 + hp, j2 + hp
             heights = soft_cap_peaks(self.native(a1, b1, a2, b2))
-            ci0, cj0 = a1 // CP - RV.CELL_HALO, b1 // CP - RV.CELL_HALO
-            ci1, cj1 = -(-a2 // CP) + RV.CELL_HALO, -(-b2 // CP) + RV.CELL_HALO
+            ci0, cj0 = a1 // CP - RP.CELL_HALO, b1 // CP - RP.CELL_HALO
+            ci1, cj1 = -(-a2 // CP) + RP.CELL_HALO, -(-b2 // CP) + RP.CELL_HALO
             c = self.cells(ci0, cj0, ci1 - ci0, cj1 - cj0)
-            carved, surface = RV.carve(heights, c["logacc"], (ci0, cj0), (a1, b1),
-                                       log_threshold=self.cfg.river_log_threshold)
-            return carved[hp:-hp, hp:-hp], surface[hp:-hp, hp:-hp]
+            field, ctx = self.river.run(heights, Drainage(c["logacc"], (ci0, cj0), c["d8"]), (a1, b1),
+                                        self.scale, self.river_cfg, self.seed)
+            crop = lambda x: x[hp:-hp, hp:-hp] if isinstance(x, torch.Tensor) and x.dim() == 2 else x
+            field = RiverField(**{k: crop(v) for k, v in vars(field).items()})
+            ctx.px_origin = (i1, j1)
+            return field, ctx
+
+    def terrain(self, i1: int, j1: int, i2: int, j2: int) -> tuple[torch.Tensor, torch.Tensor]:
+        """Final native terrain with rivers: (carved elevation m, water surface m / NaN dry)."""
+        field, _ = self.river_field(i1, j1, i2, j2)
+        return field.carved, field.top
 
     def climate_native(self, i1: int, j1: int, i2: int, j2: int, elev: torch.Tensor) -> torch.Tensor:
         """(4, H, W) upstream-unit climate at native pixels, temperature lapse-adjusted to `elev`."""

@@ -64,3 +64,5 @@ __pycache__/
 # bridge's tile cache is keyed on it) plus the same two lines for that directory here.
 !/checkpoints/v2/
 !/checkpoints/v2/*.pt
+!/checkpoints/v3/
+!/checkpoints/v3/*.pt

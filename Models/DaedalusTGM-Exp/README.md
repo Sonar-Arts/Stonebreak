@@ -13,10 +13,13 @@ mountain ranges, valleys and rivers for a 256-block-tall world with 60 m blocks.
 ## Pipeline in one line
 
 Procedural controls (continents, mountain ranges, climate) → **relief sampler** (0.43M, flow
-matching; samples valley networks) → **planner** (1.56M ViT; coarse height, terrain descriptors,
-rivers) → **synth** (descriptor-driven noise) → **refiner** (0.34M, flow matching) → summit soft
-cap → river pass. The game reaches it through the shared tile adapter in
-[`../terrain-bridge/`](../terrain-bridge/).
+matching; samples valley networks) → **planner** (1.56M ViT; coarse height) → **MaskGIT descriptor
+sampler** (1.55M; texture without averaging) and **hydrology sidecar** (0.40M; drainage, rivers,
+flow directions) → **synth** → **refiner** (0.34M, flow matching) → summit soft cap → **river
+pipeline** (swappable stages: centrelines, 3–16-block channels, **learned banks** (0.24M), bed,
+containment, then block stages with **undercuts, overhangs and flow** in the game's 3D tunnel
+planes). The game reaches it through the shared tile adapter in [`../terrain-bridge/`](../terrain-bridge/)
+(tile protocol v3).
 
 ## Names
 
@@ -42,13 +45,13 @@ uv sync
 ### Playing
 
 Nothing to do by hand. Stonebreak's `TerrainServiceProcessManager` launches this server and the
-bridge with the model in `checkpoints/v2`. Both get the same `TERRAIN_BRIDGE_*` scale settings
+bridge with the model in `checkpoints/v3`. Both get the same `TERRAIN_BRIDGE_*` scale settings
 from `TerrainScale`.
 
 To run the server by hand:
 
 ```bash
-.venv/bin/python -m terrain_slm.serve.upstream_api checkpoints/v2 --port 8010 --seed 0
+.venv/bin/python -m terrain_slm.serve.upstream_api checkpoints/v3 --port 8010 --seed 0
 curl localhost:8010/health
 ```
 
@@ -61,6 +64,7 @@ great_plains, norway and east_africa.
 ```bash
 .venv/bin/python scripts/download_region.py --region alps
 .venv/bin/python -m terrain_slm.data.build --region alps
+.venv/bin/python -m terrain_slm.data.water --region alps     # water masks for the bank model
 ```
 
 Building a region's drainage uses the bridge's `hydrology` package, found through
@@ -76,7 +80,13 @@ Run one training job per GPU. Two jobs on one card run about 15× slower.
 .venv/bin/python -m terrain_slm.train.train_relief  --out checkpoints/relief_r0  --device cuda:1   # ~11 min
 .venv/bin/python -m terrain_slm.train.train_planner --out checkpoints/planner_r1 --dim 176 --depth 4 --steps 40000
 .venv/bin/python -m terrain_slm.train.train_refiner --out checkpoints/refiner_r0 --steps 30000
+.venv/bin/python -m terrain_slm.train.train_hydro   --out checkpoints/hydro_h0     # ~8 min
+.venv/bin/python -m terrain_slm.train.train_banks   --out checkpoints/bank_b0      # ~6 min, needs water.npz
+.venv/bin/python -m terrain_slm.train.train_descgit --out checkpoints/descgit_d0   # ~20 min
 ```
+
+Optional models load when their file is in the model dir (`relief.pt`, `hydro.pt`, `bank.pt`,
+`descgit.pt`); without one, that stage falls back to the previous behaviour.
 
 ### Shipping a model
 
@@ -85,7 +95,7 @@ Run one training job per GPU. Two jobs on one card run about 15× slower.
    with no relief sampler.
 2. Point the game at the new directory: `TerrainServiceProcessManager.BackendDefaults`, or
    `-Dstonebreak.terrainService.model=`.
-3. Un-ignore the new directory in `.gitignore`: copy the two `!/checkpoints/v2...` lines. The
+3. Un-ignore the new directory in `.gitignore`: copy the two `!/checkpoints/v3...` lines. The
    shipping model is committed (about 9 MB, plain git), so a fresh clone generates terrain as-is.
 
 Always use a new directory name. The bridge's tile cache is keyed on `slm:<model dir>`, so
@@ -95,19 +105,19 @@ including edits to the controls.
 ### Evaluating
 
 ```bash
-.venv/bin/python -m terrain_slm.eval.mountains --seed 2 --out reports/v2   # block stats vs real Alps + hillshade
-.venv/bin/python -m terrain_slm.eval.sheet --model checkpoints/v2          # held-out eval sheet
+.venv/bin/python -m terrain_slm.eval.mountains --seed 2 --out reports/v3   # block stats vs real Alps + hillshade
+.venv/bin/python -m terrain_slm.eval.sheet --model checkpoints/v3          # held-out eval sheet
 ```
 
 ## Layout
 
 ```
-terrain_slm/        package: data/ synth/ models/ train/ world/ serve/ eval/ · paths.py · biomes.py
+terrain_slm/        package: data/ synth/ models/ river/ train/ world/ serve/ eval/ · paths.py · device.py · biomes.py
 tests/              pytest suite
 scripts/            download_region.py
 configs/
 docs/               Architecture.md · Terrain-SLM-Plan.md · system-overview.{png,py} · diagnostics/
-checkpoints/        v2/ = the shipping model (tracked); training runs and poc/ (v1) are ignored
+checkpoints/        v3/ = the shipping model (tracked, ~18 MB; v2/ also tracked); training runs and poc/ are ignored
 reports/            evaluation output (ignored)
 data/               training data: a folder, or a symlink to a data disk (ignored)
 ```

@@ -4,8 +4,8 @@ Stonebreak's terrain models, and the shared service that connects them to the ga
 
 | Folder | What it is | Status |
 |---|---|---|
-| [`DaedalusTGM-Exp/`](DaedalusTGM-Exp/) | Daedalus Terrain Generation Model (experimental): our own terrain model. Procedural controls → relief sampler → planner → synth → refiner → rivers | **Default** generator (`-Dstonebreak.terrainService.backend=slm`) |
-| [`terrain-bridge/`](terrain-bridge/) | FastAPI tile adapter between the game's `DiffusionTerrainClient` and a model server: metres → blocks (`HeightCurve`), water levels, seed pinning, on-disk tile cache | Required: every model is served through it |
+| [`DaedalusTGM-Exp/`](DaedalusTGM-Exp/) | Daedalus Terrain Generation Model (experimental), v3: our own terrain model. Procedural controls → relief sampler → planner → MaskGIT descriptors + hydrology sidecar → synth → refiner → river pipeline (learned banks, 3D undercuts/overhangs) | **Default** generator (`-Dstonebreak.terrainService.backend=slm`) |
+| [`terrain-bridge/`](terrain-bridge/) | FastAPI tile adapter between the game's `DiffusionTerrainClient` and a model server: metres → blocks (`HeightCurve`), water levels, 3D river planes (tile protocol v3), seed pinning, on-disk tile cache | Required: every model is served through it |
 
 The stock diffusion model that DaedalusTGM-Exp replaced is a local install in
 `Dev Working/terrain-diffusion-spike/`. It is not part of the repo, and is reachable only through

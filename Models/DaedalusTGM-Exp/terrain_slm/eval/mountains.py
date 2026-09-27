@@ -1,6 +1,6 @@
 """Mountain report: does a generated world have tall, valley-cut ranges in blocks?
 
-    python -m terrain_slm.eval.mountains --model checkpoints/v2 --seed 2 --out reports/v2
+    python -m terrain_slm.eval.mountains --model checkpoints/v3 --seed 2 --out reports/v3
 
 Finds the tallest trend near spawn, generates a 1024x1024-block (61 km) square around it,
 and compares it with the highest Alps window of the same size:
@@ -90,7 +90,7 @@ def real_alps_window(data: Path) -> np.ndarray:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", type=Path, default=Path("checkpoints/v2"))
+    ap.add_argument("--model", type=Path, default=Path("checkpoints/v3"))
     ap.add_argument("--seed", type=int, default=2)
     ap.add_argument("--device", default=default_device())
     ap.add_argument("--data", type=Path, default=Path("data"))

@@ -142,6 +142,7 @@ class UpstreamWater:
         bounds_blocks: tuple[int, int, int, int],
         elevation_m: np.ndarray,
         surface_m: np.ndarray | None = None,
+        river: tuple[np.ndarray, ...] | None = None,
     ) -> tuple[np.ndarray, np.ndarray, dict]:
         heights = self._curve.to_block_height(elevation_m)
         water = np.where(heights < self._sea_level, self._sea_level, -1).astype(np.int16)
@@ -149,7 +150,12 @@ class UpstreamWater:
         if surface_m is not None:
             wet = surface_m != self.WATER_NONE
             levels = self._curve.to_block_height(np.where(wet, surface_m, elevation_m))
-            river = wet & (levels > heights)
+            # A wet column under an overhang keeps the bank's full height above its water
+            # (the water lives in its tunnel, river[0] = floor), so it is water even though its
+            # level is below its height.
+            tunnel = river is not None and river[0] is not None
+            under = wet & (river[0] >= 0) if tunnel else np.zeros_like(wet)
+            river = wet & ((levels > heights) | under)
             water = np.where(river, np.maximum(water, levels), water).astype(np.int16)
             report["wet_columns"] = int(river.sum())
         return heights, water, report
