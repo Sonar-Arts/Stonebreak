@@ -100,7 +100,7 @@ public class TerrainWaterConsistencyTest {
      * <p>Stated strictly — no air beside water at all — which holds here because the fake's
      * lakes are level. Real terrain has waterfalls, where a step-down beside a lower water
      * body is deliberate; that case is the bridge's to police, and
-     * {@code terrain-bridge/tests/test_carve.py} does, on both sides of a tile seam.
+     * {@code Models/terrain-bridge/tests/test_carve.py} does, on both sides of a tile seam.
      */
     @Test
     public void noWaterBlockIsExposedToAirBesideIt() {

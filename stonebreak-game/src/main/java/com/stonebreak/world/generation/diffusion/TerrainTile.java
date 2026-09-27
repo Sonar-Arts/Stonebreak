@@ -10,7 +10,7 @@ package com.stonebreak.world.generation.diffusion;
  * <p>Upstream crops as {@code elev_up[crop_i1:crop_i2, crop_j1:crop_j2]} and
  * reports {@code h, w = elev.shape} (see minecraft_api.py {@code _get_upsampled}),
  * so <em>rows are the i axis</em> — which the bridge maps to world X
- * ({@code i1 = tile_x * tile_size}, see terrain-bridge/bridge/tiling.py) — and
+ * ({@code i1 = tile_x * tile_size}, see Models/terrain-bridge/bridge/tiling.py) — and
  * columns are the j axis, i.e. world Z. Getting this backwards transposes each
  * tile about its own diagonal; because tiles are square no length check ever
  * catches it, and the only symptom is tile-sized terrain patches that don't

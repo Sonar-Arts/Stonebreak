@@ -2,7 +2,7 @@ package com.stonebreak.world.generation.diffusion;
 
 /**
  * The bridge rejected a request because it is pinned to a different seed than the one the caller
- * asked for (its HTTP 400 — the only 400 it produces, see terrain-bridge/bridge/main.py
+ * asked for (its HTTP 400 — the only 400 it produces, see Models/terrain-bridge/bridge/main.py
  * {@code _require_matching_seed}).
  *
  * <p>Deliberately a subtype rather than a swallowed error: the meaning depends entirely on who

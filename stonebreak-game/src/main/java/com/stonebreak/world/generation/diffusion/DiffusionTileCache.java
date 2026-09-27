@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Java-side tile cache in front of {@link DiffusionTerrainClient}: buckets
  * world coordinates the same way the bridge does ({@code Math.floorDiv},
- * see terrain-bridge/bridge/tiling.py), de-dupes concurrent in-flight
+ * see Models/terrain-bridge/bridge/tiling.py), de-dupes concurrent in-flight
  * requests for the same tile (two chunk-worker threads landing on the same
  * tile share one HTTP call), and bounds memory with LRU eviction over
  * resolved tiles. Failures are never cached — the next probe gets a fresh

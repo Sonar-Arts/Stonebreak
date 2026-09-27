@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *   ../venv/bin/python -m terrain_diffusion.inference.minecraft_api \
  *       xandergos/terrain-diffusion-30m --no-compile --device cuda \
  *       --port 8010 --hdf5-file TEMP --seed 1433293152336000383
- *   cd terrain-bridge &amp;&amp; TERRAIN_BRIDGE_SEED=1433293152336000383 \
+ *   cd Models/terrain-bridge &amp;&amp; TERRAIN_BRIDGE_SEED=1433293152336000383 \
  *       TERRAIN_BRIDGE_UPSTREAM_URL=http://localhost:8010 \
  *       TERRAIN_BRIDGE_HYDROLOGY=0 venv/bin/python -m uvicorn bridge.main:app --port 8180
  * </pre>

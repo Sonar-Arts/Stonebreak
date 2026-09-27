@@ -99,8 +99,8 @@ class TerrainServiceProcessManagerTest {
         assertTrue(up.module().equals(TerrainServiceProcessManager.UPSTREAM_MODULE));
         assertTrue(up.model().equals("xandergos/terrain-diffusion-30m"));
         assertTrue(slm.module().equals(TerrainServiceProcessManager.SLM_MODULE));
-        assertTrue(slm.pythonExe().startsWith("terrain-slm/"));
-        assertTrue(slm.repoDir().equals("terrain-slm"));
+        assertTrue(slm.pythonExe().startsWith("Models/DaedalusTGM-Exp/"));
+        assertTrue(slm.repoDir().equals("Models/DaedalusTGM-Exp"));
         assertFalse(up.logName().equals(slm.logName()));
     }
 
@@ -139,7 +139,7 @@ class TerrainServiceProcessManagerTest {
                 String.valueOf(com.stonebreak.world.operations.WorldConfiguration.SEA_LEVEL)));
         assertTrue(env.get("TERRAIN_BRIDGE_DOWNSCALE").equals("2"), "60 m blocks from a 30 m model");
         assertTrue(env.get("TERRAIN_BRIDGE_LOWLAND_METERS_PER_BLOCK").equals("16"));
-        assertTrue(env.get("TERRAIN_BRIDGE_HIGHLAND_METERS_PER_BLOCK").equals("96"));
+        assertTrue(env.get("TERRAIN_BRIDGE_HIGHLAND_METERS_PER_BLOCK").equals("38"));
         assertFalse(com.stonebreak.world.generation.diffusion.TerrainScale.serviceEnvironment(false)
                 .containsKey("TERRAIN_BRIDGE_DOWNSCALE"), "the legacy upstream cannot downscale");
     }

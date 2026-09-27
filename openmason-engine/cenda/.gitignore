@@ -23,5 +23,5 @@ __pycache__/
 *.qdrep
 *.sqlite
 
-# Weights and golden tensors exported from terrain-slm (regenerated, never source)
+# Weights and golden tensors exported from DaedalusTGM-Exp (Models/DaedalusTGM-Exp) (regenerated, never source)
 /native/nn_cuda/tests/goldens/

@@ -2,12 +2,12 @@ package com.stonebreak.world.generation.diffusion;
 
 /**
  * Java-side knobs for talking to {@code terrain-bridge}. Defaults mirror the
- * bridge's own defaults (terrain-bridge/README.md) except where noted.
+ * bridge's own defaults (Models/terrain-bridge/README.md) except where noted.
  *
  * {@code tileSizeBlocks} MUST equal the bridge's {@code TERRAIN_BRIDGE_TILE_SIZE}
  * — it is used to bucket world coordinates into tile keys client-side, the
  * same way {@code TERRAIN_BRIDGE_SEED} must match the bridge's pinned seed
- * (terrain-bridge/README.md's "this bridge cannot verify that match itself").
+ * (Models/terrain-bridge/README.md's "this bridge cannot verify that match itself").
  */
 public record DiffusionBridgeConfig(
         String baseUrl,
@@ -75,7 +75,7 @@ public record DiffusionBridgeConfig(
                 // Coarse-elevation chunking, for the river walker's DEM. Both MUST equal the
                 // bridge's TERRAIN_BRIDGE_COARSE_CHUNK_BLOCKS / _CELL_BLOCKS, exactly like
                 // tileSizeBlocks: the chunk size fixes the canonical upstream request shape, and
-                // upstream is only deterministic per shape (terrain-bridge/bridge/tiling.py), so a
+                // upstream is only deterministic per shape (Models/terrain-bridge/bridge/tiling.py), so a
                 // mismatch would fetch differently-shaped ground and put seams back. CoarseDem
                 // verifies both against the response headers rather than trusting them.
                 Integer.getInteger("stonebreak.terrainBridge.coarseChunkBlocks", 2048),

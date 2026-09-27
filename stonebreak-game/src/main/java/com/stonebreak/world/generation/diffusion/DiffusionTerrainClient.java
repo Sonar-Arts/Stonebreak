@@ -19,8 +19,8 @@ import java.util.logging.Logger;
 
 /**
  * Thin async HTTP client for terrain-bridge's {@code POST /generate_heightmap}
- * and {@code POST /prefetch} (contract: terrain-bridge/README.md, verified
- * against terrain-bridge/bridge/main.py). Retries transient failures with
+ * and {@code POST /prefetch} (contract: Models/terrain-bridge/README.md, verified
+ * against Models/terrain-bridge/bridge/main.py). Retries transient failures with
  * exponential backoff; once retries are exhausted the returned future
  * completes exceptionally with {@link TerrainBridgeException} — callers must
  * not substitute a fallback (plan.md Phase 2).
@@ -37,7 +37,7 @@ public class DiffusionTerrainClient {
 
     /**
      * Tile-body layout this build understands. Must match {@code PROTOCOL_VERSION} in
-     * terrain-bridge/bridge/main.py. v1 was (block height, biome); v2 adds the per-column
+     * Models/terrain-bridge/bridge/main.py. v1 was (block height, biome); v2 adds the per-column
      * water level.
      */
     private static final int PROTOCOL_VERSION = 2;
@@ -290,7 +290,7 @@ public class DiffusionTerrainClient {
     /**
      * True for the bridge's "still generating this tile, come back later" response — a 503
      * carrying {@code Retry-After}. Gated on the header, not the bare status code, because
-     * nothing else in {@code terrain-bridge/bridge/main.py} sends 503 at all today (its other
+     * nothing else in {@code Models/terrain-bridge/bridge/main.py} sends 503 at all today (its other
      * failures are 502 for an unreachable upstream and 400 for a seed mismatch); keying on the
      * header rather than assuming every future 503 means "solving" means a genuinely broken
      * bridge that happens to answer 503 without one still gets the fast {@code maxRetries}
@@ -317,7 +317,7 @@ public class DiffusionTerrainClient {
     /**
      * True for the bridge's seed-pinning rejection. Keyed on the bare status code because
      * {@code _require_matching_seed} is the ONLY producer of 400 in
-     * terrain-bridge/bridge/main.py — its other failures are 502 (upstream unreachable) and
+     * Models/terrain-bridge/bridge/main.py — its other failures are 502 (upstream unreachable) and
      * FastAPI's own 422 (malformed body). Reading the {@code detail} text instead would couple
      * this to an English sentence for no extra certainty.
      */

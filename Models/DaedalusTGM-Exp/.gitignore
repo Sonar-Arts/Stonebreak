@@ -1,0 +1,66 @@
+# DaedalusTGM-Exp (Models/DaedalusTGM-Exp): code, configs, tests, docs and small fixtures are
+# tracked. Architecture and plan: docs/Architecture.md, docs/Terrain-SLM-Plan.md.
+#
+# Datasets, checkpoints and run output usually live on a separate data disk and are
+# symlinked in. Root-level entries deliberately have NO trailing slash: git treats a
+# symlink as a file, so `/data/` would miss a `data -> <data disk>/...` link.
+# They are also root-anchored so they never match the code packages of the same name
+# (terrain_slm/data/, terrain_slm/export/).
+
+# --- Python environment (uv) -------------------------------------------------
+# uv.lock stays tracked: it is what makes the env reproducible.
+/venv
+/.venv
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# --- Data (GLO-30 DEM, WorldClim, derived shards) ----------------------------
+/data
+/shards
+*.tif
+*.tiff
+*.h5
+*.hdf5
+*.zarr/
+*.npy
+*.npz
+
+# --- Training output ---------------------------------------------------------
+/dist
+/checkpoints/*
+/runs
+/wandb
+/logs
+/reports
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# --- Export for Cenda (weights binaries + golden tensors) --------------------
+/artifacts
+*.onnx
+*.engine
+
+# --- Profiling ---------------------------------------------------------------
+*.ncu-rep
+*.nsys-rep
+*.qdrep
+*.sqlite
+*.prof
+
+# --- Small hand-made fixtures used by unit tests stay tracked ----------------
+!tests/fixtures/**
+
+# --- Shipping checkpoints are tracked -----------------------------------------
+# The model directory the game loads (TerrainServiceProcessManager's slm default) is committed,
+# so a fresh clone generates terrain with no manual setup (~9 MB, plain git, no LFS). Training
+# runs (checkpoints/<run>/) stay ignored. Shipping a new model = a NEW directory name (the
+# bridge's tile cache is keyed on it) plus the same two lines for that directory here.
+!/checkpoints/v2/
+!/checkpoints/v2/*.pt

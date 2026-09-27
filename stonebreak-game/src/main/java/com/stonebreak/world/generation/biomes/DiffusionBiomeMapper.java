@@ -86,7 +86,7 @@ final class DiffusionBiomeMapper {
         return switch (id) {
             // Ocean ids. The classifier's land/ocean split (elev < 0m) lines up
             // exactly with our own height < SEA_LEVEL split — both reduce to the
-            // same formula, see terrain-bridge/bridge/height_mapping.py — so these
+            // same formula, see Models/terrain-bridge/bridge/height_mapping.py — so these
             // ids reliably mean "this column is underwater"; the surface/subsurface
             // block resolved from the returned biome becomes the seafloor material.
             case 41, 44 -> BiomeType.BEACH;       // warm_ocean, ocean -> sandy seafloor

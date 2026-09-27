@@ -30,7 +30,7 @@ import java.util.Map;
  * survived. A route that cannot see the terrain cannot sit on it.
  *
  * <p><b>Chunks, not boxes.</b> Upstream's determinism guarantee holds only for
- * an identical request shape (terrain-bridge/bridge/tiling.py), so a chunk's
+ * an identical request shape (Models/terrain-bridge/bridge/tiling.py), so a chunk's
  * shape is derived from its ID alone on the bridge side. This class must agree
  * with the bridge about chunk and cell size or it would assemble windows from
  * differently-shaped ground; rather than trust the configuration, it verifies
@@ -39,7 +39,7 @@ import java.util.Map;
  * <p><b>Never rounds.</b> Values stay fractional all the way to the kernel:
  * quantised to whole blocks (15 m each) 40 % of land is perfectly flat, and
  * downhill routing on that degenerates into a distance field that produces
- * herringbone artifacts instead of rivers (terrain-bridge/hydrology/README.md).
+ * herringbone artifacts instead of rivers (Models/terrain-bridge/hydrology/README.md).
  *
  * <p><b>No fallback on failure.</b> A fetch that cannot be satisfied throws.
  * Substituting a river-less window would bake a permanently inconsistent tile

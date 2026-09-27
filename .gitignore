@@ -151,10 +151,12 @@ QWEN.md
 # OpenCode
 .opencode/
 
-# Terrain bridge (Phase 1) — venv and on-disk tile cache
-/terrain-bridge/venv/
-/terrain-bridge/tile_cache/
-/terrain-bridge/**/__pycache__/
+# Terrain models (Models/): the shared bridge's venv + on-disk tile cache. Each model folder
+# carries its own .gitignore for its venv, data, checkpoints and reports
+# (Models/DaedalusTGM-Exp/.gitignore).
+/Models/terrain-bridge/venv/
+/Models/terrain-bridge/tile_cache/
+/Models/**/__pycache__/
 # The upstream diffusion model install it talks to lives in
 # Dev Working/terrain-diffusion-spike/ (checkout + venv + global rasters, ~7.5 GB);
 # no rule needed here, /Dev Working/ above already covers it. Setup steps are in

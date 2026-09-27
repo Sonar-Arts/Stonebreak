@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Verifies {@link DiffusionTerrainClient} against a real local HTTP server
  * (JDK's built-in {@link HttpServer}, no live bridge or network dependency)
- * for the exact wire contract documented in terrain-bridge/bridge/main.py:
+ * for the exact wire contract documented in Models/terrain-bridge/bridge/main.py:
  * binary body layout, header-driven tile bounds, and retry/no-retry status
  * handling.
  */
