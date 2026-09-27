@@ -67,6 +67,16 @@ public final class TerrainMapperConfig {
      * have to be sampled again. About 43,000 chunks; a zoom-1 screen with its preload margin
      * takes a few hundred.
      */
+    /**
+     * Far-zoom overview: samples this many world blocks apart or more read coarse preview tiles
+     * ({@link #OVERVIEW_LOD} blocks per sample, from the model's 240 m cells) instead of full
+     * tiles. At the widest zoom a view spans ~20k blocks, i.e. thousands of full tiles; the
+     * overview serves it with a few dozen coarse ones. Detail below 8 blocks is invisible there.
+     */
+    public static final int OVERVIEW_MIN_SPACING = 8;
+    /** World blocks per overview sample: 2 model cells (480 m), one 2048-block area per tile. */
+    public static final int OVERVIEW_LOD = 8;
+
     public static final long PREVIEW_CACHE_BUDGET_BYTES = 512L * 1024 * 1024;
 
     /** After a wheel-zoom, keep interactive quality this long before resampling at hi-res. */

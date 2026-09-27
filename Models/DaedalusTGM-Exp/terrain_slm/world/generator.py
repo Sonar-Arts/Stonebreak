@@ -52,6 +52,7 @@ RIVER_THRESHOLD_HYDRO = 5.5   # hydro drainage is realistic: 5.5 gives ~1-5% wat
 # Descriptor sampler (MaskGIT) tiling: 64-cell windows around 32-cell cores, sampled in a fixed
 # 4-phase checkerboard. A window conditions only on the cores of earlier-phase neighbours, so the
 # dependency chain is at most 3 windows deep (request-independent) and nothing is cross-faded.
+PLANNER_BATCH = 32      # planner windows per forward pass (fixed: one kernel shape, same numbers)
 DG_CORE = 32
 DG_RING = 16
 DG_WIN = DG_CORE + 2 * DG_RING
@@ -362,11 +363,14 @@ class WorldGenerator:
         return self._blend(ci0, cj0, hc, wc, lambda wi, wj: self._relief_window(wi, wj)[None], 1)[0]
 
     # ---------------------------------------------------------------- planner (cells)
-    def _planner_input(self, ci0: int, cj0: int, n: int) -> tuple[torch.Tensor, dict]:
-        """The planner's (and descriptor sampler's) input for n x n cells from (ci0, cj0)."""
-        c = procedural_controls(ci0, cj0, n, n, self.seed, self.device)
-        c["trend"] = self.trend(ci0, cj0, n, n)
-        x = torch.zeros(1, P.N_IN, n, n, device=self.device)
+    def _planner_input(self, ci0: int, cj0: int, n: int, m: int | None = None) -> tuple[torch.Tensor, dict]:
+        """The planner's (and descriptor sampler's) input for n x m cells from (ci0, cj0) (m = n).
+        Every field is pointwise or blended from canonical windows, so any sub-window of a larger
+        call is identical to calling it on that sub-window alone."""
+        m = n if m is None else m
+        c = procedural_controls(ci0, cj0, n, m, self.seed, self.device)
+        c["trend"] = self.trend(ci0, cj0, n, m)
+        x = torch.zeros(1, P.N_IN, n, m, device=self.device)
         x[0, P.IN_TREND] = c["trend"] / P.HEIGHT_SCALE_M
         for k, name in enumerate(P.CLIMATE_NAMES):
             x[0, P.IN_T0 + k] = P.climate_input(name, c[name])
@@ -376,29 +380,66 @@ class WorldGenerator:
         x[0, P.IN_HAS_WILD] = 1.0
         return x, c
 
+    def _run_planner_windows(self, keys: list[tuple[int, int]]) -> None:
+        """Compute and cache the canonical planner windows `keys` (not yet cached), batched.
+
+        The inputs of all of them come from one call over their bounding box (exact, see
+        _planner_input), and the planner runs PLANNER_BATCH windows at a time -- always padded to
+        that size, a single window included, so a window's numbers never depend on which request
+        computed it (one kernel shape). Per-window work was ~31 ms of launch overhead each; a
+        far-zoom preview needs thousands of windows."""
+        if not keys:
+            return
+        i0 = min(k[0] for k in keys) * STRIDE
+        j0 = min(k[1] for k in keys) * STRIDE
+        hn = max(k[0] for k in keys) * STRIDE + WIN - i0
+        wn = max(k[1] for k in keys) * STRIDE + WIN - j0
+        if hn * wn > 16 * len(keys) * WIN * WIN:     # scattered: the bounding box would be wasteful
+            for k in keys:
+                self._run_planner_windows([k])
+            return
+        xa, ca = self._planner_input(i0, j0, hn, wn)
+        for start in range(0, len(keys), PLANNER_BATCH):
+            chunk = keys[start : start + PLANNER_BATCH]
+            xs = torch.zeros(PLANNER_BATCH, P.N_IN, WIN, WIN, device=self.device)
+            for b, (wi, wj) in enumerate(chunk):
+                a, c0 = wi * STRIDE - i0, wj * STRIDE - j0
+                xs[b] = xa[0, :, a : a + WIN, c0 : c0 + WIN]
+            with torch.no_grad():
+                out = self.planner(xs).float()
+            # A light blur hides the 4-cell patch grid of the ViT head; window edges (where the
+            # blur sees reflected context) carry ~0 weight in the sin^2 blend.
+            out = D.blur(out, PATCH_BLUR_CELLS)
+            for b, (wi, wj) in enumerate(chunk):
+                o = out[b]
+                a, c0 = wi * STRIDE - i0, wj * STRIDE - j0
+                trend = ca["trend"][a : a + WIN, c0 : c0 + WIN]
+                height = o[P.OUT_HEIGHT] * P.HEIGHT_SCALE_M
+                desc = o[P.OUT_DESC] * self.desc_std.view(-1, 1, 1) + self.desc_mean.view(-1, 1, 1)
+                river = torch.sigmoid(o[P.OUT_RIVER])
+                logacc = o[P.OUT_LOGACC] * P.LOGACC_SCALE
+                # Ocean: trust the trend below sea level (the slice has little deep sea).
+                sea = ((-trend) / 150.0).clamp(0, 1)
+                height = (1 - sea) * height + sea * torch.minimum(height, trend)
+                val = torch.cat([height[None], desc, river[None], logacc[None]], dim=0)
+                self._windows.get_or((wi, wj), lambda v=val: v)
+
     def _window(self, wi: int, wj: int) -> torch.Tensor:
         """Planner output for the canonical window whose top-left cell is (wi*STRIDE, wj*STRIDE):
         (11, WIN, WIN) = [height_m, desc(8, raw units), river_prob, log1p(upslope cells)]."""
-        def run():
-            ci0, cj0 = wi * STRIDE, wj * STRIDE
-            x, c = self._planner_input(ci0, cj0, WIN)
-            with torch.no_grad():
-                out = self.planner(x)[0].float()
-            # A light blur hides the 4-cell patch grid of the ViT head; window edges (where the
-            # blur sees reflected context) carry ~0 weight in the sin^2 blend.
-            out = D.blur(out[None], PATCH_BLUR_CELLS)[0]
-            height = out[P.OUT_HEIGHT] * P.HEIGHT_SCALE_M
-            desc = out[P.OUT_DESC] * self.desc_std.view(-1, 1, 1) + self.desc_mean.view(-1, 1, 1)
-            river = torch.sigmoid(out[P.OUT_RIVER])
-            logacc = out[P.OUT_LOGACC] * P.LOGACC_SCALE
-            # Ocean: trust the trend below sea level (the slice has little deep sea).
-            sea = ((-c["trend"]) / 150.0).clamp(0, 1)
-            height = (1 - sea) * height + sea * torch.minimum(height, c["trend"])
-            return torch.cat([height[None], desc, river[None], logacc[None]], dim=0)
-        return self._windows.get_or((wi, wj), run)
+        if (wi, wj) not in self._windows:
+            self._run_planner_windows([(wi, wj)])
+        return self._windows.get_or((wi, wj), lambda: None)
 
     def _planner_cells(self, ci0: int, cj0: int, hc: int, wc: int) -> torch.Tensor:
         """Blended planner output (11, hc, wc) for cells [ci0, ci0+hc) x [cj0, cj0+wc)."""
+        wis = range(math.floor((ci0 - WIN) / STRIDE) + 1, math.floor((ci0 + hc - 1) / STRIDE) + 1)
+        wjs = range(math.floor((cj0 - WIN) / STRIDE) + 1, math.floor((cj0 + wc - 1) / STRIDE) + 1)
+        # Batch every missing window first, a band of rows at a time (bounded by the cache).
+        band = max(1, (self._windows.cap // 2) // max(1, len(wjs)))
+        for r in range(0, len(wis), band):
+            self._run_planner_windows([(wi, wj) for wi in wis[r : r + band] for wj in wjs
+                                       if (wi, wj) not in self._windows])
         out = torch.zeros(11, hc, wc, device=self.device)
         u = torch.arange(WIN, device=self.device, dtype=torch.float32)
         w1 = torch.sin(math.pi * (u + 0.5) / WIN) ** 2  # sums to 1 at stride WIN/2
@@ -505,6 +546,20 @@ class WorldGenerator:
             res["desc_planner"] = res["desc"]
             res["desc"] = self.sampled_desc(ci0, cj0, hc, wc)
         return res
+
+    def overview_cells(self, ci0: int, cj0: int, hc: int, wc: int) -> dict:
+        """The cheap, coarse view of cells [ci0, ci0+hc) x [cj0, cj0+wc) for far-zoomed previews:
+        soft-capped coarse height, drainage (logacc, d8) and lapse-adjusted climate, from the planner,
+        relief and hydro windows only -- no descriptor sampling, synth, refiner or river pipeline."""
+        with self.lock:
+            height = soft_cap_peaks(self._planner_cells(ci0, cj0, hc, wc)[0])
+            dr = self.drainage(ci0, cj0, hc, wc)
+            if not dr:
+                dr = {"logacc": self._planner_cells(ci0, cj0, hc, wc)[10], "d8": None}
+            c = procedural_controls(ci0, cj0, hc, wc, self.seed, self.device)
+            climate = torch.stack([c["t0"] - LAPSE_C_PER_M * height.clamp_min(0.0),
+                                   c["tseason"], c["precip"], c["pcv"]])
+            return {"height": height, "logacc": dr["logacc"], "d8": dr.get("d8"), "climate": climate}
 
     # ---------------------------------------------------------------- pixels
     def _region(self, ri: int, rj: int) -> torch.Tensor:

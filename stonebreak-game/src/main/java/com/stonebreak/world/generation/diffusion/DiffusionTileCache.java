@@ -30,6 +30,14 @@ public class DiffusionTileCache implements TerrainTileSource {
         this(config, new DiffusionTerrainClient(config, seed));
     }
 
+    /**
+     * A cache of far-zoom preview tiles: {@code lod} world blocks per sample, and every coordinate
+     * in sample units (world blocks / lod). For the terrain mapper zoomed out; never for chunks.
+     */
+    public DiffusionTileCache(DiffusionBridgeConfig config, long seed, int lod) {
+        this(config, new DiffusionTerrainClient(config, seed, lod));
+    }
+
     DiffusionTileCache(DiffusionBridgeConfig config, DiffusionTerrainClient client) {
         this.config = config;
         this.client = client;

@@ -127,3 +127,29 @@ def test_water_under_an_overhang_survives_the_mapping():
     heights, water, _ = w.planes((0, 0, 1, 2), ground, surface.astype(np.int16), river)
     assert heights[0, 1] > water[0, 1] > 0      # the overhang keeps its height and its water
     assert water[0, 0] > heights[0, 0]
+
+
+def test_lod_tiles_ask_for_proportionally_coarser_blocks_and_cache_apart(monkeypatch):
+    from bridge import upstream_client as uc
+    from bridge.tiling import TileId
+
+    planes = [np.zeros((2, 2), dtype="<i2") for _ in range(6)]
+    sent = {}
+
+    class R:
+        status_code = 200
+        headers = {"X-Height": "2", "X-Width": "2", "X-Dtype": "int16-le"}
+        content = b"".join(p.tobytes() for p in planes)
+
+    client = uc.UpstreamClient(_cfg(scale=1, downscale=2))
+
+    def get(url, params=None, **k):
+        sent.update(params or {})
+        return R()
+
+    monkeypatch.setattr(client._session, "get", get)
+    client.fetch_tile_with_water(0, 0, 2, 2, lod=8)
+    assert sent["downscale"] == 16
+    base = TileId(seed=1, tile_x=2, tile_z=3, scale=1)
+    assert base.cache_key() == "s1_x2_z3_sc1"          # existing caches keep their keys
+    assert TileId(seed=1, tile_x=2, tile_z=3, scale=1, lod=8).cache_key() == "s1_x2_z3_sc1_lod8"

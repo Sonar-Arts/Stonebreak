@@ -61,6 +61,11 @@ public class HeightMapGenerator {
         return tileSource.getTile(x, z).riverRoofAt(x, z);
     }
 
+    /** Flow octant of the water over a column (0 = +X, toward +Z), or {@link TerrainTile#NO_FLOW}. */
+    public int riverFlow(int x, int z) {
+        return tileSource.getTile(x, z).riverFlowAt(x, z);
+    }
+
     /**
      * Fills a 16x16 final-height grid for the given chunk, indexed [x*16+z].
      * A chunk (16 blocks) always fits inside a single bridge tile (256

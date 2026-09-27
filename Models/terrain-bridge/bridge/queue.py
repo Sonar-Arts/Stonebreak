@@ -139,11 +139,11 @@ class GpuWorkQueue:
                 river = None
                 if getattr(self._water, "wants_surface", False):
                     elev, biome, surface, river = await loop.run_in_executor(
-                        None, self._client.fetch_tile_with_water, *bounds
+                        None, self._client.fetch_tile_with_water, *bounds, job.tile.lod
                     )
                 else:
                     elev, biome = await loop.run_in_executor(
-                        None, self._client.fetch_tile, *bounds
+                        None, self._client.fetch_tile, *bounds, job.tile.lod
                     )
                 # The carve runs on this same consumer rather than in parallel: solving
                 # an unsolved L1 macro-tile means generating 9.4 M native pixels

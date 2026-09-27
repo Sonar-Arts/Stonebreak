@@ -4,6 +4,7 @@ import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainMapper.visualization.impl.BiomeVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.impl.HeightVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.impl.TopographyVisualizer;
+import com.stonebreak.ui.terrainMapper.visualization.impl.RiverVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.impl.WaterVisualizer;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.diffusion.DiffusionBridgeConfig;
@@ -37,6 +38,8 @@ public final class VisualizerRegistry {
     /** The tile chain the current visualizers read through, so {@link #rebuild}
      *  can release the previous one instead of leaking its threads. */
     private TerrainTileSource tileSource;
+    /** The far-zoom overview chain (null on backends that cannot serve it). */
+    private DiffusionTileCache overviewSource;
 
     public VisualizerRegistry(long seed) {
         rebuild(seed);
@@ -93,21 +96,50 @@ public final class VisualizerRegistry {
         HeightMapGenerator heightMap = new HeightMapGenerator(tileCache);
         BiomeManager biomes = new BiomeManager(tileCache);
 
-        // HEIGHT, TOPOGRAPHY and WATER deliberately share one HeightMapGenerator: they are
+        // HEIGHT, TOPOGRAPHY, WATER and RIVERS deliberately share one HeightMapGenerator: they are
         // renderings of the same resolved tile, so a second generator would only double the
         // tile traffic to the bridge for identical data.
         visualizers.put(VisualizerKind.HEIGHT, new HeightVisualizer(heightMap));
         visualizers.put(VisualizerKind.TOPOGRAPHY, new TopographyVisualizer(heightMap));
         visualizers.put(VisualizerKind.BIOME, new BiomeVisualizer(biomes));
         visualizers.put(VisualizerKind.WATER, new WaterVisualizer(heightMap));
+        visualizers.put(VisualizerKind.RIVERS, new RiverVisualizer(heightMap));
 
         // Must agree with each visualizer's sample() for its channel — the cache stands in for it.
         TerrainColumns columns = (x, z, out) -> {
             out[PreviewChannel.HEIGHT.ordinal()] = heightMap.generateHeight(x, z);
             out[PreviewChannel.WATER.ordinal()] = heightMap.waterLevel(x, z);
             out[PreviewChannel.BIOME.ordinal()] = biomes.getBiome(x, z).ordinal();
+            out[PreviewChannel.RIVER.ordinal()] = RiverVisualizer.code(heightMap.waterLevel(x, z),
+                    heightMap.riverFloor(x, z), heightMap.riverRoof(x, z), heightMap.riverFlow(x, z));
         };
-        this.previewSource = new PreviewSource(newSeed, columns, previewStore);
+        this.previewSource = new PreviewSource(newSeed, columns, previewStore,
+                overviewColumns(config, newSeed), TerrainMapperConfig.OVERVIEW_MIN_SPACING);
+    }
+
+    /**
+     * Columns for far zoom: coarse tiles of {@link TerrainMapperConfig#OVERVIEW_LOD} blocks per
+     * sample, straight from the model's 240 m cells (no refiner or river pipeline), so a zoomed-out
+     * view costs a few coarse tiles instead of thousands of full ones. Only DaedalusTGM-Exp serves
+     * them; on other backends the preview keeps sampling full tiles at every zoom.
+     */
+    private TerrainColumns overviewColumns(DiffusionBridgeConfig config, long seed) {
+        if (!TerrainServiceProcessManager.modelSuppliesWater()) {
+            return null;
+        }
+        int lod = TerrainMapperConfig.OVERVIEW_LOD;
+        overviewSource = new DiffusionTileCache(config, seed, lod);
+        HeightMapGenerator heights = new HeightMapGenerator(overviewSource);
+        BiomeManager biomes = new BiomeManager(overviewSource);
+        return (x, z, out) -> {
+            int sx = Math.floorDiv(x, lod);
+            int sz = Math.floorDiv(z, lod);
+            out[PreviewChannel.HEIGHT.ordinal()] = heights.generateHeight(sx, sz);
+            out[PreviewChannel.WATER.ordinal()] = heights.waterLevel(sx, sz);
+            out[PreviewChannel.BIOME.ordinal()] = biomes.getBiome(sx, sz).ordinal();
+            out[PreviewChannel.RIVER.ordinal()] = RiverVisualizer.code(heights.waterLevel(sx, sz),
+                    heights.riverFloor(sx, sz), heights.riverRoof(sx, sz), heights.riverFlow(sx, sz));
+        };
     }
 
     /** Releases the current tile chain. Safe to call more than once. */
@@ -120,5 +152,9 @@ public final class VisualizerRegistry {
             }
         }
         tileSource = null;
+        if (overviewSource != null) {
+            overviewSource.close();
+            overviewSource = null;
+        }
     }
 }

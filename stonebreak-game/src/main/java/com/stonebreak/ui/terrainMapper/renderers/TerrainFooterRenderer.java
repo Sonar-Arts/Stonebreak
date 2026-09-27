@@ -56,11 +56,15 @@ public final class TerrainFooterRenderer {
         state.getCharacterButton().position(left, y);
     }
 
+    /** Resolved once: the backend and model come from system properties fixed at launch. */
+    private static final String GENERATOR =
+            com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager.generatorLabel();
+
     private void drawStatusText(Canvas canvas, MasonryUI ui, Rect footer) {
         Font meta = ui.fonts().get(MStyle.FONT_META);
         float textY = footer.y() + footer.height() / 2f + 4f;
 
-        String modeLabel = "Mode: " + state.getActiveVisualizer().displayName();
+        String modeLabel = "Mode: " + state.getActiveVisualizer().displayName() + "   \u00b7   Terrain: " + GENERATOR;
         // Start past every left-anchored button so the text never overlaps them.
         float modeX = footer.x() + TerrainMapperConfig.FOOTER_BUTTON_GAP
                 + LEFT_BUTTON_COUNT * (TerrainMapperConfig.FOOTER_BUTTON_WIDTH

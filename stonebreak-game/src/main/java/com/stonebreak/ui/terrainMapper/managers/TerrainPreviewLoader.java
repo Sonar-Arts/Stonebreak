@@ -1,5 +1,6 @@
 package com.stonebreak.ui.terrainMapper.managers;
 
+import com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager;
 import com.stonebreak.world.generation.diffusion.StaleSeedException;
 import com.stonebreak.world.generation.diffusion.TerrainBridgeException;
 import io.github.humbleui.skija.Image;
@@ -126,7 +127,10 @@ public final class TerrainPreviewLoader {
     public String statusMessage() {
         return switch (phase) {
             case IDLE -> "Preparing terrain preview...";
-            case STARTING_SERVICES -> "Starting terrain services...";
+            // The first tiles of a new seed warm the model (relief, drainage and descriptor
+            // windows): ~30 s on the default model, then about a second per tile.
+            case STARTING_SERVICES -> "Starting " + TerrainServiceProcessManager.generatorLabel()
+                    + " (the first tiles take ~30 s)...";
             // Names the visualizer: with a previous mode's image still on the map, "Sampling
             // terrain..." gives no way to tell a mode switch that is working from one that isn't.
             case SAMPLING -> samplingLabel == null

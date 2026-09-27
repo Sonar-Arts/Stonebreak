@@ -19,9 +19,13 @@ class TileId:
     tile_x: int
     tile_z: int
     scale: int
+    #: Level of detail: world blocks per sample (1 = every block). A tile at lod L is addressed in
+    #: sample coordinates (world // L) and covers tile_size * L blocks; far-zoom previews only.
+    lod: int = 1
 
     def cache_key(self) -> str:
-        return f"s{self.seed}_x{self.tile_x}_z{self.tile_z}_sc{self.scale}"
+        key = f"s{self.seed}_x{self.tile_x}_z{self.tile_z}_sc{self.scale}"
+        return key if self.lod == 1 else key + f"_lod{self.lod}"
 
 
 def block_to_tile(coord: int, tile_size_blocks: int) -> int:

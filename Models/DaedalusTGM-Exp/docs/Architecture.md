@@ -296,14 +296,17 @@ Learned banks against the deterministic levees (61 km mountain square): banks sl
 - Protocol v3, 6 planes; the cache schema bump rotates old caches.
 - `TERRAIN_BRIDGE_UPSTREAM_ID` (= `slm:<model dir>`) and the curve rates are part of the tile-cache fingerprint. **Any generator change needs a new model dir name**, or the bridge will serve old cached tiles.
 
-**Timing** (one RTX PRO 6000): first tile of a new world **28.7 s** cold (relief, hydro and descriptor windows warm up), then about **1.5 s** per tile.
+**Timing** (one RTX PRO 6000): first tile of a new world **28.7 s** cold (relief, hydro and descriptor windows warm up), then about **1.5 s** per tile. Planner windows are generated in fixed batches of 32 (`PLANNER_BATCH`; inputs computed once over the batch's bounding box, bit-identical to one at a time): per-window launch overhead was ~31 ms, now a coarse tile's 2,145 windows take seconds, not a minute.
+
+**Far-zoom preview tiles (`lod`).** A tile request may carry `lod` (world blocks per sample, a power of two). Coordinates are then in sample units (world // lod), so the 256×256 tile shape is unchanged and a tile covers 256·lod blocks. The bridge asks for `downscale × lod` native pixels per sample and caches under `…_lod{n}` (existing keys unchanged). At 8 px or more per sample (whole 240 m cells), the model server answers from the cell fields alone (`_overview`): coarse height, hydro rivers (one sample wide) with D8 flow, and biomes; no descriptor sampling, synth, refiner or river pipeline. An 8,192-block square takes 17 s cold (0.6 s per tile once windows are warm), against ~11 min of full tiles. For the terrain mapper zoomed out only, never for chunks.
 
 ## 13. Game integration (Java)
 
 | Where | What |
 |---|---|
 | `TerrainServiceProcessManager` | `DEFAULT_BACKEND="slm"`, model dir **`checkpoints/v3`**, `SLM_MODEL_NAME`, `MODELS_DIR`/`BRIDGE_DIR`/`SLM_DIR` |
-| `DiffusionTerrainClient` | tile protocol **v3**: 6 planes → `TerrainTile` river floor/roof/flow (null when empty) |
+| `DiffusionTerrainClient` | tile protocol **v3**: 6 planes → `TerrainTile` river floor/roof/flow (null when empty); optional `lod` for far-zoom preview tiles |
+| Terrain mapper | **Rivers** mode (`RiverVisualizer`: flow octant as hue, red undercuts, orange overhangs); footer and loading line name the model (`generatorLabel()`); at 8+ blocks per sample it reads `lod`-8 overview tiles (`VisualizerRegistry.overviewColumns`, `TerrainMapperConfig.OVERVIEW_*`), and `PreviewSampleStore` keeps full-detail and overview levels apart |
 | `TerrainScale` | 60 m blocks (`DOWNSCALE` 2), `CURVE_RATES` {48, 16, 24, 38} |
 | `TerrainMapperConfig.TOPO_LAND_CEILING` | 240 |
 | `WorldConfiguration` | 256 / 64; `HeightMapGenerator` clamps surfaces to y 255 and reads the tile's river planes |

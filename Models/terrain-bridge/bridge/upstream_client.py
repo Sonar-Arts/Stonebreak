@@ -36,19 +36,19 @@ class UpstreamClient:
         r.raise_for_status()
         return r.json()
 
-    def fetch_tile(self, i1: int, j1: int, i2: int, j2: int) -> tuple[np.ndarray, np.ndarray]:
+    def fetch_tile(self, i1: int, j1: int, i2: int, j2: int, lod: int = 1) -> tuple[np.ndarray, np.ndarray]:
         """Fetch one canonical-shape tile. Returns (elev_m int16 HxW, biome_id int16 HxW)."""
-        elev, biome, _ = self._fetch_planes(self._tile_params(i1, j1, i2, j2), water=False)
+        elev, biome, _ = self._fetch_planes(self._tile_params(i1, j1, i2, j2, lod), water=False)
         return elev, biome
 
     def fetch_tile_with_water(
-        self, i1: int, j1: int, i2: int, j2: int
+        self, i1: int, j1: int, i2: int, j2: int, lod: int = 1
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, tuple[np.ndarray, ...] | None]:
         """Like `fetch_tile`, plus the model's river water-surface plane (int16 metres,
         WATER_NONE where dry) and, with `river3d`, its river tunnel floor / roof / flow-octant
         planes (int16 BLOCKS, -1 where none) -- or None. Only upstreams that speak `water=1`
         (DaedalusTGM-Exp) do."""
-        params = self._tile_params(i1, j1, i2, j2)
+        params = self._tile_params(i1, j1, i2, j2, lod)
         params["water"] = 1
         if self._cfg.river3d:
             params["river3d"] = 1
@@ -58,7 +58,7 @@ class UpstreamClient:
         river = tuple(planes[3:6]) if self._cfg.river3d and len(planes) >= 6 else None
         return planes[0], planes[1], planes[2], river
 
-    def _tile_params(self, i1: int, j1: int, i2: int, j2: int) -> dict:
+    def _tile_params(self, i1: int, j1: int, i2: int, j2: int, lod: int = 1) -> dict:
         params = {
             "i1": i1,
             "j1": j1,
@@ -68,7 +68,9 @@ class UpstreamClient:
             "noise": self._cfg.noise_scale,
         }
         if self._cfg.downscale > 1:
-            params["downscale"] = self._cfg.downscale
+            # A coarser level of detail just averages more model pixels per sample; the
+            # coordinates are already in sample units.
+            params["downscale"] = self._cfg.downscale * lod
         return params
 
     def _fetch_planes(self, params: dict, water: bool):

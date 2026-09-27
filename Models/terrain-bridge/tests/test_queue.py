@@ -24,7 +24,7 @@ class _FakeClient:
     def __repr__(self):
         return f"_FakeClient(calls={len(self.calls)})"
 
-    def fetch_tile(self, i1, j1, i2, j2):
+    def fetch_tile(self, i1, j1, i2, j2, lod=1):
         self.concurrent += 1
         self.max_concurrent = max(self.max_concurrent, self.concurrent)
         self.calls.append((i1, j1, i2, j2))
@@ -52,7 +52,7 @@ class _GatedClient:
     def release(self) -> None:
         self._gate.set()
 
-    def fetch_tile(self, i1, j1, i2, j2):
+    def fetch_tile(self, i1, j1, i2, j2, lod=1):
         self.calls.append((i1, j1, i2, j2))
         self._gate.wait()
         h = w = i2 - i1

@@ -109,6 +109,35 @@ class DiffusionTerrainClientTest {
     }
 
     @Test
+    void aPreviewClientSendsItsLevelOfDetailAndTheGameClientDoesNot() throws IOException {
+        java.util.List<String> bodies = new java.util.concurrent.CopyOnWriteArrayList<>();
+        server = startServer(exchange -> {
+            bodies.add(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            respondTile(exchange, 200, 2, 2, 0, 0, 0, 0, 2, 2, new short[]{1, 2, 3, 4}, new short[]{0, 0, 0, 0});
+        });
+        DiffusionBridgeConfig config = new DiffusionBridgeConfig(
+                "http://localhost:" + server.getAddress().getPort(),
+                256, 2000, 5000, 0, 10, 50, 64, 5_000L, 5_000L, 50L, 2048, 16, 64);
+        DiffusionTerrainClient preview = new DiffusionTerrainClient(config, 42L, 8);
+        client = new DiffusionTerrainClient(config, 42L);
+        try {
+            preview.fetchTile(0, 0).join();
+            client.fetchTile(0, 0).join();
+        } finally {
+            preview.close();
+        }
+        assertTrue(bodies.get(0).contains("\"lod\":8"), bodies.get(0));
+        assertTrue(!bodies.get(1).contains("lod"), "full-detail requests keep the old body: " + bodies.get(1));
+    }
+
+    @Test
+    void aLevelOfDetailMustBeAPowerOfTwo() {
+        DiffusionBridgeConfig config = new DiffusionBridgeConfig("http://localhost:1",
+                256, 2000, 5000, 0, 10, 50, 64, 5_000L, 5_000L, 50L, 2048, 16, 64);
+        assertThrows(IllegalArgumentException.class, () -> new DiffusionTerrainClient(config, 1L, 6));
+    }
+
+    @Test
     void rejectsABridgeSpeakingAnOlderProtocol() throws IOException {
         // The body is bare concatenated planes with no header bytes of its own, so a v1
         // bridge hands back something this build would slice into plausible garbage

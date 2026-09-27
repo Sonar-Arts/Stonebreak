@@ -105,6 +105,13 @@ class TerrainServiceProcessManagerTest {
     }
 
     @Test
+    void theDefaultGeneratorIsNamedWithItsModelVersion() {
+        // What the terrain mapper's footer and loading line show.
+        assertTrue(TerrainServiceProcessManager.generatorLabel().equals("DaedalusTGM-Exp \u00b7 v3"),
+                TerrainServiceProcessManager.generatorLabel());
+    }
+
+    @Test
     void unknownBackendFailsLoudly() {
         assertThrows(TerrainBridgeException.class, () -> TerrainServiceProcessManager.BackendDefaults.of("nope"));
     }

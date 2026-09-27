@@ -109,6 +109,23 @@ public final class TerrainServiceProcessManager {
         return "slm".equals(backend) ? SLM_MODEL_NAME : backend;
     }
 
+    /**
+     * What generates the terrain, for the UI: {@code "DaedalusTGM-Exp · v3"} on the default
+     * backend (the model directory's name is the version), the upstream model id otherwise.
+     */
+    public static String generatorLabel() {
+        String backend = backendProperty();
+        try {
+            String model = System.getProperty("stonebreak.terrainService.model", BackendDefaults.of(backend).model());
+            if ("slm".equals(backend)) {
+                return SLM_MODEL_NAME + " \u00b7 " + java.nio.file.Path.of(model).getFileName();
+            }
+            return "terrain-diffusion (" + model + ")";
+        } catch (TerrainBridgeException e) {
+            return backend;
+        }
+    }
+
     static String backendProperty() {
         return System.getProperty("stonebreak.terrainService.backend", DEFAULT_BACKEND);
     }

@@ -26,6 +26,7 @@ Accepts the same CLI flags TerrainServiceProcessManager passes to upstream
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import sys
 import time
@@ -38,6 +39,7 @@ from flask import Flask, Response, jsonify, request
 from terrain_slm import MODEL_NAME
 from terrain_slm import biomes as B
 from terrain_slm.paths import BRIDGE_DIR, MODEL_DIR
+from terrain_slm.data.descriptors import CELL_PX
 from terrain_slm.river import pipeline as RP
 from terrain_slm.river.scale import BlockScale
 from terrain_slm.world.generator import GenConfig, WorldGenerator
@@ -82,6 +84,42 @@ def _downsampled(i1: int, j1: int, i2: int, j2: int, d: int):
     biome = B._classify_biome(crop(elev), crop(climate), i1, j1, elev_padded=pad1(elev), pixel_size_m=NATIVE_M * d)
     river = tuple(crop(p) for p in (cols.floor, cols.roof, cols.flow))
     return crop(elev), biome, crop(water), river
+
+
+OVERVIEW_MIN_PX = 8  # at a cell (8 native px, 4 blocks) or coarser per block: serve from cells alone
+# D8 class (drow, dcol) -> flow octant (0 = +x, toward +z); class 8 = terminal. Must match data/build.py.
+_D8_OCTANT = [round(math.atan2(dc, dr) / (math.pi / 4)) % 8
+              for dr, dc in ((-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1))] + [-1]
+
+
+def _overview(i1: int, j1: int, i2: int, j2: int, d: int):
+    """Far-zoom preview blocks of d native pixels (d a multiple of 8, i.e. whole 240 m cells),
+    straight from the model's cell fields: coarse height, hydro-sidecar rivers (one sample
+    wide) and their D8 flow. No synth, refiner or river pipeline, so it costs a tiny fraction
+    of a full tile; for the terrain mapper zoomed out, not for building chunks. Same return
+    contract as `_downsampled`.
+    """
+    k = d // CELL_PX
+    h, w = i2 - i1, j2 - j1
+    c = GEN.overview_cells((i1 - 1) * k, (j1 - 1) * k, (h + 2) * k, (w + 2) * k)
+    pool = lambda x: torch.nn.functional.avg_pool2d(x[None], k)[0]
+    elev = pool(c["height"][None])[0]
+    peak, idx = torch.nn.functional.max_pool2d(c["logacc"][None, None], k, return_indices=True)
+    wet = (peak[0, 0] >= GEN.cfg.river_log_threshold) & (elev > 0.5)
+    sc = GEN.scale
+    hb = torch.floor(sc.to_blocks(elev)).clamp(0, sc.world_height - 1)
+    mid = lambda b: sc.to_metres(b + 0.5)
+    elev_m = mid(hb)
+    water_m = torch.where(wet, mid(hb + 1), torch.full_like(elev_m, float("nan")))
+    none = torch.full(elev.shape, -1, dtype=torch.long, device=elev.device)
+    flow = none.clone()
+    if c["d8"] is not None:
+        cls = c["d8"].flatten()[idx[0, 0].flatten()].view(elev.shape).clamp(0, 8)
+        flow = torch.where(wet, torch.tensor(_D8_OCTANT, device=elev.device)[cls], none)
+    climate = pool(c["climate"])
+    crop = lambda x: x[..., 1:-1, 1:-1]
+    biome = B._classify_biome(crop(elev_m), crop(climate), i1, j1, elev_padded=elev_m, pixel_size_m=NATIVE_M * d)
+    return crop(elev_m), biome, crop(water_m), (crop(none), crop(none), crop(flow))
 
 
 app = Flask(__name__)
@@ -194,7 +232,8 @@ def terrain():
             raise ValueError("downscale must be >= 1 and needs scale=1")
         if down > 1:
             with GEN.lock:
-                elev, biome, water, river = _downsampled(i1, j1, i2, j2, down)
+                build = _overview if (down >= OVERVIEW_MIN_PX and down % OVERVIEW_MIN_PX == 0) else _downsampled
+                elev, biome, water, river = build(i1, j1, i2, j2, down)
             if request.args.get("elev_only", default=0, type=int) == 1:
                 return _json(elev) if as_json else _binary(elev, None)
             return _json(elev) if as_json else _binary(elev, biome, water if want_water else None,

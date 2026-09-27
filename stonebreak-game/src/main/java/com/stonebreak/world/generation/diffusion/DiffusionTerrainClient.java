@@ -51,12 +51,27 @@ public class DiffusionTerrainClient {
 
     private final DiffusionBridgeConfig config;
     private final long seed;
+    /**
+     * Level of detail: world blocks per sample. 1 = full detail (the game). Above 1 the client
+     * asks for far-zoom preview tiles, and every coordinate it is given or returns is in SAMPLE
+     * units (world blocks / lod) -- the terrain mapper zoomed out. Only DaedalusTGM-Exp serves it.
+     */
+    private final int lod;
     private final HttpClient httpClient;
     private final ScheduledExecutorService retryScheduler;
 
     public DiffusionTerrainClient(DiffusionBridgeConfig config, long seed) {
+        this(config, seed, 1);
+    }
+
+    /** @param lod world blocks per sample (1 = full detail); see {@link #lod}. */
+    public DiffusionTerrainClient(DiffusionBridgeConfig config, long seed, int lod) {
+        if (lod < 1 || Integer.bitCount(lod) != 1) {
+            throw new IllegalArgumentException("lod must be a power of two, got " + lod);
+        }
         this.config = config;
         this.seed = seed;
+        this.lod = lod;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(config.connectTimeoutMs()))
                 // The bridge (uvicorn) only speaks HTTP/1.1. Left at the default HTTP/2-preferred
@@ -337,7 +352,8 @@ public class DiffusionTerrainClient {
     }
 
     private String jsonBody(int worldX, int worldZ) {
-        return "{\"world_x\":" + worldX + ",\"world_z\":" + worldZ + ",\"seed\":" + seed + "}";
+        return "{\"world_x\":" + worldX + ",\"world_z\":" + worldZ + ",\"seed\":" + seed
+                + (lod > 1 ? ",\"lod\":" + lod : "") + "}";
     }
 
     private static String bodyPreview(HttpResponse<byte[]> response) {

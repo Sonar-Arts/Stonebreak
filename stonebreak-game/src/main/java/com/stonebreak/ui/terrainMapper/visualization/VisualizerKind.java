@@ -8,7 +8,8 @@ public enum VisualizerKind {
     HEIGHT("Height"),
     TOPOGRAPHY("Topography"),
     BIOME("Biome"),
-    WATER("Water");
+    WATER("Water"),
+    RIVERS("Rivers");
 
     private final String displayName;
 

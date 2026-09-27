@@ -101,3 +101,17 @@ def test_river_planes_are_well_formed(api):
     assert ((flow >= -1) & (flow <= 7)).all()
     assert (flow[~wet] == -1).all(), "flow on a dry column"
     assert (flow[wet] >= 0).mean() > 0.9, "most river columns should run somewhere"
+
+
+def test_far_zoom_overview_matches_itself_and_the_contract(api):
+    """lod-8 preview blocks (d = 16 px = 2 cells per sample): same planes as a full tile, request-
+    independent, rivers flowing, no tunnels; far cheaper than full tiles."""
+    e1, b1, w1, r1 = api._overview(0, 0, 32, 32, 16)
+    e2, b2, w2, r2 = api._overview(-16, -16, 48, 48, 16)
+    crop = lambda t: t[16:48, 16:48]
+    assert torch.equal(e1, crop(e2)) and torch.equal(b1, crop(b2))
+    assert torch.equal(torch.isnan(w1), torch.isnan(crop(w2)))
+    floor, roof, flow = r1
+    assert (floor == -1).all() and (roof == -1).all()
+    wet = ~torch.isnan(w1)
+    assert (flow[~wet] == -1).all() and (flow[wet] >= 0).float().mean() > 0.9

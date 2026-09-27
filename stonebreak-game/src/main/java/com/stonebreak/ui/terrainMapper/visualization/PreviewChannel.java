@@ -11,7 +11,10 @@ public enum PreviewChannel {
     /** Water level, in blocks, or {@code TerrainTile.NO_WATER} where the column is dry. */
     WATER,
     /** {@code BiomeType} ordinal. */
-    BIOME;
+    BIOME,
+    /** River feature code: flow octant, still water, undercut, overhang or dry ({@link
+     *  com.stonebreak.ui.terrainMapper.visualization.impl.RiverVisualizer#code}). */
+    RIVER;
 
     public static final int COUNT = values().length;
 }
