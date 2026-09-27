@@ -35,7 +35,7 @@ public final class PerlinWormCarver {
      * anything. Note the cost is quadratic — {@link #SCAN_RADIUS} grows with this, and the
      * per-chunk source scan is O(SCAN_RADIUS^2).
      */
-    private static final int MAX_STEPS = 90;
+    private static final int MAX_STEPS = 70;
     /** Distance per step in blocks. */
     private static final float STEP_SIZE = 1.0f;
 
@@ -131,7 +131,7 @@ public final class PerlinWormCarver {
     /** Chunk radius to scan when searching for a cavern to feed into. */
     private static final int CAVERN_CONNECTOR_RADIUS = 5;
     /** Step budget for a cavern connector — caverns may sit further out than worm-chunk neighbors. */
-    private static final int CAVERN_CONNECTOR_MAX_STEPS = 110;
+    private static final int CAVERN_CONNECTOR_MAX_STEPS = 85;
     /** Per-step lerp factor steering the connector toward its target (dominates noise drift). */
     private static final float CONNECTOR_BIAS = 0.55f;
     /** Step budget for a connector — enough to bridge {@link #CONNECTOR_SEARCH_RADIUS} chunks plus slack. */
@@ -157,8 +157,8 @@ public final class PerlinWormCarver {
      * actually matters: "60 blocks down from where you are standing" is meaningful at any
      * terrain height, whereas "y=180" is near-surface in one world and unreachable in another.
      */
-    private static final int ORIGIN_DEPTH_MIN = 20;
-    private static final int ORIGIN_DEPTH_MAX = 140;
+    private static final int ORIGIN_DEPTH_MIN = 12;
+    private static final int ORIGIN_DEPTH_MAX = 60;
     /** Termination Y bounds. */
     private static final int Y_FLOOR = 6;
     /** Stop carving once well above the local surface — the carver has fully breached. */

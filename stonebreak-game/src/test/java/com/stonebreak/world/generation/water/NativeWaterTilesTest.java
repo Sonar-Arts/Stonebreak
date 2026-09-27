@@ -81,7 +81,7 @@ public class NativeWaterTilesTest {
          * compare.
          */
         static int height(int x, int z) {
-            double h = 360.0 + 0.02 * x + 0.5 * Math.sin(z * 0.027);
+            double h = SEA + 40.0 + 0.02 * x + 0.5 * Math.sin(z * 0.027);  // 40 blocks above sea
             int px = Math.floorDiv(x + 256, 512) * 512;
             int pz = Math.floorDiv(z + 256, 512) * 512;
             double r = Math.hypot(x - px, z - pz);

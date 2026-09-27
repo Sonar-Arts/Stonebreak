@@ -86,3 +86,13 @@ def test_lru_eviction_drops_oldest(tmp_path):
     cache.put(tile2, h, b, b)
     stats = cache.stats()
     assert stats["tiles"] <= 1
+
+
+def test_upstream_id_gets_its_own_namespace_and_default_is_unchanged(tmp_path):
+    import dataclasses
+
+    cfg = _cfg(tmp_path)
+    stock = TileCache(cfg).root
+    assert TileCache(dataclasses.replace(cfg, upstream_id="")).root == stock
+    other = TileCache(dataclasses.replace(cfg, upstream_id="slm:checkpoints/poc")).root
+    assert other != stock

@@ -28,8 +28,8 @@ public final class MegaCavernCarver {
      * an absolute Y band expressed as a fraction of {@link WorldConfiguration#SEA_LEVEL}
      * sat hundreds of blocks below terrain that no tunnel could climb back up from.
      */
-    private static final int CAVERN_DEPTH_MIN = 60;
-    private static final int CAVERN_DEPTH_MAX = 300;
+    private static final int CAVERN_DEPTH_MIN = 30;
+    private static final int CAVERN_DEPTH_MAX = 90;
 
     /** Mean blob radius (blocks). Final radius per blob is BASE_RADIUS * [0.75 .. 1.20]. */
     private static final float BASE_RADIUS = 24f;

@@ -83,11 +83,12 @@ public final class TerrainMapperConfig {
     // ─────────────────────────────────────────────── Topography visualizer
     /**
      * Block height that maps to the top (white) of the topography land ramp; anything higher
-     * clamps to white. Deliberately well below WORLD_HEIGHT: the bridge maps elevation as
-     * {@code SEA_LEVEL + elev_m / 15} (terrain-bridge/bridge/height_mapping.py), so real peaks
-     * land far short of 1023 and ramping to the world ceiling would waste most of the palette.
+     * clamps to white. Set where the highest terrain lands, not at WORLD_HEIGHT: at the 1:4
+     * world scale the bridge's height curve (terrain-bridge/bridge/height_mapping.py, rates
+     * from {@code TerrainScale}) puts 4800 m -- the tallest ground in the training data -- at
+     * about y 182, so ramping to the world ceiling would waste most of the palette on air.
      */
-    public static final int TOPO_LAND_CEILING = 700;
+    public static final int TOPO_LAND_CEILING = 180;
 
     /**
      * Blocks of contour interval to allow per block of sample-cell width. A paper map picks a

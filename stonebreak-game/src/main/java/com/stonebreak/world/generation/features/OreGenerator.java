@@ -40,10 +40,13 @@ public class OreGenerator {
      * is 320 and land surfaces sit at 340-500 — the same absolute-Y-band mistake
      * {@code CavernCarver} records fixing for caverns, and with the same effect: iron sat
      * in a near-bedrock slab hundreds of blocks below anywhere a player actually digs.
+     *
+     * <p>The peaks are absolute Y for the 256-tall world (sea level 64, 1:4 terrain scale,
+     * land reaching ~y 180): the same values {@code main} uses at this height.
      */
-    private static final int IRON_DEEP_PEAK_Y = 60;
+    private static final int IRON_DEEP_PEAK_Y = 12;
     private static final int IRON_TROUGH_Y = WorldConfiguration.SEA_LEVEL;
-    private static final int IRON_HIGH_PEAK_Y = 420;
+    private static final int IRON_HIGH_PEAK_Y = 130;
     private static final float IRON_TROUGH_WEIGHT = 0.15f;
 
     /** Veins attempted per source chunk. Coal is unweighted, so this is also its yield. */

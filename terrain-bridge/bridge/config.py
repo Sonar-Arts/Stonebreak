@@ -99,6 +99,30 @@ class BridgeConfig:
     max_wait_s: float = 20.0
     solve_retry_after_s: int = 5
 
+    # Identity of the model behind `upstream_url`, joined into the tile-cache fingerprint
+    # when set. Empty for the stock upstream model, so its existing cache namespace is
+    # unchanged; any other generator (e.g. terrain-slm) gets its own, instead of silently
+    # being served tiles the stock model cached for the same seed.
+    upstream_id: str = ""
+
+    # Where inland water comes from: "" (hydrology_enabled decides: the L0/L1 solve or
+    # sea level only) or "upstream" -- the model server returns a river water-surface
+    # plane with each tile (`/terrain?...&water=1`, terrain-slm) and the bridge only maps
+    # it through the height curve. No solve, no macro-window fetches.
+    water_source: str = ""
+
+    # Native pixels per block along each axis, for worlds coarser than the model grid.
+    # `scale` upsamples (blocks per native pixel); `downscale` averages D x D native pixels
+    # into one block (only with scale == 1). The 1:4 world uses scale=1, downscale=2:
+    # 60 m blocks from the 30 m model. Only upstreams that speak `downscale` (terrain-slm).
+    downscale: int = 1
+
+    def __post_init__(self) -> None:
+        if self.downscale < 1:
+            raise ValueError(f"downscale must be >= 1, got {self.downscale}")
+        if self.downscale > 1 and self.scale != 1:
+            raise ValueError(f"downscale {self.downscale} requires scale 1, got scale {self.scale}")
+
     @staticmethod
     def from_env(seed: int | None = None) -> "BridgeConfig":
         """Read every knob from the environment.
@@ -157,4 +181,7 @@ class BridgeConfig:
             coarse_cell_blocks=_env_int("TERRAIN_BRIDGE_COARSE_CELL_BLOCKS", 16),
             max_wait_s=_env_float("TERRAIN_BRIDGE_MAX_WAIT_S", 20.0),
             solve_retry_after_s=_env_int("TERRAIN_BRIDGE_SOLVE_RETRY_AFTER_S", 5),
+            upstream_id=os.environ.get("TERRAIN_BRIDGE_UPSTREAM_ID", ""),
+            water_source=os.environ.get("TERRAIN_BRIDGE_WATER_SOURCE", "").strip().lower(),
+            downscale=_env_int("TERRAIN_BRIDGE_DOWNSCALE", 1),
         )

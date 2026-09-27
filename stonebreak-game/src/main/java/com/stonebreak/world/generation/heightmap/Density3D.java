@@ -194,27 +194,27 @@ public final class Density3D {
         this.cheeseThreshold.addPoint(0, 2.0);      // never carve at the surface
         this.cheeseThreshold.addPoint(18, 0.90);
         this.cheeseThreshold.addPoint(45, 0.68);
-        this.cheeseThreshold.addPoint(120, 0.55);
-        this.cheeseThreshold.addPoint(320, 0.47);
-        this.cheeseThreshold.addPoint(900, 0.44);
+        this.cheeseThreshold.addPoint(90, 0.55);
+        this.cheeseThreshold.addPoint(160, 0.47);
+        this.cheeseThreshold.addPoint(250, 0.44);
 
         // Behind a face the shallow knots come down hard — 0.72 at depth 4 and 0.58 at 14 are
         // reachable values, where the flat curve's 0.90 at depth 18 is not, so chambers form in
         // the rock an opening actually leads into.
         //
-        // The two curves converge at 120, not at 45: depth 45 is 0.55 here against the flat
+        // The two curves converge at 90, not at 45: depth 45 is 0.55 here against the flat
         // curve's 0.68, so a face carves somewhat more down to that point too. That is wanted
         // — it is the taper that stops the shallow opening ending in a flat ceiling — but it
-        // does mean this curve is not purely a near-surface change. Below 120 the curves are
+        // does mean this curve is not purely a near-surface change. Below 90 the curves are
         // identical and the deep cave system is untouched.
         this.cheeseThresholdExposed = new SplineInterpolator();
         this.cheeseThresholdExposed.addPoint(0, 2.0);   // still never carve at the surface
         this.cheeseThresholdExposed.addPoint(4, 0.72);
         this.cheeseThresholdExposed.addPoint(14, 0.58);
         this.cheeseThresholdExposed.addPoint(45, 0.55);
-        this.cheeseThresholdExposed.addPoint(120, 0.55);
-        this.cheeseThresholdExposed.addPoint(320, 0.47);
-        this.cheeseThresholdExposed.addPoint(900, 0.44);
+        this.cheeseThresholdExposed.addPoint(90, 0.55);
+        this.cheeseThresholdExposed.addPoint(160, 0.47);
+        this.cheeseThresholdExposed.addPoint(250, 0.44);
     }
 
     /**

@@ -20,8 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class EntitySpawnerHeightTest {
 
-    /** Typical diffusion-era land surface: the stand cell sits well above the old 60..120 band. */
-    private static final int SURFACE_Y = 400;
+    /** Typical inland surface: comfortably above sea level, whatever the world height. */
+    private static final int SURFACE_Y = WorldConfiguration.SEA_LEVEL + 40;
 
     /** A column of {@code fill} up to (but excluding) {@code standY}, and air from there up. */
     private static EntitySpawner.ColumnBlocks ground(int standY, BlockType fill) {
@@ -46,7 +46,8 @@ class EntitySpawnerHeightTest {
     void standabilityIsIndependentOfAbsoluteHeight() {
         // The same column shape must read identically wherever the terrain puts it. A reintroduced
         // MIN/MAX_SPAWN_HEIGHT band would make at least one of these disagree.
-        for (int standY : new int[] {1, 100, 320, SURFACE_Y, 800, WorldConfiguration.WORLD_HEIGHT - 2}) {
+        for (int standY : new int[] {1, WorldConfiguration.SEA_LEVEL, SURFACE_Y,
+                WorldConfiguration.WORLD_HEIGHT / 2, WorldConfiguration.WORLD_HEIGHT - 2}) {
             assertTrue(EntitySpawner.isStandable(standY, ground(standY, BlockType.GRASS)),
                     "grass surface must be standable at y=" + standY);
         }

@@ -57,13 +57,13 @@ public final class CaveWaterTable {
     /** How strongly the table follows surface relief. 0 = flat at sea level, 1 = parallel to terrain. */
     private static final float DAMP = 0.40f;
     /** Amplitude of the low-frequency wobble, in blocks. */
-    private static final float WOBBLE = 10f;
+    private static final float WOBBLE = 5f;
     /** Minimum rock roof over the topmost gallery, so galleries never breach the surface. */
-    private static final int MIN_ROOF = 12;
+    private static final int MIN_ROOF = 10;
     /** Half-height of a gallery band, in blocks. */
-    public static final int BAND = 10;
+    public static final int BAND = 5;
     /** Vertical gap between successive former water tables. */
-    private static final int LEVEL_SPACING = 55;
+    private static final int LEVEL_SPACING = 22;
     /** Number of stacked storeys (present table plus former stands). */
     private static final int STOREYS = 3;
     /** Lowest permitted table — keeps the deepest gallery band clear of the bedrock floor. */

@@ -41,8 +41,9 @@ public class CloudRenderer {
     private static final float COVERAGE = 0.45f;
     /** Seed for the (fixed) cloud formation pattern. */
     private static final long PATTERN_SEED = 20260517L;
-    /** Altitude of the cloud layer, in world units (world is 1024 tall). */
-    private static final float CLOUD_Y = 768.0f;
+    /** Altitude of the cloud layer, in world units (world is 256 tall; the highest terrain
+     *  at the 1:4 scale tops out near y 183, so the layer clears it). */
+    private static final float CLOUD_Y = 192.0f;
 
     /** Scratch for the render-space camera position uniform. */
     private final Vector3f scratchCameraPos = new Vector3f();

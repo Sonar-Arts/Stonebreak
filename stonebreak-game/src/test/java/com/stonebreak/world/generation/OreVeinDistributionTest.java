@@ -70,10 +70,10 @@ public class OreVeinDistributionTest {
     /** Iron density in the deep and high bands, relative to the sea-level trough. */
     private static final double IRON_BAND_RATIO_MIN = 2.0;
 
-    private static final int DEEP_Y_MAX = 100;
-    private static final int MID_Y_MIN = 280;
-    private static final int MID_Y_MAX = 360;
-    private static final int HIGH_Y_MIN = 430;
+    private static final int DEEP_Y_MAX = 22;
+    private static final int MID_Y_MIN = 46;
+    private static final int MID_Y_MAX = 82;
+    private static final int HIGH_Y_MIN = 135;
 
     @Test
     public void oresGenerateAsVeinsAndIronFollowsTheDepthCurve() {
@@ -283,15 +283,15 @@ public class OreVeinDistributionTest {
     };
 
     /**
-     * Dry hills tall enough to span the whole iron curve: valleys just above sea level
-     * (y≈330) and peaks well past the high-altitude peak at y=420, so all three sample
-     * bands hold real rock. {@code DryHillsTileSource} tops out around y=404 and would
-     * leave the highland band empty.
+     * Dry hills tall enough to span the whole iron curve: valleys just above sea level and
+     * peaks well past the high-altitude peak at y=130, so all three sample bands hold real
+     * rock. {@code DryHillsTileSource} tops out around y=148 and would leave the highland
+     * band thin.
      */
     private static final class TallHillsTileSource implements TerrainTileSource {
         private static final int TILE_SIZE = 256;
-        private static final int BASE = WorldConfiguration.SEA_LEVEL + 120;
-        private static final int AMPLITUDE = 55;
+        private static final int BASE = WorldConfiguration.SEA_LEVEL + 60;
+        private static final int AMPLITUDE = 28;
         static final int MAX_HEIGHT = BASE + 2 * AMPLITUDE;
 
         private final Map<Long, TerrainTile> cache = new HashMap<>();

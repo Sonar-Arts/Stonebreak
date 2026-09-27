@@ -3,6 +3,7 @@ package com.stonebreak.world.generation.water;
 import com.openmason.engine.cenda.CendaKernels;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.diffusion.TerrainTileSource;
+import com.stonebreak.world.generation.diffusion.process.TerrainServiceProcessManager;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.ArrayList;
@@ -67,8 +68,15 @@ public final class NativeWaterTiles implements TerrainTileSource, AutoCloseable 
 
     private static final Logger LOG = Logger.getLogger(NativeWaterTiles.class.getName());
 
-    /** {@code -Dstonebreak.water.backend}: {@code native} (default) or {@code bridge}. */
+    /**
+     * {@code -Dstonebreak.water.backend}: {@code native} (default) or {@code bridge}. Always
+     * false when the terrain backend supplies its own rivers
+     * ({@link TerrainServiceProcessManager#modelSuppliesWater()}, {@code backend=slm}).
+     */
     public static boolean nativeBackendSelected() {
+        if (TerrainServiceProcessManager.modelSuppliesWater()) {
+            return false;
+        }
         return !"bridge".equalsIgnoreCase(System.getProperty("stonebreak.water.backend", "native"));
     }
 

@@ -59,11 +59,14 @@ class TopographyVisualizerTest {
         assertTrue(distance(belowShore, aboveShore) > 150,
                 "green -> light blue must be an abrupt jump at sea level");
 
-        // Everywhere else, one block of elevation is a barely perceptible colour step.
+        // Everywhere else, one block of elevation is a small colour step -- an order of
+        // magnitude under the shoreline jump. The bound scales with the land ramp's length:
+        // at the 1:4 world scale land spans ~116 blocks (SEA_LEVEL..TOPO_LAND_CEILING), so a
+        // block is ~1/23 of a palette segment (it was ~1/76 on the 1024-tall world, bound 12).
         for (int y = 1; y < WorldConfiguration.WORLD_HEIGHT; y++) {
             if (y == SEA_LEVEL + 1) continue; // the intentional discontinuity
             int step = distance(visualizer.colorFor(y - 1), visualizer.colorFor(y));
-            assertTrue(step <= 12, "abrupt colour step at y=" + y + " (distance " + step + ")");
+            assertTrue(step <= 20, "abrupt colour step at y=" + y + " (distance " + step + ")");
         }
     }
 

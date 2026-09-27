@@ -47,10 +47,10 @@ public final class SinkholeCarver {
     private static final float THROAT_FRACTION = 0.45f;
 
     /** Depth bounds, used when there is no worm anchor to aim at. */
-    private static final int DEPTH_MIN = 25;
-    private static final int DEPTH_MAX = 70;
+    private static final int DEPTH_MIN = 15;
+    private static final int DEPTH_MAX = 45;
     /** Hard cap on shaft depth even when aiming at a deep anchor. */
-    private static final int DEPTH_LIMIT = 150;
+    private static final int DEPTH_LIMIT = 90;
 
     /** Chunk radius searched for a worm origin to open into. */
     private static final int ANCHOR_SEARCH_RADIUS = 3;

@@ -96,6 +96,7 @@ def health():
         "upstream": upstream,
         "seed": cfg.seed,
         "scale": cfg.scale,
+        "downscale": cfg.downscale,
         "protocol_version": PROTOCOL_VERSION,
         # Horizontal only. The vertical mapping stopped being one number at Phase 5 —
         # it is an integrated rate curve, ~4 m/block in lowlands and ~24 in highlands —

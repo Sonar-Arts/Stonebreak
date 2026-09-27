@@ -135,16 +135,24 @@ class GpuWorkQueue:
             start = time.monotonic()
             try:
                 bounds = tile_bounds(job.tile.tile_x, job.tile.tile_z, self._cfg.tile_size_blocks)
-                elev, biome = await loop.run_in_executor(
-                    None, self._client.fetch_tile, *bounds
-                )
+                surface = None
+                if getattr(self._water, "wants_surface", False):
+                    elev, biome, surface = await loop.run_in_executor(
+                        None, self._client.fetch_tile_with_water, *bounds
+                    )
+                else:
+                    elev, biome = await loop.run_in_executor(
+                        None, self._client.fetch_tile, *bounds
+                    )
                 # The carve runs on this same consumer rather than in parallel: solving
                 # an unsolved L1 macro-tile means generating 9.4 M native pixels
                 # upstream, and racing that against tile generation would contend for
                 # the one GPU the queue exists to serialize.
-                block_height, water_level, report = await loop.run_in_executor(
-                    None, self._water.planes, bounds, elev
-                )
+                if surface is None:
+                    planes_call = (self._water.planes, bounds, elev)
+                else:
+                    planes_call = (self._water.planes, bounds, elev, surface)
+                block_height, water_level, report = await loop.run_in_executor(None, *planes_call)
                 await loop.run_in_executor(
                     None, self._cache.put, job.tile, block_height, biome, water_level
                 )

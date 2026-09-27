@@ -95,8 +95,8 @@ public final class RavineCarver {
     private static final int RAVINE_CHUNK_DIVISOR = 450;
 
     /** Depth below the local surface that the ravine floor reaches. */
-    private static final int DEPTH_MIN = 45;
-    private static final int DEPTH_MAX = 110;
+    private static final int DEPTH_MIN = 25;
+    private static final int DEPTH_MAX = 60;
 
     /** Half-width at the ravine's midpoint, in blocks. Tapers to nothing at the ends. */
     private static final float HALF_WIDTH_MIN = 2.5f;
@@ -178,7 +178,7 @@ public final class RavineCarver {
      * How high above its floor the ravine cuts. Generous — it must reach the surface from
      * the deepest floor, and the per-column surface clamp trims the excess.
      */
-    private static final int OVERCUT = 160;
+    private static final int OVERCUT = 70;
 
     /** Widest half-width any ravine can reach: full width, peak wobble, full rim flare. */
     private static final float MAX_HALF_WIDTH =

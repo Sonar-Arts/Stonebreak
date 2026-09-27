@@ -49,11 +49,62 @@ public final class TerrainServiceProcessManager {
     /** Pulls {@code "seed": 123} out of terrain-bridge's /health body without dragging in a JSON parser. */
     private static final Pattern HEALTH_SEED = Pattern.compile("\"seed\"\\s*:\\s*(-?\\d+)");
 
+    /**
+     * The terrain generator every world uses: the terrain-slm model. The stock diffusion model
+     * ({@code upstream}) is no longer offered; {@code -Dstonebreak.terrainService.backend=upstream}
+     * remains only as a developer escape hatch.
+     */
+    static final String DEFAULT_BACKEND = "slm";
+
+    /** Upstream server module of the stock diffusion model. */
+    static final String UPSTREAM_MODULE = "terrain_diffusion.inference.minecraft_api";
+    /** Upstream server module of the experimental terrain-slm model (same HTTP contract). */
+    static final String SLM_MODULE = "terrain_slm.serve.upstream_api";
+
+    /**
+     * Launch defaults for each {@code -Dstonebreak.terrainService.backend}. Both backends speak
+     * the same {@code /terrain} contract and accept the same argv, so switching is purely a
+     * matter of which interpreter, working directory, module and model to launch. Explicit
+     * {@code stonebreak.terrainService.*} properties still override every field.
+     */
+    record BackendDefaults(String pythonExe, String repoDir, String module, String model, String logName) {
+        static BackendDefaults of(String backend) {
+            return switch (backend) {
+                case "upstream" -> new BackendDefaults(
+                        "Dev Working/terrain-diffusion-spike/venv/bin/python",
+                        "Dev Working/terrain-diffusion-spike/repo",
+                        UPSTREAM_MODULE, "xandergos/terrain-diffusion-30m", "minecraft_api.log");
+                case "slm" -> new BackendDefaults(
+                        "terrain-slm/.venv/bin/python", "terrain-slm",
+                        SLM_MODULE, "checkpoints/poc", "terrain_slm.log");
+                default -> throw new TerrainBridgeException("unknown -Dstonebreak.terrainService.backend="
+                        + backend + " (expected upstream or slm)");
+            };
+        }
+    }
+
+    /**
+     * True when the selected backend generates rivers itself ({@code backend=slm}): its tiles
+     * arrive with carved channels and a water plane, so the native basin/river pass
+     * ({@code NativeWaterTiles} + {@code BasinCache} + {@code CoarseDem}, and the region-scale
+     * coarse-elevation requests they make) is not installed at all.
+     */
+    public static boolean modelSuppliesWater() {
+        return "slm".equals(backendProperty());
+    }
+
+    static String backendProperty() {
+        return System.getProperty("stonebreak.terrainService.backend", DEFAULT_BACKEND);
+    }
+
     public static TerrainServiceProcessManager getInstance() {
         return INSTANCE;
     }
 
     private final boolean autostart;
+    private final String backend;
+    private final String upstreamModule;
+    private final String upstreamLogName;
     private final Path upstreamPythonExe;
     private final Path upstreamRepoDir;
     private final String model;
@@ -75,11 +126,13 @@ public final class TerrainServiceProcessManager {
         Path userDir = Path.of(System.getProperty("user.dir"));
 
         this.autostart = Boolean.parseBoolean(System.getProperty("stonebreak.terrainService.autostart", "true"));
-        this.upstreamPythonExe = resolvePath(userDir, "stonebreak.terrainService.pythonExe",
-                "Dev Working/terrain-diffusion-spike/venv/bin/python");
-        this.upstreamRepoDir = resolvePath(userDir, "stonebreak.terrainService.repoDir",
-                "Dev Working/terrain-diffusion-spike/repo");
-        this.model = System.getProperty("stonebreak.terrainService.model", "xandergos/terrain-diffusion-30m");
+        this.backend = backendProperty();
+        BackendDefaults defaults = BackendDefaults.of(backend);
+        this.upstreamModule = System.getProperty("stonebreak.terrainService.module", defaults.module());
+        this.upstreamLogName = defaults.logName();
+        this.upstreamPythonExe = resolvePath(userDir, "stonebreak.terrainService.pythonExe", defaults.pythonExe());
+        this.upstreamRepoDir = resolvePath(userDir, "stonebreak.terrainService.repoDir", defaults.repoDir());
+        this.model = System.getProperty("stonebreak.terrainService.model", defaults.model());
         this.device = System.getProperty("stonebreak.terrainService.device", "cuda");
         // In-memory generation-tile cache for the upstream pipeline (CPU RAM). The upstream
         // default of 100 MB thrashes during the hydrology solvers' bulk native fetches — a
@@ -148,9 +201,9 @@ public final class TerrainServiceProcessManager {
     }
 
     private void startUpstreamLocked(long seed) {
-        Path logFile = logDir.resolve("minecraft_api.log");
+        Path logFile = logDir.resolve(upstreamLogName);
         List<String> command = List.of(
-                upstreamPythonExe.toString(), "-m", "terrain_diffusion.inference.minecraft_api",
+                upstreamPythonExe.toString(), "-m", upstreamModule,
                 model,
                 "--no-compile",
                 "--device", device,
@@ -159,12 +212,16 @@ public final class TerrainServiceProcessManager {
                 "--hdf5-file", "TEMP",
                 "--seed", String.valueOf(seed)
         );
-        reclaimPort(upstreamPort, "terrain_diffusion.inference.minecraft_api",
-                "upstream terrain-diffusion server");
-        LOG.info(() -> "Starting upstream terrain-diffusion server (seed " + seed + "): " + command);
-        upstreamProcess = startProcess(command, upstreamRepoDir, logFile, null);
+        // Either backend may have leaked onto the port (e.g. after switching backends).
+        reclaimPort(upstreamPort, List.of(UPSTREAM_MODULE, SLM_MODULE, upstreamModule),
+                "upstream terrain server");
+        LOG.info(() -> "Starting upstream terrain server [" + backend + "] (seed " + seed + "): " + command);
+        // The model server settles water in blocks, so it needs the same scale as the bridge.
+        java.util.Map<String, String> env = new java.util.HashMap<>(
+                com.stonebreak.world.generation.diffusion.TerrainScale.serviceEnvironment(modelSuppliesWater()));
+        upstreamProcess = startProcess(command, upstreamRepoDir, logFile, env);
         waitForHealth("http://localhost:" + upstreamPort + "/health", upstreamProcess,
-                "upstream terrain-diffusion server", logFile, null);
+                "upstream terrain server [" + backend + "]", logFile, null);
     }
 
     private void startBridgeLocked(long seed) {
@@ -173,9 +230,15 @@ public final class TerrainServiceProcessManager {
                 bridgePythonExe.toString(), "-m", "uvicorn", "bridge.main:app",
                 "--port", String.valueOf(bridgePort)
         );
-        java.util.Map<String, String> env = new java.util.HashMap<>();
+        java.util.Map<String, String> env = new java.util.HashMap<>(
+                com.stonebreak.world.generation.diffusion.TerrainScale.serviceEnvironment(modelSuppliesWater()));
         env.put("TERRAIN_BRIDGE_SEED", String.valueOf(seed));
         env.put("TERRAIN_BRIDGE_UPSTREAM_URL", "http://localhost:" + upstreamPort);
+        // Non-stock generators get their own bridge tile-cache namespace; the stock model keeps
+        // the old one (an empty id leaves the fingerprint unchanged).
+        if (!"upstream".equals(backend)) {
+            env.put("TERRAIN_BRIDGE_UPSTREAM_ID", backend + ":" + model);
+        }
         // With the native water backend (the default), inland water is derived
         // game-side by Cenda's ck_carve_water over raw tiles, so the bridge's
         // hydrological L0/L1 solve — the ~90 s-per-region / ~20-min-worst-case
@@ -183,10 +246,14 @@ public final class TerrainServiceProcessManager {
         // sea-level-only generation. -Dstonebreak.water.backend=bridge restores
         // the old solve (NativeWaterTiles reads the same property and then does
         // not wrap the tile source).
-        if (com.stonebreak.world.generation.water.NativeWaterTiles.nativeBackendSelected()) {
+        if (modelSuppliesWater()) {
+            // The model server returns rivers with each tile; the bridge only maps them.
+            env.put("TERRAIN_BRIDGE_HYDROLOGY", "0");
+            env.put("TERRAIN_BRIDGE_WATER_SOURCE", "upstream");
+        } else if (com.stonebreak.world.generation.water.NativeWaterTiles.nativeBackendSelected()) {
             env.put("TERRAIN_BRIDGE_HYDROLOGY", "0");
         }
-        reclaimPort(bridgePort, "bridge.main:app", "terrain-bridge");
+        reclaimPort(bridgePort, List.of("bridge.main:app"), "terrain-bridge");
         LOG.info(() -> "Starting terrain-bridge (seed " + seed + "): " + command);
         bridgeProcess = startProcess(command, bridgeDir, logFile, env);
         waitForHealth("http://localhost:" + bridgePort + "/health", bridgeProcess, "terrain-bridge", logFile, seed);
@@ -288,12 +355,12 @@ public final class TerrainServiceProcessManager {
      * <p>Only processes whose command line is recognisably this service on this port are killed — an
      * unrelated program on the port is reported instead of shot.
      */
-    private void reclaimPort(int port, String moduleArg, String label) {
+    private void reclaimPort(int port, List<String> moduleArgs, String label) {
         if (isPortFree(port)) {
             return;
         }
         List<ProcessHandle> leaked = ProcessHandle.allProcesses()
-                .filter(handle -> ownsService(handle, moduleArg, port))
+                .filter(handle -> moduleArgs.stream().anyMatch(module -> ownsService(handle, module, port)))
                 .toList();
         if (leaked.isEmpty()) {
             throw new TerrainBridgeException("port " + port + " (" + label + ") is held by a process that is not"

@@ -38,6 +38,19 @@ class UpstreamClient:
 
     def fetch_tile(self, i1: int, j1: int, i2: int, j2: int) -> tuple[np.ndarray, np.ndarray]:
         """Fetch one canonical-shape tile. Returns (elev_m int16 HxW, biome_id int16 HxW)."""
+        elev, biome, _ = self._fetch_planes(self._tile_params(i1, j1, i2, j2), water=False)
+        return elev, biome
+
+    def fetch_tile_with_water(
+        self, i1: int, j1: int, i2: int, j2: int
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Like `fetch_tile`, plus the model's river water-surface plane (int16 metres,
+        WATER_NONE where dry). Only upstreams that speak `water=1` (terrain-slm) do."""
+        params = self._tile_params(i1, j1, i2, j2)
+        params["water"] = 1
+        return self._fetch_planes(params, water=True)
+
+    def _tile_params(self, i1: int, j1: int, i2: int, j2: int) -> dict:
         params = {
             "i1": i1,
             "j1": j1,
@@ -46,10 +59,17 @@ class UpstreamClient:
             "scale": self._cfg.scale,
             "noise": self._cfg.noise_scale,
         }
-        elev, biome = self._fetch(params, timeout=self._cfg.upstream_timeout_s)
-        if biome is None:
+        if self._cfg.downscale > 1:
+            params["downscale"] = self._cfg.downscale
+        return params
+
+    def _fetch_planes(self, params: dict, water: bool):
+        planes = self._fetch_raw(params, timeout=self._cfg.upstream_timeout_s)
+        if len(planes) < 2:
             raise UpstreamError("upstream returned no biome plane")
-        return elev, biome
+        if water and len(planes) < 3:
+            raise UpstreamError("upstream returned no water plane (does it speak water=1?)")
+        return planes[0], planes[1], (planes[2] if water else None)
 
     def fetch_native(
         self, i1: int, j1: int, i2: int, j2: int, timeout_s: float | None = None
@@ -84,6 +104,10 @@ class UpstreamClient:
         return elev
 
     def _fetch(self, params: dict, timeout: float) -> tuple[np.ndarray, np.ndarray | None]:
+        planes = self._fetch_raw(params, timeout)
+        return planes[0], (planes[1] if len(planes) > 1 else None)
+
+    def _fetch_raw(self, params: dict, timeout: float) -> list[np.ndarray]:
         try:
             r = self._session.get(
                 f"{self._cfg.upstream_url}/terrain", params=params, timeout=timeout
@@ -102,13 +126,12 @@ class UpstreamClient:
         w = int(r.headers["X-Width"])
         body = r.content
         plane = h * w * 2
-        if len(body) not in (plane, plane * 2):
+        if len(body) not in (plane, plane * 2, plane * 3):
             raise UpstreamError(
                 f"unexpected payload size for {h}x{w}: got {len(body)}, "
-                f"expected {plane} or {plane * 2}"
+                f"expected {plane}, {plane * 2} or {plane * 3}"
             )
-
-        elev = np.frombuffer(body[:plane], dtype="<i2").reshape(h, w).copy()
-        if len(body) == plane:
-            return elev, None
-        return elev, np.frombuffer(body[plane:], dtype="<i2").reshape(h, w).copy()
+        return [
+            np.frombuffer(body[k : k + plane], dtype="<i2").reshape(h, w).copy()
+            for k in range(0, len(body), plane)
+        ]

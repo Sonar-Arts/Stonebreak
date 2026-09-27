@@ -86,10 +86,10 @@ class FastLodMesherTest {
 
     @Test
     void flatLandCellEmitsFlatQuadPlusBorderFoundations() {
-        FastLodMesher.Result result = mesher.build(l4Data(filled(9, 326), BlockType.STONE));
+        FastLodMesher.Result result = mesher.build(l4Data(filled(9, (SEA_LEVEL + 6)), BlockType.STONE));
         MmsMeshData mesh = result.mesh();
 
-        // Top quad + 4 border foundation walls (326 → 0), no skirts, no water.
+        // Top quad + 4 border foundation walls (SEA_LEVEL+6 → 0), no skirts, no water.
         assertEquals(20, mesh.getVertexCount());
         assertEquals(30, mesh.getIndexCount());
         assertNull(result.waterMesh(), "dry node has no water sheet");
@@ -106,17 +106,17 @@ class FastLodMesherTest {
         for (float a : mesh.getAlphaTestFlags()) assertEquals(0f, a, EPS);
         for (float t : mesh.getTranslucentFlags()) assertEquals(0f, t, EPS);
         assertEquals(0f, result.minY(), EPS, "foundations reach y=0");
-        assertEquals(326f, result.maxY(), EPS);
+        assertEquals((SEA_LEVEL + 6f), result.maxY(), EPS);
     }
 
     @Test
     void skirtEmittedOnlyTowardLowerNeighbor() {
-        // Center at 336 (=80 above the old SEA_LEVEL=64, shifted +256 to sit
-        // the same distance above the new SEA_LEVEL=320); +x margin neighbor
-        // at 326 (=70, same shift); the rest at 336.
+        // Center at SEA_LEVEL+16; +x margin neighbor at SEA_LEVEL+6; the rest at
+        // SEA_LEVEL+16. Heights are relative to sea level so the test holds at any
+        // world height.
         // stride=3 layout: index = (ix+1)*3 + (iz+1); +x neighbor = (2)*3 + 1 = 7.
-        int[] heights = filled(9, 336);
-        heights[7] = 326;
+        int[] heights = filled(9, (SEA_LEVEL + 16));
+        heights[7] = (SEA_LEVEL + 6);
         FastLodMesher.Result result = mesher.build(l4Data(heights, BlockType.STONE));
         MmsMeshData mesh = result.mesh();
 
@@ -133,10 +133,10 @@ class FastLodMesherTest {
             skirtTop = Math.max(skirtTop, pos[v * 3 + 1]);
             skirtBottom = Math.min(skirtBottom, pos[v * 3 + 1]);
         }
-        assertEquals(336f, skirtTop, EPS);
-        assertEquals(326f, skirtBottom, EPS);
+        assertEquals((SEA_LEVEL + 16f), skirtTop, EPS);
+        assertEquals((SEA_LEVEL + 6f), skirtBottom, EPS);
         assertEquals(0f, result.minY(), EPS);
-        assertEquals(336f, result.maxY(), EPS);
+        assertEquals((SEA_LEVEL + 16f), result.maxY(), EPS);
     }
 
     @Test
@@ -145,13 +145,13 @@ class FastLodMesherTest {
         // real height (textured with the sampled seabed block), and the water
         // surface is a separate translucent sheet mesh at the native water
         // plane, drawn by the dedicated water renderer.
-        FastLodMesher.Result result = mesher.build(l4Data(filled(9, 306), BlockType.SAND, SEA_LEVEL));
+        FastLodMesher.Result result = mesher.build(l4Data(filled(9, (SEA_LEVEL - 14)), BlockType.SAND, SEA_LEVEL));
 
         MmsMeshData terrain = result.mesh();
         assertEquals(20, terrain.getVertexCount(), "seabed top + 4 foundations, no skirts");
         float[] pos = terrain.getVertexPositions();
         for (int v = 0; v < 4; v++) {
-            assertEquals(306f, pos[v * 3 + 1], EPS, "seabed sits at the real terrain height");
+            assertEquals((SEA_LEVEL - 14f), pos[v * 3 + 1], EPS, "seabed sits at the real terrain height");
         }
         // Terrain mesh carries no water flags at all anymore.
         for (float w : terrain.getWaterHeightFlags()) assertEquals(0f, w, EPS);
@@ -175,7 +175,7 @@ class FastLodMesherTest {
         // flags.y = falling (0), flags.w = flow code (0 = still water: an
         // LOD sheet never runs, and 1.0 would decode as a river in octant 7);
         // normals straight up.
-        FastLodMesher.Result result = mesher.build(l4Data(filled(9, 296), BlockType.SAND, SEA_LEVEL));
+        FastLodMesher.Result result = mesher.build(l4Data(filled(9, (SEA_LEVEL - 24)), BlockType.SAND, SEA_LEVEL));
         MmsMeshData sheet = result.waterMesh();
         assertNotNull(sheet);
         // 1/255 tolerance: the flag is a u8 on the GPU in every packed format.
@@ -201,7 +201,7 @@ class FastLodMesherTest {
 
         // Capped, like the near-water mesher's scan: past the cap the shader
         // reads everything as equally deep anyway.
-        FastLodMesher.Result abyss = mesher.build(l4Data(filled(9, SEA_LEVEL - 200), BlockType.SAND, SEA_LEVEL));
+        FastLodMesher.Result abyss = mesher.build(l4Data(filled(9, SEA_LEVEL - 40), BlockType.SAND, SEA_LEVEL));
         for (float layer : abyss.waterMesh().getLayerIndices()) {
             assertEquals(16f, layer, EPS, "deep ocean saturates the baked depth");
         }
@@ -209,12 +209,12 @@ class FastLodMesherTest {
 
     @Test
     void coastalCliffSkirtDescendsToRealSeabed() {
-        // Land cliff at 336 dropping into a submerged neighbor at 306: the skirt
-        // follows the REAL heights (336 → 306) — the seabed is ordinary terrain
+        // Land cliff at SEA_LEVEL+16 dropping into a submerged neighbor at SEA_LEVEL-14:
+        // the skirt follows the REAL heights — the seabed is ordinary terrain
         // now, and the neighbor node's water sheet blends over it exactly like
         // native water over a native shore.
-        int[] heights = filled(9, 336);
-        heights[7] = 306;   // +x neighbor far below sea level
+        int[] heights = filled(9, (SEA_LEVEL + 16));
+        heights[7] = (SEA_LEVEL - 14);   // +x neighbor far below sea level
         FastLodMesher.Result result = mesher.build(l4Data(heights, BlockType.GRASS));
         MmsMeshData mesh = result.mesh();
 
@@ -225,7 +225,7 @@ class FastLodMesherTest {
         for (int v = 4; v < 8; v++) {
             skirtBottom = Math.min(skirtBottom, pos[v * 3 + 1]);
         }
-        assertEquals(306f, skirtBottom, EPS);
+        assertEquals((SEA_LEVEL - 14f), skirtBottom, EPS);
         assertEquals(0f, result.minY(), EPS);
     }
 
@@ -235,7 +235,7 @@ class FastLodMesherTest {
         // belongs to a border foundation. 4 edges × 4 cells = 16 walls; the
         // interior cell edges emit nothing.
         FastLodLevel level = FastLodLevel.L2;
-        int[] heights = filled(level.heightCount(), 326);
+        int[] heights = filled(level.heightCount(), (SEA_LEVEL + 6));
         int[] waterLevels = filled(level.cellCount(), TerrainTile.NO_WATER);
         BlockType[] surface = new BlockType[level.cellCount()];
         Arrays.fill(surface, BlockType.STONE);
@@ -247,14 +247,14 @@ class FastLodMesherTest {
         assertEquals((16 + 16) * 4, mesh.getVertexCount(), "16 tops + 16 foundations");
         assertEquals(16 * 4, countVertsWithLight(mesh, 0f));
 
-        // Every foundation wall spans its cell top (326) down to exactly 0 and
+        // Every foundation wall spans its cell top (SEA_LEVEL+6) down to exactly 0 and
         // sits on the node's outer boundary planes (x/z == 0 or 16).
         float[] pos = mesh.getVertexPositions();
         float[] light = mesh.getLightValues();
         for (int v = 0; v < mesh.getVertexCount(); v++) {
             if (Math.abs(light[v]) > EPS) continue;
             float x = pos[v * 3], y = pos[v * 3 + 1], z = pos[v * 3 + 2];
-            assertTrue(y == 0f || y == 326f, "foundation verts at top or y=0, got " + y);
+            assertTrue(y == 0f || y == (SEA_LEVEL + 6f), "foundation verts at top or y=0, got " + y);
             boolean onBoundary = x == 0f || x == 16f || z == 0f || z == 16f;
             assertTrue(onBoundary, "foundation off the node boundary at " + x + "," + z);
         }
@@ -271,7 +271,7 @@ class FastLodMesherTest {
         int[] heights = new int[level.heightCount()];
         for (int hx = 0; hx < level.stride(); hx++) {
             for (int hz = 0; hz < level.stride(); hz++) {
-                heights[hx * level.stride() + hz] = 336 + 4 * (hx - 1);
+                heights[hx * level.stride() + hz] = (SEA_LEVEL + 16) + 4 * (hx - 1);
             }
         }
         int[] waterLevels = filled(level.cellCount(), TerrainTile.NO_WATER);
@@ -304,7 +304,7 @@ class FastLodMesherTest {
     @Test
     void treeSilhouetteEmittedAndBoundsIncludeCanopy() {
         FastLodLevel level = FastLodLevel.L0;
-        int[] heights = filled(level.heightCount(), 326);
+        int[] heights = filled(level.heightCount(), (SEA_LEVEL + 6));
         int[] waterLevels = filled(level.cellCount(), TerrainTile.NO_WATER);
         BlockType[] surface = new BlockType[level.cellCount()];
         Arrays.fill(surface, BlockType.GRASS);
@@ -317,15 +317,15 @@ class FastLodMesherTest {
         // 256 flat top quads + 9 tree quads (4 trunk + 5 canopy)
         // + 4 × 16 border foundations.
         assertEquals((256 + 9 + 64) * 4, result.mesh().getVertexCount());
-        // Canopy top: trunkTop(330) + 1 + CANOPY_HALF_HEIGHT(1.5).
-        assertEquals(332.5f, result.maxY(), EPS);
+        // Canopy top: trunkTop(SEA_LEVEL+10) + 1 + CANOPY_HALF_HEIGHT(1.5).
+        assertEquals((SEA_LEVEL + 12.5f), result.maxY(), EPS);
         assertEquals(0f, result.minY(), EPS);
     }
 
     @Test
     void treeOnSubmergedCellIsSuppressed() {
         FastLodLevel level = FastLodLevel.L0;
-        int[] heights = filled(level.heightCount(), 306);
+        int[] heights = filled(level.heightCount(), (SEA_LEVEL - 14));
         int[] waterLevels = filled(level.cellCount(), SEA_LEVEL);
         BlockType[] surface = new BlockType[level.cellCount()];
         Arrays.fill(surface, BlockType.SAND);
@@ -343,15 +343,15 @@ class FastLodMesherTest {
 
     @Test
     void boundsMatchHandComputedExtremes() {
-        // Mixed terrain: peak 376 (=120 shifted +256), submerged valley 286
-        // (=30 shifted; seabed + sheet), flat 326 (=70 shifted) elsewhere.
+        // Mixed terrain: peak SEA_LEVEL+56, submerged valley SEA_LEVEL-34 (seabed +
+        // sheet), flat SEA_LEVEL+6 elsewhere.
         // maxY comes from the peak; minY is 0 because every border cell drops
         // a foundation wall to bedrock.
         FastLodLevel level = FastLodLevel.L3;   // 2x2 cells, stride 4
-        int[] heights = filled(level.heightCount(), 326);
-        // Interior cells: (0,0)=376, (1,1)=286, others 326.
-        heights[(0 + 1) * 4 + (0 + 1)] = 376;
-        heights[(1 + 1) * 4 + (1 + 1)] = 286;
+        int[] heights = filled(level.heightCount(), (SEA_LEVEL + 6));
+        // Interior cells: (0,0)=SEA_LEVEL+56, (1,1)=SEA_LEVEL-34, others SEA_LEVEL+6.
+        heights[(0 + 1) * 4 + (0 + 1)] = (SEA_LEVEL + 56);
+        heights[(1 + 1) * 4 + (1 + 1)] = (SEA_LEVEL - 34);
         int[] waterLevels = new int[]{
                 TerrainTile.NO_WATER, TerrainTile.NO_WATER,
                 TerrainTile.NO_WATER, SEA_LEVEL};
@@ -362,7 +362,7 @@ class FastLodMesherTest {
                 FastLodKey.of(level, 0, 0), heights, waterLevels, surface, null);
 
         FastLodMesher.Result result = mesher.build(data);
-        assertEquals(376f, result.maxY(), EPS);
+        assertEquals((SEA_LEVEL + 56f), result.maxY(), EPS);
         assertEquals(0f, result.minY(), EPS);
         assertNotNull(result.waterMesh(), "one submerged cell → sheet quad");
         assertEquals(4, result.waterMesh().getVertexCount());

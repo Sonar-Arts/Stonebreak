@@ -119,5 +119,47 @@ class HydrologyWater:
         return result.block_heights, result.water_levels, result.report
 
 
+class UpstreamWater:
+    """Rivers supplied by the model server with each tile (terrain-slm, `water=1`).
+
+    The elevation it sends already has the channels carved, and the third plane is the
+    water SURFACE in metres, so this only has to map both through the same height curve:
+    a column holds water up to the block height its surface would have as terrain. The
+    ocean rule of `SeaLevelWater` still applies on top. No solve, no region fetches.
+    """
+
+    fingerprint = "upstream-water-v1"
+    #: Tells the queue to fetch the third plane and pass it to `planes`.
+    wants_surface = True
+    WATER_NONE = -32768
+
+    def __init__(self, cfg: BridgeConfig):
+        self._curve = HeightCurve.from_config(cfg)
+        self._sea_level = cfg.sea_level
+
+    def planes(
+        self,
+        bounds_blocks: tuple[int, int, int, int],
+        elevation_m: np.ndarray,
+        surface_m: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, dict]:
+        heights = self._curve.to_block_height(elevation_m)
+        water = np.where(heights < self._sea_level, self._sea_level, -1).astype(np.int16)
+        report = {}
+        if surface_m is not None:
+            wet = surface_m != self.WATER_NONE
+            levels = self._curve.to_block_height(np.where(wet, surface_m, elevation_m))
+            river = wet & (levels > heights)
+            water = np.where(river, np.maximum(water, levels), water).astype(np.int16)
+            report["wet_columns"] = int(river.sum())
+        return heights, water, report
+
+
 def build(cfg: BridgeConfig) -> WaterSource:
+    if cfg.water_source == "upstream":
+        return UpstreamWater(cfg)
+    if cfg.water_source not in ("", "hydrology", "sea"):
+        raise ValueError(f"unknown TERRAIN_BRIDGE_WATER_SOURCE={cfg.water_source!r}")
+    if cfg.water_source == "sea":
+        return SeaLevelWater(cfg)
     return HydrologyWater(cfg) if cfg.hydrology_enabled else SeaLevelWater(cfg)

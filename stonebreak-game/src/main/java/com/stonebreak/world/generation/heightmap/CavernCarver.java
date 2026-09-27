@@ -33,8 +33,8 @@ public final class CavernCarver {
      * tunnel able to climb that far. See {@code PerlinWormCarver.ORIGIN_DEPTH_MIN} for the
      * full account of why surface-relative depth is the correct quantity.
      */
-    private static final int CAVERN_DEPTH_MIN = 35;
-    private static final int CAVERN_DEPTH_MAX = 160;
+    private static final int CAVERN_DEPTH_MIN = 18;
+    private static final int CAVERN_DEPTH_MAX = 65;
 
     /**
      * Mean blob radius (blocks). Final radius per blob is BASE_RADIUS * [0.75 .. 1.20].

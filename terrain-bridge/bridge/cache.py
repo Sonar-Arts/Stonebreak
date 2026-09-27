@@ -50,6 +50,12 @@ def _config_fingerprint(cfg: BridgeConfig, extra: str = "") -> str:
         f"{cfg.shore_blend_m}|{cfg.midland_blend_m}|{cfg.highland_blend_m}|"
         f"water={extra}"
     )
+    if cfg.downscale != 1:
+        # Appended only when set, so existing namespaces keep their hashes.
+        raw += f"|downscale={cfg.downscale}"
+    if cfg.upstream_id:
+        # Appended only when set, so the stock model's namespace keeps its old hash.
+        raw += f"|upstream={cfg.upstream_id}"
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
 
