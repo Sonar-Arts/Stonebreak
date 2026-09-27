@@ -88,6 +88,17 @@ public final class PreviewSampleStore {
      */
     public float valueAt(long seed, int spacing, int worldX, int worldZ,
                          PreviewChannel channel, TerrainColumns columns) {
+        return valueAt(seed, spacing, worldX, worldZ, channel, columns, Integer.MAX_VALUE);
+    }
+
+    /**
+     * As {@link #valueAt(long, int, int, int, PreviewChannel, TerrainColumns)}, for a source whose
+     * lattices from {@code boundarySpacing} up read different columns (the far-zoom overview): a
+     * value sampled below the boundary is copied up only to levels below it, so the overview
+     * levels never mix full-detail values into their coarse ones.
+     */
+    public float valueAt(long seed, int spacing, int worldX, int worldZ,
+                         PreviewChannel channel, TerrainColumns columns, int boundarySpacing) {
         int level = levelOf(spacing);
         Chunk chunk = chunks.get(keyFor(seed, level, worldX, worldZ));
         if (chunk != null) {
@@ -102,7 +113,11 @@ public final class PreviewSampleStore {
         }
         float[] column = new float[PreviewChannel.COUNT];
         columns.sample(worldX, worldZ, column);
-        store(seed, level, worldX, worldZ, column);
+        // Highest level still below the boundary (the boundary itself is where the other columns start).
+        int topLevel = (spacing < boundarySpacing && boundarySpacing <= MAX_SPACING)
+                ? Integer.numberOfTrailingZeros(Integer.highestOneBit(boundarySpacing - 1))
+                : MAX_LEVEL;
+        store(seed, level, topLevel, worldX, worldZ, column);
         return column[channel.ordinal()];
     }
 
@@ -116,9 +131,9 @@ public final class PreviewSampleStore {
         return chunks.size();
     }
 
-    private void store(long seed, int fromLevel, int worldX, int worldZ, float[] column) {
+    private void store(long seed, int fromLevel, int toLevel, int worldX, int worldZ, float[] column) {
         long now = epoch.get();
-        for (int level = fromLevel; level <= MAX_LEVEL; level++) {
+        for (int level = fromLevel; level <= toLevel; level++) {
             int mask = (1 << level) - 1;
             if ((worldX & mask) != 0 || (worldZ & mask) != 0) break;
             Chunk chunk = chunks.computeIfAbsent(keyFor(seed, level, worldX, worldZ), k -> new Chunk());

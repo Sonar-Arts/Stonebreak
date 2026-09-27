@@ -1,7 +1,7 @@
 """FastAPI adapter in front of upstream's terrain_diffusion minecraft_api server.
 
 Contract for the Java client (plan.md section 5, Phase 1):
-  POST /generate_heightmap  {world_x, world_z, seed?} -> binary tile + headers
+  POST /generate_heightmap  {world_x, world_z, seed?, lod?} -> binary tile + headers
   GET  /health               -> model/queue/cache status
   POST /prefetch             {world_x, world_z}        -> fire-and-forget warm
   POST /coarse_elevation    {chunk_x, chunk_z, seed?} -> float32 block heights
@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from . import water as water_module
 from .cache import PLANES, TileCache
 from .coarse import CoarseElevation
+from .overview import check_lod
 from .config import BridgeConfig
 from .queue import GpuWorkQueue, TilePending
 from .tiling import TileId, tile_bounds, tile_containing
@@ -48,9 +49,22 @@ app = FastAPI(title="Stonebreak Terrain Bridge")
 
 
 class TileCoordRequest(BaseModel):
+    """`lod` > 1 asks for a far-zoom overview tile (overview.py): world_x/world_z are then
+    SAMPLE coordinates (world blocks // lod) and each sample stands for lod x lod blocks."""
     world_x: int
     world_z: int
     seed: int | None = None
+    lod: int = 1
+
+
+def _tile_for(req: TileCoordRequest) -> TileId:
+    try:
+        check_lod(cfg, req.lod)
+    except ValueError as e:
+        # 422, not 400: the Java client reads 400 as a seed mismatch.
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    tile_x, tile_z = tile_containing(req.world_x, req.world_z, cfg.tile_size_blocks)
+    return TileId(seed=cfg.seed, tile_x=tile_x, tile_z=tile_z, scale=cfg.scale, lod=req.lod)
 
 
 class CoarseChunkRequest(BaseModel):
@@ -112,8 +126,7 @@ def health():
 @app.post("/generate_heightmap")
 async def generate_heightmap(req: TileCoordRequest):
     _require_matching_seed(req.seed)
-    tile_x, tile_z = tile_containing(req.world_x, req.world_z, cfg.tile_size_blocks)
-    tile = TileId(seed=cfg.seed, tile_x=tile_x, tile_z=tile_z, scale=cfg.scale)
+    tile = _tile_for(req)
 
     try:
         planes, from_cache = await work_queue.get_tile(tile, max_wait_s=cfg.max_wait_s)
@@ -151,6 +164,7 @@ async def generate_heightmap(req: TileCoordRequest):
     resp.headers["X-World-J2"] = str(j2)
     resp.headers["X-Sea-Level"] = str(cfg.sea_level)
     resp.headers["X-Cache-Hit"] = "1" if from_cache else "0"
+    resp.headers["X-Lod"] = str(tile.lod)
     return resp
 
 
@@ -191,7 +205,6 @@ async def coarse_elevation(req: CoarseChunkRequest):
 @app.post("/prefetch")
 async def prefetch(req: TileCoordRequest):
     _require_matching_seed(req.seed)
-    tile_x, tile_z = tile_containing(req.world_x, req.world_z, cfg.tile_size_blocks)
-    tile = TileId(seed=cfg.seed, tile_x=tile_x, tile_z=tile_z, scale=cfg.scale)
+    tile = _tile_for(req)
     asyncio.create_task(work_queue.get_tile(tile))
     return {"queued": True, "tile_x": tile.tile_x, "tile_z": tile.tile_z}

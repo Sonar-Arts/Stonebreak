@@ -83,6 +83,20 @@ class UpstreamClient:
         elev, _ = self._fetch(params, timeout=timeout_s or self._cfg.upstream_timeout_s * 20.0)
         return elev
 
+    def fetch_native_with_biome(
+        self, i1: int, j1: int, i2: int, j2: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """`fetch_native` plus the biome plane: (elev_m int16, biome_id int16), HxW.
+
+        For overview tiles (overview.py), which need biomes and so cannot send
+        `elev_only`. Same bulk timeout as `fetch_native`.
+        """
+        params = {"i1": i1, "j1": j1, "i2": i2, "j2": j2, "scale": 1}
+        elev, biome = self._fetch(params, timeout=self._cfg.upstream_timeout_s * 20.0)
+        if biome is None:
+            raise UpstreamError("upstream returned no biome plane")
+        return elev, biome
+
     def _fetch(self, params: dict, timeout: float) -> tuple[np.ndarray, np.ndarray | None]:
         try:
             r = self._session.get(

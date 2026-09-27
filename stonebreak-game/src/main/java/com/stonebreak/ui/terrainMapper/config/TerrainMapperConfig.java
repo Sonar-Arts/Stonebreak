@@ -74,6 +74,18 @@ public final class TerrainMapperConfig {
      */
     public static final long PREVIEW_CACHE_BUDGET_BYTES = 512L * 1024 * 1024;
 
+    /**
+     * Far-zoom overview (Diffusion only): samples this many blocks apart or more read overview
+     * tiles of {@link #OVERVIEW_LOD} blocks per sample instead of full tiles. One overview tile
+     * is a single bulk request covering what 64 full tiles would (terrain-bridge/bridge/overview.py),
+     * and it skips the native water pass, so zoomed-out views load in seconds rather than minutes.
+     * The price is inland water: past this spacing only the sea shows.
+     */
+    public static final int OVERVIEW_MIN_SPACING = 8;
+
+    /** World blocks per overview sample: one overview tile covers 256 * 8 = 2048 blocks a side. */
+    public static final int OVERVIEW_LOD = 8;
+
     /** After a wheel-zoom, keep interactive quality this long before resampling at hi-res. */
     public static final long ZOOM_COOLDOWN_NANOS = 180_000_000L;
 

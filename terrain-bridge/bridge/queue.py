@@ -19,6 +19,7 @@ import numpy as np
 
 from .cache import TileCache
 from .config import BridgeConfig
+from .overview import OverviewTiles
 from .tiling import TileId, tile_bounds
 from .upstream_client import UpstreamClient
 from .water import WaterSource
@@ -78,6 +79,7 @@ class GpuWorkQueue:
         self._cache = cache
         self._client = client
         self._water = water
+        self._overview = OverviewTiles(cfg, client)
         self._queue: asyncio.Queue[_Job] = asyncio.Queue()
         self._inflight: dict[TileId, asyncio.Future] = {}
         self._task: asyncio.Task | None = None
@@ -134,17 +136,24 @@ class GpuWorkQueue:
             job = await self._queue.get()
             start = time.monotonic()
             try:
-                bounds = tile_bounds(job.tile.tile_x, job.tile.tile_z, self._cfg.tile_size_blocks)
-                elev, biome = await loop.run_in_executor(
-                    None, self._client.fetch_tile, *bounds
-                )
-                # The carve runs on this same consumer rather than in parallel: solving
-                # an unsolved L1 macro-tile means generating 9.4 M native pixels
-                # upstream, and racing that against tile generation would contend for
-                # the one GPU the queue exists to serialize.
-                block_height, water_level, report = await loop.run_in_executor(
-                    None, self._water.planes, bounds, elev
-                )
+                report: dict = {}
+                if job.tile.lod > 1:
+                    # Far-zoom overview: one bulk square, no hydrology (overview.py).
+                    block_height, biome, water_level = await loop.run_in_executor(
+                        None, self._overview.planes, job.tile
+                    )
+                else:
+                    bounds = tile_bounds(job.tile.tile_x, job.tile.tile_z, self._cfg.tile_size_blocks)
+                    elev, biome = await loop.run_in_executor(
+                        None, self._client.fetch_tile, *bounds
+                    )
+                    # The carve runs on this same consumer rather than in parallel: solving
+                    # an unsolved L1 macro-tile means generating 9.4 M native pixels
+                    # upstream, and racing that against tile generation would contend for
+                    # the one GPU the queue exists to serialize.
+                    block_height, water_level, report = await loop.run_in_executor(
+                        None, self._water.planes, bounds, elev
+                    )
                 await loop.run_in_executor(
                     None, self._cache.put, job.tile, block_height, biome, water_level
                 )

@@ -49,8 +49,23 @@ public class DiffusionTerrainClient {
     private final long seed;
     private final HttpClient httpClient;
     private final ScheduledExecutorService retryScheduler;
+    /**
+     * Level of detail: world blocks per sample. 1 = full detail (the game). Above 1 the client
+     * asks for far-zoom overview tiles, and every coordinate it is given or returns is in SAMPLE
+     * units (world blocks / lod) -- the terrain mapper zoomed out (terrain-bridge/bridge/overview.py).
+     */
+    private final int lod;
 
     public DiffusionTerrainClient(DiffusionBridgeConfig config, long seed) {
+        this(config, seed, 1);
+    }
+
+    /** @param lod world blocks per sample (1 = full detail); see {@link #lod}. */
+    public DiffusionTerrainClient(DiffusionBridgeConfig config, long seed, int lod) {
+        if (lod < 1 || Integer.bitCount(lod) != 1) {
+            throw new IllegalArgumentException("lod must be a power of two, got " + lod);
+        }
+        this.lod = lod;
         this.config = config;
         this.seed = seed;
         this.httpClient = HttpClient.newBuilder()
@@ -333,7 +348,8 @@ public class DiffusionTerrainClient {
     }
 
     private String jsonBody(int worldX, int worldZ) {
-        return "{\"world_x\":" + worldX + ",\"world_z\":" + worldZ + ",\"seed\":" + seed + "}";
+        return "{\"world_x\":" + worldX + ",\"world_z\":" + worldZ + ",\"seed\":" + seed
+                + (lod > 1 ? ",\"lod\":" + lod : "") + "}";
     }
 
     private static String bodyPreview(HttpResponse<byte[]> response) {
@@ -345,6 +361,7 @@ public class DiffusionTerrainClient {
 
     private TerrainTile parseTile(HttpResponse<byte[]> response) {
         requireProtocolVersion(response);
+        requireLod(response);
         int height = requireHeader(response, "X-Height");
         int width = requireHeader(response, "X-Width");
         int tileX = requireHeader(response, "X-Tile-X");
@@ -402,6 +419,21 @@ public class DiffusionTerrainClient {
                     + " the terrain services (they are launched from this checkout by"
                     + " TerrainServiceProcessManager, so a stale one is usually a leftover"
                     + " process on the configured port).");
+        }
+    }
+
+    /**
+     * Fails an overview response that is not at the level of detail asked for. A bridge from
+     * before overview tiles ignores the unknown {@code lod} field and answers with the full tile
+     * at those coordinates, which would read as a plausible map 1/lod the size -- wrong, not
+     * broken. Full-detail requests skip the check, so the game still talks to such a bridge.
+     */
+    private void requireLod(HttpResponse<byte[]> response) {
+        if (lod == 1) return;
+        int served = response.headers().firstValue("X-Lod").map(Integer::parseInt).orElse(1);
+        if (served != lod) {
+            throw new IllegalStateException("asked the terrain bridge for lod " + lod + " tiles, got lod "
+                    + served + " — the bridge predates overview tiles; restart the terrain services");
         }
     }
 

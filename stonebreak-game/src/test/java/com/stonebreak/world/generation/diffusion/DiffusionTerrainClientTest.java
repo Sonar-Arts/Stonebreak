@@ -77,6 +77,42 @@ class DiffusionTerrainClientTest {
     }
 
     @Test
+    void anOverviewClientSendsItsLevelOfDetailAndTheGameClientDoesNot() throws IOException {
+        java.util.List<String> bodies = new java.util.concurrent.CopyOnWriteArrayList<>();
+        server = startServer(exchange -> {
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            bodies.add(body);
+            if (body.contains("\"lod\":8")) exchange.getResponseHeaders().add("X-Lod", "8");
+            respondTile(exchange, 200, 2, 2, 0, 0, 0, 0, 2, 2, new short[]{1, 2, 3, 4}, new short[]{0, 0, 0, 0});
+        });
+        DiffusionTerrainClient overview = new DiffusionTerrainClient(config(server.getAddress().getPort()), 42L, 8);
+        client = newClient(0);
+        try {
+            overview.fetchTile(0, 0).join();
+            client.fetchTile(0, 0).join();
+        } finally {
+            overview.close();
+        }
+        assertTrue(bodies.get(0).contains("\"lod\":8"), bodies.get(0));
+        assertTrue(!bodies.get(1).contains("lod"), "full-detail requests keep the old body: " + bodies.get(1));
+    }
+
+    @Test
+    void anOverviewClientRejectsABridgeThatServedFullDetail() throws IOException {
+        // A bridge from before overview tiles ignores "lod" and sends the full tile, no X-Lod.
+        server = startServer(exchange -> respondTile(exchange, 200, 2, 2, 0, 0, 0, 0, 2, 2,
+                new short[]{1, 2, 3, 4}, new short[]{0, 0, 0, 0}));
+        client = new DiffusionTerrainClient(config(server.getAddress().getPort()), 42L, 8);
+        CompletionException ex = assertThrows(CompletionException.class, () -> client.fetchTile(0, 0).join());
+        assertInstanceOf(TerrainBridgeException.class, ex.getCause());
+    }
+
+    @Test
+    void aLevelOfDetailMustBeAPowerOfTwo() {
+        assertThrows(IllegalArgumentException.class, () -> new DiffusionTerrainClient(config(1), 1L, 6));
+    }
+
+    @Test
     void rejectsABridgeSpeakingAnOlderProtocol() throws IOException {
         // The body is bare concatenated planes with no header bytes of its own, so a v1
         // bridge hands back something this build would slice into plausible garbage
@@ -239,6 +275,11 @@ class DiffusionTerrainClientTest {
 
     private static DiffusionTerrainClient newClient(int port, int maxRetries, long unreachableGraceMs) {
         return newClient(port, maxRetries, unreachableGraceMs, 5_000L, 50L);
+    }
+
+    private static DiffusionBridgeConfig config(int port) {
+        return new DiffusionBridgeConfig("http://localhost:" + port,
+                256, 2000, 5000, 0, 10, 50, 64, 5_000L, 5_000L, 50L, 2048, 16, 64);
     }
 
     private static DiffusionTerrainClient newClient(int port, int maxRetries, long unreachableGraceMs,

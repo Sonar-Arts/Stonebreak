@@ -1,5 +1,6 @@
 package com.stonebreak.ui.terrainMapper.visualization;
 
+import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainMapper.visualization.impl.diffusion.BiomeVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.impl.diffusion.HeightVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.impl.diffusion.TopographyVisualizer;
@@ -70,8 +71,38 @@ final class DiffusionPreview implements GeneratorPreview {
             out[PreviewChannel.WATER.ordinal()] = heightMap.waterLevel(x, z);
             out[PreviewChannel.BIOME.ordinal()] = biomes.getBiome(x, z).ordinal();
         };
-        AutoCloseable resources = tiles instanceof AutoCloseable closeable ? closeable : null;
-        return new Built(visualizers, new PreviewSource(seed, columns, store), resources);
+        DiffusionTileCache overviewTiles = new DiffusionTileCache(config, seed, TerrainMapperConfig.OVERVIEW_LOD);
+        PreviewSource source = new PreviewSource(seed, columns, store,
+                overviewColumns(overviewTiles, TerrainMapperConfig.OVERVIEW_LOD),
+                TerrainMapperConfig.OVERVIEW_MIN_SPACING);
+
+        AutoCloseable fullTiles = tiles instanceof AutoCloseable closeable ? closeable : null;
+        AutoCloseable resources = () -> {
+            try {
+                overviewTiles.close();
+            } finally {
+                if (fullTiles != null) fullTiles.close();
+            }
+        };
+        return new Built(visualizers, source, resources);
+    }
+
+    /**
+     * Columns for far zoom, read from overview tiles of {@code lod} blocks per sample: one bulk
+     * request per 2048-block square instead of 64 full tiles and their native water pass. The
+     * tiles are addressed in sample units, so a world column maps to the sample it falls in.
+     * Water is the sea only — inland lakes and rivers need the full tiles this skips.
+     */
+    private static TerrainColumns overviewColumns(TerrainTileSource overviewTiles, int lod) {
+        HeightMapGenerator heights = new HeightMapGenerator(overviewTiles);
+        BiomeManager biomes = new BiomeManager(overviewTiles);
+        return (x, z, out) -> {
+            int sx = Math.floorDiv(x, lod);
+            int sz = Math.floorDiv(z, lod);
+            out[PreviewChannel.HEIGHT.ordinal()] = heights.generateHeight(sx, sz);
+            out[PreviewChannel.WATER.ordinal()] = heights.waterLevel(sx, sz);
+            out[PreviewChannel.BIOME.ordinal()] = biomes.getBiome(sx, sz).ordinal();
+        };
     }
 
     /** Called when the player picks Diffusion; nothing starts until a preview asks. */
