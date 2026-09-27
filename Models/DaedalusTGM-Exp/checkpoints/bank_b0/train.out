@@ -1,0 +1,170 @@
+/mnt/extrastorage/Projects/Projects/SB - Project - IntelliJ/Models/DaedalusTGM-Exp/terrain_slm/train/train_banks.py:49: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  self.dems.append(torch.from_numpy(np.ascontiguousarray(dem)).to(device))
+  alps: 9951 train / 808 val edges
+  borneo: 4972 train / 0 val edges
+  colorado_plateau: 3361 train / 147 val edges
+  east_africa: 3114 train / 41 val edges
+  great_plains: 3762 train / 107 val edges
+  norway: 8241 train / 503 val edges
+bank 236,497 params, 33,401 train / 1,606 val edges
+step    100  loss 0.1933  l1 1.315 blocks  29.4 ms/step
+step    200  loss 0.1384  l1 0.827 blocks  25.3 ms/step
+step    300  loss 0.1370  l1 0.816 blocks  23.9 ms/step
+step    400  loss 0.1173  l1 0.679 blocks  23.3 ms/step
+step    500  loss 0.1317  l1 0.784 blocks  22.9 ms/step
+step    600  loss 0.1450  l1 0.862 blocks  22.6 ms/step
+step    700  loss 0.1291  l1 0.750 blocks  22.5 ms/step
+step    800  loss 0.0852  l1 0.476 blocks  22.3 ms/step
+step    900  loss 0.0905  l1 0.510 blocks  22.2 ms/step
+step   1000  loss 0.0821  l1 0.462 blocks  22.2 ms/step
+step   1100  loss 0.1327  l1 0.799 blocks  22.1 ms/step
+step   1200  loss 0.1324  l1 0.805 blocks  22.0 ms/step
+step   1300  loss 0.0836  l1 0.498 blocks  22.0 ms/step
+step   1400  loss 0.1022  l1 0.603 blocks  22.0 ms/step
+step   1500  loss 0.1127  l1 0.694 blocks  22.0 ms/step
+  eval {'step': 1500, 'l1': 0.0608, 'grad': 0.0411, 'total': 0.1019, 'blocks_mae': 0.6081, 'fill_only_blocks_mae': 4.3468, 'ring_below_water': 0.4775}
+step   1600  loss 0.1051  l1 0.634 blocks  22.3 ms/step
+step   1700  loss 0.1049  l1 0.619 blocks  22.2 ms/step
+step   1800  loss 0.0857  l1 0.507 blocks  22.2 ms/step
+step   1900  loss 0.0969  l1 0.591 blocks  22.2 ms/step
+step   2000  loss 0.0729  l1 0.418 blocks  22.1 ms/step
+step   2100  loss 0.0853  l1 0.494 blocks  22.1 ms/step
+step   2200  loss 0.0874  l1 0.520 blocks  22.1 ms/step
+step   2300  loss 0.0974  l1 0.580 blocks  22.1 ms/step
+step   2400  loss 0.0982  l1 0.581 blocks  22.1 ms/step
+step   2500  loss 0.0761  l1 0.442 blocks  22.1 ms/step
+step   2600  loss 0.1032  l1 0.616 blocks  22.0 ms/step
+step   2700  loss 0.0945  l1 0.544 blocks  22.0 ms/step
+step   2800  loss 0.0715  l1 0.405 blocks  22.0 ms/step
+step   2900  loss 0.0892  l1 0.520 blocks  22.0 ms/step
+step   3000  loss 0.1146  l1 0.664 blocks  22.0 ms/step
+  eval {'step': 3000, 'l1': 0.0515, 'grad': 0.0376, 'total': 0.0891, 'blocks_mae': 0.5152, 'fill_only_blocks_mae': 4.3468, 'ring_below_water': 0.4061}
+step   3100  loss 0.0951  l1 0.584 blocks  22.2 ms/step
+step   3200  loss 0.0811  l1 0.476 blocks  22.2 ms/step
+step   3300  loss 0.0824  l1 0.470 blocks  22.2 ms/step
+step   3400  loss 0.0861  l1 0.492 blocks  22.2 ms/step
+step   3500  loss 0.1094  l1 0.634 blocks  22.2 ms/step
+step   3600  loss 0.1024  l1 0.608 blocks  22.1 ms/step
+step   3700  loss 0.0837  l1 0.491 blocks  22.1 ms/step
+step   3800  loss 0.0807  l1 0.456 blocks  22.1 ms/step
+step   3900  loss 0.0970  l1 0.532 blocks  22.1 ms/step
+step   4000  loss 0.0855  l1 0.502 blocks  22.1 ms/step
+step   4100  loss 0.0865  l1 0.494 blocks  22.1 ms/step
+step   4200  loss 0.1046  l1 0.614 blocks  22.1 ms/step
+step   4300  loss 0.0709  l1 0.394 blocks  22.1 ms/step
+step   4400  loss 0.0755  l1 0.421 blocks  22.1 ms/step
+step   4500  loss 0.1029  l1 0.586 blocks  22.1 ms/step
+  eval {'step': 4500, 'l1': 0.0491, 'grad': 0.0367, 'total': 0.0859, 'blocks_mae': 0.4912, 'fill_only_blocks_mae': 4.3468, 'ring_below_water': 0.3652}
+step   4600  loss 0.1068  l1 0.605 blocks  22.2 ms/step
+step   4700  loss 0.0699  l1 0.402 blocks  22.2 ms/step
+step   4800  loss 0.0587  l1 0.321 blocks  22.2 ms/step
+step   4900  loss 0.0734  l1 0.416 blocks  22.2 ms/step
+step   5000  loss 0.0714  l1 0.394 blocks  22.2 ms/step
+step   5100  loss 0.0738  l1 0.411 blocks  22.2 ms/step
+step   5200  loss 0.0708  l1 0.398 blocks  22.2 ms/step
+step   5300  loss 0.0775  l1 0.437 blocks  22.2 ms/step
+step   5400  loss 0.0745  l1 0.426 blocks  22.2 ms/step
+step   5500  loss 0.0959  l1 0.534 blocks  22.2 ms/step
+step   5600  loss 0.0726  l1 0.404 blocks  22.2 ms/step
+step   5700  loss 0.0894  l1 0.508 blocks  22.2 ms/step
+step   5800  loss 0.0749  l1 0.427 blocks  22.2 ms/step
+step   5900  loss 0.0989  l1 0.574 blocks  22.2 ms/step
+step   6000  loss 0.0674  l1 0.374 blocks  22.2 ms/step
+  eval {'step': 6000, 'l1': 0.0477, 'grad': 0.0362, 'total': 0.084, 'blocks_mae': 0.4771, 'fill_only_blocks_mae': 4.3468, 'ring_below_water': 0.3785}
+step   6100  loss 0.0781  l1 0.437 blocks  22.2 ms/step
+step   6200  loss 0.0939  l1 0.515 blocks  22.2 ms/step
+step   6300  loss 0.0898  l1 0.532 blocks  22.2 ms/step
+step   6400  loss 0.0934  l1 0.540 blocks  22.2 ms/step
+step   6500  loss 0.0827  l1 0.469 blocks  22.2 ms/step
+step   6600  loss 0.0678  l1 0.384 blocks  22.2 ms/step
+step   6700  loss 0.0669  l1 0.363 blocks  22.2 ms/step
+step   6800  loss 0.0874  l1 0.497 blocks  22.2 ms/step
+step   6900  loss 0.0871  l1 0.492 blocks  22.2 ms/step
+step   7000  loss 0.0900  l1 0.507 blocks  22.2 ms/step
+step   7100  loss 0.0839  l1 0.448 blocks  22.2 ms/step
+step   7200  loss 0.0762  l1 0.416 blocks  22.2 ms/step
+step   7300  loss 0.0855  l1 0.468 blocks  22.2 ms/step
+step   7400  loss 0.0715  l1 0.389 blocks  22.2 ms/step
+step   7500  loss 0.0816  l1 0.443 blocks  22.2 ms/step
+  eval {'step': 7500, 'l1': 0.0468, 'grad': 0.0359, 'total': 0.0828, 'blocks_mae': 0.4684, 'fill_only_blocks_mae': 4.3468, 'ring_below_water': 0.3897}
+step   7600  loss 0.0810  l1 0.448 blocks  22.3 ms/step
+step   7700  loss 0.0785  l1 0.430 blocks  22.3 ms/step
+step   7800  loss 0.0619  l1 0.354 blocks  22.3 ms/step
+step   7900  loss 0.0749  l1 0.419 blocks  22.3 ms/step
+step   8000  loss 0.0804  l1 0.446 blocks  22.3 ms/step
+step   8100  loss 0.0952  l1 0.522 blocks  22.3 ms/step
+step   8200  loss 0.0747  l1 0.414 blocks  22.3 ms/step
+step   8300  loss 0.0568  l1 0.311 blocks  22.2 ms/step
+step   8400  loss 0.1022  l1 0.574 blocks  22.2 ms/step
+step   8500  loss 0.0740  l1 0.417 blocks  22.2 ms/step
+step   8600  loss 0.0631  l1 0.342 blocks  22.2 ms/step
+step   8700  loss 0.0705  l1 0.391 blocks  22.2 ms/step
+step   8800  loss 0.0764  l1 0.424 blocks  22.2 ms/step
+step   8900  loss 0.0793  l1 0.428 blocks  22.2 ms/step
+step   9000  loss 0.0667  l1 0.364 blocks  22.2 ms/step
+  eval {'step': 9000, 'l1': 0.0461, 'grad': 0.0357, 'total': 0.0818, 'blocks_mae': 0.4612, 'fill_only_blocks_mae': 4.3468, 'ring_below_water': 0.4255}
+step   9100  loss 0.0756  l1 0.419 blocks  22.3 ms/step
+step   9200  loss 0.0745  l1 0.415 blocks  22.3 ms/step
+step   9300  loss 0.0699  l1 0.386 blocks  22.3 ms/step
+step   9400  loss 0.0663  l1 0.362 blocks  22.3 ms/step
+step   9500  loss 0.0649  l1 0.366 blocks  22.3 ms/step
+step   9600  loss 0.0605  l1 0.338 blocks  22.3 ms/step
+step   9700  loss 0.0685  l1 0.380 blocks  22.3 ms/step
+step   9800  loss 0.0963  l1 0.543 blocks  22.3 ms/step
+step   9900  loss 0.0867  l1 0.489 blocks  22.3 ms/step
+step  10000  loss 0.0773  l1 0.424 blocks  22.3 ms/step
+step  10100  loss 0.0717  l1 0.394 blocks  22.3 ms/step
+step  10200  loss 0.0771  l1 0.414 blocks  22.3 ms/step
+step  10300  loss 0.0844  l1 0.462 blocks  22.3 ms/step
+step  10400  loss 0.0757  l1 0.414 blocks  22.3 ms/step
+step  10500  loss 0.0678  l1 0.369 blocks  22.3 ms/step
+  eval {'step': 10500, 'l1': 0.0455, 'grad': 0.0355, 'total': 0.081, 'blocks_mae': 0.4547, 'fill_only_blocks_mae': 4.3468, 'ring_below_water': 0.4602}
+step  10600  loss 0.0683  l1 0.367 blocks  22.3 ms/step
+step  10700  loss 0.0779  l1 0.434 blocks  22.3 ms/step
+step  10800  loss 0.0737  l1 0.400 blocks  22.3 ms/step
+step  10900  loss 0.0613  l1 0.335 blocks  22.3 ms/step
+step  11000  loss 0.0945  l1 0.530 blocks  22.3 ms/step
+step  11100  loss 0.0775  l1 0.428 blocks  22.3 ms/step
+step  11200  loss 0.0778  l1 0.419 blocks  22.3 ms/step
+step  11300  loss 0.0707  l1 0.371 blocks  22.3 ms/step
+step  11400  loss 0.0716  l1 0.398 blocks  22.3 ms/step
+step  11500  loss 0.0658  l1 0.366 blocks  22.3 ms/step
+step  11600  loss 0.0826  l1 0.460 blocks  22.3 ms/step
+step  11700  loss 0.0777  l1 0.433 blocks  22.3 ms/step
+step  11800  loss 0.0728  l1 0.406 blocks  22.3 ms/step
+step  11900  loss 0.0699  l1 0.377 blocks  22.3 ms/step
+step  12000  loss 0.0805  l1 0.451 blocks  22.3 ms/step
+  eval {'step': 12000, 'l1': 0.0451, 'grad': 0.0354, 'total': 0.0805, 'blocks_mae': 0.451, 'fill_only_blocks_mae': 4.3468, 'ring_below_water': 0.4816}
+step  12100  loss 0.0841  l1 0.462 blocks  22.3 ms/step
+step  12200  loss 0.0784  l1 0.427 blocks  22.3 ms/step
+step  12300  loss 0.0521  l1 0.280 blocks  22.3 ms/step
+step  12400  loss 0.0679  l1 0.366 blocks  22.3 ms/step
+step  12500  loss 0.0837  l1 0.472 blocks  22.3 ms/step
+step  12600  loss 0.0798  l1 0.440 blocks  22.3 ms/step
+step  12700  loss 0.0679  l1 0.368 blocks  22.3 ms/step
+step  12800  loss 0.0724  l1 0.384 blocks  22.3 ms/step
+step  12900  loss 0.0777  l1 0.436 blocks  22.3 ms/step
+step  13000  loss 0.0792  l1 0.428 blocks  22.3 ms/step
+step  13100  loss 0.0872  l1 0.482 blocks  22.3 ms/step
+step  13200  loss 0.0663  l1 0.351 blocks  22.3 ms/step
+step  13300  loss 0.0489  l1 0.265 blocks  22.3 ms/step
+step  13400  loss 0.0807  l1 0.442 blocks  22.3 ms/step
+step  13500  loss 0.0824  l1 0.454 blocks  22.3 ms/step
+  eval {'step': 13500, 'l1': 0.0449, 'grad': 0.0353, 'total': 0.0802, 'blocks_mae': 0.4486, 'fill_only_blocks_mae': 4.3468, 'ring_below_water': 0.4933}
+step  13600  loss 0.0678  l1 0.372 blocks  22.4 ms/step
+step  13700  loss 0.0956  l1 0.520 blocks  22.4 ms/step
+step  13800  loss 0.0656  l1 0.349 blocks  22.4 ms/step
+step  13900  loss 0.0737  l1 0.393 blocks  22.4 ms/step
+step  14000  loss 0.0525  l1 0.273 blocks  22.4 ms/step
+step  14100  loss 0.0801  l1 0.439 blocks  22.4 ms/step
+step  14200  loss 0.0693  l1 0.374 blocks  22.4 ms/step
+step  14300  loss 0.0557  l1 0.304 blocks  22.4 ms/step
+step  14400  loss 0.0583  l1 0.324 blocks  22.4 ms/step
+step  14500  loss 0.0701  l1 0.376 blocks  22.4 ms/step
+step  14600  loss 0.0758  l1 0.414 blocks  22.4 ms/step
+step  14700  loss 0.0819  l1 0.454 blocks  22.4 ms/step
+step  14800  loss 0.0738  l1 0.401 blocks  22.4 ms/step
+step  14900  loss 0.0659  l1 0.358 blocks  22.4 ms/step
+step  15000  loss 0.0625  l1 0.345 blocks  22.4 ms/step
+  eval {'step': 15000, 'l1': 0.0448, 'grad': 0.0353, 'total': 0.0801, 'blocks_mae': 0.4476, 'fill_only_blocks_mae': 4.3468, 'ring_below_water': 0.4931}
+done in 5.6 min; best val 0.0801

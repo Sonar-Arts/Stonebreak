@@ -474,3 +474,6 @@ QWEN.md
 
 # Heracles terrain bridge (local venv + tile cache)
 terrain-bridge/
+
+# DaedalusTGM-Exp tile cache (TGMPipe disk cache, regenerated on demand)
+/Models/tile_cache/
