@@ -8,7 +8,6 @@ import com.stonebreak.world.generation.TerrainGenStats;
 
 import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
 import com.stonebreak.world.DeterministicRandom;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
@@ -42,6 +41,8 @@ import java.util.BitSet;
 import com.stonebreak.world.chunk.utils.LocalBlockKey;
 import com.stonebreak.world.generation.terrain.MobGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.ui.LoadProgressTracker;
+import com.stonebreak.ui.LoadingScreen;
 
 import java.util.Random;
 
@@ -108,7 +109,11 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      * chain above without a separate init block.
      */
     private static long withServicesRunning(long seed) {
-        TerrainServiceProcessManager.getInstance().ensureRunningForSeed(seed);
+        TerrainServiceProcessManager.getInstance().ensureRunningForSeed(seed, fraction ->
+            LoadingScreen.report(t -> {
+                t.beginPhase(LoadProgressTracker.Phase.SERVICES);
+                t.setPhaseFraction(fraction);
+            }));
         return seed;
     }
 
@@ -393,7 +398,6 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
     }
 
     private TerrainResult generateTerrainOnlyTimed(int chunkX, int chunkZ) {
-        updateLoadingProgress("Generating Base Terrain Shape");
 
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
         int[] waterLevels = new int[CHUNK_SIZE * CHUNK_SIZE];
@@ -411,10 +415,8 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         // Shape first (noise-driven), then skin with biomes. Biomes do not influence shape.
         heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels,
                 riverFloors, riverRoofs, riverFlows);
-        updateLoadingProgress("Determining Biomes");
         biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
 
-        updateLoadingProgress("Applying Biome Materials");
         CarveMasks masks = buildCarveMasks(chunkX, chunkZ, heights, waterLevels, riverFloors);
         BitSet caveMask = masks.caveMask();
         BitSet formationMask = masks.formationMask();
@@ -672,8 +674,6 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
             return;
         }
 
-        updateLoadingProgress("Adding Surface Decorations & Details");
-
         int[] heights;
         BiomeType[] biomes;
         int[] waterLevels;
@@ -788,10 +788,4 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                world.hasChunkAt(chunkX + 1, chunkZ + 1);
     }
 
-    private void updateLoadingProgress(String stageName) {
-        Game game = Game.getInstance();
-        if (game != null && game.getLoadingScreen() != null && game.getLoadingScreen().isVisible()) {
-            game.getLoadingScreen().updateProgress(stageName);
-        }
-    }
 }

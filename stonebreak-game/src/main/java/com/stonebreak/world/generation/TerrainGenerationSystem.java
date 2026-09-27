@@ -2,7 +2,6 @@ package com.stonebreak.world.generation;
 
 import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
 import com.stonebreak.world.DeterministicRandom;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
@@ -493,7 +492,6 @@ public class TerrainGenerationSystem implements TerrainGenerator {
      */
     public TerrainResult generateTerrainOnly(int chunkX, int chunkZ) {
         long startNanos = System.nanoTime();
-        updateLoadingProgress("Generating Base Terrain Shape");
 
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
         int[] waterLevels = new int[CHUNK_SIZE * CHUNK_SIZE];
@@ -503,10 +501,7 @@ public class TerrainGenerationSystem implements TerrainGenerator {
         // The water plane rides along: the carvers guard against it so a carve never opens
         // an ocean floor or an ocean-adjacent bank into the cave network.
         heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels);
-        updateLoadingProgress("Determining Biomes");
         biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
-
-        updateLoadingProgress("Applying Biome Materials");
 
         // Fused native path: carve + caverns + density + block fill + sky
         // heightmap in one kernel call — intermediates never cross FFM. The
@@ -845,8 +840,6 @@ public class TerrainGenerationSystem implements TerrainGenerator {
             return;
         }
 
-        updateLoadingProgress("Adding Surface Decorations & Details");
-
         if (profile == null) {
             // Chunk loaded from disk without features: rebuild the profile generation made.
             int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
@@ -946,10 +939,4 @@ public class TerrainGenerationSystem implements TerrainGenerator {
                world.hasChunkAt(chunkX + 1, chunkZ + 1);
     }
 
-    private void updateLoadingProgress(String stageName) {
-        Game game = Game.getInstance();
-        if (game != null && game.getLoadingScreen() != null && game.getLoadingScreen().isVisible()) {
-            game.getLoadingScreen().updateProgress(stageName);
-        }
-    }
 }
