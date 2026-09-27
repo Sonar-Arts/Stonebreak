@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.DoubleConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.logging.Level;
@@ -214,6 +215,15 @@ public final class TerrainServiceProcessManager {
      * @throws TerrainBridgeException if either process fails to start or become healthy in time
      */
     public void ensureRunningForSeed(long seed) {
+        ensureRunningForSeed(seed, fraction -> { });
+    }
+
+    /**
+     * {@link #ensureRunningForSeed(long)}, reporting startup progress (0 when a (re)start begins,
+     * 0.5 once the upstream server is healthy, 1 once the bridge is). Never called when the
+     * services are already running for {@code seed}, so a caller can tell a restart from a no-op.
+     */
+    public void ensureRunningForSeed(long seed, DoubleConsumer startupProgress) {
         if (!autostart) {
             return;
         }
@@ -221,6 +231,7 @@ public final class TerrainServiceProcessManager {
             if (pinnedSeed != null && pinnedSeed == seed && isAlive(upstreamProcess) && isAlive(bridgeProcess)) {
                 return;
             }
+            startupProgress.accept(0.0);
             stopLocked();
             try {
                 Files.createDirectories(logDir);
@@ -228,7 +239,9 @@ public final class TerrainServiceProcessManager {
                 throw new TerrainBridgeException("could not create terrain service log directory " + logDir, e);
             }
             startUpstreamLocked(seed);
+            startupProgress.accept(0.5);
             startBridgeLocked(seed);
+            startupProgress.accept(1.0);
             pinnedSeed = seed;
         }
     }

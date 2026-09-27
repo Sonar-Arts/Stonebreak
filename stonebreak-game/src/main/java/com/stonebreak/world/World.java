@@ -314,15 +314,6 @@ public class World {
         });
     }
     
-    /**
-     * Updates loading progress during world generation.
-     */
-    private void updateLoadingProgress(String stageName) {
-        Game game = Game.getInstance();
-        if (game != null && game.getLoadingScreen() != null && game.getLoadingScreen().isVisible()) {
-            game.getLoadingScreen().updateProgress(stageName);
-        }
-    }
     
     
     public void update(com.stonebreak.rendering.Renderer renderer) {

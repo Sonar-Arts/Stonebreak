@@ -2,6 +2,8 @@ package com.stonebreak.network.server;
 
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntitySpawner;
+import com.stonebreak.ui.LoadProgressTracker;
+import com.stonebreak.ui.LoadingScreen;
 import com.stonebreak.world.TimeOfDay;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -11,7 +13,9 @@ import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.spawn.SpawnLocator;
 import org.joml.Vector3f;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * The authoritative, headless server world — the Minecraft {@code ServerLevel} analog. Owns
@@ -39,6 +43,8 @@ public final class ServerLevel {
 
     /** Spawn-area chunk radius to pre-generate so the server has terrain to stream/collide. */
     private static final int PREGEN_RADIUS = 4;
+    /** How often the pre-gen wait refreshes the loading screen's chunk count. */
+    private static final long PREGEN_PROGRESS_POLL_MILLIS = 100L;
 
     private final long seed;
     private final World world;
@@ -95,6 +101,15 @@ public final class ServerLevel {
             worldData = WorldData.builder().seed(seed).worldName(worldName).build();
             timeTicks = TimeOfDay.NOON;
         }
+
+        // A first visit (spawn search + pre-gen) loads very differently from a return to saved
+        // player data, so each gets its own timing history for the loading screen's estimate.
+        // Keyed on player data, not on the world existing: the terrain mapper writes world.json
+        // before the first boot, so a brand-new world already "exists" here. (Heracles also keys
+        // on the generator type; this branch has only the one generator.)
+        boolean returning = existing && lr.getPlayerData() != null;
+        String loadProfile = returning ? "returning" : "new";
+        LoadingScreen.report(t -> t.setProfile(loadProfile));
 
         World world = World.createHeadless(new WorldConfiguration(), seed);
         if (worldData.getSpawnPosition() != null) {
@@ -174,7 +189,15 @@ public final class ServerLevel {
     private static Vector3f findSafeSurfaceSpawn(World world) {
         SpawnLocator locator = new SpawnLocator(world);
         Vector3f last = null;
+        LoadingScreen.report(t -> t.beginPhase(LoadProgressTracker.Phase.SPAWN_SEARCH));
         for (int attempt = 0; attempt < MAX_SPAWN_ATTEMPTS; attempt++) {
+            // The attempt count is open-ended, so the fraction halves the remaining gap per
+            // rejected candidate: it keeps moving and never claims the search is finished.
+            int tried = attempt;
+            LoadingScreen.report(t -> {
+                t.setPhaseFraction(1.0 - Math.pow(0.5, tried));
+                t.setPhaseDetail(tried == 0 ? null : "Candidate " + (tried + 1));
+            });
             last = locator.findSafeSurfaceSpawn();
             loadSpawnChunk(world, last);
             Vector3f accepted = SpawnLocator.acceptIfSafeSurface(world, last);
@@ -204,6 +227,7 @@ public final class ServerLevel {
      * resident before anything collides with it.
      */
     private static void pregenSpawnArea(World world, Vector3f spawn) {
+        LoadingScreen.report(t -> t.beginPhase(LoadProgressTracker.Phase.PREGEN));
         int pcx = (int) Math.floor(spawn.x / 16.0);
         int pcz = (int) Math.floor(spawn.z / 16.0);
         for (int dx = -PREGEN_RADIUS; dx <= PREGEN_RADIUS; dx++) {
@@ -211,11 +235,42 @@ public final class ServerLevel {
                 world.getChunkAt(pcx + dx, pcz + dz);
             }
         }
+        CompletableFuture<Void> pending = world.awaitPendingChunkLoads();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
         try {
-            world.awaitPendingChunkLoads().get(15, TimeUnit.SECONDS);
+            while (true) {
+                reportPregenProgress(world, pcx, pcz);
+                try {
+                    pending.get(PREGEN_PROGRESS_POLL_MILLIS, TimeUnit.MILLISECONDS);
+                    break;
+                } catch (TimeoutException stillLoading) {
+                    if (System.nanoTime() >= deadline) {
+                        throw stillLoading;
+                    }
+                }
+            }
+            reportPregenProgress(world, pcx, pcz);
         } catch (Exception e) {
             System.err.println("[SERVER-LEVEL] Spawn-area pre-gen wait failed: " + e.getMessage());
         }
+    }
+
+    private static void reportPregenProgress(World world, int pcx, int pcz) {
+        int side = 2 * PREGEN_RADIUS + 1;
+        int total = side * side;
+        int loaded = 0;
+        for (int dx = -PREGEN_RADIUS; dx <= PREGEN_RADIUS; dx++) {
+            for (int dz = -PREGEN_RADIUS; dz <= PREGEN_RADIUS; dz++) {
+                if (world.getChunkIfLoaded(pcx + dx, pcz + dz) != null) {
+                    loaded++;
+                }
+            }
+        }
+        int done = loaded;
+        LoadingScreen.report(t -> {
+            t.setPhaseFraction((double) done / total);
+            t.setPhaseDetail("Chunks " + done + "/" + total);
+        });
     }
 
     /**

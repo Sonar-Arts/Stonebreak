@@ -10,6 +10,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.player.Player;
+import com.stonebreak.ui.LoadProgressTracker;
 import com.stonebreak.ui.LoadingScreen;
 import com.stonebreak.world.TimeOfDay;
 import com.stonebreak.world.World;
@@ -104,6 +105,7 @@ public final class ClientWorldBuilder {
 
     private void build(int buildGeneration, long seed, Vector3f spawn) {
         try {
+            LoadingScreen.report(t -> t.beginPhase(LoadProgressTracker.Phase.STREAM));
             World renderWorld = worldLifecycle.createClientWorldInstance(seed);
             if (!installWorld(buildGeneration, renderWorld)) {
                 return;
@@ -184,10 +186,13 @@ public final class ClientWorldBuilder {
         int spawnChunkZ = (int) Math.floor(spawn.z / 16.0);
         long deadline = System.currentTimeMillis() + SPAWN_WAIT_MILLIS;
 
-        while (System.currentTimeMillis() < deadline
-                && stillCurrent(buildGeneration)
-                && (renderWorld.getChunkIfLoaded(spawnChunkX, spawnChunkZ) == null
-                    || !MultiplayerSession.isLocalPlayerDataReady())) {
+        while (System.currentTimeMillis() < deadline && stillCurrent(buildGeneration)) {
+            boolean chunkArrived = renderWorld.getChunkIfLoaded(spawnChunkX, spawnChunkZ) != null;
+            boolean playerReady = MultiplayerSession.isLocalPlayerDataReady();
+            if (chunkArrived && playerReady) {
+                break;
+            }
+            LoadingScreen.report(t -> t.setPhaseFraction(((chunkArrived ? 1 : 0) + (playerReady ? 1 : 0)) / 2.0));
             Thread.sleep(SPAWN_POLL_MILLIS);
         }
     }
