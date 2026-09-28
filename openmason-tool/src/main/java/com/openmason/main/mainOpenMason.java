@@ -387,6 +387,11 @@ public class mainOpenMason {
                     "Unsaved Changes Dialog");
         }
 
+        // Render delete-asset confirmation dialog (must be rendered outside other windows for modal to work)
+        if (mainInterface != null && mainInterface.getDeleteAssetDialog() != null) {
+            safeRender(() -> mainInterface.getDeleteAssetDialog().render(), "Delete Asset Dialog");
+        }
+
         if (skijaTestPanel != null) {
             safeRender(() -> skijaTestPanel.render(), "Skija Test Panel");
         }

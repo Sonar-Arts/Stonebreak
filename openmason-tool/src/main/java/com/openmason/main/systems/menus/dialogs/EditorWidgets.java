@@ -23,8 +23,13 @@ final class EditorWidgets {
 
     /** Red-tinted destructive button; returns true when clicked. */
     static boolean dangerButton(String label, float width) {
+        return dangerButton(label, width, 0.0f);
+    }
+
+    /** Red-tinted destructive button with explicit height (0 = automatic); returns true when clicked. */
+    static boolean dangerButton(String label, float width, float height) {
         ImGui.pushStyleColor(ImGuiCol.Button, ImColor.rgba(0.5f, 0.18f, 0.18f, 0.45f));
-        boolean clicked = width > 0f ? ImGui.button(label, width, 0.0f) : ImGui.button(label);
+        boolean clicked = width > 0f ? ImGui.button(label, width, height) : ImGui.button(label);
         ImGui.popStyleColor();
         return clicked;
     }

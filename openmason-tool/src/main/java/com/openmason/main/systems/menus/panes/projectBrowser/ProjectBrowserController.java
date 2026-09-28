@@ -13,10 +13,15 @@ import com.openmason.main.systems.services.StatusService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Controller for the Project Browser.
@@ -38,6 +43,14 @@ public class ProjectBrowserController {
     private final ProjectService projectService;
     private final ModelOperationService modelOperationService;
     private final StatusService statusService;
+
+    /** Invoked after a successful delete so the ImGui layer can free GL thumbnails. */
+    private Consumer<AssetEntry> thumbnailInvalidator = entry -> { };
+
+    /** Register the GL-side thumbnail invalidator (ImGui layer owns the GL cache). */
+    public void setThumbnailInvalidator(Consumer<AssetEntry> invalidator) {
+        this.thumbnailInvalidator = invalidator != null ? invalidator : entry -> { };
+    }
 
     public ProjectBrowserController(ProjectService projectService,
                                     ModelOperationService modelOperationService,
@@ -118,6 +131,46 @@ public class ProjectBrowserController {
         }
         visible.sort(comparator);
         return visible;
+    }
+
+    /** Show the delete confirmation for an asset (the shell owns the dialog). */
+    public void requestDelete(AssetEntry entry) {
+        listeners.forEach(l -> l.onAssetDeleteRequested(entry));
+    }
+
+    /**
+     * Delete an asset file from disk, report status, invalidate its thumbnails,
+     * and rescan. The caller is responsible for detaching the editor from a
+     * deleted backing file.
+     *
+     * @return true when the file was deleted
+     */
+    public boolean deleteAsset(AssetEntry entry) {
+        try {
+            Files.delete(entry.path());
+            logger.info("Deleted asset: {}", entry.pathString());
+            statusService.updateStatus("Deleted " + entry.name() + " (" + entry.type().label() + ")");
+            thumbnailInvalidator.accept(entry);
+            refresh();                        // scanner.invalidate(); browser rescans on next frame
+            // Selection is only the status-line string; clear it when THIS entry was selected.
+            String selected = "Selected: " + entry.name() + " (" + entry.type().label() + ")";
+            if (selected.equals(state.getSelectedAssetInfo())) {
+                state.setSelectedAssetInfo(null);
+            }
+            return true;
+        } catch (NoSuchFileException e) {
+            logger.warn("Failed to delete asset (file not found): {}", entry.pathString());
+            statusService.updateStatus("Error deleting " + entry.name() + ": file not found");
+            return false;
+        } catch (AccessDeniedException e) {
+            logger.warn("Failed to delete asset (access denied): {}", entry.pathString());
+            statusService.updateStatus("Error deleting " + entry.name() + ": access denied");
+            return false;
+        } catch (IOException e) {
+            logger.warn("Failed to delete asset: {}", entry.pathString(), e);
+            statusService.updateStatus("Error deleting " + entry.name() + ": " + e.getMessage());
+            return false;
+        }
     }
 
     /** Route a click to the model or texture selection flow by asset type. */

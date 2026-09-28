@@ -8,6 +8,7 @@ import com.openmason.main.systems.menus.panes.projectBrowser.thumbnails.Thumbnai
 import com.openmason.main.systems.menus.panes.projectBrowser.views.CompactListRenderer;
 import com.openmason.main.systems.menus.panes.projectBrowser.views.GridViewRenderer;
 import com.openmason.main.systems.menus.panes.projectBrowser.views.ListViewRenderer;
+import com.openmason.main.systems.menus.panes.projectBrowser.views.ProjectBrowserContextMenu;
 import com.openmason.main.systems.menus.panes.projectBrowser.views.ViewMode;
 import com.openmason.main.systems.menus.panes.projectBrowser.views.ViewRenderer;
 import imgui.ImGui;
@@ -56,11 +57,28 @@ public class ProjectBrowserImGui {
 
         ModelThumbnailRenderer modelRenderer = new ModelThumbnailRenderer(thumbnailCache);
         OMTThumbnailRenderer omtRenderer = new OMTThumbnailRenderer(thumbnailCache);
-        this.gridViewRenderer = new GridViewRenderer(controller, thumbnailCache, modelRenderer, omtRenderer);
-        this.listViewRenderer = new ListViewRenderer(controller, modelRenderer, omtRenderer);
-        this.compactListRenderer = new CompactListRenderer(controller, modelRenderer, omtRenderer);
+        ProjectBrowserContextMenu contextMenu = new ProjectBrowserContextMenu(controller, thumbnailCache);
+        this.gridViewRenderer = new GridViewRenderer(controller, thumbnailCache, modelRenderer, omtRenderer, contextMenu);
+        this.listViewRenderer = new ListViewRenderer(controller, modelRenderer, omtRenderer, contextMenu);
+        this.compactListRenderer = new CompactListRenderer(controller, modelRenderer, omtRenderer, contextMenu);
+
+        installThumbnailInvalidator();
 
         logger.debug("ProjectBrowserImGui initialized");
+    }
+
+    /**
+     * Free the deleted asset's cached thumbnails through the controller's delete
+     * flow — all three cache sizes, for both key shapes (GL textures leak otherwise).
+     */
+    private void installThumbnailInvalidator() {
+        controller.setThumbnailInvalidator(entry -> {
+            for (int size : new int[]{ThumbnailCache.SIZE_LARGE, ThumbnailCache.SIZE_MEDIUM, ThumbnailCache.SIZE_SMALL}) {
+                thumbnailCache.invalidate(entry.type() == ProjectAssetScanner.AssetType.OMO
+                        ? ThumbnailCache.omoKey(entry.pathString(), size)
+                        : ThumbnailCache.omtKey(entry.pathString(), size));
+            }
+        });
     }
 
     /** Renders the Project Browser window. Called every frame when visible. */

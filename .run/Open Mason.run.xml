@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Open Mason" type="Application" factoryName="Application">
+    <option name="ALTERNATIVE_JRE_PATH" value="ms-25" />
+    <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="true" />
+    <option name="MAIN_CLASS_NAME" value="com.openmason.main.mainOpenMason" />
+    <module name="openmason-tool" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
