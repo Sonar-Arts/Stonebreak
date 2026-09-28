@@ -25,7 +25,8 @@ from terrain_slm.river.scale import BlockScale
 # relaxations (WaterSurface 128 px, MonotoneTop 96 px along the river).
 HALO_PX = 256  # + the centreline hysteresis reach (64 px)
 CELL_HALO = 4       # extra drainage cells beyond the pixel halo
-BLOCK_MARGIN = 24   # block columns of context for the block stages (flow smoothing, the
+BLOCK_MARGIN = 32   # (was 24; the biome sidecar's true receptive-field radius is 28) block columns of
+                    # context for the block stages and the biome sidecar (flow smoothing, the
                     # cross-channel levelling walk of up to width_max_blocks + 1, neighbours)
 
 

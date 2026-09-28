@@ -18,6 +18,8 @@ import torch
 from pyfastnoiselite.pyfastnoiselite import FastNoiseLite, NoiseType, FractalType
 
 
+HYPER_ARID_PRECIP_MM = 250.0   # v4: below this (or "too arid") treeless land is desert at any temperature
+
 _BIOME_ID = {
     "plains": 1,
     "snowy_plains": 3,
@@ -399,9 +401,9 @@ def _classify_biome(elev: torch.Tensor, climate: Optional[torch.Tensor], i0: int
         # No snow + no trees: windswept (high-altitude bare rock) vs grove (cold steppe) vs plains
         mtn_windswept = mtn_soil & ~has_snow & trees_none & barren
         out[mtn_windswept] = _BIOME_ID["windswept_hills"]
-        # Semi-arid mountains = grove (brown steppe)
+        # Semi-arid mountains = grassland (v4: no longer "grove", which now means cold barren only)
         mtn_cold_steppe = mtn_soil & ~has_snow & trees_none & ~barren & ((tree_moisture < 0.35) | (precip < 350))
-        out[mtn_cold_steppe] = _BIOME_ID["grove"]
+        out[mtn_cold_steppe] = _BIOME_ID["plains"]
         mtn_plains = mtn_soil & ~has_snow & trees_none & ~barren & ~mtn_cold_steppe
         out[mtn_plains] = _BIOME_ID["plains"]
         
@@ -433,20 +435,18 @@ def _classify_biome(elev: torch.Tensor, climate: Optional[torch.Tensor], i0: int
     out[snowy_forest_dense] = _BIOME_ID["snowy_taiga"]
     land_mask = land_mask & ~(snowy_forest_sparse | snowy_forest_dense)
 
-    # --- 3D: NO SNOW, NO TREES (desert/badlands/plains) ---
+    # --- 3D: NO SNOW, NO TREES (desert / cold barren / grassland) ---
+    # DaedalusTGM-Exp v4 (2026-09-28): ARIDITY FIRST. The upstream rule made desert need >= 20 C, so
+    # on v4's hills a desert's outline was an isotherm -- i.e. an elevation contour -- and hyper-arid
+    # upland (72 mm/yr) became "grove". Hyper-arid land is desert at any temperature (cold deserts
+    # exist); grove now means only COLD barren ground; semi-arid steppe is grassland (plains).
     dry_barren = land_mask & ~has_snow & trees_none
-    # Hot + arid = desert
-    desert_mask = dry_barren & (warm | hot)
+    hyper_arid = too_arid | (precip < HYPER_ARID_PRECIP_MM)
+    desert_mask = dry_barren & ~too_cold & (hyper_arid | warm | hot)
     out[desert_mask] = _BIOME_ID["desert"]
-    # Cool/cold + extreme arid = grove (steppe)
-    windswept_mask = dry_barren & (cold | cool | temperate) & ~lowland & barren
-    out[windswept_mask] = _BIOME_ID["grove"]
-    # Semi-arid = grove (brown steppe) - aridity drives brown vs green grass
-    # Use both tree_moisture AND precipitation floor - green grass needs ~350mm minimum
-    cold_steppe = dry_barren & ((tree_moisture < 0.35) | (precip < 350)) & ~barren
-    out[cold_steppe] = _BIOME_ID["grove"]
-    # Moderate conditions = plains (green grassland)
-    plains_barren = dry_barren & ~desert_mask & ~windswept_mask & ~cold_steppe
+    cold_barren = dry_barren & too_cold & ~desert_mask
+    out[cold_barren] = _BIOME_ID["grove"]
+    plains_barren = dry_barren & ~desert_mask & ~cold_barren
     out[plains_barren] = _BIOME_ID["plains"]
     land_mask = land_mask & ~dry_barren
 

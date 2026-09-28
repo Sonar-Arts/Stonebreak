@@ -25,7 +25,7 @@ class DiffusionBiomeMapperTest {
         assertEquals(BiomeType.SNOWY_PLAINS, DiffusionBiomeMapper.map((short) 3, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.DESERT, DiffusionBiomeMapper.map((short) 5, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.TAIGA, DiffusionBiomeMapper.map((short) 15, WELL_ABOVE_SHORE, NO_WATER));
-        assertEquals(BiomeType.RED_SAND_DESERT, DiffusionBiomeMapper.map((short) 17, WELL_ABOVE_SHORE, NO_WATER));
+        assertEquals(BiomeType.PLAINS, DiffusionBiomeMapper.map((short) 17, WELL_ABOVE_SHORE, NO_WATER));   // savanna
         assertEquals(BiomeType.STONY_PEAKS, DiffusionBiomeMapper.map((short) 19, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.BADLANDS, DiffusionBiomeMapper.map((short) 26, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.MEADOW, DiffusionBiomeMapper.map((short) 29, WELL_ABOVE_SHORE, NO_WATER));
@@ -41,17 +41,18 @@ class DiffusionBiomeMapperTest {
         assertEquals(BiomeType.MEADOW, DiffusionBiomeMapper.map((short) 6, WELL_ABOVE_SHORE, NO_WATER));   // swamp
         assertEquals(BiomeType.MEADOW, DiffusionBiomeMapper.map((short) 108, WELL_ABOVE_SHORE, NO_WATER)); // forest_sparse
         assertEquals(BiomeType.TAIGA, DiffusionBiomeMapper.map((short) 16, WELL_ABOVE_SHORE, NO_WATER));   // snowy_taiga
-        assertEquals(BiomeType.SNOWY_PLAINS, DiffusionBiomeMapper.map((short) 115, WELL_ABOVE_SHORE, NO_WATER)); // taiga_sparse
+        assertEquals(BiomeType.MEADOW, DiffusionBiomeMapper.map((short) 115, WELL_ABOVE_SHORE, NO_WATER));       // taiga_sparse: snow-free
         assertEquals(BiomeType.SNOWY_PLAINS, DiffusionBiomeMapper.map((short) 116, WELL_ABOVE_SHORE, NO_WATER)); // snowy_taiga_sparse
         assertEquals(BiomeType.ICE_FIELDS, DiffusionBiomeMapper.map((short) 32, WELL_ABOVE_SHORE, NO_WATER));    // snowy_slopes
     }
 
     @Test
-    void oceanIdsMapToSeafloorMaterialByTemperature() {
-        // Ocean columns are submerged, so a real caller's nearbyWaterLevel is SEA_LEVEL here too.
-        assertEquals(BiomeType.BEACH, DiffusionBiomeMapper.map((short) 41, SEA_LEVEL - 20, SEA_LEVEL)); // warm_ocean
-        assertEquals(BiomeType.BEACH, DiffusionBiomeMapper.map((short) 44, SEA_LEVEL - 20, SEA_LEVEL)); // ocean
-        assertEquals(BiomeType.ICE_FIELDS, DiffusionBiomeMapper.map((short) 46, SEA_LEVEL - 20, SEA_LEVEL)); // cold_ocean
+    void oceanIdsMapToOceanNotBeach() {
+        // Ocean columns are submerged, so a real caller's nearbyWaterLevel is SEA_LEVEL here too. Oceans are
+        // their own biome (gravel sea floor): mapping them to BEACH painted every sea as a giant beach.
+        assertEquals(BiomeType.OCEAN, DiffusionBiomeMapper.map((short) 41, SEA_LEVEL - 20, SEA_LEVEL)); // warm_ocean
+        assertEquals(BiomeType.OCEAN, DiffusionBiomeMapper.map((short) 44, SEA_LEVEL - 20, SEA_LEVEL)); // ocean
+        assertEquals(BiomeType.OCEAN, DiffusionBiomeMapper.map((short) 46, SEA_LEVEL - 20, SEA_LEVEL)); // cold_ocean
         assertEquals(BiomeType.ICE_FIELDS, DiffusionBiomeMapper.map((short) 48, SEA_LEVEL - 20, SEA_LEVEL)); // frozen_ocean
     }
 

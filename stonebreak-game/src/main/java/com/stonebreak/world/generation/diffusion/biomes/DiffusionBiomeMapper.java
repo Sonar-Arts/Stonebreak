@@ -91,18 +91,25 @@ final class DiffusionBiomeMapper {
             // same formula, see terrain_slm/world/height_curve.py — so these
             // ids reliably mean "this column is underwater"; the surface/subsurface
             // block resolved from the returned biome becomes the seafloor material.
-            case 41, 44 -> BiomeType.BEACH;       // warm_ocean, ocean -> sandy seafloor
-            case 46, 48 -> BiomeType.ICE_FIELDS;  // cold_ocean, frozen_ocean
+            // Oceans are their own biome (2026-09-28): mapping them to BEACH painted every sea as a
+            // giant beach in the terrain mapper. The shoreline band above still makes real beaches.
+            case 41, 44, 46 -> BiomeType.OCEAN;   // warm_ocean, ocean, cold_ocean -> gravel sea floor
+            case 48 -> BiomeType.ICE_FIELDS;      // frozen_ocean
 
             case 1, 8, 23 -> BiomeType.PLAINS;    // plains, forest, jungle (best tree density available)
-            case 3, 115, 116 -> BiomeType.SNOWY_PLAINS; // snowy_plains, taiga_sparse, snowy_taiga_sparse
+            case 3, 116 -> BiomeType.SNOWY_PLAINS; // snowy_plains, snowy_taiga_sparse
+            // taiga_sparse: cool, SNOW-FREE sparse conifer forest. Was SNOWY_PLAINS, which painted white strips
+            // along every cool transition band (2026-09-28).
+            case 115 -> BiomeType.MEADOW;
             case 5 -> BiomeType.DESERT;
             case 6, 29, 108 -> BiomeType.MEADOW;  // swamp, meadow, forest_sparse
             case 15, 16 -> BiomeType.TAIGA;       // taiga, snowy_taiga
-            case 17 -> BiomeType.RED_SAND_DESERT; // savanna: warm dry grassland w/ reddish soil
+            // savanna: warm semi-arid grassland with sparse trees. Was RED_SAND_DESERT, which drew thin
+            // orange cactus strips wherever a climate gradient passed through the savanna band (2026-09-28).
+            case 17 -> BiomeType.PLAINS;
             case 19, 35 -> BiomeType.STONY_PEAKS; // windswept_hills, stony_peaks
             case 26 -> BiomeType.BADLANDS;
-            case 31 -> BiomeType.TUNDRA;          // grove: cold semi-arid steppe
+            case 31 -> BiomeType.TUNDRA;          // grove: cold barren ground only (v4 rule; semi-arid steppe is now plains)
             case 32, 33 -> BiomeType.ICE_FIELDS;  // snowy_slopes, frozen_peaks
 
             // Unrecognized id (e.g. a newer upstream classifier version) — fail

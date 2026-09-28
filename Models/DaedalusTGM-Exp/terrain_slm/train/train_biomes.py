@@ -87,6 +87,7 @@ def main():
     ap.add_argument("--lr", type=float, default=2e-3)
     ap.add_argument("--channels", type=int, nargs=3, default=None)
     ap.add_argument("--p-aug", type=float, default=0.5, help="share of crops with shifted climate")
+    ap.add_argument("--norm", action="store_true", help="per-pixel channel norm in every block")
     args = ap.parse_args()
     torch.manual_seed(0)
     args.out.mkdir(parents=True, exist_ok=True)
@@ -118,7 +119,8 @@ def main():
     print(f"dataset: {len(xt)} train / {len(xv)} val crops of {CROP}^2 in {time.time() - t0:.0f}s", flush=True)
     print("target fragmentation: rule", fragmentation(rv), "cleaned", fragmentation(yv), flush=True)
 
-    model = BN.BiomeNet(BN.BiomeNetConfig(channels=tuple(args.channels)) if args.channels else BN.BiomeNetConfig()).to(dev)
+    cfg = BN.BiomeNetConfig(channels=tuple(args.channels) if args.channels else BN.BiomeNetConfig.channels, norm=args.norm)
+    model = BN.BiomeNet(cfg).to(dev)
     print(f"biomenet {sum(p.numel() for p in model.parameters()):,} params, {BN.N_CLASSES} classes", flush=True)
     freq = torch.bincount(yt.long().flatten(), minlength=BN.N_CLASSES).float()
     cw = (freq.sum() / freq.clamp_min(1.0) / BN.N_CLASSES).sqrt().clamp(0.3, 5.0).to(dev)

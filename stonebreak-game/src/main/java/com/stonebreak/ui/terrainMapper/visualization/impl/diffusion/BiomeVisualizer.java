@@ -66,6 +66,7 @@ public final class BiomeVisualizer implements NoiseVisualizer {
         map.put(BiomeType.TAIGA,           0xFF2F5339);
         map.put(BiomeType.STONY_PEAKS,     0xFF8A8A8A);
         map.put(BiomeType.BEACH,           0xFFE9DDB6);
+        map.put(BiomeType.OCEAN,           0xFF2F5F8F);
         map.put(BiomeType.ICE_FIELDS,      0xFFC7E4EC);
         map.put(BiomeType.BADLANDS,        0xFFB85A2E);
         map.put(BiomeType.MEADOW,          0xFF9DC46B);

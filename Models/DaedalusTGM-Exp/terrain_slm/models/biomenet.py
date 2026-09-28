@@ -31,6 +31,7 @@ PIXEL_M = 60.0
 @dataclass
 class BiomeNetConfig:
     channels: tuple = (32, 64, 96)
+    norm: bool = False   # per-pixel channel norm in every block: without it training collapsed to one class (b3)
 
     def to_dict(self):
         d = asdict(self)
@@ -38,8 +39,26 @@ class BiomeNetConfig:
         return d
 
 
-def _block(ci, co):
-    return nn.Sequential(nn.Conv2d(ci, co, 3, padding=1), nn.SiLU(), nn.Conv2d(co, co, 3, padding=1), nn.SiLU())
+class ChannelNorm(nn.Module):
+    """LayerNorm over channels at each pixel. Pointwise, so a column's output never depends on the window
+    it was computed in (GroupNorm/BatchNorm statistics span the window and would put seams at tile edges)."""
+
+    def __init__(self, c: int):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(1, c, 1, 1))
+        self.bias = nn.Parameter(torch.zeros(1, c, 1, 1))
+
+    def forward(self, x):
+        mu = x.mean(dim=1, keepdim=True)
+        var = x.var(dim=1, keepdim=True, unbiased=False)
+        return (x - mu) * torch.rsqrt(var + 1e-5) * self.weight + self.bias
+
+
+def _block(ci, co, norm=False):
+    if not norm:
+        return nn.Sequential(nn.Conv2d(ci, co, 3, padding=1), nn.SiLU(), nn.Conv2d(co, co, 3, padding=1), nn.SiLU())
+    return nn.Sequential(nn.Conv2d(ci, co, 3, padding=1), ChannelNorm(co), nn.SiLU(),
+                         nn.Conv2d(co, co, 3, padding=1), ChannelNorm(co), nn.SiLU())
 
 
 class BiomeNet(nn.Module):
@@ -47,15 +66,16 @@ class BiomeNet(nn.Module):
         super().__init__()
         self.cfg = cfg
         c0, c1, c2 = cfg.channels
-        self.e0 = _block(N_IN, c0)
+        nb = lambda a, b: _block(a, b, cfg.norm)
+        self.e0 = nb(N_IN, c0)
         self.d0 = nn.Conv2d(c0, c1, 3, stride=2, padding=1)
-        self.e1 = _block(c1, c1)
+        self.e1 = nb(c1, c1)
         self.d1 = nn.Conv2d(c1, c2, 3, stride=2, padding=1)
-        self.mid = _block(c2, c2)
+        self.mid = nb(c2, c2)
         self.u1 = nn.Conv2d(c2 + c1, c1, 3, padding=1)
-        self.dec1 = _block(c1, c1)
+        self.dec1 = nb(c1, c1)
         self.u0 = nn.Conv2d(c1 + c0, c0, 3, padding=1)
-        self.dec0 = _block(c0, c0)
+        self.dec0 = nb(c0, c0)
         self.out = nn.Conv2d(c0, N_CLASSES, 1)
 
     def forward(self, x):

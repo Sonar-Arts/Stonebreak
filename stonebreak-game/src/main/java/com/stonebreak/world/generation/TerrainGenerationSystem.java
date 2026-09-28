@@ -917,6 +917,7 @@ public class TerrainGenerationSystem implements TerrainGenerator {
         return switch (biome) {
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SANDSTONE;
             case DESERT, BEACH -> BlockType.SANDSTONE;
+            case OCEAN -> BlockType.SANDSTONE;
             case PLAINS, SNOWY_PLAINS, TAIGA, MEADOW, TUNDRA -> BlockType.DIRT;
             case STONY_PEAKS -> BlockType.STONE;
             case ICE_FIELDS -> BlockType.ICE;
@@ -928,6 +929,7 @@ public class TerrainGenerationSystem implements TerrainGenerator {
         if (biome == null) return BlockType.DIRT;
         return switch (biome) {
             case DESERT, BEACH -> BlockType.SAND;
+            case OCEAN -> BlockType.GRAVEL;       // sea floor: reads differently from beach sand
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SAND;
             case PLAINS, MEADOW -> BlockType.GRASS;
             case SNOWY_PLAINS, TAIGA, TUNDRA -> BlockType.SNOWY_DIRT;

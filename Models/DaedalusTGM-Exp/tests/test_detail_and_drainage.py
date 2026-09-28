@@ -136,14 +136,16 @@ def test_biomenet_receptive_field_fits_inside_the_tile_margin():
     from terrain_slm.models import biomenet as BN
     from terrain_slm.river import pipeline as RP
     torch.manual_seed(0)
-    for ch in ((32, 64, 96), (48, 96, 128)):
-        m = BN.BiomeNet(BN.BiomeNetConfig(channels=ch)).eval()
-        x = torch.randn(1, BN.N_IN, 128, 128)
+    for ch, norm in (((32, 64, 96), False), ((48, 96, 128), False), ((48, 96, 128), True)):
+        # float64 and a zero threshold: the architectural receptive field, not the part of it an untrained
+        # net's influence happens to survive at (a 1e-6 threshold once reported 23 for a true 28).
+        m = BN.BiomeNet(BN.BiomeNetConfig(channels=ch, norm=norm)).double().eval()
+        x = torch.randn(1, BN.N_IN, 128, 128, dtype=torch.float64)
         y = x.clone()
         y[0, :, 64, 64] += 5.0
         with torch.no_grad():
             d = (m(x) - m(y)).abs().amax(dim=(0, 1))
-        rows, cols = torch.nonzero(d > 1e-6, as_tuple=True)
+        rows, cols = torch.nonzero(d > 0, as_tuple=True)
         radius = int(max((rows - 64).abs().max(), (cols - 64).abs().max()))
         assert radius < RP.BLOCK_MARGIN, f"receptive-field radius {radius} >= margin {RP.BLOCK_MARGIN}"
 
