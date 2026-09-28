@@ -1,7 +1,6 @@
 package com.openmason.main.systems.menus.panes.projectBrowser.views;
 
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry;
-import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetType;
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectBrowserController;
 import com.openmason.main.systems.menus.panes.projectBrowser.thumbnails.ModelThumbnailRenderer;
 import com.openmason.main.systems.menus.panes.projectBrowser.thumbnails.OMTThumbnailRenderer;
@@ -26,15 +25,18 @@ public class GridViewRenderer implements ViewRenderer {
     private final ThumbnailCache thumbnailCache;
     private final ModelThumbnailRenderer modelRenderer;
     private final OMTThumbnailRenderer omtRenderer;
+    private final ProjectBrowserContextMenu contextMenu;
 
     public GridViewRenderer(ProjectBrowserController controller,
                             ThumbnailCache thumbnailCache,
                             ModelThumbnailRenderer modelRenderer,
-                            OMTThumbnailRenderer omtRenderer) {
+                            OMTThumbnailRenderer omtRenderer,
+                            ProjectBrowserContextMenu contextMenu) {
         this.controller = controller;
         this.thumbnailCache = thumbnailCache;
         this.modelRenderer = modelRenderer;
         this.omtRenderer = omtRenderer;
+        this.contextMenu = contextMenu;
     }
 
     @Override
@@ -81,7 +83,7 @@ public class GridViewRenderer implements ViewRenderer {
             );
         }
         if (ImGui.isItemClicked(1)) {
-            ImGui.openPopup("##GridItemContextMenu_" + item.pathString());
+            contextMenu.openPopup(item);
         }
 
         float labelStartX = ImGui.getCursorPosX();
@@ -99,8 +101,8 @@ public class GridViewRenderer implements ViewRenderer {
         ImGui.dummy(ITEM_WIDTH, 0);
         ImGui.endGroup();
 
-        if (ImGui.beginPopup("##GridItemContextMenu_" + item.pathString())) {
-            renderContextMenu(item);
+        if (contextMenu.beginPopup(item)) {
+            contextMenu.render(item, THUMBNAIL_SIZE);
             ImGui.endPopup();
         }
     }
@@ -113,31 +115,6 @@ public class GridViewRenderer implements ViewRenderer {
             // placeholder when the texture id is <= 0.
             case OMSC -> 0;
         };
-    }
-
-    private void renderContextMenu(AssetEntry item) {
-        ImGui.text(item.name());
-        ImGui.separator();
-        if (ImGui.menuItem("Select")) {
-            controller.selectAsset(item);
-            ImGui.closeCurrentPopup();
-        }
-        if (ImGui.menuItem("Copy Name")) {
-            ImGui.setClipboardText(item.name());
-            ImGui.closeCurrentPopup();
-        }
-        if (ImGui.menuItem("Copy Path")) {
-            ImGui.setClipboardText(item.pathString());
-            ImGui.closeCurrentPopup();
-        }
-        ImGui.separator();
-        if (ImGui.menuItem("Refresh Thumbnail")) {
-            String key = item.type() == AssetType.OMO
-                    ? ThumbnailCache.omoKey(item.pathString(), THUMBNAIL_SIZE)
-                    : ThumbnailCache.omtKey(item.pathString(), THUMBNAIL_SIZE);
-            thumbnailCache.invalidate(key);
-            ImGui.closeCurrentPopup();
-        }
     }
 
     private void renderEmptyState() {

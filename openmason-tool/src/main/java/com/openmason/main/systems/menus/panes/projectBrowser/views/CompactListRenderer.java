@@ -20,13 +20,16 @@ public class CompactListRenderer implements ViewRenderer {
     private final ProjectBrowserController controller;
     private final ModelThumbnailRenderer modelRenderer;
     private final OMTThumbnailRenderer omtRenderer;
+    private final ProjectBrowserContextMenu contextMenu;
 
     public CompactListRenderer(ProjectBrowserController controller,
                                ModelThumbnailRenderer modelRenderer,
-                               OMTThumbnailRenderer omtRenderer) {
+                               OMTThumbnailRenderer omtRenderer,
+                               ProjectBrowserContextMenu contextMenu) {
         this.controller = controller;
         this.modelRenderer = modelRenderer;
         this.omtRenderer = omtRenderer;
+        this.contextMenu = contextMenu;
     }
 
     @Override
@@ -53,6 +56,13 @@ public class CompactListRenderer implements ViewRenderer {
                 controller.selectAsset(item);
             }
             if (ImGui.isItemHovered()) ImGui.setTooltip(item.pathString());
+            if (ImGui.isItemClicked(1)) {
+                contextMenu.openPopup(item);
+            }
+            if (contextMenu.beginPopup(item)) {
+                contextMenu.render(item, THUMBNAIL_SIZE);
+                ImGui.endPopup();
+            }
         }
         ImGui.popStyleVar();
     }

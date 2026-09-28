@@ -3,6 +3,8 @@ package com.openmason.main.systems;
 import com.openmason.main.systems.menus.*;
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectBrowserController;
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectBrowserImGui;
+import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry;
+import com.openmason.main.systems.menus.panes.projectBrowser.AssetEditorDetacher;
 import com.openmason.main.systems.menus.preferences.config.WindowConfig;
 import com.openmason.main.systems.menus.panes.projectBrowser.events.ProjectBrowserListener;
 import com.openmason.main.systems.menus.panes.projectBrowser.events.ModelSelectedEvent;
@@ -17,6 +19,7 @@ import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.stateHandling.UIVisibilityState;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.dialogs.AboutDialog;
+import com.openmason.main.systems.menus.dialogs.DeleteAssetDialog;
 import com.openmason.main.systems.menus.dialogs.FileDialogService;
 import com.openmason.main.systems.menus.dialogs.SBEExportWindow;
 import com.openmason.main.systems.menus.dialogs.SBEEditorWindow;
@@ -101,6 +104,12 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
     // Texture editor (set after construction via setTextureCreatorInterface)
     private TextureCreatorImGui textureCreatorImGui;
+
+    // Delete-asset confirmation dialog (shown from the Project Browser's Delete… menu)
+    private final DeleteAssetDialog deleteAssetDialog = new DeleteAssetDialog();
+
+    // Editor-detach rules for deleted backing files (stateless; headless-testable)
+    private final AssetEditorDetacher assetEditorDetacher = new AssetEditorDetacher();
 
     // Animation editor (set after construction via setAnimationEditorInterface)
     private com.openmason.main.systems.menus.animationEditor.AnimationEditorImGui animationEditorImGui;
@@ -463,6 +472,26 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         this.openSceneCallback = callback;
     }
 
+    /** Delete was chosen in the browser: show the confirmation dialog first. */
+    @Override
+    public void onAssetDeleteRequested(AssetEntry entry) {
+        deleteAssetDialog.show(entry, this::onAssetDeleteConfirmed);
+    }
+
+    /**
+     * User confirmed the delete: remove the file, then detach the editor from
+     * the deleted backing file so the next Save behaves like Save As.
+     */
+    public void onAssetDeleteConfirmed(AssetEntry entry) {
+        if (projectBrowserImGui == null) {
+            logger.warn("Project Browser not initialized; cannot delete {}", entry.name());
+            return;
+        }
+        boolean deleted = projectBrowserImGui.getController().deleteAsset(entry);
+        assetEditorDetacher.afterDelete(entry, deleted, getModelState(),
+                textureCreatorImGui != null ? textureCreatorImGui.getState() : null);
+    }
+
     /**
      * Render property panel.
      */
@@ -610,6 +639,11 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     /** Model/session state (loaded flag, dirty flag, source). */
     public com.openmason.main.systems.stateHandling.ModelState getModelState() {
         return modelState;
+    }
+
+    /** The Project Browser's delete-asset confirmation dialog. */
+    public DeleteAssetDialog getDeleteAssetDialog() {
+        return deleteAssetDialog;
     }
 
     public ModelOperationService getModelOperations() {
