@@ -1,0 +1,222 @@
+planner 454,576 params; 4,780,134 train corners, 84 val crops
+step    100  loss 1.5800  h 0.1774  desc 0.6679  river 0.5385  57.7 ms/step
+step    200  loss 1.3509  h 0.1496  desc 0.4705  river 0.5402  38.9 ms/step
+step    300  loss 1.2590  h 0.1426  desc 0.4527  river 0.4642  32.6 ms/step
+step    400  loss 1.1795  h 0.1307  desc 0.4224  river 0.3708  29.5 ms/step
+step    500  loss 1.1390  h 0.1147  desc 0.4150  river 0.3917  27.6 ms/step
+step    600  loss 1.1135  h 0.0999  desc 0.4522  river 0.3473  26.2 ms/step
+step    700  loss 1.0460  h 0.1088  desc 0.4366  river 0.2414  25.2 ms/step
+step    800  loss 0.9818  h 0.0964  desc 0.4359  river 0.2032  24.5 ms/step
+step    900  loss 0.9891  h 0.0764  desc 0.4527  river 0.2186  23.9 ms/step
+step   1000  loss 1.1066  h 0.1022  desc 0.4666  river 0.2924  23.5 ms/step
+  eval {'height': 0.0769, 'grad': 0.0973, 'desc': 0.4147, 'river': 0.4148, 'd8': 1.6534, 'total': 1.0782, 'height_mae_m': 76.8655, 'river_iou': 0.1384, 'step': 1000}
+step   1100  loss 0.9754  h 0.0744  desc 0.4048  river 0.2711  23.1 ms/step
+step   1200  loss 1.0190  h 0.1083  desc 0.4211  river 0.2481  22.9 ms/step
+step   1300  loss 1.0407  h 0.0859  desc 0.4719  river 0.2515  22.5 ms/step
+step   1400  loss 1.0524  h 0.0833  desc 0.4192  river 0.3408  22.3 ms/step
+step   1500  loss 0.9437  h 0.0804  desc 0.4044  river 0.2204  22.1 ms/step
+step   1600  loss 0.9610  h 0.0909  desc 0.4126  river 0.2370  21.9 ms/step
+step   1700  loss 0.9201  h 0.0655  desc 0.4166  river 0.2239  21.7 ms/step
+step   1800  loss 1.0333  h 0.1043  desc 0.4348  river 0.2519  21.6 ms/step
+step   1900  loss 1.0018  h 0.0954  desc 0.4280  river 0.2828  21.5 ms/step
+step   2000  loss 0.9315  h 0.0619  desc 0.4282  river 0.2019  21.4 ms/step
+  eval {'height': 0.0719, 'grad': 0.0882, 'desc': 0.4095, 'river': 0.3974, 'd8': 1.5874, 'total': 1.0417, 'height_mae_m': 71.9272, 'river_iou': 0.163, 'step': 2000}
+step   2100  loss 0.9610  h 0.0810  desc 0.3819  river 0.2679  21.3 ms/step
+step   2200  loss 0.9715  h 0.0945  desc 0.3875  river 0.2682  21.3 ms/step
+step   2300  loss 0.9923  h 0.0750  desc 0.4146  river 0.2990  21.2 ms/step
+step   2400  loss 0.8789  h 0.0793  desc 0.3998  river 0.1835  21.1 ms/step
+step   2500  loss 0.8878  h 0.0703  desc 0.3796  river 0.2435  21.1 ms/step
+step   2600  loss 0.9645  h 0.0841  desc 0.4059  river 0.2815  21.0 ms/step
+step   2700  loss 0.9443  h 0.0698  desc 0.3962  river 0.2311  21.0 ms/step
+step   2800  loss 0.9118  h 0.0822  desc 0.3886  river 0.2167  21.0 ms/step
+step   2900  loss 0.9766  h 0.0976  desc 0.4030  river 0.2445  20.9 ms/step
+step   3000  loss 0.9731  h 0.0662  desc 0.4412  river 0.2637  20.9 ms/step
+  eval {'height': 0.0739, 'grad': 0.0865, 'desc': 0.4058, 'river': 0.378, 'd8': 1.5587, 'total': 1.0237, 'height_mae_m': 73.9031, 'river_iou': 0.1743, 'step': 3000}
+step   3100  loss 0.9687  h 0.0863  desc 0.4001  river 0.2744  20.8 ms/step
+step   3200  loss 0.9576  h 0.1297  desc 0.3881  river 0.2016  20.8 ms/step
+step   3300  loss 0.9416  h 0.0966  desc 0.3998  river 0.2041  20.7 ms/step
+step   3400  loss 0.9358  h 0.0947  desc 0.3951  river 0.2384  20.7 ms/step
+step   3500  loss 0.8908  h 0.0812  desc 0.3749  river 0.2086  20.6 ms/step
+step   3600  loss 0.8644  h 0.0725  desc 0.3810  river 0.1750  20.6 ms/step
+step   3700  loss 0.9852  h 0.1067  desc 0.4045  river 0.2197  20.5 ms/step
+step   3800  loss 0.8860  h 0.0773  desc 0.3763  river 0.2121  20.5 ms/step
+step   3900  loss 0.9660  h 0.0856  desc 0.4400  river 0.1951  20.5 ms/step
+step   4000  loss 0.9392  h 0.0926  desc 0.4235  river 0.2200  20.4 ms/step
+  eval {'height': 0.0709, 'grad': 0.0836, 'desc': 0.4037, 'river': 0.3655, 'd8': 1.538, 'total': 1.0067, 'height_mae_m': 70.8521, 'river_iou': 0.1736, 'step': 4000}
+step   4100  loss 0.9714  h 0.0767  desc 0.4067  river 0.2969  20.4 ms/step
+step   4200  loss 0.9824  h 0.1035  desc 0.3872  river 0.2722  20.4 ms/step
+step   4300  loss 0.8767  h 0.0832  desc 0.3680  river 0.1894  20.4 ms/step
+step   4400  loss 0.8810  h 0.0781  desc 0.3956  river 0.1714  20.4 ms/step
+step   4500  loss 0.9128  h 0.0638  desc 0.3860  river 0.2496  20.4 ms/step
+step   4600  loss 0.9554  h 0.0837  desc 0.3981  river 0.2467  20.4 ms/step
+step   4700  loss 0.8631  h 0.0787  desc 0.3652  river 0.1763  20.4 ms/step
+step   4800  loss 0.9035  h 0.0761  desc 0.4186  river 0.1729  20.4 ms/step
+step   4900  loss 0.9660  h 0.0848  desc 0.4031  river 0.2292  20.4 ms/step
+step   5000  loss 0.9034  h 0.0848  desc 0.3915  river 0.2236  20.4 ms/step
+  eval {'height': 0.0671, 'grad': 0.0825, 'desc': 0.4074, 'river': 0.3659, 'd8': 1.5242, 'total': 1.0035, 'height_mae_m': 67.0621, 'river_iou': 0.1881, 'step': 5000}
+step   5100  loss 0.8709  h 0.0562  desc 0.3885  river 0.1997  20.4 ms/step
+step   5200  loss 0.8579  h 0.0802  desc 0.3853  river 0.1605  20.4 ms/step
+step   5300  loss 0.8571  h 0.0635  desc 0.3846  river 0.1894  20.4 ms/step
+step   5400  loss 0.9328  h 0.0640  desc 0.4328  river 0.2435  20.4 ms/step
+step   5500  loss 0.9405  h 0.0635  desc 0.4093  river 0.2424  20.4 ms/step
+step   5600  loss 0.9459  h 0.0694  desc 0.4123  river 0.2490  20.3 ms/step
+step   5700  loss 0.9390  h 0.0735  desc 0.4025  river 0.2636  20.3 ms/step
+step   5800  loss 0.9425  h 0.0927  desc 0.3885  river 0.2099  20.3 ms/step
+step   5900  loss 0.8632  h 0.0848  desc 0.3780  river 0.1645  20.3 ms/step
+step   6000  loss 0.9182  h 0.0638  desc 0.3978  river 0.2330  20.3 ms/step
+  eval {'height': 0.065, 'grad': 0.0812, 'desc': 0.4043, 'river': 0.3604, 'd8': 1.4981, 'total': 0.9897, 'height_mae_m': 64.9911, 'river_iou': 0.183, 'step': 6000}
+step   6100  loss 0.9115  h 0.0749  desc 0.3752  river 0.2641  20.3 ms/step
+step   6200  loss 0.8666  h 0.0830  desc 0.3637  river 0.2157  20.3 ms/step
+step   6300  loss 0.9567  h 0.0906  desc 0.4010  river 0.2467  20.3 ms/step
+step   6400  loss 0.9575  h 0.0968  desc 0.4029  river 0.2725  20.3 ms/step
+step   6500  loss 0.8140  h 0.0570  desc 0.3707  river 0.1879  20.3 ms/step
+step   6600  loss 0.8690  h 0.0634  desc 0.3775  river 0.2052  20.3 ms/step
+step   6700  loss 0.8810  h 0.0640  desc 0.3970  river 0.2145  20.3 ms/step
+step   6800  loss 0.9578  h 0.0747  desc 0.4015  river 0.2807  20.2 ms/step
+step   6900  loss 0.9115  h 0.0704  desc 0.3932  river 0.2282  20.2 ms/step
+step   7000  loss 0.9114  h 0.0711  desc 0.3863  river 0.2572  20.2 ms/step
+  eval {'height': 0.0675, 'grad': 0.0819, 'desc': 0.4013, 'river': 0.3614, 'd8': 1.4852, 'total': 0.9875, 'height_mae_m': 67.4954, 'river_iou': 0.1762, 'step': 7000}
+step   7100  loss 0.8931  h 0.0683  desc 0.3797  river 0.2370  20.2 ms/step
+step   7200  loss 0.9507  h 0.0836  desc 0.4191  river 0.2202  20.2 ms/step
+step   7300  loss 0.9034  h 0.0549  desc 0.3911  river 0.2350  20.2 ms/step
+step   7400  loss 0.9068  h 0.0849  desc 0.3850  river 0.2119  20.2 ms/step
+step   7500  loss 0.8549  h 0.0712  desc 0.3870  river 0.1762  20.2 ms/step
+step   7600  loss 0.8557  h 0.0483  desc 0.3877  river 0.2119  20.2 ms/step
+step   7700  loss 0.9233  h 0.0721  desc 0.3921  river 0.2842  20.2 ms/step
+step   7800  loss 0.8640  h 0.0533  desc 0.3725  river 0.2450  20.2 ms/step
+step   7900  loss 0.9410  h 0.0694  desc 0.4016  river 0.2717  20.2 ms/step
+step   8000  loss 0.8558  h 0.0720  desc 0.3735  river 0.1989  20.2 ms/step
+  eval {'height': 0.0629, 'grad': 0.0796, 'desc': 0.4023, 'river': 0.3572, 'd8': 1.4695, 'total': 0.9775, 'height_mae_m': 62.9098, 'river_iou': 0.1857, 'step': 8000}
+step   8100  loss 0.9429  h 0.0699  desc 0.3751  river 0.3012  20.2 ms/step
+step   8200  loss 0.8993  h 0.0783  desc 0.3846  river 0.2179  20.2 ms/step
+step   8300  loss 0.8716  h 0.0742  desc 0.3815  river 0.1888  20.2 ms/step
+step   8400  loss 0.8539  h 0.0497  desc 0.3737  river 0.2488  20.2 ms/step
+step   8500  loss 0.9044  h 0.0700  desc 0.3801  river 0.2700  20.1 ms/step
+step   8600  loss 0.8672  h 0.0795  desc 0.3809  river 0.1596  20.1 ms/step
+step   8700  loss 0.8688  h 0.0642  desc 0.3605  river 0.2344  20.1 ms/step
+step   8800  loss 0.9238  h 0.0727  desc 0.3778  river 0.2850  20.1 ms/step
+step   8900  loss 0.9041  h 0.0764  desc 0.3733  river 0.2395  20.1 ms/step
+step   9000  loss 0.8674  h 0.0638  desc 0.3783  river 0.2019  20.1 ms/step
+  eval {'height': 0.06, 'grad': 0.0785, 'desc': 0.4025, 'river': 0.3511, 'd8': 1.461, 'total': 0.9695, 'height_mae_m': 59.9621, 'river_iou': 0.199, 'step': 9000}
+step   9100  loss 0.8722  h 0.0602  desc 0.3870  river 0.2457  20.1 ms/step
+step   9200  loss 0.9401  h 0.0902  desc 0.4049  river 0.2411  20.1 ms/step
+step   9300  loss 0.9039  h 0.0754  desc 0.3701  river 0.2427  20.1 ms/step
+step   9400  loss 0.8400  h 0.0538  desc 0.3687  river 0.2179  20.1 ms/step
+step   9500  loss 0.9416  h 0.0698  desc 0.3753  river 0.3154  20.0 ms/step
+step   9600  loss 0.8655  h 0.0787  desc 0.3631  river 0.2232  20.0 ms/step
+step   9700  loss 0.8602  h 0.0668  desc 0.3604  river 0.2055  20.0 ms/step
+step   9800  loss 0.8632  h 0.0621  desc 0.3553  river 0.2453  20.0 ms/step
+step   9900  loss 0.8806  h 0.0755  desc 0.3779  river 0.2075  20.0 ms/step
+step  10000  loss 0.8475  h 0.0708  desc 0.3749  river 0.1652  20.0 ms/step
+  eval {'height': 0.0599, 'grad': 0.0779, 'desc': 0.404, 'river': 0.3512, 'd8': 1.4432, 'total': 0.9671, 'height_mae_m': 59.8524, 'river_iou': 0.1946, 'step': 10000}
+step  10100  loss 0.8678  h 0.0810  desc 0.3807  river 0.2018  20.0 ms/step
+step  10200  loss 0.8709  h 0.0703  desc 0.3745  river 0.1940  20.0 ms/step
+step  10300  loss 0.8492  h 0.0781  desc 0.3675  river 0.1921  20.0 ms/step
+step  10400  loss 0.8797  h 0.0775  desc 0.3640  river 0.1880  20.0 ms/step
+step  10500  loss 0.8481  h 0.0655  desc 0.3622  river 0.2032  20.0 ms/step
+step  10600  loss 0.8497  h 0.0638  desc 0.3583  river 0.2048  20.0 ms/step
+step  10700  loss 0.8702  h 0.0823  desc 0.3778  river 0.1762  20.0 ms/step
+step  10800  loss 0.8555  h 0.0639  desc 0.3726  river 0.1893  20.0 ms/step
+step  10900  loss 0.8334  h 0.0541  desc 0.3782  river 0.2053  20.0 ms/step
+step  11000  loss 0.8771  h 0.0674  desc 0.3719  river 0.2295  20.0 ms/step
+  eval {'height': 0.0615, 'grad': 0.0776, 'desc': 0.4049, 'river': 0.3512, 'd8': 1.4428, 'total': 0.9694, 'height_mae_m': 61.4736, 'river_iou': 0.1917, 'step': 11000}
+step  11100  loss 0.8704  h 0.0780  desc 0.3714  river 0.2148  20.0 ms/step
+step  11200  loss 0.8546  h 0.0763  desc 0.3560  river 0.2101  20.0 ms/step
+step  11300  loss 0.8262  h 0.0641  desc 0.3549  river 0.1871  20.0 ms/step
+step  11400  loss 1.0000  h 0.1191  desc 0.3882  river 0.2905  19.9 ms/step
+step  11500  loss 0.9230  h 0.0711  desc 0.3841  river 0.2684  19.9 ms/step
+step  11600  loss 0.8177  h 0.0603  desc 0.3503  river 0.2024  19.9 ms/step
+step  11700  loss 0.8554  h 0.0545  desc 0.3751  river 0.2496  19.9 ms/step
+step  11800  loss 0.8638  h 0.0751  desc 0.3581  river 0.1918  19.9 ms/step
+step  11900  loss 0.8841  h 0.0725  desc 0.3647  river 0.2243  19.9 ms/step
+step  12000  loss 0.8392  h 0.0650  desc 0.3601  river 0.2076  19.9 ms/step
+  eval {'height': 0.061, 'grad': 0.0775, 'desc': 0.401, 'river': 0.3486, 'd8': 1.4349, 'total': 0.962, 'height_mae_m': 61.0137, 'river_iou': 0.202, 'step': 12000}
+step  12100  loss 0.8799  h 0.0633  desc 0.3750  river 0.2562  19.9 ms/step
+step  12200  loss 0.9141  h 0.0699  desc 0.3711  river 0.2868  19.9 ms/step
+step  12300  loss 0.8371  h 0.0691  desc 0.3567  river 0.1916  19.9 ms/step
+step  12400  loss 0.8994  h 0.0579  desc 0.3862  river 0.2548  19.9 ms/step
+step  12500  loss 0.8837  h 0.0862  desc 0.3838  river 0.1922  19.9 ms/step
+step  12600  loss 0.8970  h 0.0859  desc 0.3576  river 0.2420  19.9 ms/step
+step  12700  loss 0.8678  h 0.0740  desc 0.3721  river 0.2262  19.9 ms/step
+step  12800  loss 0.8589  h 0.0858  desc 0.3615  river 0.2075  19.9 ms/step
+step  12900  loss 0.9071  h 0.0678  desc 0.3954  river 0.2609  19.9 ms/step
+step  13000  loss 0.8633  h 0.0789  desc 0.3829  river 0.2037  19.9 ms/step
+  eval {'height': 0.0575, 'grad': 0.0778, 'desc': 0.403, 'river': 0.3494, 'd8': 1.4278, 'total': 0.9597, 'height_mae_m': 57.5264, 'river_iou': 0.195, 'step': 13000}
+step  13100  loss 0.8935  h 0.0813  desc 0.3888  river 0.2188  19.9 ms/step
+step  13200  loss 0.8491  h 0.0864  desc 0.3476  river 0.2061  19.9 ms/step
+step  13300  loss 0.8928  h 0.0784  desc 0.3835  river 0.2338  19.9 ms/step
+step  13400  loss 0.8772  h 0.0729  desc 0.3600  river 0.2281  19.8 ms/step
+step  13500  loss 0.8433  h 0.0493  desc 0.3840  river 0.1969  19.9 ms/step
+step  13600  loss 0.8373  h 0.0549  desc 0.3674  river 0.2161  19.8 ms/step
+step  13700  loss 0.8720  h 0.0728  desc 0.3689  river 0.2296  19.8 ms/step
+step  13800  loss 0.8995  h 0.0884  desc 0.3662  river 0.2323  19.8 ms/step
+step  13900  loss 0.8253  h 0.0619  desc 0.3727  river 0.1836  19.8 ms/step
+step  14000  loss 0.8641  h 0.0647  desc 0.3492  river 0.2659  19.8 ms/step
+  eval {'height': 0.0599, 'grad': 0.0771, 'desc': 0.4, 'river': 0.3439, 'd8': 1.4198, 'total': 0.9543, 'height_mae_m': 59.9089, 'river_iou': 0.2025, 'step': 14000}
+step  14100  loss 0.8817  h 0.0655  desc 0.3581  river 0.2756  19.8 ms/step
+step  14200  loss 0.8512  h 0.0589  desc 0.3588  river 0.2055  19.8 ms/step
+step  14300  loss 0.8986  h 0.0846  desc 0.3749  river 0.2412  19.8 ms/step
+step  14400  loss 0.8240  h 0.0522  desc 0.3580  river 0.2116  19.8 ms/step
+step  14500  loss 0.8219  h 0.0664  desc 0.3611  river 0.1927  19.8 ms/step
+step  14600  loss 0.8904  h 0.0650  desc 0.3752  river 0.2497  19.8 ms/step
+step  14700  loss 0.8603  h 0.0715  desc 0.3675  river 0.2030  19.8 ms/step
+step  14800  loss 0.8915  h 0.0635  desc 0.3747  river 0.2475  19.8 ms/step
+step  14900  loss 0.8045  h 0.0735  desc 0.3620  river 0.1358  19.8 ms/step
+step  15000  loss 0.8795  h 0.0846  desc 0.3726  river 0.2080  19.8 ms/step
+  eval {'height': 0.0575, 'grad': 0.0768, 'desc': 0.4011, 'river': 0.3433, 'd8': 1.4188, 'total': 0.9525, 'height_mae_m': 57.5422, 'river_iou': 0.2001, 'step': 15000}
+step  15100  loss 0.9463  h 0.0854  desc 0.3881  river 0.2320  19.8 ms/step
+step  15200  loss 0.8620  h 0.0926  desc 0.3669  river 0.1545  19.8 ms/step
+step  15300  loss 0.8532  h 0.0934  desc 0.3576  river 0.1998  19.8 ms/step
+step  15400  loss 0.8471  h 0.0510  desc 0.3470  river 0.2741  19.8 ms/step
+step  15500  loss 0.7852  h 0.0653  desc 0.3256  river 0.2253  19.8 ms/step
+step  15600  loss 0.9256  h 0.0714  desc 0.3842  river 0.2664  19.8 ms/step
+step  15700  loss 0.8527  h 0.0620  desc 0.3586  river 0.2396  19.8 ms/step
+step  15800  loss 0.8695  h 0.0637  desc 0.3741  river 0.2096  19.8 ms/step
+step  15900  loss 0.9026  h 0.0750  desc 0.3779  river 0.2442  19.8 ms/step
+step  16000  loss 0.8645  h 0.0661  desc 0.3517  river 0.2418  19.8 ms/step
+  eval {'height': 0.0568, 'grad': 0.0762, 'desc': 0.3991, 'river': 0.3454, 'd8': 1.4148, 'total': 0.9496, 'height_mae_m': 56.7667, 'river_iou': 0.2049, 'step': 16000}
+step  16100  loss 0.8235  h 0.0685  desc 0.3568  river 0.2051  19.8 ms/step
+step  16200  loss 0.8177  h 0.0531  desc 0.3571  river 0.1887  19.8 ms/step
+step  16300  loss 0.8157  h 0.0861  desc 0.3554  river 0.1561  19.8 ms/step
+step  16400  loss 0.8542  h 0.0592  desc 0.3746  river 0.2345  19.8 ms/step
+step  16500  loss 0.8928  h 0.0757  desc 0.3575  river 0.2449  19.8 ms/step
+step  16600  loss 0.9515  h 0.0782  desc 0.3947  river 0.2609  19.8 ms/step
+step  16700  loss 0.8538  h 0.0847  desc 0.3627  river 0.1860  19.8 ms/step
+step  16800  loss 0.8930  h 0.0581  desc 0.3750  river 0.2652  19.8 ms/step
+step  16900  loss 0.8358  h 0.0762  desc 0.3644  river 0.1977  19.8 ms/step
+step  17000  loss 0.8133  h 0.0783  desc 0.3538  river 0.1769  19.8 ms/step
+  eval {'height': 0.0574, 'grad': 0.0764, 'desc': 0.401, 'river': 0.345, 'd8': 1.4148, 'total': 0.9521, 'height_mae_m': 57.4123, 'river_iou': 0.2043, 'step': 17000}
+step  17100  loss 0.8669  h 0.0589  desc 0.3966  river 0.2278  19.8 ms/step
+step  17200  loss 0.9361  h 0.0739  desc 0.4053  river 0.2608  19.8 ms/step
+step  17300  loss 0.8198  h 0.0602  desc 0.3496  river 0.2079  19.8 ms/step
+step  17400  loss 0.8225  h 0.0712  desc 0.3551  river 0.1879  19.8 ms/step
+step  17500  loss 0.8294  h 0.0576  desc 0.3510  river 0.2251  19.8 ms/step
+step  17600  loss 0.8949  h 0.0619  desc 0.3776  river 0.2732  19.8 ms/step
+step  17700  loss 0.8400  h 0.0588  desc 0.3614  river 0.2229  19.8 ms/step
+step  17800  loss 0.8940  h 0.0793  desc 0.3616  river 0.2577  19.8 ms/step
+step  17900  loss 0.8089  h 0.0578  desc 0.3520  river 0.2230  19.8 ms/step
+step  18000  loss 0.9043  h 0.0787  desc 0.3724  river 0.2571  19.7 ms/step
+  eval {'height': 0.0569, 'grad': 0.076, 'desc': 0.4011, 'river': 0.3451, 'd8': 1.4124, 'total': 0.951, 'height_mae_m': 56.8967, 'river_iou': 0.2041, 'step': 18000}
+step  18100  loss 0.8309  h 0.0765  desc 0.3437  river 0.2062  19.8 ms/step
+step  18200  loss 0.8855  h 0.0736  desc 0.3589  river 0.2806  19.8 ms/step
+step  18300  loss 0.8149  h 0.0681  desc 0.3478  river 0.1809  19.8 ms/step
+step  18400  loss 0.8381  h 0.0692  desc 0.3540  river 0.2104  19.8 ms/step
+step  18500  loss 0.8464  h 0.0728  desc 0.3790  river 0.1944  19.8 ms/step
+step  18600  loss 0.8553  h 0.0708  desc 0.3570  river 0.2159  19.8 ms/step
+step  18700  loss 0.8503  h 0.0617  desc 0.3655  river 0.2378  19.8 ms/step
+step  18800  loss 0.8771  h 0.0583  desc 0.3660  river 0.2660  19.8 ms/step
+step  18900  loss 0.8437  h 0.0694  desc 0.3565  river 0.2224  19.8 ms/step
+step  19000  loss 0.8423  h 0.0719  desc 0.3575  river 0.2190  19.8 ms/step
+  eval {'height': 0.0573, 'grad': 0.0761, 'desc': 0.4008, 'river': 0.3447, 'd8': 1.4116, 'total': 0.9508, 'height_mae_m': 57.2573, 'river_iou': 0.2027, 'step': 19000}
+step  19100  loss 0.8442  h 0.0672  desc 0.3613  river 0.1880  19.9 ms/step
+step  19200  loss 0.8546  h 0.0742  desc 0.3800  river 0.1917  19.8 ms/step
+step  19300  loss 0.9039  h 0.0581  desc 0.3625  river 0.2863  19.8 ms/step
+step  19400  loss 0.8585  h 0.0962  desc 0.3651  river 0.1900  19.8 ms/step
+step  19500  loss 0.7870  h 0.0653  desc 0.3287  river 0.2107  19.8 ms/step
+step  19600  loss 0.8796  h 0.0789  desc 0.3621  river 0.2123  19.8 ms/step
+step  19700  loss 0.8650  h 0.0824  desc 0.3731  river 0.1880  19.8 ms/step
+step  19800  loss 0.8755  h 0.0693  desc 0.3755  river 0.2144  19.8 ms/step
+step  19900  loss 0.7830  h 0.0704  desc 0.3508  river 0.1644  19.8 ms/step
+step  20000  loss 0.7956  h 0.0566  desc 0.3650  river 0.1366  19.8 ms/step
+  eval {'height': 0.057, 'grad': 0.076, 'desc': 0.4011, 'river': 0.345, 'd8': 1.4117, 'total': 0.9509, 'height_mae_m': 56.9629, 'river_iou': 0.2027, 'step': 20000}
+done in 6.6 min; best val loss 0.9496

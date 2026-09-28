@@ -8,9 +8,7 @@ import com.stonebreak.world.generation.heightmap.SinkholeCarver;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.BitSet;
-import java.util.List;
 import java.util.function.BiPredicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -130,11 +128,14 @@ public class CarverPlacementTest {
     }
 
     /**
-     * Changing the seed must move the features. Four of the five carvers do; the fifth is
-     * pinned separately below.
+     * Changing the seed must move the features. Worms used to fail this: without a
+     * splitmix64 finaliser, {@code floorMod(h, 8)} read only seed bits 41–43, leaving eight
+     * worm layouts for the whole seed space (fixed with issue #243).
      */
     @Test
     public void adifferentSeedPlacesFeaturesDifferently() {
+        assertSeedMoves("worm",
+                s -> new PerlinWormCarver(s, heightMap)::hasWormAt);
         assertSeedMoves("cavern",
                 s -> new CavernCarver(s, heightMap)::hasCavern);
         assertSeedMoves("megacavern",
@@ -165,61 +166,6 @@ public class CarverPlacementTest {
         System.out.printf("[carvers] %s placement moved in %d chunk-comparisons across 4 seeds%n",
                 what, chunks);
     }
-
-    /**
-     * <b>Known defect, pinned deliberately.</b> Worm placement responds to three bits of the
-     * seed and ignores the other sixty-one.
-     *
-     * <p>{@code hasWorm} mixes {@code seed}, {@code cx} and {@code cz} with multiplies, one
-     * {@code rotateLeft(h, 23)} and no avalanche step, then takes {@code floorMod(h, 8)}.
-     * Eight is a power of two, so that modulo reads three bits of {@code h} and nothing else,
-     * and those three come back — through the rotate — from seed bits 41, 42 and 43. Every
-     * seed sharing those three bits gets the identical set of worm-bearing chunks, which for
-     * ordinary seeds (small integers, hash codes, {@code Random.nextLong()} values that
-     * happen to agree there) means eight possible worm layouts for the whole seed space.
-     *
-     * <p>This is the failure mode the other carvers' javadocs are about: {@code hasRavine}
-     * and {@code hasSinkhole} both run a splitmix64 finaliser and say it "is not optional",
-     * and {@code hasCavern} gets away without one only because 48 is not a power of two.
-     * Worms are the densest feature at 1 chunk in 8, so this is the placement that matters
-     * most.
-     *
-     * <p>Not fixed here because it is not a test's call to make: the one-line finaliser moves
-     * every existing world's tunnels. It is cheap when wanted — the native kernel takes worm
-     * placement from Java as a precomputed anchor list rather than re-deriving it, so unlike
-     * the cavern hashes this one has no {@code generator.cpp} twin to keep in step.
-     *
-     * <p><b>When it is fixed, this test fails.</b> Delete it and fold worms back into
-     * {@link #adifferentSeedPlacesFeaturesDifferently}.
-     */
-    @Test
-    public void wormPlacementStillIgnoresAlmostTheWholeSeed() {
-        PerlinWormCarver reference = new PerlinWormCarver(SEED, heightMap);
-        List<Integer> liveBits = new ArrayList<>();
-        for (int bit = 0; bit < Long.SIZE; bit++) {
-            if (placementMoves(reference, new PerlinWormCarver(SEED ^ (1L << bit), heightMap))) {
-                liveBits.add(bit);
-            }
-        }
-        System.out.println("[carvers] worm placement responds to seed bits " + liveBits
-                + " of 64");
-        assertEquals(List.of(41, 42, 43), liveBits,
-                "worm placement's dependence on the seed has changed. If the splitmix64 "
-                        + "finaliser was added to hasWorm, that is the fix — delete this test "
-                        + "and add worms to adifferentSeedPlacesFeaturesDifferently instead.");
-    }
-
-    private static boolean placementMoves(PerlinWormCarver a, PerlinWormCarver b) {
-        for (int cx = 0; cx < 100; cx++) {
-            for (int cz = 0; cz < 100; cz++) {
-                if (a.hasWormAt(cx, cz) != b.hasWormAt(cx, cz)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
 
     @FunctionalInterface
     private interface SeededPredicate {

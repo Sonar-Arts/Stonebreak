@@ -75,6 +75,9 @@ public final class MegaCavernCarver {
         h ^= (long) cx * 0xD1B54A32D192ED03L;
         h = Long.rotateLeft(h, 23);
         h ^= (long) cz * 0xAEF17502108EF2D9L;
+        h ^= h >>> 30; h *= 0xBF58476D1CE4E5B9L;
+        h ^= h >>> 27; h *= 0x94D049BB133111EBL;
+        h ^= h >>> 31;
         return Math.floorMod(h, MEGA_CAVERN_CHUNK_DIVISOR) == 0;
     }
 

@@ -1,0 +1,132 @@
+{
+  "real": [
+    {
+      "tile": [
+        46,
+        10
+      ],
+      "spectrum_slope": -4.483275867636913,
+      "slope_hist_l1": 0.0
+    },
+    {
+      "tile": [
+        44,
+        7
+      ],
+      "spectrum_slope": -3.7536241854065366,
+      "slope_hist_l1": 0.0
+    },
+    {
+      "tile": [
+        47,
+        13
+      ],
+      "spectrum_slope": -4.225703737681321,
+      "slope_hist_l1": 0.0
+    }
+  ],
+  "synth (real desc)": [
+    {
+      "tile": [
+        46,
+        10
+      ],
+      "spectrum_slope": -4.254596559689503,
+      "slope_hist_l1": 0.16432189941406247
+    },
+    {
+      "tile": [
+        44,
+        7
+      ],
+      "spectrum_slope": -3.6210437768935844,
+      "slope_hist_l1": 0.1585464477539062
+    },
+    {
+      "tile": [
+        47,
+        13
+      ],
+      "spectrum_slope": -3.9583943127062704,
+      "slope_hist_l1": 0.12074279785156251
+    }
+  ],
+  "planner->synth": [
+    {
+      "tile": [
+        46,
+        10
+      ],
+      "spectrum_slope": -4.341479843563667,
+      "slope_hist_l1": 0.21347045898437506
+    },
+    {
+      "tile": [
+        44,
+        7
+      ],
+      "spectrum_slope": -3.643737299311755,
+      "slope_hist_l1": 0.14495086669921878
+    },
+    {
+      "tile": [
+        47,
+        13
+      ],
+      "spectrum_slope": -4.274594140741445,
+      "slope_hist_l1": 0.1716766357421875
+    }
+  ],
+  "planner->synth->refiner t=0.6": [
+    {
+      "tile": [
+        46,
+        10
+      ],
+      "spectrum_slope": -4.374188942355008,
+      "slope_hist_l1": 0.301116943359375
+    },
+    {
+      "tile": [
+        44,
+        7
+      ],
+      "spectrum_slope": -3.6891401145561176,
+      "slope_hist_l1": 0.14730072021484378
+    },
+    {
+      "tile": [
+        47,
+        13
+      ],
+      "spectrum_slope": -4.333187044953379,
+      "slope_hist_l1": 0.2216110229492187
+    }
+  ],
+  "refiner (real desc, noise)": [
+    {
+      "tile": [
+        46,
+        10
+      ],
+      "spectrum_slope": -4.741781004096892,
+      "slope_hist_l1": 0.08546447753906249
+    },
+    {
+      "tile": [
+        44,
+        7
+      ],
+      "spectrum_slope": -3.884472260262469,
+      "slope_hist_l1": 0.027420043945312524
+    },
+    {
+      "tile": [
+        47,
+        13
+      ],
+      "spectrum_slope": -4.375397613834014,
+      "slope_hist_l1": 0.06953430175781249
+    }
+  ]
+}

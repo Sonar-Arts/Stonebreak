@@ -7,6 +7,7 @@ import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.BitSet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -195,14 +196,16 @@ public class CarverAnchorTest {
                 if (anchor == null) continue;
                 int acx = Math.floorDiv(Math.round(anchor[0]), CHUNK);
                 int acz = Math.floorDiv(Math.round(anchor[2]), CHUNK);
-                float[] published = caverns.hasCavern(acx, acz)
-                        ? caverns.computeCavernOrigin(acx, acz)
-                        : megaCaverns.computeCavernOrigin(acx, acz);
-                assertNotNull(published, "connector anchor at chunk (" + acx + "," + acz
-                        + ") belongs to no cavern of either size");
-                assertEquals(published[0], anchor[0], "connector aims at a different x");
-                assertEquals(published[1], anchor[1], "connector aims at a different y");
-                assertEquals(published[2], anchor[2], "connector aims at a different z");
+                // One chunk can host a cavern and a megacavern at once; the connector aims at
+                // whichever origin is nearer, so the anchor must be one of the two published.
+                float[] cavern = caverns.computeCavernOrigin(acx, acz);
+                float[] mega = megaCaverns.computeCavernOrigin(acx, acz);
+                assertTrue(cavern != null || mega != null, "connector anchor at chunk ("
+                        + acx + "," + acz + ") belongs to no cavern of either size");
+                assertTrue(Arrays.equals(cavern, anchor) || Arrays.equals(mega, anchor),
+                        "connector at chunk (" + acx + "," + acz + ") aims at "
+                                + Arrays.toString(anchor) + ", but the carvers publish cavern "
+                                + Arrays.toString(cavern) + " / megacavern " + Arrays.toString(mega));
                 matched++;
             }
         }

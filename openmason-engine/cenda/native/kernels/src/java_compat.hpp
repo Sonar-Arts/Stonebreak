@@ -115,4 +115,16 @@ inline int64_t rotateLeft(int64_t v, int distance) {
     return static_cast<int64_t>((u << distance) | (u >> (64 - distance)));
 }
 
+/* splitmix64 finalizer, as the Java spawn hashes spell it inline
+ * (h ^= h >>> 30; h *= ...; h ^= h >>> 27; h *= ...; h ^= h >>> 31).
+ * The spawn hashes XOR cz*K in after their only rotate, and the low k bits of
+ * cz*K depend only on cz mod 2^k — without this every floorMod(h, D) reads a
+ * value periodic in cz (issue #243). */
+inline uint64_t splitmix64Finalize(uint64_t h) {
+    h ^= h >> 30; h *= UINT64_C(0xBF58476D1CE4E5B9);
+    h ^= h >> 27; h *= UINT64_C(0x94D049BB133111EB);
+    h ^= h >> 31;
+    return h;
+}
+
 } // namespace cenda
