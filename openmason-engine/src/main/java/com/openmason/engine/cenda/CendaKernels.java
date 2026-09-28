@@ -29,7 +29,7 @@ import java.nio.file.Path;
 public final class CendaKernels {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CendaKernels.class);
-    private static final int EXPECTED_ABI = 3;
+    private static final int EXPECTED_ABI = 4;
 
     private static final boolean AVAILABLE;
     private static final String SIMD_LEVEL;

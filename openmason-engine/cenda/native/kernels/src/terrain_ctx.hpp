@@ -285,6 +285,7 @@ inline bool hasWorm(int64_t seed, int cx, int cz) {
     h ^= static_cast<uint64_t>(static_cast<int64_t>(cx)) * HASH_A;
     h = (h << 23) | (h >> 41);
     h ^= static_cast<uint64_t>(static_cast<int64_t>(cz)) * HASH_B;
+    h = cenda::splitmix64Finalize(h);
     return (h & 7) == 0; // Math.floorMod(h, 8) on the signed value
 }
 
