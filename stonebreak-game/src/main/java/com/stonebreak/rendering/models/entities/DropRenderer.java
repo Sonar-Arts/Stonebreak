@@ -376,7 +376,7 @@ public class DropRenderer {
                 MeshManager.MeshResource sboMesh = sboHandMeshRegistry != null
                         ? sboHandMeshRegistry.getMesh(blockType)
                         : null;
-                boolean isFlower = sboMesh != null && blockType.isFlower();
+                boolean isFlower = sboMesh != null && sboHandMeshRegistry.isCutoutMesh(blockType);
                 dropModelMatrix.identity()
                         .translate(handX, handY, handZ)
                         .rotateY(yawRad)
@@ -507,7 +507,7 @@ public class DropRenderer {
         MeshManager.MeshResource sboMesh = sboHandMeshRegistry != null
                 ? sboHandMeshRegistry.getMesh(blockType)
                 : null;
-        boolean isFlowerMesh = sboMesh != null && blockType.isFlower();
+        boolean isFlowerMesh = sboMesh != null && sboHandMeshRegistry.isCutoutMesh(blockType);
         MeshManager.MeshResource mesh = sboMesh != null ? sboMesh : getDropCubeMesh(blockType);
 
         // Note: blending and depth mask are now controlled by the caller
