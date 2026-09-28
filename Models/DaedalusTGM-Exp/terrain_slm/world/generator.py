@@ -27,6 +27,8 @@ from terrain_slm.data import descriptors as D
 from terrain_slm.models import planner as P
 from terrain_slm.models import refiner as R
 from terrain_slm.models import descgit as DG
+from terrain_slm.models import detail as DT
+from terrain_slm.models import biomenet as BN
 from terrain_slm.models import hydro as HY
 from terrain_slm.models import relief as RL
 from terrain_slm.synth import noise as S
@@ -48,7 +50,11 @@ RELIEF_EXT = RELIEF_CORE + 2 * RELIEF_APRON  # 448 cells = 108 km
 RELIEF_NOISE_STREAM = 8191
 RIVER_THRESHOLD_RELIEF = 4.5
 RIVER_THRESHOLD_SMOOTH = 3.3
-RIVER_THRESHOLD_HYDRO = 5.5   # hydro drainage is realistic: 5.5 gives ~1-5% water on land with 3-16 block rivers
+ROUTE_NOISE_M = 3.0         # routing-surface noise (m, std) -- only steers paths across near-flat ground
+ROUTE_NOISE_SIGMA = 2.0     # cells
+ROUTE_NOISE_STREAM = 12301
+RIVER_THRESHOLD_ROUTED = 7.5  # routed drainage (GenConfig.routed_drainage), calibrated 2026-09-28
+RIVER_THRESHOLD_HYDRO = 7.0   # 2026-09-28: 5.5 (~1-5% water on land) read as far too many rivers; 7.0 needs ~4.5x the drainage area
 # Descriptor sampler (MaskGIT) tiling: 64-cell windows around 32-cell cores, sampled in a fixed
 # 4-phase checkerboard. A window conditions only on the cores of earlier-phase neighbours, so the
 # dependency chain is at most 3 windows deep (request-independent) and nothing is cross-faded.
@@ -58,6 +64,22 @@ DG_RING = 16
 DG_WIN = DG_CORE + 2 * DG_RING
 DG_STEPS = 12
 DG_SMOOTH_CELLS = 0.7   # softens codebook quantisation (mostly the smooth coarse bands)
+# Detail sampler (v4) windows, in 60 m SAMPLES (= blocks): 512-sample canonical windows around
+# 256-sample cores (one tile), cross-faded like the pixel regions. The apron is a third of the
+# model's ~400-sample receptive field; the shared coordinate-hashed noise keeps overlaps consistent.
+DETAIL_CORE = 256
+DETAIL_APRON = 128
+DETAIL_EXT = DETAIL_CORE + 2 * DETAIL_APRON
+DETAIL_MARGIN_CELLS = 8
+DETAIL_BASE_BLUR_CELLS = 1.5   # planner cells are blurred like train_detail's degradation (0.5-2 cells) before the base
+# Guard retries, in order: (base blur cells, climate conditioning on). Training dropped climate 15% of the time,
+# so climate-off keeps full detail; it is the retry that clears the tropical-archetype windows the r0 checkpoint
+# blew up on (low seasonality + high rain over in-game terrain). Last resort: the smooth base alone.
+DETAIL_RETRY = ((DETAIL_BASE_BLUR_CELLS, True), (2.5, True), (DETAIL_BASE_BLUR_CELLS, False), (2.5, False))
+DETAIL_T_START = 0.0           # a later start (0.05) was tried: it cut val relief amplitude 0.94 -> 0.70;
+                               # the t ~ 0 blow-ups are fixed by fine-tuning with t coverage instead (train_detail --t-*)
+DETAIL_X_LIMIT = 7.0           # |asinh(residual / 10 m)| above this (~5.5 km) = an unstable sample
+DETAIL_NOISE_STREAM = 12289
 RELIEF_FLOOR_M = 30.0  # sampled valleys never push inland ground below this (no inland seas)
 # Summit soft cap: above the knee, height approaches knee + span but never reaches it, so the
 # rare summit taller than the world's height curve allows is rounded, not sheared flat at
@@ -70,6 +92,7 @@ def soft_cap_peaks(e: torch.Tensor) -> torch.Tensor:
     d = (e - PEAK_KNEE_M).clamp_min(0.0)
     return e - d + d / (1.0 + d / PEAK_SPAN_M)
 LAPSE_C_PER_M = 0.0065
+LAPSE_REGIONAL_SIGMA_CELLS = 6.0   # ~1.4 km: biome climate follows regional, not per-hill, elevation
 PATCH_BLUR_CELLS = 1.0
 HOME_RADIUS_CELLS = 150.0  # ~36 km
 
@@ -152,6 +175,13 @@ RANGE_SPINE_M = 2800.0
 RANGE_SPUR_M = 900.0
 RANGE_FOOTHILL_M = 500.0
 _FBM2_STD, _FBM3_STD = 0.27, 0.30  # measured std of _fbm with 2 / 3 octaves
+HILL_PERIOD_CELLS = 350.0     # lowland province size (~84 km)
+HILL_BIAS = 0.8               # higher = more of the lowland is hilly
+HILL_SOFTNESS = 2.4           # wider = more rolling in-between ground, fewer hard plains/hills splits
+HILL_PLAINS_M = 100.0         # hills-noise amplitude on plains (std ~30 m: gentle swells, not a table) ...
+HILL_COUNTRY_M = 360.0        # ... and in hill country (std ~110 m)
+HILL_HOME_MIN = 0.55          # hilliness floor around spawn (0 disables)
+HILL_ROUGH = 0.55             # extra roughness in hill country: band-3 ~2.7 m -> ~14 m
 
 
 def procedural_controls(ci0: int, cj0: int, hc: int, wc: int, seed: int, device) -> dict:
@@ -179,11 +209,19 @@ def procedural_controls(ci0: int, cj0: int, hc: int, wc: int, seed: int, device)
     spur = torch.exp(-(n_spur / 0.6) ** 2) * body
     along = _smoothstep((_fbm(ci, cj, RANGE_ALONG_PERIOD, seed, 7, octaves=2) / _FBM2_STD + RANGE_ALONG_BIAS) / 1.2)
     hills = _fbm(ci, cj, 70.0, seed, 8, octaves=4)
+    # Lowland provinces (2026-09-28): plains, rolling hills and hill country, ~80 km across.
+    # Calibrated on real hilly lowlands (Appalachian Plateau, Rhenish Massif, Ozarks, Massif
+    # Central, Tuscany, Mar de Morros): hill relief at 5-25 km of 26-116 m std and a band-3
+    # roughness of 5-18 m, where plains (Great Plains, Sahara) have ~15 m and ~2-3 m.
+    hilly = _smoothstep((_fbm(ci, cj, HILL_PERIOD_CELLS, seed, 9, octaves=3) / _FBM3_STD + HILL_BIAS) / HILL_SOFTNESS)
+    # Like the home continent: the spawn region is at least rolling hills, never a dead-flat plain.
+    hilly = torch.maximum(hilly, HILL_HOME_MIN * torch.exp(-(ci**2 + cj**2) / (2 * HOME_RADIUS_CELLS**2)))
     mountains = along * (RANGE_SPINE_M * spine + RANGE_SPUR_M * spur + RANGE_FOOTHILL_M * foot)
-    trend = -300.0 + 600.0 * land * (0.6 + 0.5 * continent) + land * (mountains + 200.0 * hills * (0.3 + along * foot))
+    hill_m = HILL_PLAINS_M + (HILL_COUNTRY_M - HILL_PLAINS_M) * hilly + 200.0 * along * foot
+    trend = -300.0 + 600.0 * land * (0.6 + 0.5 * continent) + land * (mountains + hill_m * hills)
     # Roughness in [0, 1] from the same fields, mapped to band-3 log amplitude between
     # gentle plains (~2 m) and alpine relief (~40 m).
-    rough = (0.08 + along * (0.9 * spine + 0.45 * spur + 0.25 * foot)
+    rough = (0.14 + HILL_ROUGH * hilly + along * (0.9 * spine + 0.45 * spur + 0.25 * foot)
              + 0.25 * (0.3 + along * foot) * hills.abs()).clamp(0, 1) * land
     wild = math.log(2.0) + rough * (math.log(40.0) - math.log(2.0))
     return {
@@ -191,6 +229,52 @@ def procedural_controls(ci0: int, cj0: int, hc: int, wc: int, seed: int, device)
         "trend": trend,
         **_climate(ci, cj, seed),
     }
+
+
+def routed_drainage(height: torch.Tensor, precip_mm: torch.Tensor, inflow_logacc: torch.Tensor | None,
+                    flat_noise: torch.Tensor | None = None) -> torch.Tensor:
+    """Route water over one window's coarse height: fill depressions (every land cell gets a
+    descending path to the sea or the window edge), steepest-descent D8, precipitation-weighted
+    accumulation -- the training data's own definition (data/build.py), 3x3-dilated like every
+    model's drainage target. Basins reaching past the window enter through its edge: a ring cell
+    that drains inward also carries `inflow_logacc` (the hydro sidecar's estimate of the
+    upslope area it has) as extra weight. Returns (3, H, W) [log1p(acc), river, D8 class]."""
+    import numpy as np
+    from terrain_slm.data.build import D8_OFFSETS
+    from terrain_slm.data.hydrology.fill import fill_depressions, ocean_mask
+    from terrain_slm.data.hydrology.flow import d8_receivers, flow_accumulation
+
+    z = height.detach().double().cpu().numpy()
+    h, w = z.shape
+    invalid = ocean_mask(z)
+    eps_field = None
+    if flat_noise is not None:  # meandering paths across filled flats (fill.epsilon_field)
+        from terrain_slm.data.hydrology.fill import DEFAULT_EPSILON
+        u = np.tanh(flat_noise.detach().double().cpu().numpy())
+        eps_field = DEFAULT_EPSILON * (1.0 + 0.9 * u)
+    recv = d8_receivers(fill_depressions(z, invalid=invalid, epsilon_field=eps_field), invalid)
+    weights = np.clip(precip_mm.detach().double().cpu().numpy(), 0.0, None) / 1000.0
+    idx = np.arange(h * w)
+    if inflow_logacc is not None:
+        ring = np.zeros((h, w), dtype=bool)
+        ring[0, :] = ring[-1, :] = ring[:, 0] = ring[:, -1] = True
+        inward = ring.ravel() & (recv >= 0)
+        extra = np.expm1(inflow_logacc.detach().double().cpu().numpy().clip(0.0, 30.0)).ravel()
+        wv = weights.ravel().copy()
+        wv[inward] = np.maximum(wv[inward], extra[inward])
+        weights = wv.reshape(h, w)
+    acc = flow_accumulation(recv, ~invalid, weights=weights)
+    d8 = np.full(h * w, 8, dtype=np.int64)
+    live = recv >= 0
+    dr = recv[live] // w - idx[live] // w
+    dc = recv[live] % w - idx[live] % w
+    for k, (a, b) in enumerate(D8_OFFSETS):
+        d8[np.flatnonzero(live)[(dr == a) & (dc == b)]] = k
+    dev = height.device
+    acc_t = torch.from_numpy(acc).float().to(dev)
+    acc_t = F.max_pool2d(acc_t[None, None], 3, stride=1, padding=1)[0, 0]
+    river = (acc_t >= P.RIVER_MIN_UPSLOPE_CELLS).float()
+    return torch.stack([torch.log1p(acc_t), river, torch.from_numpy(d8.reshape(h, w)).float().to(dev)])
 
 
 # ----------------------------------------------------------------------------- generator
@@ -205,6 +289,12 @@ class GenConfig:
     # its drainage is realistic, 3.3 draws a looping mesh and 4.5 gives ~2% tree-like rivers.
     river_log_threshold: float | None = None
     relief_steps: int = 16  # Euler steps of the relief sampler (from pure noise)
+    detail_steps: int = 16  # Euler steps of the detail sampler (from pure noise)
+    # Drainage by routing water over the generated coarse height (fill -> D8 -> precipitation-
+    # weighted accumulation) in each canonical hydro window, instead of the hydro sidecar's
+    # regression: accumulation then grows downstream by construction, so rivers form connected
+    # networks instead of fragments that start and stop wherever the regressed flow wobbles.
+    routed_drainage: bool = True
 
 
 class _LRU(OrderedDict):
@@ -253,12 +343,24 @@ class WorldGenerator:
         self.hydro, hyd_step = self._optional(model_dir / "hydro.pt", lambda c: HY.Hydro(HY.HydroConfig(**c)))
         self.banks, bank_step = self._optional(model_dir / "bank.pt", lambda c: BankNet(BankConfig(**c)))
         self.descgit, dg_step = self._optional(model_dir / "descgit.pt", lambda c: DG.DescGit(DG.DescGitConfig(**c)))
+        # Optional detail sampler (v4): replaces synth + refiner (and so the descriptor sampler)
+        # for heights, drawing block-resolution terrain straight from the coarse cells + drainage.
+        self.detail, det_step = self._optional(model_dir / "detail.pt", lambda c: DT.Detail(DT.DetailConfig(**c)))
+        if self.detail is not None:
+            self.detail = self.detail.to(memory_format=torch.channels_last)
         self.model_id = (f"{MODEL_NAME}/{model_dir.name}:p{pk.get('step', 0)}:r{rk.get('step', 0)}:l{rel_step}"
-                         f":h{hyd_step}:b{bank_step}:g{dg_step}")
+                         f":h{hyd_step}:b{bank_step}:g{dg_step}:d{det_step}")
+        # Optional biome sidecar (v4): coherent biomes instead of the rule classifier's per-column decisions.
+        self.biomenet, bio_step = self._optional(model_dir / "biome.pt", lambda c: BN.BiomeNet(BN.BiomeNetConfig(**c)))
+        if bio_step != "none":
+            self.model_id += f":B{bio_step}"
+        self._detail_windows = _LRU(max(64, cache_regions // 4))
+        self.detail_failures = 0
         self._dg_windows = _LRU(8192)
         if cfg.river_log_threshold is None:
             from dataclasses import replace
-            thr = (RIVER_THRESHOLD_HYDRO if self.hydro is not None else
+            thr = (RIVER_THRESHOLD_ROUTED if cfg.routed_drainage else
+                   RIVER_THRESHOLD_HYDRO if self.hydro is not None else
                    RIVER_THRESHOLD_RELIEF if self.relief is not None else RIVER_THRESHOLD_SMOOTH)
             self.cfg = replace(cfg, river_log_threshold=thr)
         self.river = RP.default_pipeline(self.banks)
@@ -519,23 +621,35 @@ class WorldGenerator:
 
     # ---------------------------------------------------------------- hydrology (cells)
     def _hydro_window(self, wi: int, wj: int) -> torch.Tensor:
-        """Hydro sidecar on the planner's final coarse height for one canonical window:
-        (3, EXT, EXT) = [log1p(upslope cells), river probability, D8 class (as float)]."""
+        """Drainage for one canonical window on the planner's final coarse height:
+        (3, EXT, EXT) = [log1p(upslope cells), river probability, D8 class (as float)].
+        Routed (cfg.routed_drainage) or the hydro sidecar's prediction."""
         def run():
             ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
             n = RELIEF_EXT
             height = self._planner_cells(ci0, cj0, n, n)[0]
             c = procedural_controls(ci0, cj0, n, n, self.seed, self.device)
-            x = HY.build_input(height[None, None], {k: c[k][None, None] for k in P.CLIMATE_NAMES})
-            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16, enabled=x.is_cuda):
-                out = self.hydro(x)[0].float()
-            return torch.stack([out[HY.OUT_LOGACC] * P.LOGACC_SCALE, torch.sigmoid(out[HY.OUT_RIVER]),
-                                out[HY.OUT_D8].argmax(0).float()])
+            pred = None
+            if self.hydro is not None:
+                x = HY.build_input(height[None, None], {k: c[k][None, None] for k in P.CLIMATE_NAMES})
+                with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16, enabled=x.is_cuda):
+                    out = self.hydro(x)[0].float()
+                pred = torch.stack([out[HY.OUT_LOGACC] * P.LOGACC_SCALE, torch.sigmoid(out[HY.OUT_RIVER]),
+                                    out[HY.OUT_D8].argmax(0).float()])
+            if not self.cfg.routed_drainage and pred is not None:
+                return pred
+            # Route over the height plus a few metres of smooth, coordinate-hashed noise: on near-flat
+            # plains a steepest-descent path otherwise runs dead straight along the cell grid.
+            jit = D.blur(S.white_noise(ci0, cj0, n, n, self.seed, ROUTE_NOISE_STREAM, self.device)[None, None],
+                         ROUTE_NOISE_SIGMA)[0, 0]
+            jit = jit * (ROUTE_NOISE_M * 2.0 * ROUTE_NOISE_SIGMA * math.sqrt(math.pi))  # std of blurred white noise = 1/(2 sigma sqrt(pi))
+            return routed_drainage(height + jit * (height > 0), c["precip"], None if pred is None else pred[0],
+                                   flat_noise=jit / ROUTE_NOISE_M)
         return self._hydro_windows.get_or((self.seed, wi, wj), run)
 
     def drainage(self, ci0: int, cj0: int, hc: int, wc: int) -> dict:
-        """Per-cell drainage: the hydro sidecar's when loaded (logacc, river, d8), else None."""
-        if self.hydro is None:
+        """Per-cell drainage (logacc, river, d8): routed and/or the hydro sidecar's, else {}."""
+        if self.hydro is None and not self.cfg.routed_drainage:
             return {}
         fields = self._blend(ci0, cj0, hc, wc, lambda wi, wj: self._hydro_window(wi, wj)[:2], 2)
         d8 = self._owned(ci0, cj0, hc, wc, lambda wi, wj: self._hydro_window(wi, wj)[2].long())
@@ -565,7 +679,10 @@ class WorldGenerator:
             if not dr:
                 dr = {"logacc": self._planner_cells(ci0, cj0, hc, wc)[10], "d8": None}
             c = procedural_controls(ci0, cj0, hc, wc, self.seed, self.device)
-            climate = torch.stack([c["t0"] - LAPSE_C_PER_M * height.clamp_min(0.0),
+            m = int(math.ceil(3 * LAPSE_REGIONAL_SIGMA_CELLS)) + 1   # regional lapse, as full tiles use
+            reg = D.blur(soft_cap_peaks(self._planner_cells(ci0 - m, cj0 - m, hc + 2 * m, wc + 2 * m)[0])[None, None],
+                         LAPSE_REGIONAL_SIGMA_CELLS)[0, 0, m:-m, m:-m]
+            climate = torch.stack([c["t0"] - LAPSE_C_PER_M * reg.clamp_min(0.0),
                                    c["tseason"], c["precip"], c["pcv"]])
             return {"height": height, "logacc": dr["logacc"], "d8": dr.get("d8"), "climate": climate}
 
@@ -600,9 +717,95 @@ class WorldGenerator:
                 return (base + scale * x)[0, 0]
         return self._regions.get_or((self.seed, ri, rj), run)
 
+    # ---------------------------------------------------------------- detail sampler (60 m samples)
+    def _detail_window(self, wi: int, wj: int) -> torch.Tensor:
+        """Heights (m) of canonical detail window (wi, wj): samples [wi*CORE - APRON, +EXT)^2."""
+        def run():
+            spc = DT.SAMPLES_PER_CELL
+            si0, sj0 = wi * DETAIL_CORE - DETAIL_APRON, wj * DETAIL_CORE - DETAIL_APRON
+            mc = DETAIL_MARGIN_CELLS
+            nc = DETAIL_EXT // spc + 2 * mc
+            ci0, cj0 = si0 // spc - mc, sj0 // spc - mc
+            # Blur the planner's cells by one cell before building the base, exactly as training and
+            # validation did (train_detail: blur 0.5-2 cells; val 1.0). Unblurred planner output keeps a faint
+            # 4-cell (16-sample) patch texture that the sampler never saw and that its stride-16 level resonates with.
+            raw_height = self._planner_cells(ci0, cj0, nc, nc)[0][None, None]
+            ctrl = procedural_controls(ci0, cj0, nc, nc, self.seed, self.device)
+            dr = self.drainage(ci0, cj0, nc, nc)
+            if dr:
+                logacc = dr["logacc"][None, None] / P.LOGACC_SCALE
+                river = D.blur(dr["river"][None, None], 0.7)   # as in training (train_detail)
+                has_flow = 1.0
+            else:
+                logacc = river = torch.zeros_like(height)
+                has_flow = 0.0
+            ms = mc * spc
+            crop = lambda x: x[..., ms : ms + DETAIL_EXT, ms : ms + DETAIL_EXT]
+            up = lambda x: crop(DT.up_cells(x))
+            wild = ((ctrl["wild"] - P.WILD_NORM[0]) / P.WILD_NORM[1])[None, None]
+            climate = torch.stack([P.climate_input(n, ctrl[n]) for n in P.CLIMATE_NAMES])[None]
+            flag = lambda v: torch.full((1, 1, 1, 1), v, device=self.device)
+            noise = S.white_noise(si0, sj0, DETAIL_EXT, DETAIL_EXT, self.seed, DETAIL_NOISE_STREAM, self.device)[None, None]
+            # Guard: a window whose sample is non-finite or implausible is resampled from a smoother base
+            # (the known trigger is fine texture in the base), and loudly reported; if it still fails, the
+            # window falls back to the smooth base alone rather than ever shipping garbage terrain.
+            for blur, use_climate in DETAIL_RETRY:
+                base = crop(DT.detail_base(D.blur(raw_height, blur)))
+                cond = DT.build_cond(base, torch.zeros(1, 8, DETAIL_EXT, DETAIL_EXT, device=self.device), up(wild),
+                                     up(climate), up(logacc), up(river), flag(0.0), flag(1.0), flag(float(use_climate)),
+                                     flag(has_flow))
+                with torch.no_grad():
+                    x = DT.sample(self.detail, cond.contiguous(memory_format=torch.channels_last), noise,
+                                  steps=self.cfg.detail_steps, t_start=DETAIL_T_START)
+                res = DT.decode(x.clamp(-DETAIL_X_LIMIT, DETAIL_X_LIMIT))
+                ok = bool(torch.isfinite(x).all()) and float(x.abs().max()) < DETAIL_X_LIMIT
+                if ok:
+                    break
+                self.detail_failures += 1
+                print(f"[detail] WARNING: window ({wi},{wj}) seed {self.seed} unstable (base blur {blur} cells, "
+                      f"climate {'on' if use_climate else 'off'}, max |x| {float(x.nan_to_num(1e9).abs().max()):.3g}); retrying",
+                      flush=True)
+            else:
+                print(f"[detail] WARNING: window ({wi},{wj}) seed {self.seed} fell back to the smooth base", flush=True)
+                res = torch.zeros_like(base)
+            return (base + res)[0, 0]
+        return self._detail_windows.get_or((self.seed, wi, wj), run)
+
+    def _detail_samples(self, s1: int, t1: int, s2: int, t2: int) -> torch.Tensor:
+        """Heights (m) for 60 m samples [s1, s2) x [t1, t2), cross-faded across detail windows."""
+        h, w = s2 - s1, t2 - t1
+        out = torch.zeros(h, w, device=self.device)
+        w2 = self._fade(DETAIL_EXT, DETAIL_APRON, self.device)
+        for wi in range(math.floor((s1 - DETAIL_EXT + DETAIL_APRON) / DETAIL_CORE),
+                        math.floor((s2 - 1 + DETAIL_APRON) / DETAIL_CORE) + 1):
+            for wj in range(math.floor((t1 - DETAIL_EXT + DETAIL_APRON) / DETAIL_CORE),
+                            math.floor((t2 - 1 + DETAIL_APRON) / DETAIL_CORE) + 1):
+                a0, b0 = wi * DETAIL_CORE - DETAIL_APRON, wj * DETAIL_CORE - DETAIL_APRON
+                r0, r1 = max(s1, a0), min(s2, a0 + DETAIL_EXT)
+                q0, q1 = max(t1, b0), min(t2, b0 + DETAIL_EXT)
+                if r0 >= r1 or q0 >= q1:
+                    continue
+                win = self._detail_window(wi, wj)
+                out[r0 - s1 : r1 - s1, q0 - t1 : q1 - t1] += (
+                    win[r0 - a0 : r1 - a0, q0 - b0 : q1 - b0] * w2[r0 - a0 : r1 - a0, q0 - b0 : q1 - b0])
+        return out
+
+    def _native_detail(self, i1: int, j1: int, i2: int, j2: int) -> torch.Tensor:
+        """Native pixels from the detail sampler: each 60 m sample covers 2x2 native pixels
+        (nearest), so the tile builder's 2x2 block mean returns the model's samples exactly."""
+        ds = DT.DS
+        s1, t1 = i1 // ds, j1 // ds
+        s2, t2 = -(-i2 // ds), -(-j2 // ds)
+        samp = self._detail_samples(s1, t1, s2, t2)
+        px = samp.repeat_interleave(ds, 0).repeat_interleave(ds, 1)
+        oi, oj = i1 - s1 * ds, j1 - t1 * ds
+        return px[oi : oi + (i2 - i1), oj : oj + (j2 - j1)]
+
     def native(self, i1: int, j1: int, i2: int, j2: int) -> torch.Tensor:
         """Elevation (m) for native pixels [i1, i2) x [j1, j2), blended across regions."""
         with self.lock:
+            if self.detail is not None:
+                return self._native_detail(i1, j1, i2, j2)
             h, w = i2 - i1, j2 - j1
             out = torch.zeros(h, w, device=self.device)
             ext = REGION_CORE_PX + 2 * REGION_APRON_PX
@@ -650,6 +853,20 @@ class WorldGenerator:
         """Final native terrain with rivers: (carved elevation m, water surface m / NaN dry)."""
         field, _ = self.river_field(i1, j1, i2, j2)
         return field.carved, field.top
+
+    def regional_elevation(self, i1: int, j1: int, i2: int, j2: int) -> torch.Tensor:
+        """(H, W) metres at native pixels [i1, i2) x [j1, j2): the planner's coarse height blurred by
+        LAPSE_REGIONAL_SIGMA_CELLS, for the climate lapse rate. Built from canonical cells, so it is
+        request-independent. Per-column elevation made biome boundaries trace every hill's contours."""
+        m = int(math.ceil(3 * LAPSE_REGIONAL_SIGMA_CELLS)) + 1
+        ci0, cj0 = i1 // CP - m, j1 // CP - m
+        hc, wc = (i2 - 1) // CP + 1 + m - ci0, (j2 - 1) // CP + 1 + m - cj0
+        with self.lock:
+            cells = self._planner_cells(ci0, cj0, hc, wc)[0]
+        reg = D.blur(soft_cap_peaks(cells)[None, None], LAPSE_REGIONAL_SIGMA_CELLS)
+        up = F.interpolate(reg, size=(hc * CP, wc * CP), mode="bilinear", align_corners=False)[0, 0]
+        oi, oj = i1 - ci0 * CP, j1 - cj0 * CP
+        return up[oi : oi + (i2 - i1), oj : oj + (j2 - j1)]
 
     def climate_native(self, i1: int, j1: int, i2: int, j2: int, elev: torch.Tensor) -> torch.Tensor:
         """(4, H, W) upstream-unit climate at native pixels, temperature lapse-adjusted to `elev`."""

@@ -66,3 +66,7 @@ __pycache__/
 !/checkpoints/v2/*.pt
 !/checkpoints/v3/
 !/checkpoints/v3/*.pt
+# v4 (2026-09-28): ~127 MB, detail.pt alone ~99 MB (bf16; GitHub's hard limit is 100 MiB per file,
+# it warns above 50 MB). Decide LFS vs plain git before committing.
+!/checkpoints/v4/
+!/checkpoints/v4/*.pt

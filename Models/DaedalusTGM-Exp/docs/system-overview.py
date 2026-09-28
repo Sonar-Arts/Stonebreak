@@ -1,4 +1,4 @@
-"""Renders system-overview.png (DaedalusTGM-Exp v3). Run from docs/: ../.venv/bin/python system-overview.py"""
+"""Renders system-overview.png (DaedalusTGM-Exp v4). Run from docs/: ../.venv/bin/python system-overview.py"""
 from pathlib import Path
 
 import matplotlib
@@ -57,14 +57,14 @@ def path_arrow(points, color="#333", dashed=False, label=None, label_at=0, loff=
                 va="center", ha="left", bbox=dict(fc="#eeeeee", ec="none", pad=2))
 
 
-ax.text(W / 2, 34.15, "DaedalusTGM-Exp — system overview (v3)", ha="center", va="center", fontsize=25,
+ax.text(W / 2, 34.15, "DaedalusTGM-Exp — system overview (v4)", ha="center", va="center", fontsize=25,
         fontweight="bold")
 
 # ---------------------------------------------------------------- game (Java)
 group(0.4, 26.9, 17.2, 6.75, "Stonebreak (Java)", "#fbeefe", "#a23fb0")
 sl = box(4.2, 32.55, "ServerLevel.createAndLoad", w=5.6, h=0.85)
 tg = box(12.8, 32.55, "TerrainGenerationSystem", w=5.6, h=0.85)
-pm = box(4.2, 30.9, "TGMPipe", "one child process · checkpoints/v3 · restarts on crash", w=6.8, h=1.15)
+pm = box(4.2, 30.9, "TGMPipe", "one child process · checkpoints/v4 · restarts on crash", w=6.8, h=1.15)
 dc = box(13.2, 30.9, "DiffusionTileCache (seed · lod · priority)", "TGMPipeProtocol: 6 int16 planes → TerrainTile",
          w=7.6, h=1.15)
 ts = box(4.6, 28.2, "TerrainScale + WorldConfiguration", "60 m blocks · 256 tall, sea y 64\ncurve 48/16/24/38 m/block",
@@ -97,40 +97,42 @@ ax.text(1.25, 26.2, "launches\n(one child)", fontsize=13, color="#555", style="i
 # ---------------------------------------------------------------- world generator
 group(0.4, 0.4, 17.2, 20.0, "DaedalusTGM-Exp WorldGenerator — per request", "#e8fbf6", "#1b8f73")
 X, BW = 5.0, 8.2
-controls = box(X, 18.9, "Procedural controls v2", "continents · mountain ranges (spines, spurs, foothills) · wildness · climate",
+controls = box(X, 18.9, "Procedural controls v3", "continents · mountain ranges · hilliness provinces · wildness · climate",
                w=BW + 0.4, h=1.1)
-relief = box(X, 17.35, "Relief sampler  (0.43M, flow matching)", "240 m cells · 448-cell windows → sampled valley networks",
+relief = box(X, 17.35, "Relief sampler  (2.54M, flow matching)", "240 m cells · 448-cell windows → sampled valley networks",
              w=BW, h=1.1, fc=LEARNED)
-planner = box(X, 15.8, "Planner R1  (1.56M ViT)", "coarse height (its descriptors and drainage are superseded)",
-              w=BW, h=1.1, fc=LEARNED)
-synth = box(X, 13.1, "Synth", "descriptor-driven hashed noise at 30 m pixels", w=BW, h=1.1)
-refiner = box(X, 11.55, "Refiner  (0.34M, flow matching)", "SDEdit t=0.6 · 8 steps · 384 px regions", w=BW, h=1.1, fc=LEARNED)
-cap = box(X, 10.0, "Summit soft cap", "above 4300 m → approaches 5150 m (y ≈ 254)", w=BW, h=1.1)
-river = box(X, 7.95, "River pipeline (terrain_slm.river) · 30 m px",
-            "centrelines (hysteresis) → channel 3–16 blocks → level\n"
-            "→ learned banks (0.24M, only where rivers) → guard\n→ U-bed → no-spill", w=BW, h=2.1, fc=MIXED)
-blocks = box(X, 5.2, "Block stages · 2×2 → 60 m blocks",
-             "quantise → flow octants → flatten across → contain\n→ undercuts → overhangs → 6 tile planes", w=BW, h=1.75, fc=MIXED)
-chain = [controls, relief, planner, synth, refiner, cap, river, blocks]
+planner = box(X, 15.8, "Planner R2  (4.83M ViT)", "coarse height from the valley-rich trend", w=BW, h=1.1, fc=LEARNED)
+detail = box(X, 13.35, "Detail sampler  (49.4M, flow matching)",
+             "60 m samples = blocks · 512-sample windows, cross-faded\n"
+             "everything from 120 m to ~4 km, valleys under the rivers\n"
+             "guard: unstable window → smoother base / climate off", w=BW, h=2.0, fc=LEARNED)
+cap = box(X, 11.45, "Summit soft cap", "above 4300 m → approaches 5150 m (y ≈ 254)", w=BW, h=1.05)
+river = box(X, 9.05, "River pipeline (terrain_slm.river) · 30 m px",
+            "centrelines → channel 3–16 blocks → level, never rising downstream\n"
+            "(gorges through bumps) → learned banks (0.24M) → guard\n→ U-bed → no-spill → monotone top", w=BW, h=2.3, fc=MIXED)
+blocks = box(X, 6.35, "Block stages · 2×2 → 60 m blocks",
+             "quantise → flow octants (consensus) → (flatten ⇄ monotone,\n"
+             "≤ 1-block cascades) ×2 → contain → undercuts → overhangs", w=BW, h=1.75, fc=MIXED)
+biome = box(X, 4.3, "Biome sidecar  (1.10M conv net)", "on pre-river ground · coherent regions → 6 tile planes",
+            w=BW, h=1.2, fc=LEARNED)
+chain = [controls, relief, planner, detail, cap, river, blocks, biome]
 for a, b in zip(chain, chain[1:]):
     arrow((X, a["b"]), (X, b["t"]))
 path_arrow([(srv["cx"], srv["b"]), (srv["cx"], controls["cy"]), (controls["r"], controls["cy"])])
 
-hydro = box(14.3, 15.8, "Hydrology sidecar  (0.40M)", "drainage · rivers · D8 directions\nfrom the final coarse height",
-            w=5.4, h=1.5, fc=LEARNED)
-dg = box(13.95, 13.25, "Descriptor sampler: MaskGIT  (1.55M)", "8 descriptors per cell, sampled\ncheckerboard windows, no averaging",
-         w=6.5, h=1.5, fc=LEARNED)
-arrow((planner["r"], planner["cy"]), (hydro["l"], hydro["cy"]), "height", loff=(-0.35, 0.28))
-path_arrow([(hydro["r"] - 0.4, hydro["b"]), (hydro["r"] - 0.4, river["cy"]), (river["r"], river["cy"])],
+drain = box(14.3, 15.3, "Routed drainage", "per 448-cell window: fill (meandering\nflats) → D8 → rain-weighted flow\n"
+            "hydro sidecar (0.40M): edge inflow", w=5.4, h=2.1, fc=MIXED)
+arrow((planner["r"], planner["cy"]), (drain["l"], planner["cy"]), "height", loff=(-0.35, 0.28))
+fy = (drain["b"] + detail["t"]) / 2
+arrow((drain["l"], fy), (detail["r"], fy), "flow + rivers", loff=(-1.25, 0.28))
+path_arrow([(drain["r"] - 0.4, drain["b"]), (drain["r"] - 0.4, river["cy"]), (river["r"], river["cy"])],
            label="drainage + D8", label_at=1, loff=(-1.3, 0.25))
-arrow((planner["r"], planner["b"] + 0.2), (dg["l"], dg["t"] - 0.35), "planner inputs", loff=(-0.4, 0.1))
-arrow((dg["l"], synth["cy"]), (synth["r"], synth["cy"]))
 
-ck = box(14.4, 5.0, "checkpoints/v3  (tracked, ~18 MB)",
-         "planner 1.56M · refiner 0.34M · relief 0.43M\nhydro 0.40M · bank 0.24M · descgit 1.55M",
+ck = box(14.4, 5.4, "checkpoints/v4  (~131 MB)",
+         "detail 49.4M (bf16) · planner 4.83M · relief 2.54M\nbiome 1.10M · hydro 0.40M · bank 0.24M",
          w=5.6, h=1.75, fc=LEARNED)
-tr = box(14.4, 2.35, "Offline training", "7 GLO-30 regions + water masks\ntrain_{planner,refiner,relief,hydro,banks,descgit}",
-         w=5.6, h=1.6)
+tr = box(14.4, 2.6, "Offline training", "24 GLO-30 regions (333 tiles) + water masks\n"
+         "train_{detail,planner,relief,hydro,banks,biomes}", w=5.6, h=1.6)
 arrow((tr["cx"], tr["t"]), (ck["cx"], ck["b"]))
 
 ax.legend(handles=[Patch(fc=LEARNED, ec="#333", label="learned model"),

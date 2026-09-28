@@ -135,11 +135,49 @@ def propagate(values: torch.Tensor, seed: torch.Tensor, region: torch.Tensor, st
     return v[0, 0]
 
 
+_N8 = ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1))
+
+
+def _shift2(x: torch.Tensor, di: int, dj: int, fill: float) -> torch.Tensor:
+    """out[r, c] = x[r + di, c + dj], `fill` past the edge (no wrap-around)."""
+    out = torch.full_like(x, fill)
+    h, w = x.shape
+    out[max(0, -di) : h - max(0, di), max(0, -dj) : w - max(0, dj)] = \
+        x[max(0, di) : h - max(0, -di), max(0, dj) : w - max(0, -dj)]
+    return out
+
+
+def monotone_downstream(level: torch.Tensor, line: torch.Tensor, flow: torch.Tensor, iters: int) -> torch.Tensor:
+    """Lower `level` on centreline pixels until no pixel stands above a connected upstream
+    neighbour (an 8-neighbour line pixel with lower flow). Flow accumulation only grows
+    downstream, so the result never rises along a river; where the flow ordering is noisy the
+    river runs flat, never uphill. Only lowers. `iters` bounds how far (px, along the line) a
+    low point can pull the level down downstream -- keep it inside the request halo."""
+    inf = float("inf")
+    lv = torch.where(line, level, torch.full_like(level, inf))
+    fl = torch.where(line, flow, torch.full_like(flow, inf))
+    nbs = [(_shift2(fl, di, dj, inf), di, dj) for di, dj in _N8]
+    ups = [(nf < fl) & line for nf, _, _ in nbs]   # neighbour is upstream of me
+    for _ in range(iters):
+        best = lv
+        for (nf, di, dj), up in zip(nbs, ups):
+            best = torch.where(up, torch.minimum(best, _shift2(lv, di, dj, inf)), best)
+        if torch.equal(best, lv):
+            break
+        lv = best
+    return torch.where(line, lv, level)
+
+
 class WaterSurface:
     """Water level: the ground along the CENTRELINE, smoothed along it (so rivers slope with the
-    land), carried straight across the channel (one level per cross-section, so the surface
-    never tilts sideways into block steps), then spread past the banks for the bank stages."""
+    land), made non-increasing downstream (`monotone_downstream`: a bump across the river's path
+    no longer lifts its water -- the bed cuts through it instead), carried straight across the
+    channel (one level per cross-section, so the surface never tilts sideways into block steps),
+    then spread past the banks for the bank stages."""
     name = "surface"
+
+    def __init__(self, monotone_iters: int = 128):
+        self.monotone_iters = monotone_iters
 
     def __call__(self, f: RiverField, ctx: RiverContext) -> RiverField:
         cf = f.channel.float()[None, None]
@@ -150,6 +188,13 @@ class WaterSurface:
         # floor the river follows), with the in-channel mean as a fallback where no line is near.
         on_line = D.blur(g * lf, sig) / D.blur(lf, sig).clamp_min(1e-6)
         in_chan = D.blur(g * cf, sig) / D.blur(cf, sig).clamp_min(1e-6)
+        if self.monotone_iters > 0:
+            before = on_line[0, 0]
+            mono = monotone_downstream(before, f.line, f.flow, self.monotone_iters)
+            drop = (before - mono)[f.line]
+            ctx.stats["monotone_lowered_px"] = int((drop > 0.01).sum())
+            ctx.stats["monotone_max_drop_m"] = float(drop.max()) if drop.numel() else 0.0
+            on_line = mono[None, None]
         steps = int(math.ceil(ctx.cfg.width_max_blocks * ctx.scale.px_per_block / 2)) + 2
         across = propagate(on_line[0, 0], f.line, f.channel, steps)
         reached = propagate(torch.ones_like(f.ground), f.line, f.channel, steps) > 0.5
@@ -173,6 +218,8 @@ class UBed:
         profile = 1.0 - (1.0 - u) ** 2
         depth_m = rate * (1.0 + (f.depth_blocks - 1.0) * profile)
         bed = f.level - depth_m
+        # Where the (downstream-monotone) level sits well below the ground, the bed cuts a
+        # gorge rather than leaving the river a dry gap; only beyond the gorge cap does it stop.
         bed = torch.maximum(bed, f.ground - rate * (f.depth_blocks + c.extra_incision_blocks))
         base = f.carved if f.carved is not None else f.ground
         f.carved = torch.where(f.channel, torch.minimum(base, bed), base)

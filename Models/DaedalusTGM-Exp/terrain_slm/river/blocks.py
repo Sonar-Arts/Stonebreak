@@ -44,6 +44,7 @@ class BlockSource:
     origin: tuple[int, int]     # absolute block coordinates of [0, 0]
     d: int
     drainage: Drainage | None
+    flow_log: torch.Tensor | None = None  # smoothed log flow (grows downstream), block mean
 
 
 def pool_to_blocks(f: RiverField, d: int, block_origin: tuple[int, int], drainage: Drainage | None) -> BlockSource:
@@ -57,7 +58,8 @@ def pool_to_blocks(f: RiverField, d: int, block_origin: tuple[int, int], drainag
     wet = wet & torch.isfinite(top) & (ground > 0.5)
     half = F.max_pool2d((f.half_px * (f.channel if f.channel is not None else 0))[None, None], d)[0, 0] if f.half_px is not None \
         else torch.zeros_like(ground)
-    return BlockSource(ground, top, wet, half / d, block_origin, d, drainage)
+    flow_log = pool(f.flow) if f.flow is not None else None
+    return BlockSource(ground, top, wet, half / d, block_origin, d, drainage, flow_log)
 
 
 class BlockQuantize:
@@ -82,12 +84,16 @@ def _neigh4_max(x: torch.Tensor, fill: float) -> torch.Tensor:
 
 
 class BlockContainment:
-    """A dry column next to water (8-neighbourhood) is raised to at least that water's level."""
+    """A dry column next to water (8-neighbourhood) is raised to at least that water's level.
+    Sea is decided exactly as the tile builder fills it (block height below sea level): a coastal
+    column at 0-0.5 m sits AT sea level, gets no sea water, and so must be walled like any other
+    (the old metres test `ground > 0.5 m` skipped it and river mouths leaked sideways)."""
     name = "block_contain"
 
     def __call__(self, cols: BlockColumns, src: BlockSource, ctx: RiverContext) -> BlockColumns:
         held = _neigh_max(torch.where(cols.wet, cols.water, torch.full_like(cols.water, -1)))
-        need = (~cols.wet) & (held >= 0) & (src.ground_m > 0.5) & (cols.height < held)
+        not_sea = cols.height >= ctx.scale.sea_level
+        need = (~cols.wet) & (held >= 0) & not_sea & (cols.height < held)
         ctx.stats["block_raised"] = int(need.sum())
         cols.height = torch.where(need, held.long(), cols.height)
         return cols
@@ -191,11 +197,59 @@ class FlattenAcross:
         return cols
 
 
+class MonotoneBlocks:
+    """Block-level guarantee that water never climbs downstream and never drops more than one
+    block per column (steeper reaches cut down instead -- rivers incise): along each wet column's flow
+    octant, the downstream wet neighbour's level is capped at this column's (iterated, so a low
+    point carries downstream), and ground is cut to keep a block of water. FlattenAcross can
+    otherwise leave a cross-section lower than the next one down. Lowering water never spills.
+    Needs FlowOctants."""
+    name = "monotone_blocks"
+
+    def __init__(self, iters: int = 20):   # < BLOCK_MARGIN: stays request-independent
+        self.iters = iters
+
+    def __call__(self, cols: BlockColumns, src: BlockSource, ctx: RiverContext) -> BlockColumns:
+        wet = cols.wet & (cols.flow >= 0)
+        if not bool(wet.any()):
+            return cols
+        big = torch.iinfo(torch.int64).max // 4
+        lv = torch.where(cols.wet, cols.water, torch.full_like(cols.water, big))
+        start = lv.clone()
+        for _ in range(self.iters):
+            cap = torch.full_like(lv, big)
+            for k in range(8):
+                ang = k * math.pi / 4
+                di, dj = int(round(math.cos(ang))), int(round(math.sin(ang)))
+                # The forward cone: a column flowing along k, k-1 or k+1 has this neighbour downstream.
+                # (Exact-octant only misses diagonal rivers' orthogonal steps across the block grid.)
+                along = wet & ((cols.flow == k) | (cols.flow == (k + 1) % 8) | (cols.flow == (k + 7) % 8))
+                # column (r, c) flowing along k feeds (r + di, c + dj): shift its level there
+                src_lv = torch.where(along, lv, torch.full_like(lv, big))
+                cap = torch.minimum(cap, _shift(src_lv, -di, -dj, big))
+                # ... and may stand at most one block above it (a one-block cascade): steep
+                # reaches incise instead of dropping two blocks, which would spill sideways.
+                down = _shift(torch.where(cols.wet, lv, torch.full_like(lv, big)), di, dj, big)
+                cap = torch.where(along & (down < big), torch.minimum(cap, down + 1), cap)
+            nxt = torch.where(cols.wet, torch.minimum(lv, cap), lv)
+            if torch.equal(nxt, lv):
+                break
+            lv = nxt
+        lowered = cols.wet & (lv < start)
+        ctx.stats["monotone_block_columns"] = int(lowered.sum())
+        cols.water = torch.where(cols.wet, lv, cols.water)
+        cols.height = torch.where(cols.wet, torch.minimum(cols.height, cols.water - 1), cols.height)
+        return cols
+
+
 class FlowOctants:
-    """Wet columns run downhill along the (smoothed, metres) water surface; truly flat reaches
-    take the hydro sidecar's D8 direction; anything else stays NO_FLOW."""
+    """Wet columns run downhill along the (smoothed, metres) water surface; flat reaches (common
+    where the downstream-monotone level runs level through a bump) follow the direction in which
+    flow accumulation grows -- downstream by construction -- and only then the hydro sidecar's
+    D8; anything else stays NO_FLOW."""
     name = "flow"
     SMOOTH_BLOCKS = 4.0
+    CONSENSUS = 5            # blocks: octant smoothing window
 
     def __call__(self, cols: BlockColumns, src: BlockSource, ctx: RiverContext) -> BlockColumns:
         # The continuous water surface in metres, not the block levels: a gently sloping reach
@@ -223,6 +277,26 @@ class FlowOctants:
             table = torch.tensor([round(math.atan2(dc, drw) / (math.pi / 4)) % 8 for drw, dc in D8_OFFSETS] + [NO_FLOW],
                                  device=cols.flow.device)
             oct_d8 = table[cls.clamp(0, 8)]
+        if src.flow_log is not None:
+            # Flat reaches (common where the downstream-monotone level runs level through a bump):
+            # the direction in which accumulation grows -- downstream by construction -- before D8.
+            fl = torch.where(cols.wet, src.flow_log, torch.zeros_like(src.flow_log))[None, None]
+            fs = D.blur(fl, self.SMOOTH_BLOCKS) / D.blur(wf, self.SMOOTH_BLOCKS).clamp_min(1e-6)
+            fp = F.pad(fs, (1, 1, 1, 1), mode="replicate")[0, 0]
+            ax, az = 0.5 * (fp[2:, 1:-1] - fp[:-2, 1:-1]), 0.5 * (fp[1:-1, 2:] - fp[1:-1, :-2])
+            oct_acc = torch.remainder(torch.round(torch.atan2(az, ax) / (math.pi / 4)), 8).long()
+            oct_d8 = torch.where(torch.sqrt(ax * ax + az * az) > 1e-4, oct_acc, oct_d8)
         flow = torch.where(mag > 1e-3, oct_grad, oct_d8)   # metres per block
+        # Vector-smooth the octants over nearby wet columns: an isolated column pointing against
+        # its neighbours (a flip the water sim would show as a whirl) takes the local consensus.
+        live = cols.wet & (flow >= 0)
+        ang = flow.float() * (math.pi / 4)
+        ux = torch.where(live, torch.cos(ang), torch.zeros_like(ang))[None, None]
+        uz = torch.where(live, torch.sin(ang), torch.zeros_like(ang))[None, None]
+        k = torch.ones(1, 1, self.CONSENSUS, self.CONSENSUS, device=ang.device)
+        sx = F.conv2d(ux, k, padding=self.CONSENSUS // 2)[0, 0]
+        sz = F.conv2d(uz, k, padding=self.CONSENSUS // 2)[0, 0]
+        smooth = torch.remainder(torch.round(torch.atan2(sz, sx) / (math.pi / 4)), 8).long()
+        flow = torch.where(live & (sx * sx + sz * sz > 0.25), smooth, flow)
         cols.flow = torch.where(cols.wet, flow, torch.full_like(flow, NO_FLOW))
         return cols

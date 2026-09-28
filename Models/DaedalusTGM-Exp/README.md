@@ -45,7 +45,7 @@ uv sync
 ### Playing
 
 Nothing to do by hand. Stonebreak's `TGMPipe` launches `python -m terrain_slm.tgmpipe` with the
-model in `checkpoints/v3` and hands it the world's scale (`TerrainScale`) in the handshake. The
+model in `checkpoints/v4` and hands it the world's scale (`TerrainScale`) in the handshake. The
 service's log is `Models/logs/tgmpipe.log`.
 
 The service speaks only the terrain protocol on stdio (`terrain_slm/tgmpipe/protocol.py`), so it is not
@@ -84,7 +84,8 @@ Run one training job per GPU. Two jobs on one card run about 15× slower.
 ```
 
 Optional models load when their file is in the model dir (`relief.pt`, `hydro.pt`, `bank.pt`,
-`descgit.pt`); without one, that stage falls back to the previous behaviour.
+`descgit.pt`, and in v4 `detail.pt` + `biome.pt`); without one, that stage falls back to the previous behaviour.
+v4 (`checkpoints/v4`, the default since 2026-09-28) needs no `descgit.pt`; see `docs/Architecture.md` §1a/§1b.
 
 ### Shipping a model
 
@@ -93,8 +94,11 @@ Optional models load when their file is in the model dir (`relief.pt`, `hydro.pt
    with no relief sampler.
 2. Point the game at the new directory: `TGMPipe.DEFAULT_MODEL`, or
    `-Dstonebreak.tgmpipe.model=`.
-3. Un-ignore the new directory in `.gitignore`: copy the two `!/checkpoints/v3...` lines. The
-   shipping model is committed (about 9 MB, plain git), so a fresh clone generates terrain as-is.
+3. Un-ignore the new directory in `.gitignore`: copy the two `!/checkpoints/v3...` lines. v3 was about 9 MB in
+   plain git; v4 is ~131 MB with a 99 MB `detail.pt` (bf16) — GitHub's hard limit is 100 MiB per file, so
+   consider Git LFS. Store big models' weights as bf16 (lossless for the bf16-autocast samplers).
+4. Re-scan a new detail checkpoint for in-game stability before shipping it (`[detail] WARNING` lines; see
+   Architecture §1a) — validation alone does not catch it.
 
 The service's disk cache needs no care: its namespace hashes the world config, every checkpoint's
 training step and the generator's source (everything under `terrain_slm/` except `train/`, `eval/`,

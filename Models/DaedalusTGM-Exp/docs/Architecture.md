@@ -1,6 +1,6 @@
 # DaedalusTGM-Exp: Terrain Generation Model Architecture
 
-**Branch:** `Project-Daedalus` (off Project-Heracles) · **As of:** 2026-09-27 (v3: hydrology sidecar, river pipeline with learned 3D banks, MaskGIT descriptors)
+**Branch:** `Project-Daedalus` (off Project-Heracles) · **As of:** 2026-09-28 (v4: 49M detail sampler, 24 regions, routed drainage + downhill-only rivers, hilly lowlands, biome sidecar; §1a)
 **Name:** **DaedalusTGM-Exp** (Daedalus Terrain Generation Model, experimental): the official name of the model (the process that serves it to the game is **TGMPipe**). Code identifiers keep their original names: Python package `terrain_slm`. The name appears in `terrain_slm.MODEL_NAME`, the service's READY handshake (`"name"`), its `model_id` (`DaedalusTGM-Exp/v3:p…:r…:l…:h…:b…:g…`), its log, and `TGMPipe.MODEL_NAME` (Java)
 **Home:** `Models/DaedalusTGM-Exp/` (this model: code, training, TGMPipe, checkpoints, reports, docs) · Java `TGMPipe` + world constants (`TerrainScale`)
 **Plan / history:** [`Terrain-SLM-Plan.md`](Terrain-SLM-Plan.md) (§13 onward is the running log)
@@ -11,7 +11,8 @@
 
 | | |
 |---|---|
-| Default generator | **DaedalusTGM-Exp v3** (`TGMPipe.DEFAULT_MODEL`, model dir `checkpoints/v3`, tracked in git, ~18 MB) |
+| Default generator | **DaedalusTGM-Exp v4** (`TGMPipe.DEFAULT_MODEL`, model dir `checkpoints/v4`, ~131 MB: `detail.pt` 99 MB bf16 — LFS decision pending). v3 kept in `checkpoints/v3`. **§1a describes v4; the rows below are v3 unless marked** |
+| **v4 additions** | detail sampler 49.4M (replaces synth + refiner + MaskGIT for heights), planner R2 4.83M, relief wide 2.54M, hydro/bank retrained on 24 regions, routed drainage, biome sidecar 1.10M (§1a, §1b) |
 | Controls | **v2**: continents + long, winding **mountain ranges** (spines, spurs, foothills) + climate archetypes (§6) |
 | Relief sampler | **new**: flow-matching conv UNet on 240 m cells, **425,033 params**, 11 min; samples valley networks onto the smooth trend (§7) |
 | Planner (the "SLM") | **R1**: ViT d176 × 4 layers × 4 heads, **1,558,656 params** (unchanged; now fed a valley-rich trend) |
@@ -26,6 +27,122 @@
 
 ---
 
+## 1a. v4 (2026-09-28): detail sampler, 24 regions, rivers that flow downhill
+
+v4 targets three complaints about v3 worlds: **lowlands were flat**, **rivers climbed and dipped along their
+course and flipped direction**, and **there were far too many rivers**.
+
+### What changed
+
+| Piece | v3 | v4 |
+|---|---|---|
+| Training data | 7 regions, 134 tiles | **24 regions, 333 tiles with data (335 in the boxes)**: + hilly lowlands (Appalachian Plateau, Ozarks, Loess Plateau, Mar de Morros, Rhenish Massif, Massif Central, Tuscany, Scottish Highlands, Carpathian hills) and more mountain types (Ethiopian Highlands, Drakensberg, Zagros, Colorado Rockies, central Andes, Karakoram, NZ Southern Alps, Japan Chubu) |
+| Detail below a cell | synth (descriptor noise) + refiner SDEdit, 337k params, ~1 km receptive field | **detail sampler** (`models/detail.py`): flow-matching UNet on **60 m samples = blocks**, 49.4M params, ~24 km receptive field |
+| Descriptors | MaskGIT sampler | not needed by the detail sampler (`descgit.pt` is not shipped in v4) |
+| Planner | R1, 1.56M, 7 regions | **R2** (d256 × 6), 4.83M, 24 regions: val height MAE **31 m vs R1's 97 m** on the 24-region val set, river IoU 0.38 vs 0.18 |
+| Relief sampler | 425k | **wide** (32/64/96/128 ch), 2.54M, 24 regions; won the end-to-end mountain A/B |
+| Drainage | hydro sidecar's regression | **routed**: fill → D8 → precipitation-weighted accumulation on the final coarse height, per canonical hydro window; the sidecar only supplies inflow at window edges |
+| River levels | ground under the centreline, smoothed | **never rise downstream** (three stages, below) and never drop more than one block per column |
+| River threshold | 5.5 (hydro) | **7.5** on routed drainage (`RIVER_THRESHOLD_ROUTED`; 2 log units = ~7x the drainage area before a river starts) |
+| Lowland controls | every lowland at plains relief | **hilliness provinces** (plains / rolling / hill country) calibrated on real hilly regions; spawn at least rolling |
+
+### Detail sampler (`models/detail.py`, `train/train_detail.py`)
+
+| | |
+|---|---|
+| Resolution | 60 m samples, the game's block size: nothing it draws is averaged away by the 2x2 block mean |
+| Target | `asinh((dem60 - base60) / 10 m)`, `base60 = detail_base(coarse cells)` (bilinear x4 + 6-sample blur). The asinh holds a 2 m plains ripple and a 1 km Alpine valley in one range with no scale field, so the model decides how hilly ground is from its conditioning |
+| Conditioning (22 ch) | base height + slope, 8 descriptors (dropout 0.4; off in game), wildness, 4 climate, log flow + river (dropout 0.3), 4 presence flags. Drainage conditioning is what makes valleys form under the rivers |
+| Model | UNet 96/192/288/384/512, 2 ResBlocks per level + 4 mid, FiLM time, dropout 0.1, zero-init output, no norm layers, 1x1 skip merges. **49,351,745 params** |
+| Training | 256x256-sample crops (15 km), coarse degraded like planner output (blur 0.5-2 cells + <= 20 m low-frequency jitter), 8 dihedral transforms, regions sampled uniformly; logit-normal t, AdamW 2e-4 (wd 0.01), cosine to 10%, EMA 0.9995, bf16, `torch.compile`; batch 32, **80k steps, ~5.5 h on one RTX PRO 6000 at 450 W** (232-260 ms/step, 31 GB) |
+| In game | canonical **512-sample windows around 256-sample cores (one tile)**, cross-faded; coordinate-hashed noise (stream 12289); 16 Euler steps; each sample covers 2x2 native pixels (nearest), so the tile builder's block mean returns the model's samples exactly. Overlaps agree at correlation 1.000 (no variance lost to the fade); request-independent to 0.0 m |
+
+**Instability trap (fixed).** Early in-game scans blew up (x → inf) on 13-17% of windows while validation looked perfect.
+The in-game base came from *unblurred* planner cells, which keep a faint 4-cell (16-sample) patch texture; training
+always blurred the coarse field. The texture lines up with the UNet's stride-16 mid level and drives it unstable. The
+generator now blurs planner cells by `DETAIL_BASE_BLUR_CELLS` (1.5, inside training's 0.5-2 range) before the base:
+0 of 288 windows over 8 seeds fail. A guard stays in place: a non-finite or implausible window (|x| >= 7, ~5.5 km) is
+resampled from a smoother base (`DETAIL_BASE_BLUR_RETRY`), logged as `[detail] WARNING`, and falls back to the smooth
+base rather than ever shipping garbage. **Re-scan any new detail checkpoint before shipping it** (many
+`_detail_window`s over several seeds; count failures and the largest detail relief).
+
+### Rivers (§11 changes)
+
+- **Routed drainage** (`generator.routed_drainage`): accumulation grows downstream by construction, so rivers form one
+  connected, branching network instead of fragments that start and stop where regressed flow wobbled around the
+  threshold. Routing runs over the height plus 3 m of smooth hashed noise (`ROUTE_NOISE_*`) and fills with a
+  **per-cell epsilon** (`fill_depressions(epsilon_field=...)`), so paths across plains and filled basins meander
+  instead of running as straight canals. ~50 ms per 448-cell window.
+- **Water never rises downstream**, at three levels: `monotone_downstream` in `WaterSurface` (along the connected
+  centreline, ordered by flow; a bump across the river's path is cut as a gorge, `extra_incision_blocks` 20), the
+  new `MonotoneTop` after `NoSpill`, and the new block stage `MonotoneBlocks` (also caps each column at its downstream
+  neighbour + 1 block, so steep reaches incise into one-block cascades). `FlattenAcross` and `MonotoneBlocks` run
+  twice, alternating (both only lower water, so they settle onto each other).
+- **Flow octants**: water-surface gradient first (now monotone and level across each section), then the direction in
+  which accumulation grows, then D8; then a 5-block vector consensus removes isolated flips. (Tried and rejected: the
+  accumulation ridge's Hessian axis, which flips on the ridge flanks: 6-8% reversals.)
+- `pipeline.HALO_PX` 128 → 256 to keep the new relaxations request-independent.
+
+### Lowland controls (§6 changes)
+
+`hilly` = a 350-cell (~84 km) province field (`HILL_*`): hills-noise amplitude 100 → 360 m and band-3 roughness
++0.55 from plains to hill country, softened (`HILL_SOFTNESS`) so rolling ground is the common middle; plains keep
+gentle swells. Calibration (real): hilly lowlands have 5-18 m band-3 roughness and 26-116 m relief at 5-25 km; Great
+Plains / Sahara 2-3 m and 7-15 m. World-wide lowland: ~31% plains, ~35% hilly. `HILL_HOME_MIN` 0.55 keeps spawn at
+least rolling (0 disables).
+
+### Measured (`eval/world_report.py`, 768-block squares at spawn; `eval/mountains.py`)
+
+Shipped: `checkpoints/v4` (detail sampler = EMA at **step 66,000** of `detail_r0`; see below). v3 = committed HEAD code
+and weights, same squares and seeds.
+
+| Metric | v3 | v4 |
+|---|---|---|
+| Lowland local relief (std, blocks), seeds 0-5 | 0.43-0.64 | **1.6-2.5** |
+| Lowland spanning >= 8 blocks within 16 | 0-1% | **38-73%** |
+| Land under river water | 0.02-7.3% | 0.4-2.3% |
+| Water climbing downstream (per downstream wet pair) | 0.2-3.9% | **0** |
+| Direction turns > 90 deg / reversals | 2.7-5.1% / 0-1.3% | 0.6-1.5% / 0.2-0.8% |
+| Leaking river water blocks (full-column check, 6 seeds) | leaked at river mouths | **0** |
+| River steps > 1 block | (not measured) | **0** |
+| Peak (mountain report, seeds 0-3) | y 231-232 | **y 243-246** |
+| Relief, 61 km square | 147-165 blocks | **173-185** |
+| Steep steps (>= 3 blocks; real Alps 5.8%) | 0.2-0.6% | 0.2-6.2% |
+| Band RMS vs real Alps, 0.5-2 km bands | 0.32-0.75 | **0.52-1.03** |
+| Band RMS vs real Alps, finest (~100 m) band | 0.57-0.75 | 0.46-0.65 (softer summits) |
+| Tile time (GPU 1 at 150 W) | ~1.85 s, cold 17 s | ~2.0 s, cold 22 s |
+| Detail-window stability (288 windows, 8 seeds) | n/a | 3 guard retries, 0 fallbacks |
+
+**Why step 66k, not 80k.** Validation is flat from ~38k (val FM 0.328 -> 0.3206 at 66k -> 0.3194 at 80k; amplitude 0.935
+vs 0.928), but in-game stability is not: 80k needed 13-16 guard retries and 1-5 fallbacks per 288 windows. The trigger
+is the barely-trained t ~ 0 regime on tropical-archetype windows (low seasonality + high rain) over in-game terrain. A
+later sampler start (0.05) fixes it but costs amplitude (per-crop median 0.94 -> 0.71), and a 12k-step fine-tune with
+early-t coverage (`train_detail --t-uniform/--t-early`) did not fix the hard windows. **Next run:** normalisation (or
+bounded FiLM) in the mid blocks, in-game-style conditioning (planner coarse + archetype climate) as augmentation, and
+early-t coverage from the start.
+
+### 1b. Biome sidecar (`models/biomenet.py`, `train/train_biomes.py`) — v4
+
+The rule classifier (`biomes._classify_biome`) decides each column alone from elevation, its own slope (vegetation
+thresholds at slope ratio >= 0.62) and climate. On v4's hills, 1-2 block steps straddle those thresholds column by
+column: speckle, small blobs and streaks (v4 rule: 415-739 specks < 20 columns per 46 km square). The sidecar learns the
+same classification with coherent regions.
+
+| | |
+|---|---|
+| Model | 3-level conv UNet 48/96/128, **1,103,155 params**, receptive-field radius <= 23 blocks (< `BLOCK_MARGIN` 24: request-independent; `test_biomenet_receptive_field_fits_inside_the_tile_margin`) |
+| Inputs (10 ch) | elevation quantised exactly as `TileBuilder` does (blocks -> mid-block metres), slope, 4 lapse-adjusted climate channels, the rule classifier's own 3 coordinate-noise fields (so edges keep their wiggle), land flag |
+| Targets | rule classifier on real terrain (24 regions, 12k crops of 160^2 blocks), cleaned by 9x9 then 5x5 majority filters |
+| Climate augmentation | half the crops get shifted climate (T +-8 C, rain x0.3-3, seasonality/variability scaled): in game archetype climate lands on any terrain, and without this, warm lowland swamp (absent from the real regions) vanished (18.6% -> 0.2% on seed 1) |
+| Training | class-balanced CE (1/sqrt(freq), clipped), AdamW 1e-3, grad clip 1, 30k steps, bf16, ~14 min. lr 2e-3 without clipping diverged at the wider size |
+| Held-out | 97.0% agreement with cleaned targets; every biome's share within ~0.1 pt of the rule's (swamp 2.79/2.80%, jungle 5.77/5.74%, desert 3.47/3.44%); specks per 160^2 crop 153 (rule) -> 8.6 (cleaned: 2) |
+| In game (46 km, seeds 1/2) | specks 739 -> **102** and 415 -> **9**; boundary share 3.2 -> 1.7% and 1.3 -> 0.9%; biome shares preserved |
+| Wiring | optional `biome.pt` in the model dir (`gen.biomenet`); `TileBuilder._blocks` classifies tile + margin on the **pre-river ground** (quantised like training; carved channels and raised banks drew ribbons: seed-1 specks 228 -> 102), noise coordinates aligned to the rule's, then crops. Request-independent (`test_v4_tile_with_detail_sampler_and_biome_sidecar_matches_a_bigger_request`). Far-zoom overview tiles keep the rule classifier |
+| Known gap | faint traces of biome ribbons along a few river channels remain |
+| Regional lapse (2026-09-28, after in-game review) | biome climate is lapse-adjusted by the **regional** elevation (`generator.regional_elevation`: planner cells blurred `LAPSE_REGIONAL_SIGMA_CELLS` 6, ~1.4 km), not each column's own height. With per-column lapse the classifier's hard temperature/aridity thresholds made biome boundaries trace every hill's contours: desert rings around forested hilltops, white bands along hillsides (seed 0: desert median 18 m *below* its surroundings, grove 13 m above). Boundary share 0.86% -> 0.62% on seed 0, biome shares within 0.3 pt, summit snow unchanged (92% cold biomes above y 200; peaks use elevation directly). Also used by far-zoom overview tiles. `tiles.REGIONAL_LAPSE` switches it. Remaining: parallel bands where a smooth climate gradient crosses successive thresholds (desert -> savanna -> sparse forest -> grove) — inherent to the rule classifier |
+
+---
+
 ## 2. System overview
 
 ![System overview](system-overview.png)
@@ -34,7 +151,9 @@
 
 **Tile contract (unchanged for the game):** 256×256 int16 block heights + int16 biome ids + int16 water levels (`-1` = dry).
 
-Per request, the model server runs:
+Per request, the model server runs (the v3 list below; **v4**, pictured above, replaces steps 4, 6 and 7 with the
+detail sampler, computes drainage by routing instead of step 5's regression, and adds the biome sidecar
+after the block stages — §1a, §1b):
 
 1. **Procedural controls** (per 240 m cell): trend, wildness, climate.
 2. **Relief sampler**: adds valley networks to the smooth trend. Canonical 448-cell windows, cross-faded.

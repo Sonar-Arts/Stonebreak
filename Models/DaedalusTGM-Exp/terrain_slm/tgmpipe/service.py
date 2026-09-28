@@ -161,7 +161,7 @@ def main(argv=None) -> None:
     from terrain_slm.paths import MODEL_DIR, TILE_CACHE_DIR
 
     ap = argparse.ArgumentParser(prog="python -m terrain_slm.tgmpipe")
-    ap.add_argument("model_path", nargs="?", default="checkpoints/v3")
+    ap.add_argument("model_path", nargs="?", default="checkpoints/v4")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--cache-size", default="4G", help="in-memory generation cache (GPU)")
     ap.add_argument("--disk-cache", default="8G", help="finished-tile cache on disk, all versions")

@@ -108,12 +108,13 @@ def main():
     ap.add_argument("--batch", type=int, default=32)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--eval-every", type=int, default=2000)
+    ap.add_argument("--channels", type=int, nargs="+", default=None, help="UNet widths (default ReliefConfig)")
     args = ap.parse_args()
     torch.manual_seed(0)
     args.out.mkdir(parents=True, exist_ok=True)
 
     data = ReliefData(args.data or built_regions(), args.device)
-    cfg = RL.ReliefConfig()
+    cfg = RL.ReliefConfig(channels=tuple(args.channels)) if args.channels else RL.ReliefConfig()
     model = RL.Relief(cfg).to(args.device)
     ema = copy.deepcopy(model).eval()
     print(f"relief {sum(p.numel() for p in model.parameters()):,} params, "

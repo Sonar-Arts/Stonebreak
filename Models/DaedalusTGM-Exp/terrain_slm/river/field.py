@@ -32,7 +32,8 @@ class RiverConfig:
     depth_min_blocks: float = 2.0
     depth_per_log: float = 0.6
     depth_max_blocks: float = 6.0
-    extra_incision_blocks: float = 3.0  # bed may cut at most depth + this below the ground
+    extra_incision_blocks: float = 20.0  # bed may cut at most depth + this below the ground (gorges
+                                         # through bumps the downstream-monotone level passes under)
     bank_band_blocks: float = 6.0       # how far from the water the bank stage may reshape
     surface_sigma_px: float = 4.0       # water level smoothing along the channel
     ridge_smooth_px: float = 8.0        # centreline detection smoothing

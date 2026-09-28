@@ -57,7 +57,7 @@ public final class TGMPipe {
     static final String SLM_DIR = MODELS_DIR + "/" + MODEL_NAME;
     static final String MODULE = "terrain_slm.tgmpipe";
     /** Default model directory, relative to {@link #SLM_DIR}; its name is the model version. */
-    static final String DEFAULT_MODEL = "checkpoints/v3";
+    static final String DEFAULT_MODEL = "checkpoints/v4";
     static final int MAX_RESTARTS = 3;
     static final int RESTART_WINDOW_MINUTES = 10;
 

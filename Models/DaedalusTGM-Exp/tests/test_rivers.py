@@ -16,7 +16,7 @@ SCALE = BlockScale.game_default(DEV)
 HP = RP.HALO_PX
 
 
-def _valley(hc=64, wc=64, peak=THR + 1.5, slope=0.8):
+def _valley(hc=96, wc=96, peak=THR + 1.5, slope=0.8):
     """A valley running along the columns at the block's centre row, and a matching flow ridge."""
     h, w = hc * CP, wc * CP
     rows = torch.arange(h, device=DEV, dtype=torch.float32).view(-1, 1)
@@ -124,3 +124,24 @@ def test_block_columns_carry_river_depth_in_blocks():
     depth = (cols.water - cols.height)[HP // 2 : -HP // 2, HP // 2 : -HP // 2][wet]
     assert depth.min() >= 1 and depth.float().mean() >= 2.0
     assert (cols.flow[cols.wet] >= 0).float().mean() > 0.9
+
+
+def test_water_never_rises_downstream_over_a_bump():
+    """A valley whose floor has a 25 m bump across it, with flow growing downstream (+cols):
+    the water top along the river must be non-increasing in the flow direction (the bed cuts a
+    gorge through the bump instead of the water climbing over it), and nothing spills."""
+    heights, logacc = _valley(peak=THR + 2.0)
+    h, w = heights.shape
+    cols = torch.arange(w, device=DEV, dtype=torch.float32).view(1, -1)
+    heights = heights - 0.04 * cols + 25.0 * torch.exp(-((cols - w / 2) / 20.0) ** 2)  # falls downstream, one bump
+    wc = logacc.shape[1]
+    logacc = logacc + torch.linspace(0.0, 1.0, wc, device=DEV).view(1, -1)            # flow grows downstream
+    (f, ctx), _ = _run(heights, logacc)
+    wet = f.wet[HP:-HP, HP:-HP]
+    top = torch.where(wet, f.top[HP:-HP, HP:-HP], torch.full_like(wet, float("inf"), dtype=torch.float32))
+    col_top = top.min(dim=0).values
+    run = torch.isfinite(col_top)
+    assert run.float().mean() > 0.9, "the river should run through the bump, not stop at it"
+    t = col_top[run]
+    assert bool((t[1:] <= t[:-1] + 1e-3).all()), f"water rose downstream by {float((t[1:] - t[:-1]).max()):.3f} m"
+    assert _spills(f) == 0

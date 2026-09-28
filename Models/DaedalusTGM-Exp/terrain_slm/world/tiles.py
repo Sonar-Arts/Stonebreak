@@ -23,6 +23,12 @@ import torch
 import torch.nn.functional as F
 
 from terrain_slm import biomes as B
+from terrain_slm.models import biomenet as BN
+
+# Biome climate is lapse-adjusted by the REGIONAL elevation (generator.regional_elevation): with each
+# column's own height, hard classifier thresholds made biome boundaries follow every hill's contours
+# (desert rings around forested hilltops, white bands along hillsides).
+REGIONAL_LAPSE = True
 from terrain_slm.data.descriptors import CELL_PX
 from terrain_slm.river import pipeline as RP
 from terrain_slm.river.field import NO_FLOW, NO_TUNNEL
@@ -84,10 +90,21 @@ class TileBuilder:
         field, ctx = gen.river_field(n1, m1, n2, m2)
         cols = gen.river.columns(field, ctx, d)
         elev = gen.scale.to_metres(cols.height.float() + 0.5)  # biomes read mid-block metres
-        climate = F.avg_pool2d(gen.climate_native(n1, m1, n2, m2, field.carved)[None], d)[0]
+        lapse_elev = gen.regional_elevation(n1, m1, n2, m2) if REGIONAL_LAPSE else field.carved
+        climate = F.avg_pool2d(gen.climate_native(n1, m1, n2, m2, lapse_elev)[None], d)[0]
         crop = lambda x: x[..., mb:-mb, mb:-mb]
         pad1 = lambda x: x[..., mb - 1 : -(mb - 1), mb - 1 : -(mb - 1)]
-        biome = B._classify_biome(crop(elev), crop(climate), i1, j1, elev_padded=pad1(elev), pixel_size_m=NATIVE_M * d)
+        if gen.biomenet is not None and d == 2:
+            # Biome sidecar over the tile + its margin (receptive-field radius 23 < BLOCK_MARGIN), noise
+            # coordinates aligned with the rule classifier's (block units), then cropped to the tile. It reads
+            # the ground BEFORE the river pipeline (quantised like its training data): carved channels and
+            # raised banks are a landform the real DEMs never show, and drew thin biome ribbons along rivers.
+            sc = gen.scale
+            pre = F.avg_pool2d(field.ground[None, None], d)[0, 0]
+            pre = sc.to_metres(torch.floor(sc.to_blocks(pre)).clamp(0, sc.world_height - 1) + 0.5)
+            biome = crop(BN.classify(gen.biomenet, pre, climate, i1 - mb, j1 - mb))
+        else:
+            biome = B._classify_biome(crop(elev), crop(climate), i1, j1, elev_padded=pad1(elev), pixel_size_m=NATIVE_M * d)
         river = tuple(crop(p).long() for p in (cols.floor, cols.roof, cols.flow))
         return crop(cols.height).long(), biome, crop(cols.water).long(), crop(cols.wet), river
 

@@ -40,3 +40,27 @@ class NoSpill:
         f.wet = wet
         f.top = torch.where(wet, top, torch.full_like(top, float("nan")))
         return f
+
+
+class MonotoneTop:
+    """After containment: the water top never rises downstream across the wet footprint either
+    (NoSpill lowers the top locally where a bank is low, which would otherwise leave a dip the
+    river then climbs out of). Lowered water keeps at least one block of depth by cutting the bed
+    -- cutting inside the channel can never open a leak, and lowering water never spills."""
+    name = "monotone_top"
+
+    def __init__(self, iters: int = 96):
+        self.iters = iters
+
+    def __call__(self, f: RiverField, ctx: RiverContext) -> RiverField:
+        from terrain_slm.river.geometry import monotone_downstream
+        if f.wet is None or not bool(f.wet.any()):
+            return f
+        top = torch.where(f.wet, f.top, f.carved)
+        mono = monotone_downstream(top, f.wet, f.flow, self.iters)
+        lowered = f.wet & (mono < top - 1e-3)
+        ctx.stats["top_lowered_px"] = int(lowered.sum())
+        rate = ctx.scale.rate(mono)
+        f.carved = torch.where(f.wet, torch.minimum(f.carved, mono - rate), f.carved)
+        f.top = torch.where(f.wet, mono, f.top)
+        return f

@@ -155,6 +155,103 @@ def _priority_flood(z, invalid, epsilon):
     return filled
 
 
+@njit(cache=True)
+def _priority_flood_field(z, invalid, epsilon):
+    """Return the depression-filled surface, with a PER-CELL epsilon (flat (H*W,) array).
+
+    Inside a filled basin every cell sits at spill level + the cheapest sum of epsilons along
+    the flood order, so a spatially varying epsilon turns the dead-straight drainage paths
+    across a flat into paths that follow its low-epsilon corridors (see `fill_depressions`).
+
+    Cells are popped in increasing filled-elevation order, so each cell is finalised
+    at the lowest elevation from which some already-finalised cell can be reached --
+    which is precisely the water level a spilling basin settles at.
+
+    Ties are broken by insertion counter rather than left to heap order, so the
+    result is bit-identical run to run. Determinism is the whole premise of this
+    terrain pipeline; a nondeterministic fill would put seams back.
+    """
+    h, w = z.shape
+    n = h * w
+    filled = z.copy()
+    visited = np.zeros(n, dtype=np.bool_)
+
+    keys = np.empty(n, dtype=np.float64)
+    ords = np.empty(n, dtype=np.int64)
+    idxs = np.empty(n, dtype=np.int64)
+    size = 0
+    counter = 0
+
+    zf = z.reshape(n)
+    inv = invalid.reshape(n)
+    ff = filled.reshape(n)
+
+    # Seed every valid cell that can already discharge: the array border (water
+    # leaves the tile) and any cell touching ocean (water reaches the sea).
+    for i in range(h):
+        for j in range(w):
+            k = i * w + j
+            if inv[k]:
+                continue
+            outlet = i == 0 or i == h - 1 or j == 0 or j == w - 1
+            if not outlet:
+                for di in range(-1, 2):
+                    for dj in range(-1, 2):
+                        if di == 0 and dj == 0:
+                            continue
+                        if invalid[i + di, j + dj]:
+                            outlet = True
+                            break
+                    if outlet:
+                        break
+            if outlet:
+                keys[size] = zf[k]
+                ords[size] = counter
+                idxs[size] = k
+                size += 1
+                _sift_up(keys, ords, idxs, size - 1)
+                counter += 1
+                visited[k] = True
+
+    while size > 0:
+        elev = keys[0]
+        k = idxs[0]
+        size -= 1
+        keys[0], keys[size] = keys[size], keys[0]
+        ords[0], ords[size] = ords[size], ords[0]
+        idxs[0], idxs[size] = idxs[size], idxs[0]
+        _sift_down(keys, ords, idxs, size)
+
+        i = k // w
+        j = k - i * w
+        for di in range(-1, 2):
+            for dj in range(-1, 2):
+                if di == 0 and dj == 0:
+                    continue
+                ni = i + di
+                nj = j + dj
+                if ni < 0 or ni >= h or nj < 0 or nj >= w:
+                    continue
+                nk = ni * w + nj
+                if visited[nk] or inv[nk]:
+                    continue
+                if zf[nk] <= elev:
+                    # Below the spill level: raise to just above it so the cell
+                    # still has somewhere to drain (this is the "+ epsilon" variant).
+                    ff[nk] = elev + epsilon[nk]
+                else:
+                    ff[nk] = zf[nk]
+                keys[size] = ff[nk]
+                ords[size] = counter
+                idxs[size] = nk
+                size += 1
+                _sift_up(keys, ords, idxs, size - 1)
+                counter += 1
+                visited[nk] = True
+
+    return filled
+
+
 def cap_basins(z: np.ndarray, filled: np.ndarray, max_raise: float) -> np.ndarray:
     """Hold every filled basin to `max_raise` metres above its own floor.
 
@@ -205,6 +302,7 @@ def fill_depressions(
     epsilon: float = DEFAULT_EPSILON,
     invalid: np.ndarray | None = None,
     max_raise: float | None = None,
+    epsilon_field: np.ndarray | None = None,
 ) -> np.ndarray:
     """Fill closed depressions so every land cell has a descending path to an outlet.
 
@@ -223,6 +321,9 @@ def fill_depressions(
             pit that swallows any flow routed into it. Fill for routing and fill
             for depth are therefore separate calls once this is in use.
 
+        epsilon_field: optional (H, W) positive per-cell epsilon replacing `epsilon`, so paths
+            across filled flats meander instead of running straight (generator routing).
+
     Returns:
         (H, W) float64 filled surface. Ocean cells are returned untouched, so
         `filled - z` is zero there and the lake-depth delta stays clean.
@@ -239,7 +340,11 @@ def fill_depressions(
     # NaN would poison the heap comparisons; the mask already excludes those cells,
     # but the array still has to hold a finite value for them.
     z_safe = np.where(np.isnan(z64), 0.0, z64)
-    filled = _priority_flood(z_safe, inv, float(epsilon))
+    if epsilon_field is not None:
+        eps = np.ascontiguousarray(np.maximum(epsilon_field, 1e-9), dtype=np.float64).reshape(-1)
+        filled = _priority_flood_field(z_safe, inv, eps)
+    else:
+        filled = _priority_flood(z_safe, inv, float(epsilon))
     if max_raise is not None:
         filled = cap_basins(z_safe, filled, float(max_raise))
     filled[inv] = z64[inv]
