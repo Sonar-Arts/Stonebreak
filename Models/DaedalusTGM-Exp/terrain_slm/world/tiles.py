@@ -103,6 +103,11 @@ class TileBuilder:
             pre = F.avg_pool2d(field.ground[None, None], d)[0, 0]
             pre = sc.to_metres(torch.floor(sc.to_blocks(pre)).clamp(0, sc.world_height - 1) + 0.5)
             biome = crop(BN.classify(gen.biomenet, pre, climate, i1 - mb, j1 - mb))
+            # The sidecar knows land biomes only: sea columns keep the rule classifier's ocean ids (warm /
+            # normal / cold / frozen ocean), which the game maps to OCEAN / ICE_FIELDS.
+            rule = B._classify_biome(crop(elev), crop(climate), i1, j1, elev_padded=pad1(elev), pixel_size_m=NATIVE_M * d)
+            ocean = torch.isin(rule, torch.tensor(B.OCEAN_IDS, device=rule.device, dtype=rule.dtype))
+            biome = torch.where(ocean, rule, biome)
         else:
             biome = B._classify_biome(crop(elev), crop(climate), i1, j1, elev_padded=pad1(elev), pixel_size_m=NATIVE_M * d)
         river = tuple(crop(p).long() for p in (cols.floor, cols.roof, cols.flow))

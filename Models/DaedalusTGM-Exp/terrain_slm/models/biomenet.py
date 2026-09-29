@@ -125,8 +125,9 @@ def classify(model: BiomeNet, elev_m: torch.Tensor, climate: torch.Tensor, i0: i
 
 
 def majority(labels: torch.Tensor, size: int) -> torch.Tensor:
-    """Majority (mode) filter of an (H, W) class-index map over size x size windows (reflect-padded)."""
-    onehot = F.one_hot(labels.long(), N_CLASSES).permute(2, 0, 1)[None].float()
+    """Majority (mode) filter of an (H, W) class-index map over size x size windows (reflect-padded).
+    Index N_CLASSES (ids outside the land classes, e.g. ocean) is carried as its own class."""
+    onehot = F.one_hot(labels.long(), N_CLASSES + 1).permute(2, 0, 1)[None].float()
     r = size // 2
     counts = F.avg_pool2d(F.pad(onehot, (r, r, r, r), mode="reflect"), size, stride=1)
     return counts[0].argmax(0)

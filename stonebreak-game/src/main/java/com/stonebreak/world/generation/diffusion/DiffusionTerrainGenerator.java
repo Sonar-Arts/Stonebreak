@@ -260,7 +260,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      * not a separate rule.
      */
     public BlockType getSurfaceBlockAt(int worldX, int worldZ) {
-        return surfaceBlock(biomeManager.getBiome(worldX, worldZ));
+        return surfaceBlockAt(biomeManager.getBiome(worldX, worldZ), worldX, worldZ, seed);
     }
 
     /** Deterministic RNG for shared probing logic (tree placement, etc.). */
@@ -337,7 +337,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                 // Biome is resolved for submerged columns too — their surface
                 // is the real seabed block (see getSurfaceBlockAt).
                 BiomeType biome = biomeManager.getBiome(wx, wz);
-                BlockType surface = exposedBlock(rawHeight, height, biome);
+                BlockType surface = exposedBlock(rawHeight, height, biome, wx, wz, seed);
                 if (outSurface != null) {
                     outSurface[idx] = surface;
                 }
@@ -661,7 +661,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      * {@link #determineBlockType}. Uncarved columns get the biome's surface block as
      * before; a ravine wall gets stone rather than a sheet of grass laid over the cut.
      */
-    private static BlockType exposedBlock(int rawHeight, int carvedHeight, BiomeType biome) {
+    private static BlockType exposedBlock(int rawHeight, int carvedHeight, BiomeType biome, int worldX, int worldZ, long seed) {
         int y = carvedHeight - 1;
         if (y < rawHeight - 4) {
             return BlockType.STONE;
@@ -669,7 +669,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         if (y < rawHeight - 1) {
             return subsurfaceBlock(biome);
         }
-        return surfaceBlock(biome);
+        return surfaceBlockAt(biome, worldX, worldZ, seed);
     }
 
     /**
@@ -764,7 +764,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
             return subsurfaceBlock(biome);
         }
         if (y < height) {
-            return surfaceBlock(biome);
+            return surfaceBlockAt(biome, worldX, worldZ, seed);
         }
         // Was `y < SEA_LEVEL`. The ocean is now one case of a per-column water surface
         // rather than a global constant, so a river or a lake several hundred blocks up
@@ -792,11 +792,29 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         };
     }
 
+    /** Per-column surface: the biome's surface block, except the sea floor mixes 97% sand, 2% dirt, 1% clay. */
+    static BlockType surfaceBlockAt(BiomeType biome, int worldX, int worldZ, long seed) {
+        return biome == BiomeType.OCEAN ? oceanFloorBlock(worldX, worldZ, seed) : surfaceBlock(biome);
+    }
+
+    /**
+     * Sea-floor material for one column: 97% sand, 2% dirt, 1% clay, from a hash of the world seed and
+     * the column, so every column always gets the same block whatever order chunks generate in.
+     */
+    static BlockType oceanFloorBlock(int worldX, int worldZ, long seed) {
+        long h = seed ^ 0x6F63_6561_6E66_6CL;            // "oceanfl"
+        h = (h ^ (worldX * 0x9E37_79B9_7F4A_7C15L)) * 0xBF58_476D_1CE4_E5B9L;
+        h = (h ^ (worldZ * 0xC2B2_AE3D_27D4_EB4FL)) * 0x94D0_49BB_1331_11EBL;
+        h ^= h >>> 31;
+        int r = (int) Long.remainderUnsigned(h, 100);
+        return r < 97 ? BlockType.SAND : (r < 99 ? BlockType.DIRT : BlockType.CLAY);
+    }
+
     private static BlockType surfaceBlock(BiomeType biome) {
         if (biome == null) return BlockType.DIRT;
         return switch (biome) {
             case DESERT, BEACH -> BlockType.SAND;
-            case OCEAN -> BlockType.GRAVEL;       // sea floor: reads differently from beach sand
+            case OCEAN -> BlockType.SAND;         // placement mixes in dirt and clay: surfaceBlockAt
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SAND;
             case PLAINS, MEADOW -> BlockType.GRASS;
             case SNOWY_PLAINS, TAIGA, TUNDRA -> BlockType.SNOWY_DIRT;

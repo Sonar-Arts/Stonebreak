@@ -93,7 +93,9 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     dev = args.device
     scale = BlockScale.game_default(dev)
-    lut = torch.zeros(max(BN.CLASS_IDS) + 1, dtype=torch.long, device=dev)
+    # Ids outside the sidecar's land classes (the ocean ids) map to IGNORE, never to class 0 (plains): the
+    # b2/b4 lut defaulted to 0 and the sidecar learned ocean -> plains (tiles.py now keeps the rule's oceans).
+    lut = torch.full((max(BN.CLASS_IDS) + 1,), BN.N_CLASSES, dtype=torch.long, device=dev)
     for k, bid in enumerate(BN.CLASS_IDS):
         lut[bid] = k
 
@@ -122,7 +124,7 @@ def main():
     cfg = BN.BiomeNetConfig(channels=tuple(args.channels) if args.channels else BN.BiomeNetConfig.channels, norm=args.norm)
     model = BN.BiomeNet(cfg).to(dev)
     print(f"biomenet {sum(p.numel() for p in model.parameters()):,} params, {BN.N_CLASSES} classes", flush=True)
-    freq = torch.bincount(yt.long().flatten(), minlength=BN.N_CLASSES).float()
+    freq = torch.bincount(yt.long().flatten(), minlength=BN.N_CLASSES + 1).float()[: BN.N_CLASSES]
     cw = (freq.sum() / freq.clamp_min(1.0) / BN.N_CLASSES).sqrt().clamp(0.3, 5.0).to(dev)
     share = lambda y: {BN.CLASS_IDS[k]: round(float(v), 4) for k, v in enumerate(torch.bincount(y.long().flatten(), minlength=BN.N_CLASSES).float() / y.numel()) if v > 0}
     print('class shares (train cleaned):', share(yt), flush=True)
@@ -143,7 +145,7 @@ def main():
             x, y = x.flip(-1), y.flip(-1)
         with torch.autocast("cuda", dtype=torch.bfloat16):
             logits = model(x.contiguous())
-        loss = F.cross_entropy(inner(logits.float()), inner(y), weight=cw)
+        loss = F.cross_entropy(inner(logits.float()), inner(y), weight=cw, ignore_index=BN.N_CLASSES)
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
