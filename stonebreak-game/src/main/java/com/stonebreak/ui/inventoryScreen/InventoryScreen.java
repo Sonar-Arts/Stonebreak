@@ -52,6 +52,15 @@ public class InventoryScreen {
     }
 
     /**
+     * Returns the 2×2 crafting grid and any cursor stack to the player (inventory first,
+     * overflow dropped). Runs on every close; world quit/shutdown also call it before the
+     * final save, so a grid that is somehow still filled is never discarded (issue #307).
+     */
+    public void returnCraftingItemsToPlayer() {
+        controller.returnCraftingItemsToPlayer();
+    }
+
+    /**
      * Returns whether the inventory screen is currently visible.
      */
     public boolean isVisible() {

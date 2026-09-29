@@ -7,8 +7,6 @@ import com.stonebreak.blocks.workbench.WorkbenchStateRegistry;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.player.Player;
-import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.World;
 import com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator;
 import com.stonebreak.ui.inventoryScreen.renderers.WorkbenchRenderCoordinator;
@@ -154,15 +152,9 @@ public class WorkbenchController extends InventoryController {
         // A dragged stack taken from the grid "returns" into the now-detached scratch grid;
         // hand anything that lands there to the player instead.
         handleDraggedItemsOnClose();
-        for (ItemStack stack : getCraftingManager().getCraftingInputSlots()) {
-            if (stack != null && !stack.isEmpty() && !getInventory().addItem(stack)) {
-                Player player = Game.getPlayer();
-                if (player != null) {
-                    DropUtil.dropItemFromPlayer(player, stack.copy());
-                }
-            }
+        for (ItemStack stack : getCraftingManager().drainInputSlots()) {
+            giveToPlayer(stack);
         }
-        getCraftingManager().unbindInputSlots();
         game.closeWorkbenchScreen();
     }
 

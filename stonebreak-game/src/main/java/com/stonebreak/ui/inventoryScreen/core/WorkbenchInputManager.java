@@ -3,6 +3,7 @@ package com.stonebreak.ui.inventoryScreen.core;
 import com.stonebreak.core.Game;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
+import com.stonebreak.items.ItemStack;
 import com.stonebreak.ui.inventoryScreen.handlers.WorkbenchDragDropHandler;
 import org.joml.Vector2f;
 
@@ -118,11 +119,14 @@ public class WorkbenchInputManager extends InventoryInputManager {
 
             // If still dragging after trying to return, try to add to player inventory
             if (super.dragState.draggedItemStack != null && !super.dragState.draggedItemStack.isEmpty()) {
-                if (!super.inventory.addItem(super.dragState.draggedItemStack)) {
-                    // If can't add to inventory, drop into world
+                // addItem can fill partially before failing — drop only what didn't fit,
+                // never the whole stack (that duplicated the part already added).
+                ItemStack held = super.dragState.draggedItemStack;
+                int remainder = held.getCount() - super.inventory.addItemAndReturnCount(held);
+                if (remainder > 0) {
+                    held.setCount(remainder);
                     WorkbenchDragDropHandler.dropEntireStackIntoWorld(super.dragState);
                 } else {
-                    // Successfully added to inventory, clear drag state
                     super.getDragState().clear();
                 }
             }

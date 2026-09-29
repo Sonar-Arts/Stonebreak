@@ -54,6 +54,24 @@ class InventoryCraftingManagerTest {
     }
 
     @Test
+    void drainingEmptiesTheGridAndReturnsItsStacks() {
+        InventoryCraftingManager crafting = managerWithDirtToSticks();
+        crafting.setCraftingInputSlot(0, new ItemStack(BlockType.DIRT, 2));
+        crafting.setCraftingInputSlot(3, new ItemStack(ItemType.STICK, 1));
+        crafting.updateCraftingOutput();
+
+        List<ItemStack> drained = crafting.drainInputSlots();
+
+        assertEquals(2, drained.size());
+        assertEquals(2, drained.get(0).getCount());
+        assertEquals(1, drained.get(1).getCount());
+        for (ItemStack slot : crafting.getCraftingInputSlots()) {
+            assertTrue(slot.isEmpty());
+        }
+        assertTrue(crafting.getCraftingOutputSlot().isEmpty(), "no output without ingredients");
+    }
+
+    @Test
     void takeCraftBatchCraftsOneBatchAndConsumesOneIngredient() {
         InventoryCraftingManager crafting = managerWithDirtToSticks();
         crafting.setCraftingInputSlot(0, new ItemStack(BlockType.DIRT, 2));

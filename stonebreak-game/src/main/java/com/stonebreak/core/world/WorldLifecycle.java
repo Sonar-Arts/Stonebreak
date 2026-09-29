@@ -20,12 +20,29 @@ public final class WorldLifecycle {
     }
 
     /**
+     * Safety net before the player is saved: items still sitting in the inventory's 2×2
+     * crafting grid (or on the cursor) go back to the player instead of vanishing with the
+     * screen (issue #307). Crafting-table grids need nothing here — they are block state.
+     */
+    public static void returnCraftingItemsToPlayer(Game game) {
+        com.stonebreak.ui.inventoryScreen.InventoryScreen inventoryScreen = game.getInventoryScreen();
+        if (inventoryScreen != null) {
+            try {
+                inventoryScreen.returnCraftingItemsToPlayer();
+            } catch (Exception e) {
+                System.err.println("[WORLD-ISOLATION] Could not return crafting grid items: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
      * Resets the world state without fully cleaning up resources. Used when
      * returning to main menu from gameplay.
      */
     @SuppressWarnings("deprecation")
     public void resetWorld() {
         com.stonebreak.battletest.BattleTestSession.leave();
+        returnCraftingItemsToPlayer(game);
         System.out.println("========================================");
         System.out.println("[MAIN-MENU-TRANSITION] Starting complete world reset...");
         System.out.println("========================================");

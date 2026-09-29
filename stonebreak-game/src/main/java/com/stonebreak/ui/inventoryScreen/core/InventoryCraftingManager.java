@@ -54,6 +54,24 @@ public class InventoryCraftingManager {
         updateCraftingOutput();
     }
 
+    /**
+     * Empties the grid, returning every non-empty stack it held (in slot order). The output
+     * slot is cleared with it. Used to hand the player's own 2×2 grid back when the inventory
+     * closes, so nothing is left in a grid that is never saved (issue #307).
+     */
+    public List<ItemStack> drainInputSlots() {
+        List<ItemStack> drained = new ArrayList<>();
+        for (int i = 0; i < craftingInputSlots.length; i++) {
+            ItemStack stack = craftingInputSlots[i];
+            if (stack != null && !stack.isEmpty()) {
+                drained.add(stack);
+            }
+            craftingInputSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
+        }
+        craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0);
+        return drained;
+    }
+
     /** Detaches from any bound grid, back to a fresh, empty screen-owned one. */
     public void unbindInputSlots() {
         this.craftingInputSlots = new ItemStack[craftingGridSize * craftingGridSize];

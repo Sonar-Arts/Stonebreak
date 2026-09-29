@@ -34,7 +34,47 @@ public class InventoryController {
     }
 
     public void toggleVisibility() {
+        if (this.visible) {
+            returnCraftingItemsToPlayer();
+        }
         this.visible = !this.visible;
+    }
+
+    /**
+     * Hands the 2×2 crafting grid — and any stack held on the cursor — back to the player:
+     * into the inventory, with whatever does not fit dropped at their feet. The grid belongs
+     * to no block and is never saved, so leaving items in it across a close lost them on
+     * world exit (issue #307). Called on every close, and as a safety net before the world
+     * is saved on quit/shutdown. A no-op when the grid is empty.
+     */
+    public void returnCraftingItemsToPlayer() {
+        if (inputManager != null) {
+            inputManager.handleCloseWithDraggedItems();
+        }
+        for (ItemStack stack : craftingManager.drainInputSlots()) {
+            giveToPlayer(stack);
+        }
+    }
+
+    /**
+     * Adds {@code stack} to the player's inventory and drops only the remainder that did not
+     * fit ({@code Inventory.addItem} can fill partially before reporting failure, so dropping
+     * the whole stack on failure would duplicate items).
+     */
+    protected void giveToPlayer(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return;
+        }
+        int remainder = stack.getCount() - inventory.addItemAndReturnCount(stack);
+        if (remainder <= 0) {
+            return;
+        }
+        ItemStack overflow = stack.copy();
+        overflow.setCount(remainder);
+        com.stonebreak.player.Player player = com.stonebreak.core.Game.getPlayer();
+        if (player != null) {
+            com.stonebreak.util.DropUtil.dropItemFromPlayer(player, overflow);
+        }
     }
 
     public boolean isVisible() {
@@ -118,10 +158,6 @@ public class InventoryController {
 
     public void setRenderCoordinator(InventoryRenderCoordinator renderCoordinator) {
         this.renderCoordinator = renderCoordinator;
-    }
-
-    protected Inventory getInventory() {
-        return inventory;
     }
 
     protected InventoryInputManager getInputManager() {
