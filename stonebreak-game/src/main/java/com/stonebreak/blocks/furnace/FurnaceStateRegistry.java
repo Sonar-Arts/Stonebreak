@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -63,6 +64,11 @@ public class FurnaceStateRegistry {
     /** Look up the furnace at {@code pos}, or {@code null} if none. */
     public FurnaceState get(BlockPos pos) {
         return states.get(pos);
+    }
+
+    /** All tracked furnace positions (live concurrent view). */
+    public Set<BlockPos> positions() {
+        return states.keySet();
     }
 
     /** Look up the furnace at {@code pos}, creating an empty state if missing. */

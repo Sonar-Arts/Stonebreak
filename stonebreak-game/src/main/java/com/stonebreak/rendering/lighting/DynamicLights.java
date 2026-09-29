@@ -4,7 +4,6 @@ import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.torch.TorchBlock;
-import com.stonebreak.blocks.torch.TorchState;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.player.Camera;
 import com.stonebreak.player.Player;
@@ -60,7 +59,7 @@ public final class DynamicLights {
 
     private DynamicLights() {}
 
-    /** Select nearest placed sources, reserving one slot for the held torch. */
+    /** Select the nearest emitting {@link BlockLightSource}s, reserving one slot for the held torch. */
     public static void update(World world, Player player, Vector3f cameraPos, float totalTime) {
         frame++;
         count = 0;
@@ -71,25 +70,29 @@ public final class DynamicLights {
         colorData.clear();
         nearest.clear(PointLightGlsl.MAX_LIGHTS - (held ? 1 : 0));
         if (world != null && cameraPos != null) {
-            for (BlockPos pos : world.getAnimatedBlockRegistry().positions()) {
-                float dx = pos.x() + 0.5f - cameraPos.x;
-                float dy = pos.y() + 0.5f - cameraPos.y;
-                float dz = pos.z() + 0.5f - cameraPos.z;
-                float distance = dx * dx + dy * dy + dz * dz;
-                // Reject distant sources before querying blocks or parsing their state.
-                if (distance <= MAX_DISTANCE_SQ && TorchBlock.isTorch(world.getBlockAt(pos.x(), pos.y(), pos.z()))) {
-                    nearest.offer(pos, distance);
+            for (BlockLightSource source : BlockLightSource.VALUES) {
+                for (BlockPos pos : source.candidates(world)) {
+                    float dx = pos.x() + 0.5f - cameraPos.x;
+                    float dy = pos.y() + 0.5f - cameraPos.y;
+                    float dz = pos.z() + 0.5f - cameraPos.z;
+                    float distance = dx * dx + dy * dy + dz * dz;
+                    // Reject distant sources before querying blocks or parsing their state.
+                    if (distance <= MAX_DISTANCE_SQ && source.isEmitting(world, pos)) {
+                        nearest.offer(pos, distance);
+                    }
                 }
             }
             if (held) {
                 heldTorchPosition(world, player, positions[count]);
-                addTorch(totalTime);
+                addLight(TorchLight.PROFILE, totalTime);
             }
             for (int i = 0; i < nearest.size(); i++) {
                 BlockPos pos = nearest.get(i);
-                TorchState.parse(world.getBlockStateAt(pos.x(), pos.y(), pos.z()))
-                        .emberPosition(pos.x(), pos.y(), pos.z(), positions[count]);
-                addTorch(totalTime + AnimatedBlockRenderer.loopPhaseOffset(pos, TorchLight.CLIP_DURATION));
+                BlockLightSource source = BlockLightSource.of(world.getBlockAt(pos.x(), pos.y(), pos.z()));
+                if (source == null) continue;
+                source.emitterPosition(world, pos, positions[count]);
+                LightProfile profile = source.profile();
+                addLight(profile, totalTime + AnimatedBlockRenderer.loopPhaseOffset(pos, profile.period()));
             }
         }
         positionData.flip();
@@ -122,11 +125,11 @@ public final class DynamicLights {
         return block != null && block.isSolid();
     }
 
-    private static void addTorch(float elapsed) {
+    private static void addLight(LightProfile profile, float elapsed) {
         Vector3f p = positions[count];
-        positionData.put(p.x).put(p.y).put(p.z).put(TorchLight.RADIUS);
-        float k = TorchLight.PEAK * TorchLight.intensity(elapsed);
-        colorData.put(TorchLight.COLOR_R * k).put(TorchLight.COLOR_G * k).put(TorchLight.COLOR_B * k).put(count);
+        positionData.put(p.x).put(p.y).put(p.z).put(PointLightGlsl.RADIUS);
+        float k = profile.peak() * profile.intensity(elapsed);
+        colorData.put(profile.red() * k).put(profile.green() * k).put(profile.blue() * k).put(count);
         count++;
     }
 

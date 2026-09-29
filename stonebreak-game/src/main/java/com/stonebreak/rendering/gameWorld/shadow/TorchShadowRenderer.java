@@ -9,7 +9,6 @@ import com.stonebreak.player.Player;
 import com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer;
 import com.stonebreak.rendering.lighting.DynamicLights;
 import com.stonebreak.rendering.lighting.PointLightGlsl;
-import com.stonebreak.rendering.lighting.TorchLight;
 import com.stonebreak.rendering.models.blocks.AnimatedBlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.textures.BlockTextureArray;
@@ -36,7 +35,7 @@ public final class TorchShadowRenderer implements AutoCloseable {
     private final List<Chunk> nearbyChunks = new ArrayList<>();
     private final List<Chunk> faceChunks = new ArrayList<>();
     private final Vector3f position = new Vector3f();
-    private final Matrix4f projection = PointShadowProjection.projection(TorchLight.RADIUS, new Matrix4f());
+    private final Matrix4f projection = PointShadowProjection.projection(PointLightGlsl.RADIUS, new Matrix4f());
     private final Matrix4f view = new Matrix4f();
     private final Matrix4f viewProjection = new Matrix4f();
     private final FrustumIntersection frustum = new FrustumIntersection();
@@ -130,10 +129,10 @@ public final class TorchShadowRenderer implements AutoCloseable {
                     }
                     terrain.copyLayerTo(layer, live);
                     if (entities != null) {
-                        entities.renderShadowCasters(bodyCaster, view, projection, position, TorchLight.RADIUS);
+                        entities.renderShadowCasters(bodyCaster, view, projection, position, PointLightGlsl.RADIUS);
                     }
                     if (animated != null) {
-                        animated.renderShadowCasters(world, view, projection, position, TorchLight.RADIUS, totalTime);
+                        animated.renderShadowCasters(world, view, projection, position, PointLightGlsl.RADIUS, totalTime);
                     }
                 }
                 if (refresh) {
@@ -169,7 +168,7 @@ public final class TorchShadowRenderer implements AutoCloseable {
             float x = chunk.getWorldX(0), z = chunk.getWorldZ(0);
             float dx = position.x - Math.clamp(position.x, x, x + WorldConfiguration.CHUNK_SIZE);
             float dz = position.z - Math.clamp(position.z, z, z + WorldConfiguration.CHUNK_SIZE);
-            if (dx * dx + dz * dz < TorchLight.RADIUS * TorchLight.RADIUS) nearbyChunks.add(chunk);
+            if (dx * dx + dz * dz < PointLightGlsl.RADIUS * PointLightGlsl.RADIUS) nearbyChunks.add(chunk);
         }
     }
 
