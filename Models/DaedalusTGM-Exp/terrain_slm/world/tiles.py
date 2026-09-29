@@ -24,6 +24,7 @@ import torch.nn.functional as F
 
 from terrain_slm import biomes as B
 from terrain_slm.models import biomenet as BN
+from terrain_slm.world import generator as G
 
 # Biome climate is lapse-adjusted by the REGIONAL elevation (generator.regional_elevation): with each
 # column's own height, hard classifier thresholds made biome boundaries follow every hill's contours
@@ -110,8 +111,25 @@ class TileBuilder:
             biome = torch.where(ocean, rule, biome)
         else:
             biome = B._classify_biome(crop(elev), crop(climate), i1, j1, elev_padded=pad1(elev), pixel_size_m=NATIVE_M * d)
+        biome = self._red_deserts(biome, i1, j1, d)
         river = tuple(crop(p).long() for p in (cols.floor, cols.roof, cols.flow))
         return crop(cols.height).long(), biome, crop(cols.water).long(), crop(cols.wet), river
+
+    def _red_deserts(self, biome: torch.Tensor, i1: int, j1: int, d: int) -> torch.Tensor:
+        """Whole deserts turn red or stay sand, one decision per desert (generator.red_desert_cells).
+        `biome` covers samples [i1, i1+H) x [j1, j1+W) of d native pixels each."""
+        desert = biome == B._BIOME_ID["desert"]
+        if not bool(desert.any()):
+            return biome
+        h, w = biome.shape
+        dev = biome.device
+        si = torch.arange(i1, i1 + h, device=dev).view(-1, 1).expand(h, w)
+        sj = torch.arange(j1, j1 + w, device=dev).view(1, -1).expand(h, w)
+        ci, cj = torch.div(si * d, CELL_PX, rounding_mode="floor"), torch.div(sj * d, CELL_PX, rounding_mode="floor")
+        red = G.red_desert_cells(ci[desert], cj[desert], self.gen.seed)
+        out = biome.clone()
+        out[desert] = torch.where(red, torch.full_like(biome[desert], B.RED_DESERT_ID), biome[desert])
+        return out
 
     def _overview(self, i1: int, j1: int, i2: int, j2: int, d: int):
         """Far-zoom samples of d native pixels (whole 240 m cells) straight from the model's cell
@@ -136,4 +154,5 @@ class TileBuilder:
         crop = lambda x: x[..., 1:-1, 1:-1]
         biome = B._classify_biome(crop(elev_m), crop(pool(c["climate"])), i1, j1, elev_padded=elev_m,
                                   pixel_size_m=NATIVE_M * d)
+        biome = self._red_deserts(biome, i1, j1, d)
         return crop(hb), biome, crop(hb + 1), crop(wet), (crop(none), crop(none), crop(flow))

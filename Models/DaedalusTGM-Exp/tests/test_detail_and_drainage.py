@@ -169,3 +169,21 @@ def test_v4_tile_with_detail_sampler_and_biome_sidecar_matches_a_bigger_request(
     for k in range(4):   # height, biome, water, wet
         assert torch.equal(small[k], big[k][32:96, 32:96]), k
     assert gen.detail_failures == 0
+
+
+def test_red_deserts_decide_per_desert_and_are_deterministic():
+    """Whole deserts turn red (one decision per dry spot), never per-column speckle; the same cells
+    always give the same answer, and roughly 30% of the area comes out red."""
+    from terrain_slm.world import generator as G
+    n = 512
+    ci = torch.arange(-n, n, 2).view(-1, 1).expand(n, n).contiguous()
+    cj = torch.arange(-n, n, 2).view(1, -1).expand(n, n).contiguous()
+    a = G.red_desert_cells(ci, cj, 5)
+    G._RED_MEMO.clear()
+    b = G.red_desert_cells(ci, cj, 5)
+    assert torch.equal(a, b), "decision must not depend on the memo or call order"
+    share = a.float().mean().item()
+    assert 0.1 < share < 0.6, share
+    # neighbouring cells almost always agree: red comes in whole regions, not speckle
+    flips = (a[1:] != a[:-1]).float().mean().item()
+    assert flips < 0.02, flips

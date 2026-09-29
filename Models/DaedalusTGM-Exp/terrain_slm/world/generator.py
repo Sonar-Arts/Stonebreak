@@ -157,6 +157,75 @@ def _climate(ci, cj, seed):
     }
 
 
+# Red sand deserts (2026-09-28, user: "the entire area of a generated desert should be red"): a whole desert
+# is red or not, decided once per desert. Every desert is a dry spot of the climate; walking downhill in a
+# SOFTENED dryness field (the climate blend at low softmax sharpness: smooth, one minimum per dry zone core,
+# where the real sharp blend is flat and noisy) on a lattice leads every column of that dry spot to the same
+# minimum, whose position is hashed with the seed. Pure function of the column: request-independent.
+RED_DESERT_PERIOD_CELLS = 600.0   # ~144 km: basins of one desert agree, separate deserts are independent
+RED_DESERT_THRESHOLD = 0.275      # 70th percentile of _value_noise: ~30% of deserts are red
+RED_DESERT_LATTICE = 8        # cells between walk nodes (32 blocks)
+RED_DESERT_SOFTNESS = 2.0     # softmax sharpness of the walk's dryness field (the climate itself uses CLIMATE_SHARPNESS)
+RED_DESERT_MAX_STEPS = 400
+RED_DESERT_OCTAVES = 1        # the climate scores' first octave only: one dryness basin per dry zone
+RED_DESERT_STREAM = 31337
+
+
+def _dryness(ci: torch.Tensor, cj: torch.Tensor, seed: int) -> torch.Tensor:
+    """Softened log-precipitation of the climate blend at cells (ci, cj): lower = drier."""
+    scores = torch.stack([_fbm(ci, cj, CLIMATE_ZONE_CELLS, seed, 20 + k, octaves=RED_DESERT_OCTAVES)
+                          for k in range(len(CLIMATE_ARCHETYPES))])
+    w = torch.softmax(RED_DESERT_SOFTNESS * scores, dim=0)
+    logp = torch.log(torch.tensor([a[3] for a in CLIMATE_ARCHETYPES], dtype=scores.dtype, device=scores.device))
+    return (w * logp.view(-1, *([1] * ci.dim()))).sum(dim=0)
+
+
+_RED_MEMO: "OrderedDict[tuple, bool]" = OrderedDict()   # (seed, node i, node j) -> red, shared by tiles
+_RED_MEMO_CAP = 2_000_000
+
+
+def red_desert_cells(ci: torch.Tensor, cj: torch.Tensor, seed: int) -> torch.Tensor:
+    """Bool per cell: does the desert this cell would belong to come out red? (Only meaningful where the
+    biome is desert; callers mask.) Walks each lattice node downhill in `_dryness` to its minimum; only
+    unfinished nodes step, and every node's answer is memoised per seed (neighbouring tiles share walks)."""
+    L = RED_DESERT_LATTICE
+    dev = ci.device
+    ni = torch.round(ci.float() / L).long()
+    nj = torch.round(cj.float() / L).long()
+    nodes, inv = torch.unique(torch.stack([ni.flatten(), nj.flatten()]), dim=1, return_inverse=True)
+    keys = [(seed, int(a), int(b)) for a, b in zip(nodes[0].tolist(), nodes[1].tolist())]
+    cached = [_RED_MEMO.get(key) for key in keys]
+    todo = [k for k, c in enumerate(cached) if c is None]
+    result = torch.tensor([bool(c) for c in cached], dtype=torch.bool, device=dev)
+    if todo:
+        idx = torch.tensor(todo, device=dev)
+        pi, pj = nodes[0, idx].clone(), nodes[1, idx].clone()
+        offs = torch.tensor([(0, 0)] + [(a, b) for a in (-1, 0, 1) for b in (-1, 0, 1) if (a, b) != (0, 0)], device=dev)
+        active = torch.ones(len(todo), dtype=torch.bool, device=dev)
+        for _ in range(RED_DESERT_MAX_STEPS):
+            a = torch.nonzero(active).flatten()
+            if a.numel() == 0:
+                break
+            qi = pi[a][None] + offs[:, 0:1]
+            qj = pj[a][None] + offs[:, 1:2]
+            v = _dryness((qi * L).float(), (qj * L).float(), seed)
+            k = torch.argmin(v, dim=0)                   # offset 0 listed first: ties stay put
+            moved = k != 0
+            pi[a] = qi.gather(0, k[None])[0]
+            pj[a] = qj.gather(0, k[None])[0]
+            active[a[~moved]] = False
+        # Each minimum reads a very smooth seeded field rather than an independent hash: the few basins one
+        # large desert can span lie close together and agree, while separate deserts decide independently.
+        v = _value_noise((pi * L).float(), (pj * L).float(), RED_DESERT_PERIOD_CELLS, seed, RED_DESERT_STREAM)
+        red = v > RED_DESERT_THRESHOLD
+        result[idx] = red
+        for k, r in zip(todo, red.tolist()):
+            _RED_MEMO[keys[k]] = r
+        while len(_RED_MEMO) > _RED_MEMO_CAP:
+            _RED_MEMO.popitem(last=False)
+    return result[inv].view(ci.shape)
+
+
 def _smoothstep(x: torch.Tensor) -> torch.Tensor:
     x = x.clamp(0, 1)
     return x * x * (3 - 2 * x)

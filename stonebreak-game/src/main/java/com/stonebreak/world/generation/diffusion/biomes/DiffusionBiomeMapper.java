@@ -102,6 +102,9 @@ final class DiffusionBiomeMapper {
             // along every cool transition band (2026-09-28).
             case 115 -> BiomeType.MEADOW;
             case 5 -> BiomeType.DESERT;
+            // red_desert (DaedalusTGM-Exp id 205): a WHOLE desert the model decided is red, one decision per
+            // desert (terrain_slm generator.red_desert_cells), so red sand never comes in patches.
+            case 205 -> BiomeType.RED_SAND_DESERT;
             case 6, 29, 108 -> BiomeType.MEADOW;  // swamp, meadow, forest_sparse
             case 15, 16 -> BiomeType.TAIGA;       // taiga, snowy_taiga
             // savanna: warm semi-arid grassland with sparse trees. Was RED_SAND_DESERT, which drew thin

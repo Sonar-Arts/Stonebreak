@@ -24,6 +24,7 @@ class DiffusionBiomeMapperTest {
         assertEquals(BiomeType.PLAINS, DiffusionBiomeMapper.map((short) 1, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.SNOWY_PLAINS, DiffusionBiomeMapper.map((short) 3, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.DESERT, DiffusionBiomeMapper.map((short) 5, WELL_ABOVE_SHORE, NO_WATER));
+        assertEquals(BiomeType.RED_SAND_DESERT, DiffusionBiomeMapper.map((short) 205, WELL_ABOVE_SHORE, NO_WATER)); // red_desert
         assertEquals(BiomeType.TAIGA, DiffusionBiomeMapper.map((short) 15, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.PLAINS, DiffusionBiomeMapper.map((short) 17, WELL_ABOVE_SHORE, NO_WATER));   // savanna
         assertEquals(BiomeType.STONY_PEAKS, DiffusionBiomeMapper.map((short) 19, WELL_ABOVE_SHORE, NO_WATER));

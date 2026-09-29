@@ -18,6 +18,7 @@ import torch
 from pyfastnoiselite.pyfastnoiselite import FastNoiseLite, NoiseType, FractalType
 
 
+RED_DESERT_ID = 205   # a desert that came out red (generator.red_desert_cells); game: RED_SAND_DESERT
 OCEAN_IDS = (41, 44, 46, 48)   # warm_ocean, ocean, cold_ocean, frozen_ocean (assigned by literal in the ocean branch)
 HYPER_ARID_PRECIP_MM = 250.0   # v4: below this (or "too arid") treeless land is desert at any temperature
 
