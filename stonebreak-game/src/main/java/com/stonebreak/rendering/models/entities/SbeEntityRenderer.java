@@ -58,6 +58,34 @@ public final class SbeEntityRenderer {
         this.shadowMapRenderer = renderer;
     }
 
+    /** UI preview rig: full ambient, no sky-light probe, no torches, no shadows. */
+    static final float UI_PREVIEW_AMBIENT = 1.0f;
+    /**
+     * UI preview key light, in <em>camera</em> space (toward the light): above, a
+     * little to the left and in front of the viewer. Camera-relative so an orbiting
+     * preview camera always sees the same lit side.
+     */
+    private static final Vector3f UI_PREVIEW_KEY_LIGHT_VIEW = new Vector3f(-0.35f, 0.6f, 0.7f).normalize();
+
+    /** True while UI previews draw; see {@link #setUiPreviewLighting}. */
+    private boolean uiPreviewLighting;
+    private final Matrix4f scratchInverseView = new Matrix4f();
+    private final Vector3f scratchKeyLight = new Vector3f();
+
+    /**
+     * Switches textured draws between the world's lighting (time of day, sky
+     * light, torches, sun shadows) and the fixed UI preview rig. Previews
+     * (character creation, character sheet, glossary) draw into their own
+     * viewport over the UI, so the world's day/night must not reach them.
+     *
+     * @return the previous mode, for the caller to restore
+     */
+    public boolean setUiPreviewLighting(boolean enabled) {
+        boolean previous = uiPreviewLighting;
+        uiPreviewLighting = enabled;
+        return previous;
+    }
+
     /** GPU resources for one variant of one asset. */
     private static final class VariantGpu {
         int vao;
@@ -171,10 +199,10 @@ public final class SbeEntityRenderer {
             shader.createUniform("cameraPos");
             shader.createUniform("underwaterFogDensity");
             shader.createUniform("underwaterFogColor");
-            // Lighting defaults: fully lit so UI previews (glossary, character
-            // creation) render bright without the per-frame environment update.
+            // Lighting defaults: fully lit until the first draw sets the real
+            // environment (or the UI preview rig, see applyUiPreviewLighting).
             shader.bind();
-            shader.setFloat("u_ambientLight", 1.0f);
+            shader.setFloat("u_ambientLight", UI_PREVIEW_AMBIENT);
             shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
             shader.setFloat("u_entityLight", 1.0f);
             // The shadow sampler must live on its own unit even while disabled —
@@ -326,7 +354,11 @@ public final class SbeEntityRenderer {
         shader.setUniform("cameraPos", cameraPos != null ? cameraPos : new Vector3f());
         shader.setUniform("underwaterFogDensity", fogDensity);
         shader.setUniform("underwaterFogColor", fogColor);
-        applyEnvironmentLighting(world, baseMatrix.getTranslation(new Vector3f()));
+        if (uiPreviewLighting) {
+            applyUiPreviewLighting(viewMatrix);
+        } else {
+            applyEnvironmentLighting(world, baseMatrix.getTranslation(new Vector3f()));
+        }
 
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         GL30.glBindVertexArray(gpu.vao);
@@ -533,6 +565,31 @@ public final class SbeEntityRenderer {
         if (shadowMapRenderer != null) {
             shadowMapRenderer.applyToShader(shader);
         }
+    }
+
+    /**
+     * Pushes the fixed UI preview rig to the (bound) entity shader: full ambient,
+     * a camera-relative key light, and every world-driven term switched off —
+     * no time of day, no sky-light probe, no torches, no sun or torch shadows.
+     */
+    private void applyUiPreviewLighting(Matrix4f viewMatrix) {
+        shader.setFloat("u_ambientLight", UI_PREVIEW_AMBIENT);
+        shader.setVec3("u_sunDirection", uiPreviewKeyLight(viewMatrix, scratchInverseView, scratchKeyLight));
+        shader.setFloat("u_entityLight", 1.0f);
+        shader.setFloat("u_selfGlow", selfGlow);
+        com.stonebreak.rendering.lighting.DynamicLights.applyNoneTo(shader);
+        com.openmason.engine.rendering.shadow.ShadowUniforms.applyDisabled(shader,
+                com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer.SHADOW_TEXTURE_UNIT);
+    }
+
+    /**
+     * The UI key light in world space (toward the light, unit length): the
+     * camera-space {@link #UI_PREVIEW_KEY_LIGHT_VIEW} rotated by the inverse view.
+     */
+    static Vector3f uiPreviewKeyLight(Matrix4f viewMatrix, Matrix4f scratch, Vector3f out) {
+        out.set(UI_PREVIEW_KEY_LIGHT_VIEW);
+        if (viewMatrix == null) return out;
+        return scratch.set(viewMatrix).invert().transformDirection(out).normalize();
     }
 
     /** Extra flat brightness (0 = none) applied to subsequent draws; see {@code u_selfGlow}. */

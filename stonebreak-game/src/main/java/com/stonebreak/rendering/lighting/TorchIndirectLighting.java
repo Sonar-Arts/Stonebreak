@@ -82,7 +82,7 @@ public final class TorchIndirectLighting implements AutoCloseable {
             // Water flow, material swaps and edits outside this volume need no radiance rebuild/upload.
             if (!volumeChanged) return false;
             volume.rebuild((nx + .5f) / 4 - originX, (ny + .5f) / 4 - originY,
-                    (nz + .5f) / 4 - originZ, TorchLight.RADIUS);
+                    (nz + .5f) / 4 - originZ, PointLightGlsl.RADIUS);
             return true;
         }
     }
