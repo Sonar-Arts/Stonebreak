@@ -36,6 +36,9 @@ public class World {
     private final ChunkManager chunkManager;
     private final SnowLayerManager snowLayerManager;
     private final com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry;
+    // Per-world crafting-table grids (issue #307), same two-world split as the furnaces.
+    private final com.stonebreak.blocks.workbench.WorkbenchStateRegistry workbenchRegistry =
+            new com.stonebreak.blocks.workbench.WorkbenchStateRegistry();
     private final com.stonebreak.blocks.anim.AnimatedBlockRegistry animatedBlockRegistry =
             new com.stonebreak.blocks.anim.AnimatedBlockRegistry();
 
@@ -258,7 +261,7 @@ public class World {
         this.cactusContact = new com.stonebreak.blocks.cactus.CactusContactSystem(this);
         this.fastLod = new FastLodLifecycle(config, terrainSystem);
         this.networkChunkInstaller = new NetworkChunkInstaller(
-                chunkStore, snowLayerManager, furnaceRegistry, animatedBlockRegistry, meshScheduler);
+                chunkStore, snowLayerManager, furnaceRegistry, workbenchRegistry, animatedBlockRegistry, meshScheduler);
         this.updates = new WorldUpdateOrchestrator(
                 this, waterSim, leafDecay, cactusContact, furnaceRegistry, chunkStore, chunkManager, meshScheduler, fastLod);
 
@@ -282,12 +285,14 @@ public class World {
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkLoaded(chunk);
             }
+            workbenchRegistry.onChunkLoaded(chunk);
             animatedBlockRegistry.onChunkLoaded(chunk);
             meshScheduler.onChunkLoaded(chunk.getX(), chunk.getZ());
         }, chunk -> {
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkUnloaded(chunk);
             }
+            workbenchRegistry.onChunkUnloaded(chunk);
             animatedBlockRegistry.onChunkUnloaded(chunk);
             // Water state is chunk-owned (ChunkWaterLayer) and leaves with the chunk;
             // the sim just drops its pending queue entries. Snow layers remain a
@@ -1099,6 +1104,16 @@ public class World {
      */
     public com.stonebreak.blocks.furnace.FurnaceStateRegistry getFurnaceRegistry() {
         return furnaceRegistry;
+    }
+
+    /**
+     * This world's crafting-table grids (issue #307). PER-WORLD like
+     * {@link #getFurnaceRegistry()}: the authoritative server world's registry owns the real
+     * grids; a client render world holds a display copy fed by streamed chunk states and
+     * {@code BlockStateS2C} echoes.
+     */
+    public com.stonebreak.blocks.workbench.WorkbenchStateRegistry getWorkbenchRegistry() {
+        return workbenchRegistry;
     }
 
     /** This world's index of animated (dynamically rendered) block positions. */

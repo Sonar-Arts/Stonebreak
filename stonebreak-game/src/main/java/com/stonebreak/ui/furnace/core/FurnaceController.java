@@ -58,6 +58,10 @@ public class FurnaceController {
         FurnaceStateRegistry registry = game.getFurnaceRegistry();
         this.state = (registry != null) ? registry.getOrCreate(pos) : new FurnaceState(pos);
         this.visible = true;
+        // Echoes keep arriving while the UI is closed (every cook tick), and the first one
+        // leaves a pre-echo snapshot that nothing consumes. It is not an edit of ours: left in
+        // place, the first update() would send that stale snapshot and roll the furnace back.
+        state.consumePreEchoSlots();
         // Baseline for the slot dirty check: the state as it stands when the UI opens is
         // already what the server knows (streamed/echoed), so don't re-send it.
         this.lastSentSlots = state.encodeSlots();

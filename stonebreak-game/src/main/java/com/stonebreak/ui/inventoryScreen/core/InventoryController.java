@@ -120,6 +120,10 @@ public class InventoryController {
         this.renderCoordinator = renderCoordinator;
     }
 
+    protected Inventory getInventory() {
+        return inventory;
+    }
+
     protected InventoryInputManager getInputManager() {
         return inputManager;
     }
