@@ -6,7 +6,6 @@ import com.stonebreak.blocks.workbench.WorkbenchState;
 import com.stonebreak.blocks.workbench.WorkbenchStateRegistry;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
-import com.stonebreak.items.ItemStack;
 import com.stonebreak.world.World;
 import com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator;
 import com.stonebreak.ui.inventoryScreen.renderers.WorkbenchRenderCoordinator;
@@ -150,11 +149,9 @@ public class WorkbenchController extends InventoryController {
         getCraftingManager().unbindInputSlots();
         state = null;
         // A dragged stack taken from the grid "returns" into the now-detached scratch grid;
-        // hand anything that lands there to the player instead.
-        handleDraggedItemsOnClose();
-        for (ItemStack stack : getCraftingManager().drainInputSlots()) {
-            giveToPlayer(stack);
-        }
+        // returnHeldItemsToPlayer then empties that scratch grid into the inventory (only
+        // the overflow is dropped), so the player gets back exactly what they held.
+        returnHeldItemsToPlayer();
         game.closeWorkbenchScreen();
     }
 
@@ -163,7 +160,8 @@ public class WorkbenchController extends InventoryController {
      */
     public void handleCloseRequest() {
         if (isVisible()) {
-            // Call game's close method which will handle state transition and call our close() method
+            // Game's close method handles the state transition and calls close(), which
+            // returns the cursor stack; the grid itself stays in the table.
             game.closeWorkbenchScreen();
         }
     }

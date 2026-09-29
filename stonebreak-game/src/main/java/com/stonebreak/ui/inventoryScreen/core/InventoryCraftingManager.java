@@ -1,6 +1,7 @@
 package com.stonebreak.ui.inventoryScreen.core;
 
 import com.stonebreak.crafting.CraftingManager;
+import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
 import java.util.ArrayList;
@@ -52,24 +53,6 @@ public class InventoryCraftingManager {
         }
         this.craftingInputSlots = slots;
         updateCraftingOutput();
-    }
-
-    /**
-     * Empties the grid, returning every non-empty stack it held (in slot order). The output
-     * slot is cleared with it. Used to hand the player's own 2×2 grid back when the inventory
-     * closes, so nothing is left in a grid that is never saved (issue #307).
-     */
-    public List<ItemStack> drainInputSlots() {
-        List<ItemStack> drained = new ArrayList<>();
-        for (int i = 0; i < craftingInputSlots.length; i++) {
-            ItemStack stack = craftingInputSlots[i];
-            if (stack != null && !stack.isEmpty()) {
-                drained.add(stack);
-            }
-            craftingInputSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
-        }
-        craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0);
-        return drained;
     }
 
     /** Detaches from any bound grid, back to a fresh, empty screen-owned one. */
@@ -159,6 +142,34 @@ public class InventoryCraftingManager {
         consumeCraftingIngredients();
         updateCraftingOutput();
         return batch;
+    }
+
+    /**
+     * Empties the input grid into {@code inventory} and returns whatever did not
+     * fit, for the caller to drop at the player's feet. The grid and the output
+     * slot are left empty.
+     *
+     * <p>Called whenever a crafting screen closes: the grid is UI state, not world
+     * state, so anything left in it would be lost when the world exits (issue #307).
+     * It also means every crafting table opens empty, instead of sharing one grid.
+     *
+     * @return overflow stacks in grid order; empty when everything fit
+     */
+    public List<ItemStack> returnInputsTo(Inventory inventory) {
+        List<ItemStack> overflow = new ArrayList<>();
+        for (int i = 0; i < craftingInputSlots.length; i++) {
+            ItemStack stack = craftingInputSlots[i];
+            craftingInputSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
+            if (stack == null || stack.isEmpty()) continue;
+            int added = inventory != null ? inventory.addItemAndReturnCount(stack) : 0;
+            if (added < stack.getCount()) {
+                ItemStack rest = stack.copy();
+                rest.setCount(stack.getCount() - added);
+                overflow.add(rest);
+            }
+        }
+        craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0);
+        return overflow;
     }
 
     /**
