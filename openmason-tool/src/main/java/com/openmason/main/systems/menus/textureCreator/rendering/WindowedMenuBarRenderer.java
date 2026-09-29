@@ -39,6 +39,7 @@ public class WindowedMenuBarRenderer {
     private Runnable onPreferencesToggle;
     private Runnable onNoiseFilterToggle;
     private Runnable onSymmetryToggle;
+    private Runnable onDeselectAll;
     private Runnable onLayersPanelToggle;
     private Runnable onColorPanelToggle;
     private Runnable onResetLayout;
@@ -86,6 +87,10 @@ public class WindowedMenuBarRenderer {
 
     public void setOnSymmetryToggle(Runnable callback) {
         this.onSymmetryToggle = callback;
+    }
+
+    public void setOnDeselectAll(Runnable callback) {
+        this.onDeselectAll = callback;
     }
 
     public void setOnLayersPanelToggle(Runnable callback, ImBoolean showLayersPanel) {
@@ -281,6 +286,11 @@ public class WindowedMenuBarRenderer {
 
             if (ImGui.menuItem("Delete Selection", shortcut("texture.delete_selection"), false, hasSelection)) {
                 controller.deleteSelection();
+            }
+            if (ImGui.menuItem("Deselect All", shortcut("texture.deselect"), false, hasSelection)) {
+                if (onDeselectAll != null) {
+                    onDeselectAll.run();
+                }
             }
 
             ImGui.separator();

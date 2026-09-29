@@ -1,5 +1,7 @@
 package com.openmason.main.systems.menus.panes.projectBrowser.events;
 
+import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry;
+
 /**
  * Listener for Project Browser selections — .OMO models and .OMT textures
  * discovered in the open project's folder.
@@ -17,4 +19,7 @@ public interface ProjectBrowserListener {
      * to run the unsaved-scene check first.
      */
     void onSceneSelected(SceneSelectedEvent event);
+
+    /** Delete was chosen for an asset; the shell shows the confirmation dialog. */
+    void onAssetDeleteRequested(AssetEntry entry);
 }

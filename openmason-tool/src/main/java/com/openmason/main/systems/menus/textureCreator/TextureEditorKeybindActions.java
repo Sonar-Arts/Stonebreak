@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory;
  * - File Operations (New, Open, Save, Save As, Export)
  * - Edit (Undo, Redo)
  * - Clipboard (Copy, Cut, Paste)
- * - Selection (Delete)
+ * - Selection (Delete, Deselect All)
  * - View (Toggle Grid, Zoom, Reset View)
  * - Tools (Confirm, Cancel)
  * - Window (Preferences)
@@ -187,6 +187,14 @@ public class TextureEditorKeybindActions {
                 controller::deleteSelection
         ));
 
+        registry.registerAction(new KeybindAction(
+                "texture.deselect",
+                "Deselect All",
+                "Selection",
+                ShortcutKey.ctrl(GLFW.GLFW_KEY_D),
+                toolCoordinator::deselectAll
+        ));
+
         // ========== View ==========
 
         registry.registerAction(new KeybindAction(
@@ -271,6 +279,7 @@ public class TextureEditorKeybindActions {
                 toolCoordinator::handleEscapeKey
         ));
 
-        logger.info("Registered {} texture editor keybind actions", 23);
+        logger.info("Registered {} texture editor keybind actions",
+                registry.getActionsByContext("texture").size());
     }
 }

@@ -22,13 +22,16 @@ public class ListViewRenderer implements ViewRenderer {
     private final ProjectBrowserController controller;
     private final ModelThumbnailRenderer modelRenderer;
     private final OMTThumbnailRenderer omtRenderer;
+    private final ProjectBrowserContextMenu contextMenu;
 
     public ListViewRenderer(ProjectBrowserController controller,
                             ModelThumbnailRenderer modelRenderer,
-                            OMTThumbnailRenderer omtRenderer) {
+                            OMTThumbnailRenderer omtRenderer,
+                            ProjectBrowserContextMenu contextMenu) {
         this.controller = controller;
         this.modelRenderer = modelRenderer;
         this.omtRenderer = omtRenderer;
+        this.contextMenu = contextMenu;
     }
 
     @Override
@@ -69,6 +72,13 @@ public class ListViewRenderer implements ViewRenderer {
                 boolean dragging = ProjectBrowserDragSource.emit(item);
                 if (clicked && !dragging) {
                     controller.selectAsset(item);
+                }
+                if (ImGui.isItemClicked(1)) {
+                    contextMenu.openPopup(item);
+                }
+                if (contextMenu.beginPopup(item)) {
+                    contextMenu.render(item, THUMBNAIL_SIZE);
+                    ImGui.endPopup();
                 }
 
                 ImGui.tableSetColumnIndex(2);

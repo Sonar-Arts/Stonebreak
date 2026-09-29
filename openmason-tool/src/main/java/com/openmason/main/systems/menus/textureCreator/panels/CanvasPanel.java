@@ -34,6 +34,7 @@ public class CanvasPanel {
     private final CanvasRenderer renderer;
     private boolean wasMouseDown = false;
     private boolean strokeActive = false;
+    private int strokeButton = -1; // ImGui mouse button that owns the current stroke, -1 = none
 
     // Face-region editing mode state
     private boolean faceEditingMode = false;
@@ -266,6 +267,7 @@ public class CanvasPanel {
         // Get mouse position and keyboard state
         ImVec2 mousePos = ImGui.getMousePos();
         boolean leftMouseDown = ImGui.isMouseDown(0);   // Left button for drawing
+        boolean rightMouseDown = ImGui.isMouseDown(1);  // Right button deselects with the Selection Brush
         boolean middleMouseDown = ImGui.isMouseDown(2); // Middle button for panning
         float mouseWheel = ImGui.getIO().getMouseWheel();
         boolean shiftHeld = ImGui.getIO().getKeyShift(); // Shift key for constrained operations
@@ -295,13 +297,30 @@ public class CanvasPanel {
             canvasState.stopPanning();
         }
 
-        // Handle drawing with left mouse button
-        if (leftMouseDown && currentTool != null && !canvasState.isPanning()) {
+        // The first button pressed owns the stroke until it is released; the other is ignored.
+        // Only the Selection Brush strokes with the right button (always subtracting).
+        if (!wasMouseDown) {
+            if (leftMouseDown) {
+                strokeButton = 0;
+            } else if (rightMouseDown && currentTool instanceof SelectionBrushTool) {
+                strokeButton = 1;
+            } else {
+                strokeButton = -1;
+            }
+        }
+        boolean strokeButtonDown = strokeButton >= 0 && ImGui.isMouseDown(strokeButton);
+
+        // Handle drawing with the stroke button
+        if (strokeButtonDown && currentTool != null && !canvasState.isPanning()) {
             // Update modifier keys for move tool
             if (currentTool instanceof MoveToolController) {
                 ((MoveToolController) currentTool).setModifierKeys(shiftHeld);
-            } else if (currentTool instanceof SelectionBrushTool) {
-                ((SelectionBrushTool) currentTool).updateModifierState(ctrlHeld, altHeld);
+            } else if (currentTool instanceof SelectionBrushTool brush) {
+                if (strokeButton == 1) {
+                    brush.useSubtractStroke();
+                } else {
+                    brush.updateModifierState(ctrlHeld, altHeld);
+                }
             }
 
             // Convert screen coordinates to canvas pixel coordinates
@@ -338,7 +357,7 @@ public class CanvasPanel {
         }
 
         // Mouse button released
-        if (wasMouseDown && !leftMouseDown && currentTool != null) {
+        if (wasMouseDown && !strokeButtonDown && currentTool != null) {
             strokeActive = false;
             currentTool.onMouseUp(currentColor, canvas, currentDrawCommand);
 
@@ -396,8 +415,8 @@ public class CanvasPanel {
         }
 
         // Update mouse state
-        wasMouseDown = leftMouseDown;
-        if (!leftMouseDown) {
+        wasMouseDown = strokeButtonDown;
+        if (!strokeButtonDown) {
             strokeActive = false;
         }
     }
