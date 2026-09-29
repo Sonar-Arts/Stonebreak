@@ -67,6 +67,12 @@ public class CaveVolumeTest {
      *       volume dropped slightly (12.17% to 11.60%) and roominess rose (41.4% to 42.7%);
      *       Java-backend values are unchanged. Floor re-based under the new lower — a
      *       deliberate carve change with re-measured values, not a tuning regression.
+     *   <li>0.112 volume / 0.424 roomy — after the spawn-hash lattice fix (GitHub issue #243):
+     *       worm/cavern/megacavern spawn hashes gained the splitmix64 finalizer, so spawns
+     *       scatter instead of repeating along z. Spawn <em>rate</em> is unchanged
+     *       ({@code CarverSpawnScatterTest}); only which chunks host features moved, and this
+     *       8x8 sample lost some. Native 11.60% to 11.20% (roomy 42.7% to 42.8%), Java 12.89%
+     *       to 12.02% (roomy 41.1% to 42.4%). Re-based like #244, not a tuning regression.
      * </ul>
      *
      * <p>Every density-driven figure here is quoted for both backends and the floor set under
@@ -76,8 +82,8 @@ public class CaveVolumeTest {
      * functions and carve ~6% differently in aggregate. A floor measured on only one of them
      * fails on whichever machine has the other.
      */
-    private static final double MIN_CARVED_FRACTION = 0.115;   // measured 0.1160 native / 0.1289 Java
-    private static final double MIN_ROOMY_FRACTION = 0.400;    // measured 0.427 native / 0.411 Java
+    private static final double MIN_CARVED_FRACTION = 0.111;   // measured 0.1120 native / 0.1202 Java
+    private static final double MIN_ROOMY_FRACTION = 0.400;    // measured 0.428 native / 0.424 Java
 
     @Test
     public void cavesAreLargeEnoughToPlayIn() {

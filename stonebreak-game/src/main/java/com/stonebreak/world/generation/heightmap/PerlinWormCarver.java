@@ -266,6 +266,9 @@ public final class PerlinWormCarver {
         h ^= (long) cx * 0x9E3779B97F4A7C15L;
         h = Long.rotateLeft(h, 23);
         h ^= (long) cz * 0xC2B2AE3D27D4EB4FL;
+        h ^= h >>> 30; h *= 0xBF58476D1CE4E5B9L;
+        h ^= h >>> 27; h *= 0x94D049BB133111EBL;
+        h ^= h >>> 31;
         return Math.floorMod(h, WORM_CHUNK_DIVISOR) == 0;
     }
 

@@ -252,12 +252,14 @@ public class TextureCreatorImGui {
         menuBarRenderer.setOnPreferencesToggle(this::requestPreferences);
         menuBarRenderer.setOnNoiseFilterToggle(windowState::toggleNoiseFilterWindow);
         menuBarRenderer.setOnSymmetryToggle(windowState::toggleSymmetryWindow);
+        menuBarRenderer.setOnDeselectAll(toolCoordinator::deselectAll);
         menuBarRenderer.setOnLayersPanelToggle(windowState::toggleLayersPanel, windowState.getShowLayersPanel());
         menuBarRenderer.setOnColorPanelToggle(windowState::toggleColorPanel, windowState.getShowColorPanel());
 
         windowedMenuBarRenderer.setOnPreferencesToggle(this::requestPreferences);
         windowedMenuBarRenderer.setOnNoiseFilterToggle(windowState::toggleNoiseFilterWindow);
         windowedMenuBarRenderer.setOnSymmetryToggle(windowState::toggleSymmetryWindow);
+        windowedMenuBarRenderer.setOnDeselectAll(toolCoordinator::deselectAll);
         windowedMenuBarRenderer.setOnLayersPanelToggle(windowState::toggleLayersPanel, windowState.getShowLayersPanel());
         windowedMenuBarRenderer.setOnColorPanelToggle(windowState::toggleColorPanel, windowState.getShowColorPanel());
 
@@ -664,13 +666,15 @@ public class TextureCreatorImGui {
         com.openmason.main.systems.keybinds.KeybindRegistry registry =
                 com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
 
-        // Check all texture editor categories for matching keybinds
+        // Check all texture editor categories for matching keybinds. Scoped to the
+        // "texture" context: the scene viewer and viewport reuse these category names
+        // (scene "Selection" binds Escape/Ctrl+A), and must not fire in this window.
         String[] categories = {"File Operations", "Window", "Edit", "Clipboard",
                                "Selection", "View", "Tools"};
 
         for (String category : categories) {
             for (com.openmason.main.systems.keybinds.KeybindAction action :
-                    registry.getActionsByCategory(category)) {
+                    registry.getActionsByContextAndCategory("texture", category)) {
                 com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey key =
                         registry.getKeybind(action.getId());
                 if (key.isPressed()) {

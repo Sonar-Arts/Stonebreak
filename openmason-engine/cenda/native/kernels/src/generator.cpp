@@ -89,8 +89,7 @@ inline void clearBit(uint64_t* mask, int bit) {
  * they differ only in constants and hash mixers. */
 struct CavernParams {
     /* hasCavern: h = seed ^ hashXor; h ^= cx*hashMulX; rotl(hashRot);
-     * h ^= cz*hashMulZ; floorMod(h, divisor) == 0 (divisor is a power of two,
-     * so floorMod == unsigned h & (divisor-1)). */
+     * h ^= cz*hashMulZ; h = splitmix64Finalize(h); floorMod(h, divisor) == 0. */
     uint64_t hashXor, hashMulX, hashMulZ;
     int hashRot;
     int32_t divisor;      /* NOT a power of two — needs a real floorMod */
@@ -189,6 +188,7 @@ bool hasCavern(const CavernParams& p, int64_t seed, int cx, int cz) {
     h ^= signExt(cx) * p.hashMulX;
     h = rotl64(h, p.hashRot);
     h ^= signExt(cz) * p.hashMulZ;
+    h = cenda::splitmix64Finalize(h);
     return cenda::javaFloorMod(static_cast<int64_t>(h), p.divisor) == 0;
 }
 
