@@ -51,6 +51,7 @@ class FastLodManagerLogicTest {
     private FastLodManager manager;
 
     private final AtomicBoolean terrainFails = new AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicLong now = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
     private final List<MmsRenderableHandle> createdHandles = new ArrayList<>();
 
     @BeforeEach
@@ -103,6 +104,7 @@ class FastLodManagerLogicTest {
         // not anything the test cares about.
         manager = new FastLodManager(config, terrain, textures, null, executor, uploader,
                 java.util.concurrent.TimeUnit.SECONDS.toNanos(10));
+        manager.clock = now::get;
     }
 
     @AfterEach
@@ -300,10 +302,40 @@ class FastLodManagerLogicTest {
         assertNotNull(handleFor(oldKey), "failed replacement must never retire the live node");
 
         terrainFails.set(false);
-        tick(1, 0);   // reschedules the failed keys
+        now.addAndGet(FastLodManager.RETRY_BACKOFF_NANOS);
+        tick(1, 0);   // reschedules the failed keys once their backoff has run out
         assertNull(handleFor(oldKey));
         assertNotNull(handleFor(FastLodKey.of(FastLodLevel.L0, 3, 0)));
         verify(oldHandle).close();
+    }
+
+    /**
+     * A model-backed sampler fails for as long as its service is down. Retrying on the very next
+     * tick re-submitted the whole ring every frame; a failed node now waits out its backoff, and
+     * the wait doubles while it keeps failing.
+     */
+    @Test
+    void failedNodesWaitOutTheirBackoffBeforeRetrying() {
+        terrainFails.set(true);
+        tick(0, 0);
+        assertTrue(manager.visibleHandles().isEmpty());
+
+        manager.updateRing(0, 0);
+        assertEquals(0, executor.queued(), "a failed node must not be resubmitted before its backoff");
+
+        now.addAndGet(FastLodManager.RETRY_BACKOFF_NANOS);
+        manager.updateRing(0, 0);
+        assertEquals(RING_NODES, executor.queued(), "every node retries once the backoff has run out");
+        executor.runAll();   // fails again: the next wait is twice as long
+
+        now.addAndGet(FastLodManager.RETRY_BACKOFF_NANOS);
+        manager.updateRing(0, 0);
+        assertEquals(0, executor.queued(), "the second wait is longer than the first");
+
+        terrainFails.set(false);
+        now.addAndGet(FastLodManager.RETRY_BACKOFF_NANOS);
+        tick(0, 0);
+        assertEquals(RING_NODES, manager.visibleHandles().size());
     }
 
     @Test
@@ -326,6 +358,10 @@ class FastLodManagerLogicTest {
 
         @Override public void execute(Runnable command) {
             queue.add(command);
+        }
+
+        int queued() {
+            return queue.size();
         }
 
         void runAll() {

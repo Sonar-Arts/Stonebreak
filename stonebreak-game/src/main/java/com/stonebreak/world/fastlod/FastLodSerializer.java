@@ -75,8 +75,13 @@ public final class FastLodSerializer {
      * ABOVE a step, so ground too thin for that is cut open to the water where
      * a v9 node kept it; and a real plunge no longer takes the talus skirt, so
      * the mound a v9 node shows in front of every waterfall is gone.
+     *
+     * <p>11: a coarse cell whose footprint holds a river stands on that river
+     * (DaedalusTGM-Exp's {@code sampleColumns}), where a v10 node showed whatever
+     * dry column its probe landed on — so its height, water level and surface all
+     * moved.
      */
-    public static final int VERSION = 10;
+    public static final int VERSION = 11;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel

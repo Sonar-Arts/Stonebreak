@@ -5,6 +5,9 @@ import com.stonebreak.world.generation.diffusion.TGMPipeException;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.diffusion.TileRequestCancelledException;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,9 +52,13 @@ public final class TGMPipe {
 
     /** Official name of the terrain generation model every world uses. */
     public static final String MODEL_NAME = "DaedalusTGM-Exp";
-    /** Tile priorities (lower goes first): chunks being generated, then the terrain mapper. */
+    /**
+     * Tile priorities (lower goes first): chunks being generated, then FastLOD's distant terrain,
+     * then the terrain mapper.
+     */
     public static final int PRIORITY_WORLD = 0;
-    public static final int PRIORITY_PREVIEW = 1;
+    public static final int PRIORITY_LOD = 1;
+    public static final int PRIORITY_PREVIEW = 2;
 
     static final String MODELS_DIR = "Models";
     static final String SLM_DIR = MODELS_DIR + "/" + MODEL_NAME;
@@ -83,6 +90,8 @@ public final class TGMPipe {
     private TGMPipeConnection connection;
     /** True between {@link #ensureRunning} and {@link #shutdown}: a death in between is a crash. */
     private boolean wanted;
+    /** The running service's tile-cache namespace, from its handshake; see {@link #cacheNamespace}. */
+    private volatile String cacheNamespace;
 
     private TGMPipe() {
         Path root = repoRoot(Path.of(System.getProperty("user.dir")).toAbsolutePath());
@@ -182,6 +191,26 @@ public final class TGMPipe {
         return request.future();
     }
 
+    /**
+     * Fingerprint of everything that decides a tile's content — world config, model checkpoint and
+     * generator source — as the service reported it at its last handshake; null before the first
+     * one. Anything the game caches from tiles (FastLOD's node store) keys on it, so a retrained
+     * model or edited pipeline is never shown from a stale cache.
+     */
+    public String cacheNamespace() {
+        return cacheNamespace;
+    }
+
+    static String cacheNamespaceOf(String readyJson) {
+        try {
+            JsonNode ns = new ObjectMapper().readTree(readyJson).get("cache_namespace");
+            return ns != null && ns.isTextual() ? ns.asText() : null;
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "unreadable TGMPipe handshake: " + readyJson, e);
+            return null;
+        }
+    }
+
     /** The service's status json (model, queue depth, cache, timings), for diagnostics. */
     public CompletableFuture<String> status() {
         TGMPipeConnection c;
@@ -250,6 +279,7 @@ public final class TGMPipe {
         c.open(TerrainScale.worldConfigJson());
         try {
             String info = c.ready().get(startupTimeoutMs, TimeUnit.MILLISECONDS);
+            cacheNamespace = cacheNamespaceOf(info);
             LOG.info(() -> "TGMPipe ready, serving " + MODEL_NAME + " (pid " + p.pid() + "): " + info);
         } catch (TimeoutException e) {
             c.close();

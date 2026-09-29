@@ -77,6 +77,9 @@ class TGMPipeLiveTest {
         }
         String status = service.status().get(10, TimeUnit.SECONDS);
         assertTrue(status.contains(TGMPipe.MODEL_NAME), status);
+        // FastLOD's node store is keyed on it: without it every world's LOD cache is thrown away.
+        String namespace = TGMPipe.getInstance().cacheNamespace();
+        assertTrue(namespace != null && namespace.matches("[0-9a-f]{16}"), "cache namespace: " + namespace);
     }
 
     @Test

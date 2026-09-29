@@ -42,12 +42,12 @@ final class FastLodLifecycle {
         if (fastLodManager != null || textureArray == null || terrainSystem == null) return;
         synchronized (this) {
             if (fastLodManager != null) return;
-            FastLodStore store = openStoreIfPossible();
+            FastLodStore store = openStoreIfPossible(terrainSystem.lodCacheTag());
             fastLodManager = new FastLodManager(config, terrainSystem, textureArray, store);
         }
     }
 
-    private static FastLodStore openStoreIfPossible() {
+    private static FastLodStore openStoreIfPossible(String terrainTag) {
         // Resolves the save directory without coupling World to how save state
         // is plumbed. Any failure (no save path, SQLite driver missing) falls
         // through to pure in-memory LOD.
@@ -76,7 +76,7 @@ final class FastLodLifecycle {
             }
             if (worldPath == null || worldPath.isEmpty()) return null;
             Path dbPath = Paths.get(worldPath, "fastlod", "cache.sqlite");
-            return FastLodStore.open(dbPath);
+            return FastLodStore.open(dbPath, terrainTag);
         } catch (Exception e) {
             System.err.println("[World] FastLod store setup failed: " + e.getMessage());
             return null;

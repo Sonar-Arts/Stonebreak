@@ -146,6 +146,17 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         return seed;
     }
 
+    /**
+     * The model's tile-cache namespace (see {@link TGMPipe#cacheNamespace}): it changes whenever a
+     * retrained checkpoint, a re-tuned world or an edited pipeline changes what a tile holds, and
+     * so must every FastLOD node sampled from those tiles.
+     */
+    @Override
+    public String lodCacheTag() {
+        String namespace = tileSource instanceof DiffusionTileCache ? TGMPipe.getInstance().cacheNamespace() : null;
+        return TGMPipe.MODEL_NAME + ":" + (namespace != null ? namespace : "offline");
+    }
+
     public BiomeType getBiomeAt(int x, int z) {
         return biomeManager.getBiome(x, z);
     }
@@ -212,6 +223,14 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      */
     public void sampleCellOpenings(int worldX0, int worldZ0, int cellsPerAxis, int cellSize,
                                    int[] cellHeights, int[] outFloor, byte[] outCoverage) {
+        DiffusionTileCache.deferred(TGMPipe.PRIORITY_LOD, () -> {
+            sampleCellOpeningsNow(worldX0, worldZ0, cellsPerAxis, cellSize, cellHeights, outFloor, outCoverage);
+            return null;
+        });
+    }
+
+    private void sampleCellOpeningsNow(int worldX0, int worldZ0, int cellsPerAxis, int cellSize,
+                                       int[] cellHeights, int[] outFloor, byte[] outCoverage) {
         for (int ix = 0; ix < cellsPerAxis; ix++) {
             for (int iz = 0; iz < cellsPerAxis; iz++) {
                 int cell = ix * cellsPerAxis + iz;
@@ -300,6 +319,14 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      * the same carved top: a cut column exposes stone rather than a sheet of grass, and grows
      * no tree, exactly as {@code VegetationGenerator} finds when it reads the real block.
      *
+     * <p>A coarse probe ({@code stride > 1}) that lands on dry ground while its footprint holds
+     * a river reports the river instead: the inland-water column nearest the probe. The model's
+     * rivers are 3-16 blocks wide, so a plain point probe hits one in only 47% of the 4-block
+     * cells it crosses and 16% of the 16-block ones, and the distance rings drew each river as a
+     * scatter of puddles (measured on v4 tiles: 22 rivers became 156 pieces at L3, 62 of them
+     * single cells). Any-in-footprint keeps every river whole at every level, one cell wide at
+     * least. The sea is left to the probe — a coastline needs no help staying continuous.
+     *
      * <p>On the diffusion generator the batching win lives one layer down: the
      * heights come from service tiles that {@code DiffusionTileCache} already
      * serves whole, so a straight per-column loop touches each tile once and
@@ -317,6 +344,19 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                               int[] outWaterLevels,
                               BlockType[] outSurface,
                               com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees) {
+        // Distant terrain can wait for the chunks the player is standing in: every tile this
+        // misses is queued behind chunk generation's (and moved up if a chunk asks for it).
+        DiffusionTileCache.deferred(TGMPipe.PRIORITY_LOD, () -> {
+            sampleColumnsNow(worldX0, worldZ0, count, stride, outHeights, outWaterLevels, outSurface, outTrees);
+            return null;
+        });
+    }
+
+    private void sampleColumnsNow(int worldX0, int worldZ0, int count, int stride,
+                                  int[] outHeights,
+                                  int[] outWaterLevels,
+                                  BlockType[] outSurface,
+                                  com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees) {
         boolean needBiomes = outSurface != null || outTrees != null;
         boolean needWater = outWaterLevels != null || outTrees != null;
         for (int ix = 0; ix < count; ix++) {
@@ -324,6 +364,13 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                 int idx = ix * count + iz;
                 int wx = worldX0 + ix * stride;
                 int wz = worldZ0 + iz * stride;
+                if (stride > 1) {
+                    long river = riverColumnIn(wx - stride / 2, wz - stride / 2, stride, wx, wz);
+                    if (river != NO_RIVER_COLUMN) {
+                        wx = (int) (river >> 32);
+                        wz = (int) river;
+                    }
+                }
                 int rawHeight = heightMapGenerator.generateHeight(wx, wz);
                 int height = carvedSurfaceHeight(wx, wz);
                 outHeights[idx] = height;
@@ -353,6 +400,42 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         }
     }
 
+
+    private static final long NO_RIVER_COLUMN = Long.MIN_VALUE;
+
+    /**
+     * The inland-water column of a coarse cell's footprint nearest its probe, packed
+     * {@code (x << 32) | (z & 0xFFFFFFFF)}, or {@link #NO_RIVER_COLUMN} when the probe itself is
+     * wet (it already shows water) or the footprint holds none. Inland water is water standing
+     * over the ground that flows or sits above sea level — a river, never the sea. Reads the tile
+     * planes directly: one footprint is up to 256 columns and costs no carve profile.
+     */
+    private long riverColumnIn(int x0, int z0, int size, int probeX, int probeZ) {
+        TerrainTile tile = tileSource.getTile(probeX, probeZ);
+        if (tile.waterLevelAt(probeX, probeZ) > tile.heightAt(probeX, probeZ)) {
+            return NO_RIVER_COLUMN;
+        }
+        long best = NO_RIVER_COLUMN;
+        int bestDist = Integer.MAX_VALUE;
+        for (int x = x0; x < x0 + size; x++) {
+            for (int z = z0; z < z0 + size; z++) {
+                if (x < tile.worldI1() || x >= tile.worldI2() || z < tile.worldJ1() || z >= tile.worldJ2()) {
+                    tile = tileSource.getTile(x, z); // a footprint off FastLOD's aligned grid can span tiles
+                }
+                int water = tile.waterLevelAt(x, z);
+                if (water <= tile.heightAt(x, z)
+                        || (water <= SEA_LEVEL && tile.riverFlowAt(x, z) == TerrainTile.NO_FLOW)) {
+                    continue;
+                }
+                int dist = (x - probeX) * (x - probeX) + (z - probeZ) * (z - probeZ);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = ((long) x << 32) | (z & 0xFFFFFFFFL);
+                }
+            }
+        }
+        return best;
+    }
 
     /**
      * Generates terrain blocks for a chunk. Features are populated separately

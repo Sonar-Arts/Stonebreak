@@ -92,4 +92,51 @@ class DiffusionTileCacheTest {
         assertThrows(TileRequestCancelledException.class, () -> cache.getTile(5, 5));
         assertTrue(waiting.isCompletedExceptionally());
     }
+
+    @Test
+    void deferredWorkAsksAtItsOwnPriorityButNeverSoonerThanTheCache() {
+        List<Integer> asked = new CopyOnWriteArrayList<>();
+        DiffusionTileCache.TileFetcher fetcher = (seed, x, z, lod, prio) -> {
+            asked.add(prio);
+            return CompletableFuture.completedFuture(stubTile(x, z));
+        };
+        DiffusionTileCache world = new DiffusionTileCache(fetcher, 7L, 1, 0, TILE, 8);
+        DiffusionTileCache preview = new DiffusionTileCache(fetcher, 7L, 1, 2, TILE, 8);
+
+        DiffusionTileCache.deferred(1, () -> world.getTile(0, 0));
+        DiffusionTileCache.deferred(1, () -> preview.getTile(0, 0));
+        world.getTile(100, 100); // outside deferred(): the cache's own priority again
+
+        assertEquals(List.of(1, 2, 0), asked);
+    }
+
+    /**
+     * FastLOD queues a tile at its low priority; then the player walks up and a chunk needs the
+     * same tile. The chunk must not wait out the LOD queue: the cache asks again at the urgent
+     * priority (the service moves its one job up), and the first answer serves everyone.
+     */
+    @Test
+    void urgentWorkExpeditesATileQueuedAtALowerPriority() {
+        List<CompletableFuture<TerrainTile>> requests = new CopyOnWriteArrayList<>();
+        List<Integer> priorities = new CopyOnWriteArrayList<>();
+        DiffusionTileCache cache = cache((seed, x, z, lod, prio) -> {
+            CompletableFuture<TerrainTile> f = new CompletableFuture<>();
+            requests.add(f);
+            priorities.add(prio);
+            return f;
+        });
+
+        CompletableFuture<TerrainTile> lodWait = DiffusionTileCache.deferred(1, () -> cache.getTileAsync(3, 3));
+        CompletableFuture<TerrainTile> chunkWait = cache.getTileAsync(5, 5);
+        cache.getTileAsync(6, 6); // already expedited: no third request
+
+        assertEquals(List.of(1, 0), priorities);
+        TerrainTile tile = stubTile(0, 0);
+        requests.get(1).complete(tile); // the urgent answer lands first
+        assertSame(tile, lodWait.join());
+        assertSame(tile, chunkWait.join());
+
+        DiffusionTileCache.deferred(1, () -> cache.getTile(4, 4)); // resolved: nothing to expedite
+        assertEquals(2, priorities.size());
+    }
 }

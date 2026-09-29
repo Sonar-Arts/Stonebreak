@@ -27,6 +27,16 @@ public interface TerrainGenerator {
 
     long getSeed();
 
+    /**
+     * Identifies the terrain this generator produces, for caches that persist what it sampled
+     * (FastLOD's per-world node store). A cache written under a different tag is discarded. Code
+     * changes on the Java side are versioned by the caches themselves; this covers what they
+     * cannot see, such as an external model being retrained.
+     */
+    default String lodCacheTag() {
+        return "standard";
+    }
+
     /** Releases anything the generator holds open. Called from {@code World.cleanup()}. */
     default void shutdown() {
     }
@@ -60,6 +70,12 @@ public interface TerrainGenerator {
      * Batched column probe for FastLOD over a {@code count x count} grid at
      * {@code (worldX0 + ix*stride, worldZ0 + iz*stride)}, indexed {@code [ix*count + iz]}.
      * Heights are the carved surface. Every output but {@code outHeights} is nullable.
+     *
+     * <p>With {@code stride > 1} each probe stands for the {@code stride x stride} footprint
+     * {@code [p - stride/2, p - stride/2 + stride)} around it on both axes, and an implementation
+     * may report the column in that footprint that represents it best rather than the probe
+     * itself, as long as the choice depends only on the footprint (neighbouring nodes probe the
+     * same cells for their margins, and must agree).
      */
     void sampleColumns(int worldX0, int worldZ0, int count, int stride,
                        int[] outHeights, int[] outWaterLevels, BlockType[] outSurface,
