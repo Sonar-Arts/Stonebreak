@@ -34,7 +34,7 @@ public final class GameShutdown {
         com.stonebreak.battletest.BattleTestSession.leave();
         // Before the world and entity manager go away: the final save must include anything
         // left in the inventory's crafting grid (issue #307).
-        com.stonebreak.core.world.WorldLifecycle.returnCraftingItemsToPlayer(game);
+        com.stonebreak.core.world.WorldLifecycle.returnCraftingGridsToPlayer(game);
         logger.debug("Starting Game cleanup...");
 
         if (Game.getWorld() != null) {

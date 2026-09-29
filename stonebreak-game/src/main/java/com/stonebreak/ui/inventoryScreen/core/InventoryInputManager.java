@@ -543,12 +543,11 @@ public class InventoryInputManager {
 
             // If still dragging after trying to return, try to add to player inventory
             if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
-                // addItem can fill partially before failing — drop only what didn't fit,
-                // never the whole stack (that duplicated the part already added).
+                // addItem fills partially before reporting failure, so drop only the remainder
+                // (dropping the whole stack after a partial add duplicated the difference).
                 ItemStack held = dragState.draggedItemStack;
-                int remainder = held.getCount() - inventory.addItemAndReturnCount(held);
-                if (remainder > 0) {
-                    held.setCount(remainder);
+                held.setCount(held.getCount() - inventory.addItemAndReturnCount(held));
+                if (!held.isEmpty()) {
                     InventoryDragDropHandler.dropEntireStackIntoWorld(dragState);
                 }
             }
