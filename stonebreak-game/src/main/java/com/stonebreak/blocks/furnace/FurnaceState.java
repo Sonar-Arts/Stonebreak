@@ -1,11 +1,9 @@
 package com.stonebreak.blocks.furnace;
 
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.crafting.SmeltingManager;
 import com.stonebreak.crafting.SmeltingRecipe;
-import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.items.ItemType;
+import com.stonebreak.items.ItemStackStateCodec;
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.World;
@@ -21,8 +19,7 @@ import org.joml.Vector3f;
  * <pre>
  *   furnace:state=Lit;ing=B:23:1;fuel=B:45:5;out=I:46:2;burn=120;burnTotal=200;cook=45
  * </pre>
- * Each ItemStack is encoded as {@code kind:id:count} where kind is
- * {@code B} (BlockType) or {@code I} (ItemType).
+ * Each ItemStack is encoded by {@link ItemStackStateCodec} ({@code kind:id:count[:state]}).
  */
 public final class FurnaceState {
 
@@ -240,11 +237,7 @@ public final class FurnaceState {
     }
 
     private static ItemStack clampStack(ItemStack s) {
-        if (s == null || s.isEmpty()) return new ItemStack(0, 0);
-        if (s.getCount() > s.getMaxStackSize()) {
-            s.setCount(s.getMaxStackSize());
-        }
-        return s;
+        return ItemStackStateCodec.clamp(s);
     }
 
     /** Returns just the renderable state name ({@code "Lit"} / {@code "Unlit"}). */
@@ -258,26 +251,11 @@ public final class FurnaceState {
     }
 
     private static String encodeStack(ItemStack s) {
-        if (s == null || s.isEmpty()) return "B:0:0";
-        Item item = s.getItem();
-        char kind = (item instanceof ItemType) ? 'I' : 'B';
-        return kind + ":" + item.getId() + ":" + s.getCount();
+        return ItemStackStateCodec.encode(s);
     }
 
     private static ItemStack decodeStack(String v) {
-        if (v == null || v.isEmpty()) return new ItemStack(0, 0);
-        String[] parts = v.split(":");
-        if (parts.length != 3) return new ItemStack(0, 0);
-        char kind = parts[0].isEmpty() ? 'B' : parts[0].charAt(0);
-        int id    = parseInt(parts[1]);
-        int count = parseInt(parts[2]);
-        if (count <= 0 || id <= 0) return new ItemStack(0, 0);
-        if (kind == 'I') {
-            ItemType it = ItemType.getById(id);
-            return it != null ? new ItemStack(it, count) : new ItemStack(0, 0);
-        }
-        BlockType bt = BlockType.getById(id);
-        return bt != null ? new ItemStack(bt, count) : new ItemStack(0, 0);
+        return ItemStackStateCodec.decode(v);
     }
 
     private static int parseInt(String s) {

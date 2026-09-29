@@ -143,6 +143,10 @@ public class BlockPlacer {
                 com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = com.stonebreak.core.Game.getInstance().getFurnaceRegistry();
                 if (fr != null) fr.onBlockPlaced(world, placePos.x, placePos.y, placePos.z, selectedBlockType);
             }
+            if (selectedBlockType == BlockType.WORKBENCH) {
+                // Predictive: a new table starts empty, even where a broken one held items.
+                world.getWorkbenchRegistry().onBlockPlaced(world, placePos.x, placePos.y, placePos.z);
+            }
             if (selectedBlockType.isStairs()) {
                 // Predictive local state: ascending the way the placer looks.
                 // The authoritative server derives the same facing from the

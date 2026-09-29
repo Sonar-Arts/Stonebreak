@@ -168,11 +168,11 @@ public final class GameStateController {
         }
     }
 
-    public void openWorkbenchScreen() {
+    public void openWorkbenchScreen(com.openmason.engine.util.BlockPos pos) {
         WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
         if (workbenchScreen != null && currentState == GameState.PLAYING && !paused) {
             setState(GameState.WORKBENCH_UI);
-            workbenchScreen.open();
+            workbenchScreen.open(pos);
         }
     }
 

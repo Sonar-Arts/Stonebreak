@@ -32,7 +32,7 @@ public final class WorldLifecycle {
 
         // Before the save flush captures the inventory: anything still on the cursor or in
         // a crafting grid lives only in these per-world screens and would be lost (issue #307).
-        returnCraftingGridsToPlayer();
+        returnCraftingGridsToPlayer(game);
 
         if (game.getSaveService() != null) {
             System.out.println("[WORLD-ISOLATION] Flushing saves before world reset");
@@ -94,9 +94,13 @@ public final class WorldLifecycle {
         System.out.println("========================================");
     }
 
-    private void returnCraftingGridsToPlayer() {
+    /**
+     * Returns the inventory's 2x2 grid and cursor stack to the player before the save captures
+     * the inventory. Crafting tables are not emptied: their grid is block state that is saved
+     * with the chunk (issue #307). Also called by {@code GameShutdown}.
+     */
+    public static void returnCraftingGridsToPlayer(Game game) {
         try {
-            if (game.getWorkbenchScreen() != null) game.getWorkbenchScreen().returnHeldItemsToPlayer();
             if (game.getInventoryScreen() != null) game.getInventoryScreen().returnHeldItemsToPlayer();
         } catch (RuntimeException e) {
             System.err.println("[WORLD-ISOLATION] Error returning crafting grids: " + e.getMessage());

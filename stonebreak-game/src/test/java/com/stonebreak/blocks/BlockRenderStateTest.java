@@ -40,6 +40,17 @@ class BlockRenderStateTest {
     }
 
     @Test
+    void aCraftingTableGridNamesNoVariantAndNeverRemeshes() {
+        // Issue #307: the grid is persisted in the block state, and every slot edit
+        // rewrites it. Those edits must not rebuild the chunk mesh.
+        String empty = "workbench:grid=B:0:0|B:0:0|B:0:0|B:0:0|B:0:0|B:0:0|B:0:0|B:0:0|B:0:0";
+        String filled = "workbench:grid=B:5:3|B:0:0|B:0:0|B:0:0|I:46:1|B:0:0|B:0:0|B:0:0|B:0:0";
+        assertNull(BlockRenderState.meshVariantKey(filled));
+        assertFalse(BlockRenderState.affectsMesh(empty, filled));
+        assertFalse(BlockRenderState.affectsMesh(null, empty));
+    }
+
+    @Test
     void absentStatesHaveNoVariant() {
         assertNull(BlockRenderState.meshVariantKey(null));
         assertNull(BlockRenderState.meshVariantKey(""));

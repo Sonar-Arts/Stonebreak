@@ -14,7 +14,7 @@ import java.util.List;
 public class InventoryCraftingManager {
 
     private final CraftingManager craftingManager;
-    private final ItemStack[] craftingInputSlots;
+    private ItemStack[] craftingInputSlots;
     private ItemStack craftingOutputSlot;
     private final int craftingGridSize;
 
@@ -35,6 +35,31 @@ public class InventoryCraftingManager {
         for (int i = 0; i < totalSlots; i++) {
             this.craftingInputSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
         }
+    }
+
+    /**
+     * Makes {@code slots} the live crafting grid: every read and edit goes straight to that
+     * array from now on. Lets a crafting table's UI operate directly on the block's persisted
+     * grid ({@code WorkbenchState}) instead of a screen-owned copy. The output slot is
+     * recomputed for the new contents.
+     *
+     * @throws IllegalArgumentException if the array does not match this grid's size
+     */
+    public void bindInputSlots(ItemStack[] slots) {
+        int totalSlots = craftingGridSize * craftingGridSize;
+        if (slots == null || slots.length != totalSlots) {
+            throw new IllegalArgumentException("Crafting grid needs " + totalSlots + " slots, got "
+                    + (slots == null ? "null" : slots.length));
+        }
+        this.craftingInputSlots = slots;
+        updateCraftingOutput();
+    }
+
+    /** Detaches from any bound grid, back to a fresh, empty screen-owned one. */
+    public void unbindInputSlots() {
+        this.craftingInputSlots = new ItemStack[craftingGridSize * craftingGridSize];
+        initializeCraftingSlots();
+        this.craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0);
     }
 
     public void updateCraftingOutput() {

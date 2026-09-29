@@ -15,7 +15,8 @@ import java.util.Objects;
  * <p>Most state strings <em>are</em> their own variant key. The exception is a
  * string that carries volatile payload alongside the variant: a furnace's
  * string also holds its inventory and cook progress, which change every tick,
- * so only its {@code state=} value names the mesh.
+ * so only its {@code state=} value names the mesh. A crafting table's string is
+ * payload only (its grid) and names no variant at all.
  *
  * <p>{@link #affectsMesh} follows from the same projection, and both the local
  * edit path ({@code World.setBlockStateAt}) and the authoritative network echo
@@ -35,11 +36,15 @@ public final class BlockRenderState {
      * The mesh variant a raw state string selects, or {@code null} for none.
      *
      * <p>A {@code prefix:...state=<value>...} string projects down to just
-     * {@code <value>}; anything else is returned whole.
+     * {@code <value>}; a payload-only string (crafting-table grid) projects to
+     * {@code null}; anything else is returned whole.
      */
     public static String meshVariantKey(String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
+        }
+        if (com.stonebreak.blocks.workbench.WorkbenchState.isWorkbenchState(raw)) {
+            return null; // grid edits must never remesh the chunk
         }
         int colon = raw.indexOf(':');
         if (colon < 0) {
