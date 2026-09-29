@@ -58,8 +58,10 @@ public class WorkbenchController extends InventoryController {
      * Closes the workbench screen and handles cleanup.
      */
     public void close() {
+        // The grid is not per-block world state: empty it back into the inventory
+        // (overflow dropped) so nothing is lost on world exit (issue #307).
+        returnHeldItemsToPlayer();
         setVisible(false);
-        // Items remain in crafting grid when closing (consistent with original behavior)
 
         // Update mouse capture state when workbench closes
         if (game.getMouseCaptureManager() != null) {
@@ -69,27 +71,12 @@ public class WorkbenchController extends InventoryController {
 
     /**
      * Handles close request from input (Escape key, etc.).
-     * Includes drag state cleanup before closing.
      */
     public void handleCloseRequest() {
         if (isVisible()) {
-            // Handle any dragged items before closing
-            handleDraggedItemsOnClose();
-            // Call game's close method which will handle state transition and call our close() method
+            // Game's close method handles the state transition and calls close(),
+            // which returns the dragged stack and the grid to the player.
             game.closeWorkbenchScreen();
-        }
-    }
-
-    /**
-     * Handles dragged items when closing the workbench.
-     * Attempts to return items to original slots or player inventory.
-     */
-    private void handleDraggedItemsOnClose() {
-        // This functionality would be handled by the InputManager
-        // The controller delegates to the InputManager for drag state management
-        InventoryInputManager inputManager = getInputManager();
-        if (inputManager != null) {
-            inputManager.handleCloseWithDraggedItems();
         }
     }
 

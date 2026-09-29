@@ -30,6 +30,10 @@ public final class WorldLifecycle {
         System.out.println("[MAIN-MENU-TRANSITION] Starting complete world reset...");
         System.out.println("========================================");
 
+        // Before the save flush captures the inventory: anything still on the cursor or in
+        // a crafting grid lives only in these per-world screens and would be lost (issue #307).
+        returnCraftingGridsToPlayer();
+
         if (game.getSaveService() != null) {
             System.out.println("[WORLD-ISOLATION] Flushing saves before world reset");
             game.getSaveService().flushSavesBlocking("world reset");
@@ -88,6 +92,15 @@ public final class WorldLifecycle {
         System.out.println("[MAIN-MENU-TRANSITION] ✓ World reset completed - main menu is now clean!");
         System.out.println("[MAIN-MENU-TRANSITION] No background systems should be running.");
         System.out.println("========================================");
+    }
+
+    private void returnCraftingGridsToPlayer() {
+        try {
+            if (game.getWorkbenchScreen() != null) game.getWorkbenchScreen().returnHeldItemsToPlayer();
+            if (game.getInventoryScreen() != null) game.getInventoryScreen().returnHeldItemsToPlayer();
+        } catch (RuntimeException e) {
+            System.err.println("[WORLD-ISOLATION] Error returning crafting grids: " + e.getMessage());
+        }
     }
 
     /**

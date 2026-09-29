@@ -51,6 +51,11 @@ public class InventoryScreen {
         controller.toggleVisibility();
     }
 
+    /** Returns the cursor stack and the 2x2 crafting grid to the player (see issue #307). */
+    public void returnHeldItemsToPlayer() {
+        controller.returnHeldItemsToPlayer();
+    }
+
     /**
      * Returns whether the inventory screen is currently visible.
      */
