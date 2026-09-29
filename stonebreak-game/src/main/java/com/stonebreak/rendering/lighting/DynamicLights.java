@@ -169,6 +169,24 @@ public final class DynamicLights {
         upload.frame = frame;
     }
 
+    /**
+     * No point lights, torch shadows or bounce light — for draws outside the world
+     * (UI model previews). Drops the per-frame cache so the next {@link #applyTo}
+     * re-uploads this frame's lights instead of trusting the zeroed uniforms.
+     */
+    public static void applyNoneTo(ShaderProgram shader) {
+        if (shader == null) return;
+        Upload upload = uploads.computeIfAbsent(shader, Upload::new);
+        glUniform1i(upload.countLocation, 0);
+        glUniform1i(upload.shadowLocation, 0);
+        // Samplers keep their own units even while unused: two sampler types on one unit
+        // (these defaulting to the albedo's unit 0) fail every draw on strict drivers.
+        glUniform1i(upload.samplerLocation, POINT_SHADOW_TEXTURE_UNIT);
+        glUniform1i(upload.indirectLocation, 0);
+        glUniform1i(upload.indirectSamplerLocation, INDIRECT_TEXTURE_UNIT);
+        upload.frame = -1;
+    }
+
     /** Separate from the sun map (5), pulled quads (7) and block textures (0/1). */
     public static final int POINT_SHADOW_TEXTURE_UNIT = 6;
     public static final int INDIRECT_TEXTURE_UNIT = 8;
