@@ -70,3 +70,5 @@ __pycache__/
 # it warns above 50 MB). Decide LFS vs plain git before committing.
 !/checkpoints/v4/
 !/checkpoints/v4/*.pt
+# written by the game's model setup (ModelSetup.java)
+/.setup-unavailable

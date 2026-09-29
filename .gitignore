@@ -154,6 +154,8 @@ QWEN.md
 # Terrain models (Models/): the terrain service's on-disk tile cache. Each model folder ignores
 # its own data, checkpoints and environment (Models/DaedalusTGM-Exp/.gitignore).
 /Models/tile_cache/
+/Models/triton_cache/
+/Models/tools/
 /Models/**/__pycache__/
 # Terrain service log (TGMPipe's default -Dstonebreak.tgmpipe.logDir).
 /Models/logs/

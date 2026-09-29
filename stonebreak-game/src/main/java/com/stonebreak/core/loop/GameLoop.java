@@ -31,6 +31,7 @@ public final class GameLoop {
     // it was reached). Excludes LOADING, PLAYING, and every in-game overlay (PAUSED, inventory,
     // workbench, etc.) so music stops the moment a world actually starts.
     private static final Set<GameState> MUSIC_ACTIVE_STATES = EnumSet.of(
+            GameState.MODEL_SETUP,
             GameState.MAIN_MENU,
             GameState.WORLD_SELECT,
             GameState.CHARACTER_CREATION,
@@ -110,6 +111,12 @@ public final class GameLoop {
             case STARTUP_INTRO -> {
                 if (game.getStartupIntroScreen() != null) {
                     game.getStartupIntroScreen().update(deltaTime);
+                }
+                return false;
+            }
+            case MODEL_SETUP -> {
+                if (game.getModelSetupScreen() != null) {
+                    game.getModelSetupScreen().update(deltaTime);
                 }
                 return false;
             }

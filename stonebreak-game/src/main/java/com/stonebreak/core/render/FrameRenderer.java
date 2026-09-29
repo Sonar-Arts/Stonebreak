@@ -93,6 +93,10 @@ public final class FrameRenderer {
                 SonarArtsIntroScreen intro = game.getStartupIntroScreen();
                 if (intro != null) intro.render(width, height);
             }
+            case MODEL_SETUP -> {
+                var setupScreen = game.getModelSetupScreen();
+                if (setupScreen != null) setupScreen.render(width, height);
+            }
             case MAIN_MENU -> {
                 MainMenu mainMenu = game.getMainMenu();
                 if (mainMenu != null) mainMenu.render(width, height);

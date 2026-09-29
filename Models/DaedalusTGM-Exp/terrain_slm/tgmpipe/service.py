@@ -33,6 +33,15 @@ from terrain_slm.tgmpipe.scheduler import Scheduler, TileKey
 log = logging.getLogger("tgmpipe")
 
 
+def pick_device(requested: str) -> str:
+    """The service's device: `requested`, except that plain "cuda" on a two-GPU machine means cuda:1
+    (TERRAIN_SLM_DEVICE overrides), keeping GPU 0 for the game's rendering."""
+    import torch
+    if requested == "cuda" and torch.cuda.device_count() > 1:
+        return os.getenv("TERRAIN_SLM_DEVICE", "cuda:1")
+    return requested
+
+
 class Output:
     """Frames to the game, whole and one at a time, from any thread."""
 
@@ -183,9 +192,7 @@ def main(argv=None) -> None:
         from terrain_slm.world.tiles import TileBuilder
         from terrain_slm.world.world_config import WorldConfig
 
-        device = args.device
-        if device == "cuda" and torch.cuda.device_count() > 1:
-            device = os.getenv("TERRAIN_SLM_DEVICE", "cuda:1")  # keep GPU 0 for rendering
+        device = pick_device(args.device)
         model_dir = Path(args.model_path)
         if not model_dir.is_absolute():
             model_dir = MODEL_DIR / model_dir
@@ -197,6 +204,9 @@ def main(argv=None) -> None:
                              cache_regions=regions)
         log.info("model %s on %s loaded in %.1f s; rivers: %s", gen.model_id, device,
                  time.monotonic() - t0, gen.river.describe())
+        t0 = time.monotonic()
+        gen.warm_up()   # kernels + CUDA graphs now, so the first tile does not pay for them
+        log.info("GPU kernels warm in %.1f s", time.monotonic() - t0)
 
         hello = W.read_frame(proto_in)
         if hello is None:

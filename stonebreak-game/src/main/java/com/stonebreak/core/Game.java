@@ -121,6 +121,9 @@ public class Game {
      */
     public void initCoreComponents(Renderer renderer, BlockTextureArray textureAtlas, InputHandler inputHandler, long window) {
         this.window = window;
+        // Terrain model setup (environment install + GPU kernel compile) runs in the background from the
+        // very start, under the intro; the setup screen after the intro shows it if it still has work.
+        com.stonebreak.world.generation.diffusion.tgmpipe.ModelSetup.getInstance().start();
         services.setRenderer(renderer);
         services.setTextureAtlas(textureAtlas);
         services.setInputHandler(inputHandler);
@@ -810,6 +813,13 @@ public class Game {
      */
     public SonarArtsIntroScreen getStartupIntroScreen() {
         return screens.startupIntroScreen();
+    }
+
+    /**
+     * Gets the game-launch terrain model setup screen.
+     */
+    public com.stonebreak.ui.modelSetup.ModelSetupScreen getModelSetupScreen() {
+        return screens.modelSetupScreen();
     }
 
     /**

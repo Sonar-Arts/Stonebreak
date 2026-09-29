@@ -94,18 +94,16 @@ public final class TGMPipe {
     private volatile String cacheNamespace;
 
     private TGMPipe() {
-        Path root = repoRoot(Path.of(System.getProperty("user.dir")).toAbsolutePath());
-        this.workingDir = resolve(root, "stonebreak.tgmpipe.repoDir", SLM_DIR);
+        this.workingDir = slmDir();
         this.command = List.of(
-                resolve(root, "stonebreak.tgmpipe.pythonExe", SLM_DIR + "/.venv/bin/python").toString(),
+                pythonExe().toString(),
                 "-m", MODULE,
                 System.getProperty("stonebreak.tgmpipe.model", DEFAULT_MODEL),
                 "--device", System.getProperty("stonebreak.tgmpipe.device", "cuda"),
                 // In-memory generation cache (GPU) and finished-tile cache on disk.
                 "--cache-size", System.getProperty("stonebreak.tgmpipe.cacheSize", "4G"),
                 "--disk-cache", System.getProperty("stonebreak.tgmpipe.diskCache", "8G"));
-        this.logFile = resolve(root, "stonebreak.tgmpipe.logDir", MODELS_DIR + "/logs")
-                .resolve("tgmpipe.log");
+        this.logFile = logDir().resolve("tgmpipe.log");
         this.startupTimeoutMs = Long.getLong("stonebreak.tgmpipe.startupTimeoutMs", 180_000L);
         this.stallTimeoutMs = Long.getLong("stonebreak.tgmpipe.stallTimeoutMs", 600_000L);
 
@@ -132,6 +130,35 @@ public final class TGMPipe {
         return start;
     }
 
+    private static Path root() {
+        return repoRoot(Path.of(System.getProperty("user.dir")).toAbsolutePath());
+    }
+
+    /** {@code Models/} in this checkout. */
+    static Path modelsDir() {
+        return root().resolve(MODELS_DIR);
+    }
+
+    /** The model's project folder, where the service runs ({@code -Dstonebreak.tgmpipe.repoDir}). */
+    static Path slmDir() {
+        return resolve(root(), "stonebreak.tgmpipe.repoDir", SLM_DIR);
+    }
+
+    /** The model's Python, inside the environment {@link ModelSetup} installs. */
+    static Path pythonExe() {
+        String venvPython = UvTool.windows() ? "/.venv/Scripts/python.exe" : "/.venv/bin/python";
+        return resolve(root(), "stonebreak.tgmpipe.pythonExe", SLM_DIR + venvPython);
+    }
+
+    static Path logDir() {
+        return resolve(root(), "stonebreak.tgmpipe.logDir", MODELS_DIR + "/logs");
+    }
+
+    /** Compiled GPU kernels, shared by the setup's warm-up and the service (ignored by git). */
+    static Path tritonCacheDir() {
+        return modelsDir().resolve("triton_cache");
+    }
+
     private static Path resolve(Path root, String property, String defaultRelative) {
         Path path = Path.of(System.getProperty(property, defaultRelative));
         return path.isAbsolute() ? path : root.resolve(path);
@@ -149,6 +176,9 @@ public final class TGMPipe {
      * @throws TGMPipeException if the service fails to start or become ready in time
      */
     public void ensureRunning(DoubleConsumer progress) {
+        // First launch installs the environment and compiles the kernels (ModelSetup, started with the
+        // game): wait for it here, outside the lock, rather than launching a Python that is not there yet.
+        ModelSetup.getInstance().awaitUsable(progress);
         synchronized (lock) {
             wanted = true;
             crashes.clear();
@@ -268,10 +298,11 @@ public final class TGMPipe {
         LOG.info(() -> "Starting TGMPipe (" + MODEL_NAME + "): " + command);
         Process p;
         try {
-            p = new ProcessBuilder(command)
+            ProcessBuilder pb = new ProcessBuilder(command)
                     .directory(workingDir.toFile())
-                    .redirectError(ProcessBuilder.Redirect.appendTo(logFile.toFile()))
-                    .start();
+                    .redirectError(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
+            pb.environment().put("TRITON_CACHE_DIR", tritonCacheDir().toString());
+            p = pb.start();
         } catch (IOException e) {
             throw new TGMPipeException("failed to launch " + command + " in " + workingDir, e);
         }

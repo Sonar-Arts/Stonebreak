@@ -23,6 +23,7 @@ import torch
 import torch.nn.functional as F
 
 from terrain_slm import MODEL_NAME
+from terrain_slm import kernels as K
 from terrain_slm.data import descriptors as D
 from terrain_slm.models import planner as P
 from terrain_slm.models import refiner as R
@@ -258,8 +259,18 @@ def procedural_controls(ci0: int, cj0: int, hc: int, wc: int, seed: int, device)
 
     Stand-ins for painted maps: continents, mountain ranges and hills (the smooth trend),
     roughness (wildness) from the same fields, and climate archetypes. Pointwise in cell
-    coordinates, so any window of it is exact.
+    coordinates, so any window of it is exact. On CUDA this runs as one Triton kernel
+    (kernels/controls.py, bit-identical, ~1000x faster); `procedural_controls_torch` is the definition.
     """
+    if K.available(device):
+        from terrain_slm.kernels import controls as KC
+        return KC.procedural_controls(ci0, cj0, hc, wc, seed, device)
+    return procedural_controls_torch(ci0, cj0, hc, wc, seed, device)
+
+
+def procedural_controls_torch(ci0: int, cj0: int, hc: int, wc: int, seed: int, device) -> dict:
+    """The reference definition of `procedural_controls` (kernels/controls.py must match it bit for bit:
+    change both together, and the kernel's `_check_constants`)."""
     ci = torch.arange(ci0, ci0 + hc, device=device, dtype=torch.float32).view(-1, 1).expand(hc, wc)
     cj = torch.arange(cj0, cj0 + wc, device=device, dtype=torch.float32).view(1, -1).expand(hc, wc)
     continent = _fbm(ci, cj, 900.0, seed, 1, octaves=4)
@@ -364,6 +375,10 @@ class GenConfig:
     # regression: accumulation then grows downstream by construction, so rivers form connected
     # networks instead of fragments that start and stop wherever the regressed flow wobbles.
     routed_drainage: bool = True
+    # Detail / relief samplers as fused Triton convolutions in one CUDA graph (kernels/unet.py):
+    # ~2x faster detail windows, ~3x faster relief windows. Numerically close to the autocast
+    # samplers but not identical, so the model_id carries a marker. TGM_KERNELS=0 also turns it off.
+    fused_kernels: bool = True
 
 
 class _LRU(OrderedDict):
@@ -419,6 +434,13 @@ class WorldGenerator:
             self.detail = self.detail.to(memory_format=torch.channels_last)
         self.model_id = (f"{MODEL_NAME}/{model_dir.name}:p{pk.get('step', 0)}:r{rk.get('step', 0)}:l{rel_step}"
                          f":h{hyd_step}:b{bank_step}:g{dg_step}:d{det_step}")
+        self._samplers = {}
+        self._fused = set()   # ids of the UNets sampled by kernels/unet.py
+        if cfg.fused_kernels and K.available(device):
+            from terrain_slm.kernels.unet import FusedSampler
+            self._fused = {id(m) for m in (self.detail, self.relief) if m is not None and FusedSampler.supported(m)}
+        if self._fused:
+            self.model_id += ":kf1"   # fused-kernel samplers (their numbers differ from autocast's)
         # Optional biome sidecar (v4): coherent biomes instead of the rule classifier's per-column decisions.
         self.biomenet, bio_step = self._optional(model_dir / "biome.pt", lambda c: BN.BiomeNet(BN.BiomeNetConfig(**c)))
         if bio_step != "none":
@@ -451,6 +473,40 @@ class WorldGenerator:
         m = build(c).to(self.device).eval()
         m.load_state_dict(k["model"])
         return m, k.get("step", 0)
+
+    def _sample(self, model, cond: torch.Tensor, noise: torch.Tensor, steps: int, t_start: float = 0.0) -> torch.Tensor:
+        """Euler-sample `model` (the detail or relief UNet) from `noise` under `cond`: the fused CUDA-graph
+        sampler when kernels are on (one per model and window shape, built on first use), else the torch
+        sampler. Both return the encoded sample (1, 1, H, W) fp32."""
+        if id(model) not in self._fused:
+            if isinstance(model, DT.Detail):
+                return DT.sample(model, cond.contiguous(memory_format=torch.channels_last), noise, steps=steps, t_start=t_start)
+            return R.sample(model, cond, noise, steps=steps)
+        key = (id(model), tuple(cond.shape), steps, t_start)
+        fs = self._samplers.get(key)
+        if fs is None:
+            from terrain_slm.kernels.unet import FusedSampler
+            fs = self._samplers[key] = FusedSampler(model, cond.shape[-2], cond.shape[-1], steps, t_start)
+        return fs(cond, noise)
+
+    def warm_up(self, report=lambda what: None) -> None:
+        """Compile the GPU kernels and capture the samplers' CUDA graphs now instead of on the first tile
+        (compiled kernels persist in Triton's disk cache; graphs live as long as this generator).
+        `report(name)` hears each piece as it starts. A no-op on the torch path."""
+        if not K.available(self.device):
+            return
+        with self.lock, torch.no_grad():
+            report("terrain controls")
+            procedural_controls(0, 0, 8, 8, self.seed, self.device)
+            for name, model, n, n_cond, steps, t_start in (
+                    ("relief sampler", self.relief, RELIEF_EXT, RL.N_COND, self.cfg.relief_steps, 0.0),
+                    ("detail sampler", self.detail, DETAIL_EXT, DT.N_COND, self.cfg.detail_steps, DETAIL_T_START)):
+                if model is None or id(model) not in self._fused:
+                    continue
+                report(name)
+                zeros = lambda c: torch.zeros(1, c, n, n, device=self.device)
+                self._sample(model, zeros(n_cond), zeros(1), steps, t_start)
+            torch.cuda.synchronize(self.device)
 
     def set_block_scale(self, scale: BlockScale) -> None:
         """The game's metres<->blocks mapping (the service passes the one from its handshake)."""
@@ -524,7 +580,7 @@ class WorldGenerator:
             cond = RL.build_cond(smooth, wild, climate, one, one)
             noise = S.white_noise(ci0, cj0, n, n, self.seed, RELIEF_NOISE_STREAM, self.device)[None, None]
             with torch.no_grad():
-                x = R.sample(self.relief, cond, noise, steps=self.cfg.relief_steps)
+                x = self._sample(self.relief, cond, noise, self.cfg.relief_steps)
             # Oceans keep the trend (the training regions have little deep sea); inland,
             # sampled valleys may not open basins below sea level.
             gate = _smoothstep((smooth + 100.0) / 300.0)
@@ -824,8 +880,7 @@ class WorldGenerator:
                                      up(climate), up(logacc), up(river), flag(0.0), flag(1.0), flag(float(use_climate)),
                                      flag(has_flow))
                 with torch.no_grad():
-                    x = DT.sample(self.detail, cond.contiguous(memory_format=torch.channels_last), noise,
-                                  steps=self.cfg.detail_steps, t_start=DETAIL_T_START)
+                    x = self._sample(self.detail, cond, noise, self.cfg.detail_steps, DETAIL_T_START)
                 res = DT.decode(x.clamp(-DETAIL_X_LIMIT, DETAIL_X_LIMIT))
                 ok = bool(torch.isfinite(x).all()) and float(x.abs().max()) < DETAIL_X_LIMIT
                 if ok:

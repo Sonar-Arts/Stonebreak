@@ -44,9 +44,22 @@ uv sync
 
 ### Playing
 
-Nothing to do by hand. Stonebreak's `TGMPipe` launches `python -m terrain_slm.tgmpipe` with the
-model in `checkpoints/v4` and hands it the world's scale (`TerrainScale`) in the handshake. The
-service's log is `Models/logs/tgmpipe.log`.
+Nothing to do by hand: just launch the game. On the first launch (and after an update to `uv.lock`
+or the GPU kernels) the game sets the model up itself, under the intro and then on a setup screen
+that shows each step (Java `ModelSetup` + `ModelSetupScreen`):
+
+1. checks for an NVIDIA GPU (`nvidia-smi`; without one nothing is downloaded and standard terrain still works),
+2. finds `uv` (PATH, or a pinned release it downloads into `Models/tools/uv/`),
+3. runs `uv sync --frozen` here (Python 3.12, CUDA PyTorch, Triton: a few GB the first time),
+4. runs `python -m terrain_slm.tgmpipe.warmup`: loads the model on the GPU and compiles the custom
+   kernels into `Models/triton_cache/`.
+
+A stamp in `.venv/.stonebreak-setup` records what was set up, so later launches skip all of it and
+show nothing. The player can continue to the menu while it runs. Log: `Models/logs/setup.log`.
+`-Dstonebreak.modelSetup.force=true` redoes every step; `-Dstonebreak.modelSetup=off` disables it.
+
+Then `TGMPipe` launches `python -m terrain_slm.tgmpipe` with the model in `checkpoints/v4` and hands
+it the world's scale (`TerrainScale`) in the handshake. The service's log is `Models/logs/tgmpipe.log`.
 
 The service speaks only the terrain protocol on stdio (`terrain_slm/tgmpipe/protocol.py`), so it is not
 run by hand. To see it work, run its tests: `tests/test_tgmpipe_process.py` drives the real service

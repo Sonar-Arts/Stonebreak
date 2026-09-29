@@ -153,7 +153,7 @@ public final class GameStateController {
 
     private void updatePauseState(GameState state) {
         switch (state) {
-            case STARTUP_INTRO, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI,
+            case STARTUP_INTRO, MODEL_SETUP, MAIN_MENU, LOADING, SETTINGS, PAUSED, WORKBENCH_UI,
                  MULTIPLAYER_MENU, HOST_WORLD_SELECT, JOIN_WORLD_SCREEN,
                  WORLD_SELECT, CHARACTER_CREATION, TERRAIN_MAPPER, STATISTICS, GLOSSARY -> paused = true;
             // FOCUS_BATTLE keeps its own clock (GameLoop ticks FocusBattle instead of the world), so it
