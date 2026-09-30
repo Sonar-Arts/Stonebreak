@@ -4,6 +4,7 @@ import com.openmason.main.systems.assistant.ChatMessage;
 import com.openmason.main.systems.mortar.core.MortarRegion;
 import com.openmason.main.systems.mortar.core.MortarRegionPool;
 import com.openmason.main.systems.mortar.theme.MortarTheme;
+import com.openmason.main.systems.mortar.theme.MortarType;
 import com.openmason.main.systems.skija.SkijaFontStore;
 import imgui.ImGui;
 import io.github.humbleui.skija.Canvas;
@@ -41,7 +42,7 @@ import java.util.Set;
 final class ChatProseSkija implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(ChatProseSkija.class);
-    private static final float BASE_SIZE = 14f;
+    private static final float BASE_SIZE = MortarType.BODY;
     private static final float PARAGRAPH_GAP = 5f;
     private static final float HEADING_GAP = 9f;
     private static final float PADDING_Y = 2f;
@@ -133,7 +134,10 @@ final class ChatProseSkija implements AutoCloseable {
         return pieces;
     }
 
-    /** Render one prose run (from {@link #pieces}) at the current ImGui cursor. */
+    /**
+     * Render one prose run (from {@link #pieces}) at the current ImGui cursor.
+     * {@code width} and run heights are logical px (see {@link MortarRegion}).
+     */
     void renderRun(ChatMessage message, int runIndex, float width, String popupId) {
         Layout layout = layouts.get(message);
         if (layout == null || runIndex >= layout.proseRuns.size()) {
@@ -143,8 +147,9 @@ final class ChatProseSkija implements AutoCloseable {
         if (height <= 0) {
             return;
         }
-        if (!ImGui.isRectVisible(1, height)) {
-            ImGui.dummy(width, height); // culled: keep layout, skip raster+upload
+        if (!ImGui.isRectVisible(1, MortarRegion.toPixels(height))) {
+            // culled: keep layout, skip raster+upload
+            ImGui.dummy(MortarRegion.toPixels(width), MortarRegion.toPixels(height));
             return;
         }
         MortarRegion region = pool.get(poolCursor++);

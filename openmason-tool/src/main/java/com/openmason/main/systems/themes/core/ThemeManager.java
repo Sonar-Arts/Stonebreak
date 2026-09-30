@@ -573,9 +573,9 @@ public class ThemeManager {
                 StyleApplicator.applyThemeWithDensityManager(currentTheme, densityManager);
             }
             
-            if (currentDensity != DensityManager.UIDensity.NORMAL) {
-                densityManager.setDensity(currentDensity);
-            }
+            // setDensity() ignores an unchanged density, so a density loaded from
+            // Theme.ini before the context existed would never reach ImGui.
+            densityManager.reapply();
             
             logger.info("Theme system initialized: theme={}, density={}",
                        currentTheme != null ? currentTheme.getName() : "default",

@@ -50,7 +50,7 @@ public class TemplatesPanel {
             return;
         }
 
-        float availW = ImGui.getContentRegionAvailX();
+        float availW = MortarRegion.availWidth();
         int cols = Math.max(1, (int) ((availW + GAP) / (MIN_CARD_W + GAP)));
         float cardW = (availW - GAP * (cols - 1)) / cols;
         int rows = (templates.size() + cols - 1) / cols;

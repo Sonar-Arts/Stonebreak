@@ -14,6 +14,7 @@ import com.openmason.main.systems.mortar.parts.MortarBadge;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
 import com.openmason.main.systems.themes.core.ThemeManager;
+import com.openmason.main.systems.mortar.theme.MortarType;
 import imgui.ImGui;
 import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
@@ -176,7 +177,7 @@ public class PreviewPanel {
     // ---- hero -------------------------------------------------------------
 
     private void renderHero(String name, String badge) {
-        float width = ImGui.getContentRegionAvailX();
+        float width = MortarRegion.availWidth();
         if (width < 1f) {
             return;
         }
@@ -192,7 +193,7 @@ public class PreviewPanel {
             // Name (wrapped, never truncated) + badge below the thumbnail.
             float nameTop = y + THUMB_H + 12f;
             float nameH = g.textWrapped(name == null ? "" : name, x, nameTop, w,
-                    Weight.MEDIUM, 16f, g.theme().text, 2);
+                    Weight.MEDIUM, MortarType.TITLE, g.theme().text, 2);
             if (badge != null && !badge.isEmpty()) {
                 MortarBadge.paint(g, x, nameTop + nameH + 12f, badge);
             }

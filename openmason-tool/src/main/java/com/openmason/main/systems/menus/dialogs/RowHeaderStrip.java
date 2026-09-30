@@ -5,6 +5,7 @@ import com.openmason.main.systems.mortar.core.MortarRegion;
 import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.mortar.theme.MortarType;
 import imgui.ImGui;
 
 import java.util.List;
@@ -56,7 +57,7 @@ final class RowHeaderStrip {
     static Result render(MortarRegion region, String badge, boolean badgeAccent,
                          String title, boolean titleFaint, String detail,
                          List<Action> actions) {
-        float availW = Math.max(1f, ImGui.getContentRegionAvailX());
+        float availW = Math.max(1f, MortarRegion.availWidth());
         region.begin(availW, HEIGHT);
 
         region.add("bg", 0f, 0f, availW, HEIGHT, (g, px, py, pw, ph, state) -> {
@@ -91,11 +92,11 @@ final class RowHeaderStrip {
                     float bx = px;
                     bx += paintBadge(g, bx, cy, badge, badgeAccent) + 8f;
                     int titleColor = titleFaint ? g.theme().textFaint : g.theme().text;
-                    g.text(title, bx, cy, MortarPainter.Align.LEFT, Weight.MEDIUM, 13f, titleColor);
-                    bx += g.measureWidth(title, Weight.MEDIUM, 13f) + 10f;
+                    g.text(title, bx, cy, MortarPainter.Align.LEFT, Weight.MEDIUM, MortarType.CONTROL, titleColor);
+                    bx += g.measureWidth(title, Weight.MEDIUM, MortarType.CONTROL) + 10f;
                     float remaining = px + pw - bx;
                     if (detail != null && !detail.isEmpty() && remaining > 30f) {
-                        g.textEllipsized(detail, bx, cy, remaining, Weight.REGULAR, 11f,
+                        g.textEllipsized(detail, bx, cy, remaining, Weight.REGULAR, MortarType.CAPTION,
                                 g.theme().textFaint);
                     }
                 });
@@ -124,7 +125,7 @@ final class RowHeaderStrip {
                         ? Argb.lerp(g.theme().border, g.theme().borderStrong, hover * 0.6f)
                         : Argb.withAlpha(g.theme().border, 0.5f));
         g.text(action.label(), bx + bw / 2f, by + bh / 2f, MortarPainter.Align.CENTER,
-                Weight.MEDIUM, 11.5f,
+                Weight.MEDIUM, MortarType.LABEL,
                 action.enabled()
                         ? Argb.lerp(g.theme().textDim, g.theme().text, hover)
                         : g.theme().textFaint);
@@ -136,15 +137,15 @@ final class RowHeaderStrip {
         if (text == null || text.isEmpty()) {
             return 0f;
         }
-        float textW = g.measureWidth(text, Weight.MEDIUM, 11f);
+        float textW = g.measureWidth(text, Weight.MEDIUM, MortarType.CAPTION);
         float pillW = textW + 16f;
         float top = cy - 9f;
         if (accent) {
             g.fillRoundRect(x, top, pillW, 18f, 9f, Argb.withAlpha(g.theme().accent, 0.90f));
-            g.text(text, x + 8f, cy, MortarPainter.Align.LEFT, Weight.MEDIUM, 11f, g.theme().onAccent);
+            g.text(text, x + 8f, cy, MortarPainter.Align.LEFT, Weight.MEDIUM, MortarType.CAPTION, g.theme().onAccent);
         } else {
             g.fillRoundRect(x, top, pillW, 18f, 9f, g.theme().badgeBg);
-            g.text(text, x + 8f, cy, MortarPainter.Align.LEFT, Weight.MEDIUM, 11f, g.theme().textDim);
+            g.text(text, x + 8f, cy, MortarPainter.Align.LEFT, Weight.MEDIUM, MortarType.CAPTION, g.theme().textDim);
         }
         return pillW;
     }

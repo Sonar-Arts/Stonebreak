@@ -2,6 +2,7 @@ package com.openmason.main.systems.assistant.ui;
 
 import com.openmason.main.systems.assistant.ChatMessage;
 import com.openmason.main.systems.mcp.McpImageContent;
+import com.openmason.main.systems.mortar.core.MortarRegion;
 import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
@@ -277,7 +278,8 @@ final class ChatMessageRenderer implements AutoCloseable {
             wrappedWithCode(message.text.toString(), id);
             return;
         }
-        float width = Math.max(60, ImGui.getContentRegionAvailX() - 4);
+        // Logical px: Skija prose scales with UI density like the ImGui text around it.
+        float width = Math.max(60, MortarRegion.availWidth() - 4);
         int codeIdx = 0;
         for (ChatProseSkija.Piece piece : prose.pieces(message, width)) {
             if (piece instanceof ChatProseSkija.Piece.Prose p) {

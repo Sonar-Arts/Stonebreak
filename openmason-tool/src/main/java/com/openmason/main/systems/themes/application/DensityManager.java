@@ -24,12 +24,6 @@ public class DensityManager {
     private UIDensity currentDensity = UIDensity.NORMAL;
     private boolean densityTransitionInProgress = false;
     
-    // Cached base values for scaling calculations
-    private float baseFontSize = 13.0f;
-    private float baseItemSpacing = 8.0f;
-    private float baseWindowPadding = 8.0f;
-    private float baseFramePadding = 4.0f;
-    
     // Change listeners
     private Consumer<UIDensity> densityChangeCallback;
     
@@ -187,47 +181,44 @@ public class DensityManager {
     }
     
     /**
-     * Apply current density scaling directly to ImGui context
+     * Apply the current density's text scale to the ImGui context.
+     *
+     * <p>Only the font scale is set here. Spacing, padding, rounding and border
+     * sizes are scaled by {@link #applyDensityToTheme} and applied with the
+     * theme; this used to also push ~14 style vars that were never popped, so
+     * each density change grew ImGui's style-var stack. Mortar/Skija surfaces
+     * read the same font scale ({@code MortarTheme.currentScale()}), so the
+     * whole UI follows density together.</p>
      */
     private void applyDensityToImGui() {
         if (!StyleApplicator.isImGuiContextValid()) {
             logger.warn("Cannot apply density - ImGui context is invalid");
             return;
         }
-        
+
         try {
             float scale = currentDensity.getScaleFactor();
-            
-            // Apply font scaling
             ImGui.getIO().setFontGlobalScale(scale);
-            
-            // Scale padding and spacing using ImGui style variables
-            ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, calculatePadding(baseWindowPadding), calculatePadding(baseWindowPadding));
-            ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, calculatePadding(baseFramePadding), calculatePadding(baseFramePadding));
-            ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, calculatePadding(baseItemSpacing), calculatePadding(baseItemSpacing));
-            
-            // Scale window and frame elements
-            scaleImGuiStyleVar(ImGuiStyleVar.WindowRounding, scale);
-            scaleImGuiStyleVar(ImGuiStyleVar.ChildRounding, scale);
-            scaleImGuiStyleVar(ImGuiStyleVar.FrameRounding, scale);
-            scaleImGuiStyleVar(ImGuiStyleVar.PopupRounding, scale);
-            scaleImGuiStyleVar(ImGuiStyleVar.ScrollbarRounding, scale);
-            scaleImGuiStyleVar(ImGuiStyleVar.GrabRounding, scale);
-            scaleImGuiStyleVar(ImGuiStyleVar.TabRounding, scale);
-            
-            // Scale border sizes with proper minimums
-            scaleImGuiStyleVarWithMin(ImGuiStyleVar.WindowBorderSize, scale, 0.5f);
-            scaleImGuiStyleVarWithMin(ImGuiStyleVar.ChildBorderSize, scale, 0.5f);
-            scaleImGuiStyleVarWithMin(ImGuiStyleVar.PopupBorderSize, scale, 0.5f);
-            scaleImGuiStyleVarWithMin(ImGuiStyleVar.FrameBorderSize, scale, 0.0f);
-            
-            logger.debug("Applied density scaling {}x to ImGui context", scale);
-            
+            logger.debug("Applied density text scale {}x to ImGui context", scale);
         } catch (Exception e) {
             logger.error("Failed to apply density scaling to ImGui", e);
         }
     }
-    
+
+    /**
+     * Re-apply the current density to the ImGui context even when it has not
+     * changed — e.g. once the context exists at startup, since
+     * {@link #setDensity} ignores a density equal to the current one.
+     */
+    public void reapply() {
+        densityLock.lock();
+        try {
+            applyDensityToImGui();
+        } finally {
+            densityLock.unlock();
+        }
+    }
+
     /**
      * Scale a theme's style variable
      */
@@ -261,51 +252,6 @@ public class DensityManager {
     }
     
     /**
-     * Scale an ImGui style variable
-     */
-    private void scaleImGuiStyleVar(int styleVar, float scale) {
-        try {
-            // Use ImGui.pushStyleVar to temporarily apply scaled values
-            float baseValue = getDefaultStyleVarValue(styleVar);
-            float scaledValue = baseValue * scale;
-            ImGui.pushStyleVar(styleVar, scaledValue);
-        } catch (Exception e) {
-            logger.debug("Failed to scale ImGui style var {}: {}", styleVar, e.getMessage());
-        }
-    }
-    
-    /**
-     * Scale an ImGui style variable with minimum value
-     */
-    private void scaleImGuiStyleVarWithMin(int styleVar, float scale, float minValue) {
-        try {
-            // Use ImGui.pushStyleVar to temporarily apply scaled values with minimum
-            float baseValue = getDefaultStyleVarValue(styleVar);
-            float scaledValue = Math.max(minValue, baseValue * scale);
-            ImGui.pushStyleVar(styleVar, scaledValue);
-        } catch (Exception e) {
-            logger.debug("Failed to scale ImGui style var {} with min: {}", styleVar, e.getMessage());
-        }
-    }
-    
-    /**
-     * Get default style variable value
-     */
-    private float getDefaultStyleVarValue(int styleVar) {
-        // Return reasonable default values for common style variables
-        switch (styleVar) {
-            case ImGuiStyleVar.WindowRounding: return 6.0f;
-            case ImGuiStyleVar.ChildRounding: return 3.0f;
-            case ImGuiStyleVar.FrameRounding: return 3.0f;
-            case ImGuiStyleVar.PopupRounding: return 3.0f;
-            case ImGuiStyleVar.ScrollbarRounding: return 9.0f;
-            case ImGuiStyleVar.GrabRounding: return 3.0f;
-            case ImGuiStyleVar.TabRounding: return 4.0f;
-            default: return 1.0f;
-        }
-    }
-    
-    /**
      * Set density change callback
      */
     public void setDensityChangeCallback(Consumer<UIDensity> callback) {
@@ -322,12 +268,6 @@ public class DensityManager {
         try {
             currentDensity = UIDensity.NORMAL;
             densityTransitionInProgress = false;
-            
-            // Reset base values to safe defaults
-            baseFontSize = 13.0f;
-            baseItemSpacing = 8.0f;
-            baseWindowPadding = 8.0f;
-            baseFramePadding = 4.0f;
             
             // Apply normal density to ImGui if available
             if (StyleApplicator.isImGuiContextValid()) {

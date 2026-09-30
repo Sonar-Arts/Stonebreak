@@ -6,6 +6,7 @@ import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.theme.MortarTheme;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.mortar.theme.MortarType;
 
 /**
  * A text button in one of two weights:
@@ -24,7 +25,7 @@ public final class MortarButton implements MortarPart {
     }
 
     private static final float RADIUS = 6f;
-    private static final float FONT_SIZE = 13f;
+    private static final float FONT_SIZE = MortarType.CONTROL;
 
     private final String label;
     private final Variant variant;

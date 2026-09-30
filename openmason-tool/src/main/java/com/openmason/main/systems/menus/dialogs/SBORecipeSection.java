@@ -8,6 +8,7 @@ import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.parts.MortarBadge;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.mortar.theme.MortarType;
 import imgui.ImGui;
 import imgui.flag.ImGuiDir;
 import imgui.flag.ImGuiKey;
@@ -241,7 +242,7 @@ public class SBORecipeSection implements AutoCloseable {
             return;
         }
 
-        float availW = Math.max(1f, ImGui.getContentRegionAvailX());
+        float availW = Math.max(1f, MortarRegion.availWidth());
         int perRow = Math.max(1, (int) ((availW + PILL_GAP) / (PILL_W + PILL_GAP)));
         // The trailing "+" pill occupies slot index recipes.size().
         int totalSlots = recipes.size() + 1;
@@ -295,7 +296,7 @@ public class SBORecipeSection implements AutoCloseable {
         int textColor = Argb.lerp(g.theme().textDim, g.theme().onAccent, sel);
         textColor = Argb.lerp(textColor, g.theme().text, Math.max(0f, hover - sel));
         g.text(label, x + w / 2f, y + h / 2f, MortarPainter.Align.CENTER,
-                Weight.MEDIUM, 12f, textColor);
+                Weight.MEDIUM, MortarType.LABEL, textColor);
     }
 
     private static void paintAddPill(MortarPainter g, float x, float y, float w, float h,
@@ -325,7 +326,7 @@ public class SBORecipeSection implements AutoCloseable {
      * second row when the panel is narrow.
      */
     private void renderToolbarMortar(EditableRecipe r) {
-        float availW = Math.max(1f, ImGui.getContentRegionAvailX());
+        float availW = Math.max(1f, MortarRegion.availWidth());
 
         float wGroup = stepperGroupWidth("Width");
         float hGroup = stepperGroupWidth("Height");
@@ -393,7 +394,7 @@ public class SBORecipeSection implements AutoCloseable {
             g.fillRoundRect(px, py, pw, ph, ph / 2f, Argb.withAlpha(g.theme().surface, 0.75f));
             g.strokeRoundRect(px, py, pw, ph, ph / 2f, 1f, g.theme().border);
             g.text(label, px + TB_LABEL_PAD, py + ph / 2f, MortarPainter.Align.LEFT,
-                    Weight.REGULAR, 11f, g.theme().textDim);
+                    Weight.REGULAR, MortarType.CAPTION, g.theme().textDim);
         });
         boolean canDec = value > min;
         boolean canInc = value < max;
@@ -401,7 +402,7 @@ public class SBORecipeSection implements AutoCloseable {
                 paintStepperSegment(g, px, py, pw, ph, state, "−", canDec));
         toolbarRegion.add(prefix + ".val", valX, y, VAL_W, TB_H, (g, px, py, pw, ph, state) ->
                 g.text(String.valueOf(value), px + pw / 2f, py + ph / 2f,
-                        MortarPainter.Align.CENTER, Weight.MEDIUM, 12.5f, g.theme().text));
+                        MortarPainter.Align.CENTER, Weight.MEDIUM, MortarType.CONTROL, g.theme().text));
         toolbarRegion.add(prefix + ".inc", incX, y, SEG_W, TB_H, (g, px, py, pw, ph, state) ->
                 paintStepperSegment(g, px, py, pw, ph, state, "+", canInc));
         return x + groupW;
@@ -441,7 +442,7 @@ public class SBORecipeSection implements AutoCloseable {
                     enabled ? Argb.lerp(g.theme().border, g.theme().borderStrong, hover * 0.6f)
                             : Argb.withAlpha(g.theme().border, 0.5f));
             g.text(label, bx + bw / 2f, by + bh / 2f, MortarPainter.Align.CENTER,
-                    Weight.MEDIUM, 12f, enabled
+                    Weight.MEDIUM, MortarType.LABEL, enabled
                             ? Argb.lerp(g.theme().textDim, g.theme().text, hover)
                             : g.theme().textFaint);
         });
@@ -677,7 +678,7 @@ public class SBORecipeSection implements AutoCloseable {
         } else {
             int color = alpha >= 1f ? g.theme().text : Argb.withAlpha(g.theme().text, alpha);
             g.textEllipsized(shortLabel(objectId), x + 5f, y + h / 2f, w - 10f,
-                    Weight.REGULAR, 10.5f, color);
+                    Weight.REGULAR, MortarType.CAPTION, color);
         }
     }
 
@@ -869,7 +870,7 @@ public class SBORecipeSection implements AutoCloseable {
             return;
         }
 
-        float availW = Math.max(1f, ImGui.getContentRegionAvailX());
+        float availW = Math.max(1f, MortarRegion.availWidth());
         int fit = Math.max(1, (int) ((availW + CHIP_GAP) / (CHIP_W + CHIP_GAP)));
         int count = Math.min(recents.size(), fit);
 
@@ -916,7 +917,7 @@ public class SBORecipeSection implements AutoCloseable {
         }
         float textX = x + 6f + iconSize + 5f;
         g.textEllipsized(shortLabel(objectId), textX, y + h / 2f, x + w - textX - 8f,
-                Weight.REGULAR, 11f, Argb.lerp(g.theme().textDim, g.theme().text, Math.max(hover, sel)));
+                Weight.REGULAR, MortarType.CAPTION, Argb.lerp(g.theme().textDim, g.theme().text, Math.max(hover, sel)));
     }
 
     private void renderPaletteFallback(List<String> recents) {

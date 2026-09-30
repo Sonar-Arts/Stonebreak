@@ -20,6 +20,9 @@ import java.util.List;
  * item. Painting and cell geometry only — the caller owns tool switching,
  * tooltips, and popups, driven by the hovered index this renderer reports.
  *
+ * Cell metrics are logical px scaled by the UI density
+ * ({@link MortarTheme#scale}), matching MortarUI regions.
+ *
  * Hover highlight uses the index from the previous frame (the image must be
  * painted before ImGui can hit-test it); at render framerates this is
  * imperceptible.
@@ -53,6 +56,11 @@ public final class SkijaToolStripRenderer implements AutoCloseable {
     private SkijaToolIconStore iconStore;
     private int hoveredIndex = -1;
 
+    /** On-screen width of the strip at the current UI density (screen px). */
+    public static float stripWidth() {
+        return CELL_SIZE * MortarTheme.currentScale();
+    }
+
     public boolean isAvailable() {
         return SkijaContext.getInstance() != null;
     }
@@ -70,12 +78,21 @@ public final class SkijaToolStripRenderer implements AutoCloseable {
 
         float width = CELL_SIZE;
         float height = iconKeys.size() * (CELL_SIZE + CELL_SPACING);
-        CellColors colors = CellColors.of(MortarTheme.capture());
+        MortarTheme theme = MortarTheme.capture();
+        CellColors colors = CellColors.of(theme);
+        float scale = theme.scale;
 
-        panel.draw(width, height, canvas ->
-                paintStrip(canvas, iconKeys, selectedIndex, hoveredIndex, colors));
+        panel.draw(width * scale, height * scale, canvas -> {
+            canvas.save();
+            canvas.scale(scale, scale);
+            try {
+                paintStrip(canvas, iconKeys, selectedIndex, hoveredIndex, colors);
+            } finally {
+                canvas.restore();
+            }
+        });
 
-        hoveredIndex = computeHoveredIndex(iconKeys.size());
+        hoveredIndex = computeHoveredIndex(iconKeys.size(), scale);
         return hoveredIndex;
     }
 
@@ -140,11 +157,11 @@ public final class SkijaToolStripRenderer implements AutoCloseable {
     }
 
     /** Map the mouse position on the submitted image item to a cell index. */
-    private int computeHoveredIndex(int cellCount) {
+    private int computeHoveredIndex(int cellCount, float scale) {
         if (!ImGui.isItemHovered()) {
             return -1;
         }
-        float localY = ImGui.getMousePosY() - ImGui.getItemRectMinY();
+        float localY = (ImGui.getMousePosY() - ImGui.getItemRectMinY()) / scale;
         int index = (int) (localY / (CELL_SIZE + CELL_SPACING));
         if (index < 0 || index >= cellCount) {
             return -1;

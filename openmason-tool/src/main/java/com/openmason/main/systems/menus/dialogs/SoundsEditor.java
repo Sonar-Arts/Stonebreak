@@ -10,6 +10,7 @@ import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.parts.MortarBadge;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.mortar.theme.MortarType;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
@@ -276,7 +277,7 @@ public final class SoundsEditor implements AutoCloseable {
     // ---- quick-add chip bar ------------------------------------------------
 
     private void renderQuickAddMortar() {
-        float availW = Math.max(1f, ImGui.getContentRegionAvailX());
+        float availW = Math.max(1f, MortarRegion.availWidth());
         Map<String, Integer> counts = eventCounts();
 
         List<String> chipEvents = new ArrayList<>();
@@ -373,10 +374,10 @@ public final class SoundsEditor implements AutoCloseable {
                 Argb.lerp(g.theme().border, g.theme().borderStrong, hover * 0.7f));
 
         float textX = x + 11f;
-        g.text(label, textX, y + h / 2f, MortarPainter.Align.LEFT, Weight.MEDIUM, 12f,
+        g.text(label, textX, y + h / 2f, MortarPainter.Align.LEFT, Weight.MEDIUM, MortarType.LABEL,
                 Argb.lerp(g.theme().textDim, g.theme().text, hover));
         if (count > 0) {
-            float labelW = g.measureWidth(label, Weight.MEDIUM, 12f);
+            float labelW = g.measureWidth(label, Weight.MEDIUM, MortarType.LABEL);
             MortarBadge.paint(g, textX + labelW + 5f, y + h / 2f, String.valueOf(count));
         }
     }
@@ -402,7 +403,7 @@ public final class SoundsEditor implements AutoCloseable {
     /** Draws the header strip for row {@code i}; returns true when remove was clicked. */
     private boolean renderRowHeaderMortar(int i, Row row) {
         MortarRegion region = headerPool.get(i);
-        float availW = Math.max(1f, ImGui.getContentRegionAvailX());
+        float availW = Math.max(1f, MortarRegion.availWidth());
 
         String event = row.event.get().trim();
         String title = event.isEmpty() ? "(unnamed)" : event;
@@ -433,11 +434,11 @@ public final class SoundsEditor implements AutoCloseable {
                     float bx = px;
                     bx += MortarBadge.paint(g, bx, cy, kind) + 8f;
                     int titleColor = unnamed ? g.theme().textFaint : g.theme().text;
-                    g.text(title, bx, cy, MortarPainter.Align.LEFT, Weight.MEDIUM, 13f, titleColor);
-                    bx += g.measureWidth(title, Weight.MEDIUM, 13f) + 10f;
+                    g.text(title, bx, cy, MortarPainter.Align.LEFT, Weight.MEDIUM, MortarType.CONTROL, titleColor);
+                    bx += g.measureWidth(title, Weight.MEDIUM, MortarType.CONTROL) + 10f;
                     float remaining = px + pw - bx;
                     if (remaining > 30f) {
-                        g.textEllipsized(detail, bx, cy, remaining, Weight.REGULAR, 11f,
+                        g.textEllipsized(detail, bx, cy, remaining, Weight.REGULAR, MortarType.CAPTION,
                                 g.theme().textFaint);
                     }
                 });
@@ -528,7 +529,7 @@ public final class SoundsEditor implements AutoCloseable {
         int textColor = Argb.lerp(g.theme().textDim, g.theme().onAccent, sel);
         textColor = Argb.lerp(textColor, g.theme().text, Math.max(0f, hover - sel));
         g.text(label, x + w / 2f, y + h / 2f, MortarPainter.Align.CENTER,
-                Weight.MEDIUM, 11.5f, textColor);
+                Weight.MEDIUM, MortarType.LABEL, textColor);
     }
 
     private static void paintPlayPill(MortarPainter g, float x, float y, float w, float h,
@@ -549,7 +550,7 @@ public final class SoundsEditor implements AutoCloseable {
                 ? Argb.lerp(g.theme().textDim, g.theme().text, Math.max(hover, press))
                 : g.theme().textFaint;
         g.text("Play", x + w / 2f, y + h / 2f, MortarPainter.Align.CENTER,
-                Weight.MEDIUM, 12f, color);
+                Weight.MEDIUM, MortarType.LABEL, color);
     }
 
     // ---- row header (ImGui fallback) ----------------------------------------

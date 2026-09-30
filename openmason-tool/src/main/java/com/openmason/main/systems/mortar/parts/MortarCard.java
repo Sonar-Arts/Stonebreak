@@ -6,6 +6,7 @@ import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.theme.MortarTheme;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.mortar.theme.MortarType;
 
 /**
  * A flat content card: a wrapped title, a simple wrapped description, and a
@@ -20,9 +21,9 @@ public final class MortarCard implements MortarPart {
 
     private static final float RADIUS = 8f;
     private static final float PAD = 14f;
-    private static final float TITLE_SIZE = 14f;
-    private static final float DESC_SIZE = 12f;
-    private static final float FOOTER_SIZE = 11f;
+    private static final float TITLE_SIZE = MortarType.BODY;
+    private static final float DESC_SIZE = MortarType.LABEL;
+    private static final float FOOTER_SIZE = MortarType.CAPTION;
 
     private final String title;
     private final String description;

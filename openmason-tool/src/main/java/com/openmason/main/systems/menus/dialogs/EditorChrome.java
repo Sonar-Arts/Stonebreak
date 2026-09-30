@@ -6,6 +6,7 @@ import com.openmason.main.systems.mortar.core.PartState;
 import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.mortar.theme.MortarType;
 import imgui.ImGui;
 import imgui.flag.ImGuiTabBarFlags;
 
@@ -53,7 +54,7 @@ final class EditorChrome implements AutoCloseable {
                     onSave, onSaveAs, onOpen);
         }
 
-        float availW = Math.max(1f, ImGui.getContentRegionAvailX());
+        float availW = Math.max(1f, MortarRegion.availWidth());
         float height = loaded ? BTN_H + SEP_PAD * 2f + 1f + TAB_H + 2f : BTN_H + 2f;
 
         region.begin(availW, height);
@@ -76,10 +77,10 @@ final class EditorChrome implements AutoCloseable {
             region.add("deco.status", statusX, 0f, availW - statusX, BTN_H,
                     (g, px, py, pw, ph, state) -> {
                         float cy = py + ph / 2f;
-                        float labelW = g.measureWidth(label, Weight.REGULAR, 12f);
+                        float labelW = g.measureWidth(label, Weight.REGULAR, MortarType.LABEL);
                         float textRight = px + pw - 4f;
                         g.textEllipsized(label, Math.max(px, textRight - labelW), cy,
-                                pw - 16f, Weight.REGULAR, 12f, g.theme().textDim);
+                                pw - 16f, Weight.REGULAR, MortarType.LABEL, g.theme().textDim);
                         if (isDirty) {
                             float dotX = Math.max(px, textRight - labelW) - 11f;
                             g.fillRoundRect(dotX, cy - 3f, 6f, 6f, 3f, g.theme().accent);
@@ -151,7 +152,7 @@ final class EditorChrome implements AutoCloseable {
                     onExport, onCancel);
         }
 
-        float availW = Math.max(1f, ImGui.getContentRegionAvailX());
+        float availW = Math.max(1f, MortarRegion.availWidth());
         float height = BTN_H + SEP_PAD * 2f + 1f + TAB_H + 2f;
         region.begin(availW, height);
 
@@ -168,10 +169,10 @@ final class EditorChrome implements AutoCloseable {
             region.add("deco.status", statusX, 0f, availW - statusX, BTN_H,
                     (g, px, py, pw, ph, state) -> {
                         float cy = py + ph / 2f;
-                        float labelW = g.measureWidth(label, Weight.REGULAR, 12f);
+                        float labelW = g.measureWidth(label, Weight.REGULAR, MortarType.LABEL);
                         float textRight = px + pw - 4f;
                         g.textEllipsized(label, Math.max(px, textRight - labelW), cy,
-                                pw - 16f, Weight.REGULAR, 12f, g.theme().textDim);
+                                pw - 16f, Weight.REGULAR, MortarType.LABEL, g.theme().textDim);
                     });
         }
 
@@ -259,7 +260,7 @@ final class EditorChrome implements AutoCloseable {
                 fill = Argb.shade(fill, -0.10f * press);
                 g.fillRoundRect(bx, by, bw, bh, 6f, fill);
                 g.text(label, bx + bw / 2f, by + bh / 2f, MortarPainter.Align.CENTER,
-                        Weight.MEDIUM, 13f, g.theme().onAccent);
+                        Weight.MEDIUM, MortarType.CONTROL, g.theme().onAccent);
             } else {
                 int fill = Argb.lerp(g.theme().surface, g.theme().surfaceHover, hover);
                 fill = Argb.shade(fill, -0.05f * press);
@@ -269,7 +270,7 @@ final class EditorChrome implements AutoCloseable {
                         enabled ? Argb.lerp(g.theme().border, g.theme().borderStrong, hover * 0.6f)
                                 : Argb.withAlpha(g.theme().border, 0.5f));
                 g.text(label, bx + bw / 2f, by + bh / 2f, MortarPainter.Align.CENTER,
-                        Weight.MEDIUM, 13f,
+                        Weight.MEDIUM, MortarType.CONTROL,
                         enabled ? Argb.lerp(g.theme().textDim, g.theme().text, hover)
                                 : g.theme().textFaint);
             }
@@ -290,7 +291,7 @@ final class EditorChrome implements AutoCloseable {
         int textColor = Argb.lerp(g.theme().textDim, g.theme().onAccent, sel);
         textColor = Argb.lerp(textColor, g.theme().text, Math.max(0f, hover - sel));
         g.text(label, x + w / 2f, y + h / 2f, MortarPainter.Align.CENTER,
-                Weight.MEDIUM, 12.5f, textColor);
+                Weight.MEDIUM, MortarType.CONTROL, textColor);
     }
 
     // ---- ImGui fallback ----------------------------------------------------
