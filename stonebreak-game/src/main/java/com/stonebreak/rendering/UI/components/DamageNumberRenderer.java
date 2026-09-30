@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.UI.components;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rendering.UI.masonryUI.MFonts;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
@@ -61,7 +62,9 @@ public class DamageNumberRenderer {
             Canvas canvas = backend.getCanvas();
             if (canvas == null) return;
 
-            Matrix4f vp = new Matrix4f(proj).mul(view);
+            // view is render-space; these markers project WORLD positions, so
+            // rebase the combined matrix to consume them.
+            Matrix4f vp = RenderOrigin.acceptWorldSpace(new Matrix4f(proj).mul(view));
             Vector4f clip = new Vector4f();
 
             for (DamageNumber n : active) {

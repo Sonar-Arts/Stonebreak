@@ -688,6 +688,6 @@ public final class ClientWorldView {
         String label = Game.getInstance().getCurrentWorldName() != null
             ? Game.getInstance().getCurrentWorldName()
             : "mp_" + System.currentTimeMillis();
-        Game.getInstance().startClientWorld(label, w.worldSeed(), spawn);
+        Game.getInstance().startClientWorld(label, w.worldSeed(), w.generatorType(), spawn);
     }
 }

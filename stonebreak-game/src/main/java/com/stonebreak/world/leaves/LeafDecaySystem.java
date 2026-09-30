@@ -215,9 +215,13 @@ public final class LeafDecaySystem {
         java.util.ArrayDeque<Long> frontier = new java.util.ArrayDeque<>();
         for (int lx = 0; lx < WorldConfiguration.CHUNK_SIZE; lx++) {
             for (int lz = 0; lz < WorldConfiguration.CHUNK_SIZE; lz++) {
-                for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
-                    int x = baseX + lx;
-                    int z = baseZ + lz;
+                int x = baseX + lx;
+                int z = baseZ + lz;
+                // Skip the open sky above the column: this runs inline on the
+                // chunk-loading thread, so the rows it does not read are stall
+                // the player does not see.
+                int top = world.foliageScanTop(x, z);
+                for (int y = 0; y < top; y++) {
                     BlockType block = world.getBlock(x, y, z);
                     if (block == null || !NavNodes.inRange(x, y, z)) {
                         continue;

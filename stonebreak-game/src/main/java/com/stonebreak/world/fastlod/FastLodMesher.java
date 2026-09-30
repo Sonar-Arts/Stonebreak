@@ -45,22 +45,25 @@ import java.util.Arrays;
  * instead of showing sky through terrain that only exists as a surface sheet.
  *
  * <p><b>Water mesh.</b> One flat sheet quad per submerged cell at
- * {@code SEA_LEVEL - 0.125} — the same plane native water surfaces occupy.
- * Its vertex flags follow the water-mesh semantics documented in
- * {@code shaders/water/water.vert}: flags.x = surface-height fraction
- * (0.875), flags.y = falling (0), flags.w = light (1). Because the sheet is
- * rendered by the same water shader over a real LOD seabed, fresnel
- * transparency, waves, specular and fog are all continuous with native water.
+ * {@code waterLevel - 0.125} — the same plane native water surfaces occupy at
+ * that water level (sea, river or lake alike; the ocean is one case of a
+ * per-cell water level, not a separate rule). Its vertex flags follow the
+ * water-mesh semantics documented in {@code shaders/water/water.vert}:
+ * flags.x = surface-height fraction (0.875), flags.y = falling (0), flags.w =
+ * river flow code (0 = still water — an LOD sheet never runs; 1.0 would read
+ * as a river in octant 7). Because the sheet is rendered by the same water shader over a
+ * real LOD seabed, fresnel transparency, waves, specular and fog are all
+ * continuous with native water.
  */
 public final class FastLodMesher {
 
-    private static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
     /**
      * Native water tops sit at blockBase + 0.875 (see shaders/water/water.vert);
-     * worldgen fills water below {@code SEA_LEVEL}, so the visible surface is
-     * SEA_LEVEL - 1 + 0.875. The LOD sea sheet uses the same height.
+     * worldgen fills water below a column's water level, so the visible surface
+     * is {@code waterLevel - 1 + 0.875}. The LOD sheet uses the same height,
+     * per cell rather than a single global plane — see {@link
+     * FastLodChunkData#waterLevelAt}.
      */
-    private static final float SEA_SURFACE_Y = SEA_LEVEL - 0.125f;
     /**
      * Cap on the water-column depth baked into a sheet, matching the near-water
      * mesher's ({@code MmsCcoAdapter.MAX_WATER_DEPTH}). The shader saturates at
@@ -68,6 +71,8 @@ public final class FastLodMesher {
      * merge below can still fold them into one rectangle.
      */
     private static final int MAX_WATER_DEPTH = 16;
+
+    private static final float WATER_SURFACE_OFFSET = -0.125f;
     /** Surface-height fraction baked into water sheet flags (water.vert). */
     private static final float WATER_SURFACE_FRACTION = 0.875f;
 
@@ -197,7 +202,8 @@ public final class FastLodMesher {
             for (int iz = 0; iz < cellsPerAxis; iz++) {
                 BlockType surface = data.surfaceAt(ix, iz);
                 int terrainH = data.heightAt(ix, iz);
-                boolean submerged = terrainH < SEA_LEVEL;
+                int waterLevel = data.waterLevelAt(ix, iz);
+                boolean submerged = waterLevel > terrainH;
 
                 float wx = baseX + ix * cellSize;
                 float wz = baseZ + iz * cellSize;
@@ -215,18 +221,19 @@ public final class FastLodMesher {
 
                 if (submerged) {
                     // Water sheet quad. Flag semantics per water.vert:
-                    // x = surface-height fraction, y = falling, w = light.
+                    // x = surface-height fraction, y = falling, w = flow code (0 = still).
                     // The layer slot carries the water-column depth in blocks
                     // (water is untextured); near water bakes the same number
                     // per cell, so the seabed fades identically on both sides
                     // of the LOD handover.
-                    ww.topQuadFlat(wx, SEA_SURFACE_Y, wz, cellSize,
-                            Math.min(SEA_LEVEL - terrainH, MAX_WATER_DEPTH), WATER_SURFACE_FRACTION);
+                    float waterSurfaceY = waterLevel + WATER_SURFACE_OFFSET;
+                    ww.topQuadFlat(wx, waterSurfaceY, wz, cellSize,
+                            Math.min(waterLevel - terrainH, MAX_WATER_DEPTH), WATER_SURFACE_FRACTION);
                 }
 
                 if (notches) {
                     int floor = data.openingFloorAt(ix, iz);
-                    if (floor != com.stonebreak.world.generation.TerrainGenerationSystem.NO_OPENING
+                    if (floor != com.stonebreak.world.generation.TerrainGenerator.NO_OPENING
                             && floor < terrainH) {
                         emitCaveNotch(w, wx, wz, cellSize, terrainH, floor,
                                 data.openingCoverageAt(ix, iz));
@@ -360,6 +367,7 @@ public final class FastLodMesher {
         return BlockType.Face.SIDE_NORTH;
     }
 
+    /** L0 tree silhouette — identical geometry to the legacy mesher. */
     /**
      * A cave mouth, drawn as a notch recessed into the cell: a floor quad with four walls
      * facing inward, sized by how much of the cell is actually carved.
@@ -409,7 +417,6 @@ public final class FastLodMesher {
                           0, 0, 1, wallLayer, 0f);
     }
 
-    /** L0 tree silhouette — identical geometry to the legacy mesher. */
     private void emitTree(QuadWriter w, float wx, float wz, int terrainH, TreeSample tree) {
         float trunkBase = terrainH;
         float trunkTop  = terrainH + tree.trunkHeight();
@@ -539,12 +546,15 @@ public final class FastLodMesher {
             int yHalf = Math.round(yMin * 2f);
             int wHalf = Math.max(1, Math.round(w * 2f));
             int hHalf = Math.max(1, Math.round(h * 2f));
-            if (yHalf < 0 || yHalf > 511 || hHalf > 1023 || wHalf > 63) {
-                return; // outside the representable band (never for WORLD_HEIGHT 256)
+            if (yHalf < 0 || yHalf > 2047 || hHalf > 2047 || wHalf > 63) {
+                // Outside the representable band. LODQUAD16 carries y and h in 11 bits of
+                // half blocks, so this covers WORLD_HEIGHT up to 1024; raise the codec's
+                // budget, not this guard, if the world ever grows past that.
+                return;
             }
             if (!quads.addWords(
-                    MmsLodQuadCodec.word0(rx, rz, yHalf, face, smooth, lit),
-                    MmsLodQuadCodec.word1(wHalf, hHalf, layer, alpha),
+                    MmsLodQuadCodec.word0(rx, rz, yHalf, face),
+                    MmsLodQuadCodec.word1(wHalf, hHalf, layer, alpha, smooth, lit),
                     nPair01, nPair23)) {
                 return; // per-draw quad cap (never reached by a single LOD node)
             }
@@ -840,7 +850,9 @@ public final class FastLodMesher {
             int cellY = (int) Math.floor(y) + 1; // sheet sits 0.125 below the cell's top: cell = SEA_LEVEL
             int qx = Math.round(wx - originX);
             int qz = Math.round(wz - originZ);
-            if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || cellY < 0 || cellY > 511) {
+            // WATERQUAD16 carries y in 10 bits of whole blocks, covering WORLD_HEIGHT 1024;
+            // a lake or river perched high in the column must not be silently dropped.
+            if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || cellY < 0 || cellY > 1023) {
                 return;
             }
             if (!quads.addWords(
@@ -892,15 +904,17 @@ public final class FastLodMesher {
 
         /**
          * Flat-up top quad. Terrain never uses this anymore; the water writer
-         * emits sheets with it ({@code xFlag} = surface-height fraction).
+         * emits sheets with it ({@code xFlag} = surface-height fraction, and
+         * flags.w = 0: still water, since water.vert reads that slot as the
+         * river flow code).
          */
         void topQuadFlat(float wx, float y, float wz, int cellSize, int layer, float xFlag) {
             float x1 = wx + cellSize;
             float z1 = wz + cellSize;
-            int v0 = pushVert(wx, y, wz, 0f, 0f, 0, 1, 0, xFlag, 0f, 1f, layer);
-                    pushVert(x1, y, wz, 1f, 0f, 0, 1, 0, xFlag, 0f, 1f, layer);
-                    pushVert(x1, y, z1, 1f, 1f, 0, 1, 0, xFlag, 0f, 1f, layer);
-                    pushVert(wx, y, z1, 0f, 1f, 0, 1, 0, xFlag, 0f, 1f, layer);
+            int v0 = pushVert(wx, y, wz, 0f, 0f, 0, 1, 0, xFlag, 0f, 0f, layer);
+                    pushVert(x1, y, wz, 1f, 0f, 0, 1, 0, xFlag, 0f, 0f, layer);
+                    pushVert(x1, y, z1, 1f, 1f, 0, 1, 0, xFlag, 0f, 0f, layer);
+                    pushVert(wx, y, z1, 0f, 1f, 0, 1, 0, xFlag, 0f, 0f, layer);
             pushQuadIndices(v0);
         }
 

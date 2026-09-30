@@ -1,7 +1,7 @@
 package com.stonebreak.world.fastlod;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeKind;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
 
@@ -17,19 +17,21 @@ import java.nio.ByteOrder;
  * Wire layout (little-endian):
  * <pre>
  *   magic        u32  'FLOD' (0x444F4C46)
- *   version      u8   current = 3 (v3: heights are the carved surface — ravines and
- *                     sinkholes are cut into LOD terrain rather than drawn flat — and
- *                     coarse cells carry a per-cell cave-mouth channel drawn as a recessed
- *                     notch where the height's single representative probe missed the
- *                     opening. Pre-v3 blobs hold the uncarved height and no opening data,
- *                     so they must be resampled or the distance rings keep showing flat
- *                     ground and ravines only.
- *                     v2: submerged cells store the real seabed block instead of WATER;
- *                     submergence is height-derived)
+ *   version      u8   current = 5 (v5: adds the per-cell cave-mouth channel — coarse cells
+ *                     draw a recessed notch where an opening exists that the height's single
+ *                     representative probe missed; pre-v5 blobs have no opening data and must
+ *                     be resampled or the distance rings keep showing ravines only.
+ *                     v4: heights are the carved surface, so ravines
+ *                     and sinkholes are cut into LOD terrain rather than drawn
+ *                     flat — pre-v4 blobs hold the uncarved height and must be
+ *                     resampled; v3: adds the per-cell water-level plane;
+ *                     v2: submerged cells store the real seabed block instead
+ *                     of WATER)
  *   level        u8   0..FastLodLevel.count-1
  *   cellsPerAxis u8
  *   stride       u8
  *   heights      i16[stride*stride]       world Y (clamped to short range)
+ *   waterLevels  i16[cellsPerAxis²]       world Y, or TerrainTile.NO_WATER (-1)
  *   surface      u16[cellsPerAxis²]       BlockType.getId()
  *   openPresent  u8   0 = opening channel omitted (L0), 1 = the two arrays follow
  *   openFloor?   i16[cellsPerAxis²]       world Y, or OPEN_NONE (Short.MIN_VALUE)
@@ -41,11 +43,49 @@ import java.nio.ByteOrder;
  */
 public final class FastLodSerializer {
 
-    public static final int VERSION = 3;
+    /**
+     * Bumped when the sampled terrain a node holds stops meaning what a stored
+     * node means.
+     *
+     * <p>6: the water carve now grades a bank away from every containment wall
+     * ({@code lake_bank_slope}/{@code lake_bank_reach}), so heights near any
+     * lake rim, river bank or waterfall lip are no longer the heights a cached
+     * node was sampled from. LOD terrain standing where the chunk beneath it
+     * does not is the one artifact this cache can produce, so the version is
+     * what orphans it.
+     *
+     * <p>7: the bank is no longer a plain ramp — the crest holds level with the
+     * water for a noisy one to three columns before it falls, and the fall is
+     * noisy too — and the cave guards beside water seal a noisy footprint, which
+     * moves cave openings near it. Heights cached under 6 are the plain ramp.
+     *
+     * <p>8: banks are walled to the kernel's guard rail ({@code river_guard_reach}),
+     * the highest water within reach upstream, rather than to the water beside
+     * them — so every bank along a stepped river stands taller than a cached node
+     * says — and {@code Density3D} no longer carves near surface water.
+     *
+     * <p>9: the same banks come back DOWN. A river's surface is now a staircase
+     * of flat pools rather than a ramp (§5.8b), and the guard rail that walls
+     * those banks was retuned against the flow sim — a 12-step reach, capped at
+     * three blocks over the water beside it, where 8 raised ten times the ground
+     * for the same containment. Heights cached under 8 are the tall ones.
+     *
+     * <p>10: tunnels carry air, and a plunge keeps its cliff. The carve's
+     * tunnel/open predicate now asks for {@code tunnel_min_air} over the level
+     * ABOVE a step, so ground too thin for that is cut open to the water where
+     * a v9 node kept it; and a real plunge no longer takes the talus skirt, so
+     * the mound a v9 node shows in front of every waterfall is gone.
+     *
+     * <p>11: a coarse cell whose footprint holds a river stands on that river
+     * (DaedalusTGM-Exp's {@code sampleColumns}), where a v10 node showed whatever
+     * dry column its probe landed on — so its height, water level and surface all
+     * moved.
+     */
+    public static final int VERSION = 11;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel
-     * ({@link TerrainGenerationSystem#NO_OPENING}) is an int and the field is i16, so it
+     * ({@link TerrainGenerator#NO_OPENING}) is an int and the field is i16, so it
      * needs its own value; no real floor can reach Short.MIN_VALUE.
      */
     private static final short OPEN_NONE = Short.MIN_VALUE;
@@ -65,6 +105,7 @@ public final class FastLodSerializer {
         int size = 4 + 1 + 1 + 1 + 1
                  + heightsLen * 2
                  + cellsLen   * 2
+                 + cellsLen   * 2
                  + 1
                  + (hasOpenings ? cellsLen * 3 : 0)
                  + 1
@@ -82,6 +123,11 @@ public final class FastLodSerializer {
             buf.putShort((short) clampShort(heights[i]));
         }
 
+        int[] waterLevels = data.rawWaterLevels();
+        for (int i = 0; i < cellsLen; i++) {
+            buf.putShort((short) clampShort(waterLevels[i]));
+        }
+
         BlockType[] surface = data.rawSurface();
         for (int i = 0; i < cellsLen; i++) {
             BlockType b = surface[i];
@@ -93,7 +139,7 @@ public final class FastLodSerializer {
             buf.put((byte) 1);
             for (int i = 0; i < cellsLen; i++) {
                 int v = openFloor[i];
-                buf.putShort((short) (v == TerrainGenerationSystem.NO_OPENING
+                buf.putShort((short) (v == TerrainGenerator.NO_OPENING
                         ? OPEN_NONE : clampShort(v)));
             }
             buf.put(openCover, 0, cellsLen);
@@ -143,12 +189,17 @@ public final class FastLodSerializer {
 
         int heightsLen = level.heightCount();
         int cellsLen   = level.cellCount();
-        int needed = heightsLen * 2 + cellsLen * 2 + 1;
+        int needed = heightsLen * 2 + cellsLen * 2 + cellsLen * 2 + 1;
         if (buf.remaining() < needed) return null;
 
         int[] heights = new int[heightsLen];
         for (int i = 0; i < heightsLen; i++) {
             heights[i] = buf.getShort();
+        }
+
+        int[] waterLevels = new int[cellsLen];
+        for (int i = 0; i < cellsLen; i++) {
+            waterLevels[i] = buf.getShort();
         }
 
         BlockType[] surface = new BlockType[cellsLen];
@@ -167,7 +218,7 @@ public final class FastLodSerializer {
             for (int i = 0; i < cellsLen; i++) {
                 short v = buf.getShort();
                 openFloor[i] = (v == OPEN_NONE)
-                        ? TerrainGenerationSystem.NO_OPENING : v;
+                        ? TerrainGenerator.NO_OPENING : v;
             }
             openCover = new byte[cellsLen];
             buf.get(openCover);
@@ -201,7 +252,7 @@ public final class FastLodSerializer {
         // layout than this reader expects.
         if (level.cellSize() == 1 && openFloor != null) return null;
 
-        return new FastLodChunkData(expected, heights, surface, trees,
+        return new FastLodChunkData(expected, heights, waterLevels, surface, trees,
                 openFloor, openCover);
     }
 

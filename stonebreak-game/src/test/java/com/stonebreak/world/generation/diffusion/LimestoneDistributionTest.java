@@ -1,10 +1,15 @@
-package com.stonebreak.world.generation;
+package com.stonebreak.world.generation.diffusion;
+
+import com.stonebreak.world.generation.ChunkGenerationContext;
+import com.stonebreak.world.generation.ColumnProfile;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.stalagmite.Stalagmite;
 import com.stonebreak.blocks.stalagmite.StalagmiteState;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.generation.diffusion.DryHillsTileSource;
 import com.stonebreak.world.generation.features.LimestoneGenerator;
+import com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.heightmap.CavernCarver;
 import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -28,22 +33,34 @@ public class LimestoneDistributionTest {
     private static final double MIN_SHARE = 0.005;
     private static final double MAX_SHARE = 0.35;
 
-    private record Setup(TerrainGenerationSystem terrain, LimestoneGenerator limestone,
+    private record Setup(DiffusionTerrainGenerator terrain, LimestoneGenerator limestone,
                          CavernCarver caverns) {}
 
     private static Setup setup() {
-        DryHillsHeightMap tiles = new DryHillsHeightMap(SEED);
-        CavernCarver caverns = new CavernCarver(SEED, tiles);
-        return new Setup(new TerrainGenerationSystem(SEED, tiles),
-                new LimestoneGenerator(SEED, tiles, caverns, new MegaCavernCarver(SEED, tiles)),
+        DryHillsTileSource tiles = new DryHillsTileSource();
+        HeightMapGenerator heights = new HeightMapGenerator(tiles);
+        CavernCarver caverns = new CavernCarver(SEED, heights);
+        return new Setup(new DiffusionTerrainGenerator(SEED, tiles),
+                new LimestoneGenerator(SEED, heights, caverns::computeCavernOrigin,
+                        new MegaCavernCarver(SEED, heights)::computeCavernOrigin),
                 caverns);
     }
 
+    /** Stone or limestone with open air on all four horizontal sides: formation-shaped. */
+    private static boolean isPillarCell(Chunk chunk, int x, int y, int z) {
+        BlockType b = chunk.getBlock(x, y, z);
+        return (b == BlockType.STONE || b == BlockType.LIMESTONE)
+                && chunk.getBlock(x + 1, y, z) == BlockType.AIR
+                && chunk.getBlock(x - 1, y, z) == BlockType.AIR
+                && chunk.getBlock(x, y, z + 1) == BlockType.AIR
+                && chunk.getBlock(x, y, z - 1) == BlockType.AIR;
+    }
+
     private static Chunk populate(Setup s, int cx, int cz) {
-        TerrainGenerationSystem.TerrainResult result = s.terrain().generateTerrainOnly(cx, cz);
+        DiffusionTerrainGenerator.TerrainResult result = s.terrain().generateTerrainOnly(cx, cz);
         ColumnProfile p = result.profile();
         s.limestone().generate(new ChunkGenerationContext(null, result.chunk(), null,
-                p.heights(), p.biomes(), p.dominantBiome()));
+                p.heights(), p.biomes(), p.waterLevels(), p.dominantBiome()));
         return result.chunk();
     }
 
@@ -131,9 +148,15 @@ public class LimestoneDistributionTest {
                             if (dx * dx + dy * dy + dz * dz > 1f) continue;
                             if (b == BlockType.LIMESTONE) limestonePillars++; else stonePillars++;
                             // A pillar standing on the floor or hanging from the ceiling is a stalagmite now;
-                            // only one bridging floor to ceiling may stay rock.
-                            boolean airBelow = chunk.getBlock(x, y - 1, z) == BlockType.AIR;
-                            boolean airAbove = chunk.getBlock(x, y + 1, z) == BlockType.AIR;
+                            // only one bridging floor to ceiling, or floating free of both, may stay rock.
+                            // Judge the whole vertical run, not the cell: the carvers can leave a
+                            // multi-block fragment floating in a cavern, whose end cells each touch air
+                            // on one side only.
+                            int lo = y, hi = y;
+                            while (lo - 1 >= 1 && isPillarCell(chunk, x, lo - 1, z)) lo--;
+                            while (hi + 1 < H - 1 && isPillarCell(chunk, x, hi + 1, z)) hi++;
+                            boolean airBelow = chunk.getBlock(x, lo - 1, z) == BlockType.AIR;
+                            boolean airAbove = chunk.getBlock(x, hi + 1, z) == BlockType.AIR;
                             assertTrue(airBelow == airAbove, "attached pillar left as " + b + " at " + x + "," + y + "," + z);
                         }
                     }

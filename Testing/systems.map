@@ -18,6 +18,7 @@ mesh-editing	openmason-engine	com/openmason/engine/rendering/model/**/*Test
 viewer	openmason-engine	com/openmason/engine/rendering/viewer/**/*Test
 cco	openmason-engine	com/openmason/engine/voxel/cco/**/*Test
 mms	openmason-engine	com/openmason/engine/voxel/mms/**/*Test
+mms	stonebreak-game	com/stonebreak/world/chunk/api/mightyMesh/**/*Test,!com/stonebreak/world/chunk/api/mightyMesh/mmsIntegration/CendaMesherKernelTest
 sbo	openmason-engine	com/openmason/engine/voxel/sbo/**/*Test
 lighting	openmason-engine	com/openmason/engine/voxel/lighting/**/*Test
 lighting	stonebreak-game	com/stonebreak/rendering/lighting/**/*Test,com/stonebreak/world/lighting/**/*Test
@@ -25,7 +26,7 @@ engine-util	openmason-engine	com/openmason/engine/util/**/*Test
 cearl	openmason-engine	com/openmason/engine/cearl/**/*Test,com/openmason/engine/vram/**/*Test
 cearl	stonebreak-game	com/stonebreak/rendering/vram/**/*Test
 wayfind	openmason-engine	com/openmason/engine/wayfind/**/*Test
-shaders	openmason-engine	com/openmason/engine/rendering/shaders/**/*Test
+shaders	openmason-engine	com/openmason/engine/rendering/shaders/**/*Test,com/openmason/engine/rendering/RenderOriginTest
 shaders	stonebreak-game	com/stonebreak/rendering/core/**/*Test
 shadow	openmason-engine	com/openmason/engine/rendering/shadow/**/*Test
 sky	openmason-engine	com/openmason/engine/rendering/sky/**/*Test

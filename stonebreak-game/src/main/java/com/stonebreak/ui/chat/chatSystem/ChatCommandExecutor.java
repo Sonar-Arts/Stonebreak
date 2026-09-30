@@ -38,15 +38,19 @@ public class ChatCommandExecutor {
         registerCommand(new VoxelAdjCommand());
         registerCommand(new TimeSetCommand());
         registerCommand(new AttachCommand());
+        registerCommand(new TeleportCommand());
         registerCommand(new BattleTestCommand());
         registerCommand(new BattleCommand());
     }
 
     /**
-     * Register a command
+     * Register a command under its name and each of its aliases
      */
     private void registerCommand(ChatCommand command) {
         commands.put(command.getName().toLowerCase(), command);
+        for (String alias : command.getAliases()) {
+            commands.put(alias.toLowerCase(), command);
+        }
     }
 
     /**

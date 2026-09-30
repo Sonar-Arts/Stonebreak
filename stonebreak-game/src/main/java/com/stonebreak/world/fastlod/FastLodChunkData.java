@@ -10,9 +10,13 @@ import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
  * <ul>
  *   <li>{@code heights[stride²]} — terrain height per cell, one-cell margin on
  *   each side so the mesher can emit skirts without reading neighbours.</li>
+ *   <li>{@code waterLevels[cellsPerAxis²]} — per-cell water level, or {@link
+ *   com.stonebreak.world.generation.diffusion.TerrainTile#NO_WATER}; a cell is
+ *   submerged exactly when this exceeds its height, the same test native
+ *   generation places water by. No margin: skirts only compare terrain
+ *   heights, never water.</li>
  *   <li>{@code surface[cellsPerAxis²]} — representative surface block for each
- *   interior cell; for submerged cells (height below sea level) this is the
- *   real seabed block, submergence itself is height-derived.</li>
+ *   interior cell; for submerged cells this is the real seabed block.</li>
  *   <li>{@code trees[cellsPerAxis²]} — tree silhouettes, populated only at the
  *   finest level ({@link FastLodLevel#L0}); other levels leave this null.</li>
  *   <li>{@code openingFloor[cellsPerAxis²]} / {@code openingCoverage[cellsPerAxis²]} —
@@ -20,7 +24,7 @@ import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
  *   footprint rather than probed at one representative point, because that is the only way
  *   an opening a few blocks across survives a 16-block cell. {@code openingFloor} is the
  *   lowest carved floor inside the cell (world Y) or {@link
- *   com.stonebreak.world.generation.TerrainGenerationSystem#NO_OPENING}; {@code
+ *   com.stonebreak.world.generation.TerrainGenerator#NO_OPENING}; {@code
  *   openingCoverage} is the carved share of the footprint, 0..255, which sizes the notch.
  *   Both are null at {@link FastLodLevel#L0}, where a cell is one column and its carve is
  *   already in {@code heights}.</li>
@@ -30,22 +34,29 @@ public final class FastLodChunkData {
 
     private final FastLodKey key;
     private final int[] heights;
+    private final int[] waterLevels;
     private final BlockType[] surface;
     private final TreeSample[] trees;
     private final int[] openingFloor;
     private final byte[] openingCoverage;
 
-    public FastLodChunkData(FastLodKey key, int[] heights, BlockType[] surface, TreeSample[] trees) {
-        this(key, heights, surface, trees, null, null);
+    public FastLodChunkData(FastLodKey key, int[] heights, int[] waterLevels,
+                            BlockType[] surface, TreeSample[] trees) {
+        this(key, heights, waterLevels, surface, trees, null, null);
     }
 
-    public FastLodChunkData(FastLodKey key, int[] heights, BlockType[] surface, TreeSample[] trees,
+    public FastLodChunkData(FastLodKey key, int[] heights, int[] waterLevels,
+                            BlockType[] surface, TreeSample[] trees,
                             int[] openingFloor, byte[] openingCoverage) {
         if (key == null) throw new IllegalArgumentException("key");
         FastLodLevel level = key.level();
         if (heights.length != level.heightCount()) {
             throw new IllegalArgumentException("heights length " + heights.length
                     + " != expected " + level.heightCount() + " for " + level);
+        }
+        if (waterLevels.length != level.cellCount()) {
+            throw new IllegalArgumentException("waterLevels length " + waterLevels.length
+                    + " != expected " + level.cellCount() + " for " + level);
         }
         if (surface.length != level.cellCount()) {
             throw new IllegalArgumentException("surface length " + surface.length
@@ -68,6 +79,7 @@ public final class FastLodChunkData {
         }
         this.key = key;
         this.heights = heights;
+        this.waterLevels = waterLevels;
         this.surface = surface;
         this.trees = trees;
         this.openingFloor = openingFloor;
@@ -85,6 +97,16 @@ public final class FastLodChunkData {
         return heights[(ix + 1) * stride + (iz + 1)];
     }
 
+    /**
+     * Water level at an interior cell, or {@link
+     * com.stonebreak.world.generation.diffusion.TerrainTile#NO_WATER}. No
+     * margin — unlike {@link #heightAt}, only {@code (ix, iz)} within
+     * {@code [0, cellsPerAxis)} are valid.
+     */
+    public int waterLevelAt(int ix, int iz) {
+        return waterLevels[ix * key.level().cellsPerAxis() + iz];
+    }
+
     public BlockType surfaceAt(int ix, int iz) {
         return surface[ix * key.level().cellsPerAxis() + iz];
     }
@@ -96,12 +118,12 @@ public final class FastLodChunkData {
 
     /**
      * Lowest carved floor inside this cell (world Y), or {@link
-     * com.stonebreak.world.generation.TerrainGenerationSystem#NO_OPENING} when the cell has
+     * com.stonebreak.world.generation.TerrainGenerator#NO_OPENING} when the cell has
      * no cave mouth worth drawing — including at every level that carries no opening channel.
      */
     public int openingFloorAt(int ix, int iz) {
         if (openingFloor == null) {
-            return com.stonebreak.world.generation.TerrainGenerationSystem.NO_OPENING;
+            return com.stonebreak.world.generation.TerrainGenerator.NO_OPENING;
         }
         return openingFloor[ix * key.level().cellsPerAxis() + iz];
     }
@@ -116,13 +138,14 @@ public final class FastLodChunkData {
     public boolean hasOpenings() {
         if (openingFloor == null) return false;
         for (int v : openingFloor) {
-            if (v != com.stonebreak.world.generation.TerrainGenerationSystem.NO_OPENING) return true;
+            if (v != com.stonebreak.world.generation.TerrainGenerator.NO_OPENING) return true;
         }
         return false;
     }
 
     /** Direct access for the serializer; do not mutate. */
     public int[] rawHeights()          { return heights; }
+    public int[] rawWaterLevels()      { return waterLevels; }
     public BlockType[] rawSurface()    { return surface; }
     public TreeSample[] rawTrees()     { return trees; }
     public int[] rawOpeningFloor()     { return openingFloor; }

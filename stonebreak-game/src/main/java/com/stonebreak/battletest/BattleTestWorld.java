@@ -2,6 +2,7 @@ package com.stonebreak.battletest;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.world.operations.WorldConfiguration;
 import java.util.List;
 import org.joml.Vector3f;
@@ -10,7 +11,7 @@ import org.joml.Vector3f;
 public final class BattleTestWorld extends World {
     private final BattleTestArena arena;
     public BattleTestWorld(BattleTestArena arena) {
-        super(new WorldConfiguration(), 0L, true);
+        super(new WorldConfiguration(), 0L, true, TerrainGeneratorType.STANDARD); // never touches TGMPipe
         this.arena = arena;
         setSpawnPosition(arena.playerSpawn().position());
     }

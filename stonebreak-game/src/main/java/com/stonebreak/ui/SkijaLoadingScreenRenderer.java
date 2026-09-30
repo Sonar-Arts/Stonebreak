@@ -15,20 +15,22 @@ import io.github.humbleui.types.Rect;
  * Skija-backed renderer for the loading screen. Replaces the former NanoVG-
  * based rendering in {@link LoadingScreen}.
  *
- * Draws a semi-transparent overlay, the "STONEBREAK" title, current stage
- * name, optional sub-stage details, a progress bar, and an error box when
- * world generation fails.
+ * Draws a semi-transparent overlay, the "STONEBREAK" title, current phase
+ * name, optional phase detail, a progress bar,
+ * and an error box when world generation fails.
  */
 public final class SkijaLoadingScreenRenderer {
 
     private static final float TITLE_SIZE   = 48f;
     private static final float STAGE_SIZE   = 24f;
     private static final float SUB_STAGE_SIZE = 16f;
-    private static final float TIME_SIZE    = 14f;
     private static final float PERCENT_SIZE = 16f;
 
     private static final float BAR_WIDTH   = 400f;
     private static final float BAR_HEIGHT  = 30f;
+
+    /** How fast the drawn fill closes the gap to the real progress, per second. */
+    private static final float BAR_CATCH_UP_RATE = 8f;
 
     // Logo intrinsic viewBox is 1641 x 419 (aspect ~3.917).
     private static final float LOGO_HEIGHT = 120f;
@@ -39,7 +41,6 @@ public final class SkijaLoadingScreenRenderer {
     private static final int COLOR_TITLE_SHADOW   = 0xFF505050;
     private static final int COLOR_STAGE_TEXT     = 0xFFC8C8C8;
     private static final int COLOR_SUB_STAGE_TEXT = 0xFFA0A0A0;
-    private static final int COLOR_TIME_TEXT      = 0xFF8C8C8C;
     private static final int COLOR_PROGRESS_TEXT  = 0xFFDCDCDC;
 
     private static final int COLOR_BAR_BG     = 0xFF323232;
@@ -73,10 +74,13 @@ public final class SkijaLoadingScreenRenderer {
 
     private final SkijaUIBackend backend;
 
+    /** The fill as drawn, eased toward the tracker's progress so phase changes don't snap. */
+    private float displayedProgress;
+    private long lastFrameNanos;
+
     private Font fontTitle;
     private Font fontStage;
     private Font fontSubStage;
-    private Font fontTime;
     private Font fontPercent;
     private Font fontErrorTitle;
     private Font fontErrorText;
@@ -94,7 +98,6 @@ public final class SkijaLoadingScreenRenderer {
         fontTitle   = new Font(tf).setSize(TITLE_SIZE);
         fontStage   = new Font(tf).setSize(STAGE_SIZE);
         fontSubStage = new Font(tf).setSize(SUB_STAGE_SIZE);
-        fontTime    = new Font(tf).setSize(TIME_SIZE);
         fontPercent = new Font(tf).setSize(PERCENT_SIZE);
         fontErrorTitle = new Font(tf).setSize(16f);
         fontErrorText  = new Font(tf).setSize(14f);
@@ -121,8 +124,7 @@ public final class SkijaLoadingScreenRenderer {
             drawLogo(canvas, cx, cy - 100f);
             drawStageName(canvas, cx, cy - 10f, screen.getCurrentStageName());
             drawSubStage(canvas, cx, cy + 15f, screen);
-            drawTimeRemaining(canvas, cx, cy + 35f, screen);
-            drawProgressBar(canvas, cx, cy + 50f, screen);
+            drawProgressBar(canvas, cx, cy + 55f, screen);
 
             if (screen.hasError() && screen.getErrorMessage() != null) {
                 drawErrorBox(canvas, cx, cy + 120f, windowWidth, screen);
@@ -158,33 +160,19 @@ public final class SkijaLoadingScreenRenderer {
         String subStage = screen.getCurrentSubStage();
         if (subStage == null || subStage.trim().isEmpty()) return;
 
-        String text = subStage;
-        int total = screen.getTotalSubStages();
-        if (total > 1) {
-            text += String.format(" (%d/%d)", screen.getSubStageProgress() + 1, total);
-        }
-        MPainter.drawCenteredString(canvas, text, cx, y, fontSubStage, COLOR_SUB_STAGE_TEXT);
-    }
-
-    private void drawTimeRemaining(Canvas canvas, float cx, float y, LoadingScreen screen) {
-        if (fontTime == null) return;
-        String time = screen.getEstimatedTimeRemaining();
-        if (time == null || time.equals("Calculating...") || time.isEmpty()) return;
-
-        String text = "Time remaining: " + time;
-        MPainter.drawCenteredString(canvas, text, cx, y, fontTime, COLOR_TIME_TEXT);
+        MPainter.drawCenteredString(canvas, subStage, cx, y, fontSubStage, COLOR_SUB_STAGE_TEXT);
     }
 
     private void drawProgressBar(Canvas canvas, float cx, float y, LoadingScreen screen) {
         float barX = cx - BAR_WIDTH / 2f;
-        float progress = screen.getProgress();
+        float progress = easeTowards(screen.getProgress());
         float filledWidth = BAR_WIDTH * progress;
 
         // Background
         MPainter.fillRect(canvas, barX, y, BAR_WIDTH, BAR_HEIGHT, COLOR_BAR_BG);
 
-        // Fill
-        if (filledWidth > 0) {
+        // Fill (inset 2px per side, so anything narrower than the inset has nothing to draw)
+        if (filledWidth > 4f) {
             MPainter.fillRect(canvas, barX + 2f, y + 2f, filledWidth - 4f, BAR_HEIGHT - 4f, COLOR_BAR_FILL);
         }
 
@@ -196,6 +184,18 @@ public final class SkijaLoadingScreenRenderer {
             String text = String.format("%d%%", (int) (progress * 100));
             MPainter.drawCenteredString(canvas, text, cx, y + BAR_HEIGHT / 2f, fontPercent, COLOR_PROGRESS_TEXT);
         }
+    }
+
+    private float easeTowards(float target) {
+        long now = System.nanoTime();
+        float dt = lastFrameNanos == 0L ? 0f : (now - lastFrameNanos) / 1_000_000_000f;
+        lastFrameNanos = now;
+        if (target < displayedProgress) {
+            displayedProgress = target; // a new load started
+        } else {
+            displayedProgress += (target - displayedProgress) * Math.min(1f, dt * BAR_CATCH_UP_RATE);
+        }
+        return displayedProgress;
     }
 
     private void drawErrorBox(Canvas canvas, float cx, float baseY, int windowWidth, LoadingScreen screen) {

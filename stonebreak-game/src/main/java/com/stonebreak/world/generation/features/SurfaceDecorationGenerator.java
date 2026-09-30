@@ -7,14 +7,12 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.ChunkGenerationContext;
 import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
  * Surface decorations: gravel, ice, snow, clay - biome-specific overlays.
  */
 public class SurfaceDecorationGenerator {
-    private static final int MIN_SURFACE_Y = 64;
     private static final float GRAVEL_CHANCE = 0.0015f;
     private static final float ICE_CHANCE = 0.03f;
     private static final float SNOW_CHANCE = 0.08f; // cumulative threshold (>= ICE_CHANCE)
@@ -30,9 +28,9 @@ public class SurfaceDecorationGenerator {
     private static final float BADLANDS_COBBLE_CHANCE = 0.06f; // cumulative
 
     private final DeterministicRandom rng;
-    private final HeightMapGenerator heightMap;
+    private final ColumnHeights heightMap;
 
-    public SurfaceDecorationGenerator(DeterministicRandom rng, HeightMapGenerator heightMap,
+    public SurfaceDecorationGenerator(DeterministicRandom rng, ColumnHeights heightMap,
                                       long worldSeed) {
         this.rng = rng;
         this.heightMap = heightMap;
@@ -43,7 +41,7 @@ public class SurfaceDecorationGenerator {
         for (int x = 0; x < ChunkGenerationContext.SIZE; x++) {
             for (int z = 0; z < ChunkGenerationContext.SIZE; z++) {
                 int surface = ctx.height(x, z);
-                if (surface <= MIN_SURFACE_Y || surface >= WorldConfiguration.WORLD_HEIGHT) {
+                if (surface >= WorldConfiguration.WORLD_HEIGHT || ctx.isSubmerged(x, z)) {
                     continue;
                 }
                 int worldX = ctx.worldX(x);

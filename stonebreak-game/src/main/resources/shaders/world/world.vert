@@ -58,8 +58,8 @@ void pullQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, out 
     uint w0 = q.x;
     uint w1 = q.y;
     uint w2 = q.z;
-    int face = int((w0 >> 25u) & 7u);
-    float w = float((w0 >> 28u) & 15u) + 1.0;
+    int face = int((w0 >> 26u) & 7u);
+    float w = float((w1 >> 25u) & 15u) + 1.0;
     float h = float(w1 & 15u) + 1.0;
     int orient = int((w1 >> 4u) & 7u);
     vec3 c = QUAD_CORNER[face * 4 + corner];
@@ -77,7 +77,7 @@ void pullQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, out 
     } else if (face >= 2 && (w3 & 240u) != 0u) {
         off.y *= float((w3 >> 4u) & 15u) / 8.0;
     }
-    localPos = vec3(float(w0 & 255u), float((w0 >> 8u) & 511u), float((w0 >> 17u) & 255u)) + off;
+    localPos = vec3(float(w0 & 255u), float((w0 >> 8u) & 1023u), float((w0 >> 18u) & 255u)) + off;
     float u0 = float(orient & 1);
     float v0 = float((orient >> 1) & 1);
     bool swap = (orient & 4) != 0;
@@ -110,14 +110,14 @@ void pullLodQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, o
     uint w1 = q.y;
     float x = float(w0 & 511u) - 8.0;
     float z = float((w0 >> 9u) & 511u) - 8.0;
-    float y = float((w0 >> 18u) & 511u) * 0.5;
-    int face = int((w0 >> 27u) & 7u);
-    bool smoothNormals = ((w0 >> 30u) & 1u) != 0u;
-    float light = float(w0 >> 31u);
+    float y = float((w0 >> 18u) & 2047u) * 0.5;
+    int face = int((w0 >> 29u) & 7u);
     float w = float(w1 & 63u) * 0.5;
-    float h = float((w1 >> 6u) & 1023u) * 0.5;
-    layer = float((w1 >> 16u) & 32767u);
-    float alpha = float(w1 >> 31u);
+    float h = float((w1 >> 6u) & 2047u) * 0.5;
+    layer = float((w1 >> 17u) & 4095u);
+    float alpha = float((w1 >> 29u) & 1u);
+    bool smoothNormals = ((w1 >> 30u) & 1u) != 0u;
+    float light = float(w1 >> 31u);
     vec3 c = QUAD_CORNER[face * 4 + corner];
     int ua = QUAD_UAXIS[face];
     int va = QUAD_VAXIS[face];

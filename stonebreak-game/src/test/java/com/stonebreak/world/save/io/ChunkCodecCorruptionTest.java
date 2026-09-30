@@ -1,9 +1,11 @@
 package com.stonebreak.world.save.io;
 
 import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
+import com.openmason.engine.voxel.cco.data.palette.CcoSectionIndexing;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.utils.LocalBlockKey;
 import com.stonebreak.world.save.model.ChunkData;
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -30,7 +32,7 @@ class ChunkCodecCorruptionTest {
 
     private static ChunkData createFixture() {
         CcoPalettedChunkStorage blocks =
-                CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR);
+                CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR);
         Random random = new Random(99L);
         BlockType[] palette = {BlockType.STONE, BlockType.DIRT, BlockType.GRASS};
         for (int x = 0; x < 16; x++) {
@@ -75,7 +77,10 @@ class ChunkCodecCorruptionTest {
     void unsupportedVersionsAreRejected() throws IOException {
         byte[] payload = validPayload();
 
-        for (short badVersion : new short[]{0, 6}) {
+        // Below the minimum readable version, and far above the maximum — the latter
+        // stated as a value no renumbering will plausibly reach, so bumping the codec
+        // version does not silently turn this into a no-op.
+        for (short badVersion : new short[]{0, 127}) {
             byte[] corrupted = payload.clone();
             ByteBuffer.wrap(corrupted).putShort(4, badVersion);
 
@@ -137,7 +142,7 @@ class ChunkCodecCorruptionTest {
     @Test
     void allAirChunkRoundTripsAndStaysTiny() throws IOException {
         CcoPalettedChunkStorage blocks =
-                CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR);
+                CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR);
         ChunkData allAir = ChunkData.builder()
                 .chunkX(0).chunkZ(0)
                 .blocks(blocks)
@@ -145,7 +150,9 @@ class ChunkCodecCorruptionTest {
                 .build();
         byte[] payload = ChunkCodec.encode(allAir);
 
-        // Assert rawLen (int at offset 25) is exactly 49.
+        // The whole point of the paletted section stream: an all-air chunk costs one
+        // sectionCount byte plus three bytes per uniform section, whatever the world height.
+        int expectedRawLen = 1 + 3 * (WorldConfiguration.WORLD_HEIGHT / CcoSectionIndexing.SECTION_HEIGHT);
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(payload))) {
             in.readInt(); // magic
             in.readShort(); // version
@@ -156,8 +163,8 @@ class ChunkCodecCorruptionTest {
             in.readBoolean(); // hasEntitiesGenerated
             in.readByte(); // compression flag
             int rawLen = in.readInt();
-            assertEquals(49, rawLen,
-                    "all-air raw section stream must be exactly 49 bytes");
+            assertEquals(expectedRawLen, rawLen,
+                    "all-air raw section stream must be exactly " + expectedRawLen + " bytes");
         }
 
         ChunkData decoded = ChunkCodec.decode(payload);
@@ -182,7 +189,7 @@ class ChunkCodecCorruptionTest {
         assertTrue(ex1.getMessage().contains("Invalid chunk block storage dimensions"),
                 "Expected dimension error, got: " + ex1.getMessage());
 
-        // Wrong height (128 instead of 256).
+        // Wrong height (128 instead of the world height).
         CcoPalettedChunkStorage wrongSize =
                 CcoPalettedChunkStorage.createEmpty(16, 128, 16, BlockType.AIR);
         IllegalStateException ex2 = assertThrows(IllegalStateException.class, () ->
@@ -221,7 +228,7 @@ class ChunkCodecCorruptionTest {
 
         ChunkData chunk = ChunkData.builder()
                 .chunkX(0).chunkZ(0)
-                .blocks(CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR))
+                .blocks(CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR))
                 .lastModified(LocalDateTime.of(2024, 1, 1, 12, 0))
                 .blockStates(states)
                 .build();
@@ -243,7 +250,7 @@ class ChunkCodecCorruptionTest {
 
         ChunkData chunk = ChunkData.builder()
                 .chunkX(0).chunkZ(0)
-                .blocks(CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR))
+                .blocks(CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR))
                 .lastModified(LocalDateTime.of(2024, 1, 1, 12, 0))
                 .snowLayers(snow)
                 .build();
@@ -274,7 +281,7 @@ class ChunkCodecCorruptionTest {
             futures.add(pool.submit((Callable<Void>) () -> {
                 for (int i = 0; i < iterations; i++) {
                     CcoPalettedChunkStorage blocks =
-                            CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR);
+                            CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR);
                     // Place a few deterministic blocks based on thread + iteration.
                     int x0 = threadId % 16;
                     int y0 = (i * 3 + threadId * 7) % 256;

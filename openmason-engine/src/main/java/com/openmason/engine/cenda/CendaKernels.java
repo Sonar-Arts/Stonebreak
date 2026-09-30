@@ -29,7 +29,7 @@ import java.nio.file.Path;
 public final class CendaKernels {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CendaKernels.class);
-    private static final int EXPECTED_ABI = 4;
+    private static final int EXPECTED_ABI = 11;
 
     private static final boolean AVAILABLE;
     private static final String SIMD_LEVEL;
@@ -648,6 +648,13 @@ public final class CendaKernels {
      * layout {@code y*256 + z*16 + x}; {@code outHeightmap} (256 ints,
      * {@code [z*16+x]}, nullable) receives topOpaqueY+1 per column.
      * Returns the non-air block count, or negative on error/unavailable.
+     *
+     * <p>The native kernel emits a FIXED 256-block-tall volume, so this entry
+     * point only serves worlds of that height. It is currently unused — the
+     * diffusion terrain source replaced the fused generator on this branch,
+     * where {@code WORLD_HEIGHT} is 1024 — and the explicit length check below
+     * exists so re-enabling it against a taller world fails loudly instead of
+     * silently filling only the bottom 256 blocks of every column.
      */
     /**
      * @param extraCarveMask 1024 longs (bit = {@code (x<<12)|(y<<4)|z}) OR'd into the
@@ -657,6 +664,11 @@ public final class CendaKernels {
                                      int[] heights256, int[] biomes256,
                                      long[] extraCarveMask,
                                      short[] outBlocks, int[] outHeightmap) {
+        if (outBlocks.length != 65536) {
+            throw new IllegalArgumentException(
+                "ck_generate_chunk emits a fixed 16x256x16 volume; outBlocks must be 65536 shorts, was "
+                    + outBlocks.length);
+        }
         if (!AVAILABLE || ctx == 0L) {
             return -1L;
         }

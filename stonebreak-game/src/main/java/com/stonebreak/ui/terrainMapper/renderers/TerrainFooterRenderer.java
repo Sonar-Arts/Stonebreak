@@ -39,6 +39,9 @@ public final class TerrainFooterRenderer {
         drawStatusText(canvas, ui, footer);
     }
 
+    /** Number of buttons anchored to the footer's left edge (Back, Character). */
+    private static final int LEFT_BUTTON_COUNT = 2;
+
     private void positionButtons(Rect footer) {
         float y = footer.y() + (footer.height() - TerrainMapperConfig.FOOTER_BUTTON_HEIGHT) / 2f;
         float right = footer.right() - TerrainMapperConfig.FOOTER_BUTTON_GAP;
@@ -53,13 +56,31 @@ public final class TerrainFooterRenderer {
         state.getCharacterButton().position(left, y);
     }
 
+    /** Resolved once: the backend and model come from system properties fixed at launch. */
+    private static final String DIFFUSION_BACKEND =
+            com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe.generatorLabel();
+
+    /** The selected generator; the model generator also names the backend and model it runs. */
+    private String terrainLabel() {
+        var generator = state.getSelectedGenerator();
+        if (generator == null) return "none";
+        return generator == com.stonebreak.world.generation.TerrainGeneratorType.DIFFUSION
+                ? DIFFUSION_BACKEND
+                : generator.displayName();
+    }
+
     private void drawStatusText(Canvas canvas, MasonryUI ui, Rect footer) {
         Font meta = ui.fonts().get(MStyle.FONT_META);
         float textY = footer.y() + footer.height() / 2f + 4f;
 
-        String modeLabel = "Mode: " + state.getActiveVisualizer().displayName();
-        float modeX = footer.x() + TerrainMapperConfig.FOOTER_BUTTON_WIDTH
-                + TerrainMapperConfig.FOOTER_BUTTON_GAP * 2f;
+        String modeLabel = (state.getActiveVisualizer() == null
+                ? "Mode: none"
+                : "Mode: " + state.getActiveVisualizer().displayName())
+                + "   \u00b7   Terrain: " + terrainLabel();
+        // Start past every left-anchored button so the text never overlaps them.
+        float modeX = footer.x() + TerrainMapperConfig.FOOTER_BUTTON_GAP
+                + LEFT_BUTTON_COUNT * (TerrainMapperConfig.FOOTER_BUTTON_WIDTH
+                        + TerrainMapperConfig.FOOTER_BUTTON_GAP);
         MPainter.drawString(canvas, modeLabel, modeX, textY - 10f, meta, MStyle.TEXT_SECONDARY);
 
         if (state.hasHoverValue()) {

@@ -20,7 +20,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * can return as soon as the blob is handed off.
  *
  * <p>The schema is intentionally tiny — one table keyed by {@code (level, cx, cz)}
- * — so recovery and manual inspection stay trivial.
+ * — so recovery and manual inspection stay trivial. A one-row {@code fastlod_meta}
+ * table records which terrain the nodes were sampled from
+ * ({@link com.stonebreak.world.generation.TerrainGenerator#lodCacheTag}); opening
+ * the store for any other terrain discards every node, since a node from other
+ * terrain is exactly the LOD-standing-where-the-chunk-does-not artifact this cache
+ * must never produce. The serializer's version byte covers changes to the game's
+ * own code; the tag covers what it cannot see — a DaedalusTGM-Exp world's terrain
+ * changes whenever the model is retrained.
  *
  * <p>Threading contract:
  * <ul>
@@ -41,6 +48,13 @@ public final class FastLodStore implements AutoCloseable {
                 PRIMARY KEY (level, cx, cz)
             ) WITHOUT ROWID;
             """;
+    private static final String META_DDL = """
+            CREATE TABLE IF NOT EXISTS fastlod_meta (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            ) WITHOUT ROWID;
+            """;
+    private static final String TAG_KEY = "terrain";
 
     private final Path dbPath;
     private final ExecutorService io;
@@ -68,11 +82,13 @@ public final class FastLodStore implements AutoCloseable {
     }
 
     /**
-     * Opens (or creates) the database at {@code dbPath}. Returns {@code null}
-     * if the driver fails or the schema can't be created — the caller should
-     * treat that as "no persistence" and fall through to pure generation.
+     * Opens (or creates) the database at {@code dbPath} for nodes sampled from
+     * the terrain {@code terrainTag} names, discarding any it holds from other
+     * terrain (or from before stores were tagged). Returns {@code null} if the
+     * driver fails or the schema can't be created — the caller should treat
+     * that as "no persistence" and fall through to pure generation.
      */
-    public static FastLodStore open(Path dbPath) {
+    public static FastLodStore open(Path dbPath, String terrainTag) {
         try {
             Files.createDirectories(dbPath.getParent());
             // Force-load the driver once; the service loader usually handles
@@ -83,7 +99,9 @@ public final class FastLodStore implements AutoCloseable {
                 st.execute("PRAGMA journal_mode=WAL;");
                 st.execute("PRAGMA synchronous=NORMAL;");
                 st.execute(DDL);
+                st.execute(META_DDL);
             }
+            adoptTag(conn, dbPath, terrainTag);
             PreparedStatement select = conn.prepareStatement(
                     "SELECT data FROM fastlod_nodes WHERE level=? AND cx=? AND cz=?");
             PreparedStatement upsert = conn.prepareStatement(
@@ -183,6 +201,31 @@ public final class FastLodStore implements AutoCloseable {
             upsertStmt.executeUpdate();
         } catch (SQLException e) {
             System.err.println("[FastLodStore] write failed for " + key + ": " + e.getMessage());
+        }
+    }
+
+    /** Clears the nodes if they were sampled from terrain other than {@code tag}, then records it. */
+    private static void adoptTag(Connection conn, Path dbPath, String tag) throws SQLException {
+        String stored = null;
+        try (PreparedStatement get = conn.prepareStatement("SELECT value FROM fastlod_meta WHERE key=?")) {
+            get.setString(1, TAG_KEY);
+            try (ResultSet rs = get.executeQuery()) {
+                if (rs.next()) stored = rs.getString(1);
+            }
+        }
+        if (tag.equals(stored)) return;
+        try (Statement st = conn.createStatement()) {
+            int dropped = st.executeUpdate("DELETE FROM fastlod_nodes");
+            if (dropped > 0) {
+                System.out.println("[FastLodStore] " + dbPath + ": terrain changed (" + stored + " -> " + tag
+                        + "), discarded " + dropped + " cached nodes");
+            }
+        }
+        try (PreparedStatement put = conn.prepareStatement(
+                "INSERT INTO fastlod_meta(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")) {
+            put.setString(1, TAG_KEY);
+            put.setString(2, tag);
+            put.executeUpdate();
         }
     }
 

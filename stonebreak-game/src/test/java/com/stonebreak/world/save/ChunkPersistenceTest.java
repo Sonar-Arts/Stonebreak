@@ -8,6 +8,7 @@ import com.stonebreak.world.save.io.ChunkCodec;
 import com.stonebreak.world.save.io.ChunkStorage;
 import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.EntityData;
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ import java.util.Map;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Tag("regression")
@@ -56,11 +58,11 @@ class ChunkPersistenceTest {
 
     @Test
     void palettedSectionStreamStaysCompact() throws IOException {
-        // v5 pins: version 5, and the uncompressed section stream must be the
+        // v6 pins: version 6, and the uncompressed section stream must be the
         // paletted form — a realistic chunk (terrain below y=64, air above)
-        // stays far below the old fixed 128 KB dense stream.
+        // stays far below the old fixed 512 KB dense stream (1024-tall shorts).
         CcoPalettedChunkStorage blocks =
-            CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR);
+            CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR);
         Random random = new Random(99L);
         BlockType[] palette = {BlockType.STONE, BlockType.DIRT, BlockType.GRASS};
         for (int x = 0; x < 16; x++) {
@@ -84,7 +86,7 @@ class ChunkPersistenceTest {
 
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(payload))) {
             in.readInt();              // magic
-            assertEquals(5, in.readUnsignedShort(), "writer emits v5");
+            assertEquals(6, in.readUnsignedShort(), "writer emits v6");
             in.readInt();              // chunkX
             in.readInt();              // chunkZ
             in.readLong();             // lastModified
@@ -92,7 +94,7 @@ class ChunkPersistenceTest {
             in.readBoolean();          // hasEntitiesGenerated
             in.readByte();             // compression flag
             int rawLength = in.readInt();
-            // 4 mixed sections (~4.1 KB each) + 12 uniform air sections (3 B each).
+            // 4 mixed sections (~4.1 KB each) + 60 uniform air sections (3 B each).
             assertTrue(rawLength < 20_000,
                 "paletted stream must stay compact, was " + rawLength + " bytes");
         }
@@ -101,15 +103,19 @@ class ChunkPersistenceTest {
     }
 
     @Test
-    void legacyV3PayloadStillDecodes() throws IOException {
-        // Hand-built v3 payload (deflated dense big-endian short ids in
-        // y,z,x order) — pins that pre-palette worlds keep loading.
+    void legacyV4DensePayloadStillDecodes() throws IOException {
+        // Hand-built v4 payload (deflated dense big-endian short ids in y,z,x
+        // order) — pins that this branch's own pre-palette worlds keep loading.
+        // v4/v5 are the dense pair written before the section-paletted stream;
+        // anything older predates the 256→1024 rescale and is rejected outright
+        // (see preV4PayloadIsRejected).
         ChunkData expected = createSampleChunk(-4, 9);
         CcoBlockStorage storage = expected.getBlockStorage();
 
-        java.io.ByteArrayOutputStream rawBlocks = new java.io.ByteArrayOutputStream(65536 * 2);
+        java.io.ByteArrayOutputStream rawBlocks =
+            new java.io.ByteArrayOutputStream(16 * 16 * WorldConfiguration.WORLD_HEIGHT * 2);
         try (java.io.DataOutputStream rawOut = new java.io.DataOutputStream(rawBlocks)) {
-            for (int y = 0; y < 256; y++) {
+            for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
                 for (int z = 0; z < 16; z++) {
                     for (int x = 0; x < 16; x++) {
                         rawOut.writeShort(((BlockType) storage.get(x, y, z)).getId());
@@ -127,7 +133,7 @@ class ChunkPersistenceTest {
         java.io.ByteArrayOutputStream payload = new java.io.ByteArrayOutputStream();
         try (java.io.DataOutputStream out = new java.io.DataOutputStream(payload)) {
             out.writeInt(0x5342434B);           // magic
-            out.writeShort(3);                   // version
+            out.writeShort(4);                   // version: dense DEFLATE
             out.writeInt(expected.getChunkX());
             out.writeInt(expected.getChunkZ());
             out.writeLong(0L);                   // lastModified
@@ -146,7 +152,7 @@ class ChunkPersistenceTest {
         assertEquals(expected.getChunkZ(), decoded.getChunkZ());
         CcoBlockStorage actualBlocks = decoded.getBlockStorage();
         for (int x = 0; x < 16; x++) {
-            for (int y = 0; y < 256; y++) {
+            for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
                 for (int z = 0; z < 16; z++) {
                     assertEquals(storage.get(x, y, z), actualBlocks.get(x, y, z),
                         "Block mismatch at (" + x + "," + y + "," + z + ")");
@@ -155,9 +161,33 @@ class ChunkPersistenceTest {
         }
     }
 
+    @Test
+    void preV4PayloadIsRejected() {
+        // The 256→1024 world-height rescale plus the spline→diffusion terrain
+        // switch make v1-v3 chunks unmigratable (ChunkCodec javadoc), so they
+        // must be refused rather than decoded into garbage.
+        java.io.ByteArrayOutputStream payload = new java.io.ByteArrayOutputStream();
+        try (java.io.DataOutputStream out = new java.io.DataOutputStream(payload)) {
+            out.writeInt(0x5342434B);           // magic
+            out.writeShort(3);                   // version: pre-rescale
+            out.writeInt(0);
+            out.writeInt(0);
+            out.writeLong(0L);
+            out.writeBoolean(false);
+            out.writeBoolean(false);
+        } catch (IOException e) {
+            throw new AssertionError("in-memory write failed", e);
+        }
+
+        IOException failure = assertThrows(IOException.class,
+            () -> ChunkCodec.decode(payload.toByteArray()));
+        assertTrue(failure.getMessage().contains("Unsupported chunk payload version"),
+            "unexpected failure: " + failure.getMessage());
+    }
+
     private static ChunkData createSampleChunk(int chunkX, int chunkZ) {
         CcoPalettedChunkStorage blocks =
-            CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR);
+            CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR);
         BlockType[] palette = {
             BlockType.STONE,
             BlockType.GRASS,
@@ -167,7 +197,7 @@ class ChunkPersistenceTest {
         };
         Random random = new Random(12345L + chunkX * 31L + chunkZ * 17L);
         for (int x = 0; x < 16; x++) {
-            for (int y = 0; y < 256; y++) {
+            for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
                 for (int z = 0; z < 16; z++) {
                     blocks.set(x, y, z, palette[random.nextInt(palette.length)]);
                 }
@@ -252,7 +282,7 @@ class ChunkPersistenceTest {
         CcoBlockStorage expectedBlocks = expected.getBlockStorage();
         CcoBlockStorage actualBlocks = actual.getBlockStorage();
         for (int x = 0; x < 16; x++) {
-            for (int y = 0; y < 256; y++) {
+            for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
                 for (int z = 0; z < 16; z++) {
                     assertEquals(expectedBlocks.get(x, y, z), actualBlocks.get(x, y, z),
                         "Block mismatch at (" + x + "," + y + "," + z + ")");

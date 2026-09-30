@@ -4,22 +4,34 @@ import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.ui.terrainMapper.TerrainMapperLayout;
+import com.stonebreak.ui.terrainMapper.components.TerrainMapViewport;
+import com.stonebreak.ui.terrainMapper.managers.PreviewSnapshot;
+import com.stonebreak.ui.terrainMapper.managers.SampleRequest;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
-import com.stonebreak.ui.terrainMapper.managers.TerrainPreviewCache;
+import com.stonebreak.ui.terrainMapper.managers.TerrainPreviewLoader;
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.ClipMode;
-import io.github.humbleui.skija.Image;
+import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.types.Rect;
 
 /**
- * Draws the preview viewport: a cached noise image blitted into the map
- * rect, clipped to the rect, with a 1px border. The cache owns sampling;
- * the renderer is a pure blit + frame.
+ * Draws the preview viewport. Nothing here ever blocks on terrain: it asks
+ * {@link TerrainPreviewLoader} for a sample (fire-and-forget) and draws whatever snapshot has
+ * been published so far, or a blank rect with a status line when there is none yet.
+ *
+ * <p>The snapshot is drawn <em>reprojected</em> rather than blitted 1:1. A sample takes a
+ * while to come back, so by the time it does the user has usually panned or zoomed on; the
+ * snapshot knows the viewport it was sampled at, so its world extent can be projected through
+ * the current viewport and the pixels land exactly where they belong. Panning therefore moves
+ * the map instantly, and only the newly exposed edge is blank until the next sample lands.
  */
 public final class TerrainMapRenderer {
+
+    /** Alpha for an image left over from a visualizer the user has since switched away from. */
+    private static final int STALE_MODE_ALPHA = 90;
 
     private final TerrainMapperStateManager state;
 
@@ -34,28 +46,37 @@ public final class TerrainMapRenderer {
         TerrainMapperLayout.Rect mapRect = layout.map();
         if (mapRect.width() <= 0 || mapRect.height() <= 0) return;
 
+        TerrainPreviewLoader loader = state.getPreviewLoader();
+        // Free images displaced since the last frame. Safe here and only here: any draw that
+        // used them was issued by this thread on an earlier frame and has already completed.
+        loader.retireCompleted();
+
+        // The blank map.
         MPainter.fillRect(canvas, mapRect.x(), mapRect.y(), mapRect.width(), mapRect.height(), 0xFF0E0E0E);
 
-        NoiseVisualizer visualizer = state.getVisualizers().get(state.getActiveVisualizer());
-        TerrainPreviewCache cache = state.getPreviewCache();
-        cache.ensure((int) mapRect.width(), (int) mapRect.height(),
-                state.effectiveSampleStep(),
-                state.getActiveVisualizer(),
-                state.getResolvedSeed(),
-                visualizer,
-                state.getViewport());
-
-        Image image = cache.image();
-        if (image != null) {
-            int save = canvas.save();
-            Rect dst = Rect.makeXYWH(mapRect.x(), mapRect.y(), mapRect.width(), mapRect.height());
-            canvas.clipRect(dst, ClipMode.INTERSECT, true);
-            try (Paint paint = new Paint()) {
-                Rect src = Rect.makeWH(image.getWidth(), image.getHeight());
-                canvas.drawImageRect(image, src, dst, SamplingMode.DEFAULT, paint, true);
-            }
-            canvas.restoreToCount(save);
+        state.applyPendingSeed();
+        if (state.getSelectedGenerator() == null) {
+            // Nothing to preview until a generator is picked — and nothing started for one.
+            MPainter.drawCenteredString(canvas, "Choose a terrain generator", mapRect.centerX(),
+                    mapRect.y() + mapRect.height() / 2f, ui.fonts().get(MStyle.FONT_ITEM), MStyle.TEXT_SECONDARY);
+            MPainter.strokeRect(canvas, mapRect.x(), mapRect.y(), mapRect.width(), mapRect.height(),
+                    MStyle.PANEL_BORDER, 2f);
+            return;
         }
+        loader.request(buildRequest(mapRect));
+
+        // Oldest first: the last full picture, then whatever the running pass has filled in over
+        // it. On a zoom that means the map the user already had stays put, at its true world
+        // scale, instead of vanishing until the new pass catches up.
+        PreviewSnapshot backdrop = loader.backdrop();
+        if (backdrop != null) {
+            drawSnapshot(canvas, mapRect, backdrop);
+        }
+        PreviewSnapshot snapshot = loader.snapshot();
+        if (snapshot != null) {
+            drawSnapshot(canvas, mapRect, snapshot);
+        }
+        drawStatus(canvas, ui, mapRect, loader, snapshot);
 
         if (state.hasSpawnPoint()) {
             drawSpawnWaypoint(canvas, mapRect);
@@ -67,6 +88,76 @@ public final class TerrainMapRenderer {
 
         MPainter.strokeRect(canvas, mapRect.x(), mapRect.y(), mapRect.width(), mapRect.height(),
                 MStyle.PANEL_BORDER, 2f);
+    }
+
+    private SampleRequest buildRequest(TerrainMapperLayout.Rect mapRect) {
+        NoiseVisualizer visualizer = state.getVisualizers().get(state.getActiveVisualizer());
+        TerrainMapViewport viewport = state.getViewport();
+        return state.getRequestPlanner().plan(
+                visualizer,
+                state.getVisualizers(),
+                (int) mapRect.width(),
+                (int) mapRect.height(),
+                viewport.panX(),
+                viewport.panZ(),
+                viewport.zoom(),
+                state.effectiveSampleStep());
+    }
+
+    /**
+     * Projects the snapshot's world extent through the <em>current</em> viewport. When the
+     * viewport hasn't moved since the sample, this collapses to a 1:1 blit into the map rect.
+     *
+     * <p>An image from a different visualizer is drawn dimmed rather than at full strength. A
+     * mode switch has to wait for at least the first band of the new sampling, and at full
+     * opacity the previous mode's map reads as the answer — which is indistinguishable from the
+     * button having done nothing at all.
+     */
+    private void drawSnapshot(Canvas canvas, TerrainMapperLayout.Rect mapRect, PreviewSnapshot snapshot) {
+        TerrainMapViewport viewport = state.getViewport();
+        float zoom = viewport.zoom();
+        float dstX = mapRect.x() + mapRect.width() * 0.5f + (snapshot.worldLeft() - viewport.panX()) * zoom;
+        float dstY = mapRect.y() + mapRect.height() * 0.5f + (snapshot.worldTop() - viewport.panZ()) * zoom;
+        float dstW = snapshot.worldWidth() * zoom;
+        float dstH = snapshot.worldHeight() * zoom;
+        if (dstW <= 0f || dstH <= 0f) return;
+
+        int save = canvas.save();
+        canvas.clipRect(Rect.makeXYWH(mapRect.x(), mapRect.y(), mapRect.width(), mapRect.height()),
+                ClipMode.INTERSECT, true);
+        try (Paint paint = new Paint()) {
+            if (snapshot.request().visualizer() != state.getVisualizers().get(state.getActiveVisualizer())) {
+                paint.setAlpha(STALE_MODE_ALPHA);
+            }
+            Rect src = Rect.makeWH(snapshot.image().getWidth(), snapshot.image().getHeight());
+            canvas.drawImageRect(snapshot.image(), src, Rect.makeXYWH(dstX, dstY, dstW, dstH),
+                    SamplingMode.DEFAULT, paint, true);
+        }
+        canvas.restoreToCount(save);
+    }
+
+    /**
+     * Progress/error line. Centered while the map is blank — there is nothing else to look at —
+     * and tucked into the top-left corner once there are pixels, so a background resample
+     * doesn't paint over the terrain the user is reading.
+     */
+    private void drawStatus(Canvas canvas, MasonryUI ui, TerrainMapperLayout.Rect mapRect,
+                            TerrainPreviewLoader loader, PreviewSnapshot snapshot) {
+        String message = loader.statusMessage();
+        if (message == null) return;
+
+        int color = loader.phase() == TerrainPreviewLoader.Phase.FAILED
+                ? MStyle.TEXT_ERROR
+                : MStyle.TEXT_SECONDARY;
+        if (snapshot == null) {
+            Font font = ui.fonts().get(MStyle.FONT_ITEM);
+            MPainter.drawCenteredString(canvas, message, mapRect.centerX(),
+                    mapRect.y() + mapRect.height() / 2f, font, color);
+        } else {
+            Font font = ui.fonts().get(MStyle.FONT_META);
+            MPainter.drawStringWithShadow(canvas, message, mapRect.x() + 12f, mapRect.y() + 22f,
+                    font, color, MStyle.TEXT_SHADOW);
+        }
     }
 
     private void drawSpawnWaypoint(Canvas canvas, TerrainMapperLayout.Rect map) {

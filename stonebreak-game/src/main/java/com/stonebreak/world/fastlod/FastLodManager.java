@@ -6,7 +6,7 @@ import com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.ArrayList;
@@ -62,6 +62,16 @@ public final class FastLodManager {
     private static final int MAX_CLEANUPS_PER_FRAME = 48;
     /** Cap spent on GPU upload work per frame; prevents bursts from spiking frame time. */
     private static final long UPLOAD_BUDGET_NANOS = 3_000_000L; // 3 ms
+    /**
+     * Wait before a node whose sample failed is tried again, doubling per consecutive failure up
+     * to {@link #MAX_RETRY_BACKOFF_NANOS}. A deterministic noise sampler never failed, so failures
+     * used to be retried on the very next tick; a model-backed one fails for as long as its
+     * service is down, and every frame re-submitted a full queue of doomed nodes and logged each.
+     */
+    static final long RETRY_BACKOFF_NANOS = TimeUnit.SECONDS.toNanos(2);
+    private static final long MAX_RETRY_BACKOFF_NANOS = TimeUnit.SECONDS.toNanos(60);
+    /** At most one failure line per this interval; the rest are counted into it. */
+    private static final long FAILURE_LOG_INTERVAL_NANOS = TimeUnit.SECONDS.toNanos(10);
 
     private final WorldConfiguration config;
     private final FastLodSampler sampler;
@@ -69,6 +79,7 @@ public final class FastLodManager {
     private final ExecutorService executor;
     private final FastLodStore store;   // may be null when persistence is disabled
     private final Uploader uploader;
+    private final long uploadBudgetNanos;
     /** Cap on {@link #inFlight}; see {@link #IN_FLIGHT_PER_WORKER}. */
     private final int maxInFlight;
 
@@ -98,6 +109,14 @@ public final class FastLodManager {
     /** newKey → previous resident key at that column; retires the old handle only once the new one has uploaded. */
     private final Map<FastLodKey, FastLodKey> pendingSupersede = new ConcurrentHashMap<>();
 
+    /** A node whose last sample failed: when it may be tried again, and how many times it has failed in a row. */
+    private record Backoff(long retryAtNanos, int failures) {}
+    private final Map<FastLodKey, Backoff> backoff = new ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicLong lastFailureLogNanos = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicInteger unloggedFailures = new java.util.concurrent.atomic.AtomicInteger();
+    /** Monotonic clock for retry backoff; a test seam. */
+    java.util.function.LongSupplier clock = System::nanoTime;
+
     private volatile boolean shutdown = false;
     /**
      * Player chunk column from the most recent {@link #updateRing} tick,
@@ -108,7 +127,7 @@ public final class FastLodManager {
     private volatile long lastPlayerColumn = packColumn(0, 0);
 
     public FastLodManager(WorldConfiguration config,
-                          TerrainGenerationSystem terrain,
+                          TerrainGenerator terrain,
                           BlockTextureArray textureArray,
                           FastLodStore store) {
         this(config, terrain, textureArray, store,
@@ -127,17 +146,36 @@ public final class FastLodManager {
 
     /** Test seam: injectable executor (e.g. same-thread) and GL-free uploader. */
     FastLodManager(WorldConfiguration config,
-                   TerrainGenerationSystem terrain,
+                   TerrainGenerator terrain,
                    BlockTextureArray textureArray,
                    FastLodStore store,
                    ExecutorService executor,
                    Uploader uploader) {
+        this(config, terrain, textureArray, store, executor, uploader, UPLOAD_BUDGET_NANOS);
+    }
+
+    /**
+     * As above, with the per-frame upload time budget also injectable. A headless test
+     * measures only CPU-side mesh packing against a mocked, instant-return uploader — no
+     * real GPU cost at all — so the production 3ms budget (sized for real upload work) can
+     * trip on nothing but cold-JIT interpreter overhead on the very first mesh. A large
+     * budget here removes that wall-clock noise from otherwise-deterministic bookkeeping
+     * assertions without changing the real per-frame budget used in production.
+     */
+    FastLodManager(WorldConfiguration config,
+                   TerrainGenerator terrain,
+                   BlockTextureArray textureArray,
+                   FastLodStore store,
+                   ExecutorService executor,
+                   Uploader uploader,
+                   long uploadBudgetNanos) {
         this.config   = config;
         this.sampler  = new FastLodSampler(terrain);
         this.mesher   = new FastLodMesher(textureArray);
         this.store    = store;
         this.executor = executor;
         this.uploader = uploader;
+        this.uploadBudgetNanos = uploadBudgetNanos;
         this.maxInFlight = Math.max(MIN_IN_FLIGHT,
                 IN_FLIGHT_PER_WORKER * config.getChunkBuildThreads());
     }
@@ -197,6 +235,11 @@ public final class FastLodManager {
                 FastLodBandPolicy.levelFor(
                         chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz), inner, range)
                 != key.level());
+        backoff.keySet().removeIf(key ->
+                FastLodBandPolicy.levelFor(
+                        chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz), inner, range)
+                != key.level());
+        long now = clock.getAsLong();
 
         // Pass 2: enumerate desired nodes in the ring. For each column pick
         // the detail level the band policy wants. If the resident node is
@@ -212,6 +255,8 @@ public final class FastLodManager {
                 int cx = playerCx + dx, cz = playerCz + dz;
                 FastLodKey target = FastLodKey.of(wanted, cx, cz);
                 if (handles.containsKey(target) || inFlight.contains(target)) continue;
+                Backoff failed = backoff.get(target);
+                if (failed != null && now - failed.retryAtNanos() < 0) continue;
 
                 FastLodKey resident = residentByColumn.get(packColumn(cx, cz));
                 if (resident != null && resident.level() == wanted) continue;
@@ -283,7 +328,7 @@ public final class FastLodManager {
             // budget. The count cap is a safety belt; the time budget is what
             // usually binds, so a cold reveal drains as fast as the GPU allows
             // without a single frame spiking beyond ~3ms of upload work.
-            long deadline = System.nanoTime() + UPLOAD_BUDGET_NANOS;
+            long deadline = System.nanoTime() + uploadBudgetNanos;
             for (int i = 0; i < MAX_UPLOADS_PER_FRAME; i++) {
                 Ready r = readyToUpload.poll();
                 if (r == null) break;
@@ -436,6 +481,7 @@ public final class FastLodManager {
         inFlight.clear();
         residentByColumn.clear();
         pendingSupersede.clear();
+        backoff.clear();
         for (Entry e : drained) {
             enqueueCleanup(e);
         }
@@ -465,6 +511,7 @@ public final class FastLodManager {
                     store.saveAsync(data);
                 }
             }
+            backoff.remove(key);
             FastLodMesher.Result result = mesher.build(data);
             if (result.mesh().isEmpty() && result.waterMesh() == null) {
                 inFlight.remove(key);
@@ -485,8 +532,30 @@ public final class FastLodManager {
         } catch (Exception e) {
             inFlight.remove(key);
             pendingSupersede.remove(key);
-            System.err.println("[FastLodManager] Generate failed for " + key + ": " + e.getMessage());
+            if (shutdown) {
+                return; // the terrain source was closed under a node mid-sample: not a failure
+            }
+            long now = clock.getAsLong();
+            backoff.compute(key, (k, prev) -> {
+                int failures = prev == null ? 1 : prev.failures() + 1;
+                long wait = Math.min(MAX_RETRY_BACKOFF_NANOS, RETRY_BACKOFF_NANOS << Math.min(failures - 1, 5));
+                return new Backoff(now + wait, failures);
+            });
+            logFailure(key, e, now);
         }
+    }
+
+    /** One line per {@link #FAILURE_LOG_INTERVAL_NANOS}: a dead terrain service fails every node in the ring. */
+    private void logFailure(FastLodKey key, Exception e, long now) {
+        long last = lastFailureLogNanos.get();
+        if ((last != 0 && now - last < FAILURE_LOG_INTERVAL_NANOS) || !lastFailureLogNanos.compareAndSet(last, now)) {
+            unloggedFailures.incrementAndGet();
+            return;
+        }
+        int more = unloggedFailures.getAndSet(0);
+        System.err.println("[FastLodManager] Generate failed for " + key + ": " + e.getMessage()
+                + (more > 0 ? " (+" + more + " more failures since the last report)" : "")
+                + "; retrying with backoff");
     }
 
     private void evictAll() {
@@ -499,6 +568,7 @@ public final class FastLodManager {
         readyToUpload.clear();
         residentByColumn.clear();
         pendingSupersede.clear();
+        backoff.clear();
         for (Entry e : drained) {
             enqueueCleanup(e);
         }

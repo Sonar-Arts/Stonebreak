@@ -4,7 +4,8 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
+import com.stonebreak.world.generation.diffusion.TerrainTile;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,7 +40,7 @@ import static org.mockito.Mockito.when;
 class FastLodCaveOpeningTest {
 
     private static final float EPS = 1e-4f;
-    private static final int GROUND = 100;
+    private static final int GROUND = 300;
 
     private FastLodMesher mesher;
 
@@ -60,15 +61,17 @@ class FastLodCaveOpeningTest {
     private static FastLodChunkData flat(FastLodLevel level, int[] openFloor, byte[] openCover) {
         int[] heights = new int[level.heightCount()];
         Arrays.fill(heights, GROUND);
+        int[] water = new int[level.cellCount()];
+        Arrays.fill(water, TerrainTile.NO_WATER);
         BlockType[] surface = new BlockType[level.cellCount()];
         Arrays.fill(surface, BlockType.GRASS);
-        return new FastLodChunkData(FastLodKey.of(level, 0, 0), heights, surface, null,
+        return new FastLodChunkData(FastLodKey.of(level, 0, 0), heights, water, surface, null,
                 openFloor, openCover);
     }
 
     private static int[] noOpenings(FastLodLevel level) {
         int[] f = new int[level.cellCount()];
-        Arrays.fill(f, TerrainGenerationSystem.NO_OPENING);
+        Arrays.fill(f, DiffusionTerrainGenerator.NO_OPENING);
         return f;
     }
 
@@ -162,7 +165,7 @@ class FastLodCaveOpeningTest {
         FastLodLevel level = FastLodLevel.L3;
         int[] floor = noOpenings(level);
         byte[] cover = new byte[level.cellCount()];
-        floor[0] = GROUND - 90;
+        floor[0] = GROUND - 200;
         cover[0] = (byte) 200;
 
         MmsMeshData mesh = mesher.build(flat(level, floor, cover)).mesh();
@@ -187,7 +190,7 @@ class FastLodCaveOpeningTest {
     void theFinestLevelEmitsNoNotches() {
         FastLodChunkData data = flat(FastLodLevel.L0, null, null);
         assertFalse(data.hasOpenings());
-        assertEquals(TerrainGenerationSystem.NO_OPENING, data.openingFloorAt(0, 0));
+        assertEquals(DiffusionTerrainGenerator.NO_OPENING, data.openingFloorAt(0, 0));
         assertEquals(0, data.openingCoverageAt(0, 0));
         assertNotNull(mesher.build(data).mesh());
     }

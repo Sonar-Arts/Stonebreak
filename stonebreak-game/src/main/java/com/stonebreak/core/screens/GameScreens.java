@@ -22,6 +22,7 @@ import com.stonebreak.ui.multiplayerMenu.HostWorldScreen;
 import com.stonebreak.ui.multiplayerMenu.JoinWorldScreen;
 import com.stonebreak.ui.multiplayerMenu.MultiplayerMenu;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
+import com.stonebreak.ui.saveChanges.SaveChangesDialog;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.startupIntro.SonarArtsIntroScreen;
 import com.stonebreak.ui.statisticsScreen.StatisticsScreen;
@@ -46,6 +47,7 @@ public final class GameScreens {
     private DeathMenu deathMenu;
     private StatisticsScreen statisticsScreen;
     private GlossaryScreen glossaryScreen;
+    private SaveChangesDialog saveChangesDialog;
     private MainMenu mainMenu;
     private SettingsMenu settingsMenu;
     private MultiplayerMenu multiplayerMenu;
@@ -56,6 +58,7 @@ public final class GameScreens {
     private CharacterCreationScreen characterCreationScreen;
     private TerrainMapperScreen terrainMapperScreen;
     private SonarArtsIntroScreen startupIntroScreen;
+    private com.stonebreak.ui.modelSetup.ModelSetupScreen modelSetupScreen;
     private com.stonebreak.ui.focusBattle.FocusBattleScreen focusBattleScreen;
 
     // In-world screens — rebuilt per world, so they stay null outside one.
@@ -76,6 +79,7 @@ public final class GameScreens {
         var skija = renderer.getSkijaBackend();
 
         pauseMenu = new PauseMenu(skija);
+        saveChangesDialog = new SaveChangesDialog(skija);
         statisticsScreen = new StatisticsScreen(skija);
         glossaryScreen = new GlossaryScreen(skija);
         deathMenu = new DeathMenu(skija);
@@ -89,6 +93,7 @@ public final class GameScreens {
         characterCreationScreen = new CharacterCreationScreen(skija);
         terrainMapperScreen = new TerrainMapperScreen(skija);
         startupIntroScreen = new SonarArtsIntroScreen(skija);
+        modelSetupScreen = new com.stonebreak.ui.modelSetup.ModelSetupScreen(skija);
         // Needs only the backend; the battle coordinator binds/unbinds it per encounter.
         focusBattleScreen = new com.stonebreak.ui.focusBattle.FocusBattleScreen(skija);
     }
@@ -130,6 +135,10 @@ public final class GameScreens {
 
     public PauseMenu pauseMenu() {
         return pauseMenu;
+    }
+
+    public SaveChangesDialog saveChangesDialog() {
+        return saveChangesDialog;
     }
 
     public DeathMenu deathMenu() {
@@ -182,6 +191,10 @@ public final class GameScreens {
 
     public SonarArtsIntroScreen startupIntroScreen() {
         return startupIntroScreen;
+    }
+
+    public com.stonebreak.ui.modelSetup.ModelSetupScreen modelSetupScreen() {
+        return modelSetupScreen;
     }
 
     public com.stonebreak.ui.focusBattle.FocusBattleScreen focusBattleScreen() {

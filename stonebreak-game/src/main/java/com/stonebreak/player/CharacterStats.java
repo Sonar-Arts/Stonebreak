@@ -5,7 +5,9 @@ import com.stonebreak.rpg.classes.PlayerClassDefinition;
 import com.stonebreak.rpg.feats.FeatRegistry;
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -64,18 +66,106 @@ public class CharacterStats {
     while (xp >= getXpForNextLevel()) {
       xp -= getXpForNextLevel();
       level++;
+      int[] grant = grantForLevel(level);
+      remainingCp += grant[0];
+      remainingSp += grant[1];
+      remainingFp += grant[2];
     }
   }
 
   // ─────────────────────────────────────────────── Point currencies
 
-  private int remainingCp = 100;
-  private int remainingSp = 100;
-  private int remainingFp = 100;
+  private int remainingCp;
+  private int remainingSp;
+  private int remainingFp;
+
+  /**
+   * Per-level currency grants, in {CP, SP, FP} order.
+   *
+   * <p>Levels are 1-based. Level 1 is the starting grant a character is born
+   * with; every level after that adds {@link #PER_LEVEL_GRANT}. Unspent points
+   * accumulate, so a level-N character's pool is the sum of grants 1..N minus
+   * what they spent. Old saves keep their stored (legacy, larger) pools.
+   */
+  private static final int[] STARTING_GRANT  = {1, 3, 1};
+  private static final int[] PER_LEVEL_GRANT = {1, 1, 1};
+
+  /** The {CP, SP, FP} grant awarded for reaching the given level. */
+  private static int[] grantForLevel(int level) {
+    return level <= 1 ? STARTING_GRANT : PER_LEVEL_GRANT;
+  }
+
+  /** Total CP granted across levels 1..level. */
+  public static int grantedCp(int level) { return grantedFor(level, 0); }
+  /** Total SP granted across levels 1..level. */
+  public static int grantedSp(int level) { return grantedFor(level, 1); }
+  /** Total FP granted across levels 1..level. */
+  public static int grantedFp(int level) { return grantedFor(level, 2); }
+
+  private static int grantedFor(int level, int idx) {
+    int sum = 0;
+    for (int l = 1; l <= level; l++) {
+      sum += grantForLevel(l)[idx];
+    }
+    return sum;
+  }
 
   public CharacterStats(Player player) {
     this.player = player;
+    this.remainingCp = grantedCp(level);
+    this.remainingSp = grantedSp(level);
+    this.remainingFp = grantedFp(level);
   }
+
+  // ─────────────────────────────────────────────── Undo history
+
+  private enum UndoKind { CP, SP, FP, AP }
+
+  /** A reversible allocation, pushed by each spend/invest/acquire/ability-raise. */
+  private record UndoOp(UndoKind kind, String key, int index, String prevClassId) {}
+
+  private final Deque<UndoOp> undoHistory = new ArrayDeque<>();
+
+  /**
+   * Reverses the most recent point allocation (CP/SP/FP/AP). Returns false when
+   * there is nothing to undo. Used by character creation so a player can back
+   * out an allocation before the world is created.
+   */
+  public boolean undoLastAllocation() {
+    UndoOp op = undoHistory.pollLast();
+    if (op == null) {
+      return false;
+    }
+    switch (op.kind()) {
+      case CP -> {
+        remainingCp++;
+        spentAbilityCp.merge(op.key(), -1, Integer::sum);
+        spentAbilityCp.remove(op.key(), 0);
+        selectedClassId = op.prevClassId();
+      }
+      case SP -> {
+        remainingSp++;
+        skillLevels.merge(op.key(), -1, Integer::sum);
+        skillLevels.remove(op.key(), 0);
+      }
+      case FP -> {
+        remainingFp++;
+        acquiredFeatIds.remove(op.key());
+      }
+      case AP -> {
+        decrementAbilityScore(op.index());
+        return true;
+      }
+    }
+    if (player != null) player.updateDerivedStats();
+    return true;
+  }
+
+  /** True when at least one allocation can be undone. */
+  public boolean canUndo() { return !undoHistory.isEmpty(); }
+
+  /** Drops all recorded allocations (fresh creation session / world creation). */
+  public void clearUndoHistory() { undoHistory.clear(); }
 
   // ─────────────────────────────────────────────── Ability scores
 
@@ -101,6 +191,7 @@ public class CharacterStats {
     remainingAp--;
     abilityScores[index]++;
     if (player != null) player.updateDerivedStats();
+    undoHistory.addLast(new UndoOp(UndoKind.AP, null, index, null));
   }
 
   /** Refunds 1 AP by lowering the ability at the given index. No-op if score is already 1. */
@@ -193,17 +284,23 @@ public class CharacterStats {
    * Also selects that class, replacing the "Adventurer" placeholder.
    * Does nothing if CP is already exhausted.
    */
+  /** Spends 1 CP on the ability identified by {@code key} (format: "classId:abilityIndex").
+   * Also selects that class, replacing the "Adventurer" placeholder.
+   * Does nothing if CP is already exhausted.
+   */
   public void spendCpOnAbility(String key) {
     if (remainingCp <= 0) {
       return;
     }
     remainingCp--;
+    String prevClassId = selectedClassId;
     spentAbilityCp.merge(key, 1, Integer::sum);
     // Auto-select the class when the first point is spent in it
     int sep = key.lastIndexOf(':');
     if (sep > 0) {
       selectedClassId = key.substring(0, sep);
     }
+    undoHistory.addLast(new UndoOp(UndoKind.CP, key, -1, prevClassId));
   }
 
   /** Returns the total CP invested in all abilities of the given class. */
@@ -236,6 +333,7 @@ public class CharacterStats {
     }
     remainingSp--;
     skillLevels.merge(skillId, 1, Integer::sum);
+    undoHistory.addLast(new UndoOp(UndoKind.SP, skillId, -1, null));
   }
 
   /** Returns the current level of the given skill (0 if never invested). */
@@ -259,6 +357,7 @@ public class CharacterStats {
     }
     remainingFp--;
     acquiredFeatIds.add(featId);
+    undoHistory.addLast(new UndoOp(UndoKind.FP, featId, -1, null));
   }
 
   /** Returns true if the player has acquired the given feat. */
@@ -282,6 +381,70 @@ public class CharacterStats {
 
   public Set<String> getAcquiredFeatIds() {
     return Collections.unmodifiableSet(acquiredFeatIds);
+  }
+
+  // ─────────────────────────────────────────────── In-game session snapshot
+
+  /** Immutable capture of the spendable RPG state, for save-or-discard on inventory exit. */
+  public record RpgSnapshot(
+      String classId,
+      Map<String, Integer> spentAbilityCp,
+      Map<String, Integer> skillLevels,
+      Set<String> acquiredFeatIds,
+      int[] abilityScores,
+      int remainingAp,
+      int remainingCp,
+      int remainingSp,
+      int remainingFp,
+      int level,
+      int xp) {}
+
+  /** Captures the current RPG state (deep copies) so it can be restored later. */
+  public RpgSnapshot snapshotRpgState() {
+    return new RpgSnapshot(
+        selectedClassId,
+        new HashMap<>(spentAbilityCp),
+        new HashMap<>(skillLevels),
+        new HashSet<>(acquiredFeatIds),
+        java.util.Arrays.copyOf(abilityScores, 6),
+        remainingAp, remainingCp, remainingSp, remainingFp,
+        level, xp);
+  }
+
+  /** Restores a previously captured RPG state ("discard changes"). */
+  public void restoreRpgState(RpgSnapshot s) {
+    if (s == null) return;
+    selectedClassId = s.classId();
+    spentAbilityCp.clear();
+    spentAbilityCp.putAll(s.spentAbilityCp());
+    skillLevels.clear();
+    skillLevels.putAll(s.skillLevels());
+    acquiredFeatIds.clear();
+    acquiredFeatIds.addAll(s.acquiredFeatIds());
+    abilityScores = java.util.Arrays.copyOf(s.abilityScores(), 6);
+    remainingAp = s.remainingAp();
+    remainingCp = s.remainingCp();
+    remainingSp = s.remainingSp();
+    remainingFp = s.remainingFp();
+    level = s.level();
+    xp = s.xp();
+    if (player != null) player.updateDerivedStats();
+  }
+
+  /** True when the spendable RPG state differs from the given snapshot. */
+  public boolean hasChangedSince(RpgSnapshot s) {
+    if (s == null) return true;
+    return !java.util.Objects.equals(selectedClassId, s.classId())
+        || !spentAbilityCp.equals(s.spentAbilityCp())
+        || !skillLevels.equals(s.skillLevels())
+        || !acquiredFeatIds.equals(s.acquiredFeatIds())
+        || !java.util.Arrays.equals(abilityScores, s.abilityScores())
+        || remainingAp != s.remainingAp()
+        || remainingCp != s.remainingCp()
+        || remainingSp != s.remainingSp()
+        || remainingFp != s.remainingFp()
+        || level != s.level()
+        || xp != s.xp();
   }
 
   // ─────────────────────────────────────────────── Bulk restore (used by save system)

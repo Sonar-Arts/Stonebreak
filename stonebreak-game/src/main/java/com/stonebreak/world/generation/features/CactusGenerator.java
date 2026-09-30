@@ -46,8 +46,10 @@ public class CactusGenerator {
                     continue;
                 }
                 int surface = ctx.height(x, z);
-                if (surface <= VegetationGenerator.MIN_SURFACE_Y
-                        || surface >= WorldConfiguration.WORLD_HEIGHT) {
+                // Same surface gate VegetationGenerator uses: this terrain's surfaces run
+                // hundreds of blocks up, so the old y > 64 floor means nothing here, and a
+                // submerged column is what actually has to be skipped.
+                if (surface >= WorldConfiguration.WORLD_HEIGHT || ctx.isSubmerged(x, z)) {
                     continue;
                 }
                 BlockType ground = chunk.getBlock(x, surface - 1, z);

@@ -28,6 +28,14 @@ public interface ChatCommand {
     String getDescription();
 
     /**
+     * Alternate names this command also answers to (e.g. "tp" for "teleport").
+     * Aliases are usable and autocompletable, but only {@link #getName()} is listed by /help.
+     */
+    default List<String> getAliases() {
+        return Collections.emptyList();
+    }
+
+    /**
      * Check if command requires cheats to be enabled
      */
     default boolean requiresCheats() {

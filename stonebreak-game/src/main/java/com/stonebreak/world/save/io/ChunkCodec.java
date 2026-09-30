@@ -42,7 +42,7 @@ import java.util.zip.Inflater;
  *   featuresPopulated (boolean)
  *   hasEntitiesGenerated (boolean)
  *
- * Body (v5+):
+ * Body (v6+):
  *   compression (byte)     0 = DEFLATE, 1 = zstd (requires Cenda kernels)
  *   rawLength (int)        uncompressed section-stream length
  *   blockDataLength (int)  compressed section-stream length
@@ -55,9 +55,9 @@ import java.util.zip.Inflater;
  *                                      indices (byte × 4096)
  *                   2 = dense:         blockIds (unsigned short × 4096)
  *
- * Body (v1-v4):
+ * Body (v4-v5 legacy):
  *   blockDataLength (int)  length of compressed block buffer
- *   blockData (bytes)      compressed big-endian short[65536] block ids
+ *   blockData (bytes)      compressed big-endian short[16*16*CHUNK_HEIGHT] block ids
  *
  * Tail (all versions):
  *   waterCount (int)
@@ -87,29 +87,53 @@ import java.util.zip.Inflater;
  *       only, so stacked snow reset on reload). v1/v2 chunks load with no
  *       tracked layers (every snow block reads as the 1-layer default).
  *       NOTE: v3 saves are unreadable by pre-v3 builds — one-way migration.</li>
- *   <li>4 — identical raw block layout, zstd-compressed via the Cenda native
- *       kernels; read requires the kernels.</li>
- *   <li>5 — section-paletted block stream (this writer's format): uniform
+ *   <li>4 — {@code CHUNK_HEIGHT} 256 → 1024 (terrain-diffusion plan.md Phase 3),
+ *       coupled with the switch from spline terrain to the diffusion bridge
+ *       (plan.md Phase 2). Both the column height and the terrain under it
+ *       changed at once, so a v1-v3 chunk cannot be migrated in place: even
+ *       re-slotting its 256-tall block array into a 1024-tall column would
+ *       leave it standing next to diffusion-generated neighbors with an
+ *       unrelated shape and a hard seam at every boundary. Deliberate clean
+ *       break, not an oversight — {@code MIN_READ_VERSION} jumps to 4 and
+ *       older saves are rejected outright rather than silently corrupted.</li>
+ *   <li>5 — identical body layout to v4, but the block payload is zstd-compressed
+ *       through the Cenda native kernels instead of DEFLATE. Written only when
+ *       the kernels were loaded and readable only with them present.</li>
+ *   <li>6 — section-paletted block stream (this writer's format): uniform
  *       sections cost 3 bytes, mixed sections a palette + one byte per cell —
- *       the raw stream drops from a fixed 128 KB to typically &lt;25 KB before
- *       compression. Compression is a header flag (DEFLATE always available,
- *       zstd when the kernels are present) instead of a separate version.
- *       Encode/decode use per-thread reusable buffers; decoded sections are
- *       installed wholesale via {@code CcoPaletteSection.fromPaletteData}
- *       (no per-cell set calls). NOTE: unreadable by pre-v5 builds.</li>
+ *       the raw stream drops from a fixed 512 KB (1024-tall dense shorts) to
+ *       typically well under 25 KB before compression. Compression became a
+ *       header flag (DEFLATE always available, zstd when the kernels are
+ *       present) instead of a separate version, so v4 and v5 collapse into one
+ *       legacy dense read path. Encode/decode use per-thread reusable buffers;
+ *       decoded sections are installed wholesale via
+ *       {@code CcoPaletteSection.fromPaletteData} (no per-cell set calls).
+ *       NOTE: unreadable by pre-v6 builds.
+ *       <p>Numbered 6 rather than 5 because this branch had already spent 4 and
+ *       5 on the 1024-tall dense DEFLATE/zstd pair above; reusing 5 for the
+ *       paletted stream (as the branch this came from did, where 4/5 meant
+ *       dense-zstd/paletted) would make every existing v5 save on disk decode
+ *       as a paletted stream and corrupt it.</li>
  * </ul>
  */
 public final class ChunkCodec {
 
     private static final int MAGIC = 0x5342434B; // 'SBCK'
-    private static final int VERSION_PALETTED = 5;
+    /**
+     * The only write version: paletted section stream, compression chosen by a
+     * header flag (zstd when the Cenda kernels are loaded, DEFLATE otherwise).
+     */
+    private static final int VERSION_PALETTED = 6;
     private static final int MAX_READ_VERSION = VERSION_PALETTED;
-    /** Legacy zstd version (dense stream, requires kernels to read). */
-    private static final int VERSION_ZSTD = 4;
-    /** Earliest readable version. */
-    private static final int MIN_READ_VERSION = 1;
+    /**
+     * Legacy dense-stream versions, still readable: v4 = DEFLATE, v5 = zstd
+     * (needs the kernels present). Both carry a 1024-tall dense short stream.
+     */
+    private static final int VERSION_DENSE_ZSTD = 5;
+    /** Earliest readable version. Pre-v4 saves predate the 256→1024 world-height rescale and diffusion terrain switch; no migration path exists (see class javadoc). */
+    private static final int MIN_READ_VERSION = 4;
     private static final int CHUNK_WIDTH = 16;
-    private static final int CHUNK_HEIGHT = 256;
+    private static final int CHUNK_HEIGHT = com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT;
     private static final int BLOCK_COUNT = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_HEIGHT;
     private static final int SECTION_HEIGHT = CcoSectionIndexing.SECTION_HEIGHT;
     private static final int CELLS_PER_SECTION = CHUNK_WIDTH * CHUNK_WIDTH * SECTION_HEIGHT;
@@ -126,7 +150,7 @@ public final class ChunkCodec {
     private static final byte TIER_PALETTED = 1;
     private static final byte TIER_DENSE = 2;
 
-    /** Worst case: every section dense (1 + 16 × (1 + 8192) bytes). */
+    /** Worst case: every section dense (1 + SECTION_COUNT × (1 + 8192) bytes). */
     private static final int MAX_RAW_BYTES = 1 + SECTION_COUNT * (1 + CELLS_PER_SECTION * 2);
 
     /**
@@ -226,7 +250,7 @@ public final class ChunkCodec {
                 blocks = decodePalettedSections(payload, HEADER_BYTES + 9, compLen,
                     compression, rawLen);
             } else {
-                boolean zstd = version >= VERSION_ZSTD;
+                boolean zstd = version >= VERSION_DENSE_ZSTD;
                 requireKernelsFor(zstd, version);
                 int compLen = in.readInt();
                 if (compLen <= 0 || HEADER_BYTES + 4 + compLen > payload.length) {
@@ -330,7 +354,7 @@ public final class ChunkCodec {
 
     // ═══════════════════════ Block sections: decode ═══════════════════════
 
-    /** Decodes the v5 paletted section stream into fresh paletted storage. */
+    /** Decodes the v6 paletted section stream into fresh paletted storage. */
     private static CcoBlockStorage decodePalettedSections(byte[] payload, int offset, int compLen,
                                                           int compression, int rawLen) throws IOException {
         Scratch s = SCRATCH.get();
@@ -399,7 +423,7 @@ public final class ChunkCodec {
     }
 
     /**
-     * Decodes the v1-v4 dense short stream, rebuilding sections wholesale
+     * Decodes the v4-v5 dense short stream, rebuilding sections wholesale
      * (uniform detection + palette build per 4096-cell slab) instead of the
      * old 65k per-cell {@code storage.set} calls.
      */
@@ -651,7 +675,7 @@ public final class ChunkCodec {
         for (Map.Entry<String, ChunkData.WaterBlockData> entry : metadata.entrySet()) {
             int[] coords = parseKey(entry.getKey());
             out.writeByte(coords[0]); // localX 0-15
-            out.writeShort(coords[1]); // y 0-255
+            out.writeShort(coords[1]); // y 0-(WORLD_HEIGHT-1)
             out.writeByte(coords[2]); // localZ 0-15
             out.writeByte(entry.getValue().level());
             out.writeBoolean(entry.getValue().falling());

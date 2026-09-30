@@ -71,7 +71,7 @@ public class CaveStoreyStructureTest {
                             float w = CaveWaterTable.galleryWeight(t, y);
                             allWeight += w;
                             allCount++;
-                            if (chunk.getBlock(lx, y, lz) == BlockType.AIR) {
+                            if (StandardFrame.block(chunk, lx, y, lz) == BlockType.AIR) {
                                 carvedWeight += w;
                                 carvedCount++;
                             }

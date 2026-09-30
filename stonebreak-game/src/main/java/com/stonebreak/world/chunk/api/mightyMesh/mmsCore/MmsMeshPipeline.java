@@ -597,15 +597,18 @@ public final class MmsMeshPipeline {
                     task.chunk.setStampRenderableHandle(newStamp);
                     task.chunk.setRegionStampHandle(newRegionStamp);
 
-                    // Upload SBO meshes if the chunk has any (one per block type)
-                    if (meshResult != null && meshResult.hasSBOMesh()) {
-                        // Clean up old SBO handles
-                        java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> oldSboList = task.chunk.getSBORenderDataList();
-                        if (oldSboList != null) {
-                            for (com.openmason.engine.voxel.sbo.SBORenderData oldSbo : oldSboList) {
+                    // SBO meshes (one per block type): always release the old set, like water —
+                    // a rebuild that no longer has any SBO block must drop them, or they ghost.
+                    java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> oldSboList = task.chunk.getSBORenderDataList();
+                    if (oldSboList != null) {
+                        for (com.openmason.engine.voxel.sbo.SBORenderData oldSbo : oldSboList) {
+                            if (oldSbo.getHandle() != null) {
                                 handlesPendingGpuCleanup.offer(oldSbo.getHandle());
                             }
                         }
+                        task.chunk.setSBORenderDataList(null);
+                    }
+                    if (meshResult != null && meshResult.hasSBOMesh()) {
                         // Upload new SBO entries
                         java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> newSboList =
                                 new java.util.ArrayList<>(meshResult.sboEntries().size());
@@ -728,6 +731,30 @@ public final class MmsMeshPipeline {
             if (regionWater != null) {
                 handlesPendingGpuCleanup.offer(regionWater);
                 chunk.setRegionWaterHandle(null);
+            }
+            // Stamp geometry (crosses — tall grass, flowers — and SBO stamps under the pulled
+            // formats) and per-type SBO meshes. Left out, an unloaded chunk's handles stay live
+            // in their region, and the GPU-culled pass — which draws every live mesh in the
+            // frustum, not just loaded chunks — keeps drawing them past the render distance.
+            MmsRenderableHandle stampHandle = chunk.getStampRenderableHandle();
+            if (stampHandle != null) {
+                handlesPendingGpuCleanup.offer(stampHandle);
+                chunk.setStampRenderableHandle(null);
+            }
+            com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionStamp =
+                chunk.getRegionStampHandle();
+            if (regionStamp != null) {
+                handlesPendingGpuCleanup.offer(regionStamp);
+                chunk.setRegionStampHandle(null);
+            }
+            java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> sboList = chunk.getSBORenderDataList();
+            if (sboList != null) {
+                for (com.openmason.engine.voxel.sbo.SBORenderData sbo : sboList) {
+                    if (sbo.getHandle() != null) {
+                        handlesPendingGpuCleanup.offer(sbo.getHandle());
+                    }
+                }
+                chunk.setSBORenderDataList(null);
             }
         }
     }

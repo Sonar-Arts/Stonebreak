@@ -36,9 +36,12 @@ import java.util.Map;
  * inter-mesh order irrelevant); for the ice pass, translucent surfaces that
  * overlap ACROSS a region seam can composite slightly out of order — a known,
  * accepted approximation (Sodium orders translucents the same way). Chunks
- * whose meshes could not join a region (non-packed or u32-index meshes —
- * practically never) keep legacy per-chunk handles and are drawn after the
- * region batches.
+ * whose meshes could not join a region (non-packed, or u32-index because the
+ * mesh exceeded 65536 vertices) keep legacy per-chunk handles and are drawn
+ * after the region batches. The u32 escape hatch is not merely theoretical on
+ * this branch: at {@code WORLD_HEIGHT} 1024 a heavily cave-carved column can
+ * clear that vertex count, so expect a nonzero "legacy" figure in the F3
+ * chunk-draw row rather than treating it as a bug.
  *
  * <p>Enabled by default on a GL 3.2+ context; force the legacy per-chunk path
  * with {@code -Dstonebreak.regions=off}. On GL 4.3+ the order-independent

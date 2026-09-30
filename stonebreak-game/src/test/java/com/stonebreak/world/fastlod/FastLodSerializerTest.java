@@ -1,7 +1,8 @@
 package com.stonebreak.world.fastlod;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
+import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeKind;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
 import org.junit.jupiter.api.Tag;
@@ -31,6 +32,10 @@ class FastLodSerializerTest {
         for (int i = 0; i < heights.length; i++) {
             heights[i] = 40 + (i % 90) - 20;   // varied, in-short-range values incl. < SEA_LEVEL
         }
+        int[] waterLevels = new int[level.cellCount()];
+        for (int i = 0; i < waterLevels.length; i++) {
+            waterLevels[i] = (i % 3 == 0) ? TerrainTile.NO_WATER : 40 + (i % 50);   // mix of dry and wet
+        }
         BlockType[] surface = new BlockType[level.cellCount()];
         for (int i = 0; i < surface.length; i++) {
             surface[i] = switch (i % 3) {
@@ -46,7 +51,7 @@ class FastLodSerializerTest {
             trees[7] = new TreeSample(TreeKind.PINE, 9);
             trees[level.cellCount() - 1] = new TreeSample(TreeKind.ELM, 3);
         }
-        return new FastLodChunkData(key, heights, surface, trees);
+        return new FastLodChunkData(key, heights, waterLevels, surface, trees);
     }
 
     @Test
@@ -58,6 +63,7 @@ class FastLodSerializerTest {
         assertNotNull(restored);
         assertEquals(original.key(), restored.key());
         assertArrayEquals(original.rawHeights(), restored.rawHeights());
+        assertArrayEquals(original.rawWaterLevels(), restored.rawWaterLevels());
         assertArrayEquals(original.rawSurface(), restored.rawSurface());
 
         TreeSample[] origTrees = original.rawTrees();
@@ -77,6 +83,7 @@ class FastLodSerializerTest {
 
         assertNotNull(restored);
         assertArrayEquals(original.rawHeights(), restored.rawHeights());
+        assertArrayEquals(original.rawWaterLevels(), restored.rawWaterLevels());
         assertArrayEquals(original.rawSurface(), restored.rawSurface());
         assertNull(restored.rawTrees());
     }
@@ -84,7 +91,7 @@ class FastLodSerializerTest {
     /**
      * The cave-mouth channel survives the round trip, sentinel included. The sentinel needs
      * its own wire value: in memory "no opening" is an int
-     * ({@link TerrainGenerationSystem#NO_OPENING}) and the field on the wire is i16.
+     * ({@link DiffusionTerrainGenerator#NO_OPENING}) and the field on the wire is i16.
      */
     @Test
     void roundTripCarriesTheCaveOpeningChannel() {
@@ -95,11 +102,11 @@ class FastLodSerializerTest {
         byte[] cover = new byte[cells];
         for (int i = 0; i < cells; i++) {
             boolean open = (i % 4 == 1);
-            floor[i] = open ? 100 + i : TerrainGenerationSystem.NO_OPENING;
+            floor[i] = open ? 250 + i : DiffusionTerrainGenerator.NO_OPENING;
             cover[i] = (byte) (open ? Math.min(255, 30 + i * 7) : 0);
         }
         FastLodChunkData original = new FastLodChunkData(base.key(), base.rawHeights(),
-                base.rawSurface(), null, floor, cover);
+                base.rawWaterLevels(), base.rawSurface(), null, floor, cover);
 
         FastLodChunkData restored = FastLodSerializer.deserialize(
                 original.key(), FastLodSerializer.serialize(original));
@@ -109,7 +116,7 @@ class FastLodSerializerTest {
         assertArrayEquals(cover, restored.rawOpeningCoverage());
         for (int i = 0; i < cells; i++) {
             if (i % 4 != 1) {
-                assertEquals(TerrainGenerationSystem.NO_OPENING, restored.rawOpeningFloor()[i],
+                assertEquals(DiffusionTerrainGenerator.NO_OPENING, restored.rawOpeningFloor()[i],
                         "sentinel must survive the i16 narrowing at cell " + i);
             }
         }
@@ -127,18 +134,25 @@ class FastLodSerializerTest {
     }
 
     /**
-     * A v2 blob holds the uncarved height and no opening channel at all, so a world cached
-     * before this change would otherwise keep showing flat ravines forever — the store is
-     * consulted before the sampler ever runs. The version bump is what forces the resample.
+     * The store is consulted before the sampler ever runs, so a blob from an older version
+     * would otherwise be shown forever. A v4 blob has no opening channel at all (ravines and
+     * nothing else); v5 and v6 hold heights from before the bank skirt and its noisy lip,
+     * v7 banks walled to the water beside them rather than to the guard rail, and v8 the
+     * guard rail before it was cut to a 12-step reach capped at three blocks of lift — so
+     * a v8 bank stands where no bank stands now; v9 roofs ground too thin to carry a
+     * tunnel's air and paves a talus mound across every plunge; v10 shows a dry probe where
+     * a coarse cell's footprint holds a river. The version bump forces the resample.
      */
     @Test
     void previousVersionBlobsAreRejected() {
         FastLodChunkData data = makeData(FastLodLevel.L2, false);
         byte[] blob = FastLodSerializer.serialize(data);
-        assertEquals(3, blob[4], "version byte moved; update this test and the note below");
-        blob[4] = 2;
-        assertNull(FastLodSerializer.deserialize(data.key(), blob),
-                "a pre-carve blob must miss, not load");
+        assertEquals(11, blob[4], "version byte moved; update this test and the note above");
+        for (byte older = 4; older < 11; older++) {
+            blob[4] = older;
+            assertNull(FastLodSerializer.deserialize(data.key(), blob),
+                    "a v" + older + " blob must miss, not load");
+        }
     }
 
     @Test
@@ -195,12 +209,14 @@ class FastLodSerializerTest {
         FastLodLevel level = data.level();
 
         int heightsEnd = HEADER_SIZE + level.heightCount() * 2;
-        int surfaceEnd = heightsEnd + level.cellCount() * 2;
+        int waterLevelsEnd = heightsEnd + level.cellCount() * 2;
+        int surfaceEnd = waterLevelsEnd + level.cellCount() * 2;
         int treeFlagEnd = surfaceEnd + 1;
         int[] cuts = {
                 0, 4, 7,                    // shorter than the header
                 HEADER_SIZE,                // header only
                 heightsEnd - 3,             // mid-heights
+                waterLevelsEnd - 1,         // mid-water-levels
                 surfaceEnd - 1,             // mid-surface
                 treeFlagEnd,                // tree flag says trees follow, but they don't
                 treeFlagEnd + level.cellCount(),      // kinds present, trunk heights missing
@@ -217,7 +233,8 @@ class FastLodSerializerTest {
     void rejectsInvalidTreeKind() {
         FastLodChunkData data = makeData(FastLodLevel.L0, true);
         byte[] blob = FastLodSerializer.serialize(data);
-        int kindsStart = HEADER_SIZE + data.level().heightCount() * 2 + data.level().cellCount() * 2 + 1;
+        int kindsStart = HEADER_SIZE + data.level().heightCount() * 2 + data.level().cellCount() * 2
+                + data.level().cellCount() * 2 + 1;
         blob[kindsStart] = (byte) 200;   // ordinal 199 — far past TreeKind.values()
         assertNull(FastLodSerializer.deserialize(data.key(), blob));
     }

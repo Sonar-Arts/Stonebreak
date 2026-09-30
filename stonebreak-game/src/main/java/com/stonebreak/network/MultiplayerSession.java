@@ -270,6 +270,13 @@ public final class MultiplayerSession {
         final String localId = "sb-local-" + System.nanoTime();
         final NetAddress tcp = tcpPort > 0 ? NetAddress.tcpBind(tcpPort) : null;
 
+        // Up from the start of the boot, not just from WelcomeS2C: service startup, spawn search
+        // and spawn-area pre-gen all happen before the Welcome and are most of a diffusion load.
+        com.stonebreak.ui.LoadingScreen loadingScreen = Game.getInstance().getLoadingScreen();
+        if (loadingScreen != null) {
+            loadingScreen.show();
+        }
+
         // One dedicated thread: boot the authoritative world (blocking load/gen), connect the
         // in-process client, then run the server tick loop off the render thread.
         Thread t = new Thread(() -> {
@@ -310,6 +317,13 @@ public final class MultiplayerSession {
                 if (server == null && s != null) {
                     teardownServer(s); // never published — clean up our own instance
                 }
+                // The loading screen went up before the boot; don't leave the player stranded on it.
+                Game game = Game.getInstance();
+                game.runOnMainThread(() -> {
+                    if (game.getState() == GameState.LOADING) {
+                        game.setState(GameState.MAIN_MENU);
+                    }
+                });
             }
         }, targetMode + "-Server");
         t.setDaemon(true);

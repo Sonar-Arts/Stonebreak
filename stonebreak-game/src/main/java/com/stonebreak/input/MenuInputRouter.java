@@ -89,6 +89,8 @@ public final class MenuInputRouter {
         boolean consumed = state != null && switch (state) {
             case STARTUP_INTRO -> isLeftPress(button, action)
                     && dispatch(game.getStartupIntroScreen(), s -> s.skipToMainMenu());
+            case MODEL_SETUP -> !isLeftPress(button, action) || withUiCursor((x, y) ->
+                    dispatch(game.getModelSetupScreen(), s -> s.handleMouseClick(x, y, width, height)));
             // The main menu only reacts to a left press, but it still owns the event either way.
             case MAIN_MENU -> !isLeftPress(button, action) || withUiCursor((x, y) ->
                     dispatch(game.getMainMenu(), s -> s.handleMouseClick(x, y, width, height)));
@@ -147,6 +149,7 @@ public final class MenuInputRouter {
             return;
         }
         switch (state) {
+            case MODEL_SETUP -> dispatch(game.getModelSetupScreen(), s -> s.handleMouseMove(x, y, width, height));
             case MAIN_MENU -> dispatch(game.getMainMenu(), s -> s.handleMouseMove(x, y, width, height));
             case WORLD_SELECT -> dispatch(game.getWorldSelectScreen(), s -> s.handleMouseMove(x, y, width, height));
             case SETTINGS -> dispatch(game.getSettingsMenu(), s -> s.handleMouseMove(x, y, width, height));
@@ -201,6 +204,7 @@ public final class MenuInputRouter {
 
         switch (state) {
             case STARTUP_INTRO -> dispatch(game.getStartupIntroScreen(), s -> s.handleInput(handle));
+            case MODEL_SETUP -> dispatch(game.getModelSetupScreen(), s -> s.handleInput(handle));
             case MAIN_MENU -> dispatch(game.getMainMenu(), s -> s.handleInput(handle));
             case WORLD_SELECT -> dispatch(game.getWorldSelectScreen(), s -> s.handleInput(handle));
             case CHARACTER_CREATION -> dispatch(game.getCharacterCreationScreen(), s -> s.handleInput(handle));

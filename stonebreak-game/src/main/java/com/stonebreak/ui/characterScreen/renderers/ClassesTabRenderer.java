@@ -33,7 +33,7 @@ public class ClassesTabRenderer {
   private static final float CLASS_BTN_H      = 22f;
   private static final float CLASS_BTN_GAP    = 2f;
   private static final float LIST_CLIP_TOP_PAD = 30f; // below "Class Select" label + rule
-  private static final float SIDEBAR_CLIP_H   = 420f;
+  private static final float SIDEBAR_CLIP_H   = 388f;
   private static final float CLASS_ICON_SIZE  = 16f;
   private static final float CLASS_ICON_GAP   = 4f;
 
@@ -207,7 +207,7 @@ public class ClassesTabRenderer {
     drawEngravedRule(canvas, cx, ruleY, cw);
 
     float dirtY = ruleY + 6f * scale;
-    float dirtBottom = cy + 452f * scale;
+    float dirtBottom = cy + 420f * scale;
     float dirtH = Math.max(150f * scale, dirtBottom - dirtY);
     MPainter.stoneSurface(canvas, cx, dirtY, cw, dirtH,
         MStyle.PANEL_RADIUS, DIRT_FILL, DIRT_BORDER,

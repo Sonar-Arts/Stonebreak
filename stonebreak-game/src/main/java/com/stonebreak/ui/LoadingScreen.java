@@ -1,42 +1,26 @@
 package com.stonebreak.ui;
 
-import java.util.Arrays;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.function.Consumer;
 import org.lwjgl.glfw.GLFW;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import io.github.humbleui.skija.Canvas;
-import io.github.humbleui.skija.Font;
-import io.github.humbleui.skija.Paint;
-import io.github.humbleui.skija.PaintMode;
-import io.github.humbleui.skija.Typeface;
-import io.github.humbleui.types.Rect;
 
 public class LoadingScreen {
-    private final SkijaUIBackend backend;
+    /** Per-profile phase durations from past loads; sits beside settings.json. */
+    private static final Path LOAD_TIMINGS_FILE = Path.of("loading-timings.properties");
+
     private final SkijaLoadingScreenRenderer renderer;
-    private boolean visible = false;
-    private String currentStageName = "Initializing...";
-    private int currentStageIndex = 0;
+    private final LoadProgressTracker tracker = new LoadProgressTracker(LOAD_TIMINGS_FILE, System::nanoTime);
+    /** Taken once per frame in {@link #render} so every getter the renderer calls agrees. */
+    private LoadProgressTracker.Snapshot snapshot = new LoadProgressTracker.Snapshot(null, null, 0.0, 0.0);
+    private volatile boolean visible = false;
     private String errorMessage = null;
     private boolean hasError = false;
-    private final List<String> stages = Arrays.asList(
-            "Initializing Noise System",
-            "Generating Base Terrain Shape", // or "Calculating Terrain Density"
-            "Determining Biomes",
-            "Applying Biome Materials", // or "Materializing Chunk"
-            "Generating Caves",
-            "Generating Oceans and Lakes",
-            "Generating Rivers",
-            "Forming Mountains",
-            "Adding Surface Decorations & Details",
-            "Meshing Chunk"
-    );
-    private final int totalStages = stages.size();
 
     // Error state fields — read by SkijaLoadingScreenRenderer to style the error panel.
     // Defaults hold when no error is active (errorSeverity=INFO, empty lists, null strings).
@@ -44,17 +28,6 @@ public class LoadingScreen {
     private String errorCode = null;
     private List<String> recoveryActions = new ArrayList<>();
     private List<String> diagnosticInfo = new ArrayList<>();
-    private String currentSubStage = null;
-    private int subStageProgress = 0;
-    private int totalSubStages = 1;
-    private long stageStartTime = 0;
-    private String estimatedTimeRemaining = "Calculating...";
-
-    // Lazily built fonts
-    private Font fontTitle;
-    private Font fontBody;
-    private Font fontSmall;
-    private Font fontTiny;
 
     /**
      * Error severity levels for enhanced error reporting.
@@ -67,40 +40,42 @@ public class LoadingScreen {
     }
 
     public LoadingScreen(SkijaUIBackend backend) {
-        this.backend = backend;
         this.renderer = new SkijaLoadingScreenRenderer(backend);
     }
 
+    /**
+     * Shows the screen and starts timing a new load. Idempotent while a load is in progress:
+     * a singleplayer start calls this at boot and again when WelcomeS2C arrives, and the second
+     * call must not reset the phases the server boot already reported.
+     */
     public void show() {
-        this.visible = true;
-        this.currentStageIndex = 0;
-        this.errorMessage = null;
-        this.hasError = false;
-        if (!stages.isEmpty()) {
-            this.currentStageName = stages.getFirst();
-        } else {
-            this.currentStageName = "Loading...";
+        Game game = Game.getInstance();
+        boolean loadInProgress = visible && tracker.isRunning() && game.getState() == GameState.LOADING;
+        if (!loadInProgress) {
+            tracker.start();
+            this.errorMessage = null;
+            this.hasError = false;
         }
-        Game.getInstance().setState(GameState.LOADING);
+        this.visible = true;
+        game.setState(GameState.LOADING);
     }
 
     public void hide() {
+        tracker.finish();
         this.visible = false;
         Game gameInstance = Game.getInstance();
         gameInstance.setState(GameState.PLAYING);
     }
 
-    public void updateProgress(String stageName) {
-        this.currentStageName = stageName;
-        int stageIndex = stages.indexOf(stageName);
-        if (stageIndex != -1) {
-          this.currentStageIndex = stageIndex;
-        } else {
-          switch (stageName) {
-              case "Calculating Terrain Density" -> this.currentStageIndex = stages.indexOf("Generating Base Terrain Shape");
-              case "Materializing Chunk" -> this.currentStageIndex = stages.indexOf("Applying Biome Materials");
-              default -> { }
-          }
+    /**
+     * Applies {@code update} to the running load's progress tracker, from any thread. A no-op
+     * when no loading screen is up (e.g. chunk loads during play reusing the same code paths).
+     */
+    public static void report(Consumer<LoadProgressTracker> update) {
+        Game game = Game.getInstance();
+        LoadingScreen screen = game != null ? game.getLoadingScreen() : null;
+        if (screen != null && screen.visible) {
+            update.accept(screen.tracker);
         }
     }
 
@@ -151,51 +126,31 @@ public class LoadingScreen {
     }
 
     /**
-     * Returns the current stage name (package-private for the Skija renderer).
+     * Returns the running phase's name (package-private for the Skija renderer).
      */
     String getCurrentStageName() {
-        return currentStageName;
+        return snapshot.phase() != null ? snapshot.phase().displayName() : "Preparing world";
     }
 
     /**
-     * Returns the current sub-stage description.
+     * Returns the running phase's detail line, e.g. "Chunks 37/81", or null.
      */
     String getCurrentSubStage() {
-        return currentSubStage;
-    }
-
-    /**
-     * Returns the current sub-stage progress index.
-     */
-    int getSubStageProgress() {
-        return subStageProgress;
-    }
-
-    /**
-     * Returns the total number of sub-stages.
-     */
-    int getTotalSubStages() {
-        return totalSubStages;
-    }
-
-    /**
-     * Returns the estimated time remaining string.
-     */
-    String getEstimatedTimeRemaining() {
-        return estimatedTimeRemaining;
+        return snapshot.detail();
     }
 
     /**
      * Returns the normalized progress value (0-1) for the progress bar.
      */
     float getProgress() {
-        return totalStages > 0 ? (float) (currentStageIndex + 1) / totalStages : 0f;
+        return (float) snapshot.fraction();
     }
 
     /**
      * Renders this loading screen using the Skija backend.
      */
     public void render(int windowWidth, int windowHeight) {
+        snapshot = tracker.snapshot();
         renderer.render(this, windowWidth, windowHeight);
     }
     

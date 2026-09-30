@@ -2,7 +2,6 @@ package com.stonebreak.world.generation;
 
 import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
 import com.stonebreak.world.DeterministicRandom;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
@@ -11,6 +10,8 @@ import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.features.CactusGenerator;
+import com.stonebreak.world.generation.features.CavernOrigins;
+import com.stonebreak.world.generation.features.ColumnHeights;
 import com.stonebreak.world.generation.features.SwampPoolGenerator;
 import com.stonebreak.world.generation.features.LimestoneGenerator;
 import com.stonebreak.world.generation.features.OreGenerator;
@@ -36,19 +37,23 @@ import com.stonebreak.world.operations.WorldConfiguration;
 import java.util.Random;
 
 /**
- * Orchestrates per-chunk terrain and feature generation by delegating to focused subsystems.
+ * Standard Generation: per-chunk terrain and features from the noise stack, delegating to
+ * focused subsystems.
+ *
+ * <p>Everything below runs in the {@link StandardTerrain} frame (256 tall, sea at 64) it was
+ * tuned in. The frame is lifted by {@link StandardTerrain#Y_OFFSET} only where it leaves this
+ * class — blocks written into the chunk, heights and water levels reported through
+ * {@link TerrainGenerator}, and the column profile handed to the shared feature passes.
  */
-public class TerrainGenerationSystem {
-    public static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
-    public static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+public class TerrainGenerationSystem implements TerrainGenerator {
+    public static final int SEA_LEVEL = StandardTerrain.SEA_LEVEL;
+    public static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
+    private static final int Y_OFFSET = StandardTerrain.Y_OFFSET;
 
     /** DeterministicRandom stream + chance for deep magma pockets — shared with the fused native generator. */
     static final String MAGMA_FEATURE = "magma";
     static final float MAGMA_CHANCE = 0.6f;
-
-    /** {@code outFloor} sentinel for a cell with no cave mouth; see {@link #sampleCellOpenings}. */
-    public static final int NO_OPENING = Integer.MIN_VALUE;
 
     private final long seed;
     private final NoiseRouter noiseRouter;
@@ -68,6 +73,8 @@ public class TerrainGenerationSystem {
     private final RavineCarver ravineCarver;
     private final SinkholeCarver sinkholeCarver;
     private final SurfaceProfileCache surfaceProfiles;
+    /** Caves below the lifted frame; null under a test height oracle, which it cannot follow. */
+    private final DeepCaveLayers deepCaves;
 
     private final Random animalRandom = new Random();
     private final Object animalRandomLock = new Object();
@@ -116,18 +123,20 @@ public class TerrainGenerationSystem {
             ? heightMapGenerator
             : new HeightMapGenerator(noiseRouter);
         this.biomeManager = new BiomeManager(noiseRouter, this.heightMapGenerator);
-        this.oreGenerator = new OreGenerator(deterministicRandom, this.heightMapGenerator, seed);
+        ColumnHeights worldHeights = (x, z) -> this.heightMapGenerator.generateHeight(x, z) + Y_OFFSET;
+        this.oreGenerator = new OreGenerator(deterministicRandom, worldHeights, seed);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
         this.cactusGenerator = new CactusGenerator(deterministicRandom);
         this.swampPoolGenerator = new SwampPoolGenerator(deterministicRandom);
-        this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, this.heightMapGenerator, seed);
+        this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, worldHeights, seed);
         this.density3D = new Density3D(seed, this.heightMapGenerator);
         this.wormCarver = new PerlinWormCarver(seed, this.heightMapGenerator);
         this.cavernCarver = new CavernCarver(seed, this.heightMapGenerator);
         this.megaCavernCarver = new MegaCavernCarver(seed, this.heightMapGenerator);
         this.ravineCarver = new RavineCarver(seed, this.heightMapGenerator);
         this.sinkholeCarver = new SinkholeCarver(seed, this.heightMapGenerator);
-        this.limestoneGenerator = new LimestoneGenerator(seed, this.heightMapGenerator, cavernCarver, megaCavernCarver);
+        this.limestoneGenerator = new LimestoneGenerator(seed, worldHeights,
+            lifted(cavernCarver::computeCavernOrigin), lifted(megaCavernCarver::computeCavernOrigin));
         this.wormCarver.setCavernCarver(cavernCarver);
         this.wormCarver.setMegaCavernCarver(megaCavernCarver);
         // Lets a sinkhole cut to exactly the depth that opens into a real tunnel.
@@ -142,10 +151,7 @@ public class TerrainGenerationSystem {
             && com.stonebreak.world.generation.noise.TerrainNoise.backend()
                 == com.stonebreak.world.generation.noise.TerrainNoise.Backend.NATIVE
             && !"java".equalsIgnoreCase(System.getProperty("stonebreak.carver.backend", "auto"))) {
-            carverCtx = NoiseRouter.createCarverTerrainContext(seed,
-                HeightMapGenerator.splineXs(), HeightMapGenerator.splineYs(),
-                HeightMapGenerator.splineSizes(), HeightMapGenerator.DETAIL_AMPLITUDE);
-            com.stonebreak.world.generation.noise.TerrainNoise.destroyTerrainOnCollect(this, carverCtx);
+            carverCtx = createNativeCarverContext(this, seed);
         }
         this.nativeCarverCtx = carverCtx;
 
@@ -163,15 +169,34 @@ public class TerrainGenerationSystem {
         }
         this.fusedGenCtx = fusedCtx;
         this.surfaceProfiles = new SurfaceProfileCache(this::buildSurfaceProfile);
+        this.deepCaves = ownTerrain ? null : new DeepCaveLayers(seed, noiseRouter, carverCtx != 0L);
+    }
+
+    /** A cavern-origin source whose origins are reported in world Y. */
+    private static CavernOrigins lifted(CavernOrigins standard) {
+        return (chunkX, chunkZ) -> {
+            float[] origin = standard.computeCavernOrigin(chunkX, chunkZ);
+            return origin == null ? null : new float[] {origin[0], origin[1] + Y_OFFSET, origin[2]};
+        };
+    }
+
+    /** A native worm-carver context for {@code seed}, released when {@code owner} is collected. */
+    static long createNativeCarverContext(Object owner, long seed) {
+        long ctx = NoiseRouter.createCarverTerrainContext(seed,
+            HeightMapGenerator.splineXs(), HeightMapGenerator.splineYs(),
+            HeightMapGenerator.splineSizes(), HeightMapGenerator.DETAIL_AMPLITUDE);
+        com.stonebreak.world.generation.noise.TerrainNoise.destroyTerrainOnCollect(owner, ctx);
+        return ctx;
     }
 
     /**
      * Worm carve mask via the native kernel, with cavern-connector anchors
      * precomputed by the Java cavern carvers so cavern placement stays
      * consistent with their rasterization. Falls back to the Java carver on
-     * any kernel failure.
+     * any kernel failure. Static so {@link DeepCaveLayers} runs its own layers through it.
      */
-    private java.util.BitSet nativeWormMask(int chunkX, int chunkZ, int[] heights) {
+    static java.util.BitSet nativeWormMask(long carverCtx, PerlinWormCarver wormCarver,
+                                           int chunkX, int chunkZ, int[] heights) {
         int radius = PerlinWormCarver.scanRadius();
         java.util.ArrayList<int[]> anchorChunkList = new java.util.ArrayList<>();
         java.util.ArrayList<float[]> anchorList = new java.util.ArrayList<>();
@@ -202,7 +227,7 @@ public class TerrainGenerationSystem {
         }
         long[] mask = new long[1024];
         long carved = com.openmason.engine.cenda.CendaKernels.carveWorms(
-            nativeCarverCtx, chunkX, chunkZ, heights, anchorChunks, anchors, mask);
+            carverCtx, chunkX, chunkZ, heights, anchorChunks, anchors, mask);
         if (carved < 0) {
             return wormCarver.carveMaskForChunk(chunkX, chunkZ, heights);
         }
@@ -244,17 +269,22 @@ public class TerrainGenerationSystem {
 
     /** Continentalness-only base height (debug). */
     public int getBaseHeightAt(int x, int z) {
-        return heightMapGenerator.baseHeight(x, z);
+        return heightMapGenerator.baseHeight(x, z) + Y_OFFSET;
     }
 
     /** Shape with PV/erosion, no surface detail (debug). */
     public int getShapedHeightAt(int x, int z) {
-        return heightMapGenerator.shapedHeight(x, z);
+        return heightMapGenerator.shapedHeight(x, z) + Y_OFFSET;
     }
 
     /** Final terrain height as used by chunk generation. */
     public int getFinalTerrainHeightAt(int x, int z) {
-        return heightMapGenerator.generateHeight(x, z);
+        return heightMapGenerator.generateHeight(x, z) + Y_OFFSET;
+    }
+
+    @Override
+    public int getWaterLevelAt(int x, int z) {
+        return StandardTerrain.lift(heightMapGenerator.waterLevel(x, z));
     }
 
     /**
@@ -397,6 +427,7 @@ public class TerrainGenerationSystem {
      */
     public void sampleColumns(int worldX0, int worldZ0, int count, int stride,
                               int[] outHeights,
+                              int[] outWaterLevels,
                               BlockType[] outSurface,
                               com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees) {
         int cells = count * count;
@@ -421,8 +452,11 @@ public class TerrainGenerationSystem {
                 int wx = worldX0 + ix * stride;
                 int wz = worldZ0 + iz * stride;
                 int rawHeight = heightMapGenerator.heightFromChannels(c[idx], pv[idx], e[idx], d[idx]);
-                int height = carvedSurfaceHeight(wx, wz);
-                outHeights[idx] = height;
+                int height = carvedSurfaceHeight(wx, wz) - Y_OFFSET;
+                outHeights[idx] = height + Y_OFFSET;
+                if (outWaterLevels != null) {
+                    outWaterLevels[idx] = rawHeight < SEA_LEVEL ? SEA_LEVEL + Y_OFFSET : WorldConfiguration.NO_WATER;
+                }
                 if (!needBiomes) {
                     continue;
                 }
@@ -454,12 +488,6 @@ public class TerrainGenerationSystem {
         }
     }
 
-    /**
-     * Result of terrain-only generation: the chunk plus the column profile
-     * (heights + biomes) so deferred feature population can reuse it instead
-     * of resampling the noise stack.
-     */
-    public record TerrainResult(Chunk chunk, ColumnProfile profile) {}
 
     /**
      * Generates terrain blocks for a chunk. Features are populated separately
@@ -467,7 +495,6 @@ public class TerrainGenerationSystem {
      */
     public TerrainResult generateTerrainOnly(int chunkX, int chunkZ) {
         long startNanos = System.nanoTime();
-        updateLoadingProgress("Generating Base Terrain Shape");
 
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
         int[] waterLevels = new int[CHUNK_SIZE * CHUNK_SIZE];
@@ -477,10 +504,7 @@ public class TerrainGenerationSystem {
         // The water plane rides along: the carvers guard against it so a carve never opens
         // an ocean floor or an ocean-adjacent bank into the cave network.
         heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels);
-        updateLoadingProgress("Determining Biomes");
         biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
-
-        updateLoadingProgress("Applying Biome Materials");
 
         // Fused native path: carve + caverns + density + block fill + sky
         // heightmap in one kernel call — intermediates never cross FFM. The
@@ -494,12 +518,13 @@ public class TerrainGenerationSystem {
                 fusedGenCtx, chunkX, chunkZ, heights, biomes,
                 surfaceCarveWords(chunkX, chunkZ, heights, waterLevels));
             if (fused != null) {
+                carveDeepCaves(fused.storage(), chunkX, chunkZ, heights);
                 Chunk chunk = new Chunk(chunkX, chunkZ, fused.storage());
                 chunk.getHeightMap().populate(fused.heightmap());
                 chunk.getCcoDirtyTracker().markBlockChanged();
                 chunk.setFeaturesPopulated(false);
                 TerrainGenStats.record(System.nanoTime() - startNanos, TerrainGenStats.Mode.FUSED);
-                return new TerrainResult(chunk, new ColumnProfile(heights, waterLevels, biomes));
+                return new TerrainResult(chunk, liftedProfile(heights, waterLevels, biomes));
             }
             if (!fusedFailureLogged) {
                 fusedFailureLogged = true;
@@ -558,7 +583,7 @@ public class TerrainGenerationSystem {
         // state removal, and incremental heightmap updates). AIR cells are
         // skipped entirely — sections above the terrain stay in their
         // near-free uniform tier. The caller recomputes the heightmap once.
-        CcoBlockStorage storage = CcoFactory.createEmptyStorage(BlockType.AIR);
+        CcoBlockStorage storage = StandardTerrain.newLiftedStorage();
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
 
@@ -589,19 +614,41 @@ public class TerrainGenerationSystem {
                         block = determineBlockType(worldX, y, worldZ, height, biome,
                             densityField, waterGuardPlane, x, z);
                     }
+                    if (y == 0 && Y_OFFSET > 0) {
+                        // The frame's floor is interior rock once lifted. Unlifted (a 256-tall
+                        // world) it is the world's floor and stays bedrock — CendaChunkGenerator
+                        // makes the same call, which FusedChunkGenParityTest pins.
+                        block = BlockType.STONE;
+                    }
                     if (block != BlockType.AIR) {
-                        storage.set(x, y, z, block);
+                        storage.set(x, y + Y_OFFSET, z, block);
                     }
                 }
             }
         }
 
+        carveDeepCaves(storage, chunkX, chunkZ, heights);
         Chunk chunk = new Chunk(chunkX, chunkZ, storage);
         // One mesh+data dirty mark replaces the per-setBlock marks. The caller
         // clears data-dirty for waterless chunks, exactly as before.
         chunk.getCcoDirtyTracker().markBlockChanged();
         chunk.setFeaturesPopulated(false);
-        return new TerrainResult(chunk, new ColumnProfile(heights, waterLevels, biomes));
+        return new TerrainResult(chunk, liftedProfile(heights, waterLevels, biomes));
+    }
+
+    private void carveDeepCaves(CcoBlockStorage storage, int chunkX, int chunkZ, int[] standardHeights) {
+        if (deepCaves != null) {
+            deepCaves.carve(storage, chunkX, chunkZ, standardHeights);
+        }
+    }
+
+    /** The column profile in world Y, for the shared feature passes. Lifts the arrays in place. */
+    private static ColumnProfile liftedProfile(int[] heights, int[] waterLevels, BiomeType[] biomes) {
+        for (int i = 0; i < heights.length; i++) {
+            heights[i] += Y_OFFSET;
+            waterLevels[i] = StandardTerrain.lift(waterLevels[i]);
+        }
+        return new ColumnProfile(heights, biomes, waterLevels);
     }
 
     /**
@@ -619,7 +666,7 @@ public class TerrainGenerationSystem {
      */
     private CarveMasks buildCarveMasks(int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
         BitSet caveMask = (nativeCarverCtx != 0L)
-            ? nativeWormMask(chunkX, chunkZ, heights)
+            ? nativeWormMask(nativeCarverCtx, wormCarver, chunkX, chunkZ, heights)
             : wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
         CavernCarver.Result cavernResult =
             cavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
@@ -746,8 +793,8 @@ public class TerrainGenerationSystem {
                     }
                     break;
                 }
-                profile[idx] = y + 1;
-                carved[idx] = profile[idx] < height;
+                carved[idx] = y + 1 < height;
+                profile[idx] = y + 1 + Y_OFFSET;
             }
         }
         return new SurfaceProfileCache.Profile(profile, carved);
@@ -799,25 +846,20 @@ public class TerrainGenerationSystem {
             return;
         }
 
-        updateLoadingProgress("Adding Surface Decorations & Details");
-
-        int[] heights;
-        BiomeType[] biomes;
-        if (profile != null) {
-            // Reuse the profile computed during terrain generation — skips a
-            // full noise resampling pass per chunk.
-            heights = profile.heights();
-            biomes = profile.biomes();
-        } else {
-            heights = new int[CHUNK_SIZE * CHUNK_SIZE];
-            biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
-            heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights);
+        if (profile == null) {
+            // Chunk loaded from disk without features: rebuild the profile generation made.
+            int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
+            int[] waterLevels = new int[CHUNK_SIZE * CHUNK_SIZE];
+            BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
+            heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels);
             biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
+            profile = liftedProfile(heights, waterLevels, biomes);
         }
+        BiomeType[] biomes = profile.biomes();
         BiomeType dominantBiome = biomes[(CHUNK_SIZE / 2) * CHUNK_SIZE + (CHUNK_SIZE / 2)];
 
         ChunkGenerationContext ctx = new ChunkGenerationContext(
-            world, chunk, snowLayerManager, heights, biomes, dominantBiome);
+            world, chunk, snowLayerManager, profile.heights(), biomes, profile.waterLevels(), dominantBiome);
 
         oreGenerator.generate(ctx);
         // After ores: limestone only replaces stone, so it never eats a vein.
@@ -880,6 +922,7 @@ public class TerrainGenerationSystem {
         return switch (biome) {
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SANDSTONE;
             case DESERT, BEACH -> BlockType.SANDSTONE;
+            case OCEAN -> BlockType.SANDSTONE;
             case PLAINS, SNOWY_PLAINS, TAIGA, MEADOW, TUNDRA, SWAMP -> BlockType.DIRT;
             case STONY_PEAKS -> BlockType.STONE;
             case ICE_FIELDS -> BlockType.ICE;
@@ -891,6 +934,7 @@ public class TerrainGenerationSystem {
         if (biome == null) return BlockType.DIRT;
         return switch (biome) {
             case DESERT, BEACH -> BlockType.SAND;
+            case OCEAN -> BlockType.SAND;         // standard generator never emits OCEAN; kept consistent
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SAND;
             case PLAINS, MEADOW -> BlockType.GRASS;
             case SWAMP -> BlockType.SWAMPY_GRASS;
@@ -906,10 +950,4 @@ public class TerrainGenerationSystem {
                world.hasChunkAt(chunkX + 1, chunkZ + 1);
     }
 
-    private void updateLoadingProgress(String stageName) {
-        Game game = Game.getInstance();
-        if (game != null && game.getLoadingScreen() != null && game.getLoadingScreen().isVisible()) {
-            game.getLoadingScreen().updateProgress(stageName);
-        }
-    }
 }

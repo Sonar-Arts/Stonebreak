@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
@@ -14,6 +15,7 @@ import com.stonebreak.world.DeterministicRandom;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.ChunkGenerationContext;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.diffusion.TerrainTile;
 
 /**
  * Swamp pools must never leak. Every generated water cell must have a watertight floor and
@@ -54,8 +56,15 @@ class SwampPoolGeneratorTest {
             }
         }
         new SwampPoolGenerator(new DeterministicRandom(seed)).generate(
-            new ChunkGenerationContext(null, chunk, null, heights, biomes, biome), outside);
+            new ChunkGenerationContext(null, chunk, null, heights, biomes, noWater(), biome), outside);
         return new Fixture(chunk, outside);
+    }
+
+    /** No column is submerged: swamp pools come from the generator, not the terrain's water plane. */
+    private static int[] noWater() {
+        int[] levels = new int[SIZE * SIZE];
+        Arrays.fill(levels, TerrainTile.NO_WATER);
+        return levels;
     }
 
     private static SwampPoolGenerator.BlockReader solidBelow(Terrain terrain) {
@@ -134,7 +143,7 @@ class SwampPoolGeneratorTest {
             chunk.setBlock(x, BASE - 1, 9, BlockType.AIR); // carved at surface level
         }
         new SwampPoolGenerator(new DeterministicRandom(seed)).generate(
-            new ChunkGenerationContext(null, chunk, null, heights, biomes, BiomeType.SWAMP), outside);
+            new ChunkGenerationContext(null, chunk, null, heights, biomes, noWater(), BiomeType.SWAMP), outside);
         return new Fixture(chunk, outside);
     }
 

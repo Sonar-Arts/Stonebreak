@@ -8,11 +8,16 @@
 //                        flow coordinates in world space instead
 //   location 3 (flags) = x: surface-height fraction (0..0.875, sewn corner
 //                        heights baked by MmsWaterGenerator), y: falling flag,
-//                        z: source flag, w: light (currently 1.0)
+//                        z: source flag, w: river flow code in EIGHTHS
+//                        (0 = still water, k/8 = octant k-1), because the
+//                        per-vertex flag bytes are normalised to [0,1]
 //   location 4 (layer) = water-column depth in whole blocks (water is
 //                        untextured, so the texture-layer slot carries the
 //                        depth the fragment stage hides the seabed with)
-// Positions are world-space (chunk meshes carry no model matrix).
+// Positions are render-space (chunk meshes carry no model matrix; their origin
+// attribute is baked relative to RenderOrigin). uRenderOrigin.xy is that
+// origin's world XZ, for the few places that need the absolute coordinate
+// back — the wave lattice, which has to stay anchored to the world.
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec2 aUV;
 layout (location = 2) in vec3 aNormal;
@@ -22,6 +27,8 @@ layout (location = 4) in float aLayer;
 // w < -2.5 = pulled water quads (MmsWaterQuadCodec) read from u_quads by gl_VertexID.
 layout (location = 5) in vec4 aOrigin;
 uniform usamplerBuffer u_quads;
+// World XZ of the render origin (see com.openmason.engine.rendering.RenderOrigin).
+uniform vec2 uRenderOrigin;
 const vec3 QUAD_CORNER[24] = vec3[24](
     vec3(0,1,1), vec3(1,1,1), vec3(1,1,0), vec3(0,1,0),   // 0 top    (+Y)
     vec3(0,0,0), vec3(1,0,0), vec3(1,0,1), vec3(0,0,1),   // 1 bottom (-Y)
@@ -40,10 +47,10 @@ void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags,
     int corner = gl_VertexID & 3;
     uvec4 q = texelFetch(u_quads, qi);
     uint w0 = q.x;
-    int face = int((w0 >> 25u) & 7u);
-    float falling = float((w0 >> 28u) & 1u);
-    float source = float((w0 >> 29u) & 1u);
-    sheet = ((w0 >> 30u) & 1u) != 0u;
+    int face = int((w0 >> 26u) & 7u);
+    float falling = float((w0 >> 29u) & 1u);
+    float source = float((w0 >> 30u) & 1u);
+    sheet = ((w0 >> 31u) & 1u) != 0u;
     float w = float(q.w & 15u) + 1.0;
     float h = float((q.w >> 4u) & 15u) + 1.0;
     vec3 c = QUAD_CORNER[face * 4 + corner];
@@ -56,13 +63,15 @@ void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags,
     off[va] = b * h;
     // Vertex Y comes from the record (1/128 block from one block below the cell).
     float vy = float((q.y >> (uint(corner) * 8u)) & 255u) / 128.0 - 1.0;
-    localPos = vec3(float(w0 & 255u) + off.x, float((w0 >> 8u) & 511u) + vy, float((w0 >> 17u) & 255u) + off.z);
+    localPos = vec3(float(w0 & 255u) + off.x, float((w0 >> 8u) & 1023u) + vy, float((w0 >> 18u) & 255u) + off.z);
     uv = vec2(a, face >= 2 ? 1.0 - b : b);
     nrm = QUAD_NORMAL[face];
     float surface = float((q.z >> (uint(corner) * 8u)) & 255u) / 255.0;
+    // word3 bits 8..11: the flow code straight, no eighths needed here.
+    float flow = float((q.w >> 8u) & 15u);
     // word3 bits 12..19: water-column depth in whole blocks (MmsWaterQuadCodec).
     depth = float((q.w >> 12u) & 255u);
-    flags = vec4(surface, falling, source, 1.0);
+    flags = vec4(surface, falling, source, flow);
 }
 
 uniform mat4 uProjection;
@@ -84,6 +93,11 @@ out float vSurfaceHeight;
 // Per-quad (one value for the whole cell / LOD sheet rectangle), so flat —
 // interpolating it would smear a shoreline's shallows into the deep next to it.
 flat out float vWaterDepth;
+// 0 = still water; 1..8 = a river running in octant 0..7 (0 = +X, then
+// counter-clockwise in eighths of a turn). Flat: a cell runs one way, and
+// interpolating a direction across a quad would smear two rivers together
+// wherever they meet.
+flat out float vFlow;
 
 // Sum of directional sine waves (height-only — no horizontal displacement, since the
 // CPU-side corner-sewing in MmsWaterGenerator only guarantees adjacent blocks agree on
@@ -107,10 +121,12 @@ void main() {
     vec3 nrmIn;
     vec4 flagsIn;
     bool sheet = false;
+    float flowCode;
     float depth;
     if (aOrigin.w < -2.5) {
         pullWaterQuad(pos, uvIn, nrmIn, flagsIn, sheet, depth);
         pos += aOrigin.xyz;
+        flowCode = flagsIn.w;
     } else {
         pos = aOrigin.xyz + aPos * aOrigin.w;
         uvIn = aUV;
@@ -118,6 +134,8 @@ void main() {
         flagsIn = aFlags;
         // Per-vertex water meshes carry the depth in the layer slot.
         depth = aLayer;
+        // The per-vertex path carries the code in eighths (see the header).
+        flowCode = floor(flagsIn.w * 8.0 + 0.5);
     }
     float surfH = flagsIn.x;
     float falling = flagsIn.y;
@@ -131,7 +149,9 @@ void main() {
     if (uWavesEnabled && falling < 0.5 && !sheet) {
         const float MIN_WATER_SURFACE = 0.125;
         const float MAX_WAVE_DELTA = 0.18;
-        float wave = gerstnerHeight(pos.xz, uTime);
+        // Absolute XZ: the Gerstner lattice is a world-space function, so it must
+        // not shift when the render origin steps.
+        float wave = gerstnerHeight(pos.xz + uRenderOrigin, uTime);
         if (uWaveFadeEnd > 0.0) {
             float dist = length(pos.xz - uCameraPos.xz);
             wave *= 1.0 - smoothstep(uWaveFadeEnd * 0.6, uWaveFadeEnd, dist);
@@ -171,4 +191,5 @@ void main() {
     vSource = flagsIn.z;
     vSurfaceHeight = surfH;
     vWaterDepth = depth;
+    vFlow = flowCode;
 }

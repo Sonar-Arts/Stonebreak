@@ -36,7 +36,8 @@ import com.stonebreak.world.World;
  * This renderer handles all world rendering without UI elements.
  */
 public class WorldRenderer {
-    
+
+
     // Dependencies
     private final ShaderProgram shaderProgram;
     private final BlockTextureArray blockTextureArray;
@@ -124,7 +125,15 @@ public class WorldRenderer {
             torchIndirectLighting.suspend();
             com.stonebreak.rendering.lighting.DynamicLights.update(
                     world, player, player.getCamera().getPosition(), totalTime);
-            battleRenderer.render(battle.mesh(), projectionMatrix, player.getViewMatrix(),
+            // The arena scene mesh is baked in ABSOLUTE world coordinates (arena.json and the
+            // authored OMO), so it must not be drawn through the RenderOrigin-rebased view matrix
+            // the rest of the frame uses: as soon as the camera leaves the origin's 64-block cell —
+            // which the battle camera does the moment a shot sits at negative x or z — the whole
+            // arena is drawn a grid step away from the actors, which the SBE path rebases correctly.
+            // The arena lives within a few tens of blocks of world zero, so the absolute matrix
+            // costs no precision here.
+            battleRenderer.render(battle.mesh(), projectionMatrix,
+                    player.getCamera().getAbsoluteViewMatrix(),
                     player.getCamera().getPosition(), totalTime);
             battleWasRendered = true;
             renderEntities(player);
@@ -424,8 +433,10 @@ public class WorldRenderer {
             shaderProgram.setUniform("u_sunDirection", new Vector3f(0.5f, 1.0f, 0.3f).normalize());
         }
 
-        // Set view position for specular lighting calculations
-        shaderProgram.setUniform("u_viewPos", player.getCamera().getPosition());
+        // Set view position for specular lighting calculations. Render space —
+        // it is differenced against fragPos, which the mesh origin buffers put
+        // in render space too.
+        shaderProgram.setUniform("u_viewPos", player.getRenderPosition(new Vector3f()));
 
         // Dynamic point lights (torches) for this frame.
         com.stonebreak.rendering.lighting.DynamicLights.applyTo(shaderProgram);
@@ -559,10 +570,13 @@ public class WorldRenderer {
             // multidraw per region — no per-chunk CPU visibility work for the
             // opaque pass at all. Falls back to the CPU multidraw when the
             // cull program is unavailable.
+            // projectionViewWorld, not projectionView: the cull compute shader
+            // tests per-mesh AABBs that were uploaded in world coordinates,
+            // while the draw itself runs in render space off the mesh origins.
             if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isGpuCullEnabled()
                     && regionRenderer.drawLayerGpuCulled(
                         com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS,
-                        frustumCuller.projectionView())) {
+                        frustumCuller.projectionViewWorld())) {
                 regionRenderer.drawLegacyOnly(visibleChunks,
                     com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
                 return;

@@ -14,7 +14,8 @@ import io.netty.buffer.ByteBuf;
  * <p>{@code metaKind} selects the metadata channel:
  * <ul>
  *   <li>{@link #KIND_SNOW_LAYERS} — value = layer count 1-8 (0 = entry removed)</li>
- *   <li>{@link #KIND_WATER_LEVEL} — value = water layer byte: 1-7 flowing, 8 falling
+ *   <li>{@link #KIND_WATER_LEVEL} — value = water layer byte: 1-7 flowing, 8 falling,
+ *       9-16 a worldgen river surface running in octant 0-7
  *       (0 = entry removed / became source)</li>
  * </ul>
  */

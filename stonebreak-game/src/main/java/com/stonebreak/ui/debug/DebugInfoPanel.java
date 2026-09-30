@@ -13,7 +13,7 @@ import static com.stonebreak.ui.debug.DebugFormat.truncate;
 
 /**
  * The right-hand "Debug Info" card: player position, chunk coords, facing,
- * terrain noise channels, targeted block/water, world + network counters,
+ * terrain heights, targeted block/water, world + network counters,
  * graphics pipeline stats and GPU identity. Reads its numbers through
  * {@link DebugDiagnostics} and {@link GpuInfoProbe}.
  */
@@ -53,10 +53,6 @@ public final class DebugInfoPanel implements DebugPanel {
         BlockType blockBelow = world.getBlockAt(x, y - 1, z);
         String blockName = blockBelow != null ? blockBelow.name() : "Unknown";
 
-        // Noise channels driving terrain shape
-        float continentalness = world.terrain().getContinentalnessAt(x, z);
-        float erosion = world.terrain().getErosionAt(x, z);
-        float peaksValleys = world.terrain().getPeaksValleysAt(x, z);
         int baseHeight = world.terrain().getBaseHeightAt(x, z);
         int shapedHeight = world.terrain().getShapedHeightAt(x, z);
         int finalHeight = world.terrain().getFinalTerrainHeightAt(x, z);
@@ -73,11 +69,6 @@ public final class DebugInfoPanel implements DebugPanel {
         panel.row("Noise Backend", DebugDiagnostics.noiseBackendSummary());
         panel.row("Block Below", blockName);
         panel.row("Biome", biome.name());
-        panel.row("Temperature", String.format("%.3f", world.terrain().getTemperatureAt(x, z)));
-        panel.row("Moisture", String.format("%.3f", world.terrain().getMoistureAt(x, z)));
-        panel.row("Continentalness", String.format("%.3f", continentalness));
-        panel.row("Erosion", String.format("%.3f", erosion));
-        panel.row("Peaks/Valleys", String.format("%.3f", peaksValleys));
         panel.row("Height", String.format("%d base / %d shaped (%+d) / %d final (%+d detail)",
                 baseHeight, shapedHeight, shapedHeight - baseHeight,
                 finalHeight, finalHeight - shapedHeight));

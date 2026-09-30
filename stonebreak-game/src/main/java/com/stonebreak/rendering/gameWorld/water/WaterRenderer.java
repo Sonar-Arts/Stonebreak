@@ -8,6 +8,9 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.world.chunk.Chunk;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
+import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL30;
 
 import static org.lwjgl.opengl.GL11.*;
@@ -39,6 +42,11 @@ import static org.lwjgl.opengl.GL11.*;
  * correctly occluded by water in front of them (WorldRenderer orders
  * see-through-water content — transparent drops, crack overlay — before this
  * pass).
+ *
+ * <p>Before the prepass the opaque scene depth is copied into a texture, so
+ * the fragment shader can measure how much water each eye ray crosses before
+ * it reaches whatever lies behind the surface, and colour/fade by that
+ * thickness (density) rather than by the column depth under the face.
  */
 public class WaterRenderer {
 
@@ -69,7 +77,21 @@ public class WaterRenderer {
         }
     }
 
+    /**
+     * Texture unit of the opaque-scene depth copy. Must not share a unit with any
+     * sampler point_lights.glsl pulls in (5 = sun shadow map, 6 = torch shadow
+     * array, 7 = MMS quads, 8 = torch indirect atlas): two sampler types on one
+     * unit fail every water draw with GL_INVALID_OPERATION once torches are lit.
+     */
+    public static final int SCENE_DEPTH_TEXTURE_UNIT = 9;
+
     private final ShaderProgram shader;
+    private final Matrix4f invProjection = new Matrix4f();
+    private final Vector4f viewport = new Vector4f();
+    private final int[] viewportBuf = new int[4];
+    private int sceneDepthTexture;
+    private int sceneDepthWidth;
+    private int sceneDepthHeight;
 
     public WaterRenderer() {
         shader = new ShaderProgram();
@@ -95,6 +117,12 @@ public class WaterRenderer {
             shader.createUniform("uFogEnd");
             shader.createUniform("uFogSpherical");
             shader.createUniform("uLodFade");
+            shader.createUniform("uSceneDepth");
+            shader.createUniform("uInvProjection");
+            shader.createUniform("uViewport");
+            shader.bind();
+            shader.setUniform("uSceneDepth", SCENE_DEPTH_TEXTURE_UNIT);
+            shader.unbind();
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize water shader", e);
         }
@@ -166,8 +194,17 @@ public class WaterRenderer {
         glEnable(GL_POLYGON_OFFSET_FILL);
         glPolygonOffset(-1.0f, -1.0f);
 
+        // Snapshot the opaque depth before the prepass overwrites it with the
+        // water surface: the shader measures water thickness against it.
+        int previousActiveTexture = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + SCENE_DEPTH_TEXTURE_UNIT);
+        int previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D);
+        copySceneDepth();
+
         shader.bind();
         shader.setUniform("uProjection", projection);
+        shader.setUniform("uInvProjection", invProjection.set(projection).invert());
+        shader.setUniform("uViewport", viewport);
         shader.setUniform("uView", view);
         shader.setUniform("uTime", time);
         shader.setUniform("uWavesEnabled", wavesEnabled);
@@ -179,7 +216,14 @@ public class WaterRenderer {
         shader.setUniform("uSunDirection", sunDirection);
         shader.setUniform("uAmbientLight", ambientLight);
         com.stonebreak.rendering.lighting.DynamicLights.applyTo(shader);
-        shader.setUniform("uCameraPos", cameraPos);
+        // Render space, to difference against the render-space mesh position...
+        shader.setUniform("uCameraPos",
+            com.openmason.engine.rendering.RenderOrigin.toRender(cameraPos, new org.joml.Vector3f()));
+        // ...and the origin itself, for the wave/flow lattices, which are
+        // world-space functions and must not slide when the origin steps.
+        shader.setVec2("uRenderOrigin", new org.joml.Vector2f(
+            com.openmason.engine.rendering.RenderOrigin.x(),
+            com.openmason.engine.rendering.RenderOrigin.z()));
         shader.setUniform("uFogColor", fogColor);
         shader.setUniform("uFogStart", fogStart);
         shader.setUniform("uFogEnd", fogEnd);
@@ -208,6 +252,8 @@ public class WaterRenderer {
         shader.unbind();
 
         // Restore GL state.
+        glBindTexture(GL_TEXTURE_2D, previousTexture);
+        GL13.glActiveTexture(previousActiveTexture);
         if (depthTestEnabled) {
             glEnable(GL_DEPTH_TEST);
         } else {
@@ -232,6 +278,33 @@ public class WaterRenderer {
             glDisable(GL_POLYGON_OFFSET_FILL);
         }
         glPolygonOffset(currentOffsetFactor, currentOffsetUnits);
+    }
+
+    /**
+     * Copies the current depth buffer (opaque scene only at this point) into
+     * {@link #sceneDepthTexture}, bound on the active unit, (re)allocating it
+     * when the viewport size changes. Also records the viewport for the shader.
+     */
+    private void copySceneDepth() {
+        glGetIntegerv(GL_VIEWPORT, viewportBuf);
+        int w = Math.max(1, viewportBuf[2]);
+        int h = Math.max(1, viewportBuf[3]);
+        viewport.set(viewportBuf[0], viewportBuf[1], w, h);
+        if (sceneDepthTexture == 0) {
+            sceneDepthTexture = glGenTextures();
+        }
+        glBindTexture(GL_TEXTURE_2D, sceneDepthTexture);
+        if (w != sceneDepthWidth || h != sceneDepthHeight) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL14.GL_DEPTH_COMPONENT24, w, h, 0,
+                    GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, (java.nio.ByteBuffer) null);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL13.GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL13.GL_CLAMP_TO_EDGE);
+            sceneDepthWidth = w;
+            sceneDepthHeight = h;
+        }
+        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, viewportBuf[0], viewportBuf[1], w, h);
     }
 
     private void drawWaterMeshes(List<Chunk> chunksBackToFront, List<LodWaterNode> lodWater,
@@ -277,10 +350,14 @@ public class WaterRenderer {
         }
     }
 
-    /** Releases the shader. Water mesh handles are owned by their chunks. */
+    /** Releases the shader and depth copy. Water mesh handles are owned by their chunks. */
     public void cleanup() {
         if (shader != null) {
             shader.cleanup();
+        }
+        if (sceneDepthTexture != 0) {
+            glDeleteTextures(sceneDepthTexture);
+            sceneDepthTexture = 0;
         }
     }
 }

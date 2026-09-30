@@ -32,6 +32,10 @@ public class CharacterScreen {
     controller.toggleVisibility();
   }
 
+  public void setVisible(boolean visible) {
+    controller.setVisible(visible);
+  }
+
   public boolean isVisible() {
     return controller.isVisible();
   }

@@ -163,14 +163,13 @@ public final class MmsRenderableHandle implements AutoCloseable {
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vboId);
         GL15.glBufferData(GL15.GL_ARRAY_BUFFER, interleavedData, GL15.GL_STATIC_DRAW);
 
-        // Setup vertex attributes (+ the per-mesh origin for local-position formats)
+        // Setup vertex attributes + the per-mesh origin. Every format carries an
+        // origin buffer now, because it is also what rebases the mesh into
+        // render space (RenderOrigin) — LEGACY40's is simply origin (0,0,0).
         format.setupVertexAttributes();
-        int originBuffer = 0;
-        if (format.localPositions()) {
-            originBuffer = format.createOriginBuffer(
-                meshData.getOriginX(), meshData.getOriginY(), meshData.getOriginZ());
-            format.setupOriginAttribute(originBuffer);
-        }
+        int originBuffer = format.createOriginBuffer(
+            meshData.getOriginX(), meshData.getOriginY(), meshData.getOriginZ());
+        format.setupOriginAttribute(originBuffer);
 
         // Upload EBO data
         GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
@@ -344,6 +343,7 @@ public final class MmsRenderableHandle implements AutoCloseable {
             GpuMemoryTracker.getInstance()
                 .untrack(GpuMemoryTracker.Category.CHUNK_MESH, memoryUsageBytes);
             if (originBufferId != 0) {
+                com.openmason.engine.rendering.RenderOrigin.releaseOriginBuffer(originBufferId);
                 GL15.glDeleteBuffers(originBufferId);
                 originBufferId = 0;
             }

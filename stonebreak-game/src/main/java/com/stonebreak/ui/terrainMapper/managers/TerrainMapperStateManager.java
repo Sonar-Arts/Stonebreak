@@ -6,6 +6,7 @@ import com.stonebreak.ui.terrainMapper.components.TerrainMapViewport;
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerRegistry;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +33,8 @@ public final class TerrainMapperStateManager {
     private final MButton characterButton;
     private final MButton createButton;
     private final MButton simulateSeedButton;
+    private final List<MCategoryButton<TerrainGeneratorType>> generatorButtons = new ArrayList<>();
+    /** The selected generator's modes; empty until one is picked. See {@link #selectGenerator}. */
     private final List<MCategoryButton<VisualizerKind>> modeButtons = new ArrayList<>();
     private final MButton setSpawnButton;
     private final MButton centerOnSpawnButton;
@@ -46,14 +49,18 @@ public final class TerrainMapperStateManager {
     private String seedText = "";
     private ActiveField activeField = ActiveField.WORLD_NAME;
     private String errorMessage;
+    private boolean seedDirty;
+    private long seedDirtyAtNanos;
 
     // ─────────────────────────────────────────────── Visualization
-    private VisualizerKind activeVisualizer = VisualizerKind.HEIGHT;
+    /** Null until a generator is picked. */
+    private VisualizerKind activeVisualizer;
     private final VisualizerRegistry visualizers;
 
-    // ─────────────────────────────────────────────── Viewport + cache
+    // ─────────────────────────────────────────────── Viewport + preview
     private final TerrainMapViewport viewport = new TerrainMapViewport();
-    private final TerrainPreviewCache previewCache = new TerrainPreviewCache();
+    private final TerrainPreviewLoader previewLoader = new TerrainPreviewLoader(new TerrainPreviewSampler()::sample);
+    private final PreviewRequestPlanner requestPlanner = new PreviewRequestPlanner();
 
     // ─────────────────────────────────────────────── Map drag
     private boolean dragging;
@@ -78,18 +85,19 @@ public final class TerrainMapperStateManager {
                 .arrow(MButton.Arrow.LEFT)
                 .size(TerrainMapperConfig.FOOTER_BUTTON_WIDTH, TerrainMapperConfig.FOOTER_BUTTON_HEIGHT);
         this.createButton = new MButton("Create World")
+                .enabled(false)
                 .size(TerrainMapperConfig.FOOTER_BUTTON_WIDTH, TerrainMapperConfig.FOOTER_BUTTON_HEIGHT);
         this.simulateSeedButton = new MButton("Simulate Seed")
                 .size(TerrainMapperConfig.FOOTER_BUTTON_WIDTH, TerrainMapperConfig.FOOTER_BUTTON_HEIGHT);
 
-        for (VisualizerKind kind : VisualizerKind.values()) {
-            MCategoryButton<VisualizerKind> button = new MCategoryButton<>(kind, kind.displayName());
-            button.size(TerrainMapperConfig.SIDEBAR_WIDTH - TerrainMapperConfig.SIDEBAR_PADDING * 2f,
-                    TerrainMapperConfig.MODE_BUTTON_HEIGHT);
-            modeButtons.add(button);
+        float btnWidth = TerrainMapperConfig.SIDEBAR_WIDTH - TerrainMapperConfig.SIDEBAR_PADDING * 2f;
+        for (TerrainGeneratorType type : TerrainGeneratorType.values()) {
+            MCategoryButton<TerrainGeneratorType> button = new MCategoryButton<>(type, type.displayName());
+            button.size(btnWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
+            button.onClick(() -> selectGenerator(type));
+            generatorButtons.add(button);
         }
 
-        float btnWidth = TerrainMapperConfig.SIDEBAR_WIDTH - TerrainMapperConfig.SIDEBAR_PADDING * 2f;
         this.setSpawnButton = new MButton("Click map to set spawn")
                 .enabled(false)
                 .size(btnWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
@@ -104,6 +112,7 @@ public final class TerrainMapperStateManager {
     public MButton getCharacterButton() { return characterButton; }
     public MButton getCreateButton() { return createButton; }
     public MButton getSimulateSeedButton() { return simulateSeedButton; }
+    public List<MCategoryButton<TerrainGeneratorType>> getGeneratorButtons() { return generatorButtons; }
     public List<MCategoryButton<VisualizerKind>> getModeButtons() { return modeButtons; }
     public MButton getSetSpawnButton() { return setSpawnButton; }
     public MButton getCenterOnSpawnButton() { return centerOnSpawnButton; }
@@ -220,6 +229,42 @@ public final class TerrainMapperStateManager {
 
     public VisualizerRegistry getVisualizers() { return visualizers; }
 
+    // ─────────────────────────────────────────────── Generator
+
+    /** The generator the new world will use, or null before the player has picked one. */
+    public TerrainGeneratorType getSelectedGenerator() { return visualizers.generatorType(); }
+
+    /**
+     * Picks the generator: its mode buttons replace the previous set and the first mode is
+     * shown. Leaving Diffusion stops its services; picking it starts nothing here — the first
+     * preview job does, off the render thread.
+     */
+    public void selectGenerator(TerrainGeneratorType type) {
+        if (type == visualizers.generatorType()) return;
+        visualizers.selectGenerator(type);
+        rebuildModeButtons();
+        createButton.setEnabled(type != null);
+    }
+
+    /** Stops the Diffusion services if this screen started them — the player is leaving without a world. */
+    public void stopGeneratorServices() {
+        visualizers.stopServices();
+    }
+
+    private void rebuildModeButtons() {
+        modeButtons.clear();
+        float width = (TerrainMapperConfig.SIDEBAR_WIDTH - TerrainMapperConfig.SIDEBAR_PADDING * 2f
+                - TerrainMapperConfig.MODE_BUTTON_SPACING) / 2f;
+        for (VisualizerKind kind : visualizers.modes()) {
+            MCategoryButton<VisualizerKind> button = new MCategoryButton<>(kind, kind.displayName());
+            button.size(width, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
+            button.fontSize(TerrainMapperConfig.MODE_BUTTON_FONT_SIZE);
+            button.onClick(() -> setActiveVisualizer(kind));
+            modeButtons.add(button);
+        }
+        activeVisualizer = modeButtons.isEmpty() ? null : modeButtons.get(0).tag();
+    }
+
     // ─────────────────────────────────────────────── Seed
 
     /** Derive a deterministic long seed from the current seed text. */
@@ -233,8 +278,35 @@ public final class TerrainMapperStateManager {
         refreshSeed();
     }
 
+    /**
+     * Marks the seed as changed without touching the visualizers. The rebuild is deferred to
+     * {@link #applyPendingSeed()} because it restarts the local terrain-diffusion processes,
+     * which takes seconds and cannot happen once per keystroke.
+     */
     private void refreshSeed() {
-        visualizers.rebuild(getResolvedSeed());
+        this.seedDirty = true;
+        this.seedDirtyAtNanos = System.nanoTime();
+    }
+
+    /**
+     * Rebuilds the visualizers if the seed changed and has been stable for
+     * {@link TerrainMapperConfig#SEED_APPLY_DELAY_NANOS}. Called from the render path, so a
+     * screen that is no longer being drawn (after {@link #reset()}, say) never starts sampling
+     * behind the back of whoever owns the screen now.
+     *
+     * <p>Safe to call per frame: {@code rebuild} only allocates a tile cache and a couple of
+     * generators, with no I/O. Booting TGMPipe — the part that can block for a
+     * minute on a cold machine — is deliberately <em>not</em> done here; it happens on
+     * {@link TerrainPreviewLoader}'s worker thread as the first step of each sampling job.
+     */
+    public void applyPendingSeed() {
+        if (!seedDirty) return;
+        if (System.nanoTime() - seedDirtyAtNanos < TerrainMapperConfig.SEED_APPLY_DELAY_NANOS) return;
+        seedDirty = false;
+        long resolved = getResolvedSeed();
+        if (resolved != visualizers.seed()) {
+            visualizers.rebuild(resolved);
+        }
     }
 
     private static long deriveSeed(String text) {
@@ -247,10 +319,11 @@ public final class TerrainMapperStateManager {
         }
     }
 
-    // ─────────────────────────────────────────────── Viewport + cache
+    // ─────────────────────────────────────────────── Viewport + preview
 
     public TerrainMapViewport getViewport() { return viewport; }
-    public TerrainPreviewCache getPreviewCache() { return previewCache; }
+    public TerrainPreviewLoader getPreviewLoader() { return previewLoader; }
+    public PreviewRequestPlanner getRequestPlanner() { return requestPlanner; }
 
     // ─────────────────────────────────────────────── Drag state
 
@@ -322,17 +395,31 @@ public final class TerrainMapperStateManager {
         worldName = "";
         errorMessage = null;
         activeField = ActiveField.WORLD_NAME;
-        activeVisualizer = VisualizerKind.HEIGHT;
+        // Forget the generator without stopping its services: reset() also runs on the way into
+        // a world just created, which may be about to use them. Back stops them first.
+        visualizers.clearGenerator();
+        rebuildModeButtons();
+        createButton.setEnabled(false);
         dragging = false;
         hasHoverValue = false;
         clearSpawnPoint();
         viewport.reset();
-        long newSeed = new java.util.Random().nextLong();
-        seedText = Long.toString(newSeed);
-        visualizers.rebuild(newSeed);
+        // Back to a blank map, so re-entering the screen doesn't briefly show the previous
+        // world's terrain under the new seed.
+        previewLoader.reset();
+        requestPlanner.reset();
+        // The mapper is being closed, so the terrain remembered for looking back over is no
+        // longer anyone's. This is the only place it is dropped: panning, zooming, switching mode
+        // and even changing seed all keep it.
+        visualizers.clearPreviewData();
+        seedText = Long.toString(new java.util.Random().nextLong());
+        // Deliberately deferred, not rebuilt here: reset() runs on the way *out* of this screen
+        // (back, or world created), and rebuilding would start sampling a throwaway random
+        // seed, queueing preview tiles nobody will look at.
+        refreshSeed();
     }
 
     public void dispose() {
-        previewCache.dispose();
+        previewLoader.dispose();
     }
 }

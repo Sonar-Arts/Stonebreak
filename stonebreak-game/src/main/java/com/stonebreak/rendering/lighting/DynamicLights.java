@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.lighting;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.blocks.BlockType;
@@ -127,7 +128,11 @@ public final class DynamicLights {
 
     private static void addLight(LightProfile profile, float elapsed) {
         Vector3f p = positions[count];
-        positionData.put(p.x).put(p.y).put(p.z).put(PointLightGlsl.RADIUS);
+        // positions[] stay in world space (shadow views, indirect volumes and chunk
+        // lookups want that); the uniform goes up in render space, because the
+        // shaders subtract it from a render-space fragment position. The origin is
+        // fixed for the frame before update() runs (Renderer.renderWorld).
+        positionData.put(p.x - RenderOrigin.x()).put(p.y).put(p.z - RenderOrigin.z()).put(PointLightGlsl.RADIUS);
         float k = profile.peak() * profile.intensity(elapsed);
         colorData.put(profile.red() * k).put(profile.green() * k).put(profile.blue() * k).put(count);
         count++;
@@ -190,7 +195,7 @@ public final class DynamicLights {
         upload.frame = -1;
     }
 
-    /** Separate from the sun map (5), pulled quads (7) and block textures (0/1). */
+    /** Separate from the sun map (5), pulled quads (7), block textures (0/1) and water's scene depth (9). */
     public static final int POINT_SHADOW_TEXTURE_UNIT = 6;
     public static final int INDIRECT_TEXTURE_UNIT = 8;
 

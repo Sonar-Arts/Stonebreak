@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation.heightmap;
 
+import com.stonebreak.world.generation.StandardTerrain;
 import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -217,13 +218,13 @@ public final class RavineCarver {
             (int) Math.ceil(MAX_REACH / WorldConfiguration.CHUNK_SIZE) + 1;
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
-    private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+    private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
 
     private final long seed;
-    private final HeightMapGenerator heightMapGenerator;
+    private final SurfaceHeights heightMapGenerator;
     private final NoiseGenerator pathNoise;
 
-    public RavineCarver(long seed, HeightMapGenerator heightMapGenerator) {
+    public RavineCarver(long seed, SurfaceHeights heightMapGenerator) {
         this.seed = seed;
         this.heightMapGenerator = heightMapGenerator;
         this.pathNoise = new NoiseGenerator(seed + 577, 1, 0.5, 2.0);

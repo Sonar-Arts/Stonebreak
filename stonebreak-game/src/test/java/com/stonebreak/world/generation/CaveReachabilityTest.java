@@ -86,7 +86,7 @@ public class CaveReachabilityTest {
                 maxSurface = Math.max(maxSurface, h);
             }
         }
-        int yCap = Math.min(maxSurface + 2, WorldConfiguration.WORLD_HEIGHT);
+        int yCap = Math.min(maxSurface + 2, StandardTerrain.WORLD_HEIGHT);
 
         boolean[] air = new boolean[sizeX * sizeZ * yCap];
         for (int cx = 0; cx < REGION; cx++) {
@@ -97,7 +97,7 @@ public class CaveReachabilityTest {
                         int x = cx * CHUNK + lx;
                         int z = cz * CHUNK + lz;
                         for (int y = 0; y < yCap; y++) {
-                            if (chunk.getBlock(lx, y, lz) == BlockType.AIR) {
+                            if (StandardFrame.block(chunk, lx, y, lz) == BlockType.AIR) {
                                 air[index(x, y, z, sizeZ, yCap)] = true;
                             }
                         }

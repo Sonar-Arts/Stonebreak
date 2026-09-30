@@ -182,13 +182,13 @@ public class SpawnLocatorResolveStandingYTest {
         for (int x = -r * 16; x < r * 16; x++) {
             for (int z = -r * 16; z < r * 16; z++) {
                 int noiseH = world.terrain().getFinalTerrainHeightAt(x, z);
-                if (noiseH < WorldConfiguration.SEA_LEVEL) continue; // skip open ocean
+                if (world.getGeneratedWaterLevelAt(x, z) > noiseH) continue; // skip submerged columns
 
                 int standY = SpawnLocator.resolveStandingY(world, x, z, TOP);
                 if (standY < 1) continue; // no standable column (e.g. under a tree/shelf)
 
                 int dropToGround = noiseH - (standY - 1); // rim surface -> standing ground
-                boolean underwater = (standY - 1) < WorldConfiguration.SEA_LEVEL;
+                boolean underwater = world.getGeneratedWaterLevelAt(x, z) > standY - 1;
                 Vector3f candidate = new Vector3f(x + 0.5f, noiseH + 1, z + 0.5f);
                 Vector3f acceptedPos = SpawnLocator.acceptIfSafeSurface(world, candidate);
 

@@ -1,16 +1,22 @@
-package com.stonebreak.world.generation;
+package com.stonebreak.world.generation.diffusion;
+
+import com.stonebreak.world.generation.ChunkGenerationContext;
+import com.stonebreak.world.generation.ColumnProfile;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.DeterministicRandom;
 import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.generation.diffusion.TerrainTile;
+import com.stonebreak.world.generation.diffusion.TerrainTileSource;
 import com.stonebreak.world.generation.features.OreGenerator;
-import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
-import com.stonebreak.world.generation.noise.NoiseRouter;
+import com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -67,8 +73,6 @@ public class OreVeinDistributionTest {
     /** Iron density in the deep and high bands, relative to the sea-level trough. */
     private static final double IRON_BAND_RATIO_MIN = 2.0;
 
-    // Bands scaled to this branch's iron curve (deep peak 12, trough at SEA_LEVEL 64,
-    // high peak 130), holding the same relationship the 320/60/420 originals had.
     private static final int DEEP_Y_MAX = 22;
     private static final int MID_Y_MIN = 46;
     private static final int MID_Y_MAX = 82;
@@ -76,12 +80,13 @@ public class OreVeinDistributionTest {
 
     @Test
     public void oresGenerateAsVeinsAndIronFollowsTheDepthCurve() {
-        TallHillsHeightMap tiles = new TallHillsHeightMap(SEED);
-        TerrainGenerationSystem terrain = new TerrainGenerationSystem(SEED, tiles);
-        OreGenerator ores = new OreGenerator(new DeterministicRandom(SEED), tiles, SEED);
+        TallHillsTileSource tiles = new TallHillsTileSource();
+        DiffusionTerrainGenerator terrain = new DiffusionTerrainGenerator(SEED, tiles);
+        OreGenerator ores = new OreGenerator(
+                new DeterministicRandom(SEED), new HeightMapGenerator(tiles), SEED);
 
         int span = REGION * CHUNK;
-        int yCap = TallHillsHeightMap.MAX_HEIGHT + 1;
+        int yCap = TallHillsTileSource.MAX_HEIGHT + 1;
         // 0 = neither, 1 = coal, 2 = iron. Flat array over the whole region so veins can
         // be flood-filled across chunk borders.
         byte[] ore = new byte[span * span * yCap];
@@ -93,11 +98,12 @@ public class OreVeinDistributionTest {
 
         for (int cx = 0; cx < REGION; cx++) {
             for (int cz = 0; cz < REGION; cz++) {
-                TerrainGenerationSystem.TerrainResult result = terrain.generateTerrainOnly(cx, cz);
+                DiffusionTerrainGenerator.TerrainResult result = terrain.generateTerrainOnly(cx, cz);
                 Chunk chunk = result.chunk();
                 ColumnProfile profile = result.profile();
                 ores.generate(new ChunkGenerationContext(null, chunk, null,
-                        profile.heights(), profile.biomes(), profile.dominantBiome()));
+                        profile.heights(), profile.biomes(), profile.waterLevels(),
+                        profile.dominantBiome()));
 
                 for (int lx = 0; lx < CHUNK; lx++) {
                     for (int lz = 0; lz < CHUNK; lz++) {
@@ -282,18 +288,16 @@ public class OreVeinDistributionTest {
     /**
      * Dry hills tall enough to span the whole iron curve: valleys just above sea level and
      * peaks well past the high-altitude peak at y=130, so all three sample bands hold real
-     * rock. {@link DryHillsHeightMap} tops out around y=126 and would leave the highland
-     * band empty.
+     * rock. {@code DryHillsTileSource} tops out around y=148 and would leave the highland
+     * band thin.
      */
-    private static final class TallHillsHeightMap extends HeightMapGenerator {
-        private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
+    private static final class TallHillsTileSource implements TerrainTileSource {
+        private static final int TILE_SIZE = 256;
         private static final int BASE = WorldConfiguration.SEA_LEVEL + 60;
         private static final int AMPLITUDE = 28;
         static final int MAX_HEIGHT = BASE + 2 * AMPLITUDE;
 
-        TallHillsHeightMap(long seed) {
-            super(new NoiseRouter(seed));
-        }
+        private final Map<Long, TerrainTile> cache = new HashMap<>();
 
         static int height(int worldX, int worldZ) {
             double offset = Math.sin(worldX * 0.031) * AMPLITUDE
@@ -302,28 +306,29 @@ public class OreVeinDistributionTest {
         }
 
         @Override
-        public int generateHeight(int x, int z) {
-            return height(x, z);
+        public synchronized TerrainTile getTile(int worldX, int worldZ) {
+            int tileX = Math.floorDiv(worldX, TILE_SIZE);
+            int tileZ = Math.floorDiv(worldZ, TILE_SIZE);
+            return cache.computeIfAbsent((((long) tileX) << 32) ^ (tileZ & 0xFFFFFFFFL),
+                    k -> build(tileX, tileZ));
         }
 
-        @Override
-        public int baseHeight(int x, int z) {
-            return height(x, z);
-        }
-
-        @Override
-        public int shapedHeight(int x, int z) {
-            return height(x, z);
-        }
-
-        @Override
-        public void populateChunkHeights(int chunkX, int chunkZ, int[] out) {
-            for (int x = 0; x < CHUNK_SIZE; x++) {
-                for (int z = 0; z < CHUNK_SIZE; z++) {
-                    out[x * CHUNK_SIZE + z] =
-                            height(chunkX * CHUNK_SIZE + x, chunkZ * CHUNK_SIZE + z);
+        private static TerrainTile build(int tileX, int tileZ) {
+            int i1 = tileX * TILE_SIZE;
+            int j1 = tileZ * TILE_SIZE;
+            short[] heights = new short[TILE_SIZE * TILE_SIZE];
+            short[] biomes = new short[TILE_SIZE * TILE_SIZE];
+            short[] waterLevels = new short[TILE_SIZE * TILE_SIZE];
+            for (int row = 0; row < TILE_SIZE; row++) {
+                for (int col = 0; col < TILE_SIZE; col++) {
+                    int idx = row * TILE_SIZE + col;
+                    heights[idx] = (short) height(i1 + row, j1 + col);
+                    biomes[idx] = 1; // plains — no RED_SAND_DESERT crystals in the way
+                    waterLevels[idx] = TerrainTile.NO_WATER;
                 }
             }
+            return new TerrainTile(tileX, tileZ, i1, j1, i1 + TILE_SIZE, j1 + TILE_SIZE,
+                    TILE_SIZE, TILE_SIZE, heights, biomes, waterLevels);
         }
     }
 }

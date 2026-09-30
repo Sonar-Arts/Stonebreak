@@ -43,6 +43,9 @@ public final class GameShutdown {
         if (game.getPauseMenu() != null) {
             game.getPauseMenu().cleanup();
         }
+        if (game.getSaveChangesDialog() != null) {
+            game.getSaveChangesDialog().cleanup();
+        }
         if (game.getStatisticsScreen() != null) {
             game.getStatisticsScreen().cleanup();
         }

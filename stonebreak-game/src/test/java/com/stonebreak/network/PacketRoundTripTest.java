@@ -18,6 +18,7 @@ import com.stonebreak.network.packet.handshake.KeepAliveC2S;
 import com.stonebreak.network.packet.handshake.KeepAliveS2C;
 import com.stonebreak.network.packet.handshake.KickS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.network.packet.player.DropItemC2S;
 import com.stonebreak.network.packet.player.GiveItemS2C;
 import com.stonebreak.network.packet.player.KillCreditS2C;
@@ -78,7 +79,7 @@ class PacketRoundTripTest {
     @Test
     void scalarPacketsRoundTrip() {
         assertEquals(new HandshakeC2S(1, "player"), roundTrip(HandshakeC2S.CODEC, new HandshakeC2S(1, "player")));
-        assertEquals(new WelcomeS2C(7, 123456789L, 1f, 64f, 2f), roundTrip(WelcomeS2C.CODEC, new WelcomeS2C(7, 123456789L, 1f, 64f, 2f)));
+        assertEquals(new WelcomeS2C(7, 123456789L, TerrainGeneratorType.DIFFUSION, 1f, 64f, 2f), roundTrip(WelcomeS2C.CODEC, new WelcomeS2C(7, 123456789L, TerrainGeneratorType.DIFFUSION, 1f, 64f, 2f)));
         assertEquals(new KickS2C("bye"), roundTrip(KickS2C.CODEC, new KickS2C("bye")));
         assertEquals(new DisconnectC2S("leaving"), roundTrip(DisconnectC2S.CODEC, new DisconnectC2S("leaving")));
         assertEquals(new BlockChangeC2S(10, 64, -5, (short) 3, (short) 1), roundTrip(BlockChangeC2S.CODEC, new BlockChangeC2S(10, 64, -5, (short) 3, (short) 1)));
@@ -212,7 +213,7 @@ class PacketRoundTripTest {
     void registryRoundTripsById() {
         PacketRegistry reg = StonebreakProtocol.registry();
         assertEquals(new HandshakeC2S(1, "p"), viaRegistry(reg, PLAY, SERVERBOUND, new HandshakeC2S(1, "p")));
-        assertEquals(new WelcomeS2C(1, 2L, 3f, 4f, 5f), viaRegistry(reg, PLAY, CLIENTBOUND, new WelcomeS2C(1, 2L, 3f, 4f, 5f)));
+        assertEquals(new WelcomeS2C(1, 2L, TerrainGeneratorType.STANDARD, 3f, 4f, 5f), viaRegistry(reg, PLAY, CLIENTBOUND, new WelcomeS2C(1, 2L, TerrainGeneratorType.STANDARD, 3f, 4f, 5f)));
         assertEquals(new BlockChangeC2S(1, 2, 3, (short) 4, (short) 5), viaRegistry(reg, PLAY, SERVERBOUND, new BlockChangeC2S(1, 2, 3, (short) 4, (short) 5)));
         assertEquals(new PlayerLeaveS2C(8), viaRegistry(reg, PLAY, CLIENTBOUND, new PlayerLeaveS2C(8)));
         assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1), viaRegistry(reg, PLAY, SERVERBOUND, new EntityDamageC2S(9, 4.5f, (byte) 1)));

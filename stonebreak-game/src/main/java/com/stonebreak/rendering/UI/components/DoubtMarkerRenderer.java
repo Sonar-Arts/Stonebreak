@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.UI.components;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.Player;
@@ -65,7 +66,9 @@ public class DoubtMarkerRenderer {
             Font font = fonts != null ? fonts.get(LABEL_FONT) : null;
             if (font == null) return;
 
-            Matrix4f vp = new Matrix4f(proj).mul(view);
+            // view is render-space; these markers project WORLD positions, so
+            // rebase the combined matrix to consume them.
+            Matrix4f vp = RenderOrigin.acceptWorldSpace(new Matrix4f(proj).mul(view));
             for (LivingEntity target : doubted) {
                 int stacks = doubt.getStacks(target);
                 if (stacks <= 0) continue;

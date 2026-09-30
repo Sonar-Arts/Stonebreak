@@ -121,6 +121,9 @@ public class Game {
      */
     public void initCoreComponents(Renderer renderer, BlockTextureArray textureAtlas, InputHandler inputHandler, long window) {
         this.window = window;
+        // Terrain model setup (environment install + GPU kernel compile) runs in the background from the
+        // very start, under the intro; the setup screen after the intro shows it if it still has work.
+        com.stonebreak.world.generation.diffusion.tgmpipe.ModelSetup.getInstance().start();
         services.setRenderer(renderer);
         services.setTextureAtlas(textureAtlas);
         services.setInputHandler(inputHandler);
@@ -411,6 +414,26 @@ public class Game {
         return screens.pauseMenu();
     }
 
+    /** Gets the "Save changes?" confirmation dialog for the inventory/character sheet. */
+    public com.stonebreak.ui.saveChanges.SaveChangesDialog getSaveChangesDialog() {
+        return screens.saveChangesDialog();
+    }
+
+    /** Commits the inventory session's point allocations (Save changes? → Yes). */
+    public void confirmSaveChanges() {
+        stateController.confirmSaveChanges();
+    }
+
+    /** Discards the inventory session's point allocations (Save changes? → No). */
+    public void confirmDiscardChanges() {
+        stateController.confirmDiscardChanges();
+    }
+
+    /** Dismisses the "Save changes?" dialog without leaving the panel. */
+    public void cancelSaveChanges() {
+        stateController.cancelSaveChanges();
+    }
+
     public com.stonebreak.ui.statisticsScreen.StatisticsScreen getStatisticsScreen() {
         return screens.statisticsScreen();
     }
@@ -504,6 +527,21 @@ public class Game {
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#toggleCharacterScreen()}. */
     public void toggleCharacterScreen() {
         stateController.toggleCharacterScreen();
+    }
+
+    /** Switches from the character sheet to the inventory without a save prompt. */
+    public void switchToInventory() {
+        stateController.switchToInventory();
+    }
+
+    /** Switches from the inventory to the character sheet without a save prompt. */
+    public void switchToCharacter() {
+        stateController.switchToCharacter();
+    }
+
+    /** Switches from the inventory to the character sheet at the given tab. */
+    public void switchToCharacter(com.stonebreak.rpg.CharacterPanelTab tab) {
+        stateController.switchToCharacter(tab);
     }
 
     /** Opens the character screen at the given tab. */
@@ -784,6 +822,13 @@ public class Game {
     }
 
     /**
+     * Gets the game-launch terrain model setup screen.
+     */
+    public com.stonebreak.ui.modelSetup.ModelSetupScreen getModelSetupScreen() {
+        return screens.modelSetupScreen();
+    }
+
+    /**
      * Gets the world save system for manual save operations.
      */
     public SaveService getSaveService() {
@@ -846,7 +891,9 @@ public class Game {
      * Builds the client render world for a joined session. See
      * {@link com.stonebreak.core.world.ClientWorldBuilder}.
      */
-    public void startClientWorld(String worldName, long seed, org.joml.Vector3f spawn) {
-        clientWorldBuilder.start(worldName, seed, spawn);
+    public void startClientWorld(String worldName, long seed,
+                                 com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                 org.joml.Vector3f spawn) {
+        clientWorldBuilder.start(worldName, seed, generatorType, spawn);
     }
 }

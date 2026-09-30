@@ -101,7 +101,7 @@ public class CaveVolumeTest {
                 maxSurface = Math.max(maxSurface, h);
             }
         }
-        int yCap = Math.min(maxSurface, WorldConfiguration.WORLD_HEIGHT);
+        int yCap = Math.min(maxSurface, StandardTerrain.WORLD_HEIGHT);
 
         boolean[] air = new boolean[sizeX * sizeZ * yCap];
         long standSpots = 0;
@@ -114,18 +114,18 @@ public class CaveVolumeTest {
                         int x = cx * CHUNK + lx;
                         int z = cz * CHUNK + lz;
                         int top = Math.min(surface[x * sizeZ + z], yCap);
-                        if (chunk.getBlock(lx, top - 1, lz) == BlockType.AIR) {
+                        if (StandardFrame.block(chunk, lx, top - 1, lz) == BlockType.AIR) {
                             openColumns++;   // a cave broke the ground open in this column
                         }
                         for (int y = 1; y < top; y++) {
-                            if (chunk.getBlock(lx, y, lz) != BlockType.AIR) {
+                            if (StandardFrame.block(chunk, lx, y, lz) != BlockType.AIR) {
                                 continue;
                             }
                             air[index(x, y, z, sizeZ, yCap)] = true;
-                            boolean floor = chunk.getBlock(lx, y - 1, lz) != BlockType.AIR;
+                            boolean floor = StandardFrame.block(chunk, lx, y - 1, lz) != BlockType.AIR;
                             boolean headroom = true;
                             for (int h = 1; h < PLAYER_HEIGHT && headroom; h++) {
-                                headroom = chunk.getBlock(lx, y + h, lz) == BlockType.AIR;
+                                headroom = StandardFrame.block(chunk, lx, y + h, lz) == BlockType.AIR;
                             }
                             if (floor && headroom) {
                                 standSpots++;

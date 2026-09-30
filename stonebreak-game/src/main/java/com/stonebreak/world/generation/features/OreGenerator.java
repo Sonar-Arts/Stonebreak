@@ -5,7 +5,6 @@ import com.stonebreak.world.DeterministicRandom;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.ChunkGenerationContext;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.Random;
@@ -36,11 +35,13 @@ public class OreGenerator {
      * Iron abundance is a V in absolute Y: full rate down at bedrock, full rate up in
      * the highlands, scarce in the middle around sea level.
      *
-     * <p>The old code gated iron on a flat {@code y < 50}, which put every vein in a slab
-     * near bedrock rather than spread through the rock a player actually digs. The knots
-     * below are the same shape scaled to this branch's world: {@link
-     * WorldConfiguration#SEA_LEVEL} is 64 and land surfaces run 70-200, against the 320 /
-     * 340-500 the curve was originally drawn for.
+     * <p>The old code gated iron on {@code y < 50} while {@link WorldConfiguration#SEA_LEVEL}
+     * is 320 and land surfaces sit at 340-500 — the same absolute-Y-band mistake
+     * {@code CavernCarver} records fixing for caverns, and with the same effect: iron sat
+     * in a near-bedrock slab hundreds of blocks below anywhere a player actually digs.
+     *
+     * <p>The peaks are absolute Y for the 256-tall world (sea level 64, 1:4 terrain scale,
+     * land reaching ~y 180): the same values {@code main} uses at this height.
      */
     private static final int IRON_DEEP_PEAK_Y = 12;
     private static final int IRON_TROUGH_Y = WorldConfiguration.SEA_LEVEL;
@@ -96,10 +97,10 @@ public class OreGenerator {
     private static final float CRYSTAL_CHANCE = 0.02f;
 
     private final DeterministicRandom rng;
-    private final HeightMapGenerator heightMapGenerator;
+    private final ColumnHeights heightMapGenerator;
     private final long seed;
 
-    public OreGenerator(DeterministicRandom rng, HeightMapGenerator heightMapGenerator, long seed) {
+    public OreGenerator(DeterministicRandom rng, ColumnHeights heightMapGenerator, long seed) {
         this.rng = rng;
         this.heightMapGenerator = heightMapGenerator;
         this.seed = seed;

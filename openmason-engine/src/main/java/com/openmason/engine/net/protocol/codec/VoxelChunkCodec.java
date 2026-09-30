@@ -39,6 +39,8 @@ import java.util.Map;
 public final class VoxelChunkCodec {
 
     public static final int CHUNK_W = 16;
+    /** Must equal the game's {@code WorldConfiguration.WORLD_HEIGHT} (pinned by the game's
+     *  {@code ChunkHeightContractTest}): the engine cannot see the game's constants. */
     public static final int CHUNK_H = 256;
     public static final int SECTION_H = 16;
     public static final int SECTIONS_PER_CHUNK = CHUNK_H / SECTION_H;

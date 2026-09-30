@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.models.entities;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.mobs.entities.Entity;
 import org.joml.Matrix4f;
@@ -47,8 +48,8 @@ final class ArrowRenderer {
                 0.0f, new Vector3f(0.1f, 0.3f, 0.5f), entity, true);
 
         // Elongated along local Z (direction of travel); yaw from rotation.y
-        Matrix4f modelMatrix = new Matrix4f()
-                .translate(entity.getPosition())
+        Matrix4f modelMatrix = RenderOrigin
+                .modelAt(entity.getPosition().x, entity.getPosition().y, entity.getPosition().z)
                 .rotateY((float) Math.toRadians(entity.getRotation().y))
                 .scale(0.06f, 0.06f, 0.5f);
         pipeline.setModel(modelMatrix);

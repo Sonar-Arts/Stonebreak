@@ -2,8 +2,8 @@ package com.stonebreak.world.generation.noise;
 
 /**
  * One 2D world-generation noise channel sampled in block coordinates,
- * returning raw fbm values in ~[-1, 1] (post-transforms such as the
- * moisture [0,1] remap belong to {@link NoiseRouter}).
+ * returning raw fbm values in ~[-1, 1] (any post-transform, such as a
+ * [0, 1] remap, belongs to the caller).
  *
  * Contract: {@code sample(x, z)} and any cell of {@link #fill} at the same
  * block coordinate return the SAME value. FastLOD relies on this — the chunk

@@ -63,12 +63,66 @@ class MmsVertexFormatTest {
         assertEquals(7f, f.layer(buf, 1));
     }
 
+    /**
+     * Chunk meshes are given originY = 0 (MmsCcoAdapter), so a stamp's Y is
+     * encoded as a raw world Y. At the original 1/64-block unit this threw for
+     * everything above y=512; the top vertex of the world then sat one unit
+     * past the widened range until the Y window was shifted.
+     */
+    @Test
+    void compact20SpansAWorldColumnFromAZeroYOrigin() {
+        MmsVertexFormat f = MmsVertexFormat.COMPACT20;
+        ByteBuffer buf = ByteBuffer.allocate(f.stride() * 3).order(ByteOrder.nativeOrder());
+        for (float y : new float[]{0f, 535f, 1024f}) {
+            f.encode(buf, 0f, y, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f);
+        }
+        assertEquals(0f, f.position(buf, 0, 1, 0f, 0f, 0f), "the floor of the world");
+        assertEquals(535f, f.position(buf, 1, 1, 0f, 0f, 0f), "the peak that reported this bug");
+        assertEquals(1024f, f.position(buf, 2, 1, 0f, 0f, 0f),
+            "the top face of a block on the world's top layer");
+    }
+
+    /** The shift buys Y headroom by giving up depth no producer can reach. */
+    @Test
+    void compact20KeepsSlackBelowTheOriginForMeshesPivotedOnZero() {
+        MmsVertexFormat f = MmsVertexFormat.COMPACT20;
+        ByteBuffer buf = ByteBuffer.allocate(f.stride()).order(ByteOrder.nativeOrder());
+        f.encode(buf, 0f, MmsVertexFormat.COMPACT_MIN_Y, 0f, 0f, 0f, 0f, 1f, 0f,
+            0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f);
+        assertEquals(MmsVertexFormat.COMPACT_MIN_Y, f.position(buf, 0, 1, 0f, 0f, 0f));
+        assertTrue(MmsVertexFormat.COMPACT_MIN_Y <= -512f,
+            "a model mesh pivoted on its own centre must still encode");
+    }
+
     @Test
     void compact20RejectsPositionsOutsideTheFixedPointRange() {
         MmsVertexFormat f = MmsVertexFormat.COMPACT20;
         ByteBuffer buf = ByteBuffer.allocate(f.stride()).order(ByteOrder.nativeOrder());
         assertThrows(IllegalArgumentException.class, () ->
-            f.encode(buf, 600f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f));
+            f.encode(buf, MmsVertexFormat.COMPACT_MAX_BLOCKS + 1f, 0f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f));
+        assertThrows(IllegalArgumentException.class, () ->
+            f.encode(buf, 0f, MmsVertexFormat.COMPACT_MAX_Y + 1f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f));
+        assertThrows(IllegalArgumentException.class, () ->
+            f.encode(buf, 0f, MmsVertexFormat.COMPACT_MIN_Y - 1f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f));
+    }
+
+    /**
+     * The Y shift is invisible outside the format: the shader adds the origin
+     * attribute, so the shift has to be folded into the origin the GPU is
+     * handed, not into the decode path alone.
+     */
+    @Test
+    void compact20FoldsTheYShiftIntoTheOriginTheGpuReads() {
+        assertEquals(MmsVertexFormat.COMPACT_Y_SHIFT, MmsVertexFormat.COMPACT20.originYShift());
+        for (MmsVertexFormat f : MmsVertexFormat.values()) {
+            if (f != MmsVertexFormat.COMPACT20) {
+                assertEquals(0f, f.originYShift(),
+                    f + " must read an unshifted origin — its Y is absolute world Y");
+            }
+        }
     }
 
     @Test

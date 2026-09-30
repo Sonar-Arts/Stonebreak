@@ -4,6 +4,7 @@ import com.stonebreak.rendering.UI.masonryUI.MButton;
 import com.stonebreak.rendering.UI.masonryUI.MCategoryButton;
 import com.stonebreak.rendering.UI.masonryUI.MPainter;
 import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.stonebreak.rendering.UI.masonryUI.MTooltip;
 import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.ui.terrainMapper.TerrainMapperLayout;
 import com.stonebreak.ui.terrainMapper.TerrainMapperLayout.Rect;
@@ -11,8 +12,11 @@ import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager.ActiveField;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
+
+import java.util.List;
 
 /**
  * Draws the sidebar: title, world-name input, seed input, visualization
@@ -42,6 +46,7 @@ public final class TerrainSidebarRenderer {
                 state.getSeedText(), "Random if blank",
                 state.getActiveField() == ActiveField.SEED);
 
+        drawGeneratorButtons(ui, layout);
         drawModeButtons(ui, layout);
         drawSpawnSection(ui, layout);
         drawError(canvas, ui, sidebar);
@@ -79,14 +84,46 @@ public final class TerrainSidebarRenderer {
         }
     }
 
+    private void drawGeneratorButtons(MasonryUI ui, TerrainMapperLayout layout) {
+        Rect first = layout.firstGeneratorButton();
+        drawSectionLabel(ui, "Terrain Generator", first);
+        int i = 0;
+        for (MCategoryButton<TerrainGeneratorType> button : state.getGeneratorButtons()) {
+            button.setSelected(button.tag() == state.getSelectedGenerator());
+            button.position(first.x(), layout.generatorButtonY(i++));
+            button.render(ui);
+            if (button.tag() == TerrainGeneratorType.DIFFUSION && button.isHovered()) {
+                drawDiffusionWarning(ui, layout, button);
+            }
+        }
+    }
+
+    /** Pushed as an overlay so it lands on top of the map, which is drawn after the sidebar. */
+    private static void drawDiffusionWarning(MasonryUI ui, TerrainMapperLayout layout, MButton button) {
+        Rect screen = layout.footer();
+        float x = button.x() + button.width() + 12f;
+        float y = button.y();
+        ui.pushOverlay(() -> MTooltip.draw(ui, TerrainMapperConfig.DIFFUSION_WARNING, x, y,
+                Math.round(screen.width()), Math.round(screen.bottom()), MStyle.TEXT_ERROR));
+    }
+
     private void drawModeButtons(MasonryUI ui, TerrainMapperLayout layout) {
         Rect first = layout.firstModeButton();
+        List<MCategoryButton<VisualizerKind>> buttons = state.getModeButtons();
+        if (buttons.isEmpty()) return;
+        drawSectionLabel(ui, "Map Mode", first);
         int i = 0;
-        for (MCategoryButton<VisualizerKind> button : state.getModeButtons()) {
+        for (MCategoryButton<VisualizerKind> button : buttons) {
             button.setSelected(button.tag() == state.getActiveVisualizer());
-            button.position(first.x(), layout.modeButtonY(i++));
+            button.position(layout.modeButtonX(i), layout.modeButtonY(i));
+            i++;
             button.render(ui);
         }
+    }
+
+    private static void drawSectionLabel(MasonryUI ui, String label, Rect below) {
+        Font labelFont = ui.fonts().get(MStyle.FONT_META);
+        MPainter.drawString(ui.canvas(), label, below.x(), below.y() - 6f, labelFont, MStyle.TEXT_SECONDARY);
     }
 
     private void drawSpawnSection(MasonryUI ui, TerrainMapperLayout layout) {

@@ -328,19 +328,20 @@ public final class MmsChunkRegion {
             throw new IllegalArgumentException("Mesh format " + meshFormat
                 + " cannot join a " + format + " region");
         }
-        if (format.localPositions()) {
-            if (!originSet) {
-                this.originX = originX;
-                this.originY = originY;
-                this.originZ = originZ;
-                this.originSet = true;
-                this.originBufferId = format.createOriginBuffer(originX, originY, originZ);
-                rebuildVao();
-            } else if (originX != this.originX || originY != this.originY || originZ != this.originZ) {
-                throw new IllegalArgumentException(String.format(
-                    "Mesh origin (%.1f,%.1f,%.1f) differs from region origin (%.1f,%.1f,%.1f)",
-                    originX, originY, originZ, this.originX, this.originY, this.originZ));
-            }
+        // Every format gets an origin buffer, local-position or not: it is also
+        // the seam that rebases the region into render space (RenderOrigin).
+        // LEGACY40 meshes report origin (0,0,0), which agrees across uploads.
+        if (!originSet) {
+            this.originX = originX;
+            this.originY = originY;
+            this.originZ = originZ;
+            this.originSet = true;
+            this.originBufferId = format.createOriginBuffer(originX, originY, originZ);
+            rebuildVao();
+        } else if (originX != this.originX || originY != this.originY || originZ != this.originZ) {
+            throw new IllegalArgumentException(String.format(
+                "Mesh origin (%.1f,%.1f,%.1f) differs from region origin (%.1f,%.1f,%.1f)",
+                originX, originY, originZ, this.originX, this.originY, this.originZ));
         }
         MmsArenaAllocator.Segment vertexSeg = allocOrGrow(vertexAlloc, vertexCount, true);
         MmsArenaAllocator.Segment indexSeg = null;
@@ -901,6 +902,7 @@ public final class MmsChunkRegion {
         deleted = true;
         GL30.glDeleteVertexArrays(vaoId);
         if (originBufferId != 0) {
+            com.openmason.engine.rendering.RenderOrigin.releaseOriginBuffer(originBufferId);
             GL15.glDeleteBuffers(originBufferId);
             originBufferId = 0;
         }

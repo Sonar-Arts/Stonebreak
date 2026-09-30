@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
  * sheets (flat, up to 16×16 blocks).
  *
  * <pre>
- * word0: x:8 | y:9 | z:8 | face:3 | falling:1 | source:1 | sheet:1 | spare:1
+ * word0: x:8 | y:10 | z:8 | face:3 | falling:1 | source:1 | sheet:1
  *        sheet = FastLOD sea sheet: no wave displacement in the shader
  *        cell relative to the region origin (y = the water cell's block Y)
  * word1: 4 × u8 vertex Y offsets from (y − 1) in 1/128 block, corner order =
@@ -25,7 +25,7 @@ import java.nio.ByteBuffer;
  *
  * The shader (`water.vert`, {@code aOrigin.w < -2.5}) rebuilds the corner
  * position from the table, the vertex Y from word1, and the flags vector
- * {@code (surface, falling, source, light=1)} the fragment stage expects.
+ * {@code (surface, falling, source, flow)} the fragment stage expects.
  */
 public final class MmsWaterQuadCodec {
 
@@ -49,15 +49,16 @@ public final class MmsWaterQuadCodec {
      */
     public static int word0(int x, int y, int z, int face, boolean falling, boolean source, boolean sheet) {
         check(x, 0, 255, "x");
-        check(y, 0, 511, "y");
+        // The mesh origin's Y is 0, so y is absolute world Y: 10 bits covers WORLD_HEIGHT 1024.
+        check(y, 0, 1023, "y");
         check(z, 0, 255, "z");
         check(face, 0, 5, "face");
-        return x | (y << 8) | (z << 17) | (face << 25) | ((falling ? 1 : 0) << 28) | ((source ? 1 : 0) << 29)
-            | ((sheet ? 1 : 0) << 30);
+        return x | (y << 8) | (z << 18) | (face << 26) | ((falling ? 1 : 0) << 29) | ((source ? 1 : 0) << 30)
+            | ((sheet ? 1 : 0) << 31);
     }
 
     public static boolean sheet(int w0) {
-        return ((w0 >>> 30) & 1) != 0;
+        return ((w0 >>> 31) & 1) != 0;
     }
 
     /** Packs four vertex Y values (world units, {@code cellY - 1 ≤ vy < cellY + 1}) into 1/128 steps. */
@@ -87,9 +88,7 @@ public final class MmsWaterQuadCodec {
      * @param flow the river flow octant 0..7 (0 = +X, counter-clockwise in
      *             eighths of a turn), or {@link #NO_FLOW} for still water.
      *             Stored biased by one so that a zeroed record reads as still,
-     *             which is what every caller that never sets it wants. Nothing
-     *             in this branch marks a river yet — the field is carried so the
-     *             record stays byte-identical to Project-Heracles', which does.
+     *             which is what every caller that never sets it wants.
      */
     public static int word3(int w, int h, int flow) {
         return word3(w, h, flow, 0);
@@ -126,23 +125,23 @@ public final class MmsWaterQuadCodec {
     }
 
     public static int y(int w0) {
-        return (w0 >>> 8) & 0x1FF;
+        return (w0 >>> 8) & 0x3FF;
     }
 
     public static int z(int w0) {
-        return (w0 >>> 17) & 0xFF;
+        return (w0 >>> 18) & 0xFF;
     }
 
     public static int face(int w0) {
-        return (w0 >>> 25) & 7;
+        return (w0 >>> 26) & 7;
     }
 
     public static boolean falling(int w0) {
-        return ((w0 >>> 28) & 1) != 0;
+        return ((w0 >>> 29) & 1) != 0;
     }
 
     public static boolean source(int w0) {
-        return ((w0 >>> 29) & 1) != 0;
+        return ((w0 >>> 30) & 1) != 0;
     }
 
     public static float vertexY(int cellY, int w1, int corner) {
@@ -206,10 +205,27 @@ public final class MmsWaterQuadCodec {
         return MmsLodQuadCodec.faceNormal(face(quads.getInt(q * QUAD_BYTES)), c);
     }
 
-    /** The {@link MmsBufferLayout#packFlags} word a vertex of this corner carries: (surface, falling, source, 1). */
+    /**
+     * The {@link MmsBufferLayout#packFlags} word a vertex of this corner
+     * carries: {@code (surface, falling, source, flow)}.
+     *
+     * <p>This is the CPU-side expansion of a pulled record into the flag word
+     * the PER-VERTEX mesh path carries, which is what a reader of the mesh
+     * (tests, tooling) sees in place of the GPU's own decode. So the flow code
+     * rides as EIGHTHS here: {@link MmsBufferLayout#packFlags} normalises every
+     * slot to a [0,1] byte, and {@code water.vert} scales that branch back out
+     * with {@code floor(flags.w * 8.0 + 0.5)}.
+     *
+     * <p>Deliberately NOT the same number {@code water.vert} puts in
+     * {@code flags.w} when it pulls this record itself — there it reads the
+     * code straight out of word3, unscaled. The shader knows which path it is
+     * on and decodes accordingly; do not "fix" one side to match the other.
+     */
     public static int flags(ByteBuffer quads, int q, int corner) {
         int w0 = quads.getInt(q * QUAD_BYTES);
         int w2 = quads.getInt(q * QUAD_BYTES + 8);
-        return MmsBufferLayout.packFlags(surface(w2, corner), falling(w0) ? 1f : 0f, source(w0) ? 1f : 0f, 1f);
+        int w3 = quads.getInt(q * QUAD_BYTES + 12);
+        return MmsBufferLayout.packFlags(surface(w2, corner), falling(w0) ? 1f : 0f,
+            source(w0) ? 1f : 0f, (flow(w3) + 1) / 8f);
     }
 }

@@ -20,6 +20,8 @@ public class HelpCommand implements ChatCommand {
 
         // Sort commands alphabetically for better readability
         commands.entrySet().stream()
+            // Aliases share a map entry with their command; list each command once, under its name.
+            .filter(entry -> entry.getKey().equals(entry.getValue().getName().toLowerCase()))
             .sorted(Map.Entry.comparingByKey())
             .forEach(entry -> {
                 ChatCommand command = entry.getValue();

@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.models.entities;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -69,9 +70,15 @@ public class FishingLineRenderer {
         shaderProgram.setUniform("u_isUIElement", true);
         shaderProgram.setUniform("u_color", LINE_COLOR);
 
+        // Endpoints arrive in world coordinates and cross into render space here
+        // rather than through the model matrix: the world shader's modelMatrix is
+        // a frame-wide identity that later passes (drops, the crack overlay) fold
+        // their own transform against, so this path must leave it alone.
+        float ox = RenderOrigin.x();
+        float oz = RenderOrigin.z();
         lineScratch.clear();
-        lineScratch.put(from.x).put(from.y).put(from.z);
-        lineScratch.put(to.x).put(to.y).put(to.z);
+        lineScratch.put(from.x - ox).put(from.y).put(from.z - oz);
+        lineScratch.put(to.x - ox).put(to.y).put(to.z - oz);
         lineScratch.flip();
 
         GL30.glBindVertexArray(lineVao);

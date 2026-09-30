@@ -35,9 +35,12 @@ final class ChunkSaveCodec {
     // ===== Snapshot (save) =====
 
     /**
-     * Extracts water metadata from the chunk's own water layer. Only
-     * non-source (flowing/falling) cells exist there; sources re-derive
-     * from the block array on load. Falling persists as (level 1, true).
+     * Extracts water metadata from the chunk's own water layer. A plain source
+     * has no entry there — it re-derives from the block array on load — so what
+     * this collects is the flowing and falling cells, plus the worldgen river
+     * surfaces, which ARE sources but carry a direction the block array cannot
+     * hold. Falling persists as (level 1, true); a river persists as its own
+     * value (see below).
      *
      * @param blocksCopy the atomic block copy the snapshot will carry
      */
@@ -48,6 +51,10 @@ final class ChunkSaveCodec {
             // Guard against racing the sim: only persist cells whose block
             // (in this atomic copy) is still water.
             if (blocksCopy.get(localX, y, localZ) == BlockType.WATER) {
+                // A river marker persists as its own value: it is worldgen
+                // state that cannot be re-derived on load (the block is a
+                // plain source, like every other worldgen water block), so
+                // losing it would turn every saved river back into a pond.
                 boolean falling = value == ChunkWaterLayer.FALLING;
                 waterMetadata.put(localX + "," + y + "," + localZ,
                     new ChunkData.WaterBlockData(
@@ -127,7 +134,7 @@ final class ChunkSaveCodec {
             var data = entry.getValue();
             int value = data.falling()
                 ? ChunkWaterLayer.FALLING
-                : Math.min(ChunkWaterLayer.MAX_FLOW_LEVEL, Math.max(0, data.level()));
+                : Math.min(ChunkWaterLayer.MAX_VALUE, Math.max(0, data.level()));
             if (value > 0) {
                 waterLayer.set(localX, y, localZ, value);
             }

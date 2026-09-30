@@ -79,7 +79,8 @@ class MmsQuadCodecTest {
         assertArrayEquals(new float[]{1, 1, 1, 1}, mesh.getAlphaTestFlags());
         ByteBuffer raw = ByteBuffer.wrap(mesh.getPackedVertexData()).order(ByteOrder.nativeOrder());
         assertEquals(16, mesh.getPackedVertexData().length);
-        assertEquals(4, MmsQuadCodec.width(raw.getInt(0)));
+        // Both extents live in word1 now: word0's top nibble went to the wider y field.
+        assertEquals(4, MmsQuadCodec.width(raw.getInt(4)));
         assertEquals(2, MmsQuadCodec.height(raw.getInt(4)));
     }
 }

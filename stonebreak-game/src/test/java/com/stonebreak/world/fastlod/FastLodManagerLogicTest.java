@@ -3,7 +3,7 @@ package com.stonebreak.world.fastlod;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,20 +46,23 @@ class FastLodManagerLogicTest {
     private static final int RING_NODES = 48;   // 7x7 minus the player column
 
     private WorldConfiguration config;
-    private TerrainGenerationSystem terrain;
+    private DiffusionTerrainGenerator terrain;
     private ManualExecutor executor;
     private FastLodManager manager;
 
     private final AtomicBoolean terrainFails = new AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicLong now = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
     private final List<MmsRenderableHandle> createdHandles = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
         config = new WorldConfiguration(INNER, 1, RANGE, true);
-        terrain = mock(TerrainGenerationSystem.class);
+        terrain = mock(DiffusionTerrainGenerator.class);
         when(terrain.getFinalTerrainHeightAt(anyInt(), anyInt())).thenAnswer(inv -> {
             if (terrainFails.get()) throw new RuntimeException("simulated terrain failure");
-            return 80;
+            // Above SEA_LEVEL (320), so nodes are dry land: one terrain handle
+            // each, no extra water-sheet mesh to skew the handle counts.
+            return 336;
         });
         when(terrain.getSurfaceBlockAt(anyInt(), anyInt())).thenReturn(BlockType.GRASS);
         when(terrain.getTreeAt(anyInt(), anyInt())).thenReturn(null);
@@ -72,7 +75,7 @@ class FastLodManagerLogicTest {
             int count = inv.getArgument(2);
             int stride = inv.getArgument(3);
             int[] outHeights = inv.getArgument(4);
-            BlockType[] outSurface = inv.getArgument(5);
+            BlockType[] outSurface = inv.getArgument(6);
             for (int ix = 0; ix < count; ix++) {
                 for (int iz = 0; iz < count; iz++) {
                     int idx = ix * count + iz;
@@ -84,7 +87,7 @@ class FastLodManagerLogicTest {
                 }
             }
             return null;
-        }).when(terrain).sampleColumns(anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), any());
+        }).when(terrain).sampleColumns(anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), any(), any());
 
         BlockTextureArray textures = mock(BlockTextureArray.class);
         when(textures.getBlockFaceLayer(any(), anyInt())).thenReturn(7);
@@ -95,7 +98,13 @@ class FastLodManagerLogicTest {
             createdHandles.add(handle);
             return handle;
         };
-        manager = new FastLodManager(config, terrain, textures, null, executor, uploader);
+        // Generous upload budget: this test measures bookkeeping (which handles exist,
+        // in what order), not real GPU upload time — the mocked uploader returns
+        // instantly, so the production 3ms budget only measures cold-JIT noise here,
+        // not anything the test cares about.
+        manager = new FastLodManager(config, terrain, textures, null, executor, uploader,
+                java.util.concurrent.TimeUnit.SECONDS.toNanos(10));
+        manager.clock = now::get;
     }
 
     @AfterEach
@@ -143,7 +152,7 @@ class FastLodManagerLogicTest {
         // flat terrain height, minY at 0 from the node-border foundation walls.
         for (FastLodManager.Entry e : manager.visibleHandles()) {
             assertEquals(0f, e.minY, 1e-4f);
-            assertEquals(80f, e.maxY, 1e-4f);
+            assertEquals(336f, e.maxY, 1e-4f);
         }
 
         tick(0, 0);
@@ -293,10 +302,40 @@ class FastLodManagerLogicTest {
         assertNotNull(handleFor(oldKey), "failed replacement must never retire the live node");
 
         terrainFails.set(false);
-        tick(1, 0);   // reschedules the failed keys
+        now.addAndGet(FastLodManager.RETRY_BACKOFF_NANOS);
+        tick(1, 0);   // reschedules the failed keys once their backoff has run out
         assertNull(handleFor(oldKey));
         assertNotNull(handleFor(FastLodKey.of(FastLodLevel.L0, 3, 0)));
         verify(oldHandle).close();
+    }
+
+    /**
+     * A model-backed sampler fails for as long as its service is down. Retrying on the very next
+     * tick re-submitted the whole ring every frame; a failed node now waits out its backoff, and
+     * the wait doubles while it keeps failing.
+     */
+    @Test
+    void failedNodesWaitOutTheirBackoffBeforeRetrying() {
+        terrainFails.set(true);
+        tick(0, 0);
+        assertTrue(manager.visibleHandles().isEmpty());
+
+        manager.updateRing(0, 0);
+        assertEquals(0, executor.queued(), "a failed node must not be resubmitted before its backoff");
+
+        now.addAndGet(FastLodManager.RETRY_BACKOFF_NANOS);
+        manager.updateRing(0, 0);
+        assertEquals(RING_NODES, executor.queued(), "every node retries once the backoff has run out");
+        executor.runAll();   // fails again: the next wait is twice as long
+
+        now.addAndGet(FastLodManager.RETRY_BACKOFF_NANOS);
+        manager.updateRing(0, 0);
+        assertEquals(0, executor.queued(), "the second wait is longer than the first");
+
+        terrainFails.set(false);
+        now.addAndGet(FastLodManager.RETRY_BACKOFF_NANOS);
+        tick(0, 0);
+        assertEquals(RING_NODES, manager.visibleHandles().size());
     }
 
     @Test
@@ -319,6 +358,10 @@ class FastLodManagerLogicTest {
 
         @Override public void execute(Runnable command) {
             queue.add(command);
+        }
+
+        int queued() {
+            return queue.size();
         }
 
         void runAll() {

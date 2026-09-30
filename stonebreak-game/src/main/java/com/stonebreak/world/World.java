@@ -18,7 +18,8 @@ import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
 import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
 import com.stonebreak.world.chunk.utils.WorldChunkStore;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.TerrainGenerator;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.fastlod.FastLodManager;
 import com.stonebreak.world.leaves.LeafDecaySystem;
@@ -32,7 +33,8 @@ import com.stonebreak.world.operations.WorldConfiguration;
 public class World {
     // Configuration and core systems
     private final WorldConfiguration config;
-    private final TerrainGenerationSystem terrainSystem;
+    private final TerrainGenerator terrainSystem;
+    private final TerrainGeneratorType generatorType;
     private final ChunkManager chunkManager;
     private final SnowLayerManager snowLayerManager;
     private final com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry;
@@ -130,8 +132,9 @@ public class World {
      * server. Block data, generation, water, and feature population work; rendering does not.
      * The server drives chunk loading via {@code getChunkAt} (no {@code chunkManager}).
      */
-    public static World createHeadless(WorldConfiguration config, long seed) {
-        return new World(config, seed, true);
+    public static World createHeadless(WorldConfiguration config, long seed,
+                                       TerrainGeneratorType generatorType) {
+        return new World(config, seed, true, generatorType);
     }
 
     /**
@@ -143,8 +146,9 @@ public class World {
      * {@code SaveService} (never persists locally). The seed is still used to construct the
      * terrain system (cheap, deterministic) but it is never invoked because generation is off.
      */
-    public static World createClientView(WorldConfiguration config, long seed) {
-        World w = new World(config, seed, false); // full rendering pipeline, no testMode
+    public static World createClientView(WorldConfiguration config, long seed,
+                                         TerrainGeneratorType generatorType) {
+        World w = new World(config, seed, false, generatorType); // full rendering pipeline, no testMode
         w.renderOnly = true;
         w.chunkStore.setTerrainGenerationEnabled(false);
         return w;
@@ -160,6 +164,17 @@ public class World {
      * @param testMode If true, skips MmsAPI/rendering initialization (for tests only)
      */
     protected World(WorldConfiguration config, long seed, boolean testMode) {
+        this(config, seed, testMode, TerrainGeneratorType.STANDARD);
+    }
+
+    /**
+     * As above, with the terrain generator chosen explicitly. Building a
+     * {@link TerrainGeneratorType#DIFFUSION} generator starts the terrain-diffusion services
+     * and pins them to this seed, so only a world that really generates diffusion terrain
+     * may ask for one.
+     */
+    protected World(WorldConfiguration config, long seed, boolean testMode,
+                    TerrainGeneratorType generatorType) {
         this.config = config;
 
         // In production runs, align the world config with the latest persisted
@@ -176,7 +191,8 @@ public class World {
             }
         }
 
-        this.terrainSystem = new TerrainGenerationSystem(seed);
+        this.generatorType = generatorType;
+        this.terrainSystem = generatorType.create(seed);
         this.snowLayerManager = new SnowLayerManager();
         // Per-world furnace registry (see getFurnaceRegistry). The smelting manager comes
         // from the Game singleton when available; in bare unit tests it is null and the
@@ -309,15 +325,6 @@ public class World {
         });
     }
     
-    /**
-     * Updates loading progress during world generation.
-     */
-    private void updateLoadingProgress(String stageName) {
-        Game game = Game.getInstance();
-        if (game != null && game.getLoadingScreen() != null && game.getLoadingScreen().isVisible()) {
-            game.getLoadingScreen().updateProgress(stageName);
-        }
-    }
     
     
     public void update(com.stonebreak.rendering.Renderer renderer) {
@@ -521,11 +528,18 @@ public class World {
     // ===== Water state (chunk-owned water layer) =====
 
     /**
-     * Water flow value at a world position, read from the chunk's water layer:
-     * 0 = source, 1-7 = flowing level, {@link com.stonebreak.world.chunk.ChunkWaterLayer#FALLING}
-     * (8) = falling, -1 = not water or chunk not loaded.
+     * The RAW water-layer value at a world position, exactly as the layer
+     * stores it, or -1 when the cell is not loaded water.
+     *
+     * <p>Raw means a worldgen river surface reports {@code RIVER + octant}
+     * (9..16) rather than the source it behaves as. Almost nothing wants that:
+     * {@link #getWaterLevelAt} is the "how much water" question and
+     * {@link #riverFlowOf} the "which way" one, and both are derived from
+     * this. It is public for the one caller that asks both about the same cell
+     * — the mesher — which would otherwise walk the chunk map twice per water
+     * block to get two halves of one value.
      */
-    public int getWaterLevelAt(int x, int y, int z) {
+    public int getWaterValueAt(int x, int y, int z) {
         if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
             return -1;
         }
@@ -540,6 +554,37 @@ public class World {
             return -1;
         }
         return chunk.getWaterLayer().get(localX, y, localZ);
+    }
+
+    /**
+     * Water flow value at a world position, read from the chunk's water layer:
+     * 0 = source, 1-7 = flowing level, {@link com.stonebreak.world.chunk.ChunkWaterLayer#FALLING}
+     * (8) = falling, -1 = not water or chunk not loaded.
+     *
+     * <p>A worldgen river surface reports SOURCE, which is what it is — the
+     * direction it also carries is a rendering concern and is read through
+     * {@link #riverFlowOf}. Normalising here keeps every "how much water"
+     * caller — submersion depth, surface height, the source test below — on the
+     * 0..8 vocabulary they were written against.
+     */
+    public int getWaterLevelAt(int x, int y, int z) {
+        int value = getWaterValueAt(x, y, z);
+        return value < 0 ? -1 : com.stonebreak.world.chunk.ChunkWaterLayer.level(value);
+    }
+
+    /**
+     * The flow octant of a worldgen river surface — 0..7 of {@code (dx, dz)},
+     * 0 = +X, counter-clockwise in eighths of a turn — for a value read
+     * through {@link #getWaterValueAt}, or -1 where the water does not run
+     * (still water, or not water at all).
+     *
+     * <p>Rendering only. The cell is a source block and behaves as one; this
+     * says which way it is moving, which a source block cannot.
+     */
+    public static int riverFlowOf(int waterValue) {
+        return waterValue >= 0 && com.stonebreak.world.chunk.ChunkWaterLayer.isRiver(waterValue)
+            ? com.stonebreak.world.chunk.ChunkWaterLayer.octant(waterValue)
+            : -1;
     }
 
     /** True when the block is WATER and its water-layer entry is absent (level 0). */
@@ -742,15 +787,27 @@ public class World {
     
     
     /**
-     * Gets the continentalness value at the specified world position.
+     * The terrain generator backing this world — the source of every generator-derived
+     * sample (biome, climate, the height stages). Queried directly rather than mirrored
+     * here, so adding a terrain channel needs no change to this class.
      */
-    /**
-     * The terrain generator backing this world — the source of every noise-derived sample
-     * (biome, climate, the height stages). Queried directly rather than mirrored here, so
-     * adding a terrain channel needs no change to this class.
-     */
-    public TerrainGenerationSystem terrain() {
+    public TerrainGeneratorType getGeneratorType() {
+        return generatorType;
+    }
+
+    public TerrainGenerator terrain() {
         return terrainSystem;
+    }
+
+    /**
+     * Generated water level at a column (sea, river, or lake surface), or
+     * {@link com.stonebreak.world.generation.diffusion.TerrainTile#NO_WATER}. Distinct
+     * from {@link #getWaterLevelAt(int, int, int)}, which reads a loaded chunk's runtime
+     * water-flow state — this reads the deterministic generator directly, without
+     * requiring the chunk to be loaded.
+     */
+    public int getGeneratedWaterLevelAt(int x, int z) {
+        return terrainSystem.getWaterLevelAt(x, z);
     }
 
     public java.util.concurrent.CompletableFuture<Void> awaitPendingChunkLoads() {
@@ -826,6 +883,9 @@ public class World {
 
         meshScheduler.shutdown();
         chunkStore.cleanup();
+        // After the chunk store: nothing may ask for a tile once the tile
+        // chain's background threads are gone.
+        terrainSystem.shutdown();
         // Deferred AFTER chunkStore.cleanup() so anything it queued is included in the
         // final main-thread drain (nothing ticks this pipeline's queue once the world is
         // swapped out).
@@ -878,7 +938,7 @@ public class World {
         spawnPosition.set(0, 100, 0);
 
         // Clear any additional world state that may persist between worlds
-        // Note: TerrainGenerationSystem seed cannot be changed, so fresh World instances
+        // Note: the TerrainGenerator seed cannot be changed, so fresh World instances
         // should be used for complete isolation instead
 
         System.out.println("World data cleared for world switching");

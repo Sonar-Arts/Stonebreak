@@ -23,7 +23,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
  */
 public final class DryHillsHeightMap extends HeightMapGenerator {
 
-    private static final int BASE = WorldConfiguration.SEA_LEVEL + 50;
+    private static final int BASE = StandardTerrain.SEA_LEVEL + 50;
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
     public DryHillsHeightMap(long seed) {

@@ -154,7 +154,7 @@ public final class ClientBlockHandler {
             int ly = (localPos >> 4) & 0xF;
             int lz = localPos & 0xF;
             int value = v & 0xFFFF;
-            if (value > com.stonebreak.world.chunk.ChunkWaterLayer.FALLING) {
+            if (value > com.stonebreak.world.chunk.ChunkWaterLayer.MAX_VALUE) {
                 continue; // out-of-range — never write garbage into the layer
             }
             int y = baseY + ly;
