@@ -14,5 +14,6 @@ public enum BiomeType {
     BEACH,
     ICE_FIELDS,
     BADLANDS,
-    MEADOW
+    MEADOW,
+    SWAMP
 }

@@ -51,6 +51,8 @@ public final class BiomeSurfaceConfig {
     private static final Entry ICE_FIELDS       = new Entry(0.00f, 0.00f);
     private static final Entry BADLANDS         = new Entry(0.28f, 0.32f);
     private static final Entry MEADOW           = new Entry(0.20f, 0.10f);
+    // No caves/overhangs: swamp pools need unbroken banks (SwampPoolGenerator).
+    private static final Entry SWAMP            = new Entry(0.00f, 0.00f);
 
     private BiomeSurfaceConfig() {}
 
@@ -67,6 +69,7 @@ public final class BiomeSurfaceConfig {
             case ICE_FIELDS      -> ICE_FIELDS;
             case BADLANDS        -> BADLANDS;
             case MEADOW          -> MEADOW;
+            case SWAMP           -> SWAMP;
         };
     }
 }

@@ -11,6 +11,7 @@ import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.features.CactusGenerator;
+import com.stonebreak.world.generation.features.SwampPoolGenerator;
 import com.stonebreak.world.generation.features.LimestoneGenerator;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
@@ -57,6 +58,7 @@ public class TerrainGenerationSystem {
     private final LimestoneGenerator limestoneGenerator;
     private final VegetationGenerator vegetationGenerator;
     private final CactusGenerator cactusGenerator;
+    private final SwampPoolGenerator swampPoolGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
     private final DeterministicRandom deterministicRandom;
     private final Density3D density3D;
@@ -117,6 +119,7 @@ public class TerrainGenerationSystem {
         this.oreGenerator = new OreGenerator(deterministicRandom, this.heightMapGenerator, seed);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
         this.cactusGenerator = new CactusGenerator(deterministicRandom);
+        this.swampPoolGenerator = new SwampPoolGenerator(deterministicRandom);
         this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, this.heightMapGenerator, seed);
         this.density3D = new Density3D(seed, this.heightMapGenerator);
         this.wormCarver = new PerlinWormCarver(seed, this.heightMapGenerator);
@@ -819,6 +822,8 @@ public class TerrainGenerationSystem {
         oreGenerator.generate(ctx);
         // After ores: limestone only replaces stone, so it never eats a vein.
         limestoneGenerator.generate(ctx);
+        // Before vegetation: cypress trees may root in the pools.
+        swampPoolGenerator.generate(ctx);
         vegetationGenerator.generate(ctx);
         cactusGenerator.generate(ctx);
         decorationGenerator.generate(ctx);
@@ -875,7 +880,7 @@ public class TerrainGenerationSystem {
         return switch (biome) {
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SANDSTONE;
             case DESERT, BEACH -> BlockType.SANDSTONE;
-            case PLAINS, SNOWY_PLAINS, TAIGA, MEADOW, TUNDRA -> BlockType.DIRT;
+            case PLAINS, SNOWY_PLAINS, TAIGA, MEADOW, TUNDRA, SWAMP -> BlockType.DIRT;
             case STONY_PEAKS -> BlockType.STONE;
             case ICE_FIELDS -> BlockType.ICE;
         };
@@ -888,6 +893,7 @@ public class TerrainGenerationSystem {
             case DESERT, BEACH -> BlockType.SAND;
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SAND;
             case PLAINS, MEADOW -> BlockType.GRASS;
+            case SWAMP -> BlockType.SWAMPY_GRASS;
             case SNOWY_PLAINS, TAIGA, TUNDRA -> BlockType.SNOWY_DIRT;
             case STONY_PEAKS -> BlockType.STONE;
             case ICE_FIELDS -> BlockType.ICE;

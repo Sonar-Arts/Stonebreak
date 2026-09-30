@@ -59,6 +59,7 @@ public class World {
     private final ChunkErrorReporter errorReporter;
     private final WaterSim waterSim;
     private final LeafDecaySystem leafDecay;
+    private final com.stonebreak.world.growth.SaplingGrowthSystem saplingGrowth;
     private final com.stonebreak.blocks.cactus.CactusContactSystem cactusContact;
     private final com.stonebreak.world.generation.features.FeatureQueue featureQueue;
 
@@ -230,6 +231,7 @@ public class World {
             this.neighborCoordinator = null;
             this.waterSim = new WaterSim(new WorldFlowWorld(this));
             this.leafDecay = new LeafDecaySystem(new WorldLeafWorld(this));
+            this.saplingGrowth = newSaplingGrowth();
             this.chunkManager = null;
             System.out.println("[TEST MODE] World created with seed: " + terrainSystem.getSeed() + " (rendering disabled)");
         } else {
@@ -249,6 +251,7 @@ public class World {
 
             this.waterSim = new WaterSim(new WorldFlowWorld(this));
             this.leafDecay = new LeafDecaySystem(new WorldLeafWorld(this));
+            this.saplingGrowth = newSaplingGrowth();
             this.chunkManager = new ChunkManager(this, config.getRenderDistance());
 
             System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + config.getChunkBuildThreads() + " mesh builder threads.");
@@ -260,7 +263,7 @@ public class World {
         this.networkChunkInstaller = new NetworkChunkInstaller(
                 chunkStore, snowLayerManager, furnaceRegistry, animatedBlockRegistry, meshScheduler);
         this.updates = new WorldUpdateOrchestrator(
-                this, waterSim, leafDecay, cactusContact, furnaceRegistry, chunkStore, chunkManager, meshScheduler, fastLod);
+                this, waterSim, leafDecay, saplingGrowth, cactusContact, furnaceRegistry, chunkStore, chunkManager, meshScheduler, fastLod);
 
         // Chunk listeners (wired for BOTH the headless server world and rendered worlds).
         // Water simulation load runs only on authoritative worlds (a render-only client
@@ -278,6 +281,7 @@ public class World {
                 if (chunk.areFeaturesPopulated()) {
                     leafDecay.onChunkLoaded(chunk.getChunkX(), chunk.getChunkZ());
                 }
+                saplingGrowth.onChunkLoaded(chunk);
             }
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkLoaded(chunk);
@@ -295,6 +299,7 @@ public class World {
             // included) or they grow unbounded as streamed chunks come and go.
             waterSim.onChunkUnloaded(chunk);
             leafDecay.onChunkUnloaded(chunk.getChunkX(), chunk.getChunkZ());
+            saplingGrowth.onChunkUnloaded(chunk);
             snowLayerManager.onChunkUnloaded(chunk.getChunkX(), chunk.getChunkZ());
         });
     }
@@ -625,6 +630,7 @@ public class World {
         if (!renderOnly) {
             waterSim.onBlockChanged(x, y, z, previous, blockType);
             leafDecay.onBlockChanged(x, y, z, previous, blockType);
+            saplingGrowth.onBlockChanged(x, y, z, previous, blockType);
         }
         if (placementState != null && !placementState.isEmpty()) {
             setBlockStateAt(x, y, z, placementState);
@@ -670,6 +676,11 @@ public class World {
     /** The water flow simulation engine (debug/inspection; state lives in the chunks). */
     public WaterSim getWaterSim() {
         return waterSim;
+    }
+
+    private com.stonebreak.world.growth.SaplingGrowthSystem newSaplingGrowth() {
+        return new com.stonebreak.world.growth.SaplingGrowthSystem(
+            new com.stonebreak.world.growth.WorldSaplingWorld(this), new java.util.Random());
     }
 
     /** The leaf-decay simulation engine (debug/inspection). */
