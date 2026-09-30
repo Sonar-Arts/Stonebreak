@@ -5,7 +5,11 @@
 > (was `terrain-bridge/`). This plan was in `Dev Working/docs/`. It is kept as the running log, so
 > older sections still use the old paths. Current architecture: [`Architecture.md`](Architecture.md).
 
-**Status:** draft (2026-09-26). Research branch off `Project-Heracles`; branch name TBD.
+**Status (2026-09-29):** **v4 is the default generator** on branch `Project-Daedalus`. M0–M5 done,
+M4's painted-map half and M8 partly done, **M6 (native) and M7 (distillation) left**: see the
+status column in §9 and the full done / left list in [`Architecture.md` §15](Architecture.md). The
+running log here stops at R1 (2026-09-27); v2–v4 are written up in `Architecture.md` §1a–§12a.
+*(Originally: draft, 2026-09-26, research branch off `Project-Heracles`.)*
 **Rev 2 (2026-09-26):** native inference is **GPU-first** (a CUDA prototype on this machine). See §8.
 **Rev 3 (2026-09-26):** **GPU only.** The server runs locally on this machine, so the CPU path is
 deferred indefinitely and off the roadmap. GEMMs use **cuBLASLt** (decided).
@@ -35,13 +39,13 @@ current stack on the axes below.
 **Success means beating upstream (`xandergos/terrain-diffusion-30m`) on at least one of these
 without losing badly on the others:**
 
-| Axis | Upstream today | Target |
-|---|---|---|
-| Game-scale drama | Earth-true, reads flat at 15 m/block | Dramatic, still plausible |
-| Controllability | Coarse sketch + SNR | Painted biome / trend / noise / hydrology, any subset |
-| Latency | 0.7–2.2 s/tile (GPU, Python service) | ≤10 ms/tile amortised on the native CUDA path (M6) |
-| Water | Carved afterwards (`ck_carve_water`) | Rivers are a model output that shapes the valleys |
-| Deployment | 2 Python services, ~7 GB venv, WorldClim stdin trap | Optional native CUDA `.so`, no Python at runtime (M6) |
+| Axis | Upstream today | Target | Where we are (2026-09-29) |
+|---|---|---|---|
+| Game-scale drama | Earth-true, reads flat at 15 m/block | Dramatic, still plausible | ✅ Done: 256-tall world at 1:4, exaggerated height curve, long mountain ranges, sampled valleys (v2), hilly lowlands (v4) |
+| Controllability | Coarse sketch + SNR | Painted biome / trend / noise / hydrology, any subset | ◐ Partly: every model conditions on any subset (presence flags), but the controls are procedural stand-ins; **painted maps: left** |
+| Latency | 0.7–2.2 s/tile (GPU, Python service) | ≤10 ms/tile amortised on the native CUDA path (M6) | ◐ Partly: 0.56 s/tile streaming, 7.8 s cold (Python + Triton kernels); ≤10 ms needs M7 + M6 |
+| Water | Carved afterwards (`ck_carve_water`) | Rivers are a model output that shapes the valleys | ✅ Done: routed drainage over the model's height, rivers condition the detail sampler, downhill-only (v4); no lakes yet |
+| Deployment | 2 Python services, ~7 GB venv, WorldClim stdin trap | Optional native CUDA `.so`, no Python at runtime (M6) | ◐ Partly: one service (TGMPipe), no WorldClim at runtime, the game installs and warms it on launch; still Python at runtime (M6 left) |
 
 Beating upstream on raw realism is **not** a goal. Its author ran autoguidance and KID sweeps
 on a ~280M-parameter stack.
@@ -395,17 +399,21 @@ milestone depends on it.
 
 ## 9. Milestones
 
-| # | Milestone | Exit criteria |
-|---|---|---|
-| M0 | Branch + `terrain-slm/` Python project (uv, py3.12, torch cu128, same recipe as the spike) | env builds, `pytest` green, data dirs on the data disk |
-| M1 | Data pipeline: GLO-30 subset → shards (dem, trend, desc, hydro, biome) | descriptor extractor unit-tested on synthetic noise with known params; visualiser sheet |
-| M2 | Eval harness + baselines (upstream, procedural) | metric report for upstream at N fixed coords |
-| M3 | Differentiable synth + calibration | **round-trip** `extract(synth(d)) ≈ d` within threshold; FastNoise2 per-octave gains measured |
-| M4 | Planner v0 + synth behind the bridge | **first playable world**: from a painted map and fully automatic |
-| M5 | Refiner v0 (8–16 steps) + `t` dial, region generation | beats synth-only on KID + spectrum without losing control adherence |
-| **M6** | **CUDA native prototype**: `libcenda_nn_cuda.so` (planner, synth, undistilled refiner, HeightCurve) + Java `NativeNeuralTileSource` with bridge fallback | per-layer + end-to-end parity vs PyTorch; seam + determinism tests; Nsight profile; **≤10 ms/tile amortised**; zero Python at runtime |
-| M7 | Distil to 1–2 steps into the CUDA path; int8 only if profiling asks for it | distilled within tolerance of teacher; ~1–3 ms/tile |
-| M8 | (research) tokenised descriptors + MaskGIT sampling; rivers into `river_plan.hpp` | diversity metric up, adherence held |
+| # | Milestone | Exit criteria | Status (2026-09-29) |
+|---|---|---|---|
+| M0 | Branch + `terrain-slm/` Python project (uv, py3.12, torch cu128, same recipe as the spike) | env builds, `pytest` green, data dirs on the data disk | ✅ **Done.** `Models/DaedalusTGM-Exp/` on `Project-Daedalus`; pytest 178 pass; data on the data disk (`data` pointer file) |
+| M1 | Data pipeline: GLO-30 subset → shards (dem, trend, desc, hydro, biome) | descriptor extractor unit-tested on synthetic noise with known params; visualiser sheet | ✅ **Done.** 24 regions / 333 tiles (v4), precipitation-weighted drainage, water masks, biome labels |
+| M2 | Eval harness + baselines (upstream, procedural) | metric report for upstream at N fixed coords | ✅ **Done.** `eval/sheet.py`, `eval/mountains.py`, `eval/world_report.py`; upstream baseline in the POC reports (upstream itself removed 2026-09-27) |
+| M3 | Differentiable synth + calibration | **round-trip** `extract(synth(d)) ≈ d` within threshold; FastNoise2 per-octave gains measured | ✅ **Done.** Round-trip gate green (`test_synth_roundtrip.py`). FastNoise2 gains dropped: the synth uses its own coordinate-hashed noise |
+| M4 | Planner v0 + synth behind the bridge | **first playable world**: from a painted map and fully automatic | ◐ **Partly.** Fully automatic worlds since the POC (planner now R2, 4.83M; served by TGMPipe, the bridge is gone). **From a painted map: left** — no painted-map input yet |
+| M5 | Refiner v0 (8–16 steps) + `t` dial, region generation | beats synth-only on KID + spectrum without losing control adherence | ✅ **Done, then superseded.** The refiner shipped in v1–v3; v4's 49M detail sampler replaced synth + refiner for heights |
+| **M6** | **CUDA native prototype**: `libcenda_nn_cuda.so` (planner, synth, undistilled refiner, HeightCurve) + Java `NativeNeuralTileSource` with bridge fallback | per-layer + end-to-end parity vs PyTorch; seam + determinism tests; Nsight profile; **≤10 ms/tile amortised**; zero Python at runtime | ☐ **Left.** Scope is out of date: v4 runs a detail UNet, relief sampler, routed drainage, river pipeline and biome / bank nets, not planner + synth + refiner — re-plan first. Interim (2026-09-29): Triton kernels on the Python path (1.7× per tile, `Architecture.md` §12a) and a game-launch auto-setup, so players never install Python by hand |
+| M7 | Distil to 1–2 steps into the CUDA path; int8 only if profiling asks for it | distilled within tolerance of teacher; ~1–3 ms/tile | ☐ **Left — the biggest speed lever.** The detail sampler is ~84% of a tile at 16 steps. Pair it with the detail-stability training run. Low precision: plain FP8 changes the sample (28–42 m RMS), so only with quantisation-aware training |
+| M8 | (research) tokenised descriptors + MaskGIT sampling; rivers into `river_plan.hpp` | diversity metric up, adherence held | ◐ **Partly.** MaskGIT descriptors built (v3, `models/descgit.py`; texture 80–95% of real) but not used by v4. Rivers became a model output plus a Python river pipeline (v3/v4), not native `river_plan.hpp` |
+
+**Done beyond the original milestones:** relief sampler (v2), hydrology sidecar, bank model and 3D river
+planes (v3), TGMPipe replacing the bridge (2026-09-27), detail sampler, routed downhill-only rivers,
+hilly lowlands and biome sidecar (v4), custom Triton kernels and the game-launch auto-setup (2026-09-29).
 
 *Deferred, off the roadmap (rev 3):* a CPU inference path and a Vulkan port. Neither is needed
 while the server runs locally on this GPU machine.
@@ -439,14 +447,14 @@ while the server runs locally on this GPU machine.
 
 **Open**
 
-| Decision | Recommendation |
-|---|---|
-| Project location | tracked `terrain-slm/` sibling to `terrain-bridge/`; data/checkpoints gitignored on the data disk |
-| Branch name | user's call |
-| Data scope v0 | regional subset (§4), global later |
-| **Horizontal scale** | **1 DEM px = 1 block at 30 m/block** + stronger vertical exaggeration. Keeps all learned detail backed by real data; features half as wide as today's 15 m/block |
-| Painting tool | v0: PNGs with a documented channel/palette spec (Krita/GIMP). Later: Open Mason terrain-paint panel |
-| Refiner objective | flow matching (modern, simpler) vs EDM (matches upstream, has reference code). Lean flow matching |
+| Decision | Recommendation | Status (2026-09-29) |
+|---|---|---|
+| Project location | tracked `terrain-slm/` sibling to `terrain-bridge/`; data/checkpoints gitignored on the data disk | ✅ Decided: `Models/DaedalusTGM-Exp/` (tracked; data on the data disk; shipped checkpoints tracked as bf16, no LFS) |
+| Branch name | user's call | ✅ Decided: `Project-Daedalus` |
+| Data scope v0 | regional subset (§4), global later | ✅ Decided for now: 24 regional subsets; global still later |
+| **Horizontal scale** | **1 DEM px = 1 block at 30 m/block** + stronger vertical exaggeration. Keeps all learned detail backed by real data; features half as wide as today's 15 m/block | ✅ Decided differently: **60 m blocks** (2×2 DEM px), 256 tall, 1:4 scale |
+| Painting tool | v0: PNGs with a documented channel/palette spec (Krita/GIMP). Later: Open Mason terrain-paint panel | ☐ **Open** — goes with painted-map input (M4's other half) |
+| Refiner objective | flow matching (modern, simpler) vs EDM (matches upstream, has reference code). Lean flow matching | ✅ Decided: flow matching (refiner, relief and detail samplers) |
 
 ---
 

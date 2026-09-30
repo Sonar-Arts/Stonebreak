@@ -1,6 +1,6 @@
 # DaedalusTGM-Exp: Terrain Generation Model Architecture
 
-**Branch:** `Project-Daedalus` (off Project-Heracles) · **As of:** 2026-09-28 (v4: 49M detail sampler, 24 regions, routed drainage + downhill-only rivers, hilly lowlands, biome sidecar; §1a)
+**Branch:** `Project-Daedalus` (off Project-Heracles) · **As of:** 2026-09-29 (v4: 49M detail sampler, 24 regions, routed drainage + downhill-only rivers, hilly lowlands, biome sidecar, §1a; Triton kernels, §12a; done / left checklist, §15)
 **Name:** **DaedalusTGM-Exp** (Daedalus Terrain Generation Model, experimental): the official name of the model (the process that serves it to the game is **TGMPipe**). Code identifiers keep their original names: Python package `terrain_slm`. The name appears in `terrain_slm.MODEL_NAME`, the service's READY handshake (`"name"`), its `model_id` (`DaedalusTGM-Exp/v3:p…:r…:l…:h…:b…:g…`), its log, and `TGMPipe.MODEL_NAME` (Java)
 **Home:** `Models/DaedalusTGM-Exp/` (this model: code, training, TGMPipe, checkpoints, reports, docs) · Java `TGMPipe` + world constants (`TerrainScale`)
 **Plan / history:** [`Terrain-SLM-Plan.md`](Terrain-SLM-Plan.md) (§13 onward is the running log)
@@ -11,7 +11,7 @@
 
 | | |
 |---|---|
-| Default generator | **DaedalusTGM-Exp v4** (`TGMPipe.DEFAULT_MODEL`, model dir `checkpoints/v4`, ~131 MB: `detail.pt` 99 MB bf16 — LFS decision pending). v3 kept in `checkpoints/v3`. **§1a describes v4; the rows below are v3 unless marked** |
+| Default generator | **DaedalusTGM-Exp v4** (`TGMPipe.DEFAULT_MODEL`, model dir `checkpoints/v4`, ~131 MB: `detail.pt` 99 MB bf16, tracked in plain git (no LFS)). v3 kept in `checkpoints/v3`. **§1a describes v4; the rows below are v3 unless marked** |
 | **v4 additions** | detail sampler 49.4M (replaces synth + refiner + MaskGIT for heights), planner R2 4.83M, relief wide 2.54M, hydro/bank retrained on 24 regions, routed drainage, biome sidecar 1.10M (§1a, §1b) |
 | Controls | **v2**: continents + long, winding **mountain ranges** (spines, spurs, foothills) + climate archetypes (§6) |
 | Relief sampler | **new**: flow-matching conv UNet on 240 m cells, **425,033 params**, 11 min; samples valley networks onto the smooth trend (§7) |
@@ -416,7 +416,7 @@ One child process of the game, `python -m terrain_slm.tgmpipe`, spoken to over i
 - **Lifecycle:** exits when stdin closes (the game exited, crashed or was killed), so it never outlives the game. Java `TGMPipe` restarts it if it dies while running and re-sends in-flight tiles (3 restarts / 10 min), and kills a service that sends nothing for 10 min with tiles pending.
 - Biomes come from upstream's classifier, vendored verbatim. Knobs (env or flags): `TERRAIN_SLM_T_START` 0.6, `TERRAIN_SLM_STEPS` 8, `TERRAIN_SLM_AMP_SCALE` 1.0, `TERRAIN_SLM_RIVER_THRESHOLD` (model default: 5.5 with hydro, 4.5 relief-only, 3.3 without either), `TERRAIN_SLM_DEVICE`.
 
-**Timing** (one RTX PRO 6000): first tile of a new world **28.7 s** cold (relief, hydro and descriptor windows warm up), then about **1.5 s** per tile. Planner windows are generated in fixed batches of 32 (`PLANNER_BATCH`; inputs computed once over the batch's bounding box, bit-identical to one at a time): per-window launch overhead was ~31 ms, now a coarse tile's 2,145 windows take seconds, not a minute.
+**Timing** (one RTX PRO 6000; v3 numbers — v4 with the Triton kernels: **7.8 s** cold, **0.56 s** per streaming tile, §12a): first tile of a new world **28.7 s** cold (relief, hydro and descriptor windows warm up), then about **1.5 s** per tile. Planner windows are generated in fixed batches of 32 (`PLANNER_BATCH`; inputs computed once over the batch's bounding box, bit-identical to one at a time): per-window launch overhead was ~31 ms, now a coarse tile's 2,145 windows take seconds, not a minute.
 
 **Far-zoom preview tiles (`lod`).** A tile request may carry `lod` (world blocks per sample, a power of two). Coordinates are then in sample units (world // lod), so the 256×256 tile shape is unchanged and a tile covers 256·lod blocks. Each sample is `downscale × lod` native pixels, and the disk cache keys `lod` separately. At 8 px or more per sample (whole 240 m cells), the service answers from the cell fields alone (`TileBuilder._overview`): coarse height, hydro rivers (one sample wide) with D8 flow, and biomes; no descriptor sampling, synth, refiner or river pipeline. An 8,192-block square takes 17 s cold (0.6 s per tile once windows are warm), against ~11 min of full tiles. For the terrain mapper zoomed out only, never for chunks.
 
@@ -447,7 +447,7 @@ First launch on a machine (or after editing a kernel) compiles the kernels once:
 
 | Where | What |
 |---|---|
-| `tgmpipe/TGMPipe` | launches `python -m terrain_slm.tgmpipe` (model dir **`checkpoints/v3`**), handshake, restart + re-send, stall watchdog; `requestTile(seed, x, z, lod, priority)`; finds `Models/` from the repo root or a module dir |
+| `tgmpipe/TGMPipe` | launches `python -m terrain_slm.tgmpipe` (model dir **`checkpoints/v4`**) once `ModelSetup` has installed and warmed it on game launch, handshake, restart + re-send, stall watchdog; `requestTile(seed, x, z, lod, priority)`; finds `Models/` from the repo root or a module dir |
 | `tgmpipe/TGMPipeProtocol`, `TGMPipeConnection` | frame codec; one multiplexed connection, tiles pushed when done, CANCEL for withdrawn requests |
 | `DiffusionTileCache` | per seed + lod + priority; floorDiv bucketing, in-flight de-dup, LRU; `close()` withdraws what is still in flight |
 | Terrain mapper | **Rivers** mode (`RiverVisualizer`: flow octant as hue, red undercuts, orange overhangs); footer and loading line name the model (`generatorLabel()`); at 8+ blocks per sample it reads `lod`-8 overview tiles (`VisualizerRegistry.overviewColumns`, `TerrainMapperConfig.OVERVIEW_*`), and `PreviewSampleStore` keeps full-detail and overview levels apart |
@@ -468,16 +468,52 @@ First launch on a machine (or after editing a kernel) compiles the kernels once:
 - **TGMPipe (2026-09-27, replaced the bridge):** `test_tgmpipe.py` (protocol, scheduler, disk cache, the service loop against a fake builder), `test_tgmpipe_process.py` (the real service as a child process: handshake, a real tile, a disk-cache hit, stdout carries frames only, exit on stdin close, a bad handshake reported as FATAL), `test_height_curve.py` + `test_hydrology_*.py` (moved from the bridge). Java: `TGMPipeConnectionTest` (fake service on pipes), `DiffusionTileCacheTest`, `TerrainScaleTest` (handshake keys = Python `WorldConfig` fields), and opt-in `TGMPipeLiveTest` (`-Dstonebreak.tgmpipe.live=true`: real model; two seeds from one process, cancel, crash → restart → re-send, shutdown). Service start ~1 s after model load.
 - **Mountain report v3** (`reports/v3/`, seeds 0–3): heights and relief unchanged from v2 (y 231–232, 147–165 blocks); rivers 0.6–4.8% of the square (v2: 0.2–2.5%) with 3–16-block widths.
 
-## 15. Known limitations and next steps
+## 15. Status: done and left (updated 2026-09-29)
 
-1. **Orange peel / missing 1–4 km dendritic valleys.** Neither MaskGIT (texture variety, fixed) nor a lower refiner t_start (smoother) creates drainage-structured texture at that scale. Next rung: a finer relief sampler (60–240 m, conditioned on the coarse relief and the hydro sidecar's drainage) or a stronger refiner, trained on the valley networks the DEMs contain.
-2. **Cold start 28.7 s for the first tile** (v2 was ~15 s to PLAYING). The hydro windows (108 km) pull in wide planner context. Options: smaller hydro windows (apron 64), caching windows across worlds with the same seed, or warming in the background during the loading screen.
-3. **Undercuts are uncommon** (~0.7% of bank columns on mountain ground), because learned banks meet the water gently. The trigger (`RiverConfig.undercut_*`) and the patch noise are the knobs. A learned 3D wall profile would need 3D training data that real DEMs do not have.
-4. **River surfaces step** one block at a time along the flow (cascades inside the channel); 39 sideways steps remain on a 30 km square, in bends.
-5. Terrain shape doesn't follow climate zones yet; lowlands are bland smooth domes.
-6. No lakes on slm worlds.
-7. Old worlds: chunks generated under v1/v2 won't match v3 tiles at their borders; start a new world.
-8. Deferred: CUDA native inference (M6), distillation (M7), CPU path. (Custom Triton kernels for the Python path landed 2026-09-29, §12a; the next inference multiplier is fewer detail steps or FP8 with quantisation-aware fine-tuning -- plain FP8 changes the sample, §12a.)
+✅ done · ◐ partly · ☐ left. Milestone view: [`Terrain-SLM-Plan.md` §9](Terrain-SLM-Plan.md).
+
+### Closed since this list was written (v3)
+
+- ✅ **Rivers climbed, flipped direction, and were far too many** — routed drainage over the model's own height, downhill-only surfaces and blocks, threshold recalibrated (v4, §1a).
+- ✅ **Cold start 28.7 s for the first tile** — now **7.8 s** (v4 + Triton kernels, §12a); a first-ever launch also compiles the kernels during the game's setup screen, not on the first tile.
+- ✅ **Inference speed** — custom Triton kernels: 929 → 560 ms per streaming tile, detail window 200 → 131 ms sustained (§12a).
+- ✅ **Setup by hand** — the game installs the Python environment and compiles the kernels itself on launch (`ModelSetup`, README "Playing").
+- ✅ **Checkpoint shipping** — v4 tracked as bf16 in plain git (no LFS).
+- ◐ **Bland lowlands** — hilly lowland provinces calibrated on real hilly regions (v4, §1a); *terrain shape following climate zones* is still left (below).
+- ◐ **Orange peel / missing 1–4 km dendritic valleys** — v4's detail sampler (60 m samples, ~24 km receptive field, trained on real DEMs, conditioned on drainage) replaced synth + refiner to fix exactly this. **Left:** an in-game check that it did, before closing it.
+
+### Left
+
+**Model**
+1. ☐ **Detail-sampler stability run** — 4/256 windows still need a guard retry (§12a scan). Next run: normalisation or bounded FiLM in the mid blocks, in-game-style conditioning (planner coarse + archetype climate) as augmentation, early-t coverage from the start (§1a). Do it together with (9).
+2. ☐ **Terrain shape doesn't follow climate zones** (deserts, rainforest and tundra share the same landforms).
+3. ☐ **Painted-map input** — the models accept any subset of controls, but there is no painted-map format or tool yet (plan M4 / §11 "Painting tool").
+4. ☐ **Orange-peel re-check** in game (above).
+
+**Rivers and water**
+
+5. ☐ **Undercuts are uncommon** (~0.7% of bank columns on mountain ground, v3 measurement): learned banks meet the water gently. Knobs: `RiverConfig.undercut_*` and the patch noise; a learned 3D wall profile would need 3D data real DEMs lack.
+6. ☐ **River surfaces step** one block at a time along the flow (39 sideways steps on a 30 km square, v3 measurement, in bends).
+7. ☐ **No lakes** on DaedalusTGM-Exp worlds.
+
+**Biomes**
+
+8. ☐ **Parallel biome bands** where a smooth climate gradient crosses successive rule-classifier thresholds (§1b); TAIGA still maps to SNOWY_DIRT because its trees need it.
+
+**Performance**
+
+9. ☐ **Distillation (plan M7)** — the detail sampler is ~84% of a tile at 16 steps; 1–2 steps is the biggest remaining multiplier.
+10. ☐ **Routed drainage runs on the CPU** — ~1 s of the 7.8 s cold tile (numba priority-flood); a GPU port would take most of it.
+11. ☐ **The second GPU is idle** — the service uses `cuda:1` only.
+12. ☐ **Low precision** — plain FP8 moves the detail sample 28–42 m RMS (§12a); only with quantisation-aware training.
+13. ☐ **Native inference (plan M6)** — re-plan its scope for the v4 pipeline first.
+
+**Before shipping beyond this machine**
+
+14. ☐ **Licensing** — GLO-30 attribution and WorldClim terms before distributing weights.
+15. ☐ **Windows is untested** — the setup handles its paths, but Triton does not ship there, so it would run the slower torch path.
+
+**Standing caveat:** worlds keep the terrain their chunks were saved with. Chunks from an older model (v1–v3), or from the torch path before the fused samplers (`:kf1`, ±1 block on ~10% of columns), will not match new tiles at the explored frontier; start a new world for a clean result.
 
 ## 16. Mountain diagnosis that led to v2 (2026-09-27)
 
