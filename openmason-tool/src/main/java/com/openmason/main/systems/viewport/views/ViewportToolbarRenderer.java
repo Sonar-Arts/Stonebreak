@@ -3,6 +3,7 @@ package com.openmason.main.systems.viewport.views;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.menus.toolbars.BaseToolbarRenderer;
 import com.openmason.main.systems.viewport.ViewportActions;
+import com.openmason.main.systems.viewport.ViewportKeybindActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.engine.rendering.viewer.gizmo.GizmoState;
 import imgui.ImGui;
@@ -176,9 +177,15 @@ public class ViewportToolbarRenderer extends BaseToolbarRenderer {
     // ===========================
 
     private void renderDisplayToggles() {
-        displayToggle("Grid", state.getGridVisible(), "Show grid (Ctrl+G)", actions::toggleGrid);
+        displayToggle("Grid", state.getGridVisible(),
+                withShortcut(actionName(ViewportKeybindActions.TOGGLE_GRID, "Show Grid"),
+                        ViewportKeybindActions.TOGGLE_GRID),
+                actions::toggleGrid);
         ImGui.sameLine();
-        displayToggle("Axes", state.getAxesVisible(), "Show axis lines", actions::toggleAxes);
+        displayToggle("Axes", state.getAxesVisible(),
+                withShortcut(actionName(ViewportKeybindActions.TOGGLE_AXES, "Show Axes"),
+                        ViewportKeybindActions.TOGGLE_AXES),
+                actions::toggleAxes);
         ImGui.sameLine();
         displayToggle("Snap", state.getGridSnappingEnabled(), "Snap transforms to the grid",
                 actions::toggleGridSnapping);
@@ -221,13 +228,15 @@ public class ViewportToolbarRenderer extends BaseToolbarRenderer {
         if (ImGui.button("Reset")) {
             actions.resetView();
         }
-        renderTooltip("Reset the view to its default position");
+        renderTooltip(withShortcut("Reset the view to its default position",
+                ViewportKeybindActions.RESET_VIEW));
 
         ImGui.sameLine();
         if (ImGui.button("Fit")) {
             actions.fitToView();
         }
-        renderTooltip("Fit the model in the viewport");
+        renderTooltip(withShortcut("Fit the model in the viewport",
+                ViewportKeybindActions.FIT_TO_VIEW));
         popFlatButtonStyle();
     }
 

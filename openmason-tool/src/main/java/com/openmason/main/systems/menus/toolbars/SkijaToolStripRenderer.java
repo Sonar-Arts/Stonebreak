@@ -1,11 +1,12 @@
 package com.openmason.main.systems.menus.toolbars;
 
 import com.openmason.main.systems.menus.textureCreator.icons.SkijaToolIconStore;
+import com.openmason.main.systems.mortar.parts.MortarIconButton;
+import com.openmason.main.systems.mortar.theme.Argb;
+import com.openmason.main.systems.mortar.theme.MortarTheme;
 import com.openmason.main.systems.skija.SkijaContext;
 import com.openmason.main.systems.skija.SkijaImGuiPanel;
 import imgui.ImGui;
-import imgui.ImVec4;
-import imgui.flag.ImGuiCol;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.PaintMode;
@@ -28,14 +29,25 @@ public final class SkijaToolStripRenderer implements AutoCloseable {
     public static final float CELL_SIZE = 34f;
     public static final float CELL_SPACING = 4f;
     private static final float ICON_SIZE = 24f;
-    private static final float CELL_ROUNDING = 5f;
+    private static final float CELL_ROUNDING = MortarIconButton.RADIUS;
 
-    // Cell colors (ARGB)
-    private static final int CELL_BG = 0x14FFFFFF;          // faint raised button face
-    private static final int CELL_BORDER = 0x2EFFFFFF;      // subtle box outline
-    private static final int HOVER_BG = 0x30FFFFFF;
-    private static final int HOVER_BORDER = 0x55FFFFFF;
-    private static final int SELECTED_BORDER = 0x66FFFFFF;
+    /**
+     * Cell colors (ARGB) resolved from the live theme each frame, matching
+     * {@link MortarIconButton}'s surface/border treatment so the strip reads
+     * correctly on light themes as well as dark ones.
+     */
+    private record CellColors(int bg, int border, int hoverBg, int hoverBorder,
+                              int selectedBg, int selectedBorder) {
+        static CellColors of(MortarTheme theme) {
+            return new CellColors(
+                    Argb.withAlpha(theme.surfaceHover, 0.4f),
+                    theme.border,
+                    Argb.withAlpha(theme.surfaceHover, 0.9f),
+                    Argb.lerp(theme.border, theme.borderStrong, 0.6f),
+                    theme.accent,
+                    Argb.shade(theme.accent, -0.25f));
+        }
+    }
 
     private SkijaImGuiPanel panel;
     private SkijaToolIconStore iconStore;
@@ -58,10 +70,10 @@ public final class SkijaToolStripRenderer implements AutoCloseable {
 
         float width = CELL_SIZE;
         float height = iconKeys.size() * (CELL_SIZE + CELL_SPACING);
-        int accent = currentAccentArgb();
+        CellColors colors = CellColors.of(MortarTheme.capture());
 
         panel.draw(width, height, canvas ->
-                paintStrip(canvas, iconKeys, selectedIndex, hoveredIndex, accent));
+                paintStrip(canvas, iconKeys, selectedIndex, hoveredIndex, colors));
 
         hoveredIndex = computeHoveredIndex(iconKeys.size());
         return hoveredIndex;
@@ -79,19 +91,19 @@ public final class SkijaToolStripRenderer implements AutoCloseable {
     }
 
     private void paintStrip(Canvas canvas, List<String> iconKeys,
-                            int selectedIndex, int hovered, int accentArgb) {
+                            int selectedIndex, int hovered, CellColors colors) {
         for (int i = 0; i < iconKeys.size(); i++) {
             float cellY = i * (CELL_SIZE + CELL_SPACING);
 
             if (i == selectedIndex) {
-                fillCell(canvas, cellY, accentArgb);
-                strokeCell(canvas, cellY, SELECTED_BORDER);
+                fillCell(canvas, cellY, colors.selectedBg());
+                strokeCell(canvas, cellY, colors.selectedBorder());
             } else if (i == hovered) {
-                fillCell(canvas, cellY, HOVER_BG);
-                strokeCell(canvas, cellY, HOVER_BORDER);
+                fillCell(canvas, cellY, colors.hoverBg());
+                strokeCell(canvas, cellY, colors.hoverBorder());
             } else {
-                fillCell(canvas, cellY, CELL_BG);
-                strokeCell(canvas, cellY, CELL_BORDER);
+                fillCell(canvas, cellY, colors.bg());
+                strokeCell(canvas, cellY, colors.border());
             }
 
             float iconOffset = (CELL_SIZE - ICON_SIZE) / 2f;
@@ -140,16 +152,6 @@ public final class SkijaToolStripRenderer implements AutoCloseable {
         // Exclude the spacing gap below each cell
         float withinCell = localY - index * (CELL_SIZE + CELL_SPACING);
         return withinCell <= CELL_SIZE ? index : -1;
-    }
-
-    /** Active theme accent (HeaderActive) converted to Skija ARGB. */
-    private static int currentAccentArgb() {
-        ImVec4 c = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
-        int a = (int) (c.w * 255) & 0xFF;
-        int r = (int) (c.x * 255) & 0xFF;
-        int g = (int) (c.y * 255) & 0xFF;
-        int b = (int) (c.z * 255) & 0xFF;
-        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     @Override

@@ -525,7 +525,7 @@ public final class SoundsEditor implements AutoCloseable {
         } else {
             g.fillRect(x, y, radius, h, fill);
         }
-        int textColor = Argb.lerp(g.theme().textDim, 0xFFFFFFFF, sel);
+        int textColor = Argb.lerp(g.theme().textDim, g.theme().onAccent, sel);
         textColor = Argb.lerp(textColor, g.theme().text, Math.max(0f, hover - sel));
         g.text(label, x + w / 2f, y + h / 2f, MortarPainter.Align.CENTER,
                 Weight.MEDIUM, 11.5f, textColor);

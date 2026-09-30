@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.toolbars;
 
+import com.openmason.main.systems.keybinds.KeybindRegistry;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
@@ -183,6 +184,22 @@ public abstract class BaseToolbarRenderer {
      */
     protected float getToolbarHeight() {
         return TOOLBAR_HEIGHT;
+    }
+
+    /**
+     * Tooltip text for a button bound to a keybind action: the description
+     * plus the action's current shortcut from the registry, e.g.
+     * "Save current model (Ctrl+S)". An unregistered action gets the bare
+     * description, so a tooltip never advertises a key that is not bound.
+     */
+    protected static String withShortcut(String description, String actionId) {
+        String shortcut = KeybindRegistry.getInstance().getShortcutDisplayName(actionId);
+        return shortcut.isEmpty() ? description : description + " (" + shortcut + ")";
+    }
+
+    /** An action's display name as the Keybinds page lists it. */
+    protected static String actionName(String actionId, String fallback) {
+        return KeybindRegistry.getInstance().getActionDisplayName(actionId, fallback);
     }
 
     // ===========================

@@ -1,5 +1,5 @@
 <!-- New Model Icon - Folder with 3D cube -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" color="#FFFFFF">
   <defs>
     <style>
       .icon-path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -14,5 +14,5 @@
   <path class="icon-path" d="M9 13l2 -2"/>
   <!-- Plus symbol -->
   <circle class="icon-path" cx="18" cy="7" r="3" fill="currentColor" opacity="0.9"/>
-  <path d="M17 7h2M18 6v2" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M17 7h2M18 6v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
 </svg>

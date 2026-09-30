@@ -2,6 +2,7 @@ package com.openmason.main.systems.assistant.ui;
 
 import com.openmason.main.systems.assistant.ChatMessage;
 import com.openmason.main.systems.mcp.McpImageContent;
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiTreeNodeFlags;
@@ -102,7 +103,8 @@ final class ChatMessageRenderer implements AutoCloseable {
         switch (message.role) {
             case USER -> {
                 messageGap(index);
-                ImGui.pushStyleColor(ImGuiCol.Text, 0.62f, 0.80f, 1.0f, 1.0f);
+                // Accent pulled toward the text color: tinted, but readable on any theme.
+                ThemeColors.pushMix(ImGuiCol.Text, ImGuiCol.HeaderActive, ImGuiCol.Text, 0.30f);
                 ImGui.text("You");
                 ImGui.popStyleColor();
                 ImGui.indent(10);
@@ -114,14 +116,12 @@ final class ChatMessageRenderer implements AutoCloseable {
                         || !message.toolCalls.isEmpty();
                 if (hasBody) {
                     messageGap(index);
-                    ImGui.pushStyleColor(ImGuiCol.Text, 0.72f, 0.95f, 0.72f, 1.0f);
                     ImGui.text("Assistant");
-                    ImGui.popStyleColor();
                     ImGui.indent(10);
                 }
                 if (message.reasoning.length() > 0) {
                     if (ImGui.treeNodeEx("Thinking##think" + index, ImGuiTreeNodeFlags.SpanAvailWidth)) {
-                        ImGui.pushStyleColor(ImGuiCol.Text, 0.6f, 0.6f, 0.65f, 1.0f);
+                        ThemeColors.push(ImGuiCol.Text, ImGuiCol.TextDisabled);
                         ImGui.textWrapped(sanitizeForImGui(clip(message.reasoning.toString(), 8_000)));
                         ImGui.popStyleColor();
                         ImGui.treePop();
@@ -138,8 +138,9 @@ final class ChatMessageRenderer implements AutoCloseable {
                     ImGui.unindent(10);
                 }
                 if (message.notice != null) {
-                    ImGui.textColored(1.0f, 0.75f, 0.3f, 1.0f,
-                            sanitizeForImGui(message.notice));
+                    ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.WARNING);
+                    ImGui.textWrapped(sanitizeForImGui(message.notice));
+                    ImGui.popStyleColor();
                 }
             }
             case TOOL -> {
@@ -149,7 +150,7 @@ final class ChatMessageRenderer implements AutoCloseable {
                 messageGap(index);
                 if (ImGui.treeNodeEx("Compacted summary##sys" + index,
                         ImGuiTreeNodeFlags.SpanAvailWidth)) {
-                    ImGui.pushStyleColor(ImGuiCol.Text, 0.65f, 0.65f, 0.7f, 1.0f);
+                    ThemeColors.push(ImGuiCol.Text, ImGuiCol.TextDisabled);
                     ImGui.textWrapped(sanitizeForImGui(clip(message.text.toString(), 8_000)));
                     ImGui.popStyleColor();
                     ImGui.treePop();
@@ -161,7 +162,7 @@ final class ChatMessageRenderer implements AutoCloseable {
     private static void messageGap(int index) {
         if (index > 0) {
             ImGui.dummy(0, 6);
-            ImGui.pushStyleColor(ImGuiCol.Separator, 1f, 1f, 1f, 0.06f);
+            ThemeColors.pushScaledAlpha(ImGuiCol.Separator, ImGuiCol.Separator, 0.5f);
             ImGui.separator();
             ImGui.popStyleColor();
             ImGui.dummy(0, 2);
@@ -290,7 +291,8 @@ final class ChatMessageRenderer implements AutoCloseable {
 
     /** Fenced code as an ImGui child: selectable-ish, mono, with Copy. */
     private void codeChild(String code, String id) {
-        ImGui.pushStyleColor(ImGuiCol.ChildBg, 0.10f, 0.10f, 0.12f, 1.0f);
+        // Same surface as the Skija prose's inline code (MortarTheme.surface = FrameBg).
+        ThemeColors.push(ImGuiCol.ChildBg, ImGuiCol.FrameBg);
         float height = Math.min(260, 24 + 17f * (count(code, '\n') + 1));
         ImGui.beginChild("##code" + id, 0, height, true);
         ImGui.textUnformatted(sanitizeForImGui(code));

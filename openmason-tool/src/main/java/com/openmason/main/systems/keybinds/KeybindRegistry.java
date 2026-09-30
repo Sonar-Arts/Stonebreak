@@ -192,6 +192,19 @@ public class KeybindRegistry {
     }
 
     /**
+     * Gets the display name of an action (the name the Keybinds page shows),
+     * so menus and tooltips label an action exactly as it is listed there.
+     *
+     * @param actionId the action ID
+     * @param fallback returned when the action is not (yet) registered
+     * @return the action's display name, or {@code fallback}
+     */
+    public synchronized String getActionDisplayName(String actionId, String fallback) {
+        KeybindAction action = actions.get(actionId);
+        return action == null ? fallback : action.getDisplayName();
+    }
+
+    /**
      * Gets an action by its ID.
      *
      * @param actionId the action ID

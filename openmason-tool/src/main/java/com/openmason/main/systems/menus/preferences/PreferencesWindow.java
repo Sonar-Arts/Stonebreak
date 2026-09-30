@@ -3,7 +3,6 @@ package com.openmason.main.systems.menus.preferences;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
 import com.openmason.main.systems.menus.windows.WindowTitleBar;
-import com.openmason.main.systems.themes.core.ThemeDefinition;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.ViewportController;
 import imgui.ImColor;
@@ -231,8 +230,7 @@ public class PreferencesWindow {
         ImDrawList drawList = ImGui.getWindowDrawList();
         ImVec2 winPos = ImGui.getWindowPos();
         float winHeight = ImGui.getWindowHeight();
-        ThemeDefinition theme = themeManager.getCurrentTheme();
-        ImVec4 accentBase = getAccentColor(theme);
+        ImVec4 accentBase = getAccentColor();
 
         // Footer region: bottom FOOTER_HEIGHT pixels of the window
         float footerTop = winPos.y + winHeight - FOOTER_HEIGHT;
@@ -257,14 +255,14 @@ public class PreferencesWindow {
 
         // Apply button
         renderFooterButtonAbsolute(drawList, "Apply", "apply_btn", applyX, buttonY,
-                buttonWidth, buttonHeight, false, theme, accentBase, () -> {
+                buttonWidth, buttonHeight, false, accentBase, () -> {
             pageRenderer.applyAllSettings();
             logger.info("Preferences applied");
         });
 
         // OK button
         renderFooterButtonAbsolute(drawList, "OK", "ok_btn", okX, buttonY,
-                buttonWidth, buttonHeight, true, theme, accentBase, () -> {
+                buttonWidth, buttonHeight, true, accentBase, () -> {
             pageRenderer.applyAllSettings();
             visible.set(false);
             logger.info("Preferences applied and window closed");
@@ -277,7 +275,7 @@ public class PreferencesWindow {
      */
     private void renderFooterButtonAbsolute(ImDrawList drawList, String label, String id,
                                              float x, float y, float width, float height,
-                                             boolean primary, ThemeDefinition theme,
+                                             boolean primary,
                                              ImVec4 accentBase, Runnable onClick) {
         ImGui.setCursorScreenPos(x, y);
         ImGui.invisibleButton("##" + id, width, height);
@@ -298,23 +296,17 @@ public class PreferencesWindow {
                     ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, borderAlpha), NAV_ITEM_ROUNDING, 0, 1.0f);
         } else {
             if (isHovered) {
-                ImVec4 hoverBase = theme.getColor(ImGuiCol.HeaderHovered);
-                int hoverColor = hoverBase != null
-                        ? ImColor.rgba(hoverBase.x, hoverBase.y, hoverBase.z, 0.15f)
-                        : ImColor.rgba(1.0f, 1.0f, 1.0f, 0.08f);
+                ImVec4 hoverBase = styleColor(ImGuiCol.HeaderHovered);
+                int hoverColor = ImColor.rgba(hoverBase.x, hoverBase.y, hoverBase.z, 0.15f);
                 drawList.addRectFilled(x, y, x2, y2, hoverColor, NAV_ITEM_ROUNDING);
                 drawList.addRect(x, y, x2, y2,
                         ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.5f), NAV_ITEM_ROUNDING, 0, 1.0f);
             } else {
-                ImVec4 frameBg = theme.getColor(ImGuiCol.FrameBg);
-                int normalBg = frameBg != null
-                        ? ImColor.rgba(frameBg.x, frameBg.y, frameBg.z, 0.25f)
-                        : ImColor.rgba(1.0f, 1.0f, 1.0f, 0.03f);
+                ImVec4 frameBg = styleColor(ImGuiCol.FrameBg);
+                int normalBg = ImColor.rgba(frameBg.x, frameBg.y, frameBg.z, 0.25f);
                 drawList.addRectFilled(x, y, x2, y2, normalBg, NAV_ITEM_ROUNDING);
-                ImVec4 borderBase = theme.getColor(ImGuiCol.Border);
-                int normalBorder = borderBase != null
-                        ? ImColor.rgba(borderBase.x, borderBase.y, borderBase.z, 0.6f)
-                        : ImColor.rgba(0.5f, 0.5f, 0.5f, 0.3f);
+                ImVec4 borderBase = styleColor(ImGuiCol.Border);
+                int normalBorder = ImColor.rgba(borderBase.x, borderBase.y, borderBase.z, 0.6f);
                 drawList.addRect(x, y, x2, y2, normalBorder, NAV_ITEM_ROUNDING, 0, 1.0f);
             }
         }
@@ -323,11 +315,9 @@ public class PreferencesWindow {
         ImVec2 textSize = ImGui.calcTextSize(label);
         float textX = x + (width - textSize.x) * 0.5f;
         float textY = y + (height - textSize.y) * 0.5f;
-        ImVec4 textBase = theme.getColor(ImGuiCol.Text);
-        float tr = textBase != null ? textBase.x : 0.88f;
-        float tg = textBase != null ? textBase.y : 0.89f;
-        float tb = textBase != null ? textBase.z : 0.91f;
-        drawList.addText(textX, textY, ImColor.rgba(tr, tg, tb, isHovered ? 1.0f : 0.9f), label);
+        ImVec4 textBase = styleColor(ImGuiCol.Text);
+        drawList.addText(textX, textY,
+                ImColor.rgba(textBase.x, textBase.y, textBase.z, isHovered ? 1.0f : 0.9f), label);
     }
 
     /**
@@ -351,7 +341,6 @@ public class PreferencesWindow {
      * from HubSidebarNav (gradient fill, accent bar, hover effects).
      */
     private void renderSidebarNavButton(PreferencesState.PreferencePage page) {
-        ThemeDefinition theme = themeManager.getCurrentTheme();
         boolean isSelected = state.getCurrentPage() == page;
 
         float availWidth = ImGui.getContentRegionAvailX();
@@ -375,7 +364,7 @@ public class PreferencesWindow {
         float x2 = x1 + itemWidth;
         float y2 = y1 + NAV_ITEM_HEIGHT;
 
-        ImVec4 accentBase = getAccentColor(theme);
+        ImVec4 accentBase = getAccentColor();
 
         if (isSelected) {
             // Gradient fill: accent color fading from left to transparent on right
@@ -403,13 +392,8 @@ public class PreferencesWindow {
             );
         } else if (isHovered) {
             // Hover: slightly brighter background
-            ImVec4 hoverBase = theme.getColor(ImGuiCol.HeaderHovered);
-            int hoverColor;
-            if (hoverBase != null) {
-                hoverColor = ImColor.rgba(hoverBase.x, hoverBase.y, hoverBase.z, 0.15f);
-            } else {
-                hoverColor = ImColor.rgba(1.0f, 1.0f, 1.0f, 0.08f);
-            }
+            ImVec4 hoverBase = styleColor(ImGuiCol.HeaderHovered);
+            int hoverColor = ImColor.rgba(hoverBase.x, hoverBase.y, hoverBase.z, 0.15f);
             drawList.addRectFilled(x1, y1, x2, y2, hoverColor, NAV_ITEM_ROUNDING);
 
             int hoverBorder = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.5f);
@@ -423,22 +407,12 @@ public class PreferencesWindow {
             );
         } else {
             // Normal state: subtle background fill + border
-            ImVec4 frameBg = theme.getColor(ImGuiCol.FrameBg);
-            int normalBg;
-            if (frameBg != null) {
-                normalBg = ImColor.rgba(frameBg.x, frameBg.y, frameBg.z, 0.25f);
-            } else {
-                normalBg = ImColor.rgba(1.0f, 1.0f, 1.0f, 0.03f);
-            }
+            ImVec4 frameBg = styleColor(ImGuiCol.FrameBg);
+            int normalBg = ImColor.rgba(frameBg.x, frameBg.y, frameBg.z, 0.25f);
             drawList.addRectFilled(x1, y1, x2, y2, normalBg, NAV_ITEM_ROUNDING);
 
-            ImVec4 borderBase = theme.getColor(ImGuiCol.Border);
-            int normalBorder;
-            if (borderBase != null) {
-                normalBorder = ImColor.rgba(borderBase.x, borderBase.y, borderBase.z, 0.6f);
-            } else {
-                normalBorder = ImColor.rgba(0.5f, 0.5f, 0.5f, 0.3f);
-            }
+            ImVec4 borderBase = styleColor(ImGuiCol.Border);
+            int normalBorder = ImColor.rgba(borderBase.x, borderBase.y, borderBase.z, 0.6f);
             drawList.addRect(x1, y1, x2, y2, normalBorder, NAV_ITEM_ROUNDING, 0, 1.0f);
         }
 
@@ -449,10 +423,10 @@ public class PreferencesWindow {
         float textHeight = ImGui.calcTextSize(label).y;
         float textY = y1 + (NAV_ITEM_HEIGHT - textHeight) * 0.5f;
 
-        ImVec4 textBase = theme.getColor(ImGuiCol.Text);
-        float tr = textBase != null ? textBase.x : 0.88f;
-        float tg = textBase != null ? textBase.y : 0.89f;
-        float tb = textBase != null ? textBase.z : 0.91f;
+        ImVec4 textBase = styleColor(ImGuiCol.Text);
+        float tr = textBase.x;
+        float tg = textBase.y;
+        float tb = textBase.z;
 
         int textColor;
         if (isSelected) {
@@ -466,13 +440,16 @@ public class PreferencesWindow {
     }
 
     /**
-     * Get the accent color from the theme with fallback.
+     * The theme accent, read from the live ImGui style (always populated, and
+     * exactly what the applied theme resolved to — no literal fallbacks).
      */
-    private ImVec4 getAccentColor(ThemeDefinition theme) {
-        ImVec4 accent = theme.getColor(ImGuiCol.HeaderActive);
-        if (accent == null) accent = theme.getColor(ImGuiCol.ButtonHovered);
-        if (accent == null) accent = new ImVec4(0.36f, 0.61f, 0.84f, 1.0f);
-        return accent;
+    private static ImVec4 getAccentColor() {
+        return styleColor(ImGuiCol.HeaderActive);
+    }
+
+    /** A color from the live ImGui style, which reflects the active theme. */
+    private static ImVec4 styleColor(int imGuiCol) {
+        return ImGui.getStyle().getColor(imGuiCol);
     }
 
     /**

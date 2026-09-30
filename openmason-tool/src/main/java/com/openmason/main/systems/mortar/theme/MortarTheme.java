@@ -17,6 +17,11 @@ import imgui.flag.ImGuiCol;
  */
 public final class MortarTheme {
 
+    /** Light candidate for {@link #onAccent}. */
+    public static final int ON_ACCENT_LIGHT = 0xFFFFFFFF;
+    /** Dark candidate for {@link #onAccent}: near-black, not pure black. */
+    public static final int ON_ACCENT_DARK = 0xFF15171B;
+
     /** Window/page backdrop. */
     public final int background;
     /** Raised surface (cards, buttons, nav rows at rest). */
@@ -27,6 +32,12 @@ public final class MortarTheme {
     public final int accent;
     /** Accent under hover/press. */
     public final int accentHover;
+    /**
+     * Text/icon color drawn on an {@link #accent} fill (primary buttons,
+     * selected tabs, accent badges): white or near-black, whichever reaches
+     * the higher WCAG contrast on the accent.
+     */
+    public final int onAccent;
     /** Primary text. */
     public final int text;
     /** Secondary/label text. */
@@ -58,6 +69,7 @@ public final class MortarTheme {
         this.surfaceHover = Argb.of(frameHover);
         this.accent = Argb.withAlpha(accentCol, 1.0f);
         this.accentHover = Argb.shade(this.accent, 0.12f);
+        this.onAccent = onAccentFor(this.accent);
         this.text = Argb.of(textCol);
         this.textDim = Argb.withAlpha(textCol, 0.62f);
         this.textFaint = Argb.withAlpha(textCol, 0.35f);
@@ -66,6 +78,11 @@ public final class MortarTheme {
         this.separator = Argb.of(sepCol);
         this.shadow = 0x44000000;
         this.badgeBg = Argb.shade(this.surface, 0.10f);
+    }
+
+    /** White or near-black, whichever reads better on the opaque {@code accentArgb}. */
+    public static int onAccentFor(int accentArgb) {
+        return Argb.readableOn(accentArgb, ON_ACCENT_LIGHT, ON_ACCENT_DARK);
     }
 
     /** Resolve tokens from the current ImGui style. */

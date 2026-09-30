@@ -114,6 +114,9 @@ public class ShortcutKey {
         if (keyCode >= GLFW.GLFW_KEY_0 && keyCode <= GLFW.GLFW_KEY_9) {
             return String.valueOf((char) ('0' + (keyCode - GLFW.GLFW_KEY_0)));
         }
+        if (keyCode >= GLFW.GLFW_KEY_KP_0 && keyCode <= GLFW.GLFW_KEY_KP_9) {
+            return "Numpad " + (keyCode - GLFW.GLFW_KEY_KP_0);
+        }
 
         // Special keys
         return switch (keyCode) {
@@ -130,7 +133,7 @@ public class ShortcutKey {
             case GLFW.GLFW_KEY_MINUS -> "-";
             case GLFW.GLFW_KEY_KP_ADD -> "Numpad +";
             case GLFW.GLFW_KEY_KP_SUBTRACT -> "Numpad -";
-            case GLFW.GLFW_KEY_KP_0 -> "Numpad 0";
+            case GLFW.GLFW_KEY_KP_DECIMAL -> "Numpad .";
             case GLFW.GLFW_KEY_KP_ENTER -> "Numpad Enter";
             default -> "Key " + keyCode;
         };
@@ -249,6 +252,24 @@ public class ShortcutKey {
             if (c == '-') return GLFW.GLFW_KEY_MINUS;
         }
 
+        // Numpad digits and decimal ("Numpad 5", "Numpad .")
+        if (keyName.length() == 8 && keyName.startsWith("Numpad ")) {
+            char c = keyName.charAt(7);
+            if (c >= '0' && c <= '9') {
+                return GLFW.GLFW_KEY_KP_0 + (c - '0');
+            }
+            if (c == '.') return GLFW.GLFW_KEY_KP_DECIMAL;
+        }
+
+        // Unnamed keys are displayed (and were serialized) as "Key <code>"
+        if (keyName.startsWith("Key ")) {
+            try {
+                return Integer.parseInt(keyName.substring(4).trim());
+            } catch (NumberFormatException e) {
+                return -1;
+            }
+        }
+
         // Special keys
         return switch (keyName) {
             case "Enter" -> GLFW.GLFW_KEY_ENTER;
@@ -259,7 +280,6 @@ public class ShortcutKey {
             case "Space" -> GLFW.GLFW_KEY_SPACE;
             case "Numpad +" -> GLFW.GLFW_KEY_KP_ADD;
             case "Numpad -" -> GLFW.GLFW_KEY_KP_SUBTRACT;
-            case "Numpad 0" -> GLFW.GLFW_KEY_KP_0;
             case "Numpad Enter" -> GLFW.GLFW_KEY_KP_ENTER;
             default -> -1;
         };

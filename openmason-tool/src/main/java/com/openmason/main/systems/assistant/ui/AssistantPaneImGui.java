@@ -3,6 +3,7 @@ package com.openmason.main.systems.assistant.ui;
 import com.openmason.main.systems.assistant.AssistantController;
 import com.openmason.main.systems.assistant.ChatMessage;
 import com.openmason.main.systems.assistant.ChatSession;
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiInputTextFlags;
@@ -74,8 +75,9 @@ public class AssistantPaneImGui {
             if (controller.isBusy() && controller.pendingApproval() == null) {
                 int dots = (int) (ImGui.getTime() * 2.5) % 4;
                 ImGui.spacing();
-                ImGui.textColored(0.55f, 0.65f, 0.85f, 1f,
-                        workingLabel(messages) + ".".repeat(dots));
+                ThemeColors.pushMix(ImGuiCol.Text, ImGuiCol.HeaderActive, ImGuiCol.TextDisabled, 0.40f);
+                ImGui.text(workingLabel(messages) + ".".repeat(dots));
+                ImGui.popStyleColor();
             }
             // Auto-scroll while new content arrives, unless the user scrolled up.
             if (ImGui.getScrollY() < ImGui.getScrollMaxY() - 24) {
@@ -98,18 +100,23 @@ public class AssistantPaneImGui {
     private void renderHeader(ChatSession session) {
         AssistantController.ProbeState probe = controller.probeState();
         if (probe.online()) {
-            ImGui.textColored(0.4f, 0.9f, 0.4f, 1f, "*");
+            ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.SUCCESS);
+            ImGui.text("*");
+            ImGui.popStyleColor();
             ImGui.sameLine();
             ImGui.text(probe.modelId() == null ? "?" : probe.modelId());
             String sessionModel = session.modelId();
             if (sessionModel != null && probe.modelId() != null
                     && !sessionModel.equals(probe.modelId())) {
                 ImGui.sameLine();
-                ImGui.textColored(1f, 0.75f, 0.3f, 1f,
-                        "(chat used " + sessionModel + " — next turn adopts)");
+                ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.WARNING);
+                ImGui.text("(chat used " + sessionModel + " — next turn adopts)");
+                ImGui.popStyleColor();
             }
         } else {
-            ImGui.textColored(1f, 0.4f, 0.4f, 1f, "* offline");
+            ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.ERROR);
+            ImGui.text("* offline");
+            ImGui.popStyleColor();
             if (ImGui.isItemHovered() && probe.error() != null) {
                 ImGui.setTooltip(probe.error());
             }
@@ -165,9 +172,11 @@ public class AssistantPaneImGui {
             return;
         }
         ImGui.spacing();
-        ImGui.pushStyleColor(ImGuiCol.ChildBg, 0.30f, 0.24f, 0.08f, 1.0f);
+        ThemeColors.pushSurface(ImGuiCol.ChildBg, ThemeColors.Tone.WARNING, 0.18f);
         ImGui.beginChild("##approvalCard", 0, 118, true);
-        ImGui.textColored(1f, 0.85f, 0.4f, 1f, "Approval needed");
+        ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.WARNING);
+        ImGui.text("Approval needed");
+        ImGui.popStyleColor();
         ImGui.textWrapped("The assistant wants to run: " + pending.call().name);
         ImGui.textDisabled(clipArgs(pending.call().argumentsJson));
         if (ImGui.button("Approve")) {

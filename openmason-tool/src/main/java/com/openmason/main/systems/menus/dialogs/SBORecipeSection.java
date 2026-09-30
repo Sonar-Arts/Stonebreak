@@ -292,7 +292,7 @@ public class SBORecipeSection implements AutoCloseable {
         if (sel < 0.5f) {
             g.strokeRoundRect(x, y, w, h, h / 2f, 1f, g.theme().border);
         }
-        int textColor = Argb.lerp(g.theme().textDim, 0xFFFFFFFF, sel);
+        int textColor = Argb.lerp(g.theme().textDim, g.theme().onAccent, sel);
         textColor = Argb.lerp(textColor, g.theme().text, Math.max(0f, hover - sel));
         g.text(label, x + w / 2f, y + h / 2f, MortarPainter.Align.CENTER,
                 Weight.MEDIUM, 12f, textColor);

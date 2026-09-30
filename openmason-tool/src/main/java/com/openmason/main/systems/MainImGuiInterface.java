@@ -650,6 +650,22 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         return modelOperations;
     }
 
+    /**
+     * Registers the model editor's Ctrl+O / Ctrl+S shortcuts. Call once, after
+     * the viewport actions are registered and before custom keybinds load.
+     * Save mirrors File &gt; Save Model: a no-op when nothing needs saving.
+     */
+    public void registerModelFileKeybinds(com.openmason.main.systems.keybinds.KeybindRegistry registry) {
+        com.openmason.main.systems.viewport.ViewportKeybindActions.registerFileActions(
+                registry,
+                modelOperations::openModel,
+                () -> {
+                    if (modelState.canSaveModel() && modelState.hasUnsavedChanges()) {
+                        modelOperations.saveModel();
+                    }
+                });
+    }
+
     public void setSceneViewer(com.openmason.main.systems.scene.SceneViewerImGuiInterface sceneViewer) {
         this.sceneViewer = sceneViewer;
     }

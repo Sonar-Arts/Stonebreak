@@ -74,6 +74,37 @@ public final class Argb {
         return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
+    /**
+     * WCAG 2.x relative luminance of an ARGB color in [0,1] (alpha ignored):
+     * sRGB channels linearised, then weighted 0.2126/0.7152/0.0722.
+     */
+    public static double relativeLuminance(int argb) {
+        double r = linearChannel((argb >>> 16) & 0xFF);
+        double g = linearChannel((argb >>> 8) & 0xFF);
+        double b = linearChannel(argb & 0xFF);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+
+    /** WCAG 2.x contrast ratio between two opaque colors, in [1,21]. */
+    public static double contrastRatio(int a, int b) {
+        double la = relativeLuminance(a);
+        double lb = relativeLuminance(b);
+        return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+    }
+
+    /**
+     * Whichever of {@code light} / {@code dark} reads with more contrast on
+     * {@code background}. Ties go to {@code light}.
+     */
+    public static int readableOn(int background, int light, int dark) {
+        return contrastRatio(background, light) >= contrastRatio(background, dark) ? light : dark;
+    }
+
+    private static double linearChannel(int c) {
+        double v = c / 255.0;
+        return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    }
+
     private static int lerpByte(int from, int to, float t) {
         int a = from & 0xFF;
         int b = to & 0xFF;

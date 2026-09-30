@@ -141,7 +141,7 @@ final class RowHeaderStrip {
         float top = cy - 9f;
         if (accent) {
             g.fillRoundRect(x, top, pillW, 18f, 9f, Argb.withAlpha(g.theme().accent, 0.90f));
-            g.text(text, x + 8f, cy, MortarPainter.Align.LEFT, Weight.MEDIUM, 11f, 0xFFFFFFFF);
+            g.text(text, x + 8f, cy, MortarPainter.Align.LEFT, Weight.MEDIUM, 11f, g.theme().onAccent);
         } else {
             g.fillRoundRect(x, top, pillW, 18f, 9f, g.theme().badgeBg);
             g.text(text, x + 8f, cy, MortarPainter.Align.LEFT, Weight.MEDIUM, 11f, g.theme().textDim);

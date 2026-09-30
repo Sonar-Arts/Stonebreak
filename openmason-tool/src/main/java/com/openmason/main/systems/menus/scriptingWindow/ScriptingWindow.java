@@ -6,6 +6,7 @@ import com.openmason.main.systems.scripting.ScriptExecutor;
 import com.openmason.main.systems.scripting.library.ScriptLibraryStore;
 import com.openmason.main.systems.scripting.mcp.ScriptingService;
 import com.openmason.main.systems.scripting.python.PythonScriptEngine;
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImGui;
 import imgui.ImGuiWindowClass;
 import imgui.flag.ImGuiCol;
@@ -266,7 +267,7 @@ public class ScriptingWindow {
     }
 
     private void verticalSplitter(float height) {
-        ImGui.pushStyleColor(ImGuiCol.Button, 0.3f, 0.3f, 0.3f, 0.3f);
+        ThemeColors.pushScaledAlpha(ImGuiCol.Button, ImGuiCol.Separator, 0.6f);
         ImGui.button("##vsplit", 6, height);
         ImGui.popStyleColor();
         if (ImGui.isItemActive()) {
@@ -280,7 +281,7 @@ public class ScriptingWindow {
         ImGui.inputTextMultiline("##scriptEditor", editor, ImGui.getContentRegionAvailX(),
                 editorHeight, ImGuiInputTextFlags.AllowTabInput);
 
-        ImGui.pushStyleColor(ImGuiCol.Button, 0.3f, 0.3f, 0.3f, 0.3f);
+        ThemeColors.pushScaledAlpha(ImGuiCol.Button, ImGuiCol.Separator, 0.6f);
         ImGui.button("##hsplit", ImGui.getContentRegionAvailX(), 6);
         ImGui.popStyleColor();
         if (ImGui.isItemActive()) {

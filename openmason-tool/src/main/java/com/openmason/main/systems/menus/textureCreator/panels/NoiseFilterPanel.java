@@ -10,6 +10,7 @@ import com.openmason.main.systems.menus.textureCreator.selection.SelectionRegion
 import imgui.ImColor;
 import imgui.ImDrawList;
 import com.openmason.main.systems.menus.textureCreator.utils.SafeText;
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
@@ -184,22 +185,7 @@ public class NoiseFilterPanel {
 
             boolean isSelected = (selectedAlgorithm == i);
 
-            if (isSelected) {
-                ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
-                ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 1.0f);
-                ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.85f);
-                ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 0.70f);
-                ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 1.0f, 1.0f, 1.0f);
-            } else {
-                ImVec4 btn = ImGui.getStyle().getColor(ImGuiCol.Button);
-                ImVec4 btnHov = ImGui.getStyle().getColor(ImGuiCol.ButtonHovered);
-                ImVec4 btnAct = ImGui.getStyle().getColor(ImGuiCol.ButtonActive);
-                ImVec4 txt = ImGui.getStyle().getColor(ImGuiCol.Text);
-                ImGui.pushStyleColor(ImGuiCol.Button, btn.x, btn.y, btn.z, btn.w);
-                ImGui.pushStyleColor(ImGuiCol.ButtonHovered, btnHov.x, btnHov.y, btnHov.z, btnHov.w);
-                ImGui.pushStyleColor(ImGuiCol.ButtonActive, btnAct.x, btnAct.y, btnAct.z, btnAct.w);
-                ImGui.pushStyleColor(ImGuiCol.Text, txt.x, txt.y, txt.z, txt.w);
-            }
+            pushSegmentStyle(isSelected);
 
             if (ImGui.button(algorithmNames[i], buttonWidth, 0)) {
                 selectedAlgorithm = i;
@@ -241,22 +227,7 @@ public class NoiseFilterPanel {
 
         // Uniform button
         boolean isUniform = !gradient;
-        if (isUniform) {
-            ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
-            ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 1.0f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.85f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 0.70f);
-            ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 1.0f, 1.0f, 1.0f);
-        } else {
-            ImVec4 btn = ImGui.getStyle().getColor(ImGuiCol.Button);
-            ImVec4 btnHov = ImGui.getStyle().getColor(ImGuiCol.ButtonHovered);
-            ImVec4 btnAct = ImGui.getStyle().getColor(ImGuiCol.ButtonActive);
-            ImVec4 txt = ImGui.getStyle().getColor(ImGuiCol.Text);
-            ImGui.pushStyleColor(ImGuiCol.Button, btn.x, btn.y, btn.z, btn.w);
-            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, btnHov.x, btnHov.y, btnHov.z, btnHov.w);
-            ImGui.pushStyleColor(ImGuiCol.ButtonActive, btnAct.x, btnAct.y, btnAct.z, btnAct.w);
-            ImGui.pushStyleColor(ImGuiCol.Text, txt.x, txt.y, txt.z, txt.w);
-        }
+        pushSegmentStyle(isUniform);
 
         if (ImGui.button("Uniform", buttonWidth, 0)) {
             if (gradient) {
@@ -271,22 +242,7 @@ public class NoiseFilterPanel {
 
         // Gradient button
         boolean isGradient = gradient;
-        if (isGradient) {
-            ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
-            ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 1.0f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.85f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 0.70f);
-            ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 1.0f, 1.0f, 1.0f);
-        } else {
-            ImVec4 btn = ImGui.getStyle().getColor(ImGuiCol.Button);
-            ImVec4 btnHov = ImGui.getStyle().getColor(ImGuiCol.ButtonHovered);
-            ImVec4 btnAct = ImGui.getStyle().getColor(ImGuiCol.ButtonActive);
-            ImVec4 txt = ImGui.getStyle().getColor(ImGuiCol.Text);
-            ImGui.pushStyleColor(ImGuiCol.Button, btn.x, btn.y, btn.z, btn.w);
-            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, btnHov.x, btnHov.y, btnHov.z, btnHov.w);
-            ImGui.pushStyleColor(ImGuiCol.ButtonActive, btnAct.x, btnAct.y, btnAct.z, btnAct.w);
-            ImGui.pushStyleColor(ImGuiCol.Text, txt.x, txt.y, txt.z, txt.w);
-        }
+        pushSegmentStyle(isGradient);
 
         if (ImGui.button("Gradient", buttonWidth, 0)) {
             if (!gradient) {
@@ -730,5 +686,25 @@ public class NoiseFilterPanel {
      */
     private CommandHistory getCommandHistory() {
         return commandHistoryProvider != null ? commandHistoryProvider.getCommandHistory() : null;
+    }
+
+    /**
+     * Push the 4 colors (pop with {@code popStyleColor(4)}) of a segmented
+     * toggle button: accent fill with {@link ThemeColors#pushOnAccent} text
+     * when selected, the theme's regular button otherwise.
+     */
+    private static void pushSegmentStyle(boolean selected) {
+        if (selected) {
+            ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+            ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 1.0f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.85f);
+            ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 0.70f);
+            ThemeColors.pushOnAccent(ImGuiCol.Text);
+        } else {
+            ThemeColors.push(ImGuiCol.Button, ImGuiCol.Button);
+            ThemeColors.push(ImGuiCol.ButtonHovered, ImGuiCol.ButtonHovered);
+            ThemeColors.push(ImGuiCol.ButtonActive, ImGuiCol.ButtonActive);
+            ThemeColors.push(ImGuiCol.Text, ImGuiCol.Text);
+        }
     }
 }
