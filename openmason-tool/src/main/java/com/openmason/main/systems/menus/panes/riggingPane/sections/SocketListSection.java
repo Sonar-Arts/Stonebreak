@@ -2,6 +2,7 @@ package com.openmason.main.systems.menus.panes.riggingPane.sections;
 
 import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.main.systems.skeleton.AttachmentStore;
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImGui;
 import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
@@ -69,8 +70,8 @@ public class SocketListSection {
     private void renderRow(OMOFormat.AttachmentPointEntry socket, boolean isSelected) {
         ImGui.pushID(socket.id());
 
-        // Cyan socket glyph, matching the hierarchy node and viewport marker.
-        ImGui.pushStyleColor(ImGuiCol.Text, 0.35f, 0.80f, 0.95f, 1.0f);
+        // Accent socket glyph, matching the hierarchy node.
+        ThemeColors.push(ImGuiCol.Text, ImGuiCol.HeaderActive);
         ImGui.smallButton(" <> ");
         ImGui.popStyleColor();
         ImGui.sameLine();

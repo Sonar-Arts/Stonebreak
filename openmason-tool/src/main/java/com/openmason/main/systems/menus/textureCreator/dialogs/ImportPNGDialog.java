@@ -1,6 +1,8 @@
 package com.openmason.main.systems.menus.textureCreator.dialogs;
 
+import com.openmason.main.systems.menus.dialogs.ModalDialogs;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorState;
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImColor;
 import imgui.ImDrawList;
 import imgui.ImGui;
@@ -17,21 +19,17 @@ public class ImportPNGDialog {
 
     private static final Logger logger = LoggerFactory.getLogger(ImportPNGDialog.class);
 
+    private static final String POPUP_ID = "Import PNG Texture##importPng";
+
     // Dialog state
     private boolean isOpen = false;
     private int sourceWidth = 0;
     private int sourceHeight = 0;
     private TextureCreatorState.CanvasSize selectedSize = new TextureCreatorState.CanvasSize(16, 16);
     private TextureCreatorState.CanvasSize confirmedSelection = null;
-    private boolean needsPositioning = false;
 
     // Dialog dimensions
     private static final float DIALOG_WIDTH = 520.0f;
-    private static final float DIALOG_HEIGHT = 450.0f;
-    private static final float MIN_WINDOW_WIDTH = 520.0f;
-    private static final float MIN_WINDOW_HEIGHT = 450.0f;
-    private static final float MAX_WINDOW_WIDTH = 1200.0f;
-    private static final float MAX_WINDOW_HEIGHT = 800.0f;
 
     // Preview dimensions
     private static final float PREVIEW_SIZE = 180.0f; // Square preview area
@@ -51,8 +49,6 @@ public class ImportPNGDialog {
     private int radioBgSelected;
     private int radioBorderUnselected;
     private int radioBgUnselected;
-    private static final int WARNING_COLOR = ImColor.rgba(255, 150, 0, 255);
-    private static final int INFO_COLOR = ImColor.rgba(100, 180, 100, 255);
 
     // Reference-viewport centre for modal positioning (main viewport when docked,
     // the popped-out editor host window's viewport when windowed). -1 = main viewport.
@@ -90,7 +86,6 @@ public class ImportPNGDialog {
         this.sourceHeight = sourceHeight;
         isOpen = true;
         confirmedSelection = null;
-        needsPositioning = true;
 
         // Pre-select source dimensions
         selectedSize = new TextureCreatorState.CanvasSize(sourceWidth, sourceHeight);
@@ -133,23 +128,9 @@ public class ImportPNGDialog {
         // the dark editor scope and a light global theme)
         refreshStyleColors();
 
-        // Set window size constraints
-        ImGui.setNextWindowSizeConstraints(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT,
-                                          MAX_WINDOW_WIDTH, MAX_WINDOW_HEIGHT);
-
-        // Set initial size and position only on first open
-        if (needsPositioning) {
-            ImGui.setNextWindowSize(DIALOG_WIDTH, DIALOG_HEIGHT);
-            float centerX = refCenterX >= 0 ? refCenterX : ImGui.getMainViewport().getCenterX();
-            float centerY = refCenterY >= 0 ? refCenterY : ImGui.getMainViewport().getCenterY();
-            ImGui.setNextWindowPos(
-                centerX - DIALOG_WIDTH / 2.0f,
-                centerY - DIALOG_HEIGHT / 2.0f
-            );
-            needsPositioning = false;
-        }
-
-        if (ImGui.beginPopupModal("Import PNG Texture")) {
+        ModalDialogs.Anchor anchor = refCenterX >= 0 && refCenterY >= 0
+                ? new ModalDialogs.Anchor(refCenterX, refCenterY) : null;
+        if (ModalDialogs.begin(POPUP_ID, anchor, DIALOG_WIDTH)) {
 
             // Header (theme Text color — legible in every theme)
             ImGui.spacing();
@@ -189,41 +170,25 @@ public class ImportPNGDialog {
             ImGui.separator();
             ImGui.spacing();
 
-            // Buttons
-            float buttonWidth = 120.0f;
-            float buttonHeight = 32.0f;
-            float totalButtonWidth = buttonWidth * 2 + ImGui.getStyle().getItemSpacingX();
-            float buttonStartX = (DIALOG_WIDTH - totalButtonWidth) / 2.0f;
-
-            ImGui.setCursorPosX(buttonStartX);
-
-            if (ImGui.button("Import", buttonWidth, buttonHeight)) {
+            ModalDialogs.buttonsBegin();
+            if (ModalDialogs.primary("Import", true)) {
                 confirmedSelection = selectedSize;
                 isOpen = false;
                 ImGui.closeCurrentPopup();
                 logger.info("Importing PNG to {} canvas", selectedSize.getDisplayName());
             }
-
-            ImGui.sameLine();
-
-            if (ImGui.button("Cancel", buttonWidth, buttonHeight)) {
+            if (ModalDialogs.cancel()) {
                 isOpen = false;
                 ImGui.closeCurrentPopup();
                 logger.debug("Import PNG dialog cancelled");
             }
 
-            // Handle ESC key to close
-            if (ImGui.isKeyPressed(imgui.flag.ImGuiKey.Escape)) {
-                isOpen = false;
-                ImGui.closeCurrentPopup();
-            }
-
-            ImGui.endPopup();
+            ModalDialogs.end();
         }
 
         // Open the modal popup if we just set isOpen to true
-        if (isOpen && !ImGui.isPopupOpen("Import PNG Texture")) {
-            ImGui.openPopup("Import PNG Texture");
+        if (isOpen && !ImGui.isPopupOpen(POPUP_ID)) {
+            ImGui.openPopup(POPUP_ID);
         }
     }
 
@@ -269,7 +234,7 @@ public class ImportPNGDialog {
             // Resize warning or confirmation
             ImGui.spacing();
             String status16 = resize16 ? "Will resize from source" : "Exact match!";
-            int statusColor16 = resize16 ? WARNING_COLOR : INFO_COLOR;
+            int statusColor16 = resize16 ? ThemeColors.u32(ThemeColors.Tone.WARNING, 1f) : ThemeColors.u32(ThemeColors.Tone.SUCCESS, 1f);
             ImVec2 statusSize16 = ImGui.calcTextSize(status16);
             ImGui.setCursorPosX(ImGui.getCursorPosX() + (PREVIEW_SIZE - statusSize16.x) / 2.0f);
             ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, statusColor16);
@@ -334,7 +299,7 @@ public class ImportPNGDialog {
             // Resize warning or confirmation
             ImGui.spacing();
             String status64 = resize64 ? "Will resize from source" : "Exact match!";
-            int statusColor64 = resize64 ? WARNING_COLOR : INFO_COLOR;
+            int statusColor64 = resize64 ? ThemeColors.u32(ThemeColors.Tone.WARNING, 1f) : ThemeColors.u32(ThemeColors.Tone.SUCCESS, 1f);
             ImVec2 statusSize64 = ImGui.calcTextSize(status64);
             ImGui.setCursorPosX(ImGui.getCursorPosX() + (PREVIEW_SIZE - statusSize64.x) / 2.0f);
             ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, statusColor64);

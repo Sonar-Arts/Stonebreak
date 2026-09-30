@@ -39,6 +39,16 @@ public class ThemeDefinition {
     @JsonProperty("style_vars_vec2")
     private final Map<Integer, float[]> styleVarsVec2 = new ConcurrentHashMap<>();
 
+    /**
+     * Semantic status colors no ImGui style slot carries, keyed by
+     * {@link com.openmason.main.systems.themes.utils.ThemeColors.Tone} name
+     * ({@code "ERROR"}, {@code "WARNING"}, {@code "SUCCESS"}, {@code "DANGER"}),
+     * as opaque {@code {r, g, b}}. Missing entries fall back to the tone's
+     * dark/light default, so older theme files keep working.
+     */
+    @JsonProperty("semantic_colors")
+    private final Map<String, float[]> semanticColors = new ConcurrentHashMap<>();
+
     @JsonProperty("read_only")
     private boolean readOnly;
     
@@ -78,6 +88,7 @@ public class ThemeDefinition {
     public Map<Integer, ImVec4> getColors() { return colors; }
     public Map<Integer, Float> getStyleVars() { return styleVars; }
     public Map<Integer, float[]> getStyleVarsVec2() { return styleVarsVec2; }
+    public Map<String, float[]> getSemanticColors() { return semanticColors; }
 
     // Setters
     public void setId(String id) { this.id = id; }
@@ -96,6 +107,15 @@ public class ThemeDefinition {
     
     public ImVec4 getColor(int colorId) {
         return colors.get(colorId);
+    }
+
+    /** Set a semantic status color; {@code key} is a {@code ThemeColors.Tone} name. */
+    public void setSemanticColor(String key, float r, float g, float b) {
+        if (!readOnly) {
+            semanticColors.put(key, new float[]{r, g, b});
+        } else {
+            logger.warn("Cannot set semantic color on read-only theme: {}", name);
+        }
     }
     
     // Style variable management
@@ -137,6 +157,10 @@ public class ThemeDefinition {
         for (Map.Entry<Integer, float[]> entry : this.styleVarsVec2.entrySet()) {
             float[] val = entry.getValue();
             copy.setStyleVarVec2(entry.getKey(), val[0], val[1]);
+        }
+        for (Map.Entry<String, float[]> entry : this.semanticColors.entrySet()) {
+            float[] rgb = entry.getValue();
+            copy.setSemanticColor(entry.getKey(), rgb[0], rgb[1], rgb[2]);
         }
         logger.trace("Created copy of theme: {} -> {}", this.name, copy.name);
         return copy;

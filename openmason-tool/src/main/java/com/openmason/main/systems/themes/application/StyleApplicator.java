@@ -1,5 +1,6 @@
 package com.openmason.main.systems.themes.application;
 import com.openmason.main.systems.themes.core.ThemeDefinition;
+import com.openmason.main.systems.themes.utils.ThemeColors;
 
 import imgui.ImGui;
 import imgui.ImGuiIO;
@@ -50,6 +51,9 @@ public class StyleApplicator {
 
             // Apply Vec2 style variables (padding, spacing, alignment)
             applyStyleVariablesVec2(theme);
+
+            // Semantic status colors (error/warning/success/danger) have no ImGui slot
+            ThemeColors.useSemanticColors(theme.getSemanticColors(), ThemeColors.isLightTheme());
 
             // Refine the docking drop overlays — softer than ImGui's stock bright blue.
             // Both the small drop-target hints and the on-hover preview rectangle share

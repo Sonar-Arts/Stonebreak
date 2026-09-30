@@ -11,6 +11,7 @@ import com.openmason.main.systems.mortar.parts.MortarBadge;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
 import com.openmason.main.systems.mortar.theme.MortarType;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
@@ -257,7 +258,7 @@ public final class SoundsEditor implements AutoCloseable {
 
             String error = validateRow(row, i);
             if (error != null) {
-                ImGui.textColored(1.0f, 0.55f, 0.45f, 1.0f, "  " + error);
+                ThemedWidgets.inlineError(error);
             } else if (row.previewNote != null) {
                 ImGui.textDisabled("  " + row.previewNote);
             }
@@ -462,11 +463,11 @@ public final class SoundsEditor implements AutoCloseable {
             float hover = state.hover();
             if (hover > 0.02f) {
                 g.fillRoundRect(px, py, pw, ph, 6f,
-                        Argb.withAlpha(0xFFB44242, 0.30f * hover));
+                        Argb.withAlpha(g.theme().danger, 0.30f * hover));
             }
             g.text("×", px + pw / 2f, py + ph / 2f, MortarPainter.Align.CENTER,
                     Weight.MEDIUM, 13f,
-                    Argb.lerp(g.theme().textDim, 0xFFE07A7A, hover));
+                    Argb.lerp(g.theme().textDim, g.theme().error, hover));
         });
 
         MortarFrameResult input = region.render();
@@ -586,7 +587,7 @@ public final class SoundsEditor implements AutoCloseable {
         if (!playable) ImGui.endDisabled();
 
         ImGui.sameLine();
-        if (ImGui.smallButton("Remove")) remove = true;
+        if (ThemedWidgets.dangerSoftButton("Remove", EditorWidgets.REMOVE_BUTTON_WIDTH, 0f)) remove = true;
         return remove;
     }
 
@@ -596,7 +597,7 @@ public final class SoundsEditor implements AutoCloseable {
         ImGui.dummy(0, 2);
         ImGui.textDisabled("  ");
         ImGui.sameLine();
-        ImGui.pushItemWidth(140.0f);
+        ImGui.pushItemWidth(EditorWidgets.NAME_FIELD_WIDTH);
         if (ImGui.inputTextWithHint("Event##name", "event name", row.event)) onDirty.run();
         ImGui.popItemWidth();
 

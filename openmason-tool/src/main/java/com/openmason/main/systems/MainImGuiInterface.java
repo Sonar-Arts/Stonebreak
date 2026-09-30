@@ -1037,6 +1037,12 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         if (sbeExportWindow != null) {
             sbeExportWindow.close();
         }
+        if (sbtExportWindow != null) {
+            sbtExportWindow.close();
+        }
+        if (preferencesWindow != null) {
+            preferencesWindow.close();
+        }
         // Audio audition engine (OpenAL, lazily started by the Sounds tabs).
         com.openmason.main.systems.menus.dialogs.SoundPreviewService.shutdown();
     }

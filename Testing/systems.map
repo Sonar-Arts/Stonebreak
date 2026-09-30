@@ -55,7 +55,7 @@ tool-io	openmason-tool	com/openmason/main/systems/io/**/*Test
 tool-services	openmason-tool	com/openmason/main/systems/services/**/*Test
 assistant	openmason-tool	com/openmason/main/systems/assistant/**/*Test
 anim-editor	openmason-tool	com/openmason/main/systems/menus/animationEditor/**/*Test
-tool-ui	openmason-tool	com/openmason/main/systems/menus/dialogs/**/*Test,com/openmason/main/systems/menus/textureCreator/**/*Test,com/openmason/main/systems/menus/panes/**/*Test,com/openmason/main/systems/mortar/**/*Test
+tool-ui	openmason-tool	com/openmason/main/systems/menus/dialogs/**/*Test,com/openmason/main/systems/menus/textureCreator/**/*Test,com/openmason/main/systems/menus/panes/**/*Test,com/openmason/main/systems/mortar/**/*Test,com/openmason/main/systems/themes/**/*Test,com/openmason/main/systems/menus/preferences/**/*Test
 scripting	openmason-tool	com/openmason/main/systems/scripting/**/*Test
 viewport	openmason-tool	com/openmason/main/systems/viewport/**/*Test
 scene	openmason-tool	com/openmason/main/systems/scene/**/*Test,com/openmason/main/systems/project/**/*Test

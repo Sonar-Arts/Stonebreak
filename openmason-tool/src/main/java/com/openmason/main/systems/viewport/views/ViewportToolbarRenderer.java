@@ -6,6 +6,8 @@ import com.openmason.main.systems.viewport.ViewportActions;
 import com.openmason.main.systems.viewport.ViewportKeybindActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.engine.rendering.viewer.gizmo.GizmoState;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
@@ -112,9 +114,7 @@ public class ViewportToolbarRenderer extends BaseToolbarRenderer {
         boolean active = (mode == current);
         ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
         if (active) {
-            ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 0.75f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.90f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 1.0f);
+            ThemeColors.pushToggleOn();
         } else {
             ImVec4 frame = ImGui.getStyle().getColor(ImGuiCol.FrameBg);
             ImVec4 hover = ImGui.getStyle().getColor(ImGuiCol.HeaderHovered);

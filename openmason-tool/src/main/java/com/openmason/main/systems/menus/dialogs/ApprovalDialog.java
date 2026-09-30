@@ -3,8 +3,8 @@ package com.openmason.main.systems.menus.dialogs;
 import com.openmason.main.systems.mcp.approval.ApprovalGate;
 import com.openmason.main.systems.mcp.approval.McpApprovalGate;
 import imgui.ImGui;
-import imgui.flag.ImGuiCond;
-import imgui.flag.ImGuiWindowFlags;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 
 /**
  * Modal front-end for {@link McpApprovalGate}: an agent (MCP client or the
@@ -14,7 +14,7 @@ import imgui.flag.ImGuiWindowFlags;
  */
 public final class ApprovalDialog {
 
-    private static final String POPUP_ID = "Agent request##approvalDialog";
+    private static final String POPUP_ID = "Agent Request##approvalDialog";
 
     private final McpApprovalGate gate;
     private final Runnable saveCurrentModel; // nullable — "save first" button when dirty
@@ -35,9 +35,7 @@ public final class ApprovalDialog {
         if (!ImGui.isPopupOpen(POPUP_ID)) {
             ImGui.openPopup(POPUP_ID);
         }
-        ImGui.setNextWindowSize(520, 0, ImGuiCond.Appearing);
-        if (!ImGui.beginPopupModal(POPUP_ID,
-                ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings)) {
+        if (!ModalDialogs.begin(POPUP_ID, 520)) {
             return;
         }
         ApprovalGate.ApprovalRequest req = pending.request();
@@ -49,31 +47,30 @@ public final class ApprovalDialog {
         boolean dirty = hasUnsavedChanges != null && hasUnsavedChanges.getAsBoolean();
         if (dirty) {
             ImGui.spacing();
-            ImGui.textColored(1.0f, 0.65f, 0.2f, 1.0f,
+            ThemedWidgets.statusTextWrapped(ThemeColors.Tone.WARNING,
                     "The current model has unsaved changes and will be replaced.");
         }
         long remaining = Math.max(0, pending.deadlineMillis() - System.currentTimeMillis()) / 1000;
         ImGui.spacing();
         ImGui.textDisabled("Times out in " + remaining + "s");
-        ImGui.separator();
 
-        if (ImGui.button("Approve")) {
+        ModalDialogs.buttonsBegin();
+        // Approving an agent action takes a deliberate click — Enter never approves
+        if (ModalDialogs.primaryClickOnly("Approve")) {
             gate.resolve(ApprovalGate.Decision.APPROVED);
             ImGui.closeCurrentPopup();
         }
         if (dirty && saveCurrentModel != null) {
-            ImGui.sameLine();
-            if (ImGui.button("Save current first, then approve")) {
+            if (ModalDialogs.secondary("Save Current First, Then Approve")) {
                 saveCurrentModel.run();
                 gate.resolve(ApprovalGate.Decision.APPROVED);
                 ImGui.closeCurrentPopup();
             }
         }
-        ImGui.sameLine();
-        if (ImGui.button("Decline")) {
+        if (ModalDialogs.cancel("Deny")) {
             gate.resolve(ApprovalGate.Decision.DECLINED);
             ImGui.closeCurrentPopup();
         }
-        ImGui.endPopup();
+        ModalDialogs.end();
     }
 }

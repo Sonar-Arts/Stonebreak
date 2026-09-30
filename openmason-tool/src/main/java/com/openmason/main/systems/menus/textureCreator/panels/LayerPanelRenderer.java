@@ -6,6 +6,7 @@ import com.openmason.main.systems.menus.textureCreator.layers.Layer;
 import com.openmason.main.systems.menus.textureCreator.layers.LayerManager;
 import com.openmason.main.systems.menus.textureCreator.keyboard.KeyCodeTranslator;
 import imgui.ImDrawList;
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.flag.ImGuiCol;
@@ -187,7 +188,7 @@ public class LayerPanelRenderer {
 
         // Background highlight for active layer
         if (isActive) {
-            ImGui.pushStyleColor(ImGuiCol.ChildBg, 0.25f, 0.45f, 0.65f, 0.25f);
+            ThemeColors.pushScaledAlpha(ImGuiCol.ChildBg, ImGuiCol.HeaderActive, 0.25f);
         }
 
         ImGui.beginChild("##layer_" + index, 0, computeLayerItemHeight(), true);
@@ -353,14 +354,14 @@ public class LayerPanelRenderer {
         final int col;
         if (visible) {
             col = hovered
-                ? ImGui.colorConvertFloat4ToU32(0.70f, 0.86f, 1.0f, 1.0f)
-                : ImGui.colorConvertFloat4ToU32(0.52f, 0.76f, 1.0f, 1.0f);
+                ? ThemeColors.u32(ImGuiCol.HeaderActive, 1.0f)
+                : ThemeColors.u32(ImGuiCol.HeaderActive, 0.80f);
             dl.addCircle(cx, cy, r, col, 20, 1.6f);
             dl.addCircleFilled(cx, cy, r * 0.42f, col, 12);
         } else {
             col = hovered
-                ? ImGui.colorConvertFloat4ToU32(0.62f, 0.62f, 0.62f, 1.0f)
-                : ImGui.colorConvertFloat4ToU32(0.42f, 0.42f, 0.42f, 1.0f);
+                ? ThemeColors.u32(ImGuiCol.TextDisabled, 1.0f)
+                : ThemeColors.u32(ImGuiCol.TextDisabled, 0.6f);
             dl.addLine(cx - r, cy, cx + r, cy, col, 1.6f);
         }
     }

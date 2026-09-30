@@ -15,6 +15,7 @@ import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.mortar.theme.MortarType;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
@@ -274,13 +275,9 @@ public class PreviewPanel {
         }
         ImGui.endDisabled();
         ImGui.dummy(0, 6f);
-        ImGui.pushStyleColor(ImGuiCol.Button, 0.45f, 0.12f, 0.12f, 0.5f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.6f, 0.15f, 0.15f, 0.8f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.7f, 0.2f, 0.2f, 1.0f);
-        if (ImGui.button("Remove Project", -1, BUTTON_HEIGHT) && deleteDialog != null) {
+        if (ThemedWidgets.dangerSoftButton("Remove Project", -1, BUTTON_HEIGHT) && deleteDialog != null) {
             deleteDialog.show(project, this::handleDelete);
         }
-        ImGui.popStyleColor(3);
         ImGui.popStyleVar();
     }
 
@@ -289,12 +286,7 @@ public class PreviewPanel {
     private boolean accentButton(String label) {
         ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 5f);
         ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 0f, 8f);
-        ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
-        ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 0.85f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 1.0f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x * 0.8f, accent.y * 0.8f, accent.z * 0.8f, 1.0f);
-        boolean clicked = ImGui.button(label, -1, BUTTON_HEIGHT + 4);
-        ImGui.popStyleColor(3);
+        boolean clicked = ThemedWidgets.accentButton(label, -1, BUTTON_HEIGHT + 4);
         ImGui.popStyleVar(2);
         return clicked;
     }

@@ -174,34 +174,32 @@ final class ChatMessageRenderer implements AutoCloseable {
 
     private void renderToolCall(ChatMessage.ToolCallRecord call, String id) {
         String icon;
-        float[] color;
         switch (call.status) {
             case OK -> {
                 icon = "[ok]";
-                color = new float[]{0.5f, 0.85f, 0.5f, 1f};
+                ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.SUCCESS);
             }
             case ERROR -> {
                 icon = "[err]";
-                color = new float[]{1f, 0.45f, 0.45f, 1f};
+                ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.ERROR);
             }
             case DENIED -> {
                 icon = "[denied]";
-                color = new float[]{1f, 0.65f, 0.3f, 1f};
+                ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.WARNING);
             }
             case RUNNING -> {
                 icon = "[run]";
-                color = new float[]{0.6f, 0.75f, 1f, 1f};
+                ThemeColors.push(ImGuiCol.Text, ImGuiCol.HeaderActive);
             }
             case AWAITING_APPROVAL -> {
                 icon = "[?]";
-                color = new float[]{1f, 0.85f, 0.4f, 1f};
+                ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.WARNING);
             }
             default -> {
                 icon = "[..]";
-                color = new float[]{0.6f, 0.6f, 0.6f, 1f};
+                ThemeColors.push(ImGuiCol.Text, ImGuiCol.TextDisabled);
             }
         }
-        ImGui.pushStyleColor(ImGuiCol.Text, color[0], color[1], color[2], color[3]);
         boolean open = ImGui.treeNodeEx(icon + " " + call.name + "##call" + id,
                 ImGuiTreeNodeFlags.SpanAvailWidth);
         ImGui.popStyleColor();

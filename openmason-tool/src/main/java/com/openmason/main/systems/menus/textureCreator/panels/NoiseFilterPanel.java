@@ -491,10 +491,7 @@ public class NoiseFilterPanel {
 
         // Accept button (green)
         if (previewActive) {
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.2f, 0.7f, 0.3f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.25f, 0.8f, 0.35f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.15f, 0.6f, 0.25f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 1.0f, 1.0f, 1.0f, 1.0f);
+            ThemeColors.pushSuccessButton();
 
             if (ImGui.button("Accept", buttonWidth, 0)) {
                 acceptNoise();
@@ -524,10 +521,7 @@ public class NoiseFilterPanel {
 
         // Cancel button (red)
         if (previewActive) {
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.8f, 0.2f, 0.2f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.9f, 0.25f, 0.25f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.7f, 0.15f, 0.15f, 1.0f);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 1.0f, 1.0f, 1.0f, 1.0f);
+            ThemeColors.pushDangerButton();
 
             if (ImGui.button("Cancel", buttonWidth, 0)) {
                 cancelPreview();

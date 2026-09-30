@@ -9,6 +9,7 @@ import com.openmason.main.systems.skija.SkijaFontStore.Weight;
 import com.openmason.main.systems.mortar.theme.MortarType;
 import imgui.ImGui;
 import imgui.flag.ImGuiTabBarFlags;
+import imgui.flag.ImGuiTabItemFlags;
 
 /**
  * Shared window chrome for the SBO and SBE editor windows: a Mortar-painted
@@ -33,6 +34,8 @@ final class EditorChrome implements AutoCloseable {
 
     private final MortarRegion region = new MortarRegion();
     private final String fallbackId;
+    /** Tab the fallback tab bar reported last frame; -1 forces the caller's tab on first show. */
+    private int fallbackTabShown = -1;
 
     /**
      * @param fallbackId unique suffix for the ImGui-fallback tab bar id so two
@@ -147,13 +150,26 @@ final class EditorChrome implements AutoCloseable {
      */
     int renderExport(boolean canExport, String sourceLabel, String exportLabel,
                      String[] tabs, int selectedTab, Runnable onExport, Runnable onCancel) {
+        return renderExport(canExport, sourceLabel, exportLabel, tabs, selectedTab,
+                onExport, onCancel, "Save the model as .OMO first");
+    }
+
+    /**
+     * As {@link #renderExport(boolean, String, String, String[], int, Runnable, Runnable)}
+     * with a caller-supplied tooltip for the disabled Export pill. An empty
+     * {@code tabs} array (single-page exporters) omits the tab strip.
+     */
+    int renderExport(boolean canExport, String sourceLabel, String exportLabel,
+                     String[] tabs, int selectedTab, Runnable onExport, Runnable onCancel,
+                     String disabledHint) {
         if (!region.isAvailable()) {
             return renderExportFallback(canExport, sourceLabel, exportLabel, tabs, selectedTab,
                     onExport, onCancel);
         }
 
+        final boolean hasTabs = tabs.length > 0;
         float availW = Math.max(1f, MortarRegion.availWidth());
-        float height = BTN_H + SEP_PAD * 2f + 1f + TAB_H + 2f;
+        float height = hasTabs ? BTN_H + SEP_PAD * 2f + 1f + TAB_H + 2f : BTN_H + 2f;
         region.begin(availW, height);
 
         float exportW = pillWidth(exportLabel);
@@ -176,17 +192,19 @@ final class EditorChrome implements AutoCloseable {
                     });
         }
 
-        float sepY = BTN_H + SEP_PAD + 1f;
-        region.add("deco.sep", 0f, sepY, availW, 1f,
-                (g, px, py, pw, ph, state) -> g.fillRect(px, py, pw, 1f, g.theme().separator));
-        float tabY = sepY + SEP_PAD + 1f;
-        float tx = 0f;
-        for (int i = 0; i < tabs.length; i++) {
-            float w = pillWidth(tabs[i]);
-            final String label = tabs[i];
-            region.add("tab." + i, tx, tabY, w, TAB_H, i == selectedTab,
-                    (g, px, py, pw, ph, state) -> paintTab(g, px, py, pw, ph, state, label));
-            tx += w + TAB_GAP;
+        if (hasTabs) {
+            float sepY = BTN_H + SEP_PAD + 1f;
+            region.add("deco.sep", 0f, sepY, availW, 1f,
+                    (g, px, py, pw, ph, state) -> g.fillRect(px, py, pw, 1f, g.theme().separator));
+            float tabY = sepY + SEP_PAD + 1f;
+            float tx = 0f;
+            for (int i = 0; i < tabs.length; i++) {
+                float w = pillWidth(tabs[i]);
+                final String label = tabs[i];
+                region.add("tab." + i, tx, tabY, w, TAB_H, i == selectedTab,
+                        (g, px, py, pw, ph, state) -> paintTab(g, px, py, pw, ph, state, label));
+                tx += w + TAB_GAP;
+            }
         }
 
         MortarFrameResult input = region.render();
@@ -196,7 +214,7 @@ final class EditorChrome implements AutoCloseable {
         if ("act.export".equals(hovered)) {
             ImGui.setTooltip(canExport
                     ? "Choose where to write the file, then open it in the editor"
-                    : "Save the model as .OMO first");
+                    : disabledHint);
         }
 
         String clicked = input.clicked();
@@ -211,7 +229,7 @@ final class EditorChrome implements AutoCloseable {
                 }
             }
         }
-        return Math.max(0, Math.min(selectedTab, tabs.length - 1));
+        return Math.max(0, Math.min(selectedTab, Math.max(0, tabs.length - 1)));
     }
 
     private int renderExportFallback(boolean canExport, String sourceLabel, String exportLabel,
@@ -227,16 +245,29 @@ final class EditorChrome implements AutoCloseable {
             ImGui.textDisabled(sourceLabel);
         }
         ImGui.separator();
+        return tabs.length > 0 ? fallbackTabs(tabs, selectedTab) : selectedTab;
+    }
+
+    /**
+     * Plain ImGui tab bar. ImGui owns its own selection, so a tab the caller
+     * switched to programmatically (validation jump) is forced with
+     * {@code SetSelected} on the frame it differs from what the bar last showed.
+     */
+    private int fallbackTabs(String[] tabs, int selectedTab) {
+        int shown = selectedTab;
         if (ImGui.beginTabBar("##chrome_tabs_" + fallbackId, ImGuiTabBarFlags.None)) {
+            boolean force = selectedTab != fallbackTabShown;
             for (int i = 0; i < tabs.length; i++) {
-                if (ImGui.beginTabItem(tabs[i])) {
-                    selectedTab = i;
+                int flags = (force && i == selectedTab) ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None;
+                if (ImGui.beginTabItem(tabs[i], flags)) {
+                    shown = i;
                     ImGui.endTabItem();
                 }
             }
             ImGui.endTabBar();
         }
-        return selectedTab;
+        fallbackTabShown = shown;
+        return shown;
     }
 
     private static float pillWidth(String label) {
@@ -315,16 +346,7 @@ final class EditorChrome implements AutoCloseable {
 
         if (!loaded) return selectedTab;
         ImGui.separator();
-        if (ImGui.beginTabBar("##chrome_tabs_" + fallbackId, ImGuiTabBarFlags.None)) {
-            for (int i = 0; i < tabs.length; i++) {
-                if (ImGui.beginTabItem(tabs[i])) {
-                    selectedTab = i;
-                    ImGui.endTabItem();
-                }
-            }
-            ImGui.endTabBar();
-        }
-        return selectedTab;
+        return fallbackTabs(tabs, selectedTab);
     }
 
     /** Release the Mortar region. Must run before the SkijaContext closes. */

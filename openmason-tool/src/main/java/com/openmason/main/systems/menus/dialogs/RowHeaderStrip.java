@@ -71,10 +71,10 @@ final class RowHeaderStrip {
         region.add("remove", x, ctrlY, REMOVE_W, PILL_H, (g, px, py, pw, ph, state) -> {
             float hover = state.hover();
             if (hover > 0.02f) {
-                g.fillRoundRect(px, py, pw, ph, 6f, Argb.withAlpha(0xFFB44242, 0.30f * hover));
+                g.fillRoundRect(px, py, pw, ph, 6f, Argb.withAlpha(g.theme().danger, 0.30f * hover));
             }
             g.text("×", px + pw / 2f, py + ph / 2f, MortarPainter.Align.CENTER,
-                    Weight.MEDIUM, 13f, Argb.lerp(g.theme().textDim, 0xFFE07A7A, hover));
+                    Weight.MEDIUM, 13f, Argb.lerp(g.theme().textDim, g.theme().error, hover));
         });
         for (int i = actions.size() - 1; i >= 0; i--) {
             Action action = actions.get(i);

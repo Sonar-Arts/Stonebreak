@@ -146,6 +146,12 @@ public class ColorPalette {
         logger.trace("Created Mason Spectrum Dark theme with {} colors, {} float style vars, {} vec2 style vars",
                      theme.getColorCount(), theme.getStyleVarCount(), theme.getStyleVarsVec2().size());
 
+        // === Semantic status colours (ThemeColors.Tone) ===
+        theme.setSemanticColor("ERROR",   1.00f, 0.40f, 0.40f); // #FF6666
+        theme.setSemanticColor("WARNING", 1.00f, 0.75f, 0.30f); // #FFBF4D
+        theme.setSemanticColor("SUCCESS", 0.40f, 0.90f, 0.40f); // #66E666
+        theme.setSemanticColor("DANGER",  0.66f, 0.22f, 0.22f); // #A83838 destructive fill
+
         theme.setReadOnly(true);
         return theme;
     }
@@ -279,6 +285,12 @@ public class ColorPalette {
 
         logger.trace("Created Mason Spectrum Light theme with {} colors, {} float style vars, {} vec2 style vars",
                      theme.getColorCount(), theme.getStyleVarCount(), theme.getStyleVarsVec2().size());
+
+        // === Semantic status colours (ThemeColors.Tone) ===
+        theme.setSemanticColor("ERROR",   0.72f, 0.10f, 0.10f); // #B81A1A
+        theme.setSemanticColor("WARNING", 0.62f, 0.38f, 0.00f); // #9E6100
+        theme.setSemanticColor("SUCCESS", 0.08f, 0.48f, 0.14f); // #147A24
+        theme.setSemanticColor("DANGER",  0.78f, 0.20f, 0.20f); // #C73333 destructive fill
 
         theme.setReadOnly(true);
         return theme;

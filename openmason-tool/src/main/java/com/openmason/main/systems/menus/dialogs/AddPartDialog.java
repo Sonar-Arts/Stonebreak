@@ -3,7 +3,6 @@ package com.openmason.main.systems.menus.dialogs;
 import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory;
 import com.openmason.main.systems.menus.dialogs.icons.PartShapeIconManager;
 import imgui.ImGui;
-import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImInt;
 import imgui.type.ImString;
 import org.slf4j.Logger;
@@ -20,9 +19,8 @@ public class AddPartDialog {
 
     private static final Logger logger = LoggerFactory.getLogger(AddPartDialog.class);
 
-    private static final String POPUP_ID = "Add Model Part";
+    private static final String POPUP_ID = "Add Model Part##addPart";
     private static final float DIALOG_WIDTH = 420;
-    private static final float DIALOG_HEIGHT = 460;
     private static final float ICON_SIZE = 24f;
 
     private boolean isOpen = false;
@@ -54,14 +52,7 @@ public class AddPartDialog {
             return;
         }
 
-        // Center the modal
-        ImGui.setNextWindowSize(DIALOG_WIDTH, DIALOG_HEIGHT);
-        ImGui.setNextWindowPos(
-                ImGui.getMainViewport().getCenterX() - DIALOG_WIDTH / 2,
-                ImGui.getMainViewport().getCenterY() - DIALOG_HEIGHT / 2
-        );
-
-        if (ImGui.beginPopupModal(POPUP_ID, ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove)) {
+        if (ModalDialogs.begin(POPUP_ID, DIALOG_WIDTH)) {
 
             // Part name input
             ImGui.text("Part Name:");
@@ -104,8 +95,8 @@ public class AddPartDialog {
             ImGui.separator();
             ImGui.spacing();
 
-            // Buttons
-            if (ImGui.button("Add", 120, 0)) {
+            ModalDialogs.buttonsBegin();
+            if (ModalDialogs.primary("Add", true, true)) {
                 PartShapeFactory.Shape shape = shapes[selectedShape.get()];
                 String name = partName.get().trim();
                 if (name.isEmpty()) {
@@ -121,22 +112,13 @@ public class AddPartDialog {
                 isOpen = false;
                 ImGui.closeCurrentPopup();
             }
-
-            ImGui.sameLine();
-
-            if (ImGui.button("Cancel", 120, 0)) {
+            if (ModalDialogs.cancel()) {
                 logger.debug("Add part dialog cancelled");
                 isOpen = false;
                 ImGui.closeCurrentPopup();
             }
 
-            // ESC to close
-            if (ImGui.isKeyPressed(imgui.flag.ImGuiKey.Escape)) {
-                isOpen = false;
-                ImGui.closeCurrentPopup();
-            }
-
-            ImGui.endPopup();
+            ModalDialogs.end();
         }
 
         // Open popup on first frame

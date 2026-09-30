@@ -1,6 +1,8 @@
 package com.openmason.main.systems.menus.textureCreator.selection;
 
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImColor;
+import imgui.flag.ImGuiCol;
 import imgui.ImDrawList;
 
 /**
@@ -8,13 +10,13 @@ import imgui.ImDrawList;
  */
 public class SelectionRenderer {
 
-    // Selection outline colors (bright blue with high contrast)
-    private static final int SELECTION_OUTER_COLOR = ImColor.rgba(51, 153, 255, 255);  // Bright blue
+    // Selection outline colors (theme accent with a white inner line for contrast)
     private static final int SELECTION_INNER_COLOR = ImColor.rgba(255, 255, 255, 200); // White with transparency
 
     // Preview selection colors (semi-transparent)
-    private static final int PREVIEW_OUTLINE_COLOR = ImColor.rgba(51, 153, 255, 180);
-    private static final int PREVIEW_FILL_COLOR = ImColor.rgba(51, 153, 255, 25);
+    private static int accent(float alpha) {
+        return ThemeColors.u32(ImGuiCol.HeaderActive, alpha);
+    }
 
     // Marching ants animation (optional - can add later)
     private int animationOffset = 0;
@@ -61,10 +63,10 @@ public class SelectionRenderer {
         float sy2 = canvasY + (y2 + 1) * zoom;
 
         // Draw semi-transparent fill
-        drawList.addRectFilled(sx1, sy1, sx2, sy2, PREVIEW_FILL_COLOR);
+        drawList.addRectFilled(sx1, sy1, sx2, sy2, accent(0.10f));
 
         // Draw outline
-        drawList.addRect(sx1, sy1, sx2, sy2, PREVIEW_OUTLINE_COLOR, 0.0f, 0, 2.0f);
+        drawList.addRect(sx1, sy1, sx2, sy2, accent(0.70f), 0.0f, 0, 2.0f);
     }
 
     /**
@@ -97,7 +99,7 @@ public class SelectionRenderer {
         float x2 = canvasX + (bounds.x + bounds.width) * zoom;
         float y2 = canvasY + (bounds.y + bounds.height) * zoom;
 
-        drawList.addRect(x1, y1, x2, y2, SELECTION_OUTER_COLOR, 0.0f, 0, 2.0f);
+        drawList.addRect(x1, y1, x2, y2, accent(1.0f), 0.0f, 0, 2.0f);
 
         float inset = Math.max(1.0f, zoom * 0.1f);
         drawList.addRect(x1 + inset, y1 + inset,
@@ -112,7 +114,7 @@ public class SelectionRenderer {
         int maxY = bounds.y + bounds.height;
 
         float fillOpacity = zoom < 1.5f ? 0.15f : 0.25f;
-        int fillColor = ImColor.rgba(51, 153, 255, (int) (fillOpacity * 255));
+        int fillColor = accent(fillOpacity);
 
         for (int y = bounds.y; y < maxY; y++) {
             for (int x = bounds.x; x < maxX; x++) {
@@ -128,16 +130,16 @@ public class SelectionRenderer {
                 drawList.addRectFilled(sx1, sy1, sx2, sy2, fillColor);
 
                 if (!selection.contains(x - 1, y)) {
-                    drawList.addLine(sx1, sy1, sx1, sy2, SELECTION_OUTER_COLOR, 1.0f);
+                    drawList.addLine(sx1, sy1, sx1, sy2, accent(1.0f), 1.0f);
                 }
                 if (!selection.contains(x + 1, y)) {
-                    drawList.addLine(sx2, sy1, sx2, sy2, SELECTION_OUTER_COLOR, 1.0f);
+                    drawList.addLine(sx2, sy1, sx2, sy2, accent(1.0f), 1.0f);
                 }
                 if (!selection.contains(x, y - 1)) {
-                    drawList.addLine(sx1, sy1, sx2, sy1, SELECTION_OUTER_COLOR, 1.0f);
+                    drawList.addLine(sx1, sy1, sx2, sy1, accent(1.0f), 1.0f);
                 }
                 if (!selection.contains(x, y + 1)) {
-                    drawList.addLine(sx1, sy2, sx2, sy2, SELECTION_OUTER_COLOR, 1.0f);
+                    drawList.addLine(sx1, sy2, sx2, sy2, accent(1.0f), 1.0f);
                 }
             }
         }

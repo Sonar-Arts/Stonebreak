@@ -1,5 +1,6 @@
 package com.openmason.main.systems.mortar.theme;
 
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImGui;
 import imgui.ImGuiStyle;
 import imgui.ImVec4;
@@ -62,6 +63,18 @@ public final class MortarTheme {
     public final int shadow;
     /** Pill/badge background. */
     public final int badgeBg;
+    /** Error foreground (validation messages, failed status). */
+    public final int error;
+    /** Warning foreground. */
+    public final int warning;
+    /** Success foreground. */
+    public final int success;
+    /** Destructive-action fill (Delete, Remove). */
+    public final int danger;
+    /** {@link #danger} under hover/press. */
+    public final int dangerHover;
+    /** Text/icon color on a {@link #danger} fill. */
+    public final int onDanger;
     /** UI density scale (logical px → screen px), the same factor ImGui scales its text by. */
     public final float scale;
 
@@ -89,6 +102,12 @@ public final class MortarTheme {
         this.separator = Argb.of(sepCol);
         this.shadow = 0x44000000;
         this.badgeBg = Argb.shade(this.surface, 0.10f);
+        this.error = ThemeColors.Tone.ERROR.argb();
+        this.warning = ThemeColors.Tone.WARNING.argb();
+        this.success = ThemeColors.Tone.SUCCESS.argb();
+        this.danger = ThemeColors.Tone.DANGER.argb();
+        this.dangerHover = Argb.shade(this.danger, 0.12f);
+        this.onDanger = onAccentFor(this.danger);
         this.scale = scale;
     }
 

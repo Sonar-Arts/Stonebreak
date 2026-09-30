@@ -1,8 +1,7 @@
 package com.openmason.main.systems.menus.preferences.keybinds;
 
 import imgui.ImGui;
-import imgui.flag.ImGuiCol;
-import imgui.flag.ImGuiWindowFlags;
+import com.openmason.main.systems.menus.dialogs.ModalDialogs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,6 +18,8 @@ import org.slf4j.LoggerFactory;
 public class ConflictWarningDialog {
 
     private static final Logger logger = LoggerFactory.getLogger(ConflictWarningDialog.class);
+
+    private static final String POPUP_ID = "Keybind Conflict##keybindConflict";
 
     private boolean isVisible = false;
     private String conflictMessage = "";
@@ -64,54 +65,21 @@ public class ConflictWarningDialog {
             return;
         }
 
-        // Open modal popup
-        ImGui.openPopup("Keybind Conflict");
+        ModalDialogs.openIfNeeded(POPUP_ID);
 
-        // Center the modal
-        ImGui.setNextWindowPos(
-                ImGui.getIO().getDisplaySizeX() * 0.5f,
-                ImGui.getIO().getDisplaySizeY() * 0.5f,
-                0, // ImGuiCond.Always
-                0.5f, 0.5f // pivot
-        );
-
-        // Begin modal popup
-        if (ImGui.beginPopupModal("Keybind Conflict", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoMove)) {
-            // Warning icon (using text)
-            ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.7f, 0.0f, 1.0f); // Orange
-            ImGui.text("\u26A0"); // Warning triangle
-            ImGui.popStyleColor();
-            ImGui.sameLine();
-            ImGui.text("Keybind Conflict");
-
-            ImGui.separator();
-            ImGui.spacing();
-
+        if (ModalDialogs.begin(POPUP_ID, 320)) {
             // Conflict message
             ImGui.textWrapped(conflictMessage);
-            ImGui.spacing();
 
-            ImGui.separator();
-            ImGui.spacing();
-
-            // Buttons
-            // Reassign button (highlighted)
-            ImGui.pushStyleColor(ImGuiCol.Button, 0.8f, 0.4f, 0.0f, 1.0f); // Orange
-            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.9f, 0.5f, 0.1f, 1.0f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.7f, 0.3f, 0.0f, 1.0f);
-            if (ImGui.button("Reassign", 100, 0)) {
+            ModalDialogs.buttonsBegin();
+            if (ModalDialogs.danger("Reassign", true)) {
                 confirmReassignment();
             }
-            ImGui.popStyleColor(3);
-
-            ImGui.sameLine();
-
-            // Cancel button
-            if (ImGui.button("Cancel", 100, 0)) {
+            if (ModalDialogs.cancel()) {
                 cancel();
             }
 
-            ImGui.endPopup();
+            ModalDialogs.end();
         }
     }
 

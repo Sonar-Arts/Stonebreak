@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.main.systems.mortar.core.MortarFrameResult;
 import com.openmason.main.systems.mortar.core.MortarRegion;
@@ -51,8 +52,8 @@ import java.util.Set;
 public class SBODropsSection implements AutoCloseable {
 
     // Card geometry.
-    private static final float CARD_H = 48f;
-    private static final float TILE = 36f;
+    private static final float CARD_H = 52f;
+    private static final float TILE = EditorWidgets.ITEM_TILE_SIZE;
     private static final float TILE_PAD = (CARD_H - TILE) / 2f;
     private static final float REMOVE_W = 26f;
     private static final float CARD_RADIUS = 8f;
@@ -483,10 +484,10 @@ public class SBODropsSection implements AutoCloseable {
     private static void paintRemove(MortarPainter g, float px, float py, float pw, float ph, PartState state) {
         float hover = state.hover();
         if (hover > 0.02f) {
-            g.fillRoundRect(px, py, pw, ph, 6f, Argb.withAlpha(0xFFB44242, 0.30f * hover));
+            g.fillRoundRect(px, py, pw, ph, 6f, Argb.withAlpha(g.theme().danger, 0.30f * hover));
         }
         g.text("×", px + pw / 2f, py + ph / 2f, MortarPainter.Align.CENTER, Weight.MEDIUM, 13f,
-                Argb.lerp(g.theme().textDim, 0xFFE07A7A, hover));
+                Argb.lerp(g.theme().textDim, g.theme().error, hover));
     }
 
     // ---- fallbacks (no Skija context) ---------------------------------------
@@ -509,7 +510,7 @@ public class SBODropsSection implements AutoCloseable {
         ImGui.sameLine();
         ImGui.textDisabled(d.countLabel() + " · " + d.chanceLabel());
         ImGui.sameLine();
-        boolean remove = EditorWidgets.dangerButton("Remove", 0f);
+        boolean remove = ThemedWidgets.dangerSoftButton("Remove", EditorWidgets.REMOVE_BUTTON_WIDTH, 0f);
         ImGui.popStyleVar();
         return remove;
     }
@@ -520,7 +521,7 @@ public class SBODropsSection implements AutoCloseable {
         int icon = hasTool ? SBOIngredientIcons.glIcon(o.toolObjectId) : 0;
         boolean pick = icon > 0
                 ? ImGui.imageButton("##ovr_tool", icon, TILE - 8, TILE - 8)
-                : ImGui.button(hasTool ? shortLabel(o.toolObjectId) : "tool?", TILE, TILE);
+                : ImGui.button(hasTool ? shortLabel(o.toolObjectId) : "Pick a tool", TILE, TILE);
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip(hasTool ? o.toolObjectId + "\nClick to change the tool"
                     : "Click to pick the tool this override applies to");
@@ -529,7 +530,7 @@ public class SBODropsSection implements AutoCloseable {
         ImGui.sameLine();
         ImGui.text(hasTool ? "When broken with " + displayName(o.toolObjectId) : "Pick a tool");
         ImGui.sameLine();
-        boolean remove = EditorWidgets.dangerButton("Remove override", 0f);
+        boolean remove = ThemedWidgets.dangerSoftButton("Remove override", 0f, 0f);
         ImGui.popStyleVar();
         return remove;
     }

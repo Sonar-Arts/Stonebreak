@@ -3,7 +3,10 @@ package com.openmason.main.systems.menus.textureCreator.canvas;
 import com.openmason.engine.rendering.model.gmr.uv.FaceTextureMapping;
 import com.openmason.engine.rendering.model.gmr.uv.FaceTextureMapping.UVRegion;
 import com.openmason.engine.rendering.model.gmr.uv.IFaceTextureManager;
-import imgui.ImColor;
+import com.openmason.main.systems.mortar.theme.Argb;
+import com.openmason.main.systems.mortar.theme.MortarTheme;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import imgui.flag.ImGuiCol;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
@@ -35,14 +38,21 @@ public class FaceUVOverlayRenderer {
     private static final float SELECTED_BORDER_THICKNESS = 3.0f;
 
     private static final int BORDER_BASE_COLOR = 0xFFFFFFFF;           // White (ABGR)
-    private static final int SELECTED_BORDER_COLOR = ImColor.rgba(51, 153, 255, 255); // Accent blue
-    private static final int SELECTED_FILL_COLOR = ImColor.rgba(51, 153, 255, 38);    // Accent blue ~15%
     private static final int DIMMED_FILL_BASE_COLOR = 0xFF404040;      // Dark gray (ABGR)
 
     private static final int LABEL_TEXT_BASE_COLOR = 0xFF282828;       // Dark gray text
     private static final int LABEL_BG_BASE_COLOR = 0xFFFFFFFF;        // White background
-    private static final int SELECTED_LABEL_BG_COLOR = ImColor.rgba(51, 153, 255, 255); // Accent blue
-    private static final int SELECTED_LABEL_TEXT_COLOR = 0xFFFFFFFF;   // White text on accent
+
+    /** Live theme accent (ABGR); callers replace its alpha. */
+    private static int selectedAccent() {
+        return ThemeColors.u32(ImGuiCol.HeaderActive, 1.0f);
+    }
+
+    /** Contrast-picked text color on the accent fill (ABGR). */
+    private static int onAccentAbgr() {
+        int argb = MortarTheme.onAccentFor(Argb.withAlpha(ImGui.getStyle().getColor(ImGuiCol.HeaderActive), 1.0f));
+        return (argb & 0xFF00FF00) | ((argb >>> 16) & 0xFF) | ((argb & 0xFF) << 16);
+    }
 
     private static final float LABEL_PADDING = 4.0f;
     private static final float MIN_UV_DIMENSION = 0.001f;
@@ -172,7 +182,7 @@ public class FaceUVOverlayRenderer {
             if (isSelected) {
                 // Selected face: accent fill + thicker accent border
                 int selectedFillAlpha = (int) (opacity * (38.0f / 255.0f) * 255.0f);
-                int adjustedFillColor = (SELECTED_FILL_COLOR & 0x00FFFFFF) | (selectedFillAlpha << 24);
+                int adjustedFillColor = (selectedAccent() & 0x00FFFFFF) | (selectedFillAlpha << 24);
 
                 drawList.addRectFilled(
                     screenX, screenY,
@@ -181,7 +191,7 @@ public class FaceUVOverlayRenderer {
                 );
 
                 int selectedBorderAlpha = alpha;
-                int adjustedBorderColor = (SELECTED_BORDER_COLOR & 0x00FFFFFF) | (selectedBorderAlpha << 24);
+                int adjustedBorderColor = (selectedAccent() & 0x00FFFFFF) | (selectedBorderAlpha << 24);
 
                 drawList.addRect(
                     screenX, screenY,
@@ -245,8 +255,8 @@ public class FaceUVOverlayRenderer {
             if (isSelected) {
                 // Selected label: accent background, white text
                 int selectedBgAlpha = (int) (opacity * 0.9f * 255.0f);
-                int adjustedSelectedBg = (SELECTED_LABEL_BG_COLOR & 0x00FFFFFF) | (selectedBgAlpha << 24);
-                int selectedTextColor = (SELECTED_LABEL_TEXT_COLOR & 0x00FFFFFF) | (alpha << 24);
+                int adjustedSelectedBg = (selectedAccent() & 0x00FFFFFF) | (selectedBgAlpha << 24);
+                int selectedTextColor = (onAccentAbgr() & 0x00FFFFFF) | (alpha << 24);
 
                 drawList.addRectFilled(
                     textX - LABEL_PADDING, textY - LABEL_PADDING,

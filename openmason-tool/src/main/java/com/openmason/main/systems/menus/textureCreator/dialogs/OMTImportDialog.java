@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.textureCreator.dialogs;
 
+import com.openmason.main.systems.menus.dialogs.ModalDialogs;
 import imgui.ImColor;
 import imgui.ImGui;
 import imgui.ImVec2;
@@ -30,11 +31,10 @@ public class OMTImportDialog {
     private boolean isOpen = false;
     private String pendingFilePath = null;
     private ImportMode confirmedChoice = ImportMode.NONE;
-    private boolean needsPositioning = false;
+    private static final String POPUP_ID = "Import OMT File##importOmt";
 
     // Dialog dimensions
     private static final float DIALOG_WIDTH = 480.0f;
-    private static final float DIALOG_HEIGHT = 220.0f;
 
     // Reference-viewport centre for modal positioning (main viewport when docked,
     // the popped-out editor host window's viewport when windowed). -1 = main viewport.
@@ -70,7 +70,6 @@ public class OMTImportDialog {
         isOpen = true;
         pendingFilePath = filePath;
         confirmedChoice = ImportMode.NONE;
-        needsPositioning = true; // Center on first open
         logger.debug("OMT import dialog opened for: {}", filePath);
     }
 
@@ -114,19 +113,9 @@ public class OMTImportDialog {
             return;
         }
 
-        // Set initial size and position only on first open
-        if (needsPositioning) {
-            ImGui.setNextWindowSize(DIALOG_WIDTH, DIALOG_HEIGHT);
-            float centerX = refCenterX >= 0 ? refCenterX : ImGui.getMainViewport().getCenterX();
-            float centerY = refCenterY >= 0 ? refCenterY : ImGui.getMainViewport().getCenterY();
-            ImGui.setNextWindowPos(
-                centerX - DIALOG_WIDTH / 2.0f,
-                centerY - DIALOG_HEIGHT / 2.0f
-            );
-            needsPositioning = false;
-        }
-
-        if (ImGui.beginPopupModal("Import .OMT File")) {
+        ModalDialogs.Anchor anchor = refCenterX >= 0 && refCenterY >= 0
+                ? new ModalDialogs.Anchor(refCenterX, refCenterY) : null;
+        if (ModalDialogs.begin(POPUP_ID, anchor, DIALOG_WIDTH)) {
 
             // Header (theme Text color — legible in every theme)
             ImGui.spacing();
@@ -165,32 +154,8 @@ public class OMTImportDialog {
             ImGui.spacing();
             ImGui.spacing();
 
-            // Buttons
-            float buttonWidth = 200.0f;
-            float buttonHeight = 32.0f;
-            float buttonSpacing = 12.0f;
-
-            // Center the two main buttons
-            float totalButtonWidth = buttonWidth * 2 + buttonSpacing;
-            float buttonStartX = (DIALOG_WIDTH - totalButtonWidth) / 2.0f;
-
-            ImGui.setCursorPosX(buttonStartX);
-
-            // Flatten button
-            if (ImGui.button("Flatten to Single Layer", buttonWidth, buttonHeight)) {
-                confirmedChoice = ImportMode.FLATTEN;
-                isOpen = false;
-                ImGui.closeCurrentPopup();
-                logger.info("User chose to flatten .OMT file: {}", pendingFilePath);
-            }
-            if (ImGui.isItemHovered()) {
-                ImGui.setTooltip("Combine all layers into one new layer");
-            }
-
-            ImGui.sameLine(0, buttonSpacing);
-
-            // Import All button
-            if (ImGui.button("Import All Layers", buttonWidth, buttonHeight)) {
+            ModalDialogs.buttonsBegin();
+            if (ModalDialogs.primary("Import All Layers", true)) {
                 confirmedChoice = ImportMode.IMPORT_ALL;
                 isOpen = false;
                 ImGui.closeCurrentPopup();
@@ -199,35 +164,28 @@ public class OMTImportDialog {
             if (ImGui.isItemHovered()) {
                 ImGui.setTooltip("Add each layer separately with original names");
             }
-
-            ImGui.spacing();
-            ImGui.spacing();
-
-            // Cancel button (centered)
-            float cancelWidth = 120.0f;
-            float cancelStartX = (DIALOG_WIDTH - cancelWidth) / 2.0f;
-            ImGui.setCursorPosX(cancelStartX);
-
-            if (ImGui.button("Cancel", cancelWidth, buttonHeight)) {
+            if (ModalDialogs.secondary("Flatten to Single Layer")) {
+                confirmedChoice = ImportMode.FLATTEN;
+                isOpen = false;
+                ImGui.closeCurrentPopup();
+                logger.info("User chose to flatten .OMT file: {}", pendingFilePath);
+            }
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Combine all layers into one new layer");
+            }
+            if (ModalDialogs.cancel()) {
                 confirmedChoice = ImportMode.NONE;
                 isOpen = false;
                 ImGui.closeCurrentPopup();
                 logger.debug("OMT import dialog cancelled");
             }
 
-            // Handle ESC key to close
-            if (ImGui.isKeyPressed(imgui.flag.ImGuiKey.Escape)) {
-                confirmedChoice = ImportMode.NONE;
-                isOpen = false;
-                ImGui.closeCurrentPopup();
-            }
-
-            ImGui.endPopup();
+            ModalDialogs.end();
         }
 
         // Open the modal popup if we just set isOpen to true
-        if (isOpen && !ImGui.isPopupOpen("Import .OMT File")) {
-            ImGui.openPopup("Import .OMT File");
+        if (isOpen && !ImGui.isPopupOpen(POPUP_ID)) {
+            ImGui.openPopup(POPUP_ID);
         }
     }
 

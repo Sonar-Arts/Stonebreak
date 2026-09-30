@@ -130,10 +130,9 @@ public class AssistantPaneImGui {
         if (limit > 0) {
             ImGui.sameLine();
             float fraction = Math.min(1f, used / (float) limit);
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.PlotHistogram,
-                    fraction < 0.6f ? 0.35f : fraction < 0.85f ? 0.85f : 0.95f,
-                    fraction < 0.6f ? 0.65f : fraction < 0.85f ? 0.65f : 0.35f,
-                    0.35f, 1f);
+            ThemeColors.push(ImGuiCol.PlotHistogram,
+                    fraction < 0.6f ? ThemeColors.Tone.SUCCESS
+                            : fraction < 0.85f ? ThemeColors.Tone.WARNING : ThemeColors.Tone.ERROR);
             ImGui.progressBar(fraction, 110, 15,
                     String.format("%,d / %,d", used, limit));
             ImGui.popStyleColor();
@@ -179,7 +178,7 @@ public class AssistantPaneImGui {
         ImGui.popStyleColor();
         ImGui.textWrapped("The assistant wants to run: " + pending.call().name);
         ImGui.textDisabled(clipArgs(pending.call().argumentsJson));
-        if (ImGui.button("Approve")) {
+        if (com.openmason.main.systems.themes.utils.ThemedWidgets.accentButton("Approve", 0, 0)) {
             controller.resolveApproval(true, alwaysAllow.get());
             alwaysAllow.set(false);
         }

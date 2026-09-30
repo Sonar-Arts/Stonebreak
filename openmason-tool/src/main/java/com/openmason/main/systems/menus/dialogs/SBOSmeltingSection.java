@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbo.SBOFormat;
 import imgui.ImGui;
 import imgui.type.ImInt;
@@ -25,7 +26,7 @@ import java.util.function.Supplier;
  */
 public class SBOSmeltingSection {
 
-    private static final float TILE = 44f;
+    private static final float TILE = EditorWidgets.ITEM_TILE_SIZE;
 
     /** Mutable working copy of one smelting recipe entry. */
     private static final class EditableSmeltingEntry {
@@ -153,7 +154,7 @@ public class SBOSmeltingSection {
             ImGui.popItemWidth();
 
             ImGui.sameLine();
-            if (EditorWidgets.dangerButton("Remove", 0f)) {
+            if (ThemedWidgets.dangerSoftButton("Remove", EditorWidgets.REMOVE_BUTTON_WIDTH, 0f)) {
                 removeIndex = i;
             }
 

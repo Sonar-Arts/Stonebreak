@@ -29,7 +29,7 @@ public class ImGuiComponents {
     /**
      * Read a theme colour as a packed U32 suitable for ImDrawList calls.
      */
-    private static int themeColorU32(int imGuiCol) {
+    public static int themeColorU32(int imGuiCol) {
         ImVec4 c = ImGui.getStyle().getColor(imGuiCol);
         return ImGui.colorConvertFloat4ToU32(c.x, c.y, c.z, c.w);
     }
@@ -37,7 +37,7 @@ public class ImGuiComponents {
     /**
      * Read a theme colour, override its alpha, and return as packed U32.
      */
-    private static int themeColorU32(int imGuiCol, float alphaOverride) {
+    public static int themeColorU32(int imGuiCol, float alphaOverride) {
         ImVec4 c = ImGui.getStyle().getColor(imGuiCol);
         return ImGui.colorConvertFloat4ToU32(c.x, c.y, c.z, alphaOverride);
     }

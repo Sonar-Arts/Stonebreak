@@ -5,6 +5,8 @@ import com.openmason.main.systems.menus.animationEditor.data.AnimationClip;
 import com.openmason.main.systems.menus.animationEditor.data.Easing;
 import com.openmason.main.systems.menus.animationEditor.data.Keyframe;
 import com.openmason.main.systems.menus.animationEditor.data.Track;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.type.ImFloat;
 import imgui.type.ImString;
@@ -96,7 +98,7 @@ public final class KeyframeInspectorPanel {
 
         int beyond = controller.keyframesBeyondDuration();
         if (beyond > 0) {
-            ImGui.textColored(0.95f, 0.55f, 0.35f, 1f, beyond + " keyframe(s) beyond clip end");
+            ThemedWidgets.statusText(ThemeColors.Tone.WARNING, beyond + " keyframe(s) beyond clip end");
             ImGui.sameLine();
             if (ImGui.smallButton("Trim")) {
                 controller.trimKeyframesBeyondDuration();
