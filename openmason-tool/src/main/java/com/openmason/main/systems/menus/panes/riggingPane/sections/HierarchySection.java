@@ -9,6 +9,7 @@ import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
 import com.openmason.main.systems.skeleton.BoneStore;
 import com.openmason.main.systems.themes.utils.ImGuiComponents;
 import imgui.ImDrawList;
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
@@ -155,11 +156,7 @@ public class HierarchySection {
     private void renderAddButtons() {
         float w = (ImGui.getContentRegionAvailX() - 2 * ImGui.getStyle().getItemSpacingX()) / 3f;
 
-        ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
-        ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 0.20f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.40f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 0.55f);
-        ImGui.pushStyleColor(ImGuiCol.Text, accent.x, accent.y, accent.z, 1.0f);
+        ThemeColors.pushAccentSoftButton();
 
         if (ImGui.button("+ Part", w, 0) && onOpenAddPartSlideout != null) {
             onOpenAddPartSlideout.run();
@@ -200,7 +197,7 @@ public class HierarchySection {
 
         ImGui.sameLine();
         if (part.locked()) {
-            ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.6f, 0.0f, 1.0f);
+            ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.WARNING);
         } else {
             ImVec4 dim = ImGui.getStyle().getColor(ImGuiCol.TextDisabled);
             ImGui.pushStyleColor(ImGuiCol.Text, dim.x, dim.y, dim.z, 0.4f);
@@ -305,8 +302,8 @@ public class HierarchySection {
 
         drawSelectionStripe(isSelected);
 
-        // Socket marker — cyan diamond-ish symbol via colored small button
-        ImGui.pushStyleColor(ImGuiCol.Text, 0.35f, 0.80f, 0.95f, 1.0f);
+        // Socket marker — accent-tinted diamond-ish symbol via colored small button
+        ThemeColors.push(ImGuiCol.Text, ImGuiCol.HeaderActive);
         ImGui.smallButton(" <> ");
         ImGui.popStyleColor();
         ImGui.sameLine();

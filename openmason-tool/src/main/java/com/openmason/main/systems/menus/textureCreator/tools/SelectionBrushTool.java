@@ -54,6 +54,13 @@ public final class SelectionBrushTool implements SelectionTool {
         }
     }
 
+    /**
+     * Makes the next stroke subtract regardless of modifiers (right-click deselect).
+     */
+    public void useSubtractStroke() {
+        nextStrokeMode = StrokeMode.SUBTRACT;
+    }
+
     @Override
     public void onMouseDown(int x, int y, int color, PixelCanvas canvas, DrawCommand command) {
         isPainting = true;
@@ -110,7 +117,7 @@ public final class SelectionBrushTool implements SelectionTool {
 
     @Override
     public String getDescription() {
-        return "Paint free-form selections with variable brush size (ALT subtracts, CTRL replaces)";
+        return "Paint free-form selections with variable brush size (right-click or ALT subtracts, CTRL replaces)";
     }
 
     @Override

@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.toolbars;
 
+import com.openmason.main.systems.mortar.core.MortarRegion;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorPreferences;
 import com.openmason.main.systems.menus.textureCreator.icons.TextureToolIconManager;
 import com.openmason.main.systems.menus.textureCreator.selection.SelectionManager;
@@ -125,8 +126,8 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
     private void renderSkijaStrip() {
         // Center within the column, but cap the indent so the strip hugs the
         // left edge if the dock node is transiently wider than its fixed width
-        float indent = Math.max(0, (ImGui.getContentRegionAvailX() - SkijaToolStripRenderer.CELL_SIZE) / 2f);
-        ImGui.setCursorPosX(ImGui.getCursorPosX() + Math.min(indent, 6f));
+        float indent = Math.max(0, (ImGui.getContentRegionAvailX() - SkijaToolStripRenderer.stripWidth()) / 2f);
+        ImGui.setCursorPosX(ImGui.getCursorPosX() + Math.min(indent, MortarRegion.toPixels(6f)));
 
         List<String> iconKeys = new ArrayList<>(tools.size());
         int selectedIndex = -1;

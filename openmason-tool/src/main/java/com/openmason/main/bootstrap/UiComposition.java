@@ -112,6 +112,8 @@ public final class UiComposition {
 
             viewportInterface = new ViewportImGuiInterface(themeManager, new PreferencesManager());
             viewportInterface.setViewport3D(mainInterface.getViewport3D());
+            mainInterface.registerModelFileKeybinds(
+                    com.openmason.main.systems.keybinds.KeybindRegistry.getInstance());
 
             // Scene Viewer: peer of the model editor's viewport, with its own ModelViewer.
             sceneViewerInterface = new com.openmason.main.systems.scene.SceneViewerImGuiInterface(

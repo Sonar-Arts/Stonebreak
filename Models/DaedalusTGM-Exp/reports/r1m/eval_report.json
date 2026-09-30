@@ -1,0 +1,187 @@
+{
+  "real": [
+    {
+      "tile": "alps 46,10",
+      "spectrum_slope": -4.483275867636913,
+      "slope_hist_l1": 0.0
+    },
+    {
+      "tile": "borneo 1,115",
+      "spectrum_slope": -3.6282450482756796,
+      "slope_hist_l1": 0.0
+    },
+    {
+      "tile": "colorado_plateau 36,-112",
+      "spectrum_slope": -3.724455559001824,
+      "slope_hist_l1": 0.0
+    },
+    {
+      "tile": "east_africa -4,36",
+      "spectrum_slope": -4.33208494656391,
+      "slope_hist_l1": 0.0
+    },
+    {
+      "tile": "great_plains 41,-99",
+      "spectrum_slope": -3.2331438695804833,
+      "slope_hist_l1": 0.0
+    },
+    {
+      "tile": "norway 61,7",
+      "spectrum_slope": -4.2333671257717524,
+      "slope_hist_l1": 0.0
+    },
+    {
+      "tile": "sahara_erg 30,8",
+      "spectrum_slope": -4.066012133755575,
+      "slope_hist_l1": 0.0
+    }
+  ],
+  "synth (real desc)": [
+    {
+      "tile": "alps 46,10",
+      "spectrum_slope": -4.254596559689503,
+      "slope_hist_l1": 0.16432189941406247
+    },
+    {
+      "tile": "borneo 1,115",
+      "spectrum_slope": -3.419631782390235,
+      "slope_hist_l1": 0.20254516601562494
+    },
+    {
+      "tile": "colorado_plateau 36,-112",
+      "spectrum_slope": -3.6919704142185865,
+      "slope_hist_l1": 0.22342681884765625
+    },
+    {
+      "tile": "east_africa -4,36",
+      "spectrum_slope": -3.795073223946079,
+      "slope_hist_l1": 0.0978622436523437
+    },
+    {
+      "tile": "great_plains 41,-99",
+      "spectrum_slope": -3.041836877942891,
+      "slope_hist_l1": 0.13736724853515628
+    },
+    {
+      "tile": "norway 61,7",
+      "spectrum_slope": -4.238191129879323,
+      "slope_hist_l1": 0.21596527099609375
+    },
+    {
+      "tile": "sahara_erg 30,8",
+      "spectrum_slope": -3.847680080615226,
+      "slope_hist_l1": 0.4938507080078125
+    }
+  ],
+  "planner->synth": [
+    {
+      "tile": "alps 46,10",
+      "spectrum_slope": -4.33672090587061,
+      "slope_hist_l1": 0.2145614624023438
+    },
+    {
+      "tile": "borneo 1,115",
+      "spectrum_slope": -3.5673111271497633,
+      "slope_hist_l1": 0.7737579345703125
+    },
+    {
+      "tile": "colorado_plateau 36,-112",
+      "spectrum_slope": -3.7935445655556954,
+      "slope_hist_l1": 0.16079711914062503
+    },
+    {
+      "tile": "east_africa -4,36",
+      "spectrum_slope": -4.242440547134441,
+      "slope_hist_l1": 0.023796081542968694
+    },
+    {
+      "tile": "great_plains 41,-99",
+      "spectrum_slope": -3.052490421092932,
+      "slope_hist_l1": 0.6008529663085936
+    },
+    {
+      "tile": "norway 61,7",
+      "spectrum_slope": -4.5627530745543154,
+      "slope_hist_l1": 0.23237609863281247
+    },
+    {
+      "tile": "sahara_erg 30,8",
+      "spectrum_slope": -3.799960046577054,
+      "slope_hist_l1": 0.4218292236328125
+    }
+  ],
+  "planner->synth->refiner t=0.6": [
+    {
+      "tile": "alps 46,10",
+      "spectrum_slope": -4.335708786668075,
+      "slope_hist_l1": 0.28409576416015625
+    },
+    {
+      "tile": "borneo 1,115",
+      "spectrum_slope": -3.055121910273536,
+      "slope_hist_l1": 0.5953903198242188
+    },
+    {
+      "tile": "colorado_plateau 36,-112",
+      "spectrum_slope": -3.7521349551754737,
+      "slope_hist_l1": 0.10993194580078129
+    },
+    {
+      "tile": "east_africa -4,36",
+      "spectrum_slope": -3.9342475910333565,
+      "slope_hist_l1": 0.032394409179687444
+    },
+    {
+      "tile": "great_plains 41,-99",
+      "spectrum_slope": -2.965349136875676,
+      "slope_hist_l1": 0.6278915405273438
+    },
+    {
+      "tile": "norway 61,7",
+      "spectrum_slope": -4.428892398385888,
+      "slope_hist_l1": 0.230804443359375
+    },
+    {
+      "tile": "sahara_erg 30,8",
+      "spectrum_slope": -3.569740571323893,
+      "slope_hist_l1": 0.4354782104492188
+    }
+  ],
+  "refiner (real desc, noise)": [
+    {
+      "tile": "alps 46,10",
+      "spectrum_slope": -4.715884838411741,
+      "slope_hist_l1": 0.08489990234374997
+    },
+    {
+      "tile": "borneo 1,115",
+      "spectrum_slope": -3.7583474172278444,
+      "slope_hist_l1": 0.20116424560546875
+    },
+    {
+      "tile": "colorado_plateau 36,-112",
+      "spectrum_slope": -3.886943729163551,
+      "slope_hist_l1": 0.06747436523437506
+    },
+    {
+      "tile": "east_africa -4,36",
+      "spectrum_slope": -4.414090977406264,
+      "slope_hist_l1": 0.008033752441406194
+    },
+    {
+      "tile": "great_plains 41,-99",
+      "spectrum_slope": -3.34250228244071,
+      "slope_hist_l1": 0.21105957031249997
+    },
+    {
+      "tile": "norway 61,7",
+      "spectrum_slope": -4.378270226404722,
+      "slope_hist_l1": 0.07581329345703121
+    },
+    {
+      "tile": "sahara_erg 30,8",
+      "spectrum_slope": -4.245329167962073,
+      "slope_hist_l1": 0.08900451660156246
+    }
+  ]
+}

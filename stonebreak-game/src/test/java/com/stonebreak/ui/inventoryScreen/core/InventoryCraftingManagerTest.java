@@ -2,6 +2,7 @@ package com.stonebreak.ui.inventoryScreen.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.stonebreak.blocks.BlockType;
@@ -25,6 +26,31 @@ class InventoryCraftingManagerTest {
             List.of(List.of(new ItemStack(BlockType.DIRT, 1))),
             new ItemStack(ItemType.STICK, 4)));
         return new InventoryCraftingManager(cm);
+    }
+
+    @Test
+    void aBoundGridIsTheLiveGrid() {
+        // Issue #307: the crafting-table UI edits the block's own persisted grid.
+        CraftingManager cm = new CraftingManager();
+        cm.registerRecipe(new Recipe("dirtToSticks",
+            List.of(List.of(new ItemStack(BlockType.DIRT, 1))),
+            new ItemStack(ItemType.STICK, 4)));
+        InventoryCraftingManager crafting = new InventoryCraftingManager(cm, 3);
+        ItemStack[] blockGrid = new ItemStack[9];
+        for (int i = 0; i < blockGrid.length; i++) blockGrid[i] = new ItemStack(0, 0);
+        blockGrid[0] = new ItemStack(BlockType.DIRT, 2);
+
+        crafting.bindInputSlots(blockGrid);
+        assertSame(blockGrid, crafting.getCraftingInputSlots());
+        assertEquals(4, crafting.getCraftingOutputSlot().getCount(), "output recomputed on bind");
+
+        crafting.takeCraftBatch();
+        assertEquals(1, blockGrid[0].getCount(), "crafting consumes from the bound grid");
+
+        crafting.unbindInputSlots();
+        assertTrue(crafting.getCraftingInputSlot(0).isEmpty());
+        assertTrue(crafting.getCraftingOutputSlot().isEmpty());
+        assertEquals(1, blockGrid[0].getCount(), "unbinding never touches the block's grid");
     }
 
     @Test

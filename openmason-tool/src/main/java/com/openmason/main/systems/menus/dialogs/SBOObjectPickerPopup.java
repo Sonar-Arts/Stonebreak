@@ -1,12 +1,10 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import imgui.ImGui;
-import imgui.flag.ImGuiKey;
 import imgui.flag.ImGuiSelectableFlags;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiTableColumnFlags;
 import imgui.flag.ImGuiTableFlags;
-import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImString;
 
 import java.util.ArrayList;
@@ -52,15 +50,7 @@ public class SBOObjectPickerPopup {
             openRequested = false;
         }
 
-        ImGui.setNextWindowSize(560, 560);
-        int flags = ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove;
-        if (!ImGui.beginPopupModal(POPUP_ID, flags)) {
-            return;
-        }
-
-        if (ImGui.isKeyPressed(ImGuiKey.Escape)) {
-            ImGui.closeCurrentPopup();
-            ImGui.endPopup();
+        if (!ModalDialogs.begin(POPUP_ID, 560)) {
             return;
         }
 
@@ -70,19 +60,10 @@ public class SBOObjectPickerPopup {
 
         List<SBOObjectIndex.Entry> visible = visibleEntries();
 
-        if (ImGui.isKeyPressed(ImGuiKey.Enter) || ImGui.isKeyPressed(ImGuiKey.KeypadEnter)) {
-            if (!visible.isEmpty()) {
-                pick(visible.get(0).objectId());
-                ImGui.endPopup();
-                return;
-            }
-        }
-
         renderResultsTable(visible);
 
-        ImGui.dummy(0, 2);
-        renderFooter(visible.size());
-        ImGui.endPopup();
+        renderFooter(visible);
+        ModalDialogs.end();
     }
 
     // ---- pieces ------------------------------------------------------------
@@ -219,18 +200,24 @@ public class SBOObjectPickerPopup {
         ImGui.endTable();
     }
 
-    private void renderFooter(int matchCount) {
-        if (ImGui.button("Clear slot")) {
+    private void renderFooter(List<SBOObjectIndex.Entry> visible) {
+        ModalDialogs.buttonsBegin();
+        // Enter picks the top match, even while the search field has focus.
+        if (ModalDialogs.primary("Select", !visible.isEmpty(), true)) {
+            pick(visible.get(0).objectId());
+            return;
+        }
+        if (ModalDialogs.secondary("Clear Slot")) {
             if (onPick != null) onPick.accept("");
             ImGui.closeCurrentPopup();
         }
-        ImGui.sameLine();
-        if (ImGui.button("Cancel")) {
+        if (ModalDialogs.cancel()) {
             ImGui.closeCurrentPopup();
         }
+        int matchCount = visible.size();
         ImGui.sameLine();
         ImGui.textDisabled("  " + matchCount + (matchCount == 1 ? " object" : " objects")
-                + " - Enter picks the top match, Esc cancels");
+                + " - Enter picks the top match");
     }
 
     private void pick(String objectId) {

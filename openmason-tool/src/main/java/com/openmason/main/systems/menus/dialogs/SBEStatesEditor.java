@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbe.SBEFormat;
 import com.openmason.main.systems.mortar.core.MortarRegionPool;
 import imgui.ImGui;
@@ -209,7 +210,7 @@ public final class SBEStatesEditor implements AutoCloseable {
             renderRowDetails(row);
 
             String error = validateRow(row, i, duplicates);
-            if (error != null) EditorWidgets.inlineError(error);
+            if (error != null) ThemedWidgets.inlineError(error);
 
             ImGui.dummy(0, 8);
             ImGui.popID();
@@ -258,7 +259,7 @@ public final class SBEStatesEditor implements AutoCloseable {
     private boolean renderRowHeaderFallback(Row row) {
         ImGui.textDisabled(assetSummary(row));
         ImGui.sameLine();
-        return EditorWidgets.dangerButton("Remove", 70.0f);
+        return ThemedWidgets.dangerSoftButton("Remove", EditorWidgets.REMOVE_BUTTON_WIDTH, 0f);
     }
 
     /** Shared ImGui edit widgets under the header (both render paths). */
@@ -266,7 +267,7 @@ public final class SBEStatesEditor implements AutoCloseable {
         ImGui.dummy(0, 2);
         ImGui.textDisabled("  ");
         ImGui.sameLine();
-        ImGui.pushItemWidth(180.0f);
+        ImGui.pushItemWidth(EditorWidgets.NAME_FIELD_WIDTH);
         if (ImGui.inputTextWithHint("Name##state", "state name", row.name)) onDirty.run();
         ImGui.popItemWidth();
 

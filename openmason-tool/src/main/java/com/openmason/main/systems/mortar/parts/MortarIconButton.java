@@ -15,7 +15,8 @@ import com.openmason.main.systems.skija.SkijaFontStore.Weight;
  */
 public final class MortarIconButton implements MortarPart {
 
-    private static final float RADIUS = 6f;
+    /** Corner radius shared by square icon cells (also the Skija tool strip). */
+    public static final float RADIUS = 6f;
     private static final float GLYPH_SIZE = 16f;
 
     private final String glyph;

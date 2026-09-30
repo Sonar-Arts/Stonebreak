@@ -5,6 +5,8 @@ import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.textureCreator.rendering.TextureEditorLayoutBuilder;
 import com.openmason.main.systems.menus.textureCreator.rendering.TextureEditorStyleScope;
 import com.openmason.main.systems.services.drop.PendingFileDrops;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.ImGuiWindowClass;
 import imgui.flag.ImGuiDockNodeFlags;
@@ -144,7 +146,7 @@ public class TextureEditorWindow {
 
             } catch (Exception e) {
                 logger.error("Error rendering texture creator", e);
-                ImGui.textColored(1.0f, 0.0f, 0.0f, 1.0f, "Error rendering texture editor");
+                ThemedWidgets.statusText(ThemeColors.Tone.ERROR, "Error rendering texture editor");
                 ImGui.text("Check logs for details");
             }
         }

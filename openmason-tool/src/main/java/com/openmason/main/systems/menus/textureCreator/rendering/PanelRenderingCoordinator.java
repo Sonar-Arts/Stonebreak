@@ -10,6 +10,7 @@ import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import com.openmason.main.systems.menus.textureCreator.panels.*;
 import com.openmason.main.systems.menus.textureCreator.panels.color.ColorPanelView;
 import com.openmason.main.systems.menus.toolbars.TextureEditorToolbarRenderer;
+import com.openmason.main.systems.mortar.core.MortarRegion;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiDockNodeFlags;
@@ -132,7 +133,8 @@ public class PanelRenderingCoordinator {
             ImGui.sameLine(0, 0);
         }
 
-        ImGui.beginChild("##tools_column", TOOLS_COLUMN_WIDTH, height, false,
+        // Scales with UI density alongside the Skija tool strip it holds.
+        ImGui.beginChild("##tools_column", MortarRegion.toPixels(TOOLS_COLUMN_WIDTH), height, false,
                 ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
         toolbarPanel.render();
         toolCoordinator.syncToolState();

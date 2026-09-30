@@ -32,6 +32,9 @@ public final class GameShutdown {
         // Release the battle's camera/FOV/screen bindings while the arena session still exists.
         com.stonebreak.battle.stage.FocusBattle.shutdown();
         com.stonebreak.battletest.BattleTestSession.leave();
+        // Before the world and entity manager go away: the final save must include anything
+        // left in the inventory's crafting grid (issue #307).
+        com.stonebreak.core.world.WorldLifecycle.returnCraftingGridsToPlayer(game);
         logger.debug("Starting Game cleanup...");
 
         if (Game.getWorld() != null) {

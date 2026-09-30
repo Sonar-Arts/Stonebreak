@@ -19,7 +19,8 @@ import static org.lwjgl.glfw.GLFW.glfwMakeContextCurrent;
 public final class ImGuiBackend {
 
     private static final String FONT_PATH = "openmason-tool/src/main/resources/masonFonts/";
-    private static final float FONT_SIZE = 16.0f;
+    /** ImGui font atlas size (px) — the body size of all ImGui text at density 1.0. */
+    public static final float FONT_SIZE = 16.0f;
     private static final String INI_FILE_PATH = "openmason-tool/imgui.ini";
 
     private final ImGuiImplGlfw imGuiGlfw = new ImGuiImplGlfw();

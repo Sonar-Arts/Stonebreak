@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.textureCreator.dialogs;
 
+import com.openmason.main.systems.menus.dialogs.ModalDialogs;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorState;
 import imgui.ImColor;
 import imgui.ImDrawList;
@@ -7,8 +8,6 @@ import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
-import imgui.flag.ImGuiStyleVar;
-import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImInt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,10 +21,11 @@ public class NewTextureDialog {
 
     private static final Logger logger = LoggerFactory.getLogger(NewTextureDialog.class);
 
+    private static final String POPUP_ID = "New Texture##newTexture";
+
     // Dialog state
     private boolean isOpen = false;
     private TextureCreatorState.CanvasSize confirmedSelection = null;
-    private boolean needsPositioning = false;
 
     // Input fields
     private final ImInt inputWidth = new ImInt(16);
@@ -37,7 +37,6 @@ public class NewTextureDialog {
 
     // Layout
     private static final float DIALOG_WIDTH = 360.0f;
-    private static final float DIALOG_HEIGHT = 280.0f;
     private static final float LABEL_COL = 70.0f;
     private static final float FIELD_WIDTH = 140.0f;
     private static final float PREVIEW_SIZE = 80.0f;
@@ -70,7 +69,6 @@ public class NewTextureDialog {
     public void show() {
         isOpen = true;
         confirmedSelection = null;
-        needsPositioning = true;
         inputWidth.set(16);
         inputHeight.set(16);
         logger.debug("New texture dialog opened");
@@ -102,19 +100,9 @@ public class NewTextureDialog {
             return;
         }
 
-        if (needsPositioning) {
-            ImGui.setNextWindowSize(DIALOG_WIDTH, DIALOG_HEIGHT);
-            float centerX = refCenterX >= 0 ? refCenterX : ImGui.getMainViewport().getCenterX();
-            float centerY = refCenterY >= 0 ? refCenterY : ImGui.getMainViewport().getCenterY();
-            ImGui.setNextWindowPos(
-                    centerX - DIALOG_WIDTH / 2.0f,
-                    centerY - DIALOG_HEIGHT / 2.0f
-            );
-            needsPositioning = false;
-        }
-
-        int flags = ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoScrollbar;
-        if (ImGui.beginPopupModal("New Texture", flags)) {
+        ModalDialogs.Anchor anchor = refCenterX >= 0 && refCenterY >= 0
+                ? new ModalDialogs.Anchor(refCenterX, refCenterY) : null;
+        if (ModalDialogs.begin(POPUP_ID, anchor, DIALOG_WIDTH)) {
 
             float winW = ImGui.getWindowWidth();
 
@@ -175,55 +163,23 @@ public class NewTextureDialog {
             ImGui.dummy(0, 6);
 
             // ── Buttons ─────────────────────────────────────────────
-            float btnW = 100.0f;
-            float btnH = 26.0f;
-            float btnSpacing = 10.0f;
-            float totalBtnW = btnW * 2 + btnSpacing;
-            float btnStartX = (winW - totalBtnW) / 2.0f;
-
-            ImGui.setCursorPosX(btnStartX);
-
-            // Create button — accent-styled
-            ImVec4 accent = getAccentColor();
-            ImGui.pushStyleColor(ImGuiCol.Button,
-                    accent.x, accent.y, accent.z, 0.20f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonHovered,
-                    accent.x, accent.y, accent.z, 0.35f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonActive,
-                    accent.x, accent.y, accent.z, 0.50f);
-            ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 6.0f);
-
-            if (ImGui.button("Create", btnW, btnH)) {
+            ModalDialogs.buttonsBegin();
+            if (ModalDialogs.primary("Create", true, true)) {
                 confirmedSelection = new TextureCreatorState.CanvasSize(w, h);
                 isOpen = false;
                 ImGui.closeCurrentPopup();
                 logger.info("Created new texture: {}x{}", w, h);
             }
-
-            ImGui.popStyleVar();
-            ImGui.popStyleColor(3);
-
-            ImGui.sameLine(0, btnSpacing);
-
-            // Cancel button — subtle
-            ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 6.0f);
-            if (ImGui.button("Cancel", btnW, btnH)) {
-                isOpen = false;
-                ImGui.closeCurrentPopup();
-            }
-            ImGui.popStyleVar();
-
-            // ESC to close
-            if (ImGui.isKeyPressed(imgui.flag.ImGuiKey.Escape)) {
+            if (ModalDialogs.cancel()) {
                 isOpen = false;
                 ImGui.closeCurrentPopup();
             }
 
-            ImGui.endPopup();
+            ModalDialogs.end();
         }
 
-        if (isOpen && !ImGui.isPopupOpen("New Texture")) {
-            ImGui.openPopup("New Texture");
+        if (isOpen && !ImGui.isPopupOpen(POPUP_ID)) {
+            ImGui.openPopup(POPUP_ID);
         }
     }
 

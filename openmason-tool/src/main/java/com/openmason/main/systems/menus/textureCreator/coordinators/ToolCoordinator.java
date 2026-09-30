@@ -134,6 +134,31 @@ public class ToolCoordinator {
     }
 
     /**
+     * Deselect everything (Ctrl+D / Edit → Deselect All).
+     * Unlike Escape, a pending move or paste is committed first so the pixels stay
+     * where the user put them; ignored mid-drag while the move tool holds the mouse.
+     */
+    public void deselectAll() {
+        DrawingTool tool = getCurrentTool();
+        if (tool instanceof MoveToolController moveTool && moveTool.isMouseCaptured()) {
+            return;
+        }
+
+        if (pasteCoordinator.isPasteSessionActive()) {
+            pasteCoordinator.commitPaste();
+        } else if (tool instanceof MoveToolController moveTool && moveTool.isActive()) {
+            var pendingCmd = moveTool.getPendingCommand();
+            if (pendingCmd != null && pendingCmd.hasChanges()) {
+                handleEnterKey();
+            } else {
+                moveTool.cancelAndReset(controller.getActiveLayerCanvas());
+            }
+        }
+
+        state.clearSelection();
+    }
+
+    /**
      * Handle Escape key for tool cancel.
      * Extracted from main UI to keep tool-specific logic in tool coordinator.
      */

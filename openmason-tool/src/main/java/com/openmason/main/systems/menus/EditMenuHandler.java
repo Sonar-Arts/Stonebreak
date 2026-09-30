@@ -2,7 +2,9 @@ package com.openmason.main.systems.menus;
 
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.services.commands.ModelCommandHistory;
+import com.openmason.main.systems.keybinds.KeybindRegistry;
 import com.openmason.main.systems.stateHandling.UIVisibilityState;
+import com.openmason.main.systems.viewport.ViewportKeybindActions;
 import imgui.ImGui;
 
 /**
@@ -38,11 +40,11 @@ public class EditMenuHandler {
         boolean canUndo = history != null && history.canUndo();
         boolean canRedo = history != null && history.canRedo();
 
-        if (ImGui.menuItem("Undo", "Ctrl+Z", false, canUndo)) {
+        if (ImGui.menuItem("Undo", shortcut(ViewportKeybindActions.UNDO), false, canUndo)) {
             history.undo();
         }
 
-        if (ImGui.menuItem("Redo", "Ctrl+Y", false, canRedo)) {
+        if (ImGui.menuItem("Redo", shortcut(ViewportKeybindActions.REDO), false, canRedo)) {
             history.redo();
         }
 
@@ -53,5 +55,10 @@ public class EditMenuHandler {
         }
 
         ImGui.endMenu();
+    }
+
+    /** Shortcut column from the keybind registry, so a rebind never leaves it stale. */
+    private static String shortcut(String actionId) {
+        return KeybindRegistry.getInstance().getShortcutDisplayName(actionId);
     }
 }

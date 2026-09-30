@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParser;
 import com.openmason.engine.format.sbo.SBOSerializer;
@@ -92,6 +93,10 @@ public class SBOEditorWindow {
             "Metadata", "Game Properties", "States", "Recipes", "Smelting", "Sounds", "Drops"
     };
 
+    private static final int TAB_STATES = 2;
+    private static final int TAB_SOUNDS = 5;
+    private static final int TAB_DROPS = 6;
+
     /** Mortar window chrome (action bar + tab strip); ImGui fallback inside. */
     private final EditorChrome chrome = new EditorChrome("sbo");
 
@@ -102,6 +107,9 @@ public class SBOEditorWindow {
         this.openModelHandler = handler;
     }
     private int selectedTab;
+
+    /** Last save-blocking problem, shown inline under the tab content (cleared on load / successful save). */
+    private String validationMessage = "";
 
     public SBOEditorWindow(FileDialogService fileDialogService, StatusService statusService) {
         this.visible = new ImBoolean(false);
@@ -214,6 +222,7 @@ public class SBOEditorWindow {
             this.loadedStateClipBytes = raw.stateClipBytes();
             this.loadedSoundBytes = raw.soundBytes();
             populateBuffers(raw.manifest());
+            this.validationMessage = "";
             this.dirty = false;
             this.visible.set(true);
             if (statusService != null) {
@@ -280,7 +289,7 @@ public class SBOEditorWindow {
                     this::saveInPlace, this::saveAs, this::openWithDialog);
             ImGui.dummy(0, 6);
             if (!loaded) {
-                ImGui.textDisabled("No SBO loaded. Use File > Open... or Tools > SBO Editor.");
+                ImGui.textDisabled(EditorWidgets.emptyEditorText("SBO"));
             } else {
                 switch (selectedTab) {
                     case 0 -> renderMetadataTab();
@@ -291,6 +300,10 @@ public class SBOEditorWindow {
                     case 5 -> soundsEditor.render();
                     case 6 -> dropsSection.render();
                     default -> { }
+                }
+                if (!validationMessage.isEmpty()) {
+                    ImGui.dummy(0, 8);
+                    ThemedWidgets.inlineError(validationMessage);
                 }
             }
             conflictPopup.render();
@@ -312,11 +325,16 @@ public class SBOEditorWindow {
             }
             ImGui.separator();
         }
-        if (ImGui.inputText("Object ID", objectId))    dirty = true;
-        if (ImGui.inputText("Object Name", objectName)) dirty = true;
+        ThemedWidgets.sectionLabel("Identity");
+        if (ImGui.inputTextWithHint("Object ID", "e.g. stonebreak:oak_planks", objectId)) dirty = true;
+        if (ImGui.inputTextWithHint("Object Name", "e.g. Oak Planks", objectName))         dirty = true;
+
+        ThemedWidgets.sectionLabel("Classification");
         if (ImGui.combo("Object Type", objectTypeIndex, OBJECT_TYPE_LABELS)) dirty = true;
-        if (ImGui.inputText("Pack", objectPack))        dirty = true;
-        if (ImGui.inputText("Author", author))          dirty = true;
+        if (ImGui.inputTextWithHint("Pack", "e.g. default, expansion_1", objectPack))      dirty = true;
+
+        ThemedWidgets.sectionLabel("Attribution");
+        if (ImGui.inputTextWithHint("Author", "Creator name or studio", author))           dirty = true;
         ImGui.text("Description");
         if (ImGui.inputTextMultiline("##desc", description, -1, 80)) dirty = true;
     }
@@ -333,18 +351,18 @@ public class SBOEditorWindow {
             return;
         }
 
-        EditorWidgets.sectionLabel("Identity");
-        ImGui.pushItemWidth(140);
+        ThemedWidgets.sectionLabel("Identity");
+        ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
         if (ImGui.inputInt("Numeric ID", numericId))         dirty = true;
         ImGui.popItemWidth();
         ImGui.sameLine();
-        if (ImGui.smallButton("Taken IDs...##editor_taken")) {
+        if (ImGui.smallButton(EditorWidgets.TAKEN_IDS_LABEL + "##editor_taken")) {
             takenIdsPopup.open(currentDomain());
         }
         renderConflictHint();
 
-        EditorWidgets.sectionLabel("World");
-        ImGui.pushItemWidth(140);
+        ThemedWidgets.sectionLabel("World");
+        ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
         if (ImGui.inputFloat("Hardness", hardness))          dirty = true;
         ImGui.popItemWidth();
         if (ImGui.checkbox("Solid", solid))                  dirty = true;
@@ -353,8 +371,8 @@ public class SBOEditorWindow {
         ImGui.sameLine(320);
         if (ImGui.checkbox("Placeable", placeable))          dirty = true;
 
-        EditorWidgets.sectionLabel("Rendering");
-        ImGui.pushItemWidth(140);
+        ThemedWidgets.sectionLabel("Rendering");
+        ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
         if (ImGui.inputInt("Atlas X", atlasX))               dirty = true;
         ImGui.sameLine(240);
         if (ImGui.inputInt("Atlas Y", atlasY))               dirty = true;
@@ -364,10 +382,10 @@ public class SBOEditorWindow {
         ImGui.sameLine(160);
         if (ImGui.checkbox("Flower", flower))                dirty = true;
 
-        EditorWidgets.sectionLabel("Item");
+        ThemedWidgets.sectionLabel("Item");
         if (ImGui.checkbox("Stackable", stackable))          dirty = true;
         ImGui.sameLine(160);
-        ImGui.pushItemWidth(140);
+        ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
         if (ImGui.inputInt("Max Stack Size", maxStackSize))  dirty = true;
         if (ImGui.inputText("Category", category))           dirty = true;
         ImGui.popItemWidth();
@@ -385,7 +403,7 @@ public class SBOEditorWindow {
             dirty = true;
         }
         if (isFuel) {
-            ImGui.pushItemWidth(120);
+            ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
             if (ImGui.inputInt("Burn ticks per unit", fuelBurnTicks)) {
                 if (fuelBurnTicks.get() < 1) fuelBurnTicks.set(1);
                 dirty = true;
@@ -415,20 +433,12 @@ public class SBOEditorWindow {
     private void writeTo(String pathStr) {
         if (loadedManifest == null) return;
         String stateError = statesEditor.validate();
-        if (stateError != null) {
-            if (statusService != null) statusService.updateStatus("Cannot save: " + stateError);
-            return;
-        }
+        if (stateError != null) { rejectSave(stateError, TAB_STATES); return; }
         String soundError = soundsEditor.validate();
-        if (soundError != null) {
-            if (statusService != null) statusService.updateStatus("Cannot save: " + soundError);
-            return;
-        }
+        if (soundError != null) { rejectSave(soundError, TAB_SOUNDS); return; }
         String dropError = dropsSection.validate();
-        if (dropError != null) {
-            if (statusService != null) statusService.updateStatus("Cannot save: " + dropError);
-            return;
-        }
+        if (dropError != null) { rejectSave(dropError, TAB_DROPS); return; }
+        validationMessage = "";
         if (hasGameProperties) {
             NumericIdValidator.Result result = NumericIdValidator.validate(
                     currentDomain(), numericId.get(), objectId.get().trim());
@@ -438,6 +448,13 @@ public class SBOEditorWindow {
             }
         }
         performWrite(pathStr);
+    }
+
+    /** Show a save-blocking problem inline, jump to the offending tab and echo it to the status bar. */
+    private void rejectSave(String error, int tab) {
+        validationMessage = error;
+        selectedTab = tab;
+        if (statusService != null) statusService.updateStatus("Cannot save: " + error);
     }
 
     private boolean performWrite(String pathStr) {
@@ -511,8 +528,7 @@ public class SBOEditorWindow {
         NumericIdValidator.Result result = NumericIdValidator.validate(
                 domain, numericId.get(), objectId.get().trim());
         if (result instanceof NumericIdValidator.Result.Conflict c) {
-            ImGui.textColored(1.0f, 0.55f, 0.45f, 1.0f,
-                    "ID " + c.numericId() + " taken by " + c.existingObjectId());
+            ThemedWidgets.inlineError("ID " + c.numericId() + " taken by " + c.existingObjectId());
         }
     }
 

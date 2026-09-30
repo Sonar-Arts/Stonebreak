@@ -42,6 +42,7 @@ import com.stonebreak.network.packet.world.ChunkDataS2C;
 import com.stonebreak.network.packet.world.ChunkHashesC2S;
 import com.stonebreak.network.packet.world.ChunkResyncRequestC2S;
 import com.stonebreak.network.packet.world.FurnaceSlotsC2S;
+import com.stonebreak.network.packet.world.WorkbenchSlotsC2S;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
 import com.stonebreak.network.packet.world.SnowLayerC2S;
 import com.stonebreak.network.packet.world.TimeSetC2S;
@@ -97,6 +98,7 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 19, BlockToggleC2S.class, BlockToggleC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 20, CharacterCreationC2S.class, CharacterCreationC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 21, EntityShearC2S.class, EntityShearC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 22, WorkbenchSlotsC2S.class, WorkbenchSlotsC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);

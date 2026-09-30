@@ -3,6 +3,8 @@ package com.openmason.main.systems.menus;
 import com.openmason.main.systems.services.LayoutService;
 import com.openmason.main.systems.services.ViewportOperationService;
 import com.openmason.main.systems.stateHandling.UIVisibilityState;
+import com.openmason.main.systems.keybinds.KeybindRegistry;
+import com.openmason.main.systems.viewport.ViewportKeybindActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.ViewportController;
 import imgui.ImGui;
@@ -43,22 +45,26 @@ public class ViewMenuHandler {
         }
 
         // --- Camera ---
-        if (ImGui.menuItem("Reset View", "Ctrl+R")) {
+        if (ImGui.menuItem(label(ViewportKeybindActions.RESET_VIEW, "Reset View"),
+                shortcut(ViewportKeybindActions.RESET_VIEW))) {
             viewportOperations.resetView(viewport);
         }
 
-        if (ImGui.menuItem("Fit to View", "Ctrl+F")) {
+        if (ImGui.menuItem(label(ViewportKeybindActions.FIT_TO_VIEW, "Fit to View"),
+                shortcut(ViewportKeybindActions.FIT_TO_VIEW))) {
             viewportOperations.fitToView();
         }
 
         ImGui.separator();
 
         // --- Viewport overlays ---
-        if (ImGui.menuItem("Show Grid", "Ctrl+G", viewportState.getGridVisible().get())) {
+        if (ImGui.menuItem(label(ViewportKeybindActions.TOGGLE_GRID, "Show Grid"),
+                shortcut(ViewportKeybindActions.TOGGLE_GRID), viewportState.getGridVisible().get())) {
             viewportOperations.toggleGrid(viewport);
         }
 
-        if (ImGui.menuItem("Show Axes", "Ctrl+Shift+A", viewportState.getAxesVisible().get())) {
+        if (ImGui.menuItem(label(ViewportKeybindActions.TOGGLE_AXES, "Show Axes"),
+                shortcut(ViewportKeybindActions.TOGGLE_AXES), viewportState.getAxesVisible().get())) {
             viewportOperations.toggleAxes(viewport);
         }
 
@@ -66,7 +72,8 @@ public class ViewMenuHandler {
             viewportState.toggleBones();
         }
 
-        if (ImGui.menuItem("Unrendered Mode", "Ctrl+W", viewportState.getUnrenderedMode().get())) {
+        if (ImGui.menuItem(label(ViewportKeybindActions.TOGGLE_UNRENDERED, "Unrendered Mode"),
+                shortcut(ViewportKeybindActions.TOGGLE_UNRENDERED), viewportState.getUnrenderedMode().get())) {
             viewportOperations.toggleUnrendered(viewport);
         }
 
@@ -131,5 +138,15 @@ public class ViewMenuHandler {
         }
 
         ImGui.endMenu();
+    }
+
+    /** Shortcut column from the keybind registry, so a rebind never leaves it stale. */
+    private static String shortcut(String actionId) {
+        return KeybindRegistry.getInstance().getShortcutDisplayName(actionId);
+    }
+
+    /** Item label as the Keybinds page names the action. */
+    private static String label(String actionId, String fallback) {
+        return KeybindRegistry.getInstance().getActionDisplayName(actionId, fallback);
     }
 }

@@ -7,6 +7,7 @@ import com.openmason.main.systems.mortar.core.PartState;
 import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.mortar.theme.MortarType;
 import imgui.ImGui;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Paint;
@@ -33,7 +34,7 @@ public final class InspectorFoldout implements AutoCloseable {
     private static final float CHEVRON_CENTER_X = 13f;
     private static final float CHEVRON_HALF = 3f;
     private static final float TITLE_INSET = 26f;
-    private static final float TITLE_SIZE = 13f;
+    private static final float TITLE_SIZE = MortarType.CONTROL;
 
     private final String title;
     private final MortarRegion region = new MortarRegion();
@@ -52,7 +53,7 @@ public final class InspectorFoldout implements AutoCloseable {
      * Draw the header strip and return whether the section body should render.
      */
     public boolean begin() {
-        float width = ImGui.getContentRegionAvailX();
+        float width = MortarRegion.availWidth();
         if (width < 1f) {
             return open;
         }

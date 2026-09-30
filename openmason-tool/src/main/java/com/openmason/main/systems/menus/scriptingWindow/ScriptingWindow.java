@@ -6,6 +6,9 @@ import com.openmason.main.systems.scripting.ScriptExecutor;
 import com.openmason.main.systems.scripting.library.ScriptLibraryStore;
 import com.openmason.main.systems.scripting.mcp.ScriptingService;
 import com.openmason.main.systems.scripting.python.PythonScriptEngine;
+import com.openmason.main.systems.menus.dialogs.ModalDialogs;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.ImGuiWindowClass;
 import imgui.flag.ImGuiCol;
@@ -158,7 +161,7 @@ public class ScriptingWindow {
                 renderModals();
             } catch (RuntimeException e) {
                 logger.error("Error rendering scripting window", e);
-                ImGui.textColored(1f, 0.3f, 0.3f, 1f, "Render error — see log");
+                ThemedWidgets.statusText(ThemeColors.Tone.ERROR, "Render error - see log");
             }
         }
         ImGui.end();
@@ -228,7 +231,7 @@ public class ScriptingWindow {
         }
         if (isPython() && Boolean.FALSE.equals(pythonAvailable)) {
             ImGui.sameLine();
-            ImGui.textColored(1f, 0.7f, 0.2f, 1f, "GraalPy unavailable — JSON only");
+            ThemedWidgets.statusText(ThemeColors.Tone.WARNING, "GraalPy unavailable - JSON only");
         }
     }
 
@@ -266,7 +269,7 @@ public class ScriptingWindow {
     }
 
     private void verticalSplitter(float height) {
-        ImGui.pushStyleColor(ImGuiCol.Button, 0.3f, 0.3f, 0.3f, 0.3f);
+        ThemeColors.pushScaledAlpha(ImGuiCol.Button, ImGuiCol.Separator, 0.6f);
         ImGui.button("##vsplit", 6, height);
         ImGui.popStyleColor();
         if (ImGui.isItemActive()) {
@@ -280,7 +283,7 @@ public class ScriptingWindow {
         ImGui.inputTextMultiline("##scriptEditor", editor, ImGui.getContentRegionAvailX(),
                 editorHeight, ImGuiInputTextFlags.AllowTabInput);
 
-        ImGui.pushStyleColor(ImGuiCol.Button, 0.3f, 0.3f, 0.3f, 0.3f);
+        ThemeColors.pushScaledAlpha(ImGuiCol.Button, ImGuiCol.Separator, 0.6f);
         ImGui.button("##hsplit", ImGui.getContentRegionAvailX(), 6);
         ImGui.popStyleColor();
         if (ImGui.isItemActive()) {
@@ -297,9 +300,9 @@ public class ScriptingWindow {
                     + "one undo entry, full rollback on failure.");
         } else {
             if (result.ok()) {
-                ImGui.textColored(0.4f, 0.9f, 0.4f, 1f, result.headline());
+                ThemedWidgets.statusText(ThemeColors.Tone.SUCCESS, result.headline());
             } else {
-                ImGui.textColored(1f, 0.4f, 0.4f, 1f, result.headline());
+                ThemedWidgets.statusText(ThemeColors.Tone.ERROR, result.headline());
             }
             if (result.undoNote()) {
                 ImGui.textDisabled("1 undo entry created (Edit > Undo reverts the whole script)");
@@ -322,44 +325,53 @@ public class ScriptingWindow {
         ImGui.endGroup();
     }
 
+    private static final String UNSAVED_POPUP = "Unsaved Script##scriptingUnsaved";
+    private static final String DELETE_POPUP = "Delete Script##scriptingDelete";
+
     private void renderModals() {
-        if (pendingAfterUnsaved != null && !ImGui.isPopupOpen("Unsaved script##scripting")) {
-            ImGui.openPopup("Unsaved script##scripting");
+        if (pendingAfterUnsaved != null) {
+            ModalDialogs.openIfNeeded(UNSAVED_POPUP);
         }
-        if (ImGui.beginPopupModal("Unsaved script##scripting",
-                ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings)) {
-            ImGui.text("The current script has unsaved changes.");
-            if (ImGui.button("Save, then continue")) {
+        if (ModalDialogs.begin(UNSAVED_POPUP, 380)) {
+            ImGui.textWrapped("The current script has unsaved changes.");
+            RunOutcome failed = outcome;
+            if (failed != null && !failed.ok() && "Save failed".equals(failed.headline())) {
+                ThemedWidgets.inlineError(failed.body() != null ? failed.body() : "Save failed");
+            }
+            ModalDialogs.buttonsBegin();
+            if (ModalDialogs.primary("Save", true, true)) {
                 if (saveCurrent()) {
                     Runnable action = pendingAfterUnsaved;
                     pendingAfterUnsaved = null;
                     ImGui.closeCurrentPopup();
-                    action.run();
+                    if (action != null) {
+                        action.run();
+                    }
                 }
             }
-            ImGui.sameLine();
-            if (ImGui.button("Discard changes")) {
+            if (ModalDialogs.secondary("Don't Save")) {
                 Runnable action = pendingAfterUnsaved;
                 pendingAfterUnsaved = null;
                 dirty = false;
                 ImGui.closeCurrentPopup();
-                action.run();
+                if (action != null) {
+                    action.run();
+                }
             }
-            ImGui.sameLine();
-            if (ImGui.button("Cancel")) {
+            if (ModalDialogs.cancel()) {
                 pendingAfterUnsaved = null;
                 ImGui.closeCurrentPopup();
             }
-            ImGui.endPopup();
+            ModalDialogs.end();
         }
 
-        if (pendingDeleteScript != null && !ImGui.isPopupOpen("Delete script##scripting")) {
-            ImGui.openPopup("Delete script##scripting");
+        if (pendingDeleteScript != null) {
+            ModalDialogs.openIfNeeded(DELETE_POPUP);
         }
-        if (ImGui.beginPopupModal("Delete script##scripting",
-                ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings)) {
-            ImGui.text("Delete '" + pendingDeleteScript + "'? This cannot be undone.");
-            if (ImGui.button("Delete")) {
+        if (ModalDialogs.begin(DELETE_POPUP, 380)) {
+            ImGui.textWrapped("Delete '" + pendingDeleteScript + "'? This cannot be undone.");
+            ModalDialogs.buttonsBegin();
+            if (ModalDialogs.danger("Delete", true)) {
                 try {
                     store.delete(pendingDeleteScript);
                     if (pendingDeleteScript.equals(loadedScript)) {
@@ -371,12 +383,11 @@ public class ScriptingWindow {
                 pendingDeleteScript = null;
                 ImGui.closeCurrentPopup();
             }
-            ImGui.sameLine();
-            if (ImGui.button("Cancel")) {
+            if (ModalDialogs.cancel()) {
                 pendingDeleteScript = null;
                 ImGui.closeCurrentPopup();
             }
-            ImGui.endPopup();
+            ModalDialogs.end();
         }
     }
 

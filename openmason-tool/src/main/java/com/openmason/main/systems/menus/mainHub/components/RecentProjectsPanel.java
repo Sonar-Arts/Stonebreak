@@ -91,7 +91,7 @@ public class RecentProjectsPanel {
 
         renderHeader(entries.size());
 
-        float availW = ImGui.getContentRegionAvailX();
+        float availW = MortarRegion.availWidth();
         boolean list = hubState.getRecentViewMode() == HubState.RecentViewMode.LIST;
 
         float height = list

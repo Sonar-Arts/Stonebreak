@@ -120,6 +120,11 @@ public final class ServerBlockHandler {
                 // The SERVER world's registry (per-world) — drops contents authoritatively.
                 world.getFurnaceRegistry().onBlockBroken(world, c.x(), c.y(), c.z());
             }
+            if (prev == BlockType.WORKBENCH) {
+                // Issue #307: the grid's items drop with the table, never vanish.
+                world.getWorkbenchRegistry().onBlockBroken(world, c.x(), c.y(), c.z(),
+                        new Vector3f(sp.x(), sp.y(), sp.z()));
+            }
             Vector3f dropPos = new Vector3f(c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f);
             // The breaker's last-reported held item selects per-tool drop overrides
             // (SBO `drops.byTool`). Block ids and item ids never collide, so a held
@@ -134,6 +139,11 @@ public final class ServerBlockHandler {
         // own BlockPlacer only touched ITS display registry.
         if (incoming == BlockType.FURNACE && world.getFurnaceRegistry() != null) {
             world.getFurnaceRegistry().onBlockPlaced(world, c.x(), c.y(), c.z(), incoming);
+        }
+        // Crafting-table placement: a fresh, empty grid — echoed so every client's display
+        // registry drops whatever a table previously broken at this cell held.
+        if (incoming == BlockType.WORKBENCH) {
+            world.getWorkbenchRegistry().onBlockPlaced(world, c.x(), c.y(), c.z());
         }
         // Door placement: initialize the authoritative state (closed, panel on the placer's
         // edge) and echo it so every client — the placer included — agrees on the facing.
@@ -294,6 +304,36 @@ public final class ServerBlockHandler {
         world.getFurnaceRegistry()
             .getOrCreate(new com.openmason.engine.util.BlockPos(f.x(), f.y(), f.z()))
             .applySlots(f.slots());
+    }
+
+    /**
+     * C2S: the player edited the grid of an open crafting-table UI (issue #307). Validates
+     * (reach, the block is still a workbench on the server world), then persists the grid on
+     * the authoritative {@code WorkbenchState}; the registry's change listener broadcasts the
+     * {@code BlockStateS2C} echo that corrects everyone (originator included).
+     */
+    public void handleWorkbenchSlots(ServerPlayer sp, com.stonebreak.network.packet.world.WorkbenchSlotsC2S w,
+                                     ServerWorldContext ctx) {
+        World world = ctx.world();
+        if (world == null) {
+            return;
+        }
+        if (w.y() < 0 || w.y() >= WorldConfiguration.WORLD_HEIGHT) {
+            return;
+        }
+        if (sp.lastStateNs() != 0L) {
+            float dx = (w.x() + 0.5f) - sp.x();
+            float dy = (w.y() + 0.5f) - sp.y();
+            float dz = (w.z() + 0.5f) - sp.z();
+            if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
+                return;
+            }
+        }
+        if (world.getBlockAt(w.x(), w.y(), w.z()) != BlockType.WORKBENCH) {
+            return;
+        }
+        world.getWorkbenchRegistry().applySlots(world,
+            new com.openmason.engine.util.BlockPos(w.x(), w.y(), w.z()), w.slots());
     }
 
     /**

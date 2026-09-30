@@ -15,8 +15,9 @@ public final class ProtocolVersion {
      *  3 = BlockChangeC2S carries an optional client-proposed placement state.
      *  4 = entity appearance-variant channel (EntityShearC2S, EntityVariantS2C — the
      *  handshake is exact-equality, so 3 peers can never join a 4 world and choke on
-     *  an unknown packet id). */
-    public static final int CURRENT = 4;
+     *  an unknown packet id).
+     *  5 = per-block crafting-table grids (WorkbenchSlotsC2S — issue #307). */
+    public static final int CURRENT = 5;
 
     private ProtocolVersion() {}
 }

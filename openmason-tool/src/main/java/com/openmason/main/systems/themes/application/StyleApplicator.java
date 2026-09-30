@@ -1,5 +1,6 @@
 package com.openmason.main.systems.themes.application;
 import com.openmason.main.systems.themes.core.ThemeDefinition;
+import com.openmason.main.systems.themes.utils.ThemeColors;
 
 import imgui.ImGui;
 import imgui.ImGuiIO;
@@ -15,6 +16,10 @@ import java.util.Map;
  * Handles application of themes to ImGui context with OpenGL awareness.
  */
 public class StyleApplicator {
+
+    /** DockingEmptyBg = WindowBg scaled by this, a slight recess on any theme. */
+    private static final float EMPTY_DOCK_SHADE = 0.88f;
+
     private static final Logger logger = LoggerFactory.getLogger(StyleApplicator.class);
 
     /**
@@ -47,10 +52,13 @@ public class StyleApplicator {
             // Apply Vec2 style variables (padding, spacing, alignment)
             applyStyleVariablesVec2(theme);
 
+            // Semantic status colors (error/warning/success/danger) have no ImGui slot
+            ThemeColors.useSemanticColors(theme.getSemanticColors(), ThemeColors.isLightTheme());
+
             // Refine the docking drop overlays — softer than ImGui's stock bright blue.
             // Both the small drop-target hints and the on-hover preview rectangle share
             // ImGuiCol.DockingPreview, so this tunes them together.
-            refineDockingOverlays();
+            refineDockingOverlays(theme);
 
             logger.info("Successfully applied theme: {}", theme.getName());
             
@@ -265,13 +273,25 @@ public class StyleApplicator {
      * <em>and</em> the larger on-hover preview using {@link ImGuiCol#DockingPreview}.
      * The colors picked here keep the hover preview clearly visible while
      * letting the resting placement hints recede into the UI.
+     *
+     * <p>Both colors are derived from the theme just applied (and skipped when
+     * the theme defines them itself), so light themes do not get dark-theme
+     * literals.
      */
-    private static void refineDockingOverlays() {
+    private static void refineDockingOverlays(ThemeDefinition theme) {
         try {
-            // Soft, low-alpha cool blue — readable on dark themes, not jarring.
-            ImGui.getStyle().setColor(ImGuiCol.DockingPreview, 0.45f, 0.62f, 0.88f, 0.30f);
-            // Slightly darker than the dockspace background so empty regions read as panes.
-            ImGui.getStyle().setColor(ImGuiCol.DockingEmptyBg, 0.10f, 0.11f, 0.13f, 1.00f);
+            Map<Integer, ImVec4> defined = theme.getColors();
+            if (!defined.containsKey(ImGuiCol.DockingPreview)) {
+                // The theme accent at low alpha: visible on hover, never jarring.
+                ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
+                ImGui.getStyle().setColor(ImGuiCol.DockingPreview, accent.x, accent.y, accent.z, 0.30f);
+            }
+            if (!defined.containsKey(ImGuiCol.DockingEmptyBg)) {
+                // Slightly darker than the window background so empty regions read as recessed panes.
+                ImVec4 bg = ImGui.getStyle().getColor(ImGuiCol.WindowBg);
+                ImGui.getStyle().setColor(ImGuiCol.DockingEmptyBg,
+                        bg.x * EMPTY_DOCK_SHADE, bg.y * EMPTY_DOCK_SHADE, bg.z * EMPTY_DOCK_SHADE, 1.00f);
+            }
         } catch (Exception e) {
             logger.warn("Failed to refine docking overlay colors: {}", e.getMessage());
         }

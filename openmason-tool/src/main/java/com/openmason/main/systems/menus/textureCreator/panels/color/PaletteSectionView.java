@@ -2,6 +2,8 @@ package com.openmason.main.systems.menus.textureCreator.panels.color;
 
 import com.openmason.main.systems.menus.textureCreator.palette.PaletteLibrary;
 import com.openmason.main.systems.menus.textureCreator.palette.PaletteSwatchGrid;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.type.ImString;
 
@@ -141,7 +143,7 @@ public final class PaletteSectionView {
         }
 
         if (createError != null) {
-            ImGui.textColored(0.95f, 0.45f, 0.45f, 1.0f, createError);
+            ThemedWidgets.statusText(ThemeColors.Tone.ERROR, createError);
         }
     }
 

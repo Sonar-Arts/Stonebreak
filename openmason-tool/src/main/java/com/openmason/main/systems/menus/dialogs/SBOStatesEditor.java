@@ -1,8 +1,12 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.main.systems.mortar.core.MortarRegionPool;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import imgui.ImGui;
+import imgui.type.ImInt;
 import imgui.type.ImString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * Editable States section for the SBO editor.
@@ -45,7 +51,10 @@ public final class SBOStatesEditor implements AutoCloseable {
         // Optional animation clip (1.6+, model SBOs only)
         byte[] clipBytes;
         String clipLabel;
-        boolean clipLoop;
+        /** {@link SBOFormat.LoopMode} ordinal: Clip default / Loop / Play once. */
+        final ImInt loopMode = new ImInt(0);
+        /** The clip's own loop flag, resolved when {@link #loopMode} is Clip default. */
+        boolean clipDefaultLoop = true;
 
         Row(String n, byte[] b, String label) {
             if (n != null) name.set(n);
@@ -56,6 +65,35 @@ public final class SBOStatesEditor implements AutoCloseable {
         boolean hasClip() {
             return clipBytes != null && clipBytes.length > 0;
         }
+
+        /** Store a freshly picked clip; the loop mode returns to "Clip default". */
+        void setClip(byte[] bytes, String label) {
+            clipBytes = bytes;
+            clipLabel = label;
+            clipDefaultLoop = probeClipLoop(bytes, true);
+            loopMode.set(SBOFormat.LoopMode.CLIP_DEFAULT.ordinal());
+        }
+
+        boolean resolvedLoop() {
+            return SBOFormat.LoopMode.values()[loopMode.get()].resolve(clipDefaultLoop);
+        }
+    }
+
+    /** Read the {@code loop} flag from an {@code .omanim}'s manifest; {@code fallback} when absent. */
+    private static boolean probeClipLoop(byte[] clipBytes, boolean fallback) {
+        if (clipBytes == null) return fallback;
+        try (ZipInputStream zis = new ZipInputStream(new java.io.ByteArrayInputStream(clipBytes))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if ("manifest.json".equals(entry.getName())) {
+                    JsonNode root = new ObjectMapper().readTree(zis.readAllBytes());
+                    return root.hasNonNull("loop") ? root.get("loop").asBoolean() : fallback;
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            logger.debug("Could not probe clip loop flag: {}", e.getMessage());
+        }
+        return fallback;
     }
 
     private final Runnable onDirty;
@@ -104,7 +142,10 @@ public final class SBOStatesEditor implements AutoCloseable {
                     row.clipBytes = stateClipBytes != null ? stateClipBytes.get(e.name()) : null;
                     row.clipLabel = e.animation().clipName() != null
                             ? e.animation().clipName() : "(original)";
-                    row.clipLoop = e.animation().loop();
+                    // Preserve the authored loop flag as an explicit mode.
+                    row.clipDefaultLoop = probeClipLoop(row.clipBytes, e.animation().loop());
+                    row.loopMode.set((e.animation().loop()
+                            ? SBOFormat.LoopMode.LOOP : SBOFormat.LoopMode.ONCE).ordinal());
                 }
                 rows.add(row);
                 if (e.name().equals(doc.defaultStateName())) defaultRowIndex = i;
@@ -151,7 +192,7 @@ public final class SBOStatesEditor implements AutoCloseable {
             // the bytes on save but preserves this loop value.
             SBOFormat.AnimationRef anim = r.hasClip()
                     ? new SBOFormat.AnimationRef(SBOFormat.stateClipPath(name), "", null,
-                            0f, 0f, r.clipLoop, List.of())
+                            0f, 0f, r.resolvedLoop(), List.of())
                     : null;
             out.add(new SBOFormat.StateEntry(name, filename, modelKind, "", anim));
         }
@@ -244,7 +285,7 @@ public final class SBOStatesEditor implements AutoCloseable {
             renderRowDetails(row);
 
             String error = validateRow(row, i, duplicates);
-            if (error != null) EditorWidgets.inlineError(error);
+            if (error != null) ThemedWidgets.inlineError(error);
 
             ImGui.dummy(0, 8);
             ImGui.popID();
@@ -320,7 +361,7 @@ public final class SBOStatesEditor implements AutoCloseable {
             pickAsset(row);
         }
         ImGui.sameLine();
-        if (EditorWidgets.dangerButton("Remove", 70.0f)) {
+        if (ThemedWidgets.dangerSoftButton("Remove", EditorWidgets.REMOVE_BUTTON_WIDTH, 0f)) {
             remove = true;
         }
         return remove;
@@ -331,7 +372,7 @@ public final class SBOStatesEditor implements AutoCloseable {
         ImGui.dummy(0, 2);
         ImGui.textDisabled("  ");
         ImGui.sameLine();
-        ImGui.pushItemWidth(160.0f);
+        ImGui.pushItemWidth(EditorWidgets.NAME_FIELD_WIDTH);
         if (ImGui.inputTextWithHint("Name##state", "state name", row.name)) onDirty.run();
         ImGui.popItemWidth();
 
@@ -343,15 +384,7 @@ public final class SBOStatesEditor implements AutoCloseable {
                 ImGui.text("Clip: " + (row.clipLabel != null ? row.clipLabel : "?")
                         + "  (" + EditorWidgets.humanBytes(row.clipBytes.length) + ")");
                 ImGui.sameLine();
-                boolean loopBefore = row.clipLoop;
-                if (ImGui.radioButton("Loop##clip_loop", row.clipLoop)) row.clipLoop = true;
-                ImGui.sameLine();
-                if (ImGui.radioButton("Play once##clip_once", !row.clipLoop)) row.clipLoop = false;
-                if (loopBefore != row.clipLoop) onDirty.run();
-                if (ImGui.isItemHovered()) {
-                    ImGui.setTooltip("Play once: run through a single time and hold the final pose"
-                            + " (e.g. a door opening).");
-                }
+                if (EditorWidgets.loopModeCombo("##clip_loop", row.loopMode)) onDirty.run();
                 ImGui.sameLine();
                 if (ImGui.smallButton("Replace clip...")) {
                     pickClip(row);
@@ -360,6 +393,7 @@ public final class SBOStatesEditor implements AutoCloseable {
                 if (ImGui.smallButton("Clear clip")) {
                     row.clipBytes = null;
                     row.clipLabel = null;
+                    row.loopMode.set(0);
                     onDirty.run();
                 }
             } else {
@@ -382,8 +416,7 @@ public final class SBOStatesEditor implements AutoCloseable {
         if (ImGui.smallButton("From editor")) {
             byte[] bytes = animBridge.fromEditor().get();
             if (bytes != null) {
-                row.clipBytes = bytes;
-                row.clipLabel = "(editor: " + animBridge.editorClipName().get() + ")";
+                row.setClip(bytes, "(editor: " + animBridge.editorClipName().get() + ")");
                 onDirty.run();
             }
         }
@@ -427,8 +460,7 @@ public final class SBOStatesEditor implements AutoCloseable {
             if (picked == null || picked.isBlank()) return;
             try {
                 Path path = Path.of(picked);
-                row.clipBytes = Files.readAllBytes(path);
-                row.clipLabel = path.getFileName().toString();
+                row.setClip(Files.readAllBytes(path), path.getFileName().toString());
                 onDirty.run();
             } catch (IOException ex) {
                 logger.error("Failed to read animation clip {}", picked, ex);

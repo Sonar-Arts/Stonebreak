@@ -1,7 +1,9 @@
 package com.stonebreak.ui.inventoryScreen.core;
 
+import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.util.DropUtil;
 import com.stonebreak.ui.HotbarScreen;
 import com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator;
 
@@ -34,7 +36,26 @@ public class InventoryController {
     }
 
     public void toggleVisibility() {
+        if (this.visible) {
+            returnHeldItemsToPlayer();
+        }
         this.visible = !this.visible;
+    }
+
+    /**
+     * Hands back everything this screen is holding when it closes: a stack still
+     * on the cursor, then the crafting grid. Whatever the inventory cannot take is
+     * dropped at the player's feet, so closing a crafting screen never destroys
+     * items (issue #307). Safe to call when nothing is held.
+     */
+    public void returnHeldItemsToPlayer() {
+        if (inputManager != null) {
+            inputManager.handleCloseWithDraggedItems();
+        }
+        if (craftingManager == null) return;
+        for (ItemStack overflow : craftingManager.returnInputsTo(inventory)) {
+            DropUtil.dropItemFromPlayer(Game.getPlayer(), overflow);
+        }
     }
 
     public boolean isVisible() {

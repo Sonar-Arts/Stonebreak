@@ -7,25 +7,28 @@ import com.stonebreak.world.operations.WorldConfiguration;
 /**
  * Owns the install of chunks received from the server onto a client render world:
  * decodes the block payload, swaps the storage into the chunk slot, re-hydrates the
- * game-side metadata (snow layers, SBO block states, water levels, furnace/animated
- * block registries), restores the sky heightmap and hands the chunk to the
+ * game-side metadata (snow layers, SBO block states, water levels, furnace/workbench/
+ * animated block registries), restores the sky heightmap and hands the chunk to the
  * {@link ChunkMeshScheduler}.
  */
 final class NetworkChunkInstaller {
     private final WorldChunkStore chunkStore;
     private final SnowLayerManager snowLayerManager;
     private final com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry;
+    private final com.stonebreak.blocks.workbench.WorkbenchStateRegistry workbenchRegistry;
     private final com.stonebreak.blocks.anim.AnimatedBlockRegistry animatedBlockRegistry;
     private final ChunkMeshScheduler meshScheduler;
 
     NetworkChunkInstaller(WorldChunkStore chunkStore,
                           SnowLayerManager snowLayerManager,
                           com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry,
+                          com.stonebreak.blocks.workbench.WorkbenchStateRegistry workbenchRegistry,
                           com.stonebreak.blocks.anim.AnimatedBlockRegistry animatedBlockRegistry,
                           ChunkMeshScheduler meshScheduler) {
         this.chunkStore = chunkStore;
         this.snowLayerManager = snowLayerManager;
         this.furnaceRegistry = furnaceRegistry;
+        this.workbenchRegistry = workbenchRegistry;
         this.animatedBlockRegistry = animatedBlockRegistry;
         this.meshScheduler = meshScheduler;
     }
@@ -103,6 +106,11 @@ final class NetworkChunkInstaller {
                 // slot edit would then overwrite the server's real contents.
                 if (!meta.blockStates().isEmpty() && furnaceRegistry != null) {
                     furnaceRegistry.onChunkLoaded(chunk);
+                }
+                // Same for crafting-table grids (issue #307): a joiner must see the items
+                // already in a table, or their first edit would overwrite them.
+                if (!meta.blockStates().isEmpty() && workbenchRegistry != null) {
+                    workbenchRegistry.onChunkLoaded(chunk);
                 }
                 // Same re-hydration for animated blocks (doors): the load-time
                 // scan saw an all-air placeholder with no states, so streamed

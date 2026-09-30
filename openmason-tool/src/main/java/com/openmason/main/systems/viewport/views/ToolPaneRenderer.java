@@ -9,6 +9,8 @@ import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.themes.utils.TransformGroupWidget;
 import com.openmason.engine.rendering.viewer.gizmo.GizmoState;
 import imgui.ImDrawList;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
@@ -285,9 +287,7 @@ public class ToolPaneRenderer {
         }
 
         if (part.locked()) {
-            ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.6f, 0.0f, 0.9f);
-            ImGui.textUnformatted("Locked");
-            ImGui.popStyleColor();
+            ThemedWidgets.statusText(ThemeColors.Tone.WARNING, "Locked");
             ImGui.spacing();
             ImGui.separator();
             ImGui.spacing();
@@ -370,10 +370,7 @@ public class ToolPaneRenderer {
         ImGui.spacing();
         ImGui.spacing();
 
-        ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
-        ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 0.65f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.85f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 1.0f);
+        ThemeColors.pushAccentButton();
         ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 4.0f);
 
         if (ImGui.button("Add Bone", -1, 30)) {
@@ -386,7 +383,7 @@ public class ToolPaneRenderer {
         }
 
         ImGui.popStyleVar();
-        ImGui.popStyleColor(3);
+        ImGui.popStyleColor(4);
     }
 
     // ========== Add Part ==========
@@ -490,10 +487,7 @@ public class ToolPaneRenderer {
         ImGui.spacing();
 
         // Add button
-        ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
-        ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 0.65f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 0.85f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 1.0f);
+        ThemeColors.pushAccentButton();
         ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 4.0f);
 
         if (ImGui.button("Add Part", -1, 30)) {
@@ -512,7 +506,7 @@ public class ToolPaneRenderer {
         }
 
         ImGui.popStyleVar();
-        ImGui.popStyleColor(3);
+        ImGui.popStyleColor(4);
     }
 
     /**
@@ -725,10 +719,7 @@ public class ToolPaneRenderer {
                             GizmoState.Mode current, float width) {
         boolean active = (current == mode);
         if (active) {
-            ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
-            ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 0.80f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, accent.x, accent.y, accent.z, 1.0f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 0.65f);
+            ThemeColors.pushToggleOn();
         }
         if (ImGui.button(label, width, 0)) {
             actions.setGizmoMode(mode);

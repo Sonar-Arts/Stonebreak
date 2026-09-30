@@ -6,6 +6,7 @@ import com.openmason.main.systems.mortar.core.MortarFrameResult;
 import com.openmason.main.systems.mortar.core.MortarRegion;
 import com.openmason.main.systems.mortar.parts.MortarButton;
 import com.openmason.main.systems.mortar.parts.MortarIconButton;
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
@@ -178,7 +179,7 @@ public final class TransportPanel implements AutoCloseable {
         ImGui.sameLine();
         autoKeyBuf.set(controller.state().autoKey());
         boolean autoKey = controller.state().autoKey();
-        if (autoKey) ImGui.pushStyleColor(imgui.flag.ImGuiCol.CheckMark, 0.95f, 0.35f, 0.3f, 1f);
+        if (autoKey) ThemeColors.push(imgui.flag.ImGuiCol.CheckMark, ThemeColors.Tone.ERROR);
         if (ImGui.checkbox("Auto-key", autoKeyBuf)) {
             controller.state().setAutoKey(autoKeyBuf.get());
         }

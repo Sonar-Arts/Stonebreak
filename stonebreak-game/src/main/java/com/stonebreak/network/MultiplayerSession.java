@@ -159,6 +159,14 @@ public final class MultiplayerSession {
         }
     }
 
+    /** Crafting-table grid intent: the open workbench UI's grid changed (see {@code WorkbenchSlotsC2S}). */
+    public static void sendWorkbenchSlots(int x, int y, int z, String slots) {
+        ClientWorldView c = getClient();
+        if (c != null && !c.isDisconnected()) {
+            c.sendWorkbenchSlots(x, y, z, slots);
+        }
+    }
+
     /**
      * Toggleable-block interaction intent (door open/close — see {@code BlockToggleC2S}).
      * The server flips the authoritative state and echoes {@code BlockStateS2C} to all

@@ -6,6 +6,7 @@ import com.openmason.main.systems.services.ViewportOperationService;
 import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.stateHandling.UIVisibilityState;
 import com.openmason.main.systems.ViewportController;
+import com.openmason.main.systems.viewport.ViewportKeybindActions;
 import imgui.ImGui;
 import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
@@ -87,13 +88,16 @@ public class ModelEditorToolbarRenderer extends BaseToolbarRenderer {
      * Render file operation buttons (Open, Save).
      */
     private void renderFileOperations() {
-        if (renderFlatButton("Open", "Open model file (Ctrl+O)")) {
+        if (renderFlatButton("Open",
+                withShortcut("Open model file", ViewportKeybindActions.OPEN_MODEL))) {
             modelOperations.openModel();
         }
         ImGui.sameLine(0.0f, 2.0f);
 
         boolean canSave = modelState.isModelLoaded() && modelState.hasUnsavedChanges();
-        String saveTooltip = canSave ? "Save current model (Ctrl+S)" : "No unsaved changes";
+        String saveTooltip = canSave
+                ? withShortcut("Save current model", ViewportKeybindActions.SAVE_MODEL)
+                : "No unsaved changes";
 
         // Dim the save button text when nothing to save
         if (!canSave) {
@@ -111,12 +115,14 @@ public class ModelEditorToolbarRenderer extends BaseToolbarRenderer {
      * Render view operation buttons (Reset, Fit).
      */
     private void renderViewOperations() {
-        if (renderFlatButton("Reset", "Reset camera to default (Numpad 0)")) {
+        if (renderFlatButton("Reset",
+                withShortcut("Reset camera to default", ViewportKeybindActions.RESET_VIEW))) {
             viewportOperations.resetView(viewport);
         }
         ImGui.sameLine(0.0f, 2.0f);
 
-        if (renderFlatButton("Fit", "Fit model in view (Numpad .)") && viewport != null) {
+        if (renderFlatButton("Fit",
+                withShortcut("Fit model in view", ViewportKeybindActions.FIT_TO_VIEW)) && viewport != null) {
             viewportOperations.fitToView();
         }
     }

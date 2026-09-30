@@ -89,6 +89,9 @@ public final class CavernCarver {
         h ^= (long) cx * 0xBEA225F9EB34556DL;
         h = Long.rotateLeft(h, 19);
         h ^= (long) cz * 0x94D049BB133111EBL;
+        h ^= h >>> 30; h *= 0xBF58476D1CE4E5B9L;
+        h ^= h >>> 27; h *= 0x94D049BB133111EBL;
+        h ^= h >>> 31;
         return Math.floorMod(h, CAVERN_CHUNK_DIVISOR) == 0;
     }
 

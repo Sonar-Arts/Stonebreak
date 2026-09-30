@@ -1,6 +1,7 @@
 package com.stonebreak.ui.inventoryScreen.core;
 
 import com.stonebreak.crafting.CraftingManager;
+import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
 import java.util.ArrayList;
@@ -13,7 +14,7 @@ import java.util.List;
 public class InventoryCraftingManager {
 
     private final CraftingManager craftingManager;
-    private final ItemStack[] craftingInputSlots;
+    private ItemStack[] craftingInputSlots;
     private ItemStack craftingOutputSlot;
     private final int craftingGridSize;
 
@@ -34,6 +35,31 @@ public class InventoryCraftingManager {
         for (int i = 0; i < totalSlots; i++) {
             this.craftingInputSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
         }
+    }
+
+    /**
+     * Makes {@code slots} the live crafting grid: every read and edit goes straight to that
+     * array from now on. Lets a crafting table's UI operate directly on the block's persisted
+     * grid ({@code WorkbenchState}) instead of a screen-owned copy. The output slot is
+     * recomputed for the new contents.
+     *
+     * @throws IllegalArgumentException if the array does not match this grid's size
+     */
+    public void bindInputSlots(ItemStack[] slots) {
+        int totalSlots = craftingGridSize * craftingGridSize;
+        if (slots == null || slots.length != totalSlots) {
+            throw new IllegalArgumentException("Crafting grid needs " + totalSlots + " slots, got "
+                    + (slots == null ? "null" : slots.length));
+        }
+        this.craftingInputSlots = slots;
+        updateCraftingOutput();
+    }
+
+    /** Detaches from any bound grid, back to a fresh, empty screen-owned one. */
+    public void unbindInputSlots() {
+        this.craftingInputSlots = new ItemStack[craftingGridSize * craftingGridSize];
+        initializeCraftingSlots();
+        this.craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0);
     }
 
     public void updateCraftingOutput() {
@@ -116,6 +142,34 @@ public class InventoryCraftingManager {
         consumeCraftingIngredients();
         updateCraftingOutput();
         return batch;
+    }
+
+    /**
+     * Empties the input grid into {@code inventory} and returns whatever did not
+     * fit, for the caller to drop at the player's feet. The grid and the output
+     * slot are left empty.
+     *
+     * <p>Called whenever a crafting screen closes: the grid is UI state, not world
+     * state, so anything left in it would be lost when the world exits (issue #307).
+     * It also means every crafting table opens empty, instead of sharing one grid.
+     *
+     * @return overflow stacks in grid order; empty when everything fit
+     */
+    public List<ItemStack> returnInputsTo(Inventory inventory) {
+        List<ItemStack> overflow = new ArrayList<>();
+        for (int i = 0; i < craftingInputSlots.length; i++) {
+            ItemStack stack = craftingInputSlots[i];
+            craftingInputSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
+            if (stack == null || stack.isEmpty()) continue;
+            int added = inventory != null ? inventory.addItemAndReturnCount(stack) : 0;
+            if (added < stack.getCount()) {
+                ItemStack rest = stack.copy();
+                rest.setCount(stack.getCount() - added);
+                overflow.add(rest);
+            }
+        }
+        craftingOutputSlot = new ItemStack(BlockType.AIR.getId(), 0);
+        return overflow;
     }
 
     /**

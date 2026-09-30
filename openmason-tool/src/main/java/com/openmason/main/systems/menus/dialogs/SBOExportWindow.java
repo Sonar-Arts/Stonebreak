@@ -1,5 +1,7 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.themes.utils.ThemeColors.Tone;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbe.AnimationCompatibility;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParser;
@@ -221,13 +223,13 @@ public class SBOExportWindow {
                 }
                 if (!validationMessage.isEmpty()) {
                     ImGui.dummy(0, 8);
-                    EditorWidgets.inlineError(validationMessage);
+                    ThemedWidgets.inlineError(validationMessage);
                 }
                 conflictPopup.render();
                 takenIdsPopup.render();
             } catch (Exception e) {
                 logger.error("Error rendering SBO export window", e);
-                ImGui.textColored(1.0f, 0.0f, 0.0f, 1.0f, "Error rendering export window");
+                ThemedWidgets.statusText(Tone.ERROR, "Error rendering export window");
             }
         }
         ImGui.end();
@@ -266,18 +268,18 @@ public class SBOExportWindow {
     }
 
     private void renderMetadataTab() {
-        EditorWidgets.sectionLabel("Identity");
+        ThemedWidgets.sectionLabel("Identity");
         ImGui.inputTextWithHint("Object ID", "e.g. stonebreak:oak_planks", objectId);
         ImGui.inputTextWithHint("Object Name", "e.g. Oak Planks", objectName);
 
-        EditorWidgets.sectionLabel("Classification");
+        ThemedWidgets.sectionLabel("Classification");
         if (renderObjectTypeCombo()) {
             suggestNumericIdForType();
         }
         ImGui.textDisabled("Exports into " + describeTargetFolder());
         ImGui.inputTextWithHint("Pack", "e.g. default, expansion_1", objectPack);
 
-        EditorWidgets.sectionLabel("Attribution");
+        ThemedWidgets.sectionLabel("Attribution");
         ImGui.inputTextWithHint("Author", "Creator name or studio", author);
         ImGui.text("Description");
         ImGui.inputTextMultiline("##desc", description, -1, 80);
@@ -313,12 +315,12 @@ public class SBOExportWindow {
     }
 
     private void renderGamePropertiesTab() {
-        EditorWidgets.sectionLabel("Identity");
-        ImGui.pushItemWidth(140);
+        ThemedWidgets.sectionLabel("Identity");
+        ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
         ImGui.inputInt("Numeric ID", numericId);
         ImGui.popItemWidth();
         ImGui.sameLine();
-        if (ImGui.smallButton("Taken IDs...##exp_taken")) {
+        if (ImGui.smallButton(EditorWidgets.TAKEN_IDS_LABEL + "##exp_taken")) {
             takenIdsPopup.open(currentDomain());
         }
         ImGui.textDisabled(numericIdRequired()
@@ -330,7 +332,7 @@ public class SBOExportWindow {
                         : "Optional for this object type; -1 skips the gameProperties block.");
         renderConflictHint();
 
-        EditorWidgets.sectionLabel("Defaults");
+        ThemedWidgets.sectionLabel("Defaults");
         ImGui.textDisabled(textureSource()
                 ? "Hardness 0, not solid, CUTOUT layer, max stack 64, TOOLS category, no atlas tile."
                 : blockSelected()
@@ -341,7 +343,7 @@ public class SBOExportWindow {
     }
 
     private void renderStatesTab() {
-        states().render(ImGui.getCursorPosX(), 100.0f, 360.0f, 6.0f);
+        states().render();
     }
 
     private void renderConflictHint() {
@@ -350,8 +352,7 @@ public class SBOExportWindow {
         NumericIdValidator.Result result = NumericIdValidator.validate(
                 domain, numericId.get(), objectId.get().trim());
         if (result instanceof NumericIdValidator.Result.Conflict c) {
-            ImGui.textColored(1.0f, 0.55f, 0.45f, 1.0f,
-                    "ID " + c.numericId() + " taken by " + c.existingObjectId());
+            ThemedWidgets.inlineError("ID " + c.numericId() + " taken by " + c.existingObjectId());
         }
     }
 
@@ -424,11 +425,19 @@ public class SBOExportWindow {
         performExportConfirmed();
     }
 
+    /** Mirrors the metadata half of {@code ExportParameters.getValidationError()}. */
+    private static boolean hasMetadataGaps(SBOFormat.ExportParameters params) {
+        return params.getObjectId().isBlank() || params.getObjectName().isBlank()
+                || params.getObjectPack().isBlank() || params.getAuthor().isBlank();
+    }
+
     private void performExportConfirmed() {
         SBOFormat.ExportParameters params = buildParameters();
 
         if (!params.isValid()) {
             validationMessage = params.getValidationError();
+            // Identity/attribution errors live on Metadata; everything after them is a States error
+            selectedTab = hasMetadataGaps(params) ? 0 : 2;
             return;
         }
         validationMessage = "";
@@ -460,6 +469,7 @@ public class SBOExportWindow {
             String compatError = validateClipCompatibility(params);
             if (compatError != null) {
                 validationMessage = compatError;
+                selectedTab = 2;
                 statusService.updateStatus("Export blocked: animation/model mismatch");
                 return;
             }
@@ -554,6 +564,8 @@ public class SBOExportWindow {
     /** Release the Mortar chrome region. Must run with a current GL context. */
     public void close() {
         chrome.close();
+        modelStates.close();
+        textureStates.close();
     }
 
     /**

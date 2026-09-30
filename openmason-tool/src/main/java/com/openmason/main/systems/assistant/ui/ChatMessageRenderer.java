@@ -2,6 +2,8 @@ package com.openmason.main.systems.assistant.ui;
 
 import com.openmason.main.systems.assistant.ChatMessage;
 import com.openmason.main.systems.mcp.McpImageContent;
+import com.openmason.main.systems.mortar.core.MortarRegion;
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiTreeNodeFlags;
@@ -102,7 +104,8 @@ final class ChatMessageRenderer implements AutoCloseable {
         switch (message.role) {
             case USER -> {
                 messageGap(index);
-                ImGui.pushStyleColor(ImGuiCol.Text, 0.62f, 0.80f, 1.0f, 1.0f);
+                // Accent pulled toward the text color: tinted, but readable on any theme.
+                ThemeColors.pushMix(ImGuiCol.Text, ImGuiCol.HeaderActive, ImGuiCol.Text, 0.30f);
                 ImGui.text("You");
                 ImGui.popStyleColor();
                 ImGui.indent(10);
@@ -114,14 +117,12 @@ final class ChatMessageRenderer implements AutoCloseable {
                         || !message.toolCalls.isEmpty();
                 if (hasBody) {
                     messageGap(index);
-                    ImGui.pushStyleColor(ImGuiCol.Text, 0.72f, 0.95f, 0.72f, 1.0f);
                     ImGui.text("Assistant");
-                    ImGui.popStyleColor();
                     ImGui.indent(10);
                 }
                 if (message.reasoning.length() > 0) {
                     if (ImGui.treeNodeEx("Thinking##think" + index, ImGuiTreeNodeFlags.SpanAvailWidth)) {
-                        ImGui.pushStyleColor(ImGuiCol.Text, 0.6f, 0.6f, 0.65f, 1.0f);
+                        ThemeColors.push(ImGuiCol.Text, ImGuiCol.TextDisabled);
                         ImGui.textWrapped(sanitizeForImGui(clip(message.reasoning.toString(), 8_000)));
                         ImGui.popStyleColor();
                         ImGui.treePop();
@@ -138,8 +139,9 @@ final class ChatMessageRenderer implements AutoCloseable {
                     ImGui.unindent(10);
                 }
                 if (message.notice != null) {
-                    ImGui.textColored(1.0f, 0.75f, 0.3f, 1.0f,
-                            sanitizeForImGui(message.notice));
+                    ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.WARNING);
+                    ImGui.textWrapped(sanitizeForImGui(message.notice));
+                    ImGui.popStyleColor();
                 }
             }
             case TOOL -> {
@@ -149,7 +151,7 @@ final class ChatMessageRenderer implements AutoCloseable {
                 messageGap(index);
                 if (ImGui.treeNodeEx("Compacted summary##sys" + index,
                         ImGuiTreeNodeFlags.SpanAvailWidth)) {
-                    ImGui.pushStyleColor(ImGuiCol.Text, 0.65f, 0.65f, 0.7f, 1.0f);
+                    ThemeColors.push(ImGuiCol.Text, ImGuiCol.TextDisabled);
                     ImGui.textWrapped(sanitizeForImGui(clip(message.text.toString(), 8_000)));
                     ImGui.popStyleColor();
                     ImGui.treePop();
@@ -161,7 +163,7 @@ final class ChatMessageRenderer implements AutoCloseable {
     private static void messageGap(int index) {
         if (index > 0) {
             ImGui.dummy(0, 6);
-            ImGui.pushStyleColor(ImGuiCol.Separator, 1f, 1f, 1f, 0.06f);
+            ThemeColors.pushScaledAlpha(ImGuiCol.Separator, ImGuiCol.Separator, 0.5f);
             ImGui.separator();
             ImGui.popStyleColor();
             ImGui.dummy(0, 2);
@@ -172,34 +174,32 @@ final class ChatMessageRenderer implements AutoCloseable {
 
     private void renderToolCall(ChatMessage.ToolCallRecord call, String id) {
         String icon;
-        float[] color;
         switch (call.status) {
             case OK -> {
                 icon = "[ok]";
-                color = new float[]{0.5f, 0.85f, 0.5f, 1f};
+                ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.SUCCESS);
             }
             case ERROR -> {
                 icon = "[err]";
-                color = new float[]{1f, 0.45f, 0.45f, 1f};
+                ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.ERROR);
             }
             case DENIED -> {
                 icon = "[denied]";
-                color = new float[]{1f, 0.65f, 0.3f, 1f};
+                ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.WARNING);
             }
             case RUNNING -> {
                 icon = "[run]";
-                color = new float[]{0.6f, 0.75f, 1f, 1f};
+                ThemeColors.push(ImGuiCol.Text, ImGuiCol.HeaderActive);
             }
             case AWAITING_APPROVAL -> {
                 icon = "[?]";
-                color = new float[]{1f, 0.85f, 0.4f, 1f};
+                ThemeColors.push(ImGuiCol.Text, ThemeColors.Tone.WARNING);
             }
             default -> {
                 icon = "[..]";
-                color = new float[]{0.6f, 0.6f, 0.6f, 1f};
+                ThemeColors.push(ImGuiCol.Text, ImGuiCol.TextDisabled);
             }
         }
-        ImGui.pushStyleColor(ImGuiCol.Text, color[0], color[1], color[2], color[3]);
         boolean open = ImGui.treeNodeEx(icon + " " + call.name + "##call" + id,
                 ImGuiTreeNodeFlags.SpanAvailWidth);
         ImGui.popStyleColor();
@@ -276,7 +276,8 @@ final class ChatMessageRenderer implements AutoCloseable {
             wrappedWithCode(message.text.toString(), id);
             return;
         }
-        float width = Math.max(60, ImGui.getContentRegionAvailX() - 4);
+        // Logical px: Skija prose scales with UI density like the ImGui text around it.
+        float width = Math.max(60, MortarRegion.availWidth() - 4);
         int codeIdx = 0;
         for (ChatProseSkija.Piece piece : prose.pieces(message, width)) {
             if (piece instanceof ChatProseSkija.Piece.Prose p) {
@@ -290,7 +291,8 @@ final class ChatMessageRenderer implements AutoCloseable {
 
     /** Fenced code as an ImGui child: selectable-ish, mono, with Copy. */
     private void codeChild(String code, String id) {
-        ImGui.pushStyleColor(ImGuiCol.ChildBg, 0.10f, 0.10f, 0.12f, 1.0f);
+        // Same surface as the Skija prose's inline code (MortarTheme.surface = FrameBg).
+        ThemeColors.push(ImGuiCol.ChildBg, ImGuiCol.FrameBg);
         float height = Math.min(260, 24 + 17f * (count(code, '\n') + 1));
         ImGui.beginChild("##code" + id, 0, height, true);
         ImGui.textUnformatted(sanitizeForImGui(code));

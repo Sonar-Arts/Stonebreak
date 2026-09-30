@@ -3,9 +3,9 @@ package com.openmason.main.systems.menus.textureCreator;
 import com.openmason.engine.rendering.model.gmr.uv.FaceTextureManager;
 import com.openmason.engine.rendering.model.gmr.uv.FaceTextureMapping;
 import com.openmason.engine.rendering.model.gmr.uv.MaterialDefinition;
+import com.openmason.main.systems.menus.dialogs.ModalDialogs;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
 import imgui.ImGui;
-import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImInt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -110,7 +110,7 @@ public final class FaceTextureResizeDialog {
             openNextFrame = false;
         }
 
-        if (ImGui.beginPopupModal(POPUP_ID, ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (ModalDialogs.begin(POPUP_ID, 280)) {
             ImGui.text("Face " + targetFaceId);
             ImGui.separator();
             ImGui.text("New dimensions (pixels):");
@@ -127,17 +127,17 @@ public final class FaceTextureResizeDialog {
 
             ImGui.spacing();
             ImGui.textDisabled("Nearest-neighbor scaling preserves pixel art.");
-            ImGui.spacing();
+            ImGui.textDisabled("Size range: " + RESIZE_MIN + " to " + RESIZE_MAX + " px.");
 
-            if (ImGui.button("Apply", 100, 0)) {
+            ModalDialogs.buttonsBegin();
+            if (ModalDialogs.primary("Apply", true, true)) {
                 apply(targetFaceId, targetMaterialId, w, h);
                 ImGui.closeCurrentPopup();
             }
-            ImGui.sameLine();
-            if (ImGui.button("Cancel", 100, 0)) {
+            if (ModalDialogs.cancel()) {
                 ImGui.closeCurrentPopup();
             }
-            ImGui.endPopup();
+            ModalDialogs.end();
         }
     }
 

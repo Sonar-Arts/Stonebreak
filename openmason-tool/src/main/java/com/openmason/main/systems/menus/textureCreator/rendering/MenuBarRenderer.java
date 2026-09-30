@@ -39,6 +39,7 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     private Runnable onPreferencesToggle;
     private Runnable onNoiseFilterToggle;
     private Runnable onSymmetryToggle;
+    private Runnable onDeselectAll;
     private Runnable onLayersPanelToggle;
     private Runnable onColorPanelToggle;
     private Runnable onResetLayout;
@@ -114,6 +115,13 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
      */
     public void setOnSymmetryToggle(Runnable callback) {
         this.onSymmetryToggle = callback;
+    }
+
+    /**
+     * Set callback for Edit → Deselect All.
+     */
+    public void setOnDeselectAll(Runnable callback) {
+        this.onDeselectAll = callback;
     }
 
     /**
@@ -290,6 +298,11 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
 
             if (ImGui.menuItem("Delete Selection", shortcut("texture.delete_selection"), false, hasSelection)) {
                 controller.deleteSelection();
+            }
+            if (ImGui.menuItem("Deselect All", shortcut("texture.deselect"), false, hasSelection)) {
+                if (onDeselectAll != null) {
+                    onDeselectAll.run();
+                }
             }
 
             ImGui.separator();

@@ -8,6 +8,8 @@ import com.openmason.main.systems.menus.animationEditor.data.Keyframe;
 import com.openmason.main.systems.menus.animationEditor.data.Track;
 import com.openmason.main.systems.menus.animationEditor.state.KeyframeSelection;
 import imgui.ImDrawList;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.ImVec2;
 
@@ -621,7 +623,7 @@ public final class TimelinePanel {
         if (unkeyed != null) {
             String name = pm.getPartById(unkeyed).map(ModelPartDescriptor::name).orElse(unkeyed);
             ImGui.sameLine();
-            ImGui.textColored(0.95f, 0.75f, 0.25f, 1f, "'" + name + "' moved but not keyed");
+            ThemedWidgets.statusText(ThemeColors.Tone.WARNING, "'" + name + "' moved but not keyed");
             AnimUI.tooltip("The viewport pose of '" + name + "' is not in the clip and will be "
                     + "lost on the next scrub. Select it and press K, or enable Auto-key.");
         }
@@ -629,7 +631,7 @@ public final class TimelinePanel {
         int beyond = controller.keyframesBeyondDuration();
         if (beyond > 0) {
             ImGui.sameLine();
-            ImGui.textColored(0.95f, 0.55f, 0.35f, 1f, beyond + " key(s) past clip end");
+            ThemedWidgets.statusText(ThemeColors.Tone.WARNING, beyond + " key(s) past clip end");
             AnimUI.tooltip("Keyframes beyond the clip duration are unreachable here but still "
                     + "sampled (held) and saved. Trim them from the Clip section of the inspector.");
         }

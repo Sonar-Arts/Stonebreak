@@ -230,11 +230,13 @@ public final class RavineCarver {
     }
 
     /**
-     * <p>Note the splitmix64 finalizer. The sibling carvers get away with a single rotate
-     * because their divisors are powers of two, so {@code floorMod} reads only well-mixed
-     * low bits. {@link #RAVINE_CHUNK_DIVISOR} is not a power of two, and without the
-     * finalizer the residual structure in those low bits made this return false for every
-     * chunk in a 25x25 sample — a carver that silently never spawned.
+     * <p>Note the splitmix64 finalizer, shared by every spawn hash. {@code cz * K} is XORed
+     * in after the only rotate, and the low k bits of a product depend only on the low k
+     * bits of {@code cz}, so without mixing {@code floorMod(h, D)} reads a value periodic
+     * in {@code cz}. Here it made this return false for every chunk in a 25x25 sample — a
+     * carver that silently never spawned; for the worm/cavern/megacavern divisors (8, 48,
+     * 192) it pinned each chunk column to one {@code cz} residue, so their spawns repeated
+     * along z on a fixed lattice (issue #243).
      */
     public boolean hasRavine(int cx, int cz) {
         long h = seed ^ 0x5AF17E9A5AF17E9AL;

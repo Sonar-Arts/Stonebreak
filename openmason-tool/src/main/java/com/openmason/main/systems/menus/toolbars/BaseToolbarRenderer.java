@@ -1,6 +1,9 @@
 package com.openmason.main.systems.menus.toolbars;
 
+import com.openmason.main.systems.keybinds.KeybindRegistry;
 import imgui.ImDrawList;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
@@ -48,12 +51,7 @@ public abstract class BaseToolbarRenderer {
      * Call {@link #popHighlightedFlatButtonStyle()} after rendering the button.
      */
     protected void pushHighlightedFlatButtonStyle() {
-        ImVec4 accent = ImGui.getStyle().getColor(ImGuiCol.HeaderActive);
-        ImVec4 hoverColor = ImGui.getStyle().getColor(ImGuiCol.HeaderHovered);
-
-        ImGui.pushStyleColor(ImGuiCol.Button, accent.x, accent.y, accent.z, 0.35f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonHovered, hoverColor.x, hoverColor.y, hoverColor.z, 0.6f);
-        ImGui.pushStyleColor(ImGuiCol.ButtonActive, accent.x, accent.y, accent.z, 0.8f);
+        ThemeColors.pushToggleOn();
         ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, BUTTON_ROUNDING);
         ImGui.pushStyleVar(ImGuiStyleVar.FrameBorderSize, 0.0f);
     }
@@ -183,6 +181,22 @@ public abstract class BaseToolbarRenderer {
      */
     protected float getToolbarHeight() {
         return TOOLBAR_HEIGHT;
+    }
+
+    /**
+     * Tooltip text for a button bound to a keybind action: the description
+     * plus the action's current shortcut from the registry, e.g.
+     * "Save current model (Ctrl+S)". An unregistered action gets the bare
+     * description, so a tooltip never advertises a key that is not bound.
+     */
+    protected static String withShortcut(String description, String actionId) {
+        String shortcut = KeybindRegistry.getInstance().getShortcutDisplayName(actionId);
+        return shortcut.isEmpty() ? description : description + " (" + shortcut + ")";
+    }
+
+    /** An action's display name as the Keybinds page lists it. */
+    protected static String actionName(String actionId, String fallback) {
+        return KeybindRegistry.getInstance().getActionDisplayName(actionId, fallback);
     }
 
     // ===========================

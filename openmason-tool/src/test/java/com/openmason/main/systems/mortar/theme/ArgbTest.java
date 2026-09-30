@@ -4,6 +4,7 @@ import imgui.ImVec4;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ArgbTest {
 
@@ -46,5 +47,31 @@ class ArgbTest {
         assertEquals(0xFF000000, Argb.lerp(0xFF000000, 0xFFFFFFFF, 0f));
         assertEquals(0xFFFFFFFF, Argb.lerp(0xFF000000, 0xFFFFFFFF, 1f));
         assertEquals(0xFF7F7F7F, Argb.lerp(0xFF000000, 0xFFFFFFFF, 0.5f));
+    }
+
+    @Test
+    void contrastRatioMatchesWcagEndpoints() {
+        assertEquals(21.0, Argb.contrastRatio(0xFFFFFFFF, 0xFF000000), 1e-9);
+        assertEquals(1.0, Argb.contrastRatio(0xFF5B9BD5, 0xFF5B9BD5), 1e-9);
+        // Symmetric in its arguments.
+        assertEquals(Argb.contrastRatio(0xFF3D7AB5, 0xFFFFFFFF),
+                Argb.contrastRatio(0xFFFFFFFF, 0xFF3D7AB5), 1e-12);
+    }
+
+    @Test
+    void whiteOnDarkThemeAccentFailsAaSoOnAccentPicksDarkText() {
+        int darkAccent = 0xFF5B9BD5; // ColorPalette Dark HeaderActive
+        assertEquals(2.96, Argb.contrastRatio(darkAccent, 0xFFFFFFFF), 0.01);
+        int onAccent = Argb.readableOn(darkAccent, MortarTheme.ON_ACCENT_LIGHT, MortarTheme.ON_ACCENT_DARK);
+        assertEquals(MortarTheme.ON_ACCENT_DARK, onAccent);
+        assertTrue(Argb.contrastRatio(darkAccent, onAccent) >= 4.5);
+    }
+
+    @Test
+    void lightThemeAccentKeepsWhiteText() {
+        int lightAccent = 0xFF3D7AB5; // ColorPalette Light HeaderActive
+        int onAccent = Argb.readableOn(lightAccent, MortarTheme.ON_ACCENT_LIGHT, MortarTheme.ON_ACCENT_DARK);
+        assertEquals(MortarTheme.ON_ACCENT_LIGHT, onAccent);
+        assertTrue(Argb.contrastRatio(lightAccent, onAccent) >= 4.5);
     }
 }
