@@ -175,12 +175,28 @@ public class TerrainMeshConsistencyTest {
     // Mesh build + reconstruction
     // ------------------------------------------------------------------------------------------
 
-    private MmsMeshData buildMesh(Chunk center) {
+    private List<MmsMeshData> buildMesh(Chunk center) {
         ChunkMeshResult result = adapter.generateChunkMesh(
                 new ChunkDataView(center),
                 center.getCcoStateManager(),
                 center.getCcoDirtyTracker());
-        return result.atlasMesh();
+        // Under a pulled vertex format the atlas geometry is split into the quad
+        // mesh and the per-vertex stamp mesh; both are "what the GPU draws".
+        List<MmsMeshData> parts = new ArrayList<>();
+        parts.add(result.atlasMesh());
+        if (result.hasStampMesh()) {
+            parts.add(result.stampMesh());
+        }
+        return parts;
+    }
+
+    private Map<Long, Set<Integer>> reconstructFaces(List<MmsMeshData> meshes, int cx, int cz) {
+        Map<Long, Set<Integer>> out = new HashMap<>();
+        for (MmsMeshData mesh : meshes) {
+            reconstructFaces(mesh, cx, cz).forEach((k, v) ->
+                out.computeIfAbsent(k, kk -> new LinkedHashSet<>()).addAll(v));
+        }
+        return out;
     }
 
     /**

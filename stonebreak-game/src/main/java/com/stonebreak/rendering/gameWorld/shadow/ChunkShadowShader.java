@@ -36,6 +36,7 @@ final class ChunkShadowShader {
                     uint w1 = q.y;
                     uint w2 = q.z;
                     int face = int((w0 >> 26u) & 7u);
+                    if (face > 5) { face = 0; corner = 0; } // garbage record: collapse to a zero-area point
                     float w = float((w1 >> 25u) & 15u) + 1.0;
                     float h = float(w1 & 15u) + 1.0;
                     int orient = int((w1 >> 4u) & 7u);
@@ -89,6 +90,7 @@ final class ChunkShadowShader {
                     float z = float((w0 >> 9u) & 511u) - 8.0;
                     float y = float((w0 >> 18u) & 2047u) * 0.5;
                     int face = int((w0 >> 29u) & 7u);
+                    if (face > 5) { face = 0; corner = 0; } // garbage record: collapse to a zero-area point
                     float w = float(w1 & 63u) * 0.5;
                     float h = float((w1 >> 6u) & 2047u) * 0.5;
                     layer = float((w1 >> 17u) & 4095u);
@@ -137,7 +139,14 @@ final class ChunkShadowShader {
                     vec3 nrm;
                     vec4 flags;
                     float layer;
-                    if (aOrigin.w < -1.5) {
+                    if (aOrigin.w < -2.5) {
+                        // Unknown pulled tag (e.g. water's -3): never decode it as LOD.
+                        localPos = aOrigin.xyz;
+                        uv = vec2(0.0);
+                        nrm = vec3(0.0, 1.0, 0.0);
+                        flags = vec4(0.0);
+                        layer = 0.0;
+                    } else if (aOrigin.w < -1.5) {
                         pullLodQuad(localPos, uv, nrm, flags, layer);
                         localPos += aOrigin.xyz;
                     } else if (aOrigin.w < 0.0) {

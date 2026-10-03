@@ -18,6 +18,7 @@ import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL31;
+import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GL44;
 
 import java.nio.ByteBuffer;
@@ -89,6 +90,9 @@ public final class MmsChunkRegion {
     private final BitSet indexPages;
     private long vertexVirtualBytes;
     private long indexVirtualBytes;
+    /** Sparse trim scheduled behind a fence, per arena (0 = vertex, 1 = index); see sweepDecommit. */
+    private final long[] pendingDecommitFence = new long[2];
+    private final BitSet[] pendingDecommit = new BitSet[2];
 
     private int vertexBufferId;
     private int indexBufferId;
@@ -258,6 +262,13 @@ public final class MmsChunkRegion {
         int buffer = vertex ? vertexBufferId : indexBufferId;
         int firstPage = (int) (fromByte / pageSize);
         int endPage = (int) ((toByte + pageSize - 1) / pageSize);
+        // A scheduled page that gets reused leaves the schedule: its new mesh
+        // is drawn after the pending fence, so if it dies again it must wait
+        // behind a fresh fence (sweepDecommit), not the stale one.
+        BitSet pending = pendingDecommit[vertex ? 0 : 1];
+        if (pending != null) {
+            pending.clear(firstPage, endPage);
+        }
         boolean bound = false;
         int p = firstPage;
         while (p < endPage) {
@@ -678,12 +689,36 @@ public final class MmsChunkRegion {
      * recover at least a third — except a fully empty arena always drops to
      * zero physical). Fragmentation-immune: a page frees the moment nothing
      * lives on it, wherever it sits.
+     *
+     * <p>Two-phase, fenced. A page just went dead because a mesh on it was
+     * freed, but draws queued in earlier frames may still reference that mesh
+     * and the GPU runs frames behind the CPU. Reading an uncommitted sparse
+     * page returns undefined bytes (ARB_sparse_buffer), and the spec does not
+     * order a commitment change against in-flight commands — decommitting
+     * immediately drew one frame of garbage quads (sky-wall flashes) whenever
+     * meshes were freed in bulk. So a sweep only <em>schedules</em> the dead
+     * set behind a fence; a later sweep decommits it once the fence has
+     * signalled, intersected with what is still dead by then (pages
+     * re-occupied in the meantime stay committed).
      */
     private boolean sweepDecommit(boolean vertex) {
         if (trimFraction <= 0) {
             return false;
         }
+        int arena = vertex ? 0 : 1;
         BitSet pages = vertex ? vertexPages : indexPages;
+        if (pendingDecommitFence[arena] != 0) {
+            int status = GL32.glClientWaitSync(pendingDecommitFence[arena], 0, 0L);
+            if (status != GL32.GL_ALREADY_SIGNALED && status != GL32.GL_CONDITION_SATISFIED) {
+                return false; // GPU still working through frames that may read these pages
+            }
+            GL32.glDeleteSync(pendingDecommitFence[arena]);
+            pendingDecommitFence[arena] = 0;
+            BitSet dead = deadPages(vertex);
+            dead.and(pendingDecommit[arena]);
+            pendingDecommit[arena] = null;
+            return decommit(vertex, dead);
+        }
         MmsArenaAllocator alloc = vertex ? vertexAlloc : indexAlloc;
         long elementBytes = vertex ? vertexStride : Short.BYTES;
         long committed = (long) pages.cardinality() * pageSize;
@@ -694,6 +729,23 @@ public final class MmsChunkRegion {
         if (usedBytes > (long) (committed * trimFraction)) {
             return false;
         }
+        BitSet dead = deadPages(vertex);
+        long deadBytes = (long) dead.cardinality() * pageSize;
+        if (deadBytes == 0 || (usedBytes > 0 && deadBytes * 3 < committed)) {
+            return false;
+        }
+        // Everything queued so far — including the last draws of the freed
+        // meshes — precedes this fence.
+        pendingDecommit[arena] = dead;
+        pendingDecommitFence[arena] = GL32.glFenceSync(GL32.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        return false;
+    }
+
+    /** Committed pages of one arena that no live segment touches. */
+    private BitSet deadPages(boolean vertex) {
+        BitSet pages = vertex ? vertexPages : indexPages;
+        MmsArenaAllocator alloc = vertex ? vertexAlloc : indexAlloc;
+        long elementBytes = vertex ? vertexStride : Short.BYTES;
         BitSet live = new BitSet();
         alloc.forEachLive((offset, length) -> {
             int from = (int) ((long) offset * elementBytes / pageSize);
@@ -702,10 +754,16 @@ public final class MmsChunkRegion {
         });
         BitSet dead = (BitSet) pages.clone();
         dead.andNot(live);
-        long deadBytes = (long) dead.cardinality() * pageSize;
-        if (deadBytes == 0 || (usedBytes > 0 && deadBytes * 3 < committed)) {
+        return dead;
+    }
+
+    /** Releases the physical backing of {@code dead} pages. Returns true when any were freed. */
+    private boolean decommit(boolean vertex, BitSet dead) {
+        if (dead.isEmpty()) {
             return false;
         }
+        BitSet pages = vertex ? vertexPages : indexPages;
+        long deadBytes = (long) dead.cardinality() * pageSize;
         int buffer = vertex ? vertexBufferId : indexBufferId;
         GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, buffer);
         int p = dead.nextSetBit(0);
@@ -720,6 +778,15 @@ public final class MmsChunkRegion {
         trackedBytes -= deadBytes;
         GpuMemoryTracker.getInstance().untrack(GpuMemoryTracker.Category.CHUNK_MESH, deadBytes);
         return true;
+    }
+
+    /** Drops a scheduled decommit (its pages are about to be replaced or deleted). */
+    private void cancelPendingDecommit(int arena) {
+        if (pendingDecommitFence[arena] != 0) {
+            GL32.glDeleteSync(pendingDecommitFence[arena]);
+            pendingDecommitFence[arena] = 0;
+        }
+        pendingDecommit[arena] = null;
     }
 
     /**
@@ -807,6 +874,7 @@ public final class MmsChunkRegion {
             GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, newBuffer);
             ARBSparseBuffer.glBufferPageCommitmentARB(GL31.GL_COPY_WRITE_BUFFER,
                 0, commitBytes, true);
+            cancelPendingDecommit(vertex ? 0 : 1); // old buffer and its page map go away
             pages.clear();
             pages.set(0, (int) (commitBytes / pageSize));
             if (vertex) {
@@ -922,6 +990,8 @@ public final class MmsChunkRegion {
             gpuBufferCapacity = 0;
         }
         liveHandles.clear();
+        cancelPendingDecommit(0);
+        cancelPendingDecommit(1);
         GpuMemoryTracker.getInstance()
             .untrack(GpuMemoryTracker.Category.CHUNK_MESH, trackedBytes);
         trackedBytes = 0;

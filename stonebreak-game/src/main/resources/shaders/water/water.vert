@@ -48,6 +48,7 @@ void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags,
     uvec4 q = texelFetch(u_quads, qi);
     uint w0 = q.x;
     int face = int((w0 >> 26u) & 7u);
+    if (face > 5) { face = 0; corner = 0; } // garbage record: collapse to a zero-area point
     float falling = float((w0 >> 29u) & 1u);
     float source = float((w0 >> 30u) & 1u);
     sheet = ((w0 >> 31u) & 1u) != 0u;
