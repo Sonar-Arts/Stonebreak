@@ -156,10 +156,24 @@ public final class FastLodStore implements AutoCloseable {
 
     public Path path() { return dbPath; }
 
+    /**
+     * Uncarved nodes live in their own rows: {@code level} column = index + 8.
+     * Rows 0..4 keep meaning "carved", which every row written before the
+     * carve flag existed was — so old caches stay valid.
+     */
+    static final int UNCARVED_LEVEL_OFFSET = 8;
+    /** Coarse nodes that carry tree spots: a further +16, so tree-less rows stay valid. */
+    static final int COARSE_TREES_LEVEL_OFFSET = 16;
+
+    private static int levelColumn(FastLodKey key) {
+        return key.level().index() + (key.carved() ? 0 : UNCARVED_LEVEL_OFFSET)
+            + (key.coarseTrees() ? COARSE_TREES_LEVEL_OFFSET : 0);
+    }
+
     private FastLodChunkData loadOnIoThread(FastLodKey key) {
         try {
             selectStmt.clearParameters();
-            selectStmt.setInt(1, key.level().index());
+            selectStmt.setInt(1, levelColumn(key));
             selectStmt.setInt(2, key.chunkX());
             selectStmt.setInt(3, key.chunkZ());
             try (ResultSet rs = selectStmt.executeQuery()) {
@@ -176,7 +190,7 @@ public final class FastLodStore implements AutoCloseable {
     private void writeOnIoThread(FastLodKey key, byte[] blob) {
         try {
             upsertStmt.clearParameters();
-            upsertStmt.setInt(1, key.level().index());
+            upsertStmt.setInt(1, levelColumn(key));
             upsertStmt.setInt(2, key.chunkX());
             upsertStmt.setInt(3, key.chunkZ());
             upsertStmt.setBytes(4, blob);

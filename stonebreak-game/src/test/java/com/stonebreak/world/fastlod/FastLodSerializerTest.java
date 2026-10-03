@@ -135,10 +135,47 @@ class FastLodSerializerTest {
     void previousVersionBlobsAreRejected() {
         FastLodChunkData data = makeData(FastLodLevel.L2, false);
         byte[] blob = FastLodSerializer.serialize(data);
-        assertEquals(3, blob[4], "version byte moved; update this test and the note below");
+        assertEquals(4, blob[4], "version byte moved; update this test and the note below");
         blob[4] = 2;
         assertNull(FastLodSerializer.deserialize(data.key(), blob),
                 "a pre-carve blob must miss, not load");
+    }
+
+    /** v4 appends coarse-level tree spots; they survive the round trip in order. */
+    @Test
+    void roundTripCarriesCoarseTreeSpots() {
+        FastLodLevel level = FastLodLevel.L2;
+        FastLodChunkData base = makeData(level, false);
+        FastLodKey key = FastLodKey.of(level, 3, -7, false, true);
+        int[] spots = {
+            FastLodChunkData.packTreeSpot(0, 0, TreeKind.OAK, 5),
+            FastLodChunkData.packTreeSpot(15, 9, TreeKind.PINE, 7),
+            FastLodChunkData.packTreeSpot(4, 15, TreeKind.ELM, 31),
+        };
+        FastLodChunkData original = new FastLodChunkData(key, base.rawHeights(), base.rawSurface(),
+            null, null, null, spots);
+        FastLodChunkData restored = FastLodSerializer.deserialize(key, FastLodSerializer.serialize(original));
+        assertNotNull(restored);
+        assertArrayEquals(spots, restored.treeSpots());
+        assertEquals(15, FastLodChunkData.spotX(restored.treeSpots()[1]));
+        assertEquals(9, FastLodChunkData.spotZ(restored.treeSpots()[1]));
+        assertEquals(TreeKind.PINE, FastLodChunkData.spotKind(restored.treeSpots()[1]));
+        assertEquals(31, FastLodChunkData.spotTrunk(restored.treeSpots()[2]));
+    }
+
+    /**
+     * v3 blobs (no spot section) still load for nodes that draw no coarse trees —
+     * a cache written before v4 stays warm — but can never stand in for a node
+     * that should show them.
+     */
+    @Test
+    void version3BlobsLoadOnlyForTreelessNodes() {
+        FastLodChunkData data = makeData(FastLodLevel.L2, false);
+        byte[] v4 = FastLodSerializer.serialize(data);
+        byte[] v3 = Arrays.copyOf(v4, v4.length - 2);   // drop the empty spot count
+        v3[4] = 3;
+        assertNotNull(FastLodSerializer.deserialize(data.key(), v3));
+        assertNull(FastLodSerializer.deserialize(FastLodKey.of(FastLodLevel.L2, 3, -7, true, true), v3));
     }
 
     @Test
@@ -238,9 +275,14 @@ class FastLodSerializerTest {
         FastLodChunkData data = makeData(FastLodLevel.L1, false);
         byte[] blob = FastLodSerializer.serialize(data);
         int cells = data.level().cellCount();
-        byte[] patched = Arrays.copyOf(blob, blob.length + cells * 2);
-        patched[blob.length - 1] = 1;   // treePresent flag is the last byte of a tree-less blob
-        patched[blob.length] = 2;       // one arbitrary valid tree kind (ordinal 1)
+        // v4: treePresent is followed by the u16 spot count (0 here), so the tree arrays go
+        // between them.
+        int flag = blob.length - 3;
+        byte[] patched = new byte[blob.length + cells * 2];
+        System.arraycopy(blob, 0, patched, 0, flag + 1);
+        patched[flag] = 1;              // treePresent
+        patched[flag + 1] = 2;          // one arbitrary valid tree kind (ordinal 1)
+        System.arraycopy(blob, flag + 1, patched, flag + 1 + cells * 2, 2);   // spot count
         FastLodChunkData restored = FastLodSerializer.deserialize(data.key(), patched);
         assertNotNull(restored);
         assertNull(restored.rawTrees());

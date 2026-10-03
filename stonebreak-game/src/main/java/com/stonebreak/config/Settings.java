@@ -71,6 +71,8 @@ public class Settings {
     private int renderDistance = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_RENDER_DISTANCE;
     private int lodDistance = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_LOD_RANGE;
     private boolean lodEnabled = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_LOD_ENABLED;
+    /** FastLOD fidelity preset name ({@link com.stonebreak.world.fastlod.FastLodQuality}). */
+    private String lodQuality = com.stonebreak.world.fastlod.FastLodQuality.DEFAULT.name();
 
     // VSync — when true, GLFW caps to display refresh and the manual FPS
     // limiter is bypassed. Default ON: most users expect tear-free output and
@@ -158,6 +160,7 @@ public class Settings {
             intField("renderDistance", Settings::getRenderDistance, Settings::setRenderDistance),
             intField("lodDistance", Settings::getLodDistance, Settings::setLodDistance),
             boolField("lodEnabled", Settings::getLodEnabled, Settings::setLodEnabled),
+            stringField("lodQuality", Settings::getLodQuality, Settings::setLodQuality),
             boolField("vsyncEnabled", Settings::isVsyncEnabled, Settings::setVsyncEnabled),
             intField("maxFps", Settings::getMaxFps, Settings::setMaxFps),
             intField("multiplayerPort", Settings::getMultiplayerPort, Settings::setMultiplayerPort),
@@ -291,6 +294,7 @@ public class Settings {
     public int getRenderDistance() { return renderDistance; }
     public int getLodDistance() { return lodDistance; }
     public boolean getLodEnabled() { return lodEnabled; }
+    public String getLodQuality() { return lodQuality; }
     public boolean isVsyncEnabled() { return vsyncEnabled; }
 
     // Multiplayer getters/setters
@@ -436,6 +440,11 @@ public class Settings {
 
     public void setLodEnabled(boolean value) {
         this.lodEnabled = value;
+    }
+
+    /** FastLOD fidelity preset; unknown names fall back to the default (MEDIUM). */
+    public void setLodQuality(String quality) {
+        this.lodQuality = com.stonebreak.world.fastlod.FastLodQuality.parse(quality).name();
     }
 
     /**

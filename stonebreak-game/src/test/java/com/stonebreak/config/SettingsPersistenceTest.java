@@ -50,6 +50,7 @@ class SettingsPersistenceTest {
         s.setRenderDistance(12);
         s.setLodDistance(6);
         s.setLodEnabled(false);
+        s.setLodQuality("ULTRA");
         s.setVsyncEnabled(false);
         s.setMaxFps(144);
         s.setMultiplayerPort(30000);
@@ -125,10 +126,11 @@ class SettingsPersistenceTest {
     @Test
     void serialisedTreeHasOneFieldPerSetting() {
         ObjectNode tree = fullyPopulated().toJson();
-        assertEquals(35, tree.size());
+        assertEquals(36, tree.size());
         assertTrue(tree.has("windowWidth"));
         assertTrue(tree.has("uiScale"));
         assertTrue(tree.has("multiplayerUsername"));
+        assertTrue(tree.has("lodQuality"));
     }
 
     @Test

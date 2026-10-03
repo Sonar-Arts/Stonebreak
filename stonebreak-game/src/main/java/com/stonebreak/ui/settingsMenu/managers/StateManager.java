@@ -48,6 +48,7 @@ public final class StateManager {
     private MSlider renderDistanceSlider;
     private MSlider lodDistanceSlider;
     private MButton lodEnabledButton;
+    private MDropdown lodQualityButton;
     private MButton vsyncButton;
     private MSlider maxFpsSlider;
     private MSlider uiScaleSlider;
@@ -74,6 +75,7 @@ public final class StateManager {
     private int selectedArmModelIndex = 0;
     private int selectedCrosshairStyleIndex = 0;
     private int selectedShadowQualityIndex = 1;
+    private int selectedLodQualityIndex = 1;
 
     // ─────────────────────────────────────────────── Scroll state
     private final Map<CategoryState, MScrollMath> scrollMathByCategory = new EnumMap<>(CategoryState.class);
@@ -94,6 +96,7 @@ public final class StateManager {
         selectedArmModelIndex = SettingsConfig.findArmModelIndex(settings.getArmModelType());
         selectedCrosshairStyleIndex = SettingsConfig.findCrosshairStyleIndex(settings.getCrosshairStyle());
         selectedShadowQualityIndex = SettingsConfig.findShadowQualityIndex(settings.getShadowQuality());
+        selectedLodQualityIndex = SettingsConfig.findLodQualityIndex(settings.getLodQuality());
     }
 
     private void initScrollMaths() {
@@ -196,6 +199,10 @@ public final class StateManager {
         lodDistanceSlider.size(sw, sh);
 
         lodEnabledButton = new MButton(lodEnabledLabel()).size(bw, bh);
+
+        lodQualityButton = new MDropdown("LOD Quality", SettingsConfig.LOD_QUALITY_NAMES).itemHeight(dih);
+        lodQualityButton.size(bw, bh);
+        lodQualityButton.setSelectedIndex(selectedLodQualityIndex);
         vsyncButton = new MButton(vsyncLabel()).size(bw, bh);
 
         maxFpsSlider = new MSlider(maxFpsLabel(),
@@ -218,7 +225,7 @@ public final class StateManager {
                 volumeSlider, musicVolumeSlider, musicEnabledButton, crosshairSizeSlider, playerNameTagsButton, leafTransparencyButton, waterShaderButton,
                 cloudsButton, godRaysButton, shadowsButton, shadowQualityButton, shadowDistanceSlider,
                 smoothLightingButton, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
-                vsyncButton, maxFpsSlider, uiScaleSlider, keepUiScaleButton, revertUiScaleButton}) {
+                lodQualityButton, vsyncButton, maxFpsSlider, uiScaleSlider, keepUiScaleButton, revertUiScaleButton}) {
             w.scaleText(true);
         }
     }
@@ -257,6 +264,7 @@ public final class StateManager {
         renderDistanceSlider.size(sw, sh);
         lodDistanceSlider.size(sw, sh);
         lodEnabledButton.size(bw, bh);
+        lodQualityButton.size(bw, bh).itemHeight(dih);
         vsyncButton.size(bw, bh);
         maxFpsSlider.size(sw, sh);
         uiScaleSlider.size(sw, sh);
@@ -286,6 +294,7 @@ public final class StateManager {
                              java.util.function.Consumer<Float> renderDistanceAction,
                              java.util.function.Consumer<Float> lodDistanceAction,
                              Runnable lodEnabledAction,
+                             Runnable lodQualityAction,
                              Runnable vsyncAction,
                              java.util.function.Consumer<Float> maxFpsAction,
                              java.util.function.Consumer<Float> uiScaleAction,
@@ -312,6 +321,7 @@ public final class StateManager {
         renderDistanceSlider.setOnChange(renderDistanceAction);
         lodDistanceSlider.setOnChange(lodDistanceAction);
         lodEnabledButton.setOnClick(lodEnabledAction);
+        lodQualityButton.setOnSelectionChanged(lodQualityAction);
         vsyncButton.setOnClick(vsyncAction);
         maxFpsSlider.setOnChange(maxFpsAction);
         uiScaleSlider.setOnChange(uiScaleAction);
@@ -360,6 +370,7 @@ public final class StateManager {
         renderDistanceSlider.setSelected(false);
         lodDistanceSlider.setSelected(false);
         lodEnabledButton.setSelected(false);
+        lodQualityButton.setSelected(false);
         vsyncButton.setSelected(false);
         maxFpsSlider.setSelected(false);
         uiScaleSlider.setSelected(false);
@@ -370,6 +381,7 @@ public final class StateManager {
         if (armModelButton != null) armModelButton.close();
         if (crosshairStyleButton != null) crosshairStyleButton.close();
         if (shadowQualityButton != null) shadowQualityButton.close();
+        if (lodQualityButton != null) lodQualityButton.close();
     }
 
     public void setSelectedCategory(CategoryState category) {
@@ -423,6 +435,7 @@ public final class StateManager {
         renderDistanceSlider.setLabel(renderDistanceLabel());
         lodDistanceSlider.setLabel(lodDistanceLabel());
         lodEnabledButton.setText(lodEnabledLabel());
+        lodQualityButton.setText("LOD Quality: " + SettingsConfig.LOD_QUALITY_NAMES[selectedLodQualityIndex]);
         vsyncButton.setText(vsyncLabel());
         maxFpsSlider.setLabel(maxFpsLabel());
         uiScaleSlider.setLabel(uiScaleLabel());
@@ -538,6 +551,8 @@ public final class StateManager {
     public void setSelectedCrosshairStyleIndex(int i) { this.selectedCrosshairStyleIndex = i; }
 
     public int getSelectedShadowQualityIndex() { return selectedShadowQualityIndex; }
+    public int getSelectedLodQualityIndex() { return selectedLodQualityIndex; }
+    public void setSelectedLodQualityIndex(int i) { this.selectedLodQualityIndex = i; }
     public void setSelectedShadowQualityIndex(int i) { this.selectedShadowQualityIndex = i; }
 
     public MButton getApplyButton() { return applyButton; }
@@ -556,6 +571,7 @@ public final class StateManager {
     public MButton getGodRaysButton() { return godRaysButton; }
     public MButton getShadowsButton() { return shadowsButton; }
     public MDropdown getShadowQualityButton() { return shadowQualityButton; }
+    public MDropdown getLodQualityButton() { return lodQualityButton; }
     public MSlider getShadowDistanceSlider() { return shadowDistanceSlider; }
     public MButton getSmoothLightingButton() { return smoothLightingButton; }
     public MSlider getRenderDistanceSlider() { return renderDistanceSlider; }

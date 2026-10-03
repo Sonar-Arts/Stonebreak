@@ -170,6 +170,7 @@ public class World {
                 config.setRenderDistance(s.getRenderDistance());
                 config.setLodRange(s.getLodDistance());
                 config.setLodEnabled(s.getLodEnabled());
+                config.setLodQuality(com.stonebreak.world.fastlod.FastLodQuality.parse(s.getLodQuality()));
             } catch (Exception ignored) {
                 // Settings singleton unavailable (e.g. very early bootstrap) — use config defaults.
             }
