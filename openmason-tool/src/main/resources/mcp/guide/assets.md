@@ -8,7 +8,7 @@ game resource tree.
 
 - `asset_list {query?, kind?, type?, limit?, offset?, refresh?}` — ranked
   search over every SBO (blocks/items/models) and SBE (all sbe/ folders).
-- `asset_manifest {asset}` — full manifest (gameProperties, recipes, drops,
+- `asset_manifest {asset}` — full manifest (gameProperties, recipes, drops, tool,
   sounds) + states/variants inventory.
 - `asset_mesh_summary {asset, state?, variant?}` — parts, counts, bounds,
   materials, attachment points.

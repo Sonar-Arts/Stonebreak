@@ -164,8 +164,8 @@ final class WorldMouseHandler {
 
         BlockType targetedBlockType = Game.getWorld().getBlockAt(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z);
         if (targetedBlockType == BlockType.WORKBENCH) {
-            System.out.println("Player right-clicked on a Workbench block.");
-            Game.getInstance().openWorkbenchScreen();
+            Game.getInstance().openWorkbenchScreen(
+                    new com.openmason.engine.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
         } else if (targetedBlockType == BlockType.FURNACE) {
             Game.getInstance().openFurnaceScreen(
                     new com.openmason.engine.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));

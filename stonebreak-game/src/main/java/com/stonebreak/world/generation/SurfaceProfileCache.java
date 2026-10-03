@@ -57,6 +57,12 @@ public final class SurfaceProfileCache {
      * steady-state cost of the far bands back into full rebuilds. Entries are only ever
      * allocated on demand, so the higher ceiling costs nothing at default settings and
      * ~24 MB of {@code int[256]} at the maximums.
+     *
+     * <p>Since 2026-10-03 only the carved FastLOD levels (L0–L2) read profiles; L3/L4
+     * sample the raw height. The carved area ends where L3 starts — 384 to 1024 blocks
+     * out depending on the LOD quality preset — so at ULTRA with LOD distance 64 the
+     * cache needs ~129x129 = 16.6k chunks, and at LOW/MEDIUM far fewer, whatever the
+     * LOD distance.
      */
     private static final int MAX_ENTRIES = 24576;
 

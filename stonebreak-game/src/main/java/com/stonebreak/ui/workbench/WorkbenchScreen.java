@@ -1,5 +1,6 @@
 package com.stonebreak.ui.workbench;
 
+import com.openmason.engine.util.BlockPos;
 import com.stonebreak.core.Game;
 import com.stonebreak.crafting.CraftingManager;
 import com.stonebreak.input.InputHandler;
@@ -52,10 +53,11 @@ public class WorkbenchScreen {
     }
 
     /**
-     * Opens the workbench screen.
+     * Opens the workbench screen on the crafting table at {@code pos} (each table has its own
+     * persisted grid — issue #307).
      */
-    public void open() {
-        controller.open();
+    public void open(BlockPos pos) {
+        controller.open(pos);
     }
 
     /**
@@ -63,13 +65,6 @@ public class WorkbenchScreen {
      */
     public void close() {
         controller.close();
-    }
-
-    /**
-     * Toggles the visibility of the workbench screen.
-     */
-    public void toggleVisibility() {
-        controller.toggleVisibility();
     }
 
     /**

@@ -142,17 +142,56 @@ class FastLodSerializerTest {
      * a v8 bank stands where no bank stands now; v9 roofs ground too thin to carry a
      * tunnel's air and paves a talus mound across every plunge; v10 shows a dry probe where
      * a coarse cell's footprint holds a river. The version bump forces the resample.
+     * (v11 differs from v12 only by the appended tree-spot section and still loads; see
+     * {@link #version11BlobsLoadOnlyForTreelessNodes}.)
      */
     @Test
     void previousVersionBlobsAreRejected() {
         FastLodChunkData data = makeData(FastLodLevel.L2, false);
         byte[] blob = FastLodSerializer.serialize(data);
-        assertEquals(11, blob[4], "version byte moved; update this test and the note above");
+        assertEquals(12, blob[4], "version byte moved; update this test and the note above");
         for (byte older = 4; older < 11; older++) {
             blob[4] = older;
             assertNull(FastLodSerializer.deserialize(data.key(), blob),
                     "a v" + older + " blob must miss, not load");
         }
+    }
+
+    /** v12 appends coarse-level tree spots; they survive the round trip in order. */
+    @Test
+    void roundTripCarriesCoarseTreeSpots() {
+        FastLodLevel level = FastLodLevel.L2;
+        FastLodChunkData base = makeData(level, false);
+        FastLodKey key = FastLodKey.of(level, 3, -7, false, true);
+        int[] spots = {
+            FastLodChunkData.packTreeSpot(0, 0, TreeKind.OAK, 5),
+            FastLodChunkData.packTreeSpot(15, 9, TreeKind.PINE, 7),
+            FastLodChunkData.packTreeSpot(4, 15, TreeKind.ELM, 31),
+        };
+        FastLodChunkData original = new FastLodChunkData(key, base.rawHeights(), base.rawWaterLevels(),
+            base.rawSurface(), null, null, null, spots);
+        FastLodChunkData restored = FastLodSerializer.deserialize(key, FastLodSerializer.serialize(original));
+        assertNotNull(restored);
+        assertArrayEquals(spots, restored.treeSpots());
+        assertEquals(15, FastLodChunkData.spotX(restored.treeSpots()[1]));
+        assertEquals(9, FastLodChunkData.spotZ(restored.treeSpots()[1]));
+        assertEquals(TreeKind.PINE, FastLodChunkData.spotKind(restored.treeSpots()[1]));
+        assertEquals(31, FastLodChunkData.spotTrunk(restored.treeSpots()[2]));
+    }
+
+    /**
+     * v11 blobs (no spot section) still load for nodes that draw no coarse trees —
+     * a cache written before v12 stays warm — but can never stand in for a node
+     * that should show them.
+     */
+    @Test
+    void version11BlobsLoadOnlyForTreelessNodes() {
+        FastLodChunkData data = makeData(FastLodLevel.L2, false);
+        byte[] v12 = FastLodSerializer.serialize(data);
+        byte[] v11 = Arrays.copyOf(v12, v12.length - 2);   // drop the empty spot count
+        v11[4] = 11;
+        assertNotNull(FastLodSerializer.deserialize(data.key(), v11));
+        assertNull(FastLodSerializer.deserialize(FastLodKey.of(FastLodLevel.L2, 3, -7, true, true), v11));
     }
 
     @Test
@@ -255,9 +294,14 @@ class FastLodSerializerTest {
         FastLodChunkData data = makeData(FastLodLevel.L1, false);
         byte[] blob = FastLodSerializer.serialize(data);
         int cells = data.level().cellCount();
-        byte[] patched = Arrays.copyOf(blob, blob.length + cells * 2);
-        patched[blob.length - 1] = 1;   // treePresent flag is the last byte of a tree-less blob
-        patched[blob.length] = 2;       // one arbitrary valid tree kind (ordinal 1)
+        // v4: treePresent is followed by the u16 spot count (0 here), so the tree arrays go
+        // between them.
+        int flag = blob.length - 3;
+        byte[] patched = new byte[blob.length + cells * 2];
+        System.arraycopy(blob, 0, patched, 0, flag + 1);
+        patched[flag] = 1;              // treePresent
+        patched[flag + 1] = 2;          // one arbitrary valid tree kind (ordinal 1)
+        System.arraycopy(blob, flag + 1, patched, flag + 1 + cells * 2, 2);   // spot count
         FastLodChunkData restored = FastLodSerializer.deserialize(data.key(), patched);
         assertNotNull(restored);
         assertNull(restored.rawTrees());

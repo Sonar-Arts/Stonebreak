@@ -135,6 +135,7 @@ public final class InputHandler {
             case RENDER_DISTANCE -> adjustSlider(stateManager.getRenderDistanceSlider(), direction);
             case LOD_DISTANCE -> adjustSlider(stateManager.getLodDistanceSlider(), direction);
             case LOD_ENABLED -> { if (direction != 0) actionHandler.toggleLodEnabled(); }
+            case LOD_QUALITY -> adjustLodQuality(direction);
             case VSYNC -> { if (direction != 0) actionHandler.toggleVsync(); }
             case MAX_FPS -> adjustSlider(stateManager.getMaxFpsSlider(), direction * SettingsConfig.MAX_FPS_STEP);
             default -> {}
@@ -197,6 +198,19 @@ public final class InputHandler {
             int next = Math.max(0, Math.min(max, currentIndex + direction));
             settings.setShadowQuality(SettingsConfig.SHADOW_QUALITY_VALUES[next]);
             stateManager.setSelectedShadowQualityIndex(next);
+            dropdown.setSelectedIndex(next);
+        }
+    }
+
+    private void adjustLodQuality(int direction) {
+        MDropdown dropdown = stateManager.getLodQualityButton();
+        if (dropdown.isOpen()) {
+            dropdown.adjustSelection(direction);
+            stateManager.setSelectedLodQualityIndex(dropdown.selectedIndex());
+        } else {
+            int max = SettingsConfig.LOD_QUALITY_VALUES.length - 1;
+            int next = Math.max(0, Math.min(max, stateManager.getSelectedLodQualityIndex() + direction));
+            actionHandler.applyLodQuality(next);
             dropdown.setSelectedIndex(next);
         }
     }

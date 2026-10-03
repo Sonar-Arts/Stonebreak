@@ -54,10 +54,12 @@ public final class ItemType implements Item {
     // and other objectId-keyed callers resolve consistently. The SBO files
     // exist under sbo/items/ but ItemType doesn't promote them since the enum
     // names already match.
+    // The reverse mapping matters too: objectId-keyed SBO data (tool mining
+    // stats, drop-table tool overrides) is looked up via objectIdFor().
     static {
-        BY_OBJECT_ID.put("stonebreak:stick", STICK);
-        BY_OBJECT_ID.put("stonebreak:wooden_pickaxe", WOODEN_PICKAXE);
-        BY_OBJECT_ID.put("stonebreak:wooden_axe", WOODEN_AXE);
+        mapSentinel(STICK, "stonebreak:stick");
+        mapSentinel(WOODEN_PICKAXE, "stonebreak:wooden_pickaxe");
+        mapSentinel(WOODEN_AXE, "stonebreak:wooden_axe");
     }
 
     // ----- SBO-backed items. Data comes from sbo/items/ gameProperties. ---
@@ -158,6 +160,11 @@ public final class ItemType implements Item {
         ItemType it = new ItemType(enumName, id, name, atlasX, atlasY, category, maxStackSize);
         registerInternal(it);
         return it;
+    }
+
+    private static void mapSentinel(ItemType sentinel, String objectId) {
+        BY_OBJECT_ID.put(objectId, sentinel);
+        OBJECT_ID_BY_ENUM_NAME.put(sentinel.enumName, objectId);
     }
 
     private static ItemType fromRegistry(String objectId, String enumName) {

@@ -1,5 +1,7 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.themes.utils.ThemeColors.Tone;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbe.AnimationCompatibility;
 import com.openmason.engine.format.sbe.SBEFormat;
 import com.openmason.engine.format.sbe.SBESerializer;
@@ -173,12 +175,12 @@ public class SBEExportWindow {
                 }
                 if (!validationMessage.isEmpty()) {
                     ImGui.dummy(0, 8);
-                    EditorWidgets.inlineError(validationMessage);
+                    ThemedWidgets.inlineError(validationMessage);
                 }
                 objectIndexPopup.render();
             } catch (Exception e) {
                 logger.error("Error rendering SBE export window", e);
-                ImGui.textColored(1.0f, 0.0f, 0.0f, 1.0f, "Error rendering export window");
+                ThemedWidgets.statusText(Tone.ERROR, "Error rendering export window");
             }
         }
         ImGui.end();
@@ -202,27 +204,27 @@ public class SBEExportWindow {
     }
 
     private void renderMetadataTab() {
-        EditorWidgets.sectionLabel("Identity");
+        ThemedWidgets.sectionLabel("Identity");
         ImGui.inputTextWithHint("Object ID", "e.g. stonebreak:cow", objectId);
         ImGui.sameLine();
-        if (ImGui.smallButton("Registered IDs...##sbe_show_ids")) {
+        if (ImGui.smallButton(EditorWidgets.TAKEN_IDS_LABEL + "##sbe_show_ids")) {
             objectIndexPopup.open();
         }
         ImGui.inputTextWithHint("Object Name", "e.g. Cow", objectName);
 
-        EditorWidgets.sectionLabel("Classification");
+        ThemedWidgets.sectionLabel("Classification");
         ImGui.combo("Entity Type", entityTypeIndex, ENTITY_TYPE_LABELS);
         ImGui.textDisabled("Exports into " + describeTargetFolder());
         ImGui.inputTextWithHint("Pack", "e.g. default, expansion_1", objectPack);
 
-        EditorWidgets.sectionLabel("Attribution");
+        ThemedWidgets.sectionLabel("Attribution");
         ImGui.inputTextWithHint("Author", "Creator name or studio", author);
         ImGui.text("Description");
         ImGui.inputTextMultiline("##desc", description, -1, 80);
     }
 
     private void renderStatesTab() {
-        EditorWidgets.sectionLabel("States (Optional)");
+        ThemedWidgets.sectionLabel("States (Optional)");
         ImGui.textDisabled("Each state may override the model and/or bind an animation clip.");
         ImGui.dummy(0, 4);
 
@@ -234,18 +236,18 @@ public class SBEExportWindow {
             StateBindingRow row = stateBindings.get(i);
             ImGui.pushID("sbe_state_row_" + i);
 
-            ImGui.pushItemWidth(160.0f);
+            ImGui.pushItemWidth(EditorWidgets.NAME_FIELD_WIDTH);
             ImGui.inputTextWithHint("##state_name", "e.g. idle", row.state);
             ImGui.popItemWidth();
             ImGui.sameLine();
-            if (ImGui.smallButton("Remove")) removeIndex = i;
+            if (ThemedWidgets.dangerSoftButton("Remove", EditorWidgets.REMOVE_BUTTON_WIDTH, 0f)) removeIndex = i;
 
-            renderAssetSlot("Model:", row.modelOverridePath, "(use base OMO)",
+            pathSlot("Model:", row.modelOverridePath, "(use base OMO)",
                     () -> fileDialogService.showOpenOMOInProjectDialog(p -> {
                         if (p != null && !p.isBlank()) row.modelOverridePath = Path.of(p);
                     }),
                     () -> row.modelOverridePath = null);
-            renderAssetSlot("Clip:", row.clipPath, "(no animation)",
+            pathSlot("Clip:", row.clipPath, "(no animation)",
                     () -> fileDialogService.showOpenOMADialog(p -> {
                         if (p != null && !p.isBlank()) row.clipPath = Path.of(p);
                     }),
@@ -263,7 +265,7 @@ public class SBEExportWindow {
     }
 
     private void renderVariantsTab() {
-        EditorWidgets.sectionLabel("Texture Variants (Optional)");
+        ThemedWidgets.sectionLabel("Texture Variants (Optional)");
         ImGui.textDisabled("A variant without a model override resolves to the base OMO at runtime.");
         ImGui.dummy(0, 4);
 
@@ -275,13 +277,13 @@ public class SBEExportWindow {
             VariantBindingRow row = variantBindings.get(i);
             ImGui.pushID("sbe_variant_row_" + i);
 
-            ImGui.pushItemWidth(160.0f);
+            ImGui.pushItemWidth(EditorWidgets.NAME_FIELD_WIDTH);
             ImGui.inputTextWithHint("##variant_name", "e.g. angus", row.variant);
             ImGui.popItemWidth();
             ImGui.sameLine();
-            if (ImGui.smallButton("Remove")) removeIndex = i;
+            if (ThemedWidgets.dangerSoftButton("Remove", EditorWidgets.REMOVE_BUTTON_WIDTH, 0f)) removeIndex = i;
 
-            renderAssetSlot("Model:", row.modelOverridePath, "(use base OMO)",
+            pathSlot("Model:", row.modelOverridePath, "(use base OMO)",
                     () -> fileDialogService.showOpenOMOInProjectDialog(p -> {
                         if (p != null && !p.isBlank()) row.modelOverridePath = Path.of(p);
                     }),
@@ -298,30 +300,12 @@ public class SBEExportWindow {
         }
     }
 
-    /**
-     * Labelled asset slot laid out like {@link EditorWidgets#assetSlot} but
-     * backed by a path the exporter resolves at write time instead of bytes.
-     */
-    private void renderAssetSlot(String label, Path current, String emptyHint,
+    /** Path-backed asset slot (shared layout with the editors' byte-backed slots). */
+    private static void pathSlot(String label, Path current, String emptyHint,
                                  Runnable onPick, Runnable onClear) {
-        ImGui.pushID(label);
-        ImGui.indent(20.0f);
-        ImGui.textDisabled(label);
-        ImGui.sameLine(80.0f);
-        if (current != null) {
-            ImGui.text(current.getFileName().toString());
-            if (ImGui.isItemHovered()) ImGui.setTooltip(current.toString());
-            ImGui.sameLine();
-            if (ImGui.smallButton("Replace...")) onPick.run();
-            ImGui.sameLine();
-            if (ImGui.smallButton("Clear")) onClear.run();
-        } else {
-            ImGui.textDisabled(emptyHint);
-            ImGui.sameLine();
-            if (ImGui.smallButton("Set...")) onPick.run();
-        }
-        ImGui.unindent(20.0f);
-        ImGui.popID();
+        EditorWidgets.assetSlot(label,
+                current != null ? current.getFileName().toString() : null, null, emptyHint,
+                current != null ? current.toString() : null, onPick, onClear);
     }
 
     private String describeTargetFolder() {

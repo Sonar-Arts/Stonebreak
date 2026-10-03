@@ -347,7 +347,21 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         // Distant terrain can wait for the chunks the player is standing in: every tile this
         // misses is queued behind chunk generation's (and moved up if a chunk asks for it).
         DiffusionTileCache.deferred(TGMPipe.PRIORITY_LOD, () -> {
-            sampleColumnsNow(worldX0, worldZ0, count, stride, outHeights, outWaterLevels, outSurface, outTrees);
+            sampleColumnsNow(worldX0, worldZ0, count, stride, outHeights, outWaterLevels, outSurface, outTrees, true);
+            return null;
+        });
+    }
+
+    /**
+     * {@link #sampleColumns} without the carve: heights are the raw tile height and surfaces
+     * the biome's surface block, so no {@link #buildSurfaceProfile} runs. River relocation
+     * still applies — it reads only the tile planes.
+     */
+    @Override
+    public void sampleRawColumns(int worldX0, int worldZ0, int count, int stride,
+                                 int[] outHeights, int[] outWaterLevels, BlockType[] outSurface) {
+        DiffusionTileCache.deferred(TGMPipe.PRIORITY_LOD, () -> {
+            sampleColumnsNow(worldX0, worldZ0, count, stride, outHeights, outWaterLevels, outSurface, null, false);
             return null;
         });
     }
@@ -356,7 +370,8 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                                   int[] outHeights,
                                   int[] outWaterLevels,
                                   BlockType[] outSurface,
-                                  com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees) {
+                                  com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees,
+                                  boolean carved) {
         boolean needBiomes = outSurface != null || outTrees != null;
         boolean needWater = outWaterLevels != null || outTrees != null;
         for (int ix = 0; ix < count; ix++) {
@@ -372,7 +387,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                     }
                 }
                 int rawHeight = heightMapGenerator.generateHeight(wx, wz);
-                int height = carvedSurfaceHeight(wx, wz);
+                int height = carved ? carvedSurfaceHeight(wx, wz) : rawHeight;
                 outHeights[idx] = height;
                 int waterLevel = needWater ? heightMapGenerator.waterLevel(wx, wz) : TerrainTile.NO_WATER;
                 if (outWaterLevels != null) {
@@ -400,6 +415,49 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         }
     }
 
+
+    /**
+     * Every tree the real generator plants inside a coarse FastLOD node: each column of each
+     * cell probed with {@code VegetationGenerator.probeTree} against the cell's biome (at its
+     * representative column) and sampled surface block. A submerged cell, or a carved one that
+     * exposes stone, plants nothing — exactly as a carved or drowned top grows no tree.
+     */
+    @Override
+    public int[] probeCellTrees(int chunkX, int chunkZ, int cellsPerAxis, int cellSize,
+                                int[] cellHeights, int[] cellWaterLevels, BlockType[] cellSurface) {
+        return DiffusionTileCache.deferred(TGMPipe.PRIORITY_LOD, () -> {
+            int baseX = chunkX * CHUNK_SIZE;
+            int baseZ = chunkZ * CHUNK_SIZE;
+            int[] out = new int[8];
+            int n = 0;
+            for (int ix = 0; ix < cellsPerAxis; ix++) {
+                for (int iz = 0; iz < cellsPerAxis; iz++) {
+                    int cell = ix * cellsPerAxis + iz;
+                    BlockType surface = cellSurface[cell];
+                    // probeTree only ever plants on these two; skip the biome lookup otherwise.
+                    if (cellWaterLevels[cell] > cellHeights[cell]
+                            || (surface != BlockType.GRASS && surface != BlockType.SNOWY_DIRT)) {
+                        continue;
+                    }
+                    int rep = cellSize / 2;
+                    BiomeType biome = biomeManager.getBiome(baseX + ix * cellSize + rep, baseZ + iz * cellSize + rep);
+                    for (int dx = 0; dx < cellSize; dx++) {
+                        for (int dz = 0; dz < cellSize; dz++) {
+                            int lx = ix * cellSize + dx;
+                            int lz = iz * cellSize + dz;
+                            var tree = com.stonebreak.world.generation.features.VegetationGenerator.probeTree(
+                                    baseX + lx, baseZ + lz, biome, surface, deterministicRandom);
+                            if (tree == null) continue;
+                            if (n == out.length) out = java.util.Arrays.copyOf(out, n * 2);
+                            out[n++] = com.stonebreak.world.fastlod.FastLodChunkData.packTreeSpot(
+                                    lx, lz, tree.kind(), tree.trunkHeight());
+                        }
+                    }
+                }
+            }
+            return java.util.Arrays.copyOf(out, n);
+        });
+    }
 
     private static final long NO_RIVER_COLUMN = Long.MIN_VALUE;
 

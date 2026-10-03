@@ -98,6 +98,8 @@ public class SettingsManager {
         world.getConfig().setRenderDistance(settings.getRenderDistance());
         world.getConfig().setLodRange(settings.getLodDistance());
         world.getConfig().setLodEnabled(settings.getLodEnabled());
+        world.getConfig().setLodQuality(
+                com.stonebreak.world.fastlod.FastLodQuality.parse(settings.getLodQuality()));
 
         com.stonebreak.network.client.ClientWorldView client =
                 com.stonebreak.network.MultiplayerSession.getClient();

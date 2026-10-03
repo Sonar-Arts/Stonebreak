@@ -93,8 +93,14 @@ public class MenuBarCoordinator extends BaseMenuBarRenderer {
 
         boolean clicked;
         if (textureId != -1) {
+            // The icon is a white mask; tint it with the theme text color so it
+            // stays visible on light themes.
+            ImVec4 tint = ImGui.getStyle().getColor(ImGuiCol.Text);
             clicked = ImGui.imageButton("##homeScreen", textureId,
-                    HOME_ICON_DISPLAY_SIZE, HOME_ICON_DISPLAY_SIZE);
+                    HOME_ICON_DISPLAY_SIZE, HOME_ICON_DISPLAY_SIZE,
+                    0f, 0f, 1f, 1f,
+                    0f, 0f, 0f, 0f,
+                    tint.x, tint.y, tint.z, tint.w);
         } else {
             // Fallback to text if SVG failed to load
             clicked = ImGui.button("Home");

@@ -5,6 +5,7 @@ import com.openmason.main.systems.mortar.core.PartState;
 import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.theme.MortarTheme;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.mortar.theme.MortarType;
 
 /**
  * A small rounded category pill: faint surface fill with dimmed label. Most
@@ -15,7 +16,7 @@ import com.openmason.main.systems.skija.SkijaFontStore.Weight;
  */
 public final class MortarBadge implements MortarPart {
 
-    private static final float FONT_SIZE = 11f;
+    private static final float FONT_SIZE = MortarType.CAPTION;
     private static final float PAD_X = 8f;
     private static final float HEIGHT = 18f;
 

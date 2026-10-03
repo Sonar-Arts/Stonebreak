@@ -1,6 +1,7 @@
 package com.stonebreak.world.fastlod;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.world.generation.features.VegetationGenerator.TreeKind;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
 
 /**
@@ -28,6 +29,10 @@ import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
  *   openingCoverage} is the carved share of the footprint, 0..255, which sizes the notch.
  *   Both are null at {@link FastLodLevel#L0}, where a cell is one column and its carve is
  *   already in {@code heights}.</li>
+ *   <li>{@code treeSpots} — every tree in a COARSE node's footprint (levels above L0 whose
+ *   key asks for trees), packed by {@link #packTreeSpot}: the trees the real generator
+ *   plants, at their own columns, standing on their cell's surface. L0 keeps the
+ *   per-cell {@code trees} channel instead.</li>
  * </ul>
  */
 public final class FastLodChunkData {
@@ -39,6 +44,7 @@ public final class FastLodChunkData {
     private final TreeSample[] trees;
     private final int[] openingFloor;
     private final byte[] openingCoverage;
+    private final int[] treeSpots;
 
     public FastLodChunkData(FastLodKey key, int[] heights, int[] waterLevels,
                             BlockType[] surface, TreeSample[] trees) {
@@ -48,6 +54,12 @@ public final class FastLodChunkData {
     public FastLodChunkData(FastLodKey key, int[] heights, int[] waterLevels,
                             BlockType[] surface, TreeSample[] trees,
                             int[] openingFloor, byte[] openingCoverage) {
+        this(key, heights, waterLevels, surface, trees, openingFloor, openingCoverage, null);
+    }
+
+    public FastLodChunkData(FastLodKey key, int[] heights, int[] waterLevels,
+                            BlockType[] surface, TreeSample[] trees,
+                            int[] openingFloor, byte[] openingCoverage, int[] treeSpots) {
         if (key == null) throw new IllegalArgumentException("key");
         FastLodLevel level = key.level();
         if (heights.length != level.heightCount()) {
@@ -84,7 +96,24 @@ public final class FastLodChunkData {
         this.trees = trees;
         this.openingFloor = openingFloor;
         this.openingCoverage = openingCoverage;
+        this.treeSpots = treeSpots;
     }
+
+    // ─── Tree spots (coarse levels) ────────────────────────────────────────
+
+    /** Packs one coarse-level tree: chunk-local column (0..15), kind, trunk height (0..31). */
+    public static int packTreeSpot(int localX, int localZ, TreeKind kind, int trunkHeight) {
+        return (localX & 15) | ((localZ & 15) << 4) | (kind.ordinal() << 8)
+            | (Math.max(0, Math.min(31, trunkHeight)) << 10);
+    }
+
+    public static int spotX(int spot)       { return spot & 15; }
+    public static int spotZ(int spot)       { return (spot >>> 4) & 15; }
+    public static TreeKind spotKind(int spot) { return TreeKind.values()[(spot >>> 8) & 3]; }
+    public static int spotTrunk(int spot)   { return (spot >>> 10) & 31; }
+
+    /** Trees of a coarse node, or null when the node carries none (and always at L0). */
+    public int[] treeSpots()                { return treeSpots; }
 
     public FastLodKey key()         { return key; }
     public FastLodLevel level()     { return key.level(); }

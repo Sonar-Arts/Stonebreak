@@ -8,9 +8,9 @@ import com.openmason.main.systems.mcp.approval.PromptGate;
 import com.openmason.main.systems.mcp.approval.SaveSheetGate;
 import com.openmason.main.systems.mcp.approval.SaveSheetRequest;
 import com.openmason.main.systems.mcp.approval.SaveSheetResult;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
-import imgui.flag.ImGuiCond;
-import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,9 +85,7 @@ public final class SaveSheetDialog {
         if (!ImGui.isPopupOpen(POPUP_ID)) {
             ImGui.openPopup(POPUP_ID);
         }
-        ImGui.setNextWindowSize(560, 0, ImGuiCond.Appearing);
-        if (!ImGui.beginPopupModal(POPUP_ID,
-                ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings)) {
+        if (!ModalDialogs.begin(POPUP_ID, 560)) {
             return;
         }
         SaveSheetRequest req = pending.request();
@@ -98,7 +96,7 @@ public final class SaveSheetDialog {
             ImGui.bulletText(line);
         }
         if (req.requiresPriorOmoSave()) {
-            ImGui.textColored(0.6f, 0.8f, 1.0f, 1.0f,
+            ThemedWidgets.statusTextWrapped(ThemeColors.Tone.WARNING,
                     "The model is unsaved; its .omo will be written first, then this export.");
         }
         ImGui.spacing();
@@ -106,7 +104,7 @@ public final class SaveSheetDialog {
         // ---- Where -------------------------------------------------------
         Map<WriteRoot, Path> present = sandbox.roots().present();
         if (present.isEmpty()) {
-            ImGui.textColored(1f, 0.4f, 0.4f, 1f, "No writable root is available in this session.");
+            ThemedWidgets.inlineError("No writable root is available in this session.");
         }
         ImGui.text("Where");
         ImGui.sameLine(90);
@@ -201,21 +199,20 @@ public final class SaveSheetDialog {
 
         Path candidate = candidatePath(kind);
         if (candidate != null && Files.exists(candidate)) {
-            ImGui.textColored(1.0f, 0.65f, 0.2f, 1.0f, "Will overwrite " + candidate.getFileName());
+            ThemedWidgets.statusText(ThemeColors.Tone.WARNING, "Will overwrite " + candidate.getFileName());
         }
         if (!error.isEmpty()) {
-            ImGui.textColored(1f, 0.4f, 0.4f, 1f, error);
+            ThemedWidgets.inlineError(error);
         }
         ImGui.textDisabled("Times out in " + gate.secondsRemaining() + "s");
-        ImGui.separator();
 
         // ---- Buttons -----------------------------------------------------
-        if (ImGui.button("Save")) {
+        ModalDialogs.buttonsBegin();
+        if (ModalDialogs.primary("Save", true, true)) {
             confirm(kind);
         }
         if (nativePicker != null) {
-            ImGui.sameLine();
-            if (ImGui.button("Choose different...")) {
+            if (ModalDialogs.secondary("Choose Different...")) {
                 Path dir = currentDir();
                 String suggested = candidateFileName(kind);
                 nativePicker.pick(kind, suggested == null ? kind.fallbackName() + kind.extension() : suggested,
@@ -225,12 +222,11 @@ public final class SaveSheetDialog {
                 ImGui.setTooltip("Open the OS file dialog. The chosen path must still be inside a writable root.");
             }
         }
-        ImGui.sameLine();
-        if (ImGui.button("Cancel")) {
+        if (ModalDialogs.cancel()) {
             gate.resolve(SaveSheetResult.DECLINED);
             ImGui.closeCurrentPopup();
         }
-        ImGui.endPopup();
+        ModalDialogs.end();
     }
 
     // ------------------------------------------------------------- helpers

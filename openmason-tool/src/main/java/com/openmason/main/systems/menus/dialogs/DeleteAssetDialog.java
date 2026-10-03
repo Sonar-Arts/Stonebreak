@@ -1,11 +1,9 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry;
 import imgui.ImGui;
-import imgui.flag.ImGuiCol;
-import imgui.flag.ImGuiCond;
-import imgui.flag.ImGuiKey;
-import imgui.flag.ImGuiWindowFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,56 +66,24 @@ public class DeleteAssetDialog {
             return;
         }
 
-        // Center once when the popup appears (pivot 0.5) on the viewport it opens from.
-        ImGui.setNextWindowPos(openCenterX, openCenterY, ImGuiCond.Appearing, 0.5f, 0.5f);
-        ImGui.setNextWindowSize(DIALOG_WIDTH, 0, ImGuiCond.Appearing);
-
-        if (ImGui.beginPopupModal(POPUP_ID,
-                ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings)) {
+        if (ModalDialogs.begin(POPUP_ID, new ModalDialogs.Anchor(openCenterX, openCenterY), DIALOG_WIDTH)) {
             ImGui.textWrapped("Permanently delete '" + targetEntry.name() + "' ("
                     + targetEntry.type().label() + ") from disk?");
             ImGui.textDisabled(targetEntry.pathString());
             ImGui.spacing();
 
-            ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.4f, 0.4f, 1.0f);
-            ImGui.textWrapped("Warning: This permanently deletes the file from disk. This cannot be undone.");
-            ImGui.popStyleColor();
+            ThemedWidgets.statusTextWrapped(ThemeColors.Tone.ERROR,
+                    "This permanently deletes the file from disk. This cannot be undone.");
 
-            ImGui.spacing();
-            ImGui.separator();
-            ImGui.spacing();
-
-            // Keys: Escape cancels (no callback), Enter/KeypadEnter confirms.
-            // Repeat off on the confirm keys — holding Enter past key-repeat delay
-            // (~0.3 s) must not confirm the delete without the user choosing it.
-            if (ImGui.isKeyPressed(ImGuiKey.Escape)) {
-                cancel();
-            } else if (ImGui.isKeyPressed(ImGuiKey.Enter, false)
-                    || ImGui.isKeyPressed(ImGuiKey.KeypadEnter, false)) {
+            ModalDialogs.buttonsBegin();
+            // Enter confirms (no key repeat, so a held Enter cannot delete).
+            if (ModalDialogs.danger("Delete", true)) {
                 confirmDelete();
             }
-
-            if (isOpen) {
-                // Centered button row
-                float buttonWidth = 110.0f;
-                float buttonHeight = 26.0f;
-                float spacing = 10.0f;
-                float totalWidth = buttonWidth * 2 + spacing;
-                ImGui.setCursorPosX((ImGui.getWindowWidth() - totalWidth) / 2);
-
-                // Delete button (red)
-                if (EditorWidgets.dangerButton("Delete", buttonWidth, buttonHeight)) {
-                    confirmDelete();
-                }
-
-                ImGui.sameLine(0, spacing);
-
-                if (ImGui.button("Cancel", buttonWidth, buttonHeight)) {
-                    cancel();
-                }
+            if (ModalDialogs.cancel()) {
+                cancel();
             }
-
-            ImGui.endPopup();
+            ModalDialogs.end();
         }
 
         // Re-open: the show trigger fires from another window's render, so the

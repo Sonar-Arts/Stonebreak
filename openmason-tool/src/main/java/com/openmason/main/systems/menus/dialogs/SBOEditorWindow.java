@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParser;
 import com.openmason.engine.format.sbo.SBOSerializer;
@@ -43,6 +44,7 @@ public class SBOEditorWindow {
     private final SBOStatesEditor statesEditor;
     private final SoundsEditor soundsEditor;
     private final SBODropsSection dropsSection;
+    private final SBOToolSection toolSection;
     private final NumericIdConflictPopup conflictPopup = new NumericIdConflictPopup();
     private final TakenIdsPopup takenIdsPopup = new TakenIdsPopup();
 
@@ -78,6 +80,9 @@ public class SBOEditorWindow {
     private final ImInt maxStackSize = new ImInt(64);
     private final ImString category = new ImString(64);
     private final ImBoolean placeable = new ImBoolean(true);
+    // Mining (1.9+): block material + minimum tool tier.
+    private final ImString material = new ImString(64);
+    private final ImInt requiredTier = new ImInt(0);
 
     // Fuel buffers (1.5+ — sits on the Properties tab even though it lives in
     // the top-level Document.fuel field, since it's a property of the item).
@@ -89,8 +94,13 @@ public class SBOEditorWindow {
     };
     private static final String[] RENDER_LAYER_LABELS = { "OPAQUE", "CUTOUT", "TRANSLUCENT" };
     private static final String[] TAB_LABELS = {
-            "Metadata", "Game Properties", "States", "Recipes", "Smelting", "Sounds", "Drops"
+            "Metadata", "Game Properties", "States", "Recipes", "Smelting", "Sounds", "Drops", "Tool"
     };
+
+    private static final int TAB_STATES = 2;
+    private static final int TAB_SOUNDS = 5;
+    private static final int TAB_DROPS = 6;
+    private static final int TAB_TOOL = 7;
 
     /** Mortar window chrome (action bar + tab strip); ImGui fallback inside. */
     private final EditorChrome chrome = new EditorChrome("sbo");
@@ -102,6 +112,9 @@ public class SBOEditorWindow {
         this.openModelHandler = handler;
     }
     private int selectedTab;
+
+    /** Last save-blocking problem, shown inline under the tab content (cleared on load / successful save). */
+    private String validationMessage = "";
 
     public SBOEditorWindow(FileDialogService fileDialogService, StatusService statusService) {
         this.visible = new ImBoolean(false);
@@ -118,6 +131,7 @@ public class SBOEditorWindow {
                 () -> dirty = true,
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenAudioDialog(cb::accept); });
         this.dropsSection = new SBODropsSection(() -> dirty = true);
+        this.toolSection = new SBOToolSection(() -> dirty = true);
     }
 
     /** Link the states editor to the Animation Editor (in-memory clip round trips). */
@@ -186,6 +200,7 @@ public class SBOEditorWindow {
         String err = statesEditor.validate();
         if (err == null) err = soundsEditor.validate();
         if (err == null) err = dropsSection.validate();
+        if (err == null) err = toolSection.validate();
         if (err != null) return err;
         if (hasGameProperties) {
             NumericIdValidator.Result result = NumericIdValidator.validate(
@@ -214,6 +229,7 @@ public class SBOEditorWindow {
             this.loadedStateClipBytes = raw.stateClipBytes();
             this.loadedSoundBytes = raw.soundBytes();
             populateBuffers(raw.manifest());
+            this.validationMessage = "";
             this.dirty = false;
             this.visible.set(true);
             if (statusService != null) {
@@ -251,6 +267,8 @@ public class SBOEditorWindow {
             maxStackSize.set(gp.maxStackSize());
             category.set(gp.categoryOrDefault());
             placeable.set(gp.placeable());
+            material.set(gp.material() != null ? gp.material() : "");
+            requiredTier.set(gp.requiredTier());
         }
 
         recipeSection.setFromRecipeData(doc.recipes());
@@ -261,6 +279,7 @@ public class SBOEditorWindow {
         soundsEditor.load(doc.sounds(),
                 loadedSoundBytes != null ? loadedSoundBytes::get : f -> null);
         dropsSection.setFromDropData(doc.drops());
+        toolSection.setFromToolData(doc.tool());
     }
 
     public void render() {
@@ -280,7 +299,7 @@ public class SBOEditorWindow {
                     this::saveInPlace, this::saveAs, this::openWithDialog);
             ImGui.dummy(0, 6);
             if (!loaded) {
-                ImGui.textDisabled("No SBO loaded. Use File > Open... or Tools > SBO Editor.");
+                ImGui.textDisabled(EditorWidgets.emptyEditorText("SBO"));
             } else {
                 switch (selectedTab) {
                     case 0 -> renderMetadataTab();
@@ -290,7 +309,12 @@ public class SBOEditorWindow {
                     case 4 -> smeltingSection.render();
                     case 5 -> soundsEditor.render();
                     case 6 -> dropsSection.render();
+                    case 7 -> renderToolTab();
                     default -> { }
+                }
+                if (!validationMessage.isEmpty()) {
+                    ImGui.dummy(0, 8);
+                    ThemedWidgets.inlineError(validationMessage);
                 }
             }
             conflictPopup.render();
@@ -312,11 +336,16 @@ public class SBOEditorWindow {
             }
             ImGui.separator();
         }
-        if (ImGui.inputText("Object ID", objectId))    dirty = true;
-        if (ImGui.inputText("Object Name", objectName)) dirty = true;
+        ThemedWidgets.sectionLabel("Identity");
+        if (ImGui.inputTextWithHint("Object ID", "e.g. stonebreak:oak_planks", objectId)) dirty = true;
+        if (ImGui.inputTextWithHint("Object Name", "e.g. Oak Planks", objectName))         dirty = true;
+
+        ThemedWidgets.sectionLabel("Classification");
         if (ImGui.combo("Object Type", objectTypeIndex, OBJECT_TYPE_LABELS)) dirty = true;
-        if (ImGui.inputText("Pack", objectPack))        dirty = true;
-        if (ImGui.inputText("Author", author))          dirty = true;
+        if (ImGui.inputTextWithHint("Pack", "e.g. default, expansion_1", objectPack))      dirty = true;
+
+        ThemedWidgets.sectionLabel("Attribution");
+        if (ImGui.inputTextWithHint("Author", "Creator name or studio", author))           dirty = true;
         ImGui.text("Description");
         if (ImGui.inputTextMultiline("##desc", description, -1, 80)) dirty = true;
     }
@@ -333,18 +362,18 @@ public class SBOEditorWindow {
             return;
         }
 
-        EditorWidgets.sectionLabel("Identity");
-        ImGui.pushItemWidth(140);
+        ThemedWidgets.sectionLabel("Identity");
+        ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
         if (ImGui.inputInt("Numeric ID", numericId))         dirty = true;
         ImGui.popItemWidth();
         ImGui.sameLine();
-        if (ImGui.smallButton("Taken IDs...##editor_taken")) {
+        if (ImGui.smallButton(EditorWidgets.TAKEN_IDS_LABEL + "##editor_taken")) {
             takenIdsPopup.open(currentDomain());
         }
         renderConflictHint();
 
-        EditorWidgets.sectionLabel("World");
-        ImGui.pushItemWidth(140);
+        ThemedWidgets.sectionLabel("World");
+        ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
         if (ImGui.inputFloat("Hardness", hardness))          dirty = true;
         ImGui.popItemWidth();
         if (ImGui.checkbox("Solid", solid))                  dirty = true;
@@ -353,8 +382,12 @@ public class SBOEditorWindow {
         ImGui.sameLine(320);
         if (ImGui.checkbox("Placeable", placeable))          dirty = true;
 
-        EditorWidgets.sectionLabel("Rendering");
-        ImGui.pushItemWidth(140);
+        if (isBlockType()) {
+            renderMiningControls();
+        }
+
+        ThemedWidgets.sectionLabel("Rendering");
+        ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
         if (ImGui.inputInt("Atlas X", atlasX))               dirty = true;
         ImGui.sameLine(240);
         if (ImGui.inputInt("Atlas Y", atlasY))               dirty = true;
@@ -364,15 +397,104 @@ public class SBOEditorWindow {
         ImGui.sameLine(160);
         if (ImGui.checkbox("Flower", flower))                dirty = true;
 
-        EditorWidgets.sectionLabel("Item");
+        ThemedWidgets.sectionLabel("Item");
         if (ImGui.checkbox("Stackable", stackable))          dirty = true;
         ImGui.sameLine(160);
-        ImGui.pushItemWidth(140);
+        ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
         if (ImGui.inputInt("Max Stack Size", maxStackSize))  dirty = true;
         if (ImGui.inputText("Category", category))           dirty = true;
         ImGui.popItemWidth();
         ImGui.dummy(0, 4);
         renderFuelControls();
+    }
+
+    /** Material + required tier (1.9+) and a live break-time preview per known tool. */
+    private void renderMiningControls() {
+        ThemedWidgets.sectionLabel("Mining");
+        java.util.List<String> known = SBOMiningIndex.shared().materials();
+        ImGui.pushItemWidth(EditorWidgets.NAME_FIELD_WIDTH);
+        if (ImGui.inputTextWithHint("##material", "e.g. stone", material)) dirty = true;
+        ImGui.popItemWidth();
+        ImGui.sameLine();
+        ImGui.pushItemWidth(EditorWidgets.LOOP_COMBO_WIDTH);
+        if (ImGui.beginCombo("Material", "Known")) {
+            if (ImGui.selectable("(none)", material.get().isBlank())) {
+                material.set("");
+                dirty = true;
+            }
+            for (String m : known) {
+                if (ImGui.selectable(m, m.equals(material.get().trim()))) {
+                    material.set(m);
+                    dirty = true;
+                }
+            }
+            ImGui.endCombo();
+        }
+        ImGui.popItemWidth();
+        ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
+        if (ImGui.inputInt("Required Tier", requiredTier)) {
+            if (requiredTier.get() < 0) requiredTier.set(0);
+            dirty = true;
+        }
+        ImGui.popItemWidth();
+        ImGui.sameLine();
+        ImGui.textDisabled(requiredTier.get() == 0 ? "(any tool)"
+                : "(" + SBOFormat.ToolData.tierName(requiredTier.get()) + " or better)");
+        renderBreakTimePreview();
+    }
+
+    private void renderBreakTimePreview() {
+        String mat = SBOFormat.normalizeMaterial(material.get());
+        float hard = hardness.get();
+        java.util.List<SBOMiningIndex.KnownTool> tools = SBOMiningIndex.shared().tools();
+        ImGui.dummy(0, 2);
+        if (!breakable.get()) {
+            ImGui.textDisabled("Not breakable: no tool can break this block.");
+            return;
+        }
+        int flags = imgui.flag.ImGuiTableFlags.BordersInnerH | imgui.flag.ImGuiTableFlags.SizingStretchProp;
+        if (!ImGui.beginTable("##break_preview", 3, flags)) return;
+        ImGui.tableSetupColumn("Breaking with");
+        ImGui.tableSetupColumn("Tier");
+        ImGui.tableSetupColumn("Break time");
+        ImGui.tableHeadersRow();
+        previewRow("Bare hands", "-", hard, false);
+        for (SBOMiningIndex.KnownTool t : tools) {
+            float eff = SBOFormat.ToolData.effectiveHardness(t.tool(), mat, requiredTier.get(), hard);
+            previewRow(t.displayName(), SBOFormat.ToolData.tierName(t.tool().tier()), eff,
+                    !t.tool().isEffectiveOn(mat, requiredTier.get()));
+        }
+        ImGui.endTable();
+        if (tools.isEmpty()) {
+            ImGui.textDisabled("No mining tools found on disk.");
+        } else if (mat == null) {
+            ImGui.textDisabled("No material: every tool breaks this block at bare-hand speed.");
+        }
+    }
+
+    private static void previewRow(String name, String tier, float seconds, boolean noBonus) {
+        ImGui.tableNextRow();
+        ImGui.tableSetColumnIndex(0);
+        if (noBonus) ImGui.textDisabled(name); else ImGui.text(name);
+        ImGui.tableSetColumnIndex(1);
+        ImGui.textDisabled(tier);
+        ImGui.tableSetColumnIndex(2);
+        String time = Float.isInfinite(seconds) ? "unbreakable"
+                : String.format(java.util.Locale.ROOT, "%.2f s", seconds);
+        if (noBonus) ImGui.textDisabled(time + "  (no bonus)"); else ImGui.text(time);
+    }
+
+    private void renderToolTab() {
+        if (!"item".equals(OBJECT_TYPE_LABELS[objectTypeIndex.get()])) {
+            ThemedWidgets.statusText(com.openmason.main.systems.themes.utils.ThemeColors.Tone.WARNING,
+                    "Tool data is read from item SBOs only. Set Object Type to \"item\" on the Metadata tab.");
+            ImGui.dummy(0, 4);
+        }
+        toolSection.render();
+    }
+
+    private boolean isBlockType() {
+        return "block".equals(OBJECT_TYPE_LABELS[objectTypeIndex.get()]);
     }
 
     private void renderFuelControls() {
@@ -385,7 +507,7 @@ public class SBOEditorWindow {
             dirty = true;
         }
         if (isFuel) {
-            ImGui.pushItemWidth(120);
+            ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
             if (ImGui.inputInt("Burn ticks per unit", fuelBurnTicks)) {
                 if (fuelBurnTicks.get() < 1) fuelBurnTicks.set(1);
                 dirty = true;
@@ -415,20 +537,14 @@ public class SBOEditorWindow {
     private void writeTo(String pathStr) {
         if (loadedManifest == null) return;
         String stateError = statesEditor.validate();
-        if (stateError != null) {
-            if (statusService != null) statusService.updateStatus("Cannot save: " + stateError);
-            return;
-        }
+        if (stateError != null) { rejectSave(stateError, TAB_STATES); return; }
         String soundError = soundsEditor.validate();
-        if (soundError != null) {
-            if (statusService != null) statusService.updateStatus("Cannot save: " + soundError);
-            return;
-        }
+        if (soundError != null) { rejectSave(soundError, TAB_SOUNDS); return; }
         String dropError = dropsSection.validate();
-        if (dropError != null) {
-            if (statusService != null) statusService.updateStatus("Cannot save: " + dropError);
-            return;
-        }
+        if (dropError != null) { rejectSave(dropError, TAB_DROPS); return; }
+        String toolError = toolSection.validate();
+        if (toolError != null) { rejectSave(toolError, TAB_TOOL); return; }
+        validationMessage = "";
         if (hasGameProperties) {
             NumericIdValidator.Result result = NumericIdValidator.validate(
                     currentDomain(), numericId.get(), objectId.get().trim());
@@ -438,6 +554,13 @@ public class SBOEditorWindow {
             }
         }
         performWrite(pathStr);
+    }
+
+    /** Show a save-blocking problem inline, jump to the offending tab and echo it to the status bar. */
+    private void rejectSave(String error, int tab) {
+        validationMessage = error;
+        selectedTab = tab;
+        if (statusService != null) statusService.updateStatus("Cannot save: " + error);
     }
 
     private boolean performWrite(String pathStr) {
@@ -460,6 +583,7 @@ public class SBOEditorWindow {
             loadedStateClipBytes = effectiveClipBytes;
             loadedSoundBytes = effectiveSoundBytes;
             dirty = false;
+            SBOMiningIndex.invalidate(); // materials / tools may have changed
             if (statusService != null) {
                 statusService.updateStatus("Saved SBO: " + currentPath.getFileName());
             }
@@ -475,8 +599,13 @@ public class SBOEditorWindow {
                         numericId.get(), hardness.get(), solid.get(), breakable.get(),
                         atlasX.get(), atlasY.get(), RENDER_LAYER_LABELS[renderLayerIndex.get()],
                         transparent.get(), flower.get(), stackable.get(),
-                        maxStackSize.get(), category.get().trim(), placeable.get())
+                        maxStackSize.get(), category.get().trim(), placeable.get(),
+                        material.get(), requiredTier.get())
                 : null;
+        // An invalid tool form only reaches here from a snapshot (writes validate
+        // first); keep the last good tool data rather than throwing.
+        SBOFormat.ToolData tool = toolSection.validate() == null
+                ? toolSection.toToolData() : loadedManifest.tool();
 
         return new SBOFormat.Document(
                 loadedManifest.version(),
@@ -497,7 +626,8 @@ public class SBOEditorWindow {
                 smeltingSection.toSmeltingRecipeData(),
                 isFuel ? new SBOFormat.FuelData(Math.max(1, fuelBurnTicks.get())) : null,
                 soundsEditor.toSoundData(),
-                dropsSection.toDropData()
+                dropsSection.toDropData(),
+                tool
         );
     }
 
@@ -511,8 +641,7 @@ public class SBOEditorWindow {
         NumericIdValidator.Result result = NumericIdValidator.validate(
                 domain, numericId.get(), objectId.get().trim());
         if (result instanceof NumericIdValidator.Result.Conflict c) {
-            ImGui.textColored(1.0f, 0.55f, 0.45f, 1.0f,
-                    "ID " + c.numericId() + " taken by " + c.existingObjectId());
+            ThemedWidgets.inlineError("ID " + c.numericId() + " taken by " + c.existingObjectId());
         }
     }
 

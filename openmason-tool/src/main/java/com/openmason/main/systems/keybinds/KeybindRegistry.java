@@ -122,9 +122,10 @@ public class KeybindRegistry {
         Map<ShortcutKey, String> contextMap = contextBindings.computeIfAbsent(
                 action.getContext(), k -> new LinkedHashMap<>());
 
-        // Remove old binding from context bindings
+        // Remove old binding from context bindings — only if the key still maps to
+        // this action (after a swap, another action may already own it)
         ShortcutKey oldKey = getKeybind(actionId);
-        contextMap.remove(oldKey);
+        contextMap.remove(oldKey, actionId);
 
         if (key == null) {
             // Revert to default
@@ -189,6 +190,19 @@ public class KeybindRegistry {
             return "";
         }
         return customBindings.getOrDefault(actionId, action.getDefaultKey()).getDisplayName();
+    }
+
+    /**
+     * Gets the display name of an action (the name the Keybinds page shows),
+     * so menus and tooltips label an action exactly as it is listed there.
+     *
+     * @param actionId the action ID
+     * @param fallback returned when the action is not (yet) registered
+     * @return the action's display name, or {@code fallback}
+     */
+    public synchronized String getActionDisplayName(String actionId, String fallback) {
+        KeybindAction action = actions.get(actionId);
+        return action == null ? fallback : action.getDisplayName();
     }
 
     /**

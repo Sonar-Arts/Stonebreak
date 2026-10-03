@@ -5,6 +5,7 @@ import com.openmason.main.systems.mortar.core.PartState;
 import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.theme.MortarTheme;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.mortar.theme.MortarType;
 
 /**
  * A dimmed, upper-cased section heading ("RECENT PROJECTS", "TEMPLATES") with a
@@ -13,7 +14,7 @@ import com.openmason.main.systems.skija.SkijaFontStore.Weight;
  */
 public final class MortarSectionLabel implements MortarPart {
 
-    private static final float FONT_SIZE = 11f;
+    private static final float FONT_SIZE = MortarType.CAPTION;
     private static final float GAP = 10f;
 
     private final String label;

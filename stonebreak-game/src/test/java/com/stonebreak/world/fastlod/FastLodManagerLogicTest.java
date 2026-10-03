@@ -33,8 +33,8 @@ import static org.mockito.Mockito.when;
  * re-validation against the current ring, cooperative job cancellation, and
  * full eviction. No GL — uploads return Mockito handles.
  *
- * <p>Config: renderDistance=1, lodRange=2 → ring covers Chebyshev 1..3
- * (48 columns: d≤2 → L0 incl. preload, d=3 → L1). {@code applyGLUpdates} may
+ * <p>Config: renderDistance=1, lodRange=5, quality LOW → ring covers Chebyshev 1..6
+ * (168 columns: d≤5 → L0 incl. preload/handover, d=6 → L1 at 96 blocks). {@code applyGLUpdates} may
  * stop early on its 3 ms wall-clock budget under load, so tests drain it in a
  * loop ({@link #drainGLUpdates()}) — each call is guaranteed ≥1 item of
  * progress, never a single call.
@@ -42,8 +42,10 @@ import static org.mockito.Mockito.when;
 class FastLodManagerLogicTest {
 
     private static final int INNER = 1;
-    private static final int RANGE = 2;
-    private static final int RING_NODES = 48;   // 7x7 minus the player column
+    private static final int RANGE = 5;
+    private static final int RING_NODES = 168;  // 13x13 minus the player column
+    /** The ring's one L0→L1 band edge (LOW: L1 from 96 blocks = 6 chunks). */
+    private static final int EDGE = 6;
 
     private WorldConfiguration config;
     private DiffusionTerrainGenerator terrain;
@@ -56,7 +58,9 @@ class FastLodManagerLogicTest {
 
     @BeforeEach
     void setUp() {
-        config = new WorldConfiguration(INNER, 1, RANGE, true);
+        // 32 build threads → in-flight cap 256 ≥ RING_NODES, so one tick fills the ring.
+        config = new WorldConfiguration(INNER, 32, RANGE, true);
+        config.setLodQuality(FastLodQuality.LOW);
         terrain = mock(DiffusionTerrainGenerator.class);
         when(terrain.getFinalTerrainHeightAt(anyInt(), anyInt())).thenAnswer(inv -> {
             if (terrainFails.get()) throw new RuntimeException("simulated terrain failure");
@@ -88,6 +92,17 @@ class FastLodManagerLogicTest {
             }
             return null;
         }).when(terrain).sampleColumns(anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), any(), any());
+        // Uncarved coarse levels (below ULTRA) use the raw probe: same flat terrain.
+        org.mockito.Mockito.doAnswer(inv -> {
+            int count = inv.getArgument(2);
+            int[] outHeights = inv.getArgument(4);
+            BlockType[] outSurface = inv.getArgument(6);
+            for (int i = 0; i < count * count; i++) {
+                outHeights[i] = 336;
+                if (outSurface != null) outSurface[i] = BlockType.GRASS;
+            }
+            return null;
+        }).when(terrain).sampleRawColumns(anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), any());
 
         BlockTextureArray textures = mock(BlockTextureArray.class);
         when(textures.getBlockFaceLayer(any(), anyInt())).thenReturn(7);
@@ -142,6 +157,60 @@ class FastLodManagerLogicTest {
         return null;
     }
 
+    /**
+     * The carve mode is part of a node's identity: switching the preset across
+     * ULTRA must replace the coarse nodes (L3 here) with ones sampled the other
+     * way, through the normal supersede path, and leave the carved-everywhere
+     * levels alone.
+     */
+    @Test
+    void qualitySwitchResamplesCoarseNodesInTheOtherCarveMode() {
+        // inner=1, range=24: LOW puts L3 at 384 blocks = d 24..25. Huge in-flight cap so
+        // every tick schedules up to MAX_SCHEDULES_PER_TICK.
+        WorldConfiguration cfg = new WorldConfiguration(1, 512, 24, true);
+        cfg.setLodQuality(FastLodQuality.LOW);
+        BlockTextureArray textures = mock(BlockTextureArray.class);
+        when(textures.getBlockFaceLayer(any(), anyInt())).thenReturn(7);
+        ManualExecutor exec = new ManualExecutor();
+        MmsRenderableHandle shared = mock(MmsRenderableHandle.class);
+        FastLodManager m = new FastLodManager(cfg, terrain, textures, null, exec, mesh -> shared);
+        try {
+            settle(m, exec);
+            long rawL3 = m.visibleHandles().stream()
+                .filter(e -> e.key.level() == FastLodLevel.L3 && !e.key.carved()).count();
+            assertTrue(rawL3 > 0, "LOW samples L3 uncarved");
+            int l1 = (int) m.visibleHandles().stream().filter(e -> e.key.level() == FastLodLevel.L1).count();
+
+            assertTrue(m.visibleHandles().stream().noneMatch(e -> e.key.coarseTrees()),
+                "LOW draws trees at L0 only");
+
+            cfg.setLodQuality(FastLodQuality.ULTRA);
+            settle(m, exec);
+            // ULTRA moves the bands outward too, so compare carve modes, not counts.
+            assertTrue(m.visibleHandles().stream().allMatch(e -> e.key.carved()),
+                "ULTRA replaced every uncarved node");
+            assertTrue(m.visibleHandles().stream().allMatch(e -> e.key.trees()),
+                "ULTRA draws trees on every level of this ring (L0..L2)");
+
+            cfg.setLodQuality(FastLodQuality.LOW);
+            settle(m, exec);
+            assertEquals(rawL3, m.visibleHandles().stream()
+                .filter(e -> e.key.level() == FastLodLevel.L3 && !e.key.carved()).count());
+            assertEquals(l1, m.visibleHandles().stream().filter(e -> e.key.level() == FastLodLevel.L1).count());
+            assertTrue(m.visibleHandles().stream().allMatch(e -> e.key.carved() || e.key.level().cellSize() > 4));
+        } finally {
+            m.shutdown();
+        }
+    }
+
+    private static void settle(FastLodManager m, ManualExecutor exec) {
+        for (int i = 0; i < 200; i++) {
+            m.updateRing(0, 0);
+            exec.runAll();
+            for (int k = 0; k < 200; k++) m.applyGLUpdates();
+        }
+    }
+
     @Test
     void ringBecomesResidentAndSecondTickIsIdempotent() {
         tick(0, 0);
@@ -163,8 +232,8 @@ class FastLodManagerLogicTest {
     @Test
     void bandTransitionRetiresOldHandleOnlyAfterReplacementUploads() {
         tick(0, 0);
-        // Column (3,0): d=3 from origin → L1; d=2 from (1,0) → L0.
-        FastLodKey oldKey = FastLodKey.of(FastLodLevel.L1, 3, 0);
+        // Column (EDGE,0): d=6 from origin → L1; d=5 from (1,0) → L0.
+        FastLodKey oldKey = FastLodKey.of(FastLodLevel.L1, EDGE, 0);
         MmsRenderableHandle oldHandle = handleFor(oldKey);
         assertNotNull(oldHandle);
 
@@ -177,21 +246,21 @@ class FastLodManagerLogicTest {
 
         drainGLUpdates();
         assertNull(handleFor(oldKey), "retired atomically with the replacement upload");
-        assertNotNull(handleFor(FastLodKey.of(FastLodLevel.L0, 3, 0)));
+        assertNotNull(handleFor(FastLodKey.of(FastLodLevel.L0, EDGE, 0)));
         verify(oldHandle).close();
     }
 
     @Test
     void bandTransitionReplacementInheritsCrossfadeState() {
         tick(0, 0);
-        FastLodManager.Entry old = entryFor(FastLodKey.of(FastLodLevel.L1, 3, 0));
+        FastLodManager.Entry old = entryFor(FastLodKey.of(FastLodLevel.L1, EDGE, 0));
         assertNotNull(old);
         // Simulate the render pass having partially faded this node.
         old.fade = 0.37f;
         old.nativeCovered = true;
 
-        tick(1, 0);   // column (3,0) transitions L1 → L0 via the supersede path
-        FastLodManager.Entry replacement = entryFor(FastLodKey.of(FastLodLevel.L0, 3, 0));
+        tick(1, 0);   // column (EDGE,0) transitions L1 → L0 via the supersede path
+        FastLodManager.Entry replacement = entryFor(FastLodKey.of(FastLodLevel.L0, EDGE, 0));
         assertNotNull(replacement);
         assertEquals(0.37f, replacement.fade, 1e-6f,
                 "level swap must not restart the crossfade");
@@ -266,8 +335,8 @@ class FastLodManagerLogicTest {
 
     @Test
     void cancelledJobsSkipTerrainSamplingEntirely() {
-        manager.updateRing(0, 0);      // queues 48 jobs, none run yet
-        manager.updateRing(100, 100);  // cancels all of them, queues 48 new ones
+        manager.updateRing(0, 0);      // queues 168 jobs, none run yet
+        manager.updateRing(100, 100);  // cancels all of them, queues 168 new ones
         executor.runAll();
         drainGLUpdates();
 
@@ -277,13 +346,13 @@ class FastLodManagerLogicTest {
             assertTrue(d >= 1 && d <= INNER + RANGE, "resident node outside the current ring");
         }
 
-        // Cooperative cancellation: the 48 stale jobs must exit before touching
+        // Cooperative cancellation: the 168 stale jobs must exit before touching
         // the terrain system, so total height samples equal exactly one ring.
         int expectedHeightCalls = 0;
         for (int dx = -(INNER + RANGE); dx <= INNER + RANGE; dx++) {
             for (int dz = -(INNER + RANGE); dz <= INNER + RANGE; dz++) {
                 FastLodLevel level = FastLodBandPolicy.levelFor(
-                        Math.max(Math.abs(dx), Math.abs(dz)), INNER, RANGE);
+                        Math.max(Math.abs(dx), Math.abs(dz)), INNER, RANGE, FastLodQuality.LOW);
                 if (level != null) expectedHeightCalls += level.stride() * level.stride();
             }
         }
@@ -293,7 +362,7 @@ class FastLodManagerLogicTest {
     @Test
     void generateFailureLeavesOldNodeIntactAndRecovers() {
         tick(0, 0);
-        FastLodKey oldKey = FastLodKey.of(FastLodLevel.L1, 3, 0);
+        FastLodKey oldKey = FastLodKey.of(FastLodLevel.L1, EDGE, 0);
         MmsRenderableHandle oldHandle = handleFor(oldKey);
         assertNotNull(oldHandle);
 
@@ -305,7 +374,7 @@ class FastLodManagerLogicTest {
         now.addAndGet(FastLodManager.RETRY_BACKOFF_NANOS);
         tick(1, 0);   // reschedules the failed keys once their backoff has run out
         assertNull(handleFor(oldKey));
-        assertNotNull(handleFor(FastLodKey.of(FastLodLevel.L0, 3, 0)));
+        assertNotNull(handleFor(FastLodKey.of(FastLodLevel.L0, EDGE, 0)));
         verify(oldHandle).close();
     }
 

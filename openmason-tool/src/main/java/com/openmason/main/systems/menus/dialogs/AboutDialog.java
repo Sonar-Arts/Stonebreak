@@ -3,7 +3,8 @@ package com.openmason.main.systems.menus.dialogs;
 import com.openmason.main.systems.LogoManager;
 import com.openmason.main.systems.stateHandling.HelpWindowVisibilityState;
 import imgui.ImGui;
-import imgui.flag.ImGuiWindowFlags;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import imgui.flag.ImGuiCol;
 
 /**
  * About dialog window.
@@ -32,12 +33,8 @@ public class AboutDialog {
             return;
         }
 
-        // Set fixed size for about dialog to prevent flickering during drag
-        ImGui.setNextWindowSize(400, 300, imgui.flag.ImGuiCond.FirstUseEver);
-
-        if (ImGui.begin("About " + toolName, visibilityState.getShowAboutWindow(),
-                ImGuiWindowFlags.NoCollapse)) {
-
+        ModalDialogs.openIfNeeded(popupId());
+        if (ModalDialogs.begin(popupId(), 360)) {
             // Render large logo at the top
             if (logoManager != null) {
                 logoManager.renderAboutLogo();
@@ -45,24 +42,27 @@ public class AboutDialog {
             }
 
             // Application title and version
-            ImGui.textColored(0.2f, 0.6f, 1.0f, 1.0f, toolName);
+            ThemeColors.push(ImGuiCol.Text, ImGuiCol.CheckMark);
+            ImGui.text(toolName);
+            ImGui.popStyleColor();
             ImGui.sameLine();
             ImGui.text("v0.0.5");
 
             // Simple description
             ImGui.textDisabled("Part of the OpenMason Toolset");
-            ImGui.spacing();
-            ImGui.spacing();
 
-            // Close button
-            float windowWidth = ImGui.getWindowSize().x;
-            float buttonWidth = 80.0f;
-            ImGui.setCursorPosX((windowWidth - buttonWidth) * 0.5f);
-
-            if (ImGui.button("Close", buttonWidth, 0)) {
+            ModalDialogs.buttonsBegin();
+            if (ModalDialogs.closeButton()) {
                 visibilityState.getShowAboutWindow().set(false);
+                ImGui.closeCurrentPopup();
             }
+            ModalDialogs.end();
+        } else {
+            visibilityState.getShowAboutWindow().set(false);
         }
-        ImGui.end();
+    }
+
+    private String popupId() {
+        return "About " + toolName + "##aboutDialog";
     }
 }

@@ -7,7 +7,8 @@ import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
 import com.openmason.main.systems.themes.application.DensityManager;
 import com.openmason.main.systems.themes.core.ThemeDefinition;
 import com.openmason.main.systems.themes.core.ThemeManager;
-import com.openmason.main.systems.themes.utils.ImGuiComponents;
+import com.openmason.main.systems.themes.utils.ThemeColors.Tone;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.engine.rendering.viewer.math.SnappingUtil;
 import imgui.ImGui;
@@ -22,7 +23,12 @@ import org.slf4j.LoggerFactory;
  * <p>
  * Uses a deferred-apply model: slider and combo changes only update local ImGui state.
  * Changes are persisted and applied to live systems only when {@link #applyAllSettings()} is called
- * (triggered by the OK or Apply buttons in {@link PreferencesWindow}).
+ * (triggered by the OK or Apply buttons in {@link PreferencesWindow}). Cancel simply discards
+ * the staged state (it is re-synced from persistence on the next open).
+ * </p>
+ * <p>
+ * The one exception is Keybinds, which applies immediately; {@link #cancelChanges()} reverts
+ * those from a {@link KeybindSnapshot} taken on open / Apply.
  * </p>
  * <p>
  * Architecture:
@@ -35,6 +41,11 @@ import org.slf4j.LoggerFactory;
 public class PreferencesPageRenderer {
 
     private static final Logger logger = LoggerFactory.getLogger(PreferencesPageRenderer.class);
+
+    private static final float KEYCAP_W = 150.0f;
+
+    /** Keybinds at window open / last Apply — Cancel restores these (keybind edits are immediate). */
+    private KeybindSnapshot keybindSnapshot;
 
     // Model Editor constants
     private static final float MIN_CAMERA_SENSITIVITY = 0.1f;
@@ -167,6 +178,7 @@ public class PreferencesPageRenderer {
         syncCommonState();
         syncAssetsState();
         syncAssistantState();
+        keybindSnapshot = KeybindSnapshot.capture(keybindRegistry);
 
         logger.debug("All preference pages synced from persistence");
     }
@@ -186,7 +198,37 @@ public class PreferencesPageRenderer {
         // Adds defaults for any missing keys without overwriting existing values.
         preferencesManager.migrateFile();
 
+        // Keybinds are already live; Apply makes their current state the new revert point.
+        keybindSnapshot = KeybindSnapshot.capture(keybindRegistry);
+
         logger.info("All preferences applied and saved");
+    }
+
+    /**
+     * Reverts everything that took effect before Apply/OK: keybind edits (immediate).
+     * Staged values on every other page were never applied, so they are just dropped
+     * and re-synced from persistence on the next open. Idempotent.
+     */
+    public void cancelChanges() {
+        if (keybindSnapshot == null) {
+            return;
+        }
+        int reverted = keybindSnapshot.restore(keybindRegistry, (id, key) -> {
+            if (key == null) {
+                preferencesManager.clearKeybind(id);
+            } else {
+                preferencesManager.setKeybind(id, key);
+            }
+        });
+        if (reverted > 0) {
+            logger.info("Preferences cancelled: {} keybind(s) reverted", reverted);
+        }
+        conflictDialog.hide();
+    }
+
+    /** True while a key-capture or conflict modal owns input (Escape belongs to it). */
+    public boolean isModalOpen() {
+        return keyCaptureDialog.isCapturing() || conflictDialog.isVisible();
     }
 
     // ========================================
@@ -228,39 +270,21 @@ public class PreferencesPageRenderer {
     // ========================================
 
     private void renderModelEditorPage() {
-        // Camera Settings Section
-        ImGuiComponents.renderSectionHeader("Camera Settings");
+        PreferencesRows.section("Camera Settings");
         renderCameraSettings();
 
-        ImGuiComponents.addSectionSeparator();
-
-        // Grid Settings Section
-        ImGuiComponents.renderSectionHeader("Grid Settings");
+        PreferencesRows.section("Grid Settings");
         renderGridSettings();
 
-        ImGuiComponents.addSectionSeparator();
-
-        // Gizmo Settings Section
-        ImGuiComponents.renderSectionHeader("Gizmo Settings");
+        PreferencesRows.section("Gizmo Settings");
         renderGizmoSettings();
 
-        ImGuiComponents.addSectionSeparator();
-
-        ImGui.spacing();
-
-        ImGuiComponents.renderButton(
-                "Reset to Defaults",
-                150.0f,
-                0.0f,
-                this::resetModelEditorToDefaults
-        );
+        renderResetButton(this::resetModelEditorToDefaults);
     }
 
     private void renderCameraSettings() {
-        ImGuiComponents.renderSubHeader("Orbit");
-        ImGuiComponents.renderSettingSeparator();
-
-        ImGuiComponents.renderSliderSetting(
+        PreferencesRows.group("Orbit");
+        PreferencesRows.slider(
                 "Orbit Speed",
                 "Controls how fast the camera orbits when dragging with the left mouse button.\n" +
                         "Higher values = faster rotation.\n" +
@@ -268,16 +292,11 @@ public class PreferencesPageRenderer {
                 cameraMouseSensitivity,
                 MIN_CAMERA_SENSITIVITY,
                 MAX_CAMERA_SENSITIVITY,
-                "%.1f",
-                v -> {} // Deferred — applied on OK/Apply
+                "%.1f"
         );
 
-        ImGuiComponents.addSpacing();
-
-        ImGuiComponents.renderSubHeader("Pan");
-        ImGuiComponents.renderSettingSeparator();
-
-        ImGuiComponents.renderSliderSetting(
+        PreferencesRows.group("Pan");
+        PreferencesRows.slider(
                 "Pan Speed",
                 "Controls how fast the camera pans when dragging with the middle mouse button.\n" +
                         "Pan speed also scales with zoom distance for consistent feel.\n" +
@@ -285,13 +304,12 @@ public class PreferencesPageRenderer {
                 cameraPanSensitivity,
                 MIN_PAN_SENSITIVITY,
                 MAX_PAN_SENSITIVITY,
-                "%.1f",
-                v -> {} // Deferred — applied on OK/Apply
+                "%.1f"
         );
     }
 
     private void renderGizmoSettings() {
-        ImGuiComponents.renderComboBoxSetting(
+        PreferencesRows.combo(
                 "Display Mode",
                 "Controls how the transform gizmo is shown/hidden.\n" +
                         "Manual Toggle: Show/hide with Ctrl+T or checkbox.\n" +
@@ -299,26 +317,22 @@ public class PreferencesPageRenderer {
                         "hides when no parts are selected. Ctrl+T temporarily overrides.\n" +
                         "Default: Auto-Show on Selection",
                 GIZMO_DISPLAY_MODE_NAMES,
-                gizmoDisplayModeIndex,
-                200.0f,
-                v -> {} // Deferred — applied on OK/Apply
+                gizmoDisplayModeIndex
         );
     }
 
     private void renderGridSettings() {
-        ImGuiComponents.renderComboBoxSetting(
+        PreferencesRows.combo(
                 "Grid Snapping Increment",
                 "Controls the snapping precision when grid snapping is enabled.\n" +
                         "Smaller increments allow for finer positioning control.\n" +
                         "Enable grid snapping in the Viewport Controls window.\n" +
                         "Default: 1/16 Block",
                 GRID_SNAPPING_INCREMENT_NAMES,
-                gridSnappingIncrementIndex,
-                200.0f,
-                v -> {} // Deferred — applied on OK/Apply
+                gridSnappingIncrementIndex
         );
 
-        ImGuiComponents.renderSliderSetting(
+        PreferencesRows.slider(
                 "Vertex Point Size",
                 "Controls the size of vertex points when 'Show Mesh' is enabled.\n" +
                         "Larger values make vertices more visible.\n" +
@@ -327,8 +341,7 @@ public class PreferencesPageRenderer {
                 vertexPointSize,
                 MIN_VERTEX_POINT_SIZE,
                 MAX_VERTEX_POINT_SIZE,
-                "%.1f",
-                v -> {} // Deferred — applied on OK/Apply
+                "%.1f"
         );
     }
 
@@ -482,10 +495,8 @@ public class PreferencesPageRenderer {
             return;
         }
 
-        // Grid Overlay Section
-        ImGuiComponents.renderSectionHeader("Grid Overlay");
-        ImGui.indent();
-        ImGuiComponents.renderSliderSetting(
+        PreferencesRows.section("Grid Overlay");
+        PreferencesRows.slider(
                 "Grid Opacity",
                 "Controls the opacity of the pixel grid overlay (toggleable with 'G' key).\n" +
                         "Includes both minor grid lines (every pixel) and major lines (every 4th pixel).\n" +
@@ -493,17 +504,11 @@ public class PreferencesPageRenderer {
                 gridOpacitySlider,
                 TextureCreatorPreferences.MIN_OPACITY,
                 TextureCreatorPreferences.MAX_OPACITY,
-                "%.2f",
-                v -> {} // Deferred
+                "%.2f"
         );
-        ImGui.unindent();
 
-        ImGuiComponents.addSectionSeparator();
-
-        // Cube Net Reference Section
-        ImGuiComponents.renderSectionHeader("Cube Net Reference (64x48)");
-        ImGui.indent();
-        ImGuiComponents.renderSliderSetting(
+        PreferencesRows.section("Cube Net Reference (64x48)");
+        PreferencesRows.slider(
                 "Reference Opacity",
                 "Controls opacity of the cube-net reference overlay (independent of grid).\n" +
                         "Shows face labels (TOP, LEFT, FRONT, RIGHT, BACK, BOTTOM) and boundaries.\n" +
@@ -512,21 +517,13 @@ public class PreferencesPageRenderer {
                 cubeNetOverlayOpacitySlider,
                 TextureCreatorPreferences.MIN_OPACITY,
                 TextureCreatorPreferences.MAX_OPACITY,
-                "%.2f",
-                v -> {} // Deferred
+                "%.2f"
         );
-        ImGui.unindent();
 
-        ImGuiComponents.addSectionSeparator();
+        PreferencesRows.section("Tool Behavior");
 
-        // Tool Behavior Section
-        ImGuiComponents.renderSectionHeader("Tool Behavior");
-        ImGui.indent();
-
-        ImGuiComponents.renderSubHeader("Move Tool");
-        ImGuiComponents.renderSettingSeparator();
-
-        ImGuiComponents.renderSliderSetting(
+        PreferencesRows.group("Move Tool");
+        PreferencesRows.slider(
                 "Rotation Speed",
                 "Controls rotation speed when using the move tool's rotate handle.\n" +
                         "Higher values = faster rotation.\n" +
@@ -534,36 +531,19 @@ public class PreferencesPageRenderer {
                 rotationSpeedSlider,
                 TextureCreatorPreferences.MIN_ROTATION_SPEED,
                 TextureCreatorPreferences.MAX_ROTATION_SPEED,
-                "%.2f deg/px",
-                v -> {} // Deferred
+                "%.2f deg/px"
         );
 
-        ImGuiComponents.addSpacing();
-
-        ImGuiComponents.renderSubHeader("Paste/Move Operations");
-        ImGuiComponents.renderSettingSeparator();
-
-        ImGuiComponents.renderCheckboxSetting(
+        PreferencesRows.group("Paste/Move Operations");
+        PreferencesRows.checkbox(
                 "Skip Transparent Pixels",
                 "When enabled, fully transparent pixels (alpha = 0) won't overwrite existing pixels\n" +
                         "during paste or move operations. When disabled, transparent pixels will clear\n" +
                         "the destination, allowing you to erase with transparent selections.",
-                skipTransparentPixelsCheckbox,
-                v -> {} // Deferred
+                skipTransparentPixelsCheckbox
         );
 
-        ImGui.unindent();
-
-        ImGuiComponents.addSectionSeparator();
-
-        ImGui.spacing();
-
-        ImGuiComponents.renderButton(
-                "Reset to Defaults",
-                150.0f,
-                0.0f,
-                this::resetTextureEditorToDefaults
-        );
+        renderResetButton(this::resetTextureEditorToDefaults);
     }
 
     private void applyTextureEditorSettings() {
@@ -607,20 +587,10 @@ public class PreferencesPageRenderer {
     // ========================================
 
     private void renderCommonPage() {
-        // Appearance Settings Section
-        ImGuiComponents.renderSectionHeader("Appearance");
+        PreferencesRows.section("Appearance");
         renderAppearanceSettings();
 
-        ImGuiComponents.addSectionSeparator();
-
-        ImGui.spacing();
-
-        ImGuiComponents.renderButton(
-                "Reset to Defaults",
-                150.0f,
-                0.0f,
-                this::resetCommonToDefaults
-        );
+        renderResetButton(this::resetCommonToDefaults);
     }
 
     private void renderAppearanceSettings() {
@@ -628,15 +598,13 @@ public class PreferencesPageRenderer {
                 .map(ThemeDefinition::getName)
                 .toArray(String[]::new);
 
-        ImGuiComponents.renderComboBoxSetting(
+        PreferencesRows.combo(
                 "Theme",
                 "Select the color theme for Open Mason.\n" +
                         "Themes define the overall look and color scheme of the interface.\n" +
                         "Applied when OK or Apply is clicked.",
                 themeNames,
-                themeIndex,
-                200.0f,
-                v -> {} // Deferred
+                themeIndex
         );
 
         String[] densityNames = new String[DensityManager.UIDensity.values().length];
@@ -645,7 +613,7 @@ public class PreferencesPageRenderer {
             densityNames[idx++] = density.getDisplayName();
         }
 
-        ImGuiComponents.renderComboBoxSetting(
+        PreferencesRows.combo(
                 "UI Density",
                 "Controls the spacing and size of UI elements.\n" +
                         "Compact: Minimal padding, more content visible\n" +
@@ -654,9 +622,7 @@ public class PreferencesPageRenderer {
                         "Spacious: Maximum spacing for accessibility\n" +
                         "Applied when OK or Apply is clicked.",
                 densityNames,
-                densityIndex,
-                200.0f,
-                v -> {} // Deferred
+                densityIndex
         );
     }
 
@@ -704,25 +670,15 @@ public class PreferencesPageRenderer {
     // ========================================
 
     private void renderAssetsPage() {
-        ImGuiComponents.renderSectionHeader("Projects Folder");
+        PreferencesRows.section("Projects Folder");
         ImGui.textWrapped("The Project Hub scans this folder for projects, and new projects are "
                 + "created here by default. Changes are applied when you click OK or Apply.");
         ImGui.spacing();
 
-        ImGui.pushItemWidth(-1);
+        ImGui.setNextItemWidth(-1);
         ImGui.inputText("##projectsFolder", projectsFolderInput);
-        ImGui.popItemWidth();
-        ImGui.spacing();
 
-        ImGuiComponents.addSectionSeparator();
-        ImGui.spacing();
-
-        ImGuiComponents.renderButton(
-                "Reset to Defaults",
-                150.0f,
-                0.0f,
-                this::resetAssetsToDefaults
-        );
+        renderResetButton(this::resetAssetsToDefaults);
     }
 
     private void syncAssetsState() {
@@ -781,21 +737,20 @@ public class PreferencesPageRenderer {
         keyCaptureDialog.render();
         conflictDialog.render();
 
+        ImGui.textWrapped("Keybind changes take effect immediately. Cancel reverts any keybind "
+                + "changes made since Preferences was opened (or last applied).");
+
         java.util.Set<String> contexts = keybindRegistry.getAllContexts();
 
         for (String context : contexts) {
-            // Section header for the program area
             String sectionName = CONTEXT_DISPLAY_NAMES.getOrDefault(context,
                     context.substring(0, 1).toUpperCase() + context.substring(1));
-            ImGuiComponents.renderSectionHeader(sectionName);
-            ImGui.indent();
+            PreferencesRows.section(sectionName);
 
-            // Sub-group by category within this context
             java.util.Set<String> categories = keybindRegistry.getCategoriesForContext(context);
 
             for (String category : categories) {
-                ImGuiComponents.renderSubHeader(category);
-                ImGuiComponents.renderSettingSeparator();
+                PreferencesRows.group(category);
 
                 java.util.List<com.openmason.main.systems.keybinds.KeybindAction> actions =
                         keybindRegistry.getActionsByContextAndCategory(context, category);
@@ -803,76 +758,50 @@ public class PreferencesPageRenderer {
                 for (com.openmason.main.systems.keybinds.KeybindAction action : actions) {
                     renderKeybindRow(action);
                 }
-
-                ImGuiComponents.addSpacing();
             }
-
-            ImGui.unindent();
-            ImGuiComponents.addSectionSeparator();
         }
 
         renderBuiltinControlsSection();
 
-        ImGui.spacing();
-        ImGuiComponents.renderButton(
-                "Reset All to Defaults",
-                150.0f,
-                0.0f,
-                this::resetAllKeybinds
-        );
+        renderResetButton(this::resetAllKeybinds, "Resets every keybind. Applies immediately; Cancel reverts it");
     }
 
     /** Read-only reference for the viewport's non-rebindable controls. */
     private void renderBuiltinControlsSection() {
-        ImGuiComponents.renderSectionHeader("Built-in Controls (fixed)");
-        ImGui.indent();
+        PreferencesRows.section("Built-in Controls (fixed)");
 
         for (String[][] group : BUILTIN_CONTROLS) {
-            ImGuiComponents.renderSubHeader(group[0][0]);
-            ImGuiComponents.renderSettingSeparator();
+            PreferencesRows.group(group[0][0]);
 
             for (int i = 1; i < group.length; i++) {
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 0.75f, 0.78f, 0.85f, 1.0f);
+                float x0 = ImGui.getCursorPosX();
                 ImGui.text(group[i][0]);
-                ImGui.popStyleColor();
-                ImGui.sameLine(210.0f);
-                ImGui.textWrapped(group[i][1]);
+                ImGui.sameLine(x0 + PreferencesRows.LABEL_COL);
+                ImGui.textDisabled(group[i][1]);
             }
-
-            ImGuiComponents.addSpacing();
         }
-
-        ImGui.unindent();
-        ImGuiComponents.addSectionSeparator();
     }
 
     private void renderKeybindRow(com.openmason.main.systems.keybinds.KeybindAction action) {
-        float labelWidth = 250.0f;
-        float keyWidth = 150.0f;
-        float buttonWidth = 80.0f;
-
+        float x0 = ImGui.getCursorPosX();
+        ImGui.alignTextToFramePadding();
         ImGui.text(action.getDisplayName());
-        ImGui.sameLine(labelWidth);
+        ImGui.sameLine(x0 + PreferencesRows.LABEL_COL);
 
         com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey currentKey =
                 keybindRegistry.getKeybind(action.getId());
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.2f, 0.2f, 0.25f, 1.0f);
-        ImGui.button(currentKey.getDisplayName() + "##key_" + action.getId(), keyWidth, 0);
-        ImGui.popStyleColor();
+        PreferencesRows.keycap(currentKey.getDisplayName(), "key_" + action.getId(), KEYCAP_W);
 
         ImGui.sameLine();
-        if (ImGui.button("Rebind##rebind_" + action.getId(), buttonWidth, 0)) {
+        if (ImGui.button("Rebind##rebind_" + action.getId())) {
             startKeybindCapture(action);
         }
 
-        ImGui.sameLine();
-        boolean isCustomized = keybindRegistry.isCustomized(action.getId());
-        if (isCustomized) {
-            if (ImGui.button("Reset##reset_" + action.getId(), 60, 0)) {
+        if (keybindRegistry.isCustomized(action.getId())) {
+            ImGui.sameLine();
+            if (ImGui.button("Reset##reset_" + action.getId())) {
                 resetKeybind(action.getId());
             }
-        } else {
-            ImGui.dummy(60, 0);
         }
     }
 
@@ -953,116 +882,125 @@ public class PreferencesPageRenderer {
     // ========================================
 
     private void renderAssistantPage() {
-        ImGuiComponents.renderSectionHeader("Local LLM Server");
+        PreferencesRows.section("Local LLM Server");
         ImGui.textWrapped("OpenAI-compatible endpoint (vLLM, SGLang). The served model is "
-                + "discovered automatically — only one model runs per port. Applied on OK/Apply.");
+                + "discovered automatically - only one model runs per port. Applied on OK/Apply.");
         ImGui.spacing();
-        ImGui.text("Endpoint");
-        ImGui.sameLine(160);
-        ImGui.pushItemWidth(320);
-        ImGui.inputText("##assistantEndpoint", assistantEndpoint);
-        ImGui.popItemWidth();
-        ImGui.text("API key");
-        ImGui.sameLine(160);
-        ImGui.pushItemWidth(320);
-        ImGui.inputText("##assistantApiKey", assistantApiKey,
+        PreferencesRows.text("Endpoint", null, assistantEndpoint, 0);
+        PreferencesRows.text("API key", null, assistantApiKey,
                 imgui.flag.ImGuiInputTextFlags.Password);
-        ImGui.popItemWidth();
-        ImGui.sameLine();
+        PreferencesRows.indentToControls();
         if (ImGui.button("Test connection")) {
             testAssistantConnection();
         }
-        if (assistantTestResult != null) {
+        String testResult = assistantTestResult;
+        if (testResult != null) {
             ImGui.sameLine();
-            ImGui.textWrapped(assistantTestResult);
+            Tone tone = testResult.startsWith("OK") ? Tone.SUCCESS
+                    : testResult.startsWith("failed") ? Tone.ERROR : null;
+            if (tone != null) {
+                ThemedWidgets.statusText(tone, testResult);
+            } else {
+                ImGui.textDisabled(testResult);
+            }
         }
 
-        ImGuiComponents.addSectionSeparator();
-        ImGuiComponents.renderSectionHeader("Behavior");
-        ImGui.text("Temperature");
-        ImGui.sameLine(200);
-        ImGui.pushItemWidth(200);
-        ImGui.sliderFloat("##assistantTemp", assistantTemperature.getData(), 0.0f, 1.5f, "%.2f");
-        ImGui.text("Max tool iterations");
-        ImGui.sameLine(200);
-        ImGui.sliderInt("##assistantIters", assistantMaxIterations.getData(), 1, 100);
-        ImGui.text("Context override (tokens)");
-        ImGui.sameLine(200);
-        ImGui.inputInt("##assistantCtx", assistantContextOverride, 4096);
-        ImGui.popItemWidth();
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("0 = use the model's known context window");
-        }
-        ImGui.checkbox("Auto-compact context##assistantAutoCompact", assistantAutoCompact);
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("When a chat passes ~75% of the context window, fold older "
-                    + "messages into a model-written summary automatically. "
-                    + "/compact in the chat does it on demand.");
-        }
+        PreferencesRows.section("Behavior");
+        PreferencesRows.slider("Temperature", null, assistantTemperature, 0.0f, 1.5f, "%.2f");
+        PreferencesRows.sliderInt("Max tool iterations", null, assistantMaxIterations, 1, 100);
+        PreferencesRows.inputInt("Context override (tokens)",
+                "0 = use the model's known context window", assistantContextOverride, 4096);
+        PreferencesRows.checkbox("Auto-compact context",
+                "When a chat passes ~75% of the context window, fold older "
+                        + "messages into a model-written summary automatically. "
+                        + "/compact in the chat does it on demand.",
+                assistantAutoCompact);
 
-        ImGuiComponents.addSectionSeparator();
-        ImGuiComponents.renderSectionHeader("Tool Approval");
+        PreferencesRows.section("Tool Approval");
         ImGui.textWrapped("What the assistant may do without asking. Unknown tools count as "
                 + "'Mutating'. 'Requires authorization' covers actions that replace your "
                 + "working model (e.g. asset_open).");
-        renderPolicyRow("Read-only tools", assistantPolicyRead);
-        renderPolicyRow("Mutating tools", assistantPolicyMutating);
-        renderPolicyRow("Requires authorization", assistantPolicyAuth);
+        ImGui.spacing();
+        PreferencesRows.combo("Read-only tools", null, APPROVAL_POLICY_NAMES, assistantPolicyRead);
+        PreferencesRows.combo("Mutating tools", null, APPROVAL_POLICY_NAMES, assistantPolicyMutating);
+        PreferencesRows.combo("Requires authorization", null, APPROVAL_POLICY_NAMES,
+                assistantPolicyAuth);
         if (assistantPolicyAuth.get() == 0 && !assistantAuthAutoConfirm.get()) {
-            ImGui.textColored(1f, 0.7f, 0.2f, 1f,
+            ThemedWidgets.statusTextWrapped(Tone.WARNING,
                     "Auto-approving authorization-level actions lets the assistant replace "
                     + "your open model without asking.");
-            ImGui.checkbox("I understand — allow auto-approve##assistantAuthConfirm",
+            ImGui.checkbox("I understand - allow auto-approve##assistantAuthConfirm",
                     assistantAuthAutoConfirm);
         }
 
-        ImGuiComponents.addSectionSeparator();
-        ImGuiComponents.renderSectionHeader("Agent File Writes");
+        PreferencesRows.section("Agent File Writes");
         ImGui.textWrapped("When a model (this assistant or an external MCP client) saves or "
                 + "exports a file, the in-app Save Sheet asks you to pick the target. Writes "
                 + "outside the project, game resources and exports folders are always refused.");
-        ImGui.text("Ask policy");
-        ImGui.sameLine(200);
-        ImGui.pushItemWidth(260);
-        ImGui.combo("##mcpWritePolicy", mcpWritePolicy,
-                com.openmason.main.systems.io.WritePolicy.labels());
-        ImGui.popItemWidth();
-        if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Ask for every write / ask only for overwrites and game resources "
-                    + "(default) / ask only for game resources (overwrite:true replaces silently).");
-        }
+        ImGui.spacing();
+        PreferencesRows.combo("Ask policy",
+                "Ask for every write / ask only for overwrites and game resources "
+                        + "(default) / ask only for game resources (overwrite:true replaces silently).",
+                com.openmason.main.systems.io.WritePolicy.labels(), mcpWritePolicy);
 
-        ImGuiComponents.addSectionSeparator();
-        ImGuiComponents.renderSectionHeader("Knowledge");
+        PreferencesRows.section("Knowledge");
         boolean libalexDetected =
                 com.openmason.main.systems.assistant.libalex.LibalexDetector.detect() != null;
         if (!libalexDetected) {
             ImGui.beginDisabled();
         }
-        ImGui.checkbox("Enable libalex knowledge_search"
-                + (libalexDetected ? "" : " (not detected)"), assistantLibalexEnabled);
+        PreferencesRows.checkbox("Enable libalex knowledge_search"
+                        + (libalexDetected ? "" : " (not detected)"),
+                libalexDetected
+                        ? "Takes effect on next launch (tool registration is startup-time)"
+                        : "No libalex launch config found (~/.pi/agent/libalex.json "
+                                + "or ~/.claude.json mcpServers.libalex)",
+                assistantLibalexEnabled);
         if (!libalexDetected) {
             ImGui.endDisabled();
-            if (ImGui.isItemHovered()) {
-                ImGui.setTooltip("No libalex launch config found (~/.pi/agent/libalex.json "
-                        + "or ~/.claude.json mcpServers.libalex)");
-            }
-        } else if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Takes effect on next launch (tool registration is startup-time)");
         }
 
-        ImGuiComponents.addSectionSeparator();
-        ImGuiComponents.renderSectionHeader("System Prompt Extras");
+        PreferencesRows.section("System Prompt Extras");
         ImGui.textWrapped("Appended verbatim to the assistant's system prompt.");
         ImGui.inputTextMultiline("##assistantExtras", assistantPromptExtras, -1, 90);
+
+        renderResetButton(this::resetAssistantToDefaults);
     }
 
-    private void renderPolicyRow(String label, ImInt state) {
-        ImGui.text(label);
-        ImGui.sameLine(200);
-        ImGui.pushItemWidth(160);
-        ImGui.combo("##policy_" + label, state, APPROVAL_POLICY_NAMES);
-        ImGui.popItemWidth();
+    private void resetAssistantToDefaults() {
+        var d = com.openmason.main.systems.assistant.llm.AssistantSettings.defaults();
+        assistantEndpoint.set(d.endpoint());
+        assistantApiKey.set(d.apiKey());
+        assistantTemperature.set(d.temperature());
+        assistantMaxIterations.set(d.maxToolIterations());
+        assistantContextOverride.set((int) Math.min(Integer.MAX_VALUE, d.contextTokensOverride()));
+        assistantPromptExtras.set(d.promptExtras() == null ? "" : d.promptExtras());
+        assistantPolicyRead.set(d.readOnlyPolicy().ordinal());
+        assistantPolicyMutating.set(d.mutatingPolicy().ordinal());
+        assistantPolicyAuth.set(d.requiresAuthPolicy().ordinal());
+        assistantAuthAutoConfirm.set(false);
+        assistantLibalexEnabled.set(true);
+        assistantAutoCompact.set(d.autoCompact());
+        mcpWritePolicy.set(com.openmason.main.systems.io.WritePolicy.ASK_RISKY.ordinal());
+        assistantTestResult = null;
+        logger.debug("Assistant preferences reset to defaults (pending Apply)");
+    }
+
+    /** The one per-page reset button: rule above, staged (not persisted) until Apply/OK. */
+    private void renderResetButton(Runnable reset) {
+        renderResetButton(reset, "Resets this page's values. Takes effect when you click OK or Apply");
+    }
+
+    private void renderResetButton(Runnable reset, String tooltip) {
+        ImGui.spacing();
+        ImGui.separator();
+        ImGui.spacing();
+        if (ImGui.button("Reset to Defaults")) {
+            reset.run();
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip(tooltip);
+        }
     }
 
     private void testAssistantConnection() {

@@ -26,6 +26,19 @@ public class ViewportKeybindActions {
     private static final String NAVIGATION = "Navigation";
     private static final String EDITING = "Editing";
     private static final String MESH_TOOLS = "Mesh Tools";
+    private static final String FILE = "File";
+
+    // Action ids other surfaces (menus, toolbar tooltips) read their shortcut
+    // column and label from, so a rebind never leaves them stale.
+    public static final String TOGGLE_GRID = "viewport.toggle_grid";
+    public static final String TOGGLE_AXES = "viewport.toggle_axes";
+    public static final String TOGGLE_UNRENDERED = "viewport.toggle_unrendered";
+    public static final String RESET_VIEW = "viewport.reset_view";
+    public static final String FIT_TO_VIEW = "viewport.fit_to_view";
+    public static final String UNDO = "viewport.undo";
+    public static final String REDO = "viewport.redo";
+    public static final String OPEN_MODEL = "viewport.open_model";
+    public static final String SAVE_MODEL = "viewport.save_model";
 
     /**
      * Private constructor to prevent instantiation.
@@ -57,8 +70,8 @@ public class ViewportKeybindActions {
 
         // Ctrl+G: Toggle Grid
         registry.registerAction(new KeybindAction(
-                "viewport.toggle_grid",
-                "Toggle Grid",
+                TOGGLE_GRID,
+                "Show Grid",
                 DISPLAY,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_G),
                 () -> {
@@ -69,8 +82,8 @@ public class ViewportKeybindActions {
 
         // Ctrl+Shift+A: Toggle Axes (changed from Ctrl+X to avoid conflict with Cut)
         registry.registerAction(new KeybindAction(
-                "viewport.toggle_axes",
-                "Toggle Axes",
+                TOGGLE_AXES,
+                "Show Axes",
                 DISPLAY,
                 ShortcutKey.ctrlShift(GLFW.GLFW_KEY_A),
                 () -> {
@@ -81,8 +94,8 @@ public class ViewportKeybindActions {
 
         // Ctrl+W: Toggle Unrendered Mode
         registry.registerAction(new KeybindAction(
-                "viewport.toggle_unrendered",
-                "Toggle Unrendered",
+                TOGGLE_UNRENDERED,
+                "Unrendered Mode",
                 DISPLAY,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_W),
                 actions::toggleUnrendered
@@ -92,7 +105,7 @@ public class ViewportKeybindActions {
 
         // Ctrl+R: Reset View
         registry.registerAction(new KeybindAction(
-                "viewport.reset_view",
+                RESET_VIEW,
                 "Reset View",
                 NAVIGATION,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_R),
@@ -101,7 +114,7 @@ public class ViewportKeybindActions {
 
         // Ctrl+F: Fit to View
         registry.registerAction(new KeybindAction(
-                "viewport.fit_to_view",
+                FIT_TO_VIEW,
                 "Fit to View",
                 NAVIGATION,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_F),
@@ -142,7 +155,7 @@ public class ViewportKeybindActions {
 
         // Ctrl+Z: Undo
         registry.registerAction(new KeybindAction(
-                "viewport.undo",
+                UNDO,
                 "Undo",
                 EDITING,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_Z),
@@ -151,7 +164,7 @@ public class ViewportKeybindActions {
 
         // Ctrl+Y: Redo
         registry.registerAction(new KeybindAction(
-                "viewport.redo",
+                REDO,
                 "Redo",
                 EDITING,
                 ShortcutKey.ctrl(GLFW.GLFW_KEY_Y),
@@ -236,5 +249,34 @@ public class ViewportKeybindActions {
         ));
 
         logger.info("Registered {} viewport keybind actions", 18);
+    }
+
+    /**
+     * Registers the model editor's file shortcuts (Ctrl+O / Ctrl+S) in the
+     * viewport context, so they fire while the model viewport has focus and
+     * appear on the Keybinds page. Registered separately from
+     * {@link #registerAll} because the file operations live on the main
+     * interface, not on {@link ViewportActions}.
+     *
+     * @param registry  the keybind registry
+     * @param openModel opens a model via the file dialog
+     * @param saveModel saves the current model (no-op when there is nothing to save)
+     */
+    public static void registerFileActions(KeybindRegistry registry, Runnable openModel, Runnable saveModel) {
+        registry.registerAction(new KeybindAction(
+                OPEN_MODEL,
+                "Open Model",
+                FILE,
+                ShortcutKey.ctrl(GLFW.GLFW_KEY_O),
+                openModel
+        ));
+
+        registry.registerAction(new KeybindAction(
+                SAVE_MODEL,
+                "Save Model",
+                FILE,
+                ShortcutKey.ctrl(GLFW.GLFW_KEY_S),
+                saveModel
+        ));
     }
 }

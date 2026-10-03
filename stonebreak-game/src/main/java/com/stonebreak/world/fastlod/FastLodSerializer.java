@@ -39,7 +39,12 @@ import java.nio.ByteOrder;
  *   treePresent  u8   0 = trees omitted, 1 = trees follow
  *   trees?       u8[cellsPerAxis²] kind   0 = none, else TreeKind.ordinal()+1
  *   trunkH?      u8[cellsPerAxis²]        0 if no tree
+ *   spotCount    u16  (v12+) coarse-level trees; 0 when none
+ *   spots        u16[spotCount]            FastLodChunkData.packTreeSpot
  * </pre>
+ * v12 only appends the spot section, so v11 blobs (no coarse trees) still read.
+ * Coarse nodes that draw trees live in their own store rows, so a v11 blob is
+ * never asked to stand in for one.
  */
 public final class FastLodSerializer {
 
@@ -80,8 +85,17 @@ public final class FastLodSerializer {
      * (DaedalusTGM-Exp's {@code sampleColumns}), where a v10 node showed whatever
      * dry column its probe landed on — so its height, water level and surface all
      * moved.
+     *
+     * <p>12: appends the coarse-level tree-spot section. It only appends, so v11
+     * blobs (no coarse trees) still read — see {@link #TREELESS_VERSION}.
      */
-    public static final int VERSION = 11;
+    public static final int VERSION = 12;
+    /**
+     * The last version without the spot section; still read for tree-less keys.
+     * Coarse nodes that draw trees live in their own store rows, so a v11 blob is
+     * never asked to stand in for one.
+     */
+    private static final int TREELESS_VERSION = 11;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel
@@ -109,7 +123,8 @@ public final class FastLodSerializer {
                  + 1
                  + (hasOpenings ? cellsLen * 3 : 0)
                  + 1
-                 + (hasTrees ? cellsLen * 2 : 0);
+                 + (hasTrees ? cellsLen * 2 : 0)
+                 + 2 + (data.treeSpots() == null ? 0 : data.treeSpots().length * 2);
 
         ByteBuffer buf = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN);
         buf.putInt(MAGIC);
@@ -164,6 +179,13 @@ public final class FastLodSerializer {
             buf.put((byte) 0);
         }
 
+        int[] spots = data.treeSpots();
+        int spotCount = spots == null ? 0 : Math.min(spots.length, 0xFFFF);
+        buf.putShort((short) spotCount);
+        for (int i = 0; i < spotCount; i++) {
+            buf.putShort((short) spots[i]);
+        }
+
         return buf.array();
     }
 
@@ -178,7 +200,7 @@ public final class FastLodSerializer {
 
         if (buf.getInt() != MAGIC) return null;
         int version = buf.get() & 0xFF;
-        if (version != VERSION) return null;
+        if (version != VERSION && version != TREELESS_VERSION) return null;
         int levelIdx = buf.get() & 0xFF;
         if (levelIdx != expected.level().index()) return null;
 
@@ -245,6 +267,20 @@ public final class FastLodSerializer {
             }
         }
 
+        int[] spots = null;
+        if (version > TREELESS_VERSION) {
+            if (buf.remaining() < 2) return null;
+            int spotCount = buf.getShort() & 0xFFFF;
+            if (buf.remaining() < spotCount * 2) return null;
+            spots = new int[spotCount];
+            for (int i = 0; i < spotCount; i++) {
+                spots[i] = buf.getShort() & 0xFFFF;
+                if (((spots[i] >>> 8) & 3) >= TreeKind.values().length) return null;
+            }
+        }
+        if (!expected.coarseTrees()) spots = null;
+        else if (spots == null) return null;
+
         if (level.emitsTrees() && trees == null) return null;
         if (!level.emitsTrees() && trees != null) trees = null;
         // L0 cells are single columns, so their carve is already the height and the
@@ -253,7 +289,7 @@ public final class FastLodSerializer {
         if (level.cellSize() == 1 && openFloor != null) return null;
 
         return new FastLodChunkData(expected, heights, waterLevels, surface, trees,
-                openFloor, openCover);
+                openFloor, openCover, spots);
     }
 
     private static int clampShort(int v) {

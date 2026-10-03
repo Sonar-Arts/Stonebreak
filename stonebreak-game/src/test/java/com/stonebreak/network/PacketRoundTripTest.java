@@ -43,6 +43,7 @@ import com.stonebreak.network.packet.world.FurnaceSlotsC2S;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
 import com.stonebreak.network.packet.world.SnowLayerC2S;
 import com.stonebreak.network.packet.world.TimeSyncS2C;
+import com.stonebreak.network.packet.world.WorkbenchSlotsC2S;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.junit.jupiter.api.Tag;
@@ -116,6 +117,9 @@ class PacketRoundTripTest {
             roundTrip(BlockStateS2C.CODEC, new BlockStateS2C(10, 64, -5, "furnace:state=Lit;ing=B:1:3;fuel=I:20:2;out=B:5:1;burn=100;burnTotal=200;cook=40")));
         assertEquals(new FurnaceSlotsC2S(10, 64, -5, "B:1:3|I:20:2|B:0:0"),
             roundTrip(FurnaceSlotsC2S.CODEC, new FurnaceSlotsC2S(10, 64, -5, "B:1:3|I:20:2|B:0:0")));
+        String grid = "B:1:3|I:20:2:sb_wooden_bucket_water|B:0:0|B:0:0|B:0:0|B:0:0|B:0:0|B:0:0|I:7:64";
+        assertEquals(new WorkbenchSlotsC2S(10, 64, -5, grid),
+            roundTrip(WorkbenchSlotsC2S.CODEC, new WorkbenchSlotsC2S(10, 64, -5, grid)));
         assertEquals(new ChunkResyncRequestC2S(-3, 12), roundTrip(ChunkResyncRequestC2S.CODEC, new ChunkResyncRequestC2S(-3, 12)));
         assertEquals(new KillCreditS2C(2, 7.5f, true, 15), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(2, 7.5f, true, 15)));
         assertEquals(new KillCreditS2C(0, 1f, false, 0), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(0, 1f, false, 0)));

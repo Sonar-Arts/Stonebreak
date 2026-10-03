@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.main.systems.mortar.core.MortarFrameResult;
 import com.openmason.main.systems.mortar.core.MortarRegion;
@@ -9,6 +10,7 @@ import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.parts.MortarBadge;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.mortar.theme.MortarType;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
 import imgui.type.ImFloat;
@@ -50,8 +52,8 @@ import java.util.Set;
 public class SBODropsSection implements AutoCloseable {
 
     // Card geometry.
-    private static final float CARD_H = 48f;
-    private static final float TILE = 36f;
+    private static final float CARD_H = 52f;
+    private static final float TILE = EditorWidgets.ITEM_TILE_SIZE;
     private static final float TILE_PAD = (CARD_H - TILE) / 2f;
     private static final float REMOVE_W = 26f;
     private static final float CARD_RADIUS = 8f;
@@ -291,7 +293,7 @@ public class SBODropsSection implements AutoCloseable {
 
     /** Paints the card strip; returns true when the remove control was clicked. */
     private boolean renderCardMortar(MortarRegion region, EditableDrop d) {
-        float availW = Math.max(1f, ImGui.getContentRegionAvailX());
+        float availW = Math.max(1f, MortarRegion.availWidth());
         final boolean hasItem = d.objectId != null && !d.objectId.isBlank();
         final String objectId = hasItem ? d.objectId : "";
         final String title = hasItem ? displayName(objectId) : "Pick a block or item";
@@ -317,10 +319,10 @@ public class SBODropsSection implements AutoCloseable {
         region.add("deco.title", textX, 0f, textW, CARD_H, (g, px, py, pw, ph, state) -> {
             int titleColor = hasItem ? g.theme().text : g.theme().textFaint;
             if (hasItem) {
-                g.textEllipsized(title, px, py + ph / 2f - 8f, pw, Weight.MEDIUM, 13f, titleColor);
-                g.textEllipsized(objectId, px, py + ph / 2f + 8f, pw, Weight.REGULAR, 11f, g.theme().textFaint);
+                g.textEllipsized(title, px, py + ph / 2f - 8f, pw, Weight.MEDIUM, MortarType.CONTROL, titleColor);
+                g.textEllipsized(objectId, px, py + ph / 2f + 8f, pw, Weight.REGULAR, MortarType.CAPTION, g.theme().textFaint);
             } else {
-                g.text(title, px, py + ph / 2f, MortarPainter.Align.LEFT, Weight.MEDIUM, 13f, titleColor);
+                g.text(title, px, py + ph / 2f, MortarPainter.Align.LEFT, Weight.MEDIUM, MortarType.CONTROL, titleColor);
             }
         });
 
@@ -329,7 +331,7 @@ public class SBODropsSection implements AutoCloseable {
             g.fillRoundRect(px, py, pw, ph, ph / 2f, Argb.shade(g.theme().surface, 0.06f));
             g.strokeRoundRect(px, py, pw, ph, ph / 2f, 1f, g.theme().border);
             g.text(summary, px + pw / 2f, py + ph / 2f, MortarPainter.Align.CENTER,
-                    Weight.MEDIUM, 12f, g.theme().textDim);
+                    Weight.MEDIUM, MortarType.LABEL, g.theme().textDim);
         });
 
         region.add("remove", xRemove, (CARD_H - 24f) / 2f, REMOVE_W, 24f,
@@ -398,7 +400,7 @@ public class SBODropsSection implements AutoCloseable {
 
     private boolean renderOverrideHeaderMortar(int i, EditableOverride o) {
         MortarRegion region = overridePool.get(i);
-        float availW = Math.max(1f, ImGui.getContentRegionAvailX());
+        float availW = Math.max(1f, MortarRegion.availWidth());
         final boolean hasTool = o.toolObjectId != null && !o.toolObjectId.isBlank();
         final String tool = hasTool ? o.toolObjectId : "";
         final String title = hasTool ? "When broken with " + displayName(tool) : "Pick a tool";
@@ -422,11 +424,11 @@ public class SBODropsSection implements AutoCloseable {
             float cyTop = py + ph / 2f - 8f;
             float bx = px;
             bx += MortarBadge.paint(g, bx, cyTop, "TOOL") + 8f;
-            g.textEllipsized(title, bx, cyTop, px + pw - bx, Weight.MEDIUM, 13f,
+            g.textEllipsized(title, bx, cyTop, px + pw - bx, Weight.MEDIUM, MortarType.CONTROL,
                     hasTool ? g.theme().text : g.theme().textFaint);
             String sub = detail + (cardCount == 0 ? "   ·   drops nothing" : "   ·   " + cardCount
                     + (cardCount == 1 ? " drop" : " drops") + " replace the defaults");
-            g.textEllipsized(sub, px, py + ph / 2f + 8f, pw, Weight.REGULAR, 11f, g.theme().textFaint);
+            g.textEllipsized(sub, px, py + ph / 2f + 8f, pw, Weight.REGULAR, MortarType.CAPTION, g.theme().textFaint);
         });
 
         region.add("remove", xRemove, (CARD_H - 24f) / 2f, REMOVE_W, 24f,
@@ -472,7 +474,7 @@ public class SBODropsSection implements AutoCloseable {
             g.canvas().drawImageRect(icon, Rect.makeXYWH(x + 5f, y + 5f, w - 10f, h - 10f));
         } else if (objectId != null) {
             g.textEllipsized(shortLabel(objectId), x + 4f, y + h / 2f, w - 8f,
-                    Weight.REGULAR, 10f, g.theme().text);
+                    Weight.REGULAR, MortarType.CAPTION, g.theme().text);
         } else {
             g.text("+", x + w / 2f, y + h / 2f, MortarPainter.Align.CENTER, Weight.REGULAR, 18f,
                     Argb.lerp(g.theme().textFaint, g.theme().text, hover));
@@ -482,10 +484,10 @@ public class SBODropsSection implements AutoCloseable {
     private static void paintRemove(MortarPainter g, float px, float py, float pw, float ph, PartState state) {
         float hover = state.hover();
         if (hover > 0.02f) {
-            g.fillRoundRect(px, py, pw, ph, 6f, Argb.withAlpha(0xFFB44242, 0.30f * hover));
+            g.fillRoundRect(px, py, pw, ph, 6f, Argb.withAlpha(g.theme().danger, 0.30f * hover));
         }
         g.text("×", px + pw / 2f, py + ph / 2f, MortarPainter.Align.CENTER, Weight.MEDIUM, 13f,
-                Argb.lerp(g.theme().textDim, 0xFFE07A7A, hover));
+                Argb.lerp(g.theme().textDim, g.theme().error, hover));
     }
 
     // ---- fallbacks (no Skija context) ---------------------------------------
@@ -508,7 +510,7 @@ public class SBODropsSection implements AutoCloseable {
         ImGui.sameLine();
         ImGui.textDisabled(d.countLabel() + " · " + d.chanceLabel());
         ImGui.sameLine();
-        boolean remove = EditorWidgets.dangerButton("Remove", 0f);
+        boolean remove = ThemedWidgets.dangerSoftButton("Remove", EditorWidgets.REMOVE_BUTTON_WIDTH, 0f);
         ImGui.popStyleVar();
         return remove;
     }
@@ -519,7 +521,7 @@ public class SBODropsSection implements AutoCloseable {
         int icon = hasTool ? SBOIngredientIcons.glIcon(o.toolObjectId) : 0;
         boolean pick = icon > 0
                 ? ImGui.imageButton("##ovr_tool", icon, TILE - 8, TILE - 8)
-                : ImGui.button(hasTool ? shortLabel(o.toolObjectId) : "tool?", TILE, TILE);
+                : ImGui.button(hasTool ? shortLabel(o.toolObjectId) : "Pick a tool", TILE, TILE);
         if (ImGui.isItemHovered()) {
             ImGui.setTooltip(hasTool ? o.toolObjectId + "\nClick to change the tool"
                     : "Click to pick the tool this override applies to");
@@ -528,7 +530,7 @@ public class SBODropsSection implements AutoCloseable {
         ImGui.sameLine();
         ImGui.text(hasTool ? "When broken with " + displayName(o.toolObjectId) : "Pick a tool");
         ImGui.sameLine();
-        boolean remove = EditorWidgets.dangerButton("Remove override", 0f);
+        boolean remove = ThemedWidgets.dangerSoftButton("Remove override", 0f, 0f);
         ImGui.popStyleVar();
         return remove;
     }

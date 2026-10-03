@@ -190,10 +190,13 @@ public class TerrainGenerationSystem implements TerrainGenerator {
      * Worm carve mask via the native kernel, with cavern-connector anchors
      * precomputed by the Java cavern carvers so cavern placement stays
      * consistent with their rasterization. Falls back to the Java carver on
-     * any kernel failure. Static so {@link DeepCaveLayers} runs its own layers through it.
+     * any kernel failure — guarded by {@code waterLevels}, since the kernel
+     * builds the same WaterGuard plane internally and an unguarded fallback
+     * chunk would carve open beds and banks its guarded neighbours sealed
+     * (GitHub issue #248). Static so {@link DeepCaveLayers} runs its own layers through it.
      */
     static java.util.BitSet nativeWormMask(long carverCtx, PerlinWormCarver wormCarver,
-                                           int chunkX, int chunkZ, int[] heights) {
+                                           int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
         int radius = PerlinWormCarver.scanRadius();
         java.util.ArrayList<int[]> anchorChunkList = new java.util.ArrayList<>();
         java.util.ArrayList<float[]> anchorList = new java.util.ArrayList<>();
@@ -226,7 +229,7 @@ public class TerrainGenerationSystem implements TerrainGenerator {
         long carved = com.openmason.engine.cenda.CendaKernels.carveWorms(
             carverCtx, chunkX, chunkZ, heights, anchorChunks, anchors, mask);
         if (carved < 0) {
-            return wormCarver.carveMaskForChunk(chunkX, chunkZ, heights);
+            return wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
         }
         return java.util.BitSet.valueOf(mask);
     }
@@ -363,6 +366,54 @@ public class TerrainGenerationSystem implements TerrainGenerator {
     }
 
     /**
+     * Every tree the real generator plants inside a coarse FastLOD node, for drawing past
+     * the finest band. Each cell's columns are probed with {@code VegetationGenerator.probeTree}
+     * — the same deterministic placement {@code placeTree} uses — against the cell's biome
+     * (at its representative column) and its sampled surface block. A cell whose surface was
+     * carved away exposes stone and plants nothing, exactly as a carved top grows no tree;
+     * a submerged cell plants nothing either.
+     *
+     * @param cellHeights      sampled surface height per cell, {@code [ix*cells+iz]}
+     * @param cellWaterLevels  sampled water level per cell, {@code [ix*cells+iz]}
+     * @param cellSurface      sampled surface block per cell, {@code [ix*cells+iz]}
+     * @return packed spots ({@code FastLodChunkData.packTreeSpot}); empty when none
+     */
+    @Override
+    public int[] probeCellTrees(int chunkX, int chunkZ, int cellsPerAxis, int cellSize,
+                                int[] cellHeights, int[] cellWaterLevels, BlockType[] cellSurface) {
+        int baseX = chunkX * CHUNK_SIZE;
+        int baseZ = chunkZ * CHUNK_SIZE;
+        int[] out = new int[8];
+        int n = 0;
+        for (int ix = 0; ix < cellsPerAxis; ix++) {
+            for (int iz = 0; iz < cellsPerAxis; iz++) {
+                int cell = ix * cellsPerAxis + iz;
+                BlockType surface = cellSurface[cell];
+                // probeTree only ever plants on these two; skip the biome lookup otherwise.
+                if (cellWaterLevels[cell] > cellHeights[cell]
+                        || (surface != BlockType.GRASS && surface != BlockType.SNOWY_DIRT)) {
+                    continue;
+                }
+                int rep = cellSize / 2;
+                BiomeType biome = biomeManager.getBiome(baseX + ix * cellSize + rep, baseZ + iz * cellSize + rep);
+                for (int dx = 0; dx < cellSize; dx++) {
+                    for (int dz = 0; dz < cellSize; dz++) {
+                        int lx = ix * cellSize + dx;
+                        int lz = iz * cellSize + dz;
+                        var tree = com.stonebreak.world.generation.features.VegetationGenerator.probeTree(
+                                baseX + lx, baseZ + lz, biome, surface, deterministicRandom);
+                        if (tree == null) continue;
+                        if (n == out.length) out = java.util.Arrays.copyOf(out, n * 2);
+                        out[n++] = com.stonebreak.world.fastlod.FastLodChunkData.packTreeSpot(
+                                lx, lz, tree.kind(), tree.trunkHeight());
+                    }
+                }
+            }
+        }
+        return java.util.Arrays.copyOf(out, n);
+    }
+
+    /**
      * Returns the surface block a column places at its terrain top
      * ({@code y == height - 1}), derived from the same biome rules as
      * {@link #determineBlockType}. Submerged columns report their real seabed
@@ -427,6 +478,29 @@ public class TerrainGenerationSystem implements TerrainGenerator {
                               int[] outWaterLevels,
                               BlockType[] outSurface,
                               com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees) {
+        sampleColumns(worldX0, worldZ0, count, stride, outHeights, outWaterLevels, outSurface, outTrees, true);
+    }
+
+    /**
+     * {@link #sampleColumns} without the carve: heights are the RAW terrain
+     * height and surfaces the biome's surface block, so no carved surface
+     * profile is built. For FastLOD's coarsest levels, where the profile — a
+     * full carve-mask build of every chunk the padded grid touches — was
+     * measured at >99% of a node's cost (~60 ms cold, ~7 ms warm, vs ~0.03 ms
+     * without it). No tree samples: only the finest level draws trees.
+     */
+    @Override
+    public void sampleRawColumns(int worldX0, int worldZ0, int count, int stride,
+                                 int[] outHeights, int[] outWaterLevels, BlockType[] outSurface) {
+        sampleColumns(worldX0, worldZ0, count, stride, outHeights, outWaterLevels, outSurface, null, false);
+    }
+
+    private void sampleColumns(int worldX0, int worldZ0, int count, int stride,
+                               int[] outHeights,
+                               int[] outWaterLevels,
+                               BlockType[] outSurface,
+                               com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees,
+                               boolean carved) {
         int cells = count * count;
         float[] c = new float[cells];
         float[] pv = new float[cells];
@@ -449,7 +523,7 @@ public class TerrainGenerationSystem implements TerrainGenerator {
                 int wx = worldX0 + ix * stride;
                 int wz = worldZ0 + iz * stride;
                 int rawHeight = heightMapGenerator.heightFromChannels(c[idx], pv[idx], e[idx], d[idx]);
-                int height = carvedSurfaceHeight(wx, wz) - Y_OFFSET;
+                int height = (carved ? carvedSurfaceHeight(wx, wz) - Y_OFFSET : rawHeight);
                 outHeights[idx] = height + Y_OFFSET;
                 if (outWaterLevels != null) {
                     outWaterLevels[idx] = rawHeight < SEA_LEVEL ? SEA_LEVEL + Y_OFFSET : WorldConfiguration.NO_WATER;
@@ -663,7 +737,7 @@ public class TerrainGenerationSystem implements TerrainGenerator {
      */
     private CarveMasks buildCarveMasks(int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
         BitSet caveMask = (nativeCarverCtx != 0L)
-            ? nativeWormMask(nativeCarverCtx, wormCarver, chunkX, chunkZ, heights)
+            ? nativeWormMask(nativeCarverCtx, wormCarver, chunkX, chunkZ, heights, waterLevels)
             : wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
         CavernCarver.Result cavernResult =
             cavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);

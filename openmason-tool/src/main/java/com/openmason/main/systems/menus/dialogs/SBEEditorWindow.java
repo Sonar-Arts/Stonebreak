@@ -4,6 +4,7 @@ import com.openmason.engine.format.sbe.SBEFormat;
 import com.openmason.engine.format.sbe.SBEParser;
 import com.openmason.engine.format.sbe.SBESerializer;
 import com.openmason.main.systems.services.StatusService;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiWindowFlags;
@@ -60,6 +61,13 @@ public class SBEEditorWindow {
         this.openModelHandler = handler;
     }
     private int selectedTab;
+
+    private static final int TAB_STATES = 1;
+    private static final int TAB_VARIANTS = 2;
+    private static final int TAB_SOUNDS = 3;
+
+    /** Last save-blocking problem, shown inline under the tab content (cleared on load / successful save). */
+    private String validationMessage = "";
 
     // Loaded document state
     private Path currentPath;
@@ -174,6 +182,7 @@ public class SBEEditorWindow {
             this.loadedStateAssetBytes = raw.stateAssetBytes();
             this.baseModelLabel = "(original)";
             populateBuffers(raw.manifest(), raw.stateAssetBytes());
+            this.validationMessage = "";
             this.dirty = false;
             this.visible.set(true);
             if (statusService != null) {
@@ -221,7 +230,7 @@ public class SBEEditorWindow {
                     this::saveInPlace, this::saveAs, this::openWithDialog);
             ImGui.dummy(0, 6);
             if (!loaded) {
-                ImGui.textDisabled("No SBE loaded. Use Tools > SBE Editor...");
+                ImGui.textDisabled(EditorWidgets.emptyEditorText("SBE"));
             } else {
                 switch (selectedTab) {
                     case 0 -> renderMetadataTab();
@@ -229,6 +238,10 @@ public class SBEEditorWindow {
                     case 2 -> variantsEditor.render();
                     case 3 -> soundsEditor.render();
                     default -> { }
+                }
+                if (!validationMessage.isEmpty()) {
+                    ImGui.dummy(0, 8);
+                    ThemedWidgets.inlineError(validationMessage);
                 }
             }
             objectIndexPopup.render();
@@ -248,19 +261,21 @@ public class SBEEditorWindow {
             }
             ImGui.separator();
         }
-        if (ImGui.inputText("Object ID", objectId))    dirty = true;
+        ThemedWidgets.sectionLabel("Identity");
+        if (ImGui.inputTextWithHint("Object ID", "e.g. stonebreak:cow", objectId)) dirty = true;
         ImGui.sameLine();
-        if (ImGui.smallButton("Registered IDs...")) objectIndexPopup.open();
-        if (ImGui.inputText("Object Name", objectName)) dirty = true;
+        if (ImGui.smallButton(EditorWidgets.TAKEN_IDS_LABEL + "##sbe_editor_taken")) objectIndexPopup.open();
+        if (ImGui.inputTextWithHint("Object Name", "e.g. Cow", objectName))        dirty = true;
+
+        ThemedWidgets.sectionLabel("Classification");
         if (ImGui.combo("Entity Type", entityTypeIndex, ENTITY_TYPE_LABELS)) dirty = true;
-        if (ImGui.inputText("Pack", objectPack))        dirty = true;
-        if (ImGui.inputText("Author", author))          dirty = true;
+        if (ImGui.inputTextWithHint("Pack", "e.g. default, expansion_1", objectPack)) dirty = true;
+
+        ThemedWidgets.sectionLabel("Attribution");
+        if (ImGui.inputTextWithHint("Author", "Creator name or studio", author))   dirty = true;
         ImGui.text("Description");
         if (ImGui.inputTextMultiline("##desc", description, -1, 80)) dirty = true;
 
-        ImGui.dummy(0, 6);
-        ImGui.separator();
-        ImGui.dummy(0, 4);
         renderBaseModelRow();
     }
 
@@ -270,7 +285,7 @@ public class SBEEditorWindow {
      * which the serializer re-embeds as {@code model.omo} on save.
      */
     private void renderBaseModelRow() {
-        ImGui.text("Base Model");
+        ThemedWidgets.sectionLabel("Base Model");
         ImGui.textDisabled("Embedded OMO applied to every variant/state unless overridden.");
 
         ImGui.textDisabled("Model:");
@@ -328,22 +343,21 @@ public class SBEEditorWindow {
         if (loadedManifest == null) return;
 
         String stateError = statesEditor.validate();
-        if (stateError != null) {
-            if (statusService != null) statusService.updateStatus("Cannot save: " + stateError);
-            return;
-        }
+        if (stateError != null) { rejectSave(stateError, TAB_STATES); return; }
         String variantError = variantsEditor.validate();
-        if (variantError != null) {
-            if (statusService != null) statusService.updateStatus("Cannot save: " + variantError);
-            return;
-        }
+        if (variantError != null) { rejectSave(variantError, TAB_VARIANTS); return; }
         String soundError = soundsEditor.validate();
-        if (soundError != null) {
-            if (statusService != null) statusService.updateStatus("Cannot save: " + soundError);
-            return;
-        }
+        if (soundError != null) { rejectSave(soundError, TAB_SOUNDS); return; }
+        validationMessage = "";
 
         performWrite(pathStr);
+    }
+
+    /** Show a save-blocking problem inline, jump to the offending tab and echo it to the status bar. */
+    private void rejectSave(String error, int tab) {
+        validationMessage = error;
+        selectedTab = tab;
+        if (statusService != null) statusService.updateStatus("Cannot save: " + error);
     }
 
     private boolean performWrite(String pathStr) {

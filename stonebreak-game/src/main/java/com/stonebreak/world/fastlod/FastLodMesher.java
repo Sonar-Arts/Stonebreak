@@ -24,8 +24,9 @@ import java.util.Arrays;
  * the ocean floor renders under the water sheet exactly like native chunks.
  * At the finest level ({@link FastLodLevel#L0}) dry cells additionally emit a
  * low-poly tree silhouette when they carry a tree sample. Textures come from
- * the {@link BlockTextureArray}: each quad spans one layer (unit-square UVs)
- * with a per-vertex layer index.
+ * the {@link BlockTextureArray} with a per-vertex layer index; UVs tile the
+ * layer once per block on the block grid (issue #234), so distant terrain
+ * keeps native texel density instead of stretching one tile over a cell.
  *
  * <p>Land top quads carry per-vertex normals derived from the height-field
  * gradient (central difference over the margin-extended heights), so distant
@@ -140,7 +141,9 @@ public final class FastLodMesher {
         // cell: at L4 the single cell owns all four border edges (a per-cell
         // constant would under-allocate there and overflow the arrays).
         int maxFoundations = 4 * cellsPerAxis;
-        int maxQuads   = cellsPerAxis * cellsPerAxis * maxQuadsPerCell + maxFoundations;
+        int[] treeSpots = data.treeSpots();
+        int maxQuads   = cellsPerAxis * cellsPerAxis * maxQuadsPerCell + maxFoundations
+                + (treeSpots == null ? 0 : treeSpots.length * TREE_QUADS_PER_CELL);
         int maxVerts   = maxQuads * 4;
         int maxIndices = maxQuads * 6;
 
@@ -156,6 +159,8 @@ public final class FastLodMesher {
 
         QuadWriter w = new QuadWriter(positions, texCoords, normals,
                 waterFlags, alphaFlags, translucentFlags, lightValues, layerIndices, indices);
+        w.uvBaseX = data.chunkX() * WorldConfiguration.CHUNK_SIZE;
+        w.uvBaseZ = data.chunkZ() * WorldConfiguration.CHUNK_SIZE;
 
         // Water sheet: at most one quad per cell.
         int maxWaterQuads = cellsPerAxis * cellsPerAxis;
@@ -243,9 +248,24 @@ public final class FastLodMesher {
                 if (level.emitsTrees() && !submerged) {
                     TreeSample tree = data.treeAt(ix, iz);
                     if (tree != null) {
-                        emitTree(w, wx, wz, terrainH, tree);
+                        emitTree(w, wx, wz, terrainH, tree, 1);
                     }
                 }
+            }
+        }
+
+        // Coarse-level trees (preset-dependent reach, see FastLodQuality.drawsTrees): each
+        // stands at its own column on its cell's surface, trunk included. From L3 (ULTRA
+        // only, 1024+ blocks) a 1-block trunk is under a pixel wide, so it is drawn 2 wide.
+        if (treeSpots != null) {
+            int trunkWidth = cellSize >= 8 ? 2 : 1;
+            for (int spot : treeSpots) {
+                int lx = FastLodChunkData.spotX(spot);
+                int lz = FastLodChunkData.spotZ(spot);
+                int terrainH = data.heightAt(lx / cellSize, lz / cellSize);
+                if (data.waterLevelAt(lx / cellSize, lz / cellSize) > terrainH) continue;
+                emitTree(w, baseX + lx, baseZ + lz, terrainH,
+                        new TreeSample(FastLodChunkData.spotKind(spot), FastLodChunkData.spotTrunk(spot)), trunkWidth);
             }
         }
 
@@ -367,7 +387,6 @@ public final class FastLodMesher {
         return BlockType.Face.SIDE_NORTH;
     }
 
-    /** L0 tree silhouette — identical geometry to the legacy mesher. */
     /**
      * A cave mouth, drawn as a notch recessed into the cell: a floor quad with four walls
      * facing inward, sized by how much of the cell is actually carved.
@@ -417,33 +436,43 @@ public final class FastLodMesher {
                           0, 0, 1, wallLayer, 0f);
     }
 
-    private void emitTree(QuadWriter w, float wx, float wz, int terrainH, TreeSample tree) {
+    /**
+     * Tree silhouette: a {@code trunkWidth}-block trunk from the ground to the canopy, plus
+     * the canopy box. At L0 ({@code trunkWidth} 1) the geometry is identical to the legacy
+     * mesher. Coarse levels always keep the trunk — a canopy without one reads as a
+     * floating clump of leaves — and widen it where a 1-block trunk would be under a pixel.
+     * The trunk spans whole blocks from the tree's column ({@code [wx, wx+trunkWidth]}),
+     * since LOD records store x/z in whole blocks; the 3-block canopy still covers it.
+     */
+    private void emitTree(QuadWriter w, float wx, float wz, int terrainH, TreeSample tree, int trunkWidth) {
         float trunkBase = terrainH;
         float trunkTop  = terrainH + tree.trunkHeight();
         float cx = wx + 0.5f;
         float cz = wz + 0.5f;
+        float tx0 = wx, tx1 = wx + trunkWidth;
+        float tz0 = wz, tz1 = wz + trunkWidth;
 
         int trunkLayer = textureArray.getBlockFaceLayer(tree.kind().trunkBlock(),
                 BlockType.Face.SIDE_NORTH.getIndex());
-        w.axisAlignedQuad(cx + 0.5f, trunkTop, cz - 0.5f,
-                          cx + 0.5f, trunkTop, cz + 0.5f,
-                          cx + 0.5f, trunkBase, cz + 0.5f,
-                          cx + 0.5f, trunkBase, cz - 0.5f,
+        w.axisAlignedQuad(tx1, trunkTop, tz0,
+                          tx1, trunkTop, tz1,
+                          tx1, trunkBase, tz1,
+                          tx1, trunkBase, tz0,
                           1, 0, 0, trunkLayer, 0f);
-        w.axisAlignedQuad(cx - 0.5f, trunkTop, cz + 0.5f,
-                          cx - 0.5f, trunkTop, cz - 0.5f,
-                          cx - 0.5f, trunkBase, cz - 0.5f,
-                          cx - 0.5f, trunkBase, cz + 0.5f,
+        w.axisAlignedQuad(tx0, trunkTop, tz1,
+                          tx0, trunkTop, tz0,
+                          tx0, trunkBase, tz0,
+                          tx0, trunkBase, tz1,
                           -1, 0, 0, trunkLayer, 0f);
-        w.axisAlignedQuad(cx + 0.5f, trunkTop, cz + 0.5f,
-                          cx - 0.5f, trunkTop, cz + 0.5f,
-                          cx - 0.5f, trunkBase, cz + 0.5f,
-                          cx + 0.5f, trunkBase, cz + 0.5f,
+        w.axisAlignedQuad(tx1, trunkTop, tz1,
+                          tx0, trunkTop, tz1,
+                          tx0, trunkBase, tz1,
+                          tx1, trunkBase, tz1,
                           0, 0, 1, trunkLayer, 0f);
-        w.axisAlignedQuad(cx - 0.5f, trunkTop, cz - 0.5f,
-                          cx + 0.5f, trunkTop, cz - 0.5f,
-                          cx + 0.5f, trunkBase, cz - 0.5f,
-                          cx - 0.5f, trunkBase, cz - 0.5f,
+        w.axisAlignedQuad(tx0, trunkTop, tz0,
+                          tx1, trunkTop, tz0,
+                          tx1, trunkBase, tz0,
+                          tx0, trunkBase, tz0,
                           0, 0, -1, trunkLayer, 0f);
 
         int leafTopLayer  = textureArray.getBlockFaceLayer(tree.kind().leavesBlock(),
@@ -887,6 +916,8 @@ public final class FastLodMesher {
         int idxCount  = 0;
         float minY = Float.POSITIVE_INFINITY;
         float maxY = Float.NEGATIVE_INFINITY;
+        /** Block-aligned anchor that tiled UVs are measured from (the node's base). */
+        int uvBaseX, uvBaseZ;
 
         QuadWriter(float[] pos, float[] tex, float[] nrm,
                    float[] flagX, float[] flagY, float[] flagZ, float[] flagW,
@@ -932,13 +963,13 @@ public final class FastLodMesher {
             int n10 = ((ix + 1) * cpa + iz)     * 3;
             int n11 = ((ix + 1) * cpa + iz + 1) * 3;
             int n01 = (ix       * cpa + iz + 1) * 3;
-            int v0 = pushVert(wx, y, wz, 0f, 0f,
+            int v0 = pushTiled(0, wx, y, wz,
                     cornerNormals[n00], cornerNormals[n00 + 1], cornerNormals[n00 + 2], 0f, 0f, 1f, layer);
-                    pushVert(x1, y, wz, 1f, 0f,
+                    pushTiled(0, x1, y, wz,
                     cornerNormals[n10], cornerNormals[n10 + 1], cornerNormals[n10 + 2], 0f, 0f, 1f, layer);
-                    pushVert(x1, y, z1, 1f, 1f,
+                    pushTiled(0, x1, y, z1,
                     cornerNormals[n11], cornerNormals[n11 + 1], cornerNormals[n11 + 2], 0f, 0f, 1f, layer);
-                    pushVert(wx, y, z1, 0f, 1f,
+                    pushTiled(0, wx, y, z1,
                     cornerNormals[n01], cornerNormals[n01 + 1], cornerNormals[n01 + 2], 0f, 0f, 1f, layer);
             pushQuadIndices(v0);
         }
@@ -949,28 +980,28 @@ public final class FastLodMesher {
             float x1 = wx + cellSize;
             float z1 = wz + cellSize;
             if (dx > 0) {
-                int v0 = pushVert(x1, fTop, wz, 0f, 0f, 1, 0, 0, 0f, 0f, lightVal, layer);
-                        pushVert(x1, fTop, z1, 1f, 0f, 1, 0, 0, 0f, 0f, lightVal, layer);
-                        pushVert(x1, fBot, z1, 1f, 1f, 1, 0, 0, 0f, 0f, lightVal, layer);
-                        pushVert(x1, fBot, wz, 0f, 1f, 1, 0, 0, 0f, 0f, lightVal, layer);
+                int v0 = pushTiled(4, x1, fTop, wz, 1, 0, 0, 0f, 0f, lightVal, layer);
+                        pushTiled(4, x1, fTop, z1, 1, 0, 0, 0f, 0f, lightVal, layer);
+                        pushTiled(4, x1, fBot, z1, 1, 0, 0, 0f, 0f, lightVal, layer);
+                        pushTiled(4, x1, fBot, wz, 1, 0, 0, 0f, 0f, lightVal, layer);
                 pushQuadIndices(v0);
             } else if (dx < 0) {
-                int v0 = pushVert(wx, fTop, z1, 0f, 0f, -1, 0, 0, 0f, 0f, lightVal, layer);
-                        pushVert(wx, fTop, wz, 1f, 0f, -1, 0, 0, 0f, 0f, lightVal, layer);
-                        pushVert(wx, fBot, wz, 1f, 1f, -1, 0, 0, 0f, 0f, lightVal, layer);
-                        pushVert(wx, fBot, z1, 0f, 1f, -1, 0, 0, 0f, 0f, lightVal, layer);
+                int v0 = pushTiled(5, wx, fTop, z1, -1, 0, 0, 0f, 0f, lightVal, layer);
+                        pushTiled(5, wx, fTop, wz, -1, 0, 0, 0f, 0f, lightVal, layer);
+                        pushTiled(5, wx, fBot, wz, -1, 0, 0, 0f, 0f, lightVal, layer);
+                        pushTiled(5, wx, fBot, z1, -1, 0, 0, 0f, 0f, lightVal, layer);
                 pushQuadIndices(v0);
             } else if (dz > 0) {
-                int v0 = pushVert(x1, fTop, z1, 0f, 0f, 0, 0, 1, 0f, 0f, lightVal, layer);
-                        pushVert(wx, fTop, z1, 1f, 0f, 0, 0, 1, 0f, 0f, lightVal, layer);
-                        pushVert(wx, fBot, z1, 1f, 1f, 0, 0, 1, 0f, 0f, lightVal, layer);
-                        pushVert(x1, fBot, z1, 0f, 1f, 0, 0, 1, 0f, 0f, lightVal, layer);
+                int v0 = pushTiled(3, x1, fTop, z1, 0, 0, 1, 0f, 0f, lightVal, layer);
+                        pushTiled(3, wx, fTop, z1, 0, 0, 1, 0f, 0f, lightVal, layer);
+                        pushTiled(3, wx, fBot, z1, 0, 0, 1, 0f, 0f, lightVal, layer);
+                        pushTiled(3, x1, fBot, z1, 0, 0, 1, 0f, 0f, lightVal, layer);
                 pushQuadIndices(v0);
             } else {
-                int v0 = pushVert(wx, fTop, wz, 0f, 0f, 0, 0, -1, 0f, 0f, lightVal, layer);
-                        pushVert(x1, fTop, wz, 1f, 0f, 0, 0, -1, 0f, 0f, lightVal, layer);
-                        pushVert(x1, fBot, wz, 1f, 1f, 0, 0, -1, 0f, 0f, lightVal, layer);
-                        pushVert(wx, fBot, wz, 0f, 1f, 0, 0, -1, 0f, 0f, lightVal, layer);
+                int v0 = pushTiled(2, wx, fTop, wz, 0, 0, -1, 0f, 0f, lightVal, layer);
+                        pushTiled(2, x1, fTop, wz, 0, 0, -1, 0f, 0f, lightVal, layer);
+                        pushTiled(2, x1, fBot, wz, 0, 0, -1, 0f, 0f, lightVal, layer);
+                        pushTiled(2, wx, fBot, wz, 0, 0, -1, 0f, 0f, lightVal, layer);
                 pushQuadIndices(v0);
             }
         }
@@ -980,11 +1011,29 @@ public final class FastLodMesher {
                              float x2, float y2, float z2,
                              float x3, float y3, float z3,
                              float nx, float ny, float nz, int layer, float alphaFlag) {
-            int v0 = pushVert(x0, y0, z0, 0f, 0f, nx, ny, nz, 0f, alphaFlag, 1f, layer);
-                    pushVert(x1, y1, z1, 1f, 0f, nx, ny, nz, 0f, alphaFlag, 1f, layer);
-                    pushVert(x2, y2, z2, 1f, 1f, nx, ny, nz, 0f, alphaFlag, 1f, layer);
-                    pushVert(x3, y3, z3, 0f, 1f, nx, ny, nz, 0f, alphaFlag, 1f, layer);
+            int face = ny > 0.5f ? 0 : ny < -0.5f ? 1 : nz < -0.5f ? 2 : nz > 0.5f ? 3 : nx > 0.5f ? 4 : 5;
+            int v0 = pushTiled(face, x0, y0, z0, nx, ny, nz, 0f, alphaFlag, 1f, layer);
+                    pushTiled(face, x1, y1, z1, nx, ny, nz, 0f, alphaFlag, 1f, layer);
+                    pushTiled(face, x2, y2, z2, nx, ny, nz, 0f, alphaFlag, 1f, layer);
+                    pushTiled(face, x3, y3, z3, nx, ny, nz, 0f, alphaFlag, 1f, layer);
             pushQuadIndices(v0);
+        }
+
+        /**
+         * {@link #pushVert} with a block-tiled UV (one repetition per block on
+         * the block grid, native face orientation) — the per-vertex twin of
+         * {@link MmsLodQuadCodec#tiledTexCoord}. Positions are taken relative
+         * to the node's block-aligned base so the UVs stay small and exact in
+         * COMPACT20's half floats.
+         */
+        private int pushTiled(int face, float x, float y, float z,
+                              float nx, float ny, float nz,
+                              float fx, float fy, float fw, int layer) {
+            float lx = x - uvBaseX, lz = z - uvBaseZ;
+            return pushVert(x, y, z,
+                    MmsLodQuadCodec.tiledTexCoord(face, lx, y, lz, 0),
+                    MmsLodQuadCodec.tiledTexCoord(face, lx, y, lz, 1),
+                    nx, ny, nz, fx, fy, fw, layer);
         }
 
         private int pushVert(float x, float y, float z,

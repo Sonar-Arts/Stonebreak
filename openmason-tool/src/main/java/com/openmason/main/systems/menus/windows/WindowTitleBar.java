@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.windows;
 
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import imgui.ImGui;
 import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
@@ -201,6 +202,9 @@ public class WindowTitleBar {
         ImGui.setCursorPosY(TITLE_BAR_HEIGHT);
         ImGui.separator();
         ImGui.setCursorPosY(TITLE_BAR_HEIGHT + 2);
+        // Submit an item at the moved cursor: callers may render nothing after the
+        // bar (e.g. on close), and ImGui asserts on a bare SetCursorPos at End().
+        ImGui.dummy(0, 0);
 
         return new Result(minClicked, maxClicked, closeClicked);
     }
@@ -212,8 +216,8 @@ public class WindowTitleBar {
     private void renderButton(String id, float width, float height, boolean isClose) {
         if (isClose) {
             ImGui.pushStyleColor(ImGuiCol.Button, 0.0f, 0.0f, 0.0f, 0.0f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonHovered, 0.90f, 0.18f, 0.18f, 1.0f);
-            ImGui.pushStyleColor(ImGuiCol.ButtonActive, 0.75f, 0.12f, 0.12f, 1.0f);
+            ThemeColors.push(ImGuiCol.ButtonHovered, ThemeColors.Tone.DANGER);
+            ThemeColors.pushShaded(ImGuiCol.ButtonActive, ThemeColors.Tone.DANGER, -0.15f);
         } else {
             ImVec4 text = ImGui.getStyle().getColor(ImGuiCol.Text);
             ImGui.pushStyleColor(ImGuiCol.Button, 0.0f, 0.0f, 0.0f, 0.0f);

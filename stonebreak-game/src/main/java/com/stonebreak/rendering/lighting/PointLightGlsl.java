@@ -19,6 +19,9 @@ public final class PointLightGlsl {
     /** Bounded nearest-light budget; every selected light has a shadow-map slot. */
     public static final int MAX_LIGHTS = 16;
 
+    /** Reach of every point light, blocks; the shadow projection and bounce volumes are sized to it. */
+    public static final float RADIUS = 9.5f;
+
     public static final String UNIFORMS;
     public static final String FUNCTIONS;
 

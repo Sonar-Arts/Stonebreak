@@ -6,6 +6,7 @@ import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.theme.MortarTheme;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.mortar.theme.MortarType;
 
 /**
  * A compact, informative list row: a primary title with a dimmed subtitle line
@@ -21,9 +22,9 @@ public final class MortarListRow implements MortarPart {
 
     private static final float RADIUS = 6f;
     private static final float PAD = 14f;
-    private static final float TITLE_SIZE = 14f;
-    private static final float SUB_SIZE = 12f;
-    private static final float TRAIL_SIZE = 12f;
+    private static final float TITLE_SIZE = MortarType.BODY;
+    private static final float SUB_SIZE = MortarType.LABEL;
+    private static final float TRAIL_SIZE = MortarType.LABEL;
     private static final float TRAIL_GAP = 16f;
 
     private final String title;

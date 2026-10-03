@@ -1,7 +1,12 @@
 package com.stonebreak.ui.inventoryScreen.core;
 
+import com.openmason.engine.util.BlockPos;
+import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.workbench.WorkbenchState;
+import com.stonebreak.blocks.workbench.WorkbenchStateRegistry;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
+import com.stonebreak.world.World;
 import com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator;
 import com.stonebreak.ui.inventoryScreen.renderers.WorkbenchRenderCoordinator;
 
@@ -15,6 +20,16 @@ public class WorkbenchController extends InventoryController {
     private final Game game;
     private WorkbenchRenderCoordinator workbenchRenderCoordinator;
 
+    /**
+     * The crafting table bound to the UI (issue #307) — the grid the player edits IS this
+     * block's persisted grid, held by the world's {@link WorkbenchStateRegistry}. Null when
+     * no UI is open.
+     */
+    private WorkbenchState state;
+
+    /** Last grid snapshot sent to the server, for the per-frame dirty check. */
+    private String lastSentSlots;
+
     public WorkbenchController(Game game,
                               Inventory inventory,
                               InventoryInputManager inputManager,
@@ -25,28 +40,28 @@ public class WorkbenchController extends InventoryController {
     }
 
     /**
-     * Workbench-specific visibility handling.
-     * Unlike inventory, workbench can be closed by interacting with the workbench block again
-     * or by pressing escape/inventory key.
+     * Only closes: opening needs the crafting table's position ({@link #open(BlockPos)}).
      */
     @Override
     public void toggleVisibility() {
         if (isVisible()) {
             close();
-        } else {
-            open();
         }
     }
 
     /**
-     * Opens the workbench screen and ensures proper game state.
+     * Binds the UI to the crafting table at {@code pos} and shows it. Items already in that
+     * table's grid appear; edits go straight to it.
      */
-    public void open() {
+    public void open(BlockPos pos) {
+        WorkbenchStateRegistry registry = game.getWorkbenchRegistry();
+        this.state = (registry != null) ? registry.getOrCreate(pos) : new WorkbenchState(pos);
+        // An echo that landed while the UI was closed is not an edit of ours — drop its
+        // marker, and baseline on the grid as it stands (already what the server knows).
+        state.consumePreEchoSlots();
+        this.lastSentSlots = state.encodeSlots();
+        getCraftingManager().bindInputSlots(state.getSlots());
         setVisible(true);
-        // Ensure crafting output is updated when opening
-        if (getWorkbenchCraftingManager() != null) {
-            getWorkbenchCraftingManager().updateCraftingOutput();
-        }
 
         // Update mouse capture state when workbench opens
         if (game.getMouseCaptureManager() != null) {
@@ -55,11 +70,17 @@ public class WorkbenchController extends InventoryController {
     }
 
     /**
-     * Closes the workbench screen and handles cleanup.
+     * Closes the workbench screen. Items left in the grid STAY in the crafting table — they
+     * are persisted with the block and drop when it is broken (issue #307).
      */
     public void close() {
+        if (state != null) {
+            handleDraggedItemsOnClose();
+            flushSlots();
+            getCraftingManager().unbindInputSlots();
+            state = null;
+        }
         setVisible(false);
-        // Items remain in crafting grid when closing (consistent with original behavior)
 
         // Update mouse capture state when workbench closes
         if (game.getMouseCaptureManager() != null) {
@@ -67,15 +88,80 @@ public class WorkbenchController extends InventoryController {
         }
     }
 
+    @Override
+    public void update(float deltaTime) {
+        super.update(deltaTime);
+        if (!isVisible() || state == null) {
+            return;
+        }
+        if (!isTableStillThere()) {
+            abandonBrokenTable();
+            return;
+        }
+        // Grid intent: whatever mutation path the UI took (drag, split, place, take, craft),
+        // the per-frame dirty check catches it and ships the full grid to the server, whose
+        // BlockStateS2C echo then confirms/corrects it.
+        //
+        // An echo is NOT intent: one that left the server before our last edit arrived puts
+        // the old grid back locally, and re-sending that would undo the edit. So when an echo
+        // landed since the last frame, first flush any edit made before it (the pre-echo
+        // snapshot), then adopt the echoed grid as the baseline. (Same rule as the furnace.)
+        String preEcho = state.consumePreEchoSlots();
+        if (preEcho != null) {
+            if (!preEcho.equals(lastSentSlots)) {
+                sendSlots(preEcho);
+            }
+            lastSentSlots = state.encodeSlots();
+            getCraftingManager().updateCraftingOutput();
+        }
+        flushSlots();
+    }
+
+    /** Sends the grid if it changed since the last send. */
+    private void flushSlots() {
+        String slots = state.encodeSlots();
+        if (!slots.equals(lastSentSlots)) {
+            sendSlots(slots);
+        }
+    }
+
+    private void sendSlots(String slots) {
+        lastSentSlots = slots;
+        BlockPos p = state.getPos();
+        com.stonebreak.network.MultiplayerSession.sendWorkbenchSlots(p.x(), p.y(), p.z(), slots);
+    }
+
+    private boolean isTableStillThere() {
+        World world = Game.getWorld();
+        if (world == null) {
+            return true; // nothing to check against — leave the UI alone
+        }
+        BlockPos p = state.getPos();
+        return world.getBlockAt(p.x(), p.y(), p.z()) == BlockType.WORKBENCH;
+    }
+
+    /**
+     * The table was broken (by another player) while this UI was open. The server already
+     * dropped the grid it knew about, so the displayed grid is dead: detach from it, and give
+     * the player back only what they were holding on the cursor.
+     */
+    private void abandonBrokenTable() {
+        getCraftingManager().unbindInputSlots();
+        state = null;
+        // A dragged stack taken from the grid "returns" into the now-detached scratch grid;
+        // returnHeldItemsToPlayer then empties that scratch grid into the inventory (only
+        // the overflow is dropped), so the player gets back exactly what they held.
+        returnHeldItemsToPlayer();
+        game.closeWorkbenchScreen();
+    }
+
     /**
      * Handles close request from input (Escape key, etc.).
-     * Includes drag state cleanup before closing.
      */
     public void handleCloseRequest() {
         if (isVisible()) {
-            // Handle any dragged items before closing
-            handleDraggedItemsOnClose();
-            // Call game's close method which will handle state transition and call our close() method
+            // Game's close method handles the state transition and calls close(), which
+            // returns the cursor stack; the grid itself stays in the table.
             game.closeWorkbenchScreen();
         }
     }
@@ -91,13 +177,6 @@ public class WorkbenchController extends InventoryController {
         if (inputManager != null) {
             inputManager.handleCloseWithDraggedItems();
         }
-    }
-
-    /**
-     * Gets the crafting manager for workbench operations.
-     */
-    private InventoryCraftingManager getWorkbenchCraftingManager() {
-        return getCraftingManager();
     }
 
     /**

@@ -59,11 +59,11 @@ class CearlBootstrapTest {
 
         // LOD pools inherit the tuned policy, overriding only their sizes.
         VramArenaPolicy lod = VramPlans.arena(VramPlans.POOL_LOD_TERRAIN);
-        assertEquals(512L * 1024, lod.vertexInitialBytes());
+        assertEquals(128L * 1024, lod.vertexInitialBytes());
         assertEquals(48L * 1024, lod.indexInitialBytes());
         assertEquals(1.5, lod.growthFactor());
         assertEquals(0.4, lod.trimFraction(), 1e-9);
-        assertEquals(320L * 1024,
+        assertEquals(16L * 1024,
             VramPlans.arena(VramPlans.POOL_LOD_WATER).vertexInitialBytes());
         assertEquals(24L * 1024,
             VramPlans.arena(VramPlans.POOL_LOD_WATER).indexInitialBytes());

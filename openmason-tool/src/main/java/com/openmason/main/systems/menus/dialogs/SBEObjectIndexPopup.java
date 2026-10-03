@@ -1,8 +1,6 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import imgui.ImGui;
-import imgui.ImVec2;
-import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiTableFlags;
 
 import java.util.List;
@@ -36,11 +34,7 @@ public final class SBEObjectIndexPopup {
             wantOpen = false;
         }
 
-        ImVec2 center = ImGui.getMainViewport().getCenter();
-        ImGui.setNextWindowPos(center.x, center.y, ImGuiCond.Appearing, 0.5f, 0.5f);
-        ImGui.setNextWindowSize(460, 480, ImGuiCond.Appearing);
-
-        if (ImGui.beginPopupModal(POPUP_ID, null, 0)) {
+        if (ModalDialogs.begin(POPUP_ID, 460)) {
             ImGui.text("Registered SBE entities: " + cached.size());
             ImGui.textDisabled("Object IDs already in use — pick a unique one for new entities.");
             ImGui.separator();
@@ -49,7 +43,7 @@ public final class SBEObjectIndexPopup {
                     | ImGuiTableFlags.Borders
                     | ImGuiTableFlags.ScrollY
                     | ImGuiTableFlags.SizingStretchProp;
-            float tableHeight = ImGui.getContentRegionAvailY() - 36.0f;
+            float tableHeight = 340.0f;
             if (ImGui.beginTable("##sbe_index_table", 3, flags, 0, tableHeight)) {
                 ImGui.tableSetupColumn("Object ID");
                 ImGui.tableSetupColumn("Name");
@@ -74,11 +68,11 @@ public final class SBEObjectIndexPopup {
                 ImGui.endTable();
             }
 
-            ImGui.dummy(0, 4);
-            if (ImGui.button("Close", 110, 26)) {
+            ModalDialogs.buttonsBegin();
+            if (ModalDialogs.closeButton()) {
                 ImGui.closeCurrentPopup();
             }
-            ImGui.endPopup();
+            ModalDialogs.end();
         }
     }
 }

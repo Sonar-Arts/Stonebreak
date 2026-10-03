@@ -1,9 +1,8 @@
 package com.openmason.main.systems.menus.dialogs.validation;
 
 import imgui.ImGui;
-import imgui.ImVec2;
-import imgui.flag.ImGuiCond;
-import imgui.flag.ImGuiWindowFlags;
+import com.openmason.main.systems.menus.dialogs.ModalDialogs;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.type.ImBoolean;
 
 /**
@@ -45,20 +44,12 @@ public final class NumericIdConflictPopup {
             wantOpen = false;
         }
 
-        ImVec2 center = ImGui.getMainViewport().getCenter();
-        ImGui.setNextWindowPos(center.x, center.y, ImGuiCond.Appearing, 0.5f, 0.5f);
-        ImGui.setNextWindowSize(480, 0, ImGuiCond.Appearing);
-
-        if (ImGui.beginPopupModal(POPUP_ID, null, ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (ModalDialogs.begin(POPUP_ID, 480)) {
             if (conflict == null) {
                 ImGui.closeCurrentPopup();
-                ImGui.endPopup();
+                ModalDialogs.end();
                 return;
             }
-
-            ImGui.textColored(1.0f, 0.55f, 0.45f, 1.0f, "Numeric ID collision");
-            ImGui.separator();
-            ImGui.dummy(0, 4);
 
             ImGui.text("Numeric ID " + conflict.numericId() + " is already taken by:");
             ImGui.bulletText(conflict.existingObjectId() + "  (" + conflict.existingDisplayName() + ")");
@@ -75,24 +66,25 @@ public final class NumericIdConflictPopup {
             ImGui.dummy(0, 8);
 
             boolean enabled = acknowledged.get();
-            if (!enabled) ImGui.beginDisabled();
-            if (ImGui.button("Override", 110, 26)) {
+            if (!enabled) {
+                ThemedWidgets.inlineError("Tick the box above to enable Override.");
+            }
+
+            ModalDialogs.buttonsBegin();
+            if (ModalDialogs.danger("Override", enabled)) {
                 ImGui.closeCurrentPopup();
                 Runnable r = onOverride;
                 onOverride = null;
                 conflict = null;
                 if (r != null) r.run();
             }
-            if (!enabled) ImGui.endDisabled();
-
-            ImGui.sameLine();
-            if (ImGui.button("Cancel", 110, 26)) {
+            if (ModalDialogs.cancel()) {
                 ImGui.closeCurrentPopup();
                 onOverride = null;
                 conflict = null;
             }
 
-            ImGui.endPopup();
+            ModalDialogs.end();
         }
     }
 }

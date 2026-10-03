@@ -1,8 +1,9 @@
 package com.openmason.main.systems.menus.mainHub.dialogs;
 
+import com.openmason.main.systems.menus.dialogs.ModalDialogs;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.flag.ImGuiInputTextFlags;
-import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,9 +15,8 @@ import org.slf4j.LoggerFactory;
 public class RenameProjectDialog {
 
     private static final Logger logger = LoggerFactory.getLogger(RenameProjectDialog.class);
-    private static final String POPUP_ID = "Rename Project";
+    private static final String POPUP_ID = "Rename Project##renameProject";
     private static final float DIALOG_WIDTH = 400.0f;
-    private static final float DIALOG_HEIGHT = 150.0f;
 
     private boolean isOpen = false;
     private boolean needsOpen = false;
@@ -63,13 +63,7 @@ public class RenameProjectDialog {
             needsOpen = false;
         }
 
-        ImGui.setNextWindowSize(DIALOG_WIDTH, DIALOG_HEIGHT);
-        ImGui.setNextWindowPos(
-                ImGui.getMainViewport().getCenterX() - DIALOG_WIDTH / 2,
-                ImGui.getMainViewport().getCenterY() - DIALOG_HEIGHT / 2
-        );
-
-        if (ImGui.beginPopupModal(POPUP_ID, ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove)) {
+        if (ModalDialogs.begin(POPUP_ID, DIALOG_WIDTH)) {
             ImGui.text("Enter a new name for this project:");
             ImGui.spacing();
 
@@ -80,8 +74,7 @@ public class RenameProjectDialog {
 
             ImGui.setNextItemWidth(-1);
             // Use CallbackResize so the ImString stays in sync with edits
-            boolean enterPressed = ImGui.inputText("##rename_input", nameBuffer,
-                    ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.CallbackResize);
+            ImGui.inputText("##rename_input", nameBuffer, ImGuiInputTextFlags.CallbackResize);
 
             // Read the current input value directly from the native buffer.
             // ImString.get() can lag behind in-progress edits when the field is
@@ -96,28 +89,13 @@ public class RenameProjectDialog {
 
             boolean validName = !currentValue.isEmpty();
 
-            ImGui.spacing();
-            ImGui.separator();
-            ImGui.spacing();
-
-            // Button row
-            float buttonWidth = 100.0f;
-            float spacing = 10.0f;
-            float totalWidth = buttonWidth * 2 + spacing;
-            ImGui.setCursorPosX((DIALOG_WIDTH - totalWidth) / 2);
-
-            boolean shouldRename = false;
             if (!validName) {
-                ImGui.beginDisabled();
-            }
-            if (ImGui.button("Rename", buttonWidth, 0)) {
-                shouldRename = true;
-            }
-            if (!validName) {
-                ImGui.endDisabled();
+                ThemedWidgets.inlineError("Name cannot be empty.");
             }
 
-            if ((shouldRename || enterPressed) && validName) {
+            ModalDialogs.buttonsBegin();
+            // Enter confirms even while the name field has focus.
+            if (ModalDialogs.primary("Rename", validName, true)) {
                 logger.debug("Project {} renamed to '{}'", projectId, currentValue);
                 if (callback != null) {
                     callback.onRename(projectId, currentValue);
@@ -125,15 +103,11 @@ public class RenameProjectDialog {
                 isOpen = false;
                 ImGui.closeCurrentPopup();
             }
-
-            ImGui.sameLine(0, spacing);
-
-            if (ImGui.button("Cancel", buttonWidth, 0)) {
+            if (ModalDialogs.cancel()) {
                 isOpen = false;
                 ImGui.closeCurrentPopup();
             }
-
-            ImGui.endPopup();
+            ModalDialogs.end();
         }
     }
 

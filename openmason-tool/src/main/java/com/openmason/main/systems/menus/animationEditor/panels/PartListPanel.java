@@ -73,7 +73,7 @@ public final class PartListPanel implements AutoCloseable {
         boolean overlay = clip.layerType() == AnimLayerMeta.LayerType.OVERLAY;
         boolean maskAll = clip.maskParts().isEmpty();
 
-        float width = Math.max(60f, ImGui.getContentRegionAvailX());
+        float width = Math.max(60f, MortarRegion.availWidth());
         float rowWidth = overlay ? width - MASK_BADGE_WIDTH - MASK_BADGE_GAP : width;
         float totalHeight = rows.size() * (ROW_HEIGHT + ROW_GAP);
 

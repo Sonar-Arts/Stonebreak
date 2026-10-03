@@ -17,8 +17,8 @@ import io.netty.buffer.ByteBuf;
  */
 public record FurnaceSlotsC2S(int x, int y, int z, String slots) implements Packet {
 
-    /** Bound on the encoded slot string (three {@code kind:id:count} triples). */
-    public static final int MAX_SLOTS_LENGTH = 128;
+    /** Bound on the encoded slot string (three {@code kind:id:count[:state]} tokens). */
+    public static final int MAX_SLOTS_LENGTH = 512;
 
     public static final PacketCodec<FurnaceSlotsC2S> CODEC = new PacketCodec<>() {
         @Override

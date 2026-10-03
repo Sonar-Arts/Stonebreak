@@ -12,9 +12,8 @@ import org.joml.Vector3i;
 
 /**
  * Tracks block-breaking progress for the currently targeted block. Per-frame progress
- * advances based on block hardness and tool efficiency — pickaxes on stone-family
- * blocks, axes on wood-family blocks, with wooden weaker than stone (see
- * {@link ToolMiningRules}). Breaking completes when progress reaches 1.0;
+ * advances based on block hardness and tool efficiency — the held tool's SBO
+ * mining data against the block's SBO material (see {@link ToolMiningRules}). Breaking completes when progress reaches 1.0;
  * instant-break blocks complete on press.
  */
 public class BlockBreaker {

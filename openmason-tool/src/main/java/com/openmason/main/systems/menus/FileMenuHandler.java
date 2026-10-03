@@ -8,7 +8,9 @@ import com.openmason.main.systems.project.ProjectService;
 import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.services.StatusService;
 import com.openmason.main.systems.stateHandling.ModelState;
+import com.openmason.main.systems.keybinds.KeybindRegistry;
 import com.openmason.main.systems.stateHandling.UIVisibilityState;
+import com.openmason.main.systems.viewport.ViewportKeybindActions;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.LogoManager;
 import com.openmason.main.systems.themes.core.ThemeManager;
@@ -191,7 +193,7 @@ public class FileMenuHandler {
             modelOperations.newModel();
         }
 
-        if (ImGui.menuItem("Open Model...")) {
+        if (ImGui.menuItem("Open Model...", shortcut(ViewportKeybindActions.OPEN_MODEL))) {
             modelOperations.openOMOModel();
         }
 
@@ -203,7 +205,7 @@ public class FileMenuHandler {
 
         // --- Save (Model) ---
         boolean canSave = modelState.canSaveModel() && modelState.hasUnsavedChanges();
-        if (ImGui.menuItem("Save Model", "", false, canSave)) {
+        if (ImGui.menuItem("Save Model", shortcut(ViewportKeybindActions.SAVE_MODEL), false, canSave)) {
             modelOperations.saveModel();
         }
 
@@ -443,5 +445,10 @@ public class FileMenuHandler {
             }
             System.exit(0);
         }
+    }
+
+    /** Shortcut column from the keybind registry, so a rebind never leaves it stale. */
+    private static String shortcut(String actionId) {
+        return KeybindRegistry.getInstance().getShortcutDisplayName(actionId);
     }
 }

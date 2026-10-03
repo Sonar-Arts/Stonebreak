@@ -37,6 +37,14 @@ import java.util.Map;
  * same trade-off the tool strip and color picker already make. Requires a live
  * {@link SkijaContext}; {@link #isAvailable()} reports whether one exists.</p>
  *
+ * <p><strong>Units.</strong> Region sizes and part rects are <em>logical</em>
+ * px. The region paints at {@code size × }{@link MortarTheme#scale} screen px
+ * with the canvas scaled to match, and hit-tests in logical px, so every part,
+ * radius, stroke and {@link com.openmason.main.systems.mortar.theme.MortarType}
+ * text size follows UI density together with the ImGui text beside it. Size a
+ * region from ImGui space with {@link #availWidth()} / {@link #availHeight()},
+ * and convert back with {@link #toPixels(float)}.</p>
+ *
  * <p>Not thread-safe; create, use, and {@link #close()} on the GL thread.</p>
  */
 public final class MortarRegion implements AutoCloseable {
@@ -61,7 +69,27 @@ public final class MortarRegion implements AutoCloseable {
         return SkijaContext.getInstance() != null;
     }
 
-    /** Start a frame at the given surface size; clears queued parts. */
+    /** The density scale in effect this frame (logical px → screen px). */
+    public static float scale() {
+        return MortarTheme.currentScale();
+    }
+
+    /** ImGui's available content width, in logical px. */
+    public static float availWidth() {
+        return ImGui.getContentRegionAvailX() / scale();
+    }
+
+    /** ImGui's available content height, in logical px. */
+    public static float availHeight() {
+        return ImGui.getContentRegionAvailY() / scale();
+    }
+
+    /** Convert a logical length to ImGui screen px at the current density. */
+    public static float toPixels(float logical) {
+        return logical * scale();
+    }
+
+    /** Start a frame at the given logical surface size; clears queued parts. */
     public void begin(float width, float height) {
         this.width = width;
         this.height = height;
@@ -84,19 +112,26 @@ public final class MortarRegion implements AutoCloseable {
      */
     public MortarFrameResult render() {
         ensurePanel();
-        if (width < 1f || height < 1f || entries.isEmpty()) {
+        MortarTheme theme = MortarTheme.capture();
+        if (width * theme.scale < 1f || height * theme.scale < 1f || entries.isEmpty()) {
             return MortarFrameResult.NONE;
         }
 
-        MortarTheme theme = MortarTheme.capture();
         for (Entry e : entries) {
             states.computeIfAbsent(e.id, k -> new PartState()).touchedThisFrame = true;
         }
 
-        panel.draw(width, height, canvas -> {
-            MortarPainter g = new MortarPainter(canvas, theme, fonts);
-            for (Entry e : entries) {
-                e.part.paint(g, e.x, e.y, e.w, e.h, states.get(e.id));
+        float scale = theme.scale;
+        panel.draw(width * scale, height * scale, canvas -> {
+            canvas.save();
+            canvas.scale(scale, scale);
+            try {
+                MortarPainter g = new MortarPainter(canvas, theme, fonts);
+                for (Entry e : entries) {
+                    e.part.paint(g, e.x, e.y, e.w, e.h, states.get(e.id));
+                }
+            } finally {
+                canvas.restore();
             }
         });
 
@@ -105,8 +140,8 @@ public final class MortarRegion implements AutoCloseable {
         boolean regionActive = ImGui.isItemActive();
         String hoveredId = null;
         if (regionHovered) {
-            float localX = panel.getItemRelativeMouseX();
-            float localY = panel.getItemRelativeMouseY();
+            float localX = panel.getItemRelativeMouseX() / scale;
+            float localY = panel.getItemRelativeMouseY() / scale;
             // Iterate in reverse so later (topmost) parts win overlaps.
             for (int i = entries.size() - 1; i >= 0; i--) {
                 Entry e = entries.get(i);

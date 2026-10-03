@@ -174,10 +174,10 @@ public final class ClientBlockHandler {
     }
 
     /**
-     * Applies an authoritative per-block state string (furnace contents/progress/lit).
-     * Writes the chunk's state map (remesh on render-state change is handled by
-     * {@code scheduleChunkRemeshAt}) and feeds the DISPLAY furnace registry in place so an
-     * open furnace UI tracks live.
+     * Applies an authoritative per-block state string (furnace contents/progress/lit,
+     * crafting-table grid, ...). Writes the chunk's state map (remesh on render-state change
+     * is handled by {@code scheduleChunkRemeshAt}) and feeds the DISPLAY furnace/workbench
+     * registries in place so an open furnace or crafting-table UI tracks live.
      */
     public void applyBlockState(com.stonebreak.network.packet.world.BlockStateS2C s) {
         if (chunkHandler.runAfterPendingInstall(
@@ -205,6 +205,10 @@ public final class ClientBlockHandler {
                 && s.state() != null
                 && s.state().startsWith(com.stonebreak.blocks.furnace.FurnaceState.STATE_PREFIX)) {
             world.getFurnaceRegistry().applyAuthoritativeState(
+                new com.openmason.engine.util.BlockPos(s.x(), s.y(), s.z()), s.state());
+        }
+        if (com.stonebreak.blocks.workbench.WorkbenchState.isWorkbenchState(s.state())) {
+            world.getWorkbenchRegistry().applyAuthoritativeState(
                 new com.openmason.engine.util.BlockPos(s.x(), s.y(), s.z()), s.state());
         }
     }

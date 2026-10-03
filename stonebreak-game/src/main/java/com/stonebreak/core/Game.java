@@ -491,6 +491,12 @@ public class Game {
         World w = getWorld();
         return w != null ? w.getFurnaceRegistry() : null;
     }
+
+    /** The CURRENT world's crafting-table grids (per-world, like {@link #getFurnaceRegistry()}). */
+    public com.stonebreak.blocks.workbench.WorkbenchStateRegistry getWorkbenchRegistry() {
+        World w = getWorld();
+        return w != null ? w.getWorkbenchRegistry() : null;
+    }
     
     /**
      * Gets the input handler.
@@ -663,9 +669,9 @@ public class Game {
         return services.textureAtlas();
     }
 
-    /** Delegates to {@link com.stonebreak.core.state.GameStateController#openWorkbenchScreen()}. */
-    public void openWorkbenchScreen() {
-        stateController.openWorkbenchScreen();
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#openWorkbenchScreen(com.openmason.engine.util.BlockPos)}. */
+    public void openWorkbenchScreen(com.openmason.engine.util.BlockPos pos) {
+        stateController.openWorkbenchScreen(pos);
     }
 
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#openRecipeBookScreen()}. */

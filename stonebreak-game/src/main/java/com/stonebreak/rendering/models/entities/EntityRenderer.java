@@ -170,7 +170,8 @@ public class EntityRenderer {
      * <p>Unlike {@link #renderEntity}, this needs no live {@link Entity}: the
      * caller picks the appearance variant and SBE animation state directly. The
      * asset is resolved from the type's object id, exactly as the live path does.
-     * Intended for UI previews (Entity Glossary), so underwater fog is disabled.
+     * Intended for UI previews (Entity Glossary): no underwater fog, and lit by the
+     * fixed UI preview rig rather than the world's time of day.
      *
      * @param type        glossary entity type (must be SBE-driven)
      * @param variant     appearance variant name (case-insensitive; unknown → default)
@@ -186,14 +187,15 @@ public class EntityRenderer {
                                     float animationTime, Vector3f position, float yawDegrees,
                                     Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
         if (!initialized || type == null) return;
-        mobRenderer.renderPreview(type, variant, stateName, animationTime,
-                position, yawDegrees, scale, viewMatrix, projectionMatrix);
+        withUiPreviewLighting(() -> mobRenderer.renderPreview(type, variant, stateName, animationTime,
+                position, yawDegrees, scale, viewMatrix, projectionMatrix));
     }
 
     /**
      * {@link #renderEntityPreview} keyed by SBE object id instead of {@link EntityType}, for
      * asset-only models that have no mob definition (the Focus battle's Ice Archon). The model
      * origin is placed at {@code position} exactly as authored: no ground anchoring, no fog.
+     * Lit by the world (the battle stage is part of the world pass), not the UI preview rig.
      *
      * @param sbeObjectId registry object id, e.g. {@code stonebreak:ice_archon}; unknown ids draw nothing
      */
@@ -213,7 +215,8 @@ public class EntityRenderer {
      * an {@link Entity} and whose asset may be untextured: textured assets render
      * normally and untextured assets fall back to the colored path (otherwise
      * every face is skipped and nothing draws). Intended for UI previews (e.g.
-     * character creation), so the head faces forward and underwater fog is disabled.
+     * character creation), so the head faces forward, underwater fog is disabled and
+     * the fixed UI preview rig replaces the world's lighting.
      *
      * @param stateName     SBE animation-state name (null → rest pose)
      * @param animationTime elapsed clip time in seconds
@@ -241,8 +244,36 @@ public class EntityRenderer {
                                     Matrix4f viewMatrix, Matrix4f projectionMatrix,
                                     Object attachmentKey) {
         if (!initialized) return;
+        withUiPreviewLighting(() -> playerFigureRenderer.renderPlayerPreview(stateName, animationTime,
+                position, yawDegrees, scale, viewMatrix, projectionMatrix, attachmentKey));
+    }
+
+    /**
+     * {@link #renderPlayerPreview} for a figure staged <em>inside</em> the world
+     * pass (the Focus battle's monk): same caller-chosen pose, but lit by the
+     * world — time of day, torches, sun shadows — instead of the UI preview rig.
+     */
+    public void renderStagedPlayer(String stateName, float animationTime,
+                                   Vector3f position, float yawDegrees, Vector3f scale,
+                                   Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                   Object attachmentKey) {
+        if (!initialized) return;
         playerFigureRenderer.renderPlayerPreview(stateName, animationTime, position, yawDegrees, scale,
                 viewMatrix, projectionMatrix, attachmentKey);
+    }
+
+    /**
+     * Runs a UI preview draw under the fixed preview lighting rig, so a model
+     * shown over the UI never picks up the world's day/night, torches or shadows
+     * (issue #303). Restores the previous mode even if the draw throws.
+     */
+    private void withUiPreviewLighting(Runnable draw) {
+        boolean previous = sbeEntityRenderer.setUiPreviewLighting(true);
+        try {
+            draw.run();
+        } finally {
+            sbeEntityRenderer.setUiPreviewLighting(previous);
+        }
     }
 
     /**

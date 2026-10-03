@@ -234,6 +234,65 @@ class FastLodPulledParityTest {
         }
     }
     /**
+     * Issue #234: every LOD quad — per-cell, merged, skirt, foundation, tree —
+     * maps UV to world position as {@code uv = ±pos + k} with ONE integer k per
+     * quad and the native face signs. That is one repetition per block on the
+     * block grid; a quad stretching one tile across its cell (k differing per
+     * corner) or a flipped side texture fails.
+     */
+    @Test
+    void lodUvsTileOncePerBlockOnTheBlockGrid() {
+        float[] uSign = {1f, 1f, -1f, 1f, -1f, 1f};
+        float[] vSign = {1f, -1f, -1f, -1f, -1f, -1f};
+        MmsVertexFormat[] formats = {MmsVertexFormat.LEGACY40, MmsVertexFormat.COMPACT20, MmsVertexFormat.QUAD16};
+        for (FastLodLevel level : new FastLodLevel[]{FastLodLevel.L4, FastLodLevel.L2, FastLodLevel.L0}) {
+            for (MmsVertexFormat format : formats) {
+                MmsVertexFormat.override(format);
+                MmsMeshData mesh = mesher().build(data(level, 17, -9)).mesh();
+                float[] p = mesh.getVertexPositions();
+                float[] n = mesh.getVertexNormals();
+                float[] uv = mesh.getTextureCoordinates();
+                for (int q = 0; q < mesh.getVertexCount() / 4; q++) {
+                    // The plane axis is the one all four corners share (smooth top
+                    // normals on steep ridges lean further sideways than up); the
+                    // summed normal only gives its sign.
+                    int plane = 1;
+                    for (int axis : new int[]{1, 0, 2}) {
+                        float a0 = p[q * 12 + axis];
+                        if (a0 == p[q * 12 + 3 + axis] && a0 == p[q * 12 + 6 + axis] && a0 == p[q * 12 + 9 + axis]) {
+                            plane = axis;
+                            break;
+                        }
+                    }
+                    float sign = 0;
+                    for (int c = 0; c < 4; c++) {
+                        sign += n[(q * 4 + c) * 3 + plane];
+                    }
+                    int face = plane == 1 ? (sign > 0 ? 0 : 1) : plane == 2 ? (sign < 0 ? 2 : 3) : (sign > 0 ? 4 : 5);
+                    int ua = face >= 4 ? 2 : 0;
+                    int va = face <= 1 ? 2 : 1;
+                    float ku = 0, kv = 0;
+                    for (int c = 0; c < 4; c++) {
+                        int v = q * 4 + c;
+                        float du = uv[v * 2] - uSign[face] * p[v * 3 + ua];
+                        float dv = uv[v * 2 + 1] - vSign[face] * p[v * 3 + va];
+                        String where = level + " " + format + " quad " + q + " face " + face + " corner " + c;
+                        assertEquals(Math.rint(du), du, 1e-3f, where + " u on the block grid");
+                        assertEquals(Math.rint(dv), dv, 1e-3f, where + " v on the block grid");
+                        if (c == 0) {
+                            ku = du;
+                            kv = dv;
+                        } else {
+                            assertEquals(ku, du, 1e-3f, where + " u scale is one tile per block");
+                            assertEquals(kv, dv, 1e-3f, where + " v scale is one tile per block");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Regression: a node that is flat across its whole width merges into a
      * rectangle wider than the codec's 63 half-block u extent. The writer must
      * split the run instead of dropping the record — a dropped top exposes the

@@ -12,6 +12,7 @@ import com.openmason.main.systems.mortar.parts.MortarSectionLabel;
 import com.openmason.main.systems.mortar.parts.MortarSeparator;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
 import com.openmason.main.systems.themes.core.ThemeManager;
+import com.openmason.main.systems.mortar.theme.MortarType;
 import imgui.ImGui;
 
 /**
@@ -56,12 +57,14 @@ public class HubSidebarNav {
         // Logo — GL texture, centered, above the Skija region.
         ImGui.dummy(0, 6f);
         float availW = ImGui.getContentRegionAvailX();
-        ImGui.setCursorPosX(ImGui.getCursorPosX() + (availW - LOGO_SIZE) / 2f);
-        logoManager.renderLogo(LOGO_SIZE);
+        float logoSize = MortarRegion.toPixels(LOGO_SIZE);
+        ImGui.setCursorPosX(ImGui.getCursorPosX() + (availW - logoSize) / 2f);
+        logoManager.renderLogo(logoSize);
         ImGui.dummy(0, 8f);
 
-        float width = ImGui.getContentRegionAvailX();
-        float height = ImGui.getContentRegionAvailY();
+        // Logical px: the region scales to UI density.
+        float width = MortarRegion.availWidth();
+        float height = MortarRegion.availHeight();
         if (width < 1f || height < 1f) {
             return;
         }
@@ -74,10 +77,10 @@ public class HubSidebarNav {
         // Identity text.
         region.add("title", x, 4f, w, 22f, (g, px, py, pw, ph, st) ->
                 g.text("Project Hub", px + pw / 2f, py + ph / 2f,
-                        MortarPainter.Align.CENTER, Weight.MEDIUM, 16f, g.theme().text));
+                        MortarPainter.Align.CENTER, Weight.MEDIUM, MortarType.TITLE, g.theme().text));
         region.add("subtitle", x, 28f, w, 16f, (g, px, py, pw, ph, st) ->
                 g.text("Open Mason", px + pw / 2f, py + ph / 2f,
-                        MortarPainter.Align.CENTER, Weight.REGULAR, 11f, g.theme().textDim));
+                        MortarPainter.Align.CENTER, Weight.REGULAR, MortarType.CAPTION, g.theme().textDim));
 
         region.add("sep", x, 52f, w, 8f, new MortarSeparator(true));
 
@@ -137,15 +140,15 @@ public class HubSidebarNav {
                     com.openmason.main.systems.mortar.theme.Argb.withAlpha(g.theme().surfaceHover, 0.55f * hover));
         }
         String changeLabel = "Change";
-        float changeW = g.measureWidth(changeLabel, Weight.MEDIUM, 11f);
+        float changeW = g.measureWidth(changeLabel, Weight.MEDIUM, MortarType.CAPTION);
         float inset = 16f;
         String display = folder == null || folder.isBlank() ? "(not set)" : folder;
         g.textEllipsized(display, x + inset, y + h / 2f, w - inset * 2f - changeW - 8f,
-                Weight.REGULAR, 12f, g.theme().textDim);
+                Weight.REGULAR, MortarType.LABEL, g.theme().textDim);
         int changeColor = com.openmason.main.systems.mortar.theme.Argb.lerp(
                 g.theme().textFaint, g.theme().accent, hover);
         g.text(changeLabel, x + w - inset - changeW, y + h / 2f,
-                MortarPainter.Align.LEFT, Weight.MEDIUM, 11f, changeColor);
+                MortarPainter.Align.LEFT, Weight.MEDIUM, MortarType.CAPTION, changeColor);
     }
 
     private void switchView(NavigationItem.ViewType view) {

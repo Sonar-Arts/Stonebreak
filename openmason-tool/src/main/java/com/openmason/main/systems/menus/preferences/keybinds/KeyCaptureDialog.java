@@ -3,7 +3,10 @@ package com.openmason.main.systems.menus.preferences.keybinds;
 import com.openmason.main.systems.menus.textureCreator.keyboard.KeyCodeTranslator;
 import com.openmason.main.systems.menus.textureCreator.keyboard.ShortcutKey;
 import imgui.ImGui;
-import imgui.flag.ImGuiWindowFlags;
+import com.openmason.main.systems.menus.dialogs.ModalDialogs;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
+import imgui.flag.ImGuiCol;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +24,10 @@ public class KeyCaptureDialog {
 
     private static final Logger logger = LoggerFactory.getLogger(KeyCaptureDialog.class);
 
+    private static final String POPUP_ID = "Capture Keybind##keyCapture";
+
     private boolean isCapturing = false;
+    private int capturedFrame = -1;
     private String capturingActionId = null;
     private String capturingActionName = null;
     private ShortcutKey capturedKey = null;
@@ -42,7 +48,7 @@ public class KeyCaptureDialog {
         this.capturingActionId = actionId;
         this.capturingActionName = actionName;
         this.capturedKey = null;
-        this.statusMessage = "Press any key combination... (ESC to cancel)";
+        this.statusMessage = "Press any key combination... (Esc to cancel)";
         this.onConfirm = onConfirm;
         this.onCancel = onCancel;
         logger.debug("Started key capture for action: {}", actionId);
@@ -57,22 +63,10 @@ public class KeyCaptureDialog {
             return;
         }
 
-        // Open modal popup
-        ImGui.openPopup("Capture Keybind");
+        ModalDialogs.openIfNeeded(POPUP_ID);
 
-        // Center the modal
-        ImGui.setNextWindowPos(
-                ImGui.getIO().getDisplaySizeX() * 0.5f,
-                ImGui.getIO().getDisplaySizeY() * 0.5f,
-                0, // ImGuiCond.Always
-                0.5f, 0.5f // pivot
-        );
-
-        // Begin modal popup
-        if (ImGui.beginPopupModal("Capture Keybind", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoMove)) {
-            // Title
+        if (ModalDialogs.begin(POPUP_ID, 320)) {
             ImGui.text("Rebind: " + capturingActionName);
-            ImGui.separator();
             ImGui.spacing();
 
             // Capture key input
@@ -81,6 +75,7 @@ public class KeyCaptureDialog {
                 if (pressed != null) {
                     if (ShortcutKey.isValidKeybind(pressed)) {
                         capturedKey = pressed;
+                        capturedFrame = ImGui.getFrameCount();
                         statusMessage = "Captured: " + pressed.getDisplayName();
                         logger.debug("Captured key: {} for action: {}", pressed.getDisplayName(), capturingActionId);
                     } else {
@@ -91,39 +86,39 @@ public class KeyCaptureDialog {
             }
 
             // Status message
-            ImGui.textWrapped(statusMessage);
-            ImGui.spacing();
-
-            // Display captured key
-            if (capturedKey != null) {
-                ImGui.text("New Keybind: ");
-                ImGui.sameLine();
-
-                // Display as button-like style (same as keybind display)
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.2f, 0.6f, 0.2f, 1.0f); // Green tint
-                ImGui.button(capturedKey.getDisplayName(), 120, 0);
-                ImGui.popStyleColor();
-
-                ImGui.spacing();
-                ImGui.separator();
-                ImGui.spacing();
-
-                // Confirm and Cancel buttons
-                if (ImGui.button("Confirm", 100, 0)) {
-                    confirmCapture();
-                }
-                ImGui.sameLine();
-                if (ImGui.button("Cancel", 100, 0)) {
-                    cancelCapture();
-                }
+            if (statusMessage.startsWith("Invalid")) {
+                ThemedWidgets.statusTextWrapped(ThemeColors.Tone.ERROR, statusMessage);
             } else {
-                // Only cancel button when no key captured yet
-                if (ImGui.button("Cancel", 100, 0)) {
-                    cancelCapture();
-                }
+                ImGui.textWrapped(statusMessage);
             }
 
-            ImGui.endPopup();
+            // Display captured key as a keycap (FrameBg)
+            if (capturedKey != null) {
+                ImGui.spacing();
+                ImGui.text("New Keybind: ");
+                ImGui.sameLine();
+                ThemeColors.push(ImGuiCol.Button, ImGuiCol.FrameBg);
+                ThemeColors.push(ImGuiCol.ButtonHovered, ImGuiCol.FrameBg);
+                ThemeColors.push(ImGuiCol.ButtonActive, ImGuiCol.FrameBg);
+                ImGui.button(capturedKey.getDisplayName(), 120, ModalDialogs.BTN_H);
+                ImGui.popStyleColor(3);
+            }
+
+            ModalDialogs.buttonsBegin();
+            if (capturedKey != null) {
+                // Enter is itself a capturable key, so it only confirms once a key is already captured
+                // (and not on the frame that captured it).
+                boolean enterConfirms = ImGui.getFrameCount() > capturedFrame
+                        && ModalDialogs.enterPressed(false);
+                if (ModalDialogs.primaryClickOnly("Assign") || enterConfirms) {
+                    confirmCapture();
+                }
+            }
+            if (ModalDialogs.cancel()) {
+                cancelCapture();
+            }
+
+            ModalDialogs.end();
         }
     }
 
@@ -133,12 +128,7 @@ public class KeyCaptureDialog {
      * @return the captured ShortcutKey, or null if no key pressed
      */
     private ShortcutKey captureKeyPress() {
-        // Check for ESC to cancel
-        if (KeyCodeTranslator.isKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-            cancelCapture();
-            return null;
-        }
-
+        // Escape is the dialog's Cancel (handled by ModalDialogs.cancel()).
         // Get current modifier state
         boolean ctrlPressed = ImGui.getIO().getKeyCtrl();
         boolean shiftPressed = ImGui.getIO().getKeyShift();

@@ -148,6 +148,9 @@ public final class AssetExportBuilder {
         if (n.has("drops")) {
             params.setDrops(drops(n.get("drops")));
         }
+        if (n.has("tool")) {
+            params.setTool(tool(n.get("tool")));
+        }
         return params;
     }
 
@@ -173,7 +176,9 @@ public final class AssetExportBuilder {
                 g.path("stackable").asBoolean(true),
                 g.path("maxStackSize").asInt(64),
                 text(g, "category", isBlock ? "BLOCKS" : "MATERIALS").toUpperCase(Locale.ROOT),
-                g.path("placeable").asBoolean(isBlock));
+                g.path("placeable").asBoolean(isBlock),
+                text(g, "material", null),
+                g.has("requiredTier") ? tier(g.get("requiredTier"), "gameProperties.requiredTier") : 0);
     }
 
     /**
@@ -215,7 +220,10 @@ public final class AssetExportBuilder {
                 g.path("stackable").asBoolean(base.stackable()),
                 g.path("maxStackSize").asInt(base.maxStackSize()),
                 text(g, "category", base.categoryOrDefault()).toUpperCase(Locale.ROOT),
-                g.path("placeable").asBoolean(base.placeable()));
+                g.path("placeable").asBoolean(base.placeable()),
+                g.has("material") ? text(g, "material", null) : base.material(),
+                g.has("requiredTier") ? tier(g.get("requiredTier"), "gameProperties.requiredTier")
+                        : base.requiredTier());
     }
 
     public static SBOFormat.DropData drops(JsonNode d) {
@@ -242,6 +250,41 @@ public final class AssetExportBuilder {
             }
         }
         return new SBOFormat.DropData(entries, overrides);
+    }
+
+    /**
+     * Mining-tool section (SBO 1.9): {@code {toolClass, tier, speedMultiplier,
+     * materials[], durability?, attackDamage?}}; {@code null} = not a tool.
+     */
+    public static SBOFormat.ToolData tool(JsonNode t) {
+        if (t == null || t.isNull()) {
+            return null;
+        }
+        List<String> materials = new ArrayList<>();
+        for (JsonNode m : t.path("materials")) {
+            materials.add(m.asText());
+        }
+        try {
+            return new SBOFormat.ToolData(
+                    text(t, "toolClass", ""),
+                    t.has("tier") ? tier(t.get("tier"), "tool.tier") : 0,
+                    (float) t.path("speedMultiplier").asDouble(1.0),
+                    materials,
+                    t.hasNonNull("durability") ? t.get("durability").asInt() : null,
+                    t.hasNonNull("attackDamage") ? (float) t.get("attackDamage").asDouble() : null);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("invalid_params: tool — " + ex.getMessage(), ex);
+        }
+    }
+
+    /** A tier as an int or a tier name ({@code wood|stone|iron|diamond}). */
+    private static int tier(JsonNode v, String where) {
+        int tier = v.isNumber() ? v.asInt() : SBOFormat.ToolData.parseTier(v.asText());
+        if (tier < 0) {
+            throw new IllegalArgumentException("invalid_params: " + where + " '" + v.asText()
+                    + "' — use an int >= 0 or one of " + SBOFormat.ToolData.TIER_NAMES);
+        }
+        return tier;
     }
 
     private static SBOFormat.DropEntry dropEntry(JsonNode e) {
@@ -356,6 +399,8 @@ public final class AssetExportBuilder {
             g.put("maxStackSize", gp.maxStackSize());
             g.put("category", gp.categoryOrDefault());
             g.put("placeable", gp.placeable());
+            g.put("material", gp.material());
+            g.put("requiredTier", gp.requiredTier());
             out.put("gameProperties", g);
         } else {
             out.put("gameProperties", null);
@@ -378,6 +423,7 @@ public final class AssetExportBuilder {
         out.put("fuelBurnTicks", d.fuel() == null ? null : d.fuel().burnTicks());
         out.put("sounds", sounds(d.sounds()));
         out.put("drops", describeDrops(d.drops()));
+        out.put("tool", describeTool(d.tool()));
         return out;
     }
 
@@ -447,6 +493,20 @@ public final class AssetExportBuilder {
         return out;
     }
 
+    private static Map<String, Object> describeTool(SBOFormat.ToolData tool) {
+        if (tool == null) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("toolClass", tool.toolClass());
+        out.put("tier", tool.tier());
+        out.put("speedMultiplier", tool.speedMultiplier());
+        out.put("materials", tool.materials());
+        out.put("durability", tool.durability());
+        out.put("attackDamage", tool.attackDamage());
+        return out;
+    }
+
     private static Map<String, Object> describeDrops(SBOFormat.DropData drops) {
         if (drops == null) {
             return null;
@@ -484,8 +544,8 @@ public final class AssetExportBuilder {
      * objectName, objectType, objectPack, author, description, gameProperties
      * (merged; {@code null} removes), defaultStateName, fuel ({burnTicks} or
      * null), sounds (replaced; {@code resource} or an already-embedded
-     * {@code filename}), drops (replaced; null removes). States, recipes and
-     * embedded bytes are untouched.
+     * {@code filename}), drops (replaced; null removes), tool (replaced; null
+     * removes). States, recipes and embedded bytes are untouched.
      */
     public static SBOFormat.Document patchSbo(SBOFormat.Document b, JsonNode p) {
         SBOFormat.GameProperties gp = b.gameProperties();
@@ -504,6 +564,7 @@ public final class AssetExportBuilder {
         }
         SoundData sounds = p.has("sounds") ? patchSounds(b.sounds(), p.get("sounds")) : b.sounds();
         SBOFormat.DropData drops = p.has("drops") ? drops(p.get("drops")) : b.drops();
+        SBOFormat.ToolData tool = p.has("tool") ? tool(p.get("tool")) : b.tool();
         return new SBOFormat.Document(
                 b.version(),
                 text(p, "objectId", b.objectId()),
@@ -518,7 +579,7 @@ public final class AssetExportBuilder {
                 b.createdAt(), b.omoFilename(), b.textureFilename(),
                 gp, b.states(),
                 text(p, "defaultStateName", b.defaultStateName()),
-                b.recipes(), b.smeltingRecipes(), fuel, sounds, drops);
+                b.recipes(), b.smeltingRecipes(), fuel, sounds, drops, tool);
     }
 
     /** Same idea for SBE: objectId/Name, entityType, objectPack, author, description, sounds. */

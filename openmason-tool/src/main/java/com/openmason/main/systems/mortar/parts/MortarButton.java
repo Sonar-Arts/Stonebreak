@@ -6,11 +6,12 @@ import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.theme.MortarTheme;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.mortar.theme.MortarType;
 
 /**
  * A text button in one of two weights:
  * <ul>
- *   <li>{@link Variant#PRIMARY} — accent fill, light label; the single
+ *   <li>{@link Variant#PRIMARY} — accent fill, {@link MortarTheme#onAccent} label; the single
  *       high-emphasis action (e.g. "New Project"). Brightens on hover, settles
  *       darker on press.</li>
  *   <li>{@link Variant#SECONDARY} — flat surface with a hairline border.</li>
@@ -24,8 +25,7 @@ public final class MortarButton implements MortarPart {
     }
 
     private static final float RADIUS = 6f;
-    private static final float FONT_SIZE = 13f;
-    private static final int PRIMARY_LABEL = 0xFFFFFFFF;
+    private static final float FONT_SIZE = MortarType.CONTROL;
 
     private final String label;
     private final Variant variant;
@@ -70,7 +70,7 @@ public final class MortarButton implements MortarPart {
             fill = Argb.shade(fill, -0.10f * press);
             g.fillRoundRect(bx, by, bw, bh, RADIUS, fill);
             g.text(label, bx + bw / 2f, by + bh / 2f, MortarPainter.Align.CENTER,
-                    Weight.MEDIUM, FONT_SIZE, PRIMARY_LABEL);
+                    Weight.MEDIUM, FONT_SIZE, theme.onAccent);
         } else {
             int fill = Argb.lerp(theme.surface, theme.surfaceHover, hover);
             fill = Argb.shade(fill, -0.05f * press);

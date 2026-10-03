@@ -126,6 +126,17 @@ public final class FastLodManager {
      */
     private volatile long lastPlayerColumn = packColumn(0, 0);
 
+    // Ring-scan gate (logic thread only). Once a scan finds nothing to schedule
+    // and nothing held as hole cover, rescanning the same ring is pure overhead —
+    // measured at 0.5 ms/frame at LOD distance 48 and 2.3 ms at 128 with the
+    // player standing still. Skipped until the column, a setting, or pending
+    // work says otherwise.
+    private long scannedColumn = Long.MIN_VALUE;
+    private int scannedInner = -1;
+    private int scannedRange = -1;
+    private FastLodQuality scannedQuality;
+    private boolean ringSettled;
+
     public FastLodManager(WorldConfiguration config,
                           TerrainGenerator terrain,
                           BlockTextureArray textureArray,
@@ -189,7 +200,14 @@ public final class FastLodManager {
         }
         int inner = config.getRenderDistance();
         int outer = inner + range;
-        lastPlayerColumn = packColumn(playerCx, playerCz);
+        FastLodQuality quality = config.getLodQuality();
+        long column = packColumn(playerCx, playerCz);
+        if (ringSettled && column == scannedColumn && inner == scannedInner && range == scannedRange
+                && quality == scannedQuality && inFlight.isEmpty() && readyToUpload.isEmpty()) {
+            return;
+        }
+        lastPlayerColumn = column;
+        int held = 0;
 
         // Pass 1: evict anything that has fallen outside the ring entirely.
         // Two things are deliberately NOT evicted here, both for the same
@@ -204,9 +222,11 @@ public final class FastLodManager {
             Map.Entry<FastLodKey, Entry> e = it.next();
             FastLodKey key = e.getKey();
             FastLodLevel wanted = FastLodBandPolicy.levelFor(
-                    chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz), inner, range);
+                    chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz), inner, range, quality);
             Entry entry = e.getValue();
-            if (wanted == null && !isCoveringAHole(entry)) {
+            if (wanted == null && isCoveringAHole(entry)) {
+                held++;
+            } else if (wanted == null) {
                 it.remove();
                 long col = packColumn(key.chunkX(), key.chunkZ());
                 residentByColumn.remove(col, key);
@@ -219,8 +239,8 @@ public final class FastLodManager {
         // handle for a replacement that's been abandoned.
         inFlight.removeIf(key -> {
             FastLodLevel wanted = FastLodBandPolicy.levelFor(
-                    chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz), inner, range);
-            if (wanted != key.level()) {
+                    chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz), inner, range, quality);
+            if (!matches(key, wanted, quality)) {
                 pendingSupersede.remove(key);
                 return true;
             }
@@ -231,14 +251,14 @@ public final class FastLodManager {
         // covers records orphaned by a failed/empty generate (the job left
         // inFlight without ever reaching the upload path, so neither the
         // cancellation pass above nor applyGLUpdates would ever clean them).
-        pendingSupersede.keySet().removeIf(key ->
+        pendingSupersede.keySet().removeIf(key -> !matches(key,
                 FastLodBandPolicy.levelFor(
-                        chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz), inner, range)
-                != key.level());
-        backoff.keySet().removeIf(key ->
+                        chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz), inner, range, quality),
+                quality));
+        backoff.keySet().removeIf(key -> !matches(key,
                 FastLodBandPolicy.levelFor(
-                        chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz), inner, range)
-                != key.level());
+                        chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz), inner, range, quality),
+                quality));
         long now = clock.getAsLong();
 
         // Pass 2: enumerate desired nodes in the ring. For each column pick
@@ -250,16 +270,17 @@ public final class FastLodManager {
         for (int dx = -outer; dx <= outer; dx++) {
             for (int dz = -outer; dz <= outer; dz++) {
                 int d = Math.max(Math.abs(dx), Math.abs(dz));
-                FastLodLevel wanted = FastLodBandPolicy.levelFor(d, inner, range);
+                FastLodLevel wanted = FastLodBandPolicy.levelFor(d, inner, range, quality);
                 if (wanted == null) continue;
                 int cx = playerCx + dx, cz = playerCz + dz;
-                FastLodKey target = FastLodKey.of(wanted, cx, cz);
+                FastLodKey target = FastLodKey.of(wanted, cx, cz,
+                        quality.carves(wanted), quality.drawsTrees(wanted));
                 if (handles.containsKey(target) || inFlight.contains(target)) continue;
                 Backoff failed = backoff.get(target);
                 if (failed != null && now - failed.retryAtNanos() < 0) continue;
 
                 FastLodKey resident = residentByColumn.get(packColumn(cx, cz));
-                if (resident != null && resident.level() == wanted) continue;
+                if (target.equals(resident)) continue;
                 if (resident != null) {
                     // Band change — remember which handle to retire once the
                     // replacement lands. putIfAbsent so a late tick that sees
@@ -269,6 +290,17 @@ public final class FastLodManager {
                 missing.add(target);
             }
         }
+        scannedColumn = column;
+        scannedInner = inner;
+        scannedRange = range;
+        scannedQuality = quality;
+        // Settled only when nothing is pending either: a job that lands (or fails
+        // to upload) after this scan must be followed by one more scan, which the
+        // gate allows because this flag stays false. A node waiting out a failure
+        // backoff is skipped above, not missing, so it holds the gate open too —
+        // otherwise its retry would never be scheduled.
+        ringSettled = missing.isEmpty() && held == 0 && inFlight.isEmpty() && readyToUpload.isEmpty()
+                && backoff.isEmpty();
         if (missing.isEmpty()) return;
 
         missing.sort((a, b) -> Integer.compare(
@@ -443,10 +475,17 @@ public final class FastLodManager {
         long col = lastPlayerColumn;
         int playerCx = (int) (col >> 32);
         int playerCz = (int) col;
+        FastLodQuality quality = config.getLodQuality();
         FastLodLevel wanted = FastLodBandPolicy.levelFor(
                 chebyshev(key.chunkX(), key.chunkZ(), playerCx, playerCz),
-                config.getRenderDistance(), range);
-        return wanted == key.level();
+                config.getRenderDistance(), range, quality);
+        return matches(key, wanted, quality);
+    }
+
+    /** True when {@code key} is exactly the node the ring wants at its column. */
+    private static boolean matches(FastLodKey key, FastLodLevel wanted, FastLodQuality quality) {
+        return wanted == key.level() && quality.carves(wanted) == key.carved()
+                && (quality.drawsTrees(wanted) || wanted == FastLodLevel.L0) == key.trees();
     }
 
     public Collection<Entry> visibleHandles() {
@@ -559,6 +598,7 @@ public final class FastLodManager {
     }
 
     private void evictAll() {
+        ringSettled = false;
         List<Entry> drained = new ArrayList<>(handles.size());
         for (Iterator<Map.Entry<FastLodKey, Entry>> it = handles.entrySet().iterator(); it.hasNext(); ) {
             drained.add(it.next().getValue());

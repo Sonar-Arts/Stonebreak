@@ -1,20 +1,12 @@
 package com.openmason.main.systems.menus.dialogs;
 
-import com.openmason.main.systems.menus.windows.WindowTitleBar;
 import com.openmason.engine.format.sbt.SBTFormat;
 import com.openmason.engine.format.sbt.SBTSerializer;
 import com.openmason.main.systems.services.StatusService;
-import com.openmason.main.systems.themes.core.ThemeDefinition;
 import com.openmason.main.systems.themes.core.ThemeManager;
-import com.openmason.main.systems.themes.utils.ImGuiComponents;
-import imgui.ImColor;
-import imgui.ImDrawList;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
-import imgui.ImVec2;
-import imgui.ImVec4;
-import imgui.flag.ImGuiCol;
-import imgui.flag.ImGuiInputTextFlags;
-import imgui.flag.ImGuiStyleVar;
+import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 import imgui.type.ImInt;
@@ -28,33 +20,27 @@ import java.util.function.Supplier;
 /**
  * Export window for creating Stonebreak Texture (.SBT) files.
  *
- * <p>Provides a form-based UI for entering SBT metadata (Texture ID, Name,
- * Texture Type, Pack, Author, Description) and triggering the export. Styled
- * consistently with the SBO/SBE export windows.
+ * <p>A single-page form for the SBT metadata (Texture ID, Name, Type, Pack,
+ * Author, Description). Uses the same {@link EditorChrome} export bar
+ * ([Export...][Cancel] + source label), section labels and hinted-input form
+ * idiom as the SBO/SBE exporters, and resets every field on {@link #show()}.
  */
 public class SBTExportWindow {
 
     private static final Logger logger = LoggerFactory.getLogger(SBTExportWindow.class);
 
     private static final String WINDOW_TITLE = "Export SBT";
-    private static final float MIN_WINDOW_WIDTH = 560.0f;
-    private static final float MIN_WINDOW_HEIGHT = 530.0f;
-    private static final float FOOTER_HEIGHT = 44.0f;
-    private static final float CONTENT_PADDING_Y = 22.0f;
-    private static final float LABEL_WIDTH = 100.0f;
-    private static final float INPUT_WIDTH = 360.0f;
-    private static final float FORM_WIDTH = LABEL_WIDTH + INPUT_WIDTH;
-    private static final float DESCRIPTION_HEIGHT = 76.0f;
-    private static final float ROW_SPACING = 6.0f;
-    private static final float MIN_SIDE_PADDING = 28.0f;
-    private static final float BTN_ROUNDING = 8.0f;
+    private static final float WINDOW_W = 620.0f;
+    private static final float WINDOW_H = 520.0f;
+    private static final String[] NO_TABS = {};
 
     private final ImBoolean visible;
-    private final ThemeManager themeManager;
     private final StatusService statusService;
     private final FileDialogService fileDialogService;
     private final SBTSerializer serializer;
-    private final WindowTitleBar titleBar;
+
+    /** Same Mortar export chrome as the SBO/SBE exporters (no tab strip). */
+    private final EditorChrome chrome = new EditorChrome("sbt_export");
 
     /**
      * Supplier for the current OMT file path. Pulled lazily so the window can
@@ -86,22 +72,16 @@ public class SBTExportWindow {
     };
 
     private String validationMessage = "";
-    private boolean iniFileSet = false;
-
-    private float formOffsetX = MIN_SIDE_PADDING;
+    private boolean centerOnNextFrame = false;
 
     public SBTExportWindow(ImBoolean visible,
                            ThemeManager themeManager,
                            StatusService statusService,
                            FileDialogService fileDialogService) {
         this.visible = visible;
-        this.themeManager = themeManager;
         this.statusService = statusService;
         this.fileDialogService = fileDialogService;
         this.serializer = new SBTSerializer();
-        this.titleBar = new WindowTitleBar(WINDOW_TITLE, true, false);
-
-        texturePack.set("default");
     }
 
     /**
@@ -112,10 +92,12 @@ public class SBTExportWindow {
         this.omtPathSupplier = supplier != null ? supplier : (() -> null);
     }
 
+    /** Shows the window with a clean form, pre-populated from the current texture. */
     public void show() {
-        visible.set(true);
+        resetForm();
         prepopulateFromTexture();
-        validationMessage = "";
+        visible.set(true);
+        centerOnNextFrame = true;
         logger.debug("SBT export window shown");
     }
 
@@ -127,249 +109,91 @@ public class SBTExportWindow {
         return visible.get();
     }
 
+    /** Return every buffer to its initial state — no context survives between exports. */
+    private void resetForm() {
+        textureId.set("");
+        textureName.set("");
+        textureTypeIndex.set(0);
+        texturePack.set("default");
+        author.set("");
+        description.set("");
+        validationMessage = "";
+    }
+
     public void render() {
         if (!visible.get()) {
             return;
         }
 
-        if (!iniFileSet) {
-            ImGui.setNextWindowSize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT);
-
+        ImGui.setNextWindowSize(WINDOW_W, WINDOW_H, ImGuiCond.FirstUseEver);
+        if (centerOnNextFrame) {
             // Center on the app's main viewport (absolute screen coords under
             // multi-viewport) — size-only math would land on the primary monitor.
             float screenW = ImGui.getMainViewport().getSizeX();
             float screenH = ImGui.getMainViewport().getSizeY();
             float originX = ImGui.getMainViewport().getPosX();
             float originY = ImGui.getMainViewport().getPosY();
-            ImGui.setNextWindowPos(
-                    originX + (screenW - MIN_WINDOW_WIDTH) * 0.5f,
-                    originY + (screenH - MIN_WINDOW_HEIGHT) * 0.5f
-            );
-            iniFileSet = true;
+            ImGui.setNextWindowPos(originX + (screenW - WINDOW_W) * 0.5f,
+                    originY + (screenH - WINDOW_H) * 0.5f, ImGuiCond.Always);
+            centerOnNextFrame = false;
         }
 
-        ImGui.setNextWindowSizeConstraints(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, Float.MAX_VALUE, Float.MAX_VALUE);
-
-        int windowFlags = ImGuiWindowFlags.NoBringToFrontOnFocus
-                | ImGuiWindowFlags.NoDocking
-                | ImGuiWindowFlags.NoTitleBar
-                | ImGuiWindowFlags.NoCollapse
-                | ImGuiWindowFlags.NoScrollbar;
-
-        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
-
-        if (ImGui.begin(WINDOW_TITLE, visible, windowFlags)) {
+        String title = WINDOW_TITLE + sourceSuffix() + "###sbt_export";
+        if (ImGui.begin(title, visible, ImGuiWindowFlags.NoCollapse)) {
             try {
-                WindowTitleBar.Result result = titleBar.render();
-                if (result.minimizeClicked() || result.closeClicked()) {
-                    visible.set(false);
+                chrome.renderExport(canExport(), sourceLabel(), "Export...", NO_TABS, 0,
+                        this::performExport, this::hide, "Save the texture as .OMT first");
+                ImGui.dummy(0, 6);
+                renderFormFields();
+                if (!validationMessage.isEmpty()) {
+                    ImGui.dummy(0, 8);
+                    ThemedWidgets.inlineError(validationMessage);
                 }
-                renderContent();
             } catch (Exception e) {
                 logger.error("Error rendering SBT export window", e);
-                ImGui.textColored(1.0f, 0.0f, 0.0f, 1.0f, "Error rendering export window");
+                ImGui.textDisabled("Error rendering export window");
             }
         }
         ImGui.end();
-        ImGui.popStyleVar();
     }
 
-    private void renderContent() {
-        float windowWidth = ImGui.getContentRegionAvailX();
-        float windowHeight = ImGui.getContentRegionAvailY();
-        float contentHeight = windowHeight - FOOTER_HEIGHT;
+    private String currentOmtPath() {
+        String path = omtPathSupplier.get();
+        return path != null && !path.isBlank() ? path : null;
+    }
 
-        formOffsetX = Math.max(MIN_SIDE_PADDING, (windowWidth - FORM_WIDTH) * 0.5f);
+    private String sourceSuffix() {
+        String path = currentOmtPath();
+        return path != null ? " - " + Path.of(path).getFileName() : "";
+    }
 
-        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 8.0f, CONTENT_PADDING_Y);
-        ImGui.beginChild("##SBTContent", windowWidth, contentHeight, false);
+    private String sourceLabel() {
+        String path = currentOmtPath();
+        return path != null ? "Texture: " + Path.of(path).getFileName() : "Texture not saved as .OMT";
+    }
 
-        renderFormFields();
-
-        ImGui.endChild();
-        ImGui.popStyleVar();
-
-        renderFooter(windowWidth);
+    private boolean canExport() {
+        return currentOmtPath() != null;
     }
 
     private void renderFormFields() {
-        ImGui.setCursorPosX(formOffsetX);
-        ImGuiComponents.renderCompactSectionHeader("Texture Identity");
-        ImGui.spacing();
+        ThemedWidgets.sectionLabel("Identity");
+        ImGui.inputTextWithHint("Texture ID", "e.g. stonebreak:cow_default", textureId);
+        ImGui.inputTextWithHint("Texture Name", "e.g. Cow Default", textureName);
 
-        renderLabeledInput("Texture ID", "sbt_tex_id", textureId, "e.g. stonebreak:cow_default");
-        renderLabeledInput("Texture Name", "sbt_tex_name", textureName, "e.g. Cow Default");
+        ThemedWidgets.sectionLabel("Classification");
+        ImGui.combo("Texture Type", textureTypeIndex, TEXTURE_TYPE_LABELS);
+        ImGui.inputTextWithHint("Pack", "e.g. default, expansion_1", texturePack);
 
-        ImGui.dummy(0, ROW_SPACING);
-
-        ImGui.setCursorPosX(formOffsetX);
-        ImGuiComponents.renderCompactSectionHeader("Texture Classification");
-        ImGui.spacing();
-
-        renderLabeledCombo("Texture Type", "sbt_tex_type", textureTypeIndex, TEXTURE_TYPE_LABELS);
-        renderLabeledInput("Texture Pack", "sbt_tex_pack", texturePack, "e.g. default, expansion_1");
-
-        ImGui.dummy(0, ROW_SPACING);
-
-        ImGui.setCursorPosX(formOffsetX);
-        ImGuiComponents.renderCompactSectionHeader("Attribution");
-        ImGui.spacing();
-
-        renderLabeledInput("Author", "sbt_author", author, "Creator name or studio");
-
-        ImGui.dummy(0, 2);
-
-        ImGui.setCursorPosX(formOffsetX);
-        ImGui.textDisabled("Description");
-        ImGui.dummy(0, 2);
-        ImGui.setCursorPosX(formOffsetX);
-        ImGui.pushItemWidth(INPUT_WIDTH);
-        ImGui.inputTextMultiline("##sbt_desc", description, INPUT_WIDTH, DESCRIPTION_HEIGHT,
-                ImGuiInputTextFlags.AllowTabInput);
-        ImGui.popItemWidth();
-
-        if (!validationMessage.isEmpty()) {
-            ImGui.dummy(0, ROW_SPACING);
-            renderValidationBanner(validationMessage);
-        }
+        ThemedWidgets.sectionLabel("Attribution");
+        ImGui.inputTextWithHint("Author", "Creator name or studio", author);
+        ImGui.text("Description");
+        ImGui.inputTextMultiline("##desc", description, -1, 80);
     }
 
-    private void renderLabeledInput(String label, String id, ImString buffer, String hint) {
-        ImGui.setCursorPosX(formOffsetX);
-        ImGui.textDisabled(label);
-        ImGui.sameLine(formOffsetX + LABEL_WIDTH);
-        ImGui.pushItemWidth(INPUT_WIDTH);
-        ImGui.inputTextWithHint("##" + id, hint, buffer);
-        ImGui.popItemWidth();
-
-        ImGui.dummy(0, ROW_SPACING);
-    }
-
-    private void renderLabeledCombo(String label, String id, ImInt selected, String[] items) {
-        ImGui.setCursorPosX(formOffsetX);
-        ImGui.textDisabled(label);
-        ImGui.sameLine(formOffsetX + LABEL_WIDTH);
-        ImGui.pushItemWidth(INPUT_WIDTH);
-        ImGui.combo("##" + id, selected, items);
-        ImGui.popItemWidth();
-
-        ImGui.dummy(0, ROW_SPACING);
-    }
-
-    private void renderValidationBanner(String message) {
-        ImDrawList drawList = ImGui.getWindowDrawList();
-        ImVec2 pos = ImGui.getCursorScreenPos();
-        float bannerWidth = LABEL_WIDTH + INPUT_WIDTH;
-
-        float padding = 8.0f;
-        ImVec2 textSize = ImGui.calcTextSize(message);
-        float bannerHeight = textSize.y + padding * 2;
-
-        drawList.addRectFilled(
-                pos.x, pos.y,
-                pos.x + bannerWidth, pos.y + bannerHeight,
-                ImColor.rgba(0.8f, 0.2f, 0.2f, 0.15f), 4.0f
-        );
-        drawList.addRectFilled(
-                pos.x, pos.y,
-                pos.x + 3.0f, pos.y + bannerHeight,
-                ImColor.rgba(0.9f, 0.3f, 0.3f, 0.8f), 2.0f
-        );
-
-        ImGui.setCursorScreenPos(pos.x + padding + 3.0f, pos.y + padding);
-        ImGui.textColored(1.0f, 0.45f, 0.4f, 1.0f, message);
-        ImGui.setCursorScreenPos(pos.x, pos.y + bannerHeight);
-    }
-
-    private void renderFooter(float windowWidth) {
-        float buttonWidth = 90.0f;
-        float buttonHeight = 26.0f;
-        float buttonSpacing = 10.0f;
-        float rightMargin = 18.0f;
-
-        ImDrawList drawList = ImGui.getWindowDrawList();
-        ImVec2 winPos = ImGui.getWindowPos();
-        float winHeight = ImGui.getWindowHeight();
-        ThemeDefinition theme = themeManager.getCurrentTheme();
-        ImVec4 accentBase = getAccentColor(theme);
-
-        float footerTop = winPos.y + winHeight - FOOTER_HEIGHT;
-        float footerRight = winPos.x + windowWidth;
-        float footerLeft = winPos.x;
-
-        float sepCenter = (footerLeft + footerRight) * 0.5f;
-        int sepBright = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.25f);
-        int sepFade = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.0f);
-
-        drawList.addRectFilledMultiColor(footerLeft, footerTop, sepCenter, footerTop + 1.0f,
-                sepFade, sepBright, sepBright, sepFade);
-        drawList.addRectFilledMultiColor(sepCenter, footerTop, footerRight, footerTop + 1.0f,
-                sepBright, sepFade, sepFade, sepBright);
-
-        float buttonY = footerTop + (FOOTER_HEIGHT - buttonHeight) * 0.5f;
-        float totalButtonsWidth = buttonWidth * 2 + buttonSpacing;
-        float cancelX = footerRight - rightMargin - totalButtonsWidth;
-        float exportX = cancelX + buttonWidth + buttonSpacing;
-
-        renderFooterButton(drawList, "Cancel", "sbt_cancel", cancelX, buttonY,
-                buttonWidth, buttonHeight, false, theme, accentBase, () -> visible.set(false));
-
-        renderFooterButton(drawList, "Export", "sbt_export", exportX, buttonY,
-                buttonWidth, buttonHeight, true, theme, accentBase, this::performExport);
-    }
-
-    private void renderFooterButton(ImDrawList drawList, String label, String id,
-                                     float x, float y, float width, float height,
-                                     boolean primary, ThemeDefinition theme,
-                                     ImVec4 accentBase, Runnable onClick) {
-        ImGui.setCursorScreenPos(x, y);
-        ImGui.invisibleButton("##" + id, width, height);
-        boolean isHovered = ImGui.isItemHovered();
-        if (ImGui.isItemClicked()) {
-            onClick.run();
-        }
-
-        float x2 = x + width;
-        float y2 = y + height;
-
-        if (primary) {
-            float bgAlpha = isHovered ? 0.30f : 0.18f;
-            drawList.addRectFilled(x, y, x2, y2,
-                    ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, bgAlpha), BTN_ROUNDING);
-            float borderAlpha = isHovered ? 0.7f : 0.5f;
-            drawList.addRect(x, y, x2, y2,
-                    ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, borderAlpha), BTN_ROUNDING, 0, 1.0f);
-        } else {
-            if (isHovered) {
-                ImVec4 hoverBase = theme.getColor(ImGuiCol.HeaderHovered);
-                int hoverColor = hoverBase != null
-                        ? ImColor.rgba(hoverBase.x, hoverBase.y, hoverBase.z, 0.15f)
-                        : ImColor.rgba(1.0f, 1.0f, 1.0f, 0.08f);
-                drawList.addRectFilled(x, y, x2, y2, hoverColor, BTN_ROUNDING);
-                drawList.addRect(x, y, x2, y2,
-                        ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.5f), BTN_ROUNDING, 0, 1.0f);
-            } else {
-                ImVec4 frameBg = theme.getColor(ImGuiCol.FrameBg);
-                int normalBg = frameBg != null
-                        ? ImColor.rgba(frameBg.x, frameBg.y, frameBg.z, 0.25f)
-                        : ImColor.rgba(1.0f, 1.0f, 1.0f, 0.03f);
-                drawList.addRectFilled(x, y, x2, y2, normalBg, BTN_ROUNDING);
-                ImVec4 borderBase = theme.getColor(ImGuiCol.Border);
-                int normalBorder = borderBase != null
-                        ? ImColor.rgba(borderBase.x, borderBase.y, borderBase.z, 0.6f)
-                        : ImColor.rgba(0.5f, 0.5f, 0.5f, 0.3f);
-                drawList.addRect(x, y, x2, y2, normalBorder, BTN_ROUNDING, 0, 1.0f);
-            }
-        }
-
-        ImVec2 textSize = ImGui.calcTextSize(label);
-        float textX = x + (width - textSize.x) * 0.5f;
-        float textY = y + (height - textSize.y) * 0.5f;
-        ImVec4 textBase = theme.getColor(ImGuiCol.Text);
-        float tr = textBase != null ? textBase.x : 0.88f;
-        float tg = textBase != null ? textBase.y : 0.89f;
-        float tb = textBase != null ? textBase.z : 0.91f;
-        drawList.addText(textX, textY, ImColor.rgba(tr, tg, tb, isHovered ? 1.0f : 0.9f), label);
+    /** Release the Mortar chrome region. Must run with a current GL context. */
+    public void close() {
+        chrome.close();
     }
 
     private void prepopulateFromTexture() {
@@ -426,12 +250,5 @@ public class SBTExportWindow {
         params.setAuthor(author.get().trim());
         params.setDescription(description.get().trim());
         return params;
-    }
-
-    private ImVec4 getAccentColor(ThemeDefinition theme) {
-        ImVec4 accent = theme.getColor(ImGuiCol.HeaderActive);
-        if (accent == null) accent = theme.getColor(ImGuiCol.ButtonHovered);
-        if (accent == null) accent = new ImVec4(0.36f, 0.61f, 0.84f, 1.0f);
-        return accent;
     }
 }

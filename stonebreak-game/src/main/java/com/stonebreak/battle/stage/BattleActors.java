@@ -72,7 +72,7 @@ public final class BattleActors {
             ActorPlacement.Placement at = ActorPlacement.place(layout, CombatantId.MONK, monkPose,
                     restMinY(EntityType.REMOTE_PLAYER.getSbeObjectId(), SbeEntityAsset.DEFAULT_VARIANT), 1f, false);
             // LOCAL_PLAYER attachments: the monk wears the player's own hair and clothing.
-            entityRenderer.renderPlayerPreview(monkPose.sbeState(), monkPose.clipTime(), at.position(),
+            entityRenderer.renderStagedPlayer(monkPose.sbeState(), monkPose.clipTime(), at.position(),
                     at.yawDegrees(), unitScale, view, projection, EntityAttachments.LOCAL_PLAYER);
         }
 

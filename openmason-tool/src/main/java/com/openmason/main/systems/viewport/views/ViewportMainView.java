@@ -3,12 +3,14 @@ package com.openmason.main.systems.viewport.views;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import com.openmason.main.systems.themes.core.ThemeManager;
+import com.openmason.main.systems.themes.utils.ThemeColors;
 import com.openmason.main.systems.viewport.ViewportActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.state.EditModeManager;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
+import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiWindowFlags;
 
 /**
@@ -16,6 +18,15 @@ import imgui.flag.ImGuiWindowFlags;
  * Follows Single Responsibility Principle - only renders the main viewport UI.
  */
 public class ViewportMainView {
+
+    // HUD indicator pills (edit mode, grid snap, modal tools)
+    private static final float INDICATOR_INSET = 10.0f;
+    private static final float INDICATOR_GAP = 4.0f;
+    private static final float INDICATOR_PAD_X = 8.0f;
+    private static final float INDICATOR_PAD_Y = 4.0f;
+    private static final float INDICATOR_ROUNDING = 4.0f;
+    private final ImVec2 indicatorTextSize = new ImVec2();
+
 
     /**
      * ImGui window title. Also the key DockBuilder docks this window by, AND the key
@@ -128,51 +139,18 @@ public class ViewportMainView {
 
     /**
      * Render edit mode overlay in top-left corner of viewport.
-     * Shows current mode name in orange with dark gray rounded rectangle background.
+     * Shows the current mode name in a theme-derived pill.
      * Also shows grid snapping indicator below when enabled.
      */
     private void renderEditModeOverlay(ImVec2 imagePos) {
         String modeName = EditModeManager.getInstance().getCurrentMode().getDisplayName();
-        String displayText = "Edit Mode: " + modeName;
-
-        // Calculate text size for proper rectangle sizing
-        ImVec2 textSize = new ImVec2();
-        ImGui.calcTextSize(textSize, displayText);
-
-        // Padding around text
-        float paddingX = 8.0f;
-        float paddingY = 4.0f;
-
-        // Position: top-left corner with 10px offset from viewport edge
-        float rectX = imagePos.x + 10.0f;
-        float rectY = imagePos.y + 10.0f;
-        float rectWidth = textSize.x + (paddingX * 2);
-        float rectHeight = textSize.y + (paddingY * 2);
-
-        // Colors
-        int backgroundColor = ImGui.colorConvertFloat4ToU32(0.2f, 0.2f, 0.2f, 0.85f); // Dark gray
-        int borderColor = ImGui.colorConvertFloat4ToU32(0.0f, 0.0f, 0.0f, 0.85f);     // Black
-        int textColor = ImGui.colorConvertFloat4ToU32(1.0f, 0.75f, 0.0f, 0.95f);      // Bright orange
-
-        // Corner rounding
-        float rounding = 4.0f;
 
         // Draw using window draw list (renders on top of image)
         ImDrawList drawList = ImGui.getWindowDrawList();
-
-        // Draw filled rounded rectangle (background)
-        drawList.addRectFilled(rectX, rectY, rectX + rectWidth, rectY + rectHeight, backgroundColor, rounding);
-
-        // Draw rounded rectangle border
-        drawList.addRect(rectX, rectY, rectX + rectWidth, rectY + rectHeight, borderColor, rounding);
-
-        // Draw centered text
-        float textX = rectX + paddingX;
-        float textY = rectY + paddingY;
-        drawList.addText(textX, textY, textColor, displayText);
+        float indicatorBottom = drawIndicator(drawList, imagePos.x + INDICATOR_INSET,
+                imagePos.y + INDICATOR_INSET, "Edit Mode: " + modeName, ThemeColors.Tone.WARNING, 0.06f);
 
         // Render stacked indicators below the edit mode overlay
-        float indicatorBottom = rectY + rectHeight;
         indicatorBottom = renderGridSnappingIndicator(drawList, imagePos, indicatorBottom);
         indicatorBottom = renderModalToolIndicator(drawList, imagePos, indicatorBottom,
             viewport.isKnifeToolActive(), "Knife Tool  |  Esc to cancel");
@@ -201,9 +179,9 @@ public class ViewportMainView {
         float maxX = imagePos.x + rect[2];
         float maxY = imagePos.y + rect[3];
 
-        // Colors - translucent blue fill with a brighter border
-        int fillColor = ImGui.colorConvertFloat4ToU32(0.3f, 0.5f, 1.0f, 0.15f);
-        int borderColor = ImGui.colorConvertFloat4ToU32(0.5f, 0.7f, 1.0f, 0.8f);
+        // Colors - translucent theme accent fill with a stronger accent border
+        int fillColor = ThemeColors.u32(ImGuiCol.HeaderActive, 0.15f);
+        int borderColor = ThemeColors.u32(ImGuiCol.HeaderActive, 0.8f);
 
         ImDrawList drawList = ImGui.getWindowDrawList();
         drawList.addRectFilled(minX, minY, maxX, maxY, fillColor);
@@ -217,48 +195,11 @@ public class ViewportMainView {
      * @return Bottom Y of the rendered indicator, or {@code aboveBottom} if not rendered
      */
     private float renderGridSnappingIndicator(ImDrawList drawList, ImVec2 imagePos, float aboveBottom) {
-        boolean snappingEnabled = state.getGridSnappingEnabled().get();
-        if (!snappingEnabled) {
+        if (!state.getGridSnappingEnabled().get()) {
             return aboveBottom;
         }
-
-        String snappingText = "Grid Snap: ON";
-
-        // Calculate text size
-        ImVec2 textSize = new ImVec2();
-        ImGui.calcTextSize(textSize, snappingText);
-
-        // Padding around text
-        float paddingX = 8.0f;
-        float paddingY = 4.0f;
-        float verticalGap = 4.0f;
-
-        // Position: below the previous indicator
-        float rectX = imagePos.x + 10.0f;
-        float rectY = aboveBottom + verticalGap;
-        float rectWidth = textSize.x + (paddingX * 2);
-        float rectHeight = textSize.y + (paddingY * 2);
-
-        // Colors - use green tint to indicate active snapping
-        int backgroundColor = ImGui.colorConvertFloat4ToU32(0.15f, 0.25f, 0.15f, 0.85f); // Dark green-gray
-        int borderColor = ImGui.colorConvertFloat4ToU32(0.0f, 0.0f, 0.0f, 0.85f);        // Black
-        int textColor = ImGui.colorConvertFloat4ToU32(0.4f, 1.0f, 0.4f, 0.95f);          // Bright green
-
-        // Corner rounding
-        float rounding = 4.0f;
-
-        // Draw filled rounded rectangle (background)
-        drawList.addRectFilled(rectX, rectY, rectX + rectWidth, rectY + rectHeight, backgroundColor, rounding);
-
-        // Draw rounded rectangle border
-        drawList.addRect(rectX, rectY, rectX + rectWidth, rectY + rectHeight, borderColor, rounding);
-
-        // Draw text
-        float textX = rectX + paddingX;
-        float textY = rectY + paddingY;
-        drawList.addText(textX, textY, textColor, snappingText);
-
-        return rectY + rectHeight;
+        return drawIndicator(drawList, imagePos.x + INDICATOR_INSET, aboveBottom + INDICATOR_GAP,
+                "Grid Snap: ON", ThemeColors.Tone.SUCCESS, 0.12f);
     }
 
     /**
@@ -272,42 +213,27 @@ public class ViewportMainView {
         if (!active) {
             return aboveBottom;
         }
+        return drawIndicator(drawList, imagePos.x + INDICATOR_INSET, aboveBottom + INDICATOR_GAP,
+                text, ThemeColors.Tone.WARNING, 0.16f);
+    }
 
-        // Calculate text size
-        ImVec2 textSize = new ImVec2();
-        ImGui.calcTextSize(textSize, text);
+    /**
+     * Draw one HUD pill: the theme's window background tinted toward
+     * {@code tone}, a theme border, and {@code tone}-colored text readable on
+     * both light and dark themes.
+     *
+     * @return bottom Y of the pill
+     */
+    private float drawIndicator(ImDrawList drawList, float x, float y, String text,
+                                ThemeColors.Tone tone, float tint) {
+        ImGui.calcTextSize(indicatorTextSize, text);
+        float w = indicatorTextSize.x + INDICATOR_PAD_X * 2;
+        float h = indicatorTextSize.y + INDICATOR_PAD_Y * 2;
 
-        // Padding around text
-        float paddingX = 8.0f;
-        float paddingY = 4.0f;
-        float verticalGap = 4.0f;
-
-        // Position: below the previous indicator
-        float rectX = imagePos.x + 10.0f;
-        float rectY = aboveBottom + verticalGap;
-        float rectWidth = textSize.x + (paddingX * 2);
-        float rectHeight = textSize.y + (paddingY * 2);
-
-        // Colors - orange tint matching the knife tool preview color
-        int backgroundColor = ImGui.colorConvertFloat4ToU32(0.3f, 0.2f, 0.1f, 0.85f);   // Dark orange-brown
-        int borderColor = ImGui.colorConvertFloat4ToU32(0.0f, 0.0f, 0.0f, 0.85f);        // Black
-        int textColor = ImGui.colorConvertFloat4ToU32(1.0f, 0.6f, 0.0f, 0.95f);          // Orange
-
-        // Corner rounding
-        float rounding = 4.0f;
-
-        // Draw filled rounded rectangle (background)
-        drawList.addRectFilled(rectX, rectY, rectX + rectWidth, rectY + rectHeight, backgroundColor, rounding);
-
-        // Draw rounded rectangle border
-        drawList.addRect(rectX, rectY, rectX + rectWidth, rectY + rectHeight, borderColor, rounding);
-
-        // Draw text
-        float textX = rectX + paddingX;
-        float textY = rectY + paddingY;
-        drawList.addText(textX, textY, textColor, text);
-
-        return rectY + rectHeight;
+        drawList.addRectFilled(x, y, x + w, y + h, ThemeColors.surfaceU32(tone, tint, 0.88f), INDICATOR_ROUNDING);
+        drawList.addRect(x, y, x + w, y + h, ThemeColors.u32(ImGuiCol.Border, 0.85f), INDICATOR_ROUNDING);
+        drawList.addText(x + INDICATOR_PAD_X, y + INDICATOR_PAD_Y, ThemeColors.u32(tone, 0.95f), text);
+        return y + h;
     }
 
 }

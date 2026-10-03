@@ -1,12 +1,11 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import com.openmason.engine.format.sbo.SBOFormat;
-import com.openmason.main.systems.themes.utils.ImGuiComponents;
-import imgui.ImColor;
-import imgui.ImDrawList;
+import com.openmason.main.systems.mortar.core.MortarRegionPool;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
-import imgui.ImVec2;
 import imgui.type.ImBoolean;
+import imgui.type.ImInt;
 import imgui.type.ImString;
 
 import java.nio.file.Path;
@@ -16,12 +15,14 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Reusable "States" section for SBO export modals (1.3+).
+ * "States" section of the SBO export window (1.3+).
  *
- * <p>Renders the "Enable States" toggle and the dynamic list of state rows
- * (name + asset path + default radio + remove). Owns the in-memory state of
- * the rows so both export windows can embed the same widget without
- * duplicating buffer management.
+ * <p>Renders the "Enable named states" toggle and the dynamic list of state
+ * rows as cards, matching {@link SBOStatesEditor}: a Mortar
+ * {@link RowHeaderStrip} (DEFAULT/STATE badge, name, source summary, Make
+ * default / Replace asset pills, remove) over the ImGui edit widgets, with a
+ * plain-ImGui fallback when no Skija context exists. Owns the in-memory state
+ * of the rows so the model and texture exports can embed the same widget.
  *
  * <p>Each row's asset is either an OMO (model SBO) or an OMT (texture SBO);
  * the dialog kind is fixed at construction via the {@code modelKind} flag and
@@ -32,10 +33,10 @@ import java.util.function.Supplier;
  * default, forced loop, or play-once (e.g. a door swing that holds its final
  * pose). Texture-kind sections never show clip controls.
  */
-public final class SBOStatesSection {
+public final class SBOStatesSection implements AutoCloseable {
 
-    /** Loop-mode combo labels; index-aligned with {@link SBOFormat.LoopMode#values()}. */
-    private static final String[] LOOP_MODE_LABELS = { "Clip default", "Loop", "Play once" };
+    /** One pooled Mortar header region per row. */
+    private final MortarRegionPool headerPool = new MortarRegionPool();
 
     /** True when this section gathers OMO paths (model SBO), false for OMT. */
     private final boolean modelKind;
@@ -84,29 +85,19 @@ public final class SBOStatesSection {
         needsSeed = false;
     }
 
-    /**
-     * Render the section. {@code formOffsetX}, {@code labelWidth},
-     * {@code inputWidth} and {@code rowSpacing} should match the host window's
-     * form metrics so layout stays consistent.
-     */
-    public void render(float formOffsetX, float labelWidth, float inputWidth, float rowSpacing) {
-        ImGui.setCursorPosX(formOffsetX);
-        ImGuiComponents.renderCompactSectionHeader("States (Optional)");
-        ImGui.spacing();
+    /** Render the section into the current window. */
+    public void render() {
+        ThemedWidgets.sectionLabel("States (Optional)");
 
-        ImGui.setCursorPosX(formOffsetX);
         if (ImGui.checkbox("Enable named states##sbo_states_toggle", enabled)) {
             if (enabled.get()) needsSeed = true;
             else { rows.clear(); defaultRowIndex = 0; }
         }
-
-        ImGui.setCursorPosX(formOffsetX);
         ImGui.textDisabled(modelKind
-                ? "Each state uses its own .OMO model"
-                : "Each state uses its own .OMT texture");
+                ? "Each state uses its own .OMO model. The DEFAULT state is what places."
+                : "Each state uses its own .OMT texture. The DEFAULT state is what places.");
 
         if (!enabled.get()) {
-            ImGui.dummy(0, rowSpacing);
             return;
         }
 
@@ -115,82 +106,23 @@ public final class SBOStatesSection {
             needsSeed = false;
         }
 
-        ImGui.dummy(0, rowSpacing);
+        ImGui.dummy(0, 6);
 
-        float totalWidth = labelWidth + inputWidth;
+        boolean mortar = headerPool.isAvailable();
         int removeIndex = -1;
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
+            ImGui.pushID("sbo_state_row_" + i);
 
-            // Row 1: name + default radio
-            ImGui.setCursorPosX(formOffsetX);
-            ImGui.pushItemWidth(140.0f);
-            ImGui.inputTextWithHint("##sbo_state_name_" + i, "state name", row.name);
-            ImGui.popItemWidth();
+            boolean removeRequested = mortar ? renderRowHeaderMortar(i, row) : renderRowHeaderFallback(i, row);
+            if (removeRequested) removeIndex = i;
 
-            ImGui.sameLine();
-            if (ImGui.radioButton("default##sbo_state_default_" + i, defaultRowIndex == i)) {
-                defaultRowIndex = i;
-            }
+            renderRowDetails(row);
 
-            ImGui.sameLine();
-            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, ImColor.rgba(0.5f, 0.18f, 0.18f, 0.45f));
-            if (ImGui.button("X##sbo_state_remove_" + i, 22.0f, 0.0f)) {
-                removeIndex = i;
-            }
-            ImGui.popStyleColor();
-
-            // Row 2: path + browse
-            ImGui.setCursorPosX(formOffsetX);
-            float pathWidth = totalWidth - 80.0f;
-            ImGui.pushItemWidth(pathWidth);
-            String hint = modelKind ? "path/to/state.omo" : "path/to/state.omt";
-            ImGui.inputTextWithHint("##sbo_state_path_" + i, hint, row.path);
-            ImGui.popItemWidth();
-
-            ImGui.sameLine();
-            final int rowIdx = i;
-            if (ImGui.button("Browse##sbo_state_browse_" + i, 70.0f, 0.0f)) {
-                filePicker.accept(picked -> {
-                    if (picked != null && !picked.isBlank()) {
-                        rows.get(rowIdx).path.set(picked);
-                    }
-                });
-            }
-
-            // Row 3 (model SBOs only): optional animation clip + loop mode
-            if (clipsSupported()) {
-                ImGui.setCursorPosX(formOffsetX);
-                float clipWidth = totalWidth - 80.0f - 118.0f;
-                ImGui.pushItemWidth(clipWidth);
-                ImGui.inputTextWithHint("##sbo_state_clip_" + i,
-                        "animation clip (.omanim, optional)", row.clipPath);
-                ImGui.popItemWidth();
-
-                ImGui.sameLine();
-                if (ImGui.button("Clip...##sbo_state_clip_browse_" + i, 70.0f, 0.0f)) {
-                    clipPicker.accept(picked -> {
-                        if (picked != null && !picked.isBlank()) {
-                            rows.get(rowIdx).clipPath.set(picked);
-                        }
-                    });
-                }
-
-                if (!row.clipPath.get().isBlank()) {
-                    ImGui.sameLine();
-                    ImGui.pushItemWidth(110.0f);
-                    ImGui.combo("##sbo_state_loop_" + i, row.loopMode, LOOP_MODE_LABELS);
-                    ImGui.popItemWidth();
-                    if (ImGui.isItemHovered()) {
-                        ImGui.setTooltip("Loop: wrap forever (e.g. a spinning fan).\n"
-                                + "Play once: run through a single time and hold the final pose\n"
-                                + "(e.g. a door opening). Clip default uses the clip's own flag.");
-                    }
-                }
-            }
-
-            ImGui.dummy(0, rowSpacing);
+            ImGui.dummy(0, 8);
+            ImGui.popID();
         }
+        headerPool.trim(rows.size());
 
         if (removeIndex >= 0) {
             rows.remove(removeIndex);
@@ -198,12 +130,97 @@ public final class SBOStatesSection {
             else if (defaultRowIndex > removeIndex) defaultRowIndex--;
         }
 
-        ImGui.setCursorPosX(formOffsetX);
-        if (ImGui.button("+ Add state##sbo_state_add", 110.0f, 0.0f)) {
+        if (ImGui.button("+ Add state##sbo_state_add")) {
             rows.add(new Row("", ""));
         }
+    }
 
-        ImGui.dummy(0, rowSpacing);
+    /** Source summary for the header: picked file name, or a hint when empty. */
+    private static String assetSummary(Row row) {
+        String path = row.path.get().trim();
+        if (path.isEmpty()) return "no asset";
+        try {
+            Path name = Path.of(path).getFileName();
+            return name != null ? name.toString() : path;
+        } catch (RuntimeException e) {
+            return path;
+        }
+    }
+
+    /** Mortar card header; returns true when remove was clicked. */
+    private boolean renderRowHeaderMortar(int i, Row row) {
+        String name = row.name.get().trim();
+        boolean isDefault = defaultRowIndex == i;
+
+        RowHeaderStrip.Result result = RowHeaderStrip.render(
+                headerPool.get(i),
+                isDefault ? "DEFAULT" : "STATE", isDefault,
+                name.isEmpty() ? "(unnamed)" : name, name.isEmpty(), assetSummary(row),
+                List.of(
+                        new RowHeaderStrip.Action("default", "Make default", !isDefault),
+                        new RowHeaderStrip.Action("asset", "Replace asset...", true)));
+
+        if (result.hovered() != null) {
+            switch (result.hovered()) {
+                case "default" -> ImGui.setTooltip(isDefault
+                        ? "This is the default state"
+                        : "The default state's asset is the object's placed/base look");
+                case "asset" -> ImGui.setTooltip(modelKind
+                        ? "Pick this state's .OMO model"
+                        : "Pick this state's .OMT texture");
+                case "remove" -> ImGui.setTooltip("Remove this state");
+                default -> { }
+            }
+        }
+        if (result.isClicked("default") && !isDefault) defaultRowIndex = i;
+        if (result.isClicked("asset")) pickAsset(row);
+        return result.removeClicked();
+    }
+
+    /** Plain-ImGui header for when no Skija context exists. */
+    private boolean renderRowHeaderFallback(int i, Row row) {
+        if (ImGui.radioButton("default", defaultRowIndex == i)) defaultRowIndex = i;
+        ImGui.sameLine();
+        ImGui.textDisabled(assetSummary(row));
+        ImGui.sameLine();
+        if (ImGui.button("Replace asset...")) pickAsset(row);
+        ImGui.sameLine();
+        return ThemedWidgets.dangerSoftButton("Remove", EditorWidgets.REMOVE_BUTTON_WIDTH, 0f);
+    }
+
+    /** Shared ImGui edit widgets under the header (both render paths). */
+    private void renderRowDetails(Row row) {
+        ImGui.dummy(0, 2);
+        ImGui.pushItemWidth(EditorWidgets.NAME_FIELD_WIDTH);
+        ImGui.inputTextWithHint("Name##state", "state name", row.name);
+        ImGui.popItemWidth();
+        ImGui.inputTextWithHint("Source##state", modelKind ? "path/to/state.omo" : "path/to/state.omt", row.path);
+
+        // Model SBOs only: optional animation clip + loop mode
+        if (clipsSupported()) {
+            ImGui.inputTextWithHint("Clip##state", "animation clip (.omanim, optional)", row.clipPath);
+            ImGui.sameLine();
+            if (ImGui.smallButton("Browse...##clip")) {
+                clipPicker.accept(picked -> {
+                    if (picked != null && !picked.isBlank()) row.clipPath.set(picked);
+                });
+            }
+            if (!row.clipPath.get().isBlank()) {
+                EditorWidgets.loopModeCombo("Loop mode##state", row.loopMode);
+            }
+        }
+    }
+
+    private void pickAsset(Row row) {
+        filePicker.accept(picked -> {
+            if (picked != null && !picked.isBlank()) row.path.set(picked);
+        });
+    }
+
+    /** Release the pooled Mortar header regions before the SkijaContext closes. */
+    @Override
+    public void close() {
+        headerPool.close();
     }
 
     /**
@@ -251,26 +268,11 @@ public final class SBOStatesSection {
         return rows.get(defaultRowIndex).name.get().trim();
     }
 
-    /** Render an inline help banner explaining states briefly. Optional. */
-    public void renderHelp(float formOffsetX, float width) {
-        ImDrawList draw = ImGui.getWindowDrawList();
-        ImVec2 pos = ImGui.getCursorScreenPos();
-        float padding = 6.0f;
-        float h = ImGui.getTextLineHeight() * 2 + padding * 2;
-        draw.addRectFilled(pos.x, pos.y, pos.x + width, pos.y + h,
-                ImColor.rgba(0.36f, 0.61f, 0.84f, 0.10f), 4.0f);
-        ImGui.setCursorScreenPos(pos.x + padding, pos.y + padding);
-        ImGui.textDisabled("States let one SBO carry multiple visual variants");
-        ImGui.setCursorScreenPos(pos.x + padding, pos.y + padding + ImGui.getTextLineHeight());
-        ImGui.textDisabled("(e.g. wooden_bucket: empty / water / milk).");
-        ImGui.setCursorScreenPos(pos.x, pos.y + h);
-    }
-
     private static final class Row {
         final ImString name = new ImString(64);
         final ImString path = new ImString(512);
         final ImString clipPath = new ImString(512);
-        final imgui.type.ImInt loopMode = new imgui.type.ImInt(0); // LoopMode ordinal
+        final ImInt loopMode = new ImInt(0); // LoopMode ordinal
 
         Row(String n, String p) {
             if (n != null) name.set(n);

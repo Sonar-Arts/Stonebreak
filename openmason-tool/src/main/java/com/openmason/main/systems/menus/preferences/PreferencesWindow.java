@@ -3,15 +3,20 @@ package com.openmason.main.systems.menus.preferences;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
 import com.openmason.main.systems.menus.windows.WindowTitleBar;
-import com.openmason.main.systems.themes.core.ThemeDefinition;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.ViewportController;
-import imgui.ImColor;
+import com.openmason.main.systems.mortar.core.MortarFrameResult;
+import com.openmason.main.systems.mortar.core.MortarRegion;
+import com.openmason.main.systems.mortar.parts.MortarNavItem;
+import com.openmason.main.systems.themes.utils.ThemeColors.Tone;
+import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
-import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
+import imgui.flag.ImGuiFocusedFlags;
+import imgui.flag.ImGuiKey;
+import imgui.flag.ImGuiPopupFlags;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
@@ -21,9 +26,10 @@ import org.slf4j.LoggerFactory;
 /**
  * Unified preferences window for Open Mason.
  * <p>
- * Uses a deferred-apply model with OK and Apply buttons.
+ * Uses a deferred-apply model with OK / Apply / Cancel buttons.
  * Settings are synced from persistence when the window opens,
- * and only saved/applied when the user clicks OK or Apply.
+ * and only saved/applied when the user clicks OK or Apply. Cancel (also the title-bar X and
+ * Escape) discards staged edits and reverts the one immediate page, Keybinds.
  * </p>
  */
 public class PreferencesWindow {
@@ -36,15 +42,16 @@ public class PreferencesWindow {
     private static final float MIN_WINDOW_HEIGHT = 600.0f;
     private static final float FOOTER_HEIGHT = 40.0f;
 
-    // Navigation button style constants (matching HubSidebarNav)
+    // Sidebar nav layout (logical px, like HubSidebarNav)
     private static final float NAV_ITEM_HEIGHT = 36.0f;
-    private static final float NAV_ITEM_ROUNDING = 8.0f;
-    private static final float NAV_ITEM_SPACING = 4.0f;
-    private static final float NAV_TEXT_LEFT_PADDING = 16.0f;
-    private static final float NAV_SIDEBAR_PADDING = 10.0f;
-    private static final float ACCENT_WIDTH = 3.0f;
-    private static final float ACCENT_ROUNDING = 1.5f;
-    private static final float ACCENT_INSET_Y = 8.0f;
+    private static final float NAV_ITEM_GAP = 4.0f;
+    private static final float NAV_PAD = 10.0f;
+
+    // Footer buttons (screen px)
+    private static final float BUTTON_WIDTH = 88.0f;
+    private static final float BUTTON_HEIGHT = 26.0f;
+    private static final float BUTTON_SPACING = 8.0f;
+    private static final float FOOTER_MARGIN = 15.0f;
 
     // Window visibility state
     private final ImBoolean visible;
@@ -55,13 +62,20 @@ public class PreferencesWindow {
     // Unified page renderer
     private final PreferencesPageRenderer pageRenderer;
 
-    // Theme for custom-drawn sidebar
-    private final ThemeManager themeManager;
+    // Skija-painted sidebar navigation (ImGui fallback when Skija is unavailable)
+    private final MortarRegion navRegion = new MortarRegion();
 
     // Window state
     private final WindowTitleBar titleBar;
     private boolean iniFileSet = false;
     private boolean wasVisible = false;
+    /**
+     * Whether a text field, popup or key-capture modal owned the keyboard at the end of
+     * the previous frame. The widget that consumes an Escape clears its own state during
+     * this frame's render, so current-frame checks alone would let one Escape both close
+     * the nested widget and cancel the whole window.
+     */
+    private boolean escapeOwnedLastFrame = false;
 
     /**
      * Creates a new unified preferences window.
@@ -78,7 +92,6 @@ public class PreferencesWindow {
 
         this.visible = visible;
         this.state = new PreferencesState();
-        this.themeManager = themeManager;
 
         this.pageRenderer = new PreferencesPageRenderer(
                 preferencesManager,
@@ -88,7 +101,8 @@ public class PreferencesWindow {
                 propertyPanel
         );
 
-        this.titleBar = new WindowTitleBar(WINDOW_TITLE, true, false);
+        // No minimize: any hide is a Cancel (keybind edits revert), which a minimize button would do silently
+        this.titleBar = new WindowTitleBar(WINDOW_TITLE, false, false);
         logger.debug("Unified preferences window created");
     }
 
@@ -108,6 +122,11 @@ public class PreferencesWindow {
         logger.debug("Preferences window hidden");
     }
 
+    /** Releases the Skija sidebar surface; call while the GL context is current. */
+    public void close() {
+        navRegion.close();
+    }
+
     /**
      * Checks if the preferences window is visible.
      */
@@ -120,12 +139,17 @@ public class PreferencesWindow {
      */
     public void render() {
         if (!visible.get()) {
+            if (wasVisible) {
+                // Hidden by a path other than the footer buttons: same as Cancel.
+                pageRenderer.cancelChanges();
+            }
             wasVisible = false;
             return;
         }
 
         // Detect window open transition and sync state from persistence
         if (!wasVisible) {
+            escapeOwnedLastFrame = false;
             pageRenderer.onWindowOpened();
             ImGui.setNextWindowFocus();
             wasVisible = true;
@@ -161,19 +185,65 @@ public class PreferencesWindow {
         if (ImGui.begin(WINDOW_TITLE, visible, windowFlags)) {
             try {
                 WindowTitleBar.Result result = titleBar.render();
-                if (result.minimizeClicked() || result.closeClicked()) {
-                    visible.set(false);
+                if (result.closeClicked()) {
+                    cancel();
+                } else {
+                    renderContent();
+                    handleEscape();
+                    escapeOwnedLastFrame = escapeOwnedElsewhere();
                 }
-                renderContent();
             } catch (Exception e) {
                 logger.error("Error rendering preferences window", e);
-                ImGui.textColored(1.0f, 0.0f, 0.0f, 1.0f, "Error rendering preferences");
-                ImGui.text("Check logs for details");
+                ThemedWidgets.statusText(Tone.ERROR, "Error rendering preferences");
+                ImGui.textDisabled("Check logs for details");
             }
         }
         ImGui.end();
 
         ImGui.popStyleVar();
+    }
+
+    /** Applies all staged values and persists them. Keeps the window open. */
+    private void apply() {
+        pageRenderer.applyAllSettings();
+        logger.info("Preferences applied");
+    }
+
+    /** Applies and closes. */
+    private void ok() {
+        pageRenderer.applyAllSettings();
+        visible.set(false);
+        logger.info("Preferences applied and window closed");
+    }
+
+    /**
+     * Discards every change since the window opened / last Apply and closes.
+     * Staged values are dropped (re-synced on next open); immediate keybind edits are reverted.
+     */
+    private void cancel() {
+        pageRenderer.cancelChanges();
+        visible.set(false);
+        logger.info("Preferences cancelled");
+    }
+
+    /**
+     * Escape = Cancel, unless a text field, popup or key-capture modal owned the key
+     * this frame or at the end of the last one.
+     */
+    private void handleEscape() {
+        if (ImGui.isWindowFocused(ImGuiFocusedFlags.RootAndChildWindows)
+                && ImGui.isKeyPressed(ImGuiKey.Escape, false)
+                && !escapeOwnedLastFrame
+                && !escapeOwnedElsewhere()) {
+            cancel();
+        }
+    }
+
+    private boolean escapeOwnedElsewhere() {
+        return ImGui.isAnyItemActive()
+                || ImGui.getIO().getWantTextInput()
+                || ImGui.isPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel)
+                || pageRenderer.isModalOpen();
     }
 
     /**
@@ -196,7 +266,7 @@ public class PreferencesWindow {
                 ImGui.getCursorScreenPosY(),
                 ImGui.getCursorScreenPosX(),
                 ImGui.getCursorScreenPosY() + contentHeight,
-                ImGui.getColorU32(0.5f, 0.5f, 0.5f, 0.5f),
+                ImGui.getColorU32(ImGuiCol.Separator),
                 1.0f
         );
 
@@ -213,266 +283,95 @@ public class PreferencesWindow {
         ImGui.endChild();
         ImGui.popStyleVar();
 
-        // Footer drawn at absolute positions — no child regions, no layout interference
-        renderFooter(windowWidth, windowHeight);
+        // Footer drawn at absolute positions - no child regions, no layout interference
+        renderFooter(windowWidth);
     }
 
     /**
-     * Renders the footer using absolute screen coordinates.
-     * Bypasses ImGui layout entirely to avoid padding/spacing issues.
+     * Footer: a rule, then right-aligned OK (primary) / Apply / Cancel - Cancel always last.
      */
-    private void renderFooter(float windowWidth, float totalHeight) {
-        float buttonWidth = 80.0f;
-        float buttonHeight = 24.0f;
-        float buttonSpacing = 8.0f;
-        float rightMargin = 15.0f;
-        float totalButtonsWidth = buttonWidth * 2 + buttonSpacing;
-
+    private void renderFooter(float windowWidth) {
         ImDrawList drawList = ImGui.getWindowDrawList();
         ImVec2 winPos = ImGui.getWindowPos();
-        float winHeight = ImGui.getWindowHeight();
-        ThemeDefinition theme = themeManager.getCurrentTheme();
-        ImVec4 accentBase = getAccentColor(theme);
-
-        // Footer region: bottom FOOTER_HEIGHT pixels of the window
-        float footerTop = winPos.y + winHeight - FOOTER_HEIGHT;
-        float footerBottom = winPos.y + winHeight;
-        float footerLeft = winPos.x;
+        float footerTop = winPos.y + ImGui.getWindowHeight() - FOOTER_HEIGHT;
         float footerRight = winPos.x + windowWidth;
 
-        // Gradient separator line at top of footer
-        float sepCenter = (footerLeft + footerRight) * 0.5f;
-        int sepBright = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.25f);
-        int sepFade = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.0f);
+        drawList.addLine(winPos.x, footerTop, footerRight, footerTop,
+                ImGui.getColorU32(ImGuiCol.Separator), 1.0f);
 
-        drawList.addRectFilledMultiColor(footerLeft, footerTop, sepCenter, footerTop + 1.0f,
-                sepFade, sepBright, sepBright, sepFade);
-        drawList.addRectFilledMultiColor(sepCenter, footerTop, footerRight, footerTop + 1.0f,
-                sepBright, sepFade, sepFade, sepBright);
+        float buttonY = footerTop + (FOOTER_HEIGHT - BUTTON_HEIGHT) * 0.5f;
+        float cancelX = footerRight - FOOTER_MARGIN - BUTTON_WIDTH;
+        float applyX = cancelX - BUTTON_SPACING - BUTTON_WIDTH;
+        float okX = applyX - BUTTON_SPACING - BUTTON_WIDTH;
 
-        // Center buttons vertically within footer
-        float buttonY = footerTop + (FOOTER_HEIGHT - buttonHeight) * 0.5f;
-        float applyX = footerRight - rightMargin - totalButtonsWidth;
-        float okX = applyX + buttonWidth + buttonSpacing;
+        ImGui.setCursorScreenPos(okX, buttonY);
+        boolean okClicked = ThemedWidgets.accentButton("OK", BUTTON_WIDTH, BUTTON_HEIGHT);
+        ImGui.setCursorScreenPos(applyX, buttonY);
+        boolean applyClicked = ImGui.button("Apply", BUTTON_WIDTH, BUTTON_HEIGHT);
+        ImGui.setCursorScreenPos(cancelX, buttonY);
+        boolean cancelClicked = ImGui.button("Cancel", BUTTON_WIDTH, BUTTON_HEIGHT);
 
-        // Apply button
-        renderFooterButtonAbsolute(drawList, "Apply", "apply_btn", applyX, buttonY,
-                buttonWidth, buttonHeight, false, theme, accentBase, () -> {
-            pageRenderer.applyAllSettings();
-            logger.info("Preferences applied");
-        });
-
-        // OK button
-        renderFooterButtonAbsolute(drawList, "OK", "ok_btn", okX, buttonY,
-                buttonWidth, buttonHeight, true, theme, accentBase, () -> {
-            pageRenderer.applyAllSettings();
-            visible.set(false);
-            logger.info("Preferences applied and window closed");
-        });
+        if (okClicked) {
+            ok();
+        } else if (applyClicked) {
+            apply();
+        } else if (cancelClicked) {
+            cancel();
+        }
     }
 
     /**
-     * Renders a footer button at an absolute screen position using
-     * ImGui.setCursorScreenPos for the invisible button hit area.
-     */
-    private void renderFooterButtonAbsolute(ImDrawList drawList, String label, String id,
-                                             float x, float y, float width, float height,
-                                             boolean primary, ThemeDefinition theme,
-                                             ImVec4 accentBase, Runnable onClick) {
-        ImGui.setCursorScreenPos(x, y);
-        ImGui.invisibleButton("##" + id, width, height);
-        boolean isHovered = ImGui.isItemHovered();
-        if (ImGui.isItemClicked()) {
-            onClick.run();
-        }
-
-        float x2 = x + width;
-        float y2 = y + height;
-
-        if (primary) {
-            float bgAlpha = isHovered ? 0.30f : 0.18f;
-            drawList.addRectFilled(x, y, x2, y2,
-                    ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, bgAlpha), NAV_ITEM_ROUNDING);
-            float borderAlpha = isHovered ? 0.7f : 0.5f;
-            drawList.addRect(x, y, x2, y2,
-                    ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, borderAlpha), NAV_ITEM_ROUNDING, 0, 1.0f);
-        } else {
-            if (isHovered) {
-                ImVec4 hoverBase = theme.getColor(ImGuiCol.HeaderHovered);
-                int hoverColor = hoverBase != null
-                        ? ImColor.rgba(hoverBase.x, hoverBase.y, hoverBase.z, 0.15f)
-                        : ImColor.rgba(1.0f, 1.0f, 1.0f, 0.08f);
-                drawList.addRectFilled(x, y, x2, y2, hoverColor, NAV_ITEM_ROUNDING);
-                drawList.addRect(x, y, x2, y2,
-                        ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.5f), NAV_ITEM_ROUNDING, 0, 1.0f);
-            } else {
-                ImVec4 frameBg = theme.getColor(ImGuiCol.FrameBg);
-                int normalBg = frameBg != null
-                        ? ImColor.rgba(frameBg.x, frameBg.y, frameBg.z, 0.25f)
-                        : ImColor.rgba(1.0f, 1.0f, 1.0f, 0.03f);
-                drawList.addRectFilled(x, y, x2, y2, normalBg, NAV_ITEM_ROUNDING);
-                ImVec4 borderBase = theme.getColor(ImGuiCol.Border);
-                int normalBorder = borderBase != null
-                        ? ImColor.rgba(borderBase.x, borderBase.y, borderBase.z, 0.6f)
-                        : ImColor.rgba(0.5f, 0.5f, 0.5f, 0.3f);
-                drawList.addRect(x, y, x2, y2, normalBorder, NAV_ITEM_ROUNDING, 0, 1.0f);
-            }
-        }
-
-        // Centered label
-        ImVec2 textSize = ImGui.calcTextSize(label);
-        float textX = x + (width - textSize.x) * 0.5f;
-        float textY = y + (height - textSize.y) * 0.5f;
-        ImVec4 textBase = theme.getColor(ImGuiCol.Text);
-        float tr = textBase != null ? textBase.x : 0.88f;
-        float tg = textBase != null ? textBase.y : 0.89f;
-        float tb = textBase != null ? textBase.z : 0.91f;
-        drawList.addText(textX, textY, ImColor.rgba(tr, tg, tb, isHovered ? 1.0f : 0.9f), label);
-    }
-
-    /**
-     * Renders the sidebar navigation with polished custom-drawn buttons
-     * matching the home screen navigation style.
+     * Sidebar navigation: a Mortar region of nav items (same look as HubSidebarNav),
+     * or plain ImGui selectables when Skija is unavailable.
      */
     private void renderSidebar() {
-        ImGui.dummy(0, NAV_SIDEBAR_PADDING);
+        PreferencesState.PreferencePage[] pages = PreferencesState.PreferencePage.values();
 
-        for (int i = 0; i < PreferencesState.PreferencePage.values().length; i++) {
-            PreferencesState.PreferencePage page = PreferencesState.PreferencePage.values()[i];
-            renderSidebarNavButton(page);
-            if (i < PreferencesState.PreferencePage.values().length - 1) {
-                ImGui.dummy(0, NAV_ITEM_SPACING);
+        if (!navRegion.isAvailable()) {
+            renderFallbackSidebar(pages);
+            return;
+        }
+
+        // Logical px: the region scales to UI density.
+        float width = MortarRegion.availWidth();
+        float height = MortarRegion.availHeight();
+        if (width < 1f || height < 1f) {
+            return;
+        }
+
+        navRegion.update(ImGui.getIO().getDeltaTime());
+        navRegion.begin(width, height);
+
+        float y = NAV_PAD;
+        for (PreferencesState.PreferencePage page : pages) {
+            navRegion.add("nav." + page.name(), NAV_PAD, y, width - NAV_PAD * 2f, NAV_ITEM_HEIGHT,
+                    state.getCurrentPage() == page, new MortarNavItem(page.getDisplayName()));
+            y += NAV_ITEM_HEIGHT + NAV_ITEM_GAP;
+        }
+
+        MortarFrameResult input = navRegion.render();
+        for (PreferencesState.PreferencePage page : pages) {
+            if (input.isClicked("nav." + page.name())) {
+                selectPage(page);
             }
         }
     }
 
-    /**
-     * Renders a single sidebar navigation button with the polished style
-     * from HubSidebarNav (gradient fill, accent bar, hover effects).
-     */
-    private void renderSidebarNavButton(PreferencesState.PreferencePage page) {
-        ThemeDefinition theme = themeManager.getCurrentTheme();
-        boolean isSelected = state.getCurrentPage() == page;
-
-        float availWidth = ImGui.getContentRegionAvailX();
-        float itemWidth = availWidth - (NAV_SIDEBAR_PADDING * 2);
-        ImGui.setCursorPosX(ImGui.getCursorPosX() + NAV_SIDEBAR_PADDING);
-
-        ImVec2 screenPos = ImGui.getCursorScreenPos();
-
-        ImGui.invisibleButton("##pref_nav_" + page.name(), itemWidth, NAV_ITEM_HEIGHT);
-        boolean isHovered = ImGui.isItemHovered();
-        boolean isClicked = ImGui.isItemClicked();
-
-        if (isClicked) {
-            state.setCurrentPage(page);
-            logger.debug("Switched to page: {}", page.name());
-        }
-
-        ImDrawList drawList = ImGui.getWindowDrawList();
-        float x1 = screenPos.x;
-        float y1 = screenPos.y;
-        float x2 = x1 + itemWidth;
-        float y2 = y1 + NAV_ITEM_HEIGHT;
-
-        ImVec4 accentBase = getAccentColor(theme);
-
-        if (isSelected) {
-            // Gradient fill: accent color fading from left to transparent on right
-            int leftColor = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.20f);
-            int rightColor = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.05f);
-            drawList.addRectFilledMultiColor(x1, y1, x2, y2, leftColor, rightColor, rightColor, leftColor);
-
-            // Rounded border overlay
-            int borderColor = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.4f);
-            drawList.addRect(x1, y1, x2, y2, borderColor, NAV_ITEM_ROUNDING, 0, 1.0f);
-
-            // Left accent bar with glow
-            int accentSolid = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 1.0f);
-            int accentGlow = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.25f);
-
-            drawList.addRectFilled(
-                    x1 - 2.0f, y1 + ACCENT_INSET_Y - 2.0f,
-                    x1 + ACCENT_WIDTH + 4.0f, y2 - ACCENT_INSET_Y + 2.0f,
-                    accentGlow, 3.0f
-            );
-            drawList.addRectFilled(
-                    x1, y1 + ACCENT_INSET_Y,
-                    x1 + ACCENT_WIDTH, y2 - ACCENT_INSET_Y,
-                    accentSolid, ACCENT_ROUNDING
-            );
-        } else if (isHovered) {
-            // Hover: slightly brighter background
-            ImVec4 hoverBase = theme.getColor(ImGuiCol.HeaderHovered);
-            int hoverColor;
-            if (hoverBase != null) {
-                hoverColor = ImColor.rgba(hoverBase.x, hoverBase.y, hoverBase.z, 0.15f);
-            } else {
-                hoverColor = ImColor.rgba(1.0f, 1.0f, 1.0f, 0.08f);
+    private void renderFallbackSidebar(PreferencesState.PreferencePage[] pages) {
+        ImGui.dummy(0, NAV_PAD);
+        ImGui.indent(NAV_PAD);
+        for (PreferencesState.PreferencePage page : pages) {
+            if (ImGui.selectable(page.getDisplayName(), state.getCurrentPage() == page,
+                    0, ImGui.getContentRegionAvailX() - NAV_PAD, NAV_ITEM_HEIGHT * 0.75f)) {
+                selectPage(page);
             }
-            drawList.addRectFilled(x1, y1, x2, y2, hoverColor, NAV_ITEM_ROUNDING);
-
-            int hoverBorder = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.5f);
-            drawList.addRect(x1, y1, x2, y2, hoverBorder, NAV_ITEM_ROUNDING, 0, 1.0f);
-
-            int hintAccent = ImColor.rgba(accentBase.x, accentBase.y, accentBase.z, 0.45f);
-            drawList.addRectFilled(
-                    x1, y1 + ACCENT_INSET_Y + 2.0f,
-                    x1 + ACCENT_WIDTH * 0.6f, y2 - ACCENT_INSET_Y - 2.0f,
-                    hintAccent, ACCENT_ROUNDING
-            );
-        } else {
-            // Normal state: subtle background fill + border
-            ImVec4 frameBg = theme.getColor(ImGuiCol.FrameBg);
-            int normalBg;
-            if (frameBg != null) {
-                normalBg = ImColor.rgba(frameBg.x, frameBg.y, frameBg.z, 0.25f);
-            } else {
-                normalBg = ImColor.rgba(1.0f, 1.0f, 1.0f, 0.03f);
-            }
-            drawList.addRectFilled(x1, y1, x2, y2, normalBg, NAV_ITEM_ROUNDING);
-
-            ImVec4 borderBase = theme.getColor(ImGuiCol.Border);
-            int normalBorder;
-            if (borderBase != null) {
-                normalBorder = ImColor.rgba(borderBase.x, borderBase.y, borderBase.z, 0.6f);
-            } else {
-                normalBorder = ImColor.rgba(0.5f, 0.5f, 0.5f, 0.3f);
-            }
-            drawList.addRect(x1, y1, x2, y2, normalBorder, NAV_ITEM_ROUNDING, 0, 1.0f);
         }
-
-        // Label text
-        String label = page.getDisplayName();
-        float textX = x1 + NAV_TEXT_LEFT_PADDING;
-        ImGui.setWindowFontScale(1.0f);
-        float textHeight = ImGui.calcTextSize(label).y;
-        float textY = y1 + (NAV_ITEM_HEIGHT - textHeight) * 0.5f;
-
-        ImVec4 textBase = theme.getColor(ImGuiCol.Text);
-        float tr = textBase != null ? textBase.x : 0.88f;
-        float tg = textBase != null ? textBase.y : 0.89f;
-        float tb = textBase != null ? textBase.z : 0.91f;
-
-        int textColor;
-        if (isSelected) {
-            textColor = ImColor.rgba(tr, tg, tb, 1.0f);
-            drawList.addText(textX, textY, textColor, label);
-            drawList.addText(textX + 0.5f, textY, textColor, label);
-        } else {
-            textColor = ImColor.rgba(tr, tg, tb, isHovered ? 1.0f : 0.9f);
-            drawList.addText(textX, textY, textColor, label);
-        }
+        ImGui.unindent(NAV_PAD);
     }
 
-    /**
-     * Get the accent color from the theme with fallback.
-     */
-    private ImVec4 getAccentColor(ThemeDefinition theme) {
-        ImVec4 accent = theme.getColor(ImGuiCol.HeaderActive);
-        if (accent == null) accent = theme.getColor(ImGuiCol.ButtonHovered);
-        if (accent == null) accent = new ImVec4(0.36f, 0.61f, 0.84f, 1.0f);
-        return accent;
+    private void selectPage(PreferencesState.PreferencePage page) {
+        state.setCurrentPage(page);
+        logger.debug("Switched to page: {}", page.name());
     }
 
     /**

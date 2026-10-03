@@ -492,6 +492,14 @@ public final class ClientWorldView {
         }
     }
 
+    /** Crafting-table grid intent from the open workbench UI (see {@code WorkbenchSlotsC2S}). */
+    public void sendWorkbenchSlots(int x, int y, int z, String slots) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive() && slots != null) {
+            conn.send(new com.stonebreak.network.packet.world.WorkbenchSlotsC2S(x, y, z, slots), false);
+        }
+    }
+
     /**
      * Toggleable-block interaction intent (door open/close — see {@code BlockToggleC2S}).
      *

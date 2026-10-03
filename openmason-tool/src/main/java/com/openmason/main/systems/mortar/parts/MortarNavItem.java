@@ -6,6 +6,7 @@ import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.theme.MortarTheme;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.mortar.theme.MortarType;
 
 /**
  * A selectable sidebar row: a label with a left accent bar that grows in when
@@ -15,7 +16,7 @@ import com.openmason.main.systems.skija.SkijaFontStore.Weight;
 public final class MortarNavItem implements MortarPart {
 
     private static final float RADIUS = 6f;
-    private static final float FONT_SIZE = 14f;
+    private static final float FONT_SIZE = MortarType.BODY;
     private static final float BAR_WIDTH = 3f;
     private static final float TEXT_INSET = 16f;
 

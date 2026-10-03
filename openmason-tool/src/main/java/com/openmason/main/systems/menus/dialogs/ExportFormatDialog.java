@@ -1,7 +1,6 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import imgui.ImGui;
-import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImInt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +36,8 @@ public class ExportFormatDialog {
             return description;
         }
     }
+
+    private static final String POPUP_ID = "Export Format##exportFormat";
 
     private boolean isOpen = false;
     private final ImInt selectedFormat = new ImInt(0); // 0 = PNG, 1 = OMT
@@ -81,17 +82,10 @@ public class ExportFormatDialog {
             return;
         }
 
-        // Center the modal over the reference viewport
-        ImGui.setNextWindowSize(400, 200);
-        float centerX = refCenterX >= 0 ? refCenterX : ImGui.getMainViewport().getCenterX();
-        float centerY = refCenterY >= 0 ? refCenterY : ImGui.getMainViewport().getCenterY();
-        ImGui.setNextWindowPos(
-                centerX - 200,
-                centerY - 100
-        );
-
-        // Open modal popup
-        if (ImGui.beginPopupModal("Export Format", ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove)) {
+        // Center over the reference viewport (main when docked, the editor host when windowed)
+        ModalDialogs.Anchor anchor = refCenterX >= 0 && refCenterY >= 0
+                ? new ModalDialogs.Anchor(refCenterX, refCenterY) : null;
+        if (ModalDialogs.begin(POPUP_ID, anchor, 380)) {
             ImGui.text("Choose export format:");
             ImGui.spacing();
 
@@ -117,8 +111,8 @@ public class ExportFormatDialog {
             ImGui.separator();
             ImGui.spacing();
 
-            // Buttons
-            if (ImGui.button("OK", 120, 0)) {
+            ModalDialogs.buttonsBegin();
+            if (ModalDialogs.primary("Export", true)) {
                 ExportFormat format = selectedFormat.get() == 0 ? ExportFormat.PNG : ExportFormat.OMT;
                 logger.info("Export format selected: {}", format);
 
@@ -129,21 +123,18 @@ public class ExportFormatDialog {
                 isOpen = false;
                 ImGui.closeCurrentPopup();
             }
-
-            ImGui.sameLine();
-
-            if (ImGui.button("Cancel", 120, 0)) {
+            if (ModalDialogs.cancel()) {
                 logger.debug("Export format dialog cancelled");
                 isOpen = false;
                 ImGui.closeCurrentPopup();
             }
 
-            ImGui.endPopup();
+            ModalDialogs.end();
         }
 
         // Open the popup (only needs to be called once)
-        if (isOpen && !ImGui.isPopupOpen("Export Format")) {
-            ImGui.openPopup("Export Format");
+        if (isOpen && !ImGui.isPopupOpen(POPUP_ID)) {
+            ImGui.openPopup(POPUP_ID);
         }
     }
 
