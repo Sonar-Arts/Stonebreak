@@ -261,7 +261,8 @@ public class SBOSerializer {
                 params.getSmeltingRecipes(),
                 params.getFuel(),
                 sounds.data(),
-                params.getDrops()
+                params.getDrops(),
+                params.getTool()
         );
 
         Path tempFile = Files.createTempFile("sbo_export_", ".tmp");
@@ -438,7 +439,8 @@ public class SBOSerializer {
                 document.smeltingRecipes(),
                 document.fuel(),
                 rebuiltSounds.data(),
-                document.drops()
+                document.drops(),
+                document.tool()
         );
 
         outputPath = SBOFormat.ensureExtension(outputPath);
@@ -711,6 +713,7 @@ public class SBOSerializer {
         public FuelDataDTO fuel;
         public List<SoundJson.SoundDefDTO> sounds;
         public DropDataDTO drops;
+        public ToolDataDTO tool;
 
         public ManifestDTO(SBOFormat.Document doc) {
             this.version = doc.version();
@@ -746,6 +749,28 @@ public class SBOSerializer {
             this.sounds = SoundJson.toDto(doc.sounds());
             // Presence is meaningful (empty = drops nothing), so write whenever set.
             this.drops = doc.hasDrops() ? new DropDataDTO(doc.drops()) : null;
+            this.tool = doc.hasTool() ? new ToolDataDTO(doc.tool()) : null;
+        }
+    }
+
+    /** DTO mirror of {@link SBOFormat.ToolData} (1.9+); unset optional stats are omitted. */
+    private static class ToolDataDTO {
+        public String toolClass;
+        public int tier;
+        public float speedMultiplier;
+        public List<String> materials;
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        public Integer durability;
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        public Float attackDamage;
+
+        public ToolDataDTO(SBOFormat.ToolData t) {
+            this.toolClass = t.toolClass();
+            this.tier = t.tier();
+            this.speedMultiplier = t.speedMultiplier();
+            this.materials = new ArrayList<>(t.materials());
+            this.durability = t.durability();
+            this.attackDamage = t.attackDamage();
         }
     }
 
@@ -903,6 +928,10 @@ public class SBOSerializer {
         public int maxStackSize;
         public String category;
         public boolean placeable;
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        public String material;
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_DEFAULT)
+        public int requiredTier;
 
         public GamePropertiesDTO(SBOFormat.GameProperties gp) {
             this.numericId = gp.numericId();
@@ -918,6 +947,8 @@ public class SBOSerializer {
             this.maxStackSize = gp.maxStackSize();
             this.category = gp.category();
             this.placeable = gp.placeable();
+            this.material = gp.material();
+            this.requiredTier = gp.requiredTier();
         }
     }
 }

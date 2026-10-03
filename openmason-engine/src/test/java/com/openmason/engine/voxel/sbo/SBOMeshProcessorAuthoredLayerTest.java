@@ -81,7 +81,7 @@ class SBOMeshProcessorAuthoredLayerTest {
         SBOFormat.Document manifest = new SBOFormat.Document(
                 "1.8", "stonebreak:fake", "Fake", "block", "Stonebreak Nature",
                 "checksum", "author", "desc", "createdAt", "model.omo",
-                null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null);
         List<ParsedFaceMapping> mappings = List.of(
                 new ParsedFaceMapping(4, 10, 0, 0, 1, 1, 0),
                 new ParsedFaceMapping(7, 20, 0, 0, 1, 1, 0));
