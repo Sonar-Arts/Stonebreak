@@ -166,9 +166,12 @@ public class TerrainGenerationSystem {
      * Worm carve mask via the native kernel, with cavern-connector anchors
      * precomputed by the Java cavern carvers so cavern placement stays
      * consistent with their rasterization. Falls back to the Java carver on
-     * any kernel failure.
+     * any kernel failure — guarded by {@code waterLevels}, since the kernel
+     * builds the same WaterGuard plane internally and an unguarded fallback
+     * chunk would carve open beds and banks its guarded neighbours sealed
+     * (GitHub issue #248).
      */
-    private java.util.BitSet nativeWormMask(int chunkX, int chunkZ, int[] heights) {
+    private java.util.BitSet nativeWormMask(int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
         int radius = PerlinWormCarver.scanRadius();
         java.util.ArrayList<int[]> anchorChunkList = new java.util.ArrayList<>();
         java.util.ArrayList<float[]> anchorList = new java.util.ArrayList<>();
@@ -201,7 +204,7 @@ public class TerrainGenerationSystem {
         long carved = com.openmason.engine.cenda.CendaKernels.carveWorms(
             nativeCarverCtx, chunkX, chunkZ, heights, anchorChunks, anchors, mask);
         if (carved < 0) {
-            return wormCarver.carveMaskForChunk(chunkX, chunkZ, heights);
+            return wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
         }
         return java.util.BitSet.valueOf(mask);
     }
@@ -616,7 +619,7 @@ public class TerrainGenerationSystem {
      */
     private CarveMasks buildCarveMasks(int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
         BitSet caveMask = (nativeCarverCtx != 0L)
-            ? nativeWormMask(chunkX, chunkZ, heights)
+            ? nativeWormMask(chunkX, chunkZ, heights, waterLevels)
             : wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
         CavernCarver.Result cavernResult =
             cavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
