@@ -48,6 +48,8 @@ public class WorkbenchRenderCoordinator {
 
     private final MasonryUI ui;
     private final MButton recipeButton;
+    private final MButton craftAllButton;
+    private final MButton sortButton;
     private final MHotbarRenderer mHotbarRenderer;
 
     public WorkbenchRenderCoordinator(UIRenderer uiRenderer,
@@ -68,7 +70,10 @@ public class WorkbenchRenderCoordinator {
         this.ui              = new MasonryUI(renderer.getSkijaBackend());
         this.mHotbarRenderer = new MHotbarRenderer(uiRenderer, renderer);
 
+        // Visual only — click detection is the shared InventoryInputManager dispatch.
         this.recipeButton    = new MButton(RECIPE_BUTTON_TEXT).scaleText(true);
+        this.craftAllButton  = new MButton("Craft All").fontSize(MStyle.FONT_META).scaleText(true);
+        this.sortButton      = new MButton("Sort").fontSize(MStyle.FONT_META).scaleText(true);
     }
 
     // ─────────────────────────────────────────────── Public entry points
@@ -90,6 +95,8 @@ public class WorkbenchRenderCoordinator {
 
         updateButtonPositions(layout);
         recipeButton.updateHover(mouseX, mouseY);
+        craftAllButton.updateHover(mouseX, mouseY);
+        sortButton.updateHover(mouseX, mouseY);
 
         // Phase A — Skija: chrome
         if (ui.beginFrame(screenWidth, screenHeight, 1.0f)) {
@@ -233,8 +240,12 @@ public class WorkbenchRenderCoordinator {
         drawSlot(ox, oy, slotSize, mouseX, mouseY, false);
         checkHover(craftingManager.getCraftingOutputSlot(), ox, oy, slotSize, mouseX, mouseY);
 
-        // Recipe button (visual only — click bounds tracked by inputManager)
+        // Buttons (visual only — click bounds tracked by inputManager)
         recipeButton.render(ui);
+        ItemStack output = craftingManager.getCraftingOutputSlot();
+        if (output != null && !output.isEmpty()) {
+            craftAllButton.render(ui);
+        }
     }
 
     private void drawInventorySection(InventoryLayoutCalculator.InventoryLayout layout,
@@ -263,6 +274,8 @@ public class WorkbenchRenderCoordinator {
             drawSlot(sx, sy, slotSize, mouseX, mouseY, selected);
             checkHover(hotbarSlots[i], sx, sy, slotSize, mouseX, mouseY);
         }
+
+        sortButton.render(ui);
     }
 
     private void drawSlot(float x, float y, int size, float mouseX, float mouseY,
@@ -382,6 +395,14 @@ public class WorkbenchRenderCoordinator {
         inputManager.updateRecipeButtonBoundsForRendering(layout);
         recipeButton.bounds(inputManager.getRecipeButtonX(), inputManager.getRecipeButtonY(),
                 inputManager.getRecipeButtonWidth(), inputManager.getRecipeButtonHeight());
+
+        inputManager.updateCraftAllButtonBoundsForRendering(layout);
+        craftAllButton.bounds(inputManager.getCraftAllButtonX(), inputManager.getCraftAllButtonY(),
+                inputManager.getCraftAllButtonWidth(), inputManager.getCraftAllButtonHeight());
+
+        inputManager.updateSortButtonBoundsForRendering(layout);
+        sortButton.bounds(inputManager.getSortButtonX(), inputManager.getSortButtonY(),
+                inputManager.getSortButtonWidth(), inputManager.getSortButtonHeight());
     }
 
     private void checkHover(ItemStack itemStack, float sx, float sy, int slotSize,

@@ -10,8 +10,11 @@ import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Manages all input handling for the inventory screen.
- * Follows Single Responsibility Principle by handling only input logic.
+ * Manages all input handling for the inventory screen, and — through a few layout/drop hooks —
+ * for every screen built on it (the crafting table's {@link WorkbenchInputManager}). The mouse
+ * dispatch lives only here so each crafting/inventory interaction reaches every screen: subclasses
+ * supply {@link #layoutFor}, {@link #placeDraggedItem} and {@link #hasCharacterTabs}, never their
+ * own copy of {@link #handleMouseInput} (issue #317).
  */
 public class InventoryInputManager {
 
@@ -40,10 +43,7 @@ public class InventoryInputManager {
     // Craft All button properties
     private float craftAllButtonX, craftAllButtonY, craftAllButtonWidth, craftAllButtonHeight;
 
-    // Sort button properties. Only InventoryRenderCoordinator calls
-    // updateSortButtonBoundsForRendering — the workbench screen never does,
-    // so these stay at 0 there and the button is un-clickable, keeping
-    // sorting an inventory-screen-only feature (same trick Craft All uses).
+    // Sort button properties
     private float sortButtonX, sortButtonY, sortButtonWidth, sortButtonHeight;
 
     // Tab bounds (mirroring InventoryRenderCoordinator tab geometry)
@@ -61,9 +61,8 @@ public class InventoryInputManager {
         this.dragState = new InventoryDragDropHandler.DragState();
     }
 
-    public void handleMouseInput(int screenWidth, int screenHeight) {
-        InventoryLayoutCalculator.InventoryLayout layout =
-            InventoryLayoutCalculator.calculateThreeColumnLayout(screenWidth, screenHeight).center;
+    public final void handleMouseInput(int screenWidth, int screenHeight) {
+        InventoryLayoutCalculator.InventoryLayout layout = layoutFor(screenWidth, screenHeight);
 
         Vector2f mousePos = inputHandler.getMousePosition();
         float mouseX = mousePos.x;
@@ -95,6 +94,23 @@ public class InventoryInputManager {
         if (!rightMouseButtonDown) {
             clearRightDrag();
         }
+    }
+
+    /**
+     * The slot layout this screen's clicks are hit-tested against — the same layout its render
+     * coordinator draws. The inventory screen uses the centre column of its three-column layout.
+     */
+    protected InventoryLayoutCalculator.InventoryLayout layoutFor(int screenWidth, int screenHeight) {
+        return InventoryLayoutCalculator.calculateThreeColumnLayout(screenWidth, screenHeight).center;
+    }
+
+    /**
+     * Whether this screen draws the Inventory/Character/Classes/Skills/Feats tab strip. Screens
+     * without it must not hit-test the tabs, or clicks above their panel would switch screens
+     * through invisible tabs.
+     */
+    protected boolean hasCharacterTabs() {
+        return true;
     }
 
     /**
@@ -145,32 +161,32 @@ public class InventoryInputManager {
                 inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
-            placeDraggedItem(lastScreenWidth, lastScreenHeight);
+            placeDraggedItem(layout);
             inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             return;
         }
 
         if (dragState.draggedItemStack == null) {
             // Check character-group tabs (above panel) before slot interactions
-            if (isCharTabClicked(mouseX, mouseY, layout)) {
+            if (hasCharacterTabs() && isCharTabClicked(mouseX, mouseY, layout)) {
                 Game.getInstance().toggleInventoryScreen();
                 Game.getInstance().toggleCharacterScreen();
                 inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
-            if (isClassesTabClicked(mouseX, mouseY, layout)) {
+            if (hasCharacterTabs() && isClassesTabClicked(mouseX, mouseY, layout)) {
                 Game.getInstance().toggleInventoryScreen();
                 Game.getInstance().openCharacterTab(CharacterPanelTab.CLASSES);
                 inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
-            if (isSkillsTabClicked(mouseX, mouseY, layout)) {
+            if (hasCharacterTabs() && isSkillsTabClicked(mouseX, mouseY, layout)) {
                 Game.getInstance().toggleInventoryScreen();
                 Game.getInstance().openCharacterTab(CharacterPanelTab.SKILLS);
                 inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
-            if (isFeatsTabClicked(mouseX, mouseY, layout)) {
+            if (hasCharacterTabs() && isFeatsTabClicked(mouseX, mouseY, layout)) {
                 Game.getInstance().toggleInventoryScreen();
                 Game.getInstance().openCharacterTab(CharacterPanelTab.FEATS);
                 inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
@@ -465,11 +481,16 @@ public class InventoryInputManager {
         rightDragVisitedSlots.clear();
     }
 
-    private void placeDraggedItem(int screenWidth, int screenHeight) {
+    /**
+     * Places (or swaps/stacks) the held stack into the slot under the cursor, falling back to
+     * its original slot or a world drop. Screens with a different grid override this to use
+     * their own drop handler.
+     */
+    protected void placeDraggedItem(InventoryLayoutCalculator.InventoryLayout layout) {
         Vector2f mousePos = inputHandler.getMousePosition();
         InventoryDragDropHandler.placeDraggedItem(dragState, inventory,
                                                 craftingManager.getCraftingInputSlots(),
-                                                mousePos, screenWidth, screenHeight,
+                                                mousePos, layout,
                                                 craftingManager::updateCraftingOutput);
     }
 
@@ -523,8 +544,6 @@ public class InventoryInputManager {
 
     /**
      * Updates sort button bounds for rendering. Should be called before rendering the button.
-     * Only called from InventoryRenderCoordinator — deliberately not wired into the workbench
-     * screen, so the button's hit-box stays 0x0 there (see field comment above).
      */
     public void updateSortButtonBoundsForRendering(InventoryLayoutCalculator.InventoryLayout layout) {
         updateSortButtonBounds(layout);

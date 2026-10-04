@@ -36,9 +36,19 @@ public class InventoryDragDropHandler {
     public static boolean placeDraggedItem(DragState dragState, Inventory inventory, ItemStack[] craftingInputSlots,
                                          Vector2f mousePos, int screenWidth, int screenHeight,
                                          Runnable updateCraftingOutput) {
+        return placeDraggedItem(dragState, inventory, craftingInputSlots, mousePos,
+                InventoryLayoutCalculator.calculateLayout(screenWidth, screenHeight), updateCraftingOutput);
+    }
+
+    /**
+     * Places the held stack against an explicit {@code layout} — the one the screen hit-tests its
+     * clicks against, so placement and pick-up always agree on where each slot is.
+     */
+    public static boolean placeDraggedItem(DragState dragState, Inventory inventory, ItemStack[] craftingInputSlots,
+                                         Vector2f mousePos, InventoryLayoutCalculator.InventoryLayout layout,
+                                         Runnable updateCraftingOutput) {
         if (!dragState.isDragging()) return false;
 
-        InventoryLayoutCalculator.InventoryLayout layout = InventoryLayoutCalculator.calculateLayout(screenWidth, screenHeight);
         float mouseX = mousePos.x;
         float mouseY = mousePos.y;
 
