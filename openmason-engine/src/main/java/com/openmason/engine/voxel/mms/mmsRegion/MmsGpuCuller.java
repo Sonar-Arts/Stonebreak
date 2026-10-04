@@ -3,14 +3,17 @@ package com.openmason.engine.voxel.mms.mmsRegion;
 import com.openmason.engine.cearl.CearlCompiler;
 import com.openmason.engine.cearl.CearlDispatcher;
 import com.openmason.engine.cearl.CearlKernel;
+import com.openmason.engine.voxel.mms.mmsCore.MmsUploadBufferPool;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL31;
 import org.lwjgl.opengl.GL40;
 import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GL43;
 
+import java.nio.ByteBuffer;
 import java.util.Map;
 
 /**
@@ -29,8 +32,8 @@ import java.util.Map;
  * with. The generated source is semantically identical: same std430 layouts
  * (48-byte mesh metadata, 20-byte tightly packed commands), same
  * positive-vertex plane test, same uniforms. {@code mesh_count} stays a
- * uniform on purpose — the metadata SSBO is pow2-overallocated, so the
- * buffer's own length lies about the live count.
+ * uniform on purpose — ring ranges are alignment-padded, so the bound
+ * range's own length can overstate the live count.
  *
  * <p>Pass shape (all GL-thread): {@link #beginPass} once with the pass's
  * frustum planes, {@link #cull} per region (dispatches the compute),
@@ -40,9 +43,10 @@ import java.util.Map;
  *
  * <p>Plane convention: each plane is {@code (a,b,c,d)} with
  * {@code a·x + b·y + c·z + d >= 0} for points inside the frustum (JOML's
- * {@code Matrix4f.frustumPlane} output, unnormalized is fine). Metadata and
- * command buffers live on {@link MmsChunkRegion} and rebuild lazily via
- * {@link MmsChunkRegion#prepareGpuCull()}.
+ * {@code Matrix4f.frustumPlane} output, unnormalized is fine). Each cull writes the
+ * region's mesh metadata and the kernel's commands into a fenced
+ * {@link MmsIndirectRing}, so no pass rewrites data a queued dispatch or
+ * draw still reads.
  */
 public final class MmsGpuCuller implements AutoCloseable {
 
@@ -82,12 +86,17 @@ public final class MmsGpuCuller implements AutoCloseable {
         }
     }
 
+    /** Bytes per {@code DrawElementsIndirectCommand} (5 uints, tightly packed). */
+    private static final int CMD_STRIDE = 20;
+
     private final CearlDispatcher dispatcher;
+    private final MmsIndirectRing commands;
     private boolean closed;
 
     /** Compiles and links the cull kernel. Throws when the driver rejects it. */
     public MmsGpuCuller() {
         this.dispatcher = CearlDispatcher.create(compileKernel());
+        this.commands = new MmsIndirectRing();
     }
 
     /**
@@ -102,16 +111,35 @@ public final class MmsGpuCuller implements AutoCloseable {
     }
 
     /**
-     * Dispatches the frustum cull for one region's live meshes. Returns the
-     * command count the region's indirect draw will submit (0 = nothing to do).
+     * Dispatches the frustum cull for one region's live meshes. Both the
+     * kernel's metadata input and its command output take fresh space in the
+     * fenced ring, so nothing a queued dispatch or draw still reads is ever
+     * rewritten. Returns the command count the region's indirect draw will
+     * submit (0 = nothing to do).
      */
     public int cull(MmsChunkRegion region) {
-        int count = region.prepareGpuCull();
+        int count = region.gpuCommandCount();
         if (count == 0) {
             return 0;
         }
-        dispatcher.bindBuffer("meshes", region.gpuMetaBuffer());
-        dispatcher.bindBuffer("cmds", region.gpuIndirectBuffer());
+        int metaBytes = count * MmsChunkRegion.GPU_META_STRIDE;
+        ByteBuffer meta = MmsUploadBufferPool.acquire(metaBytes);
+        region.writeGpuCullMeta(meta);
+        meta.flip();
+        long metaOffset = commands.allocate(metaBytes);
+        int metaBuffer = commands.bufferId();
+        GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, metaBuffer);
+        GL15.glBufferSubData(GL31.GL_COPY_WRITE_BUFFER, metaOffset, meta);
+        GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, 0);
+
+        long cmdBytes = (long) count * CMD_STRIDE;
+        // May grow the ring; the metadata then stays in the retired buffer,
+        // which lives until the pass ends.
+        region.gpuCmdOffsetBytes = commands.allocate(cmdBytes);
+        region.gpuCmdBufferId = commands.bufferId();
+
+        dispatcher.bindBufferRange("meshes", metaBuffer, metaOffset, metaBytes);
+        dispatcher.bindBufferRange("cmds", region.gpuCmdBufferId, region.gpuCmdOffsetBytes, cmdBytes);
         dispatcher.uniform1u("mesh_count", count);
         dispatcher.dispatch(count);
         return count;
@@ -138,14 +166,20 @@ public final class MmsGpuCuller implements AutoCloseable {
             return;
         }
         region.bind();
-        GL15.glBindBuffer(GL40.GL_DRAW_INDIRECT_BUFFER, region.gpuIndirectBuffer());
-        GL43.glMultiDrawElementsIndirect(GL11.GL_TRIANGLES, GL11.GL_UNSIGNED_SHORT, 0L, count, 0);
+        GL15.glBindBuffer(GL40.GL_DRAW_INDIRECT_BUFFER, region.gpuCmdBufferId);
+        GL43.glMultiDrawElementsIndirect(GL11.GL_TRIANGLES, GL11.GL_UNSIGNED_SHORT,
+            region.gpuCmdOffsetBytes, count, 0);
     }
 
-    /** Restores indirect-buffer and VAO bindings after the pass's draws. */
+    /**
+     * Restores indirect-buffer and VAO bindings after the pass's draws and
+     * fences the pass's commands, so the ring reuses them only once the GPU
+     * has drawn them.
+     */
     public void endDraw() {
         GL15.glBindBuffer(GL40.GL_DRAW_INDIRECT_BUFFER, 0);
         GL30.glBindVertexArray(0);
+        commands.endPass();
     }
 
     @Override
@@ -155,5 +189,6 @@ public final class MmsGpuCuller implements AutoCloseable {
         }
         closed = true;
         dispatcher.close();
+        commands.close();
     }
 }

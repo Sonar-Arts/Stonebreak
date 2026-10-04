@@ -108,6 +108,20 @@ public final class CearlDispatcher implements AutoCloseable {
         GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, b.binding(), glBufferId);
     }
 
+    /**
+     * Binds {@code sizeBytes} of a GL buffer at {@code offsetBytes} to the SSBO
+     * slot of the named buffer take. The offset must honour
+     * {@code GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT}.
+     */
+    public void bindBufferRange(String takeName, int glBufferId, long offsetBytes, long sizeBytes) {
+        CearlKernel.BufferBinding b = buffersByName.get(takeName);
+        if (b == null) {
+            throw unknownTake(takeName, "buffer", buffersByName.keySet());
+        }
+        GL30.glBindBufferRange(GL43.GL_SHADER_STORAGE_BUFFER, b.binding(), glBufferId,
+            offsetBytes, sizeBytes);
+    }
+
     public void uniform1u(String name, int value) {
         GL30.glUniform1ui(location(name, "uint", 0), value);
     }

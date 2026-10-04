@@ -60,9 +60,7 @@ public final class MmsChunkRegion {
     public static final int REGION_SPAN = 1 << REGION_SHIFT;
 
     /** Bytes per mesh entry in the GPU-cull metadata SSBO (2×vec4 + uvec4, std430). */
-    private static final int GPU_META_STRIDE = 48;
-    /** Bytes per {@code DrawElementsIndirectCommand} (5 uints, tightly packed). */
-    private static final int GPU_CMD_STRIDE = 20;
+    static final int GPU_META_STRIDE = 48;
 
     private final double growthFactor;
     private final double growthReserve;
@@ -103,11 +101,9 @@ public final class MmsChunkRegion {
     /** Live handles in metadata order (swap-remove; handle stores its index). */
     private final List<MmsRegionMeshHandle> liveHandles = new ArrayList<>();
 
-    // GPU-driven culling state (lazily created; see MmsGpuCuller).
-    private int gpuMetaBufferId;
-    private int gpuIndirectBufferId;
-    private int gpuBufferCapacity; // in meshes
-    private boolean gpuMetaDirty = true;
+    // Where this pass's cull wrote the region's commands (MmsIndirectRing).
+    int gpuCmdBufferId;
+    long gpuCmdOffsetBytes;
 
     /** Per-draw-cycle member bucket, managed by the region renderer. */
     private final List<MmsRegionMeshHandle> cycleMembers = new ArrayList<>();
@@ -387,7 +383,6 @@ public final class MmsChunkRegion {
             minX, minY, minZ, maxX, maxY, maxZ);
         handle.liveIndex = liveHandles.size();
         liveHandles.add(handle);
-        gpuMetaDirty = true;
         return handle;
     }
 
@@ -405,7 +400,6 @@ public final class MmsChunkRegion {
             liveHandles.set(handle.liveIndex, last);
             last.liveIndex = handle.liveIndex;
         }
-        gpuMetaDirty = true;
     }
 
     /** True when no live handles remain — the owner may delete the region. */
@@ -495,65 +489,22 @@ public final class MmsChunkRegion {
     // ─── GPU-driven culling (used by MmsGpuCuller, GL 4.3+) ───────────────
 
     /**
-     * Ensures the mesh-metadata SSBO and the indirect command buffer reflect
-     * the current live set (rebuilt only when membership or arena offsets
-     * changed since the last pass). Returns the number of live meshes — the
-     * command count a subsequent indirect draw submits.
+     * Writes the live set's cull metadata ({@link #GPU_META_STRIDE} bytes per
+     * mesh, in command order) into {@code dst}. The culler uploads it to fresh
+     * fenced ring space every cull: an in-place SSBO updated with
+     * {@code glBufferSubData} while the CPU ran frames ahead let queued cull
+     * dispatches read the next frame's metadata (swap-remove reorders it), and
+     * the commands they built drew stretched triangles (NVIDIA 595, Blackwell).
      */
-    public int prepareGpuCull() {
+    void writeGpuCullMeta(ByteBuffer dst) {
         ensureNotDeleted();
-        int count = liveHandles.size();
-        if (count == 0) {
-            return 0;
+        for (MmsRegionMeshHandle h : liveHandles) {
+            dst.putFloat(h.minX).putFloat(h.minY).putFloat(h.minZ).putFloat(0f);
+            dst.putFloat(h.maxX).putFloat(h.maxY).putFloat(h.maxZ).putFloat(0f);
+            dst.putInt(h.getIndexCount())
+                .putInt(h.indexSegment == null ? 0 : h.indexSegment.offset())
+                .putInt(h.baseVertex()).putInt(0);
         }
-        if (gpuMetaBufferId == 0) {
-            gpuMetaBufferId = GL15.glGenBuffers();
-            gpuIndirectBufferId = GL15.glGenBuffers();
-        }
-        if (count > gpuBufferCapacity) {
-            int newCapacity = Math.max(64, Integer.highestOneBit(count - 1) << 1);
-            long oldBytes = (long) gpuBufferCapacity * (GPU_META_STRIDE + GPU_CMD_STRIDE);
-            long newBytes = (long) newCapacity * (GPU_META_STRIDE + GPU_CMD_STRIDE);
-            GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, gpuMetaBufferId);
-            GL15.glBufferData(GL31.GL_COPY_WRITE_BUFFER,
-                (long) newCapacity * GPU_META_STRIDE, GL15.GL_DYNAMIC_DRAW);
-            GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, gpuIndirectBufferId);
-            GL15.glBufferData(GL31.GL_COPY_WRITE_BUFFER,
-                (long) newCapacity * GPU_CMD_STRIDE, GL15.GL_DYNAMIC_COPY);
-            GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, 0);
-            gpuBufferCapacity = newCapacity;
-            gpuMetaDirty = true;
-            GpuMemoryTracker.getInstance()
-                .track(GpuMemoryTracker.Category.CHUNK_MESH, newBytes - oldBytes);
-            trackedBytes += newBytes - oldBytes;
-        }
-        if (gpuMetaDirty) {
-            ByteBuffer meta = MmsUploadBufferPool.acquire(count * GPU_META_STRIDE);
-            for (int i = 0; i < count; i++) {
-                MmsRegionMeshHandle h = liveHandles.get(i);
-                meta.putFloat(h.minX).putFloat(h.minY).putFloat(h.minZ).putFloat(0f);
-                meta.putFloat(h.maxX).putFloat(h.maxY).putFloat(h.maxZ).putFloat(0f);
-                meta.putInt(h.getIndexCount())
-                    .putInt(h.indexSegment == null ? 0 : h.indexSegment.offset())
-                    .putInt(h.baseVertex()).putInt(0);
-            }
-            meta.flip();
-            GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, gpuMetaBufferId);
-            GL15.glBufferSubData(GL31.GL_COPY_WRITE_BUFFER, 0, meta);
-            GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, 0);
-            gpuMetaDirty = false;
-        }
-        return count;
-    }
-
-    /** The metadata SSBO id (valid after {@link #prepareGpuCull}). */
-    public int gpuMetaBuffer() {
-        return gpuMetaBufferId;
-    }
-
-    /** The indirect command buffer id (valid after {@link #prepareGpuCull}). */
-    public int gpuIndirectBuffer() {
-        return gpuIndirectBufferId;
     }
 
     /** Sum of live meshes' index counts (6 per quad) — a page-independent size measure. */
@@ -565,7 +516,7 @@ public final class MmsChunkRegion {
         return n;
     }
 
-    /** Command count currently laid out in the indirect buffer. */
+    /** Command count the last cull wrote for this region (one per live mesh). */
     public int gpuCommandCount() {
         return liveHandles.size();
     }
@@ -680,7 +631,7 @@ public final class MmsChunkRegion {
                 }
             }
         }
-        return shrinkGpuCullBuffers() || acted;
+        return acted;
     }
 
     /**
@@ -790,29 +741,6 @@ public final class MmsChunkRegion {
     }
 
     /**
-     * The GPU-cull metadata/indirect buffers grow pow2 and previously never
-     * shrank. When the live set has fallen well below capacity (and trimming
-     * is enabled at all), drop them — {@link #prepareGpuCull} lazily rebuilds
-     * right-sized buffers on the next GPU-cull pass, so this is copy-free.
-     */
-    private boolean shrinkGpuCullBuffers() {
-        if (trimFraction <= 0 || gpuBufferCapacity <= 64
-                || gpuBufferCapacity < liveHandles.size() * 4) {
-            return false;
-        }
-        long bytes = (long) gpuBufferCapacity * (GPU_META_STRIDE + GPU_CMD_STRIDE);
-        GL15.glDeleteBuffers(gpuMetaBufferId);
-        GL15.glDeleteBuffers(gpuIndirectBufferId);
-        gpuMetaBufferId = 0;
-        gpuIndirectBufferId = 0;
-        gpuBufferCapacity = 0;
-        gpuMetaDirty = true;
-        trackedBytes -= bytes;
-        GpuMemoryTracker.getInstance().untrack(GpuMemoryTracker.Category.CHUNK_MESH, bytes);
-        return true;
-    }
-
-    /**
      * The trimmed capacity for an arena, or -1 when no trim should happen.
      * Trim fires only when live elements sit under {@code trimFraction} of
      * capacity AND the arena is above its initial size; the target keeps the
@@ -918,8 +846,6 @@ public final class MmsChunkRegion {
             GpuMemoryTracker.getInstance().untrack(GpuMemoryTracker.Category.CHUNK_MESH, -delta);
         }
         trackedBytes += delta;
-        // Compaction rewrote segment offsets — cull metadata must rebuild.
-        gpuMetaDirty = true;
     }
 
     /**
@@ -981,13 +907,6 @@ public final class MmsChunkRegion {
         if (quadTextureId != 0) {
             GL11.glDeleteTextures(quadTextureId);
             quadTextureId = 0;
-        }
-        if (gpuMetaBufferId != 0) {
-            GL15.glDeleteBuffers(gpuMetaBufferId);
-            GL15.glDeleteBuffers(gpuIndirectBufferId);
-            gpuMetaBufferId = 0;
-            gpuIndirectBufferId = 0;
-            gpuBufferCapacity = 0;
         }
         liveHandles.clear();
         cancelPendingDecommit(0);
