@@ -143,6 +143,10 @@ module openmason.engine {
     exports com.openmason.engine.format.oma;
     exports com.openmason.engine.format.mesh;
     exports com.openmason.engine.format.sound;
+    exports com.openmason.engine.format.omui;
+    exports com.openmason.engine.format.omui.io;
+    exports com.openmason.engine.format.sbui;
+    exports com.openmason.engine.format.uiarchive;
 
     // Open format packages for Jackson JSON processing
     opens com.openmason.engine.format.sbo to com.fasterxml.jackson.databind;

@@ -1,0 +1,96 @@
+{
+  "id": "behaviors",
+  "variables": [
+    {
+      "name": "clicks",
+      "type": "int",
+      "default": 0
+    }
+  ],
+  "nodes": [
+    {
+      "id": "count",
+      "kind": "ui:variable.increment",
+      "x": 260,
+      "y": 80,
+      "props": {
+        "variable": "clicks"
+      }
+    },
+    {
+      "id": "on_resume",
+      "kind": "ui:event.click",
+      "x": 40,
+      "y": 80,
+      "props": {
+        "target": "resume"
+      }
+    },
+    {
+      "id": "request",
+      "kind": "ui:action.request",
+      "x": 480,
+      "y": 80,
+      "inputs": {
+        "action": "screen.resume"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "fromNode": "count",
+      "fromPort": "then",
+      "toNode": "request",
+      "toPort": "exec"
+    },
+    {
+      "fromNode": "on_resume",
+      "fromPort": "then",
+      "toNode": "count",
+      "toPort": "exec"
+    }
+  ],
+  "functions": [
+    {
+      "id": "log_click",
+      "inputs": [
+        {
+          "name": "exec",
+          "type": "exec"
+        },
+        {
+          "name": "label",
+          "type": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "then",
+          "type": "exec"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "entry",
+          "kind": "ui:function.entry"
+        },
+        {
+          "id": "print",
+          "kind": "lua:call",
+          "x": 200,
+          "props": {
+            "function": "common.noop"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "fromNode": "entry",
+          "fromPort": "then",
+          "toNode": "print",
+          "toPort": "exec"
+        }
+      ]
+    }
+  ]
+}

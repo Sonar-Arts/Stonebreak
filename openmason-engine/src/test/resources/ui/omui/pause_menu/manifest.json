@@ -1,0 +1,24 @@
+{
+  "format": "omui",
+  "schemaVersion": "1.0",
+  "documentId": "stonebreak:ui/pause_menu",
+  "kind": "screen",
+  "displayName": "Pause Menu",
+  "uiApi": 1,
+  "layoutSemantics": "flex-1",
+  "hostApis": [
+    {
+      "id": "stonebreak:network.resync",
+      "version": 1,
+      "optional": true
+    },
+    {
+      "id": "stonebreak:screen.pause",
+      "version": 1
+    },
+    {
+      "id": "stonebreak:session",
+      "version": 1
+    }
+  ]
+}

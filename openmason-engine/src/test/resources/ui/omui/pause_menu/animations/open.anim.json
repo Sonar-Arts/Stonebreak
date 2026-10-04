@@ -1,0 +1,42 @@
+{
+  "id": "open",
+  "duration": 0.25,
+  "tracks": [
+    {
+      "target": "panel",
+      "property": "style:opacity",
+      "keys": [
+        {
+          "time": 0,
+          "value": 0,
+          "easing": "ease-out"
+        },
+        {
+          "time": 0.25,
+          "value": 1
+        }
+      ]
+    },
+    {
+      "target": "panel",
+      "property": "style:translate-y",
+      "keys": [
+        {
+          "time": 0,
+          "value": -20,
+          "easing": "ease-out"
+        },
+        {
+          "time": 0.25,
+          "value": 0
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "time": 0.25,
+      "name": "opened"
+    }
+  ]
+}

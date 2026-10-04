@@ -1,0 +1,37 @@
+{
+  "dependencies": [
+    {
+      "id": "stonebreak:ui/components/stone_button",
+      "kind": "component",
+      "sha256": "c8cf414836b97a642d098fcbbff3af5f0de3c4fb580c3018312f04a384d143c2",
+      "size": 2296,
+      "mode": "embedded",
+      "entry": "assets/components/stone_button.omui",
+      "sourceHint": "ui/components/stone_button.omui"
+    },
+    {
+      "id": "stonebreak:ui/scripts/common",
+      "kind": "script",
+      "sha256": "3534f6c9d4cee683be0bcf00233e218d2b7ac0cb4d59aa8b034821e705b89f5c",
+      "size": 44,
+      "mode": "shared",
+      "sourceHint": "ui/scripts/common.lua"
+    },
+    {
+      "id": "stonebreak:ui/textures/panel",
+      "kind": "texture",
+      "sha256": "44962d2972a408dce15e100519cb4ca8ccbc38d685156642a81ffbbec9577213",
+      "size": 22,
+      "mode": "shared",
+      "sourceHint": "textures/ui/panel.sbt"
+    },
+    {
+      "id": "stonebreak:ui/themes/stone",
+      "kind": "stylesheet",
+      "sha256": "f0acb78a64fed466b51b2da37451136ec06aee44a984e2527f912c534123d42a",
+      "size": 15,
+      "mode": "shared",
+      "sourceHint": "ui/themes/stone.uss.json"
+    }
+  ]
+}
