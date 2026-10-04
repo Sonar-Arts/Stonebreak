@@ -5,6 +5,8 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.chicken.Chicken;
 import com.stonebreak.mobs.cow.Cow;
+import com.stonebreak.mobs.goblin.Goblin;
+import com.stonebreak.mobs.goblin.GoblinLoadout;
 import com.stonebreak.mobs.goose.Goose;
 import com.stonebreak.mobs.sheep.Sheep;
 import com.stonebreak.mobs.entities.BlockDrop;
@@ -27,6 +29,9 @@ import java.util.logging.Logger;
  */
 public class EntitySerializer {
     private static final Logger logger = Logger.getLogger(EntitySerializer.class.getName());
+
+    /** customData key holding a goblin's {@code GoblinLoadout.encode()} string. */
+    static final String GOBLIN_LOADOUT_KEY = "loadout";
 
     /**
      * Serializes an entity to EntityData.
@@ -69,6 +74,7 @@ public class EntitySerializer {
             case CHICKEN -> serializeChicken((Chicken) entity, builder);
             case GOOSE -> serializeGoose((Goose) entity, builder);
             case SHEEP -> serializeSheep((Sheep) entity, builder);
+            case GOBLIN -> serializeGoblin((Goblin) entity, builder);
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for serialization: " + entityType);
                 return null;
@@ -97,6 +103,7 @@ public class EntitySerializer {
             case CHICKEN -> deserializeChicken(entityData, world);
             case GOOSE -> deserializeGoose(entityData, world);
             case SHEEP -> deserializeSheep(entityData, world);
+            case GOBLIN -> deserializeGoblin(entityData, world);
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for deserialization: " + entityType);
                 yield null;
@@ -338,6 +345,33 @@ public class EntitySerializer {
             return sheep;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Failed to deserialize Sheep", e);
+            return null;
+        }
+    }
+
+    // ===== Goblin Serialization =====
+    // Only the loadout persists: a goblin restored mid-swing would just replay half an attack.
+
+    private static void serializeGoblin(Goblin goblin, EntityData.Builder builder) {
+        builder.addCustomData(GOBLIN_LOADOUT_KEY, goblin.getLoadout().encode());
+    }
+
+    private static Entity deserializeGoblin(EntityData entityData, World world) {
+        try {
+            Vector3f position = entityData.getPosition();
+            Object loadout = entityData.getCustomData().get(GOBLIN_LOADOUT_KEY);
+            Goblin goblin = new Goblin(world, position,
+                    GoblinLoadout.decode(loadout instanceof String s ? s : null));
+            goblin.setPosition(position);
+            goblin.setVelocity(entityData.getVelocity());
+            goblin.setRotation(entityData.getRotation());
+            goblin.setHealth(entityData.getHealth());
+            goblin.setMaxHealth(entityData.getMaxHealth());
+            goblin.setAlive(entityData.isAlive());
+            goblin.setAge(entityData.getAge());
+            return goblin;
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Failed to deserialize Goblin", e);
             return null;
         }
     }

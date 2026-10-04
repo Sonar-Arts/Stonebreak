@@ -27,6 +27,7 @@ public final class AiContext {
     private final PlayerLocator players;
 
     private final Vector3f playerScratch = new Vector3f();
+    private final Vector3f faceScratch = new Vector3f();
     private float deltaTime;
 
     public AiContext(LivingEntity entity, PathAgent nav, Random random, PlayerLocator players) {
@@ -82,6 +83,35 @@ public final class AiContext {
     public float distanceToNearestPlayer() {
         Vector3f player = nearestPlayer();
         return player == null ? Float.MAX_VALUE : entity.getPosition().distance(player);
+    }
+
+    /**
+     * Turns the mob toward the nearest player without moving it.
+     *
+     * @return degrees still left to turn, or {@link Float#MAX_VALUE} when there is no player
+     */
+    public float facePlayer(float turnSpeedDegPerSec) {
+        Vector3f player = nearestPlayer();
+        if (player == null) {
+            return Float.MAX_VALUE;
+        }
+        Vector3f toPlayer = faceScratch.set(player).sub(entity.getPosition());
+        toPlayer.y = 0;
+        if (toPlayer.lengthSquared() < 1.0e-6f) {
+            return 0.0f;
+        }
+        steering().faceDirection(toPlayer, turnSpeedDegPerSec, deltaTime);
+        return steering().yawErrorTo(toPlayer);
+    }
+
+    /** Whether the nearest player is in clear sight from {@code eye}. */
+    public boolean canSeeNearestPlayer(Vector3f eye) {
+        return players.canSeeNearestPlayer(entity.getPosition(), eye);
+    }
+
+    /** Lands a blow from this mob on the nearest player; see {@link PlayerLocator#hurtNearestPlayer}. */
+    public boolean hurtNearestPlayer(float amount, float knockback) {
+        return players.hurtNearestPlayer(entity.getPosition(), amount, knockback);
     }
 
     /** Whether the nearest player is sprinting — skittish mobs notice that from further off. */

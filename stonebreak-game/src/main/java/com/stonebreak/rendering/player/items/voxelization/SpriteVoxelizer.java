@@ -362,6 +362,16 @@ public class SpriteVoxelizer {
         return result;
     }
 
+    /** Mesh units per sprite pixel; a 16-pixel sprite is 16 × this wide. */
+    public static float getSpriteScale() {
+        return SPRITE_SCALE;
+    }
+
+    /** How far the sprite mesh is raised above its origin for the in-hand pose. */
+    public static float getVerticalOffset() {
+        return VERTICAL_OFFSET;
+    }
+
     /**
      * Gets the default voxel size for rendering.
      */

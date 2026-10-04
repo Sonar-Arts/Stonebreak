@@ -6,18 +6,30 @@ import com.stonebreak.ui.characterCreation.CharacterCreationActionHandler;
 import com.stonebreak.ui.characterCreation.CharacterCreationLayout;
 import io.github.humbleui.skija.Canvas;
 
-/** Hair choices in the Looks tab. */
+/** Hair and accessory choices in the Looks tab, stacked one list above the other. */
 public final class LooksTabRenderer {
-    private final CosmeticOptionsRenderer options = new CosmeticOptionsRenderer(
+    private static final float SECTION_GAP = 12f;
+
+    private final CosmeticOptionsRenderer hair = new CosmeticOptionsRenderer(
             "Hair", PlayerLooks.HAIR_OPTIONS, PlayerLooks::getSelectedHairId,
             CharacterCreationActionHandler::onSelectHair);
+    private final CosmeticOptionsRenderer accessories = new CosmeticOptionsRenderer(
+            "Accessories", PlayerLooks.ACCESSORY_OPTIONS, PlayerLooks::getSelectedAccessoryId,
+            CharacterCreationActionHandler::onSelectAccessory);
 
     public void render(Canvas canvas, MasonryUI ui, CharacterCreationLayout.Rect content,
                        float mx, float my) {
-        options.render(canvas, ui, content, mx, my);
+        hair.render(canvas, ui, content, mx, my);
+        accessories.render(canvas, ui, below(content), mx, my);
     }
 
     public boolean handleClick(float mx, float my, CharacterCreationActionHandler actions) {
-        return options.handleClick(mx, my, actions);
+        return hair.handleClick(mx, my, actions) || accessories.handleClick(mx, my, actions);
+    }
+
+    private CharacterCreationLayout.Rect below(CharacterCreationLayout.Rect content) {
+        float offset = hair.height() + SECTION_GAP;
+        return new CharacterCreationLayout.Rect(content.x(), content.y() + offset,
+                content.width(), Math.max(0f, content.height() - offset));
     }
 }

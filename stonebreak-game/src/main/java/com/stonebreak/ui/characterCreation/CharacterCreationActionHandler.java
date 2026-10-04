@@ -86,4 +86,8 @@ public final class CharacterCreationActionHandler {
     public void onSelectHat(String hatId) {
         com.stonebreak.player.PlayerLooks.selectHat(hatId);
     }
+
+    public void onSelectAccessory(String accessoryId) {
+        com.stonebreak.player.PlayerLooks.selectAccessory(accessoryId);
+    }
 }

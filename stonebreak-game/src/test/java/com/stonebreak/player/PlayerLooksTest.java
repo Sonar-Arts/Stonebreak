@@ -56,6 +56,11 @@ class PlayerLooksTest {
             SbeEntityAsset asset = SbeEntityLoader.loadAttachableResource(option.resourcePath());
             assertNotNull(asset.geometryFor(SbeEntityAsset.DEFAULT_VARIANT),
                     option.id() + " asset has no default geometry: " + option.resourcePath());
+            if (option.variant() != null) {
+                assertTrue(asset.variants().containsKey(option.variant()),
+                        option.id() + " wants variant '" + option.variant() + "' but "
+                                + option.resourcePath() + " has " + asset.variants().keySet());
+            }
         }
     }
 
@@ -77,12 +82,15 @@ class PlayerLooksTest {
     }
 
     private static List<PlayerLooks.CosmeticOption> allOptions() {
-        return Stream.concat(PlayerLooks.HAT_OPTIONS.stream(), PlayerLooks.HAIR_OPTIONS.stream()).toList();
+        return Stream.of(PlayerLooks.HAT_OPTIONS, PlayerLooks.HAIR_OPTIONS, PlayerLooks.ACCESSORY_OPTIONS)
+                .flatMap(List::stream).toList();
     }
 
     @Test
     void catalogsKeepHairSeparateFromClothing() {
-        assertEquals(List.of("NONE", "TOP_HAT"), PlayerLooks.HAT_OPTIONS.stream()
+        assertEquals(List.of("NONE", "TOP_HAT", "PIRATE_HAT",
+                        "BANDANA_RED", "BANDANA_BLUE", "BANDANA_GREEN", "BANDANA_BLACK"),
+                PlayerLooks.HAT_OPTIONS.stream()
                 .map(PlayerLooks.CosmeticOption::id).toList());
         assertEquals(List.of("NONE", "MALE_HAIR_1", "MALE_HAIR_2"), PlayerLooks.HAIR_OPTIONS.stream()
                 .map(PlayerLooks.CosmeticOption::id).toList());
@@ -105,8 +113,9 @@ class PlayerLooksTest {
         assertTrue(EntityAttachments.get(player).contains(hat));
         var hair = EntityAttachments.get(player).stream()
                 .filter(a -> a.socketName().equals(PlayerLooks.HAIR_SOCKET)).findFirst().orElseThrow();
-        assertEquals(SbeEntityLoader.loadAttachableResource(PlayerLooks.hairOptionFor("MALE_HAIR_2").resourcePath()),
-                hair.asset());
+        assertEquals(new com.stonebreak.mobs.sbe.AttachmentVisual.Model(
+                        SbeEntityLoader.loadAttachableResource(PlayerLooks.hairOptionFor("MALE_HAIR_2").resourcePath())),
+                hair.visual());
         PlayerLooks.applyHat(player, "NONE");
         assertEquals(List.of(hair), EntityAttachments.get(player));
         PlayerLooks.applyHat(player, "TOP_HAT");
@@ -121,7 +130,7 @@ class PlayerLooksTest {
         Object player = new Object();
         PlayerLooks.applyHair(player, "MALE_HAIR_1");
         var hair = EntityAttachments.get(player).getFirst();
-        EntityAttachments.attach(player, "test_other_socket", hair.asset());
+        EntityAttachments.attach(player, "test_other_socket", hair.visual());
         var before = EntityAttachments.get(player);
         PlayerLooks.applyHat(player, "TOP_HAT");
         PlayerLooks.applyHat(player, "missing_hat");

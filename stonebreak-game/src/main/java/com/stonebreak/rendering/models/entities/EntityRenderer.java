@@ -33,7 +33,8 @@ public class EntityRenderer {
     // Renderer for multiplayer remote players (cylinder).
     private final RemotePlayerRenderer remotePlayerRenderer = new RemotePlayerRenderer();
 
-    private final EntityAttachmentRenderer attachmentRenderer = new EntityAttachmentRenderer(sbeEntityRenderer);
+    private final SocketItemQueue socketItems = new SocketItemQueue();
+    private final EntityAttachmentRenderer attachmentRenderer = new EntityAttachmentRenderer(sbeEntityRenderer, socketItems);
     private final SbeMobRenderer mobRenderer = new SbeMobRenderer(sbeEntityRenderer, attachmentRenderer);
     private final PlayerFigureRenderer playerFigureRenderer =
             new PlayerFigureRenderer(sbeEntityRenderer, remotePlayerRenderer, attachmentRenderer);
@@ -43,6 +44,14 @@ public class EntityRenderer {
     private final BobberRenderer bobberRenderer = new BobberRenderer(sbeEntityRenderer, fallbackCubeRenderer);
     private final EntityShadowCasterRenderer shadowCasterRenderer =
             new EntityShadowCasterRenderer(sbeEntityRenderer, mobRenderer);
+
+    /**
+     * Held items the mob pass posed on sockets this frame, for the drop pass to draw
+     * (see {@link SocketItemQueue}).
+     */
+    public SocketItemQueue socketItems() {
+        return socketItems;
+    }
 
     /**
      * Initialize the entity renderer. Called by the main Renderer.

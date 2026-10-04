@@ -1,12 +1,13 @@
 package com.stonebreak.rendering.models.entities;
 
+import com.stonebreak.mobs.sbe.AttachmentVisual;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 /**
- * Draws the models mounted on a host entity's attachment sockets
- * ({@link com.stonebreak.mobs.sbe.EntityAttachments}) — e.g. an equipped hat —
+ * Draws what is mounted on a host entity's attachment sockets
+ * ({@link com.stonebreak.mobs.sbe.EntityAttachments}) — e.g. an equipped hat or a held weapon —
  * posed at each socket's world frame for the host's current animation state,
  * so attachments track walk/graze/head-turn exactly.
  */
@@ -15,9 +16,11 @@ final class EntityAttachmentRenderer {
     private static final Vector4f ATTACHMENT_FALLBACK_COLOR = new Vector4f(0.85f, 0.85f, 0.85f, 1f);
 
     private final SbeEntityRenderer sbeEntityRenderer;
+    private final SocketItemQueue socketItems;
 
-    EntityAttachmentRenderer(SbeEntityRenderer sbeEntityRenderer) {
+    EntityAttachmentRenderer(SbeEntityRenderer sbeEntityRenderer, SocketItemQueue socketItems) {
         this.sbeEntityRenderer = sbeEntityRenderer;
+        this.socketItems = socketItems;
     }
 
     /**
@@ -45,15 +48,24 @@ final class EntityAttachmentRenderer {
                     headYawDeg, headPitchDeg, a.socketName(), socket) == null) {
                 continue;
             }
-            if (SbeRenderSupport.isTextured(a.asset())) {
-                sbeEntityRenderer.render(a.asset(),
-                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT, null, socket,
-                        viewMatrix, projectionMatrix, world, cameraPos, 0f, 0f);
-            } else {
-                sbeEntityRenderer.renderColored(a.asset(),
-                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT, null, socket,
-                        viewMatrix, projectionMatrix, ATTACHMENT_FALLBACK_COLOR, 0f, 0f);
+            switch (a.visual()) {
+                case AttachmentVisual.Model model -> renderModel(model, socket,
+                        viewMatrix, projectionMatrix, world, cameraPos);
+                // Items draw with the world shader in the drop pass; see SocketItemQueue.
+                case AttachmentVisual.Item item -> socketItems.add(item.type(), item.state(), socket);
             }
+        }
+    }
+
+    private void renderModel(AttachmentVisual.Model model, Matrix4f socket,
+                             Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                             com.stonebreak.world.World world, Vector3f cameraPos) {
+        if (SbeRenderSupport.isTextured(model.asset())) {
+            sbeEntityRenderer.render(model.asset(), model.variant(), null, socket,
+                    viewMatrix, projectionMatrix, world, cameraPos, 0f, 0f);
+        } else {
+            sbeEntityRenderer.renderColored(model.asset(), model.variant(), null, socket,
+                    viewMatrix, projectionMatrix, ATTACHMENT_FALLBACK_COLOR, 0f, 0f);
         }
     }
 }

@@ -42,6 +42,16 @@ public enum EntityType {
         "Quick and flighty — an arrow brings it down mid-honk.",
         new String[]{"Default"},
         new String[0]),
+    // Hostile. Height/width are the in-game size: Goblin rescales the ~2.25-block
+    // authored model (feet at its origin, so legHeight 0) by Goblin.MODEL_SCALE.
+    // Looks vary by loadout (weapon + socket cosmetics), not by texture variant.
+    GOBLIN("Goblin",
+        new EntityAttributes(9, 12, 6, 6, 5, 4),
+        1.35f, 0.6f, 0.5f, 0.0f, "stonebreak:goblin",
+        LivingEntity.DamageSource.FIRE,
+        "Scrawny and quick; its rags go up like kindling.",
+        new String[]{"Default"},
+        new String[]{"Dagger", "Bow", "Patty Smacker"}),
 
     // Drop entities (small, physics-based items)
     BLOCK_DROP("Block Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false, null),
@@ -74,7 +84,7 @@ public enum EntityType {
     ;
 
     /** Entity types that appear as cards in the Glossary screen. */
-    public static final EntityType[] GLOSSARY_TYPES = {COW, SHEEP, CHICKEN, GOOSE};
+    public static final EntityType[] GLOSSARY_TYPES = {COW, SHEEP, CHICKEN, GOOSE, GOBLIN};
 
     private final String displayName;
     private final float maxHealth;      // literal for non-living; unused when attributes != null
@@ -220,12 +230,12 @@ public enum EntityType {
      * awareness sight cones) derives yaw as
      * {@code atan2(dir.x, dir.z) + getModelYawOffsetDegrees()}.
      *
-     * <p>Cow and sheep SBE models face −Z (180° offset); chicken and everything
+     * <p>Cow, sheep and goblin SBE models face −Z (180° offset); chicken and everything
      * else face +Z (no offset).
      */
     public float getModelYawOffsetDegrees() {
         return switch (this) {
-            case COW, SHEEP -> 180.0f;
+            case COW, SHEEP, GOBLIN -> 180.0f;
             default -> 0.0f;
         };
     }
@@ -244,7 +254,7 @@ public enum EntityType {
      */
     public boolean replicates() {
         return switch (this) {
-            case COW, SHEEP, CHICKEN, GOOSE, BLOCK_DROP, ITEM_DROP,
+            case COW, SHEEP, CHICKEN, GOOSE, GOBLIN, BLOCK_DROP, ITEM_DROP,
                  ARROW, FIRE_BOLT, NULL_SPIKE, LEYLINE_BREACH_ZONE,
                  CALTROP_CLUSTER -> true;
             case REMOTE_PLAYER, BOBBER, ILLUSION_DECOY -> false;

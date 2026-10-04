@@ -45,6 +45,11 @@ final class CosmeticOptionsRenderer {
         }
     }
 
+    /** Height the heading and every row take up, so another list can stack below this one. */
+    float height() {
+        return HEADER_H + options.size() * (ROW_H + ROW_GAP);
+    }
+
     public void render(Canvas canvas, MasonryUI ui,
                        CharacterCreationLayout.Rect content,
                        float mx, float my) {

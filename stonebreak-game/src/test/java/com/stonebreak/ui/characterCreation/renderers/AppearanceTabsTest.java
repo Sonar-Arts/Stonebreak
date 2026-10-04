@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-/** Real raster rendering followed by clicks on the two independent appearance lists. */
+/** Real raster rendering followed by clicks on the independent appearance lists. */
 class AppearanceTabsTest {
     @Test
     void looksSelectsHairAndClothingSelectsHats() throws Exception {
@@ -43,7 +43,11 @@ class AppearanceTabsTest {
                     assertFalse(clothing.handleClick(534, 121, actions), "equipped hat is inert");
                     assertTrue(looks.handleClick(534, 179, actions));
                     verify(actions).onSelectHair("MALE_HAIR_2");
-                    assertFalse(clothing.handleClick(534, 179, actions), "hair must not be in Clothing");
+                    assertTrue(clothing.handleClick(534, 179, actions), "Clothing's third row is a hat");
+                    verify(actions).onSelectHat("PIRATE_HAT");
+                    // Accessories stack under the three hair rows: heading at 222, Gold Earring is row 2.
+                    assertTrue(looks.handleClick(534, 343, actions));
+                    verify(actions).onSelectAccessory("GOLD_EARRING");
                     assertTrue(clothing.handleClick(534, 63, actions));
                     verify(actions).onSelectHat("NONE");
                     assertTrue(looks.handleClick(534, 63, actions));

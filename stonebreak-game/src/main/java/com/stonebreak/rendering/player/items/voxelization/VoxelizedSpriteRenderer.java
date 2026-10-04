@@ -82,6 +82,14 @@ public class VoxelizedSpriteRenderer {
      * or unknown.
      */
     public void renderVoxelizedSprite(ItemType itemType, String state) {
+        renderVoxelizedSprite(itemType, state, createSpriteTransform());
+    }
+
+    /**
+     * Renders the sprite mesh under an explicit model transform instead of the in-hand pose, for
+     * callers that place the item themselves (items held on entity sockets).
+     */
+    public void renderVoxelizedSprite(ItemType itemType, String state, Matrix4f spriteTransform) {
         if (!SpriteVoxelizer.isVoxelizable(itemType)) {
             logger.warn("Item type {} is not voxelizable", itemType.getName());
             return;
@@ -99,7 +107,6 @@ public class VoxelizedSpriteRenderer {
         setupShaderUniforms();
 
         Matrix4f originalTransform = getCurrentModelMatrix();
-        Matrix4f spriteTransform = createSpriteTransform();
         applyTransformMatrix(spriteTransform);
 
         setupRenderState();

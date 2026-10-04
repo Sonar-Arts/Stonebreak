@@ -6,8 +6,8 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- * Runtime registry of models attached to entity sockets: which accessory asset
- * hangs on which named attachment point of which entity. Purely visual, local
+ * Runtime registry of visuals attached to entity sockets: which accessory model
+ * or held item hangs on which named attachment point of which entity. Purely visual, local
  * state — attachments are neither persisted nor replicated (v1); the renderer
  * reads this each frame and poses attached models via
  * {@code SbePoseSolver.socketWorldMatrix}.
@@ -18,8 +18,8 @@ import java.util.WeakHashMap;
  */
 public final class EntityAttachments {
 
-    /** One attached model: the socket it hangs on and the accessory asset. */
-    public record Attached(String socketName, SbeEntityAsset asset) {}
+    /** One attachment: the socket it hangs on and what is drawn there. */
+    public record Attached(String socketName, AttachmentVisual visual) {}
 
     /** Sentinel key for the local player (not an {@code Entity}). */
     public static final Object LOCAL_PLAYER = new Object();
@@ -31,11 +31,16 @@ public final class EntityAttachments {
         throw new UnsupportedOperationException("Utility class");
     }
 
-    /**
-     * Attaches {@code asset} to {@code socketName} on the entity, replacing any
-     * model already on that socket (matched case-insensitively).
-     */
+    /** Attaches a model in its default variant; see {@link #attach(Object, String, AttachmentVisual)}. */
     public static void attach(Object entityKey, String socketName, SbeEntityAsset asset) {
+        attach(entityKey, socketName, new AttachmentVisual.Model(asset));
+    }
+
+    /**
+     * Attaches {@code visual} to {@code socketName} on the entity, replacing
+     * whatever is already on that socket (matched case-insensitively).
+     */
+    public static void attach(Object entityKey, String socketName, AttachmentVisual visual) {
         ATTACHMENTS.compute(entityKey, (k, existing) -> {
             List<Attached> next = new java.util.ArrayList<>();
             if (existing != null) {
@@ -45,7 +50,7 @@ public final class EntityAttachments {
                     }
                 }
             }
-            next.add(new Attached(socketName, asset));
+            next.add(new Attached(socketName, visual));
             return List.copyOf(next);
         });
     }

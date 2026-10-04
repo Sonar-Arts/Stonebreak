@@ -55,10 +55,18 @@ public class BowController {
      * States cycle through five visual stages evenly over DRAW_DURATION.
      */
     public String getBowSboState() {
-        if (drawTime < DRAW_DURATION * 0.2f) return null;
-        if (drawTime < DRAW_DURATION * 0.4f) return com.stonebreak.items.ItemType.BOW_STATE_DRAW1;
-        if (drawTime < DRAW_DURATION * 0.6f) return com.stonebreak.items.ItemType.BOW_STATE_DRAW2;
-        if (drawTime < DRAW_DURATION * 0.8f) return com.stonebreak.items.ItemType.BOW_STATE_DRAW3;
+        return sboStateFor(drawTime / DRAW_DURATION);
+    }
+
+    /**
+     * The bow's SBO texture state for a draw this far along (0 = slack, 1 = full draw); null is the
+     * undrawn default. Shared by every archer so player and mob bows bend the same way.
+     */
+    public static String sboStateFor(float drawFraction) {
+        if (drawFraction < 0.2f) return null;
+        if (drawFraction < 0.4f) return com.stonebreak.items.ItemType.BOW_STATE_DRAW1;
+        if (drawFraction < 0.6f) return com.stonebreak.items.ItemType.BOW_STATE_DRAW2;
+        if (drawFraction < 0.8f) return com.stonebreak.items.ItemType.BOW_STATE_DRAW3;
         return com.stonebreak.items.ItemType.BOW_STATE_DRAW4;
     }
 }

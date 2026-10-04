@@ -8,7 +8,8 @@ import com.stonebreak.mobs.entities.ai.MobBehaviorState;
  * clip names authored in mob {@code .sbe} files.
  *
  * <p>Most mobs share one clip-naming convention ({@code Idle}, {@code Walking}, {@code Grazing},
- * {@code Wingflap}); the goose's asset was authored in lowercase with a {@code flying} clip instead
+ * {@code Wingflap}, and the combat set {@code Stab}, {@code Smash}, {@code DrawBow},
+ * {@code ReleaseBow}); the goose's asset was authored in lowercase with a {@code flying} clip instead
  * of the ground-only set. Names are matched exactly — {@link SbeEntityAsset#clipFor(String)} is
  * case-sensitive — so the per-asset difference lives here rather than in a second mapping class
  * beside the mob it belongs to.
@@ -28,7 +29,7 @@ public final class MobStateMapping {
                 case FLYING -> "flying";
                 case WANDERING -> "walking";
                 // Standing, grazing, flapping and floating all render as the goose's idle pose.
-                case IDLE, GRAZING, WING_FLAP, SWIMMING -> "idle";
+                case IDLE, GRAZING, WING_FLAP, SWIMMING, STAB, SMASH, DRAW_BOW, RELEASE_BOW -> "idle";
             };
         }
         return switch (behaviorState) {
@@ -36,6 +37,10 @@ public final class MobStateMapping {
             case GRAZING -> "Grazing";
             case WING_FLAP -> "Wingflap";
             case IDLE -> "Idle";
+            case STAB -> "Stab";
+            case SMASH -> "Smash";
+            case DRAW_BOW -> "DrawBow";
+            case RELEASE_BOW -> "ReleaseBow";
         };
     }
 
@@ -59,6 +64,10 @@ public final class MobStateMapping {
             case "Walking" -> MobBehaviorState.WANDERING;
             case "Grazing" -> MobBehaviorState.GRAZING;
             case "Wingflap" -> MobBehaviorState.WING_FLAP;
+            case "Stab" -> MobBehaviorState.STAB;
+            case "Smash" -> MobBehaviorState.SMASH;
+            case "DrawBow" -> MobBehaviorState.DRAW_BOW;
+            case "ReleaseBow" -> MobBehaviorState.RELEASE_BOW;
             default -> MobBehaviorState.IDLE;
         };
     }

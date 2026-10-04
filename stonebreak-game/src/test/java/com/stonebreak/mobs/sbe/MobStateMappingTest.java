@@ -73,16 +73,20 @@ class MobStateMappingTest {
         assertEquals(MobBehaviorState.WANDERING, MobBehaviorState.valueOf("WANDERING"));
         assertEquals(MobBehaviorState.GRAZING, MobBehaviorState.valueOf("GRAZING"));
         assertEquals(MobBehaviorState.WING_FLAP, MobBehaviorState.valueOf("WING_FLAP"));
+        assertEquals(MobBehaviorState.STAB, MobBehaviorState.valueOf("STAB"));
+        assertEquals(MobBehaviorState.SMASH, MobBehaviorState.valueOf("SMASH"));
+        assertEquals(MobBehaviorState.DRAW_BOW, MobBehaviorState.valueOf("DRAW_BOW"));
+        assertEquals(MobBehaviorState.RELEASE_BOW, MobBehaviorState.valueOf("RELEASE_BOW"));
     }
 
-    /** Only the wing flap plays once and holds; everything else loops. */
+    /** Gestures and attacks play once and hold; everything else loops. */
     @Test
-    void onlyGesturesAreOneShot() {
-        assertEquals(true, MobBehaviorState.WING_FLAP.isOneShot());
+    void onlyGesturesAndAttacksAreOneShot() {
+        java.util.Set<MobBehaviorState> oneShots = java.util.EnumSet.of(MobBehaviorState.WING_FLAP,
+                MobBehaviorState.STAB, MobBehaviorState.SMASH,
+                MobBehaviorState.DRAW_BOW, MobBehaviorState.RELEASE_BOW);
         for (MobBehaviorState state : MobBehaviorState.values()) {
-            if (state != MobBehaviorState.WING_FLAP) {
-                assertEquals(false, state.isOneShot(), state + " should loop");
-            }
+            assertEquals(oneShots.contains(state), state.isOneShot(), state.name());
         }
     }
 }

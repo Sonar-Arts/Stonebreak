@@ -24,13 +24,24 @@ public enum MobBehaviorState {
     /** Airborne. */
     FLYING,
     /** In water, under its own power — floating, paddling. */
-    SWIMMING;
+    SWIMMING,
+    /** One-shot quick thrust with a short blade (dagger). */
+    STAB,
+    /** One-shot overhead wind-up and slam with a blunt weapon (patty smacker). */
+    SMASH,
+    /** One-shot bow draw that holds at full draw until the shot. */
+    DRAW_BOW,
+    /** One-shot follow-through after loosing an arrow. */
+    RELEASE_BOW;
 
     /**
      * Whether the state's clip plays through once rather than looping. One-shot clips are sampled
      * from the state timer so they finish and hold, instead of looping a gesture forever.
      */
     public boolean isOneShot() {
-        return this == WING_FLAP;
+        return switch (this) {
+            case WING_FLAP, STAB, SMASH, DRAW_BOW, RELEASE_BOW -> true;
+            default -> false;
+        };
     }
 }

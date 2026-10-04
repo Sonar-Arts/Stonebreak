@@ -11,6 +11,8 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.FireBolt;
 import com.stonebreak.mobs.entities.ItemDrop;
+import com.stonebreak.mobs.goblin.Goblin;
+import com.stonebreak.mobs.goblin.GoblinLoadout;
 import com.stonebreak.mobs.goose.Goose;
 import com.stonebreak.mobs.entities.LeylineBreachZone;
 import com.stonebreak.mobs.entities.NullSpikeProjectile;
@@ -44,6 +46,7 @@ public final class EntityReplicationRegistry {
         return switch (e.getType()) {
             case COW -> ((Cow) e).getTextureVariant();
             case SHEEP -> ((Sheep) e).getTextureVariant();
+            case GOBLIN -> ((Goblin) e).getLoadout().encode();
             case BLOCK_DROP -> Integer.toString(((BlockDrop) e).getBlockType().getId());
             case ITEM_DROP -> {
                 ItemStack stack = ((ItemDrop) e).getItemStack();
@@ -67,6 +70,7 @@ public final class EntityReplicationRegistry {
             case SHEEP -> new Sheep(world, pos, orDefault(metadata, "default"));
             case CHICKEN -> new Chicken(world, pos);
             case GOOSE -> new Goose(world, pos);
+            case GOBLIN -> new Goblin(world, pos, GoblinLoadout.decode(metadata));
             case BLOCK_DROP -> {
                 BlockType bt = BlockType.getById(parseInt(metadata, 0));
                 yield new BlockDrop(world, pos, bt != null ? bt : BlockType.AIR);

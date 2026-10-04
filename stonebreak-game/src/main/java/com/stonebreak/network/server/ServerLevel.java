@@ -161,6 +161,7 @@ public final class ServerLevel {
         ServerLevel level = new ServerLevel(seed, world, entityManager, entitySpawner, timeTicks,
             save, worldData, spawn, playerData);
         save.setWorldTimeSource(level.timeOfDay);
+        entitySpawner.setNightSource(level.timeOfDay::isNight);
 
         save.startAutoSave();
 

@@ -99,6 +99,9 @@ public class EntitySpawner {
     private float spawnTimer = 0f;
     private float despawnTimer = 0f;
 
+    /** Night-time goblin bands; shares this spawner's anchors and site finders. */
+    private final HostileSpawner hostileSpawner;
+
     /**
      * A point of interest for spawning: a player's position and the view distance (in chunks) they
      * have loaded around it. The view distance defines both the eligible-chunk square and the
@@ -109,6 +112,15 @@ public class EntitySpawner {
     public EntitySpawner(World world, EntityManager entityManager) {
         this.world = world;
         this.entityManager = entityManager;
+        this.hostileSpawner = new HostileSpawner(this, entityManager, random);
+    }
+
+    /**
+     * Replaces the "is it night?" source the hostile spawner checks. The server wires its own
+     * clock; the default reads the client's.
+     */
+    public void setNightSource(java.util.function.BooleanSupplier isNight) {
+        hostileSpawner.setNightSource(isNight);
     }
 
     /**
@@ -143,6 +155,7 @@ public class EntitySpawner {
             despawnTimer = 0f;
             checkDespawning();
         }
+        hostileSpawner.update(deltaTime);
     }
 
     // ─── Cap math ─────────────────────────────────────────────────────────────
@@ -231,7 +244,7 @@ public class EntitySpawner {
     }
 
     /** A standable spot within {@link #PACK_SPREAD} blocks of {@code center}, or null. */
-    private Vector3f jitterStandable(Vector3f center) {
+    Vector3f jitterStandable(Vector3f center) {
         int x = (int) Math.floor(center.x) + random.nextInt(PACK_SPREAD * 2 + 1) - PACK_SPREAD;
         int z = (int) Math.floor(center.z) + random.nextInt(PACK_SPREAD * 2 + 1) - PACK_SPREAD;
         return findStandableColumn(x, z);
@@ -334,7 +347,7 @@ public class EntitySpawner {
         return best;
     }
 
-    private List<SpawnAnchor> collectAnchors() {
+    List<SpawnAnchor> collectAnchors() {
         List<SpawnAnchor> result = anchorSource.get();
         return result != null ? result : Collections.emptyList();
     }
@@ -346,7 +359,7 @@ public class EntitySpawner {
      * {@code maxRadiusBlocks}) and finds a valid standable column there. Returns null if the target
      * chunk isn't resident + feature-populated, or no standable column exists.
      */
-    private Vector3f findSpawnNear(Vector3f center, int maxRadiusBlocks) {
+    Vector3f findSpawnNear(Vector3f center, int maxRadiusBlocks) {
         int outer = Math.max(maxRadiusBlocks, MIN_SPAWN_DISTANCE + 1);
         float angle = random.nextFloat() * (float) (Math.PI * 2);
         float distance = MIN_SPAWN_DISTANCE + random.nextFloat() * (outer - MIN_SPAWN_DISTANCE);
@@ -428,7 +441,7 @@ public class EntitySpawner {
         int y = (int) Math.floor(position.y);
         int z = (int) Math.floor(position.z);
         return switch (type) {
-            case COW, CHICKEN, SHEEP, GOOSE -> isValidGroundSpawn(x, y, z, position);
+            case COW, CHICKEN, SHEEP, GOOSE, GOBLIN -> isValidGroundSpawn(x, y, z, position);
             default -> false;
         };
     }

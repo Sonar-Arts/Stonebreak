@@ -35,7 +35,17 @@ import com.stonebreak.rendering.gameWorld.UnderwaterFog;
  * Uses the CBR API and BlockRenderer for 3D block drops, and the voxelization system for 3D item drops.
  */
 public class DropRenderer {
-    
+
+    /**
+     * Sprite mesh → socket frame: recentre the mesh (it is built raised for the hand pose), scale a
+     * 16-pixel sprite to one unit, and turn the item sprites' bottom-left-to-top-right diagonal
+     * (handle to tip) onto +Y.
+     */
+    private static final Matrix4f SOCKET_SPRITE_TRANSFORM = new Matrix4f()
+            .rotateZ((float) Math.toRadians(45.0))
+            .scale(1.0f / (16 * SpriteVoxelizer.getSpriteScale()))
+            .translate(0.0f, -SpriteVoxelizer.getVerticalOffset(), 0.0f);
+
     private final BlockRenderer blockRenderer;
     private final BlockTextureArray blockTextureArray;
     private final SBOHandMeshRegistry sboHandMeshRegistry;
@@ -592,6 +602,51 @@ public class DropRenderer {
         if (SpriteVoxelizer.isVoxelizable(itemType)) {
             renderVoxelizedItemDrop(itemType, state);
         }
+    }
+
+    /**
+     * Draws the held items mobs carry on their sockets (a goblin's dagger or bow), queued by the
+     * entity pass at each socket's posed matrix. In the socket frame the item is centred on the
+     * origin, one unit across, lying in the XY plane with its long axis along +Y (see
+     * {@link #SOCKET_SPRITE_TRANSFORM}); the socket's own transform does the rest of the fitting.
+     */
+    public void renderSocketItems(SocketItemQueue queue, ShaderProgram shaderProgram,
+                                  Matrix4f projectionMatrix, Matrix4f viewMatrix, Vector3f cameraPos) {
+        if (queue.entries().isEmpty()) return;
+
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", projectionMatrix);
+        shaderProgram.setUniform("u_renderPass", 0);
+        shaderProgram.setUniform("texture_sampler", 0);
+        shaderProgram.setUniform("u_isText", false);
+        shaderProgram.setUniform("u_cameraPos", cameraPos != null
+                ? RenderOrigin.toRender(cameraPos, new Vector3f()) : new Vector3f(0, 0, 0));
+        shaderProgram.setUniform("u_underwaterFogDensity", 0.0f);
+        shaderProgram.setUniform("u_underwaterFogColor", new Vector3f(0.1f, 0.3f, 0.5f));
+        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
+        glDepthMask(true);
+
+        Matrix4f modelView = new Matrix4f();
+        for (SocketItemQueue.Entry entry : queue.entries()) {
+            if (!SpriteVoxelizer.isVoxelizable(entry.type())) continue;
+            modelView.set(viewMatrix).mul(entry.socketMatrix());
+            shaderProgram.setUniform("viewMatrix", modelView);
+            voxelizedSpriteRenderer.renderVoxelizedSprite(entry.type(), entry.state(), SOCKET_SPRITE_TRANSFORM);
+        }
+
+        // Same shared-state restore as renderHeldItems: later passes assume the camera view.
+        shaderProgram.setUniform("viewMatrix", viewMatrix);
+        glDepthMask(true);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        GL30.glBindVertexArray(0);
+        shaderProgram.setUniform("u_transformUVsForItem", false);
+        shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setUniform("u_useSolidColor", false);
+        shaderProgram.setUniform("u_useTextureArray", true);
+        shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+        queue.clear();
     }
 
     /**

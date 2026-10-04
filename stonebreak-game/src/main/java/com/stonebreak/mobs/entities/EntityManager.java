@@ -272,6 +272,7 @@ public class EntityManager {
             case CHICKEN -> new com.stonebreak.mobs.chicken.Chicken(world, position);
             case GOOSE -> new com.stonebreak.mobs.goose.Goose(world, position);
             case SHEEP -> new com.stonebreak.mobs.sheep.Sheep(world, position);
+            case GOBLIN -> new com.stonebreak.mobs.goblin.Goblin(world, position);
             // Sheep always spawn with wool (the "default" fallback): unlike cows, a
             // random variant pick here would spawn ~half of them already sheared
             // now that "Sheared" is a registered appearance variant.

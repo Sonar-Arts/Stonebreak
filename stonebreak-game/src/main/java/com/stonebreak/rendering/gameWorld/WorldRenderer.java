@@ -773,6 +773,10 @@ public class WorldRenderer {
         if (!remotePlayers.isEmpty()) {
             dropRenderer.renderHeldItems(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
         }
+        if (entityRenderer != null) {
+            dropRenderer.renderSocketItems(entityRenderer.socketItems(), shaderProgram, projectionMatrix,
+                    player.getViewMatrix(), cameraPos);
+        }
     }
 
     /**
@@ -807,6 +811,8 @@ public class WorldRenderer {
      */
     private void renderEntities(Player player) {
         com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+        // Socket items are drained by the drop pass; a frame that skips it must not let them pile up.
+        if (entityRenderer != null) entityRenderer.socketItems().clear();
 
         if (entityManager != null && entityRenderer != null) {
             World world = Game.getWorld();
