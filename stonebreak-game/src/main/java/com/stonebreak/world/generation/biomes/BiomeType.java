@@ -14,5 +14,7 @@ public enum BiomeType {
     BEACH,
     ICE_FIELDS,
     BADLANDS,
-    MEADOW
+    MEADOW,
+    /** Open sea floor: every submerged column in Standard Generation. Appended last: ordinals of existing biomes stay put. */
+    OCEAN
 }

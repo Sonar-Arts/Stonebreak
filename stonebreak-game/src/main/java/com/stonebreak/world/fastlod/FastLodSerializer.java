@@ -17,7 +17,10 @@ import java.nio.ByteOrder;
  * Wire layout (little-endian):
  * <pre>
  *   magic        u32  'FLOD' (0x444F4C46)
- *   version      u8   current = 3 (v3: heights are the carved surface — ravines and
+ *   version      u8   current = 5 (v5: v4's layout; submerged columns became the OCEAN
+ *                     biome, whose sea floor mixes in dirt and clay, so older blobs hold the
+ *                     old sea floor and must be resampled.
+ *                     v3: heights are the carved surface — ravines and
  *                     sinkholes are cut into LOD terrain rather than drawn flat — and
  *                     coarse cells carry a per-cell cave-mouth channel drawn as a recessed
  *                     notch where the height's single representative probe missed the
@@ -40,13 +43,12 @@ import java.nio.ByteOrder;
  *   spotCount    u16  (v4+) coarse-level trees; 0 when none
  *   spots        u16[spotCount]            FastLodChunkData.packTreeSpot
  * </pre>
- * v4 only appends the spot section, so v3 blobs (no coarse trees) still read.
- * Coarse nodes that draw trees live in their own store rows, so a v3 blob is
- * never asked to stand in for one.
+ * v4 appended the spot section; v5 keeps the v4 layout. Older blobs are rejected,
+ * never read: they predate the OCEAN sea floor.
  */
 public final class FastLodSerializer {
 
-    public static final int VERSION = 4;
+    public static final int VERSION = 5;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel
@@ -145,7 +147,7 @@ public final class FastLodSerializer {
 
         if (buf.getInt() != MAGIC) return null;
         int version = buf.get() & 0xFF;
-        if (version != VERSION && version != 3) return null;
+        if (version != VERSION) return null;
         int levelIdx = buf.get() & 0xFF;
         if (levelIdx != expected.level().index()) return null;
 
@@ -207,19 +209,15 @@ public final class FastLodSerializer {
             }
         }
 
-        int[] spots = null;
-        if (version >= 4) {
-            if (buf.remaining() < 2) return null;
-            int spotCount = buf.getShort() & 0xFFFF;
-            if (buf.remaining() < spotCount * 2) return null;
-            spots = new int[spotCount];
-            for (int i = 0; i < spotCount; i++) {
-                spots[i] = buf.getShort() & 0xFFFF;
-                if (((spots[i] >>> 8) & 3) >= TreeKind.values().length) return null;
-            }
+        if (buf.remaining() < 2) return null;
+        int spotCount = buf.getShort() & 0xFFFF;
+        if (buf.remaining() < spotCount * 2) return null;
+        int[] spots = new int[spotCount];
+        for (int i = 0; i < spotCount; i++) {
+            spots[i] = buf.getShort() & 0xFFFF;
+            if (((spots[i] >>> 8) & 3) >= TreeKind.values().length) return null;
         }
         if (!expected.coarseTrees()) spots = null;
-        else if (spots == null) return null;
 
         if (level.emitsTrees() && trees == null) return null;
         if (!level.emitsTrees() && trees != null) trees = null;

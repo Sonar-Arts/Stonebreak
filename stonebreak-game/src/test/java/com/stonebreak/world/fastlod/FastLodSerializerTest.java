@@ -135,7 +135,7 @@ class FastLodSerializerTest {
     void previousVersionBlobsAreRejected() {
         FastLodChunkData data = makeData(FastLodLevel.L2, false);
         byte[] blob = FastLodSerializer.serialize(data);
-        assertEquals(4, blob[4], "version byte moved; update this test and the note below");
+        assertEquals(5, blob[4], "version byte moved; update this test and the note below");
         blob[4] = 2;
         assertNull(FastLodSerializer.deserialize(data.key(), blob),
                 "a pre-carve blob must miss, not load");
@@ -164,18 +164,18 @@ class FastLodSerializerTest {
     }
 
     /**
-     * v3 blobs (no spot section) still load for nodes that draw no coarse trees —
-     * a cache written before v4 stays warm — but can never stand in for a node
-     * that should show them.
+     * v5 changed no layout: submerged columns became OCEAN, whose floor mixes in dirt and
+     * clay. v3/v4 blobs carry the old sea floor, so they must miss and be resampled.
      */
     @Test
-    void version3BlobsLoadOnlyForTreelessNodes() {
+    void preOceanBlobsAreRejected() {
         FastLodChunkData data = makeData(FastLodLevel.L2, false);
         byte[] v4 = FastLodSerializer.serialize(data);
+        v4[4] = 4;
+        assertNull(FastLodSerializer.deserialize(data.key(), v4));
         byte[] v3 = Arrays.copyOf(v4, v4.length - 2);   // drop the empty spot count
         v3[4] = 3;
-        assertNotNull(FastLodSerializer.deserialize(data.key(), v3));
-        assertNull(FastLodSerializer.deserialize(FastLodKey.of(FastLodLevel.L2, 3, -7, true, true), v3));
+        assertNull(FastLodSerializer.deserialize(data.key(), v3));
     }
 
     @Test

@@ -10,6 +10,7 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.biomes.OceanFloor;
 import com.stonebreak.world.generation.features.CactusGenerator;
 import com.stonebreak.world.generation.features.LimestoneGenerator;
 import com.stonebreak.world.generation.features.OreGenerator;
@@ -394,7 +395,7 @@ public class TerrainGenerationSystem {
      * {@link #sampleColumns}, which reports the block a carved top actually exposes.
      */
     public BlockType getSurfaceBlockAt(int worldX, int worldZ) {
-        return surfaceBlock(biomeManager.getBiome(worldX, worldZ));
+        return surfaceBlockAt(biomeManager.getBiome(worldX, worldZ), worldX, worldZ);
     }
 
     /** Deterministic RNG for shared probing logic (tree placement, etc.). */
@@ -501,7 +502,8 @@ public class TerrainGenerationSystem {
                 BiomeType biome = biomeManager.selectBiome(new com.stonebreak.world.generation.noise.MultiNoiseSample(
                     c[idx], e[idx], pv[idx],
                     com.stonebreak.world.generation.noise.NoiseRouter.temperatureFromRaw(tRaw[idx], shaped),
-                    com.stonebreak.world.generation.noise.NoiseRouter.moistureFromRaw(mRaw[idx])));
+                    com.stonebreak.world.generation.noise.NoiseRouter.moistureFromRaw(mRaw[idx])),
+                    rawHeight);
                 BlockType surface = exposedBlock(wx, wz, rawHeight, height, biome);
                 if (outSurface != null) {
                     outSurface[idx] = surface;
@@ -561,6 +563,7 @@ public class TerrainGenerationSystem {
                 fusedGenCtx, chunkX, chunkZ, heights, biomes,
                 surfaceCarveWords(chunkX, chunkZ, heights, waterLevels));
             if (fused != null) {
+                paintOceanFloor(fused.storage(), chunkX, chunkZ, heights, biomes);
                 Chunk chunk = new Chunk(chunkX, chunkZ, fused.storage());
                 chunk.getHeightMap().populate(fused.heightmap());
                 chunk.getCcoDirtyTracker().markBlockChanged();
@@ -663,12 +666,40 @@ public class TerrainGenerationSystem {
             }
         }
 
+        paintOceanFloor(storage, chunkX, chunkZ, heights, biomes);
         Chunk chunk = new Chunk(chunkX, chunkZ, storage);
         // One mesh+data dirty mark replaces the per-setBlock marks. The caller
         // clears data-dirty for waterless chunks, exactly as before.
         chunk.getCcoDirtyTracker().markBlockChanged();
         chunk.setFeaturesPopulated(false);
         return new TerrainResult(chunk, new ColumnProfile(heights, waterLevels, biomes));
+    }
+
+    /**
+     * Mixes dirt and clay into the sand of every {@link BiomeType#OCEAN} column's floor
+     * ({@link OceanFloor}). A pass over the finished storage rather than a branch of
+     * {@link #determineBlockType}: the fused kernel's surface table holds one block per biome,
+     * so both paths lay sand and both get the same mix here, which keeps them byte-identical.
+     * A floor that is not sand (carved, or anything else) is left alone.
+     */
+    private void paintOceanFloor(CcoBlockStorage storage, int chunkX, int chunkZ,
+                                 int[] heights, BiomeType[] biomes) {
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                int idx = x * CHUNK_SIZE + z;
+                if (biomes[idx] != BiomeType.OCEAN) {
+                    continue;
+                }
+                int y = heights[idx] - 1;
+                if (storage.get(x, y, z) != BlockType.SAND) {
+                    continue;
+                }
+                BlockType floor = OceanFloor.block(chunkX * CHUNK_SIZE + x, chunkZ * CHUNK_SIZE + z, seed);
+                if (floor != BlockType.SAND) {
+                    storage.set(x, y, z, floor);
+                }
+            }
+        }
     }
 
     /**
@@ -842,7 +873,7 @@ public class TerrainGenerationSystem {
         if (y < rawHeight - 1) {
             return subsurfaceBlock(biome);
         }
-        return surfaceBlock(biome);
+        return surfaceBlockAt(biome, worldX, worldZ);
     }
 
     /**
@@ -945,10 +976,19 @@ public class TerrainGenerationSystem {
         return switch (biome) {
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SANDSTONE;
             case DESERT, BEACH -> BlockType.SANDSTONE;
+            case OCEAN -> BlockType.SANDSTONE;
             case PLAINS, SNOWY_PLAINS, TAIGA, MEADOW, TUNDRA -> BlockType.DIRT;
             case STONY_PEAKS -> BlockType.STONE;
             case ICE_FIELDS -> BlockType.ICE;
         };
+    }
+
+    /**
+     * The block a column's uncarved top actually holds: {@link #surfaceBlock}, except the sea
+     * floor's per-column mix ({@link #paintOceanFloor}).
+     */
+    private BlockType surfaceBlockAt(BiomeType biome, int worldX, int worldZ) {
+        return biome == BiomeType.OCEAN ? OceanFloor.block(worldX, worldZ, seed) : surfaceBlock(biome);
     }
 
     /** Package-private so the fused native generator's biome tables share this single source. */
@@ -956,6 +996,7 @@ public class TerrainGenerationSystem {
         if (biome == null) return BlockType.DIRT;
         return switch (biome) {
             case DESERT, BEACH -> BlockType.SAND;
+            case OCEAN -> BlockType.SAND;         // the floor mixes in dirt and clay: surfaceBlockAt
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SAND;
             case PLAINS, MEADOW -> BlockType.GRASS;
             case SNOWY_PLAINS, TAIGA, TUNDRA -> BlockType.SNOWY_DIRT;

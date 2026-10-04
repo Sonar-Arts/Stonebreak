@@ -26,12 +26,22 @@ public class BiomeManager {
     }
 
     public BiomeType getBiome(int x, int z) {
-        return selector.select(noise.sample(x, z, heightMap.shapedHeight(x, z)));
+        return selector.select(noise.sample(x, z, heightMap.shapedHeight(x, z)),
+            isSubmerged(heightMap.generateHeight(x, z)));
     }
 
-    /** Selection from an already-assembled sample (batched paths). */
-    public BiomeType selectBiome(MultiNoiseSample sample) {
-        return selector.select(sample);
+    /**
+     * Selection from an already-assembled sample (batched paths).
+     *
+     * @param height the column's final surface height (with detail), Standard frame
+     */
+    public BiomeType selectBiome(MultiNoiseSample sample, int height) {
+        return selector.select(sample, isSubmerged(height));
+    }
+
+    /** The water rule {@link HeightMapGenerator#waterLevel} applies: a surface under sea level is sea. */
+    private static boolean isSubmerged(int height) {
+        return height < WorldConfiguration.SEA_LEVEL;
     }
 
     public float getMoisture(int x, int z) {
@@ -67,7 +77,7 @@ public class BiomeManager {
                 pv[idx],
                 NoiseRouter.temperatureFromRaw(tRaw[idx], heights[idx]),
                 NoiseRouter.moistureFromRaw(mRaw[idx]));
-            out[idx] = selector.select(s);
+            out[idx] = selector.select(s, isSubmerged(heights[idx]));
         }
     }
 }
