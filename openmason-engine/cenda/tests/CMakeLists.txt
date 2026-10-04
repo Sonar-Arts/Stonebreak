@@ -12,4 +12,8 @@ if(CENDA_BUILD_KERNELS)
     add_executable(kernels_chunk kernels_chunk_test.cpp)
     target_link_libraries(kernels_chunk PRIVATE cenda_kernels cenda_warnings)
     add_test(NAME kernels_chunk COMMAND kernels_chunk)
+
+    add_executable(lua_host lua_host_test.cpp)
+    target_link_libraries(lua_host PRIVATE cenda_kernels cenda_warnings)
+    add_test(NAME lua_host COMMAND lua_host)
 endif()

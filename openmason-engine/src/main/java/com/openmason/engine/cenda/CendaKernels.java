@@ -301,7 +301,7 @@ public final class CendaKernels {
             .orElseThrow(() -> new IllegalStateException("Missing native symbol: " + name));
     }
 
-    private static Path locateLibrary() {
+    static Path locateLibrary() {
         String prop = System.getProperty("cenda.kernels.path");
         if (prop != null && !prop.isBlank()) {
             Path p = Path.of(prop);
@@ -330,6 +330,14 @@ public final class CendaKernels {
             }
         }
         return null;
+    }
+
+    /**
+     * Where the Cenda library would be loaded from (same search as the static
+     * load), for diagnostics and the other bindings sharing the library.
+     */
+    public static java.util.Optional<Path> libraryPath() {
+        return java.util.Optional.ofNullable(locateLibrary());
     }
 
     /** True when the native library loaded and passed its ABI handshake. */
