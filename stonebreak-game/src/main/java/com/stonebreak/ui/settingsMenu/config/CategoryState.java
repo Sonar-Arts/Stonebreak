@@ -9,7 +9,7 @@ public enum CategoryState {
     GENERAL(0, new SettingType[]{SettingType.RESOLUTION, SettingType.UI_SCALE}),
     QUALITY(1, new SettingType[]{SettingType.LEAF_TRANSPARENCY, SettingType.WATER_SHADER, SettingType.CLOUDS_ENABLED, SettingType.GOD_RAYS, SettingType.SHADOWS, SettingType.SHADOW_QUALITY, SettingType.SHADOW_DISTANCE, SettingType.SMOOTH_LIGHTING}),
     PERFORMANCE(2, new SettingType[]{SettingType.RENDER_DISTANCE, SettingType.VSYNC, SettingType.MAX_FPS}),
-    ADVANCED(3, new SettingType[]{SettingType.ARM_MODEL, SettingType.LOD_ENABLED, SettingType.LOD_DISTANCE}),
+    ADVANCED(3, new SettingType[]{SettingType.ARM_MODEL, SettingType.LOD_ENABLED, SettingType.LOD_DISTANCE, SettingType.LOD_QUALITY}),
     EXTRAS(4, new SettingType[]{SettingType.CROSSHAIR_STYLE, SettingType.CROSSHAIR_SIZE, SettingType.PLAYER_NAME_TAGS}),
     AUDIO(5, new SettingType[]{SettingType.VOLUME, SettingType.MUSIC_VOLUME, SettingType.MUSIC_ENABLED});
     
@@ -90,7 +90,8 @@ public enum CategoryState {
         SMOOTH_LIGHTING(20),
         PLAYER_NAME_TAGS(21),
         MUSIC_VOLUME(22),
-        MUSIC_ENABLED(23);
+        MUSIC_ENABLED(23),
+        LOD_QUALITY(24);
         
         private final int index;
         

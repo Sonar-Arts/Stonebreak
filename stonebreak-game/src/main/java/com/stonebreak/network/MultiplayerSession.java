@@ -225,6 +225,23 @@ public final class MultiplayerSession {
     }
 
     /**
+     * Route a /cheats toggle to the server, which owns the per-world flag and persists it with
+     * the world (issue #318). Returns false when this client has no authority to change it (a
+     * remote JOIN client — the server would refuse), mirroring {@link #requestServerTimeSet}.
+     */
+    public static boolean requestServerCheatsSet(boolean enabled) {
+        if (mode == Mode.JOIN) {
+            return false; // host-only: the server rejects non-local cheat toggles
+        }
+        ClientWorldView c = getClient();
+        if (c == null || c.isDisconnected()) {
+            return mode == Mode.MENU; // no session at all — the runtime flag is the only flag
+        }
+        c.sendCheatsSet(enabled);
+        return true;
+    }
+
+    /**
      * True once the local player's saved data has been restored (or there's nothing to restore).
      * The world bootstrap waits on this before entering PLAY so the player never appears with a
      * momentarily-empty inventory while the restore is still in flight.

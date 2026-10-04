@@ -6,6 +6,7 @@ import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 import com.stonebreak.world.generation.noise.TerrainNoise;
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -14,6 +15,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
@@ -23,6 +25,12 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * (both of its paths run the kernel), and the cave tests supply a height oracle that
  * disables the native carver context — so before this test, nothing failed if the two
  * backends carved different tunnels (GitHub issue #244).
+ *
+ * <p>The kernel builds its WaterGuard plane internally, so the Java side of the
+ * comparison is the guarded 4-arg overload — the exact mask
+ * {@code TerrainGenerationSystem.nativeWormMask} falls back to when the kernel fails.
+ * The target set includes a chunk where the guard actually suppresses carving, so an
+ * unguarded fallback (GitHub issue #248) cannot pass on dry chunks alone.
  *
  * <p>Native-gated: skips without the Cenda kernels or on the Java noise backend, exactly
  * like {@code FusedChunkGenParityTest}. There is no headless substitute — the thing under
@@ -36,6 +44,8 @@ class WormCarverParityTest {
     private static final int WORM_TARGETS = 5;
     private static final int WORM_FREE_TARGETS = 2;
     private static final int SCAN_LIMIT = 24;
+    /** Search bound for a worm chunk whose carve the water guard trims (ocean nearby). */
+    private static final int WET_SCAN_LIMIT = 96;
 
     @Test
     void javaWalkMatchesNativeKernel() {
@@ -51,15 +61,20 @@ class WormCarverParityTest {
         try {
             List<int[]> targets = pickTargets(javaCarver);
             assertFalse(targets.isEmpty(), "seed " + SEED + " found no worm chunks in the scanned region");
+            int[] wetTarget = findWetTarget(javaCarver, heightMap);
+            assertNotNull(wetTarget, "seed " + SEED + " found no worm chunk the water guard trims within "
+                + WET_SCAN_LIMIT + " chunks — the guard is untested");
+            targets.add(wetTarget);
 
             int scanRadius = PerlinWormCarver.scanRadius();
             for (int[] target : targets) {
                 int chunkX = target[0];
                 int chunkZ = target[1];
                 int[] chunkHeights = new int[256];
-                heightMap.populateChunkHeights(chunkX, chunkZ, chunkHeights);
+                int[] waterLevels = new int[256];
+                heightMap.populateChunkHeights(chunkX, chunkZ, chunkHeights, waterLevels);
 
-                BitSet javaMask = javaCarver.carveMaskForChunk(chunkX, chunkZ, chunkHeights);
+                BitSet javaMask = javaCarver.carveMaskForChunk(chunkX, chunkZ, chunkHeights, waterLevels);
 
                 int[] anchorData = collectAnchors(javaCarver, chunkX, chunkZ, scanRadius);
                 int[] anchorChunks = anchorData.length == 0 ? null : anchorData;
@@ -100,6 +115,40 @@ class WormCarverParityTest {
         }
         targets.addAll(wormFree);
         return targets;
+    }
+
+    /**
+     * First worm-bearing chunk (row-major from the origin) whose guarded
+     * mask differs from its unguarded one — i.e. a chunk where WaterGuard has work to do.
+     * Null if the seed has none within {@link #WET_SCAN_LIMIT}.
+     */
+    private static int[] findWetTarget(PerlinWormCarver carver, HeightMapGenerator heightMap) {
+        int[] heights = new int[256];
+        int[] waterLevels = new int[256];
+        for (int chunkX = 0; chunkX < WET_SCAN_LIMIT; chunkX++) {
+            for (int chunkZ = 0; chunkZ < WET_SCAN_LIMIT; chunkZ++) {
+                if (!carver.hasWormAt(chunkX, chunkZ)) {
+                    continue;
+                }
+                heightMap.populateChunkHeights(chunkX, chunkZ, heights, waterLevels);
+                boolean wet = false;
+                for (int level : waterLevels) {
+                    if (level != WorldConfiguration.NO_WATER) {
+                        wet = true;
+                        break;
+                    }
+                }
+                if (!wet) {
+                    continue;
+                }
+                BitSet guarded = carver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
+                BitSet unguarded = carver.carveMaskForChunk(chunkX, chunkZ, heights);
+                if (!guarded.equals(unguarded)) {
+                    return new int[]{chunkX, chunkZ};
+                }
+            }
+        }
+        return null;
     }
 
     /**

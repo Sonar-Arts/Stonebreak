@@ -241,7 +241,9 @@ public class SBOParser {
                     gp.has("stackable") && gp.get("stackable").asBoolean(),
                     gp.has("maxStackSize") ? gp.get("maxStackSize").asInt() : 64,
                     gp.has("category") ? gp.get("category").asText() : null,
-                    !gp.has("placeable") || gp.get("placeable").asBoolean()
+                    !gp.has("placeable") || gp.get("placeable").asBoolean(),
+                    gp.hasNonNull("material") ? gp.get("material").asText() : null,
+                    gp.has("requiredTier") ? readTier(gp.get("requiredTier"), "gameProperties.requiredTier") : 0
             );
         }
 
@@ -349,6 +351,8 @@ public class SBOParser {
 
         SBOFormat.DropData drops = parseDrops(root);
 
+        SBOFormat.ToolData tool = parseTool(root);
+
         return new SBOFormat.Document(
                 root.get("version").asText(),
                 root.get("objectId").asText(),
@@ -368,8 +372,49 @@ public class SBOParser {
                 smeltingRecipes,
                 fuel,
                 sounds,
-                drops
+                drops,
+                tool
         );
+    }
+
+    /**
+     * Reads the optional 1.9+ {@code tool} section. Returns {@code null} when
+     * the key is absent or the section is invalid (logged), so a malformed
+     * tool degrades to "not a mining tool" rather than failing the whole SBO.
+     */
+    static SBOFormat.ToolData parseTool(com.fasterxml.jackson.databind.JsonNode root) {
+        if (!root.has("tool") || root.get("tool").isNull() || !root.get("tool").isObject()) {
+            return null;
+        }
+        var t = root.get("tool");
+        List<String> materials = new ArrayList<>();
+        if (t.has("materials") && t.get("materials").isArray()) {
+            for (var m : t.get("materials")) materials.add(m.asText());
+        }
+        try {
+            return new SBOFormat.ToolData(
+                    t.has("toolClass") ? t.get("toolClass").asText() : "",
+                    t.has("tier") ? readTier(t.get("tier"), "tool.tier") : 0,
+                    t.has("speedMultiplier") ? (float) t.get("speedMultiplier").asDouble() : 1.0f,
+                    materials,
+                    t.hasNonNull("durability") ? t.get("durability").asInt() : null,
+                    t.hasNonNull("attackDamage") ? (float) t.get("attackDamage").asDouble() : null);
+        } catch (IllegalArgumentException ex) {
+            logger.warn("Ignoring invalid tool block in manifest: {}", ex.getMessage());
+            return null;
+        }
+    }
+
+    /** A tier written as an int or a tier name ("stone"); unreadable values become 0 with a warning. */
+    private static int readTier(com.fasterxml.jackson.databind.JsonNode node, String where) {
+        if (node == null || node.isNull()) return 0;
+        if (node.isNumber()) return node.asInt();
+        int tier = SBOFormat.ToolData.parseTier(node.asText());
+        if (tier < 0) {
+            logger.warn("Unknown tier '{}' at {} — treating as 0", node.asText(), where);
+            return 0;
+        }
+        return tier;
     }
 
     /**

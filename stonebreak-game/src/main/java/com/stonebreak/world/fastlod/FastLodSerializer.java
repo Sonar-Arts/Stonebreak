@@ -17,7 +17,8 @@ import java.nio.ByteOrder;
  * Wire layout (little-endian):
  * <pre>
  *   magic        u32  'FLOD' (0x444F4C46)
- *   version      u8   current = 5 (v5: adds the per-cell cave-mouth channel — coarse cells
+ *   version      u8   current = {@link #VERSION}; the layout below is v5's plus the
+ *                     v12 spot section (v5: adds the per-cell cave-mouth channel — coarse cells
  *                     draw a recessed notch where an opening exists that the height's single
  *                     representative probe missed; pre-v5 blobs have no opening data and must
  *                     be resampled or the distance rings keep showing ravines only.
@@ -39,7 +40,11 @@ import java.nio.ByteOrder;
  *   treePresent  u8   0 = trees omitted, 1 = trees follow
  *   trees?       u8[cellsPerAxis²] kind   0 = none, else TreeKind.ordinal()+1
  *   trunkH?      u8[cellsPerAxis²]        0 if no tree
+ *   spotCount    u16  (v12) coarse-level trees; 0 when none
+ *   spots        u16[spotCount]            FastLodChunkData.packTreeSpot
  * </pre>
+ * v12 appended the spot section. Older blobs are rejected,
+ * never read: they predate the OCEAN sea floor.
  */
 public final class FastLodSerializer {
 
@@ -80,8 +85,13 @@ public final class FastLodSerializer {
      * (DaedalusTGM-Exp's {@code sampleColumns}), where a v10 node showed whatever
      * dry column its probe landed on — so its height, water level and surface all
      * moved.
+     *
+     * <p>12: coarse nodes carry tree spots (the trailing spot section), coarse
+     * levels may hold the uncarved height (keys with {@code carved == false}), and
+     * submerged columns are the OCEAN biome whose sea floor mixes in dirt and clay —
+     * main's v4/v5, merged onto this branch's v11.
      */
-    public static final int VERSION = 11;
+    public static final int VERSION = 12;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel
@@ -109,7 +119,8 @@ public final class FastLodSerializer {
                  + 1
                  + (hasOpenings ? cellsLen * 3 : 0)
                  + 1
-                 + (hasTrees ? cellsLen * 2 : 0);
+                 + (hasTrees ? cellsLen * 2 : 0)
+                 + 2 + (data.treeSpots() == null ? 0 : data.treeSpots().length * 2);
 
         ByteBuffer buf = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN);
         buf.putInt(MAGIC);
@@ -162,6 +173,13 @@ public final class FastLodSerializer {
             }
         } else {
             buf.put((byte) 0);
+        }
+
+        int[] spots = data.treeSpots();
+        int spotCount = spots == null ? 0 : Math.min(spots.length, 0xFFFF);
+        buf.putShort((short) spotCount);
+        for (int i = 0; i < spotCount; i++) {
+            buf.putShort((short) spots[i]);
         }
 
         return buf.array();
@@ -245,6 +263,16 @@ public final class FastLodSerializer {
             }
         }
 
+        if (buf.remaining() < 2) return null;
+        int spotCount = buf.getShort() & 0xFFFF;
+        if (buf.remaining() < spotCount * 2) return null;
+        int[] spots = new int[spotCount];
+        for (int i = 0; i < spotCount; i++) {
+            spots[i] = buf.getShort() & 0xFFFF;
+            if (((spots[i] >>> 8) & 3) >= TreeKind.values().length) return null;
+        }
+        if (!expected.coarseTrees()) spots = null;
+
         if (level.emitsTrees() && trees == null) return null;
         if (!level.emitsTrees() && trees != null) trees = null;
         // L0 cells are single columns, so their carve is already the height and the
@@ -253,7 +281,7 @@ public final class FastLodSerializer {
         if (level.cellSize() == 1 && openFloor != null) return null;
 
         return new FastLodChunkData(expected, heights, waterLevels, surface, trees,
-                openFloor, openCover);
+                openFloor, openCover, spots);
     }
 
     private static int clampShort(int v) {

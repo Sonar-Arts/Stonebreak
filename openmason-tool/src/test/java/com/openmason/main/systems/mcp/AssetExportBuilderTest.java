@@ -180,6 +180,41 @@ class AssetExportBuilderTest {
     }
 
     @Test
+    void miningDataExportsPatchesAndDescribes() throws Exception {
+        SBOFormat.ExportParameters p = AssetExportBuilder.sbo(json("""
+                {"objectId":"stonebreak:t_pick","objectName":"T Pick","objectType":"item","author":"t",
+                 "gameProperties":{"numericId":9003,"material":"Stone","requiredTier":"iron"},
+                 "tool":{"toolClass":"pickaxe","tier":"stone","speedMultiplier":0.2,
+                         "materials":["stone","ore"],"durability":131}}
+                """), omo, "x", this::resolve);
+        Path out = tmp.resolve("t_pick.sbo");
+        assertTrue(new SBOSerializer().export(p, omo, out.toString()));
+        SBOFormat.Document d = new SBOParser().parseRaw(out).manifest();
+        assertEquals("stone", d.gameProperties().material());
+        assertEquals(2, d.gameProperties().requiredTier(), "tier names resolve on gameProperties too");
+        assertEquals(new SBOFormat.ToolData("pickaxe", 1, 0.2f, java.util.List.of("stone", "ore"), 131, null),
+                d.tool());
+
+        SBOFormat.Document patched = AssetExportBuilder.patchSbo(d, json(
+                "{\"tool\":{\"toolClass\":\"axe\",\"tier\":0,\"speedMultiplier\":0.5,\"materials\":[\"wood\"]},"
+                        + "\"gameProperties\":{\"requiredTier\":0}}"));
+        assertEquals("axe", patched.tool().toolClass());
+        assertEquals(java.util.List.of("wood"), patched.tool().materials());
+        assertEquals("stone", patched.gameProperties().material(), "unnamed gameProperties fields keep their value");
+        assertEquals(0, patched.gameProperties().requiredTier());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> tool = (Map<String, Object>) AssetExportBuilder.describe(patched).get("tool");
+        assertEquals("axe", tool.get("toolClass"));
+        assertNull(AssetExportBuilder.describe(AssetExportBuilder.patchSbo(patched, json("{\"tool\":null}")))
+                .get("tool"), "\"tool\": null removes the section");
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> AssetExportBuilder.patchSbo(d, json("{\"tool\":{\"toolClass\":\"axe\",\"tier\":\"mythril\"}}")));
+        assertTrue(e.getMessage().startsWith("invalid_params"), e.getMessage());
+    }
+
+    @Test
     void spriteDefaultsMatchTheTextureOnlyPayload() throws Exception {
         SBOFormat.GameProperties gp = AssetExportBuilder.spriteGameProperties(null, 1234);
         assertEquals(1234, gp.numericId());

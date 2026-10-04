@@ -368,4 +368,53 @@ class FastLodMesherTest {
         assertEquals(4, result.waterMesh().getVertexCount());
         assertTrue(result.mesh().getVertexCount() > 0);
     }
+
+    /**
+     * Coarse-level trees (preset-dependent reach): every spot draws a whole tree on its
+     * cell's surface — trunk included at every level, so a distant canopy never floats.
+     * From L3 the trunk is 2 blocks wide (a 1-block trunk is under a pixel there).
+     */
+    @Test
+    void coarseTreeSpotsDrawWholeTreesStandingOnTheGround() {
+        int[] spots = {
+            FastLodChunkData.packTreeSpot(3, 3, TreeKind.OAK, 5),
+            FastLodChunkData.packTreeSpot(15, 15, TreeKind.PINE, 7),
+        };
+        for (FastLodLevel level : new FastLodLevel[]{FastLodLevel.L1, FastLodLevel.L2, FastLodLevel.L3}) {
+            int[] heights = filled(level.heightCount(), 80);
+            BlockType[] surface = new BlockType[level.cellCount()];
+            Arrays.fill(surface, BlockType.GRASS);
+            FastLodKey key = FastLodKey.of(level, 0, 0, true, true);
+            int[] noWater = filled(level.cellCount(), WorldConfiguration.NO_WATER);
+            MmsMeshData bare = mesher.build(new FastLodChunkData(key, heights, noWater, surface, null, null, null,
+                new int[0])).mesh();
+            MmsMeshData treed = mesher.build(new FastLodChunkData(key, heights, noWater, surface, null, null, null,
+                new int[]{spots[0]})).mesh();
+            MmsMeshData both = mesher.build(new FastLodChunkData(key, heights, noWater, surface, null, null, null,
+                spots)).mesh();
+
+            assertEquals(2 * 9, (both.getVertexCount() - bare.getVertexCount()) / 4,
+                level + ": 4 trunk + 5 canopy quads per tree");
+
+            // Trunk of the first tree (column 3,3): the non-alpha quads the tree added.
+            float[] p = treed.getVertexPositions();
+            float[] alpha = treed.getAlphaTestFlags();
+            float minX = Float.MAX_VALUE, maxX = -Float.MAX_VALUE, minY = Float.MAX_VALUE, maxY = -Float.MAX_VALUE;
+            int trunkVerts = 0;
+            for (int v = bare.getVertexCount(); v < treed.getVertexCount(); v++) {
+                if (alpha[v] > 0.5f) continue;
+                trunkVerts++;
+                minX = Math.min(minX, p[v * 3]);
+                maxX = Math.max(maxX, p[v * 3]);
+                minY = Math.min(minY, p[v * 3 + 1]);
+                maxY = Math.max(maxY, p[v * 3 + 1]);
+            }
+            int width = level == FastLodLevel.L3 ? 2 : 1;
+            assertEquals(16, trunkVerts, level + " trunk present");
+            assertEquals(3f, minX, EPS, level + " trunk starts at the tree's column");
+            assertEquals(3f + width, maxX, EPS, level + " trunk width");
+            assertEquals(80f, minY, EPS, level + " trunk stands on the cell surface");
+            assertEquals(85f, maxY, EPS, level + " trunk reaches the canopy (trunk height 5)");
+        }
+    }
 }

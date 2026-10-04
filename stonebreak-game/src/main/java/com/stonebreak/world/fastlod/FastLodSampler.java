@@ -41,8 +41,13 @@ public final class FastLodSampler {
         int[] gridWaterLevels = new int[level.heightCount()];
         BlockType[] gridSurface = new BlockType[stride * stride];
         TreeSample[] gridTrees  = level.emitsTrees() ? new TreeSample[stride * stride] : null;
-        terrain.sampleColumns(baseX + origin, baseZ + origin, stride, cellSize,
-            heights, gridWaterLevels, gridSurface, gridTrees);
+        if (key.carved()) {
+            terrain.sampleColumns(baseX + origin, baseZ + origin, stride, cellSize,
+                heights, gridWaterLevels, gridSurface, gridTrees);
+        } else {
+            terrain.sampleRawColumns(baseX + origin, baseZ + origin, stride, cellSize,
+                heights, gridWaterLevels, gridSurface);
+        }
 
         int[] waterLevels = new int[level.cellCount()];
         BlockType[] surface = new BlockType[level.cellCount()];
@@ -63,9 +68,11 @@ public final class FastLodSampler {
         // see TerrainGenerator.sampleCellOpenings for why the heights cannot carry
         // this. Skipped at L0, where a cell is one column and its carve is already the
         // height, so the finest band pays nothing and draws exactly what it drew before.
+        // Also skipped at the uncarved coarse levels: aggregating openings reads
+        // every column's carve profile, the very cost those levels avoid.
         int[] openingFloor = null;
         byte[] openingCoverage = null;
-        if (cellSize > 1) {
+        if (cellSize > 1 && key.carved()) {
             openingFloor = new int[level.cellCount()];
             openingCoverage = new byte[level.cellCount()];
             int[] cellHeights = new int[level.cellCount()];
@@ -78,8 +85,21 @@ public final class FastLodSampler {
                     cellHeights, openingFloor, openingCoverage);
         }
 
+        // Trees past the finest band: every tree in the footprint, standing on its cell.
+        int[] treeSpots = null;
+        if (key.coarseTrees()) {
+            int[] cellHeights = new int[level.cellCount()];
+            for (int ix = 0; ix < cellsPerAxis; ix++) {
+                for (int iz = 0; iz < cellsPerAxis; iz++) {
+                    cellHeights[ix * cellsPerAxis + iz] = heights[(ix + 1) * stride + (iz + 1)];
+                }
+            }
+            treeSpots = terrain.probeCellTrees(key.chunkX(), key.chunkZ(), cellsPerAxis, cellSize,
+                    cellHeights, surface);
+        }
+
         return new FastLodChunkData(key, heights, waterLevels, surface, trees,
-                openingFloor, openingCoverage);
+                openingFloor, openingCoverage, treeSpots);
     }
 
     /**

@@ -107,6 +107,38 @@ public class SaveService implements AutoCloseable {
     }
 
     /**
+     * Atomically rewrites the in-memory {@link WorldData} the next save persists — the way
+     * runtime world settings (e.g. the per-world cheats flag) reach disk. Never replace it
+     * via {@link #initialize}: that would discard the play time accumulated since load.
+     * No-op before the service is initialized.
+     */
+    public synchronized void updateWorldData(java.util.function.UnaryOperator<WorldData> update) {
+        WorldData current = worldData;
+        if (current != null) {
+            worldData = Objects.requireNonNull(update.apply(current), "updated WorldData");
+        }
+    }
+
+    /**
+     * Stamps the accumulated play time and the authoritative world time into the in-memory
+     * {@link WorldData} and returns the snapshot to persist. Synchronized with
+     * {@link #updateWorldData} so a concurrent edit can't be lost between read and write.
+     */
+    private synchronized WorldData advanceWorldDataForSave(long now) {
+        WorldData updatedWorld = worldData.withAddedPlayTime(now - lastAutoSaveTime);
+
+        // Capture current world time from the authoritative clock (server-owned in the two-world
+        // model; falls back to the Game singleton's clock when none is injected).
+        com.stonebreak.world.TimeOfDay timeSource = resolveWorldTimeSource();
+        if (timeSource != null) {
+            updatedWorld = updatedWorld.withWorldTime(timeSource.getTicks());
+        }
+
+        this.worldData = updatedWorld;
+        return updatedWorld;
+    }
+
+    /**
      * Inject the authoritative world clock used when stamping the world-time into saves. The
      * server's {@code ServerLevel} sets this so persistence reflects server time rather than a
      * render-only client's frozen clock. Pass {@code null} to revert to the Game-singleton clock.
@@ -172,19 +204,7 @@ public class SaveService implements AutoCloseable {
         }
 
         long now = System.currentTimeMillis();
-
-        // Update world data with current play time and world time
-        long sessionTime = now - lastAutoSaveTime;
-        WorldData updatedWorld = worldData.withAddedPlayTime(sessionTime);
-
-        // Capture current world time from the authoritative clock (server-owned in the two-world
-        // model; falls back to the Game singleton's clock when none is injected).
-        com.stonebreak.world.TimeOfDay timeSource = resolveWorldTimeSource();
-        if (timeSource != null) {
-            updatedWorld = updatedWorld.withWorldTime(timeSource.getTicks());
-        }
-
-        this.worldData = updatedWorld;
+        WorldData updatedWorld = advanceWorldDataForSave(now);
 
         // Convert player to data model
         PlayerData playerData = StateConverter.toPlayerData(player, updatedWorld.getWorldName());
@@ -381,9 +401,10 @@ public class SaveService implements AutoCloseable {
                     throw new RuntimeException("Metadata save failed (" + work.reason() + ")", e);
                 }
             }, savePool).whenComplete((ignored, throwable) -> {
-                if (throwable == null && work.worldData() != null) {
-                    worldData = work.worldData();
-                } else if (throwable != null) {
+                // No write-back of work.worldData() on success: the snapshot was already
+                // stored by advanceWorldDataForSave, and writing it back here would clobber
+                // any updateWorldData edit (e.g. a /cheats toggle) made while the IO ran.
+                if (throwable != null) {
                     System.err.println("[SAVE] Metadata save failed (" + work.reason() + "): "
                         + throwable.getMessage());
                 }
@@ -431,19 +452,7 @@ public class SaveService implements AutoCloseable {
         }
 
         long started = System.currentTimeMillis();
-
-        // Update world data with current play time and world time
-        long sessionTime = started - lastAutoSaveTime;
-        WorldData updatedWorld = worldData.withAddedPlayTime(sessionTime);
-
-        // Capture current world time from the authoritative clock (server-owned in the two-world
-        // model; falls back to the Game singleton's clock when none is injected).
-        com.stonebreak.world.TimeOfDay timeSource = resolveWorldTimeSource();
-        if (timeSource != null) {
-            updatedWorld = updatedWorld.withWorldTime(timeSource.getTicks());
-        }
-
-        this.worldData = updatedWorld;
+        WorldData updatedWorld = advanceWorldDataForSave(started);
 
         // Convert player to data model
         PlayerData playerData = StateConverter.toPlayerData(player, updatedWorld.getWorldName());

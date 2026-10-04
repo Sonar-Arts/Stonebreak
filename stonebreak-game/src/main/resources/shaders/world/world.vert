@@ -92,7 +92,11 @@ void pullQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, out 
 }
 
 // FastLOD pulled quads (MmsLodQuadCodec): aOrigin.w < -1.5. Same corner tables;
-// half-block y/w/h, unit UVs, and four octahedral corner normals when smooth.
+// half-block y/w/h, and four octahedral corner normals when smooth. UVs tile
+// once per block, anchored to the block grid (region-local position) and
+// oriented like native chunk faces — see MmsLodQuadCodec.texCoord.
+const float LOD_U_SIGN[6] = float[6](1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
+const float LOD_V_SIGN[6] = float[6](1.0, -1.0, -1.0, -1.0, -1.0, -1.0);
 vec3 lodOctDecode(uint p) {
     vec2 e = vec2(float(p & 255u), float((p >> 8u) & 255u)) / 254.0 * 2.0 - 1.0;
     vec3 n = vec3(e.x, 1.0 - abs(e.x) - abs(e.y), e.y);
@@ -129,7 +133,7 @@ void pullLodQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, o
     off[ua] = a * w;
     off[va] = b * h;
     localPos = vec3(x, y, z) + off;
-    uv = vec2(a, b);
+    uv = vec2(LOD_U_SIGN[face] * localPos[ua], LOD_V_SIGN[face] * localPos[va]);
     if (smoothNormals) {
         uint pairWord = corner < 2 ? q.z : q.w;
         nrm = lodOctDecode((pairWord >> (uint(corner & 1) * 16u)) & 65535u);

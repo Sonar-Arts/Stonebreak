@@ -55,7 +55,7 @@ class FastLodSchedulingTest {
         int n = 0;
         for (int dx = -outer; dx <= outer; dx++) {
             for (int dz = -outer; dz <= outer; dz++) {
-                if (FastLodBandPolicy.levelFor(Math.max(Math.abs(dx), Math.abs(dz)), INNER, RANGE) != null) {
+                if (FastLodBandPolicy.levelFor(Math.max(Math.abs(dx), Math.abs(dz)), INNER, RANGE, FastLodQuality.DEFAULT) != null) {
                     n++;
                 }
             }

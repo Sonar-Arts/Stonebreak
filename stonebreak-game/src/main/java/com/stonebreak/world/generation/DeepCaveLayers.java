@@ -71,7 +71,7 @@ final class DeepCaveLayers {
         for (Layer layer : layers) {
             BitSet cave = layer.nativeWormCtx() != 0L
                     ? TerrainGenerationSystem.nativeWormMask(layer.nativeWormCtx(), layer.worms(),
-                        chunkX, chunkZ, standardHeights)
+                        chunkX, chunkZ, standardHeights, dry)
                     : layer.worms().carveMaskForChunk(chunkX, chunkZ, standardHeights, dry);
             CavernCarver.Result caverns = layer.caverns().buildForChunk(chunkX, chunkZ, standardHeights, dry);
             MegaCavernCarver.Result mega = layer.megaCaverns().buildForChunk(chunkX, chunkZ, standardHeights, dry);

@@ -74,12 +74,20 @@ import java.util.Objects;
  *       an empty default list means the block drops nothing; when absent the
  *       game falls back to its built-in rule (a block drops itself). Manifest
  *       only, no ZIP payload; older readers ignore the field.</li>
+ *   <li>1.9 - Mining data. Item SBOs may carry an optional {@code tool}
+ *       section (see {@link ToolData}): a tool class, a tier, a hardness
+ *       multiplier and the block materials it is effective on (plus optional
+ *       durability / attack damage). Block {@link GameProperties} gain an
+ *       optional {@code material} and {@code requiredTier}. A tool speeds up
+ *       breaking a block when the block's material is in the tool's list and
+ *       the tool's tier is at least the block's required tier. Manifest only;
+ *       older readers ignore both.</li>
  * </ul>
  */
 public final class SBOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.8";
+    public static final String FORMAT_VERSION = "1.9";
 
     /** File extension for SBO files */
     public static final String FILE_EXTENSION = ".sbo";
@@ -333,6 +341,8 @@ public final class SBOFormat {
      * @param drops            optional drop table (1.8+): what breaking this
      *                         block yields, with per-tool overrides.
      *                         {@code null} means "use the game's default rule".
+     * @param tool             optional mining-tool descriptor (1.9+) for item
+     *                         SBOs. {@code null} means the item is not a mining tool.
      */
     public record Document(
             String version,
@@ -353,7 +363,8 @@ public final class SBOFormat {
             SmeltingRecipeData smeltingRecipes,
             FuelData fuel,
             com.openmason.engine.format.sound.SoundData sounds,
-            DropData drops
+            DropData drops,
+            ToolData tool
     ) {
         public Document {
             Objects.requireNonNull(version, "version cannot be null");
@@ -452,6 +463,132 @@ public final class SBOFormat {
         public boolean hasDrops() {
             return drops != null;
         }
+
+        /** True when this SBO declares itself a mining tool (1.9+). */
+        public boolean hasTool() {
+            return tool != null;
+        }
+    }
+
+    /**
+     * Optional mining-tool descriptor embedded in an item SBO manifest (1.9+).
+     *
+     * <p>Declares which block materials the tool breaks efficiently and by how
+     * much. Resolution (see {@link #hardnessMultiplier}): a block is sped up
+     * when its {@link GameProperties#material()} is in {@code materials} and
+     * {@code tier >= block.requiredTier}; its hardness is then multiplied by
+     * {@code speedMultiplier} (lower = faster), floored at
+     * {@link #MIN_EFFECTIVE_HARDNESS}. Anything else breaks at full hardness.
+     *
+     * @param toolClass       free-form tool kind ({@code pickaxe}, {@code axe},
+     *                        {@code shovel}, ...); lowercased, never blank
+     * @param tier            tool tier, {@code >= 0} (see {@link #TIER_NAMES})
+     * @param speedMultiplier hardness multiplier on matching blocks, {@code > 0}
+     * @param materials       block materials this tool is effective on;
+     *                        lowercased, de-duplicated, never null, may be empty
+     * @param durability      optional uses before breaking ({@code >= 1});
+     *                        {@code null} = unspecified. Not read by the game yet.
+     * @param attackDamage    optional melee damage ({@code >= 0}); {@code null}
+     *                        = unspecified. Not read by the game yet.
+     */
+    public record ToolData(
+            String toolClass,
+            int tier,
+            float speedMultiplier,
+            List<String> materials,
+            Integer durability,
+            Float attackDamage
+    ) {
+        /** Display names for tiers 0..n; a tier past the end is shown numerically. */
+        public static final List<String> TIER_NAMES = List.of("wood", "stone", "iron", "diamond");
+
+        /** Hardness floor once a tool applies, so a tool never makes a break instantaneous. */
+        public static final float MIN_EFFECTIVE_HARDNESS = 0.1f;
+
+        public ToolData {
+            Objects.requireNonNull(toolClass, "toolClass cannot be null");
+            toolClass = toolClass.trim().toLowerCase(java.util.Locale.ROOT);
+            if (toolClass.isEmpty()) {
+                throw new IllegalArgumentException("toolClass cannot be blank");
+            }
+            if (tier < 0) {
+                throw new IllegalArgumentException("tier must be >= 0, got " + tier);
+            }
+            if (!Float.isFinite(speedMultiplier) || speedMultiplier <= 0f) {
+                throw new IllegalArgumentException("speedMultiplier must be > 0, got " + speedMultiplier);
+            }
+            java.util.LinkedHashSet<String> normalized = new java.util.LinkedHashSet<>();
+            if (materials != null) {
+                for (String m : materials) {
+                    String n = normalizeMaterial(m);
+                    if (n != null) normalized.add(n);
+                }
+            }
+            materials = List.copyOf(normalized);
+            if (durability != null && durability < 1) {
+                throw new IllegalArgumentException("durability must be >= 1, got " + durability);
+            }
+            if (attackDamage != null && (!Float.isFinite(attackDamage) || attackDamage < 0f)) {
+                throw new IllegalArgumentException("attackDamage must be >= 0, got " + attackDamage);
+            }
+        }
+
+        /** True when this tool speeds up a block of {@code material} needing {@code requiredTier}. */
+        public boolean isEffectiveOn(String material, int requiredTier) {
+            String m = normalizeMaterial(material);
+            return m != null && tier >= requiredTier && materials.contains(m);
+        }
+
+        /**
+         * Hardness multiplier for a block of {@code material} needing
+         * {@code requiredTier}: {@code speedMultiplier} when effective, else 1.
+         */
+        public float hardnessMultiplier(String material, int requiredTier) {
+            return isEffectiveOn(material, requiredTier) ? speedMultiplier : 1.0f;
+        }
+
+        /**
+         * Effective break hardness of a block under {@code tool} (nullable =
+         * bare hands): the multiplier applied with the {@link #MIN_EFFECTIVE_HARDNESS}
+         * floor. A multiplier {@code >= 1} leaves the hardness untouched.
+         */
+        public static float effectiveHardness(ToolData tool, String material, int requiredTier, float hardness) {
+            float multiplier = tool == null ? 1.0f : tool.hardnessMultiplier(material, requiredTier);
+            if (multiplier >= 1.0f) {
+                return hardness;
+            }
+            return Math.max(MIN_EFFECTIVE_HARDNESS, hardness * multiplier);
+        }
+
+        /** Display name for a tier ("stone"), or its number when unnamed. */
+        public static String tierName(int tier) {
+            return tier >= 0 && tier < TIER_NAMES.size() ? TIER_NAMES.get(tier) : String.valueOf(tier);
+        }
+
+        /**
+         * Parses a tier written as a number or a name from {@link #TIER_NAMES}
+         * (case-insensitive; "wooden" is accepted for "wood"). Returns -1 when
+         * the text is neither.
+         */
+        public static int parseTier(String text) {
+            if (text == null) return -1;
+            String t = text.trim().toLowerCase(java.util.Locale.ROOT);
+            if (t.equals("wooden")) t = "wood";
+            int named = TIER_NAMES.indexOf(t);
+            if (named >= 0) return named;
+            try {
+                return Integer.parseInt(t);
+            } catch (NumberFormatException ex) {
+                return -1;
+            }
+        }
+    }
+
+    /** Lowercased, trimmed material name, or {@code null} when blank (1.9+). */
+    public static String normalizeMaterial(String material) {
+        if (material == null) return null;
+        String m = material.trim().toLowerCase(java.util.Locale.ROOT);
+        return m.isEmpty() ? null : m;
     }
 
     /**
@@ -722,6 +859,12 @@ public final class SBOFormat {
      *       "TOOLS", "MATERIALS", etc.).</li>
      *   <li>{@code placeable} - whether the item can be placed in the world as a
      *       block. True for all blocks; false for tool/material items.</li>
+     *   <li>{@code material} (1.9+) - block material name ({@code stone},
+     *       {@code wood}, {@code dirt}, ...) that {@link ToolData#materials()}
+     *       lists refer to. Lowercased; {@code null} = no material, so no tool
+     *       speeds the block up.</li>
+     *   <li>{@code requiredTier} (1.9+) - minimum {@link ToolData#tier()} for a
+     *       tool to speed this block up; {@code 0} = any tier.</li>
      * </ul>
      */
     public record GameProperties(
@@ -737,10 +880,30 @@ public final class SBOFormat {
             boolean stackable,
             int maxStackSize,
             String category,
-            boolean placeable
+            boolean placeable,
+            String material,
+            int requiredTier
     ) {
         public GameProperties {
             // renderLayer and category may be null; parser will default them.
+            material = normalizeMaterial(material);
+            requiredTier = Math.max(0, requiredTier);
+        }
+
+        /** Pre-1.9 convenience constructor: no material, any tier. */
+        public GameProperties(int numericId, float hardness, boolean solid, boolean breakable,
+                              int atlasX, int atlasY, String renderLayer, boolean transparent,
+                              boolean flower, boolean stackable, int maxStackSize, String category,
+                              boolean placeable) {
+            this(numericId, hardness, solid, breakable, atlasX, atlasY, renderLayer, transparent,
+                    flower, stackable, maxStackSize, category, placeable, null, 0);
+        }
+
+        /** Copy with the 1.9 mining fields replaced. */
+        public GameProperties withMining(String newMaterial, int newRequiredTier) {
+            return new GameProperties(numericId, hardness, solid, breakable, atlasX, atlasY,
+                    renderLayer, transparent, flower, stackable, maxStackSize, category,
+                    placeable, newMaterial, newRequiredTier);
         }
 
         /** Convenience: returns the render layer or "OPAQUE" if absent. */
@@ -802,6 +965,7 @@ public final class SBOFormat {
         private FuelData fuel;
         private final List<com.openmason.engine.format.sound.SoundSpec> sounds = new ArrayList<>();
         private DropData drops;
+        private ToolData tool;
 
         public ExportParameters() {}
 
@@ -855,6 +1019,9 @@ public final class SBOFormat {
 
         public DropData getDrops() { return drops; }
         public void setDrops(DropData drops) { this.drops = drops; }
+
+        public ToolData getTool() { return tool; }
+        public void setTool(ToolData tool) { this.tool = tool; }
 
         /**
          * Validates that all required fields are populated.

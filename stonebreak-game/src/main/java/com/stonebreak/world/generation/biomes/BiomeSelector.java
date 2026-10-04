@@ -7,10 +7,11 @@ import com.stonebreak.world.generation.noise.MultiNoiseSample;
  * noise tuple. Biomes are matched to terrain shape — selection does NOT alter shape.
  *
  * Precedence, top-down:
- *   1. Coastal shelves (low continentalness + low peaks) → beach variants
- *   2. Mountainous shape (high peaks/valleys) → peak biomes, climate-skinned
- *   3. Hilly shape (mid peaks/valleys) → rolling biomes, climate-skinned
- *   4. Flatland (low peaks/valleys) → swamp on flat, wet, non-cold lowland; otherwise pure
+ *   1. Submerged columns (surface under sea level) → ocean, or ice fields when frozen
+ *   2. Coastal shelves (low continentalness + low peaks) → beach variants
+ *   3. Mountainous shape (high peaks/valleys) → peak biomes, climate-skinned
+ *   4. Hilly shape (mid peaks/valleys) → rolling biomes, climate-skinned
+ *   5. Flatland (low peaks/valleys) → swamp on flat, wet, non-cold lowland; otherwise pure
  *      climate Whittaker selection
  */
 public final class BiomeSelector {
@@ -46,7 +47,14 @@ public final class BiomeSelector {
     private static final float SWAMP_MAX_C = 0.20f;
     private static final float SWAMP_MIN_PV = -0.30f;
 
-    public BiomeType select(MultiNoiseSample s) {
+    /**
+     * @param submerged whether the column's final surface is under sea level. Standard's only
+     *                  standing water is the sea, so a submerged column is exactly an ocean one.
+     */
+    public BiomeType select(MultiNoiseSample s, boolean submerged) {
+        if (submerged) {
+            return ocean(s);
+        }
         if (s.continentalness() < COAST_MAX_C && s.peaksValleys() < BEACH_MAX_PV) {
             return coastal(s);
         }
@@ -57,6 +65,11 @@ public final class BiomeSelector {
             return hilly(s);
         }
         return flatland(s);
+    }
+
+    /** Frozen seas are ice fields; every other sea is OCEAN (as DaedalusTGM-Exp maps its ocean ids). */
+    private BiomeType ocean(MultiNoiseSample s) {
+        return s.temperature() < T_FREEZING ? BiomeType.ICE_FIELDS : BiomeType.OCEAN;
     }
 
     private BiomeType coastal(MultiNoiseSample s) {

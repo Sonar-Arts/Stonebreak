@@ -8,8 +8,7 @@ import java.nio.ByteBuffer;
  * The 16-byte per-quad record behind {@link MmsVertexFormat#LODQUAD16} — the
  * vertex-pulling format for FastLOD terrain. LOD geometry is axis-aligned
  * rectangles too, but unlike chunk quads it needs tall spans (foundations down
- * to y=0), half-block Y (tree canopies), unit-square UVs whatever the cell
- * size, and SMOOTH per-corner normals on the terrain tops — so it trades
+ * to y=0), half-block Y (tree canopies) and SMOOTH per-corner normals on the terrain tops — so it trades
  * per-corner light (LOD light is 0 or 1 per quad) for four octahedral normals.
  *
  * <pre>
@@ -24,7 +23,13 @@ import java.nio.ByteBuffer;
  * word3: oct(n2) | oct(n3)      MmsCuboidGenerator.FACE_VERTEX_OFFSETS; used when smooth=1
  * </pre>
  *
- * Corners, winding and normals share {@link MmsCuboidGenerator}'s tables with
+ * <p>UVs are not stored: they are derived from the corner's region-local
+ * position ({@link #texCoord}), tiling the layer once per block on the block
+ * grid with native chunk faces' orientation — so a cell, a merged rectangle
+ * or a 200-block foundation all show native texel density (the block texture
+ * array samples with {@code GL_REPEAT}).
+ *
+ * <p>Corners, winding and normals share {@link MmsCuboidGenerator}'s tables with
  * {@link MmsQuadCodec}; the GLSL mirror is {@code pullLodQuad} in
  * {@code world.vert} (selected by {@code aOrigin.w < -1.5}).
  */
@@ -185,11 +190,33 @@ public final class MmsLodQuadCodec {
         };
     }
 
-    /** Unit-square UV of a corner (FastLOD stretches one tile over the whole cell). */
+    /**
+     * Sign of U / V along the face's u / v axis, matching the native chunk
+     * frame (the array mapper's unit square on {@link MmsCuboidGenerator}'s
+     * corner order): top U+x V+z; bottom V−z; sides V down (−y); north and
+     * east run U against their axis. GLSL mirror: {@code LOD_U_SIGN}/{@code LOD_V_SIGN}.
+     */
+    private static final float[] U_SIGN = {1f, 1f, -1f, 1f, -1f, 1f};
+    private static final float[] V_SIGN = {1f, -1f, -1f, -1f, -1f, -1f};
+
+    /**
+     * Block-tiled UV component {@code c} (0=u, 1=v) of a point on a face, given
+     * its position relative to a block-aligned origin. One repetition per
+     * block; values outside 0..1 rely on the array's {@code GL_REPEAT}.
+     */
+    public static float tiledTexCoord(int face, float x, float y, float z, int c) {
+        int axis = c == 0 ? MmsCuboidGenerator.uAxis(face) : MmsCuboidGenerator.vAxis(face);
+        float p = axis == 0 ? x : axis == 1 ? y : z;
+        return (c == 0 ? U_SIGN[face] : V_SIGN[face]) * p;
+    }
+
+    /** Block-tiled UV of a corner — the CPU mirror of {@code pullLodQuad}. */
     public static float texCoord(ByteBuffer quads, int q, int corner, int c) {
         int face = face(quads.getInt(q * QUAD_BYTES));
-        int axis = c == 0 ? MmsCuboidGenerator.uAxis(face) : MmsCuboidGenerator.vAxis(face);
-        return MmsCuboidGenerator.cornerOffset(face, corner, axis);
+        return tiledTexCoord(face,
+            position(quads, q, corner, 0, 0f, 0f, 0f),
+            position(quads, q, corner, 1, 0f, 0f, 0f),
+            position(quads, q, corner, 2, 0f, 0f, 0f), c);
     }
 
     public static float normal(ByteBuffer quads, int q, int corner, int c) {

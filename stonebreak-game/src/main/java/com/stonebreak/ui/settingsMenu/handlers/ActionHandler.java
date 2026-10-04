@@ -61,6 +61,7 @@ public class ActionHandler {
             case SHADOW_DISTANCE -> {} // Shadow distance handled by mouse/keyboard interaction
             case SMOOTH_LIGHTING -> toggleSmoothLighting();
             case LOD_ENABLED -> toggleLodEnabled();
+            case LOD_QUALITY -> stateManager.getLodQualityButton().toggle();
             case VSYNC -> toggleVsync();
             case MAX_FPS -> {} // Max FPS handled by mouse/keyboard interaction
             case APPLY -> applySettings();
@@ -363,6 +364,25 @@ public class ActionHandler {
      * pass reads the setting live each frame and rebuilds its depth maps as needed,
      * so this applies immediately; persistence still waits for Apply / save.
      */
+    public void onLodQualityChange() {
+        applyLodQuality(stateManager.getLodQualityButton().selectedIndex());
+    }
+
+    /**
+     * Stores the LOD quality preset and pushes it to the live world config, so
+     * the ring re-levels immediately (band changes cross-fade node by node);
+     * persistence still waits for Apply / save.
+     */
+    public void applyLodQuality(int index) {
+        String value = com.stonebreak.ui.settingsMenu.config.SettingsConfig.LOD_QUALITY_VALUES[index];
+        settings.setLodQuality(value);
+        stateManager.setSelectedLodQualityIndex(index);
+        com.stonebreak.world.World world = Game.getWorld();
+        if (world != null && world.getConfig() != null) {
+            world.getConfig().setLodQuality(com.stonebreak.world.fastlod.FastLodQuality.parse(value));
+        }
+    }
+
     public void onShadowQualityChange() {
         int newIndex = stateManager.getShadowQualityButton().selectedIndex();
         settings.setShadowQuality(com.stonebreak.ui.settingsMenu.config.SettingsConfig.SHADOW_QUALITY_VALUES[newIndex]);

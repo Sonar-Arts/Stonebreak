@@ -80,6 +80,19 @@ public final class SettingsConfig {
     public static final float MAX_RENDER_DISTANCE = com.stonebreak.world.operations.WorldConfiguration.MAX_RENDER_DISTANCE;
     public static final float MIN_LOD_DISTANCE = com.stonebreak.world.operations.WorldConfiguration.MIN_LOD_RANGE;
     public static final float MAX_LOD_DISTANCE = com.stonebreak.world.operations.WorldConfiguration.MAX_LOD_RANGE;
+
+    /** Distant-terrain fidelity presets, in {@link com.stonebreak.world.fastlod.FastLodQuality} order. */
+    public static final String[] LOD_QUALITY_VALUES;
+    public static final String[] LOD_QUALITY_NAMES;
+    static {
+        com.stonebreak.world.fastlod.FastLodQuality[] q = com.stonebreak.world.fastlod.FastLodQuality.values();
+        LOD_QUALITY_VALUES = new String[q.length];
+        LOD_QUALITY_NAMES = new String[q.length];
+        for (int i = 0; i < q.length; i++) {
+            LOD_QUALITY_VALUES[i] = q[i].name();
+            LOD_QUALITY_NAMES[i] = q[i].label();
+        }
+    }
     
     // ===== TWO-PANEL LAYOUT POSITIONING =====
     
@@ -160,6 +173,10 @@ public final class SettingsConfig {
      * @param currentQuality the shadow quality value to find
      * @return the index, or 1 (Medium) if not found
      */
+    public static int findLodQualityIndex(String currentQuality) {
+        return com.stonebreak.world.fastlod.FastLodQuality.parse(currentQuality).ordinal();
+    }
+
     public static int findShadowQualityIndex(String currentQuality) {
         for (int i = 0; i < SHADOW_QUALITY_VALUES.length; i++) {
             if (SHADOW_QUALITY_VALUES[i].equals(currentQuality)) {

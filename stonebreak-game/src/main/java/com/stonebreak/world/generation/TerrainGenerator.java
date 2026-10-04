@@ -81,6 +81,26 @@ public interface TerrainGenerator {
                        int[] outHeights, int[] outWaterLevels, BlockType[] outSurface,
                        VegetationGenerator.TreeSample[] outTrees);
 
+    /**
+     * {@link #sampleColumns} without the carve, for FastLOD's coarsest levels: heights are the
+     * raw terrain height and surfaces the uncarved top, and no trees are sampled. Generators
+     * with no cheaper uncarved path report the carved columns.
+     */
+    default void sampleRawColumns(int worldX0, int worldZ0, int count, int stride,
+                                  int[] outHeights, int[] outWaterLevels, BlockType[] outSurface) {
+        sampleColumns(worldX0, worldZ0, count, stride, outHeights, outWaterLevels, outSurface, null);
+    }
+
+    /**
+     * Every tree the generator plants inside a coarse FastLOD node, packed by
+     * {@code FastLodChunkData.packTreeSpot}. {@code cellHeights} are world Y. Empty when the
+     * generator cannot probe its trees.
+     */
+    default int[] probeCellTrees(int chunkX, int chunkZ, int cellsPerAxis, int cellSize,
+                                 int[] cellHeights, BlockType[] cellSurface) {
+        return new int[0];
+    }
+
     /** Terrain blocks for a chunk; features are populated later, once neighbours exist. */
     TerrainResult generateTerrainOnly(int chunkX, int chunkZ);
 

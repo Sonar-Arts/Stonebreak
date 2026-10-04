@@ -13,5 +13,18 @@ com.stonebreak.world.save.io.ChunkCodecZstdTest
 com.stonebreak.world.bench.ChunkFootprintLabTest
 com.stonebreak.world.bench.PulledQuadRenderTest
 
+# FastLOD ring measurements (-Dstonebreak.bench=true).
+com.stonebreak.world.bench.FastLodRingLabTest
+com.stonebreak.world.fastlod.FastLodRingTickLabTest
+
 # Real-display arena render check (-Dstonebreak.battletest.gl=true).
 com.stonebreak.battletest.BattleTestRenderTest
+
+# UI program spikes (#283): need the Cenda library (Lua host / Yoga) or a display
+# (-Dstonebreak.ui.gl=true).
+com.openmason.engine.cenda.CendaLuaTest
+com.openmason.engine.cenda.CendaLuaBenchmarkTest
+com.openmason.engine.ui.layoutspike.FlexLayoutSpikeTest
+com.stonebreak.ui.scripting.LuaHostGameSmokeTest
+com.openmason.main.systems.scripting.LuaHostToolSmokeTest
+com.stonebreak.rendering.UI.masonryUI.RenderTargetSpikeTest

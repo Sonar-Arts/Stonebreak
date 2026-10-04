@@ -22,7 +22,7 @@ class SwampBiomeTest {
 
     /** c, erosion, pv, temperature, moisture. */
     private BiomeType select(float c, float e, float pv, float t, float m) {
-        return selector.select(new MultiNoiseSample(c, e, pv, t, m));
+        return selector.select(new MultiNoiseSample(c, e, pv, t, m), false);
     }
 
     @Test

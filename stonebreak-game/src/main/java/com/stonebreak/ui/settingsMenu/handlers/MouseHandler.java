@@ -92,6 +92,7 @@ public final class MouseHandler {
         stateManager.getLodDistanceSlider().updateHover(mouseX, mouseY);
         stateManager.getUiScaleSlider().updateHover(mouseX, mouseY);
         stateManager.getLodEnabledButton().updateHover(mouseX, mouseY);
+        stateManager.getLodQualityButton().updateHover(mouseX, mouseY);
         stateManager.getVsyncButton().updateHover(mouseX, mouseY);
         stateManager.getMaxFpsSlider().updateHover(mouseX, mouseY);
     }
@@ -147,6 +148,9 @@ public final class MouseHandler {
         if (stateManager.getShadowQualityButton().isOpen()) {
             return stateManager.getShadowQualityButton().handleClick(mouseX, mouseY);
         }
+        if (stateManager.getLodQualityButton().isOpen()) {
+            return stateManager.getLodQualityButton().handleClick(mouseX, mouseY);
+        }
         return false;
     }
 
@@ -171,6 +175,7 @@ public final class MouseHandler {
             case RENDER_DISTANCE   -> stateManager.getRenderDistanceSlider().handleClick(mouseX, mouseY);
             case LOD_DISTANCE      -> stateManager.getLodDistanceSlider().handleClick(mouseX, mouseY);
             case LOD_ENABLED       -> stateManager.getLodEnabledButton().handleClick(mouseX, mouseY);
+            case LOD_QUALITY       -> stateManager.getLodQualityButton().handleClick(mouseX, mouseY);
             case VSYNC             -> stateManager.getVsyncButton().handleClick(mouseX, mouseY);
             case MAX_FPS           -> stateManager.getMaxFpsSlider().handleClick(mouseX, mouseY);
             case UI_SCALE          -> stateManager.getUiScaleSlider().handleClick(mouseX, mouseY);

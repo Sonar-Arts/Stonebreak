@@ -24,7 +24,7 @@ public class WorldConfiguration {
     // LOD (distant terrain) settings
     public static final int DEFAULT_LOD_RANGE = 24;
     public static final int MIN_LOD_RANGE = 0;
-    public static final int MAX_LOD_RANGE = 48;
+    public static final int MAX_LOD_RANGE = 64;
     public static final boolean DEFAULT_LOD_ENABLED = true;
 
     // Render-distance bounds for settings UI / runtime tuning.
@@ -49,6 +49,8 @@ public class WorldConfiguration {
     private final int chunkBuildThreads;
     private volatile int lodRange;
     private volatile boolean lodEnabled;
+    private volatile com.stonebreak.world.fastlod.FastLodQuality lodQuality =
+        com.stonebreak.world.fastlod.FastLodQuality.DEFAULT;
 
     public WorldConfiguration() {
         this(DEFAULT_RENDER_DISTANCE, calculateOptimalThreadCount());
@@ -81,6 +83,10 @@ public class WorldConfiguration {
         return lodEnabled;
     }
 
+    public com.stonebreak.world.fastlod.FastLodQuality getLodQuality() {
+        return lodQuality;
+    }
+
     public int getBorderChunkDistance() {
         return renderDistance + 1;
     }
@@ -95,6 +101,10 @@ public class WorldConfiguration {
 
     public void setLodEnabled(boolean value) {
         this.lodEnabled = value;
+    }
+
+    public void setLodQuality(com.stonebreak.world.fastlod.FastLodQuality value) {
+        this.lodQuality = value != null ? value : com.stonebreak.world.fastlod.FastLodQuality.DEFAULT;
     }
 
     private static int calculateOptimalThreadCount() {

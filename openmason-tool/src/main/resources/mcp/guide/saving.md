@@ -31,15 +31,17 @@ A decline is `reason: user_declined|timeout|busy|prompt_unavailable`, never a pr
   handed to the SBO/SBE editor window like the UI export. Source files inside `params` (clips, override models,
   sound samples) must live inside a root.
 - `sbo_editor_open/get/set/save`, `sbe_editor_*`: drive the editor windows the user sees. `get` returns the
-  draft manifest; `set` patches metadata / gameProperties / sounds / drops (states and embedded bytes stay);
+  draft manifest; `set` patches metadata / gameProperties / sounds / drops / tool (states and embedded bytes stay);
   `save` validates like the Save button and writes through the sandbox — a shipped asset is under `game:`, so it asks.
 
 **`sbo_export` params** — `objectId`, `objectName`, `objectType` (block|item|entity|decoration|particle|other),
 `objectPack`, `author`, `description`, `gameProperties{numericId, hardness, solid, breakable, atlasX, atlasY,
-renderLayer, transparent, flower, stackable, maxStackSize, category, placeable}`, `states[{name, omo?, clip?,
+renderLayer, transparent, flower, stackable, maxStackSize, category, placeable, material, requiredTier}`, `states[{name, omo?, clip?,
 loop?: clip_default|loop|once}]`, `defaultState`, `sounds[{event, file?|resource?, volume, pitchMin, pitchMax,
 variation}]`, `drops{drops[{objectId, min, max, chance}], toolOverrides[{tool, drops[]}]}` (`"drops": []` =
-drops nothing; absent = game default). Missing fields get the export window's defaults: next free `numericId`,
+drops nothing; absent = game default), `tool{toolClass, tier (int or wood|stone|iron|diamond), speedMultiplier
+(hardness ×, lower = faster), materials[], durability?, attackDamage?}` (items; speeds up blocks whose
+`gameProperties.material` is listed when `tier >= requiredTier`). Missing fields get the export window's defaults: next free `numericId`,
 a free atlas slot, `stonebreak:<slug>` id, the OS user as author.
 
 **Texture-only SBO** (the Texture Editor's Export SBO) — `sbo_export` with `source: "texture"`: the payload is
@@ -55,4 +57,4 @@ Exports into `game:sbo/items/` and opens in the SBO editor.
 
 **`*_editor_set` patch** — SBO: `objectId`, `objectName`, `objectType`, `objectPack`, `author`, `description`,
 `gameProperties{…}` (merged; `null` removes), `defaultStateName`, `fuel{burnTicks}|null`, `sounds[]`
-(`resource:` or an already-embedded `filename`), `drops{…}|null`. SBE: the metadata fields, `entityType`, `sounds[]`.
+(`resource:` or an already-embedded `filename`), `drops{…}|null`, `tool{…}|null`. SBE: the metadata fields, `entityType`, `sounds[]`.

@@ -68,4 +68,18 @@ if [[ -f "$HEADER" && -f "$BINDING" ]]; then
   fi
 fi
 
+# Same guard for the Lua host (#283/#292), which shares the library but has its own
+# handshake. UI scripting has no Java fallback, so a mismatch here means scripted UI
+# documents fail to load — CendaLua throws with this same diagnostic at startup.
+LUA_HEADER="$HERE/native/kernels/include/cenda/lua_host.h"
+LUA_BINDING="$HERE/../src/main/java/com/openmason/engine/cenda/CendaLua.java"
+if [[ -f "$LUA_HEADER" && -f "$LUA_BINDING" ]]; then
+  NATIVE_CL="$(sed -n 's/^#define CL_ABI_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' "$LUA_HEADER" | head -1)"
+  JAVA_CL="$(sed -n 's/.*EXPECTED_ABI[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' "$LUA_BINDING" | head -1)"
+  if [[ -n "$NATIVE_CL" && -n "$JAVA_CL" && "$NATIVE_CL" != "$JAVA_CL" ]]; then
+    warn "Lua host ABI mismatch: lua_host.h exports $NATIVE_CL but CendaLua.EXPECTED_ABI is $JAVA_CL."
+    warn "UI scripting will be UNAVAILABLE (no fallback). Fix one side to match."
+  fi
+fi
+
 echo "[cenda] kernels ready: $LIB"

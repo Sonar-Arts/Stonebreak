@@ -177,6 +177,7 @@ public class Main {
 
             Game.getInstance().update();
             maybeAutoStartWorld();
+            maybeAutoView();
             Game.displayDebugInfo();
             inputRouter.pollActiveScreen();
 
@@ -235,6 +236,59 @@ public class Main {
         }
         System.out.println("[autoworld] starting singleplayer world '" + name + "' seed " + seed);
         com.stonebreak.network.MultiplayerSession.startSingleplayer(name, seed);
+    }
+
+    // ─── Dev: -Dstonebreak.autoview=<x>:<y>:<z>:<yaw>:<pitch> ────────────────
+    //          -Dstonebreak.autolod=<LOW|MEDIUM|HIGH|ULTRA>[:<lodDistance>]
+
+    private boolean autoViewArmed;
+
+    /**
+     * Development shortcut paired with {@code stonebreak.autoworld}: once the
+     * world is entered, holds the player as a spectator at a fixed point with a
+     * fixed camera, so distant-terrain (FastLOD) changes can be screenshotted
+     * from the same viewpoint run after run. {@code stonebreak.autolod}
+     * overrides the LOD quality preset (and optionally the LOD distance) for
+     * this session only — nothing is saved. Inert unless a property is set.
+     */
+    private void maybeAutoView() {
+        if (Game.getInstance().getState() != GameState.PLAYING) {
+            return;
+        }
+        if (!autoViewArmed) {
+            autoViewArmed = true;
+            String lod = System.getProperty("stonebreak.autolod");
+            if (lod != null && !lod.isBlank()) {
+                String[] p = lod.split(":");
+                var settings = com.stonebreak.config.Settings.getInstance();
+                settings.setLodQuality(p[0]);
+                if (p.length > 1) {
+                    settings.setLodDistance(Integer.parseInt(p[1]));
+                }
+                var world = Game.getWorld();
+                if (world != null && world.getConfig() != null) {
+                    world.getConfig().setLodQuality(
+                            com.stonebreak.world.fastlod.FastLodQuality.parse(settings.getLodQuality()));
+                    world.getConfig().setLodRange(settings.getLodDistance());
+                }
+                System.out.println("[autoview] LOD quality " + settings.getLodQuality()
+                        + ", distance " + settings.getLodDistance());
+            }
+        }
+        String spec = System.getProperty("stonebreak.autoview");
+        var player = Game.getPlayer();
+        if (spec == null || spec.isBlank() || player == null) {
+            return;
+        }
+        String[] p = spec.split(":");
+        if (p.length < 5) {
+            return;
+        }
+        player.setSpectator(true);
+        player.setPosition(Float.parseFloat(p[0]), Float.parseFloat(p[1]), Float.parseFloat(p[2]));
+        player.setVelocity(new org.joml.Vector3f());
+        player.getCamera().setYaw(Float.parseFloat(p[3]));
+        player.getCamera().setPitch(Float.parseFloat(p[4]));
     }
 
     // ─── Dev: -Dstonebreak.autotorch=<seconds>[:night][:cluster] ─────────────
