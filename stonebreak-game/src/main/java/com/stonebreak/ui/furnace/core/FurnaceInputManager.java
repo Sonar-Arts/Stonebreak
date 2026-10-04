@@ -131,26 +131,28 @@ public class FurnaceInputManager {
                                   InventoryLayoutCalculator.InventoryLayout layout) {
         FurnaceSlot slot = hitTestFurnaceSlots(mouseX, mouseY, layout);
         if (slot == null) return;
+        shiftClickSlot(slot.id);
+    }
 
-        if (slot.id == FurnaceController.SLOT_OUTPUT) {
-            // Move output to inventory
-            ItemStack out = controller.getOutputSlot();
-            if (!out.isEmpty()) {
-                if (!inventory.addItem(out.copy())) {
-                    com.stonebreak.player.Player player = Game.getPlayer();
-                    if (player != null)
-                        com.stonebreak.util.DropUtil.dropItemFromPlayer(player, out.copy());
-                }
-                controller.setOutputSlot(new ItemStack(0, 0));
-            }
-        } else {
-            // Move ingredient/fuel to inventory
-            ItemStack item = getFurnaceSlot(slot.id);
-            if (!item.isEmpty()) {
-                inventory.addItem(item.copy());
-                setFurnaceSlot(slot.id, new ItemStack(0, 0));
+    /**
+     * Moves a furnace slot's stack into the inventory. Only what fits moves:
+     * an ingredient/fuel remainder stays in its slot; output overflow keeps its
+     * drop-at-feet behaviour, but only the overflow is dropped (#319 — the old
+     * code cleared the slot regardless, deleting the remainder, and dropped the
+     * whole output stack after a partial add, duplicating it).
+     */
+    void shiftClickSlot(int slotId) {
+        ItemStack item = getFurnaceSlot(slotId);
+        if (item.isEmpty()) return;
+        ItemStack remainder = FurnaceShiftTransfer.intoInventory(item, inventory);
+        if (slotId == FurnaceController.SLOT_OUTPUT && !remainder.isEmpty()) {
+            com.stonebreak.player.Player player = Game.getPlayer();
+            if (player != null) {
+                com.stonebreak.util.DropUtil.dropItemFromPlayer(player, remainder);
+                remainder = new ItemStack(0, 0);
             }
         }
+        setFurnaceSlot(slotId, remainder);
     }
 
     /* ── Right-click (drop one) ──────────────────────────── */

@@ -32,6 +32,10 @@ public class FurnaceController {
     /** Last slot snapshot sent to the server, for the per-frame dirty check. */
     private String lastSentSlots;
 
+    /** Where slot snapshots go: the server, through the multiplayer session. */
+    private SlotSink slotSink = (pos, slots) ->
+        com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(pos.x(), pos.y(), pos.z(), slots);
+
     private ItemStack hoveredItemStack;
 
     // ── Furnace slot identifiers (for input manager) ─────────
@@ -56,7 +60,12 @@ public class FurnaceController {
     /** Bind the UI to the furnace block at {@code pos} and show it. */
     public void open(BlockPos pos) {
         FurnaceStateRegistry registry = game.getFurnaceRegistry();
-        this.state = (registry != null) ? registry.getOrCreate(pos) : new FurnaceState(pos);
+        bind((registry != null) ? registry.getOrCreate(pos) : new FurnaceState(pos));
+    }
+
+    /** Shows the UI bound to {@code furnace}; {@link #open} resolves it from the registry. */
+    void bind(FurnaceState furnace) {
+        this.state = furnace;
         this.visible = true;
         // Echoes keep arriving while the UI is closed (every cook tick), and the first one
         // leaves a pre-echo snapshot that nothing consumes. It is not an edit of ours: left in
@@ -69,6 +78,10 @@ public class FurnaceController {
 
     public void close() {
         if (inputManager != null) inputManager.handleCloseWithDraggedItems();
+        // A carried stack may just have gone back into a furnace slot. Ship that
+        // to the server now: once `state` is null the per-frame dirty check never
+        // runs again, and the next echo would overwrite the restore (#320).
+        if (state != null) syncSlots();
         // Do NOT dump contents or clear state — the registry owns it and keeps ticking.
         this.visible = false;
         this.state = null;
@@ -93,24 +106,39 @@ public class FurnaceController {
         // clicked output). So when an echo landed since the last frame, first flush any edit
         // made before it (the pre-echo snapshot), then adopt the echoed slots as the baseline.
         if (visible && state != null) {
-            String preEcho = state.consumePreEchoSlots();
-            if (preEcho != null) {
-                if (!preEcho.equals(lastSentSlots)) {
-                    sendSlots(preEcho);
-                }
-                lastSentSlots = state.encodeSlots();
+            syncSlots();
+        }
+    }
+
+    /** Sends the slot snapshot if it changed since the last send (see {@link #update}). */
+    private void syncSlots() {
+        String preEcho = state.consumePreEchoSlots();
+        if (preEcho != null) {
+            if (!preEcho.equals(lastSentSlots)) {
+                sendSlots(preEcho);
             }
-            String slots = state.encodeSlots();
-            if (!slots.equals(lastSentSlots)) {
-                sendSlots(slots);
-            }
+            lastSentSlots = state.encodeSlots();
+        }
+        String slots = state.encodeSlots();
+        if (!slots.equals(lastSentSlots)) {
+            sendSlots(slots);
         }
     }
 
     private void sendSlots(String slots) {
         lastSentSlots = slots;
-        com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(
-            state.getPos().x(), state.getPos().y(), state.getPos().z(), slots);
+        slotSink.send(state.getPos(), slots);
+    }
+
+    /** Receives slot snapshots bound for the server. */
+    @FunctionalInterface
+    interface SlotSink {
+        void send(BlockPos pos, String slots);
+    }
+
+    /** Test seam: capture slot snapshots instead of sending them. */
+    void setSlotSink(SlotSink sink) {
+        this.slotSink = sink;
     }
 
     /* ── Input / rendering delegates ─────────────────────── */
