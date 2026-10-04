@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Pins the committed golden archives in {@code src/test/resources/ui/omui/} — the
  * language-neutral conformance data for a future C++ reader/writer (wire contract:
- * {@code docs/ui-program/omui-sbui-wire-contract.md}). Archives are byte-compared: entries
+ * {@code openmason-engine/docs/ui-program/omui-sbui-wire-contract.md}). Archives are byte-compared: entries
  * are stored uncompressed, so the bytes do not depend on the platform zlib. Regenerate after
  * an intentional format change with {@code -Dui.fixtures.write=true}, then review the
  * unpacked {@code pause_menu/} diff.

@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
 
 /**
  * Constants of the OMUI container and schema (issue #284). The normative description is
- * {@code docs/ui-program/omui-sbui-wire-contract.md}; golden fixtures live under
+ * {@code openmason-engine/docs/ui-program/omui-sbui-wire-contract.md}; golden fixtures live under
  * {@code openmason-engine/src/test/resources/ui/omui/}.
  *
  * <p>Version boundaries are independent: the container/schema ({@link #SCHEMA_VERSION}),

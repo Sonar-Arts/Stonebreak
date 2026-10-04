@@ -13,7 +13,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Keeps the #283 UI migration ledger ({@code docs/ui-program/ui-migration-ledger.md})
+ * Keeps the #283 UI migration ledger ({@code openmason-engine/docs/ui-program/ui-migration-ledger.md})
  * from going stale: every screen, menu, overlay and HUD renderer class — plus
  * every Focus-battle element — must be named in it. Adding a UI class without
  * a ledger row fails here, before a migration can quietly drop it.
@@ -41,7 +41,7 @@ class UiMigrationLedgerCoverageTest {
                 .toList();
         }
         assertTrue(missing.isEmpty(), "UI classes with no ledger row (add them to "
-            + "docs/ui-program/ui-migration-ledger.md): " + missing);
+            + "openmason-engine/docs/ui-program/ui-migration-ledger.md): " + missing);
     }
 
     private static boolean inWholePackage(Path p) {
@@ -50,8 +50,8 @@ class UiMigrationLedgerCoverageTest {
     }
 
     private static Path ledgerPath() {
-        for (Path candidate : List.of(Path.of("../docs/ui-program/ui-migration-ledger.md"),
-            Path.of("docs/ui-program/ui-migration-ledger.md"))) {
+        for (Path candidate : List.of(Path.of("../openmason-engine/docs/ui-program/ui-migration-ledger.md"),
+            Path.of("openmason-engine/docs/ui-program/ui-migration-ledger.md"))) {
             if (Files.isRegularFile(candidate)) {
                 return candidate;
             }
