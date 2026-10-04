@@ -15,6 +15,6 @@ public enum BiomeType {
     ICE_FIELDS,
     BADLANDS,
     MEADOW,
-    /** Open sea floor (DaedalusTGM-Exp ocean ids). Appended last: ordinals of existing biomes stay put. */
+    /** Open sea floor: every submerged column in Standard, the ocean ids in DaedalusTGM-Exp. Appended last: ordinals of existing biomes stay put. */
     OCEAN
 }

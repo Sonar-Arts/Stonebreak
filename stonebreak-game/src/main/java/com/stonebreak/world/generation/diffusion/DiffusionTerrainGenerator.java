@@ -16,6 +16,7 @@ import com.stonebreak.world.chunk.ChunkWaterLayer;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.diffusion.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.biomes.OceanFloor;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.diffusion.TerrainTileSource;
 import com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe;
@@ -933,22 +934,9 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         };
     }
 
-    /** Per-column surface: the biome's surface block, except the sea floor mixes 97% sand, 2% dirt, 1% clay. */
+    /** Per-column surface: the biome's surface block, except the sea floor mixes in dirt and clay ({@link OceanFloor}). */
     static BlockType surfaceBlockAt(BiomeType biome, int worldX, int worldZ, long seed) {
-        return biome == BiomeType.OCEAN ? oceanFloorBlock(worldX, worldZ, seed) : surfaceBlock(biome);
-    }
-
-    /**
-     * Sea-floor material for one column: 97% sand, 2% dirt, 1% clay, from a hash of the world seed and
-     * the column, so every column always gets the same block whatever order chunks generate in.
-     */
-    static BlockType oceanFloorBlock(int worldX, int worldZ, long seed) {
-        long h = seed ^ 0x6F63_6561_6E66_6CL;            // "oceanfl"
-        h = (h ^ (worldX * 0x9E37_79B9_7F4A_7C15L)) * 0xBF58_476D_1CE4_E5B9L;
-        h = (h ^ (worldZ * 0xC2B2_AE3D_27D4_EB4FL)) * 0x94D0_49BB_1331_11EBL;
-        h ^= h >>> 31;
-        int r = (int) Long.remainderUnsigned(h, 100);
-        return r < 97 ? BlockType.SAND : (r < 99 ? BlockType.DIRT : BlockType.CLAY);
+        return biome == BiomeType.OCEAN ? OceanFloor.block(worldX, worldZ, seed) : surfaceBlock(biome);
     }
 
     private static BlockType surfaceBlock(BiomeType biome) {
