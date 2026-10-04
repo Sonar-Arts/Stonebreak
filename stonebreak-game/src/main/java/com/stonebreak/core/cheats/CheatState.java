@@ -1,30 +1,31 @@
 package com.stonebreak.core.cheats;
 
-import com.stonebreak.core.services.GameServices;
-import com.stonebreak.core.world.WorldSession;
-import com.stonebreak.world.save.SaveService;
-import com.stonebreak.world.save.model.WorldData;
-
 /**
- * Runtime cheats toggle and its persistence hook. Holds the in-session flag and,
- * when toggled from inside a world, pushes the change into the session's
- * {@link WorldData} and {@link SaveService} so it survives the next save.
+ * Runtime cheats toggle. The flag is a per-world setting owned by the world's server
+ * ({@code ServerLevel} persists it in {@code WorldData}); this class holds the client's
+ * mirror of it and routes in-world toggles to that authority. The server echoes the
+ * authoritative value back via {@code CheatsStateS2C} → {@link #setEnabled(boolean)}, both
+ * on join (restoring a loaded world's saved flag) and after every accepted toggle.
  */
 public final class CheatState {
 
-    private final GameServices services;
-    private final WorldSession session;
-    private boolean cheatsEnabled = false;
+    /** The world authority a toggle is requested from. */
+    @FunctionalInterface
+    public interface Authority {
+        /** Ask the authority to adopt {@code enabled}; false = this client may not change it. */
+        boolean requestSet(boolean enabled);
+    }
 
-    public CheatState(GameServices services, WorldSession session) {
-        this.services = services;
-        this.session = session;
+    private final Authority authority;
+    private volatile boolean cheatsEnabled = false;
+
+    public CheatState(Authority authority) {
+        this.authority = authority;
     }
 
     /**
-     * Sets the runtime cheats flag. Does not modify any world's persisted
-     * cheats state — use {@link #applyToCurrentWorld(boolean)} when the user
-     * toggles cheats from inside a world session.
+     * Sets the runtime cheats flag without contacting the authority — used to adopt the
+     * server's value and to reset on return to the main menu.
      */
     public void setEnabled(boolean enabled) {
         this.cheatsEnabled = enabled;
@@ -36,20 +37,15 @@ public final class CheatState {
     }
 
     /**
-     * Toggles cheats for the active world: updates the runtime flag, the
-     * in-memory {@link WorldData}, and the {@link SaveService} so the change
-     * persists on the next save. No-op when no world is loaded.
+     * Toggles cheats for the active world: asks the authority to set (and persist) the flag,
+     * then applies it locally for immediate feedback. Returns false, leaving the flag
+     * unchanged, when the authority refuses (e.g. a remote client on someone else's world).
      */
-    public void applyToCurrentWorld(boolean enabled) {
-        this.cheatsEnabled = enabled;
-        WorldData current = session.currentWorldData();
-        if (current != null) {
-            WorldData updated = current.withCheatsEnabled(enabled);
-            session.setCurrentWorldData(updated);
-            SaveService saveService = session.saveService();
-            if (saveService != null && services.player() != null && services.world() != null) {
-                saveService.initialize(updated, services.player(), services.world());
-            }
+    public boolean applyToCurrentWorld(boolean enabled) {
+        if (!authority.requestSet(enabled)) {
+            return false;
         }
+        this.cheatsEnabled = enabled;
+        return true;
     }
 }

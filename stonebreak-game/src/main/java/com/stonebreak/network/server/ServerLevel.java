@@ -244,6 +244,21 @@ public final class ServerLevel {
     public WorldData worldData() { return worldData; }
     public Vector3f spawn() { return new Vector3f(spawn); }
 
+    /** The world's persisted cheats flag (issue #318) — the authority every client mirrors. */
+    public boolean cheatsEnabled() { return worldData.isCheatsEnabled(); }
+
+    /**
+     * Set the world's cheats flag. Updates this level's {@link WorldData} and the save
+     * service's running copy (which carries the accumulated play time) so the flag persists
+     * with the next save.
+     */
+    public void setCheatsEnabled(boolean enabled) {
+        worldData = worldData.withCheatsEnabled(enabled);
+        if (saveService != null) {
+            saveService.updateWorldData(d -> d.withCheatsEnabled(enabled));
+        }
+    }
+
     /** Loaded player data for an integrated server, or null for a fresh world / dedicated boot. */
     public PlayerData loadedPlayerData() { return loadedPlayerData; }
 

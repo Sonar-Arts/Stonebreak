@@ -109,6 +109,14 @@ class PacketRoundTripTest {
         assertEquals(new com.stonebreak.network.packet.world.TimeSetC2S(18_000L),
             roundTrip(com.stonebreak.network.packet.world.TimeSetC2S.CODEC,
                 new com.stonebreak.network.packet.world.TimeSetC2S(18_000L)));
+        for (boolean enabled : new boolean[] {true, false}) {
+            assertEquals(new com.stonebreak.network.packet.world.CheatsSetC2S(enabled),
+                roundTrip(com.stonebreak.network.packet.world.CheatsSetC2S.CODEC,
+                    new com.stonebreak.network.packet.world.CheatsSetC2S(enabled)));
+            assertEquals(new com.stonebreak.network.packet.world.CheatsStateS2C(enabled),
+                roundTrip(com.stonebreak.network.packet.world.CheatsStateS2C.CODEC,
+                    new com.stonebreak.network.packet.world.CheatsStateS2C(enabled)));
+        }
         assertEquals(new DropItemC2S(12, 64), roundTrip(DropItemC2S.CODEC, new DropItemC2S(12, 64)));
         assertEquals(new SnowLayerC2S(10, 64, -5, (byte) 8), roundTrip(SnowLayerC2S.CODEC, new SnowLayerC2S(10, 64, -5, (byte) 8)));
         assertEquals(new SnowLayerC2S(0, 0, 0, (byte) 0), roundTrip(SnowLayerC2S.CODEC, new SnowLayerC2S(0, 0, 0, (byte) 0)));
@@ -220,6 +228,10 @@ class PacketRoundTripTest {
         assertEquals(new DropItemC2S(3, 5), viaRegistry(reg, PLAY, SERVERBOUND, new DropItemC2S(3, 5)));
         assertEquals(new KeepAliveS2C(42L, 17), viaRegistry(reg, PLAY, CLIENTBOUND, new KeepAliveS2C(42L, 17)));
         assertEquals(new TimeSyncS2C(6000L, 1f, false), viaRegistry(reg, PLAY, CLIENTBOUND, new TimeSyncS2C(6000L, 1f, false)));
+        assertEquals(new com.stonebreak.network.packet.world.CheatsSetC2S(true),
+            viaRegistry(reg, PLAY, SERVERBOUND, new com.stonebreak.network.packet.world.CheatsSetC2S(true)));
+        assertEquals(new com.stonebreak.network.packet.world.CheatsStateS2C(true),
+            viaRegistry(reg, PLAY, CLIENTBOUND, new com.stonebreak.network.packet.world.CheatsStateS2C(true)));
     }
 
     /** Encode/decode through the registry exactly as the pipeline does (id varint + codec). */

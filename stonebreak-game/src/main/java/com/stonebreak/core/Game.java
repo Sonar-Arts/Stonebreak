@@ -76,7 +76,8 @@ public class Game {
 
 
     // Cheat system
-    private final CheatState cheats = new CheatState(services, worldSession);
+    private final CheatState cheats = new CheatState(
+        com.stonebreak.network.MultiplayerSession::requestServerCheatsSet);
 
     // Window dimensions and handle
     private long window;
@@ -714,9 +715,9 @@ public class Game {
         cheats.setEnabled(enabled);
     }
 
-    /** Delegates to {@link CheatState#applyToCurrentWorld(boolean)}. */
-    public void applyCheatsToCurrentWorld(boolean enabled) {
-        cheats.applyToCurrentWorld(enabled);
+    /** Delegates to {@link CheatState#applyToCurrentWorld(boolean)}; false = not allowed. */
+    public boolean applyCheatsToCurrentWorld(boolean enabled) {
+        return cheats.applyToCurrentWorld(enabled);
     }
 
     /** Delegates to {@link CheatState#isEnabled()}. */
