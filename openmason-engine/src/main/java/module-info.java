@@ -148,6 +148,12 @@ module openmason.engine {
     exports com.openmason.engine.format.sbui;
     exports com.openmason.engine.format.uiarchive;
 
+    // UI asset resolution, embedding, export planning and live invalidation (#285)
+    exports com.openmason.engine.ui.assets;
+    exports com.openmason.engine.ui.assets.edit;
+    exports com.openmason.engine.ui.assets.export;
+    exports com.openmason.engine.ui.assets.live;
+
     // Open format packages for Jackson JSON processing
     opens com.openmason.engine.format.sbo to com.fasterxml.jackson.databind;
     opens com.openmason.engine.format.sbe to com.fasterxml.jackson.databind;

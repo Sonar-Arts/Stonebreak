@@ -384,6 +384,8 @@ and `size`.
 
 **How a source reference resolves.** Take the id from the document, look it up in the SBUI dependency table, and
 follow the row. A runtime never consults `sourceHint`, the source OMUI's own table, or a filesystem path.
+Source precedence, resource packs, the convention layout and the export planner are specified in
+[ui-asset-resolution.md](ui-asset-resolution.md).
 
 ### 7.2 Export and import
 

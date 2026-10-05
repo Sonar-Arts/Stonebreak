@@ -159,7 +159,7 @@ public final class SbuiExporter {
             d.warning(Code.HASH_MISMATCH, "", "", "Shared '" + dep.id() + "' changed since the document last recorded it;"
                     + " the export snapshots the current bytes");
         }
-        String entry = SbuiFormat.ASSETS_DIR + dep.id().replace(':', '/') + extension(dep.sourceHint());
+        String entry = collectedEntry(dep);
         String problem = EntryPaths.problem(entry);
         if (problem != null) {
             d.error(Code.UNSAFE_ENTRY_PATH, entry, "", "Cannot collect '" + dep.id() + "': " + problem);
@@ -168,6 +168,15 @@ public final class SbuiExporter {
         return new SbuiDependency(dep.id(), dep.kind(), dep.version(), bytes.sha256(), bytes.size(),
                 UiDependency.Mode.EMBEDDED, Location.SBUI, entry, null, dep.requires(), dep.optional(), dep.fallback(),
                 dep.license(), Map.of());
+    }
+
+    /**
+     * SBUI entry a collected shared dependency is stored under:
+     * {@code assets/<id with : as />[extension of sourceHint]}. Export planners use this to
+     * detect entry collisions before exporting.
+     */
+    public static String collectedEntry(UiDependency dep) {
+        return SbuiFormat.ASSETS_DIR + dep.id().replace(':', '/') + extension(dep.sourceHint());
     }
 
     private static String extension(String hint) {

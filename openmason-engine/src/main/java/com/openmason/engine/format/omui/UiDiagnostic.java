@@ -57,7 +57,16 @@ public record UiDiagnostic(Severity severity, Code code, String entry, String po
         BINARY_SCRIPT,
         INVALID_TEXT,
         STALE_DERIVED,
-        INCONSISTENT_MANIFEST
+        INCONSISTENT_MANIFEST,
+        // Asset resolution, embedding and export planning (#285)
+        ASSET_EMBEDDED,
+        ASSET_REFRESHED,
+        ASSET_EXTRACTED,
+        ASSET_RELINKED,
+        ASSET_SHADOWED,
+        ENTRY_RENAMED,
+        ID_REMAPPED,
+        UNUSED_DEPENDENCY
     }
 
     public UiDiagnostic {
