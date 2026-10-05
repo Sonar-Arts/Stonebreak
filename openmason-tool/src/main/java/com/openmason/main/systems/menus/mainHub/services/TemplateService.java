@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.mainHub.services;
 
+import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory.Shape;
 import com.openmason.main.systems.menus.mainHub.model.ProjectTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,6 +60,25 @@ public class TemplateService {
                 .category("General")
                 .type(ProjectTemplate.TemplateType.CUSTOM)
                 .metadata("Tools", "All")
+                .build()
+        );
+
+        templates.add(new ProjectTemplate.Builder()
+                .id("new-biome")
+                .name("New Biome")
+                .description("Start a biome's block set: blank Log, Planks, Stairs, Leaves, Sapling and Grass models, "
+                        + "ready to shape and texture.")
+                .category("Biome")
+                .type(ProjectTemplate.TemplateType.BLOCK_SET)
+                .metadata("Models", "Log, Planks, Stairs, Leaves, Sapling, Grass")
+                .model("Log", Shape.CUBE)
+                .model("Planks", Shape.CUBE)
+                // The game's own stair shape (all wood stairs share it), without the wood texture.
+                .modelFromGameBlock("Stairs", "SB_Oak_Stairs.sbo")
+                .model("Leaves", Shape.CUBE)
+                .model("Sapling", Shape.CROSS)
+                .model("Grass", Shape.CUBE)
+                .openOnCreate("Log")
                 .build()
         );
 
