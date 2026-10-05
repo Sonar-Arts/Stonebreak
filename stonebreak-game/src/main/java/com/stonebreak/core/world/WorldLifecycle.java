@@ -30,6 +30,11 @@ public final class WorldLifecycle {
         System.out.println("[MAIN-MENU-TRANSITION] Starting complete world reset...");
         System.out.println("========================================");
 
+        // A UI drag in flight must end (returning its payload to its source) before anything
+        // below snapshots the inventory (#288).
+        com.stonebreak.ui.runtime.GameUiInput.get().cancelAll(
+                com.openmason.engine.ui.runtime.input.CancelReason.DISCONNECT);
+
         // Before the save flush captures the inventory: anything still on the cursor or in
         // a crafting grid lives only in these per-world screens and would be lost (issue #307).
         returnCraftingGridsToPlayer(game);

@@ -78,6 +78,8 @@ public final class UiDocumentInstance implements AutoCloseable {
     private UiElement root;
 
     private UiMetrics metrics = UiMetrics.of(0, 0, 1);
+    private UiPreferences preferences = UiPreferences.DEFAULTS;
+    private int textRevision;
     private FlexLayoutTree flex;
     private UiElement[] byFlexNode = new UiElement[16];
     private boolean orderDirty;
@@ -114,6 +116,7 @@ public final class UiDocumentInstance implements AutoCloseable {
 
     private UiDocumentInstance(OmuiArchive document, UiRuntimeContext context) {
         this.context = Objects.requireNonNull(context, "context");
+        this.textRevision = context.localizer().revision();
         install(Objects.requireNonNull(document, "document"));
     }
 
@@ -211,6 +214,11 @@ public final class UiDocumentInstance implements AutoCloseable {
 
     void report(UiRuntimeDiagnostic d) {
         diagnostics.add(d);
+    }
+
+    /** Records a finding from a collaborator (input routing, text resolution); deduplicated like the rest. */
+    public void reportDiagnostic(UiRuntimeDiagnostic d) {
+        diagnostics.add(Objects.requireNonNull(d, "diagnostic"));
     }
 
     // ── structural edits ────────────────────────────────────────────────────
@@ -345,8 +353,37 @@ public final class UiDocumentInstance implements AutoCloseable {
         layoutForced = true;
     }
 
+    /** The player's accessibility preferences this instance honours (#288). */
+    public UiPreferences preferences() {
+        return preferences;
+    }
+
+    /** A text-scale change re-measures every measured element; reduced motion only affects input/animation. */
+    public void setPreferences(UiPreferences p) {
+        Objects.requireNonNull(p, "preferences");
+        if (p.textScale() != preferences.textScale()) {
+            remeasureAll();
+        }
+        preferences = p;
+    }
+
+    private void remeasureAll() {
+        for (UiElement e : elements()) {
+            if (e.descriptor().measured()) {
+                e.measureDirty = true;
+            }
+        }
+        layoutForced = true;
+        dirtyRegion = new UiRect(0, 0, metrics.viewportWidth(), metrics.viewportHeight());
+    }
+
     /** Resolves dirty styles, lays out, then places elements. Requires the native flex library. */
     public UpdateStats update() {
+        int rev = context.localizer().revision();
+        if (rev != textRevision) {
+            textRevision = rev; // locale, catalog or pseudo-localization changed: every text may differ
+            remeasureAll();
+        }
         int styles = resolveStyles();
         lastStats = layout(styles);
         applyVisuals();

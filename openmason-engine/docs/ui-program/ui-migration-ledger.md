@@ -66,7 +66,7 @@ These apply to every row unless the row says otherwise.
 - The cursor is converted from window coordinates to framebuffer pixels (`core/window/GameWindow.java:237-264`). All layout is in framebuffer pixels.
 
 **Input**
-- **Keyboard and mouse only. There is no controller or gamepad support**: no `glfwGetGamepad`, `glfwJoystick*` or `GLFW_GAMEPAD` anywhere in game or engine main.
+- **Keyboard and mouse only. There is no controller or gamepad support**: no `glfwGetGamepad`, `glfwJoystick*` or `GLFW_GAMEPAD` anywhere in game or engine main. (At the pinned commit. Since #288, UI *documents* get controllers, remappable bindings and one routing model through `ui.runtime.GameUiInput`, which MIR consults before every legacy screen; legacy screens are unchanged. See [ui-input.md](ui-input.md) §10.)
 - Keys are hard-coded GLFW constants. There is no keybinding system.
 - Callbacks route through MIR (`onKey`:39, `onCharacter`:58, `onMouseButton`:83, `onMouseMove`:127, `onScroll`:166). Unconsumed events fall through to IH.
 - In-game states are polled through `MIR.pollInGame` (:222) → `IH.handleInput` (IH:73-133).
@@ -1233,7 +1233,7 @@ Run from `stonebreak-game/src/main/java/com/stonebreak/` unless noted (zsh: quot
 5. Skija users outside the UI packages: `grep -rln "beginFrame(\|getCanvas()\|io.github.humbleui" --include='*.java' . | grep -v "^./ui/\|^./rendering/UI/"`. Real hits: `battle/stage/FocusBattle.java`, `rpg/classes/AbilityIconCache.java`. The rest are name collisions.
 6. Every UI component's users: `grep -rlw <Class> --include='*.java' .` for each component (ScreenDropletOverlay, MScreenFx, MWorldMarker, MHotbarRenderer, HotbarScreen, …).
 7. Scale: `grep -rc getUiScale --include='*.java' . | grep -v ':0$'`.
-8. Controllers: `grep -rn "glfwGetGamepad\|glfwJoystick\|GLFW_GAMEPAD\|glfwGetJoystick" --include='*.java' .` (no hits).
+8. Controllers: `grep -rn "glfwGetGamepad\|glfwJoystick\|GLFW_GAMEPAD\|glfwGetJoystick" --include='*.java' .` (no hits at the pinned commit; since #288 only `ui/runtime/GamepadUiSource.java`, which serves documents).
 9. NanoVG remnants: `grep -rln "nanovg\|NanoVG\|nvg" --include='*.java' .` (comments only).
 10. 3D previews: `grep -rn "renderPlayerPreview\|renderEntityPreview" --include='*.java' .`.
 11. World-pass UI-like drawing: grep `rendering/` for `highlight|outline|crack|selection|billboard|nametag|vignette|flash|fade|tint`.
@@ -1260,7 +1260,7 @@ Run from `stonebreak-game/src/main/java/com/stonebreak/` unless noted (zsh: quot
 | Raw-GL 3D previews (character creation, character sheet, glossary) and 3D block icons need a render-provider or viewport-hole contract in the document model. | #286, #289 |
 | Battle timing contracts: C1/C2 split, WYSIWYG grading, identity-deduped events, render-locked floater births, three 4 s accumulators, card-to-camera constants. These need explicit Lua and animation semantics before the battle migrates. | #292, #295, #301 |
 | Escape is dead in STATISTICS and GLOSSARY (not polled); glossary hover never fires; character-creation keyboard dead; level-triggered keys in the main menu, settings and multiplayer; Esc cascade Host/Join → main menu; Esc-closes-chat-also-pauses (inferred). Existing behaviour must be recorded and preserved or consciously changed. | #288 |
-| Double-polled input (workbench and recipe book) and double `update` (inventory, workbench). Event-ordering semantics for the new router. | #288 |
+| Double-polled input (workbench and recipe book) and double `update` (inventory, workbench). The new router's event ordering is defined in [ui-input.md](ui-input.md) §2–3 (#288); each screen's legacy quirks are still recorded and preserved or consciously changed when it migrates. | #297–#301 |
 | Hit-test/render mismatches: chat tabs (unscaled 70 px vs 80·s); workbench pickup offset by slotPadding; invisible workbench buttons and tabs; inventory side-column drop; scrolled-out buttons in character tabs and settings. | #300, #299, #301 |
 | Item-loss bugs (furnace close while dragging, furnace shift-click into full inventory, workbench cursor stack on quit); server accepts furnace snapshots without conservation. File as separate bugs; migration must not "fix" them silently. | #298, #300 (+ new Mortar bugs) |
 | Mixed scaling: hearts, gauges, crosshair, stealth HUD, world markers, F3, emoji picker, recipe book, character creation, terrain mapper, loading and multiplayer ignore uiScale; no DPI awareness. Define layout units. | #287 |
@@ -1270,5 +1270,5 @@ Run from `stonebreak-game/src/main/java/com/stonebreak/` unless noted (zsh: quot
 | Dead or vestigial code: world-select create dialog, loading error panel, `HotbarRenderer.java`, workbench/furnace hotbar renderers, `InventoryMouseHandler`, OpenGLQuadRenderer API, four depth-curtain methods, `ui.Font`, `WorldSelectConfig`, `HotbarTheme` colours. Decide migrate vs delete per item. | #299, #300, #301 |
 | World-pass UI-like markers (Illusionist revealed outline) and the block crack overlay (judged world geometry, out of scope). Confirm the ownership boundary. | #301 |
 | Shared `ui.startupIntro.tween` easing package used by MasonryUI and the battle camera must move before the Masonry extraction. | #286 |
-| No controller/gamepad support and no keybinding system exist; hard-coded "SPACE" and "W/A/S/D" hints. Any controller work is a planned addition, not a regression baseline. | #288 |
+| No controller/gamepad support and no keybinding system exist for legacy screens; hard-coded "SPACE" and "W/A/S/D" hints. #288 added controllers, `UiActionMap` bindings and remappable `actionHints` for documents only; a migrated screen gains them, and that is an addition, not a regression baseline. | #297–#301 |
 | Representative-state screenshots at each supported resolution/DPI/scale with pinned fonts, time and seed were **not captured** in this pass (ledger only). | #296 |

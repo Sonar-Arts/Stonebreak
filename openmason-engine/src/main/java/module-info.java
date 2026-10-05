@@ -165,7 +165,11 @@ module openmason.engine {
     exports com.openmason.engine.ui.masonry.textures;
     exports com.openmason.engine.ui.rendering;
     // UI runtime (#287): element tree, cascade, widget descriptors, retained Yoga layout
+    exports com.openmason.engine.ui.l10n;
+    exports com.openmason.engine.ui.text;
     exports com.openmason.engine.ui.runtime;
+    exports com.openmason.engine.ui.runtime.access;
+    exports com.openmason.engine.ui.runtime.input;
     exports com.openmason.engine.ui.runtime.layout;
     exports com.openmason.engine.ui.runtime.paint;
     exports com.openmason.engine.ui.runtime.style;

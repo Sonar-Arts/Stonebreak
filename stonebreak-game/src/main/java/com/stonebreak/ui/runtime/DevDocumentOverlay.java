@@ -3,19 +3,23 @@ package com.stonebreak.ui.runtime;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.rendering.MasonryBackend;
 import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic;
+import com.openmason.engine.ui.runtime.input.UiInputGate;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
-import org.joml.Vector2f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.util.Locale;
 
 /**
  * Developer overlay: {@code -Dstonebreak.uidoc=<file.omui|file.sbui>} draws that document over
- * every game state, with pointer hover routed into {@code :hover}/{@code :active}, through the
- * same {@link UiDocumentView} the Open Mason preview uses. It never consumes input, so the
- * game underneath keeps working. Pair it with {@code -Dstonebreak.autoscreenshot} to capture
- * the game's rendering of a document for comparison with the editor (#287).
+ * every game state through the same {@link UiDocumentView} the Open Mason preview uses (#287).
+ * Since #288 it is a real input host: {@link GameUiInput} routes pointer, keyboard, text and
+ * controller input to it ahead of the game, so its buttons click, its fields edit and its
+ * focus navigates. It consumes what its document consumes; give a full-screen root
+ * {@code picking-mode: ignore} to keep clicks reaching the world. Pair it with
+ * {@code -Dstonebreak.autoscreenshot} to capture the game's rendering of a document for
+ * comparison with the editor.
  */
 public final class DevDocumentOverlay {
 
@@ -27,32 +31,17 @@ public final class DevDocumentOverlay {
     private UiDocumentView view;
     private MasonryUI masonry;
     private boolean failed;
-    private boolean wasDown;
 
     public boolean enabled() {
         return file != null && !file.isBlank() && !failed;
     }
 
-    /**
-     * @param mouse     pointer in framebuffer pixels, or null when unknown
-     * @param mouseDown primary button state
-     */
-    public void render(MasonryBackend backend, int width, int height, float uiScale, Vector2f mouse, boolean mouseDown) {
+    public void render(MasonryBackend backend, int width, int height, float uiScale) {
         if (!enabled() || backend == null || !backend.isAvailable()) {
             return;
         }
         if (view == null && !open(backend)) {
             return;
-        }
-        if (mouse != null) {
-            if (mouseDown && !wasDown) {
-                view.pointerDown(mouse.x, mouse.y);
-            } else if (!mouseDown && wasDown) {
-                view.pointerUp(mouse.x, mouse.y);
-            } else {
-                view.pointerMove(mouse.x, mouse.y);
-            }
-            wasDown = mouseDown;
         }
         GameUiDocuments.render(view, masonry, width, height, uiScale);
     }
@@ -64,6 +53,10 @@ public final class DevDocumentOverlay {
             for (UiRuntimeDiagnostic d : view.instance().diagnostics()) {
                 LOGGER.warn("[uidoc] {}", d);
             }
+            for (UiInputGate.Block b : GameUiDocuments.inputGate(view, Locale.getDefault())) {
+                LOGGER.warn("[uidoc] input gate: {}", b.reason()); // dev overlay: shown anyway, but loudly
+            }
+            GameUiInput.get().open(view);
             LOGGER.info("[uidoc] showing {} ({} elements)", file, view.instance().elements().size());
             return true;
         } catch (Exception e) {
@@ -75,6 +68,7 @@ public final class DevDocumentOverlay {
 
     public void dispose() {
         if (view != null) {
+            GameUiInput.get().close(view);
             view.close();
             view = null;
         }

@@ -9,6 +9,8 @@ import com.openmason.engine.ui.assets.AssetSource;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.UiRuntimeContext;
+import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic;
+import com.openmason.engine.ui.runtime.input.UiInputGate;
 import com.openmason.engine.ui.runtime.paint.MasonryContentMeasurer;
 import com.openmason.engine.ui.runtime.paint.ResolvedUiAssets;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
@@ -20,6 +22,7 @@ import io.github.humbleui.skija.Typeface;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
 
@@ -61,6 +64,34 @@ public final class GameUiDocuments {
             return SbuiReader.read(file, SbuiReader.Options.RUNTIME).archive().source();
         }
         return OmuiReader.read(file).archive();
+    }
+
+    /**
+     * The input part of a migration gate (#288): needs of the running document (components
+     * included) in {@code locale} that the game window lacks ({@link GameUiInput#CAPABILITIES}).
+     * Each is also recorded as an {@code INPUT_GATE_BLOCKED} diagnostic on the instance.
+     */
+    public static List<UiInputGate.Block> inputGate(UiDocumentView view, Locale locale) {
+        List<UiInputGate.Block> blocks = UiInputGate.check(view.instance(), locale, GameUiInput.CAPABILITIES);
+        for (UiInputGate.Block b : blocks) {
+            view.instance().reportDiagnostic(UiRuntimeDiagnostic.error(UiRuntimeDiagnostic.Code.INPUT_GATE_BLOCKED,
+                b.nodeId(), b.reason()));
+        }
+        return blocks;
+    }
+
+    /**
+     * Refuses a migrated screen whose input needs the game cannot meet: the legacy screen stays
+     * in place instead of the document running with input quietly missing.
+     *
+     * @throws IllegalStateException listing every unmet need
+     */
+    public static void requireInputGate(UiDocumentView view, Locale locale) {
+        List<UiInputGate.Block> blocks = inputGate(view, locale);
+        if (!blocks.isEmpty()) {
+            throw new IllegalStateException("UI document " + view.instance().document().manifest().documentId()
+                + " is blocked by its input gate: " + blocks.stream().map(UiInputGate.Block::reason).toList());
+        }
     }
 
     /** Re-reads {@code file} into {@code view}, keeping instance state of surviving elements. */

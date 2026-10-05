@@ -111,7 +111,7 @@ public class Main {
         glfwSetMouseButtonCallback(handle, (win, button, action, mods) ->
                 inputRouter.onMouseButton(button, action, mods));
         glfwSetCursorPosCallback(handle, (win, x, y) -> inputRouter.onMouseMove(x, y));
-        glfwSetScrollCallback(handle, (win, xOffset, yOffset) -> inputRouter.onScroll(yOffset));
+        glfwSetScrollCallback(handle, (win, xOffset, yOffset) -> inputRouter.onScroll(xOffset, yOffset));
 
         glfwSetFramebufferSizeCallback(handle, (win, w, h) -> window.onFramebufferResized(w, h));
         // Window (screen-coordinate) size can change independently of the framebuffer on
@@ -122,6 +122,10 @@ public class Main {
         glfwSetWindowPosCallback(handle, (win, x, y) -> window.refreshMonitorHz());
 
         glfwSetWindowFocusCallback(handle, (win, focused) -> {
+            if (!focused) {
+                // Releases made while unfocused never arrive: end UI drags, captures and held keys now (#288).
+                com.stonebreak.ui.runtime.GameUiInput.get().windowFocusLost();
+            }
             var mouseCapture = Game.getInstance().getMouseCaptureManager();
             if (mouseCapture == null) {
                 return;

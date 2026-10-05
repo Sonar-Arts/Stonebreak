@@ -41,6 +41,7 @@ public final class ImGuiBackend {
 
         loadFonts(io);
 
+        ToolInputTap.install(window); // first, so ImGui's backend chains to it
         imGuiGlfw.init(window, true);
         imGuiGl3.init("#version 330 core");
 

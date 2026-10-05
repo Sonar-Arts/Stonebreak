@@ -42,7 +42,12 @@ public record UiRuntimeDiagnostic(Severity severity, Code code, String element, 
         CYCLIC_PERCENTAGE,
         CONFLICTING_CONSTRAINTS,
         // Property ownership
-        BOUND_PROPERTY_WRITE
+        BOUND_PROPERTY_WRITE,
+        // Input and text (#288)
+        EVENT_HANDLER_FAILED,
+        NAV_TARGET_MISSING,
+        MISSING_TEXT_KEY,
+        INPUT_GATE_BLOCKED
     }
 
     public UiRuntimeDiagnostic {

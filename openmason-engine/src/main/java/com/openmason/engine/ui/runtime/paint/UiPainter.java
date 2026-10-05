@@ -4,12 +4,23 @@ import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.masonry.MItemSlot;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MSymbol;
+import com.openmason.engine.ui.masonry.MTooltip;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.masonry.textures.MTexture;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.UiElement;
+import com.openmason.engine.ui.runtime.TextLineMetrics;
 import com.openmason.engine.ui.runtime.UiRect;
+import com.openmason.engine.ui.runtime.UiTexts;
+import com.openmason.engine.ui.runtime.input.TextFieldController;
+import com.openmason.engine.ui.runtime.input.TextFieldGeometry;
+import com.openmason.engine.ui.runtime.input.TooltipController;
+import com.openmason.engine.ui.runtime.input.UiInputRouter;
+import com.openmason.engine.ui.runtime.widget.InputProps;
+import com.openmason.engine.ui.text.TextBoundaries;
 import com.openmason.engine.ui.runtime.layout.PaintOrder;
+import com.openmason.engine.ui.runtime.layout.ScrollbarGeometry;
 import com.openmason.engine.ui.runtime.style.ComputedStyle;
 import com.openmason.engine.ui.runtime.style.StyleValues;
 import io.github.humbleui.skija.BlendMode;
@@ -45,6 +56,13 @@ import java.util.List;
  * {@code -sb-image-scale} (stretch, integer, tile; nine-slice draws as stretch until slice
  * insets exist) and {@code -sb-sampling} (nearest by default: pixel art).
  *
+ * <p>Interaction (#288): a {@code Button} also highlights for keyboard/controller focus
+ * ({@code :focus-visible}); any other element with {@code :focus-visible} gets an accent focus
+ * ring. A {@code TextField} draws the legacy {@code MTextField} look with its value (masked for
+ * passwords), placeholder, selection, IME preedit (underlined) and caret, scrolled to keep the
+ * caret visible. A {@code status} (or an {@code :invalid} field) is drawn as a symbol, never as
+ * colour alone. The router's tooltip paints last, above every layer.
+ *
  * <p>The caller owns the frame: {@code masonry.beginFrame(...)} before, {@code endFrame()} after.
  */
 public final class UiPainter {
@@ -52,22 +70,45 @@ public final class UiPainter {
     private final UiPaintHost host;
     private final MasonryContentMeasurer text;
     private final MItemSlot slotFrame = new MItemSlot();
+    private UiInputRouter input;
+
+    private static final int FIELD_FILL = 0xFF1F1F1F;
+    private static final int FIELD_FILL_ACTIVE = 0xFF2A2A2A;
+    private static final int FIELD_BORDER = 0xFF0F0F0F;
+    private static final int FIELD_SELECTION = 0x606A82C8;
+    private static final int STATUS_SUCCESS = 0xFF32C832;
+    private static final int STATUS_ERROR = 0xFFC83232;
+    private static final int STATUS_WARNING = 0xFFE0A030;
+    private static final int STATUS_INFO = 0xFF6A82C8;
 
     public UiPainter(UiPaintHost host, MasonryContentMeasurer text) {
         this.host = host == null ? UiPaintHost.NONE : host;
         this.text = text;
     }
 
-    /** Paints {@code ui} (already updated) into {@code masonry}'s open frame. */
+    /** Paints {@code ui} (already updated) into {@code masonry}'s open frame, without interaction state. */
     public void paint(UiDocumentInstance ui, MasonryUI masonry) {
+        paint(ui, masonry, null);
+    }
+
+    /** Paints {@code ui} with {@code router}'s editing state (carets, selections) and tooltip. */
+    public void paint(UiDocumentInstance ui, MasonryUI masonry, UiInputRouter router) {
         Canvas canvas = masonry.canvas();
         if (canvas == null) {
             return;
         }
-        float scale = ui.metrics().scale();
-        PaintOrder order = ui.paintOrder();
-        for (PaintOrder.Entry e : order.entries()) {
-            paintSubtree(ui, masonry, canvas, order, e.root(), scale);
+        input = router;
+        try {
+            float scale = ui.metrics().scale();
+            PaintOrder order = ui.paintOrder();
+            for (PaintOrder.Entry e : order.entries()) {
+                paintSubtree(ui, masonry, canvas, order, e.root(), scale);
+            }
+            if (router != null) {
+                tooltip(masonry, router.tooltips().current(), ui, scale);
+            }
+        } finally {
+            input = null;
         }
     }
 
@@ -144,7 +185,8 @@ public final class UiPainter {
             case "Button" -> {
                 if (!styledBackground) {
                     int fill = !el.isEnabledInHierarchy() ? MStyle.BUTTON_FILL_DIS
-                        : el.hasState(UiElement.HOVER) || el.hasState(UiElement.ACTIVE) ? MStyle.BUTTON_FILL_HI
+                        : el.hasState(UiElement.HOVER) || el.hasState(UiElement.ACTIVE)
+                        || el.hasState(UiElement.FOCUS_VISIBLE) ? MStyle.BUTTON_FILL_HI
                         : MStyle.BUTTON_FILL;
                     MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), MStyle.BUTTON_RADIUS * scale,
                         fill, MStyle.BUTTON_BORDER, MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW,
@@ -165,11 +207,162 @@ public final class UiPainter {
                 provider(canvas, el, r, scale);
             }
             case "DrawProvider" -> provider(canvas, el, r, scale);
+            case "TextField" -> textField(canvas, el, r, s, scale, styledBackground);
             default -> {
             }
         }
         border(canvas, r, s, radius, scale);
+        if (el.hasState(UiElement.FOCUS_VISIBLE) && !"Button".equals(el.type()) && !"TextField".equals(el.type())) {
+            float g = 2f * scale;
+            MPainter.strokeRoundedRect(canvas, r.x() - g, r.y() - g, r.width() + 2 * g, r.height() + 2 * g,
+                radius + g, MStyle.TEXT_ACCENT, g);
+        }
+        status(canvas, el, r, scale);
         canvas.restoreToCount(saved);
+    }
+
+    // ── text fields (#288) ──────────────────────────────────────────────────
+
+    private void textField(Canvas canvas, UiElement el, UiRect r, ComputedStyle s, float scale,
+                           boolean styledBackground) {
+        boolean focused = el.hasState(UiElement.FOCUS);
+        if (!styledBackground) {
+            MPainter.fillRoundedRect(canvas, r.x(), r.y(), r.width(), r.height(), 3f * scale,
+                focused ? FIELD_FILL_ACTIVE : FIELD_FILL);
+            MPainter.strokeRect(canvas, r.x() + 0.5f, r.y() + 0.5f, r.width() - 1f, r.height() - 1f,
+                focused ? MStyle.SLIDER_FILL : FIELD_BORDER, (focused ? 1.5f : 1f) * scale);
+        }
+        if (text == null) {
+            return;
+        }
+        Font font = text.font(el, scale);
+        if (font == null) {
+            return;
+        }
+        TextLineMetrics m = text.textLine(el, scale);
+        TextFieldController tf = input == null ? null : input.existingTextField(el);
+        boolean multiline = el.prop("multiline") instanceof UiValue.Bool b && b.value();
+        TextFieldGeometry g = TextFieldGeometry.of(el, m, scale, multiline);
+        boolean password = el.prop("password") instanceof UiValue.Bool b && b.value();
+        String value = el.text("text");
+        String shown = tf != null ? tf.displayText() : password ? "*".repeat(TextBoundaries.count(value)) : value;
+        float scroll = tf != null ? tf.scrollX(g, m) : 0;
+        int color = !el.isEnabledInHierarchy() ? MStyle.TEXT_DISABLED : s.color("color", MStyle.TEXT_PRIMARY);
+        int saved = canvas.save();
+        canvas.clipRect(Rect.makeXYWH(g.left(), r.y(), g.width(), r.height()));
+        boolean composing = tf != null && tf.model().isComposing();
+        if (shown.isEmpty() && !composing) {
+            String placeholder = UiTexts.placeholder(el);
+            if (!placeholder.isEmpty()) {
+                MPainter.drawString(canvas, placeholder, g.left(), g.baseline(0), font, MStyle.TEXT_DISABLED);
+            }
+        } else {
+            String[] lines = shown.split("\n", -1);
+            int selStart = -1;
+            int selEnd = -1;
+            if (tf != null && focused && tf.model().hasSelection()) {
+                selStart = tf.displayIndex(tf.model().selectionStart());
+                selEnd = tf.displayIndex(tf.model().selectionEnd());
+            }
+            int lineStart = 0;
+            for (int i = 0; i < lines.length; i++) {
+                String line = lines[i];
+                float x0 = g.left() - scroll;
+                float top = g.top() + i * g.lineHeight();
+                int a = Math.max(selStart, lineStart) - lineStart;
+                int b = Math.min(selEnd, lineStart + line.length()) - lineStart;
+                if (selStart >= 0 && b > a) {
+                    float sx = x0 + m.measure().advance(line, a);
+                    float ex = x0 + m.measure().advance(line, b);
+                    MPainter.fillRect(canvas, sx, top, ex - sx, g.lineHeight(), FIELD_SELECTION);
+                }
+                MPainter.drawString(canvas, line, x0, g.baseline(i), font, color);
+                if (composing) {
+                    int ps = tf.displayIndex(tf.model().compositionStart()) - lineStart;
+                    int pe = ps + tf.model().preedit().length();
+                    int ua = Math.max(ps, 0);
+                    int ub = Math.min(pe, line.length());
+                    if (ub > ua) {
+                        float ux = x0 + m.measure().advance(line, ua);
+                        float uw = m.measure().advance(line, ub) - (ux - x0);
+                        MPainter.fillRect(canvas, ux, g.baseline(i) + 2f * scale, uw, Math.max(1f, scale), color);
+                    }
+                }
+                lineStart += line.length() + 1;
+            }
+            if (tf != null && input != null && tf.caretVisible(input.time(), input.settings().caretBlinkInterval(),
+                el.owner().preferences().reducedMotion())) {
+                int caret = tf.displayCaret();
+                int line = 0;
+                int start = 0;
+                for (int i = 0; i < lines.length; i++) {
+                    if (caret <= start + lines[i].length()) {
+                        line = i;
+                        break;
+                    }
+                    start += lines[i].length() + 1;
+                }
+                float cx = g.left() - scroll + m.measure().advance(lines[line], caret - start);
+                float top = g.top() + line * g.lineHeight();
+                MPainter.fillRect(canvas, Math.round(cx), top + scale, Math.max(1f, 1.5f * scale),
+                    g.lineHeight() - 2 * scale, MStyle.TEXT_PRIMARY);
+            }
+        }
+        canvas.restoreToCount(saved);
+    }
+
+    // ── status and tooltips (#288) ──────────────────────────────────────────
+
+    private static void status(Canvas canvas, UiElement el, UiRect r, float scale) {
+        String status = el.hasState(UiElement.INVALID) ? "error"
+            : el.prop(InputProps.STATUS) instanceof UiValue.Str st ? st.value() : "none";
+        MSymbol symbol;
+        int color;
+        switch (status) {
+            case "success" -> {
+                symbol = MSymbol.CHECK;
+                color = STATUS_SUCCESS;
+            }
+            case "error" -> {
+                symbol = MSymbol.CROSS;
+                color = STATUS_ERROR;
+            }
+            case "warning" -> {
+                symbol = MSymbol.WARNING;
+                color = STATUS_WARNING;
+            }
+            case "info" -> {
+                symbol = MSymbol.INFO;
+                color = STATUS_INFO;
+            }
+            case "busy" -> {
+                symbol = MSymbol.GEAR;
+                color = MStyle.TEXT_PRIMARY;
+            }
+            default -> {
+                return;
+            }
+        }
+        float size = Math.min(16f * scale, r.height() - 4f * scale);
+        if (size <= 2) {
+            return;
+        }
+        float x = r.right() - size - 6f * scale;
+        float y = r.y() + (r.height() - size) / 2f;
+        symbol.draw(canvas, x, y, size, size, color);
+    }
+
+    private static void tooltip(MasonryUI masonry, TooltipController.Tooltip t, UiDocumentInstance ui, float scale) {
+        if (t == null) {
+            return;
+        }
+        float w = ui.metrics().viewportWidth();
+        float h = ui.metrics().viewportHeight();
+        if (t.fromFocus()) {
+            MTooltip.draw(masonry, t.text(), t.x(), t.y() + 4f * scale, (int) w, (int) h);
+        } else {
+            MTooltip.draw(masonry, t.text(), t.x() + 15f * scale, t.y() + 15f * scale, (int) w, (int) h);
+        }
     }
 
     private void label(Canvas canvas, UiElement el, UiRect r, ComputedStyle s, float scale) {
@@ -177,7 +370,7 @@ public final class UiPainter {
             return;
         }
         Font font = text.font(el, scale);
-        String str = el.text("text");
+        String str = UiTexts.label(el);
         if (font == null || str.isEmpty()) {
             return;
         }
@@ -262,21 +455,14 @@ public final class UiPainter {
     }
 
     private static void scrollbars(Canvas canvas, UiElement el, float scale) {
-        UiRect r = el.rect();
-        float thickness = 4f * scale;
-        if (el.maxScrollY() > 0) {
-            float content = r.height() + el.maxScrollY();
-            float h = Math.max(thickness * 2, r.height() * r.height() / content);
-            float y = r.y() + (r.height() - h) * (el.scrollY() / el.maxScrollY());
-            MPainter.fillRect(canvas, r.right() - thickness, r.y(), thickness, r.height(), MStyle.SCROLLBAR_TRACK);
-            MPainter.fillRect(canvas, r.right() - thickness, y, thickness, h, MStyle.SCROLLBAR_THUMB);
-        }
-        if (el.maxScrollX() > 0) {
-            float content = r.width() + el.maxScrollX();
-            float w = Math.max(thickness * 2, r.width() * r.width() / content);
-            float x = r.x() + (r.width() - w) * (el.scrollX() / el.maxScrollX());
-            MPainter.fillRect(canvas, r.x(), r.bottom() - thickness, r.width(), thickness, MStyle.SCROLLBAR_TRACK);
-            MPainter.fillRect(canvas, x, r.bottom() - thickness, w, thickness, MStyle.SCROLLBAR_THUMB);
+        for (ScrollbarGeometry bar : new ScrollbarGeometry[]{ScrollbarGeometry.vertical(el, scale),
+            ScrollbarGeometry.horizontal(el, scale)}) {
+            if (bar != null) {
+                UiRect t = bar.track();
+                UiRect th = bar.thumb();
+                MPainter.fillRect(canvas, t.x(), t.y(), t.width(), t.height(), MStyle.SCROLLBAR_TRACK);
+                MPainter.fillRect(canvas, th.x(), th.y(), th.width(), th.height(), MStyle.SCROLLBAR_THUMB);
+            }
         }
     }
 

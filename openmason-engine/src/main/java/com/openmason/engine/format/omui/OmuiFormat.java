@@ -46,7 +46,7 @@ public final class OmuiFormat {
     public static final int MAX_DEPENDENCIES = 4096;
 
     /** Format features this reader understands. Documents list what they need in {@code requires}. */
-    public static final Set<String> SUPPORTED_FEATURES = Set.of(UiFeatures.SCROLL);
+    public static final Set<String> SUPPORTED_FEATURES = Set.of(UiFeatures.SCROLL, UiFeatures.INPUT, UiFeatures.L10N);
 
     // ── entries ──
     public static final String MANIFEST = "manifest.json";

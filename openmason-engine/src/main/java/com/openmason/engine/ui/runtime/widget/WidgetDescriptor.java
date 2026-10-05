@@ -25,6 +25,10 @@ public record WidgetDescriptor(String type, int version, Map<String, PropertyDes
         description = description == null ? "" : description;
     }
 
+    /**
+     * A descriptor with {@code properties} (inspector order) followed by the common input and
+     * accessibility properties ({@link InputProps}, #288) it does not declare itself.
+     */
     public static WidgetDescriptor of(String type, int version, boolean acceptsChildren, boolean measured,
                                       String description, List<PropertyDescriptor> properties) {
         Map<String, PropertyDescriptor> map = new LinkedHashMap<>();
@@ -32,6 +36,9 @@ public record WidgetDescriptor(String type, int version, Map<String, PropertyDes
             if (map.put(p.name(), p) != null) {
                 throw new IllegalArgumentException("duplicate property " + p.name() + " on " + type);
             }
+        }
+        for (PropertyDescriptor p : InputProps.missingFrom(map)) {
+            map.put(p.name(), p);
         }
         return new WidgetDescriptor(type, version, map, acceptsChildren, measured, description);
     }

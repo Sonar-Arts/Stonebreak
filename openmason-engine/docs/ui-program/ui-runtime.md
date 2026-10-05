@@ -197,7 +197,7 @@ feature in the manifest's `requires`; the format reports `UNDECLARED_FEATURE` ot
 - Scrolling is **visual**: it moves `rect()` (where an element paints and is hit), never `layoutRect()`, and never
   reaches Yoga.
 - Scroll containers clip their content.
-- Wheel and drag input is #288.
+- Wheel, scrollbar dragging and focus-driven scrolling are the input router's ([ui-input.md](ui-input.md) §3–4).
 
 **Overlays**: `-sb-layer: <n>` (a number, default 0) lifts an element and its subtree into layer *n*.
 - Higher layers paint after, and are hit-tested before, everything lower. Equal layers keep tree order.
@@ -250,7 +250,7 @@ dirties only the view's content area.
 | `display: none` (collapsed, subtree) | no | no | no |
 | `visibility: hidden` (inherited; a visible descendant still paints and hits) | yes | no | no |
 | `picking-mode: ignore` (children stay pickable) | yes | yes | passes through |
-| disabled (`setEnabled(false)`, inherited, matches `:disabled`) | yes | yes | yes; routing (#288) decides |
+| disabled (`setEnabled(false)`, inherited, matches `:disabled`) | yes | yes | yes: blocks what is below, receives no events ([ui-input.md](ui-input.md) §3) |
 
 `overflow: hidden` and scroll containers clip descendants' hits. Overlays escape those clips.
 
@@ -284,14 +284,12 @@ Images honour `-sb-image-scale`:
 
 Sampling follows `-sb-sampling`; nearest is the default, for pixel art.
 
-`paint/UiDocumentView` is a document on screen. It wraps the instance and painter and routes pointer input into
-pseudo-states:
-- `:hover` is set on the element under the pointer and its ancestors.
-- `:active` is set on the pressed chain until release.
-- `pointerUp` returns the clicked element: pressed and released on the same enabled element.
-- `focus(el)` sets `:focus`.
-
-Event dispatch, bubbling, keyboard navigation and focus order are #288.
+`paint/UiDocumentView` is a document on screen. It wraps the instance, the painter and the document's
+`UiInputRouter` (#288, [ui-input.md](ui-input.md)), which owns `:hover`, `:active`, `:focus`, `:focus-visible`,
+event dispatch, focus order, text editing and drag and drop. `pointerDown`/`pointerUp`/`pointerMove`/`focus` remain
+as primary-button shortcuts; `pointerUp` returns the clicked element (pressed and released on the same enabled
+element). `render` reconciles input state with each new layout before painting, and the painter draws carets,
+selections, focus rings, status symbols and the tooltip from the router.
 
 **Hosts.** `paint/ResolvedUiAssets` serves components, shared sheets and textures through #285 asset resolution:
 - textures decode once per content hash in the shared `MTextureCache`;
@@ -320,8 +318,10 @@ These are outside #287 or tracked elsewhere:
 - multi-line or wrapped labels
 - live data bindings and converters (#289)
 - Lua code-behind (#292)
-- input routing and focus order (#288)
 - migrating real screens (#297/#298)
+
+Input routing, focus, text editing, localization and accessibility metadata are specified in
+[ui-input.md](ui-input.md) (#288).
 
 ## Tests
 

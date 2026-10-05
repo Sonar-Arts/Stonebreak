@@ -144,11 +144,8 @@ public final class FrameRenderer {
         if (!devDocument.enabled() || renderer == null) {
             return;
         }
-        var input = game.getInputHandler();
         devDocument.render(renderer.getSkijaBackend(), width, height,
-                com.stonebreak.config.Settings.getInstance().getUiScale(),
-                input == null ? null : input.getMousePosition(),
-                input != null && input.isMouseButtonDown(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT));
+                com.stonebreak.config.Settings.getInstance().getUiScale());
     }
 
     // ─── In-game ──────────────────────────────────────────────────────────────

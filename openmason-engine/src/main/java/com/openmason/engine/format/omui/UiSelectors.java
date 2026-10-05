@@ -14,11 +14,13 @@ import java.util.Set;
  *                                          matched by class instead)
  * ident     := [A-Za-z_-][A-Za-z0-9_-]*
  * state     := hover | active | focus | disabled | checked | a declared custom state
+ *              | focus-visible | invalid   (with the ui-input feature, #288)
  * </pre>
  */
 public final class UiSelectors {
 
-    public static final Set<String> BUILT_IN_STATES = Set.of("hover", "active", "focus", "disabled", "checked");
+    public static final Set<String> BUILT_IN_STATES = Set.of("hover", "active", "focus", "disabled", "checked",
+            "focus-visible", "invalid");
     public static final int MAX_LENGTH = 1024;
     public static final int MAX_COMPOUNDS = 32;
 
@@ -126,6 +128,11 @@ public final class UiSelectors {
             }
         }
         return at < s.length() ? "unexpected '" + s.charAt(at) + "' at " + at : "incomplete selector at " + start;
+    }
+
+    /** True for a character that may continue an identifier. */
+    static boolean isIdentChar(char c) {
+        return c < 0x80 && (Character.isLetterOrDigit(c) || c == '_' || c == '-');
     }
 
     /** True for a selector-safe identifier (class names, node names, custom states). */

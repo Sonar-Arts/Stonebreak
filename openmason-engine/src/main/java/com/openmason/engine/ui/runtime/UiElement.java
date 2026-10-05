@@ -3,6 +3,9 @@ package com.openmason.engine.ui.runtime;
 import com.openmason.engine.format.omui.UiNode;
 import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic.Code;
+import com.openmason.engine.ui.runtime.input.EventCallbacks;
+import com.openmason.engine.ui.runtime.input.UiEventHandler;
+import com.openmason.engine.ui.runtime.input.UiEventType;
 import com.openmason.engine.ui.runtime.style.ComputedStyle;
 import com.openmason.engine.ui.runtime.style.Styleable;
 import com.openmason.engine.ui.runtime.widget.PropertyDescriptor;
@@ -47,6 +50,10 @@ public final class UiElement implements Styleable {
     public static final String FOCUS = "focus";
     public static final String DISABLED = "disabled";
     public static final String CHECKED = "checked";
+    /** Focus that came from the keyboard or a controller, which is indicated (#288). */
+    public static final String FOCUS_VISIBLE = "focus-visible";
+    /** A text field whose value fails its {@code pattern} (#288). */
+    public static final String INVALID = "invalid";
 
     private final UiDocumentInstance owner;
     private final String key;
@@ -79,6 +86,7 @@ public final class UiElement implements Styleable {
     private final Set<String> boundTargets = new HashSet<>();
     private final Set<String> states = new HashSet<>();
     private boolean enabled = true;
+    private EventCallbacks callbacks;
 
     // derived
     ComputedStyle computed = ComputedStyle.INITIAL;
@@ -436,6 +444,35 @@ public final class UiElement implements Styleable {
         return true;
     }
 
+    // ── event handlers (#288) ───────────────────────────────────────────────
+
+    /** Registers a bubble-up (and at-target) handler. Lua handlers (#292) use the same call. */
+    public void on(UiEventType type, UiEventHandler handler) {
+        on(type, handler, EventCallbacks.Phase.BUBBLE_UP);
+    }
+
+    public void on(UiEventType type, UiEventHandler handler, EventCallbacks.Phase phase) {
+        if (callbacks == null) {
+            callbacks = new EventCallbacks();
+        }
+        callbacks.register(type, handler, phase);
+    }
+
+    public void off(UiEventType type, UiEventHandler handler) {
+        off(type, handler, EventCallbacks.Phase.BUBBLE_UP);
+    }
+
+    public void off(UiEventType type, UiEventHandler handler, EventCallbacks.Phase phase) {
+        if (callbacks != null) {
+            callbacks.unregister(type, handler, phase);
+        }
+    }
+
+    /** Registered handlers, or null when none were ever registered. */
+    public EventCallbacks callbacks() {
+        return callbacks;
+    }
+
     // ── geometry and visibility ─────────────────────────────────────────────
 
     /**
@@ -581,7 +618,7 @@ public final class UiElement implements Styleable {
 
     // ── live reload ─────────────────────────────────────────────────────────
 
-    /** Copies this element's instance-level state (local writes, states, scroll) to its rebuilt twin. */
+    /** Copies this element's instance-level state (local writes, states, scroll, event handlers) to its rebuilt twin. */
     void transferStateTo(UiElement next) {
         localProps.forEach((k, v) -> {
             if (next.descriptor.property(k) != null && !next.isBound("prop:" + k)) {
@@ -601,6 +638,9 @@ public final class UiElement implements Styleable {
         next.enabled = enabled;
         next.scrollX = scrollX;
         next.scrollY = scrollY;
+        if (callbacks != null) {
+            next.callbacks = callbacks.copy();
+        }
     }
 
     // ── ownership ───────────────────────────────────────────────────────────

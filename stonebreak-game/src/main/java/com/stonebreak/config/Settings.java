@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
@@ -89,6 +90,13 @@ public class Settings {
     // UI scaling factor applied to all HUD and menu elements.
     private float uiScale = 1.0f;
 
+    // Accessibility and UI input (#288): honoured by every UI document (engine UiPreferences,
+    // UiActionMap). Off/1.0/defaults keep today's behaviour.
+    private boolean reducedMotion = false;
+    private float uiTextScale = 1.0f;
+    /** UI action bindings in UiActionMap wire form ("ui.submit" → ["key:257", "pad:0"]); empty = defaults. */
+    private Map<String, List<String>> uiBindings = Map.of();
+
     // Multiplayer settings
     private int multiplayerPort = 25565;
     private String lastJoinHost = "localhost";
@@ -168,7 +176,41 @@ public class Settings {
             intField("multiplayerPort", Settings::getMultiplayerPort, Settings::setMultiplayerPort),
             stringField("lastJoinHost", Settings::getLastJoinHost, Settings::setLastJoinHost),
             stringField("multiplayerUsername", Settings::getMultiplayerUsername, Settings::setMultiplayerUsername),
-            floatField("uiScale", Settings::getUiScale, Settings::setUiScale));
+            floatField("uiScale", Settings::getUiScale, Settings::setUiScale),
+            boolField("reducedMotion", Settings::isReducedMotion, Settings::setReducedMotion),
+            floatField("uiTextScale", Settings::getUiTextScale, Settings::setUiTextScale),
+            bindingsField("uiBindings"));
+
+    /** {@code {"ui.submit": ["key:257", ...], ...}}; written only when the player remapped something. */
+    private static Field bindingsField(String key) {
+        return new Field(key, (s, node) -> {
+            if (!s.uiBindings.isEmpty()) {
+                ObjectNode o = node.putObject(key);
+                s.uiBindings.forEach((action, list) -> {
+                    var arr = o.putArray(action);
+                    list.forEach(arr::add);
+                });
+            }
+        }, (s, node) -> {
+            if (!node.isObject()) {
+                logger.warn("Ignoring invalid value for setting '{}': {}", key, node);
+                return;
+            }
+            Map<String, List<String>> read = new java.util.LinkedHashMap<>();
+            node.properties().forEach(e -> {
+                if (e.getValue().isArray()) {
+                    List<String> entries = new java.util.ArrayList<>();
+                    e.getValue().forEach(v -> {
+                        if (v.isTextual()) {
+                            entries.add(v.textValue());
+                        }
+                    });
+                    read.put(e.getKey(), entries);
+                }
+            });
+            s.setUiBindings(read);
+        });
+    }
 
     private static Field intField(String key, Function<Settings, Integer> get, BiConsumer<Settings, Integer> set) {
         return new Field(key, (s, node) -> node.put(key, get.apply(s)),
@@ -473,6 +515,29 @@ public class Settings {
     }
 
     public float getUiScale() { return uiScale; }
+
+    /** Steady caret, no decorative UI motion (#288). */
+    public boolean isReducedMotion() { return reducedMotion; }
+
+    public void setReducedMotion(boolean reducedMotion) { this.reducedMotion = reducedMotion; }
+
+    /** Font-size multiplier on top of the UI scale, 0.5–3 (#288). */
+    public float getUiTextScale() { return uiTextScale; }
+
+    public void setUiTextScale(float scale) {
+        this.uiTextScale = Float.isFinite(scale) ? Math.max(0.5f, Math.min(3.0f, scale)) : 1.0f;
+    }
+
+    /** Remapped UI bindings in {@code UiActionMap} wire form; empty means the defaults. */
+    public Map<String, List<String>> getUiBindings() { return uiBindings; }
+
+    public void setUiBindings(Map<String, List<String>> bindings) {
+        Map<String, List<String>> copy = new java.util.LinkedHashMap<>();
+        if (bindings != null) {
+            bindings.forEach((k, v) -> copy.put(k, List.copyOf(v)));
+        }
+        this.uiBindings = java.util.Collections.unmodifiableMap(copy);
+    }
 
     public void setUiScale(float scale) {
         this.uiScale = Math.max(0.5f, Math.min(2.0f, scale));

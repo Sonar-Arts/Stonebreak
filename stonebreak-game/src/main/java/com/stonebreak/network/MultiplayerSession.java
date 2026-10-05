@@ -532,6 +532,8 @@ public final class MultiplayerSession {
                 String reason = c.kickReason();
                 System.out.println("[NET] Disconnected"
                         + (reason != null ? ": " + reason : "") + "; returning to menu.");
+                com.stonebreak.ui.runtime.GameUiInput.get().cancelAll(
+                        com.openmason.engine.ui.runtime.input.CancelReason.DISCONNECT);
                 shutdown();
                 Game.getInstance().setState(GameState.MAIN_MENU);
             }

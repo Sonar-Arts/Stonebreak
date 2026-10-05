@@ -37,6 +37,8 @@ build contracts and never appear in documents.
   | Feature | Adds | Owner |
   | --- | --- | --- |
   | `ui-scroll` | the `ScrollView` widget (version 1, props `vertical` = true, `horizontal` = false) and the `scroll` keyword of `overflow` | #287 |
+  | `ui-input` | the `TextField` widget (version 1); the interaction and accessibility props on any widget (`focusable`, `tabIndex`, `autofocus`, `navUp`, `navDown`, `navLeft`, `navRight`, `focusScope`, `draggable`, `tooltip`, `role`, `accessibleName`, `accessibleDescription`, `accessibleValue`, `status`, `actionHints`); the `focus-visible` and `invalid` pseudo-states | #288 |
+  | `ui-l10n` | localized-text props `textKey`, `textArgs`, `placeholderKey`, `tooltipKey` | #288 |
 - `uiApi`, `layoutSemantics`, `hostApis` and `providers` are checked by the **host** before instantiating
   (`UiHostProfile.check`), not by the reader, so an editor can open and preserve a document its preview cannot run.
   An unmet optional requirement is a warning; an unmet required one is an error and the host refuses the document.
@@ -221,10 +223,10 @@ The `id` inside a style, graph or clip file MUST equal the part id in its entry 
 | --- | --- | --- | --- |
 | `id` | local id | required | unique in the document, slot content included |
 | `name` | identifier | none | |
-| `type` | widget type | required | built-ins in 1.0: `Box`, `Label`, `Button`, `Image`, `ItemSlot`, `DrawProvider`, `Instance` (all at version 1); `ScrollView` (version 1) with the `ui-scroll` feature |
+| `type` | widget type | required | built-ins in 1.0: `Box`, `Label`, `Button`, `Image`, `ItemSlot`, `DrawProvider`, `Instance` (all at version 1); `ScrollView` (version 1) with the `ui-scroll` feature; `TextField` (version 1) with `ui-input` |
 | `typeVersion` | integer | `1` | MUST NOT exceed the reader's supported version |
 | `classes` | identifier[] | `[]` | sorted, unique |
-| `props` | object | `{}` | widget properties, validated by widget descriptors (#287) |
+| `props` | object | `{}` | widget properties, validated by widget descriptors (#287). The names listed for `ui-input` and `ui-l10n` (§1) are reserved: using one requires that feature, checked in node props and instance-override props. |
 | `style` | object | `{}` | inline declarations (§5.3 value grammar) |
 | `dataSource` | data path | none | inherited by the subtree; a leading `.` makes it relative |
 | `bindings` | binding[] | `[]` | sorted by `target`, one per target |
@@ -262,6 +264,7 @@ combinator := whitespace (descendant) | ">" (child)
 compound   := "*" | Type? ("." ident | "#" ident | ":" state)+ | Type
 Type       := [A-Z][A-Za-z0-9]*
 state      := hover | active | focus | disabled | checked | a declared custom state
+            | focus-visible | invalid          (built in; need the ui-input feature)
 ```
 
 Limits: 1,024 characters and 32 compounds per selector.

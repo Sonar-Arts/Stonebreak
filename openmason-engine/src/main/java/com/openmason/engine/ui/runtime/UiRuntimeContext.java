@@ -1,6 +1,7 @@
 package com.openmason.engine.ui.runtime;
 
 import com.openmason.engine.format.omui.UiStyleSheet;
+import com.openmason.engine.ui.l10n.UiLocalizer;
 import com.openmason.engine.ui.runtime.widget.WidgetRegistry;
 
 import java.util.List;
@@ -17,9 +18,12 @@ import java.util.Objects;
  * @param pixelGrid Yoga's point-scale factor: {@code 1} (the {@code flex-1} default) snaps
  *                  every edge to whole device pixels; {@code 0} keeps fractional geometry,
  *                  which is what today's float-math screens (pause) draw
+ * @param localizer resolves {@code textKey}/{@code tooltipKey}/{@code placeholderKey} (#288);
+ *                  shared and mutable (locale, catalogs): instances re-measure text when its
+ *                  revision changes
  */
 public record UiRuntimeContext(WidgetRegistry widgets, UiDocumentSource source, List<UiStyleSheet> theme,
-                               ContentMeasurer measurer, float pixelGrid) {
+                               ContentMeasurer measurer, float pixelGrid, UiLocalizer localizer) {
 
     public static final float DEVICE_PIXEL_GRID = 1f;
     public static final float NO_PIXEL_GRID = 0f;
@@ -32,27 +36,32 @@ public record UiRuntimeContext(WidgetRegistry widgets, UiDocumentSource source, 
         if (!(pixelGrid >= 0)) {
             throw new IllegalArgumentException("pixelGrid must be >= 0");
         }
+        localizer = localizer == null ? UiLocalizer.english() : localizer;
     }
 
     /** Built-in widgets, no dependencies, no theme. */
     public static UiRuntimeContext basic() {
         return new UiRuntimeContext(WidgetRegistry.withBuiltIns(), UiDocumentSource.EMPTY, List.of(),
-            ContentMeasurer.NONE, DEVICE_PIXEL_GRID);
+            ContentMeasurer.NONE, DEVICE_PIXEL_GRID, UiLocalizer.english());
     }
 
     public UiRuntimeContext withSource(UiDocumentSource s) {
-        return new UiRuntimeContext(widgets, s, theme, measurer, pixelGrid);
+        return new UiRuntimeContext(widgets, s, theme, measurer, pixelGrid, localizer);
     }
 
     public UiRuntimeContext withTheme(List<UiStyleSheet> t) {
-        return new UiRuntimeContext(widgets, source, t, measurer, pixelGrid);
+        return new UiRuntimeContext(widgets, source, t, measurer, pixelGrid, localizer);
     }
 
     public UiRuntimeContext withMeasurer(ContentMeasurer m) {
-        return new UiRuntimeContext(widgets, source, theme, m, pixelGrid);
+        return new UiRuntimeContext(widgets, source, theme, m, pixelGrid, localizer);
     }
 
     public UiRuntimeContext withPixelGrid(float grid) {
-        return new UiRuntimeContext(widgets, source, theme, measurer, grid);
+        return new UiRuntimeContext(widgets, source, theme, measurer, grid, localizer);
+    }
+
+    public UiRuntimeContext withLocalizer(UiLocalizer l) {
+        return new UiRuntimeContext(widgets, source, theme, measurer, pixelGrid, l);
     }
 }

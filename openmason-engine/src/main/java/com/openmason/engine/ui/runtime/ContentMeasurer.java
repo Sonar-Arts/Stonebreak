@@ -27,6 +27,17 @@ public interface ContentMeasurer {
         return height;
     }
 
+    /**
+     * Line metrics of a text-editing element ({@code TextField}) at {@code scale} (#288).
+     * Defaults to an approximation from {@code font-size}; font-backed hosts measure the
+     * real glyphs.
+     */
+    default TextLineMetrics textLine(UiElement element, float scale) {
+        float size = (float) element.computedStyle().number("font-size", 18) * scale
+            * element.owner().preferences().textScale();
+        return TextLineMetrics.approximate(size);
+    }
+
     /** Measures everything as 0×0; for documents without measured widgets. */
     ContentMeasurer NONE = (element, width, widthMode, height, heightMode, scale, out) -> {
         out[0] = 0;
