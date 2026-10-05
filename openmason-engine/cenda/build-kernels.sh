@@ -82,4 +82,16 @@ if [[ -f "$LUA_HEADER" && -f "$LUA_BINDING" ]]; then
   fi
 fi
 
+# And for the retained Yoga tree (#287): migrated UI has no Java layout fallback either.
+FLEX_HEADER="$HERE/native/kernels/include/cenda/flex.h"
+FLEX_BINDING="$HERE/../src/main/java/com/openmason/engine/cenda/CendaFlex.java"
+if [[ -f "$FLEX_HEADER" && -f "$FLEX_BINDING" ]]; then
+  NATIVE_CF="$(sed -n 's/^#define CF_ABI_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' "$FLEX_HEADER" | head -1)"
+  JAVA_CF="$(sed -n 's/.*EXPECTED_ABI[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' "$FLEX_BINDING" | head -1)"
+  if [[ -n "$NATIVE_CF" && -n "$JAVA_CF" && "$NATIVE_CF" != "$JAVA_CF" ]]; then
+    warn "Flex ABI mismatch: flex.h exports $NATIVE_CF but CendaFlex.EXPECTED_ABI is $JAVA_CF."
+    warn "UI layout will be UNAVAILABLE (no fallback). Fix one side to match."
+  fi
+fi
+
 echo "[cenda] kernels ready: $LIB"

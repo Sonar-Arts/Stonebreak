@@ -31,7 +31,12 @@ build contracts and never appear in documents.
 - A newer major MUST be refused with `UNSUPPORTED_SCHEMA_VERSION`.
 - Anything an older reader must understand (a new enum value, a field with semantics) is announced in the manifest
   `requires` list. A reader MUST refuse a document that lists a feature it does not support
-  (`UNSUPPORTED_REQUIRED_FEATURE`). Schema 1.0 defines no features, so `requires` is empty.
+  (`UNSUPPORTED_REQUIRED_FEATURE`), and a writer MUST refuse a document that uses a feature without listing it
+  (`UNDECLARED_FEATURE`).
+
+  | Feature | Adds | Owner |
+  | --- | --- | --- |
+  | `ui-scroll` | the `ScrollView` widget (version 1, props `vertical` = true, `horizontal` = false) and the `scroll` keyword of `overflow` | #287 |
 - `uiApi`, `layoutSemantics`, `hostApis` and `providers` are checked by the **host** before instantiating
   (`UiHostProfile.check`), not by the reader, so an editor can open and preserve a document its preview cannot run.
   An unmet optional requirement is a warning; an unmet required one is an error and the host refuses the document.
@@ -216,7 +221,7 @@ The `id` inside a style, graph or clip file MUST equal the part id in its entry 
 | --- | --- | --- | --- |
 | `id` | local id | required | unique in the document, slot content included |
 | `name` | identifier | none | |
-| `type` | widget type | required | built-ins in 1.0: `Box`, `Label`, `Button`, `Image`, `ItemSlot`, `DrawProvider`, `Instance` (all at version 1) |
+| `type` | widget type | required | built-ins in 1.0: `Box`, `Label`, `Button`, `Image`, `ItemSlot`, `DrawProvider`, `Instance` (all at version 1); `ScrollView` (version 1) with the `ui-scroll` feature |
 | `typeVersion` | integer | `1` | MUST NOT exceed the reader's supported version |
 | `classes` | identifier[] | `[]` | sorted, unique |
 | `props` | object | `{}` | widget properties, validated by widget descriptors (#287) |
@@ -266,16 +271,17 @@ keyword, `N%`, `#RRGGBB` or `#RRGGBBAA`, `var(--token)`, or (asset properties) a
 
 | Kind | Properties |
 | --- | --- |
-| Keyword | `display` (flex, none); `position` (relative, absolute); `flex-direction`; `flex-wrap`; `justify-content`; `align-items`, `align-self`, `align-content`; `visibility`; `overflow`; `picking-mode` (position, ignore); `text-align`; `-sb-image-scale` (stretch, nine-slice, tile, integer); `-sb-sampling` (nearest, linear) |
+| Keyword | `display` (flex, none); `position` (relative, absolute); `flex-direction`; `flex-wrap`; `justify-content`; `align-items`, `align-self`, `align-content`; `visibility`; `overflow` (visible, hidden; scroll with `ui-scroll`); `picking-mode` (position, ignore); `text-align`; `-sb-image-scale` (stretch, nine-slice, tile, integer); `-sb-sampling` (nearest, linear) |
 | Length (number, `N%`, `auto`) | `flex-basis`, `width`, `height`, `min-width`, `min-height`, `max-width`, `max-height`, `margin-left`, `margin-top`, `margin-right`, `margin-bottom`, `left`, `top`, `right`, `bottom` |
 | Length without `auto` | `padding-*`, `border-*-width`, `row-gap`, `column-gap`, `translate-x`, `translate-y`, `font-size`, `border-radius` |
-| Number | `flex-grow`, `flex-shrink`, `aspect-ratio`, `scale`, `rotate` (degrees) |
+| Number | `flex-grow`, `flex-shrink`, `aspect-ratio`, `scale`, `rotate` (degrees), `-sb-layer` (overlay layer, #287; readers that predate it preserve it with the unknown-property warning) |
 | Number in [0, 1] | `opacity` |
 | Color | `color`, `background-color`, `border-color`, `-sb-tint` |
 | Asset | `background-image`, `font` |
 | Custom | `--name`: any value |
 
-Layout properties are style properties (Unity convention). They mean what `flex-1` (Yoga v3.2.1) means.
+Layout properties are style properties (Unity convention). They mean what `flex-1` (Yoga v3.2.1) means. What every
+property does at runtime (cascade, layout, painting) is specified in [ui-runtime.md](ui-runtime.md).
 
 ### 5.4 `graphs/<id>.graph.json`
 

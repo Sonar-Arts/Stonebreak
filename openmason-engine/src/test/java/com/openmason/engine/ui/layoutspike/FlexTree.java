@@ -15,7 +15,7 @@ final class FlexTree {
         ALIGN_ITEMS = 6, ALIGN_SELF = 7, ALIGN_CONTENT = 8, GROW = 9, SHRINK = 10, BASIS = 11,
         WIDTH = 12, HEIGHT = 13, WIDTH_PCT = 14, HEIGHT_PCT = 15, MIN_W = 16, MIN_H = 17, MAX_W = 18,
         MAX_H = 19, MARGIN = 20, PADDING = 24, BORDER = 28, POS = 32, GAP_ROW = 36, GAP_COLUMN = 37,
-        ASPECT = 38, MEASURE_ID = 39, POS_PCT = 40, STRIDE = 44;
+        ASPECT = 38, MEASURE_ID = 39, POS_PCT = 40, STRIDE = 48;
 
     static final int LEFT = 0, TOP = 1, RIGHT = 2, BOTTOM = 3;
 

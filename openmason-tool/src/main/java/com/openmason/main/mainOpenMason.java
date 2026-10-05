@@ -20,6 +20,7 @@ import com.openmason.main.systems.menus.windows.TextureEditorWindow;
 import com.openmason.main.systems.skija.SkijaContext;
 import com.openmason.main.systems.skija.SkijaTestPanel;
 import com.openmason.main.systems.uiPreview.MasonryPreviewPanel;
+import com.openmason.main.systems.uiPreview.UiDocumentPreviewPanel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -71,6 +72,7 @@ public class mainOpenMason {
     private SkijaContext skijaContext;
     private SkijaTestPanel skijaTestPanel;
     private MasonryPreviewPanel masonryPreviewPanel;
+    private UiDocumentPreviewPanel uiDocumentPreviewPanel;
 
     // State flags
     private boolean showHomeScreen = true;
@@ -132,6 +134,10 @@ public class mainOpenMason {
             if (MasonryPreviewPanel.ENABLED) {
                 masonryPreviewPanel = new MasonryPreviewPanel();
                 logger.info("Masonry preview panel enabled (-Dopenmason.masonry.preview=true)");
+            }
+            if (UiDocumentPreviewPanel.ENABLED) {
+                uiDocumentPreviewPanel = new UiDocumentPreviewPanel();
+                logger.info("UI document preview enabled (-D{})", UiDocumentPreviewPanel.PROPERTY);
             }
         } catch (Throwable t) {
             logger.error("Skija initialization failed — Skija widgets will fall back to ImGui", t);
@@ -403,6 +409,9 @@ public class mainOpenMason {
         }
         if (masonryPreviewPanel != null) {
             safeRender(() -> masonryPreviewPanel.render(), "Masonry Preview Panel");
+        }
+        if (uiDocumentPreviewPanel != null) {
+            safeRender(() -> uiDocumentPreviewPanel.render(), "UI Document Preview Panel");
         }
 
         // Flush pending texture preview updates to the 3D viewport
@@ -680,6 +689,10 @@ public class mainOpenMason {
         if (masonryPreviewPanel != null) {
             masonryPreviewPanel.close();
             masonryPreviewPanel = null;
+        }
+        if (uiDocumentPreviewPanel != null) {
+            uiDocumentPreviewPanel.close();
+            uiDocumentPreviewPanel = null;
         }
         // Hub owns Skija regions (FBOs/textures) — release them before the
         // SkijaContext that backs them is closed.

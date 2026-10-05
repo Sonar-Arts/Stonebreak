@@ -16,4 +16,8 @@ if(CENDA_BUILD_KERNELS)
     add_executable(lua_host lua_host_test.cpp)
     target_link_libraries(lua_host PRIVATE cenda_kernels cenda_warnings)
     add_test(NAME lua_host COMMAND lua_host)
+
+    add_executable(flex_host flex_host_test.cpp)
+    target_link_libraries(flex_host PRIVATE cenda_kernels cenda_warnings)
+    add_test(NAME flex_host COMMAND flex_host)
 endif()

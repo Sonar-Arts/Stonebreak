@@ -164,6 +164,12 @@ module openmason.engine {
     exports com.openmason.engine.ui.masonry;
     exports com.openmason.engine.ui.masonry.textures;
     exports com.openmason.engine.ui.rendering;
+    // UI runtime (#287): element tree, cascade, widget descriptors, retained Yoga layout
+    exports com.openmason.engine.ui.runtime;
+    exports com.openmason.engine.ui.runtime.layout;
+    exports com.openmason.engine.ui.runtime.paint;
+    exports com.openmason.engine.ui.runtime.style;
+    exports com.openmason.engine.ui.runtime.widget;
 
     // Open format packages for Jackson JSON processing
     opens com.openmason.engine.format.sbo to com.fasterxml.jackson.databind;

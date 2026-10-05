@@ -95,6 +95,10 @@ Each frame runs in this order:
 - **Previews.** `OffscreenFramebuffer` and `RasterTextureUpload` allocate in 32 px steps, so dragging a dock
   splitter does not reallocate every frame. `close()` deletes every GL name; the GL test asserts
   `glIsFramebuffer`/`glIsTexture` are false afterwards.
+- **Stone noise.** `MPainter.stoneSurface` speckles are placed on whole pixels (#287). A non-antialiased rect on a
+  half-pixel edge rounds one way on a bottom-left target (the game window) and the other way on a top-left one (the
+  preview framebuffer). Before the fix, a document's buttons differed by 16 px between the two targets.
+  `UiDocumentGlTest` now checks 0 px.
 - **SBT/OMT semantics.** These are unchanged: visible layers are composited bottom-up at their opacity, and nearest
   sampling is kept for pixel art. Use integer asset scales, or pixel-snapped destination rects, so the output does
   not depend on the target. At non-integer scales, framebuffers of different heights round texel-boundary ties

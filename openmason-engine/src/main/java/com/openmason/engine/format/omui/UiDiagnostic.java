@@ -66,7 +66,9 @@ public record UiDiagnostic(Severity severity, Code code, String entry, String po
         ASSET_SHADOWED,
         ENTRY_RENAMED,
         ID_REMAPPED,
-        UNUSED_DEPENDENCY
+        UNUSED_DEPENDENCY,
+        // Features (#287)
+        UNDECLARED_FEATURE
     }
 
     public UiDiagnostic {

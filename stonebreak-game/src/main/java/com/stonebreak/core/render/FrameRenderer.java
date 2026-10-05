@@ -66,6 +66,8 @@ public final class FrameRenderer {
             GameState.CHARACTER_SHEET_UI, GameState.FURNACE_UI, GameState.WORKBENCH_UI);
 
     private final GameWindow window;
+    private final com.stonebreak.ui.runtime.DevDocumentOverlay devDocument =
+            new com.stonebreak.ui.runtime.DevDocumentOverlay();
     private boolean firstRender = true;
 
     public FrameRenderer(GameWindow window) {
@@ -133,7 +135,20 @@ public final class FrameRenderer {
             default -> renderInGame(game, renderer);
         }
 
+        renderDevDocument(game, renderer, width, height);
         renderDebugOverlay(renderer);
+    }
+
+    /** {@code -Dstonebreak.uidoc}: a UI document over every state, for editor/game comparison (#287). */
+    private void renderDevDocument(Game game, Renderer renderer, int width, int height) {
+        if (!devDocument.enabled() || renderer == null) {
+            return;
+        }
+        var input = game.getInputHandler();
+        devDocument.render(renderer.getSkijaBackend(), width, height,
+                com.stonebreak.config.Settings.getInstance().getUiScale(),
+                input == null ? null : input.getMousePosition(),
+                input != null && input.isMouseButtonDown(org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT));
     }
 
     // ─── In-game ──────────────────────────────────────────────────────────────

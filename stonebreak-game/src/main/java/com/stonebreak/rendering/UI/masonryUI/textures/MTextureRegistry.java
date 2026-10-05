@@ -18,6 +18,11 @@ public final class MTextureRegistry {
 
     private MTextureRegistry() {}
 
+    /** The game's single texture owner, shared with document-driven UI (#287) so bytes decode once. */
+    public static MTextureCache cache() {
+        return CACHE;
+    }
+
     /**
      * Return a cached MTexture for an SBO-backed item, loading it from the
      * item registry on first call. Cache key is the item's namespaced object

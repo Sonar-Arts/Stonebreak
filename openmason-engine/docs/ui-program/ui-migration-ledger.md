@@ -137,6 +137,7 @@ These apply to every row unless the row says otherwise.
 | chat | hud | `ui.chat.ChatSystem` + `ui.chat.SkijaChatRenderer` | process-persistent | not started |
 | chat-emoji-picker | dialog | `ui.chat.emoji.EmojiPickerRenderer` + `ChatEmojiSystem` | process-persistent | not started |
 | debug-overlay | overlay | `ui.DebugOverlay` + `ui.debug.*` | process-persistent | not started |
+| dev-document-overlay | overlay | `ui.runtime.DevDocumentOverlay` (dev only, `-Dstonebreak.uidoc`; a document host, not a legacy screen, #287) | process-persistent | n/a |
 | debug-world-wireframes | custom-renderer | `ui.debug.MobPathWireframeDrawer`, `rendering.UI.rendering.DebugRenderer`, `rendering.emitters.SoundEmitterRenderer` | process-persistent | not started |
 | world-damage-numbers | hud | `rendering.UI.components.DamageNumberRenderer` | singleton | not started |
 | world-quarry-markers | hud | `rendering.UI.components.QuarryMarkerRenderer` | singleton | not started |

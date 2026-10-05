@@ -248,8 +248,10 @@ public final class MPainter {
             for (int i = 0; i < count; i++) {
                 int h1 = hash(i * 0x27D4EB2D);
                 int h2 = hash((i + 1) * 0x85EBCA6B ^ 0x9E3779B9);
-                float px = x + (h1 & 0x7FFF) / 32767f * w;
-                float py = y + (h2 & 0x7FFF) / 32767f * h;
+                // Whole pixels: a non-AA rect on a half-pixel edge rounds differently on a
+                // bottom-left (game window) and a top-left (preview FBO) target (#287).
+                float px = (float) Math.floor(x + (h1 & 0x7FFF) / 32767f * w);
+                float py = (float) Math.floor(y + (h2 & 0x7FFF) / 32767f * h);
                 int size = 1 + ((h1 >>> 16) & 0x3); // 1–4 px
 
                 // Drop speckles straddling the rounded corners — keeps the

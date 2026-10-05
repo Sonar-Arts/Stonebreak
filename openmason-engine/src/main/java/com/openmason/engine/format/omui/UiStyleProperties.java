@@ -66,7 +66,8 @@ public final class UiStyleProperties {
         plain(Kind.COLOR, "color", "background-color", "border-color", "-sb-tint");
         plain(Kind.ASSET, "background-image", "font");
         keyword("visibility", "visible", "hidden");
-        keyword("overflow", "visible", "hidden");
+        keyword("overflow", "visible", "hidden", "scroll"); // scroll needs the ui-scroll feature
+        plain(Kind.NUMBER, "-sb-layer");
         keyword("picking-mode", "position", "ignore");
         keyword("text-align", "left", "center", "right");
         keyword("-sb-image-scale", "stretch", "nine-slice", "tile", "integer");

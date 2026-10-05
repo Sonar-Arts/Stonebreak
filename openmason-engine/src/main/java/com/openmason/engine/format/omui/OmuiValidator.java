@@ -32,6 +32,7 @@ public final class OmuiValidator {
         manifest(archive.manifest(), d);
         Set<String> nodeIds = TreeValidator.validate(archive, d);
         PartValidator.validate(archive, nodeIds, d);
+        FeatureValidator.validate(archive, d);
         DependencyValidator.validate(archive, d);
         for (String name : archive.extraEntries().keySet()) {
             d.info(Code.UNKNOWN_ENTRY, name, "", "Unrecognized entry preserved verbatim");

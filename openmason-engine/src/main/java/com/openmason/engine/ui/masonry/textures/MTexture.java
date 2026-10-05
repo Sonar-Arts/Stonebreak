@@ -39,6 +39,11 @@ public final class MTexture implements AutoCloseable {
         this.height = height;
     }
 
+    /** Wraps an already-decoded image (PNG dependencies, procedural textures); the texture owns it. */
+    public static MTexture fromImage(String key, Image image) {
+        return image == null ? null : new MTexture(key, image, image.getWidth(), image.getHeight());
+    }
+
     public Image image() { return image; }
     public int width()   { return width; }
     public int height()  { return height; }

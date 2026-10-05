@@ -20,7 +20,11 @@ public final class UiWidgets {
             "Image", 1,
             "ItemSlot", 1,
             "DrawProvider", 1,
+            "ScrollView", 1,
             UiNode.INSTANCE_TYPE, 1);
+
+    /** Built-ins newer than schema 1.0 and the {@code requires} feature a document must list to use them. */
+    private static final Map<String, String> FEATURE = Map.of("ScrollView", UiFeatures.SCROLL);
 
     private UiWidgets() {
     }
@@ -28,6 +32,11 @@ public final class UiWidgets {
     /** @return the newest supported version, or 0 for an unknown built-in type */
     public static int supportedVersion(String type) {
         return BUILT_IN.getOrDefault(type, 0);
+    }
+
+    /** @return the feature a document must declare in {@code requires} to use {@code type}, or null */
+    public static String requiredFeature(String type) {
+        return FEATURE.get(type);
     }
 
     public static boolean isNamespaced(String type) {

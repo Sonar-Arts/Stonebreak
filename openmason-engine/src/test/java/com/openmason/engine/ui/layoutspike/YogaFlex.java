@@ -19,7 +19,7 @@ import java.nio.file.Path;
  */
 final class YogaFlex {
 
-    private static final int EXPECTED_ABI = 1;
+    private static final int EXPECTED_ABI = 2;
     private static final MethodHandle LAYOUT;
     private static final MemorySegment MEASURE_STUB;
     private static final boolean AVAILABLE;
