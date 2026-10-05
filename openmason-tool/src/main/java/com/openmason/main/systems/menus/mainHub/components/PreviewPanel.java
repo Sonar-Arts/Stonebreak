@@ -102,7 +102,7 @@ public class PreviewPanel {
         renderHero("New Project", "Blank");
         ImGui.dummy(0, 8f);
 
-        renderCreateForm();
+        renderCreateForm(null);
 
         ImGui.dummy(0, 6f);
         ImGui.separator();
@@ -116,8 +116,10 @@ public class PreviewPanel {
      * Name + directory inputs and the primary Create button, shared by the New
      * Project and Blank Template previews. Create stays disabled until both a
      * name and a directory are provided, then pre-saves the project there.
+     *
+     * @param template the template being created from, or null for a blank project
      */
-    private void renderCreateForm() {
+    private void renderCreateForm(ProjectTemplate template) {
         // Prefill with the base projects folder so the default "just create it"
         // path lands new projects in the user's home folder for Open Mason.
         if (projectDir.get().isBlank() && defaultProjectDirectory != null) {
@@ -150,7 +152,7 @@ public class PreviewPanel {
         boolean create = accentButton("Create Project");
         ImGui.endDisabled();
         if (create && valid) {
-            actionService.createProject(projectName.get(), effectiveDirectory());
+            actionService.createProject(projectName.get(), effectiveDirectory(), template);
         }
     }
 
@@ -209,7 +211,7 @@ public class PreviewPanel {
         ImGui.dummy(0, 8f);
 
         // Name + directory + Create, directly under the hero.
-        renderCreateForm();
+        renderCreateForm(template);
 
         ImGui.dummy(0, 6f);
         ImGui.separator();

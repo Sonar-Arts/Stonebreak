@@ -27,7 +27,6 @@ import imgui.flag.ImGuiWindowFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -241,7 +240,7 @@ public class ProjectHubScreen {
         ImGui.pushStyleVar(ImGuiStyleVar.WindowRounding, 0.0f);
     }
 
-    public void setTransitionCallbacks(BiConsumer<String, String> onCreateProject,
+    public void setTransitionCallbacks(HubActionService.CreateProjectCallback onCreateProject,
                                        Consumer<RecentProject> onOpenProject) {
         actionService.setCreateProjectCallback(onCreateProject);
         actionService.setOpenProjectCallback(onOpenProject);
