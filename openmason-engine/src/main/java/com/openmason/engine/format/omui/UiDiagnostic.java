@@ -68,7 +68,10 @@ public record UiDiagnostic(Severity severity, Code code, String entry, String po
         ID_REMAPPED,
         UNUSED_DEPENDENCY,
         // Features (#287)
-        UNDECLARED_FEATURE
+        UNDECLARED_FEATURE,
+        // Host activation (#289)
+        UNKNOWN_DATA_SOURCE,
+        UNDECLARED_HOST_API
     }
 
     public UiDiagnostic {

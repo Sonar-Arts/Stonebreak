@@ -1,11 +1,15 @@
 package com.openmason.main.systems.uiPreview;
 
+import com.openmason.engine.format.omui.OmuiArchive;
+import com.openmason.engine.format.omui.UiDiagnostic;
+import com.openmason.engine.ui.data.FixtureHost;
 import com.openmason.engine.ui.masonry.MKeys;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic;
 import com.openmason.engine.ui.runtime.access.AccessibilityTree;
+import com.openmason.engine.ui.runtime.binding.UiConverters;
 import com.openmason.engine.ui.runtime.input.PreviewInput;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
 import com.openmason.main.platform.ToolInputTap;
@@ -21,6 +25,8 @@ import io.github.humbleui.skija.Typeface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,6 +64,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
     private String status = "";
     private boolean failed;
     private PreviewInput input;
+    private FixtureHost fixtures;
     private boolean documentHasKeyboard;
     private boolean wasFocused;
     private float lastMouseX = Float.NaN;
@@ -143,6 +150,9 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
 
     private void paint(MasonryUI ui, int[] size) {
         ui.canvas().clear(BACKDROP);
+        if (fixtures != null) {
+            fixtures.host().drain(); // fixture responses and posted data land once per preview frame
+        }
         view.render(ui, size[0], size[1], uiScale[0], 1f);
     }
 
@@ -239,13 +249,30 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
                 input = null;
             }
             Typeface tf = typeface;
-            view = GameUiDocuments.open(Path.of(file.get().trim()), () -> tf);
+            Path path = Path.of(file.get().trim());
+            view = GameUiDocuments.open(path, () -> tf);
+            // Bindings run against fixtures, never live game services (#289): a sidecar
+            // <file>.fixture.json wins over the archive's own editor/fixtures.json.
+            fixtures = fixtures(path, view.instance().document());
+            List<UiDiagnostic> gate = GameUiDocuments.activationGate(view, fixtures.host());
+            GameUiDocuments.bind(view, fixtures.host(), UiConverters.NONE);
             input = new PreviewInput(view.input());
             status = summary("Loaded", view.instance());
+            for (UiDiagnostic d : gate) {
+                status += "\n" + d;
+            }
         } catch (Exception e) {
             status = "Cannot load: " + e.getMessage();
             logger.warn("UI document preview: cannot load {}", file.get(), e);
         }
+    }
+
+    private static FixtureHost fixtures(Path document, OmuiArchive doc) throws IOException {
+        Path sidecar = document.resolveSibling(document.getFileName() + ".fixture.json");
+        if (Files.isRegularFile(sidecar)) {
+            return FixtureHost.parse(Files.readAllBytes(sidecar), sidecar.getFileName().toString(), doc.manifest());
+        }
+        return FixtureHost.forArchive(doc);
     }
 
     private void reload() {

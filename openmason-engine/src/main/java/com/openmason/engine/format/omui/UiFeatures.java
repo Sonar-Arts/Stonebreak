@@ -30,6 +30,12 @@ public final class UiFeatures {
     public static final String L10N = "ui-l10n";
 
     /**
+     * Collection views over host data (#289): the {@code ListView} widget, whose single child is
+     * the row template each item is bound to.
+     */
+    public static final String DATA = "ui-data";
+
+    /**
      * Properties every widget accepts under {@link #INPUT}. Focus: {@code focusable},
      * {@code tabIndex}, {@code autofocus}, {@code navUp/Down/Left/Right}, {@code focusScope};
      * pointer: {@code draggable}, {@code tooltip}; accessibility: {@code role},

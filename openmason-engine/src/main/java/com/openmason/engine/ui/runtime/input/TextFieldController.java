@@ -1,5 +1,6 @@
 package com.openmason.engine.ui.runtime.input;
 
+import com.openmason.engine.format.omui.UiNode;
 import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.masonry.MClipboard;
 import com.openmason.engine.ui.masonry.MKeys;
@@ -173,8 +174,11 @@ public final class TextFieldController {
             + element.prop("inputFilter") + "|" + element.prop("pattern");
     }
 
+    /** {@code readOnly}, or a value owned by a one-way binding; a two-way bound field edits into the draft (#289). */
     private boolean readOnly() {
-        return element.prop("readOnly") instanceof UiValue.Bool b && b.value() || element.isBound("prop:text");
+        UiNode.BindingMode mode = element.bindingMode("prop:text");
+        return element.prop("readOnly") instanceof UiValue.Bool b && b.value()
+            || mode == UiNode.BindingMode.TO_TARGET || mode == UiNode.BindingMode.ONCE;
     }
 
     private TextInputRules rules() {

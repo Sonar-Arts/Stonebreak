@@ -39,6 +39,7 @@ build contracts and never appear in documents.
   | `ui-scroll` | the `ScrollView` widget (version 1, props `vertical` = true, `horizontal` = false) and the `scroll` keyword of `overflow` | #287 |
   | `ui-input` | the `TextField` widget (version 1); the interaction and accessibility props on any widget (`focusable`, `tabIndex`, `autofocus`, `navUp`, `navDown`, `navLeft`, `navRight`, `focusScope`, `draggable`, `tooltip`, `role`, `accessibleName`, `accessibleDescription`, `accessibleValue`, `status`, `actionHints`); the `focus-visible` and `invalid` pseudo-states | #288 |
   | `ui-l10n` | localized-text props `textKey`, `textArgs`, `placeholderKey`, `tooltipKey` | #288 |
+  | `ui-data` | the `ListView` widget (version 1, props `items`, `itemKey`, `itemHeight` = 0, `selectionMode` = `single`); its single child is the row template | #289 |
 - `uiApi`, `layoutSemantics`, `hostApis` and `providers` are checked by the **host** before instantiating
   (`UiHostProfile.check`), not by the reader, so an editor can open and preserve a document its preview cannot run.
   An unmet optional requirement is a warning; an unmet required one is an error and the host refuses the document.
@@ -223,7 +224,7 @@ The `id` inside a style, graph or clip file MUST equal the part id in its entry 
 | --- | --- | --- | --- |
 | `id` | local id | required | unique in the document, slot content included |
 | `name` | identifier | none | |
-| `type` | widget type | required | built-ins in 1.0: `Box`, `Label`, `Button`, `Image`, `ItemSlot`, `DrawProvider`, `Instance` (all at version 1); `ScrollView` (version 1) with the `ui-scroll` feature; `TextField` (version 1) with `ui-input` |
+| `type` | widget type | required | built-ins in 1.0: `Box`, `Label`, `Button`, `Image`, `ItemSlot`, `DrawProvider`, `Instance` (all at version 1); `ScrollView` (version 1) with the `ui-scroll` feature; `TextField` (version 1) with `ui-input`; `ListView` (version 1) with `ui-data` |
 | `typeVersion` | integer | `1` | MUST NOT exceed the reader's supported version |
 | `classes` | identifier[] | `[]` | sorted, unique |
 | `props` | object | `{}` | widget properties, validated by widget descriptors (#287). The names listed for `ui-input` and `ui-l10n` (§1) are reserved: using one requires that feature, checked in node props and instance-override props. |
@@ -235,6 +236,8 @@ The `id` inside a style, graph or clip file MUST equal the part id in its entry 
 
 **Binding**: `target` (`prop:<identifier>`, `style:<property>` or `class:<identifier>`), `path` (data path),
 `mode` (`to-target` default, `two-way`, `to-source`, `once`), `converter` (local id of a pure code-behind function).
+On an `Instance` node, `prop:<param>` targets a component parameter. What modes, converters and paths mean at run
+time is specified in [ui-data-binding.md](ui-data-binding.md) (#289).
 
 **Data path**: `.?seg(.seg|[index])*`, where `seg` matches `[A-Za-z_][A-Za-z0-9_]*`; `.` alone means the inherited
 source itself.

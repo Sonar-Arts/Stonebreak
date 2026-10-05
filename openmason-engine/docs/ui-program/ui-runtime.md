@@ -60,6 +60,8 @@ The built-ins (`BuiltInWidgets`) are the format's set:
 - `ItemSlot(provider, slot)`
 - `DrawProvider(provider)`
 - `ScrollView(vertical = true, horizontal = false)`, which needs the `ui-scroll` feature
+- `ListView(items, itemKey, itemHeight = 0, selectionMode = single)`, which needs the `ui-data` feature; its single
+  child is a row template that is never built directly ([ui-data-binding.md](ui-data-binding.md) §5)
 - `Instance`
 
 Their versions must equal the format's `UiWidgets` table. Host types (`stonebreak:CrucibleView`) register their own
@@ -84,7 +86,8 @@ whole component.
 - **Parameters** are validated against the contract (`UNKNOWN_PARAM`, `PARAM_TYPE`) and merged over the defaults.
   - The resulting object is the component subtree's **data source**: `{"target": "prop:text", "path": ".label"}`
     inside the component reads the parameter.
-  - Static parameter bindings are applied at build time. Live host data and converter functions belong to #289/#292.
+  - Static parameter bindings are applied at build time. Live host data, live parameters (`prop:<param>` bindings
+    on the `Instance` node) and converters are the binder's ([ui-data-binding.md](ui-data-binding.md), #289).
 - **Overrides** apply after a node's authored values.
   - The instance's own overrides go first, then overrides from enclosing instances (`inner/leaf`), so the outermost
     author wins.
@@ -127,8 +130,9 @@ with backtracking. Namespaced host types never match a type selector.
 
 `ComputedStyle.transition(property)` carries the winning rule's transition for #295.
 
-**Ownership:** a target with a declarative binding is owned by it. A local write to a bound target is reported
-(`BOUND_PROPERTY_WRITE`) and ignored. Setting an undeclared custom state is reported (`UNKNOWN_STATE`).
+**Ownership:** a target with a `to-target` or `once` binding is owned by it. A local write to it is reported
+(`BOUND_PROPERTY_WRITE`) and ignored. On a `two-way` or `to-source` target the local write is an edit the binder
+stages into the draft ([ui-data-binding.md](ui-data-binding.md) §3). Setting an undeclared custom state is reported (`UNKNOWN_STATE`).
 
 ## 6. Layout
 
@@ -316,12 +320,12 @@ These are outside #287 or tracked elsewhere:
 - `scale`/`rotate` transforms and transition sampling (#295)
 - nine-slice insets
 - multi-line or wrapped labels
-- live data bindings and converters (#289)
 - Lua code-behind (#292)
 - migrating real screens (#297/#298)
 
 Input routing, focus, text editing, localization and accessibility metadata are specified in
-[ui-input.md](ui-input.md) (#288).
+[ui-input.md](ui-input.md) (#288). Data bindings, host actions, `ListView` and the activation gate are specified in
+[ui-data-binding.md](ui-data-binding.md) (#289).
 
 ## Tests
 

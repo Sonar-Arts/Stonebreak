@@ -280,6 +280,16 @@ public class Settings {
         } catch (IOException e) {
             logger.error("Failed to save settings to {}", SETTINGS_FILE, e);
         }
+        for (Runnable l : saveListeners) {
+            l.run();
+        }
+    }
+
+    private final List<Runnable> saveListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /** Called after every save, whichever screen saved: UI data sources re-read settings here (#289). */
+    public void addSaveListener(Runnable listener) {
+        saveListeners.add(listener);
     }
 
     public void loadSettings() {

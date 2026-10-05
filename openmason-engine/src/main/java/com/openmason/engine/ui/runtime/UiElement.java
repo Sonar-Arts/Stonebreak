@@ -35,8 +35,12 @@ import java.util.TreeSet;
  *       animation channel;</li>
  *   <li>classes: authored → override add/remove → binding toggles → local add/remove.</li>
  * </ul>
- * A target that has a declarative binding is owned by it: a local write to it is reported
- * ({@link Code#BOUND_PROPERTY_WRITE}) and ignored rather than fighting the binding.
+ * A target with a {@code to-target} or {@code once} binding is owned by it: a local write to it
+ * is reported ({@link Code#BOUND_PROPERTY_WRITE}) and ignored rather than fighting the binding.
+ * On a {@code two-way} or {@code to-source} target the local layer holds the user's edit in
+ * progress above the binding's base value; the binder stages it into the scope's draft and
+ * clears it once the draft or the committed value shows through the binding again (#289).
+ * Animation channels sit above both and never write the source.
  *
  * <p><b>Identity.</b> {@link #key()} is built from stable node ids only (instance node ids
  * joined by {@code /}, exactly the override target syntax), so renaming or reparenting a
@@ -83,7 +87,10 @@ public final class UiElement implements Styleable {
     private final Map<String, UiValue> localStyle = new HashMap<>();
     private final Map<String, UiValue> animationStyle = new HashMap<>();
 
-    private final Set<String> boundTargets = new HashSet<>();
+    /** Binding target → mode, from the definition; decides who owns a target (#289). */
+    private final Map<String, UiNode.BindingMode> boundModes = new HashMap<>();
+    /** An {@code Instance} element's merged component parameters (#287); null elsewhere. */
+    UiValue.Obj componentParams;
     private final Set<String> states = new HashSet<>();
     private boolean enabled = true;
     private EventCallbacks callbacks;
@@ -118,7 +125,7 @@ public final class UiElement implements Styleable {
         this.componentId = componentId;
         this.baseClasses.addAll(node.classes());
         for (UiNode.UiBinding b : node.bindings()) {
-            boundTargets.add(b.target());
+            boundModes.put(b.target(), b.mode());
         }
         recomputeClasses();
     }
@@ -247,6 +254,7 @@ public final class UiElement implements Styleable {
         }
         if (!value.equals(localProps.put(name, value))) {
             propChanged(name);
+            owner.boundWrite(this, "prop:" + name, value);
         }
         return true;
     }
@@ -261,11 +269,22 @@ public final class UiElement implements Styleable {
         overrideProps.putAll(props);
     }
 
-    /** Binding layer write (#289 owns live bindings; the builder applies static component params). */
+    /** Binding layer write (the builder applies static component params; the binder the rest, #289). */
     void setBindingProp(String name, UiValue value) {
         if (!value.equals(bindingProps.put(name, value))) {
             propChanged(name);
         }
+    }
+
+    void clearBindingProp(String name) {
+        if (bindingProps.remove(name) != null) {
+            propChanged(name);
+        }
+    }
+
+    /** An {@code Instance} element's component parameters (defaults merged with the instance's), or null. */
+    public UiValue.Obj componentParams() {
+        return componentParams;
     }
 
     private void propChanged(String name) {
@@ -291,8 +310,11 @@ public final class UiElement implements Styleable {
             return;
         }
         localRemoved.remove(className);
-        localAdded.add(className);
+        boolean changed = localAdded.add(className);
         classesChanged();
+        if (changed) {
+            owner.boundWrite(this, "class:" + className, UiValue.TRUE);
+        }
     }
 
     public void removeClass(String className) {
@@ -300,8 +322,18 @@ public final class UiElement implements Styleable {
             return;
         }
         localAdded.remove(className);
-        localRemoved.add(className);
+        boolean changed = localRemoved.add(className);
         classesChanged();
+        if (changed) {
+            owner.boundWrite(this, "class:" + className, UiValue.FALSE);
+        }
+    }
+
+    /** Drops a local add/remove of {@code className}: the binding or authored value shows again. */
+    public void clearLocalClass(String className) {
+        if (localAdded.remove(className) | localRemoved.remove(className)) {
+            classesChanged();
+        }
     }
 
     public void toggleClass(String className, boolean on) {
@@ -321,6 +353,12 @@ public final class UiElement implements Styleable {
     void setBindingClass(String className, boolean on) {
         Boolean old = bindingClasses.put(className, on);
         if (old == null || old != on) {
+            classesChanged();
+        }
+    }
+
+    void clearBindingClass(String className) {
+        if (bindingClasses.remove(className) != null) {
             classesChanged();
         }
     }
@@ -356,6 +394,7 @@ public final class UiElement implements Styleable {
         }
         if (!value.equals(localStyle.put(property, value))) {
             owner.invalidateStyle(this);
+            owner.boundWrite(this, "style:" + property, value);
         }
     }
 
@@ -385,6 +424,12 @@ public final class UiElement implements Styleable {
 
     void setBindingStyle(String property, UiValue value) {
         if (!value.equals(bindingStyle.put(property, value))) {
+            owner.invalidateStyle(this);
+        }
+    }
+
+    void clearBindingStyle(String property) {
+        if (bindingStyle.remove(property) != null) {
             owner.invalidateStyle(this);
         }
     }
@@ -490,9 +535,14 @@ public final class UiElement implements Styleable {
 
     // ── scrolling ───────────────────────────────────────────────────────────
 
-    /** A {@code ScrollView}, or any element with {@code overflow: scroll}. */
+    /** A {@code ScrollView} or {@code ListView}, or any element with {@code overflow: scroll}. */
     public boolean isScrollContainer() {
-        return "ScrollView".equals(node.type()) || "scroll".equals(computed.keyword("overflow", "visible"));
+        return isScrollWidget() || "scroll".equals(computed.keyword("overflow", "visible"));
+    }
+
+    /** A widget that always scrolls ({@code ScrollView}, {@code ListView}). */
+    public boolean isScrollWidget() {
+        return "ScrollView".equals(node.type()) || "ListView".equals(node.type());
     }
 
     public float scrollX() {
@@ -555,6 +605,9 @@ public final class UiElement implements Styleable {
     }
 
     boolean canScrollX() {
+        if ("ListView".equals(node.type())) {
+            return false;
+        }
         if ("ScrollView".equals(node.type())) {
             return prop("horizontal") instanceof UiValue.Bool b && b.value();
         }
@@ -645,13 +698,24 @@ public final class UiElement implements Styleable {
 
     // ── ownership ───────────────────────────────────────────────────────────
 
-    /** True when {@code target} ({@code prop:text}) is owned by a declarative binding. */
+    /** True when {@code target} ({@code prop:text}) has a declarative binding. */
     public boolean isBound(String target) {
-        return boundTargets.contains(target);
+        return boundModes.containsKey(target);
     }
 
+    /** The binding mode of {@code target}, or null when unbound. */
+    public UiNode.BindingMode bindingMode(String target) {
+        return boundModes.get(target);
+    }
+
+    /**
+     * Local writes to a target bound {@code to-target} or {@code once} fight the binding and are
+     * refused; on a {@code two-way} or {@code to-source} target a local write is the user's (or a
+     * script's) edit, which the binder stages into the scope's draft (#289).
+     */
     private boolean rejectBound(String target) {
-        if (boundTargets.contains(target)) {
+        UiNode.BindingMode mode = boundModes.get(target);
+        if (mode == UiNode.BindingMode.TO_TARGET || mode == UiNode.BindingMode.ONCE) {
             owner.report(UiRuntimeDiagnostic.warning(Code.BOUND_PROPERTY_WRITE, key,
                 target + " is owned by a binding; local write ignored"));
             return true;

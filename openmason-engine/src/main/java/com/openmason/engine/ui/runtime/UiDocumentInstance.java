@@ -76,6 +76,7 @@ public final class UiDocumentInstance implements AutoCloseable {
     private final Set<String> customStates = new HashSet<>();
     private OmuiArchive document;
     private UiElement root;
+    private BindingAccess bindings;
 
     private UiMetrics metrics = UiMetrics.of(0, 0, 1);
     private UiPreferences preferences = UiPreferences.DEFAULTS;
@@ -221,16 +222,64 @@ public final class UiDocumentInstance implements AutoCloseable {
         diagnostics.add(Objects.requireNonNull(d, "diagnostic"));
     }
 
+    // ── bindings (#289) ─────────────────────────────────────────────────────
+
+    /**
+     * Hands the binding layer to one binder. Until it is {@link BindingAccess#release released}
+     * no other binder can claim it.
+     *
+     * @throws IllegalStateException when another binder holds it
+     */
+    public BindingAccess claimBindings() {
+        if (bindings != null) {
+            throw new IllegalStateException("bindings of " + document.manifest().documentId() + " are already claimed");
+        }
+        bindings = new BindingAccess(this);
+        return bindings;
+    }
+
+    void releaseBindings(BindingAccess a) {
+        if (bindings == a) {
+            bindings = null;
+        }
+    }
+
+    private BindingAccess.Listener bindingListener() {
+        return bindings == null ? null : bindings.listener();
+    }
+
+    /** A local write on a bound target: forwarded to the binder when the binding reads it back. */
+    void boundWrite(UiElement el, String target, com.openmason.engine.format.omui.UiValue value) {
+        UiNode.BindingMode mode = el.bindingMode(target);
+        BindingAccess.Listener l = bindingListener();
+        if (l != null && (mode == UiNode.BindingMode.TWO_WAY || mode == UiNode.BindingMode.TO_SOURCE)) {
+            l.localWrite(el, target, value);
+        }
+    }
+
     // ── structural edits ────────────────────────────────────────────────────
 
     UiElement insert(UiElement parent, int index, UiNode definition) {
+        UiElement child = insertBuilt(parent, index, definition, null);
+        BindingAccess.Listener l = bindingListener();
+        if (l != null) {
+            l.inserted(child);
+        }
+        return child;
+    }
+
+    UiElement insertRow(UiElement parent, int index, UiNode template, String key) {
+        return insertBuilt(parent, index, template, key);
+    }
+
+    private UiElement insertBuilt(UiElement parent, int index, UiNode definition, String key) {
         requireLive(parent);
         if (!parent.descriptor().acceptsChildren()) {
             throw new IllegalArgumentException(parent.type() + " [" + parent.key() + "] cannot have children");
         }
         UiTreeBuilder builder = new UiTreeBuilder(this, context, byKey);
         int before = diagnostics.size();
-        UiElement child = builder.buildChild(parent, definition);
+        UiElement child = key == null ? builder.buildChild(parent, definition) : builder.buildRow(parent, definition, key);
         if (diagnostics.stream().skip(before).anyMatch(d -> d.code() == UiRuntimeDiagnostic.Code.DUPLICATE_ELEMENT_KEY)) {
             throw new IllegalArgumentException("element key " + child.key() + " is already in use");
         }
@@ -253,9 +302,17 @@ public final class UiDocumentInstance implements AutoCloseable {
     }
 
     void remove(UiElement el) {
+        remove(el, true);
+    }
+
+    void remove(UiElement el, boolean notify) {
         requireLive(el);
         if (el == root) {
             throw new IllegalArgumentException("the root element cannot be removed");
+        }
+        BindingAccess.Listener l = bindingListener();
+        if (notify && l != null) {
+            l.removing(el);
         }
         UiElement parent = el.parent();
         markRemoved(el);
@@ -264,6 +321,30 @@ public final class UiDocumentInstance implements AutoCloseable {
         visualDirty = true;
         layoutForced = true;
         structureChanged = true;
+    }
+
+    void move(UiElement el, int index) {
+        requireLive(el);
+        UiElement parent = el.parent();
+        if (parent == null) {
+            throw new IllegalArgumentException("the root element cannot be moved");
+        }
+        int from = parent.children().indexOf(el);
+        int to = Math.clamp(index, 0, parent.children().size() - 1);
+        if (from == to) {
+            return;
+        }
+        parent.removeChild(el);
+        parent.insertChildAt(to, el);
+        if (flex != null) {
+            flex.detach(el.flexNode);
+            flex.insert(parent.flexNode, el.flexNode, to);
+        }
+        orderDirty = true;
+        visualDirty = true;
+        layoutForced = true;
+        structureChanged = true;
+        paintOrder = null;
     }
 
     private void markRemoved(UiElement el) {
@@ -320,7 +401,12 @@ public final class UiDocumentInstance implements AutoCloseable {
         }
         old.values().forEach(e -> e.removed = true);
         dirtyRegion = new UiRect(0, 0, metrics.viewportWidth(), metrics.viewportHeight());
-        return new ReloadReport(kept, new LinkedHashSet<>(old.keySet()), added);
+        ReloadReport report = new ReloadReport(kept, new LinkedHashSet<>(old.keySet()), added);
+        BindingAccess.Listener l = bindingListener();
+        if (l != null) {
+            l.reloaded(report);
+        }
+        return report;
     }
 
     /** {@link #reload(OmuiArchive)} with the current document: picks up changed components and sheets. */
@@ -451,7 +537,7 @@ public final class UiDocumentInstance implements AutoCloseable {
                 el.recordDirty = false;
                 ensureRecordCapacity(pushed + 1);
                 FlexStyleMapper.write(el.computed, metrics.scale(), el.descriptor().measured() ? el.flexNode : -1,
-                    "ScrollView".equals(el.type()), records, pushed * FlexRecord.STRIDE);
+                    el.isScrollWidget(), records, pushed * FlexRecord.STRIDE);
                 nodeIds[pushed++] = el.flexNode;
                 LayoutChecks.check(el, this::report);
             }
@@ -679,6 +765,10 @@ public final class UiDocumentInstance implements AutoCloseable {
     void visualChanged(UiElement el) {
         visualDirty = true;
         dirtyRegion = dirtyRegion.union(el.rect);
+        BindingAccess.Listener l = bindingListener();
+        if (l != null) {
+            l.scrolled(el);
+        }
     }
 
     // ── lifecycle ───────────────────────────────────────────────────────────

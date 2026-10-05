@@ -4,6 +4,7 @@ import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.UiMetrics;
+import com.openmason.engine.ui.runtime.binding.UiBinder;
 import com.openmason.engine.ui.runtime.input.InputDevice;
 import com.openmason.engine.ui.runtime.input.PointerEvent;
 import com.openmason.engine.ui.runtime.input.UiInputRouter;
@@ -26,6 +27,7 @@ public final class UiDocumentView implements AutoCloseable {
     private final UiDocumentInstance ui;
     private final UiPainter painter;
     private final UiInputRouter router;
+    private UiBinder binder;
 
     public UiDocumentView(UiDocumentInstance ui, UiPainter painter) {
         this.ui = Objects.requireNonNull(ui, "ui");
@@ -35,6 +37,24 @@ public final class UiDocumentView implements AutoCloseable {
 
     public UiDocumentInstance instance() {
         return ui;
+    }
+
+    /**
+     * Gives this view the binder connecting its document to a host (#289): {@link #render} keeps
+     * virtualized lists in step with layout, and {@link #close} releases the binder (its
+     * subscriptions, pending actions and draft) before the document.
+     */
+    public UiDocumentView bind(UiBinder b) {
+        if (b.instance() != ui) {
+            throw new IllegalArgumentException("binder belongs to another document instance");
+        }
+        this.binder = b;
+        return this;
+    }
+
+    /** The binder, or {@code null} for an unbound (static) document. */
+    public UiBinder binder() {
+        return binder;
     }
 
     /** The document's interaction model: route every host input event here. */
@@ -52,6 +72,9 @@ public final class UiDocumentView implements AutoCloseable {
         ui.setMetrics(new UiMetrics(width, height, uiScale, pixelRatio));
         ui.update();
         router.sync();
+        if (binder != null) {
+            binder.sync();
+        }
         ui.update();
         painter.paint(ui, masonry, router);
     }
@@ -88,6 +111,9 @@ public final class UiDocumentView implements AutoCloseable {
     @Override
     public void close() {
         router.screenClosed();
+        if (binder != null) {
+            binder.close();
+        }
         ui.close();
     }
 }

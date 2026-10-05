@@ -22,11 +22,12 @@ public final class UiWidgets {
             "DrawProvider", 1,
             "ScrollView", 1,
             "TextField", 1,
+            "ListView", 1,
             UiNode.INSTANCE_TYPE, 1);
 
     /** Built-ins newer than schema 1.0 and the {@code requires} feature a document must list to use them. */
     private static final Map<String, String> FEATURE = Map.of("ScrollView", UiFeatures.SCROLL,
-            "TextField", UiFeatures.INPUT);
+            "TextField", UiFeatures.INPUT, "ListView", UiFeatures.DATA);
 
     private UiWidgets() {
     }

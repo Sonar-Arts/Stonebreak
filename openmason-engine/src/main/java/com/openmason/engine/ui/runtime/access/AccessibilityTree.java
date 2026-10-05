@@ -81,6 +81,7 @@ public final class AccessibilityTree {
             case "Image" -> "image";
             case "TextField" -> "text-field";
             case "ScrollView" -> "scroll-area";
+            case "ListView" -> "list";
             case "ItemSlot" -> "cell";
             default -> "none";
         };

@@ -47,7 +47,20 @@ public record UiRuntimeDiagnostic(Severity severity, Code code, String element, 
         EVENT_HANDLER_FAILED,
         NAV_TARGET_MISSING,
         MISSING_TEXT_KEY,
-        INPUT_GATE_BLOCKED
+        INPUT_GATE_BLOCKED,
+        // Bindings and host actions (#289)
+        UNKNOWN_DATA_SOURCE,
+        BINDING_TYPE,
+        MISSING_CONVERTER,
+        CONVERTER_FAILED,
+        BINDING_SOURCE_FAILED,
+        BINDING_NOT_WRITABLE,
+        INVALID_EDIT,
+        LIST_TEMPLATE,
+        ACTION_FAILED,
+        ACTION_RESULT_MISMATCH,
+        ACTION_CALLBACK_FAILED,
+        STALE_COMPLETION
     }
 
     public UiRuntimeDiagnostic {

@@ -84,6 +84,9 @@ public final class FrameRenderer {
 
     public void renderFrame() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // UI data posted from the server/network threads and async action results land here,
+        // once per frame on the UI thread (#289).
+        com.stonebreak.ui.runtime.GameUiHost.get().drain();
 
         Game game = Game.getInstance();
         Renderer renderer = Game.getRenderer();

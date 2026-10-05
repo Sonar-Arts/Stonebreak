@@ -174,6 +174,9 @@ module openmason.engine {
     exports com.openmason.engine.ui.runtime.paint;
     exports com.openmason.engine.ui.runtime.style;
     exports com.openmason.engine.ui.runtime.widget;
+    // Typed host contracts (data sources, actions, scopes, edits) and bindings (#289)
+    exports com.openmason.engine.ui.data;
+    exports com.openmason.engine.ui.runtime.binding;
 
     // Open format packages for Jackson JSON processing
     opens com.openmason.engine.format.sbo to com.fasterxml.jackson.databind;

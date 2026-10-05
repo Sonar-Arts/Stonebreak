@@ -10,6 +10,12 @@ import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.UiRuntimeContext;
 import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic;
+import com.openmason.engine.ui.runtime.binding.UiActivation;
+import com.openmason.engine.ui.runtime.binding.UiActivationException;
+import com.openmason.engine.ui.runtime.binding.UiBinder;
+import com.openmason.engine.ui.runtime.binding.UiConverters;
+import com.openmason.engine.ui.data.UiHost;
+import com.openmason.engine.format.omui.UiDiagnostic;
 import com.openmason.engine.ui.runtime.input.UiInputGate;
 import com.openmason.engine.ui.runtime.paint.MasonryContentMeasurer;
 import com.openmason.engine.ui.runtime.paint.ResolvedUiAssets;
@@ -94,6 +100,39 @@ public final class GameUiDocuments {
         }
     }
 
+    // ── host bindings (#289) ────────────────────────────────────────────────
+
+    /**
+     * Opens an exported screen bound to {@code host}, after its activation gate: a required host
+     * contract, provider, feature or data root the host lacks refuses the screen before anything
+     * is instantiated, so the caller keeps the legacy screen instead of showing a broken one.
+     *
+     * @throws UiActivationException listing every unmet need
+     */
+    public static UiDocumentView openBound(SbuiArchive sbui, Map<String, Path> packs, Supplier<Typeface> typeface,
+                                           Map<String, UiPaintHost.UiDrawProvider> providers, UiHost host,
+                                           UiConverters converters) throws IOException {
+        List<AssetSource> sources = GameUiAssets.sources(packs);
+        ResolvedUiAssets assets = new ResolvedUiAssets(AssetResolver.forExport(sbui, sources), sources,
+            MTextureRegistry.cache());
+        UiActivation.require(sbui, assets, host);
+        return bind(view(sbui.source(), assets, typeface, providers), host, converters);
+    }
+
+    /**
+     * Connects an open view to {@code host}: bindings, Lua/graph host calls and their lifetime go
+     * through one scope that closes with the view. The game passes {@link GameUiHost}; the editor
+     * preview a {@code FixtureHost}.
+     */
+    public static UiDocumentView bind(UiDocumentView view, UiHost host, UiConverters converters) {
+        return view.bind(UiBinder.open(view.instance(), host, converters));
+    }
+
+    /** Activation findings of an already open view's document against {@code host} (dev overlay, preview). */
+    public static List<UiDiagnostic> activationGate(UiDocumentView view, UiHost host) {
+        return UiActivation.check(view.instance().document(), view.instance().context().source(), host);
+    }
+
     /** Re-reads {@code file} into {@code view}, keeping instance state of surviving elements. */
     public static UiDocumentInstance.ReloadReport reload(UiDocumentView view, Path file) throws IOException {
         return view.instance().reload(read(file));
@@ -101,7 +140,11 @@ public final class GameUiDocuments {
 
     private static UiDocumentView view(OmuiArchive doc, AssetResolver resolver, List<AssetSource> sources,
                                        Supplier<Typeface> typeface, Map<String, UiPaintHost.UiDrawProvider> providers) {
-        ResolvedUiAssets assets = new ResolvedUiAssets(resolver, sources, MTextureRegistry.cache());
+        return view(doc, new ResolvedUiAssets(resolver, sources, MTextureRegistry.cache()), typeface, providers);
+    }
+
+    private static UiDocumentView view(OmuiArchive doc, ResolvedUiAssets assets, Supplier<Typeface> typeface,
+                                       Map<String, UiPaintHost.UiDrawProvider> providers) {
         UiPaintHost host = assets.paintHost(providers);
         MasonryContentMeasurer text = new MasonryContentMeasurer(typeface, host);
         UiRuntimeContext context = UiRuntimeContext.basic().withSource(assets).withMeasurer(text);

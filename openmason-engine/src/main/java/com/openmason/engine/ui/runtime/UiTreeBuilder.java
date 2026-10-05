@@ -77,7 +77,7 @@ final class UiTreeBuilder {
             sheets.add(new SheetBinding(compile("theme:" + t.id(), t), SheetBinding.THEME_RANK, i, null));
         }
         Scope top = new Scope("", 0, null, document, null, Map.of(), null, OverrideSet.EMPTY);
-        UiElement root = buildNode(document.document().root(), top, OverrideSet.EMPTY);
+        UiElement root = buildNode(document.document().root(), top, OverrideSet.EMPTY, null);
         attachSheets(document, 0, null, "");
         reportUnusedOverrides();
         return root;
@@ -88,9 +88,24 @@ final class UiTreeBuilder {
      * authoring scope. The caller attaches it.
      */
     UiElement buildChild(UiElement parent, UiNode node) {
-        UiElement el = buildNode(node, (Scope) parent.scope, OverrideSet.EMPTY);
+        UiElement el = buildNode(node, (Scope) parent.scope, OverrideSet.EMPTY, null);
         reportUnusedOverrides();
         return el;
+    }
+
+    /**
+     * Builds a collection row from {@code template} with element key {@code key}; descendants
+     * are keyed {@code key/<nodeId>} so every row of one template is distinct (#289).
+     */
+    UiElement buildRow(UiElement parent, UiNode template, String key) {
+        UiElement el = buildNode(template, (Scope) parent.scope, OverrideSet.EMPTY, key);
+        reportUnusedOverrides();
+        return el;
+    }
+
+    /** {@code ListView} children are its row template, not live elements (#289). */
+    static boolean isTemplateHost(UiNode node) {
+        return "ListView".equals(node.type());
     }
 
     private void reportUnusedOverrides() {
@@ -102,8 +117,9 @@ final class UiTreeBuilder {
         }
     }
 
-    private UiElement buildNode(UiNode node, Scope scope, OverrideSet overrides) {
-        String key = scope.prefix + node.id();
+    /** @param rowKey explicit key of a template row; its descendants are keyed below it */
+    private UiElement buildNode(UiNode node, Scope scope, OverrideSet overrides, String rowKey) {
+        String key = rowKey != null ? rowKey : scope.prefix + node.id();
         WidgetRegistry registry = context.widgets();
         Map<String, UiValue> props = registry.validate(node, key, owner::report);
         WidgetDescriptor descriptor = registry.get(node.type());
@@ -129,14 +145,15 @@ final class UiTreeBuilder {
             data = DataPaths.eval(data, node.dataSource()); // absolute sources are live host data (#289)
         }
         applyStaticBindings(el, node, data);
-        Scope own = data == scope.data ? scope : new Scope(scope.prefix, scope.depth, scope.componentId,
-            scope.archive, data, scope.slotContent, scope.outer, scope.outerOverrides);
+        String prefix = rowKey != null ? rowKey + "/" : scope.prefix;
+        Scope own = data == scope.data && rowKey == null ? scope : new Scope(prefix, scope.depth, scope.componentId,
+            scope.archive, data, rowKey != null ? Map.of() : scope.slotContent, scope.outer, scope.outerOverrides);
         el.scope = new Scope(own.prefix, own.depth, own.componentId, own.archive, own.data, Map.of(), own.outer,
             own.outerOverrides);
 
-        if (descriptor.acceptsChildren()) {
+        if (descriptor.acceptsChildren() && !isTemplateHost(node)) {
             for (UiNode child : node.children()) {
-                el.addChild(buildNode(child, own, overrides));
+                el.addChild(buildNode(child, own, overrides, null));
             }
         }
         List<UiNode> slotted = scope.slotContent.get(node.id());
@@ -146,7 +163,7 @@ final class UiTreeBuilder {
                     "slot host " + node.type() + " cannot hold slot content"));
             } else {
                 for (UiNode child : slotted) {
-                    el.addChild(buildNode(child, scope.outer, scope.outerOverrides));
+                    el.addChild(buildNode(child, scope.outer, scope.outerOverrides, null));
                 }
             }
         }
@@ -195,11 +212,13 @@ final class UiTreeBuilder {
                 slotContent.computeIfAbsent(slot.host(), h -> new ArrayList<>()).addAll(nodes);
             }
         });
-        Scope inner = new Scope(key + "/", scope.depth + 1, componentId, archive, params(def, inst, key),
+        UiValue.Obj params = params(def, inst, key, boundParams(el, node, def, scope.data));
+        el.componentParams = params;
+        Scope inner = new Scope(key + "/", scope.depth + 1, componentId, archive, params,
             slotContent, scope, overrides);
         componentStack.push(componentId);
         try {
-            UiElement root = buildNode(doc.root(), inner, overrides.enter(node.id(), own));
+            UiElement root = buildNode(doc.root(), inner, overrides.enter(node.id(), own), null);
             el.addChild(root);
             for (String host : slotContent.keySet()) {
                 if (!byKey.containsKey(key + "/" + host)) {
@@ -213,8 +232,35 @@ final class UiTreeBuilder {
         }
     }
 
-    /** Declared parameters with defaults, overlaid with the instance's valid values. */
-    private UiValue params(UiDocument.ComponentDef def, UiNode.ComponentInstance inst, String key) {
+    /**
+     * Static values of {@code prop:<param>} bindings on an {@code Instance} node: an instance's
+     * props are its component's parameters, so a binding there feeds the component's data
+     * source (#289). Live values are the binder's.
+     */
+    private Map<String, UiValue> boundParams(UiElement el, UiNode node, UiDocument.ComponentDef def, UiValue data) {
+        Map<String, UiValue> out = new LinkedHashMap<>();
+        for (UiNode.UiBinding b : node.bindings()) {
+            if (!b.target().startsWith("prop:")) {
+                continue;
+            }
+            String name = b.target().substring(5);
+            UiDocument.Param p = def.params().stream().filter(q -> q.name().equals(name)).findFirst().orElse(null);
+            if (p == null) {
+                owner.report(UiRuntimeDiagnostic.error(Code.UNKNOWN_PARAM, el.key(),
+                    "binding " + b.target() + ": " + node.instance().component() + " has no parameter '" + name + "'"));
+                continue;
+            }
+            UiValue v = b.converter() == null && DataPaths.isRelative(b.path()) ? DataPaths.eval(data, b.path()) : null;
+            if (v != null && p.type().accepts(v)) {
+                out.put(name, v);
+            }
+        }
+        return out;
+    }
+
+    /** Declared parameters with defaults, overlaid with the instance's valid values, then static param bindings. */
+    private UiValue.Obj params(UiDocument.ComponentDef def, UiNode.ComponentInstance inst, String key,
+                               Map<String, UiValue> bound) {
         Map<String, UiValue> values = new LinkedHashMap<>();
         for (UiDocument.Param p : def.params()) {
             values.put(p.name(), p.defaultValue() == null ? UiValue.NULL : p.defaultValue());
@@ -231,6 +277,7 @@ final class UiTreeBuilder {
                 values.put(name, value);
             }
         });
+        values.putAll(bound);
         return new UiValue.Obj(values);
     }
 
@@ -251,6 +298,9 @@ final class UiTreeBuilder {
             int colon = target.indexOf(':');
             String kind = target.substring(0, colon);
             String name = target.substring(colon + 1);
+            if (node.instance() != null && kind.equals("prop")) {
+                continue; // a component parameter (boundParams)
+            }
             switch (kind) {
                 case "prop" -> {
                     var p = el.descriptor().property(name);

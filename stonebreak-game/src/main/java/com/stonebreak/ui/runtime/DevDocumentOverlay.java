@@ -2,7 +2,10 @@ package com.stonebreak.ui.runtime;
 
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.rendering.MasonryBackend;
+import com.openmason.engine.format.omui.UiDiagnostic;
+import com.openmason.engine.ui.data.UiHost;
 import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic;
+import com.openmason.engine.ui.runtime.binding.UiConverters;
 import com.openmason.engine.ui.runtime.input.UiInputGate;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
 import org.slf4j.Logger;
@@ -49,6 +52,12 @@ public final class DevDocumentOverlay {
     private boolean open(MasonryBackend backend) {
         try {
             view = GameUiDocuments.open(Path.of(file), backend::typeface);
+            UiHost host = GameUiHost.get().host();
+            for (UiDiagnostic d : GameUiDocuments.activationGate(view, host)) {
+                LOGGER.warn("[uidoc] activation: {}", d); // dev overlay: shown anyway, but loudly
+            }
+            // No Lua code-behind yet (#292): converter bindings report MISSING_CONVERTER.
+            GameUiDocuments.bind(view, host, UiConverters.NONE);
             masonry = new MasonryUI(backend);
             for (UiRuntimeDiagnostic d : view.instance().diagnostics()) {
                 LOGGER.warn("[uidoc] {}", d);

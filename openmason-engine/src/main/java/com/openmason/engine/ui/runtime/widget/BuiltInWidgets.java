@@ -70,6 +70,21 @@ public final class BuiltInWidgets {
             prop("pattern", ValueType.STRING, UiValue.NULL, "Regular expression the value must fully match to commit"),
             prop("commitOnBlur", ValueType.BOOL, UiValue.TRUE, "Losing focus commits a valid value")));
 
+    /**
+     * Collection view (needs the {@code ui-data} feature, #289): a vertical scroll container whose
+     * single authored child is the row template. Each item of the {@code items} binding gets a
+     * row built from the template with the item as its data source; with {@code itemHeight > 0}
+     * only the visible rows exist and are recycled as the list scrolls.
+     */
+    public static final WidgetDescriptor LIST_VIEW = WidgetDescriptor.of("ListView", 1, true, false,
+        "Rows built from a template, one per item of a bound collection",
+        props(prop("items", ValueType.LIST, UiValue.NULL, "The collection; bind it with prop:items"),
+            prop("itemKey", ValueType.STRING, UiValue.NULL,
+                "Identity field of items when the source is not a host collection; empty = by position"),
+            prop("itemHeight", ValueType.NUMBER, UiValue.of(0), "Fixed row height in logical px; > 0 virtualizes"),
+            new PropertyDescriptor("selectionMode", ValueType.STRING, UiValue.of("single"),
+                "Clicking a row selects it (:checked)", Set.of("none", "single"))));
+
     /** Instance nodes become a container element whose one child is the component's root. */
     public static final WidgetDescriptor INSTANCE = WidgetDescriptor.of(UiNode.INSTANCE_TYPE, 1, true, false,
         "Component instance container (Unity's TemplateContainer)", props());
@@ -78,6 +93,7 @@ public final class BuiltInWidgets {
     }
 
     public static List<WidgetDescriptor> all() {
-        return List.of(BOX, LABEL, BUTTON, IMAGE, ITEM_SLOT, DRAW_PROVIDER, SCROLL_VIEW, TEXT_FIELD, INSTANCE);
+        return List.of(BOX, LABEL, BUTTON, IMAGE, ITEM_SLOT, DRAW_PROVIDER, SCROLL_VIEW, TEXT_FIELD, LIST_VIEW,
+            INSTANCE);
     }
 }

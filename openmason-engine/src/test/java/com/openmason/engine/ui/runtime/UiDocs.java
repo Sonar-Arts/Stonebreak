@@ -61,6 +61,12 @@ public final class UiDocs {
             return this;
         }
 
+        /** A binding with an explicit mode and optional converter (#289). */
+        public N bind(String target, String path, UiNode.BindingMode mode, String converter) {
+            bindings.add(new UiNode.UiBinding(target, path, mode, converter, Map.of()));
+            return this;
+        }
+
         public N data(String path) {
             dataSource = path;
             return this;
@@ -190,6 +196,23 @@ public final class UiDocs {
             case Number n -> UiValue.of(n.doubleValue());
             default -> throw new IllegalArgumentException(String.valueOf(v));
         };
+    }
+
+    /** {@code doc} with extra {@code requires} features and host contracts ({@code "id@version"}, {@code "id@version?"} = optional). */
+    public static OmuiArchive declare(OmuiArchive doc, List<String> features, String... hostApis) {
+        UiManifest m = doc.manifest();
+        List<String> req = new ArrayList<>(m.requires());
+        req.addAll(features);
+        List<UiManifest.HostRequirement> apis = new ArrayList<>(m.hostApis());
+        for (String h : hostApis) {
+            boolean optional = h.endsWith("?");
+            String spec = optional ? h.substring(0, h.length() - 1) : h;
+            int at = spec.indexOf('@');
+            apis.add(new UiManifest.HostRequirement(spec.substring(0, at), Integer.parseInt(spec.substring(at + 1)),
+                optional, Map.of()));
+        }
+        return doc.withManifest(new UiManifest(m.schemaVersion(), m.documentId(), m.kind(), m.displayName(),
+            m.uiApi(), m.layoutSemantics(), req, apis, m.providers(), m.unknown()));
     }
 
     /** True when any diagnostic has {@code code}. */
