@@ -1,7 +1,7 @@
 package com.stonebreak.ui.characterCreation;
 
 import com.stonebreak.player.CharacterStats;
-import com.stonebreak.rendering.UI.masonryUI.MButton;
+import com.openmason.engine.ui.masonry.MButton;
 
 /**
  * All mutable state for the character creation screen. Pure state plus widget

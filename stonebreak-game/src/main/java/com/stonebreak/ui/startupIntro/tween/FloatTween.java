@@ -1,5 +1,7 @@
 package com.stonebreak.ui.startupIntro.tween;
 
+import com.openmason.engine.util.easing.EasingType;
+
 public final class FloatTween extends Tween {
 
     private final float start;

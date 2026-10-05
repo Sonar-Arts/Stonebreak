@@ -2,12 +2,12 @@ package com.stonebreak.ui.settingsMenu.managers;
 
 import com.stonebreak.config.Settings;
 import com.stonebreak.core.GameState;
-import com.stonebreak.rendering.UI.masonryUI.MButton;
-import com.stonebreak.rendering.UI.masonryUI.MCategoryButton;
-import com.stonebreak.rendering.UI.masonryUI.MDropdown;
-import com.stonebreak.rendering.UI.masonryUI.MScrollMath;
-import com.stonebreak.rendering.UI.masonryUI.MSlider;
-import com.stonebreak.rendering.UI.masonryUI.MWidget;
+import com.openmason.engine.ui.masonry.MButton;
+import com.openmason.engine.ui.masonry.MCategoryButton;
+import com.openmason.engine.ui.masonry.MDropdown;
+import com.openmason.engine.ui.masonry.MScrollMath;
+import com.openmason.engine.ui.masonry.MSlider;
+import com.openmason.engine.ui.masonry.MWidget;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 

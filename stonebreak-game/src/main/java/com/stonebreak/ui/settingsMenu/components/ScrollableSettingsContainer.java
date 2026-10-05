@@ -1,8 +1,8 @@
 package com.stonebreak.ui.settingsMenu.components;
 
-import com.stonebreak.rendering.UI.masonryUI.MScrollContainer;
-import com.stonebreak.rendering.UI.masonryUI.MScrollMath;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MScrollContainer;
+import com.openmason.engine.ui.masonry.MScrollMath;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;

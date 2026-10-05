@@ -1,8 +1,8 @@
 package com.stonebreak.ui.focusBattle.timed;
 
-import com.stonebreak.rendering.UI.masonryUI.MColor;
-import com.stonebreak.ui.startupIntro.tween.EasingFunctions;
-import com.stonebreak.ui.startupIntro.tween.EasingType;
+import com.openmason.engine.ui.masonry.MColor;
+import com.openmason.engine.util.easing.EasingFunctions;
+import com.openmason.engine.util.easing.EasingType;
 
 /**
  * The few timeline shapes the timed-input overlays share, composed from the game's one easing

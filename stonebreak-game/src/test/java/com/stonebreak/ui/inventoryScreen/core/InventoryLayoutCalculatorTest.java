@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
+import com.openmason.engine.ui.masonry.MPainter;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator.InventoryLayout;
 import com.stonebreak.ui.support.Resolutions;
 import com.stonebreak.ui.support.UiLayoutAssert;

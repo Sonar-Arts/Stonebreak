@@ -5,7 +5,7 @@ import com.stonebreak.player.combat.RageController;
 import com.stonebreak.player.combat.RageTier;
 import com.stonebreak.player.combat.berserker.BerserkerAbilityController;
 import com.stonebreak.player.combat.berserker.BerserkerTierText;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MStyle;
 import static com.stonebreak.player.PlayerConstants.RAGE_T1_THRESHOLD;
 import static com.stonebreak.player.PlayerConstants.RAGE_T2_THRESHOLD;
 import static com.stonebreak.player.PlayerConstants.RAGE_T3_THRESHOLD;

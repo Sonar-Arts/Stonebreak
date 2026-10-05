@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.UI.components;
 
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MasonryUI;
+import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Paint;

@@ -1,8 +1,8 @@
 package com.stonebreak.rendering.UI.components.hotbar;
 
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.hotbar.core.HotbarLayoutCalculator;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;

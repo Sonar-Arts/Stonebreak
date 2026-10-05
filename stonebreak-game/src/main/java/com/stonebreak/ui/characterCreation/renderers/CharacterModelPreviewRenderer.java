@@ -1,9 +1,9 @@
 package com.stonebreak.ui.characterCreation.renderers;
 
 import com.stonebreak.player.CharacterStats;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Paint;

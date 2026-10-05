@@ -115,6 +115,8 @@ public class Settings {
         if (instance == null) {
             instance = new Settings();
             instance.loadSettingsInternal();
+            // Masonry (engine) reads the player's UI scale through this seam, never Settings.
+            com.openmason.engine.ui.masonry.MasonryEnvironment.installUiScale(instance::getUiScale);
         }
         return instance;
     }

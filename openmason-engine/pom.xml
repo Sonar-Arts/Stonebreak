@@ -17,6 +17,14 @@
     <description>Shared rendering engine and file format library for Stonebreak and Open Mason</description>
 
     <dependencies>
+        <!-- Skija (Skia bindings): the shared Masonry UI renderer (com.openmason.engine.ui.masonry,
+             com.openmason.engine.ui.rendering, #286). The platform jar carries the natives the
+             raster tests need; game and tool already depend on the same artifact. -->
+        <dependency>
+            <groupId>io.github.humbleui</groupId>
+            <artifactId>${skija.artifact}</artifactId>
+        </dependency>
+
         <!-- LWJGL core -->
         <dependency>
             <groupId>org.lwjgl</groupId>

@@ -3,8 +3,8 @@ package com.stonebreak.ui.settingsMenu.handlers;
 import static org.lwjgl.glfw.GLFW.*;
 
 import com.stonebreak.config.Settings;
-import com.stonebreak.rendering.UI.masonryUI.MDropdown;
-import com.stonebreak.rendering.UI.masonryUI.MSlider;
+import com.openmason.engine.ui.masonry.MDropdown;
+import com.openmason.engine.ui.masonry.MSlider;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;

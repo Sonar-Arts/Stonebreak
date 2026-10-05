@@ -19,6 +19,7 @@ import com.openmason.main.systems.menus.textureCreator.TexturePreviewPipeline;
 import com.openmason.main.systems.menus.windows.TextureEditorWindow;
 import com.openmason.main.systems.skija.SkijaContext;
 import com.openmason.main.systems.skija.SkijaTestPanel;
+import com.openmason.main.systems.uiPreview.MasonryPreviewPanel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,6 +70,7 @@ public class mainOpenMason {
     private com.openmason.main.systems.menus.dialogs.SaveSheetDialog saveSheetDialog;
     private SkijaContext skijaContext;
     private SkijaTestPanel skijaTestPanel;
+    private MasonryPreviewPanel masonryPreviewPanel;
 
     // State flags
     private boolean showHomeScreen = true;
@@ -126,6 +128,10 @@ public class mainOpenMason {
             if (SkijaTestPanel.ENABLED) {
                 skijaTestPanel = new SkijaTestPanel();
                 logger.info("Skija test panel enabled (-Dopenmason.skija.test=true)");
+            }
+            if (MasonryPreviewPanel.ENABLED) {
+                masonryPreviewPanel = new MasonryPreviewPanel();
+                logger.info("Masonry preview panel enabled (-Dopenmason.masonry.preview=true)");
             }
         } catch (Throwable t) {
             logger.error("Skija initialization failed — Skija widgets will fall back to ImGui", t);
@@ -394,6 +400,9 @@ public class mainOpenMason {
 
         if (skijaTestPanel != null) {
             safeRender(() -> skijaTestPanel.render(), "Skija Test Panel");
+        }
+        if (masonryPreviewPanel != null) {
+            safeRender(() -> masonryPreviewPanel.render(), "Masonry Preview Panel");
         }
 
         // Flush pending texture preview updates to the 3D viewport
@@ -667,6 +676,10 @@ public class mainOpenMason {
         if (skijaTestPanel != null) {
             skijaTestPanel.close();
             skijaTestPanel = null;
+        }
+        if (masonryPreviewPanel != null) {
+            masonryPreviewPanel.close();
+            masonryPreviewPanel = null;
         }
         // Hub owns Skija regions (FBOs/textures) — release them before the
         // SkijaContext that backs them is closed.

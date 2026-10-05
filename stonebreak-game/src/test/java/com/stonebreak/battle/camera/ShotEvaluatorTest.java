@@ -5,7 +5,7 @@ import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.camera.CameraShot.End;
 import com.stonebreak.battle.camera.CameraShot.Motion;
-import com.stonebreak.ui.startupIntro.tween.EasingType;
+import com.openmason.engine.util.easing.EasingType;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 

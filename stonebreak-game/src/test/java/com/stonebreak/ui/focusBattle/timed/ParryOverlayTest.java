@@ -5,7 +5,7 @@ import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.api.PromptKind;
 import com.stonebreak.battle.api.TimedGrade;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
 import org.joml.Matrix4f;
 import org.junit.jupiter.api.Test;

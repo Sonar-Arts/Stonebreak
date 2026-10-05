@@ -5,7 +5,7 @@ import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.player.combat.arcanist.ArcanistAbilityController;
 import com.stonebreak.player.combat.arcanist.ArcanistHudText;
 import com.stonebreak.player.combat.arcanist.ResonanceTracker;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MStyle;
 
 /**
  * Arcanist Resonance gauge — header with the current stack count (or "OVERLOADED"), four

@@ -3,7 +3,7 @@ package com.stonebreak.ui.settingsMenu;
 import com.stonebreak.config.Settings;
 import com.stonebreak.core.GameState;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.settingsMenu.components.ScrollableSettingsContainer;
 import com.stonebreak.ui.settingsMenu.handlers.ActionHandler;
 import com.stonebreak.ui.settingsMenu.handlers.InputHandler;

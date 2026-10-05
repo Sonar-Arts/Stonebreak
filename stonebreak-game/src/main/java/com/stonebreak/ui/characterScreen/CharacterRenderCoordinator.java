@@ -4,12 +4,12 @@ import com.stonebreak.core.Game;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.UI.masonryUI.MButton;
-import com.stonebreak.rendering.UI.masonryUI.MItemSlot;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MSymbol;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MButton;
+import com.openmason.engine.ui.masonry.MItemSlot;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MSymbol;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.sbe.EntityAttachments;
 import com.stonebreak.mobs.sbe.SbeEntityAsset;
@@ -402,7 +402,7 @@ public class CharacterRenderCoordinator {
    * Renders the player SBE model into the inset rect captured during the Skija
    * frame. Mirrors SkijaCharacterCreationRenderer's preview pass: scissor +
    * depth to the rect, orbit camera framed on the model AABB, then restore a
-   * clean GL baseline matching SkiaContext.restoreGLDefaults().
+   * clean GL baseline matching GlBaseline.reset() (engine ui.rendering).
    */
   private void drawPlayerPreview(int windowWidth, int windowHeight) {
     if (previewRect == null) return;
@@ -453,7 +453,7 @@ public class CharacterRenderCoordinator {
     entityRenderer.renderPlayerPreview(null, time, new Vector3f(0f, 0f, 0f), 0f,
         new Vector3f(1f, 1f, 1f), view, proj, EntityAttachments.LOCAL_PLAYER);
 
-    // Restore a clean GL baseline matching SkiaContext.restoreGLDefaults().
+    // Restore a clean GL baseline matching GlBaseline.reset() (engine ui.rendering).
     GL11.glScissor(0, 0, windowWidth, windowHeight);
     GL11.glDisable(GL11.GL_SCISSOR_TEST);
     GL11.glDisable(GL11.GL_DEPTH_TEST);

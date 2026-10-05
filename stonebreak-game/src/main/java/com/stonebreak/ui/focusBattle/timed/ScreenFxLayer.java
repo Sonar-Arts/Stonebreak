@@ -2,9 +2,9 @@ package com.stonebreak.ui.focusBattle.timed;
 
 import com.stonebreak.battle.api.BattleView;
 import com.stonebreak.battle.api.CombatantId;
-import com.stonebreak.rendering.UI.masonryUI.MColor;
-import com.stonebreak.rendering.UI.masonryUI.MScreenFx;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MColor;
+import com.openmason.engine.ui.masonry.MScreenFx;
+import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.ui.focusBattle.BattlePalette;
 import io.github.humbleui.skija.Canvas;
 

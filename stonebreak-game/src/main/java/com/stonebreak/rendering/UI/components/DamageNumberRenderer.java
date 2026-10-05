@@ -1,8 +1,8 @@
 package com.stonebreak.rendering.UI.components;
 
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.masonryUI.MFonts;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
+import com.openmason.engine.ui.masonry.MFonts;
+import com.openmason.engine.ui.masonry.MPainter;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
 import org.joml.Matrix4f;

@@ -1,6 +1,6 @@
 package com.stonebreak.ui.terrainMapper.handlers;
 
-import com.stonebreak.rendering.UI.masonryUI.MCategoryButton;
+import com.openmason.engine.ui.masonry.MCategoryButton;
 import com.stonebreak.ui.terrainMapper.TerrainMapperLayout;
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;

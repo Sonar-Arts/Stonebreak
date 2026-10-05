@@ -4,7 +4,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
+import com.openmason.engine.ui.masonry.MPainter;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import io.github.humbleui.skija.Canvas;

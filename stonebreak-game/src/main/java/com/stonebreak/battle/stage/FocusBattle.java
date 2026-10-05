@@ -335,7 +335,7 @@ public final class FocusBattle implements BattleScreenHost {
         }
         // Through the HUD's own MasonryUI frame, like every other battle surface: one sanctioned path
         // for Skija frame bracketing and the GL state reset that follows it.
-        com.stonebreak.rendering.UI.masonryUI.MasonryUI ui = battle.screen.renderer().ui();
+        com.openmason.engine.ui.masonry.MasonryUI ui = battle.screen.renderer().ui();
         if (ui == null || !ui.beginFrame(width, height, 1.0f)) {
             return;
         }

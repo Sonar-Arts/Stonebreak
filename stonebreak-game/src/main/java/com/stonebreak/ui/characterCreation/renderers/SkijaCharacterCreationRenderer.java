@@ -1,11 +1,11 @@
 package com.stonebreak.ui.characterCreation.renderers;
 
 import com.stonebreak.player.CharacterStats;
-import com.stonebreak.rendering.UI.masonryUI.MButton;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
-import com.stonebreak.rendering.UI.masonryUI.textures.MTexture;
+import com.openmason.engine.ui.masonry.MButton;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MasonryUI;
+import com.openmason.engine.ui.masonry.textures.MTexture;
 import com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry;
 import com.stonebreak.ui.characterCreation.CharacterCreationActionHandler;
 import com.stonebreak.ui.characterCreation.CharacterCreationLayout;
@@ -190,7 +190,7 @@ public final class SkijaCharacterCreationRenderer {
      * Renders the player SBE model into the inset rect captured during the Skija
      * frame. Mirrors the Entity Glossary's preview pass: scissor + depth to the
      * rect, orbit camera framed on the model AABB, then restore a clean GL
-     * baseline matching SkiaContext.restoreGLDefaults().
+     * baseline matching GlBaseline.reset() (engine ui.rendering).
      */
     private void drawPlayerPreview(int windowWidth, int windowHeight) {
         if (previewRect == null) return;
@@ -247,7 +247,7 @@ public final class SkijaCharacterCreationRenderer {
                 new Vector3f(1f, 1f, 1f), view, proj,
                 com.stonebreak.mobs.sbe.EntityAttachments.LOCAL_PLAYER);
 
-        // Restore a clean GL baseline matching SkiaContext.restoreGLDefaults().
+        // Restore a clean GL baseline matching GlBaseline.reset() (engine ui.rendering).
         GL11.glScissor(0, 0, windowWidth, windowHeight);
         GL11.glDisable(GL11.GL_SCISSOR_TEST);
         GL11.glDisable(GL11.GL_DEPTH_TEST);

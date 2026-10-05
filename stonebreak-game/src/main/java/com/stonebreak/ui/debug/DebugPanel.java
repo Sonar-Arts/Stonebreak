@@ -1,6 +1,6 @@
 package com.stonebreak.ui.debug;
 
-import com.stonebreak.rendering.UI.masonryUI.MStatPanel;
+import com.openmason.engine.ui.masonry.MStatPanel;
 
 /**
  * One card of the F3 debug overlay. Implementations gather their numbers and

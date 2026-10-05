@@ -1,6 +1,6 @@
 package com.stonebreak.ui.worldSelect.handlers;
 
-import com.stonebreak.rendering.UI.masonryUI.MClipboard;
+import com.openmason.engine.ui.masonry.MClipboard;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
 import static org.lwjgl.glfw.GLFW.*;
 

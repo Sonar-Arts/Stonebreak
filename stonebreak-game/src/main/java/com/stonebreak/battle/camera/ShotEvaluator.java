@@ -2,7 +2,7 @@ package com.stonebreak.battle.camera;
 
 import com.stonebreak.battle.api.BattleStageLayout;
 import com.stonebreak.battle.api.CombatantId;
-import com.stonebreak.ui.startupIntro.tween.EasingFunctions;
+import com.openmason.engine.util.easing.EasingFunctions;
 import org.joml.Vector3f;
 
 /** Evaluates a {@link CameraShot} at a time into a finite {@link CameraFrame}. Stateless. */

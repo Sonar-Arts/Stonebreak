@@ -1,8 +1,8 @@
 package com.stonebreak.ui;
 
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.UI.masonryUI.MStatPanel;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MStatPanel;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.debug.DebugDiagnostics;
 import com.stonebreak.ui.debug.DebugInfoPanel;
 import com.stonebreak.ui.debug.DebugPanel;

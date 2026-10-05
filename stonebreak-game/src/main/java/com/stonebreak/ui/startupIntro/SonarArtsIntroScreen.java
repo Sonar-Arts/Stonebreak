@@ -10,7 +10,7 @@ import com.stonebreak.ui.startupIntro.entities.Submarine;
 import com.stonebreak.ui.startupIntro.render.IntroPainter;
 import com.stonebreak.ui.startupIntro.render.OceanBackgroundRenderer;
 import com.stonebreak.ui.startupIntro.render.SonarLogoRenderer;
-import com.stonebreak.ui.startupIntro.tween.EasingType;
+import com.openmason.engine.util.easing.EasingType;
 import com.stonebreak.ui.startupIntro.tween.FloatTween;
 import com.stonebreak.ui.startupIntro.tween.TweenEngine;
 import io.github.humbleui.skija.Canvas;

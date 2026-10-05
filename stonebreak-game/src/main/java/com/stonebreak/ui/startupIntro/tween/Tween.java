@@ -1,5 +1,8 @@
 package com.stonebreak.ui.startupIntro.tween;
 
+import com.openmason.engine.util.easing.EasingFunctions;
+import com.openmason.engine.util.easing.EasingType;
+
 public abstract class Tween {
 
     protected float elapsed;

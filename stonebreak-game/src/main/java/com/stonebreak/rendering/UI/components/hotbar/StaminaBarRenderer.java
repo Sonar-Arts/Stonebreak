@@ -2,7 +2,7 @@ package com.stonebreak.rendering.UI.components.hotbar;
 
 import com.stonebreak.player.Player;
 import com.stonebreak.player.combat.arcanist.ArcanistAbilityController;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
+import com.openmason.engine.ui.masonry.MPainter;
 import com.stonebreak.ui.hotbar.core.HotbarLayoutCalculator;
 import io.github.humbleui.skija.Canvas;
 

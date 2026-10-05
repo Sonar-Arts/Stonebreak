@@ -1,6 +1,6 @@
 package com.stonebreak.ui.terrainMapper.handlers;
 
-import com.stonebreak.rendering.UI.masonryUI.MClipboard;
+import com.openmason.engine.ui.masonry.MClipboard;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
 
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE;

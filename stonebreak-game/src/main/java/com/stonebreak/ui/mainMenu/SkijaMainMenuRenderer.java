@@ -2,8 +2,8 @@ package com.stonebreak.ui.mainMenu;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.ui.MainMenu;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.ClipMode;

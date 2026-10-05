@@ -1,9 +1,9 @@
 package com.stonebreak.ui.focusBattle.elements;
 
-import com.stonebreak.rendering.UI.masonryUI.MColor;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MColor;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.focusBattle.BattleHelpText;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;

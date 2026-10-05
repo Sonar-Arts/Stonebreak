@@ -1,10 +1,10 @@
 package com.stonebreak.ui.characterCreation.renderers;
 
 import com.stonebreak.player.PlayerLooks;
-import com.stonebreak.rendering.UI.masonryUI.MButton;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MButton;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.characterCreation.CharacterCreationActionHandler;
 import com.stonebreak.ui.characterCreation.CharacterCreationLayout;
 import io.github.humbleui.skija.Canvas;
