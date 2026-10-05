@@ -39,6 +39,16 @@ class NvidiaDriverVersionTest {
     }
 
     @Test
+    void parsesThreeDigitMinorFromOpenKernelModule() {
+        // 595.104.02 is on the Wayland blocklist; a two-digit-minor assumption would miss it.
+        List<String> lines = List.of(
+                "NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  595.104.02  Release Build  (root@nobara-pc)  Sat Oct  3 06:34:33 PM PDT 2026",
+                "GCC version:  gcc version 16.2.1 20260819 (Red Hat 16.2.1-2) (GCC) "
+        );
+        assertEquals("595.104.02", DisplayBackend.parseNvidiaDriverVersion(lines));
+    }
+
+    @Test
     void parsesTwoPartVersion() {
         List<String> lines = List.of(
                 "NVRM version: NVIDIA UNIX x86_64 Kernel Module  550.120  Tue Jan 01 00:00:00 UTC 2025"

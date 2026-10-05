@@ -2,6 +2,7 @@ package com.stonebreak.rendering.sbo;
 
 import com.openmason.engine.format.mesh.ParsedMeshData;
 import com.openmason.engine.format.sbo.SBOParseResult;
+import com.openmason.engine.voxel.sbo.SBOPlanarGeometry;
 import com.stonebreak.blocks.BlockType;
 import com.openmason.engine.rendering.cbr.meshing.MeshManager;
 import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
@@ -10,7 +11,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Builds per-block hand-rendering meshes from SBO geometry so in-hand renders
@@ -38,6 +41,8 @@ public class SBOHandMeshRegistry {
     private final CBRResourceManager cbrManager;
     private final BlockTextureArray textureArray;
     private final Map<BlockType, MeshManager.MeshResource> meshesByBlock = new HashMap<>();
+    /** Blocks drawn from a single-layer cutout mesh: flowers and pane / X models. */
+    private final Set<BlockType> cutoutMeshBlocks = new HashSet<>();
 
     public SBOHandMeshRegistry(CBRResourceManager cbrManager, BlockTextureArray textureArray) {
         this.cbrManager = cbrManager;
@@ -53,6 +58,7 @@ public class SBOHandMeshRegistry {
      */
     public int buildMeshes(SBOBlockBridge bridge) {
         meshesByBlock.clear();
+        cutoutMeshBlocks.clear();
         if (cbrManager == null) {
             logger.warn("CBRResourceManager unavailable — SBO hand meshes will not be built");
             return 0;
@@ -67,11 +73,13 @@ public class SBOHandMeshRegistry {
             // default model — so drops, icons and the held item show that shape.
             boolean multiFace = animated || type.isStairs()
                     || type == BlockType.LIMESTONE_STALAGMITE || type == BlockType.CACTUS;
-            if (!type.isFlower() && !multiFace) continue;
             if (!bridge.isSBOBlock(type)) continue;
 
             SBOParseResult sbo = bridge.getSBODefinition(type);
             ParsedMeshData mesh = sbo.meshData();
+            // Pane and X models (saplings) display like flowers: the flat model, not a cube.
+            boolean cutout = type.isFlower() || SBOPlanarGeometry.isPlanar(mesh);
+            if (!cutout && !multiFace) continue;
             if (mesh == null || !mesh.hasGeometry() || mesh.indices() == null) {
                 logger.debug("No SBO geometry for {} — falling back to CBR cross/cube", type);
                 continue;
@@ -84,10 +92,11 @@ public class SBOHandMeshRegistry {
                 resource = meshManager.createCustomLayeredMesh(name,
                         buildInterleavedPerFace(type, mesh), sequentialIndices(mesh.indices().length));
             } else {
-                // Cross-plane flowers: one layer everywhere (unchanged path).
+                // Flowers and pane / X models: one layer everywhere (unchanged path).
                 int layer = textureArray.getBlockFaceLayer(type, 0);
                 resource = meshManager.createCustomLayeredMesh(name,
                         buildInterleaved(mesh, layer), mesh.indices());
+                cutoutMeshBlocks.add(type);
             }
             meshesByBlock.put(type, resource);
             built++;
@@ -106,6 +115,14 @@ public class SBOHandMeshRegistry {
     public MeshManager.MeshResource getMesh(BlockType type) {
         if (type == null) return null;
         return meshesByBlock.get(type);
+    }
+
+    /**
+     * True when the block's display mesh is a flower or pane / X model — one
+     * texture with transparent cut-outs, so it must be drawn with alpha test.
+     */
+    public boolean isCutoutMesh(BlockType type) {
+        return type != null && cutoutMeshBlocks.contains(type);
     }
 
     /**

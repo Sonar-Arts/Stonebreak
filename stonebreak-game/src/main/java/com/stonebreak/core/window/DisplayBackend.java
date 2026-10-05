@@ -45,7 +45,9 @@ public final class DisplayBackend {
             // Open Kernel Module build; still unfixed on the 595 branch.
             "595.91.07",
             // Open Kernel Module build; still unfixed on the 595 branch.
-            "595.99.02"
+            "595.99.02",
+            // Open Kernel Module build; still unfixed on the 595 branch.
+            "595.104.02"
     );
 
     /**

@@ -11,7 +11,8 @@ import com.stonebreak.world.generation.noise.MultiNoiseSample;
  *   2. Coastal shelves (low continentalness + low peaks) → beach variants
  *   3. Mountainous shape (high peaks/valleys) → peak biomes, climate-skinned
  *   4. Hilly shape (mid peaks/valleys) → rolling biomes, climate-skinned
- *   5. Flatland (low peaks/valleys) → pure climate Whittaker selection
+ *   5. Flatland (low peaks/valleys) → swamp on flat, wet, non-cold lowland; otherwise pure
+ *      climate Whittaker selection
  */
 public final class BiomeSelector {
 
@@ -38,6 +39,13 @@ public final class BiomeSelector {
     private static final float M_ARID = 0.25f;
     private static final float M_DRY = 0.45f;
     private static final float M_WET = 0.65f;
+
+    // Swamp: the flat, low inland shelf past the coast. Continentalness in
+    // [COAST_MAX_C, SWAMP_MAX_C) keeps the base elevation within ~16 blocks of sea level.
+    // With PV in [SWAMP_MIN_PV, HILL_MIN_PV) the peak spline adds at most -5..+3 blocks, so
+    // the ground is flat whatever the erosion; the PV floor also excludes valley floors.
+    private static final float SWAMP_MAX_C = 0.20f;
+    private static final float SWAMP_MIN_PV = -0.30f;
 
     /**
      * @param submerged whether the column's final surface is under sea level. Standard's only
@@ -107,6 +115,9 @@ public final class BiomeSelector {
     }
 
     private BiomeType flatland(MultiNoiseSample s) {
+        if (isSwamp(s)) {
+            return BiomeType.SWAMP;
+        }
         if (s.temperature() < T_FREEZING) {
             return s.moisture() >= M_WET ? BiomeType.ICE_FIELDS : BiomeType.TUNDRA;
         }
@@ -127,5 +138,12 @@ public final class BiomeSelector {
         if (s.moisture() < M_DRY) return BiomeType.RED_SAND_DESERT;
         if (s.moisture() < M_WET) return BiomeType.BADLANDS;
         return BiomeType.PLAINS;
+    }
+
+    private static boolean isSwamp(MultiNoiseSample s) {
+        return s.continentalness() >= COAST_MAX_C && s.continentalness() < SWAMP_MAX_C
+            && s.peaksValleys() >= SWAMP_MIN_PV
+            && s.temperature() >= T_COLD
+            && s.moisture() >= M_WET;
     }
 }

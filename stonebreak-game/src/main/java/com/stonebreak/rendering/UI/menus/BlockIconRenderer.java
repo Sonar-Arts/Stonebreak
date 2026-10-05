@@ -344,8 +344,8 @@ public class BlockIconRenderer {
                 : null;
         MeshManager.MeshResource mesh = sboMesh != null ? sboMesh : getIconCubeMesh(type);
 
-        // Flower cross meshes carry no per-vertex alpha flag — force alpha test.
-        shaderProgram.setUniform("u_forceAlphaTest", sboMesh != null && type.isFlower());
+        // Flower and pane / X meshes carry no per-vertex alpha flag — force alpha test.
+        shaderProgram.setUniform("u_forceAlphaTest", sboMesh != null && sboHandMeshRegistry.isCutoutMesh(type));
         mesh.bind();
         glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0);
         mesh.unbind();

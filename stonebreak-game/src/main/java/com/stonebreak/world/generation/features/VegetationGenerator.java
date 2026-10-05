@@ -18,6 +18,7 @@ public class VegetationGenerator {
     public static final float TAIGA_PINE_CHANCE = 0.03f;
     public static final float TUNDRA_PINE_CHANCE = 0.003f;
     public static final float MEADOW_TREE_CHANCE = 0.002f;
+    public static final float CYPRESS_TREE_CHANCE = 0.02f;
     private static final float FLOWER_CHANCE = 0.08f;
     private static final float MEADOW_FLOWER_CHANCE = 0.25f;
 
@@ -25,7 +26,8 @@ public class VegetationGenerator {
     public enum TreeKind {
         OAK(BlockType.WOOD, BlockType.LEAVES),
         ELM(BlockType.ELM_WOOD_LOG, BlockType.ELM_LEAVES),
-        PINE(BlockType.PINE, BlockType.PINE_LEAVES);
+        PINE(BlockType.PINE, BlockType.PINE_LEAVES),
+        CYPRESS(BlockType.CYPRESS_LOG, BlockType.CYPRESS_LEAVES);
 
         private final BlockType trunk;
         private final BlockType leaves;
@@ -69,7 +71,19 @@ public class VegetationGenerator {
             int h = 8 + rng.getRandomForPosition(worldX, worldZ, "meadow_elm").nextInt(5);
             return new TreeSample(TreeKind.ELM, h);
         }
+        if (biome == BiomeType.SWAMP && isCypressGround(surfaceBlock) &&
+                rolls(rng, worldX, worldZ, "cypress_tree", CYPRESS_TREE_CHANCE * forest)) {
+            return new TreeSample(TreeKind.CYPRESS, 16);
+        }
         return null;
+    }
+
+    /**
+     * Cypress roots on swampy grass or in a pool cell (a trunk log is watertight, so it keeps
+     * the pool sealed). Cypress is swamp-only: this and {@link #placeTree} are its only spawns.
+     */
+    private static boolean isCypressGround(BlockType surfaceBlock) {
+        return surfaceBlock == BlockType.SWAMPY_GRASS || surfaceBlock == BlockType.WATER;
     }
 
     /** Probability roll that accepts values >1 (saturating to always-true). */
@@ -131,6 +145,14 @@ public class VegetationGenerator {
         } else if (biome == BiomeType.MEADOW && surfaceBlock == BlockType.GRASS &&
                    rolls(worldX, worldZ, "meadow_tree", MEADOW_TREE_CHANCE * forest)) {
             TreeGenerator.generateElmTree(ctx.world, queue, ctx.chunk, x, surface, z);
+        } else if (biome == BiomeType.SWAMP && isCypressGround(surfaceBlock) &&
+                   rolls(worldX, worldZ, "cypress_tree", CYPRESS_TREE_CHANCE * forest)) {
+            // In a pool the trunk replaces the water cell and stands on the bed below it;
+            // a 2-deep pool core has water there instead, so no tree.
+            int base = surfaceBlock == BlockType.WATER ? surface - 1 : surface;
+            if (base == surface || ctx.chunk.getBlock(x, base - 1, z).isSolid()) {
+                TreeGenerator.generateCypressTree(ctx.world, queue, ctx.chunk, x, base, z);
+            }
         }
     }
 

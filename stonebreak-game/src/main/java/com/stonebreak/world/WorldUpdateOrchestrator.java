@@ -23,6 +23,7 @@ final class WorldUpdateOrchestrator {
     private final World world;
     private final WaterSim waterSim;
     private final LeafDecaySystem leafDecay;
+    private final com.stonebreak.world.growth.SaplingGrowthSystem saplingGrowth;
     private final com.stonebreak.blocks.cactus.CactusContactSystem cactusContact;
     private final com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry;
     private final WorldChunkStore chunkStore;
@@ -41,6 +42,7 @@ final class WorldUpdateOrchestrator {
     WorldUpdateOrchestrator(World world,
                             WaterSim waterSim,
                             LeafDecaySystem leafDecay,
+                            com.stonebreak.world.growth.SaplingGrowthSystem saplingGrowth,
                             com.stonebreak.blocks.cactus.CactusContactSystem cactusContact,
                             com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry,
                             WorldChunkStore chunkStore,
@@ -50,6 +52,7 @@ final class WorldUpdateOrchestrator {
         this.world = world;
         this.waterSim = waterSim;
         this.leafDecay = leafDecay;
+        this.saplingGrowth = saplingGrowth;
         this.cactusContact = cactusContact;
         this.furnaceRegistry = furnaceRegistry;
         this.chunkStore = chunkStore;
@@ -64,6 +67,7 @@ final class WorldUpdateOrchestrator {
 
         waterSim.tick(Game.getDeltaTime());
         leafDecay.tick(Game.getDeltaTime());
+        saplingGrowth.tick(Game.getDeltaTime());
         // Cactus contact damage (mobs) — authoritative worlds only; a render-only
         // client never ticks it (mob shadows aren't damaged locally).
         if (cactusContact != null) cactusContact.tick(Game.getDeltaTime());
@@ -87,6 +91,7 @@ final class WorldUpdateOrchestrator {
         long tickStart = System.nanoTime();
         waterSim.tick(deltaTime);
         leafDecay.tick(deltaTime);
+        saplingGrowth.tick(deltaTime);
         if (cactusContact != null) cactusContact.tick(deltaTime);
         com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistry;
         if (fr != null) fr.tick(world, deltaTime);

@@ -101,6 +101,12 @@ public final class BlockType implements Item, IBlockType {
     public static final BlockType ELM_WOOD_LOG = fromRegistry("stonebreak:elm_wood_log", "ELM_WOOD_LOG");
     public static final BlockType ELM_WOOD_PLANKS = fromRegistry("stonebreak:elm_wood_planks", "ELM_WOOD_PLANKS");
     public static final BlockType ELM_LEAVES = fromRegistry("stonebreak:elm_leaves", "ELM_LEAVES");
+    // Swamp biome blocks: cypress trees (world/generation/trees/CypressTree) grow only in
+    // SWAMP on SWAMPY_GRASS; saplings grow via world/growth/SaplingGrowthSystem.
+    public static final BlockType CYPRESS_LOG = fromRegistry("stonebreak:cypress_log", "CYPRESS_LOG");
+    public static final BlockType CYPRESS_LEAVES = fromRegistry("stonebreak:cypress_leaves", "CYPRESS_LEAVES");
+    public static final BlockType CYPRESS_SAPLING = fromRegistry("stonebreak:cypress_sapling", "CYPRESS_SAPLING");
+    public static final BlockType SWAMPY_GRASS = fromRegistry("stonebreak:swampy_grass", "SWAMPY_GRASS");
     public static final BlockType COBBLESTONE = fromRegistry("stonebreak:cobblestone", "COBBLESTONE");
     public static final BlockType GRAVEL = fromRegistry("stonebreak:gravel", "GRAVEL");
     public static final BlockType CLAY = fromRegistry("stonebreak:clay", "CLAY");
@@ -449,14 +455,14 @@ public final class BlockType implements Item, IBlockType {
      * "supported" (won't decay) while it remains connected to one of these.
      */
     public boolean isLog() {
-        return this == WOOD || this == PINE || this == ELM_WOOD_LOG;
+        return this == WOOD || this == PINE || this == ELM_WOOD_LOG || this == CYPRESS_LOG;
     }
 
     /**
      * True for foliage blocks subject to decay when detached from a log.
      */
     public boolean isLeaves() {
-        return this == LEAVES || this == PINE_LEAVES || this == ELM_LEAVES;
+        return this == LEAVES || this == PINE_LEAVES || this == ELM_LEAVES || this == CYPRESS_LEAVES;
     }
 
     /**
