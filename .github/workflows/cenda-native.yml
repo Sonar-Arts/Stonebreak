@@ -50,6 +50,7 @@ jobs:
 
       - name: Native tests (lua_host, flex_host, kernels)
         working-directory: openmason-engine/cenda
+        timeout-minutes: 10
         run: ctest --preset release
 
       - name: Skija runtime libraries (Linux)
