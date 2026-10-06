@@ -2,7 +2,8 @@
 
 Documents run behaviour in **native Lua 5.5**, compiled into the Cenda library and called through FFM. The Open
 Mason preview and Stonebreak use the same runtime, so a script behaves identically in both. Python (GraalPy) stays
-editor automation only. Compiled graphs (#291) will target this same runtime.
+editor automation only. Compiled graphs (#291, [ui-graphs.md](ui-graphs.md)) run on this same runtime, in the same
+script contexts as code-behind.
 
 | Part | Where |
 | --- | --- |
@@ -204,6 +205,7 @@ end)
 | Elements | `el:prop/set/clear/text/setText`, `el:classes/hasClass/addClass/removeClass/toggleClass`, `el:style/clearStyle/computed`, `el:hasState/setState/enabled/setEnabled`, `el:focus/scrollTo/rect`, `el:parent/children/q/qAll`, `el:name/type/id/exists` |
 | Events | `el:on(event, fn [, "trickle"])`, `el:off(event, fn\|id)`. Events are kebab-case (`click`, `pointer-down`, `key-down`, `change`, `commit`, `drag-drop`, …). The event table has `type`, `target`, `current`, `phase` plus per-type data (`x`/`y`/`lx`/`ly` logical px, `button`, `key`, `mods`, `text`, `value`, `dx`/`dy`, `payload`, …) and the methods `ev:stop()`, `ev:stopImmediate()`, `ev:prevent()`, `ev:accept()`. |
 | Component signals | `ui.emit(signal, args)` in a component script, validated against the contract's `events[].args`; the instance's users call `instanceEl:on(signal, fn)` |
+| Custom events (#291) | `ui.on(name, fn)` → id, `ui.raise(name, args)`: between a document's code-behind and its graphs; queued and delivered after the current dispatch, each handler a task |
 | Data (#289) | `ui.read(path)` → value, `"ready"\|"loading"\|"missing"\|"failed"`; `ui.watch(path, fn)` → `{cancel}`. Paths are absolute host paths. |
 | Actions (#289) | `ui.action(id, args)` / `ui.request(id, args)` → handle, through `UiScope.invoke` with `CallSite.Origin.SCRIPT`, so the same parameter, capability and reentrancy checks apply as for bindings and graphs |
 | Converters | `ui.converter(name, {result = "string", to = fn [, back = fn]})`. `result` is a `ValueType` wire name or `any`; `?` makes it nullable. A plain module function of that name also works, typed `any`. |

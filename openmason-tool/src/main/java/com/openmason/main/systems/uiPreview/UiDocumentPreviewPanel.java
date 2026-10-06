@@ -1,6 +1,7 @@
 package com.openmason.main.systems.uiPreview;
 
 import com.openmason.engine.format.omui.OmuiArchive;
+import com.openmason.engine.format.omui.OmuiWriter;
 import com.openmason.engine.format.omui.UiDiagnostic;
 import com.openmason.engine.ui.data.FixtureHost;
 import com.openmason.engine.ui.masonry.MKeys;
@@ -13,12 +14,18 @@ import com.openmason.engine.ui.runtime.input.PreviewInput;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
 import com.openmason.engine.ui.script.UiApiStubs;
 import com.openmason.engine.ui.script.UiScriptChecker;
+import com.openmason.engine.ui.rendering.PreviewMapping;
+import com.openmason.engine.ui.runtime.UiRect;
 import com.openmason.engine.ui.script.UiScriptConsole;
+import com.openmason.engine.ui.script.UiScriptOptions;
 import com.openmason.engine.ui.script.UiScriptDiagnostic;
 import com.openmason.engine.ui.script.UiScriptRuntime;
 import com.openmason.main.platform.ToolInputTap;
+import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.openmason.main.systems.uiPreview.graph.GraphEditorWindow;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import com.stonebreak.ui.runtime.GameUiResources;
+import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiWindowFlags;
@@ -54,7 +61,8 @@ import java.util.Map;
  * the running modules, memory and call cost, diagnostics with {@code chunk:line}, the script
  * console, a static check of every module and a button that writes LuaLS stubs next to the file.
  *
- * <p>Enabled with {@code -Dopenmason.uidoc.preview=<file>} (or {@code =true} to start empty).
+ * <p>Enabled with {@code -Dopenmason.uidoc.preview=<file>} (or {@code =true} to start empty);
+ * {@code -Dopenmason.uigraph.open=true} also opens the behavior graph editor (#291) on load.
  * The UI Editor (#293) will host this view as its canvas.
  */
 public final class UiDocumentPreviewPanel implements AutoCloseable {
@@ -80,6 +88,23 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
     private UiScriptRuntime scripts;
     private com.openmason.engine.ui.script.UiNativeHealth.Status nativeStatus;
     private final List<String> requests = new ArrayList<>();
+    /** The behavior graph editor (#291) and the element it asked the preview to highlight. */
+    private final GraphEditorWindow graphWindow = new GraphEditorWindow();
+    private final GraphEditorWindow.Host graphHost = new GraphEditorWindow.Host() {
+        @Override
+        public Path documentPath() {
+            String f = file.get().trim();
+            return f.isEmpty() ? null : Path.of(f);
+        }
+
+        @Override
+        public String save(OmuiArchive doc, Path target) {
+            return saveGraphDocument(doc, target);
+        }
+    };
+    private String highlightPath;
+    private double highlightUntil;
+    private boolean swallowRelease;
     /** Dev hooks for screenshot runs: {@code -Dopenmason.uidoc.autoclick=key@s,...} and
      *  {@code -Dopenmason.uidoc.autoscreenshot=<s>:<file.png>[:quit]} (raster path). */
     private final com.openmason.engine.ui.runtime.input.UiAutoClick autoClick =
@@ -113,6 +138,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
         if (!initial.isBlank() && !"true".equals(initial)) {
             file.set(initial);
         }
+        graphWindow.setJumpHandler(this::highlightElement);
     }
 
     public void render() {
@@ -133,6 +159,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
                 int h = (int) (Math.max(64, ImGui.getContentRegionAvailY()) / z);
                 preview.draw(w, h, z, this::paint);
                 route();
+                drawHighlight();
                 focusedWindow = ImGui.isWindowFocused() && !ImGui.getIO().getWantTextInput();
                 routeKeyboard(focusedWindow);
             }
@@ -140,6 +167,8 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
         ImGui.end();
         autoElapsed += ImGui.getIO().getDeltaTime();
         maybeAutoScreenshot();
+        graphWindow.bind(scripts == null ? null : scripts.graphDebugger(), scripts == null ? 0 : scripts.time());
+        graphWindow.render();
         pendingKeys.clear();
         pendingChars.clear();
         documentHasKeyboard = focusedWindow && input != null && input.wantsKeyboard();
@@ -158,6 +187,13 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
         ImGui.sameLine();
         if (ImGui.button("Reload") && view != null) {
             reload();
+        }
+        ImGui.sameLine();
+        if (ImGui.button("Graphs...") && view != null) {
+            graphWindow.open(view.instance().document(), view.instance().context().source(), graphHost);
+        }
+        if (ImGui.isItemHovered()) {
+            ImGui.setTooltip("Open the behavior graph editor on this document (Ctrl+click an element here to select its nodes)");
         }
         ImGui.radioButton("GPU framebuffer", pathChoice, 0);
         ImGui.sameLine();
@@ -356,9 +392,18 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
         }
         for (int b = 0; b < 3; b++) {
             if (ImGui.isMouseClicked(b)) {
-                input.pointerButton(mx, my, over, b, true, mods);
+                if (b == 0 && over && ImGui.getIO().getKeyCtrl() && graphWindow.isOpen()) {
+                    pickElement(mx, my); // the click picks for the graph editor; the document never sees it
+                    swallowRelease = true;
+                } else {
+                    input.pointerButton(mx, my, over, b, true, mods);
+                }
             }
             if (ImGui.isMouseReleased(b)) {
+                if (b == 0 && swallowRelease) {
+                    swallowRelease = false;
+                    continue;
+                }
                 input.pointerButton(mx, my, over, b, false, mods);
                 UiElement clicked = input.router().lastClick();
                 if (b == 0 && clicked != null) {
@@ -423,7 +468,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
         return m;
     }
 
-    private void load() {
+    private boolean load() {
         try {
             if (view != null) {
                 view.close();
@@ -441,12 +486,20 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
             fixtures = fixtures(path, view.instance().document());
             List<UiDiagnostic> gate = GameUiDocuments.activationGate(view, fixtures.host());
             // Code-behind (#292) binds the view with its converters and runs against the fixtures.
-            scripts = GameUiDocuments.scripts(view, fixtures.host(), null, previewServices());
+            // Debug build: graphs compile with trace calls for the graph editor's highlighting (#291).
+            scripts = GameUiDocuments.scripts(view, fixtures.host(), null, previewServices(),
+                UiScriptOptions.DEFAULTS.withGraphDebug(true));
             input = new PreviewInput(view.input());
             status = summary("Loaded", view.instance());
             for (UiDiagnostic d : gate) {
                 status += "\n" + d;
             }
+            graphWindow.documentReloaded(view.instance().document(), view.instance().context().source(), true);
+            if (Boolean.getBoolean("openmason.uigraph.open") && !graphWindow.isOpen()) {
+                // Dev hook for live runs: open the graph editor on the loaded document.
+                graphWindow.open(view.instance().document(), view.instance().context().source(), graphHost);
+            }
+            return true;
         } catch (Exception e) {
             // Never show a document whose code-behind could not start as if it worked.
             if (view != null) {
@@ -457,6 +510,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
             }
             status = "Cannot load: " + e.getMessage();
             logger.warn("UI document preview: cannot load {}", file.get(), e);
+            return false;
         }
     }
 
@@ -468,13 +522,80 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
         return FixtureHost.forArchive(doc);
     }
 
-    private void reload() {
+    private boolean reload() {
         try {
             UiDocumentInstance.ReloadReport r = GameUiDocuments.reload(view, Path.of(file.get().trim()));
             status = summary("Reloaded (kept " + r.kept().size() + ", added " + r.added().size() + ", dropped "
                 + r.dropped().size() + ")", view.instance());
+            graphWindow.documentReloaded(view.instance().document(), view.instance().context().source(), false);
+            return true;
         } catch (Exception e) {
             status = "Cannot reload: " + e.getMessage();
+            return false;
+        }
+    }
+
+    // ── behavior graph editor (#291) ────────────────────────────────────────
+
+    /** The editor's Save: write the document, then hot-reload (or load, for a new path) the preview. */
+    private String saveGraphDocument(OmuiArchive doc, Path target) {
+        try {
+            OmuiWriter.save(doc, target);
+        } catch (IOException | RuntimeException e) {
+            return "Cannot save " + target + ": " + e.getMessage();
+        }
+        boolean same = view != null && target.toAbsolutePath().normalize()
+            .equals(Path.of(file.get().trim()).toAbsolutePath().normalize());
+        file.set(target.toString());
+        boolean ok = same ? reload() : load();
+        return ok ? null : "Saved " + target + " but the preview could not load it: " + status;
+    }
+
+    /** Outlines {@code path} in the preview for a moment (the editor's "jump to element"). */
+    private void highlightElement(String path) {
+        highlightPath = path;
+        highlightUntil = ImGui.getTime() + 1.5;
+        if (view != null && view.instance().find(path) == null) {
+            status = "Element " + path + " is not in the running preview";
+        }
+    }
+
+    private void drawHighlight() {
+        if (highlightPath == null) {
+            return;
+        }
+        if (ImGui.getTime() > highlightUntil) {
+            highlightPath = null;
+            return;
+        }
+        UiElement el = view.instance().find(highlightPath);
+        if (el == null) {
+            return;
+        }
+        UiRect r = el.rect();
+        PreviewMapping m = preview.mapping();
+        float pulse = 0.55f + 0.45f * (float) Math.sin(ImGui.getTime() * 9);
+        ImDrawList dl = ImGui.getWindowDrawList();
+        float x1 = m.screenX(r.x());
+        float y1 = m.screenY(r.y());
+        float x2 = m.screenX(r.right());
+        float y2 = m.screenY(r.bottom());
+        dl.addRectFilled(x1, y1, x2, y2, ThemeColors.u32(ThemeColors.Tone.WARNING, 0.18f * pulse));
+        dl.addRect(x1 - 2, y1 - 2, x2 + 2, y2 + 2, ThemeColors.u32(ThemeColors.Tone.WARNING, pulse), 2f, 0, 3f);
+    }
+
+    /** Ctrl+click on the preview: select the graph nodes that target the element under the pointer. */
+    private void pickElement(float mx, float my) {
+        float cx = preview.mapping().canvasX(mx);
+        float cy = preview.mapping().canvasY(my);
+        UiElement under = view.instance().hitTest(cx, cy);
+        for (UiElement e = under; e != null; e = e.parent()) {
+            if (graphWindow.selectTargeting(e.key(), false)) {
+                return;
+            }
+        }
+        if (under != null) {
+            graphWindow.selectTargeting(under.key(), true);
         }
     }
 
@@ -505,6 +626,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
 
     @Override
     public void close() {
+        graphWindow.close();
         ToolInputTap.remove(tap);
         if (view != null) {
             view.close();

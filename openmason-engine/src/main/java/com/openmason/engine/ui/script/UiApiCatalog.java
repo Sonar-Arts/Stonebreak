@@ -69,6 +69,8 @@ public final class UiApiCatalog {
         Member.fn(UI, "close", "", "", "Asks the host to close this screen."),
         Member.fn(UI, "focus", "el " + EL, "boolean", "Moves keyboard focus to an element."),
         Member.fn(UI, "emit", "signal string, args table?", "", "Raises a signal the component declares (component scripts only)."),
+        Member.fn(UI, "on", "name string, fn fun(args: table)", "integer", "Handles a custom event of this document, raised by its code-behind or its graphs (a task)."),
+        Member.fn(UI, "raise", "name string, args table?", "", "Raises a custom event; its handlers (Lua ui.on and graph 'On Custom Event') run after the current handler."),
         Member.fn(UI, "time", "", "number", "Seconds of UI time since this script was opened."),
         Member.fn(UI, "log", "...any", "", "Writes to the script console (print does the same)."),
         Member.fn(UI, "warn", "...any", "", "Writes a warning to the script console."),

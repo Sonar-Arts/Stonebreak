@@ -54,7 +54,8 @@ final class ScriptOps {
 
     /** Ops a converter (pure, read-only) may use. */
     private static final Set<String> PURE = Set.of("info", "parent", "children", "q", "qAll", "get", "prop",
-        "classes", "hasClass", "hasState", "enabled", "computed", "rect", "param", "read", "log", "module");
+        "classes", "hasClass", "hasState", "enabled", "computed", "rect", "param", "read", "log", "module",
+        "trace", "traceValue");
 
     private final UiScriptRuntime rt;
 
@@ -266,6 +267,23 @@ final class ScriptOps {
             }
             case "close" -> rt.services.requestClose();
             case "log" -> rt.log(ctx, str(a, 0, "level"), arg(a, 1) instanceof UiValue.Str s ? s.value() : "");
+
+            // ── custom events and graph debugging (#291) ────────────────────
+            case "raise" -> str(a, 0, "event"); // the Lua side queues it; this only enforces purity
+            case "trace" -> {
+                Long token = rt.debugger == null ? null
+                    : rt.debugger.onHit(ctx, str(a, 0, "graph"), str(a, 1, "node"), bool(a, 2));
+                if (token == null) {
+                    out.nil();
+                } else {
+                    out.integer(token);
+                }
+            }
+            case "traceValue" -> {
+                if (rt.debugger != null) {
+                    rt.debugger.onValue(str(a, 0, "graph"), str(a, 1, "node"), str(a, 2, "port"), arg(a, 3));
+                }
+            }
 
             // ── modules and canvases ────────────────────────────────────────
             case "module" -> {

@@ -302,7 +302,9 @@ This file is the canonical source that #291 compiles to Lua; this contract store
   `type` is a value type or `exec`, in declaration order.
 
 Node ids are unique per body (the event graph, or one function), and edges MUST connect existing nodes. Port
-typing and synchronous-cycle rules are the compiler's.
+typing and synchronous-cycle rules are the compiler's. The node kinds, the checks and the generated Lua are specified
+in [ui-graphs.md](ui-graphs.md) (#291). Editor annotations of a graph (comment frames, node groups) live apart from it
+in `editor/graphs/<id>.layout.json`, so they never change the graph's source hash.
 
 ### 5.5 `animations/<id>.anim.json`
 
@@ -458,7 +460,7 @@ Command line: `com.openmason.engine.format.uiarchive.UiArchiveTool`, with the co
 | `stone_button.omui` | component: contract (params, event, slot), bindings, sheet with pseudo-states, variable and transition |
 | `pause_menu.omui` | screen: instances with params, overrides, slot content and a converter binding; two style sheets (shared and local); graph with a function; Lua code-behind plus a shared Lua module; timeline clip; shared and embedded dependencies; editor metadata |
 | `pause_menu/` | `pause_menu.omui` unpacked; `pack` MUST reproduce the archive byte for byte |
-| `pause_menu.sbui` | export with a source-embedded component, shared rows and a `graph-lua` derived cache (compiler `omui-graphc` version `0`; a placeholder until #291) |
+| `pause_menu.sbui` | export with a source-embedded component, shared rows and a `graph-lua` derived cache: real output of the #291 compiler (`omui-graphc` version `1`) |
 | `pause_draft_v0_1.omui` / `.upgraded.omui` | the frozen draft and its exact 1.0 upgrade |
 
 The malformed-input cases (truncation, traversal, duplicates, limits, cycles, hash and cache mismatches) are

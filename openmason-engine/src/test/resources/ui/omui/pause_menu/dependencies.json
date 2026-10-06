@@ -12,8 +12,8 @@
     {
       "id": "stonebreak:ui/scripts/common",
       "kind": "script",
-      "sha256": "3534f6c9d4cee683be0bcf00233e218d2b7ac0cb4d59aa8b034821e705b89f5c",
-      "size": 44,
+      "sha256": "3c9388be84d2efd267cfecccc800499b64914550ab18bb0776d9b0883c9565ce",
+      "size": 128,
       "mode": "shared",
       "sourceHint": "ui/scripts/common.lua"
     },

@@ -27,6 +27,19 @@ public interface UiDocumentSource {
         return null;
     }
 
+    /**
+     * Generated Lua of a behavior graph shipped in an SBUI {@code derived/} cache (#291), or
+     * null. The runtime uses it only while its compiler version and source hash still match
+     * the graph; otherwise it compiles the graph itself.
+     */
+    default DerivedLua derivedGraph(String documentId, String graphId) {
+        return null;
+    }
+
+    /** A derived graph chunk and the keys it was built for. */
+    record DerivedLua(String lua, String sourceSha256, String compiler, String compilerVersion) {
+    }
+
     UiDocumentSource EMPTY = of(Map.of(), Map.of());
 
     static UiDocumentSource of(Map<String, OmuiArchive> components, Map<String, UiStyleSheet> sheets) {

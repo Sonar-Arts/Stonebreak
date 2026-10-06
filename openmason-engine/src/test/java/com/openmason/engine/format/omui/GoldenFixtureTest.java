@@ -5,10 +5,14 @@ import com.openmason.engine.format.sbui.SbuiManifest.DerivedKind;
 import com.openmason.engine.format.sbui.SbuiReader;
 import com.openmason.engine.format.sbui.SbuiWriter;
 import com.openmason.engine.format.uiarchive.UiPacker;
+import com.openmason.engine.ui.graph.GraphCompiler;
+import com.openmason.engine.ui.graph.GraphDerived;
+import com.openmason.engine.ui.runtime.UiDocumentSource;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -37,10 +41,11 @@ class GoldenFixtureTest {
         Map<String, byte[]> golden = new LinkedHashMap<>();
         golden.put("stone_button.omui", OmuiWriter.write(UiSamples.stoneButton()));
         golden.put("pause_menu.omui", OmuiWriter.write(UiSamples.pauseMenu()));
-        var options = new SbuiExporter.Options(null, Map.of(), false, Map.of(), List.of(
-                new SbuiExporter.DerivedInput("graphs/behaviors.lua", DerivedKind.GRAPH_LUA, "graph:behaviors",
-                        UiBytes.utf8("-- placeholder: the graph compiler (#291) does not exist yet\nreturn {}\n"),
-                        "omui-graphc", "0")));
+        // The graph's Lua as the #291 compiler emits it, against the component and shared module.
+        var source = UiDocumentSource.of(Map.of(UiSamples.BUTTON_ID, UiSamples.stoneButton()), Map.of(),
+                Map.of(UiSamples.COMMON_LUA_ID, new String(UiSamples.COMMON_LUA_BYTES, StandardCharsets.UTF_8)));
+        var options = new SbuiExporter.Options(null, Map.of(), false, Map.of(),
+                GraphDerived.compileAll(UiSamples.pauseMenu(), source));
         golden.put("pause_menu.sbui", SbuiWriter.write(SbuiExporter.export(UiSamples.pauseMenu(), options).archive()));
         golden.put("pause_draft_v0_1.omui", UiSamples.draftArchive());
         golden.put("pause_draft_v0_1.upgraded.omui",
@@ -72,7 +77,7 @@ class GoldenFixtureTest {
         }
         byte[] sbui = read("pause_menu.sbui");
         var result = SbuiReader.read(sbui, new SbuiReader.Options(SbuiReader.StalePolicy.REJECT,
-                Map.of(DerivedKind.GRAPH_LUA, "0"), ArchiveLimits.DEFAULT));
+                Map.of(DerivedKind.GRAPH_LUA, GraphCompiler.VERSION), ArchiveLimits.DEFAULT));
         assertTrue(result.staleDerived().isEmpty());
         assertArrayEquals(sbui, SbuiWriter.write(result.archive()));
     }

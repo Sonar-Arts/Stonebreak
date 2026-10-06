@@ -155,6 +155,7 @@ public class mainOpenMason {
      */
     private void runMainLoop() {
         long window = window();
+        AutoScreenshot shot = AutoScreenshot.fromProperty();
         while (!shouldClose && !glfwWindowShouldClose(window)) {
             glfwPollEvents();
             MainThreadExecutor.drain();
@@ -168,6 +169,9 @@ public class mainOpenMason {
 
             imGuiBackend.handleMultiViewport();
 
+            if (shot != null && shot.beforeSwap(window)) {
+                shouldClose = true;
+            }
             glfwSwapBuffers(window);
         }
     }

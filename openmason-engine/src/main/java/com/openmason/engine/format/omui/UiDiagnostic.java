@@ -71,7 +71,9 @@ public record UiDiagnostic(Severity severity, Code code, String entry, String po
         UNDECLARED_FEATURE,
         // Host activation (#289)
         UNKNOWN_DATA_SOURCE,
-        UNDECLARED_HOST_API
+        UNDECLARED_HOST_API,
+        // Behavior graphs (#291): a graph fails its checks, so it cannot be compiled or exported
+        GRAPH_INVALID
     }
 
     public UiDiagnostic {

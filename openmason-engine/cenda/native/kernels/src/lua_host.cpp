@@ -61,6 +61,10 @@ struct cl_state {
     int depth = 0;  // nesting of top-level entry points (host functions may re-enter)
     int hook_stride = HOOK_STRIDE;  // instructions per hook firing right now
     bool budget_hit = false;
+    // The first deadline raise of a top-level call, with where it hit and the traceback of
+    // that thread. Every re-raise while the deadline stays pending repeats it, so the host
+    // learns where the script was spinning, not where the unwinding happened to be.
+    std::string deadline_message;
     std::string error;
     std::vector<Buffer> buffers;
     // Typed values (ABI 2): Lua->host args of the current upcall, host->Lua
@@ -108,7 +112,16 @@ void count_hook(lua_State* L, lua_Debug*) {
     if (cenda_pending(L)) {
         // Deadline: stays pending (and the hook stays at stride 1) until the
         // next top-level call, so pcall cannot swallow it either.
-        luaL_error(L, "deadline exceeded (interrupted by the host watchdog)");
+        if (s->deadline_message.empty()) {
+            luaL_where(L, 1);
+            lua_pushliteral(L, "deadline exceeded (interrupted by the host watchdog)");
+            lua_concat(L, 2);
+            luaL_traceback(L, L, lua_tostring(L, -1), 1);
+            s->deadline_message = lua_tostring(L, -1);
+            lua_pop(L, 2);
+        }
+        lua_pushlstring(L, s->deadline_message.data(), s->deadline_message.size());
+        lua_error(L);
     }
     s->charged += s->hook_stride;
     if (s->budget > 0 && s->charged > s->budget) {
@@ -137,6 +150,7 @@ void begin_call(cl_state* s, lua_State* thread) {
         s->charged = 0;
         s->hook_stride = HOOK_STRIDE;
         s->budget_hit = false;
+        s->deadline_message.clear();
     }
     s->error.clear();
     if (s->budget > 0) {

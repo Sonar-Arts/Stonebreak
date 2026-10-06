@@ -19,8 +19,11 @@ local concat, tremove = table.concat, table.remove
 
 -- Ops the host sends to __cenda_ui_dispatch(ctx, op, ...); mirrored in UiScriptRuntime.Op.
 local OP_LOAD, OP_OPEN, OP_CLOSE, OP_UPDATE, OP_INPUT, OP_EVENT, OP_SETTLE, OP_CANCEL_ALL,
-      OP_CONVERT, OP_WATCH, OP_ANIM_EVENT, OP_DROP_HANDLER, OP_SIGNAL, OP_RELOAD =
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
+      OP_CONVERT, OP_WATCH, OP_ANIM_EVENT, OP_DROP_HANDLER, OP_SIGNAL, OP_RELOAD, OP_GRAPH_LOAD, OP_GRAPH_HOOK =
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+
+-- Custom events one dispatch may deliver (ui.raise); more is a raise loop and fails the dispatch.
+local MAX_RAISED = 256
 
 local AWAIT = {} -- yielded by ui.await; any other yield from a task is a script error
 
@@ -418,6 +421,32 @@ local function make_ui(ctx, env, info)
     -- Component scripts raise their declared signals on the instance.
     function ui.emit(signal, args) call("emit", signal, args or {}) end
 
+    -- Custom events (#291): between this document's code-behind and its graphs. Handlers are
+    -- tasks; a raise is queued and delivered after the current handler, in raise order.
+    function ui.on(name, fn)
+        if type(name) ~= "string" or type(fn) ~= "function" then
+            error("ui.on(name, fn): name must be a string and fn a function", 2)
+        end
+        local id = ctx.next_id + 1
+        ctx.next_id = id
+        ctx.handlers[id] = fn
+        local list = ctx.custom[name]
+        if list == nil then
+            list = {}
+            ctx.custom[name] = list
+        end
+        list[#list + 1] = id
+        return id
+    end
+    function ui.raise(name, args)
+        if type(name) ~= "string" then
+            error("ui.raise(name, args): name must be a string", 2)
+        end
+        call("raise", name)
+        local q = ctx.raised
+        q[#q + 1] = { name, args or {} }
+    end
+
     function ui.time() return ctx.time end
 
     local function joined(...)
@@ -475,7 +504,7 @@ function __cenda_ui_factory(id, env, info)
         id = id, env = env, h = h, els = {}, handlers = {}, by_fn = setmetatable({}, { __mode = "k" }),
         next_id = 0, tasks = {}, waiting = {}, handles = setmetatable({}, { __mode = "v" }), watchers = {},
         converters = {}, loaded = {}, loading = {}, canvases = {}, anim_events = {}, failed = {}, time = 0,
-        root_key = info.root,
+        root_key = info.root, custom = {}, raised = {}, graphs = {}, graph_updates = {},
     }
     ctx.ui = make_ui(ctx, env, info)
     contexts[id] = ctx
@@ -524,6 +553,10 @@ local function bind_canvases(ctx, canvases)
 end
 
 local function run_module(ctx, src, chunk)
+    if src == nil then
+        ctx.module = nil -- graphs only (#291): no code-behind
+        return true, hooks(ctx)
+    end
     local fn, err = load(src, "=" .. chunk, "t", ctx.env)
     if fn == nil then
         return false, err, "load"
@@ -561,9 +594,12 @@ dispatch[OP_LOAD] = function(ctx, src, chunk, canvases)
 end
 
 dispatch[OP_RELOAD] = function(ctx, src, chunk, canvases)
-    local fn, err = load(src, "=" .. chunk, "t", ctx.env)
-    if fn == nil then
-        return false, err, "load" -- the running module stays
+    local fn, err
+    if src ~= nil then
+        fn, err = load(src, "=" .. chunk, "t", ctx.env)
+        if fn == nil then
+            return false, err, "load" -- the running module stays
+        end
     end
     bind_canvases(ctx, canvases)
     cancel_all(ctx)
@@ -573,7 +609,13 @@ dispatch[OP_RELOAD] = function(ctx, src, chunk, canvases)
     ctx.anim_events = {}
     ctx.loaded = {}
     ctx.els = {}
+    ctx.custom = {}
+    ctx.raised = {}
     ctx.ui.root = element(ctx, ctx.root_key)
+    if fn == nil then
+        ctx.module = nil
+        return true, hooks(ctx)
+    end
     local ok, m = xpcall(fn, on_error)
     if not ok then
         return false, m, "load"
@@ -614,12 +656,18 @@ end
 dispatch[OP_UPDATE] = function(ctx, dt)
     ctx.time = ctx.time + dt
     local f = ctx.update_fn
-    if f == nil then
-        return true
+    if f ~= nil then
+        local ok, msg = xpcall(f, on_error, dt)
+        if not ok then
+            return false, msg, "update"
+        end
     end
-    local ok, msg = xpcall(f, on_error, dt)
-    if not ok then
-        return false, msg, "update"
+    local gu = ctx.graph_updates
+    for i = 1, #gu do
+        local ok, msg = xpcall(gu[i].fn, on_error, dt)
+        if not ok then
+            return false, msg, "graph-update:" .. gu[i].index
+        end
     end
     return flush_failed(ctx, true)
 end
@@ -718,12 +766,125 @@ dispatch[OP_ANIM_EVENT] = function(ctx, token, name)
 end
 
 dispatch[OP_DROP_HANDLER] = function(ctx, id, what)
-    if what == "update" then
+    if what == "graph-update" then
+        local gu = ctx.graph_updates
+        for i = #gu, 1, -1 do
+            if gu[i].index == id then
+                tremove(gu, i)
+            end
+        end
+    elseif what == "update" then
         ctx.update_fn = nil
     elseif what == "watch" then
         ctx.watchers[id] = nil
     else
         ctx.handlers[id] = nil
+    end
+    return true
+end
+
+-- ───────────────────────────── graphs (#291) ─────────────────────────────
+--
+-- A compiled graph is a chunk run in this context's environment with (ui, script, dbg, dbgv)
+-- that returns its hooks. dbg/dbgv exist only in debug builds (the editor preview).
+
+local function graph_debug(ctx, graph)
+    local function dbg(node)
+        local co, main = co_running()
+        local in_task = not main and ctx.tasks[co] ~= nil
+        local token = ctx.call("trace", graph, node, in_task)
+        if token ~= nil then
+            ctx.ui.await(new_handle(ctx, token, "debug"))
+        end
+    end
+    local function dbgv(node, port, value)
+        local t = type(value)
+        if t == "function" or t == "thread" or t == "userdata" then
+            value = tostring(value)
+        elseif t == "table" and rawget(value, "__ctx") ~= nil then
+            value = "ui.Element(" .. tostring(value.key) .. ")"
+        end
+        pcall(ctx.h, "traceValue", graph, node, port, value) -- a value that cannot cross is skipped
+    end
+    return dbg, dbgv
+end
+
+-- OP_GRAPH_LOAD(index, {id, src, chunk, debug}) loads one graph; (0, nil) unloads them all.
+dispatch[OP_GRAPH_LOAD] = function(ctx, index, g)
+    if g == nil then
+        ctx.graphs = {}
+        ctx.graph_updates = {}
+        return true
+    end
+    local fn, err = load(g.src, "=" .. g.chunk, "t", ctx.env)
+    if fn == nil then
+        return false, err, "graph-load:" .. index
+    end
+    local d, dv
+    if g.debug then
+        d, dv = graph_debug(ctx, g.id)
+    end
+    local ok, G = xpcall(fn, on_error, ctx.ui, ctx.module, d, dv)
+    if not ok then
+        return false, G, "graph-load:" .. index
+    end
+    if type(G) ~= "table" then
+        G = {}
+    end
+    ctx.graphs[index] = G
+    if type(G.update) == "function" then
+        local gu = ctx.graph_updates
+        gu[#gu + 1] = { index = index, fn = G.update }
+    end
+    return true, { on_open = type(G.on_open) == "function", update = type(G.update) == "function",
+        on_close = type(G.on_close) == "function" }
+end
+
+-- OP_GRAPH_HOOK(index, "on_open" | "on_close"): on_open is a task; on_close is synchronous.
+dispatch[OP_GRAPH_HOOK] = function(ctx, index, name)
+    local G = ctx.graphs[index]
+    local f = G and G[name]
+    if type(f) ~= "function" then
+        return true
+    end
+    if name == "on_open" then
+        return flush_failed(ctx, spawn(ctx, "graph-open:" .. index, f))
+    end
+    local ok, msg = xpcall(f, on_error)
+    if not ok then
+        return false, msg, "graph-close:" .. index
+    end
+    return true
+end
+
+-- Delivers queued custom events after a dispatch: each handler runs as a task, in raise order.
+local function drain(ctx)
+    local q = ctx.raised
+    if #q == 0 then
+        return true
+    end
+    local n = 0
+    while #q > 0 do
+        local ev = tremove(q, 1)
+        n = n + 1
+        if n > MAX_RAISED then
+            ctx.raised = {}
+            return false, "more than " .. MAX_RAISED .. " custom events in one dispatch: does a handler raise"
+                .. " the event it handles?", "raise"
+        end
+        local list = ctx.custom[ev[1]]
+        if list ~= nil then
+            for i = 1, #list do
+                local id = list[i]
+                local fn = ctx.handlers[id]
+                if fn ~= nil then
+                    local ok, msg = spawn(ctx, "custom:" .. id, fn, ev[2])
+                    if not ok then
+                        return false, msg, "custom:" .. id
+                    end
+                end
+            end
+        end
     end
     return true
 end
@@ -735,11 +896,21 @@ function __cenda_ui_dispatch(id, op, a, b, c)
         return false, "no script context " .. tostring(id), "dispatch"
     end
     if op == OP_UPDATE then
-        return dispatch[OP_UPDATE](ctx, a)
+        local ok, r1, r2 = dispatch[OP_UPDATE](ctx, a)
+        if ok and #ctx.raised > 0 then
+            return drain(ctx)
+        end
+        return ok, r1, r2
     end
     local ok, r1, r2 = dispatch[op](ctx, a, b, c)
     if op == OP_LOAD or op == OP_RELOAD then
         ctx.update_fn = hook(ctx, "update")
+    end
+    if ok and op ~= OP_CONVERT and op ~= OP_CLOSE and op ~= OP_DROP_HANDLER and #ctx.raised > 0 then
+        local ok2, m2, o2 = drain(ctx)
+        if not ok2 then
+            return false, m2, o2
+        end
     end
     return ok, r1, r2
 end

@@ -92,6 +92,11 @@ public final class UiStyleProperties {
         return SPECS.get(property);
     }
 
+    /** Every built-in property name, sorted (editor pickers). */
+    public static java.util.SortedSet<String> names() {
+        return java.util.Collections.unmodifiableSortedSet(new java.util.TreeSet<>(SPECS.keySet()));
+    }
+
     public static boolean isKnown(String property) {
         return SPECS.containsKey(property) || isCustom(property);
     }

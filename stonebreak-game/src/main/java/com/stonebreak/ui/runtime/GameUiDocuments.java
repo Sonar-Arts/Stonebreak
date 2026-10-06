@@ -53,7 +53,9 @@ public final class GameUiDocuments {
     public static UiDocumentView open(SbuiArchive sbui, Map<String, Path> packs, Supplier<Typeface> typeface,
                                       Map<String, UiPaintHost.UiDrawProvider> providers) throws IOException {
         List<AssetSource> sources = GameUiAssets.sources(packs);
-        return view(sbui.source(), AssetResolver.forExport(sbui, sources), sources, typeface, providers);
+        ResolvedUiAssets assets = new ResolvedUiAssets(AssetResolver.forExport(sbui, sources), sources,
+            MTextureRegistry.cache()).withDerived(sbui);
+        return view(sbui.source(), assets, typeface, providers);
     }
 
     /** A view of an authoring document (dev and tests): embedded rows plus the packaged root. */
@@ -110,7 +112,8 @@ public final class GameUiDocuments {
      * Opens an exported screen bound to {@code host}, after its activation gate: a required host
      * contract, provider, feature or data root the host lacks refuses the screen before anything
      * is instantiated, so the caller keeps the legacy screen instead of showing a broken one. Its
-     * Lua code-behind (#292) is loaded and opened; {@code view.frame(dt)} drives it per frame.
+     * Lua code-behind (#292) and behavior graphs (#291, from the SBUI's {@code derived/} Lua while it
+     * is current) are loaded and opened; {@code view.frame(dt)} drives them per frame.
      *
      * @param converters Java converters for names no script declares, or null
      * @throws UiActivationException listing every unmet need
@@ -122,7 +125,7 @@ public final class GameUiDocuments {
                                            UiConverters converters, UiScriptServices services) throws IOException {
         List<AssetSource> sources = GameUiAssets.sources(packs);
         ResolvedUiAssets assets = new ResolvedUiAssets(AssetResolver.forExport(sbui, sources), sources,
-            MTextureRegistry.cache());
+            MTextureRegistry.cache()).withDerived(sbui); // graph Lua compiled at export (#291)
         UiActivation.require(sbui, assets, host);
         UiDocumentView view = view(sbui.source(), assets, typeface, providers);
         try {
@@ -150,6 +153,16 @@ public final class GameUiDocuments {
     public static UiScriptRuntime scripts(UiDocumentView view, UiHost host, UiConverters fallback,
                                           UiScriptServices services) {
         return UiScripts.open(view, host, fallback, UiScriptOptions.DEFAULTS, services);
+    }
+
+    /**
+     * As {@link #scripts(UiDocumentView, UiHost, UiConverters, UiScriptServices)} with explicit
+     * options: the editor preview passes {@code withGraphDebug(true)} so graphs (#291) compile
+     * with trace calls for its highlighting, watches and breakpoints. The game never does.
+     */
+    public static UiScriptRuntime scripts(UiDocumentView view, UiHost host, UiConverters fallback,
+                                          UiScriptServices services, UiScriptOptions options) {
+        return UiScripts.open(view, host, fallback, options, services);
     }
 
     /** Activation findings of an already open view's document against {@code host} (dev overlay, preview). */

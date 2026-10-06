@@ -9,6 +9,7 @@ import com.openmason.engine.format.sbui.SbuiExporter;
 import com.openmason.engine.format.sbui.SbuiFormat;
 import com.openmason.engine.format.sbui.SbuiWriter;
 import com.openmason.engine.ui.assets.AssetSource;
+import com.openmason.engine.ui.graph.GraphDerived;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -23,6 +24,16 @@ public final class UiExportService {
     }
 
     private UiExportService() {
+    }
+
+    /**
+     * Plans and exports, compiling every behavior graph into its {@code derived/} Lua cache
+     * (#291): an invalid graph blocks the export with its node-located problems.
+     */
+    public static Result export(OmuiArchive doc, List<? extends AssetSource> sources, ExportPlanner.Request request,
+                                String assetId) throws UiFormatException {
+        List<SbuiExporter.DerivedInput> derived = GraphDerived.compileAll(doc, GraphDerived.exportSource(doc, sources));
+        return export(doc, sources, request, assetId, derived);
     }
 
     /**

@@ -179,6 +179,9 @@ module openmason.engine {
     exports com.openmason.engine.ui.runtime.binding;
     // Lua code-behind and the animation sampler (#292)
     exports com.openmason.engine.ui.script;
+    // Behavior graphs compiled to Lua, and their editing model (#291)
+    exports com.openmason.engine.ui.graph;
+    exports com.openmason.engine.ui.graph.edit;
     exports com.openmason.engine.ui.runtime.anim;
 
     // Open format packages for Jackson JSON processing

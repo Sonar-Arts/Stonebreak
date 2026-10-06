@@ -6,10 +6,12 @@ import java.util.regex.Pattern;
 
 /**
  * A script problem with its source location (#292). {@code chunk} is the module's chunk name
- * ({@code pause.lua}, {@code stonebreak:ui/scripts/common}), {@code line} 0 when unknown.
+ * ({@code pause.lua}, {@code stonebreak:ui/scripts/common}, {@code behaviors.graph.lua}),
+ * {@code line} 0 when unknown. For compiled graphs (#291) {@code node} names the originating
+ * graph node through the source map ({@code behaviors#count}, {@code behaviors#fn:f/print}).
  */
 public record UiScriptDiagnostic(Severity severity, Code code, String chunk, int line, String element,
-                                 String message) {
+                                 String message, String node) {
 
     public enum Severity { INFO, WARNING, ERROR }
 
@@ -34,7 +36,9 @@ public record UiScriptDiagnostic(Severity severity, Code code, String chunk, int
         /** Static check: a {@code ui.x} member the API does not have. */
         UNKNOWN_API,
         /** A task's action or animation was cancelled (close, reload, world change). */
-        TASK_CANCELLED
+        TASK_CANCELLED,
+        /** A behavior graph failed its checks and was not compiled (#291); {@code node} says where. */
+        GRAPH_INVALID
     }
 
     private static final Pattern LOCATION = Pattern.compile("^([^\\s:][^:\\n]*):(\\d+):");
@@ -45,6 +49,16 @@ public record UiScriptDiagnostic(Severity severity, Code code, String chunk, int
         chunk = chunk == null ? "" : chunk;
         element = element == null ? "" : element;
         Objects.requireNonNull(message, "message");
+        node = node == null ? "" : node;
+    }
+
+    public UiScriptDiagnostic(Severity severity, Code code, String chunk, int line, String element, String message) {
+        this(severity, code, chunk, line, element, message, "");
+    }
+
+    /** This diagnostic attributed to a graph node. */
+    public UiScriptDiagnostic atNode(String graphNode) {
+        return new UiScriptDiagnostic(severity, code, chunk, line, element, message, graphNode);
     }
 
     /** {@code chunk:line} when known. */
@@ -74,6 +88,7 @@ public record UiScriptDiagnostic(Severity severity, Code code, String chunk, int
     public String toString() {
         String where = location();
         return severity + " " + code + (where.isEmpty() ? "" : " " + where)
+            + (node.isEmpty() ? "" : " (node " + node + ")")
             + (element.isEmpty() ? "" : " [" + element + "]") + ": " + headline();
     }
 }

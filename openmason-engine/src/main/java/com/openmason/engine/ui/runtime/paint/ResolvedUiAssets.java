@@ -2,11 +2,15 @@ package com.openmason.engine.ui.runtime.paint;
 
 import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.format.omui.OmuiReader;
+import com.openmason.engine.format.omui.UiBytes;
 import com.openmason.engine.format.omui.UiDiagnostics;
 import com.openmason.engine.format.omui.UiStyleSheet;
 import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.format.omui.io.CanonicalJson;
 import com.openmason.engine.format.omui.io.StyleCodec;
+import com.openmason.engine.format.sbui.SbuiArchive;
+import com.openmason.engine.format.sbui.SbuiFormat;
+import com.openmason.engine.format.sbui.SbuiManifest;
 import com.openmason.engine.ui.assets.AssetResolver;
 import com.openmason.engine.ui.assets.AssetSource;
 import com.openmason.engine.ui.assets.ResolvedAsset;
@@ -42,11 +46,36 @@ public final class ResolvedUiAssets implements UiDocumentSource {
     private final MTextureCache textures;
     private final Map<String, OmuiArchive> components = new HashMap<>();
     private final Map<String, UiStyleSheet> sheets = new HashMap<>();
+    private final Map<String, DerivedLua> derived = new HashMap<>();
+    private String derivedDocument;
 
     public ResolvedUiAssets(AssetResolver resolver, List<? extends AssetSource> sources, MTextureCache textures) {
         resolvers.add(resolver);
         this.sources = List.copyOf(sources);
         this.textures = textures;
+    }
+
+    /**
+     * Serves the {@code graph-lua} caches of an exported screen (#291) to the script runtime,
+     * which still checks their compiler version and source hash before using one.
+     */
+    public synchronized ResolvedUiAssets withDerived(SbuiArchive sbui) {
+        derivedDocument = sbui.manifest().entry();
+        for (SbuiManifest.DerivedEntry row : sbui.manifest().derived()) {
+            UiBytes bytes = sbui.derived().get(row.entry());
+            if (row.kind() == SbuiManifest.DerivedKind.GRAPH_LUA && bytes != null
+                && row.source().startsWith(SbuiFormat.GRAPH_SOURCE)) {
+                derived.put(row.source().substring(SbuiFormat.GRAPH_SOURCE.length()), new DerivedLua(
+                    new String(bytes.toArray(), java.nio.charset.StandardCharsets.UTF_8), row.sourceSha256(),
+                    row.compiler(), row.compilerVersion()));
+            }
+        }
+        return this;
+    }
+
+    @Override
+    public synchronized DerivedLua derivedGraph(String documentId, String graphId) {
+        return documentId.equals(derivedDocument) ? derived.get(graphId) : null;
     }
 
     @Override

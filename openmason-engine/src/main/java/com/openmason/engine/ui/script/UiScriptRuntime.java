@@ -9,13 +9,22 @@ import com.openmason.engine.cenda.LuaWatchdog;
 import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.format.omui.OmuiFormat;
 import com.openmason.engine.format.omui.UiDependency;
+import com.openmason.engine.format.omui.UiGraph;
 import com.openmason.engine.format.omui.UiNode;
 import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.data.ActionCall;
 import com.openmason.engine.ui.data.DataState;
 import com.openmason.engine.ui.data.Subscription;
 import com.openmason.engine.ui.data.UiScope;
+import com.openmason.engine.ui.graph.CompiledGraph;
+import com.openmason.engine.ui.graph.DocumentEnvironment;
+import com.openmason.engine.ui.graph.GraphCompiler;
+import com.openmason.engine.ui.graph.GraphDiagnostic;
+import com.openmason.engine.ui.graph.GraphEnvironment;
+import com.openmason.engine.ui.graph.GraphInputs;
+import com.openmason.engine.ui.graph.SourceMap;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
+import com.openmason.engine.ui.runtime.UiDocumentSource;
 import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic;
 import com.openmason.engine.ui.runtime.anim.UiAnimator;
@@ -90,6 +99,8 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     static final int OP_DROP_HANDLER = 12;
     static final int OP_SIGNAL = 13;
     static final int OP_RELOAD = 14;
+    static final int OP_GRAPH_LOAD = 15;
+    static final int OP_GRAPH_HOOK = 16;
 
     private static final String PRELUDE = prelude();
     private static final Object WATCHDOG_LOCK = new Object();
@@ -115,6 +126,8 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     final UiScriptServices services;
     final UiAnimator animator;
     final ScriptJournal journal;
+    /** Trace hits, watches and breakpoints of debug-compiled graphs; null in release. */
+    final GraphDebugger debugger;
     private final UiScriptConsole console = new UiScriptConsole();
     private final List<UiScriptDiagnostic> diagnostics = new ArrayList<>();
     private final List<ScriptContext> contexts = new ArrayList<>();
@@ -157,11 +170,13 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         this.animator = new UiAnimator(ui);
         this.journal = new ScriptJournal(ui);
         this.ops = new ScriptOps(this);
+        this.debugger = this.options.graphDebug() ? new GraphDebugger(this) : null;
     }
 
     /**
      * Loads every code-behind module of {@code ui} (the screen's and its component instances')
-     * and runs their top level. Problems in a module are diagnostics; the screen still opens.
+     * and every behavior graph (#291), compiled to Lua, and runs their top level. Problems in a
+     * module or graph are diagnostics; the screen still opens.
      *
      * @throws com.openmason.engine.cenda.CendaLuaUnavailableException when the document has
      *         code-behind but the Lua host is missing or has another ABI: never silently skipped
@@ -324,7 +339,7 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         contexts.clear();
         contexts.addAll(next);
         for (ScriptContext ctx : next) {
-            if (!ctx.loaded && ctx.envRef == 0) {
+            if (!ctx.created && ctx.envRef == 0) {
                 createContext(ctx);
                 if (opened) {
                     openContext(ctx);
@@ -341,11 +356,8 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         }
         if (lua != null) {
             for (ScriptContext ctx : contexts) {
-                if (ctx.loaded && !ctx.closed) {
-                    // OP_CLOSE runs on_close (if any) and cancels the context's tasks, so their
-                    // <close> handlers run while the state is still alive.
-                    lua.args().integer(ctx.id).integer(OP_CLOSE);
-                    dispatch(ctx, "on_close", false);
+                if (ctx.created && !ctx.closed) {
+                    closeHooks(ctx);
                 }
             }
         }
@@ -388,14 +400,44 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         return animator;
     }
 
+    /** The graph debugger when the runtime was opened with {@code graphDebug}, else null. */
+    public GraphDebugger graphDebugger() {
+        return debugger;
+    }
+
+    /** Generated Lua of each loaded graph, keyed {@code graphId} or {@code graphId@instanceKey}. */
+    public Map<String, String> graphChunks() {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (ScriptContext ctx : contexts) {
+            for (ScriptContext.GraphModule g : ctx.graphs) {
+                if (g.loaded) {
+                    out.put(ctx.isScreen() ? g.id : g.id + "@" + ctx.scopeKey, g.lua);
+                }
+            }
+        }
+        return out;
+    }
+
     /** Seconds of UI time since load. */
     public double time() {
         return time;
     }
 
-    /** Modules running, as {@code chunk} or {@code chunk@instanceKey}. */
+    /** Modules and graphs running, as {@code chunk} or {@code chunk@instanceKey}. */
     public List<String> modules() {
-        return contexts.stream().filter(c -> c.loaded).map(ScriptContext::toString).toList();
+        List<String> out = new ArrayList<>();
+        for (ScriptContext c : contexts) {
+            String at = c.isScreen() ? "" : "@" + c.scopeKey;
+            if (c.loaded && c.chunk != null) {
+                out.add(c.chunk + at);
+            }
+            for (ScriptContext.GraphModule g : c.graphs) {
+                if (g.loaded) {
+                    out.add(g.chunk + at);
+                }
+            }
+        }
+        return out;
     }
 
     /** Lua heap in use, or 0 without a state. */
@@ -428,24 +470,32 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
 
     // ── setup ───────────────────────────────────────────────────────────────
 
+    /** A context per document instance with code-behind or graphs: the screen, then component instances. */
     private List<ScriptContext> discover() {
         List<ScriptContext> out = new ArrayList<>();
         OmuiArchive doc = ui.document();
-        String ref = doc.document().codeBehind();
-        if (ref != null) {
-            out.add(new ScriptContext(nextContext++, "", ui.root().key(), doc, ref, chunkName(ref)));
+        if (behaves(doc)) {
+            out.add(context("", ui.root().key(), doc));
         }
         for (UiElement el : ui.elements()) {
             if (!UiNode.INSTANCE_TYPE.equals(el.type()) || el.node().instance() == null) {
                 continue;
             }
             OmuiArchive comp = ui.context().source().component(el.node().instance().component());
-            String compRef = comp == null ? null : comp.document().codeBehind();
-            if (compRef != null) {
-                out.add(new ScriptContext(nextContext++, el.key(), el.key(), comp, compRef, chunkName(compRef)));
+            if (comp != null && behaves(comp)) {
+                out.add(context(el.key(), el.key(), comp));
             }
         }
         return out;
+    }
+
+    private static boolean behaves(OmuiArchive doc) {
+        return doc.document().codeBehind() != null || !doc.graphs().isEmpty();
+    }
+
+    private ScriptContext context(String scopeKey, String rootKey, OmuiArchive doc) {
+        String ref = doc.document().codeBehind();
+        return new ScriptContext(nextContext++, scopeKey, rootKey, doc, ref, ref == null ? null : chunkName(ref));
     }
 
     private static String chunkName(String ref) {
@@ -498,20 +548,148 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
                 "script context setup failed: " + lua.lastError());
             return;
         }
-        String[] module;
-        try {
-            module = ops.resolveModule(ctx, ctx.moduleRef);
-        } catch (ScriptOps.ModuleException e) {
-            report(Severity.ERROR, e.code, ctx, "", e.getMessage());
+        ctx.created = true;
+        String[] module = null;
+        if (ctx.moduleRef != null) {
+            try {
+                module = ops.resolveModule(ctx, ctx.moduleRef);
+            } catch (ScriptOps.ModuleException e) {
+                report(Severity.ERROR, e.code, ctx, "", e.getMessage());
+            }
+        }
+        if (ctx.moduleRef == null || module != null) {
+            ctx.source = module == null ? null : module[0];
+            LuaValueWriter w = lua.args().integer(ctx.id).integer(OP_LOAD);
+            if (module == null) {
+                w.nil().nil();
+            } else {
+                w.string(module[0]).string(module[1]);
+            }
+            writeCanvases(w, bindCanvases(ctx));
+            LuaValueReader r = dispatch(ctx, "load", false);
+            if (r != null) {
+                ctx.loaded = true;
+                hooks(ctx, r.value());
+            }
+        }
+        loadGraphs(ctx, List.of());
+    }
+
+    // ── behavior graphs (#291) ──────────────────────────────────────────────
+
+    /**
+     * Compiles the context's graphs (or takes a still-valid {@code derived/} cache) and loads
+     * each into the context's environment after the code-behind, so a graph sees its module as
+     * {@code script} and shares its handlers, tasks and lifetime. A graph that fails its checks
+     * is reported per node and not loaded; on reload the previous version keeps running.
+     */
+    private void loadGraphs(ScriptContext ctx, List<ScriptContext.GraphModule> previous) {
+        List<ScriptContext.GraphModule> fresh = compileGraphs(ctx, previous);
+        if (!ctx.created) {
             return;
         }
-        ctx.source = module[0];
-        LuaValueWriter w = lua.args().integer(ctx.id).integer(OP_LOAD).string(module[0]).string(module[1]);
-        writeCanvases(w, bindCanvases(ctx));
-        LuaValueReader r = dispatch(ctx, "load", false);
-        if (r != null) {
-            ctx.loaded = true;
-            hooks(ctx, r.value());
+        if (!previous.isEmpty() || !ctx.graphs.isEmpty()) {
+            lua.args().integer(ctx.id).integer(OP_GRAPH_LOAD).integer(0).nil();
+            dispatch(ctx, "graphs", false);
+        }
+        ctx.graphs.clear();
+        ctx.graphs.addAll(fresh);
+        for (ScriptContext.GraphModule g : fresh) {
+            if (g.lua == null) {
+                continue;
+            }
+            lua.args().integer(ctx.id).integer(OP_GRAPH_LOAD).integer(g.index).value(new UiValue.Obj(Map.of(
+                "id", UiValue.of(g.id), "src", UiValue.of(g.lua), "chunk", UiValue.of(g.chunk),
+                "debug", UiValue.of(options.graphDebug()))));
+            LuaValueReader r = dispatch(ctx, "graph-load:" + g.index, false);
+            if (r != null && r.value() instanceof UiValue.Obj o) {
+                g.loaded = true;
+                g.hasOpen = o.get("on_open") == UiValue.TRUE;
+                g.hasUpdate = o.get("update") == UiValue.TRUE;
+                g.hasClose = o.get("on_close") == UiValue.TRUE;
+            }
+        }
+        updateFlags(ctx);
+    }
+
+    private List<ScriptContext.GraphModule> compileGraphs(ScriptContext ctx, List<ScriptContext.GraphModule> previous) {
+        List<ScriptContext.GraphModule> out = new ArrayList<>();
+        if (ctx.archive.graphs().isEmpty()) {
+            return out;
+        }
+        GraphEnvironment env = DocumentEnvironment.of(ctx.archive, ui.context().source());
+        int index = 1;
+        for (UiGraph graph : ctx.archive.graphs().values()) {
+            ScriptContext.GraphModule m = new ScriptContext.GraphModule(graph.id(), CompiledGraph.chunkName(graph.id()),
+                index++);
+            String code = cachedGraph(ctx, graph);
+            if (code == null) {
+                CompiledGraph c = GraphCompiler.compile(graph, env, options.graphDebug());
+                for (GraphDiagnostic d : c.diagnostics()) {
+                    if (d.severity() != GraphDiagnostic.Severity.INFO) {
+                        reportGraph(ctx, m.chunk, d);
+                    }
+                }
+                code = c.lua();
+                if (code == null) {
+                    ScriptContext.GraphModule old = previous.stream().filter(p -> p.id.equals(graph.id()) && p.lua != null)
+                        .findFirst().orElse(null);
+                    if (old != null) {
+                        code = old.lua;
+                        report(Severity.WARNING, Code.GRAPH_INVALID, ctx, "", "graph " + graph.id()
+                            + " has errors; the previous version keeps running");
+                    }
+                }
+            }
+            m.lua = code;
+            m.map = code == null ? null : SourceMap.parse(graph.id(), code);
+            out.add(m);
+        }
+        return out;
+    }
+
+    /** A {@code derived/} chunk still keyed to this graph and compiler, or null (then the graph compiles). */
+    private String cachedGraph(ScriptContext ctx, UiGraph graph) {
+        if (options.graphDebug()) {
+            return null;
+        }
+        UiDocumentSource.DerivedLua d = ui.context().source().derivedGraph(ctx.documentId(), graph.id());
+        if (d == null) {
+            return null;
+        }
+        boolean keys = GraphCompiler.COMPILER.equals(d.compiler()) && GraphCompiler.VERSION.equals(d.compilerVersion())
+            && GraphCompiler.sourceSha256(graph).equals(d.sourceSha256());
+        // The chunk also records the Lua signatures and signal contracts it was built against.
+        String inputs = GraphInputs.sha256(graph, DocumentEnvironment.of(ctx.archive, ui.context().source()));
+        if (keys && inputs.equals(GraphInputs.recorded(d.lua()))) {
+            return d.lua();
+        }
+        report(Severity.INFO, Code.GRAPH_INVALID, ctx, "", "derived Lua of graph " + graph.id() + " was built by "
+            + d.compiler() + " " + d.compilerVersion() + (keys ? " against other Lua signatures or signal contracts"
+            : " for another source") + "; compiled it again");
+        return null;
+    }
+
+    private void reportGraph(ScriptContext ctx, String chunk, GraphDiagnostic d) {
+        Severity sev = d.isError() ? Severity.ERROR : Severity.WARNING;
+        UiScriptDiagnostic diag = new UiScriptDiagnostic(sev, Code.GRAPH_INVALID, chunk, 0, "",
+            d.code() + ": " + d.message(), d.location());
+        record(ctx, diag, "");
+    }
+
+    private void updateFlags(ScriptContext ctx) {
+        ctx.hasUpdate = ctx.scriptUpdate || ctx.graphs.stream().anyMatch(g -> g.loaded && g.hasUpdate);
+    }
+
+    private void graphHook(ScriptContext ctx, ScriptContext.GraphModule g, String hook) {
+        lua.args().integer(ctx.id).integer(OP_GRAPH_HOOK).integer(g.index).string(hook);
+        dispatch(ctx, ("on_open".equals(hook) ? "graph-open:" : "graph-close:") + g.index, "on_open".equals(hook));
+    }
+
+    /** Resumes a task paused at a graph breakpoint, at the next frame. */
+    void settleDebug(ScriptContext ctx, long token) {
+        if (!closed && !ctx.closed) {
+            settlements.add(new Settlement(ctx, token, "ok", UiValue.NULL, generation));
         }
     }
 
@@ -561,22 +739,53 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         }
         ctx.hasOpen = o.get("on_open") == UiValue.TRUE;
         ctx.hasClose = o.get("on_close") == UiValue.TRUE;
-        ctx.hasUpdate = o.get("update") == UiValue.TRUE;
+        ctx.scriptUpdate = o.get("update") == UiValue.TRUE;
         ctx.hasInput = o.get("on_input") == UiValue.TRUE;
+        updateFlags(ctx);
     }
 
     private void openContext(ScriptContext ctx) {
-        if (!ctx.loaded || ctx.closed) {
+        if (ctx.closed || !ctx.created) {
             return;
         }
-        installInputHook(ctx);
-        if (ctx.hasOpen) {
-            lua.args().integer(ctx.id).integer(OP_OPEN);
-            dispatch(ctx, "on_open", true);
+        if (ctx.loaded) {
+            installInputHook(ctx);
+            if (ctx.hasOpen) {
+                lua.args().integer(ctx.id).integer(OP_OPEN);
+                dispatch(ctx, "on_open", true);
+            }
+        }
+        for (ScriptContext.GraphModule g : List.copyOf(ctx.graphs)) {
+            if (g.loaded && g.hasOpen && !ctx.closed) {
+                graphHook(ctx, g, "on_open");
+            }
         }
     }
 
     private void reloadContext(ScriptContext ctx, OmuiArchive archive) {
+        List<ScriptContext.GraphModule> previous = List.copyOf(ctx.graphs);
+        reloadScript(ctx);
+        loadGraphs(ctx, previous);
+        if (opened) {
+            for (ScriptContext.GraphModule g : List.copyOf(ctx.graphs)) {
+                if (g.loaded && g.hasOpen && !ctx.closed) {
+                    graphHook(ctx, g, "on_open");
+                }
+            }
+        }
+    }
+
+    private void reloadScript(ScriptContext ctx) {
+        if (ctx.moduleRef == null) {
+            LuaValueWriter w = lua.args().integer(ctx.id).integer(OP_RELOAD).nil().nil();
+            writeCanvases(w, bindCanvases(ctx));
+            LuaValueReader r = dispatch(ctx, "load", true);
+            if (r != null) {
+                ctx.loaded = true;
+                hooks(ctx, r.value());
+            }
+            return;
+        }
         String[] module;
         try {
             module = ops.resolveModule(ctx, ctx.moduleRef);
@@ -605,9 +814,11 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     }
 
     private void closeContext(ScriptContext ctx) {
-        if (ctx.loaded && !ctx.closed) {
-            lua.args().integer(ctx.id).integer(OP_CLOSE);
-            dispatch(ctx, "on_close", false);
+        if (ctx.created && !ctx.closed) {
+            closeHooks(ctx);
+        }
+        if (debugger != null) {
+            debugger.cancel(ctx);
         }
         releaseBindings(ctx);
         ctx.closed = true;
@@ -618,6 +829,20 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         if (ctx.envRef > 0) {
             lua.unref(ctx.envRef);
         }
+    }
+
+    /**
+     * Graphs' {@code on_close}, then OP_CLOSE: the code-behind's {@code on_close} and the
+     * cancellation of every task, so their {@code <close>} handlers run while the state lives.
+     */
+    private void closeHooks(ScriptContext ctx) {
+        for (ScriptContext.GraphModule g : ctx.graphs) {
+            if (g.loaded && g.hasClose) {
+                graphHook(ctx, g, "on_close");
+            }
+        }
+        lua.args().integer(ctx.id).integer(OP_CLOSE);
+        dispatch(ctx, "on_close", false);
     }
 
     /** Detaches everything a context registered on the document and the host. */
@@ -774,9 +999,24 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
                 drop(ctx, id, "handler");
             }
         } else if ("update".equals(origin)) {
-            ctx.hasUpdate = false;
+            ctx.scriptUpdate = false;
+            updateFlags(ctx);
             drop(ctx, 0, "update");
             what = "update(dt)";
+        } else if (origin instanceof String s && s.startsWith("graph-update:")) {
+            int index = Integer.parseInt(s.substring(13));
+            for (ScriptContext.GraphModule g : ctx.graphs) {
+                if (g.index == index) {
+                    g.hasUpdate = false;
+                    what = "the update event of graph " + g.id;
+                }
+            }
+            updateFlags(ctx);
+            drop(ctx, index, "graph-update");
+        } else if (origin instanceof String s && s.startsWith("custom:")) {
+            int id = Integer.parseInt(s.substring(7));
+            drop(ctx, id, "handler");
+            what = "a custom event handler";
         } else if ("on_input".equals(origin)) {
             ctx.hasInput = false;
             if (ctx.inputHook != null) {
@@ -1014,6 +1254,9 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     }
 
     private void cancelPending() {
+        if (debugger != null) {
+            debugger.cancel(null);
+        }
         for (Pending p : List.copyOf(pending.values())) {
             p.call.cancel();
         }
@@ -1027,8 +1270,40 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     // ── reporting ───────────────────────────────────────────────────────────
 
     void report(Severity severity, Code code, ScriptContext ctx, String element, String message) {
-        String chunk = ctx == null ? "" : ctx.chunk;
+        String chunk = ctx == null ? "" : ctx.label();
         UiScriptDiagnostic d = UiScriptDiagnostic.fromLua(severity, code, chunk, element, message);
+        record(ctx, ctx == null ? d : graphNode(ctx, d), element);
+    }
+
+    private static final java.util.regex.Pattern GRAPH_FRAME = java.util.regex.Pattern.compile(
+        "([^\\s:'\"]+" + java.util.regex.Pattern.quote(GraphCompiler.CHUNK_SUFFIX) + "):(\\d+)");
+
+    /**
+     * Attributes a Lua error to the graph node that emitted the failing line, through the source
+     * map: the first compiled-graph frame in the message or its traceback (a Lua function a graph
+     * called fails in its own chunk; the graph frame below it names the calling node).
+     */
+    private UiScriptDiagnostic graphNode(ScriptContext ctx, UiScriptDiagnostic d) {
+        if (d.message() == null || ctx.graphs.isEmpty()) {
+            return d;
+        }
+        java.util.regex.Matcher m = GRAPH_FRAME.matcher(d.message());
+        while (m.find()) {
+            ScriptContext.GraphModule g = ctx.graph(m.group(1));
+            if (g != null && g.map != null) {
+                SourceMap.Location loc = g.map.at(Integer.parseInt(m.group(2)));
+                if (loc != null) {
+                    return d.atNode(loc.toString());
+                }
+            }
+        }
+        return d;
+    }
+
+    private void record(ScriptContext ctx, UiScriptDiagnostic d, String element) {
+        Severity severity = d.severity();
+        Code code = d.code();
+        String message = d.message();
         diagnostics.add(d);
         if (diagnostics.size() > 200) {
             diagnostics.removeFirst();
@@ -1038,7 +1313,8 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
             case WARNING -> UiScriptConsole.Level.WARN;
             case INFO -> UiScriptConsole.Level.INFO;
         };
-        console.add(time, level, ctx == null ? "runtime" : ctx.toString(), code + ": " + message);
+        console.add(time, level, ctx == null ? "runtime" : ctx.toString(),
+            code + (d.node().isEmpty() ? "" : " at " + d.node()) + ": " + message);
         if (severity == Severity.ERROR) {
             ui.reportDiagnostic(UiRuntimeDiagnostic.error(UiRuntimeDiagnostic.Code.SCRIPT_ERROR, element,
                 d.toString()));
