@@ -1,10 +1,10 @@
 package com.openmason.main.systems.menus.mainHub.services;
 
+import com.openmason.main.systems.menus.mainHub.model.ProjectTemplate;
 import com.openmason.main.systems.menus.mainHub.model.RecentProject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -16,22 +16,31 @@ public class HubActionService {
 
     private static final Logger logger = LoggerFactory.getLogger(HubActionService.class);
 
-    private BiConsumer<String, String> createProjectCallback;
+    /** Shell hook for project creation; {@code template} is null for a blank project. */
+    @FunctionalInterface
+    public interface CreateProjectCallback {
+        void create(String name, String directory, ProjectTemplate template);
+    }
+
+    private CreateProjectCallback createProjectCallback;
     private Consumer<RecentProject> openProjectCallback;
     private Consumer<Consumer<String>> folderPicker;
 
     /**
      * Create a new project with the given name in the given directory. The
-     * application pre-saves the project file and opens the editor.
+     * application pre-saves the project file, writes any template models, and
+     * opens the editor.
+     *
+     * @param template the template to create from, or null for a blank project
      */
-    public void createProject(String name, String directory) {
+    public void createProject(String name, String directory, ProjectTemplate template) {
         if (name == null || name.isBlank() || directory == null || directory.isBlank()) {
             logger.warn("Cannot create project: name and directory are required");
             return;
         }
         logger.info("Creating project '{}' in {}", name, directory);
         if (createProjectCallback != null) {
-            createProjectCallback.accept(name.trim(), directory.trim());
+            createProjectCallback.create(name.trim(), directory.trim(), template);
         } else {
             logger.warn("No create-project callback registered");
         }
@@ -64,7 +73,7 @@ public class HubActionService {
     }
 
     /** Set the callback that creates+pre-saves a project (name, directory). */
-    public void setCreateProjectCallback(BiConsumer<String, String> callback) {
+    public void setCreateProjectCallback(CreateProjectCallback callback) {
         this.createProjectCallback = callback;
     }
 

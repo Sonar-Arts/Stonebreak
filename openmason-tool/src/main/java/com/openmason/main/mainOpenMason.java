@@ -11,7 +11,9 @@ import imgui.ImGui;
 import com.openmason.main.systems.MainImGuiInterface;
 import com.openmason.main.systems.viewport.ViewportImGuiInterface;
 import com.openmason.main.systems.menus.mainHub.ProjectHubScreen;
+import com.openmason.main.systems.menus.mainHub.model.ProjectTemplate;
 import com.openmason.main.systems.menus.mainHub.model.RecentProject;
+import com.openmason.main.systems.project.TemplateScaffolder;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.menus.animationEditor.AnimationEditorImGui;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
@@ -178,8 +180,8 @@ public class mainOpenMason {
         UiComposition composition = new UiComposition(omConfig, window(), centerTabTracker,
                 new UiComposition.Host() {
                     @Override
-                    public void createNewProjectFile(String name, String directory) {
-                        mainOpenMason.this.createNewProjectFile(name, directory);
+                    public void createNewProjectFile(String name, String directory, ProjectTemplate template) {
+                        mainOpenMason.this.createNewProjectFile(name, directory, template);
                     }
 
                     @Override
@@ -480,11 +482,12 @@ public class mainOpenMason {
     }
 
     /**
-     * Create a new blank project at {@code directory}/{@code name}.omp, pre-save
-     * it so the file exists immediately, record it in recent projects, then open
-     * the editor on the fresh project.
+     * Create a new project at {@code directory}/{@code name}.omp, pre-save it so
+     * the file exists immediately, record it in recent projects, then open the
+     * editor on the fresh project. A template's starter models are written beside
+     * the .omp and its open-on-create model is loaded into the editor.
      */
-    private void createNewProjectFile(String name, String directory) {
+    private void createNewProjectFile(String name, String directory, ProjectTemplate template) {
         String safeName = (name == null || name.isBlank()) ? "Untitled" : name.trim();
         if (directory == null || directory.isBlank()) {
             // No directory chosen — just open a fresh (unsaved) editor session.
@@ -501,11 +504,16 @@ public class mainOpenMason {
         // Scenes live in their own subfolder; create it up front so the Scene Viewer's
         // save dialog has somewhere sensible to default to.
         com.openmason.main.systems.project.ProjectLayout.ensureScaffold(java.nio.file.Path.of(directory));
+        // Template models go down before the pre-save, whose browser refresh then lists them.
+        java.nio.file.Path openModel = TemplateScaffolder.scaffold(template, java.nio.file.Path.of(directory));
 
         transitionToMainInterface();
         boolean saved = mainInterface.saveNewProject(safeName, path);
         if (saved && projectHubScreen != null) {
             projectHubScreen.getRecentProjectsService().addProject(safeName, path);
+        }
+        if (openModel != null) {
+            mainInterface.getModelOperations().loadOMOModel(openModel.toString());
         }
         logger.info("Created new project '{}' at {}", safeName, path);
     }

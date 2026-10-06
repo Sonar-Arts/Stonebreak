@@ -5,6 +5,7 @@ import com.openmason.main.systems.MainImGuiInterface;
 import com.openmason.main.systems.layout.CenterTabTracker;
 import com.openmason.main.systems.menus.animationEditor.AnimationEditorImGui;
 import com.openmason.main.systems.menus.mainHub.ProjectHubScreen;
+import com.openmason.main.systems.menus.mainHub.model.ProjectTemplate;
 import com.openmason.main.systems.menus.mainHub.model.RecentProject;
 import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import com.openmason.main.systems.menus.textureCreator.FaceEditorBridge;
@@ -35,8 +36,8 @@ public final class UiComposition {
 
     /** Lifecycle hooks the application shell provides to the composed UI graph. */
     public interface Host {
-        /** Project Hub "create" transition (name + directory). */
-        void createNewProjectFile(String name, String directory);
+        /** Project Hub "create" transition (name + directory + template, null when blank). */
+        void createNewProjectFile(String name, String directory, ProjectTemplate template);
 
         /** Project Hub "open recent" transition. */
         void openRecentProject(RecentProject project);
