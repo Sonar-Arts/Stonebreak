@@ -9,9 +9,13 @@ import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic;
 import com.openmason.engine.ui.runtime.access.AccessibilityTree;
-import com.openmason.engine.ui.runtime.binding.UiConverters;
 import com.openmason.engine.ui.runtime.input.PreviewInput;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
+import com.openmason.engine.ui.script.UiApiStubs;
+import com.openmason.engine.ui.script.UiScriptChecker;
+import com.openmason.engine.ui.script.UiScriptConsole;
+import com.openmason.engine.ui.script.UiScriptDiagnostic;
+import com.openmason.engine.ui.script.UiScriptRuntime;
 import com.openmason.main.platform.ToolInputTap;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import com.stonebreak.ui.runtime.GameUiResources;
@@ -30,6 +34,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * Previews a real {@code .omui}/{@code .sbui} document inside Open Mason (#287) through
@@ -40,7 +46,13 @@ import java.util.List;
  * text from {@link ToolInputTap}. Input never comes from outside the displayed canvas, and while
  * the document uses the keyboard Open Mason's own shortcuts and ImGui navigation stand down.
  * "Reload" re-reads the file and keeps each surviving element's instance state, the live path
- * component and document edits take.
+ * component and document edits take, and hot-swaps the Lua code-behind (#292).
+ *
+ * <p>Code-behind runs on the same runtime as the game ({@code GameUiDocuments.scripts}) against
+ * the fixture host, so actions answer from the fixture and never reach game services. Sounds,
+ * navigation and close requests are listed instead of performed. The "Scripts" section shows
+ * the running modules, memory and call cost, diagnostics with {@code chunk:line}, the script
+ * console, a static check of every module and a button that writes LuaLS stubs next to the file.
  *
  * <p>Enabled with {@code -Dopenmason.uidoc.preview=<file>} (or {@code =true} to start empty).
  * The UI Editor (#293) will host this view as its canvas.
@@ -65,6 +77,18 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
     private boolean failed;
     private PreviewInput input;
     private FixtureHost fixtures;
+    private UiScriptRuntime scripts;
+    private com.openmason.engine.ui.script.UiNativeHealth.Status nativeStatus;
+    private final List<String> requests = new ArrayList<>();
+    /** Dev hooks for screenshot runs: {@code -Dopenmason.uidoc.autoclick=key@s,...} and
+     *  {@code -Dopenmason.uidoc.autoscreenshot=<s>:<file.png>[:quit]} (raster path). */
+    private final com.openmason.engine.ui.runtime.input.UiAutoClick autoClick =
+        com.openmason.engine.ui.runtime.input.UiAutoClick.parse(System.getProperty("openmason.uidoc.autoclick"));
+    private final String autoShot = System.getProperty("openmason.uidoc.autoscreenshot");
+    private double autoElapsed;
+    private boolean autoShotDone;
+    private int[] lastSize = {0, 0};
+    private List<UiScriptDiagnostic> checked = List.of();
     private boolean documentHasKeyboard;
     private boolean wasFocused;
     private float lastMouseX = Float.NaN;
@@ -114,6 +138,8 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
             }
         }
         ImGui.end();
+        autoElapsed += ImGui.getIO().getDeltaTime();
+        maybeAutoScreenshot();
         pendingKeys.clear();
         pendingChars.clear();
         documentHasKeyboard = focusedWindow && input != null && input.wantsKeyboard();
@@ -143,8 +169,158 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
         ImGui.sameLine();
         ImGui.setNextItemWidth(120);
         ImGui.sliderFloat("UI scale", uiScale, 0.5f, 3f);
+        if (nativeStatus != null && !nativeStatus.ok()) {
+            for (String p : nativeStatus.problems()) {
+                ImGui.textColored(0xFF6060FF, p); // no fallback: say so on every frame (#292)
+            }
+        }
         if (!status.isEmpty()) {
             ImGui.textWrapped(status);
+        }
+        scriptsSection();
+    }
+
+    private void maybeAutoScreenshot() {
+        if (autoShot == null || autoShotDone) {
+            return;
+        }
+        String[] parts = autoShot.split(":");
+        if (autoElapsed < Double.parseDouble(parts[0])) {
+            return;
+        }
+        autoShotDone = true;
+        try {
+            Path out = Path.of(parts.length > 1 ? parts[1] : "uidoc-preview.png");
+            boolean ok = preview.saveRasterPng(out, lastSize[0], lastSize[1]);
+            logger.info("[autoscreenshot] preview {} {} ({}x{}); scripts: {} diagnostics: {}; status: {}",
+                ok ? "wrote" : "could not write", out, lastSize[0], lastSize[1],
+                scripts == null ? "none" : scripts.modules(), scripts == null ? List.of() : scripts.diagnostics(),
+                status);
+        } catch (Exception e) {
+            logger.error("[autoscreenshot] preview failed", e);
+        }
+        if (parts.length > 2 && "quit".equalsIgnoreCase(parts[2])) {
+            System.exit(0);
+        }
+    }
+
+    // ── code-behind (#292) ──────────────────────────────────────────────────
+
+    private void scriptsSection() {
+        if (scripts == null || !ImGui.collapsingHeader("Scripts")) {
+            return;
+        }
+        if (!scripts.isScripted()) {
+            ImGui.textDisabled("No code-behind: this document runs without a Lua state.");
+        } else {
+            ImGui.text(String.format(Locale.ROOT, "Modules: %s | Lua heap %d KiB (peak %d) | %d calls, %.2f ms total,"
+                    + " last frame %.1f us", scripts.modules(), scripts.memoryUsed() / 1024, scripts.memoryPeak() / 1024,
+                scripts.calls(), scripts.callNanos() / 1e6, scripts.lastUpdateNanos() / 1e3));
+        }
+        if (ImGui.button("Check scripts")) {
+            checked = check(view.instance().document());
+        }
+        ImGui.sameLine();
+        if (ImGui.button("Write LuaLS stubs")) {
+            writeStubs();
+        }
+        ImGui.sameLine();
+        if (ImGui.button("Clear console")) {
+            scripts.console().clear();
+            requests.clear();
+        }
+        for (UiScriptDiagnostic d : checked) {
+            diagnosticLine("check", d);
+        }
+        for (UiScriptDiagnostic d : scripts.diagnostics()) {
+            diagnosticLine("run", d);
+        }
+        for (String r : requests) {
+            ImGui.textDisabled("request: " + r);
+        }
+        if (ImGui.beginChild("##scriptConsole", 0, 140, true)) {
+            for (UiScriptConsole.Entry e : scripts.console().entries()) {
+                String line = String.format(Locale.ROOT, "%7.2f %-5s %s: %s", e.time(), e.level(), e.source(),
+                    firstLine(e.message()));
+                if (e.level() == UiScriptConsole.Level.INFO) {
+                    ImGui.textUnformatted(line);
+                } else {
+                    ImGui.textColored(e.level() == UiScriptConsole.Level.ERROR ? 0xFF6060FF : 0xFF40C0FF, line);
+                }
+                if (ImGui.isItemHovered() && e.message().contains("\n")) {
+                    ImGui.setTooltip(e.message());
+                }
+            }
+            if (ImGui.getScrollY() >= ImGui.getScrollMaxY()) {
+                ImGui.setScrollHereY(1f);
+            }
+        }
+        ImGui.endChild();
+    }
+
+    private static void diagnosticLine(String kind, UiScriptDiagnostic d) {
+        String text = kind + " " + d.severity() + " " + d.code() + " " + d.location() + ": " + d.headline();
+        int color = switch (d.severity()) {
+            case ERROR -> 0xFF6060FF;
+            case WARNING -> 0xFF40C0FF;
+            case INFO -> 0xFFC0C0C0;
+        };
+        ImGui.textColored(color, text);
+        if (ImGui.isItemHovered() && d.message().contains("\n")) {
+            ImGui.setTooltip(d.message());
+        }
+    }
+
+    /** Static check of the document's own scripts (shared modules are checked in their own files). */
+    private static List<UiScriptDiagnostic> check(OmuiArchive doc) {
+        List<UiScriptDiagnostic> out = new ArrayList<>();
+        for (Map.Entry<String, String> e : doc.scripts().entrySet()) {
+            out.addAll(UiScriptChecker.check(e.getValue(), e.getKey() + ".lua"));
+        }
+        return out;
+    }
+
+    private void writeStubs() {
+        try {
+            Path dir = Path.of(file.get().trim()).toAbsolutePath().getParent();
+            UiApiStubs.write(dir);
+            status = "Wrote " + dir.resolve(UiApiStubs.STUB_FILE) + " and " + UiApiStubs.CONFIG_FILE
+                + ": open the folder in a LuaLS editor for completion";
+        } catch (Exception e) {
+            status = "Cannot write LuaLS stubs: " + e.getMessage();
+        }
+    }
+
+    private static String firstLine(String s) {
+        int nl = s.indexOf('\n');
+        return nl < 0 ? s : s.substring(0, nl);
+    }
+
+    /** The preview lists what a script asks of the host instead of doing it. */
+    private com.openmason.engine.ui.script.UiScriptServices previewServices() {
+        return new com.openmason.engine.ui.script.UiScriptServices() {
+            @Override
+            public void playSound(String id, com.openmason.engine.format.omui.UiValue.Obj options) {
+                request("ui.sound(" + id + ")");
+            }
+
+            @Override
+            public boolean navigate(String target, com.openmason.engine.format.omui.UiValue.Obj args) {
+                request("ui.navigate(" + target + ")");
+                return true;
+            }
+
+            @Override
+            public void requestClose() {
+                request("ui.close()");
+            }
+        };
+    }
+
+    private void request(String what) {
+        requests.add(what);
+        if (requests.size() > 20) {
+            requests.removeFirst();
         }
     }
 
@@ -153,7 +329,13 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
         if (fixtures != null) {
             fixtures.host().drain(); // fixture responses and posted data land once per preview frame
         }
+        double dt = ImGui.getIO().getDeltaTime();
+        view.frame(dt); // scripts: awaited results, watches, animations, update(dt)
+        if (autoClick != null) {
+            autoClick.tick(view.instance(), view.input(), dt);
+        }
         view.render(ui, size[0], size[1], uiScale[0], 1f);
+        lastSize = size.clone();
     }
 
     private void route() {
@@ -247,7 +429,10 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
                 view.close();
                 view = null;
                 input = null;
+                scripts = null;
             }
+            checked = List.of();
+            requests.clear();
             Typeface tf = typeface;
             Path path = Path.of(file.get().trim());
             view = GameUiDocuments.open(path, () -> tf);
@@ -255,13 +440,21 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
             // <file>.fixture.json wins over the archive's own editor/fixtures.json.
             fixtures = fixtures(path, view.instance().document());
             List<UiDiagnostic> gate = GameUiDocuments.activationGate(view, fixtures.host());
-            GameUiDocuments.bind(view, fixtures.host(), UiConverters.NONE);
+            // Code-behind (#292) binds the view with its converters and runs against the fixtures.
+            scripts = GameUiDocuments.scripts(view, fixtures.host(), null, previewServices());
             input = new PreviewInput(view.input());
             status = summary("Loaded", view.instance());
             for (UiDiagnostic d : gate) {
                 status += "\n" + d;
             }
         } catch (Exception e) {
+            // Never show a document whose code-behind could not start as if it worked.
+            if (view != null) {
+                view.close();
+                view = null;
+                input = null;
+                scripts = null;
+            }
             status = "Cannot load: " + e.getMessage();
             logger.warn("UI document preview: cannot load {}", file.get(), e);
         }
@@ -295,6 +488,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
 
     private boolean open() {
         try {
+            nativeStatus = com.openmason.engine.ui.script.UiNativeHealth.check();
             typeface = GameUiResources.loadTypeface();
             preview = new MasonryPreview(typeface, MasonryPreview.Path.RASTER);
             ToolInputTap.add(tap);
@@ -315,6 +509,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
         if (view != null) {
             view.close();
             view = null;
+            scripts = null;
         }
         if (preview != null) {
             preview.close();

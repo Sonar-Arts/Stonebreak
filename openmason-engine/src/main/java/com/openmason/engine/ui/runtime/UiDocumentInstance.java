@@ -72,6 +72,7 @@ public final class UiDocumentInstance implements AutoCloseable {
     private final Set<UiRuntimeDiagnostic> diagnostics = new LinkedHashSet<>();
     private final List<UiElement> elements = new ArrayList<>();
     private final Map<String, UiElement> byKey = new HashMap<>();
+    private final Map<String, UiCanvasCommands> canvases = new HashMap<>();
     private final List<SheetBinding> sheets = new ArrayList<>();
     private final Set<String> customStates = new HashSet<>();
     private OmuiArchive document;
@@ -206,6 +207,34 @@ public final class UiDocumentInstance implements AutoCloseable {
     /** True for built-in pseudo-states and custom states declared by any attached sheet. */
     public boolean isKnownState(String state) {
         return UiSelectors.BUILT_IN_STATES.contains(state) || customStates.contains(state);
+    }
+
+    // ── canvases (#292) ─────────────────────────────────────────────────────
+
+    /** Gives the {@code Canvas} element with {@code key} its draw commands (the script runtime does). */
+    public void attachCanvas(String key, UiCanvasCommands commands) {
+        canvases.put(Objects.requireNonNull(key, "key"), Objects.requireNonNull(commands, "commands"));
+        UiElement el = find(key);
+        if (el != null) {
+            paintChanged(el);
+        }
+    }
+
+    public void detachCanvas(String key) {
+        canvases.remove(key);
+    }
+
+    /** The canvas with {@code key} drew a new frame: its rect joins the dirty region. */
+    public void canvasChanged(String key) {
+        UiElement el = find(key);
+        if (el != null) {
+            paintChanged(el);
+        }
+    }
+
+    /** The draw commands of the canvas with {@code key}, or null when nothing draws it. */
+    public UiCanvasCommands canvas(String key) {
+        return canvases.get(key);
     }
 
     /** Everything reported so far, deduplicated, in first-seen order. */

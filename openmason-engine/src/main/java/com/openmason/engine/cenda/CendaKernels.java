@@ -312,21 +312,26 @@ public final class CendaKernels {
             Path p = Path.of(env);
             return Files.isRegularFile(p) ? p : null;
         }
+        // mapLibraryName: libcenda_kernels.so (Linux), libcenda_kernels.dylib (macOS),
+        // cenda_kernels.dll (Windows). Multi-config generators (Visual Studio, Xcode) put the
+        // library in a Release/ or Debug/ sub-directory of the same folder.
         String libName = System.mapLibraryName("cenda_kernels");
-        String[] candidates = {
-            "openmason-engine/cenda/build/release/native/kernels/" + libName,
-            "openmason-engine/cenda/build/debug/native/kernels/" + libName,
-            "openmason-engine/cenda/build/native/kernels/" + libName,
-            "../openmason-engine/cenda/build/release/native/kernels/" + libName,
-            "../openmason-engine/cenda/build/debug/native/kernels/" + libName,
-            "../openmason-engine/cenda/build/native/kernels/" + libName,
-            "cenda/build/release/native/kernels/" + libName,
-            "cenda/build/native/kernels/" + libName,
+        String[] dirs = {
+            "openmason-engine/cenda/build/release/native/kernels/",
+            "openmason-engine/cenda/build/debug/native/kernels/",
+            "openmason-engine/cenda/build/native/kernels/",
+            "../openmason-engine/cenda/build/release/native/kernels/",
+            "../openmason-engine/cenda/build/debug/native/kernels/",
+            "../openmason-engine/cenda/build/native/kernels/",
+            "cenda/build/release/native/kernels/",
+            "cenda/build/native/kernels/",
         };
-        for (String candidate : candidates) {
-            Path p = Path.of(candidate).toAbsolutePath().normalize();
-            if (Files.isRegularFile(p)) {
-                return p;
+        for (String dir : dirs) {
+            for (String config : new String[]{"", "Release/", "Debug/"}) {
+                Path p = Path.of(dir + config + libName).toAbsolutePath().normalize();
+                if (Files.isRegularFile(p)) {
+                    return p;
+                }
             }
         }
         return null;

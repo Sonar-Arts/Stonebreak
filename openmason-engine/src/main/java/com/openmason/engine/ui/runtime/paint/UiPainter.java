@@ -70,6 +70,7 @@ public final class UiPainter {
     private final UiPaintHost host;
     private final MasonryContentMeasurer text;
     private final MItemSlot slotFrame = new MItemSlot();
+    private final CanvasPainter canvasPainter;
     private UiInputRouter input;
 
     private static final int FIELD_FILL = 0xFF1F1F1F;
@@ -84,6 +85,7 @@ public final class UiPainter {
     public UiPainter(UiPaintHost host, MasonryContentMeasurer text) {
         this.host = host == null ? UiPaintHost.NONE : host;
         this.text = text;
+        this.canvasPainter = new CanvasPainter(this.host, text);
     }
 
     /** Paints {@code ui} (already updated) into {@code masonry}'s open frame, without interaction state. */
@@ -208,6 +210,7 @@ public final class UiPainter {
             }
             case "DrawProvider" -> provider(canvas, el, r, scale);
             case "TextField" -> textField(canvas, el, r, s, scale, styledBackground);
+            case "Canvas" -> canvasPainter.paint(canvas, ui.canvas(el.key()), r, scale);
             default -> {
             }
         }

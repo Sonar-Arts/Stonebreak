@@ -60,7 +60,9 @@ public record UiRuntimeDiagnostic(Severity severity, Code code, String element, 
         ACTION_FAILED,
         ACTION_RESULT_MISMATCH,
         ACTION_CALLBACK_FAILED,
-        STALE_COMPLETION
+        STALE_COMPLETION,
+        // Lua code-behind (#292); details in the script runtime's own diagnostics
+        SCRIPT_ERROR
     }
 
     public UiRuntimeDiagnostic {

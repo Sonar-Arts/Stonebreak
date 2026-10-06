@@ -83,4 +83,12 @@ target_link_libraries(cenda_kernels
 # single ops exactly (parity-tested), and the carver's double splines mirror
 # Java doubles. FMA contraction (-ffp-contract=fast, GCC's -O default) would
 # fuse a*b+c and break that — keep our kernel TUs contraction-free.
-target_compile_options(cenda_kernels PRIVATE -ffp-contract=off)
+if(MSVC)
+    # /fp:precise never contracts a*b+c into an FMA (that needs /fp:contract).
+    target_compile_options(cenda_kernels PRIVATE /fp:precise)
+    # The C ABI (ck_*, cl_*, cf_*) is plain extern "C"; export it from the DLL without
+    # per-function __declspec. Lua stays a static lib, so lua_* are not exported.
+    set_target_properties(cenda_kernels PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+else()
+    target_compile_options(cenda_kernels PRIVATE -ffp-contract=off)
+endif()

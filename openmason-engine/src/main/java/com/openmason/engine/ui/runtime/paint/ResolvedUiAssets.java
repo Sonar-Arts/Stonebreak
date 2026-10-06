@@ -90,6 +90,24 @@ public final class ResolvedUiAssets implements UiDocumentSource {
         return sheet;
     }
 
+    /**
+     * Source of a shared or embedded Lua module (#292), resolved like every other dependency, so
+     * it follows project relocation and portable export. A binary chunk is refused (null).
+     */
+    @Override
+    public String script(String dependencyId) {
+        ResolvedAsset asset = resolve(dependencyId);
+        if (asset == null) {
+            return null;
+        }
+        byte[] bytes = asset.bytes().toArray();
+        if (bytes.length > 0 && bytes[0] == 0x1B) {
+            LOGGER.warn("Script {} is a binary chunk; only Lua source is accepted", dependencyId);
+            return null;
+        }
+        return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
     /** Texture for an asset reference, decoded once per content hash; null when unresolvable. */
     public MTexture texture(String assetRef) {
         ResolvedAsset asset = resolve(assetRef);

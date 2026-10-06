@@ -19,12 +19,31 @@ public interface UiDocumentSource {
     /** A shared style sheet (dependency kind {@code stylesheet}), or {@code null}. */
     UiStyleSheet styleSheet(String dependencyId);
 
+    /**
+     * Source text of a shared Lua module (dependency kind {@code script}, #292), or {@code null}
+     * when it cannot be found. Binary chunks are never returned.
+     */
+    default String script(String dependencyId) {
+        return null;
+    }
+
     UiDocumentSource EMPTY = of(Map.of(), Map.of());
 
     static UiDocumentSource of(Map<String, OmuiArchive> components, Map<String, UiStyleSheet> sheets) {
+        return of(components, sheets, Map.of());
+    }
+
+    static UiDocumentSource of(Map<String, OmuiArchive> components, Map<String, UiStyleSheet> sheets,
+                               Map<String, String> scripts) {
         Map<String, OmuiArchive> c = Map.copyOf(components);
         Map<String, UiStyleSheet> s = Map.copyOf(sheets);
+        Map<String, String> l = Map.copyOf(scripts);
         return new UiDocumentSource() {
+            @Override
+            public String script(String dependencyId) {
+                return l.get(dependencyId);
+            }
+
             @Override
             public OmuiArchive component(String dependencyId) {
                 return c.get(dependencyId);

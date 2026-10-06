@@ -22,6 +22,10 @@ import com.openmason.engine.ui.runtime.paint.ResolvedUiAssets;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
 import com.openmason.engine.ui.runtime.paint.UiPaintHost;
 import com.openmason.engine.ui.runtime.paint.UiPainter;
+import com.openmason.engine.ui.script.UiScriptOptions;
+import com.openmason.engine.ui.script.UiScriptRuntime;
+import com.openmason.engine.ui.script.UiScriptServices;
+import com.openmason.engine.ui.script.UiScripts;
 import com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry;
 import io.github.humbleui.skija.Typeface;
 
@@ -105,27 +109,47 @@ public final class GameUiDocuments {
     /**
      * Opens an exported screen bound to {@code host}, after its activation gate: a required host
      * contract, provider, feature or data root the host lacks refuses the screen before anything
-     * is instantiated, so the caller keeps the legacy screen instead of showing a broken one.
+     * is instantiated, so the caller keeps the legacy screen instead of showing a broken one. Its
+     * Lua code-behind (#292) is loaded and opened; {@code view.frame(dt)} drives it per frame.
      *
+     * @param converters Java converters for names no script declares, or null
      * @throws UiActivationException listing every unmet need
+     * @throws com.openmason.engine.cenda.CendaLuaUnavailableException when the screen has
+     *         code-behind and the Lua host cannot load
      */
     public static UiDocumentView openBound(SbuiArchive sbui, Map<String, Path> packs, Supplier<Typeface> typeface,
                                            Map<String, UiPaintHost.UiDrawProvider> providers, UiHost host,
-                                           UiConverters converters) throws IOException {
+                                           UiConverters converters, UiScriptServices services) throws IOException {
         List<AssetSource> sources = GameUiAssets.sources(packs);
         ResolvedUiAssets assets = new ResolvedUiAssets(AssetResolver.forExport(sbui, sources), sources,
             MTextureRegistry.cache());
         UiActivation.require(sbui, assets, host);
-        return bind(view(sbui.source(), assets, typeface, providers), host, converters);
+        UiDocumentView view = view(sbui.source(), assets, typeface, providers);
+        try {
+            scripts(view, host, converters, services);
+            return view;
+        } catch (RuntimeException e) {
+            view.close();
+            throw e;
+        }
     }
 
     /**
      * Connects an open view to {@code host}: bindings, Lua/graph host calls and their lifetime go
      * through one scope that closes with the view. The game passes {@link GameUiHost}; the editor
-     * preview a {@code FixtureHost}.
+     * preview a {@code FixtureHost}. Prefer {@link #scripts}, which also runs code-behind.
      */
     public static UiDocumentView bind(UiDocumentView view, UiHost host, UiConverters converters) {
         return view.bind(UiBinder.open(view.instance(), host, converters));
+    }
+
+    /**
+     * Binds {@code view} to {@code host} (when given) and runs its Lua code-behind (#292): the
+     * scripts' converters come first, then {@code fallback}. The runtime closes with the view.
+     */
+    public static UiScriptRuntime scripts(UiDocumentView view, UiHost host, UiConverters fallback,
+                                          UiScriptServices services) {
+        return UiScripts.open(view, host, fallback, UiScriptOptions.DEFAULTS, services);
     }
 
     /** Activation findings of an already open view's document against {@code host} (dev overlay, preview). */
@@ -133,9 +157,17 @@ public final class GameUiDocuments {
         return UiActivation.check(view.instance().document(), view.instance().context().source(), host);
     }
 
-    /** Re-reads {@code file} into {@code view}, keeping instance state of surviving elements. */
+    /**
+     * Re-reads {@code file} into {@code view}, keeping instance state of surviving elements, then
+     * hot-swaps its code-behind (a module that no longer compiles keeps the previous version).
+     */
     public static UiDocumentInstance.ReloadReport reload(UiDocumentView view, Path file) throws IOException {
-        return view.instance().reload(read(file));
+        UiDocumentInstance.ReloadReport report = view.instance().reload(read(file));
+        UiScriptRuntime scripts = UiScripts.of(view);
+        if (scripts != null) {
+            scripts.reload();
+        }
+        return report;
     }
 
     private static UiDocumentView view(OmuiArchive doc, AssetResolver resolver, List<AssetSource> sources,

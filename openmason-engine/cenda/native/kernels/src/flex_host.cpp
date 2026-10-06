@@ -102,18 +102,18 @@ void apply_style(YGNodeRef n, const float* r) {
 
     for (int e = 0; e < 4; ++e) {
         const YGEdge edge = kEdges[e];
-        length(r[CF_MARGIN + e], CF_LEN_MARGIN << e, pct, autos,
+        length(r[CF_MARGIN + e], static_cast<uint32_t>(CF_LEN_MARGIN) << e, pct, autos,
                [n, edge](float v) { YGNodeStyleSetMargin(n, edge, v); },
                [n, edge](float v) { YGNodeStyleSetMarginPercent(n, edge, v); },
                [n, edge] { YGNodeStyleSetMarginAuto(n, edge); });
-        length(r[CF_PADDING + e], CF_LEN_PADDING << e, pct, 0u,
+        length(r[CF_PADDING + e], static_cast<uint32_t>(CF_LEN_PADDING) << e, pct, 0u,
                [n, edge](float v) { YGNodeStyleSetPadding(n, edge, v); },
                [n, edge](float v) { YGNodeStyleSetPaddingPercent(n, edge, v); }, none);
         YGNodeStyleSetBorder(n, edge, set(r[CF_BORDER + e]) ? r[CF_BORDER + e] : YGUndefined);
         if (set(r[CF_POS_PCT + e])) {
             YGNodeStyleSetPositionPercent(n, edge, r[CF_POS_PCT + e]);
         } else {
-            length(r[CF_POS + e], CF_LEN_POS << e, pct, autos,
+            length(r[CF_POS + e], static_cast<uint32_t>(CF_LEN_POS) << e, pct, autos,
                    [n, edge](float v) { YGNodeStyleSetPosition(n, edge, v); },
                    [n, edge](float v) { YGNodeStyleSetPositionPercent(n, edge, v); },
                    [n, edge] { YGNodeStyleSetPositionAuto(n, edge); });

@@ -9,16 +9,27 @@
 #     openmason-engine/cenda/build-kernels.sh [debug|release|asan]
 #
 # The kernels are OPTIONAL — the Java side falls back to pure Java when the lib is
-# missing or fails its ABI handshake. So this script NEVER fails the build: a
-# missing toolchain or a compile error prints a warning and exits 0, leaving you
-# with a (slower) working game rather than a blocked launch.
+# missing or fails its ABI handshake. So a missing toolchain or a compile error
+# prints a warning and exits 0, leaving you with a (slower) working game rather
+# than a blocked launch.
+#
+# The Lua host (UI scripting, #292) and the Yoga flex host (UI layout, #287) share
+# the library but have NO fallback. A Lua/Flex ABI mismatch between the C headers
+# and the Java bindings is therefore a blocking error (exit 1): the launch stops
+# with the diagnostic instead of migrated UI failing later.
 
 set -uo pipefail
 
 PRESET="${1:-release}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$HERE/build/$PRESET"
-LIB="$BUILD_DIR/native/kernels/$( [[ "$(uname -s)" == "Darwin" ]] && echo libcenda_kernels.dylib || echo libcenda_kernels.so )"
+case "$(uname -s)" in
+  Darwin) LIB_NAME=libcenda_kernels.dylib ;;
+  MINGW*|MSYS*|CYGWIN*) LIB_NAME=cenda_kernels.dll ;;
+  *) LIB_NAME=libcenda_kernels.so ;;
+esac
+LIB="$BUILD_DIR/native/kernels/$LIB_NAME"
+
 
 warn() { echo "[cenda] WARNING: $*" >&2; }
 
@@ -43,8 +54,17 @@ fi
 # Incremental: a no-op in well under a second when nothing changed.
 if ! cmake --build --preset "$PRESET" --parallel >/dev/null; then
   warn "native kernels failed to build — the game will use the Java fallback path."
+  warn "UI scripting and UI layout have no fallback: a stale library from an earlier build may now fail"
+  warn "their ABI handshake, and scripted or migrated screens will refuse to open (loudly) until this builds."
   warn "re-run '$0 $PRESET' without redirection, or 'cmake --build --preset $PRESET', to see the errors."
   exit 0
+fi
+
+# Multi-config generators (Visual Studio, Xcode) put the library in a config sub-directory.
+if [[ ! -f "$LIB" ]]; then
+  for CONFIG in Release Debug; do
+    [[ -f "$BUILD_DIR/native/kernels/$CONFIG/$LIB_NAME" ]] && LIB="$BUILD_DIR/native/kernels/$CONFIG/$LIB_NAME" && break
+  done
 fi
 
 if [[ ! -f "$LIB" ]]; then
@@ -77,8 +97,9 @@ if [[ -f "$LUA_HEADER" && -f "$LUA_BINDING" ]]; then
   NATIVE_CL="$(sed -n 's/^#define CL_ABI_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' "$LUA_HEADER" | head -1)"
   JAVA_CL="$(sed -n 's/.*EXPECTED_ABI[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' "$LUA_BINDING" | head -1)"
   if [[ -n "$NATIVE_CL" && -n "$JAVA_CL" && "$NATIVE_CL" != "$JAVA_CL" ]]; then
-    warn "Lua host ABI mismatch: lua_host.h exports $NATIVE_CL but CendaLua.EXPECTED_ABI is $JAVA_CL."
-    warn "UI scripting will be UNAVAILABLE (no fallback). Fix one side to match."
+    echo "[cenda] ERROR: Lua host ABI mismatch: lua_host.h exports $NATIVE_CL but CendaLua.EXPECTED_ABI is $JAVA_CL." >&2
+    echo "[cenda] ERROR: UI scripting has no fallback; fix one side to match. Launch stopped." >&2
+    exit 1
   fi
 fi
 
@@ -89,8 +110,9 @@ if [[ -f "$FLEX_HEADER" && -f "$FLEX_BINDING" ]]; then
   NATIVE_CF="$(sed -n 's/^#define CF_ABI_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' "$FLEX_HEADER" | head -1)"
   JAVA_CF="$(sed -n 's/.*EXPECTED_ABI[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' "$FLEX_BINDING" | head -1)"
   if [[ -n "$NATIVE_CF" && -n "$JAVA_CF" && "$NATIVE_CF" != "$JAVA_CF" ]]; then
-    warn "Flex ABI mismatch: flex.h exports $NATIVE_CF but CendaFlex.EXPECTED_ABI is $JAVA_CF."
-    warn "UI layout will be UNAVAILABLE (no fallback). Fix one side to match."
+    echo "[cenda] ERROR: Flex ABI mismatch: flex.h exports $NATIVE_CF but CendaFlex.EXPECTED_ABI is $JAVA_CF." >&2
+    echo "[cenda] ERROR: UI layout has no fallback; fix one side to match. Launch stopped." >&2
+    exit 1
   fi
 fi
 

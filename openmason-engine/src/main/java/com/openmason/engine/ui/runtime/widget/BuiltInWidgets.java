@@ -85,6 +85,15 @@ public final class BuiltInWidgets {
             new PropertyDescriptor("selectionMode", ValueType.STRING, UiValue.of("single"),
                 "Clicking a row selects it (:checked)", Set.of("none", "single"))));
 
+    /**
+     * Script-drawn surface (needs the {@code ui-canvas} feature, #292): its content is the draw
+     * commands its Lua code-behind writes each frame into a native buffer of {@code capacity}
+     * floats (rects, circles, lines, sprites, text, numbers, clips), batched by the painter.
+     */
+    public static final WidgetDescriptor CANVAS = WidgetDescriptor.of("Canvas", 1, false, false,
+        "Surface drawn by its code-behind every frame (minigames)",
+        props(prop("capacity", ValueType.INT, UiValue.of(32768), "Draw-command buffer size in floats")));
+
     /** Instance nodes become a container element whose one child is the component's root. */
     public static final WidgetDescriptor INSTANCE = WidgetDescriptor.of(UiNode.INSTANCE_TYPE, 1, true, false,
         "Component instance container (Unity's TemplateContainer)", props());
@@ -94,6 +103,6 @@ public final class BuiltInWidgets {
 
     public static List<WidgetDescriptor> all() {
         return List.of(BOX, LABEL, BUTTON, IMAGE, ITEM_SLOT, DRAW_PROVIDER, SCROLL_VIEW, TEXT_FIELD, LIST_VIEW,
-            INSTANCE);
+            CANVAS, INSTANCE);
     }
 }

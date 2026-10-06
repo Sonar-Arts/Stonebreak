@@ -670,7 +670,10 @@ public class Main {
         // buffer still holds the rendered world behind the pause menu.
         // Arm on the first PLAYING frame; afterwards shoot on schedule whatever
         // UI state stray focus/keys may have toggled (the world is still drawn).
-        if (autoShotDeadlineNanos < 0 && state != GameState.PLAYING) {
+        // -Dstonebreak.autoscreenshot.anystate=true arms on the first frame of any state (the main
+        // menu with a -Dstonebreak.uidoc overlay needs no world).
+        boolean anyState = Boolean.getBoolean("stonebreak.autoscreenshot.anystate");
+        if (autoShotDeadlineNanos < 0 && state != GameState.PLAYING && !anyState) {
             return;
         }
         String[] parts = spec.split(":");

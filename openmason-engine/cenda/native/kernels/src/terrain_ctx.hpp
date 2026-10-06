@@ -23,6 +23,7 @@
 #include "java_compat.hpp"
 #include "nodes.hpp"
 
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -626,7 +627,7 @@ inline int64_t carveWormsImpl(const TerrainCtx& ctx, int32_t chunk_x, int32_t ch
 
     int64_t bits = 0;
     for (int i = 0; i < 1024; i++) {
-        bits += __builtin_popcountll(out_mask[i]);
+        bits += std::popcount(static_cast<uint64_t>(out_mask[i])); // portable (MSVC has no __builtin)
     }
     return bits;
 }

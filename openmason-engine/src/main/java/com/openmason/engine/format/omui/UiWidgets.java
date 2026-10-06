@@ -13,21 +13,22 @@ import java.util.Map;
  */
 public final class UiWidgets {
 
-    private static final Map<String, Integer> BUILT_IN = Map.of(
-            "Box", 1,
-            "Label", 1,
-            "Button", 1,
-            "Image", 1,
-            "ItemSlot", 1,
-            "DrawProvider", 1,
-            "ScrollView", 1,
-            "TextField", 1,
-            "ListView", 1,
-            UiNode.INSTANCE_TYPE, 1);
+    private static final Map<String, Integer> BUILT_IN = Map.ofEntries(
+            Map.entry("Box", 1),
+            Map.entry("Label", 1),
+            Map.entry("Button", 1),
+            Map.entry("Image", 1),
+            Map.entry("ItemSlot", 1),
+            Map.entry("DrawProvider", 1),
+            Map.entry("ScrollView", 1),
+            Map.entry("TextField", 1),
+            Map.entry("ListView", 1),
+            Map.entry("Canvas", 1),
+            Map.entry(UiNode.INSTANCE_TYPE, 1));
 
     /** Built-ins newer than schema 1.0 and the {@code requires} feature a document must list to use them. */
     private static final Map<String, String> FEATURE = Map.of("ScrollView", UiFeatures.SCROLL,
-            "TextField", UiFeatures.INPUT, "ListView", UiFeatures.DATA);
+            "TextField", UiFeatures.INPUT, "ListView", UiFeatures.DATA, "Canvas", UiFeatures.CANVAS);
 
     private UiWidgets() {
     }

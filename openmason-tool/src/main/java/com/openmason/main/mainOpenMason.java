@@ -73,6 +73,7 @@ public class mainOpenMason {
     private SkijaTestPanel skijaTestPanel;
     private MasonryPreviewPanel masonryPreviewPanel;
     private UiDocumentPreviewPanel uiDocumentPreviewPanel;
+    private com.openmason.engine.ui.script.UiNativeHealth.Status uiNativeStatus;
 
     // State flags
     private boolean showHomeScreen = true;
@@ -125,6 +126,8 @@ public class mainOpenMason {
      * ImGui draw-list rendering when no context is available.
      */
     private void initializeSkija() {
+        // UI scripting and layout have no fallback (#292): hand-shake at launch, errors logged.
+        uiNativeStatus = com.openmason.engine.ui.script.UiNativeHealth.check();
         try {
             skijaContext = SkijaContext.initialize();
             if (SkijaTestPanel.ENABLED) {

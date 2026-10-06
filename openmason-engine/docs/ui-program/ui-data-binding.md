@@ -143,8 +143,9 @@ source state → converter → target type check → the element's binding layer
 ### Converters and computed values
 
 A `converter` names a pure code-behind function: a `UiConverter(result type, to, back?)` that `UiConverters`
-supplies. Lua code-behind (#292) and compiled graphs (#291) provide them through the same interface. Until #292,
-only Java supplies converters, so a document's Lua converters report `MISSING_CONVERTER` in the game and the preview.
+supplies. Lua code-behind declares them with `ui.converter(name, {result, to, back})` and the script runtime supplies
+them to the binder (`UiScripts.open`, [ui-scripting.md](ui-scripting.md) §5). Compiled graphs (#291) will provide
+them through the same interface. A converter call is pure: actions and writes are refused.
 
 **Localized formatting** needs no converter. Bind `prop:textArgs` to an object and let the label's `textKey` format
 it. For example, `furnace.progress` = `Smelting {progress, number, percent}`.

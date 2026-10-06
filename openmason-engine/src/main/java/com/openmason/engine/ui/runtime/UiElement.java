@@ -265,6 +265,11 @@ public final class UiElement implements Styleable {
         }
     }
 
+    /** The local (script) layer's own value of {@code name}, or null when it leaves the property alone. */
+    public UiValue localProp(String name) {
+        return localProps.get(name);
+    }
+
     void putOverrideProps(Map<String, UiValue> props) {
         overrideProps.putAll(props);
     }
@@ -327,6 +332,11 @@ public final class UiElement implements Styleable {
         if (changed) {
             owner.boundWrite(this, "class:" + className, UiValue.FALSE);
         }
+    }
+
+    /** TRUE when the local layer adds {@code className}, FALSE when it removes it, null when neither. */
+    public Boolean localClass(String className) {
+        return localAdded.contains(className) ? Boolean.TRUE : localRemoved.contains(className) ? Boolean.FALSE : null;
     }
 
     /** Drops a local add/remove of {@code className}: the binding or authored value shows again. */
@@ -402,6 +412,16 @@ public final class UiElement implements Styleable {
         if (localStyle.remove(property) != null) {
             owner.invalidateStyle(this);
         }
+    }
+
+    /** The local (script) layer's own value of {@code property}, or null when unset. */
+    public UiValue localStyle(String property) {
+        return localStyle.get(property);
+    }
+
+    /** The animation channel's value of {@code property}, or null when no animation drives it. */
+    public UiValue animatedStyle(String property) {
+        return animationStyle.get(property);
     }
 
     /** Animation channel (#295): wins over every other layer while set. */

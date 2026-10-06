@@ -164,6 +164,21 @@ public final class MasonryContentMeasurer implements ContentMeasurer, AutoClosea
         return fonts.computeIfAbsent(Math.round(px * 100f), k -> new Font(tf, px));
     }
 
+    /** A font of {@code logical} px at {@code scale} (canvas text, #292), or null without a typeface. */
+    public Font fontAt(float logical, float scale) {
+        Typeface tf = typeface.get();
+        if (tf == null) {
+            return null;
+        }
+        if (tf != lastTypeface) {
+            fonts.values().forEach(Font::close);
+            fonts.clear();
+            lastTypeface = tf;
+        }
+        float px = Math.round(Math.max(1f, logical * scale) * 2f) / 2f;
+        return fonts.computeIfAbsent(Math.round(px * 100f), k -> new Font(tf, px));
+    }
+
     private static float lineHeight(Font font) {
         FontMetrics m = font.getMetrics();
         return (float) Math.ceil(m.getDescent() - m.getAscent());

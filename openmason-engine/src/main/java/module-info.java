@@ -177,6 +177,9 @@ module openmason.engine {
     // Typed host contracts (data sources, actions, scopes, edits) and bindings (#289)
     exports com.openmason.engine.ui.data;
     exports com.openmason.engine.ui.runtime.binding;
+    // Lua code-behind and the animation sampler (#292)
+    exports com.openmason.engine.ui.script;
+    exports com.openmason.engine.ui.runtime.anim;
 
     // Open format packages for Jackson JSON processing
     opens com.openmason.engine.format.sbo to com.fasterxml.jackson.databind;

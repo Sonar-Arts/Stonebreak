@@ -100,6 +100,24 @@ public final class MasonryPreview implements AutoCloseable {
         ImGui.invisibleButton(buttonId, canvasW * zoom, canvasH * zoom);
     }
 
+    /**
+     * Writes the last raster frame ({@link Path#RASTER}) to a PNG: the document exactly as the
+     * preview painted it (dev screenshot hook). @return false on the GPU path or before a frame.
+     */
+    public boolean saveRasterPng(java.nio.file.Path file, int width, int height) throws java.io.IOException {
+        if (raster == null || width < 1 || height < 1) {
+            return false;
+        }
+        java.awt.image.BufferedImage img =
+            new java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                img.setRGB(x, y, raster.colorAt(x, y));
+            }
+        }
+        return javax.imageio.ImageIO.write(img, "png", file.toFile());
+    }
+
     /** Screen ↔ canvas mapping of the last {@link #draw}. */
     public PreviewMapping mapping() {
         return mapping;
@@ -111,6 +129,12 @@ public final class MasonryPreview implements AutoCloseable {
     }
 
     private void paint(BiConsumer<MasonryUI, int[]> painter, int[] size, int frameW, int frameH) {
+        if (raster != null && !raster.isAvailable()) {
+            // A raster backend has no surface until a frame sizes it, and MasonryUI refuses to
+            // begin a frame on an unavailable backend: allocate it first, or nothing ever paints.
+            raster.beginFrame(frameW, frameH, 1f);
+            raster.endFrame();
+        }
         if (!ui.beginFrame(frameW, frameH, 1f)) {
             return;
         }

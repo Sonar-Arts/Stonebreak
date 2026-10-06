@@ -38,7 +38,7 @@ Slot content keeps the key of the document that authored it.
   - graph nodes (`props.target`)
   - instance overrides and slot hosts
   - binding owners
-  - script lookups by key (`ui.get(...)`, #292)
+  - script lookups by key (`ui.get(...)`, [ui-scripting.md](ui-scripting.md))
 
   Renaming or reparenting a node never breaks them. `UiReferences.unresolved(instance)` lists any that do not resolve.
 - **`#name` is a style handle.** Selectors and `ui.q("#name")` match it, so a rename changes what they select.
@@ -62,6 +62,8 @@ The built-ins (`BuiltInWidgets`) are the format's set:
 - `ScrollView(vertical = true, horizontal = false)`, which needs the `ui-scroll` feature
 - `ListView(items, itemKey, itemHeight = 0, selectionMode = single)`, which needs the `ui-data` feature; its single
   child is a row template that is never built directly ([ui-data-binding.md](ui-data-binding.md) §5)
+- `Canvas(capacity = 32768)`, which needs the `ui-canvas` feature; its content is the draw-command buffer its Lua
+  code-behind fills each frame ([ui-scripting.md](ui-scripting.md) §8)
 - `Instance`
 
 Their versions must equal the format's `UiWidgets` table. Host types (`stonebreak:CrucibleView`) register their own
@@ -279,6 +281,7 @@ Per element:
 | `Image` | its `source` |
 | `ItemSlot` | the Masonry slot frame plus its host provider |
 | `DrawProvider` | its host provider |
+| `Canvas` | the draw commands its script wrote this frame (`paint/CanvasPainter`), clipped to the element |
 
 Images honour `-sb-image-scale`:
 - `stretch`
@@ -317,15 +320,16 @@ used to round differently on a bottom-left and a top-left target; see masonry-re
 
 These are outside #287 or tracked elsewhere:
 - grid layout (an optional extension)
-- `scale`/`rotate` transforms and transition sampling (#295)
+- `scale`/`rotate` transforms and transition sampling (#295; script tweens and clips already sample through
+  `anim/UiAnimator`, [ui-scripting.md](ui-scripting.md) §9)
 - nine-slice insets
 - multi-line or wrapped labels
-- Lua code-behind (#292)
 - migrating real screens (#297/#298)
 
 Input routing, focus, text editing, localization and accessibility metadata are specified in
 [ui-input.md](ui-input.md) (#288). Data bindings, host actions, `ListView` and the activation gate are specified in
-[ui-data-binding.md](ui-data-binding.md) (#289).
+[ui-data-binding.md](ui-data-binding.md) (#289). Lua code-behind, the `ui` API, `Canvas` and the animation sampler are
+specified in [ui-scripting.md](ui-scripting.md) (#292).
 
 ## Tests
 

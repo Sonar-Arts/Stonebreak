@@ -16,7 +16,7 @@ Five contracts are versioned independently. A document records each one it depen
 | --- | --- | --- | --- |
 | Container and schema | `manifest.json` `schemaVersion` | `"MAJOR.MINOR"` | this document |
 | Widget descriptor | node `typeVersion` | integer ≥ 1 | #287 |
-| Lua `ui` script API | manifest `uiApi` | integer | #292 |
+| Lua `ui` script API | manifest `uiApi` | integer | #292, [ui-scripting.md](ui-scripting.md) |
 | Layout semantics | manifest `layoutSemantics` | id, `flex-1` = Yoga v3.2.1 defaults frozen by #283 | #287 |
 | Host contracts and providers | manifest `hostApis[]`, `providers[]` | `{id, version}`, integer versions are cumulative | game/tool |
 
@@ -40,6 +40,7 @@ build contracts and never appear in documents.
   | `ui-input` | the `TextField` widget (version 1); the interaction and accessibility props on any widget (`focusable`, `tabIndex`, `autofocus`, `navUp`, `navDown`, `navLeft`, `navRight`, `focusScope`, `draggable`, `tooltip`, `role`, `accessibleName`, `accessibleDescription`, `accessibleValue`, `status`, `actionHints`); the `focus-visible` and `invalid` pseudo-states | #288 |
   | `ui-l10n` | localized-text props `textKey`, `textArgs`, `placeholderKey`, `tooltipKey` | #288 |
   | `ui-data` | the `ListView` widget (version 1, props `items`, `itemKey`, `itemHeight` = 0, `selectionMode` = `single`); its single child is the row template | #289 |
+  | `ui-canvas` | the `Canvas` widget (version 1, prop `capacity` = 32768): a surface its Lua code-behind draws each frame | #292 |
 - `uiApi`, `layoutSemantics`, `hostApis` and `providers` are checked by the **host** before instantiating
   (`UiHostProfile.check`), not by the reader, so an editor can open and preserve a document its preview cannot run.
   An unmet optional requirement is a warning; an unmet required one is an error and the host refuses the document.
@@ -224,7 +225,7 @@ The `id` inside a style, graph or clip file MUST equal the part id in its entry 
 | --- | --- | --- | --- |
 | `id` | local id | required | unique in the document, slot content included |
 | `name` | identifier | none | |
-| `type` | widget type | required | built-ins in 1.0: `Box`, `Label`, `Button`, `Image`, `ItemSlot`, `DrawProvider`, `Instance` (all at version 1); `ScrollView` (version 1) with the `ui-scroll` feature; `TextField` (version 1) with `ui-input`; `ListView` (version 1) with `ui-data` |
+| `type` | widget type | required | built-ins in 1.0: `Box`, `Label`, `Button`, `Image`, `ItemSlot`, `DrawProvider`, `Instance` (all at version 1); `ScrollView` (version 1) with the `ui-scroll` feature; `TextField` (version 1) with `ui-input`; `ListView` (version 1) with `ui-data`; `Canvas` (version 1) with `ui-canvas` |
 | `typeVersion` | integer | `1` | MUST NOT exceed the reader's supported version |
 | `classes` | identifier[] | `[]` | sorted, unique |
 | `props` | object | `{}` | widget properties, validated by widget descriptors (#287). The names listed for `ui-input` and `ui-l10n` (§1) are reserved: using one requires that feature, checked in node props and instance-override props. |

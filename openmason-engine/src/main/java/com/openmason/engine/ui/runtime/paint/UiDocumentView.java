@@ -9,6 +9,8 @@ import com.openmason.engine.ui.runtime.input.InputDevice;
 import com.openmason.engine.ui.runtime.input.PointerEvent;
 import com.openmason.engine.ui.runtime.input.UiInputRouter;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -27,7 +29,19 @@ public final class UiDocumentView implements AutoCloseable {
     private final UiDocumentInstance ui;
     private final UiPainter painter;
     private final UiInputRouter router;
+    private final List<Extension> extensions = new ArrayList<>();
     private UiBinder binder;
+
+    /**
+     * Something that lives and dies with a view: Lua code-behind (#292). {@link #frame} runs once
+     * per host frame, {@link #close} before the binder and the document go away.
+     */
+    public interface Extension extends AutoCloseable {
+        void frame(double dt);
+
+        @Override
+        void close();
+    }
 
     public UiDocumentView(UiDocumentInstance ui, UiPainter painter) {
         this.ui = Objects.requireNonNull(ui, "ui");
@@ -55,6 +69,26 @@ public final class UiDocumentView implements AutoCloseable {
     /** The binder, or {@code null} for an unbound (static) document. */
     public UiBinder binder() {
         return binder;
+    }
+
+    /** Attaches {@code e}: it gets {@link #frame} calls and closes with this view. */
+    public UiDocumentView extend(Extension e) {
+        extensions.add(Objects.requireNonNull(e, "extension"));
+        return this;
+    }
+
+    public List<Extension> extensions() {
+        return List.copyOf(extensions);
+    }
+
+    /**
+     * Advances the extensions (scripts and their animations) by {@code dt} seconds of UI time.
+     * Hosts call it once per frame before {@link #render}, next to {@code input().tick(dt)}.
+     */
+    public void frame(double dt) {
+        for (int i = 0; i < extensions.size(); i++) {
+            extensions.get(i).frame(dt);
+        }
     }
 
     /** The document's interaction model: route every host input event here. */
@@ -110,6 +144,16 @@ public final class UiDocumentView implements AutoCloseable {
 
     @Override
     public void close() {
+        for (int i = extensions.size() - 1; i >= 0; i--) {
+            try {
+                extensions.get(i).close();
+            } catch (RuntimeException e) {
+                ui.reportDiagnostic(com.openmason.engine.ui.runtime.UiRuntimeDiagnostic.error(
+                    com.openmason.engine.ui.runtime.UiRuntimeDiagnostic.Code.SCRIPT_ERROR, "",
+                    "closing a view extension failed: " + e));
+            }
+        }
+        extensions.clear();
         router.screenClosed();
         if (binder != null) {
             binder.close();

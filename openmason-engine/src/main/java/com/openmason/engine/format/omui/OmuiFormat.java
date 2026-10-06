@@ -47,7 +47,7 @@ public final class OmuiFormat {
 
     /** Format features this reader understands. Documents list what they need in {@code requires}. */
     public static final Set<String> SUPPORTED_FEATURES = Set.of(UiFeatures.SCROLL, UiFeatures.INPUT, UiFeatures.L10N,
-            UiFeatures.DATA);
+            UiFeatures.DATA, UiFeatures.CANVAS);
 
     // ── entries ──
     public static final String MANIFEST = "manifest.json";

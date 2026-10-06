@@ -36,6 +36,12 @@ public final class UiFeatures {
     public static final String DATA = "ui-data";
 
     /**
+     * Script-drawn surfaces (#292): the {@code Canvas} widget, whose content is a per-frame
+     * draw-command buffer filled by its document's Lua code-behind (minigames).
+     */
+    public static final String CANVAS = "ui-canvas";
+
+    /**
      * Properties every widget accepts under {@link #INPUT}. Focus: {@code focusable},
      * {@code tabIndex}, {@code autofocus}, {@code navUp/Down/Left/Right}, {@code focusScope};
      * pointer: {@code draggable}, {@code tooltip}; accessibility: {@code role},

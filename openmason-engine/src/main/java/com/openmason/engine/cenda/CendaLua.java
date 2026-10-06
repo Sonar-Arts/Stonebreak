@@ -29,14 +29,15 @@ import java.nio.file.Path;
  * crossing. Discovery uses the same search as the kernels
  * ({@code -Dcenda.kernels.path}, {@code CENDA_KERNELS_PATH}, build dirs).
  *
- * <p>#283 feasibility spike; #292 owns the production runtime.
+ * <p>ABI 2 (#292) adds typed values ({@link LuaValueWriter}, {@link LuaValueReader},
+ * {@link LuaValueFunction}); the {@code ui} API is built on them in {@code engine.ui.script}.
  */
 public final class CendaLua {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CendaLua.class);
 
     /** Must equal {@code CL_ABI_VERSION} in lua_host.h. */
-    public static final int EXPECTED_ABI = 1;
+    public static final int EXPECTED_ABI = 2;
 
     private static final Linker LINKER = Linker.nativeLinker();
     private static final ValueLayout.OfInt I32 = ValueLayout.JAVA_INT;
@@ -71,15 +72,24 @@ public final class CendaLua {
     static final MethodHandle GC_COLLECT;
     static final MethodHandle WATCH_TOKEN;
     static final MethodHandle INTERRUPT;
+    static final MethodHandle SET_HOST_BUFFER;
+    static final MethodHandle REGISTER_HOST_V;
+    static final MethodHandle CALL_V;
     /** The single upcall stub every host function goes through. */
     static final MemorySegment HOST_STUB;
+    /** The single upcall stub every value-typed host function goes through. */
+    static final MemorySegment HOST_V_STUB;
 
     static {
         String release = null;
         CendaLuaUnavailableException failure = null;
         SymbolLookup lookup = null;
         MemorySegment stub = MemorySegment.NULL;
+        MemorySegment stubV = MemorySegment.NULL;
         try {
+            if (ADDR.byteSize() != Long.BYTES) {
+                throw new CendaLuaUnavailableException("the Cenda Lua host needs a 64-bit JVM");
+            }
             Path lib = CendaKernels.locateLibrary();
             if (lib == null) {
                 throw new CendaLuaUnavailableException(
@@ -96,6 +106,11 @@ public final class CendaLua {
                         MemorySegment.class, int.class)),
                 FunctionDescriptor.of(I32, I64, ADDR, I32, ADDR, I32),
                 Arena.global());
+            stubV = LINKER.upcallStub(
+                MethodHandles.lookup().findStatic(LuaState.class, "dispatchHostV",
+                    MethodType.methodType(int.class, long.class, MemorySegment.class, int.class, int.class)),
+                FunctionDescriptor.of(I32, I64, ADDR, I32, I32),
+                Arena.global());
             LOGGER.info("Cenda Lua host loaded ({}, ABI {}) from {}", release, EXPECTED_ABI, lib);
         } catch (CendaLuaUnavailableException e) {
             failure = e;
@@ -109,6 +124,7 @@ public final class CendaLua {
         RELEASE = release;
         FAILURE = failure;
         HOST_STUB = stub;
+        HOST_V_STUB = stubV;
         STATE_NEW = handle(lookup, "cl_state_new", FunctionDescriptor.of(ADDR, I64));
         STATE_CLOSE = handle(lookup, "cl_state_close", FunctionDescriptor.ofVoid(ADDR));
         MEM_USED = handle(lookup, "cl_mem_used", FunctionDescriptor.of(I64, ADDR), Linker.Option.critical(false));
@@ -142,6 +158,12 @@ public final class CendaLua {
             Linker.Option.critical(false));
         INTERRUPT = handle(lookup, "cl_interrupt", FunctionDescriptor.ofVoid(ADDR, I64),
             Linker.Option.critical(false));
+        SET_HOST_BUFFER = handle(lookup, "cl_set_host_buffer", FunctionDescriptor.ofVoid(ADDR, ADDR, I32),
+            Linker.Option.critical(false));
+        REGISTER_HOST_V = handle(lookup, "cl_register_host_v",
+            FunctionDescriptor.of(I32, ADDR, I32, ADDR, ADDR, I64));
+        CALL_V = handle(lookup, "cl_call_v",
+            FunctionDescriptor.of(I32, ADDR, I32, ADDR, I32, I32, I32, ADDR, ADDR, ADDR));
     }
 
     private CendaLua() {

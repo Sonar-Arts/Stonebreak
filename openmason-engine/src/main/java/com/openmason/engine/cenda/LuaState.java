@@ -38,7 +38,7 @@ public final class LuaState implements AutoCloseable {
     private static volatile HostEntry[] hosts = new HostEntry[64];
     private static int hostCount = 1; // id 0 is never handed out
 
-    private record HostEntry(LuaState owner, LuaHostFunction fn) {
+    private record HostEntry(LuaState owner, LuaHostFunction fn, LuaValueFunction vfn) {
     }
 
     private final Arena arena = Arena.ofConfined();
@@ -47,6 +47,14 @@ public final class LuaState implements AutoCloseable {
     private final MemorySegment results;
     private final MemorySegment resultCount;
     private final LuaHostCall[] hostCalls = new LuaHostCall[MAX_HOST_DEPTH];
+    private final LuaValueReader[] hostArgs = new LuaValueReader[MAX_HOST_DEPTH];
+    private final LuaValueWriter[] hostResults = new LuaValueWriter[MAX_HOST_DEPTH];
+    private MemorySegment hostBuffer = MemorySegment.NULL;
+    private final LuaValueWriter callArgs;
+    private final LuaValueReader callResults = new LuaValueReader();
+    private final MemorySegment outPtr;
+    private final MemorySegment outLen;
+    private final MemorySegment outCount;
     private int hostDepth;
     private int lastResultCount;
     private boolean closed;
@@ -65,6 +73,10 @@ public final class LuaState implements AutoCloseable {
         args = arena.allocate(ValueLayout.JAVA_DOUBLE, MAX_VALUES);
         results = arena.allocate(ValueLayout.JAVA_DOUBLE, MAX_VALUES);
         resultCount = arena.allocate(ValueLayout.JAVA_INT);
+        callArgs = new LuaValueWriter(arena, 1024);
+        outPtr = arena.allocate(ValueLayout.JAVA_LONG); // a pointer; read as a long so reads allocate nothing
+        outLen = arena.allocate(ValueLayout.JAVA_INT);
+        outCount = arena.allocate(ValueLayout.JAVA_INT);
     }
 
     // ─────────────────────────── chunks and calls ───────────────────────────
@@ -124,6 +136,54 @@ public final class LuaState implements AutoCloseable {
         return result(0);
     }
 
+    // ───────────────────────────── typed values ─────────────────────────────
+
+    /**
+     * The reusable argument writer of {@link #callValues}: {@code reset()} it, write the
+     * arguments, then call. Shared by every value call on this state.
+     */
+    public LuaValueWriter args() {
+        return callArgs.reset();
+    }
+
+    /**
+     * Protected call of {@code fnRef} with the values written to {@link #args()} since its reset.
+     * On {@link #OK} the results are in {@link #results()} until the next call on this state.
+     * Allocation-free when the arguments and results are numbers or booleans.
+     */
+    public int callValues(int fnRef, int maxResults) {
+        LuaValueWriter a = callArgs;
+        try {
+            int status = (int) CendaLua.CALL_V.invokeExact(handle, fnRef, a.segment(), a.length(), a.count(),
+                maxResults, outPtr, outLen, outCount);
+            if (status == OK) {
+                callResults.bind(outPtr.get(ValueLayout.JAVA_LONG, 0), outLen.get(ValueLayout.JAVA_INT, 0),
+                    outCount.get(ValueLayout.JAVA_INT, 0));
+            } else {
+                callResults.bind(0, 0, 0);
+            }
+            return status;
+        } catch (Throwable t) {
+            throw rethrow(t);
+        }
+    }
+
+    /** Results of the last successful {@link #callValues}. */
+    public LuaValueReader results() {
+        return callResults;
+    }
+
+    /** Exposes a value-typed {@code fn} to Lua as {@code name} in {@code envRef}. */
+    public int registerValues(int envRef, String name, LuaValueFunction fn) {
+        long id = addHost(new HostEntry(this, null, fn));
+        try (Arena call = Arena.ofConfined()) {
+            return (int) CendaLua.REGISTER_HOST_V.invokeExact(handle, envRef, call.allocateFrom(name),
+                CendaLua.HOST_V_STUB, id);
+        } catch (Throwable t) {
+            throw rethrow(t);
+        }
+    }
+
     public String lastError() {
         try {
             return CendaLua.string((MemorySegment) CendaLua.LAST_ERROR.invokeExact(handle));
@@ -155,7 +215,7 @@ public final class LuaState implements AutoCloseable {
 
     /** Exposes {@code fn} to Lua as {@code name} in {@code envRef}. */
     public int register(int envRef, String name, LuaHostFunction fn) {
-        long id = addHost(new HostEntry(this, fn));
+        long id = addHost(new HostEntry(this, fn, null));
         try (Arena call = Arena.ofConfined()) {
             return (int) CendaLua.REGISTER_HOST.invokeExact(handle, envRef, call.allocateFrom(name),
                 CendaLua.HOST_STUB, id);
@@ -394,6 +454,73 @@ public final class LuaState implements AutoCloseable {
             }
         } catch (Throwable t) {
             return -1;
+        }
+    }
+
+    /** Target of {@link CendaLua#HOST_V_STUB}. Must never throw. */
+    static int dispatchHostV(long id, MemorySegment rawArgs, int len, int nargs) {
+        LuaState state = null;
+        int depth = 0;
+        try {
+            HostEntry entry = hosts[(int) id];
+            if (entry == null || entry.vfn == null) {
+                return -2;
+            }
+            state = entry.owner;
+            depth = state.hostDepth;
+            if (depth >= MAX_HOST_DEPTH) {
+                return state.fail(depth - 1, "host calls nested deeper than " + MAX_HOST_DEPTH);
+            }
+            LuaValueReader in = state.hostArgs[depth];
+            LuaValueWriter out = state.hostResults[depth];
+            if (in == null) {
+                in = new LuaValueReader();
+                out = new LuaValueWriter(state.arena, 1024);
+                state.hostArgs[depth] = in;
+                state.hostResults[depth] = out;
+            }
+            in.bind(rawArgs.address(), len, nargs);
+            out.reset();
+            state.hostDepth = depth + 1;
+            int written;
+            try {
+                written = entry.vfn.invoke(in, out);
+            } finally {
+                state.hostDepth = depth;
+            }
+            state.publish(out);
+            return written;
+        } catch (Throwable t) {
+            if (state == null) {
+                return -2;
+            }
+            try {
+                String msg = t.getMessage() != null ? t.getMessage() : t.toString();
+                return state.fail(depth, msg);
+            } catch (Throwable ignored) {
+                return -2;
+            }
+        }
+    }
+
+    /** Writes {@code message} as the host error of the call at {@code depth}. */
+    private int fail(int depth, String message) throws Throwable {
+        LuaValueWriter out = hostResults[Math.max(0, depth)];
+        if (out == null) {
+            out = new LuaValueWriter(arena, 1024);
+            hostResults[Math.max(0, depth)] = out;
+        }
+        out.cString(message);
+        publish(out);
+        return -1;
+    }
+
+    /** Points the native side at {@code out}'s memory (a downcall only when it moved). */
+    private void publish(LuaValueWriter out) throws Throwable {
+        MemorySegment seg = out.segment();
+        if (!seg.equals(hostBuffer)) {
+            CendaLua.SET_HOST_BUFFER.invokeExact(handle, seg, (int) Math.min(seg.byteSize(), Integer.MAX_VALUE));
+            hostBuffer = seg;
         }
     }
 

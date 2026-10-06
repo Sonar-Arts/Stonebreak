@@ -50,8 +50,10 @@ preview input stays within the displayed canvas.
 | popup | `DISMISS` | no |
 
 - **Registration**: `element.on(type, handler)` (bubble-up and at-target) or `on(type, handler, TRICKLE_DOWN)`.
-  Handlers survive a live reload with their element key. Lua code-behind (#292) registers through the same call and
-  receives the same event objects: there is one dispatch for Java, Lua and compiled graphs.
+  Handlers survive a live reload with their element key. Lua code-behind registers through the same call
+  (`el:on("click", fn)`, [ui-scripting.md](ui-scripting.md)) and receives the same events as plain tables: there
+  is one dispatch for Java, Lua and compiled graphs. Script handlers are re-registered by `on_reload`/`on_open`
+  after a hot reload.
 - **Path**: fixed when dispatch starts. Elements removed by a handler are skipped; handlers added during a dispatch
   apply to the next event.
 - **`stopPropagation`** finishes the current element's handlers and skips the rest of the path;
@@ -386,7 +388,6 @@ A reader that predates them refuses the document instead of dropping focus order
 - IME and RTL sources and shaped painting (gated, §10).
 - Wrapped and multi-line labels.
 - Two-way text bindings (#289).
-- Lua registration sugar (#292).
 - Transition sampling for reduced motion (#295).
 - Virtualized list containers: the recycle contract is defined, but there is no container yet.
 - An editor UI for remapping bindings.

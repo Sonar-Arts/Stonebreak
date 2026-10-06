@@ -33,6 +33,9 @@ public record UiRect(float x, float y, float width, float height) {
         if (isEmpty()) {
             return o;
         }
+        if (o.x >= x && o.y >= y && o.right() <= right() && o.bottom() <= bottom()) {
+            return this; // already covered: a per-frame repaint (a script canvas) allocates nothing
+        }
         float nx = Math.min(x, o.x);
         float ny = Math.min(y, o.y);
         return new UiRect(nx, ny, Math.max(right(), o.right()) - nx, Math.max(bottom(), o.bottom()) - ny);
