@@ -61,6 +61,13 @@ public final class UiDiagnosticsService {
                     out.add(new Finding(map(d.severity()), Source.ASSETS, null, d.message(), d.entry(), 0, null));
                 }
             }
+            // #294: missing/invalid sprite regions and resized textures, as the export reports them
+            for (UiDiagnostic d : com.openmason.engine.ui.assets.export.SpriteChecks.check(doc, r)) {
+                if (d.severity() != UiDiagnostic.Severity.INFO) {
+                    out.add(new Finding(map(d.severity()), Source.ASSETS, null, d.message(),
+                        d.entry() + d.pointer(), 0, null));
+                }
+            }
         } catch (RuntimeException e) {
             out.add(new Finding(Severity.WARNING, Source.ASSETS, null, "Dependency check failed: " + e.getMessage(), "",
                 0, null));

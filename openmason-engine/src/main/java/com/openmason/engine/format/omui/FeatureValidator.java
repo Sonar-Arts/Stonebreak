@@ -25,6 +25,13 @@ final class FeatureValidator {
     static void validate(OmuiArchive archive, UiDiagnostics d) {
         FeatureValidator v = new FeatureValidator(Set.copyOf(archive.manifest().requires()), d);
         v.node(archive.document().root(), "/root");
+        if (!v.declared.contains(UiFeatures.SPRITES)) {
+            String ref = UiFeatures.firstSpriteRef(archive);
+            if (ref != null) {
+                d.error(Code.UNDECLARED_FEATURE, OmuiFormat.MANIFEST, "/requires", "sprite reference '" + ref
+                        + "' needs \"" + UiFeatures.SPRITES + "\" in the manifest's requires");
+            }
+        }
         archive.styles().forEach((id, sheet) -> {
             List<UiStyleSheet.StyleRule> rules = sheet.rules();
             for (int i = 0; i < rules.size(); i++) {

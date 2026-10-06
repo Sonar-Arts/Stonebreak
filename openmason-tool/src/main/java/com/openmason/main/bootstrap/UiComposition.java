@@ -335,6 +335,23 @@ public final class UiComposition {
             uiEditor.openFile(path);
         });
         uiEditor.registerKeybinds(com.openmason.main.systems.keybinds.KeybindRegistry.getInstance());
+        // #294: "Edit Texture" opens the texture behind a UI image; saves refresh every document.
+        uiEditor.setTextureEditor(omt -> {
+            var controller = textureCreatorInterface.getController();
+            String open = controller.getState().getCurrentFilePath();
+            boolean same = open != null && java.nio.file.Path.of(open).toAbsolutePath().normalize()
+                    .equals(omt.toAbsolutePath().normalize());
+            if (!same && controller.getState().hasUnsavedChanges()) {
+                host.showTextureEditor();
+                return "The Texture Editor has unsaved changes; save or discard them, then Edit Texture again";
+            }
+            if (!same && !controller.loadProject(omt.toString())) {
+                return "The Texture Editor could not open " + omt.getFileName();
+            }
+            host.showTextureEditor();
+            return null;
+        });
+        textureCreatorInterface.getController().addSaveListener(uiEditor::textureSaved);
         var editor = uiEditor;
         mainInterface.setUiWorkspace(workspaceState, editor::applyLayout,
                 new com.openmason.main.systems.menus.FileMenuHandler.UiMenuHooks() {

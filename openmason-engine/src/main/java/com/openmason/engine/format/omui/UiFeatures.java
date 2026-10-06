@@ -42,6 +42,12 @@ public final class UiFeatures {
     public static final String CANVAS = "ui-canvas";
 
     /**
+     * Sprite-sheet references (#294): an asset value {@code <sheet id>#<sprite>} naming one region
+     * or skin of a {@code sprites} dependency. An older reader would see an unlisted id.
+     */
+    public static final String SPRITES = "ui-sprites";
+
+    /**
      * Properties every widget accepts under {@link #INPUT}. Focus: {@code focusable},
      * {@code tabIndex}, {@code autofocus}, {@code navUp/Down/Left/Right}, {@code focusScope};
      * pointer: {@code draggable}, {@code tooltip}; accessibility: {@code role},
@@ -112,6 +118,9 @@ public final class UiFeatures {
     public static java.util.SortedSet<String> used(OmuiArchive archive) {
         java.util.SortedSet<String> out = new java.util.TreeSet<>();
         usedBy(archive.document().root(), out);
+        if (firstSpriteRef(archive) != null) {
+            out.add(SPRITES);
+        }
         for (UiStyleSheet sheet : archive.styles().values()) {
             for (UiStyleSheet.StyleRule rule : sheet.rules()) {
                 addIfPresent(out, forSelector(rule.selector()));
@@ -138,6 +147,88 @@ public final class UiFeatures {
     private static void addIfPresent(java.util.Set<String> out, String feature) {
         if (feature != null) {
             out.add(feature);
+        }
+    }
+
+    /**
+     * The first {@code <sheet>#<sprite>} reference in {@code archive} whose sheet is a
+     * {@code sprites} row of its table, or null. Scans every place {@code DependencyRefs} rewrites:
+     * node props, inline styles, instance params and overrides, component parameter and event
+     * argument defaults, sheet rules and variables, graph variable defaults and literals, clip keys.
+     */
+    public static String firstSpriteRef(OmuiArchive archive) {
+        java.util.Set<String> sheets = new java.util.HashSet<>();
+        for (UiDependency dep : archive.dependencies().entries()) {
+            if (dep.kind() == UiDependency.Kind.SPRITES) {
+                sheets.add(dep.id());
+            }
+        }
+        if (sheets.isEmpty()) {
+            return null;
+        }
+        java.util.List<String> hits = new java.util.ArrayList<>(1);
+        java.util.function.Consumer<UiValue> scan = v -> spriteRefs(v, sheets, hits);
+        nodeValues(archive.document().root(), scan);
+        UiDocument.ComponentDef contract = archive.document().component();
+        if (contract != null) {
+            contract.params().forEach(p -> defaultValue(p.defaultValue(), scan));
+            contract.events().forEach(e -> e.args().forEach(p -> defaultValue(p.defaultValue(), scan)));
+        }
+        for (UiStyleSheet sheet : archive.styles().values()) {
+            sheet.variables().values().forEach(scan);
+            sheet.rules().forEach(r -> r.style().values().forEach(scan));
+        }
+        for (UiGraph g : archive.graphs().values()) {
+            g.variables().forEach(v -> defaultValue(v.defaultValue(), scan));
+            g.nodes().forEach(n -> graphNode(n, scan));
+            g.functions().forEach(f -> f.nodes().forEach(n -> graphNode(n, scan)));
+        }
+        for (UiAnimationClip c : archive.animations().values()) {
+            c.tracks().forEach(t -> t.keys().forEach(k -> scan.accept(k.value())));
+        }
+        return hits.isEmpty() ? null : hits.getFirst();
+    }
+
+    private static void defaultValue(UiValue v, java.util.function.Consumer<UiValue> scan) {
+        if (v != null) {
+            scan.accept(v);
+        }
+    }
+
+    private static void graphNode(UiGraph.GraphNode n, java.util.function.Consumer<UiValue> scan) {
+        n.inputs().values().forEach(scan);
+        n.props().values().forEach(scan);
+    }
+
+    private static void nodeValues(UiNode n, java.util.function.Consumer<UiValue> scan) {
+        n.props().values().forEach(scan);
+        n.style().values().forEach(scan);
+        if (n.instance() != null) {
+            n.instance().params().values().forEach(scan);
+            for (UiNode.InstanceOverride o : n.instance().overrides()) {
+                o.props().values().forEach(scan);
+                o.style().values().forEach(scan);
+            }
+            n.instance().slots().values().forEach(list -> list.forEach(c -> nodeValues(c, scan)));
+        }
+        n.children().forEach(c -> nodeValues(c, scan));
+    }
+
+    private static void spriteRefs(UiValue v, java.util.Set<String> sheets, java.util.List<String> hits) {
+        if (!hits.isEmpty()) {
+            return;
+        }
+        switch (v) {
+            case UiValue.Str s -> {
+                UiSpriteRef ref = UiSpriteRef.parse(s.value());
+                if (ref != null && sheets.contains(ref.sheet())) {
+                    hits.add(s.value());
+                }
+            }
+            case UiValue.Arr a -> a.items().forEach(i -> spriteRefs(i, sheets, hits));
+            case UiValue.Obj o -> o.fields().values().forEach(i -> spriteRefs(i, sheets, hits));
+            default -> {
+            }
         }
     }
 }

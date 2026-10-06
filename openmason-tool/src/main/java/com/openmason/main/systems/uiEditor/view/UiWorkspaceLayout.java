@@ -70,6 +70,7 @@ public final class UiWorkspaceLayout {
         imgui.internal.ImGui.dockBuilderDockWindow(ScriptPanel.TITLE, bottom.get());
         imgui.internal.ImGui.dockBuilderDockWindow(DiagnosticsPanel.TITLE, bottom.get());
         imgui.internal.ImGui.dockBuilderDockWindow(HistoryPanel.TITLE, bottom.get());
+        imgui.internal.ImGui.dockBuilderDockWindow(SpritesPanel.TITLE, bottom.get());
 
         var canvasNode = imgui.internal.ImGui.dockBuilderGetNode(canvas.get());
         if (canvasNode != null) {

@@ -57,6 +57,7 @@ public final class UiEditorWorkspace implements AutoCloseable {
     private final ScriptPanel script;
     private final DiagnosticsPanel diagnostics;
     private final HistoryPanel history;
+    private final SpritesPanel sprites;
     private final AssetsPanel assets;
     private final UiEditorDialogs dialogs;
     private final GraphEditorWindow graphs = new GraphEditorWindow();
@@ -79,6 +80,7 @@ public final class UiEditorWorkspace implements AutoCloseable {
         this.script = new ScriptPanel(ctx);
         this.diagnostics = new DiagnosticsPanel(ctx);
         this.history = new HistoryPanel(ctx);
+        this.sprites = new SpritesPanel(ctx);
         this.assets = new AssetsPanel(ctx, this);
         this.dialogs = new UiEditorDialogs(ctx, this);
         service.setWorkspaceStamp(d -> WorkspaceStamp.stamp(d, ctx.view(d)));
@@ -93,6 +95,28 @@ public final class UiEditorWorkspace implements AutoCloseable {
 
     public UiEditorContext context() {
         return ctx;
+    }
+
+    /** Installed by the host: opens an OMT file in the Texture Editor (#294). */
+    public void setTextureEditor(com.openmason.main.systems.uiEditor.service.TextureEditBridge.Opener opener) {
+        ctx.setTextureEditor(opener);
+    }
+
+    /**
+     * The Texture Editor saved {@code file}: re-wrap the SBT it is the source of (if any) and
+     * refresh every open document, so every shared reference to the texture updates.
+     */
+    public void textureSaved(Path file) {
+        List<Path> changed;
+        try {
+            changed = ctx.textures.saved(file);
+        } catch (java.io.IOException e) {
+            changed = List.of(file);
+            if (ctx.doc() != null) {
+                ctx.doc().setLastMessage("Texture saved, but its SBT could not be re-exported: " + e.getMessage());
+            }
+        }
+        ctx.assetFilesChanged(changed);
     }
 
     public UiDocumentService service() {
@@ -160,6 +184,7 @@ public final class UiEditorWorkspace implements AutoCloseable {
         script.render();
         diagnostics.render();
         history.render();
+        sprites.render();
         renderGraphs();
         dialogs.render();
         if (ctx.saveRequest) {
@@ -505,6 +530,7 @@ public final class UiEditorWorkspace implements AutoCloseable {
         graphs.close();
         palette.close();
         details.close();
+        sprites.close();
         ctx.close();
     }
 }

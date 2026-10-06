@@ -62,6 +62,17 @@ public final class UiEditorContext implements AutoCloseable {
     public boolean saveRequest;
     /** A UI editor panel (other than the designer) has keyboard focus this frame. */
     public boolean panelFocused;
+    /** Sprites panel should open this sheet ({@code id}) next frame. */
+    public String editSheetRequest;
+
+    // ── textures and sprites (#294) ──
+    /** Routes "Edit texture" to the Texture Editor (SBTs through their OMT source). */
+    public final com.openmason.main.systems.uiEditor.service.TextureEditBridge textures =
+        new com.openmason.main.systems.uiEditor.service.TextureEditBridge();
+    private com.openmason.main.systems.uiEditor.service.TextureEditBridge.Opener textureEditor;
+    private long assetEpoch;
+    /** The inspector's texture/sprite field. */
+    final ImagePicker images = new ImagePicker(this);
 
     /** Panels call this right after their {@code begin}: shortcuts dispatch while one is focused. */
     public void noteFocus() {
@@ -91,7 +102,11 @@ public final class UiEditorContext implements AutoCloseable {
         if (tf == null) {
             return null;
         }
-        return runtimes.computeIfAbsent(d, k -> new DesignerRuntime(k, project, tf));
+        return runtimes.computeIfAbsent(d, k -> {
+            DesignerRuntime r = new DesignerRuntime(k, project, tf);
+            r.setOnFilesChanged(this::assetFilesChanged);
+            return r;
+        });
     }
 
     public DocumentViewState view() {
@@ -139,6 +154,55 @@ public final class UiEditorContext implements AutoCloseable {
                 views.remove(d);
             }
         }
+    }
+
+    /** Installed by the host application: opens an OMT in the Texture Editor. */
+    public void setTextureEditor(com.openmason.main.systems.uiEditor.service.TextureEditBridge.Opener opener) {
+        this.textureEditor = opener;
+    }
+
+    /**
+     * Opens the texture behind an image reference (a texture id or {@code sheet#sprite}) in the
+     * Texture Editor; a refusal (embedded snapshot, packaged asset, flat PNG) lands in the status line.
+     */
+    public void editTexture(String ref) {
+        UiEditorDocument d = doc();
+        if (d == null) {
+            return;
+        }
+        String problem = textures.edit(com.openmason.main.systems.uiEditor.service.UiImageAssets.editableTexture(
+            d.archive(), ref, project), textureEditor);
+        d.setLastMessage(problem);
+    }
+
+    /**
+     * Project files changed under the editor (a Texture Editor save, a sprite sheet apply): every
+     * open document re-reads its resolved assets and repaints, so every shared reference updates.
+     */
+    public void assetFilesChanged(java.util.List<java.nio.file.Path> files) {
+        assetEpoch++;
+        java.util.Set<String> stale = new java.util.HashSet<>();
+        for (DesignerRuntime r : runtimes.values()) {
+            stale.addAll(r.assetsChanged());
+        }
+        // evict superseded texture revisions no open document still draws (never closed here:
+        // an image still referenced somewhere lives until the GC collects it)
+        com.openmason.engine.ui.runtime.paint.ResolvedUiAssets any = null;
+        for (DesignerRuntime r : runtimes.values()) {
+            stale.removeAll(r.textureKeysInUse());
+            if (any == null) {
+                any = r.resolvedAssets();
+            }
+        }
+        if (any != null && !stale.isEmpty()) {
+            any.forget(stale);
+        }
+        logger.debug("UI assets changed: {} (evicted {} texture revisions)", files, stale.size());
+    }
+
+    /** Bumps whenever project asset files change; panels key their resolution caches on it. */
+    public long assetEpoch() {
+        return assetEpoch;
     }
 
     public Typeface typeface() {

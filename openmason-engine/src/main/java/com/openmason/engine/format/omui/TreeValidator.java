@@ -245,9 +245,28 @@ final class TreeValidator {
             } else if (UiStyleProperties.spec(key) != null
                     && UiStyleProperties.spec(key).kind() == UiStyleProperties.Kind.ASSET
                     && e.getValue() instanceof UiValue.Str s && !s.value().equals("none")
-                    && !s.value().startsWith("var(") && deps.find(s.value()) == null) {
-                d.error(Code.UNRESOLVED_REFERENCE, entry, at, "'" + s.value() + "' is not in dependencies.json");
+                    && !s.value().startsWith("var(")) {
+                assetRef(s.value(), entry, at, deps, d);
             }
+        }
+    }
+
+    /**
+     * An asset value: a dependency id, or {@code <sheet>#<sprite>} whose sheet is a
+     * {@code sprites} row (#294). A sheet referenced without a sprite name selects nothing.
+     */
+    static void assetRef(String value, String entry, String at, OmuiArchive.UiDependencies deps, UiDiagnostics d) {
+        UiSpriteRef ref = UiSpriteRef.parse(value);
+        UiDependency dep = deps.find(ref != null ? ref.sheet() : value);
+        if (dep == null) {
+            d.error(Code.UNRESOLVED_REFERENCE, entry, at, "'" + (ref != null ? ref.sheet() : value)
+                    + "' is not in dependencies.json");
+        } else if (ref != null && dep.kind() != UiDependency.Kind.SPRITES) {
+            d.error(Code.UNRESOLVED_REFERENCE, entry, at, "'" + value + "' names a sprite, but '" + ref.sheet()
+                    + "' is a " + dep.kind().wire() + ", not a sprites sheet");
+        } else if (ref == null && dep.kind() == UiDependency.Kind.SPRITES) {
+            d.error(Code.UNRESOLVED_REFERENCE, entry, at, "'" + value + "' is a sprite sheet; reference one of its"
+                    + " sprites as '" + value + "#<name>'");
         }
     }
 }

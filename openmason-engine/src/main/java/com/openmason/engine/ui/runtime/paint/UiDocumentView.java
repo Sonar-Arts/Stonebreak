@@ -82,10 +82,12 @@ public final class UiDocumentView implements AutoCloseable {
     }
 
     /**
-     * Advances the extensions (scripts and their animations) by {@code dt} seconds of UI time.
+     * Advances the document's UI clock (animated sprites) and the extensions (scripts and their
+     * animations) by {@code dt} seconds of UI time.
      * Hosts call it once per frame before {@link #render}, next to {@code input().tick(dt)}.
      */
     public void frame(double dt) {
+        ui.advanceClock(dt);
         for (int i = 0; i < extensions.size(); i++) {
             extensions.get(i).frame(dt);
         }

@@ -17,6 +17,7 @@ import com.openmason.engine.format.omui.UiGraph.GraphVariable;
 import com.openmason.engine.format.omui.UiNode;
 import com.openmason.engine.format.omui.UiNode.ComponentInstance;
 import com.openmason.engine.format.omui.UiNode.InstanceOverride;
+import com.openmason.engine.format.omui.UiSpriteRef;
 import com.openmason.engine.format.omui.UiStyleSheet;
 import com.openmason.engine.format.omui.UiStyleSheet.StyleRule;
 import com.openmason.engine.format.omui.UiValue;
@@ -38,7 +39,8 @@ import java.util.function.UnaryOperator;
  * {@code instance.component}, a row's {@code requires}/{@code fallback}) or a string value
  * exactly equal to a dependency id anywhere in authored values: widget {@code props}, inline and
  * sheet styles, sheet variables, instance params and overrides, parameter defaults, graph
- * literals and clip keys. Logical ids contain a namespace colon and a strict alphabet, so an
+ * literals and clip keys. A sprite reference {@code <sheet>#<name>} (#294) references its sheet's
+ * row, and a rename rewrites its sheet part. Logical ids contain a namespace colon and a strict alphabet, so an
  * exact match is never ordinary text.
  *
  * <p>Not rewritten: Lua source (text is never parsed or edited — callers report it) and
@@ -57,6 +59,28 @@ public final class DependencyRefs {
         rewriteContent(doc, s -> {
             if (table.contains(s)) {
                 found.add(s);
+            }
+            return s;
+        });
+        return found;
+    }
+
+    /**
+     * Every {@code <sheet>#<name>} reference (#294) whose sheet is a {@code sprites} row of the
+     * document's table, in code-point order.
+     */
+    public static Set<UiSpriteRef> spriteRefs(OmuiArchive doc) {
+        Set<String> sheets = new TreeSet<>(UiValue.KEY_ORDER);
+        doc.dependencies().entries().stream().filter(d -> d.kind() == UiDependency.Kind.SPRITES)
+                .forEach(d -> sheets.add(d.id()));
+        Set<UiSpriteRef> found = new TreeSet<>((a, b) -> UiValue.KEY_ORDER.compare(a.toString(), b.toString()));
+        if (sheets.isEmpty()) {
+            return found;
+        }
+        rewriteContent(doc, s -> {
+            UiSpriteRef ref = UiSpriteRef.parse(s);
+            if (ref != null && sheets.contains(ref.sheet())) {
+                found.add(ref);
             }
             return s;
         });
@@ -206,6 +230,12 @@ public final class DependencyRefs {
             case null -> null;
             case UiValue.Str s -> {
                 String mapped = f.apply(s.value());
+                UiSpriteRef ref = UiSpriteRef.parse(s.value());
+                if (mapped.equals(s.value()) && ref != null) {
+                    // <sheet>#<sprite> (#294) references the sheet's row
+                    String sheet = f.apply(ref.sheet());
+                    mapped = sheet.equals(ref.sheet()) ? s.value() : new UiSpriteRef(sheet, ref.name()).toString();
+                }
                 yield mapped.equals(s.value()) ? s : UiValue.of(mapped);
             }
             case UiValue.Arr a -> new UiValue.Arr(a.items().stream().map(x -> value(x, f)).toList());

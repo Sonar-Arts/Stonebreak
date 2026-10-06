@@ -33,8 +33,9 @@ import java.util.TreeMap;
  *
  * <p>Blocking (errors): an invalid document (which includes {@code requires} cycles and
  * unlisted references), a required dependency nothing provides, a component needing a shared
- * dependency the table lacks, recursive composition, a collected-entry name collision, and a
- * font or sound that would be redistributed without licence provenance.
+ * dependency the table lacks, recursive composition, a collected-entry name collision, a
+ * font or sound that would be redistributed without licence provenance, and a sprite reference
+ * to a missing or invalid region ({@link SpriteChecks}, #294).
  */
 public final class ExportPlanner {
 
@@ -65,6 +66,7 @@ public final class ExportPlanner {
         Resolution resolution = resolver.resolveAll();
         d.addAll(resolution.diagnostics());
         Map<String, OmuiArchive> components = ComponentClosure.check(doc, resolution, d);
+        SpriteChecks.check(doc, components.values(), resolution, d);
         unused(doc, d);
 
         List<PlanItem> items = new ArrayList<>();

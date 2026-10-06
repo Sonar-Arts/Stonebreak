@@ -73,7 +73,13 @@ public record UiDiagnostic(Severity severity, Code code, String entry, String po
         UNKNOWN_DATA_SOURCE,
         UNDECLARED_HOST_API,
         // Behavior graphs (#291): a graph fails its checks, so it cannot be compiled or exported
-        GRAPH_INVALID
+        GRAPH_INVALID,
+        // Sprite sheets (#294): a region outside its texture, a slice that does not fit its region,
+        // a texture whose size changed under its sheet, a reference to a region the sheet lacks
+        SPRITE_REGION_INVALID,
+        SPRITE_SLICE_INVALID,
+        TEXTURE_SIZE_CHANGED,
+        UNKNOWN_SPRITE
     }
 
     public UiDiagnostic {

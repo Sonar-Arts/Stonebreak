@@ -200,6 +200,21 @@ final class DetailRows {
         }
     }
 
+    /** An image-valued style property (#294): textures, sprites and skins, with Edit buttons. */
+    void image(String label, String prop) {
+        if (!visible(label, prop)) {
+            return;
+        }
+        UiValue a = target.style(prop);
+        float w = begin(label, tip(prop), authored(a), target.bound("style:" + prop));
+        ImGui.beginGroup();
+        apply(ctx.images.field("st_" + prop, a, target.effective(prop), w), v -> target.setStyle(prop, v));
+        ImGui.endGroup();
+        if (end(authored(a), prop)) {
+            ctx.actions.run(target.setStyle(prop, null));
+        }
+    }
+
     /**
      * A keyword as a segmented glyph control (direction, justify, align). {@code glyphs[i]}
      * draws {@code options[i]}.

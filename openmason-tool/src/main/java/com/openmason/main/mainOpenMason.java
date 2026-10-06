@@ -495,7 +495,8 @@ public class mainOpenMason {
      * Dev hook for live runs: {@code -Dopenmason.uieditor=<project.omp>[,<document.omui|.sbui>]}
      * opens the project, brings the UI Editor workspace to the front and opens the document.
      * Add {@code -Dopenmason.uieditor.select=<key>} to select an element and
-     * {@code -Dopenmason.uieditor.preview=true} to start in Preview.
+     * {@code -Dopenmason.uieditor.preview=true} to start in Preview, and
+     * {@code -Dopenmason.uieditor.sprites=<sheet id>} to open that sprite sheet in the Sprites panel.
      */
     private void devOpenUiEditor() {
         String spec = System.getProperty("openmason.uieditor");
@@ -515,6 +516,10 @@ public class mainOpenMason {
         var doc = uiEditor.context().doc();
         if (select != null && doc != null) {
             doc.select(java.util.List.of(select.split(",")));
+        }
+        String sprites = System.getProperty("openmason.uieditor.sprites");
+        if (sprites != null && !sprites.isBlank()) {
+            uiEditor.context().editSheetRequest = sprites.trim(); // #294: open the Sprites panel on a sheet
         }
         if (Boolean.getBoolean("openmason.uieditor.preview") && uiEditor.context().runtime() != null) {
             uiEditor.context().runtime().setMode(

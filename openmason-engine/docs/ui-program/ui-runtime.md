@@ -184,7 +184,8 @@ shared Masonry implementation; layout and painting use the same instance.
 - **Baseline rule:** when the box is taller than a line, the line is centred, and the baseline sits −ascent below
   the line's top. This reproduces the legacy `y + h/2 + k·s` label placement as a rule.
 - The Yoga baseline upcall feeds `align-items: baseline`.
-- An `Image` measures as its texture size × scale.
+- An `Image` measures as its sprite's logical size × scale (a whole texture: its texel size; a skin: its
+  normal region; [ui-sprites.md](ui-sprites.md)).
 - A content change (`setProp("text")`) marks only that leaf dirty.
 
 **Diagnostics** (`LayoutChecks`):
@@ -283,13 +284,11 @@ Per element:
 | `DrawProvider` | its host provider |
 | `Canvas` | the draw commands its script wrote this frame (`paint/CanvasPainter`), clipped to the element |
 
-Images honour `-sb-image-scale`:
-- `stretch`
-- `integer` (largest whole scale, centred)
-- `tile`
-- `nine-slice`, which draws as stretch until slice insets exist
-
-Sampling follows `-sb-sampling`; nearest is the default, for pixel art.
+Images and `background-image` are whole textures, sprite regions or skins (`<sheet>#<name>`, #294), drawn by
+`SpritePainter` ([ui-sprites.md](ui-sprites.md) §4). `-sb-image-scale` (`stretch`, `integer` by the pivot,
+`tile`, `nine-slice` with the sprite's insets, pixel-snapped under nearest sampling) overrides the sprite's
+own fill; a sprite's `sampling` overrides `-sb-sampling` (nearest by default, for pixel art). Animated sprites
+follow the document's UI clock and repaint only on frame boundaries.
 
 `paint/UiDocumentView` is a document on screen. It wraps the instance, the painter and the document's
 `UiInputRouter` (#288, [ui-input.md](ui-input.md)), which owns `:hover`, `:active`, `:focus`, `:focus-visible`,
@@ -322,7 +321,6 @@ These are outside #287 or tracked elsewhere:
 - grid layout (an optional extension)
 - `scale`/`rotate` transforms and transition sampling (#295; script tweens and clips already sample through
   `anim/UiAnimator`, [ui-scripting.md](ui-scripting.md) §9)
-- nine-slice insets
 - multi-line or wrapped labels
 - migrating real screens (#297/#298)
 

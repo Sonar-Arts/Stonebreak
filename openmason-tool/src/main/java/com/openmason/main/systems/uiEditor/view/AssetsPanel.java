@@ -42,6 +42,7 @@ final class AssetsPanel {
     private final ImString relinkPath = new ImString(256);
     private String relinkId;
     private Object resolvedFor;
+    private long resolvedEpoch = -1;
     private Resolution resolution;
 
     AssetsPanel(UiEditorContext ctx, UiEditorWorkspace workspace) {
@@ -199,7 +200,8 @@ final class AssetsPanel {
                 + "uses are listed here with where they resolve from.");
             return;
         }
-        if (resolvedFor != doc.archive()) {
+        if (resolvedFor != doc.archive() || resolvedEpoch != ctx.assetEpoch()) {
+            resolvedEpoch = ctx.assetEpoch();
             try {
                 resolution = AssetResolver.forDocument(doc.archive(), ctx.project.sources()).resolveAll();
             } catch (RuntimeException e) {
@@ -230,6 +232,14 @@ final class AssetsPanel {
                 ResolvedAsset r = resolution == null ? null : resolution.get(d.id());
                 if (r != null) {
                     ImGui.textDisabled(r.describe());
+                    if (!embedded && d.sha256() != null && !d.sha256().equals(r.sha256())) {
+                        ImGui.sameLine();
+                        EditorWidgets.badge("changed", Glyphs.rgba(0.95f, 0.75f, 0.30f, 1f));
+                        if (ImGui.isItemHovered()) {
+                            ImGui.setTooltip("The shared file changed since this document recorded it (it already"
+                                + " draws the new version). Actions > Accept Current Version records it.");
+                        }
+                    }
                 } else if (resolution != null && resolution.fallbacks().containsKey(d.id())) {
                     ThemeColors.push(imgui.flag.ImGuiCol.Text, ThemeColors.Tone.WARNING);
                     ImGui.textUnformatted("fallback: " + resolution.fallbacks().get(d.id()));
@@ -282,6 +292,30 @@ final class AssetsPanel {
         if (!embedded && project != null && ImGui.menuItem("Relink to Project File...")) {
             relinkId = d.id();
             relinkPath.set(d.sourceHint() == null ? "" : d.sourceHint());
+        }
+        boolean image = d.kind() == UiDependency.Kind.TEXTURE || d.kind() == UiDependency.Kind.IMAGE;
+        if (image && ImGui.menuItem("Edit Texture")) {
+            ctx.editTexture(d.id());
+        }
+        if (image && ImGui.menuItem("Slice into Sprites...")) {
+            try {
+                if (ctx.actions.run(com.openmason.main.systems.uiEditor.service.UiImageAssets.newSheet(doc.archive(),
+                    ctx.project, d.id()))) {
+                    ctx.editSheetRequest = d.id() + "_sprites";
+                }
+            } catch (java.io.IOException | com.openmason.main.systems.uiEditor.command.UiCommandException e) {
+                doc.setLastMessage(e.getMessage());
+            }
+        }
+        if (d.kind() == UiDependency.Kind.SPRITES && ImGui.menuItem("Edit Sprites")) {
+            ctx.editSheetRequest = d.id();
+        }
+        ResolvedAsset resolved = resolution == null ? null : resolution.get(d.id());
+        if (!embedded && project != null && resolved != null && resolved.origin()
+            == com.openmason.engine.ui.assets.AssetOrigin.PROJECT && !resolved.sha256().equals(d.sha256())
+            && ImGui.menuItem("Accept Current Version")) {
+            String location = resolved.location();
+            edit(doc, () -> RelinkOperations.relink(doc.archive(), d.id(), location, project));
         }
         if (ImGui.menuItem("Copy Id")) {
             ImGui.setClipboardText(d.id());

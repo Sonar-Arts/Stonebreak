@@ -10,7 +10,7 @@ The engine never imports `com.stonebreak` or tool classes. Host-specific pieces 
 | Package | Contents |
 | --- | --- |
 | `com.openmason.engine.ui.masonry` | widgets (`MButton`, `MDropdown`, ...), `MPainter`, `MStyle`, `MFonts`, `MasonryUI`, `MasonryEnvironment`, `MKeys`, `MClipboard` |
-| `com.openmason.engine.ui.masonry.textures` | `MTexture` (SBT/OMT → one composited image), `MTextureCache` (shared owner) |
+| `com.openmason.engine.ui.masonry.textures` | `MTexture` (SBT/OMT/PNG → one image composited with the engine's `OmtCompositor`, straight alpha; owns cached sprite sub-images, #294), `MTextureCache` (shared owner) |
 | `com.openmason.engine.ui.rendering` | `UiRenderTarget`, `GlStatePolicy`, `GlStateSnapshot`, `GlBaseline`, `SkiaGlRenderer`, `MasonryBackend`, `GpuMasonryBackend`, `RasterMasonryBackend`, `OffscreenFramebuffer`, `RasterTextureUpload`, `PreviewMapping` |
 | `com.openmason.engine.util.easing` | `EasingFunctions`, `EasingType` (moved from the game's intro tweens) |
 

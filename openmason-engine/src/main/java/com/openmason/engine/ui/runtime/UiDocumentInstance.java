@@ -91,6 +91,9 @@ public final class UiDocumentInstance implements AutoCloseable {
     private boolean visualDirty = true;
     private PaintOrder paintOrder;
     private UiRect dirtyRegion = UiRect.EMPTY;
+    private double clock;
+    private UiRect animatedRegion = UiRect.EMPTY;
+    private double nextAnimationChange = Double.POSITIVE_INFINITY;
     private UpdateStats lastStats = UpdateStats.NONE;
     private float[] records = new float[FlexRecord.STRIDE * 16];
     private int[] nodeIds = new int[16];
@@ -765,6 +768,48 @@ public final class UiDocumentInstance implements AutoCloseable {
      */
     public com.openmason.engine.ui.runtime.style.StyleTrace styleTrace(UiElement el) {
         return StyleResolver.trace(el, sheets, el.styleLayers());
+    }
+
+    // ── UI clock (#294: animated sprites) ───────────────────────────────────
+
+    /** Seconds of UI time this document has run; hosts advance it with {@code UiDocumentView.frame(dt)}. */
+    public double clock() {
+        return clock;
+    }
+
+    /**
+     * Advances the UI clock. When an animated sprite painted last frame is due to change frame,
+     * its area becomes dirty, so hosts that repaint on {@link #consumeDirtyRegion} redraw exactly
+     * on frame boundaries.
+     */
+    public void advanceClock(double dt) {
+        if (dt > 0 && Double.isFinite(dt)) {
+            clock += dt;
+        }
+        if (clock >= nextAnimationChange) {
+            dirtyRegion = dirtyRegion.union(animatedRegion);
+            nextAnimationChange = Double.POSITIVE_INFINITY;
+        }
+    }
+
+    /** Called by the painter before a frame: forgets last frame's animated areas. */
+    public void beginAnimationFrame() {
+        animatedRegion = UiRect.EMPTY;
+        nextAnimationChange = Double.POSITIVE_INFINITY;
+    }
+
+    /** Called by the painter: {@code area} shows an animation whose next change is at UI time {@code at}. */
+    public void noteAnimation(UiRect area, double at) {
+        if (at == Double.POSITIVE_INFINITY) {
+            return;
+        }
+        animatedRegion = animatedRegion.union(area);
+        nextAnimationChange = Math.min(nextAnimationChange, at);
+    }
+
+    /** True when something painted last frame will change on its own (an animated sprite). */
+    public boolean animating() {
+        return nextAnimationChange != Double.POSITIVE_INFINITY;
     }
 
     /** Device-pixel area changed since the last call (moves, restyles, content edits, scrolling). */

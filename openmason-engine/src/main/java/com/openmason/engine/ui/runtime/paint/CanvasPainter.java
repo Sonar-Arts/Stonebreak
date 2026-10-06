@@ -1,7 +1,8 @@
 package com.openmason.engine.ui.runtime.paint;
 
-import com.openmason.engine.ui.masonry.textures.MTexture;
+import com.openmason.engine.format.omui.UiSpriteSheet;
 import com.openmason.engine.ui.runtime.UiCanvasCommands;
+import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.UiRect;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
@@ -11,9 +12,7 @@ import io.github.humbleui.skija.PaintMode;
 import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.types.Rect;
 
-import java.util.HashMap;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * Paints a {@code Canvas} element's draw commands (#292), read in place from the native buffer
@@ -23,7 +22,7 @@ import java.util.Map;
  *  2 rect    x y w h rgb a           7 number  value x y size rgb a decimals
  *  3 circle  cx cy r rgb a           8 clip    x y w h
  *  4 line    x0 y0 x1 y1 width rgb a 9 unclip
- *  5 sprite  tex x y w h u0 v0 u1 v1 a   (u1 &lt; 0: the whole texture)
+ *  5 sprite  tex x y w h u0 v0 u1 v1 a   (u1 &lt; 0: the whole texture or sprite)
  *  6 text    str x y size rgb a      10 translate dx dy   11 reset-transform
  * </pre>
  *
@@ -31,6 +30,10 @@ import java.util.Map;
  * in [0, 1]. Text {@code y} is the baseline. Everything is clipped to the element. A truncated or
  * unknown command ends the frame's drawing (the script's bug, never a crash). Paints, fonts and
  * textures are reused across frames.
+ *
+ * <p>{@code tex} may be a sprite reference ({@code <sheet>#<name>}, #294): the source rect is then
+ * relative to the sprite's region (its current animation frame on the document's UI clock), and
+ * {@code u1 < 0} draws the whole region.
  */
 final class CanvasPainter {
 
@@ -51,14 +54,27 @@ final class CanvasPainter {
     private Paint fill;
     private Paint stroke;
     private Paint sprite;
-    private final Map<String, MTexture> textures = new HashMap<>();
+    private double time;
+    private boolean still;
+    private double nextChange = Double.POSITIVE_INFINITY;
 
     CanvasPainter(UiPaintHost host, MasonryContentMeasurer text) {
         this.host = host;
         this.text = text;
     }
 
-    void paint(Canvas canvas, UiCanvasCommands cmds, UiRect r, float scale) {
+    void paint(Canvas canvas, UiCanvasCommands cmds, UiRect r, float scale, UiDocumentInstance ui) {
+        this.time = ui.clock();
+        this.still = ui.preferences().reducedMotion();
+        this.nextChange = Double.POSITIVE_INFINITY;
+        try {
+            paintCommands(canvas, cmds, r, scale);
+        } finally {
+            ui.noteAnimation(r, nextChange); // animated canvas sprites repaint on their frame boundaries
+        }
+    }
+
+    private void paintCommands(Canvas canvas, UiCanvasCommands cmds, UiRect r, float scale) {
         if (cmds == null) {
             return;
         }
@@ -112,12 +128,25 @@ final class CanvasPainter {
                     if (i + 11 > n) {
                         break loop;
                     }
-                    Image img = image(cmds.texture((int) cmds.get(i + 1)));
+                    UiImage.Region region = region(cmds.texture((int) cmds.get(i + 1)));
+                    Image img = region == null ? null : region.texture().image();
                     if (img != null) {
+                        UiSpriteSheet.Sprite sp = region.sprite();
+                        int fx = sp.x();
+                        int fy = sp.y();
+                        if (sp.animated() && !still) {
+                            UiSpriteSheet.Frame f = sp.frames().get(SpriteFrames.frameAt(sp.frames(), sp.loop(), time));
+                            fx = f.x();
+                            fy = f.y();
+                            nextChange = Math.min(nextChange, SpriteFrames.nextChange(sp.frames(), sp.loop(), time));
+                        }
                         float u1 = cmds.get(i + 8);
                         float v1 = cmds.get(i + 9);
-                        Rect src = u1 < 0 || v1 < 0 ? Rect.makeWH(img.getWidth(), img.getHeight())
-                            : Rect.makeLTRB(cmds.get(i + 6), cmds.get(i + 7), u1, v1);
+                        // a sub-rect stays inside the sprite's region: never samples its sheet neighbours
+                        Rect src = u1 < 0 || v1 < 0 ? Rect.makeXYWH(fx, fy, sp.w(), sp.h())
+                            : Rect.makeLTRB(fx + Math.clamp(cmds.get(i + 6), 0f, sp.w()),
+                                fy + Math.clamp(cmds.get(i + 7), 0f, sp.h()), fx + Math.clamp(u1, 0f, sp.w()),
+                                fy + Math.clamp(v1, 0f, sp.h()));
                         sprite.setAlphaf(Math.clamp(cmds.get(i + 10), 0f, 1f));
                         canvas.drawImageRect(img, src, Rect.makeXYWH(ox + (cmds.get(i + 2) + tx) * scale,
                                 oy + (cmds.get(i + 3) + ty) * scale, cmds.get(i + 4) * scale, cmds.get(i + 5) * scale),
@@ -176,16 +205,10 @@ final class CanvasPainter {
         canvas.restoreToCount(base);
     }
 
-    private Image image(String ref) {
-        if (ref == null) {
-            return null;
-        }
-        MTexture t = textures.get(ref);
-        if (t == null && !textures.containsKey(ref)) {
-            t = host.texture(ref);
-            textures.put(ref, t);
-        }
-        return t == null ? null : t.image();
+    /** The host caches resolution per reference, so asset refreshes reach running canvases too. */
+    private UiImage.Region region(String ref) {
+        UiImage img = ref == null ? null : host.image(ref);
+        return img == null ? null : img.still();
     }
 
     private static int argb(float rgb, float alpha) {

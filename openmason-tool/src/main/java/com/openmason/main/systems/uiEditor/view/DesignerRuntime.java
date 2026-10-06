@@ -71,6 +71,10 @@ public final class DesignerRuntime implements AutoCloseable {
     // repaint gating
     private Object paintedKey;
     private double sincePaint;
+    private double sinceWatch;
+    private boolean assetsStale;
+    private final Map<Path, String> watched = new HashMap<>();
+    private java.util.function.Consumer<List<Path>> onFilesChanged;
     private MasonryPreview.Frame lastFrame;
 
     public DesignerRuntime(UiEditorDocument doc, UiProjectContext project, Typeface typeface) {
@@ -144,7 +148,7 @@ public final class DesignerRuntime implements AutoCloseable {
         if (builtRevision == doc.revision() && (view != null || error != null)) {
             return; // up to date, or failed for this revision (retry after the next edit or mode switch)
         }
-        if (view != null && builtFrom != null && sameResolution(builtFrom, a)) {
+        if (view != null && builtFrom != null && !assetsStale && sameResolution(builtFrom, a)) {
             try {
                 view.instance().reload(a);
                 if (scripts != null) {
@@ -168,6 +172,7 @@ public final class DesignerRuntime implements AutoCloseable {
     }
 
     private void rebuild(OmuiArchive a) {
+        assetsStale = false;
         disposeView();
         try {
             view = GameUiDocuments.open(a, project.sources(), () -> typeface, Map.of());
@@ -187,6 +192,79 @@ public final class DesignerRuntime implements AutoCloseable {
         builtRevision = doc.revision();
         builtFrom = a;
         paintedKey = null;
+    }
+
+    /**
+     * Project asset files changed (#294): re-resolve what this view uses and, when any bytes
+     * changed, rebuild it so layout re-measures and every cached image is resolved afresh.
+     *
+     * @return texture cache keys the old bytes left behind (the context evicts those no open
+     *         document still draws)
+     */
+    public java.util.Set<String> assetsChanged() {
+        var assets = resolvedAssets();
+        watched.clear();
+        paintedKey = null;
+        if (assets == null) {
+            return java.util.Set.of();
+        }
+        var refresh = assets.refresh();
+        if (refresh.any()) {
+            assetsStale = true;
+            builtRevision = -1;
+        }
+        return refresh.staleTextureKeys();
+    }
+
+    /** Texture cache keys this view currently draws from. */
+    public java.util.Set<String> textureKeysInUse() {
+        var assets = resolvedAssets();
+        return assets == null ? java.util.Set.of() : assets.textureKeys();
+    }
+
+    /** Called with the project files that changed under a view (edits outside the editor). */
+    public void setOnFilesChanged(java.util.function.Consumer<List<Path>> listener) {
+        onFilesChanged = listener;
+    }
+
+    /** The runtime's asset resolution (textures, sprite sheets), or null without a view. */
+    public com.openmason.engine.ui.runtime.paint.ResolvedUiAssets resolvedAssets() {
+        return view != null && view.instance().context().source()
+            instanceof com.openmason.engine.ui.runtime.paint.ResolvedUiAssets r ? r : null;
+    }
+
+    /**
+     * Once a second: compares modification time and size of the project files this view
+     * resolved, without reading them; a change is reported like a Texture Editor save.
+     */
+    private void watchFiles(double dt) {
+        sinceWatch += dt;
+        var assets = resolvedAssets();
+        Path root = project.root();
+        if (sinceWatch < 1.0 || assets == null || root == null) {
+            return;
+        }
+        sinceWatch = 0;
+        List<Path> changed = new ArrayList<>();
+        for (var a : assets.resolvedAssets()) {
+            if (a.origin() != com.openmason.engine.ui.assets.AssetOrigin.PROJECT) {
+                continue;
+            }
+            Path file = root.resolve(a.location());
+            String stamp;
+            try {
+                stamp = Files.getLastModifiedTime(file).toMillis() + ":" + Files.size(file);
+            } catch (java.io.IOException e) {
+                stamp = "missing";
+            }
+            String before = watched.put(file, stamp);
+            if (before != null && !before.equals(stamp)) {
+                changed.add(file);
+            }
+        }
+        if (!changed.isEmpty() && onFilesChanged != null) {
+            onFilesChanged.accept(changed);
+        }
     }
 
     private FixtureHost fixtures(OmuiArchive a) throws java.io.IOException {
@@ -326,7 +404,10 @@ public final class DesignerRuntime implements AutoCloseable {
                 input.router().tick(dt);
             }
             view.frame(dt);
+        } else {
+            view.instance().advanceClock(dt); // animated sprites (#294) play in design too
         }
+        watchFiles(dt); // files changed outside the editor
         applyForcedStates();
         Object key = List.of(doc.revision(), width, height, uiScale, pixelRatio, mode, forcedStates.toString(),
             designerHidden.toString());

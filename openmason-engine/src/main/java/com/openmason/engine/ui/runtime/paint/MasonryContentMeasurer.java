@@ -4,7 +4,6 @@ import com.openmason.engine.cenda.FlexMeasure;
 import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
-import com.openmason.engine.ui.masonry.textures.MTexture;
 import com.openmason.engine.ui.runtime.ContentMeasurer;
 import com.openmason.engine.ui.runtime.TextLineMetrics;
 import com.openmason.engine.ui.runtime.UiElement;
@@ -30,8 +29,8 @@ import java.util.function.Supplier;
  * line's top. That reproduces the legacy {@code y + h/2 + k·s} button-label placement as a
  * rule instead of a per-screen constant, and is what {@code align-items: baseline} aligns.
  *
- * <p>{@code Image} measures as its texture's pixel size × scale (integer asset scales stay
- * pixel-exact). A {@code TextField} (#288) measures as its longest line (or placeholder) plus the
+ * <p>{@code Image} measures as its sprite's logical size × scale (a whole texture: its pixel
+ * size; integer asset scales stay pixel-exact; a skin: its normal region). A {@code TextField} (#288) measures as its longest line (or placeholder) plus the
  * legacy {@code MTextField} insets, at {@link MStyle#FONT_ITEM} by default. Other types measure
  * 0×0. Text is the localized text ({@link UiTexts}); font sizes include the player's text
  * scale ({@code UiPreferences.textScale}).
@@ -82,10 +81,11 @@ public final class MasonryContentMeasurer implements ContentMeasurer, AutoClosea
                 }
             }
             case "Image" -> {
-                MTexture t = host.texture(el.prop("source") instanceof UiValue.Str s ? s.value() : null);
-                if (t != null) {
-                    w = t.width() * scale;
-                    h = t.height() * scale;
+                UiImage img = host.image(el.prop("source") instanceof UiValue.Str s ? s.value() : null);
+                UiImage.Region still = img == null ? null : img.still();
+                if (still != null) {
+                    w = (float) (still.sprite().layoutWidth() * scale);
+                    h = (float) (still.sprite().layoutHeight() * scale);
                 }
             }
             default -> {

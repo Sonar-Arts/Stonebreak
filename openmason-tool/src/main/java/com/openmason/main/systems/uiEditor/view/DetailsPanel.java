@@ -293,8 +293,7 @@ final class DetailsPanel implements AutoCloseable {
 
     private void appearance(DetailRows rows) {
         rows.color("Background", "background-color");
-        rows.asset("Background Image", "background-image",
-            EnumSet.of(UiDependency.Kind.TEXTURE, UiDependency.Kind.IMAGE, UiDependency.Kind.SPRITES));
+        rows.image("Background Image", "background-image");
         rows.keyword("Image Scale", "-sb-image-scale");
         rows.keyword("Sampling", "-sb-sampling");
         rows.color("Tint", "-sb-tint");
@@ -349,7 +348,9 @@ final class DetailsPanel implements AutoCloseable {
                 case INT -> ValueFields.number(id, a, eff, 0.2f, -1_000_000, 1_000_000, true, w);
                 case NUMBER -> ValueFields.number(id, a, eff, 0.25f, -1_000_000, 1_000_000, false, w);
                 case COLOR -> ValueFields.color(id, a, eff, rows.tokens(), w);
-                case ASSET -> ValueFields.asset(id, a, eff, rows.assetIds(EnumSet.allOf(UiDependency.Kind.class)), w);
+                case ASSET -> "Image".equals(t.type()) && "source".equals(p.name())
+                    ? imageField(id, a, eff, w)
+                    : ValueFields.asset(id, a, eff, rows.assetIds(EnumSet.allOf(UiDependency.Kind.class)), w);
                 case LIST, OBJECT -> ValueFields.json(id, a, w);
                 default -> p.keywords().isEmpty()
                     ? ValueFields.text(id, a instanceof UiValue.Str s && a != ValueFields.MIXED ? s.value() : null,
@@ -362,6 +363,13 @@ final class DetailsPanel implements AutoCloseable {
                 ctx.actions.run(t.setProp(p.name(), null));
             }
         }
+    }
+
+    private ValueFields.Result imageField(String id, UiValue a, UiValue eff, float w) {
+        ImGui.beginGroup();
+        ValueFields.Result r = ctx.images.field(id, a, eff, w);
+        ImGui.endGroup();
+        return r;
     }
 
     private static String label(String camel) {

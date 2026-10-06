@@ -7,7 +7,6 @@ import com.openmason.engine.ui.masonry.MStyle;
 import com.openmason.engine.ui.masonry.MSymbol;
 import com.openmason.engine.ui.masonry.MTooltip;
 import com.openmason.engine.ui.masonry.MasonryUI;
-import com.openmason.engine.ui.masonry.textures.MTexture;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.TextLineMetrics;
@@ -26,13 +25,8 @@ import com.openmason.engine.ui.runtime.style.StyleValues;
 import io.github.humbleui.skija.BlendMode;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.ColorFilter;
-import io.github.humbleui.skija.FilterTileMode;
 import io.github.humbleui.skija.Font;
-import io.github.humbleui.skija.Image;
-import io.github.humbleui.skija.Matrix33;
 import io.github.humbleui.skija.Paint;
-import io.github.humbleui.skija.SamplingMode;
-import io.github.humbleui.skija.Shader;
 import io.github.humbleui.types.Rect;
 
 import java.util.List;
@@ -52,9 +46,11 @@ import java.util.List;
  * disabled → disabled fill) unless a background is styled; {@code Label} draws house-style
  * shadowed text on the {@link MasonryContentMeasurer} baseline with {@code text-align};
  * {@code Image} draws its {@code source}; {@code ItemSlot} draws the Masonry slot frame and
- * then its host provider; {@code DrawProvider} calls its provider. Images honour
- * {@code -sb-image-scale} (stretch, integer, tile; nine-slice draws as stretch until slice
- * insets exist) and {@code -sb-sampling} (nearest by default: pixel art).
+ * then its host provider; {@code DrawProvider} calls its provider. Images and
+ * {@code background-image} are whole textures, sprite regions or skins
+ * ({@code <sheet>#<name>}, #294) drawn by {@link SpritePainter}: {@code -sb-image-scale}
+ * (stretch, integer, tile, nine-slice), {@code -sb-sampling} (nearest by default: pixel art),
+ * the sprite's tint, opacity and animation frames on the document's UI clock.
  *
  * <p>Interaction (#288): a {@code Button} also highlights for keyboard/controller focus
  * ({@code :focus-visible}); any other element with {@code :focus-visible} gets an accent focus
@@ -100,6 +96,7 @@ public final class UiPainter {
             return;
         }
         input = router;
+        ui.beginAnimationFrame();
         try {
             float scale = ui.metrics().scale();
             PaintOrder order = ui.paintOrder();
@@ -179,9 +176,9 @@ public final class UiPainter {
         if (bg != null) {
             MPainter.fillRoundedRect(canvas, r.x(), r.y(), r.width(), r.height(), radius, StyleValues.color(bg, 0));
         }
-        MTexture bgImage = host.texture(assetRef(s.get("background-image")));
+        UiImage bgImage = host.image(assetRef(s.get("background-image")));
         if (bgImage != null) {
-            image(canvas, bgImage, r, s, scale);
+            image(ui, canvas, el, bgImage, r, s, scale);
         }
         switch (el.type()) {
             case "Button" -> {
@@ -197,9 +194,9 @@ public final class UiPainter {
             }
             case "Label" -> label(canvas, el, r, s, scale);
             case "Image" -> {
-                MTexture t = host.texture(assetRef(el.prop("source")));
-                if (t != null) {
-                    image(canvas, t, r, s, scale);
+                UiImage img = host.image(assetRef(el.prop("source")));
+                if (img != null) {
+                    image(ui, canvas, el, img, r, s, scale);
                 }
             }
             case "ItemSlot" -> {
@@ -210,7 +207,7 @@ public final class UiPainter {
             }
             case "DrawProvider" -> provider(canvas, el, r, scale);
             case "TextField" -> textField(canvas, el, r, s, scale, styledBackground);
-            case "Canvas" -> canvasPainter.paint(canvas, ui.canvas(el.key()), r, scale);
+            case "Canvas" -> canvasPainter.paint(canvas, ui.canvas(el.key()), r, scale, ui);
             default -> {
             }
         }
@@ -400,38 +397,15 @@ public final class UiPainter {
         }
     }
 
-    private static void image(Canvas canvas, MTexture texture, UiRect r, ComputedStyle s, float scale) {
-        Image img = texture.image();
-        if (img == null) {
+    /** A texture, sprite region or skin (#294); animated sprites schedule their next repaint. */
+    private static void image(UiDocumentInstance ui, Canvas canvas, UiElement el, UiImage img, UiRect r,
+                              ComputedStyle s, float scale) {
+        UiImage.Region region = img.region(el);
+        if (region == null) {
             return;
         }
-        SamplingMode sampling = "linear".equals(s.keyword("-sb-sampling", "nearest"))
-            ? SamplingMode.LINEAR : SamplingMode.DEFAULT;
-        Rect src = Rect.makeWH(img.getWidth(), img.getHeight());
-        switch (s.keyword("-sb-image-scale", "stretch")) {
-            case "integer" -> {
-                float k = Math.max(1, (float) Math.floor(Math.min(r.width() / img.getWidth(), r.height() / img.getHeight())));
-                float w = img.getWidth() * k;
-                float h = img.getHeight() * k;
-                float x = Math.round(r.x() + (r.width() - w) / 2f);
-                float y = Math.round(r.y() + (r.height() - h) / 2f);
-                try (Paint p = new Paint()) {
-                    canvas.drawImageRect(img, src, Rect.makeXYWH(x, y, w, h), sampling, p, true);
-                }
-            }
-            case "tile" -> {
-                Matrix33 local = Matrix33.makeTranslate(r.x(), r.y()).makeConcat(Matrix33.makeScale(scale, scale));
-                try (Shader shader = img.makeShader(FilterTileMode.REPEAT, FilterTileMode.REPEAT, sampling, local);
-                     Paint p = new Paint().setShader(shader)) {
-                    canvas.drawRect(Rect.makeXYWH(r.x(), r.y(), r.width(), r.height()), p);
-                }
-            }
-            default -> {
-                try (Paint p = new Paint()) {
-                    canvas.drawImageRect(img, src, Rect.makeXYWH(r.x(), r.y(), r.width(), r.height()), sampling, p, true);
-                }
-            }
-        }
+        double next = SpritePainter.draw(canvas, region, r, s, scale, ui.clock(), ui.preferences().reducedMotion());
+        ui.noteAnimation(r, next);
     }
 
     private static void border(Canvas canvas, UiRect r, ComputedStyle s, float radius, float scale) {

@@ -77,7 +77,9 @@ in precedence order, rule cards with live selector validation, specificity, matc
 declarations struck through, tokens, matched-rules cascade view), Script (code-behind module, line
 numbers, checker squiggles, `ui` API completion on Tab, Apply = one undo step + hot reload, LuaLS
 stubs), Diagnostics (format, assets, runtime, references, scripts; preview console, requests, fixture
-calls), History (click to undo/redo to a step). The behavior graph window (#291) opens from the
+calls), History (click to undo/redo to a step), Sprites (#294: sheet regions, nine-slice, skins, frames;
+Apply is one undo step). Details' image fields pick textures and `sheet#sprite` references and open the
+texture in the Texture Editor, whose saves repaint every document ([ui-sprites.md](ui-sprites.md) §6). The behavior graph window (#291) opens from the
 toolbar; its saves become one `replaceGraphs` step.
 
 ## Project integration
@@ -126,6 +128,7 @@ painted pixels), `OMPUiEditorReferenceTest` (1.3 round trip, older files untouch
 ## Not yet
 
 * MCP/Python automation of UI documents (they must go through `UiEditorActions`/`UiCommand`s).
-* Timeline (#295) and texture/sprite authoring (#294); clip commands exist without a panel.
+* Timeline (#295); clip commands exist without a panel. (Texture and sprite authoring landed in #294: the
+  Sprites panel, the inspector's image picker, Edit Texture — see [ui-sprites.md](ui-sprites.md) §6.)
 * Box (marquee) selection of component internals; resizing several elements at once.
 * Inline text editing on the canvas.

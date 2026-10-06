@@ -109,6 +109,8 @@ Per-row actions: `source-embedded`, `collected`, `ships-shared`, `fallback`, `om
 - collected entry names that collide (case-insensitive, or file versus directory)
 - a font or sound that would be redistributed without `license`: embedded in either mode, or collected in
   `COLLECT_ALL`. A shared font without a licence only warns.
+- a sprite reference to a missing name, or to a region outside its texture or with a slice that no longer
+  fits, and a sheet that is unreadable or bound to no texture (`SpriteChecks`, [ui-sprites.md](ui-sprites.md) §5)
 
 **Advisory**: hash drift, shadowed sources, rows nothing references (`UNUSED_DEPENDENCY`, info; they still ship), and
 a component row whose `requires` misses what the component needs.
@@ -173,8 +175,9 @@ host lacks is a warning. The editor previews with its own profile and fixture da
 
 ## 8. Not in this layer yet
 
-- The editor UI: inspector badges, the embed/extract/relink commands, the export dialog. They arrive with the UI
-  editor workspace (#293) and texture/sprite authoring (#294), and call these classes.
+- (Done in #293/#294: the editor UI calls these classes — the UI Assets panel, the export dialog, texture and
+  sprite authoring. A shared row whose file changed since it was recorded is badged `changed` and can be
+  re-recorded with Accept Current Version, a relink to the same file.)
 - Preview rendering of resolved assets (#286). Its texture cache is a `UiAssetCache<MTexture>` registered with
   `LiveAssets`.
 - The `UiArchiveTool export` command still performs a plain shared export without resolving a project.
