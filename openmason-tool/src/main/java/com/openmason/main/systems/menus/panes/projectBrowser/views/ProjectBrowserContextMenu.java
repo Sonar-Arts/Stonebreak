@@ -51,7 +51,7 @@ public class ProjectBrowserContextMenu {
             ImGui.closeCurrentPopup();
         }
         ImGui.separator();
-        if (item.type() != AssetType.OMSC) {
+        if (item.type() != AssetType.OMSC && item.type() != AssetType.OMUI) {
             if (ImGui.menuItem("Refresh Thumbnail")) {
                 String key = item.type() == AssetType.OMO
                         ? ThumbnailCache.omoKey(item.pathString(), thumbnailSize)

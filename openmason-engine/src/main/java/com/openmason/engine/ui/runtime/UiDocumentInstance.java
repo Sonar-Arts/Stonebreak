@@ -759,6 +759,14 @@ public final class UiDocumentInstance implements AutoCloseable {
         return HitTester.pick(paintOrder(), x, y);
     }
 
+    /**
+     * The cascade behind {@code el}'s computed style: matched rules in precedence order and the
+     * winning declaration of each property (#293 editor; same matching as styling).
+     */
+    public com.openmason.engine.ui.runtime.style.StyleTrace styleTrace(UiElement el) {
+        return StyleResolver.trace(el, sheets, el.styleLayers());
+    }
+
     /** Device-pixel area changed since the last call (moves, restyles, content edits, scrolling). */
     public UiRect consumeDirtyRegion() {
         UiRect r = dirtyRegion;

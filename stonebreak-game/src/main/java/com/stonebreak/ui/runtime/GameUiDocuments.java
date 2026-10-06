@@ -65,6 +65,21 @@ public final class GameUiDocuments {
         return view(omui, AssetResolver.forDocument(omui, sources), sources, typeface, providers);
     }
 
+    /**
+     * A view of an authoring document whose shared rows resolve through {@code projectSources}
+     * first (the UI editor's project, #293), then the packaged root.
+     */
+    public static UiDocumentView open(OmuiArchive omui, List<AssetSource> projectSources, Supplier<Typeface> typeface,
+                                      Map<String, UiPaintHost.UiDrawProvider> providers) throws IOException {
+        List<AssetSource> sources = new java.util.ArrayList<>(projectSources);
+        for (AssetSource s : GameUiAssets.sources(Map.of())) {
+            if (sources.stream().noneMatch(x -> x.name().equals(s.name()))) {
+                sources.add(s);
+            }
+        }
+        return view(omui, AssetResolver.forDocument(omui, sources), sources, typeface, providers);
+    }
+
     /** Reads {@code .sbui} or {@code .omui} from disk. */
     public static UiDocumentView open(Path file, Supplier<Typeface> typeface) throws IOException {
         return open(read(file), typeface, Map.of());

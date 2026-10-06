@@ -134,6 +134,42 @@ public final class StyleResolver {
         return new ComputedStyle(values, customs, transitions);
     }
 
+    /**
+     * The cascade of {@link #compute} explained: matched rules in precedence order and the
+     * declaration that won each property (#293). Same matching, ordering and layer order.
+     */
+    public static StyleTrace trace(Styleable element, List<SheetBinding> sheets, List<Map<String, UiValue>> layers) {
+        List<Match> matches = new ArrayList<>();
+        for (SheetBinding b : sheets) {
+            if (!b.applies(element)) {
+                continue;
+            }
+            for (CompiledSheet.Rule rule : b.sheet().rules()) {
+                int specificity = rule.match(element);
+                if (specificity >= 0) {
+                    matches.add(new Match(b, rule, specificity));
+                }
+            }
+        }
+        matches.sort(PRECEDENCE);
+        List<StyleTrace.MatchedRule> rules = new ArrayList<>();
+        Map<String, StyleTrace.Declaration> winners = new LinkedHashMap<>();
+        for (Match m : matches) {
+            String selector = m.rule.index() < m.binding.sheet().source().rules().size()
+                ? m.binding.sheet().source().rules().get(m.rule.index()).selector() : "?";
+            StyleTrace.MatchedRule r = new StyleTrace.MatchedRule(m.binding.sheet().id(), m.rule.index(), selector,
+                m.specificity, m.binding.rank(), m.rule.style());
+            rules.add(r);
+            m.rule.style().forEach((k, v) -> winners.put(k, new StyleTrace.Declaration(StyleTrace.Layer.RULE, r, v)));
+        }
+        StyleTrace.Layer[] names = StyleTrace.Layer.values();
+        for (int i = 0; i < layers.size(); i++) {
+            StyleTrace.Layer layer = names[Math.min(i + 1, names.length - 1)];
+            layers.get(i).forEach((k, v) -> winners.put(k, new StyleTrace.Declaration(layer, null, v)));
+        }
+        return new StyleTrace(rules, winners);
+    }
+
     private static UiValue resolveCustom(String name, Map<String, UiValue> raw, Set<String> visiting, String elementKey,
                                          Consumer<UiRuntimeDiagnostic> diagnostics) {
         UiValue v = raw.get(name);

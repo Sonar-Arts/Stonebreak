@@ -18,7 +18,7 @@ import java.util.List;
 public final class OMPFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.2";
+    public static final String FORMAT_VERSION = "1.3";
 
     /** File extension for OMP files */
     public static final String FILE_EXTENSION = ".omp";
@@ -70,7 +70,8 @@ public final class OMPFormat {
             ModelReference model,
             UIState ui,
             List<PartData> parts,
-            SceneReference scene
+            SceneReference scene,
+            UiEditorReference uiEditor
     ) {
         public Document {
             if (version == null || version.isBlank()) {
@@ -81,20 +82,28 @@ public final class OMPFormat {
             }
         }
 
+        /** Backward-compatible constructor for pre-1.3 call sites (no UI editor node). */
+        public Document(String version, String projectName, String createdAt, String lastSavedAt,
+                         CameraState camera, ViewportState viewport, TransformData transform,
+                         ModelReference model, UIState ui, List<PartData> parts, SceneReference scene) {
+            this(version, projectName, createdAt, lastSavedAt, camera, viewport, transform, model, ui, parts, scene,
+                    null);
+        }
+
         /**
          * Backward-compatible constructor for pre-1.1 code paths (no parts).
          */
         public Document(String version, String projectName, String createdAt, String lastSavedAt,
                          CameraState camera, ViewportState viewport, TransformData transform,
                          ModelReference model, UIState ui) {
-            this(version, projectName, createdAt, lastSavedAt, camera, viewport, transform, model, ui, null, null);
+            this(version, projectName, createdAt, lastSavedAt, camera, viewport, transform, model, ui, null, null, null);
         }
 
         /** Backward-compatible constructor for pre-1.2 call sites (no scene reference). */
         public Document(String version, String projectName, String createdAt, String lastSavedAt,
                          CameraState camera, ViewportState viewport, TransformData transform,
                          ModelReference model, UIState ui, List<PartData> parts) {
-            this(version, projectName, createdAt, lastSavedAt, camera, viewport, transform, model, ui, parts, null);
+            this(version, projectName, createdAt, lastSavedAt, camera, viewport, transform, model, ui, parts, null, null);
         }
     }
 
@@ -251,6 +260,26 @@ public final class OMPFormat {
             if (name == null || name.isBlank()) {
                 name = "Unnamed Part";
             }
+        }
+    }
+
+    /**
+     * The UI Editor session (v1.3): the workspace in front and the open UI documents.
+     *
+     * <p>Optional: a null reference writes no node, which is how every older file looks, and
+     * reads back as "Modeling, no UI documents" so upgrading users see no change.
+     *
+     * @param workspace      {@code MODELING} or {@code UI}; anything else reads as Modeling
+     * @param documents      project-relative paths of open, saved UI documents (absolute
+     *                       when outside the project), in tab order
+     * @param activeDocument the one in front, or null
+     */
+    public record UiEditorReference(String workspace, List<String> documents, String activeDocument) {
+        public UiEditorReference {
+            if (workspace == null || workspace.isBlank()) {
+                workspace = "MODELING";
+            }
+            documents = documents == null ? List.of() : List.copyOf(documents);
         }
     }
 }

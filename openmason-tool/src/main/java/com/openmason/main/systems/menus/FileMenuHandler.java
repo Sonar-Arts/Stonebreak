@@ -44,6 +44,74 @@ public class FileMenuHandler {
     private UIVisibilityState uiVisibilityState;
     private RecentProjectsService recentProjectsService;
 
+    /** The UI Editor's document actions (#293), supplied by the app so this handler need not know the editor. */
+    public interface UiMenuHooks {
+        void newScreen();
+
+        void newComponent();
+
+        void open();
+
+        void importSbui();
+
+        void save();
+
+        void saveAs();
+
+        void export();
+
+        void resetLayout();
+
+        boolean hasDocument();
+
+        boolean anyDirty();
+
+        /** Saves every dirty UI document that has (or can derive) a location. */
+        void saveAllInPlace();
+
+        /** Drops open UI documents without asking (the user chose to discard). */
+        void discardAll();
+    }
+
+    private UiMenuHooks uiHooks;
+
+    public void setUiHooks(UiMenuHooks hooks) {
+        this.uiHooks = hooks;
+    }
+
+    public UiMenuHooks getUiHooks() {
+        return uiHooks;
+    }
+
+    /** The File menu's UI group (also the body of the UI Editor's own menu). */
+    public void renderUiItems() {
+        if (uiHooks == null) {
+            return;
+        }
+        if (ImGui.menuItem("New UI Screen...")) {
+            uiHooks.newScreen();
+        }
+        if (ImGui.menuItem("New UI Component...")) {
+            uiHooks.newComponent();
+        }
+        if (ImGui.menuItem("Open UI Document...")) {
+            uiHooks.open();
+        }
+        if (ImGui.menuItem("Import SBUI into Project...")) {
+            uiHooks.importSbui();
+        }
+        boolean has = uiHooks.hasDocument();
+        if (ImGui.menuItem("Save UI Document", "", false, has)) {
+            uiHooks.save();
+        }
+        if (ImGui.menuItem("Save UI Document As...", "", false, has)) {
+            uiHooks.saveAs();
+        }
+        if (ImGui.menuItem("Export SBUI...", "", false, has)) {
+            uiHooks.export();
+        }
+    }
+
     public FileMenuHandler(ModelState modelState, ModelOperationService modelOperations,
                            FileDialogService fileDialogService, StatusService statusService) {
         this.modelState = modelState;
@@ -97,7 +165,12 @@ public class FileMenuHandler {
         this.exitCallback = exitCallback;
         unsavedChangesDialog.setCallbacks(
                 () -> { saveProject(); exitCallback.run(); },
-                exitCallback,
+                () -> {
+                    if (uiHooks != null) {
+                        uiHooks.discardAll(); // "Don't Save" also drops UI recovery snapshots
+                    }
+                    exitCallback.run();
+                },
                 () -> logger.debug("Exit cancelled by user")
         );
     }
@@ -236,6 +309,12 @@ public class FileMenuHandler {
 
         ImGui.separator();
 
+        // --- UI documents (#293) ---
+        if (uiHooks != null) {
+            renderUiItems();
+            ImGui.separator();
+        }
+
         // --- Save (Project) ---
         boolean hasProject = projectService != null && projectService.hasCurrentProject();
         if (ImGui.menuItem("Save Project", "", false, hasProject)) {
@@ -263,7 +342,7 @@ public class FileMenuHandler {
     public void requestHomeScreen() {
         boolean projectUnsaved = projectService != null && projectService.hasUnsavedChanges();
         boolean modelUnsaved = modelState.isModelLoaded() && modelState.hasUnsavedChanges();
-        homeScreenDialog.show(projectUnsaved || modelUnsaved || isSceneDirty());
+        homeScreenDialog.show(projectUnsaved || modelUnsaved || isSceneDirty() || isUiDirty());
     }
 
     /**
@@ -318,7 +397,11 @@ public class FileMenuHandler {
                 && projectService.hasCurrentProject()
                 && projectService.hasUnsavedChanges();
         boolean modelUnsaved = modelState.isModelLoaded() && modelState.hasUnsavedChanges();
-        return projectUnsaved || modelUnsaved || isSceneDirty();
+        return projectUnsaved || modelUnsaved || isSceneDirty() || isUiDirty();
+    }
+
+    private boolean isUiDirty() {
+        return uiHooks != null && uiHooks.anyDirty();
     }
 
     private boolean isSceneDirty() {
@@ -394,6 +477,9 @@ public class FileMenuHandler {
     private void saveOpenScene() {
         if (onSaveOpenScene != null) {
             onSaveOpenScene.run();
+        }
+        if (uiHooks != null) {
+            uiHooks.saveAllInPlace();
         }
     }
 

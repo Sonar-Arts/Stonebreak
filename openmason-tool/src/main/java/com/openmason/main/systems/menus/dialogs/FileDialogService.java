@@ -432,6 +432,41 @@ public class FileDialogService {
         return scenes != null && java.nio.file.Files.isDirectory(scenes) ? scenes.toString() : projectDir;
     }
 
+    /** The open project's UI folder when it exists, else the project folder, else null (#293). */
+    private String uiDirectoryOrNull() {
+        String projectDir = projectDirectoryOrNull();
+        if (projectDir == null) {
+            return null;
+        }
+        java.nio.file.Path ui = java.nio.file.Path.of(projectDir).resolve(
+                com.openmason.main.systems.project.ProjectLayout.UI_DIR);
+        return java.nio.file.Files.isDirectory(ui) ? ui.toString() : projectDir;
+    }
+
+    /** Open a UI document: an .omui, or an .sbui export (opened as an editable copy). */
+    public void showOpenUiDocumentDialog(OpenCallback callback) {
+        showNFDOpenDialogMultiFilter("Opening UI document...", new String[]{"UI Documents", "UI Exports"},
+                new String[]{"omui", "sbui"}, uiDirectoryOrNull(), "Selected UI document", callback);
+    }
+
+    /** Open an .sbui export (import into the project). */
+    public void showOpenSBUIDialog(OpenCallback callback) {
+        showNFDOpenDialog("Choosing SBUI...", "Stonebreak UI Export", "sbui", uiDirectoryOrNull(),
+                "Selected SBUI", callback);
+    }
+
+    /** Save a UI document (.omui), defaulting into the project's UI folder. */
+    public void showSaveOMUIDialog(String defaultName, OpenCallback callback) {
+        showNFDSaveDialog("Saving UI document...", "Open Mason UI Document", "omui", defaultName,
+                uiDirectoryOrNull(), "Save UI document", callback::onOpen);
+    }
+
+    /** Choose an .sbui export target. */
+    public void showSaveSBUIDialog(String defaultName, OpenCallback callback) {
+        showNFDSaveDialog("Choosing export target...", "Stonebreak UI Export", "sbui", defaultName,
+                projectDirectoryOrNull(), "Export UI to", callback::onOpen);
+    }
+
     /** Open a .OMSC scene, starting in the project's Scenes folder. */
     public void showOpenOMSCDialog(OpenCallback callback) {
         showNFDOpenDialog("Opening scene...", "Open Mason Scene", "omsc",

@@ -182,6 +182,12 @@ public class ProjectBrowserController {
             case OMO -> selectModel(entry);
             case OMT -> selectTexture(entry);
             case OMSC -> selectScene(entry);
+            case OMUI -> {
+                state.setSelectedAssetInfo("Selected: " + entry.name() + " (" + entry.type().label() + ")");
+                for (ProjectBrowserListener l : listeners) {
+                    l.onUiDocumentSelected(entry);
+                }
+            }
         }
     }
 

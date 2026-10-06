@@ -75,6 +75,9 @@ public class mainOpenMason {
     private SkijaTestPanel skijaTestPanel;
     private MasonryPreviewPanel masonryPreviewPanel;
     private UiDocumentPreviewPanel uiDocumentPreviewPanel;
+    /** The UI Editor workspace (#293) and which workspace is in front. */
+    private com.openmason.main.systems.uiEditor.view.UiEditorWorkspace uiEditor;
+    private com.openmason.main.systems.layout.WorkspaceState workspaceState;
     private com.openmason.engine.ui.script.UiNativeHealth.Status uiNativeStatus;
 
     // State flags
@@ -156,9 +159,13 @@ public class mainOpenMason {
     private void runMainLoop() {
         long window = window();
         AutoScreenshot shot = AutoScreenshot.fromProperty();
+        int frame = 0;
         while (!shouldClose && !glfwWindowShouldClose(window)) {
             glfwPollEvents();
             MainThreadExecutor.drain();
+            if (++frame == 3) {
+                devOpenUiEditor();
+            }
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             imGuiBackend.beginFrame();
@@ -227,6 +234,8 @@ public class mainOpenMason {
             scriptingWindow = composition.scriptingWindow();
             animationEditor = composition.animationEditor();
             texturePreviewPipeline = composition.texturePreviewPipeline();
+            uiEditor = composition.uiEditor();
+            workspaceState = composition.workspaceState();
         }
         if (mainInterface != null) {
             com.fasterxml.jackson.databind.ObjectMapper assistantMapper =
@@ -348,7 +357,17 @@ public class mainOpenMason {
             renderComponent(projectHubScreen, deltaTime, "Project Hub");
         }
 
-        if (showModelEditor) {
+        boolean uiWorkspace = workspaceState != null && workspaceState.isUi();
+        if (showModelEditor && uiWorkspace) {
+            renderComponent(mainInterface, deltaTime, "Main Interface");
+            if (uiEditor != null) {
+                safeRender(() -> uiEditor.render(deltaTime, true), "UI Editor");
+            }
+        } else if (uiEditor != null) {
+            safeRender(() -> uiEditor.render(deltaTime, false), "UI Editor (background)");
+        }
+
+        if (showModelEditor && !uiWorkspace) {
             renderComponent(mainInterface, deltaTime, "Main Interface");
             renderComponent(viewportInterface, deltaTime, "Viewport");
             renderComponent(sceneViewerInterface, deltaTime, "Scene Viewer");
@@ -472,6 +491,38 @@ public class mainOpenMason {
     /**
      * Transition to main interface from home screen.
      */
+    /**
+     * Dev hook for live runs: {@code -Dopenmason.uieditor=<project.omp>[,<document.omui|.sbui>]}
+     * opens the project, brings the UI Editor workspace to the front and opens the document.
+     * Add {@code -Dopenmason.uieditor.select=<key>} to select an element and
+     * {@code -Dopenmason.uieditor.preview=true} to start in Preview.
+     */
+    private void devOpenUiEditor() {
+        String spec = System.getProperty("openmason.uieditor");
+        if (spec == null || spec.isBlank() || uiEditor == null || mainInterface == null) {
+            return;
+        }
+        String[] parts = spec.split(",", 2);
+        transitionToMainInterface();
+        if (!parts[0].isBlank()) {
+            mainInterface.openProjectFromHub(parts[0].trim());
+        }
+        workspaceState.set(com.openmason.main.systems.layout.Workspace.UI);
+        if (parts.length > 1 && !parts[1].isBlank()) {
+            uiEditor.openFile(java.nio.file.Path.of(parts[1].trim()));
+        }
+        String select = System.getProperty("openmason.uieditor.select");
+        var doc = uiEditor.context().doc();
+        if (select != null && doc != null) {
+            doc.select(java.util.List.of(select.split(",")));
+        }
+        if (Boolean.getBoolean("openmason.uieditor.preview") && uiEditor.context().runtime() != null) {
+            uiEditor.context().runtime().setMode(
+                    com.openmason.main.systems.uiEditor.view.DesignerRuntime.Mode.PREVIEW);
+        }
+        logger.info("[uieditor] dev hook opened {}", spec);
+    }
+
     private void transitionToMainInterface() {
         showHomeScreen = false;
         showModelEditor = true;
@@ -708,6 +759,14 @@ public class mainOpenMason {
         if (uiDocumentPreviewPanel != null) {
             uiDocumentPreviewPanel.close();
             uiDocumentPreviewPanel = null;
+        }
+        if (uiEditor != null) {
+            try {
+                uiEditor.close(); // GL/Skia resources; unsaved work stays in recovery
+            } catch (Exception e) {
+                logger.error("Error closing the UI editor", e);
+            }
+            uiEditor = null;
         }
         // Hub owns Skija regions (FBOs/textures) — release them before the
         // SkijaContext that backs them is closed.

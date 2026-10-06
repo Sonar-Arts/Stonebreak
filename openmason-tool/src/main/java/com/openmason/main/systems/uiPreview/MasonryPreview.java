@@ -71,33 +71,43 @@ public final class MasonryPreview implements AutoCloseable {
         if (canvasW < 1 || canvasH < 1 || zoom <= 0f) {
             return;
         }
+        Frame f = paint(canvasW, canvasH, painter);
+        float x = ImGui.getCursorScreenPosX();
+        float y = ImGui.getCursorScreenPosY();
+        mapping = new PreviewMapping(x, y, zoom);
+        ImGui.image(f.texture(), canvasW * zoom, canvasH * zoom, 0f, 0f, f.u1(), f.v1());
+        ImGui.setCursorScreenPos(x, y);
+        ImGui.invisibleButton(buttonId, canvasW * zoom, canvasH * zoom);
+    }
+
+    /** A painted frame: its GL texture and the texture coordinates of the frame's far corner. */
+    public record Frame(int texture, float u1, float v1) {
+    }
+
+    /**
+     * Paints a {@code canvasW x canvasH} frame without placing anything in the ImGui layout: the
+     * caller draws the texture where it likes (the UI editor's pan/zoom canvas) and supplies the
+     * input mapping with {@link #setMapping}.
+     */
+    public Frame paint(int canvasW, int canvasH, BiConsumer<MasonryUI, int[]> painter) {
         ensureBackend();
         int[] size = {canvasW, canvasH};
-        int texture;
-        float u1;
-        float v1;
         if (path == Path.GPU) {
             if (framebuffer.ensureSize(canvasW, canvasH)) {
                 gpu.releaseTargetSurface();
             }
             gpu.setTarget(framebuffer.target(1f));
             paint(painter, size, framebuffer.allocatedWidth(), framebuffer.allocatedHeight());
-            texture = framebuffer.textureId();
-            u1 = framebuffer.uvMaxX();
-            v1 = framebuffer.uvMaxY();
-        } else {
-            paint(painter, size, canvasW, canvasH);
-            upload.upload(raster);
-            texture = upload.textureId();
-            u1 = upload.uvMaxX();
-            v1 = upload.uvMaxY();
+            return new Frame(framebuffer.textureId(), framebuffer.uvMaxX(), framebuffer.uvMaxY());
         }
-        float x = ImGui.getCursorScreenPosX();
-        float y = ImGui.getCursorScreenPosY();
-        mapping = new PreviewMapping(x, y, zoom);
-        ImGui.image(texture, canvasW * zoom, canvasH * zoom, 0f, 0f, u1, v1);
-        ImGui.setCursorScreenPos(x, y);
-        ImGui.invisibleButton(buttonId, canvasW * zoom, canvasH * zoom);
+        paint(painter, size, canvasW, canvasH);
+        upload.upload(raster);
+        return new Frame(upload.textureId(), upload.uvMaxX(), upload.uvMaxY());
+    }
+
+    /** Overrides the screen mapping (callers that place the frame themselves). */
+    public void setMapping(PreviewMapping m) {
+        mapping = m;
     }
 
     /**

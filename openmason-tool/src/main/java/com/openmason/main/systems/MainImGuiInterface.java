@@ -390,8 +390,19 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      * Main render method - called every frame.
      */
     public void render() {
-        dockLayout.render(toolbarRenderer::render);
+        boolean uiWorkspace = workspaceState != null && workspaceState.isUi();
+        dockLayout.render(uiWorkspace ? null : toolbarRenderer::render);
         menuBarCoordinator.render();
+
+        if (uiWorkspace) {
+            // The UI Editor workspace draws its own panels; Modeling's stay docked but hidden.
+            aboutDialog.render();
+            dockLayout.tickCenterTabFocus();
+            if (fileMenuHandler != null && fileMenuHandler.getHomeScreenDialog() != null) {
+                fileMenuHandler.getHomeScreenDialog().render();
+            }
+            return;
+        }
 
         if (uiVisibilityState.getShowModelBrowser().get()) {
             renderProjectBrowser();
@@ -454,6 +465,20 @@ public class MainImGuiInterface implements ProjectBrowserListener {
             }
         } catch (Exception e) {
             logger.error("Failed to handle OMT selection event", e);
+        }
+    }
+
+    private java.util.function.Consumer<java.nio.file.Path> openUiDocumentCallback;
+
+    /** Set by the app: opens a .omui in the UI Editor workspace. */
+    public void setOpenUiDocumentCallback(java.util.function.Consumer<java.nio.file.Path> callback) {
+        this.openUiDocumentCallback = callback;
+    }
+
+    @Override
+    public void onUiDocumentSelected(com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry entry) {
+        if (openUiDocumentCallback != null) {
+            openUiDocumentCallback.accept(entry.path());
         }
     }
 
@@ -964,6 +989,31 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      * Reset all editor state to defaults for a fresh session.
      * Called when creating a new blank project from the hub.
      */
+    private com.openmason.main.systems.layout.WorkspaceState workspaceState;
+
+    /** Installs the UI Editor workspace (#293): its dockspace, the menu bar tabs and the File menu group. */
+    public void setUiWorkspace(com.openmason.main.systems.layout.WorkspaceState state,
+                               MainDockLayout.WorkspaceDock dock,
+                               com.openmason.main.systems.menus.FileMenuHandler.UiMenuHooks hooks) {
+        this.workspaceState = state;
+        dockLayout.setUiWorkspace(state, dock);
+        menuBarCoordinator.setWorkspaceState(state);
+        if (fileMenuHandler != null) {
+            fileMenuHandler.setUiHooks(hooks);
+        }
+    }
+
+    public com.openmason.main.systems.layout.WorkspaceState getWorkspaceState() {
+        return workspaceState;
+    }
+
+    /** The project service's UI Editor session seams (v1.3 node). */
+    public void setUiEditorSessionHooks(
+            java.util.function.Supplier<com.openmason.main.systems.project.OMPFormat.UiEditorReference> supplier,
+            java.util.function.Consumer<com.openmason.main.systems.project.OMPFormat.UiEditorReference> hook) {
+        projectLifecycle.setUiEditorSessionHooks(supplier, hook);
+    }
+
     public void setOnProjectSessionReset(Runnable callback) {
         projectLifecycle.setOnProjectSessionReset(callback);
     }

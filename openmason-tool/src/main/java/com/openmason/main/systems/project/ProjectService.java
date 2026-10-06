@@ -50,6 +50,19 @@ public class ProjectService {
      */
     private java.util.function.Consumer<OMPFormat.SceneReference> sceneRestoreHook;
 
+    /** Supplies the UI Editor node written on save (v1.3); null supplier or value writes none. */
+    private java.util.function.Supplier<OMPFormat.UiEditorReference> uiEditorStateSupplier;
+
+    /** Invoked after {@link #openProject} restores a document, with its UI Editor node (null pre-1.3). */
+    private java.util.function.Consumer<OMPFormat.UiEditorReference> uiEditorRestoreHook;
+
+    /** Wire the UI Editor session seams (same pattern as the scene's). */
+    public void setUiEditorSessionHooks(java.util.function.Supplier<OMPFormat.UiEditorReference> supplier,
+                                        java.util.function.Consumer<OMPFormat.UiEditorReference> hook) {
+        this.uiEditorStateSupplier = supplier;
+        this.uiEditorRestoreHook = hook;
+    }
+
     public ProjectService() {
         this.serializer = new OMPSerializer();
         this.deserializer = new OMPDeserializer();
@@ -137,7 +150,8 @@ public class ProjectService {
                 modelRef,
                 ui,
                 null,
-                scene
+                scene,
+                uiEditorStateSupplier != null ? uiEditorStateSupplier.get() : null
         );
     }
 
@@ -327,6 +341,9 @@ public class ProjectService {
         // have dropped the previous project's scene BEFORE this method runs.
         if (sceneRestoreHook != null) {
             sceneRestoreHook.accept(document.scene());
+        }
+        if (uiEditorRestoreHook != null) {
+            uiEditorRestoreHook.accept(document.uiEditor());
         }
 
         logger.info("Project opened: {} ({})", currentProjectName, filePath);

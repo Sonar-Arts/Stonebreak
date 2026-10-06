@@ -42,6 +42,45 @@ public final class HitTester {
         return null;
     }
 
+    /**
+     * Design-time pick (#293 editor canvas): the topmost visible element under the point whose
+     * own rect contains it, ignoring {@code picking-mode} (a label the game never hits is still
+     * selectable), restricted to elements {@code eligible} accepts. Clipping applies as for
+     * {@link #pick}. An ineligible element is see-through: its descendants can still be picked.
+     */
+    public static UiElement pickDesign(PaintOrder order, float x, float y, java.util.function.Predicate<UiElement> eligible) {
+        List<PaintOrder.Entry> entries = order.entries();
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            UiElement hit = pickDesign(order, entries.get(i).root(), x, y, null, eligible);
+            if (hit != null) {
+                return hit;
+            }
+        }
+        return null;
+    }
+
+    private static UiElement pickDesign(PaintOrder order, UiElement el, float x, float y, UiRect clip,
+                                        java.util.function.Predicate<UiElement> eligible) {
+        if (el.computedStyle().collapsed() || clip != null && !clip.contains(x, y)) {
+            return null;
+        }
+        UiRect r = el.rect();
+        UiRect childClip = el.clipsChildren() ? intersect(clip, r) : clip;
+        List<UiElement> children = el.children();
+        for (int i = children.size() - 1; i >= 0; i--) {
+            UiElement c = children.get(i);
+            if (order.isLifted(c)) {
+                continue;
+            }
+            UiElement hit = pickDesign(order, c, x, y, childClip, eligible);
+            if (hit != null) {
+                return hit;
+            }
+        }
+        boolean self = !el.computedStyle().hidden() && r.contains(x, y) && eligible.test(el);
+        return self ? el : null;
+    }
+
     private static UiElement pick(PaintOrder order, UiElement el, float x, float y, UiRect clip) {
         if (el.computedStyle().collapsed() || clip != null && !clip.contains(x, y)) {
             return null;

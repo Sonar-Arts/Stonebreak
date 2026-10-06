@@ -103,4 +103,41 @@ public final class UiFeatures {
         }
         return null;
     }
+
+    /**
+     * Every optional feature {@code archive} uses (widget types, gated properties, overflow
+     * scroll, gated pseudo-states), sorted: what its {@code requires} must contain. Editors add
+     * these automatically so a document never fails the writer's {@code UNDECLARED_FEATURE} check.
+     */
+    public static java.util.SortedSet<String> used(OmuiArchive archive) {
+        java.util.SortedSet<String> out = new java.util.TreeSet<>();
+        usedBy(archive.document().root(), out);
+        for (UiStyleSheet sheet : archive.styles().values()) {
+            for (UiStyleSheet.StyleRule rule : sheet.rules()) {
+                addIfPresent(out, forSelector(rule.selector()));
+                addIfPresent(out, forStyle(rule.style()));
+            }
+        }
+        return out;
+    }
+
+    private static void usedBy(UiNode n, java.util.Set<String> out) {
+        addIfPresent(out, UiWidgets.requiredFeature(n.type()));
+        n.props().keySet().forEach(p -> addIfPresent(out, forProp(p)));
+        addIfPresent(out, forStyle(n.style()));
+        if (n.instance() != null) {
+            for (UiNode.InstanceOverride o : n.instance().overrides()) {
+                o.props().keySet().forEach(p -> addIfPresent(out, forProp(p)));
+                addIfPresent(out, forStyle(o.style()));
+            }
+            n.instance().slots().values().forEach(list -> list.forEach(c -> usedBy(c, out)));
+        }
+        n.children().forEach(c -> usedBy(c, out));
+    }
+
+    private static void addIfPresent(java.util.Set<String> out, String feature) {
+        if (feature != null) {
+            out.add(feature);
+        }
+    }
 }

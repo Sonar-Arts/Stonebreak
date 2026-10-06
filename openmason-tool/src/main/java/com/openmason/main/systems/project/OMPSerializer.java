@@ -117,6 +117,17 @@ public class OMPSerializer {
             root.set("scene", scene);
         }
 
+        if (doc.uiEditor() != null) {
+            ObjectNode ui = objectMapper.createObjectNode();
+            ui.put("workspace", doc.uiEditor().workspace());
+            var docs = ui.putArray("documents");
+            doc.uiEditor().documents().forEach(docs::add);
+            if (doc.uiEditor().activeDocument() != null) {
+                ui.put("activeDocument", doc.uiEditor().activeDocument());
+            }
+            root.set("uiEditor", ui);
+        }
+
         if (doc.transform() != null) {
             ObjectNode transform = objectMapper.createObjectNode();
             transform.put("positionX", doc.transform().positionX());

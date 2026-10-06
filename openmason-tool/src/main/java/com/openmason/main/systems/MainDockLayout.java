@@ -25,6 +25,27 @@ public final class MainDockLayout {
     /** String id the central dockspace node is keyed by. */
     public static final String DOCKSPACE_ID = "OpenMasonDockSpace";
 
+    /** String id of the UI Editor workspace's dockspace (#293). */
+    public static final String UI_DOCKSPACE_ID = com.openmason.main.systems.uiEditor.view.UiWorkspaceLayout.DOCKSPACE_ID;
+
+    /** Builds a secondary workspace's default layout when its dockspace has none. */
+    public interface WorkspaceDock {
+        void applyLayout(int dockspaceId, float width, float height);
+    }
+
+    private com.openmason.main.systems.layout.WorkspaceState workspaceState;
+    private WorkspaceDock uiDock;
+
+    /**
+     * Adds the UI Editor workspace: while it is in front its own dockspace fills the host window
+     * and the Modeling dockspace is kept alive invisibly (and the other way round), so each
+     * workspace's docked windows keep their places across switches.
+     */
+    public void setUiWorkspace(com.openmason.main.systems.layout.WorkspaceState state, WorkspaceDock dock) {
+        this.workspaceState = state;
+        this.uiDock = dock;
+    }
+
     // Dock layout: versioned so each release adding a window forces exactly one rebuild.
     private final MainLayoutBuilder mainLayoutBuilder;
     private final CenterTabFocusRequest centerTabFocus = new CenterTabFocusRequest();
@@ -82,9 +103,22 @@ public final class MainDockLayout {
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
 
         int dockspaceId = ImGui.getID(DOCKSPACE_ID);
-        ImGui.dockSpace(dockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.PassthruCentralNode);
-
         ImGuiViewport mainViewport = ImGui.getMainViewport();
+        boolean uiFront = workspaceState != null && workspaceState.isUi() && uiDock != null;
+        if (uiFront) {
+            ImGui.dockSpace(dockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.KeepAliveOnly);
+            int uiId = ImGui.getID(UI_DOCKSPACE_ID);
+            ImGui.dockSpace(uiId, 0.0f, 0.0f, ImGuiDockNodeFlags.None);
+            uiDock.applyLayout(uiId, mainViewport.getWorkSizeX(), mainViewport.getWorkSizeY());
+            ImGui.popStyleVar(1);
+            ImGui.end();
+            return;
+        }
+        ImGui.dockSpace(dockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.PassthruCentralNode);
+        if (uiDock != null) {
+            ImGui.dockSpace(ImGui.getID(UI_DOCKSPACE_ID), 0.0f, 0.0f, ImGuiDockNodeFlags.KeepAliveOnly);
+        }
+
         if (mainLayoutBuilder.applyIfNeeded(dockspaceId,
                 mainViewport.getWorkSizeX(), mainViewport.getWorkSizeY())) {
             // A rebuild's focus is only a fallback: a project's recorded centre tab
