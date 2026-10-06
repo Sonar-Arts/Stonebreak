@@ -60,7 +60,7 @@ Function entry and return nodes are statements that the compiler handles special
 | Text and data | `ui:format` (`{name}` placeholders become inputs), `ui:to-text`, `ui:object.get`, `ui:data.read` |
 | State | `ui:variable.get/set/increment` |
 | Elements | `ui:element.set-text/set-visible/set-enabled/set-class/set-style/set-prop/get-prop/has-class`, `ui:element.focus` |
-| Animation | `ui:anim.tween` (one style property, optional wait), `ui:anim.play` (a clip, optional wait), `ui:anim.release` |
+| Animation | `ui:anim.tween` (one style property, optional wait), `ui:anim.play` (a clip, optional wait; clock, fill, blend), `ui:anim.stop`, `ui:anim.set-speed`, `ui:anim.seek`, `ui:anim.set-state` (optional wait), `ui:anim.machine-state`, `ui:anim.release` (#295) |
 | Host | `ui:action.invoke` (awaits: `result`, `ok`, `error`), `ui:action.request`, `ui:navigate`, `ui:screen.close`, `ui:sound.play`, `ui:log` |
 | Events out | `ui:signal.emit` (component graphs), `ui:event.raise` (custom events) |
 | Functions | `ui:function.entry`, `ui:function.return`, `ui:function.call`, `lua:call` |

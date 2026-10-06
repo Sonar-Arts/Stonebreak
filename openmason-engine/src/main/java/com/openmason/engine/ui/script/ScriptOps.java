@@ -17,6 +17,8 @@ import com.openmason.engine.ui.data.DataState;
 import com.openmason.engine.ui.data.DataType;
 import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.UiRect;
+import com.openmason.engine.ui.runtime.anim.UiAnimator;
+import com.openmason.engine.ui.runtime.anim.UiClocks;
 import com.openmason.engine.ui.runtime.binding.UiConverter;
 import com.openmason.engine.ui.runtime.input.EventCallbacks;
 import com.openmason.engine.ui.runtime.input.InputDevice;
@@ -251,12 +253,41 @@ final class ScriptOps {
             // ── animation ───────────────────────────────────────────────────
             case "tween" -> out.integer(tween(ctx, a));
             case "play" -> out.integer(play(ctx, a));
-            case "stopAnim" -> out.bool(rt.animator.stop((long) num(a, 0)));
+            case "stopAnim" -> out.bool(rt.animator.stop((long) num(a, 0), stopMode(arg(a, 1))));
+            case "stopClip" -> {
+                boolean any = false;
+                for (long t : rt.animator.clipTokens(ctx, str(a, 0, "clip"))) {
+                    any |= rt.animator.stop(t, stopMode(arg(a, 1)));
+                }
+                out.bool(any);
+            }
+            case "seekAnim", "speedAnim" -> {
+                boolean any = false;
+                double v = num(a, 2);
+                for (long t : animTokens(ctx, a)) {
+                    any |= "seekAnim".equals(op) ? rt.animator.seek(t, v) : rt.animator.setSpeed(t, v);
+                }
+                out.bool(any);
+            }
             case "release" -> {
                 String key = str(a, 0, "element");
                 element(ctx, key);
                 rt.animator.release(key, str(a, 1, "property"));
             }
+            case "machineSet" -> {
+                long token = rt.ui.stateMachines().set(ctx.isScreen() ? "" : ctx.scopeKey, str(a, 0, "machine"),
+                    str(a, 1, "state"), rt.animListener(ctx));
+                if (token == 0) { // reached at once: a handle that settles next frame
+                    token = rt.token();
+                    rt.addTimer(ctx, token, 0);
+                }
+                out.integer(token);
+            }
+            case "machineState" -> {
+                String st = rt.ui.stateMachines().state(ctx.isScreen() ? "" : ctx.scopeKey, str(a, 0, "machine"));
+                out.value(st == null ? UiValue.NULL : UiValue.of(st));
+            }
+            case "clock" -> out.number(rt.ui.clocks().now(arg(a, 0) instanceof UiValue.Str c ? c.value() : "ui"));
 
             // ── host services ───────────────────────────────────────────────
             case "sound" -> rt.services.playSound(str(a, 0, "sound"), obj(a, 1));
@@ -524,21 +555,25 @@ final class ScriptOps {
         if (!(arg(a, 1) instanceof UiValue.Obj props) || props.isEmpty()) {
             throw new IllegalArgumentException("tween(el, props, ...): props must name style properties");
         }
-        UiEasing easing = easing(arg(a, 3) instanceof UiValue.Str s ? s.value() : "linear");
+        String name = arg(a, 3) instanceof UiValue.Str s ? s.value() : "linear";
+        com.openmason.engine.format.omui.UiBezier bezier = com.openmason.engine.format.omui.UiBezier.parse(name);
+        if (bezier != null && bezier.problem() != null) {
+            throw new IllegalArgumentException(bezier.problem());
+        }
+        UiEasing easing = bezier != null ? UiEasing.LINEAR : easing(name);
         UiValue.Obj opts = obj(a, 4);
         double delay = opts.get("delay") instanceof UiValue.Num d ? d.value() : 0;
-        long token = rt.animator.tween(key, props.fields(), num(a, 2), easing, delay, rt.animListener(ctx));
-        return token;
+        Map<String, UiValue> from = opts.get("from") instanceof UiValue.Obj f ? f.fields() : Map.of();
+        UiAnimator.TweenOptions o = new UiAnimator.TweenOptions(delay, clock(opts), fill(opts), from, bezier);
+        return rt.animator.tween(ctx, key, props.fields(), num(a, 2), easing, o, rt.animListener(ctx));
     }
 
     private long play(ScriptContext ctx, UiValue[] a) {
-        String id = str(a, 0, "clip");
-        UiAnimationClip clip = ctx.archive.animations().get(id);
-        if (clip == null) {
-            throw new IllegalArgumentException("no animation clip '" + id + "' in " + ctx.documentId()
-                + " (clips: " + ctx.archive.animations().keySet() + ")");
-        }
         UiValue.Obj opts = obj(a, 1);
+        UiAnimationClip clip = clip(ctx, str(a, 0, "clip"));
+        if (rt.ui.preferences().reducedMotion() && opts.get("reduced") instanceof UiValue.Str alt) {
+            clip = clip(ctx, alt.value()); // the declared reduced-motion alternate
+        }
         double speed = opts.get("speed") instanceof UiValue.Num s ? s.value() : 1;
         UiAnimationClip.LoopMode loop = null;
         if (opts.get("loop") instanceof UiValue.Str l) {
@@ -551,7 +586,60 @@ final class ScriptOps {
         } else if (opts.get("loop") instanceof UiValue.Bool b) {
             loop = b.value() ? UiAnimationClip.LoopMode.LOOP : UiAnimationClip.LoopMode.ONCE;
         }
-        return rt.animator.play(clip, ctx::keyOf, speed, loop, rt.animListener(ctx));
+        double blend = opts.get("blend") instanceof UiValue.Num b ? b.value() : 0;
+        double at = opts.get("at") instanceof UiValue.Num t ? t.value() : 0;
+        boolean restart = !(opts.get("restart") instanceof UiValue.Bool r) || r.value();
+        UiAnimator.PlayOptions o = new UiAnimator.PlayOptions(clock(opts), speed, loop, blend, fill(opts), at, restart);
+        return rt.animator.play(ctx, clip, ctx::keyOf, o, rt.animListener(ctx));
+    }
+
+    private static UiAnimationClip clip(ScriptContext ctx, String id) {
+        UiAnimationClip clip = ctx.archive.animations().get(id);
+        if (clip == null) {
+            throw new IllegalArgumentException("no animation clip '" + id + "' in " + ctx.documentId()
+                + " (clips: " + ctx.archive.animations().keySet() + ")");
+        }
+        return clip;
+    }
+
+    /** {@code opts.clock}: "ui" (default), "game" or a clock the host defined. */
+    private String clock(UiValue.Obj opts) {
+        String c = opts.get("clock") instanceof UiValue.Str s ? s.value() : UiClocks.UI;
+        if (!rt.ui.clocks().has(c)) {
+            throw new IllegalArgumentException("no clock '" + c + "' (clocks: " + rt.ui.clocks().names() + ")");
+        }
+        return c;
+    }
+
+    private static UiAnimator.Fill fill(UiValue.Obj opts) {
+        if (!(opts.get("fill") instanceof UiValue.Str f)) {
+            return UiAnimator.Fill.HOLD;
+        }
+        return switch (f.value()) {
+            case "hold" -> UiAnimator.Fill.HOLD;
+            case "release" -> UiAnimator.Fill.RELEASE;
+            default -> throw new IllegalArgumentException("fill must be hold or release");
+        };
+    }
+
+    private static UiAnimator.StopMode stopMode(UiValue v) {
+        if (!(v instanceof UiValue.Str m)) {
+            return UiAnimator.StopMode.HOLD;
+        }
+        return switch (m.value()) {
+            case "hold" -> UiAnimator.StopMode.HOLD;
+            case "end" -> UiAnimator.StopMode.END;
+            case "release" -> UiAnimator.StopMode.RELEASE;
+            default -> throw new IllegalArgumentException("stop mode must be hold, end or release");
+        };
+    }
+
+    /** {@code (token, nil, x)} names one handle, {@code (nil, clipId, x)} this context's playbacks of a clip. */
+    private List<Long> animTokens(ScriptContext ctx, UiValue[] a) {
+        if (arg(a, 0) instanceof UiValue.Num t) {
+            return List.of((long) t.value());
+        }
+        return rt.animator.clipTokens(ctx, str(a, 1, "clip"));
     }
 
     static UiEasing easing(String name) {
@@ -560,7 +648,8 @@ final class ScriptOps {
                 return e;
             }
         }
-        throw new IllegalArgumentException("unknown easing '" + name + "' (linear, ease-in, ease-out, ease-in-out, step)");
+        throw new IllegalArgumentException("unknown easing '" + name
+            + "' (linear, ease-in, ease-out, ease-in-out, step or cubic-bezier(x1, y1, x2, y2))");
     }
 
     // ── modules ─────────────────────────────────────────────────────────────

@@ -46,18 +46,36 @@ public final class UiCoordinates {
     }
 
     /**
-     * Element-local → viewport pixels: the element's placed rect origin (layout, ancestor
-     * scroll offsets and {@code translate-x/y} are already in {@link UiElement#rect()}).
-     * {@code scale}/{@code rotate} compose here when #295 applies them.
+     * Element-local → viewport pixels: every ancestor's {@code scale}/{@code rotate} (#295), the
+     * element's own, then its placed rect origin (layout, ancestor scroll offsets and
+     * {@code translate-x/y} are already in {@link UiElement#rect()}).
      */
     public static UiTransform elementTransform(UiElement el) {
         UiRect r = el.rect();
-        return UiTransform.translate(r.x(), r.y());
+        UiTransform t = UiTransform.translate(r.x(), r.y());
+        UiTransform own = el.isTransformed() ? el.localTransform().then(t) : t;
+        UiTransform outer = ancestorTransform(el);
+        return outer == null ? own : outer.then(own);
     }
 
-    /** Viewport pixels → element-local pixels. */
+    /** The composed {@code scale}/{@code rotate} of {@code el}'s ancestors, root first; null when none applies. */
+    public static UiTransform ancestorTransform(UiElement el) {
+        UiTransform t = null;
+        for (UiElement p = el.parent(); p != null; p = p.parent()) {
+            if (p.isTransformed()) {
+                t = t == null ? p.localTransform() : p.localTransform().then(t);
+            }
+        }
+        return t;
+    }
+
+    /** Viewport pixels → element-local pixels; NaN when a transform collapsed it ({@code scale: 0}). */
     public static float[] toLocal(UiElement el, float x, float y) {
-        UiTransform inv = elementTransform(el).inverse();
-        return new float[]{inv.applyX(x, y), inv.applyY(x, y)};
+        try {
+            UiTransform inv = elementTransform(el).inverse();
+            return new float[]{inv.applyX(x, y), inv.applyY(x, y)};
+        } catch (IllegalStateException degenerate) {
+            return new float[]{Float.NaN, Float.NaN};
+        }
     }
 }

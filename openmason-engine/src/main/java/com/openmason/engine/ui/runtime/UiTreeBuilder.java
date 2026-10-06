@@ -43,6 +43,7 @@ final class UiTreeBuilder {
     private final Map<String, UiElement> byKey = new LinkedHashMap<>();
     private final Map<String, UiElement> existing;
     private final List<SheetBinding> sheets = new ArrayList<>();
+    private final List<UiDocumentInstance.AuthoringScope> scopes = new ArrayList<>();
     private final List<OverrideSet.Authored> authoredOverrides = new ArrayList<>();
     private final Deque<String> componentStack = new ArrayDeque<>();
     private final Map<String, CompiledSheet> sheetCache = new HashMap<>();
@@ -70,6 +71,11 @@ final class UiTreeBuilder {
         return sheets;
     }
 
+    /** The screen's and every built component instance's authoring scope (#295 state machines). */
+    List<UiDocumentInstance.AuthoringScope> scopes() {
+        return scopes;
+    }
+
     UiElement build(OmuiArchive document) {
         List<UiStyleSheet> theme = context.theme();
         for (int i = 0; i < theme.size(); i++) {
@@ -77,6 +83,7 @@ final class UiTreeBuilder {
             sheets.add(new SheetBinding(compile("theme:" + t.id(), t), SheetBinding.THEME_RANK, i, null));
         }
         Scope top = new Scope("", 0, null, document, null, Map.of(), null, OverrideSet.EMPTY);
+        scopes.add(new UiDocumentInstance.AuthoringScope("", document));
         UiElement root = buildNode(document.document().root(), top, OverrideSet.EMPTY, null);
         attachSheets(document, 0, null, "");
         reportUnusedOverrides();
@@ -217,6 +224,7 @@ final class UiTreeBuilder {
         Scope inner = new Scope(key + "/", scope.depth + 1, componentId, archive, params,
             slotContent, scope, overrides);
         componentStack.push(componentId);
+        scopes.add(new UiDocumentInstance.AuthoringScope(key, archive));
         try {
             UiElement root = buildNode(doc.root(), inner, overrides.enter(node.id(), own), null);
             el.addChild(root);

@@ -64,7 +64,7 @@ final class DocumentEdits {
         Map<String, UiBytes> assets = new LinkedHashMap<>(doc.assets());
         assets.remove(entry);
         return new OmuiArchive(doc.manifest(), doc.document(), doc.styles(), doc.graphs(), doc.animations(),
-                doc.scripts(), doc.dependencies(), assets, doc.editor(), doc.extraEntries());
+                doc.stateMachines(), doc.scripts(), doc.dependencies(), assets, doc.editor(), doc.extraEntries());
     }
 
     /**

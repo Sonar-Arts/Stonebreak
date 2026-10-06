@@ -430,6 +430,7 @@ final class StyleSheetPanel {
                 ImGui.textDisabled(ValueFields.display(d.getValue()));
             }
         }
+        transitions(sheetId, index, r, editable);
         if (editable) {
             if (addingTo == index) {
                 addDeclaration(sheetId, index);
@@ -461,6 +462,79 @@ final class StyleSheetPanel {
             scrollToRule = -1;
         }
         ImGui.popID();
+    }
+
+    /**
+     * The rule's transitions (#295): property, duration, easing or custom curve, delay. Any change
+     * of a matching element's cascade value of that property animates on the UI clock.
+     */
+    private void transitions(String sheetId, int index, UiStyleSheet.StyleRule r, boolean editable) {
+        for (UiStyleSheet.StyleTransition t : r.transitions()) {
+            String id = sheetId + "#" + index + ":" + t.property();
+            ImGui.dummy(12, 0);
+            ImGui.sameLine();
+            ImGui.alignTextToFramePadding();
+            ImGui.textDisabled("transition " + t.property());
+            if (!editable) {
+                ImGui.sameLine();
+                ImGui.textDisabled(t.duration() + " s " + (t.bezier() != null ? t.bezier() : t.easing().wire()));
+                continue;
+            }
+            ImGui.sameLine(DetailRows.labelWidth() + 20);
+            float[] dur = {(float) t.duration()};
+            float[] delay = {(float) t.delay()};
+            ImGui.setNextItemWidth(70);
+            boolean changed = ImGui.dragFloat("##td" + id, dur, 0.01f, 0f, 60f, "%.2f s");
+            boolean ended = ImGui.isItemDeactivated();
+            ImGui.sameLine(0, 4);
+            ImGui.setNextItemWidth(80);
+            changed |= ImGui.dragFloat("##tl" + id, delay, 0.01f, 0f, 60f, "delay %.2f");
+            ended |= ImGui.isItemDeactivated();
+            ImGui.sameLine(0, 4);
+            if (EditorWidgets.iconButton("##trm" + id, ImGui.getFrameHeight(), Glyphs::cross, "Remove transition",
+                false, true)) {
+                ctx.actions.run(DocumentCommands.setRuleTransition(sheetId, index, t.property(), null));
+                continue;
+            }
+            ImGui.dummy(DetailRows.labelWidth() + 8, 0);
+            ImGui.sameLine();
+            CurveField.Result curve = CurveField.edit(id, t.easing(), t.bezier(), 200);
+            ended |= curve.ended();
+            if (changed || curve.changed()) {
+                ctx.actions.run(DocumentCommands.setRuleTransition(sheetId, index, t.property(),
+                    new UiStyleSheet.StyleTransition(t.property(), Math.round(dur[0] * 1000) / 1000.0,
+                        curve.changed() ? curve.easing() : t.easing(), Math.round(delay[0] * 1000) / 1000.0,
+                        curve.changed() ? curve.bezier() : t.bezier(), t.unknown())));
+            }
+            if (ended) {
+                ctx.actions.endInteraction();
+            }
+        }
+        if (!editable) {
+            return;
+        }
+        ImGui.dummy(12, 0);
+        ImGui.sameLine();
+        ImGui.setNextItemWidth(180);
+        if (ImGui.beginCombo("##addTr", "+ transition")) {
+            java.util.List<String> props = new java.util.ArrayList<>();
+            props.add("all");
+            for (String p : UiStyleProperties.names()) {
+                var ap = com.openmason.engine.ui.runtime.anim.AnimProperty.style(p);
+                if (ap != null && ap.interpolates()) {
+                    props.add(p);
+                }
+            }
+            for (String p : props) {
+                boolean used = r.transitions().stream().anyMatch(t -> t.property().equals(p));
+                if (ImGui.selectable(p, false, used ? imgui.flag.ImGuiSelectableFlags.Disabled : 0)) {
+                    ctx.actions.run(DocumentCommands.setRuleTransition(sheetId, index, p,
+                        new UiStyleSheet.StyleTransition(p, 0.2, com.openmason.engine.format.omui.UiEasing.EASE_OUT, 0,
+                            java.util.Map.of())));
+                }
+            }
+            ImGui.endCombo();
+        }
     }
 
     private void addDeclaration(String sheetId, int index) {

@@ -42,7 +42,7 @@ class GraphConversionTest {
 
     private static OmuiArchive withoutGraphs(OmuiArchive d) {
         return new OmuiArchive(d.manifest(), d.document(), d.styles(), Map.<String, UiGraph>of(), d.animations(),
-            d.scripts(), d.dependencies(), d.assets(), d.editor(), d.extraEntries());
+            d.stateMachines(), d.scripts(), d.dependencies(), d.assets(), d.editor(), d.extraEntries());
     }
 
     /** Status text and panel opacity after each step of the same interaction. */

@@ -111,8 +111,9 @@ whole component.
    - The rank wins over specificity, so an outer document can restyle a component's internals.
    - A component's sheets are scoped to its subtree, slot content included.
    - Interaction states are ordinary pseudo-class selectors inside this step.
-2. **Element layers**: inline `style` → instance overrides → binding values → local (script) writes → animation
-   channels.
+2. **Element layers**: inline `style` → instance overrides → binding values → local (script) writes. The result
+   is the element's `baseStyle()`; style transitions and animation channels overlay it to give `computedStyle()`
+   ([ui-animation.md](ui-animation.md) §4, #295).
 
 **Decision:** inline and instance overrides beat `:hover`-style sheet rules (USS/CSS semantics). The #283 table
 put pseudo-classes after inline; that reading would make an instance override un-hoverable.
@@ -130,7 +131,8 @@ with backtracking. Namespaced host types never match a type selector.
 
 **Inherited properties**: `color`, `font`, `font-size`, `text-align`, `visibility`.
 
-`ComputedStyle.transition(property)` carries the winning rule's transition for #295.
+`ComputedStyle.transition(property)` carries the winning rule's transition; the sampler runs it when the cascade
+changes ([ui-animation.md](ui-animation.md) §5).
 
 **Ownership:** a target with a `to-target` or `once` binding is owned by it. A local write to it is reported
 (`BOUND_PROPERTY_WRITE`) and ignored. On a `two-way` or `to-source` target the local write is an edit the binder
@@ -213,7 +215,8 @@ feature in the manifest's `requires`; the format reports `UNDECLARED_FEATURE` ot
 - `PaintOrder` is the single ordering both the painter and `HitTester` walk.
 
 **Translation**: `translate-x/y` (logical px) move the element and its subtree in both painting and hit testing,
-like a CSS transform. `scale` and `rotate` are not applied yet (#295).
+like a CSS transform. `scale` and `rotate` (#295) then apply about the rect centre to the element and its subtree,
+in painting, hit testing and dirty bounds ([ui-animation.md](ui-animation.md) §3).
 
 ## 8. Changing a running tree
 
@@ -319,8 +322,7 @@ used to round differently on a bottom-left and a top-left target; see masonry-re
 
 These are outside #287 or tracked elsewhere:
 - grid layout (an optional extension)
-- `scale`/`rotate` transforms and transition sampling (#295; script tweens and clips already sample through
-  `anim/UiAnimator`, [ui-scripting.md](ui-scripting.md) §9)
+- (done in #295: `scale`/`rotate`, transitions, clips and state machines; see [ui-animation.md](ui-animation.md))
 - multi-line or wrapped labels
 - migrating real screens (#297/#298)
 

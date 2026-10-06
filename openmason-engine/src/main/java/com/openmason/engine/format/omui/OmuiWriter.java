@@ -1,6 +1,7 @@
 package com.openmason.engine.format.omui;
 
 import com.openmason.engine.format.omui.io.AnimationCodec;
+import com.openmason.engine.format.omui.io.StateMachineCodec;
 import com.openmason.engine.format.omui.io.ArchiveIO;
 import com.openmason.engine.format.omui.io.AtomicFiles;
 import com.openmason.engine.format.omui.io.CanonicalJson;
@@ -40,6 +41,8 @@ public final class OmuiWriter {
         a.styles().forEach((id, s) -> out.put(OmuiFormat.styleEntry(id), json(StyleCodec.write(s))));
         a.graphs().forEach((id, g) -> out.put(OmuiFormat.graphEntry(id), json(GraphCodec.write(g))));
         a.animations().forEach((id, c) -> out.put(OmuiFormat.animationEntry(id), json(AnimationCodec.write(c))));
+        a.stateMachines().forEach((id, m) -> out.put(OmuiFormat.stateMachineEntry(id),
+                json(StateMachineCodec.write(m))));
         a.scripts().forEach((id, src) -> out.put(OmuiFormat.scriptEntry(id), UiBytes.utf8(src)));
         out.putAll(a.assets());
         out.putAll(a.editor());

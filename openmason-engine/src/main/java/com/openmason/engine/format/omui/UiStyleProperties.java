@@ -61,7 +61,8 @@ public final class UiStyleProperties {
                 "margin-left", "margin-top", "margin-right", "margin-bottom", "left", "top", "right", "bottom");
         plain(Kind.LENGTH_NO_AUTO, "padding-left", "padding-top", "padding-right", "padding-bottom",
                 "border-left-width", "border-top-width", "border-right-width", "border-bottom-width",
-                "row-gap", "column-gap", "translate-x", "translate-y", "font-size", "border-radius");
+                "row-gap", "column-gap", "translate-x", "translate-y", "font-size", "border-radius",
+                "transform-origin-x", "transform-origin-y");
         plain(Kind.UNIT_INTERVAL, "opacity");
         plain(Kind.COLOR, "color", "background-color", "border-color", "-sb-tint");
         plain(Kind.ASSET, "background-image", "font");

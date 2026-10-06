@@ -140,7 +140,7 @@ class ExportPlannerTest {
                 List.of(), List.of(), List.of(new HostRequirement("stonebreak:item-icon", 2)), Map.of()),
                 new UiDocument(badge.document().root(), List.of(), null,
                         new UiDocument.ComponentDef(List.of(), List.of(), List.of(), Map.of()), Map.of()),
-                Map.of(), Map.of(), Map.of(), Map.of(), badge.dependencies(), Map.of(), Map.of(), Map.of());
+                Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), badge.dependencies(), Map.of(), Map.of(), Map.of());
         UiBytes badgeBytes = UiBytes.copyOf(OmuiWriter.write(badge));
         project.folder().write("ui/components/badge.omui", badgeBytes);
 

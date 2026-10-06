@@ -8,6 +8,9 @@ import com.openmason.engine.ui.assets.AssetResolver;
 import com.openmason.engine.ui.assets.AssetSource;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
+import com.openmason.engine.ui.runtime.anim.UiClocks;
+import com.stonebreak.core.Game;
+import com.stonebreak.core.GameState;
 import com.openmason.engine.ui.runtime.UiRuntimeContext;
 import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic;
 import com.openmason.engine.ui.runtime.binding.UiActivation;
@@ -209,6 +212,26 @@ public final class GameUiDocuments {
         MasonryContentMeasurer text = new MasonryContentMeasurer(typeface, host);
         UiRuntimeContext context = UiRuntimeContext.basic().withSource(assets).withMeasurer(text);
         return new UiDocumentView(UiDocumentInstance.instantiate(doc, context), new UiPainter(host, text));
+    }
+
+    /**
+     * One host frame of a document (#295): the {@code game} clock advances only while gameplay
+     * runs, so clips on it freeze under the pause menu, while the UI clock (and with it every
+     * transition, tween and UI clip) always advances by the unscaled frame time {@code dt}.
+     *
+     * @param gameRunning false while gameplay is paused or not in a world
+     */
+    public static void frame(UiDocumentView view, double dt, boolean gameRunning) {
+        if (gameRunning) {
+            view.instance().clocks().advance(UiClocks.GAME, dt);
+        }
+        view.frame(dt);
+    }
+
+    /** True while gameplay advances (in a world and not paused): what {@link #frame}'s game clock follows. */
+    public static boolean gameRunning() {
+        Game game = Game.getInstance();
+        return game != null && game.getState() == GameState.PLAYING && !game.isPaused();
     }
 
     /**

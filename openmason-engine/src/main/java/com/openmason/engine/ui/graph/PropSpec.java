@@ -30,6 +30,10 @@ public record PropSpec(String name, Kind kind, boolean required, UiValue default
         MODULE,
         /** A timeline clip id. */
         CLIP,
+        /** A UI state machine id of the document (#295). */
+        STATE_MACHINE,
+        /** A state of the {@code machine} prop beside it (#295). */
+        MACHINE_STATE,
         /** One of {@link #options()}. */
         ENUM,
         BOOL,

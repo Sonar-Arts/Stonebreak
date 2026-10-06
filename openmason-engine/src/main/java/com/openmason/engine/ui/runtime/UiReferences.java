@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
 public final class UiReferences {
 
     /** Where an identity reference lives. */
-    public enum Kind { CLIP_TRACK, GRAPH_TARGET, OVERRIDE }
+    public enum Kind { CLIP_TRACK, GRAPH_TARGET, OVERRIDE, STATE_MACHINE }
 
     /**
      * @param where     {@code animations/open#tracks/0}, {@code graphs/behaviors#nodes/on_resume}
@@ -53,13 +53,18 @@ public final class UiReferences {
     private UiReferences() {
     }
 
-    /** Every identity reference the document's own parts make (clips, graphs, overrides). */
+    /** Every identity reference the document's own parts make (clips, state machines, graphs, overrides). */
     public static List<Reference> identityReferences(OmuiArchive doc) {
         List<Reference> out = new ArrayList<>();
         doc.animations().forEach((id, clip) -> {
             List<UiAnimationClip.AnimTrack> tracks = clip.tracks();
             for (int i = 0; i < tracks.size(); i++) {
                 out.add(new Reference(Kind.CLIP_TRACK, "animations/" + id + "#tracks/" + i, tracks.get(i).target()));
+            }
+        });
+        doc.stateMachines().forEach((id, m) -> {
+            if (m.element() != null) {
+                out.add(new Reference(Kind.STATE_MACHINE, "animations/" + id + ".states#element", m.element()));
             }
         });
         doc.graphs().forEach((id, graph) -> graphTargets(id, graph, out));

@@ -42,6 +42,7 @@ build contracts and never appear in documents.
   | `ui-data` | the `ListView` widget (version 1, props `items`, `itemKey`, `itemHeight` = 0, `selectionMode` = `single`); its single child is the row template | #289 |
   | `ui-canvas` | the `Canvas` widget (version 1, prop `capacity` = 32768): a surface its Lua code-behind draws each frame | #292 |
   | `ui-sprites` | sprite references `<sheet id>#<name>` in asset values (a region or skin of a `sprites` dependency, [ui-sprites.md](ui-sprites.md)) | #294 |
+  | `ui-states` | UI state machines, `animations/<part id>.states.json` (§5.7, [ui-animation.md](ui-animation.md)) | #295 |
 - `uiApi`, `layoutSemantics`, `hostApis` and `providers` are checked by the **host** before instantiating
   (`UiHostProfile.check`), not by the reader, so an editor can open and preserve a document its preview cannot run.
   An unmet optional requirement is a warning; an unmet required one is an error and the host refuses the document.
@@ -191,12 +192,13 @@ freely.
 | `styles/<part id>.uss.json` | no | §5.3 |
 | `graphs/<part id>.graph.json` | no | §5.4 |
 | `animations/<part id>.anim.json` | no | §5.5 |
+| `animations/<part id>.states.json` | no | §5.7, with `ui-states` |
 | `scripts/<part id>.lua` | no | Lua 5.5 source, UTF-8. Binary chunks (`ESC 'Lua'`) are refused (`BINARY_SCRIPT`). Never executed by readers or importers. |
 | `assets/**` | no | embedded dependency snapshots, byte-verbatim |
 | `editor/**` | no | editor-only data (workspace, preview fixtures, provenance), byte-verbatim, ignored by runtimes |
 | anything else | no | preserved verbatim |
 
-The `id` inside a style, graph or clip file MUST equal the part id in its entry name.
+The `id` inside a style, graph, clip or state-machine file MUST equal the part id in its entry name.
 
 ### 5.1 `manifest.json`
 
@@ -260,7 +262,9 @@ is one of `bool int number string color asset list object`. `default` MUST fit t
 
 Fields: `id`, `variables` (`--name` → value), `customStates` (identifiers, not built-ins), and `rules[]`, each
 `{selector, style, transitions[]}` in source order. A transition is `{property, duration, easing="linear",
-delay=0}`, sorted by property. `property` may also be `all`.
+delay=0, bezier?}`, sorted by property. `property` may also be `all`. `bezier` (#295) is `[x1, y1, x2, y2]`
+(x in [0, 1], y in [-10, 10]), a CSS `cubic-bezier` that overrides `easing`; readers that predate it keep it as an
+unknown field and use `easing`.
 
 **Selector grammar** (USS subset; matching and specificity belong to #287):
 
@@ -283,7 +287,7 @@ keyword, `N%`, `#RRGGBB` or `#RRGGBBAA`, `var(--token)`, or (asset properties) a
 | --- | --- |
 | Keyword | `display` (flex, none); `position` (relative, absolute); `flex-direction`; `flex-wrap`; `justify-content`; `align-items`, `align-self`, `align-content`; `visibility`; `overflow` (visible, hidden; scroll with `ui-scroll`); `picking-mode` (position, ignore); `text-align`; `-sb-image-scale` (stretch, nine-slice, tile, integer); `-sb-sampling` (nearest, linear) |
 | Length (number, `N%`, `auto`) | `flex-basis`, `width`, `height`, `min-width`, `min-height`, `max-width`, `max-height`, `margin-left`, `margin-top`, `margin-right`, `margin-bottom`, `left`, `top`, `right`, `bottom` |
-| Length without `auto` | `padding-*`, `border-*-width`, `row-gap`, `column-gap`, `translate-x`, `translate-y`, `font-size`, `border-radius` |
+| Length without `auto` | `padding-*`, `border-*-width`, `row-gap`, `column-gap`, `translate-x`, `translate-y`, `font-size`, `border-radius`, `transform-origin-x`, `transform-origin-y` (#295; readers that predate them preserve them with the unknown-property warning) |
 | Number | `flex-grow`, `flex-shrink`, `aspect-ratio`, `scale`, `rotate` (degrees), `-sb-layer` (overlay layer, #287; readers that predate it preserve it with the unknown-property warning) |
 | Number in [0, 1] | `opacity` |
 | Color | `color`, `background-color`, `border-color`, `-sb-tint` |
@@ -317,12 +321,17 @@ Fields:
 - `loop` (`once` default, `loop`, `ping-pong`)
 - `tracks[]`: `{target, property, keys[]}`, sorted by (target, property) and unique on that pair. `target` is a
   node id. `property` uses binding-target syntax (`style:opacity`).
-- keys: `{time, value, easing="linear"}`, with strictly increasing times ≤ `duration`. `easing` shapes the segment
-  to the next key.
+- keys: `{time, value, easing="linear", bezier?}`, with strictly increasing times ≤ `duration`. `easing` (or the
+  `bezier` curve, as for transitions) shapes the segment to the next key.
 - `events[]`: `{time, name}`, sorted by time then name
 
 Easing names are `linear`, `ease-in`, `ease-out`, `ease-in-out` and `step`. They use the curves of engine
 `format.oma.Easing`.
+
+`style:` key values MUST fit their property (§5.3 value grammar; `var(--token)` is resolved at play time). A
+`style:` track of an unknown property is preserved with a warning. `prop:` tracks are checked against the
+widget when the clip plays. What the runtime does with tracks (interpolation by property type, precedence,
+clocks) is in [ui-animation.md](ui-animation.md) (#295).
 
 ### 5.6 `dependencies.json`
 
@@ -348,6 +357,22 @@ An `assets/` entry no row references is preserved with an `ORPHAN_ENTRY` warning
 A `sprites` row (`<id>.sprites.json`, schema in [ui-sprites.md](ui-sprites.md) §1) binds to the one `texture`
 or `image` row it `requires`; keeping the binding in rows lets renames and import remaps work without editing
 sheet bytes.
+
+### 5.7 `animations/<id>.states.json` (feature `ui-states`)
+
+A UI state machine of the document (#295). Fields, in order:
+- `id`
+- `driver`: `manual` (default; scripts and graphs set the state) or `interaction` (the element's pseudo-states do)
+- `element`: interaction only, the node id whose states drive it
+- `initial`: a declared state
+- `states[]`: `{name, clip?}`, sorted by name, unique. Interaction machines may only use `disabled`, `pressed`,
+  `hover`, `focused`, `normal`.
+- `transitions[]`: `{from="*", to, clip?, blend=0, reduced?}`, sorted by (from, to) and unique on that pair.
+  `from` is a state or `*`; `clip` plays on the way in, `blend` (seconds) cross-fades from what is shown,
+  `reduced` is the clip played instead under reduced motion.
+
+Every clip named MUST exist in the same archive. Editor display state of clips (open clip, zoom, scroll, snap)
+lives apart from them, in `editor/timeline.json`.
 
 ## 6. Upgrades
 

@@ -180,6 +180,6 @@ apply/undo writes the file, new sheets, Edit Texture resolution, SBT re-wrap, dr
 
 - Inline nine-slice handles on the designer canvas (insets are edited in the Sprites panel).
 - Atlas packing (optional derived output).
-- `rotate`/`scale` transforms using the pivot (#295).
+- (done in #295: `rotate`/`scale` turn about the sprite's pivot unless `transform-origin-*` is set.)
 - The Texture Editor's own on-screen compositing truncates where `OmtCompositor` rounds (≤ 1 level per
   channel on translucent overlaps); the saved layers are identical, only its live view differs.

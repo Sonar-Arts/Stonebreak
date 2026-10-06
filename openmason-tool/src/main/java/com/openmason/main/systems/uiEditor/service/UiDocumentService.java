@@ -58,6 +58,8 @@ public final class UiDocumentService {
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     private UiEditorDocument active;
     private Function<UiEditorDocument, UiBytes> workspaceStamp = d -> null;
+    /** Further editor-only entries recorded at save (the Timeline's view, #295); entry → bytes, null bytes = remove. */
+    private Function<UiEditorDocument, Map<String, UiBytes>> editorStamps = d -> Map.of();
 
     public UiDocumentService(UiProjectContext project, UiRecoveryService recovery) {
         this.project = project;
@@ -75,6 +77,11 @@ public final class UiDocumentService {
     /** Supplies {@code editor/workspace.json} (selection, zoom, resolution) to stamp on save. */
     public void setWorkspaceStamp(Function<UiEditorDocument, UiBytes> stamp) {
         workspaceStamp = stamp == null ? d -> null : stamp;
+    }
+
+    /** Editor-only entries (under {@code editor/}) to record with every save, besides the workspace. */
+    public void setEditorStamps(Function<UiEditorDocument, Map<String, UiBytes>> stamps) {
+        editorStamps = stamps == null ? d -> Map.of() : stamps;
     }
 
     // ── open documents ──────────────────────────────────────────────────────
@@ -268,6 +275,11 @@ public final class UiDocumentService {
         UiBytes ws = workspaceStamp.apply(doc);
         if (ws != null) {
             out = out.withEditorEntry(OmuiFormat.EDITOR_DIR + "workspace.json", ws);
+        }
+        for (Map.Entry<String, UiBytes> e : editorStamps.apply(doc).entrySet()) {
+            if (e.getValue() != null) {
+                out = out.withEditorEntry(e.getKey(), e.getValue());
+            }
         }
         try {
             if (target.getParent() != null) {

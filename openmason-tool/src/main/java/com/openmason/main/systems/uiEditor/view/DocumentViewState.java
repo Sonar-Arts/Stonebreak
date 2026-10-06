@@ -27,6 +27,9 @@ public final class DocumentViewState {
     public final Set<String> collapsed = new HashSet<>();
     /** Internal component structure shown in the hierarchy for these instance keys. */
     public final Set<String> showInternals = new HashSet<>();
+    /** The Timeline's display state (#295): open clip, zoom, scroll, snap; {@code editor/timeline.json}. */
+    public com.openmason.main.systems.uiEditor.timeline.TimelineViewState timeline =
+        new com.openmason.main.systems.uiEditor.timeline.TimelineViewState();
 
     /** Device pixels per logical pixel. */
     public float scale() {

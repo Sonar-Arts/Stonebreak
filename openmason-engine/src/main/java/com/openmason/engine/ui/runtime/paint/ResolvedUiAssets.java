@@ -200,6 +200,25 @@ public final class ResolvedUiAssets implements UiDocumentSource {
         return img;
     }
 
+    @Override
+    public double[] spritePivot(String assetRef) {
+        if (assetRef == null || assetRef.indexOf('#') < 0) {
+            return null;
+        }
+        com.openmason.engine.format.omui.UiSpriteRef ref;
+        try {
+            ref = com.openmason.engine.format.omui.UiSpriteRef.parse(assetRef);
+        } catch (RuntimeException e) {
+            return null;
+        }
+        UiSpriteSheet sheet = ref == null ? null : spriteSheet(ref.sheet());
+        if (sheet == null) {
+            return null;
+        }
+        String name = sheet.skin(ref.name()).map(UiSpriteSheet.Skin::normal).orElse(ref.name());
+        return sheet.sprite(name).map(s -> new double[]{s.pivotX(), s.pivotY()}).orElse(null);
+    }
+
     /** The parsed sheet a {@code sprites} dependency resolves to, or null. */
     public UiSpriteSheet spriteSheet(String sheetId) {
         ResolvedAsset asset = resolve(sheetId);

@@ -1,12 +1,16 @@
 package com.openmason.engine.ui.runtime.style;
 
+import com.openmason.engine.format.omui.UiStyleProperties;
 import com.openmason.engine.format.omui.UiStyleSheet;
 import com.openmason.engine.format.omui.UiValue;
+import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * The resolved style of one element: every declared or inherited property with
@@ -77,6 +81,30 @@ public final class ComputedStyle {
     /** {@code picking-mode: ignore}: paints, but pointer hits pass through to what is below. */
     public boolean pickingIgnored() {
         return "ignore".equals(keyword("picking-mode", "position"));
+    }
+
+    /**
+     * This style with animated values on top (#295): each value replaces the property's, after
+     * {@code var()} resolves against this style's customs. A value that does not fit is reported
+     * and skipped. Inherited properties of children follow the result.
+     */
+    public ComputedStyle overlay(Map<String, UiValue> animated, String elementKey,
+                                 Consumer<UiRuntimeDiagnostic> report) {
+        if (animated.isEmpty()) {
+            return this;
+        }
+        Map<String, UiValue> out = new HashMap<>(values);
+        animated.forEach((property, raw) -> {
+            UiValue v = StyleValues.isVar(raw) ? customs.get(StyleValues.varName(raw)) : raw;
+            String problem = v == null ? "unresolved " + raw : UiStyleProperties.problem(property, v);
+            if (problem != null) {
+                report.accept(UiRuntimeDiagnostic.warning(UiRuntimeDiagnostic.Code.STYLE_VALUE, elementKey,
+                    "animated " + property + ": " + problem));
+                return;
+            }
+            out.put(property, v);
+        });
+        return new ComputedStyle(out, customs, transitions);
     }
 
     /** Names of properties whose value differs from {@code other} (customs excluded). */

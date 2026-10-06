@@ -55,6 +55,11 @@ public interface GraphEnvironment {
         return document().animations().keySet();
     }
 
+    /** UI state machine ids of the document (#295). */
+    default Set<String> stateMachines() {
+        return document().stateMachines().keySet();
+    }
+
     /** The component contract when the document is a component, else null. */
     default UiDocument.ComponentDef ownContract() {
         return document().document().component();

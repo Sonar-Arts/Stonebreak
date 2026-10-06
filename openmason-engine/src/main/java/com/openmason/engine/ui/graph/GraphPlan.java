@@ -347,7 +347,7 @@ final class GraphPlan {
                 default -> text == null ? "must be text" : null;
             };
             if (problem == null && text != null) {
-                problem = textProblem(b, spec, text);
+                problem = spec.kind() == PropSpec.Kind.MACHINE_STATE ? machineState(n, text) : textProblem(b, spec, text);
             }
             if (problem != null) {
                 Code code = switch (spec.kind()) {
@@ -362,6 +362,12 @@ final class GraphPlan {
         }
     }
 
+    /** A state must exist in the node's {@code machine} (an unknown machine is reported on its own prop). */
+    private String machineState(GraphNode n, String text) {
+        var m = n.props().get("machine") instanceof UiValue.Str s ? env.document().stateMachines().get(s.value()) : null;
+        return m == null || m.state(text) != null ? null : "names no state '" + text + "' of " + m.id();
+    }
+
     private String textProblem(Body b, PropSpec spec, String text) {
         return switch (spec.kind()) {
             case ENUM -> spec.options().contains(text) ? null : "must be one of " + spec.options();
@@ -371,6 +377,8 @@ final class GraphPlan {
             case VARIABLE -> b.ctx.variable(text) != null ? null : "names no graph variable '" + text + "'";
             case FUNCTION -> b.ctx.function(text) != null ? null : "names no function '" + text + "' in this graph";
             case CLIP -> env.clips().contains(text) ? null : "names no clip '" + text + "' (clips: " + env.clips() + ")";
+            case STATE_MACHINE -> env.stateMachines().contains(text) ? null : "names no state machine '" + text
+                + "' (machines: " + env.stateMachines() + ")";
             case MODULE -> env.modules().contains(text) ? null : "names no module '" + text + "' (modules: "
                 + env.modules() + ")";
             case DATA_PATH -> {

@@ -295,7 +295,7 @@ end
 
 function Handle:done() return self.status ~= nil end
 function Handle:cancel()
-    if self.status == nil then
+    if self.status == nil and self.kind ~= "timer" then
         self.ctx.call(self.kind == "action" and "cancelAction" or "stopAnim", self.token)
     end
 end
@@ -394,25 +394,58 @@ local function make_ui(ctx, env, info)
         ctx.converters[name] = spec
     end
 
-    -- Animation through the host sampler: never waits on scripts.
+    -- Animation through the host sampler (#295): never waits on scripts.
+    -- opts: delay, clock ("ui" | "game" | a host clock), fill ("hold" | "release"), from = { prop = value }
     function ui.tween(el, props, duration, easing, opts)
         return new_handle(ctx, (call("tween", key_of(el, 1), props, duration or 0.25, easing or "linear", opts or {})),
             "anim")
     end
+    -- opts: speed, loop, on_event, clock, blend (s), fill, at (s), restart (false keeps a running one), reduced (clip)
     function ui.play(clip, opts)
         opts = opts or {}
-        local hd = new_handle(ctx, (call("play", clip, { speed = opts.speed, loop = opts.loop })), "anim")
+        local hd = new_handle(ctx, (call("play", clip, { speed = opts.speed, loop = opts.loop, clock = opts.clock,
+            blend = opts.blend, fill = opts.fill, at = opts.at, restart = opts.restart, reduced = opts.reduced })),
+            "anim")
         if type(opts.on_event) == "function" then
             ctx.anim_events[hd.token] = opts.on_event
         end
         return hd
     end
-    function ui.stop(hd)
-        if is_handle[hd] then
-            hd:cancel()
+    -- ui.stop(handle | clipId [, "hold" | "end" | "release"])
+    function ui.stop(target, how)
+        if is_handle[target] then
+            if target.status == nil then
+                if target.kind == "anim" then
+                    call("stopAnim", target.token, how)
+                else
+                    target:cancel()
+                end
+            end
+        elseif type(target) == "string" then
+            return (call("stopClip", target, how))
         end
     end
+    local function anim_target(target, n)
+        if is_handle[target] then
+            return target.token, nil
+        elseif type(target) == "string" then
+            return nil, target
+        end
+        error("expected an animation handle or a clip id", n + 1)
+    end
+    function ui.seek(target, seconds)
+        local token, clip = anim_target(target, 2)
+        return (call("seekAnim", token, clip, seconds))
+    end
+    function ui.speed(target, rate)
+        local token, clip = anim_target(target, 2)
+        return (call("speedAnim", token, clip, rate))
+    end
     function ui.release(el, property) call("release", key_of(el, 1), property) end
+    -- UI state machines of this scope (animations/<id>.states.json)
+    function ui.setState(machine, state) return new_handle(ctx, (call("machineSet", machine, state)), "anim") end
+    function ui.machineState(machine) return (call("machineState", machine)) end
+    function ui.clock(name) return (call("clock", name)) end
 
     function ui.sound(id, opts) call("sound", id, opts or {}) end
     function ui.navigate(target, args) call("navigate", target, args or {}) end

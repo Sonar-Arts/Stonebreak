@@ -1,6 +1,7 @@
 package com.openmason.main.systems.uiEditor.view;
 
 import com.openmason.engine.format.omui.OmuiArchive;
+import com.openmason.engine.format.omui.UiBytes;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.UiDocumentSource;
 import com.openmason.engine.ui.script.UiScriptRuntime;
@@ -27,7 +28,7 @@ import java.util.function.Supplier;
 /**
  * The UI Editor workspace (#293): a full Open Mason workspace beside Modeling, with its own
  * dockspace and panels (Palette, UI Assets, Hierarchy, Designer, Details, Style Sheets, Script,
- * Diagnostics, History). This class wires them together, dispatches the {@code ui} shortcuts,
+ * Diagnostics, History, Sprites, Timeline). This class wires them together, dispatches the {@code ui} shortcuts,
  * bridges the behavior graph window, owns the open/save/export flows (asking the shell for file
  * dialogs) and supplies the session state the project file records.
  */
@@ -58,6 +59,7 @@ public final class UiEditorWorkspace implements AutoCloseable {
     private final DiagnosticsPanel diagnostics;
     private final HistoryPanel history;
     private final SpritesPanel sprites;
+    private final TimelinePanel timeline;
     private final AssetsPanel assets;
     private final UiEditorDialogs dialogs;
     private final GraphEditorWindow graphs = new GraphEditorWindow();
@@ -81,9 +83,15 @@ public final class UiEditorWorkspace implements AutoCloseable {
         this.diagnostics = new DiagnosticsPanel(ctx);
         this.history = new HistoryPanel(ctx);
         this.sprites = new SpritesPanel(ctx);
+        this.timeline = new TimelinePanel(ctx);
         this.assets = new AssetsPanel(ctx, this);
         this.dialogs = new UiEditorDialogs(ctx, this);
         service.setWorkspaceStamp(d -> WorkspaceStamp.stamp(d, ctx.view(d)));
+        service.setEditorStamps(d -> {
+            UiBytes timeline = ctx.view(d).timeline.stamp(d.archive());
+            return timeline == null ? java.util.Map.of() : java.util.Map.of(
+                com.openmason.main.systems.uiEditor.timeline.TimelineViewState.ENTRY, timeline);
+        });
         graphs.setJumpHandler(path -> {
             UiEditorDocument d = ctx.doc();
             if (d != null && path != null) {
@@ -162,6 +170,7 @@ public final class UiEditorWorkspace implements AutoCloseable {
         service.tick(dt);
         if (!active) {
             designer.canvas.uninstallTap();
+            timeline.releaseAll();
             return;
         }
         if (!recoveryChecked) {
@@ -185,6 +194,7 @@ public final class UiEditorWorkspace implements AutoCloseable {
         diagnostics.render();
         history.render();
         sprites.render();
+        timeline.render();
         renderGraphs();
         dialogs.render();
         if (ctx.saveRequest) {
@@ -200,7 +210,7 @@ public final class UiEditorWorkspace implements AutoCloseable {
 
     private void shortcuts() {
         boolean uiFocused = ctx.panelFocused || designer.focused;
-        if (!uiFocused || designer.canvas.isDragging() || ImGui.getIO().getWantTextInput() || designer.canvas.previewOwnsKeyboard
+        if (!uiFocused || ctx.keysClaimed() || designer.canvas.isDragging() || ImGui.getIO().getWantTextInput() || designer.canvas.previewOwnsKeyboard
                 || ImGui.isPopupOpen("", imgui.flag.ImGuiPopupFlags.AnyPopupId)) {
             return;
         }

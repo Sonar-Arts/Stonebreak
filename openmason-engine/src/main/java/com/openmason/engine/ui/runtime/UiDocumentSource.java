@@ -36,6 +36,15 @@ public interface UiDocumentSource {
         return null;
     }
 
+    /**
+     * The normalized pivot ({@code pivotX, pivotY} in [0, 1]) of the sprite an asset value
+     * {@code <sheet>#<name>} names (a skin's normal sprite), or null for anything else. An element
+     * showing a sprite turns and scales about it unless it sets {@code transform-origin-*} (#295).
+     */
+    default double[] spritePivot(String assetRef) {
+        return null;
+    }
+
     /** A derived graph chunk and the keys it was built for. */
     record DerivedLua(String lua, String sourceSha256, String compiler, String compilerVersion) {
     }

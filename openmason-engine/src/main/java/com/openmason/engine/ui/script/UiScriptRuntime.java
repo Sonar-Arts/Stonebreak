@@ -167,7 +167,7 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         this.ui = ui;
         this.options = options == null ? UiScriptOptions.DEFAULTS : options;
         this.services = services == null ? UiScriptServices.NONE : services;
-        this.animator = new UiAnimator(ui);
+        this.animator = ui.animator(); // the instance's: transitions run without scripts (#295)
         this.journal = new ScriptJournal(ui);
         this.ops = new ScriptOps(this);
         this.debugger = this.options.graphDebug() ? new GraphDebugger(this) : null;
@@ -256,8 +256,7 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         if (closed) {
             return;
         }
-        time += dt;
-        animator.tick(dt);
+        time += dt; // animations were sampled by the view's frame before this (#295)
         if (lua == null) {
             return;
         }
@@ -294,7 +293,9 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         }
         generation++;
         cancelPending();
-        animator.clear();
+        for (ScriptContext ctx : contexts) {
+            animator.clear(ctx);
+        }
         if (lua != null) {
             for (ScriptContext ctx : contexts) {
                 releaseBindings(ctx);
@@ -363,7 +364,9 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         }
         closed = true;
         cancelPending();
-        animator.clear();
+        for (ScriptContext ctx : contexts) {
+            animator.clear(ctx);
+        }
         for (ScriptContext ctx : contexts) {
             releaseBindings(ctx);
             ctx.closed = true;

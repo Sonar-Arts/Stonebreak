@@ -59,7 +59,8 @@ public final class DevDocumentOverlay {
         long now = System.nanoTime();
         double dt = lastFrame == 0 ? 0 : Math.min(0.25, (now - lastFrame) / 1e9);
         lastFrame = now;
-        view.frame(dt); // scripts (#292): update(dt), awaited results, animations
+        // UI clock always; game clock only while gameplay runs (#295); then scripts (#292)
+        GameUiDocuments.frame(view, dt, GameUiDocuments.gameRunning());
         if (autoClick != null) {
             autoClick.tick(view.instance(), view.input(), dt);
         }

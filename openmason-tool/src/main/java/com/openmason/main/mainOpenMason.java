@@ -496,7 +496,8 @@ public class mainOpenMason {
      * opens the project, brings the UI Editor workspace to the front and opens the document.
      * Add {@code -Dopenmason.uieditor.select=<key>} to select an element and
      * {@code -Dopenmason.uieditor.preview=true} to start in Preview, and
-     * {@code -Dopenmason.uieditor.sprites=<sheet id>} to open that sprite sheet in the Sprites panel.
+     * {@code -Dopenmason.uieditor.sprites=<sheet id>} to open that sprite sheet in the Sprites panel, and
+     * {@code -Dopenmason.uieditor.timeline=<clip>[@seconds]} to show a clip in the Timeline at a time.
      */
     private void devOpenUiEditor() {
         String spec = System.getProperty("openmason.uieditor");
@@ -516,6 +517,10 @@ public class mainOpenMason {
         var doc = uiEditor.context().doc();
         if (select != null && doc != null) {
             doc.select(java.util.List.of(select.split(",")));
+        }
+        String timeline = System.getProperty("openmason.uieditor.timeline");
+        if (timeline != null && !timeline.isBlank()) {
+            uiEditor.context().timelineRequest = timeline.trim(); // #295: Timeline on a clip at a time
         }
         String sprites = System.getProperty("openmason.uieditor.sprites");
         if (sprites != null && !sprites.isBlank()) {

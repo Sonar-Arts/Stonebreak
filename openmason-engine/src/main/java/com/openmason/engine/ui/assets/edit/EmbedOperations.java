@@ -113,6 +113,6 @@ public final class EmbedOperations {
 
     private static OmuiArchive withAssets(OmuiArchive doc, Map<String, UiBytes> assets) {
         return new OmuiArchive(doc.manifest(), doc.document(), doc.styles(), doc.graphs(), doc.animations(),
-                doc.scripts(), doc.dependencies(), assets, doc.editor(), doc.extraEntries());
+                doc.stateMachines(), doc.scripts(), doc.dependencies(), assets, doc.editor(), doc.extraEntries());
     }
 }

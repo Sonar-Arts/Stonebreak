@@ -108,6 +108,11 @@ class ComponentInstanceTest {
         UiElement quit = ui.find("quit/button");
         quit.setState(UiElement.HOVER, true);
         ui.resolveStyles();
+        assertEquals(UiValue.of("#FF8080FF"), quit.baseStyle().get("-sb-tint"));
+        // The button's :hover rule declares a 0.1 s tint transition (#295): it eases in on the UI clock.
+        assertEquals(UiValue.of("#FF808000"), quit.computedStyle().get("-sb-tint"), "starts from no tint");
+        ui.advanceClock(0.1);
+        ui.resolveStyles();
         assertEquals(UiValue.of("#FF8080FF"), quit.computedStyle().get("-sb-tint"));
         ui.find("resume/button").setState("selected", true); // declared custom state, but not .danger
         ui.resolveStyles();

@@ -69,7 +69,7 @@ public final class UiClipboard {
         }
         UiManifest m = UiManifest.create("openmason:clipboard", UiManifest.DocumentKind.SCREEN, "Clipboard");
         OmuiArchive payload = new OmuiArchive(m, new UiDocument(holder, List.of(), null, null, Map.of()), Map.of(),
-            Map.of(), Map.of(), Map.of(), new UiDependencies(rows, Map.of()), assets, Map.of(), Map.of());
+            Map.of(), Map.of(), Map.of(), Map.of(), new UiDependencies(rows, Map.of()), assets, Map.of(), Map.of());
         return UiHistory.withRequiredFeatures(payload);
     }
 

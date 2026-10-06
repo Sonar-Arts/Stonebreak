@@ -48,6 +48,12 @@ public final class UiFeatures {
     public static final String SPRITES = "ui-sprites";
 
     /**
+     * UI state machines (#295): {@code animations/<id>.states.json} parts. An older reader would
+     * keep them as unknown entries and never pose the document.
+     */
+    public static final String STATES = "ui-states";
+
+    /**
      * Properties every widget accepts under {@link #INPUT}. Focus: {@code focusable},
      * {@code tabIndex}, {@code autofocus}, {@code navUp/Down/Left/Right}, {@code focusScope};
      * pointer: {@code draggable}, {@code tooltip}; accessibility: {@code role},
@@ -120,6 +126,9 @@ public final class UiFeatures {
         usedBy(archive.document().root(), out);
         if (firstSpriteRef(archive) != null) {
             out.add(SPRITES);
+        }
+        if (!archive.stateMachines().isEmpty()) {
+            out.add(STATES);
         }
         for (UiStyleSheet sheet : archive.styles().values()) {
             for (UiStyleSheet.StyleRule rule : sheet.rules()) {

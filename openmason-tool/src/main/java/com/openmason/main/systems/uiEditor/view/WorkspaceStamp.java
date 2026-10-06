@@ -30,6 +30,7 @@ public final class WorkspaceStamp {
     /** The view state recorded in {@code doc}, or defaults; also restores the selection. */
     public static DocumentViewState restore(UiEditorDocument doc) {
         DocumentViewState v = new DocumentViewState();
+        v.timeline = com.openmason.main.systems.uiEditor.timeline.TimelineViewState.restore(doc.archive());
         UiBytes bytes = doc.archive().editor().get(ENTRY);
         if (bytes == null) {
             return v;

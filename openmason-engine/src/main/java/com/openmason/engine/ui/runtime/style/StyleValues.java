@@ -20,7 +20,11 @@ public final class StyleValues {
         "aspect-ratio", "overflow");
 
     /** Properties that move painted geometry or paint order without a relayout. */
-    public static final Set<String> VISUAL = Set.of("translate-x", "translate-y", "-sb-layer", "overflow");
+    public static final Set<String> VISUAL = Set.of("translate-x", "translate-y", "scale", "rotate",
+        "transform-origin-x", "transform-origin-y", "-sb-layer", "overflow");
+
+    /** Properties whose change repaints the whole subtree (it fades or hides with the element). */
+    public static final Set<String> SUBTREE_PAINT = Set.of("opacity", "visibility");
 
     /** Properties that change a measured leaf's intrinsic size. */
     public static final Set<String> MEASURE = Set.of("font", "font-size");

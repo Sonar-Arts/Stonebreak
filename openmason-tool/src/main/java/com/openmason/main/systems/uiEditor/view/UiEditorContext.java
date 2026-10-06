@@ -62,8 +62,12 @@ public final class UiEditorContext implements AutoCloseable {
     public boolean saveRequest;
     /** A UI editor panel (other than the designer) has keyboard focus this frame. */
     public boolean panelFocused;
+    /** A panel handled this frame's key itself (the Timeline's Delete, Ctrl+C/V): workspace shortcuts skip it. */
+    private boolean keysClaimed;
     /** Sprites panel should open this sheet ({@code id}) next frame. */
     public String editSheetRequest;
+    /** The Timeline should come to the front on this clip ({@code clip[@seconds]}) next frame (#295). */
+    public String timelineRequest;
 
     // ── textures and sprites (#294) ──
     /** Routes "Edit texture" to the Texture Editor (SBTs through their OMT source). */
@@ -73,6 +77,15 @@ public final class UiEditorContext implements AutoCloseable {
     private long assetEpoch;
     /** The inspector's texture/sprite field. */
     final ImagePicker images = new ImagePicker(this);
+
+    /** A focused panel consumed this frame's key press; the workspace's {@code ui} shortcuts stand down. */
+    public void claimKeys() {
+        keysClaimed = true;
+    }
+
+    public boolean keysClaimed() {
+        return keysClaimed;
+    }
 
     /** Panels call this right after their {@code begin}: shortcuts dispatch while one is focused. */
     public void noteFocus() {
@@ -147,6 +160,7 @@ public final class UiEditorContext implements AutoCloseable {
     public void beginFrame() {
         hoverKey = nextHoverKey;
         panelFocused = false;
+        keysClaimed = false;
         nextHoverKey = null;
         for (UiEditorDocument d : runtimes.keySet().toArray(UiEditorDocument[]::new)) {
             if (!service.documents().contains(d)) {

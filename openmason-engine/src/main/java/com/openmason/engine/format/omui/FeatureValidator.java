@@ -32,6 +32,10 @@ final class FeatureValidator {
                         + "' needs \"" + UiFeatures.SPRITES + "\" in the manifest's requires");
             }
         }
+        if (!archive.stateMachines().isEmpty() && !v.declared.contains(UiFeatures.STATES)) {
+            d.error(Code.UNDECLARED_FEATURE, OmuiFormat.MANIFEST, "/requires", "state machines need \""
+                    + UiFeatures.STATES + "\" in the manifest's requires");
+        }
         archive.styles().forEach((id, sheet) -> {
             List<UiStyleSheet.StyleRule> rules = sheet.rules();
             for (int i = 0; i < rules.size(); i++) {

@@ -209,7 +209,7 @@ end)
 | Data (#289) | `ui.read(path)` → value, `"ready"\|"loading"\|"missing"\|"failed"`; `ui.watch(path, fn)` → `{cancel}`. Paths are absolute host paths. |
 | Actions (#289) | `ui.action(id, args)` / `ui.request(id, args)` → handle, through `UiScope.invoke` with `CallSite.Origin.SCRIPT`, so the same parameter, capability and reentrancy checks apply as for bindings and graphs |
 | Converters | `ui.converter(name, {result = "string", to = fn [, back = fn]})`. `result` is a `ValueType` wire name or `any`; `?` makes it nullable. A plain module function of that name also works, typed `any`. |
-| Animation | `ui.tween(el, {opacity = 0, ["translate-y"] = 8}, 0.3, "ease-out", {delay = 0})`, `ui.play(clipId, {speed, loop, on_event})`, `ui.stop(h)`, `ui.release(el, prop)`, `ui.sleep(s)` |
+| Animation | `ui.tween(el, {opacity = 0, ["translate-y"] = 8}, 0.3, "ease-out", {delay, clock, fill, from})`, `ui.play(clipId, {speed, loop, on_event, clock, blend, fill, at, restart, reduced})`, `ui.stop(h or clipId, how)`, `ui.seek`, `ui.speed`, `ui.release(el, prop)`, `ui.setState(machine, state)`, `ui.machineState(machine)`, `ui.clock(name)`, `ui.sleep(s)` ([ui-animation.md](ui-animation.md) §8) |
 | Host requests | `ui.sound(id, {volume})`, `ui.navigate(target, args)`, `ui.close()` (`UiScriptServices`: the game plays sounds; the preview lists requests) |
 | Misc | `ui.async(fn)`, `ui.await(h)`, `ui.focus(el)`, `ui.time()`, `ui.log(...)`, `ui.warn(...)`, `ui.api` |
 
@@ -299,7 +299,7 @@ helpers are follow-ups, for when a minigame needs more than this budget.
 
 ## 9. Animation through the host sampler
 
-`UiAnimator` (one per runtime) samples script tweens and timeline clips (`animations/<id>.anim.json`, `style:`
+`UiAnimator` (since #295 one per document instance, `instance.animator()`) samples script tweens and timeline clips (`animations/<id>.anim.json`, `style:`
 tracks) into the elements' **animation channel**, which wins over every other style layer.
 
 - **What interpolates.** Numbers and colours interpolate. Other values switch at the end of their segment.
@@ -310,8 +310,8 @@ tracks) into the elements' **animation channel**, which wins over every other st
   `on_event`.
 - **Reduced motion.** Animations jump to their end state (#288 preference).
 
-Style transitions, precedence and blending rules, time sources and the timeline panel belong to #295, which grows
-this sampler.
+Style transitions, precedence and blending rules, time sources, state machines and the Timeline panel landed in
+#295: [ui-animation.md](ui-animation.md).
 
 ## 10. Editor and tooling
 
@@ -375,7 +375,7 @@ and `-Dopenmason.uidoc.preview=<file>` in the tool. Regenerate them with `-Dui.s
   `-Dcenda.kernels.path` / `CENDA_KERNELS_PATH`.
 - **Windows and macOS** are covered by the CI workflow, but until it has run they are unverified. Linux is built
   and tested, and the Clang build passes locally.
-- **#295 owns** style transitions, `prop:` animation tracks, `scale`/`rotate`, and precedence and blending.
+- **#295 delivered** style transitions, `prop:` animation tracks, `scale`/`rotate`, precedence and blending ([ui-animation.md](ui-animation.md)).
 - **#293 owns** editor conveniences beyond the preview's script pane: an in-tool editor with inline completion,
   and fixture-run recording.
 

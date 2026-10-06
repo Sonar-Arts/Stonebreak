@@ -7,6 +7,11 @@ import com.openmason.engine.cenda.FlexRecord;
 import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.format.omui.UiNode;
 import com.openmason.engine.format.omui.UiSelectors;
+import com.openmason.engine.format.omui.UiValue;
+import com.openmason.engine.ui.runtime.anim.UiAnimator;
+import com.openmason.engine.ui.runtime.anim.UiClocks;
+import com.openmason.engine.ui.runtime.anim.UiStateMachines;
+import com.openmason.engine.ui.runtime.input.UiTransform;
 import com.openmason.engine.ui.runtime.layout.FlexStyleMapper;
 import com.openmason.engine.ui.runtime.layout.HitTester;
 import com.openmason.engine.ui.runtime.layout.LayoutChecks;
@@ -68,6 +73,25 @@ public final class UiDocumentInstance implements AutoCloseable {
     public record ReloadReport(Set<String> kept, Set<String> dropped, Set<String> added) {
     }
 
+    /**
+     * Where parts were authored: the screen ({@code instanceKey} empty) or one component instance.
+     * Clip tracks and state machines of {@code archive} address elements through {@link #keyOf}.
+     */
+    public record AuthoringScope(String instanceKey, OmuiArchive archive) {
+        public AuthoringScope {
+            Objects.requireNonNull(instanceKey, "instanceKey");
+            Objects.requireNonNull(archive, "archive");
+        }
+
+        /** Element key of node-id path {@code path} inside this scope. */
+        public String keyOf(String path) {
+            return instanceKey.isEmpty() ? path : path.isEmpty() ? instanceKey : instanceKey + "/" + path;
+        }
+    }
+
+    /** Root class while the player asks for reduced motion, so sheets can author alternates (#295). */
+    public static final String REDUCED_MOTION_CLASS = "sb-reduced-motion";
+
     private final UiRuntimeContext context;
     private final Set<UiRuntimeDiagnostic> diagnostics = new LinkedHashSet<>();
     private final List<UiElement> elements = new ArrayList<>();
@@ -75,6 +99,11 @@ public final class UiDocumentInstance implements AutoCloseable {
     private final Map<String, UiCanvasCommands> canvases = new HashMap<>();
     private final List<SheetBinding> sheets = new ArrayList<>();
     private final Set<String> customStates = new HashSet<>();
+    private final List<AuthoringScope> scopes = new ArrayList<>();
+    private final UiClocks clocks = new UiClocks();
+    private final UiAnimator animator;
+    private final UiStateMachines machines;
+    private boolean scopesChanged = true;
     private OmuiArchive document;
     private UiElement root;
     private BindingAccess bindings;
@@ -91,7 +120,6 @@ public final class UiDocumentInstance implements AutoCloseable {
     private boolean visualDirty = true;
     private PaintOrder paintOrder;
     private UiRect dirtyRegion = UiRect.EMPTY;
-    private double clock;
     private UiRect animatedRegion = UiRect.EMPTY;
     private double nextAnimationChange = Double.POSITIVE_INFINITY;
     private UpdateStats lastStats = UpdateStats.NONE;
@@ -122,6 +150,8 @@ public final class UiDocumentInstance implements AutoCloseable {
     private UiDocumentInstance(OmuiArchive document, UiRuntimeContext context) {
         this.context = Objects.requireNonNull(context, "context");
         this.textRevision = context.localizer().revision();
+        this.animator = new UiAnimator(this, clocks);
+        this.machines = new UiStateMachines(this, animator);
         install(Objects.requireNonNull(document, "document"));
     }
 
@@ -145,6 +175,10 @@ public final class UiDocumentInstance implements AutoCloseable {
         for (SheetBinding b : sheets) {
             customStates.addAll(b.sheet().source().customStates());
         }
+        scopes.clear();
+        scopes.addAll(builder.scopes());
+        scopesChanged = true;
+        root.setHostClass(REDUCED_MOTION_CLASS, preferences.reducedMotion());
         orderDirty = true;
         anyStyleDirty = true;
         visualDirty = true;
@@ -319,6 +353,8 @@ public final class UiDocumentInstance implements AutoCloseable {
         parent.insertChildAt(at, child);
         byKey.putAll(builder.byKey());
         sheets.addAll(builder.sheets());
+        scopes.addAll(builder.scopes());
+        scopesChanged |= !builder.scopes().isEmpty();
         for (SheetBinding b : builder.sheets()) {
             customStates.addAll(b.sheet().source().customStates());
         }
@@ -383,9 +419,12 @@ public final class UiDocumentInstance implements AutoCloseable {
         for (UiElement c : el.children()) {
             markRemoved(c);
         }
-        dirtyRegion = dirtyRegion.union(el.rect);
+        dirtyRegion = dirtyRegion.union(el.bounds);
         byKey.remove(el.key(), el);
         sheets.removeIf(b -> b.scope() == el);
+        if (scopes.removeIf(s -> s.instanceKey().equals(el.key()))) {
+            scopesChanged = true;
+        }
         if (flex != null && el.flexNode >= 0) {
             flex.freeNode(el.flexNode);
             byFlexNode[el.flexNode] = null;
@@ -476,13 +515,17 @@ public final class UiDocumentInstance implements AutoCloseable {
         return preferences;
     }
 
-    /** A text-scale change re-measures every measured element; reduced motion only affects input/animation. */
+    /**
+     * A text-scale change re-measures every measured element. Reduced motion affects input and
+     * animations started from now on, and toggles {@link #REDUCED_MOTION_CLASS} on the root.
+     */
     public void setPreferences(UiPreferences p) {
         Objects.requireNonNull(p, "preferences");
         if (p.textScale() != preferences.textScale()) {
             remeasureAll();
         }
         preferences = p;
+        root.setHostClass(REDUCED_MOTION_CLASS, p.reducedMotion());
     }
 
     private void remeasureAll() {
@@ -523,13 +566,24 @@ public final class UiDocumentInstance implements AutoCloseable {
         anyStyleDirty = false;
         int resolved = 0;
         for (UiElement el : elements()) {
-            if (!el.styleDirty) {
+            if (!el.styleDirty && !el.overlayDirty) {
                 continue;
             }
-            el.styleDirty = false;
             resolved++;
-            ComputedStyle parentStyle = el.parent() == null ? ComputedStyle.INITIAL : el.parent().computed;
-            ComputedStyle next = StyleResolver.compute(el, sheets, el.styleLayers(), parentStyle, el.key(), this::report);
+            if (el.styleDirty) {
+                el.styleDirty = false;
+                ComputedStyle parentStyle = el.parent() == null ? ComputedStyle.INITIAL : el.parent().computed;
+                ComputedStyle nextBase = StyleResolver.compute(el, sheets, el.baseLayers(), parentStyle, el.key(),
+                    this::report);
+                ComputedStyle prevBase = el.base;
+                el.base = nextBase;
+                if (el.baseResolved && !nextBase.equals(prevBase)) {
+                    animator.baseChanged(el, prevBase, nextBase); // style transitions (#295)
+                }
+                el.baseResolved = true;
+            }
+            el.overlayDirty = false;
+            ComputedStyle next = el.base.overlay(el.animationStyle(), el.key(), this::report);
             ComputedStyle prev = el.computed;
             if (next.equals(prev)) {
                 continue;
@@ -537,6 +591,7 @@ public final class UiDocumentInstance implements AutoCloseable {
             el.computed = next;
             Set<String> changed = next.changedProperties(prev);
             boolean inheritedChanged = !next.customs().equals(prev.customs());
+            boolean subtreePaint = false;
             for (String p : changed) {
                 if (StyleValues.LAYOUT.contains(p)) {
                     el.recordDirty = true;
@@ -547,6 +602,7 @@ public final class UiDocumentInstance implements AutoCloseable {
                 if (StyleValues.VISUAL.contains(p)) {
                     visualDirty = true;
                 }
+                subtreePaint |= StyleValues.SUBTREE_PAINT.contains(p);
                 inheritedChanged |= StyleValues.INHERITED.contains(p);
             }
             if (inheritedChanged) {
@@ -555,9 +611,21 @@ public final class UiDocumentInstance implements AutoCloseable {
                 }
             }
             paintOrder = null;
-            paintChanged(el);
+            if (subtreePaint) {
+                subtreeChanged(el);
+            } else {
+                paintChanged(el);
+            }
         }
         return resolved;
+    }
+
+    /** Opacity and visibility fade or hide a whole subtree, which may paint outside its root. */
+    private void subtreeChanged(UiElement el) {
+        dirtyRegion = dirtyRegion.union(el.bounds);
+        for (UiElement c : el.children()) {
+            subtreeChanged(c);
+        }
     }
 
     private UpdateStats layout(int stylesResolved) {
@@ -680,19 +748,24 @@ public final class UiDocumentInstance implements AutoCloseable {
 
     /**
      * Places every element: layout rect plus ancestor scroll offsets plus {@code translate-x/y}
-     * (logical pixels, inherited by the subtree like a CSS transform). Cheap: no Yoga.
+     * (logical pixels, inherited by the subtree like a CSS transform), then its own
+     * {@code scale}/{@code rotate} about the rect centre (#295), composed with its ancestors' for
+     * the paint bounds. Cheap: no Yoga.
      */
     void applyVisuals() {
         if (!visualDirty) {
             return;
         }
         visualDirty = false;
-        place(root, 0, 0, null);
+        place(root, 0, 0, null, null);
         paintOrder = null;
     }
 
-    /** @param clip the ancestors' clip; dirty contributions outside it cannot change pixels */
-    private void place(UiElement el, float dx, float dy, UiRect clip) {
+    /**
+     * @param clip  the ancestors' clip in device pixels; dirty contributions outside it cannot change pixels
+     * @param outer the ancestors' composed transform, or null for none
+     */
+    private void place(UiElement el, float dx, float dy, UiRect clip, UiTransform outer) {
         if (el.explicitLayer() != null) {
             clip = null; // overlays escape ancestor clips
         }
@@ -703,11 +776,15 @@ public final class UiDocumentInstance implements AutoCloseable {
         float ty = snap(dy + (float) el.computed.number("translate-y", 0) * scale);
         UiRect l = el.layoutRect;
         UiRect next = tx == 0 && ty == 0 ? l : new UiRect(l.x() + tx, l.y() + ty, l.width(), l.height());
-        if (!next.equals(el.rect)) {
-            dirtyRegion = dirtyRegion.union(clipTo(el.rect, clip)).union(clipTo(next, clip));
-            el.rect = next;
+        el.rect = next;
+        el.transform = ownTransform(el, next);
+        UiTransform total = outer == null ? el.transform : el.transform == null ? outer : outer.then(el.transform);
+        UiRect b = total == null ? next : bounds(total, next);
+        if (!b.equals(el.bounds)) {
+            dirtyRegion = dirtyRegion.union(clipTo(el.bounds, clip)).union(clipTo(b, clip));
+            el.bounds = b;
         }
-        UiRect childClip = el.clipsChildren() ? (clip == null ? next : intersect(clip, next)) : clip;
+        UiRect childClip = el.clipsChildren() ? (clip == null ? b : intersect(clip, b)) : clip;
         float cx = tx;
         float cy = ty;
         if (el.isScrollContainer()) {
@@ -715,8 +792,66 @@ public final class UiDocumentInstance implements AutoCloseable {
             cy = snap(cy - el.scrollY);
         }
         for (UiElement c : el.children()) {
-            place(c, cx, cy, childClip);
+            place(c, cx, cy, childClip, total);
         }
+    }
+
+    /**
+     * {@code scale}/{@code rotate} about the transform origin in {@code r}, or null when neither
+     * applies. The origin is {@code transform-origin-x/y} (px or % of the rect), else the pivot of
+     * the sprite the element shows, else the centre.
+     */
+    UiTransform ownTransform(UiElement el, UiRect r) {
+        ComputedStyle s = el.computed;
+        float sc = (float) s.number("scale", 1);
+        float rot = (float) s.number("rotate", 0);
+        if (sc == 1f && rot == 0f) {
+            return null;
+        }
+        double[] pivot = spritePivot(el);
+        float cx = r.x() + origin(s.length("transform-origin-x"), r.width(), pivot == null ? 0.5 : pivot[0]);
+        float cy = r.y() + origin(s.length("transform-origin-y"), r.height(), pivot == null ? 0.5 : pivot[1]);
+        return UiTransform.translate(cx, cy).then(UiTransform.rotate(rot)).then(UiTransform.scale(sc, sc))
+            .then(UiTransform.translate(-cx, -cy));
+    }
+
+    private float origin(StyleValues.Length l, float size, double fallback) {
+        return switch (l.kind()) {
+            case POINTS -> l.value() * metrics.scale();
+            case PERCENT -> size * l.value() / 100f;
+            default -> (float) (size * fallback);
+        };
+    }
+
+    /** Pivot of the sprite an Image's {@code source} or any element's {@code background-image} names, or null. */
+    private double[] spritePivot(UiElement el) {
+        UiValue v = "Image".equals(el.type()) ? el.prop("source") : null;
+        if (!(v instanceof UiValue.Str)) {
+            v = el.computed.get("background-image");
+        }
+        return v instanceof UiValue.Str ref ? context.source().spritePivot(ref.value()) : null;
+    }
+
+    /** Axis-aligned bounds of {@code r} under {@code t}. */
+    static UiRect bounds(UiTransform t, UiRect r) {
+        float[] xs = {r.x(), r.right(), r.right(), r.x()};
+        float[] ys = {r.y(), r.y(), r.bottom(), r.bottom()};
+        float minX = Float.POSITIVE_INFINITY;
+        float minY = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY;
+        float maxY = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < 4; i++) {
+            float x = t.applyX(xs[i], ys[i]);
+            float y = t.applyY(xs[i], ys[i]);
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+        }
+        // Whole pixels, outward, ignoring float noise (cos 90° is not exactly 0).
+        float x0 = (float) Math.floor(minX + 1e-3f);
+        float y0 = (float) Math.floor(minY + 1e-3f);
+        return new UiRect(x0, y0, (float) Math.ceil(maxX - 1e-3f) - x0, (float) Math.ceil(maxY - 1e-3f) - y0);
     }
 
     private static UiRect clipTo(UiRect r, UiRect clip) {
@@ -770,23 +905,48 @@ public final class UiDocumentInstance implements AutoCloseable {
         return StyleResolver.trace(el, sheets, el.styleLayers());
     }
 
-    // ── UI clock (#294: animated sprites) ───────────────────────────────────
+    // ── time and animation (#294 sprites, #295 animation) ───────────────────
 
     /** Seconds of UI time this document has run; hosts advance it with {@code UiDocumentView.frame(dt)}. */
     public double clock() {
-        return clock;
+        return clocks.now(UiClocks.UI);
+    }
+
+    /** The document's time sources: UI, game and host-defined external clocks (#295). */
+    public UiClocks clocks() {
+        return clocks;
+    }
+
+    /** The one sampler of transitions, clips, tweens and state machines (#295). */
+    public UiAnimator animator() {
+        return animator;
+    }
+
+    /** The UI state machines of the screen and its component instances (#295). */
+    public UiStateMachines stateMachines() {
+        if (scopesChanged) {
+            scopesChanged = false;
+            machines.sync(scopes);
+        }
+        return machines;
+    }
+
+    /** The screen's and each component instance's authoring scope, in build order. */
+    public List<AuthoringScope> authoringScopes() {
+        return Collections.unmodifiableList(scopes);
     }
 
     /**
-     * Advances the UI clock. When an animated sprite painted last frame is due to change frame,
-     * its area becomes dirty, so hosts that repaint on {@link #consumeDirtyRegion} redraw exactly
-     * on frame boundaries.
+     * Advances the UI clock by {@code dt}, then runs state machines and samples every animation
+     * at the clocks' new readings (hosts advance {@link UiClocks#GAME} and external clocks before).
+     * When an animated sprite painted last frame is due to change frame, its area becomes dirty,
+     * so hosts that repaint on {@link #consumeDirtyRegion} redraw exactly on frame boundaries.
      */
     public void advanceClock(double dt) {
-        if (dt > 0 && Double.isFinite(dt)) {
-            clock += dt;
-        }
-        if (clock >= nextAnimationChange) {
+        clocks.advance(UiClocks.UI, dt);
+        stateMachines().poll();
+        animator.sample();
+        if (clock() >= nextAnimationChange) {
             dirtyRegion = dirtyRegion.union(animatedRegion);
             nextAnimationChange = Double.POSITIVE_INFINITY;
         }
@@ -807,9 +967,9 @@ public final class UiDocumentInstance implements AutoCloseable {
         nextAnimationChange = Math.min(nextAnimationChange, at);
     }
 
-    /** True when something painted last frame will change on its own (an animated sprite). */
+    /** True when something will change on its own: an animated sprite, a transition, clip or tween. */
     public boolean animating() {
-        return nextAnimationChange != Double.POSITIVE_INFINITY;
+        return nextAnimationChange != Double.POSITIVE_INFINITY || animator.animating();
     }
 
     /** Device-pixel area changed since the last call (moves, restyles, content edits, scrolling). */
@@ -823,6 +983,12 @@ public final class UiDocumentInstance implements AutoCloseable {
 
     void invalidateStyle(UiElement el) {
         el.styleDirty = true;
+        anyStyleDirty = true;
+    }
+
+    /** Only the animation channel changed: overlay it again without the cascade. */
+    void invalidateOverlay(UiElement el) {
+        el.overlayDirty = true;
         anyStyleDirty = true;
     }
 
@@ -840,7 +1006,7 @@ public final class UiDocumentInstance implements AutoCloseable {
     }
 
     void paintChanged(UiElement el) {
-        dirtyRegion = dirtyRegion.union(el.rect);
+        dirtyRegion = dirtyRegion.union(el.bounds);
     }
 
     /** A scroll offset changed: re-place the subtree without Yoga. */
@@ -861,6 +1027,8 @@ public final class UiDocumentInstance implements AutoCloseable {
 
     @Override
     public void close() {
+        machines.clear();
+        animator.clear();
         if (flex != null) {
             flex.close();
         }

@@ -14,6 +14,8 @@ import java.util.function.Function;
  * @param styles       style sheets by id ({@code styles/<id>.uss.json})
  * @param graphs       behavior graphs by id ({@code graphs/<id>.graph.json})
  * @param animations   clips by id ({@code animations/<id>.anim.json})
+ * @param stateMachines UI state machines by id ({@code animations/<id>.states.json}, feature
+ *                     {@code ui-states}, #295)
  * @param scripts      embedded Lua source by id ({@code scripts/<id>.lua}); never executed by
  *                     the format layer
  * @param dependencies the dependency table ({@code dependencies.json})
@@ -24,7 +26,7 @@ import java.util.function.Function;
  */
 public record OmuiArchive(UiManifest manifest, UiDocument document, Map<String, UiStyleSheet> styles,
                           Map<String, UiGraph> graphs, Map<String, UiAnimationClip> animations,
-                          Map<String, String> scripts, UiDependencies dependencies, Map<String, UiBytes> assets,
+                          Map<String, UiStateMachine> stateMachines, Map<String, String> scripts, UiDependencies dependencies, Map<String, UiBytes> assets,
                           Map<String, UiBytes> editor, Map<String, UiBytes> extraEntries) {
 
     /** {@code dependencies.json}: rows sorted by id, plus preserved unknown root fields. */
@@ -52,6 +54,7 @@ public record OmuiArchive(UiManifest manifest, UiDocument document, Map<String, 
         styles = keyed(styles, UiStyleSheet::id);
         graphs = keyed(graphs, UiGraph::id);
         animations = keyed(animations, UiAnimationClip::id);
+        stateMachines = keyed(stateMachines, UiStateMachine::id);
         scripts = Canon.sortedMap(scripts);
         dependencies = dependencies == null ? UiDependencies.EMPTY : dependencies;
         assets = prefixed(assets, OmuiFormat.ASSETS_DIR);
@@ -61,52 +64,73 @@ public record OmuiArchive(UiManifest manifest, UiDocument document, Map<String, 
 
     /** A document with only a manifest and a tree. */
     public static OmuiArchive of(UiManifest manifest, UiDocument document) {
-        return new OmuiArchive(manifest, document, Map.of(), Map.of(), Map.of(), Map.of(), UiDependencies.EMPTY,
+        return new OmuiArchive(manifest, document, Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), UiDependencies.EMPTY,
                 Map.of(), Map.of(), Map.of());
     }
 
     public OmuiArchive withManifest(UiManifest m) {
-        return new OmuiArchive(m, document, styles, graphs, animations, scripts, dependencies, assets, editor,
+        return new OmuiArchive(m, document, styles, graphs, animations, stateMachines, scripts, dependencies, assets, editor,
                 extraEntries);
     }
 
     public OmuiArchive withDocument(UiDocument d) {
-        return new OmuiArchive(manifest, d, styles, graphs, animations, scripts, dependencies, assets, editor,
+        return new OmuiArchive(manifest, d, styles, graphs, animations, stateMachines, scripts, dependencies, assets, editor,
                 extraEntries);
     }
 
     public OmuiArchive withStyle(UiStyleSheet sheet) {
-        return new OmuiArchive(manifest, document, put(styles, sheet.id(), sheet), graphs, animations, scripts,
+        return new OmuiArchive(manifest, document, put(styles, sheet.id(), sheet), graphs, animations, stateMachines, scripts,
                 dependencies, assets, editor, extraEntries);
     }
 
     public OmuiArchive withGraph(UiGraph graph) {
-        return new OmuiArchive(manifest, document, styles, put(graphs, graph.id(), graph), animations, scripts,
+        return new OmuiArchive(manifest, document, styles, put(graphs, graph.id(), graph), animations, stateMachines, scripts,
                 dependencies, assets, editor, extraEntries);
     }
 
     public OmuiArchive withAnimation(UiAnimationClip clip) {
-        return new OmuiArchive(manifest, document, styles, graphs, put(animations, clip.id(), clip), scripts,
+        return new OmuiArchive(manifest, document, styles, graphs, put(animations, clip.id(), clip), stateMachines, scripts,
                 dependencies, assets, editor, extraEntries);
     }
 
+    public OmuiArchive withStateMachine(UiStateMachine machine) {
+        return new OmuiArchive(manifest, document, styles, graphs, animations,
+                put(stateMachines, machine.id(), machine), scripts, dependencies, assets, editor, extraEntries);
+    }
+
+    /** Without the clip {@code id} (unchanged when absent). */
+    public OmuiArchive withoutAnimation(String id) {
+        Map<String, UiAnimationClip> copy = new LinkedHashMap<>(animations);
+        copy.remove(id);
+        return new OmuiArchive(manifest, document, styles, graphs, copy, stateMachines, scripts, dependencies, assets,
+                editor, extraEntries);
+    }
+
+    /** Without the state machine {@code id} (unchanged when absent). */
+    public OmuiArchive withoutStateMachine(String id) {
+        Map<String, UiStateMachine> copy = new LinkedHashMap<>(stateMachines);
+        copy.remove(id);
+        return new OmuiArchive(manifest, document, styles, graphs, animations, copy, scripts, dependencies, assets,
+                editor, extraEntries);
+    }
+
     public OmuiArchive withScript(String id, String source) {
-        return new OmuiArchive(manifest, document, styles, graphs, animations, put(scripts, id, source),
+        return new OmuiArchive(manifest, document, styles, graphs, animations, stateMachines, put(scripts, id, source),
                 dependencies, assets, editor, extraEntries);
     }
 
     public OmuiArchive withDependencies(UiDependencies deps) {
-        return new OmuiArchive(manifest, document, styles, graphs, animations, scripts, deps, assets, editor,
+        return new OmuiArchive(manifest, document, styles, graphs, animations, stateMachines, scripts, deps, assets, editor,
                 extraEntries);
     }
 
     public OmuiArchive withAsset(String entry, UiBytes bytes) {
-        return new OmuiArchive(manifest, document, styles, graphs, animations, scripts, dependencies,
+        return new OmuiArchive(manifest, document, styles, graphs, animations, stateMachines, scripts, dependencies,
                 put(assets, entry, bytes), editor, extraEntries);
     }
 
     public OmuiArchive withEditorEntry(String entry, UiBytes bytes) {
-        return new OmuiArchive(manifest, document, styles, graphs, animations, scripts, dependencies, assets,
+        return new OmuiArchive(manifest, document, styles, graphs, animations, stateMachines, scripts, dependencies, assets,
                 put(editor, entry, bytes), extraEntries);
     }
 

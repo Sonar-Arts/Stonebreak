@@ -62,7 +62,11 @@ public record UiRuntimeDiagnostic(Severity severity, Code code, String element, 
         ACTION_CALLBACK_FAILED,
         STALE_COMPLETION,
         // Lua code-behind (#292); details in the script runtime's own diagnostics
-        SCRIPT_ERROR
+        SCRIPT_ERROR,
+        // Animation (#295): a clip track whose target, property or key values do not fit
+        ANIMATION_TRACK,
+        // A state machine that cannot run (missing clip, unknown state)
+        STATE_MACHINE
     }
 
     public UiRuntimeDiagnostic {

@@ -282,7 +282,8 @@ public final class GraphEditor {
             }
             Map<String, UiBytes> editor = new LinkedHashMap<>(d.editor());
             editor.remove(entry);
-            return new OmuiArchive(d.manifest(), d.document(), d.styles(), d.graphs(), d.animations(), d.scripts(),
+            return new OmuiArchive(d.manifest(), d.document(), d.styles(), d.graphs(), d.animations(), d.stateMachines(),
+                d.scripts(),
                 d.dependencies(), d.assets(), editor, d.extraEntries());
         }
         return d.withEditorEntry(entry, layout.toBytes());
@@ -1008,6 +1009,12 @@ public final class GraphEditor {
                 yield e.luaFunctions().stream().filter(f -> f.module().equals(module)).map(LuaFunction::name).toList();
             }
             case CLIP -> List.copyOf(e.clips());
+            case STATE_MACHINE -> List.copyOf(e.stateMachines());
+            case MACHINE_STATE -> {
+                String machine = n.props().get("machine") instanceof UiValue.Str s ? s.value() : "";
+                var m = e.document().stateMachines().get(machine);
+                yield m == null ? List.of() : m.states().stream().map(st -> st.name()).toList();
+            }
             case SIGNAL -> {
                 GraphEnvironment.ElementInfo target = e.element(KindContext.str(n, "target"));
                 var contract = n.kind().equals("ui:event.signal") ? (target == null ? null : target.contract())

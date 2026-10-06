@@ -17,6 +17,7 @@ final class ElementKinds {
     static final String TWEEN = "ui:anim.tween";
     static final String PLAY = "ui:anim.play";
     static final List<String> EASINGS = List.of("linear", "ease-in", "ease-out", "ease-in-out", "step");
+    static final List<String> FILLS = List.of("hold", "release");
 
     private ElementKinds() {
     }
@@ -98,22 +99,72 @@ final class ElementKinds {
                 })
                 .build(),
             NodeKind.builder(PLAY, "Play Clip", "Animation")
-                .doc("Plays a timeline clip of this document. With 'wait' the chain continues when it ends.")
+                .doc("Plays a timeline clip of this document. With 'wait' the chain continues when it ends. Blend"
+                    + " cross-fades from what is shown; clock 'game' freezes with gameplay.")
                 .prop(PropSpec.required("clip", PropSpec.Kind.CLIP, "clip id"))
                 .prop(PropSpec.choice("loop", "clip", List.of("clip", "once", "loop", "ping-pong"), "clip = the clip's own mode"))
                 .prop(PropSpec.optional("wait", PropSpec.Kind.BOOL, UiValue.FALSE, "continue after it ends"))
-                .ports(Ports.statement(in("speed", PortType.NUMBER, 1, "playback speed")))
+                .prop(PropSpec.optional("clock", PropSpec.Kind.IDENT, UiValue.of("ui"), "ui, game or a host clock"))
+                .prop(PropSpec.choice("fill", "hold", FILLS, "what the end leaves: hold the values or release them"))
+                .ports(Ports.statement(in("speed", PortType.NUMBER, 1, "playback speed"),
+                    in("blend", PortType.NUMBER, 0, "seconds to cross-fade from what is shown")))
                 .latent((ctx, n) -> KindContext.bool(n, "wait", false))
                 .statement(e -> {
                     String loop = e.prop("loop");
+                    String clock = e.prop("clock");
+                    String fill = e.prop("fill");
+                    String blend = e.in("blend");
+                    // Options at their defaults are left out, so older graphs compile to the same Lua.
                     String opts = "{ speed = " + e.in("speed")
-                        + (loop == null || "clip".equals(loop) ? "" : ", loop = " + e.quote(loop)) + " }";
+                        + (loop == null || "clip".equals(loop) ? "" : ", loop = " + e.quote(loop))
+                        + (clock == null || clock.isEmpty() || "ui".equals(clock) ? "" : ", clock = " + e.quote(clock))
+                        + (fill == null || "hold".equals(fill) ? "" : ", fill = " + e.quote(fill))
+                        + ("0".equals(blend) ? "" : ", blend = " + blend) + " }";
                     String call = "ui.play(" + e.quote(e.prop("clip")) + ", " + opts + ")";
                     e.line(e.bool("wait", false) ? "ui.await(" + call + ")" : call);
                 })
                 .build(),
+            NodeKind.builder("ui:anim.stop", "Stop Clip", "Animation")
+                .doc("Stops this script's playbacks of a clip: hold what is shown, jump to the end, or release to"
+                    + " the cascade.")
+                .prop(PropSpec.required("clip", PropSpec.Kind.CLIP, "clip id"))
+                .prop(PropSpec.choice("how", "hold", List.of("hold", "end", "release"), "what stopping leaves"))
+                .ports(Ports.statement())
+                .statement(e -> e.line("ui.stop(" + e.quote(e.prop("clip")) + ", " + e.quote(e.prop("how")) + ")"))
+                .build(),
+            NodeKind.builder("ui:anim.set-speed", "Set Clip Speed", "Animation")
+                .doc("Changes the playback rate of a clip's playbacks from now on; 0 pauses.")
+                .prop(PropSpec.required("clip", PropSpec.Kind.CLIP, "clip id"))
+                .ports(Ports.statement(in("speed", PortType.NUMBER, 1, "playback rate")))
+                .statement(e -> e.line("ui.speed(" + e.quote(e.prop("clip")) + ", " + e.in("speed") + ")"))
+                .build(),
+            NodeKind.builder("ui:anim.seek", "Seek Clip", "Animation")
+                .doc("Moves a clip's playbacks to a time; events in between do not fire.")
+                .prop(PropSpec.required("clip", PropSpec.Kind.CLIP, "clip id"))
+                .ports(Ports.statement(in("time", PortType.NUMBER, 0, "seconds")))
+                .statement(e -> e.line("ui.seek(" + e.quote(e.prop("clip")) + ", " + e.in("time") + ")"))
+                .build(),
+            NodeKind.builder("ui:anim.set-state", "Set UI State", "Animation")
+                .doc("Moves a UI state machine of this document to a state; its transition and state clips play."
+                    + " With 'wait' the chain continues once the state is reached.")
+                .prop(PropSpec.required("machine", PropSpec.Kind.STATE_MACHINE, "state machine id"))
+                .prop(PropSpec.required("state", PropSpec.Kind.MACHINE_STATE, "target state"))
+                .prop(PropSpec.optional("wait", PropSpec.Kind.BOOL, UiValue.FALSE, "continue once it is reached"))
+                .ports(Ports.statement())
+                .latent((ctx, n) -> KindContext.bool(n, "wait", false))
+                .statement(e -> {
+                    String call = "ui.setState(" + e.quote(e.prop("machine")) + ", " + e.quote(e.prop("state")) + ")";
+                    e.line(e.bool("wait", false) ? "ui.await(" + call + ")" : call);
+                })
+                .build(),
+            NodeKind.builder("ui:anim.machine-state", "UI State", "Animation")
+                .doc("The current state of a UI state machine of this document.")
+                .prop(PropSpec.required("machine", PropSpec.Kind.STATE_MACHINE, "state machine id"))
+                .ports(NodePorts.builder().out(out("state", PortType.STRING, "")).build())
+                .pure(e -> e.line("local " + e.out("state") + " = ui.machineState(" + e.quote(e.prop("machine")) + ")"))
+                .build(),
             NodeKind.builder("ui:anim.release", "Release Animation", "Animation")
-                .doc("Hands an animated style property back to the cascade.")
+                .doc("Hands an animated style property back to the cascade, through its declared transition.")
                 .prop(target())
                 .prop(PropSpec.required("property", PropSpec.Kind.STYLE_PROPERTY, "style property"))
                 .ports(Ports.statement())

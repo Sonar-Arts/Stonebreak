@@ -50,6 +50,7 @@ public final class OmuiValidator {
         a.styles().keySet().forEach(id -> names.add(OmuiFormat.styleEntry(id)));
         a.graphs().keySet().forEach(id -> names.add(OmuiFormat.graphEntry(id)));
         a.animations().keySet().forEach(id -> names.add(OmuiFormat.animationEntry(id)));
+        a.stateMachines().keySet().forEach(id -> names.add(OmuiFormat.stateMachineEntry(id)));
         a.scripts().keySet().forEach(id -> names.add(OmuiFormat.scriptEntry(id)));
         names.addAll(a.assets().keySet());
         names.addAll(a.editor().keySet());

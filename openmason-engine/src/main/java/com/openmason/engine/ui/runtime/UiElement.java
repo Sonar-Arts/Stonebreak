@@ -73,12 +73,16 @@ public final class UiElement implements Styleable {
     private final Map<String, UiValue> overrideProps = new LinkedHashMap<>();
     private final Map<String, UiValue> bindingProps = new HashMap<>();
     private final Map<String, UiValue> localProps = new HashMap<>();
+    /** Animation channel of props (#295): {@code prop:} clip tracks and tweens. */
+    private final Map<String, UiValue> animationProps = new HashMap<>();
 
     // class layers
     private final Set<String> baseClasses = new TreeSet<>();
     private final Map<String, Boolean> bindingClasses = new HashMap<>();
     private final Set<String> localAdded = new HashSet<>();
     private final Set<String> localRemoved = new HashSet<>();
+    /** Classes the runtime itself sets ({@code sb-reduced-motion} on the root, #295). */
+    private final Set<String> hostClasses = new HashSet<>();
     private Set<String> effectiveClasses = Set.of();
 
     // style layers above the sheet cascade
@@ -96,7 +100,15 @@ public final class UiElement implements Styleable {
     private EventCallbacks callbacks;
 
     // derived
+    /** What the element shows: {@link #base} overlaid with the animation channel (#295). */
     ComputedStyle computed = ComputedStyle.INITIAL;
+    /** The cascade without animation; style transitions ease its changes. */
+    ComputedStyle base = ComputedStyle.INITIAL;
+    boolean baseResolved;
+    /** Own {@code scale}/{@code rotate} about the rect centre, or null for none (#295). */
+    com.openmason.engine.ui.runtime.input.UiTransform transform;
+    /** Device-pixel area this element paints, after every ancestor transform. */
+    UiRect bounds = UiRect.EMPTY;
     /** Yoga's rect, before scroll offsets and translation. */
     UiRect layoutRect = UiRect.EMPTY;
     /** Where the element paints and is hit: layout rect + ancestor scroll + translation. */
@@ -111,6 +123,8 @@ public final class UiElement implements Styleable {
     float maxScrollX;
     float maxScrollY;
     boolean styleDirty = true;
+    /** Only the animation channel changed: re-overlay without running the cascade. */
+    boolean overlayDirty;
     boolean recordDirty = true;
     boolean measureDirty;
 
@@ -218,9 +232,12 @@ public final class UiElement implements Styleable {
 
     // ── props ───────────────────────────────────────────────────────────────
 
-    /** Effective property value through every layer; the descriptor default when unset. */
+    /** Effective property value through every layer (animation on top); the descriptor default when unset. */
     public UiValue prop(String name) {
-        UiValue v = localProps.get(name);
+        UiValue v = animationProps.get(name);
+        if (v == null) {
+            v = localProps.get(name);
+        }
         if (v == null) {
             v = bindingProps.get(name);
         }
@@ -268,6 +285,24 @@ public final class UiElement implements Styleable {
     /** The local (script) layer's own value of {@code name}, or null when it leaves the property alone. */
     public UiValue localProp(String name) {
         return localProps.get(name);
+    }
+
+    /** The animation channel's value of prop {@code name}, or null when no animation drives it (#295). */
+    public UiValue animatedProp(String name) {
+        return animationProps.get(name);
+    }
+
+    /** Animation channel of a prop (#295): wins over every other layer while set; never written back. */
+    public void setAnimatedProp(String name, UiValue value) {
+        if (!value.equals(animationProps.put(name, value))) {
+            propChanged(name);
+        }
+    }
+
+    public void clearAnimatedProp(String name) {
+        if (animationProps.remove(name) != null) {
+            propChanged(name);
+        }
     }
 
     void putOverrideProps(Map<String, UiValue> props) {
@@ -354,6 +389,13 @@ public final class UiElement implements Styleable {
         }
     }
 
+    /** Runtime-owned class ({@code sb-reduced-motion}); above every authored and local layer. */
+    void setHostClass(String className, boolean on) {
+        if (on ? hostClasses.add(className) : hostClasses.remove(className)) {
+            classesChanged();
+        }
+    }
+
     void applyOverrideClasses(List<String> add, List<String> remove) {
         baseClasses.removeAll(remove);
         baseClasses.addAll(add);
@@ -392,6 +434,7 @@ public final class UiElement implements Styleable {
         });
         c.addAll(localAdded);
         c.removeAll(localRemoved);
+        c.addAll(hostClasses);
         effectiveClasses = Collections.unmodifiableSet(c);
     }
 
@@ -424,18 +467,26 @@ public final class UiElement implements Styleable {
         return animationStyle.get(property);
     }
 
-    /** Animation channel (#295): wins over every other layer while set. */
+    /**
+     * Animation channel (#295): wins over every other layer while set. Only re-overlays the
+     * resolved cascade, so an animated property costs no selector matching per frame.
+     */
     public void setAnimatedStyle(String property, UiValue value) {
         if (!value.equals(animationStyle.put(property, value))) {
-            owner.invalidateStyle(this);
+            owner.invalidateOverlay(this);
         }
     }
 
     /** Releases the channel back to the value underneath. */
     public void clearAnimatedStyle(String property) {
         if (animationStyle.remove(property) != null) {
-            owner.invalidateStyle(this);
+            owner.invalidateOverlay(this);
         }
+    }
+
+    /** The animation channel's values; read-only. */
+    Map<String, UiValue> animationStyle() {
+        return animationStyle;
     }
 
     void putOverrideStyle(Map<String, UiValue> style) {
@@ -454,13 +505,27 @@ public final class UiElement implements Styleable {
         }
     }
 
-    /** Non-sheet layers in increasing precedence, for the cascade. */
+    /** Non-sheet layers in increasing precedence, animation included (style traces). */
     List<Map<String, UiValue>> styleLayers() {
         return List.of(node.style(), overrideStyle, bindingStyle, localStyle, animationStyle);
     }
 
+    /** The cascade's non-sheet layers without animation, which overlays the result instead. */
+    List<Map<String, UiValue>> baseLayers() {
+        return List.of(node.style(), overrideStyle, bindingStyle, localStyle);
+    }
+
+    /** What the element shows: the cascade with transitions and animations on top. */
     public ComputedStyle computedStyle() {
         return computed;
+    }
+
+    /**
+     * The cascade alone (sheets, inline, overrides, binding, local), before transitions and
+     * animations (#295). An animation that is released lands here.
+     */
+    public ComputedStyle baseStyle() {
+        return base;
     }
 
     // ── states ──────────────────────────────────────────────────────────────
@@ -551,6 +616,25 @@ public final class UiElement implements Styleable {
     /** Yoga's rect before scrolling and translation. */
     public UiRect layoutRect() {
         return layoutRect;
+    }
+
+    /**
+     * This element's own {@code scale}/{@code rotate} about its rect centre in device pixels
+     * (#295), applied to it and its subtree; identity when it has none. Ancestors' transforms
+     * compose on top ({@code UiCoordinates.elementTransform}).
+     */
+    public com.openmason.engine.ui.runtime.input.UiTransform localTransform() {
+        return transform == null ? com.openmason.engine.ui.runtime.input.UiTransform.IDENTITY : transform;
+    }
+
+    /** True when {@code scale} or {@code rotate} applies to this element. */
+    public boolean isTransformed() {
+        return transform != null;
+    }
+
+    /** Device-pixel area this element paints after every transform (its rect when untransformed). */
+    public UiRect paintBounds() {
+        return bounds;
     }
 
     // ── scrolling ───────────────────────────────────────────────────────────
@@ -707,6 +791,11 @@ public final class UiElement implements Styleable {
             }
         });
         next.animationStyle.putAll(animationStyle);
+        animationProps.forEach((k, v) -> {
+            if (next.descriptor.property(k) != null) {
+                next.animationProps.put(k, v);
+            }
+        });
         next.states.addAll(states);
         next.enabled = enabled;
         next.scrollX = scrollX;

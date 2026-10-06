@@ -146,6 +146,33 @@ public final class DocumentCommands {
             });
     }
 
+    /**
+     * Sets ({@code null} removes) the transition rule {@code index} declares for {@code property}
+     * (#295). Typing and dragging in one field merge into one undo step.
+     */
+    public static UiCommand setRuleTransition(String sheetId, int index, String property,
+                                              UiStyleSheet.StyleTransition transition) {
+        return editSheet(sheetId, (transition == null ? "Remove " : "Set ") + property + " transition",
+            "transition:" + sheetId + ":" + index + ":" + property, s -> {
+                if (transition != null && (!(transition.duration() >= 0) || !(transition.delay() >= 0)
+                    || transition.bezier() != null && transition.bezier().problem() != null)) {
+                    throw new UiCommandException("A transition needs a duration and delay of 0 s or more"
+                        + (transition.bezier() != null && transition.bezier().problem() != null
+                        ? " and " + transition.bezier().problem() : ""));
+                }
+                List<StyleRule> rules = new ArrayList<>(s.rules());
+                requireIndex(rules, index);
+                StyleRule r = rules.get(index);
+                List<UiStyleSheet.StyleTransition> ts = new ArrayList<>(r.transitions());
+                ts.removeIf(t -> t.property().equals(property));
+                if (transition != null) {
+                    ts.add(transition);
+                }
+                rules.set(index, new StyleRule(r.selector(), r.style(), ts, r.unknown()));
+                return withRules(s, rules);
+            });
+    }
+
     /** Sets ({@code null} removes) a {@code --token} of a sheet. */
     public static UiCommand setVariable(String sheetId, String name, UiValue value) {
         return editSheet(sheetId, (value == null ? "Remove " : "Set ") + name, "var:" + sheetId + ":" + name,
@@ -237,7 +264,8 @@ public final class DocumentCommands {
             UiDocument ed = edited.document();
             UiDocument merged = new UiDocument(doc.root(), doc.styleSheets(),
                 ed.codeBehind() != null ? ed.codeBehind() : doc.codeBehind(), doc.component(), doc.unknown());
-            ctx.setDoc(new OmuiArchive(d.manifest(), merged, d.styles(), edited.graphs(), d.animations(), scripts,
+            ctx.setDoc(new OmuiArchive(d.manifest(), merged, d.styles(), edited.graphs(), d.animations(),
+                d.stateMachines(), scripts,
                 d.dependencies(), d.assets(), editor, d.extraEntries()));
         });
     }
@@ -254,7 +282,7 @@ public final class DocumentCommands {
             if (clips.remove(id) == null) {
                 throw new UiCommandException("No animation '" + id + "'");
             }
-            ctx.setDoc(new OmuiArchive(d.manifest(), d.document(), d.styles(), d.graphs(), clips, d.scripts(),
+            ctx.setDoc(new OmuiArchive(d.manifest(), d.document(), d.styles(), d.graphs(), clips, d.stateMachines(), d.scripts(),
                 d.dependencies(), d.assets(), d.editor(), d.extraEntries()));
         });
     }

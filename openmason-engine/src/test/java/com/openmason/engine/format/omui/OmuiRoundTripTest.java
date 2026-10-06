@@ -193,7 +193,7 @@ class OmuiRoundTripTest {
     static OmuiArchive withoutProvenance(OmuiArchive a) {
         Map<String, UiBytes> editor = new LinkedHashMap<>(a.editor());
         editor.remove(SbuiImporter.PROVENANCE_ENTRY);
-        return new OmuiArchive(a.manifest(), a.document(), a.styles(), a.graphs(), a.animations(), a.scripts(),
+        return new OmuiArchive(a.manifest(), a.document(), a.styles(), a.graphs(), a.animations(), a.stateMachines(), a.scripts(),
                 a.dependencies(), a.assets(), editor, a.extraEntries());
     }
 

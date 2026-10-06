@@ -11,6 +11,8 @@ import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.TextLineMetrics;
 import com.openmason.engine.ui.runtime.UiRect;
+import com.openmason.engine.ui.runtime.input.UiCoordinates;
+import com.openmason.engine.ui.runtime.input.UiTransform;
 import com.openmason.engine.ui.runtime.UiTexts;
 import com.openmason.engine.ui.runtime.input.TextFieldController;
 import com.openmason.engine.ui.runtime.input.TextFieldGeometry;
@@ -26,6 +28,7 @@ import io.github.humbleui.skija.BlendMode;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.ColorFilter;
 import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.Matrix33;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.types.Rect;
 
@@ -101,7 +104,14 @@ public final class UiPainter {
             float scale = ui.metrics().scale();
             PaintOrder order = ui.paintOrder();
             for (PaintOrder.Entry e : order.entries()) {
+                UiTransform outer = UiCoordinates.ancestorTransform(e.root());
+                int saved = canvas.getSaveCount();
+                if (outer != null) { // a lifted overlay still turns and scales with its ancestors (#295)
+                    canvas.save();
+                    canvas.concat(matrix(outer));
+                }
                 paintSubtree(ui, masonry, canvas, order, e.root(), scale);
+                canvas.restoreToCount(saved);
             }
             if (router != null) {
                 tooltip(masonry, router.tooltips().current(), ui, scale);
@@ -127,6 +137,10 @@ public final class UiPainter {
                 canvas.saveLayer(null, p);
             }
         }
+        if (el.isTransformed()) {
+            canvas.save();
+            canvas.concat(matrix(el.localTransform())); // scale/rotate about the centre, with the subtree
+        }
         if (!s.hidden()) {
             paintSelf(ui, masonry, canvas, el, scale);
         }
@@ -151,6 +165,11 @@ public final class UiPainter {
             scrollbars(canvas, el, scale);
         }
         canvas.restoreToCount(saved);
+    }
+
+    /** Skia's row-major 3×3 of a 2D affine transform. */
+    static Matrix33 matrix(UiTransform t) {
+        return new Matrix33(t.a(), t.c(), t.tx(), t.b(), t.d(), t.ty(), 0, 0, 1);
     }
 
     private void paintSelf(UiDocumentInstance ui, MasonryUI masonry, Canvas canvas, UiElement el, float scale) {

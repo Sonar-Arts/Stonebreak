@@ -128,7 +128,7 @@ painted pixels), `OMPUiEditorReferenceTest` (1.3 round trip, older files untouch
 ## Not yet
 
 * MCP/Python automation of UI documents (they must go through `UiEditorActions`/`UiCommand`s).
-* Timeline (#295); clip commands exist without a panel. (Texture and sprite authoring landed in #294: the
+* (Timeline landed in #295: the Timeline tab, [ui-animation.md](ui-animation.md) §9.) (Texture and sprite authoring landed in #294: the
   Sprites panel, the inspector's image picker, Edit Texture — see [ui-sprites.md](ui-sprites.md) §6.)
 * Box (marquee) selection of component internals; resizing several elements at once.
 * Inline text editing on the canvas.

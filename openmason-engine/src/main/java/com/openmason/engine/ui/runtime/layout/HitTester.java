@@ -2,6 +2,8 @@ package com.openmason.engine.ui.runtime.layout;
 
 import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.UiRect;
+import com.openmason.engine.ui.runtime.input.UiCoordinates;
+import com.openmason.engine.ui.runtime.input.UiTransform;
 
 import java.util.List;
 
@@ -33,8 +35,13 @@ public final class HitTester {
 
     public static UiElement pick(PaintOrder order, float x, float y) {
         List<PaintOrder.Entry> entries = order.entries();
+        float[] p = new float[2];
         for (int i = entries.size() - 1; i >= 0; i--) {
-            UiElement hit = pick(order, entries.get(i).root(), x, y, null);
+            UiElement root = entries.get(i).root();
+            if (!intoAncestors(root, x, y, p)) {
+                continue;
+            }
+            UiElement hit = pick(order, root, p[0], p[1], null);
             if (hit != null) {
                 return hit;
             }
@@ -50,8 +57,13 @@ public final class HitTester {
      */
     public static UiElement pickDesign(PaintOrder order, float x, float y, java.util.function.Predicate<UiElement> eligible) {
         List<PaintOrder.Entry> entries = order.entries();
+        float[] p = new float[2];
         for (int i = entries.size() - 1; i >= 0; i--) {
-            UiElement hit = pickDesign(order, entries.get(i).root(), x, y, null, eligible);
+            UiElement root = entries.get(i).root();
+            if (!intoAncestors(root, x, y, p)) {
+                continue;
+            }
+            UiElement hit = pickDesign(order, root, p[0], p[1], null, eligible);
             if (hit != null) {
                 return hit;
             }
@@ -63,6 +75,15 @@ public final class HitTester {
                                         java.util.function.Predicate<UiElement> eligible) {
         if (el.computedStyle().collapsed() || clip != null && !clip.contains(x, y)) {
             return null;
+        }
+        if (el.isTransformed()) { // into the element's own space; outer clips were checked above
+            float[] p = local(el, x, y);
+            if (p == null) {
+                return null;
+            }
+            x = p[0];
+            y = p[1];
+            clip = null;
         }
         UiRect r = el.rect();
         UiRect childClip = el.clipsChildren() ? intersect(clip, r) : clip;
@@ -85,6 +106,15 @@ public final class HitTester {
         if (el.computedStyle().collapsed() || clip != null && !clip.contains(x, y)) {
             return null;
         }
+        if (el.isTransformed()) { // into the element's own space; outer clips were checked above
+            float[] p = local(el, x, y);
+            if (p == null) {
+                return null;
+            }
+            x = p[0];
+            y = p[1];
+            clip = null;
+        }
         UiRect r = el.rect();
         UiRect childClip = el.clipsChildren() ? intersect(clip, r) : clip;
         List<UiElement> children = el.children();
@@ -100,6 +130,34 @@ public final class HitTester {
         }
         boolean self = !el.computedStyle().hidden() && !el.computedStyle().pickingIgnored() && r.contains(x, y);
         return self ? el : null;
+    }
+
+    /** The point under {@code el}'s own scale/rotate inverted, or null when it collapsed to nothing. */
+    private static float[] local(UiElement el, float x, float y) {
+        try {
+            UiTransform inv = el.localTransform().inverse();
+            return new float[]{inv.applyX(x, y), inv.applyY(x, y)};
+        } catch (IllegalStateException degenerate) {
+            return null;
+        }
+    }
+
+    /** Maps a viewport point through a lifted root's ancestors' transforms; false when they collapse. */
+    private static boolean intoAncestors(UiElement root, float x, float y, float[] out) {
+        UiTransform outer = UiCoordinates.ancestorTransform(root);
+        if (outer == null) {
+            out[0] = x;
+            out[1] = y;
+            return true;
+        }
+        try {
+            UiTransform inv = outer.inverse();
+            out[0] = inv.applyX(x, y);
+            out[1] = inv.applyY(x, y);
+            return true;
+        } catch (IllegalStateException degenerate) {
+            return false;
+        }
     }
 
     static UiRect intersect(UiRect a, UiRect b) {
