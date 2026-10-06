@@ -3,8 +3,8 @@
     {
       "id": "stonebreak:ui/components/stone_button",
       "kind": "component",
-      "sha256": "c8cf414836b97a642d098fcbbff3af5f0de3c4fb580c3018312f04a384d143c2",
-      "size": 2296,
+      "sha256": "e8145aca087de7f4d0230282f10f3d8460c66d245c33794c90c11f0f192bb550",
+      "size": 2242,
       "mode": "embedded",
       "entry": "assets/components/stone_button.omui",
       "sourceHint": "ui/components/stone_button.omui"

@@ -41,8 +41,14 @@ import java.util.zip.ZipOutputStream;
  */
 public final class ArchiveIO {
 
-    /** Fixed entry timestamp: the DOS epoch, timezone-independent via setTimeLocal. */
-    public static final LocalDateTime FIXED_TIME = LocalDateTime.of(1980, 1, 1, 0, 0, 0);
+    /**
+     * Fixed entry timestamp, two seconds past the DOS epoch. Not 00:00:00: the JDK encodes exactly
+     * 1980-01-01 00:00:00 as its "before 1980" sentinel and then also writes a {@code UT} extended
+     * timestamp holding epoch seconds in the system timezone, which made archive bytes differ
+     * between machines (a UTC CI runner vs a UTC-5 workstation). Any later in-range local time is
+     * stored as plain DOS date/time with no extra field, so the bytes are the same everywhere.
+     */
+    public static final LocalDateTime FIXED_TIME = LocalDateTime.of(1980, 1, 1, 0, 0, 2);
 
     private static final int LOCAL_SIG = 0x04034b50;
     private static final int CENTRAL_SIG = 0x02014b50;

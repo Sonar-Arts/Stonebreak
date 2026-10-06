@@ -11,12 +11,18 @@ on:
       - "openmason-engine/src/main/java/com/openmason/engine/cenda/**"
       - "openmason-engine/src/main/java/com/openmason/engine/ui/**"
       - "openmason-engine/src/main/resources/com/openmason/engine/ui/**"
+      - "openmason-engine/src/main/java/com/openmason/engine/format/omui/**"
+      - "openmason-engine/src/test/java/com/openmason/engine/ui/**"
+      - "openmason-engine/src/test/resources/ui/**"
       - ".github/workflows/cenda-native.yml"
   pull_request:
     paths:
       - "openmason-engine/cenda/**"
       - "openmason-engine/src/main/java/com/openmason/engine/cenda/**"
       - "openmason-engine/src/main/java/com/openmason/engine/ui/**"
+      - "openmason-engine/src/main/java/com/openmason/engine/format/omui/**"
+      - "openmason-engine/src/test/java/com/openmason/engine/ui/**"
+      - "openmason-engine/src/test/resources/ui/**"
       - ".github/workflows/cenda-native.yml"
   workflow_dispatch:
 
@@ -45,6 +51,11 @@ jobs:
       - name: Native tests (lua_host, flex_host, kernels)
         working-directory: openmason-engine/cenda
         run: ctest --preset release
+
+      - name: Skija runtime libraries (Linux)
+        # libskija.so links libEGL/libGL even for CPU raster surfaces; the bare runner has neither.
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libegl1 libgl1 libfontconfig1
 
       - uses: actions/setup-java@v4
         with:
