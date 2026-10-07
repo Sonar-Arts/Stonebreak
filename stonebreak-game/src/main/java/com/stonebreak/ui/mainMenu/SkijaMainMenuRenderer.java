@@ -7,17 +7,10 @@ import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.ui.MainMenu;
 import io.github.humbleui.skija.Canvas;
-import io.github.humbleui.skija.ClipMode;
-import io.github.humbleui.skija.FilterTileMode;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.ImageFilter;
 import io.github.humbleui.skija.Paint;
-import io.github.humbleui.skija.PaintMode;
-import io.github.humbleui.skija.Path;
-import io.github.humbleui.skija.PathBuilder;
-import io.github.humbleui.skija.SamplingMode;
-import io.github.humbleui.skija.Shader;
 import io.github.humbleui.skija.Typeface;
 import io.github.humbleui.types.Rect;
 
@@ -43,21 +36,16 @@ public final class SkijaMainMenuRenderer {
     private static final int COLOR_TEXT_PRIMARY   = 0xFFFFFFF0;
     private static final int COLOR_TEXT_SHADOW    = 0xFF1A1A1A;
     private static final int COLOR_TEXT_HIGHLIGHT = 0xFFFFCC55;
-    private static final int COLOR_OVERLAY        = 0x3C000000; // ~60/255
 
-    // Dark fill drawn slightly beyond the screen so the impact screen-shake
-    // never exposes a hard edge while the space scene is showing.
-    private static final int SPACE_OVERSCAN_COLOR = 0xFF050510;
-    private static final float OVERSCAN_MARGIN = 40f;
 
     private final SkijaUIBackend backend;
-    private final SpaceBackgroundRenderer spaceRenderer = new SpaceBackgroundRenderer();
+    private final MainMenuBackdrop backdrop = new MainMenuBackdrop();
+    private java.util.function.DoubleSupplier timeSource = SkijaMainMenuRenderer::spaceTime;
+    private java.util.function.BiConsumer<String, float[]> layoutSink;
 
     private Font fontSplash;
     private Font fontButton;
     private float lastFontScale = -1f;
-
-    private Shader dirtShader;
 
     public SkijaMainMenuRenderer(SkijaUIBackend backend) {
         this.backend = backend;
@@ -81,7 +69,6 @@ public final class SkijaMainMenuRenderer {
         if (!backend.isAvailable()) return;
         float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
         ensureFonts(scale);
-        ensureDirtShader();
 
         float buttonWidth = BASE_BUTTON_WIDTH * scale;
         float buttonHeight = BASE_BUTTON_HEIGHT * scale;
@@ -98,23 +85,20 @@ public final class SkijaMainMenuRenderer {
                 canvas.translate(stage.getScreenShakeX(), stage.getScreenShakeY());
             }
 
-            drawBackground(canvas, windowWidth, windowHeight, stage);
-            if (stage != null && stage.isShockwaveActive()) {
-                drawShockwave(canvas, stage, scale);
-            }
+            backdrop.paint(canvas, windowWidth, windowHeight, stage, scale, (float) timeSource.getAsDouble());
 
             float centerX = windowWidth / 2f;
             float centerY = windowHeight / 2f;
 
             Rect logoRect = computeLogoRect(windowWidth, windowHeight, scale);
+            report("logo", logoRect.getLeft(), logoRect.getTop(), logoRect.getWidth(), logoRect.getHeight());
             drawLogo(canvas, logoRect, stage);
 
             if (menu != null) {
                 String splash = menu.getCurrentSplashText();
                 if (splash != null && !splash.isEmpty()) {
-                    float splashCx = logoRect.getRight() - 10f * scale;
-                    float splashCy = logoRect.getTop() + logoRect.getHeight() * 0.95f;
-                    drawSplashText(canvas, splashCx, splashCy, splash);
+                    float[] anchor = splashAnchor(windowWidth, windowHeight, scale);
+                    drawSplashText(canvas, anchor[0], anchor[1], splash);
                 }
             }
 
@@ -148,98 +132,25 @@ public final class SkijaMainMenuRenderer {
         if (fontButton != null) { fontButton.close(); fontButton = null; }
     }
 
-    private void ensureDirtShader() {
-        if (dirtShader != null) return;
-        Image dirt = backend.getDirtTexture();
-        if (dirt == null) return;
-        dirtShader = dirt.makeShader(FilterTileMode.REPEAT, FilterTileMode.REPEAT, SamplingMode.DEFAULT, null);
-    }
-
-    private void drawBackground(Canvas canvas, int w, int h, MainMenuStage stage) {
-        MainMenuStage.BackgroundMode mode =
-                stage != null ? stage.getBackgroundMode() : MainMenuStage.BackgroundMode.DIRT;
-        switch (mode) {
-            case DIRT -> drawDirt(canvas, w, h);
-            case SPACE -> {
-                fillOverscan(canvas, w, h, SPACE_OVERSCAN_COLOR);
-                spaceRenderer.draw(canvas, w, h, spaceTime());
-            }
-            case REVEALING -> drawReveal(canvas, w, h, stage);
-        }
-    }
-
-    private void drawReveal(Canvas canvas, int w, int h, MainMenuStage stage) {
-        fillOverscan(canvas, w, h, SPACE_OVERSCAN_COLOR);
-        spaceRenderer.draw(canvas, w, h, spaceTime());
-
-        // Keep the dirt everywhere the shockwave has not yet reached.
-        int save = canvas.save();
-        try (PathBuilder pb = new PathBuilder()) {
-            float cx = stage.getShockwaveCenterX();
-            float cy = stage.getShockwaveCenterY();
-            float r = stage.getShockwaveRadius();
-            int steps = 64;
-            pb.moveTo(cx + r, cy);
-            for (int i = 1; i <= steps; i++) {
-                double a = 2 * Math.PI * i / steps;
-                pb.lineTo((float) (cx + r * Math.cos(a)), (float) (cy + r * Math.sin(a)));
-            }
-            pb.closePath();
-            try (Path circle = pb.build()) {
-                canvas.clipPath(circle, ClipMode.DIFFERENCE, true);
-            }
-        }
-        drawDirt(canvas, w, h);
-        canvas.restoreToCount(save);
-    }
-
-    private void drawDirt(Canvas canvas, int w, int h) {
-        try (Paint p = new Paint().setColor(0xFF2C2C2C)) {
-            canvas.drawRect(Rect.makeXYWH(0, 0, w, h), p);
-        }
-        if (dirtShader != null) {
-            try (Paint p = new Paint().setShader(dirtShader)) {
-                canvas.save();
-                canvas.scale(4f, 4f);
-                canvas.drawRect(Rect.makeXYWH(0, 0, w / 4f, h / 4f), p);
-                canvas.restore();
-            }
-        }
-        try (Paint p = new Paint().setColor(COLOR_OVERLAY)) {
-            canvas.drawRect(Rect.makeXYWH(0, 0, w, h), p);
-        }
-    }
-
-    private void fillOverscan(Canvas canvas, int w, int h, int color) {
-        try (Paint p = new Paint().setColor(color)) {
-            canvas.drawRect(Rect.makeXYWH(-OVERSCAN_MARGIN, -OVERSCAN_MARGIN,
-                    w + OVERSCAN_MARGIN * 2f, h + OVERSCAN_MARGIN * 2f), p);
-        }
-    }
-
-    private void drawShockwave(Canvas canvas, MainMenuStage stage, float scale) {
-        float cx = stage.getShockwaveCenterX();
-        float cy = stage.getShockwaveCenterY();
-        float r = stage.getShockwaveRadius();
-        int alpha = Math.round(stage.getShockwaveAlpha() * 255f);
-        if (alpha <= 0 || r <= 0f) {
-            return;
-        }
-        try (Paint glow = new Paint().setAntiAlias(true).setMode(PaintMode.STROKE)
-                .setStrokeWidth(10f * scale)
-                .setColor((0x8FE9FF) | (Math.round(alpha * 0.4f) << 24))) {
-            canvas.drawCircle(cx, cy, r, glow);
-        }
-        try (Paint ring = new Paint().setAntiAlias(true).setMode(PaintMode.STROKE)
-                .setStrokeWidth(3f * scale)
-                .setColor((0xFFFFFF) | (alpha << 24))) {
-            canvas.drawCircle(cx, cy, r, ring);
-        }
-    }
-
-    private float spaceTime() {
+    static double spaceTime() {
         Game game = Game.getInstance();
         return game != null ? game.getTotalTimeElapsed() : 0f;
+    }
+
+    /** Where the space scene's clock comes from (the game's elapsed time; fixtures pin it). */
+    public void setTimeSource(java.util.function.DoubleSupplier source) {
+        this.timeSource = source == null ? SkijaMainMenuRenderer::spaceTime : source;
+    }
+
+    /** Receives {@code logo} and the button rects ({@code singleplayer} ... {@code quit}): the gate's oracle (#299). */
+    public void setLayoutSink(java.util.function.BiConsumer<String, float[]> sink) {
+        this.layoutSink = sink;
+    }
+
+    private void report(String part, float x, float y, float w, float h) {
+        if (layoutSink != null) {
+            layoutSink.accept(part, new float[]{x, y, w, h});
+        }
     }
 
     private void drawLogo(Canvas canvas, Rect rect, MainMenuStage stage) {
@@ -269,9 +180,7 @@ public final class SkijaMainMenuRenderer {
     }
 
     private void drawSplashText(Canvas canvas, float cx, float cy, String splash) {
-        long now = LegacyUiClock.millis();
-        float t = (now % 500L) / 500.0f;
-        float scale = 1.0f + (float) (Math.sin(t * Math.PI * 2.0) * 0.05);
+        float scale = splashPulse(LegacyUiClock.millis());
 
         canvas.save();
         canvas.translate(cx, cy);
@@ -294,8 +203,22 @@ public final class SkijaMainMenuRenderer {
         canvas.restore();
     }
 
+    /** Where the splash line pivots: 10 px in from the logo's right edge, 95 % of the way down it. */
+    public static float[] splashAnchor(int windowWidth, int windowHeight, float scale) {
+        Rect logoRect = computeLogoRect(windowWidth, windowHeight, scale);
+        return new float[]{logoRect.getRight() - 10f * scale, logoRect.getTop() + logoRect.getHeight() * 0.95f};
+    }
+
+    /** The splash line's beat: a ±5 % scale pulse every half second of {@code millis}. */
+    public static float splashPulse(long millis) {
+        float t = (millis % 500L) / 500.0f;
+        return 1.0f + (float) (Math.sin(t * Math.PI * 2.0) * 0.05);
+    }
+
     private void drawButton(Canvas canvas, String text, float x, float y, boolean highlighted,
                             float buttonWidth, float buttonHeight) {
+        report(text.toLowerCase(java.util.Locale.ROOT).replace(" game", "").replace(" ", ""), x, y,
+                buttonWidth, buttonHeight);
         int fill = highlighted ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
         MPainter.stoneSurface(canvas, x, y, buttonWidth, buttonHeight, MStyle.BUTTON_RADIUS,
                 fill, MStyle.BUTTON_BORDER,
@@ -318,8 +241,7 @@ public final class SkijaMainMenuRenderer {
     }
 
     public void dispose() {
-        if (dirtShader != null) { dirtShader.close(); dirtShader = null; }
-        spaceRenderer.dispose();
+        backdrop.close();
         disposeFonts();
     }
 }

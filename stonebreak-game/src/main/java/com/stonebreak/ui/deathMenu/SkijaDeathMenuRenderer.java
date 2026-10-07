@@ -9,6 +9,8 @@ import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.Typeface;
 import io.github.humbleui.types.Rect;
 
+import java.util.function.BiConsumer;
+
 /**
  * Skija/MasonryUI-backed renderer for the death menu. Mirrors the pattern used
  * by {@code SkijaPauseMenuRenderer} so all menus share one GL backend and the
@@ -32,6 +34,7 @@ public final class SkijaDeathMenuRenderer {
     private static final int COLOR_OVERLAY        = 0xB4500000; // ~180/255 alpha, dark red
 
     private final SkijaUIBackend backend;
+    private BiConsumer<String, float[]> layoutSink;
 
     private Font fontTitle;
     private Font fontButton;
@@ -39,6 +42,15 @@ public final class SkijaDeathMenuRenderer {
 
     public SkijaDeathMenuRenderer(SkijaUIBackend backend) {
         this.backend = backend;
+    }
+
+    /**
+     * Receives the {@code respawn} button's rect {@code [x, y, w, h]} as {@link #render} draws it:
+     * the fidelity gate's geometry oracle (#299), read from the drawing code itself. Null (the
+     * default) costs nothing.
+     */
+    public void setLayoutSink(BiConsumer<String, float[]> sink) {
+        this.layoutSink = sink;
     }
 
     public void render(int windowWidth, int windowHeight, boolean respawnHovered) {
@@ -65,6 +77,9 @@ public final class SkijaDeathMenuRenderer {
             float buttonX = centerX - buttonWidth / 2f;
             float buttonY = centerY + 20f * scale;
             drawButton(canvas, "Respawn", buttonX, buttonY, respawnHovered, buttonWidth, buttonHeight);
+            if (layoutSink != null) {
+                layoutSink.accept("respawn", new float[]{buttonX, buttonY, buttonWidth, buttonHeight});
+            }
         } finally {
             backend.endFrame();
         }

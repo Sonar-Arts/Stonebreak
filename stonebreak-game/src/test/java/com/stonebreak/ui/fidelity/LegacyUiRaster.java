@@ -37,6 +37,7 @@ public final class LegacyUiRaster implements AutoCloseable {
     public static final long PINNED_SEED = 296L;
 
     private static final Typeface TYPEFACE = loadGameTypeface();
+    private static final io.github.humbleui.skija.Image LOGO = loadImage("/ui/mainMenu/Stonebreak_Logo.png");
 
     public final int width;
     public final int height;
@@ -74,6 +75,11 @@ public final class LegacyUiRaster implements AutoCloseable {
         }
     }
 
+    /** Repaints the checkerboard backdrop (a capture that rendered once to learn its layout). */
+    public void reset() {
+        drawBackdrop();
+    }
+
     /** The frame so far. The backdrop is opaque, so premultiplied and straight alpha agree. */
     public FidelityImage capture() {
         byte[] raw = bitmap.readPixels();
@@ -101,6 +107,17 @@ public final class LegacyUiRaster implements AutoCloseable {
         clock.close(); // back to the outer pin (a live -Dstonebreak.ui.pinclock), not unpinned
         canvas.close();
         bitmap.close();
+    }
+
+    private static io.github.humbleui.skija.Image loadImage(String resource) {
+        try (InputStream in = LegacyUiRaster.class.getResourceAsStream(resource)) {
+            if (in == null) {
+                throw new IllegalStateException("game image missing: " + resource);
+            }
+            return io.github.humbleui.skija.Image.makeFromEncoded(in.readAllBytes());
+        } catch (Exception e) {
+            throw new IllegalStateException("could not load " + resource, e);
+        }
     }
 
     private static Typeface loadGameTypeface() {
@@ -135,6 +152,12 @@ public final class LegacyUiRaster implements AutoCloseable {
         @Override
         public Typeface getMinecraftTypeface() {
             return TYPEFACE;
+        }
+
+        /** The menu logo, as {@code SkijaUIBackend.initialize} loads it (#299: loading, main menu). */
+        @Override
+        public io.github.humbleui.skija.Image getStonebreakLogo() {
+            return LOGO;
         }
     }
 }

@@ -33,6 +33,13 @@ public record TextFieldGeometry(float left, float top, float width, float height
         float padB = pad(s, "padding-bottom", PAD_Y * scale, scale);
         float width = Math.max(0, r.width() - padL - padR);
         float top = multiline ? r.y() + padT : r.y() + (r.height() - m.lineHeight()) / 2f;
+        // -sb-baseline (#299): a single line's baseline at an explicit distance from the top
+        com.openmason.engine.ui.runtime.style.StyleValues.Length b = s.length("-sb-baseline");
+        if (!multiline && b.isFixed()) {
+            top = r.y() + b.px(scale, 0) - m.ascent();
+        } else if (!multiline && b.kind() == com.openmason.engine.ui.runtime.style.StyleValues.Length.Kind.PERCENT) {
+            top = r.y() + r.height() * b.value() / 100f - m.ascent();
+        }
         float height = multiline ? Math.max(0, r.height() - padT - padB) : m.lineHeight();
         return new TextFieldGeometry(r.x() + padL, top, width, height, m.lineHeight(), m.ascent());
     }
@@ -51,7 +58,6 @@ public record TextFieldGeometry(float left, float top, float width, float height
         if (s.get(property) == null) {
             return fallback;
         }
-        StyleValues.Length l = s.length(property);
-        return l.kind() == StyleValues.Length.Kind.POINTS ? l.value() * scale : fallback;
+        return s.length(property).px(scale, fallback);
     }
 }

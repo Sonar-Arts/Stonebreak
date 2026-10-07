@@ -155,6 +155,9 @@ public final class DocumentScreenHost {
         DocumentScreen screen = new DocumentScreen(id, options);
         UiDocumentView view;
         try {
+            // The game's data as of now, not as of the last frame: a screen opening on a state change
+            // binds (and its code-behind reads) what the screen it replaces just set up (#299).
+            com.stonebreak.ui.runtime.GameUiHost.ifPresent(com.stonebreak.ui.runtime.GameUiHost::drain);
             view = opener.open(id, services(screen), options.layer());
         } catch (Exception | LinkageError e) {
             reportRefusal(id, e);

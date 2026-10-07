@@ -72,6 +72,12 @@ public final class SkijaLoadingScreenRenderer {
     private static final int COLOR_DIAGNOSTIC_TEXT  = 0xFFB4B4B4;
 
     private final SkijaUIBackend backend;
+    private java.util.function.BiConsumer<String, float[]> layoutSink;
+
+    /** Receives the {@code logo} and {@code bar} rects as drawn: the fidelity gate's geometry oracle (#299). */
+    public void setLayoutSink(java.util.function.BiConsumer<String, float[]> sink) {
+        this.layoutSink = sink;
+    }
 
     private Font fontTitle;
     private Font fontStage;
@@ -142,6 +148,9 @@ public final class SkijaLoadingScreenRenderer {
         float h = LOGO_HEIGHT;
         float w = h * LOGO_ASPECT;
         Rect dst = Rect.makeXYWH(cx - w / 2f, cy - h / 2f, w, h);
+        if (layoutSink != null) {
+            layoutSink.accept("logo", new float[]{dst.getLeft(), dst.getTop(), w, h});
+        }
         try (ImageFilter shadow = ImageFilter.makeDropShadow(0f, 4f, 6f, 6f, 0xC0000000, null);
              Paint paint = new Paint().setImageFilter(shadow)) {
             canvas.drawImageRect(logo, dst, paint);
@@ -180,6 +189,9 @@ public final class SkijaLoadingScreenRenderer {
         float progress = screen.getProgress();
         float filledWidth = BAR_WIDTH * progress;
 
+        if (layoutSink != null) {
+            layoutSink.accept("bar", new float[]{barX, y, BAR_WIDTH, BAR_HEIGHT});
+        }
         // Background
         MPainter.fillRect(canvas, barX, y, BAR_WIDTH, BAR_HEIGHT, COLOR_BAR_BG);
 
@@ -193,7 +205,7 @@ public final class SkijaLoadingScreenRenderer {
 
         // Percentage text
         if (fontPercent != null) {
-            String text = String.format("%d%%", (int) (progress * 100));
+            String text = LoadingScreen.percentText(progress);
             MPainter.drawCenteredString(canvas, text, cx, y + BAR_HEIGHT / 2f, fontPercent, COLOR_PROGRESS_TEXT);
         }
     }

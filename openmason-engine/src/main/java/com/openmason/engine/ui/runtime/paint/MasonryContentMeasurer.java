@@ -4,6 +4,7 @@ import com.openmason.engine.cenda.FlexMeasure;
 import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.runtime.style.StyleValues;
 import com.openmason.engine.ui.runtime.ContentMeasurer;
 import com.openmason.engine.ui.runtime.TextLineMetrics;
 import com.openmason.engine.ui.runtime.UiElement;
@@ -83,10 +84,10 @@ public final class MasonryContentMeasurer implements ContentMeasurer, AutoClosea
                     TextLayout.Result r = labelLayout(el, widthMode == FlexMeasure.UNDEFINED ? Float.POSITIVE_INFINITY
                         : width, scale);
                     w = (float) Math.ceil(r.width());
-                    h = lineHeight(font) * Math.max(1, r.lineCount());
+                    h = linePitch(el, font, scale) * Math.max(1, r.lineCount());
                 } else if (font != null) {
                     w = MPainter.measureWidth(font, UiTexts.label(el));
-                    h = lineHeight(font);
+                    h = linePitch(el, font, scale);
                 }
             }
             case "TextField" -> {
@@ -99,7 +100,7 @@ public final class MasonryContentMeasurer implements ContentMeasurer, AutoClosea
                         w = Math.max(w, MPainter.measureWidth(font, line));
                     }
                     w += 2 * TEXT_FIELD_PAD_X * scale;
-                    h = lineHeight(font) * Math.max(1, lines.length) + 2 * TEXT_FIELD_PAD_Y * scale;
+                    h = lineHeight(el, font) * Math.max(1, lines.length) + 2 * TEXT_FIELD_PAD_Y * scale;
                 }
             }
             case "Image" -> {
@@ -129,10 +130,19 @@ public final class MasonryContentMeasurer implements ContentMeasurer, AutoClosea
         if (field && el.prop("multiline") instanceof UiValue.Bool b && b.value()) {
             return TEXT_FIELD_PAD_Y * scale - m.getAscent();
         }
+        StyleValues.Length explicit = field ? StyleValues.Length.UNSET : el.computedStyle().length("-sb-baseline");
+        if (explicit.kind() == StyleValues.Length.Kind.PERCENT) {
+            return height * explicit.value() / 100f;
+        }
+        if (explicit.isFixed()) {
+            return explicit.px(scale, 0);
+        }
         if (!field && usesTextLayout(el)) {
             int lines = Math.max(1, labelLayout(el, width, scale).lineCount());
-            float block = (float) Math.ceil(line) * lines;
-            return (height - block) / 2f - m.getAscent();
+            float pitch = linePitch(el, font, scale);
+            // with a line-height, each line sits centred in its box (CSS half-leading)
+            float lead = hasLineHeight(el) ? (pitch - line) / 2f : 0f;
+            return (height - pitch * lines) / 2f + lead - m.getAscent();
         }
         return (height - line) / 2f - m.getAscent();
     }
@@ -145,8 +155,7 @@ public final class MasonryContentMeasurer implements ContentMeasurer, AutoClosea
             return ContentMeasurer.super.textLine(el, scale);
         }
         FontMetrics m = font.getMetrics();
-        return new TextLineMetrics(new FontMeasure(font), (float) Math.ceil(m.getDescent() - m.getAscent()),
-            -m.getAscent());
+        return new TextLineMetrics(new FontMeasure(font), lineHeight(el, font), -m.getAscent());
     }
 
     private record FontMeasure(Font font) implements TextMeasure {
@@ -242,10 +251,16 @@ public final class MasonryContentMeasurer implements ContentMeasurer, AutoClosea
             lastTypeface = tf;
         }
         float fallback = "TextField".equals(el.type()) ? TEXT_FIELD_FONT_SIZE : DEFAULT_FONT_SIZE;
-        float logical = (float) el.computedStyle().number("font-size", fallback);
         float textScale = el.owner().preferences().textScale();
-        float px = Math.round(Math.max(1f, logical * scale * textScale) * 2f) / 2f; // half-pixel grid, like MFonts
+        float raw = Math.max(1f, fontSizePx(el, fallback, scale) * textScale);
+        float px = exactFont(el) ? raw : Math.round(raw * 2f) / 2f; // half-pixel grid, like MFonts
         return fonts.computeIfAbsent(Math.round(px * 100f), k -> new Font(tf, px));
+    }
+
+    /** {@code font-size} in device px: logical px times the scale, or {@code Ndpx} as given (#299). */
+    static float fontSizePx(UiElement el, float fallback, float scale) {
+        StyleValues.Length size = el.computedStyle().length("font-size");
+        return size.isFixed() ? size.px(scale, fallback * scale) : fallback * scale;
     }
 
     /** A font of {@code logical} px at {@code scale} (canvas text, #292), or null without a typeface. */
@@ -264,9 +279,44 @@ public final class MasonryContentMeasurer implements ContentMeasurer, AutoClosea
         return fonts.computeIfAbsent(Math.round(px * 100f), k -> new Font(tf, px));
     }
 
-    private static float lineHeight(Font font) {
+    /**
+     * The distance between a label's baselines: its {@code line-height} when set (#299: legacy
+     * screens stepped wrapped lines by their own pitch), else the font's line height.
+     */
+    public float linePitch(UiElement el, Font font, float scale) {
+        StyleValues.Length lh = el.computedStyle().length("line-height");
+        return lh.isFixed() ? lh.px(scale, 0) : lineHeight(el, font);
+    }
+
+    private static boolean hasLineHeight(UiElement el) {
+        return el.computedStyle().length("line-height").isFixed();
+    }
+
+    private static float lineHeight(UiElement el, Font font) {
         FontMetrics m = font.getMetrics();
-        return (float) Math.ceil(m.getDescent() - m.getAscent());
+        float line = m.getDescent() - m.getAscent();
+        return exact(el) ? line : (float) Math.ceil(line);
+    }
+
+    /**
+     * A document laid out off the pixel grid ({@code -sb-pixel-grid: none}, the legacy-exact screens)
+     * keeps line boxes at the font's real height (not rounded up): legacy renderers place baselines
+     * directly, so a label's baseline must be {@code top + ascent} at every UI scale (#299: rows of
+     * 15 px text at 0.75 and 1.25 landed a fraction of a pixel off otherwise).
+     */
+    private static boolean exact(UiElement el) {
+        var owner = el.owner();
+        return owner != null && owner.pixelGrid() == com.openmason.engine.ui.runtime.UiRuntimeContext.NO_PIXEL_GRID;
+    }
+
+    /**
+     * Text at its true {@code size x scale} (root {@code -sb-font-grid: none}: legacy screens that
+     * built {@code new Font(tf, size * scale)}) instead of the house half-pixel grid ({@code MFonts},
+     * which the Masonry-widget screens drew with).
+     */
+    private static boolean exactFont(UiElement el) {
+        var owner = el.owner();
+        return owner != null && owner.exactFonts();
     }
 
     private static float constrain(float v, float limit, int mode) {

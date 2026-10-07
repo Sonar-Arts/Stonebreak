@@ -2,7 +2,6 @@ package com.stonebreak.input;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
-import com.stonebreak.player.Player;
 import com.stonebreak.ui.DeathMenu;
 import com.stonebreak.ui.PauseMenu;
 import com.stonebreak.ui.PauseMenuActions;
@@ -149,6 +148,12 @@ final class UiMouseRouter {
             statsScreen.updateHover(mouse.x(), mouse.y(), windowWidth, windowHeight);
         }
 
+        // #299: the glossary's hover existed but was never fed (rows, arrows and Back never lit).
+        GlossaryScreen glossaryScreen = game.getGlossaryScreen();
+        if (glossaryScreen != null && glossaryScreen.isVisible()) {
+            glossaryScreen.updateHover(mouse.x(), mouse.y(), windowWidth, windowHeight);
+        }
+
         ChatSystem chatSystem = game.getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             chatRouter.onMouseMove(chatSystem);
@@ -159,16 +164,7 @@ final class UiMouseRouter {
         if (!deathMenu.isRespawnButtonClicked(mouse.x(), mouse.y(), Game.getWindowWidth(), Game.getWindowHeight())) {
             return;
         }
-        Player player = Game.getInstance().getPlayer();
-        if (player != null) {
-            player.respawn();
-        }
-        deathMenu.setVisible(false);
-        // Recapture the mouse now that the death menu is hidden.
-        MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
-        if (mouseCaptureManager != null) {
-            mouseCaptureManager.updateCaptureState();
-        }
+        com.stonebreak.ui.DeathMenuActions.respawn(Game.getInstance());
     }
 
     private void handlePauseMenuClick(PauseMenu pauseMenu) {

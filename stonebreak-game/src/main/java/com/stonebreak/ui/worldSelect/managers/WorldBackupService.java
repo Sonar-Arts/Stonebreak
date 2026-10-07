@@ -31,7 +31,7 @@ import java.util.zip.ZipOutputStream;
  * progress. A finished status expires on its own after {@link #RESULT_TTL_MS} so a result
  * from minutes ago is not still sitting on the screen.
  */
-public final class WorldBackupService {
+public class WorldBackupService {
 
     /** How long a DONE / FAILED status keeps being reported before it reverts to IDLE. */
     public static final long RESULT_TTL_MS = 12_000L;

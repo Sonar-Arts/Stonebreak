@@ -20,9 +20,16 @@ import com.stonebreak.player.Player;
 import com.stonebreak.ui.PauseMenuActions;
 import com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput;
 import com.stonebreak.ui.runtime.contracts.ContainerSlots;
+import com.stonebreak.ui.runtime.contracts.GlossaryView;
+import com.stonebreak.ui.runtime.contracts.LoadingRecord;
+import com.stonebreak.ui.runtime.contracts.MainMenuContracts;
+import com.stonebreak.ui.runtime.contracts.MultiplayerContracts;
+import com.stonebreak.ui.runtime.contracts.SettingsMenuContracts;
+import com.stonebreak.ui.runtime.contracts.WorldSelectContracts;
 import com.stonebreak.ui.runtime.contracts.SettingsContract;
 import com.stonebreak.ui.runtime.contracts.SlotGridSource;
 import com.stonebreak.ui.runtime.contracts.SlotRecords;
+import com.stonebreak.ui.runtime.contracts.StatsRecord;
 import com.stonebreak.ui.runtime.contracts.Vitals;
 import com.stonebreak.ui.settingsMenu.managers.SettingsEffects;
 import com.stonebreak.ui.settingsMenu.managers.SettingsManager;
@@ -63,6 +70,23 @@ import java.util.function.Consumer;
  *       {@code .set-live}, {@code .keep-ui-scale}, {@code .revert-ui-scale}</td></tr>
  *   <tr><td>{@code stonebreak:screen.pause} 1</td><td>{@code stonebreak:screen.pause.resume},
  *       {@code .statistics}, {@code .glossary}, {@code .settings}, {@code .quit}</td></tr>
+ *   <tr><td>{@code stonebreak:player.stats} 1</td><td>root {@code stats}: the local player's activity
+ *       statistics ({@link StatsRecord}) and each written as the statistics screen writes it ({@code text})</td></tr>
+ *   <tr><td>{@code stonebreak:screen.statistics} 1</td><td>{@code stonebreak:screen.statistics.back}</td></tr>
+ *   <tr><td>{@code stonebreak:screen.loading} 1</td><td>root {@code loading}: {@code stage}, {@code progress}
+ *       (0-1) and {@code percent} of the world loading screen ({@link LoadingRecord})</td></tr>
+ *   <tr><td>{@code stonebreak:screen.glossary} 1</td><td>roots {@code glossary} (with the sidebar's
+ *       {@code entries}), {@code glossaryAbilities} ({@link GlossaryView}, published while the glossary is open);
+ *       {@code .select {index}}, {@code .cycle {delta}}, {@code .back}</td></tr>
+ *   <tr><td>{@code stonebreak:screen.death} 1</td><td>{@code stonebreak:screen.death.respawn} (refused
+ *       unless the death menu is up, #299)</td></tr>
+ *   <tr><td>{@code stonebreak:screen.multiplayer}, {@code .host-world}, {@code .join-world} 1</td><td>the
+ *       multiplayer screens ({@link MultiplayerContracts})</td></tr>
+ *   <tr><td>{@code stonebreak:screen.main-menu} 1</td><td>the main menu ({@link MainMenuContracts})</td></tr>
+ *   <tr><td>{@code stonebreak:screen.settings} 1</td><td>the settings screen's widgets
+ *       ({@link SettingsMenuContracts}; the values themselves are {@code stonebreak:settings})</td></tr>
+ *   <tr><td>{@code stonebreak:screen.world-select} 1</td><td>the world select screen
+ *       ({@link WorldSelectContracts})</td></tr>
  *   <tr><td>{@code stonebreak:network.resync} 1</td><td>{@code stonebreak:network.resync} →
  *       {@code {audited}}</td></tr>
  * </table>
@@ -82,6 +106,11 @@ public final class GameUiHost {
     public static final HostContract FURNACE = HostContract.of("stonebreak:furnace", 3);
     public static final HostContract SETTINGS = HostContract.of("stonebreak:settings", 2);
     public static final HostContract PAUSE = HostContract.of("stonebreak:screen.pause", 1);
+    public static final HostContract STATS = HostContract.of("stonebreak:player.stats", 1);
+    public static final HostContract STATISTICS = HostContract.of("stonebreak:screen.statistics", 1);
+    public static final HostContract LOADING = HostContract.of("stonebreak:screen.loading", 1);
+    public static final HostContract GLOSSARY = HostContract.of("stonebreak:screen.glossary", 1);
+    public static final HostContract DEATH = HostContract.of("stonebreak:screen.death", 1);
     public static final HostContract RESYNC = HostContract.of("stonebreak:network.resync", 1);
     public static final HostContract INVENTORY = HostContract.of("stonebreak:inventory", 1);
     public static final HostContract HOTBAR = HostContract.of("stonebreak:hotbar", 1);
@@ -131,7 +160,8 @@ public final class GameUiHost {
         "previousUiScale", DataType.number());
 
     /** The game behind the host. Tests substitute it; nothing here reaches game singletons directly. */
-    public interface Services {
+    public interface Services extends MultiplayerContracts.Services, MainMenuContracts.Services,
+            WorldSelectContracts.Services, SettingsMenuContracts.Services {
         void resume();
 
         void openStatistics();
@@ -141,6 +171,15 @@ public final class GameUiHost {
         void openSettings();
 
         void quitToMenu();
+
+        /**
+         * The death menu's Respawn.
+         *
+         * @return null, or why it was refused (no death menu showing)
+         */
+        default String respawn() {
+            return "no death menu is showing";
+        }
 
         /** @return chunks audited, or -1 when not connected */
         int resync();
@@ -190,6 +229,30 @@ public final class GameUiHost {
         default Vitals vitals() {
             return Vitals.NONE;
         }
+
+        default StatsRecord stats() {
+            return StatsRecord.NONE;
+        }
+
+        /** The world loading screen's progress (nothing while it is hidden). */
+        default LoadingRecord loading() {
+            return LoadingRecord.NONE;
+        }
+
+        /** The open glossary (its selection and data), or null while it is closed. */
+        default com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen() {
+            return null;
+        }
+
+        /** The glossary's Back. @return null, or why it was refused */
+        default String closeGlossary() {
+            return "no glossary is showing";
+        }
+
+        /** The statistics screen's Back. @return null, or why it was refused */
+        default String closeStatistics() {
+            return "no statistics screen is showing";
+        }
     }
 
     private static volatile GameUiHost instance;
@@ -201,6 +264,14 @@ public final class GameUiHost {
     private final DataCell settings;
     private final DataCell carried;
     private final DataCell vitals;
+    private final DataCell stats;
+    private final GlossaryView glossary = new GlossaryView();
+    private final DataCell loading;
+    private final MultiplayerContracts multiplayer;
+    private final MainMenuContracts mainMenu;
+    private final WorldSelectContracts worldSelect;
+    private final SettingsMenuContracts settingsMenu;
+    private LoadingRecord lastLoading = LoadingRecord.NONE;
     private final SlotGridSource inventory = new SlotGridSource("main");
     private final SlotGridSource hotbar = new SlotGridSource("hotbar");
     private final AtomicBoolean furnaceRefreshQueued = new AtomicBoolean();
@@ -208,6 +279,7 @@ public final class GameUiHost {
     private UiValue lastFurnace;
     private ItemStack lastCarried;
     private Vitals lastVitals = Vitals.NONE;
+    private StatsRecord lastStats = StatsRecord.NONE;
     private Inventory polledInventory;
     private java.util.function.IntFunction<ItemStack> mainSlots;
     private java.util.function.IntFunction<ItemStack> hotbarSlots;
@@ -222,6 +294,14 @@ public final class GameUiHost {
         carried = host.data().register("carried", new DataCell(SlotRecords.STACK, SlotRecords.emptyStack()), INVENTORY);
         host.data().register("hotbar", hotbar.collection(), HOTBAR);
         vitals = host.data().register("vitals", new DataCell(Vitals.TYPE, Vitals.NONE.value()), VITALS);
+        stats = host.data().register("stats", new DataCell(StatsRecord.TYPE, StatsRecord.NONE.value()), STATS);
+        loading = host.data().register("loading", new DataCell(LoadingRecord.TYPE, LoadingRecord.NONE.value()), LOADING);
+        host.data().register("glossary", glossary.root(), GLOSSARY);
+        multiplayer = new MultiplayerContracts(host, services);
+        mainMenu = new MainMenuContracts(host, services);
+        worldSelect = new WorldSelectContracts(host, services);
+        settingsMenu = new SettingsMenuContracts(host, services);
+        host.data().register("glossaryAbilities", glossary.abilities(), GLOSSARY);
         PROVIDERS.forEach(host::offerProvider);
         registerActions();
     }
@@ -381,6 +461,21 @@ public final class GameUiHost {
             lastVitals = v;
             vitals.set(v.value());
         }
+        StatsRecord st = services.stats();
+        if (st != null && !st.equals(lastStats)) {
+            lastStats = st;
+            stats.set(st.value());
+        }
+        glossary.refresh(services.glossaryScreen());
+        multiplayer.poll();
+        mainMenu.poll();
+        worldSelect.poll();
+        settingsMenu.poll();
+        LoadingRecord ld = services.loading();
+        if (ld != null && !ld.equals(lastLoading)) {
+            lastLoading = ld;
+            loading.set(ld.value());
+        }
     }
 
     /** Per-world roots back to empty (world left; nothing of the old world may stay on screen). */
@@ -393,6 +488,9 @@ public final class GameUiHost {
         carried.set(SlotRecords.emptyStack());
         lastVitals = Vitals.NONE;
         vitals.set(Vitals.NONE.value());
+        lastStats = StatsRecord.NONE;
+        stats.set(StatsRecord.NONE.value());
+        glossary.clear();
     }
 
     private static boolean sameStack(ItemStack a, ItemStack b) {
@@ -459,6 +557,14 @@ public final class GameUiHost {
         pause("glossary", services::openGlossary);
         pause("settings", services::openSettings);
         pause("quit", services::quitToMenu);
+        screenAction(DEATH, "respawn", services::respawn);
+        screenAction(STATISTICS, "back", services::closeStatistics);
+        screenAction(GLOSSARY, "back", services::closeGlossary);
+        glossaryAction("select", DataType.object("index", DataType.integer()),
+            (g, args) -> g.select(integer(args, "index", -1)) ? null : "no glossary row " + integer(args, "index", -1));
+        glossaryAction("cycle", DataType.object("delta", DataType.integer()),
+            (g, args) -> g.cycleVariant(Integer.signum(integer(args, "delta", 1)))
+                ? null : "this entity has fewer than two discovered variants");
         host.actions().register(ActionSpec.of("stonebreak:network.resync", RESYNC, null,
             DataType.object("audited", DataType.integer())), (args, ctx) -> done(new UiValue.Obj(
                 Map.of("audited", UiValue.of(services.resync())))));
@@ -573,6 +679,33 @@ public final class GameUiHost {
         host.actions().register(ActionSpec.of("stonebreak:screen.pause." + name, PAUSE, null, DataType.ANY), h);
     }
 
+    /** A no-argument screen action ({@code <contract id>.<name>}); the service returns null or why it refused. */
+    private void screenAction(HostContract contract, String name, java.util.function.Supplier<String> run) {
+        host.actions().register(ActionSpec.of(contract.id() + "." + name, contract, null, DataType.ANY), (args, ctx) -> {
+            String problem = run.get();
+            return problem == null ? done(UiValue.NULL)
+                : CompletableFuture.failedFuture(new IllegalStateException(problem));
+        });
+    }
+
+    /** An action on the open glossary's selection; the rule returns null or why it refused. */
+    private void glossaryAction(String name, DataType.Obj params,
+                                java.util.function.BiFunction<com.stonebreak.ui.glossaryScreen.GlossaryScreen, UiValue.Obj, String> rule) {
+        host.actions().register(ActionSpec.of(GLOSSARY.id() + "." + name, GLOSSARY, params, DataType.ANY)
+            .withReentrancy(ActionSpec.Reentrancy.PARALLEL), (args, ctx) -> {
+                var screen = services.glossaryScreen();
+                if (screen == null) {
+                    return CompletableFuture.failedFuture(new IllegalStateException("no glossary is showing"));
+                }
+                String problem = rule.apply(screen, args);
+                if (problem != null) {
+                    return CompletableFuture.failedFuture(new IllegalArgumentException(problem));
+                }
+                glossary.refresh(screen); // the document sees the new selection before the next frame
+                return done(UiValue.NULL);
+            });
+    }
+
     private static String str(UiValue.Obj args, String k) {
         return args.get(k) instanceof UiValue.Str s ? s.value() : "";
     }
@@ -652,6 +785,17 @@ public final class GameUiHost {
         @Override
         public int resync() {
             return inWorld("resync") ? PauseMenuActions.resync(Game.getInstance()) : -1;
+        }
+
+        @Override
+        public String respawn() {
+            Game game = Game.getInstance();
+            com.stonebreak.ui.DeathMenu death = game == null ? null : game.getDeathMenu();
+            if (death == null || !death.isVisible()) {
+                return "no death menu is showing";
+            }
+            com.stonebreak.ui.DeathMenuActions.respawn(game);
+            return null;
         }
 
         /**
@@ -772,6 +916,174 @@ public final class GameUiHost {
         @Override
         public Vitals vitals() {
             return Vitals.of(Game.getPlayer());
+        }
+
+        @Override
+        public StatsRecord stats() {
+            Player p = Game.getPlayer();
+            return p == null ? StatsRecord.NONE : StatsRecord.of(p.getStats());
+        }
+
+        @Override
+        public com.stonebreak.ui.MainMenu mainMenu() {
+            Game game = Game.getInstance();
+            return game != null && game.getState() == com.stonebreak.core.GameState.MAIN_MENU ? game.getMainMenu() : null;
+        }
+
+        @Override
+        public int[] menuWindow() {
+            return new int[]{Game.getWindowWidth(), Game.getWindowHeight()};
+        }
+
+        @Override
+        public float menuScale() {
+            return Settings.getInstance().getUiScale();
+        }
+
+        @Override
+        public String mainMenuChoose(int index) {
+            var menu = mainMenu();
+            if (menu == null) {
+                return "no main menu is showing";
+            }
+            menu.choose(index);
+            return null;
+        }
+
+        @Override
+        public String mainMenuTitle() {
+            var menu = mainMenu();
+            if (menu == null) {
+                return "no main menu is showing";
+            }
+            menu.clickTitle(Game.getWindowWidth(), Game.getWindowHeight());
+            return null;
+        }
+
+        @Override
+        public String multiplayerChoice(String choice) {
+            Game game = Game.getInstance();
+            if (game == null || game.getState() != com.stonebreak.core.GameState.MULTIPLAYER_MENU) {
+                return "no multiplayer menu is showing";
+            }
+            game.setState(switch (choice) {
+                case "host" -> com.stonebreak.core.GameState.HOST_WORLD_SELECT;
+                case "join" -> com.stonebreak.core.GameState.JOIN_WORLD_SCREEN;
+                default -> com.stonebreak.core.GameState.MAIN_MENU;
+            });
+            return null;
+        }
+
+        @Override
+        public String multiplayerBack() {
+            Game game = Game.getInstance();
+            var state = game == null ? null : game.getState();
+            if (state != com.stonebreak.core.GameState.HOST_WORLD_SELECT
+                    && state != com.stonebreak.core.GameState.JOIN_WORLD_SCREEN) {
+                return "no multiplayer screen is showing";
+            }
+            game.setState(com.stonebreak.core.GameState.MULTIPLAYER_MENU);
+            return null;
+        }
+
+        @Override
+        public com.stonebreak.ui.multiplayerMenu.HostWorldScreen hostWorld() {
+            Game game = Game.getInstance();
+            return game != null && game.getState() == com.stonebreak.core.GameState.HOST_WORLD_SELECT
+                ? game.getHostWorldScreen() : null;
+        }
+
+        @Override
+        public String hostSelect(int index) {
+            var screen = hostWorld();
+            if (screen == null) {
+                return "no host screen is showing";
+            }
+            return screen.selectWorld(index) ? null : "no world row " + index;
+        }
+
+        @Override
+        public String hostStart(String port) {
+            var screen = hostWorld();
+            if (screen == null) {
+                throw new IllegalStateException("no host screen is showing");
+            }
+            return screen.startHosting(port);
+        }
+
+        @Override
+        public com.stonebreak.ui.multiplayerMenu.JoinWorldScreen joinWorld() {
+            Game game = Game.getInstance();
+            return game != null && game.getState() == com.stonebreak.core.GameState.JOIN_WORLD_SCREEN
+                ? game.getJoinWorldScreen() : null;
+        }
+
+        @Override
+        public String joinConnect(String host, String port, String username) {
+            var screen = joinWorld();
+            if (screen == null) {
+                throw new IllegalStateException("no join screen is showing");
+            }
+            return screen.connect(host, port, username);
+        }
+
+        @Override
+        public com.stonebreak.ui.settingsMenu.SettingsMenu settingsMenu() {
+            Game game = Game.getInstance();
+            // only while its document shows: the menu then lays out here, once a frame
+            return game != null && game.getState() == com.stonebreak.core.GameState.SETTINGS
+                && com.stonebreak.ui.runtime.screens.StateScreens.get().showing(com.stonebreak.core.GameState.SETTINGS)
+                ? game.getSettingsMenu() : null;
+        }
+
+        @Override
+        public String settingsAction(String name, UiValue.Obj args) {
+            return SettingsMenuContracts.perform(settingsMenu(), name, args);
+        }
+
+        @Override
+        public com.stonebreak.ui.worldSelect.WorldSelectScreen worldSelect() {
+            Game game = Game.getInstance();
+            return game != null && game.getState() == com.stonebreak.core.GameState.WORLD_SELECT
+                ? game.getWorldSelectScreen() : null;
+        }
+
+        @Override
+        public String worldSelectAction(String name, double arg) {
+            return WorldSelectContracts.perform(worldSelect(), name, arg);
+        }
+
+        @Override
+        public LoadingRecord loading() {
+            Game game = Game.getInstance();
+            return LoadingRecord.of(game == null ? null : game.getLoadingScreen());
+        }
+
+        @Override
+        public com.stonebreak.ui.glossaryScreen.GlossaryScreen glossaryScreen() {
+            Game game = Game.getInstance();
+            var screen = game == null ? null : game.getGlossaryScreen();
+            return screen != null && screen.isVisible() ? screen : null;
+        }
+
+        @Override
+        public String closeGlossary() {
+            if (glossaryScreen() == null) {
+                return "no glossary is showing";
+            }
+            Game.getInstance().closeGlossaryScreen();
+            return null;
+        }
+
+        @Override
+        public String closeStatistics() {
+            Game game = Game.getInstance();
+            var screen = game == null ? null : game.getStatisticsScreen();
+            if (screen == null || !screen.isVisible()) {
+                return "no statistics screen is showing";
+            }
+            game.closeStatisticsScreen();
+            return null;
         }
     }
 }

@@ -88,6 +88,12 @@ public final class MultiplayerMenu {
         }
     }
 
+    /** The legacy painter (fixtures read its layout sink). */
+    public MultiplayerUIPainter painter() { return painter; }
+
+    /** 0 Host, 1 Join, 2 Back, -1 none: what the pointer is over. */
+    public int hoveredButton() { return selected; }
+
     public void dispose() {
         if (fontTitle != null)  { fontTitle.close();  fontTitle = null; }
         if (fontButton != null) { fontButton.close(); fontButton = null; }

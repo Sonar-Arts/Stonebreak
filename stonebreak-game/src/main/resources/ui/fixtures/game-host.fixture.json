@@ -6,71 +6,802 @@
     "inventory": "stonebreak:inventory",
     "carried": "stonebreak:inventory",
     "hotbar": "stonebreak:hotbar",
-    "vitals": "stonebreak:player.vitals"
+    "vitals": "stonebreak:player.vitals",
+    "stats": "stonebreak:player.stats",
+    "loading": "stonebreak:screen.loading",
+    "mainMenu": "stonebreak:screen.main-menu",
+    "hostWorld": "stonebreak:screen.host-world",
+    "joinWorld": "stonebreak:screen.join-world",
+    "glossary": "stonebreak:screen.glossary",
+    "glossaryAbilities": "stonebreak:screen.glossary",
+    "worldSelect": "stonebreak:screen.world-select",
+    "settingsMenu": "stonebreak:screen.settings"
   },
   "data": {
-    "session": { "mode": "singleplayer", "online": false, "hosting": false },
+    "session": {
+      "mode": "singleplayer",
+      "online": false,
+      "hosting": false
+    },
     "furnace": {
-      "open": true, "lit": true, "progress": 0.5, "fuel": 0.75,
-      "ingredientSlot": { "item": 9, "objectId": "stonebreak:iron_ore", "name": "Iron Ore", "count": 12, "state": "", "maxStack": 64 },
-      "fuelSlot": { "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0 },
-      "outputSlot": { "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0 },
+      "open": true,
+      "lit": true,
+      "progress": 0.5,
+      "fuel": 0.75,
+      "ingredientSlot": {
+        "item": 9,
+        "objectId": "stonebreak:iron_ore",
+        "name": "Iron Ore",
+        "count": 12,
+        "state": "",
+        "maxStack": 64
+      },
+      "fuelSlot": {
+        "item": 0,
+        "objectId": "",
+        "name": "",
+        "count": 0,
+        "state": "",
+        "maxStack": 0
+      },
+      "outputSlot": {
+        "item": 0,
+        "objectId": "",
+        "name": "",
+        "count": 0,
+        "state": "",
+        "maxStack": 0
+      },
       "cooking": true
     },
-    "carried": { "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0 },
+    "carried": {
+      "item": 0,
+      "objectId": "",
+      "name": "",
+      "count": 0,
+      "state": "",
+      "maxStack": 0
+    },
+    "loading": {
+      "stage": "Generating Caves",
+      "progress": 0.5,
+      "percent": "50%"
+    },
+    "mainMenu": {
+      "splash": "Now with more dirt!",
+      "splashScale": 1,
+      "titleX": 0,
+      "titleY": 0,
+      "titleScale": 1,
+      "titleRotation": 0,
+      "shakeX": 0,
+      "shakeY": 0
+    },
+    "hostWorld": {
+      "worlds": [
+        {
+          "id": "Alpha",
+          "index": 0,
+          "name": "Alpha",
+          "selected": true
+        },
+        {
+          "id": "Beta Base",
+          "index": 1,
+          "name": "Beta Base",
+          "selected": false
+        },
+        {
+          "id": "Gamma",
+          "index": 2,
+          "name": "Gamma",
+          "selected": false
+        }
+      ],
+      "selected": 0,
+      "port": "25565",
+      "status": "",
+      "empty": false
+    },
+    "joinWorld": {
+      "host": "play.example.net",
+      "port": "25565",
+      "username": "Steve",
+      "status": ""
+    },
+    "glossary": {
+      "observedText": "3 / 4 observed",
+      "observedFraction": 0.75,
+      "name": "Cow",
+      "badge": "12 defeated",
+      "defeated": true,
+      "discovered": true,
+      "cycler": true,
+      "chip": "Angus  2/3",
+      "preview": {
+        "entity": "COW",
+        "variant": "Angus"
+      },
+      "unlocked": true,
+      "attributes": {
+        "str": {
+          "value": "8 (-1)",
+          "fraction": 0.4
+        },
+        "dex": {
+          "value": "4 (-3)",
+          "fraction": 0.2
+        },
+        "con": {
+          "value": "5 (-3)",
+          "fraction": 0.25
+        },
+        "int": {
+          "value": "2 (-4)",
+          "fraction": 0.1
+        },
+        "wis": {
+          "value": "3 (-4)",
+          "fraction": 0.15
+        },
+        "cha": {
+          "value": "4 (-3)",
+          "fraction": 0.2
+        }
+      },
+      "derived": {
+        "hp": "12",
+        "spd": "0.4",
+        "atk": "0"
+      },
+      "weaknessKnown": true,
+      "weaknessName": "BLEED",
+      "weaknessText": "Thick hide, but deep cuts keep bleeding long after the blow.",
+      "hasAbilities": true,
+      "entries": [
+        {
+          "id": "COW",
+          "index": 0,
+          "name": "Cow",
+          "sub": "3/4 variants",
+          "observed": true,
+          "complete": false,
+          "selected": true
+        },
+        {
+          "id": "SHEEP",
+          "index": 1,
+          "name": "Sheep",
+          "sub": "1/3 variants",
+          "observed": true,
+          "complete": false,
+          "selected": false
+        },
+        {
+          "id": "CHICKEN",
+          "index": 2,
+          "name": "Chicken",
+          "sub": "1/1 variants",
+          "observed": true,
+          "complete": true,
+          "selected": false
+        },
+        {
+          "id": "GOOSE",
+          "index": 3,
+          "name": "Goose",
+          "sub": "Not yet observed",
+          "observed": false,
+          "complete": false,
+          "selected": false
+        }
+      ]
+    },
+    "stats": {
+      "present": true,
+      "entitiesKilled": 1234,
+      "killsCow": 12,
+      "killsSheep": 7,
+      "killsChicken": 1203,
+      "damageDealt": 4567.25,
+      "totalDistance": 15432.5,
+      "distanceWalked": 9876.4,
+      "distanceSprinted": 4321,
+      "distanceInAir": 512.75,
+      "timeInAir": 3725,
+      "text": {
+        "entitiesKilled": "1,234",
+        "killsCow": "12",
+        "killsSheep": "7",
+        "killsChicken": "1,203",
+        "damageDealt": "4567.3",
+        "totalDistance": "15.43 km",
+        "distanceWalked": "9.88 km",
+        "distanceSprinted": "4.32 km",
+        "distanceInAir": "512.8 m",
+        "timeInAir": "1h 2m 5s"
+      }
+    },
     "vitals": {
-      "present": true, "health": 16, "maxHealth": 20, "stamina": 80, "maxStamina": 100,
-      "mana": 35, "maxMana": 50, "level": 3, "xp": 120, "xpNext": 200, "dead": false
+      "present": true,
+      "health": 16,
+      "maxHealth": 20,
+      "stamina": 80,
+      "maxStamina": 100,
+      "mana": 35,
+      "maxMana": 50,
+      "level": 3,
+      "xp": 120,
+      "xpNext": 200,
+      "dead": false
     },
     "settings": {
-      "windowWidth": 1920, "windowHeight": 1080, "vsyncEnabled": false, "maxFps": 144,
-      "masterVolume": 0.5, "musicVolume": 0.5, "musicEnabled": true,
-      "armModelType": "REGULAR", "selectedHat": "NONE", "selectedHair": "NONE",
-      "crosshairStyle": "SIMPLE_CROSS", "crosshairSize": 16, "crosshairThickness": 2, "crosshairGap": 4,
-      "crosshairOpacity": 1, "crosshairColorR": 1, "crosshairColorG": 1, "crosshairColorB": 1, "crosshairOutline": true,
-      "leafTransparency": true, "waterShaderEnabled": true, "cloudsEnabled": true, "godRaysEnabled": true,
-      "shadowsEnabled": true, "playerNameTagsEnabled": true, "shadowQuality": "MEDIUM", "shadowDistance": 96,
-      "smoothLightingEnabled": true, "renderDistance": 8, "lodDistance": 16, "lodEnabled": true, "lodQuality": "MEDIUM",
-      "uiScale": 1, "uiTextScale": 1, "reducedMotion": false
+      "windowWidth": 1920,
+      "windowHeight": 1080,
+      "vsyncEnabled": false,
+      "maxFps": 144,
+      "masterVolume": 0.5,
+      "musicVolume": 0.5,
+      "musicEnabled": true,
+      "armModelType": "REGULAR",
+      "selectedHat": "NONE",
+      "selectedHair": "NONE",
+      "crosshairStyle": "SIMPLE_CROSS",
+      "crosshairSize": 16,
+      "crosshairThickness": 2,
+      "crosshairGap": 4,
+      "crosshairOpacity": 1,
+      "crosshairColorR": 1,
+      "crosshairColorG": 1,
+      "crosshairColorB": 1,
+      "crosshairOutline": true,
+      "leafTransparency": true,
+      "waterShaderEnabled": true,
+      "cloudsEnabled": true,
+      "godRaysEnabled": true,
+      "shadowsEnabled": true,
+      "playerNameTagsEnabled": true,
+      "shadowQuality": "MEDIUM",
+      "shadowDistance": 96,
+      "smoothLightingEnabled": true,
+      "renderDistance": 8,
+      "lodDistance": 16,
+      "lodEnabled": true,
+      "lodQuality": "MEDIUM",
+      "uiScale": 1,
+      "uiTextScale": 1,
+      "reducedMotion": false
+    },
+    "worldSelect": {
+      "rows": [
+        {
+          "id": "Alpha",
+          "index": 0,
+          "name": "Alpha",
+          "meta": "Last played 3/14/2026   -   Seed: 12345",
+          "size": "4.2 MB",
+          "selected": true,
+          "hovered": false
+        },
+        {
+          "id": "Beta Base",
+          "index": 1,
+          "name": "Beta Base",
+          "meta": "Last played 2/2/2026   -   Seed: -998877",
+          "size": "812 KB",
+          "selected": false,
+          "hovered": false
+        },
+        {
+          "id": "Gamma",
+          "index": 2,
+          "name": "Gamma",
+          "meta": "Seed: 42",
+          "size": "",
+          "selected": false,
+          "hovered": false
+        }
+      ],
+      "empty": false,
+      "hasSelection": true,
+      "titleY": 118.8,
+      "subtitleY": 156.8,
+      "panelY": 184.8,
+      "scrollbar": false,
+      "thumbOffset": 0.0,
+      "thumbHeight": 0.0,
+      "card": {
+        "shown": false,
+        "x": 0.0,
+        "y": 0.0,
+        "title": "",
+        "size": "",
+        "chunks": "",
+        "seed": "",
+        "created": "",
+        "lastPlayed": "",
+        "playTime": "",
+        "backupLabel": "",
+        "backupEnabled": false,
+        "status": "",
+        "statusKind": "",
+        "running": false,
+        "progress": 0.0
+      },
+      "delete": {
+        "shown": false,
+        "line": ""
+      }
+    },
+    "settingsMenu": {
+      "titleY": 312.0,
+      "offset": 0.0,
+      "categories": [
+        {
+          "id": "GENERAL",
+          "index": 0,
+          "name": "General",
+          "selected": true
+        },
+        {
+          "id": "QUALITY",
+          "index": 1,
+          "name": "Quality",
+          "selected": false
+        },
+        {
+          "id": "PERFORMANCE",
+          "index": 2,
+          "name": "Performance",
+          "selected": false
+        },
+        {
+          "id": "ADVANCED",
+          "index": 3,
+          "name": "Advanced",
+          "selected": false
+        },
+        {
+          "id": "EXTRAS",
+          "index": 4,
+          "name": "Extras",
+          "selected": false
+        },
+        {
+          "id": "AUDIO",
+          "index": 5,
+          "name": "Audio",
+          "selected": false
+        }
+      ],
+      "rows": [
+        {
+          "id": "RESOLUTION",
+          "index": 0,
+          "kind": "dropdown",
+          "label": "Resolution: 1920x1080",
+          "fraction": 0.0,
+          "open": false,
+          "items": [
+            {
+              "id": "item0",
+              "text": "1024x768",
+              "current": false
+            },
+            {
+              "id": "item1",
+              "text": "1280x720",
+              "current": false
+            },
+            {
+              "id": "item2",
+              "text": "1366x768",
+              "current": false
+            },
+            {
+              "id": "item3",
+              "text": "1600x900",
+              "current": false
+            },
+            {
+              "id": "item4",
+              "text": "1920x1080",
+              "current": true
+            },
+            {
+              "id": "item5",
+              "text": "2560x1440",
+              "current": false
+            },
+            {
+              "id": "item6",
+              "text": "3840x2160",
+              "current": false
+            }
+          ]
+        },
+        {
+          "id": "UI_SCALE",
+          "index": 1,
+          "kind": "slider",
+          "label": "UI Scale: 1.0x",
+          "fraction": 0.3333,
+          "open": false,
+          "items": []
+        }
+      ],
+      "scrollbar": false,
+      "thumbTop": 0.0,
+      "thumbHeight": 0.0,
+      "confirm": {
+        "shown": false,
+        "pending": "",
+        "countdown": ""
+      }
     }
   },
   "editable": {
-    "settings": { "commit": "stonebreak:settings.apply" }
+    "settings": {
+      "commit": "stonebreak:settings.apply"
+    }
   },
   "collections": {
     "inventory": {
       "identity": "slot",
       "items": [
-        { "slot": "main:0", "item": 3, "objectId": "stonebreak:stone", "name": "Stone", "count": 64, "state": "", "maxStack": 64, "selected": false },
-        { "slot": "main:1", "item": 2, "objectId": "stonebreak:dirt", "name": "Dirt", "count": 23, "state": "", "maxStack": 64, "selected": false },
-        { "slot": "main:2", "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0, "selected": false }
+        {
+          "slot": "main:0",
+          "item": 3,
+          "objectId": "stonebreak:stone",
+          "name": "Stone",
+          "count": 64,
+          "state": "",
+          "maxStack": 64,
+          "selected": false
+        },
+        {
+          "slot": "main:1",
+          "item": 2,
+          "objectId": "stonebreak:dirt",
+          "name": "Dirt",
+          "count": 23,
+          "state": "",
+          "maxStack": 64,
+          "selected": false
+        },
+        {
+          "slot": "main:2",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        }
+      ]
+    },
+    "glossaryAbilities": {
+      "identity": "id",
+      "items": [
+        {
+          "id": "COW:0",
+          "text": "Milkable: right-click with a bucket"
+        },
+        {
+          "id": "COW:1",
+          "text": "Herd instinct: flees with nearby cows when one is struck"
+        }
       ]
     },
     "hotbar": {
       "identity": "slot",
       "items": [
-        { "slot": "hotbar:0", "item": 4, "objectId": "stonebreak:wood", "name": "Wood", "count": 10, "state": "", "maxStack": 64, "selected": true },
-        { "slot": "hotbar:1", "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0, "selected": false }
+        {
+          "slot": "hotbar:0",
+          "item": 4,
+          "objectId": "stonebreak:wood",
+          "name": "Wood",
+          "count": 10,
+          "state": "",
+          "maxStack": 64,
+          "selected": true
+        },
+        {
+          "slot": "hotbar:1",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        }
       ]
     }
   },
   "actions": {
-    "stonebreak:screen.pause.resume": { "contract": "stonebreak:screen.pause" },
-    "stonebreak:screen.pause.statistics": { "contract": "stonebreak:screen.pause" },
-    "stonebreak:screen.pause.glossary": { "contract": "stonebreak:screen.pause" },
-    "stonebreak:screen.pause.settings": { "contract": "stonebreak:screen.pause" },
-    "stonebreak:screen.pause.quit": { "contract": "stonebreak:screen.pause" },
-    "stonebreak:network.resync": { "contract": "stonebreak:network.resync", "result": { "audited": 12 } },
-    "stonebreak:settings.set-live": { "contract": "stonebreak:settings", "params": { "field": "string", "value": "any" } },
-    "stonebreak:settings.keep-ui-scale": { "contract": "stonebreak:settings" },
-    "stonebreak:settings.revert-ui-scale": { "contract": "stonebreak:settings" },
-    "stonebreak:inventory.slot-click": { "contract": "stonebreak:inventory", "params": { "slot": "string", "button": "int", "shift": "bool" }, "reentrancy": "parallel" },
-    "stonebreak:inventory.slot-press": { "contract": "stonebreak:inventory", "params": { "slot": "string", "button": "int", "shift": "bool" }, "reentrancy": "parallel" },
-    "stonebreak:inventory.slot-drag": { "contract": "stonebreak:inventory", "params": { "slot": "string", "button": "int" }, "reentrancy": "parallel" },
-    "stonebreak:inventory.slot-release": { "contract": "stonebreak:inventory", "reentrancy": "parallel" },
-    "stonebreak:inventory.sort": { "contract": "stonebreak:inventory", "reentrancy": "parallel" },
-    "stonebreak:inventory.craft-all": { "contract": "stonebreak:inventory", "reentrancy": "parallel" },
-    "stonebreak:inventory.close": { "contract": "stonebreak:inventory" },
-    "stonebreak:hotbar.select": { "contract": "stonebreak:hotbar", "params": { "index": "int" }, "reentrancy": "parallel" }
+    "stonebreak:screen.pause.resume": {
+      "contract": "stonebreak:screen.pause"
+    },
+    "stonebreak:screen.pause.statistics": {
+      "contract": "stonebreak:screen.pause"
+    },
+    "stonebreak:screen.pause.glossary": {
+      "contract": "stonebreak:screen.pause"
+    },
+    "stonebreak:screen.pause.settings": {
+      "contract": "stonebreak:screen.pause"
+    },
+    "stonebreak:screen.pause.quit": {
+      "contract": "stonebreak:screen.pause"
+    },
+    "stonebreak:screen.death.respawn": {
+      "contract": "stonebreak:screen.death"
+    },
+    "stonebreak:screen.statistics.back": {
+      "contract": "stonebreak:screen.statistics"
+    },
+    "stonebreak:screen.glossary.back": {
+      "contract": "stonebreak:screen.glossary"
+    },
+    "stonebreak:screen.main-menu.singleplayer": {
+      "contract": "stonebreak:screen.main-menu"
+    },
+    "stonebreak:screen.main-menu.multiplayer": {
+      "contract": "stonebreak:screen.main-menu"
+    },
+    "stonebreak:screen.main-menu.settings": {
+      "contract": "stonebreak:screen.main-menu"
+    },
+    "stonebreak:screen.main-menu.quit": {
+      "contract": "stonebreak:screen.main-menu"
+    },
+    "stonebreak:screen.main-menu.title": {
+      "contract": "stonebreak:screen.main-menu"
+    },
+    "stonebreak:screen.multiplayer.host": {
+      "contract": "stonebreak:screen.multiplayer"
+    },
+    "stonebreak:screen.multiplayer.join": {
+      "contract": "stonebreak:screen.multiplayer"
+    },
+    "stonebreak:screen.multiplayer.back": {
+      "contract": "stonebreak:screen.multiplayer"
+    },
+    "stonebreak:screen.host-world.select": {
+      "contract": "stonebreak:screen.host-world",
+      "params": {
+        "index": "int"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.host-world.start": {
+      "contract": "stonebreak:screen.host-world",
+      "params": {
+        "port": "string"
+      },
+      "result": {
+        "status": ""
+      }
+    },
+    "stonebreak:screen.host-world.back": {
+      "contract": "stonebreak:screen.host-world"
+    },
+    "stonebreak:screen.join-world.connect": {
+      "contract": "stonebreak:screen.join-world",
+      "params": {
+        "host": "string",
+        "port": "string",
+        "username": "string"
+      },
+      "result": {
+        "status": "Connecting to play.example.net:25565 ...",
+        "username": "Steve"
+      }
+    },
+    "stonebreak:screen.join-world.back": {
+      "contract": "stonebreak:screen.join-world"
+    },
+    "stonebreak:screen.glossary.select": {
+      "contract": "stonebreak:screen.glossary",
+      "params": {
+        "index": "int"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.glossary.cycle": {
+      "contract": "stonebreak:screen.glossary",
+      "params": {
+        "delta": "int"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:network.resync": {
+      "contract": "stonebreak:network.resync",
+      "result": {
+        "audited": 12
+      }
+    },
+    "stonebreak:settings.set-live": {
+      "contract": "stonebreak:settings",
+      "params": {
+        "field": "string",
+        "value": "any"
+      }
+    },
+    "stonebreak:settings.keep-ui-scale": {
+      "contract": "stonebreak:settings"
+    },
+    "stonebreak:settings.revert-ui-scale": {
+      "contract": "stonebreak:settings"
+    },
+    "stonebreak:inventory.slot-click": {
+      "contract": "stonebreak:inventory",
+      "params": {
+        "slot": "string",
+        "button": "int",
+        "shift": "bool"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:inventory.slot-press": {
+      "contract": "stonebreak:inventory",
+      "params": {
+        "slot": "string",
+        "button": "int",
+        "shift": "bool"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:inventory.slot-drag": {
+      "contract": "stonebreak:inventory",
+      "params": {
+        "slot": "string",
+        "button": "int"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:inventory.slot-release": {
+      "contract": "stonebreak:inventory",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:inventory.sort": {
+      "contract": "stonebreak:inventory",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:inventory.craft-all": {
+      "contract": "stonebreak:inventory",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:inventory.close": {
+      "contract": "stonebreak:inventory"
+    },
+    "stonebreak:hotbar.select": {
+      "contract": "stonebreak:hotbar",
+      "params": {
+        "index": "int"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.select": {
+      "contract": "stonebreak:screen.world-select",
+      "params": {
+        "index": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.hover": {
+      "contract": "stonebreak:screen.world-select",
+      "params": {
+        "index": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.wheel": {
+      "contract": "stonebreak:screen.world-select",
+      "params": {
+        "dy": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.move": {
+      "contract": "stonebreak:screen.world-select",
+      "params": {
+        "delta": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.hover-card": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.activate": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.play": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.create": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.delete": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.confirm-delete": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.cancel-delete": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.back": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.open-folder": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.backup": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.press": {
+      "contract": "stonebreak:screen.settings",
+      "params": {
+        "target": "string",
+        "fraction": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.drag": {
+      "contract": "stonebreak:screen.settings",
+      "params": {
+        "fraction": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.scrollbar": {
+      "contract": "stonebreak:screen.settings",
+      "params": {
+        "x": "number",
+        "y": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.scrollbar-drag": {
+      "contract": "stonebreak:screen.settings",
+      "params": {
+        "y": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.release": {
+      "contract": "stonebreak:screen.settings",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.wheel": {
+      "contract": "stonebreak:screen.settings",
+      "params": {
+        "x": "number",
+        "y": "number",
+        "dy": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.key": {
+      "contract": "stonebreak:screen.settings",
+      "params": {
+        "key": "int",
+        "shift": "bool"
+      },
+      "reentrancy": "parallel"
+    }
   }
 }

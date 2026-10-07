@@ -80,20 +80,50 @@ public final class GameScreens {
         pauseMenu.setPresentation(new com.stonebreak.ui.pauseMenu.PauseDocument(
                 com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
         statisticsScreen = new StatisticsScreen(skija);
+        statisticsScreen.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(
+                StatisticsScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                com.stonebreak.ui.runtime.screens.DocumentScreen.Options.screen()));
         glossaryScreen = new GlossaryScreen(skija);
+        glossaryScreen.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(
+                GlossaryScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                com.stonebreak.ui.runtime.screens.DocumentScreen.Options.screen()));
         deathMenu = new DeathMenu(skija);
+        // The shipped OMUI/SBUI death screen (#299) when present and not rolled back; legacy otherwise.
+        deathMenu.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(DeathMenu.DOCUMENT_ID,
+                com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                com.stonebreak.ui.runtime.screens.DocumentScreen.Options.screen()));
         mainMenu = new MainMenu(skija);
+        com.stonebreak.ui.runtime.screens.StateScreens.get().register(com.stonebreak.core.GameState.MAIN_MENU,
+                new com.stonebreak.ui.mainMenu.MainMenuDocument(mainMenu,
+                        com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
         settingsMenu = new SettingsMenu(skija);
+        stateDocument(com.stonebreak.core.GameState.SETTINGS, "settings");
         multiplayerMenu = new MultiplayerMenu(skija);
         hostWorldScreen = new HostWorldScreen(skija);
         joinWorldScreen = new JoinWorldScreen(skija);
+        // Screens that are a game state: their shipped documents follow the state (#299).
+        stateDocument(com.stonebreak.core.GameState.MULTIPLAYER_MENU, "multiplayer");
+        stateDocument(com.stonebreak.core.GameState.HOST_WORLD_SELECT, "host_world");
+        stateDocument(com.stonebreak.core.GameState.JOIN_WORLD_SCREEN, "join_world");
         loadingScreen = new LoadingScreen(skija);
+        loadingScreen.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(
+                LoadingScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                com.stonebreak.ui.runtime.screens.DocumentScreen.Options.menu()));
         worldSelectScreen = new WorldSelectScreen(skija);
+        stateDocument(com.stonebreak.core.GameState.WORLD_SELECT, "world_select");
         characterCreationScreen = new CharacterCreationScreen(skija);
         terrainMapperScreen = new TerrainMapperScreen(skija);
         startupIntroScreen = new SonarArtsIntroScreen(skija);
         // Needs only the backend; the battle coordinator binds/unbinds it per encounter.
         focusBattleScreen = new com.stonebreak.ui.focusBattle.FocusBattleScreen(skija);
+    }
+
+    /** Shows the shipped document {@code ui/documents/<id>.sbui} whenever the game is in {@code state}. */
+    private static void stateDocument(com.stonebreak.core.GameState state, String id) {
+        com.stonebreak.ui.runtime.screens.StateScreens.get().register(state,
+                new com.stonebreak.ui.runtime.screens.PresentedDocument(id,
+                        com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                        com.stonebreak.ui.runtime.screens.DocumentScreen.Options.menu()));
     }
 
     /**

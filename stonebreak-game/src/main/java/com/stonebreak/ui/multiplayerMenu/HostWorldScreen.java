@@ -51,13 +51,60 @@ public final class HostWorldScreen {
     private long lastBlinkMs = LegacyUiClock.millis();
     private boolean caretOn = true;
 
+    /** Where {@link #onShow} finds the worlds (the save folder; fixtures pin a list). */
+    private java.util.function.Supplier<List<String>> worldSource = discovery::discoverWorlds;
+
     public HostWorldScreen(SkijaUIBackend backend) {
         this.backend = backend;
         this.painter = new MultiplayerUIPainter(backend);
     }
 
+    public void setWorldSource(java.util.function.Supplier<List<String>> source) {
+        this.worldSource = source == null ? discovery::discoverWorlds : source;
+    }
+
+    // ── state the UI host publishes and its actions change (#299: the document shares these rules) ──
+
+    public List<String> worlds() { return worlds; }
+    public int selectedWorld() { return selectedWorld; }
+    public int hoveredWorld() { return hoverWorld; }
+    public String portText() { return portText; }
+    public String statusMessage() { return statusMessage; }
+
+    /** @return false when there is no such row (only the first {@value #MAX_VISIBLE_WORLDS} are shown) */
+    public boolean selectWorld(int index) {
+        if (index < 0 || index >= Math.min(worlds.size(), MAX_VISIBLE_WORLDS)) {
+            return false;
+        }
+        selectedWorld = index;
+        return true;
+    }
+
+    /**
+     * Start Hosting with the port as typed (digits only, at most 5, as the field accepts them).
+     *
+     * @return the status line the screen shows afterwards ("" once hosting started)
+     */
+    public String startHosting(String typedPort) {
+        StringBuilder digits = new StringBuilder();
+        for (char ch : (typedPort == null ? "" : typedPort).toCharArray()) {
+            if (ch >= '0' && ch <= '9' && digits.length() < 5) {
+                digits.append(ch);
+            }
+        }
+        portText = digits.toString();
+        statusMessage = "";
+        startHosting();
+        return statusMessage;
+    }
+
+    /** Sets the port field and the hover (fixtures). */
+    public void setPortText(String text) { portText = text; }
+
+    public void setPortFocused(boolean focused) { portFocused = focused; }
+
     public void onShow() {
-        worlds = discovery.discoverWorlds();
+        worlds = worldSource.get();
         selectedWorld = worlds.isEmpty() ? -1 : 0;
         portText = String.valueOf(Settings.getInstance().getMultiplayerPort());
         statusMessage = "";
@@ -92,7 +139,7 @@ public final class HostWorldScreen {
             float listX = cx - WORLD_ROW_W / 2f;
             float listY = 130f;
             if (worlds.isEmpty()) {
-                painter.drawCentered(c, "(No worlds found — create one in Singleplayer first)",
+                painter.drawCentered(c, "(No worlds found - create one in Singleplayer first)",
                         cx, listY + 40f, fontBody, MultiplayerUIPainter.COLOR_TEXT_DIM);
             }
             for (int i = 0; i < Math.min(worlds.size(), MAX_VISIBLE_WORLDS); i++) {
@@ -211,6 +258,12 @@ public final class HostWorldScreen {
         // authoritative world, then the in-process local client which builds the render world.
         MultiplayerSession.startHosting(worldName, seed, port);
     }
+
+    /** The legacy painter (fixtures read its layout sink). */
+    public MultiplayerUIPainter painter() { return painter; }
+
+    /** 0 Start Hosting, 1 Back, -1 none. */
+    public int hoveredButton() { return hoverButton; }
 
     public void dispose() {
         if (fontTitle  != null) { fontTitle.close();  fontTitle  = null; }

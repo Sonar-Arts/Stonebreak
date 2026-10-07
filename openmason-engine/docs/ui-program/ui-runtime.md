@@ -339,7 +339,41 @@ Per element:
 `-sb-text-effect` picks a label's `shadow` (default), `none`, or `title` (`MPainter.drawTitleText`: the pause /
 statistics / glossary title stack, layers 2 device px apart). The root's `-sb-pixel-grid: none` lays out and places
 without snapping (the instance rebuilds its flex tree when the value changes); `device` snaps; absent = the host's
-`UiRuntimeContext.pixelGrid`. The pause document uses all three and matches the legacy renderer pixel for pixel
+`UiRuntimeContext.pixelGrid`. Off the grid, an auto line box is the font's real height (not rounded up), so a
+label's baseline is `top + ascent` (`0.75 x font-size` for the game font) at every UI scale (#299). Fonts sit on the
+house half-pixel grid (`MFonts`, what the Masonry-widget screens drew with) unless the root says `-sb-font-grid: none`:
+then text is exactly `font-size x scale`, as legacy screens that built `new Font(tf, size * scale)` drew (statistics).
+
+More of the house look as style (#299, all `ui-masonry` unless noted):
+- **`Ndpx` lengths**: device pixels the UI scale never multiplies, for box geometry only (size, position, margin,
+  padding, border widths, gaps, `border-radius`, `-sb-baseline`, `line-height`). Legacy screens drew 1 px rules,
+  4 px shadows and 3 px radii at every scale; `height: "1dpx"` says so instead of a script dividing by the scale.
+- **`-sb-baseline`**: a label's first baseline as a distance from its top (logical px, `dpx` or `%` of its height),
+  instead of the font's ascent. Masonry widgets placed text at `y + h/2 + 0.35 x size` from unsnapped sizes while
+  drawing with snapped fonts; an explicit baseline reproduces that at every scale. A label whose box starts at its
+  baseline (`-sb-baseline: 0`) stacks like the legacy text cursor did.
+- **`line-height`** (`ui-text`, inherited): the pitch of a label's lines (each line box that tall, text centred in it);
+  absent = the font's line height.
+- **`-sb-symbol`**: a house vector symbol (`lock`, `check`, `warning`, `star`, `chevron-left`, ... = `MSymbol`)
+  centred in the element's box, in its `color`, with the 1 px house shadow unless `-sb-text-effect: none`.
+- **`-sb-surface: inset`**: the recessed dark well (`MPainter.inset`, the glossary's panes).
+- **`-sb-shadow-color`** (+ `-sb-shadow-offset-x/-y`, `-sb-shadow-blur` = sigma, logical or `dpx`): a Skia drop
+  shadow under the element's own paint. On an `Image` without a background it rides on the image's paint, exactly
+  as a legacy `drawImageRect` with an image-filter paint (the menu logo); otherwise the element paints into a
+  filtered layer.
+- **`-sb-sampling: nearest-raw`**: Skia's own nearest sampling and exact patch geometry, as a legacy
+  `drawImageRect` call, without the #328 tie bias (so game and preview may break pixel-centre ties apart). Plain
+  PNG textures decode premultiplied by the codec, as `Image.makeFromEncoded` does, so translucent edges round the
+  same as legacy draws (`MTexturePngDecodeTest`).
+- **`font-size: Ndpx`**: text the UI scale never enlarges (the loading screen draws in device pixels).
+- **Text fields** (#299): `-sb-baseline` places a single-line `TextField`'s baseline too; `-sb-caret: underscore`
+  draws the legacy "_" caret after the text instead of the bar; `-sb-border-align: center` strokes a uniform border
+  centred on the edge (a legacy `canvas.drawRect` stroke) instead of inside it.
+- **`-sb-clip: antialias`** (#299): an element that clips its children (`overflow: hidden`, scroll containers)
+  clips with anti-aliased edges, as the Masonry scroll viewport does; the default `hard` clip snaps to pixels.
+- Elements of zero width or height do not paint themselves (their children still do): give text its natural height
+  and place it with `-sb-baseline`. Layout borders take room (Yoga): a pill's 1 px rim that must not move its text is
+  an absolutely placed overlay child. The pause document uses all three and matches the legacy renderer pixel for pixel
 (`PauseDocumentGateTest`).
 
 | Widget | Look |

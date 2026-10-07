@@ -16,12 +16,23 @@ import io.github.humbleui.skija.PaintMode;
 import io.github.humbleui.skija.Typeface;
 import io.github.humbleui.types.Rect;
 
+/**
+ * The world loading screen. Since #299 it may be shown as the shipped UI document
+ * {@value #DOCUMENT_ID} ({@link #setPresentation}); show/hide, the LOADING state and the stage
+ * reports stay here, and the UI host publishes the stage and progress.
+ */
 public class LoadingScreen {
+
+    /** The shipped document's screen id ({@code ui/documents/loading.sbui}). */
+    public static final String DOCUMENT_ID = "loading";
+
     private final SkijaUIBackend backend;
     private final SkijaLoadingScreenRenderer renderer;
-    private boolean visible = false;
-    private String currentStageName = "Initializing...";
-    private int currentStageIndex = 0;
+    private final com.stonebreak.ui.runtime.screens.PresentationSlot presentation =
+            new com.stonebreak.ui.runtime.screens.PresentationSlot();
+    // Reported from generation threads, read by the render thread and the UI host.
+    private volatile String currentStageName = "Initializing...";
+    private volatile int currentStageIndex = 0;
     private String errorMessage = null;
     private boolean hasError = false;
     private final List<String> stages = Arrays.asList(
@@ -72,7 +83,12 @@ public class LoadingScreen {
     }
 
     public void show() {
-        this.visible = true;
+        showProgress();
+        Game.getInstance().setState(GameState.LOADING);
+    }
+
+    /** Resets to the first stage and shows, without entering LOADING (fixtures; the game calls {@link #show}). */
+    public void showProgress() {
         this.currentStageIndex = 0;
         this.errorMessage = null;
         this.hasError = false;
@@ -81,11 +97,16 @@ public class LoadingScreen {
         } else {
             this.currentStageName = "Loading...";
         }
-        Game.getInstance().setState(GameState.LOADING);
+        presentation.setVisible(true);
+    }
+
+    /** Stops showing without touching the game state (the game already left LOADING another way). */
+    public void dismiss() {
+        presentation.setVisible(false);
     }
 
     public void hide() {
-        this.visible = false;
+        presentation.setVisible(false);
         Game gameInstance = Game.getInstance();
         gameInstance.setState(GameState.PLAYING);
     }
@@ -105,7 +126,17 @@ public class LoadingScreen {
     }
 
     public boolean isVisible() {
-        return visible;
+        return presentation.isVisible();
+    }
+
+    /** Installs (or, with null, removes) the alternative presentation; the legacy one is the default. */
+    public void setPresentation(com.stonebreak.ui.runtime.screens.ScreenPresentation p) {
+        presentation.install(p);
+    }
+
+    /** The legacy renderer (fixtures read its layout sink). */
+    public SkijaLoadingScreenRenderer renderer() {
+        return renderer;
     }
 
     /**
@@ -151,9 +182,9 @@ public class LoadingScreen {
     }
 
     /**
-     * Returns the current stage name (package-private for the Skija renderer).
+     * Returns the current stage name (also published by the UI host).
      */
-    String getCurrentStageName() {
+    public String getCurrentStageName() {
         return currentStageName;
     }
 
@@ -188,7 +219,7 @@ public class LoadingScreen {
     /**
      * Returns the normalized progress value (0-1) for the progress bar.
      */
-    float getProgress() {
+    public float getProgress() {
         return totalStages > 0 ? (float) (currentStageIndex + 1) / totalStages : 0f;
     }
 
@@ -196,7 +227,15 @@ public class LoadingScreen {
      * Renders this loading screen using the Skija backend.
      */
     public void render(int windowWidth, int windowHeight) {
+        if (presentation.paint(windowWidth, windowHeight)) {
+            return;
+        }
         renderer.render(this, windowWidth, windowHeight);
+    }
+
+    /** The progress bar's percentage, as the legacy screen writes it. */
+    public static String percentText(float progress) {
+        return String.format("%d%%", (int) (progress * 100));
     }
     
     /**

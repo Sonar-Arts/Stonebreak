@@ -85,8 +85,10 @@ public final class UiFeatures {
     /**
      * The Masonry house look as style (#297): {@code -sb-surface} (stone panel, button and HUD
      * surfaces on any element, or none on a {@code Button}), {@code -sb-text-effect} (a label's
-     * house shadow, no shadow, or the layered title) and {@code -sb-pixel-grid} (a root that keeps
-     * fractional legacy geometry). An older reader would drop the surfaces and effects and snap the
+     * house shadow, no shadow, or the layered title), {@code -sb-pixel-grid} (a root that keeps
+     * fractional legacy geometry), {@code -sb-font-grid} (a root whose text is sized exactly
+     * instead of on the house half-pixel font grid) and {@code Ndpx} lengths (device pixels the UI
+     * scale never multiplies). An older reader would drop the surfaces and effects and snap the
      * layout, with only "unknown property" warnings.
      */
     public static final String MASONRY = "ui-masonry";
@@ -123,7 +125,18 @@ public final class UiFeatures {
             Map.entry("pointer-events", CURSOR),
             Map.entry("-sb-surface", MASONRY),
             Map.entry("-sb-text-effect", MASONRY),
-            Map.entry("-sb-pixel-grid", MASONRY));
+            Map.entry("-sb-pixel-grid", MASONRY),
+            Map.entry("-sb-font-grid", MASONRY),
+            Map.entry("-sb-baseline", MASONRY),
+            Map.entry("-sb-symbol", MASONRY),
+            Map.entry("-sb-shadow-color", MASONRY),
+            Map.entry("-sb-caret", MASONRY),
+            Map.entry("-sb-border-align", MASONRY),
+            Map.entry("-sb-clip", MASONRY),
+            Map.entry("-sb-shadow-offset-x", MASONRY),
+            Map.entry("-sb-shadow-offset-y", MASONRY),
+            Map.entry("-sb-shadow-blur", MASONRY),
+            Map.entry("line-height", TEXT));
 
     /**
      * Properties every widget accepts under {@link #INPUT}. Focus: {@code focusable},
@@ -164,6 +177,12 @@ public final class UiFeatures {
     public static String forStyle(String property, UiValue value) {
         if ("overflow".equals(property) && value instanceof UiValue.Str s && "scroll".equals(s.value())) {
             return SCROLL;
+        }
+        if (value instanceof UiValue.Str s && UiStyleProperties.isDeviceLength(s.value())) {
+            return MASONRY; // device-pixel lengths (#299)
+        }
+        if ("-sb-sampling".equals(property) && value instanceof UiValue.Str s && "nearest-raw".equals(s.value())) {
+            return MASONRY; // legacy-exact nearest sampling (#299)
         }
         return STYLE_FEATURES.get(property);
     }

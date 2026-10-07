@@ -93,4 +93,13 @@ public final class ScrollableSettingsContainer {
         return math != null ? math.offset() : 0f;
     }
     public float getItemSpacing() { return itemSpacing; }
+
+    /** True when device point ({@code x}, {@code y}) is inside the clipped viewport. */
+    public boolean contains(float x, float y) { return container != null && container.contains(x, y); }
+
+    /** The scrollbar's press area ({@code x, y, w, h}), or null when nothing scrolls. */
+    public float[] scrollbarHitBounds() { return container != null ? container.scrollbarHitBounds() : null; }
+
+    /** The drawn scrollbar thumb ({@code x, y, w, h}), or null when nothing scrolls. */
+    public float[] thumbBounds() { return container != null ? container.thumbBounds() : null; }
 }

@@ -4,7 +4,10 @@ import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.player.EntityDiscoveries;
 import com.stonebreak.player.Player;
+import com.stonebreak.player.PlayerStats;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
+import com.stonebreak.ui.runtime.screens.PresentationSlot;
+import com.stonebreak.ui.runtime.screens.ScreenPresentation;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -15,8 +18,15 @@ import java.util.Map;
  * interaction state — selected entity, selected variant per entity, and the
  * hover flags the renderer paints from — while {@link SkijaGlossaryRenderer}
  * stays draw-only.
+ *
+ * <p>Since #299 it may be shown as the shipped UI document {@value #DOCUMENT_ID}
+ * ({@link #setPresentation}): selection stays here, the document reads it through the UI host's
+ * {@code glossary} roots and changes it with {@link #select} and {@link #cycleVariant(int)}.
  */
 public class GlossaryScreen {
+
+    /** The shipped document's screen id ({@code ui/documents/glossary.sbui}). */
+    public static final String DOCUMENT_ID = "glossary";
 
     private final SkijaGlossaryRenderer skijaRenderer;
 
@@ -28,21 +38,60 @@ public class GlossaryScreen {
     private boolean leftArrowHovered;
     private boolean rightArrowHovered;
     private boolean backButtonHovered;
-    private boolean visible = false;
+    private final PresentationSlot presentation = new PresentationSlot();
+    private java.util.function.Supplier<EntityDiscoveries> discoveries = GlossaryScreen::liveDiscoveries;
+    private java.util.function.Supplier<PlayerStats> stats = GlossaryScreen::liveStats;
 
     public GlossaryScreen(SkijaUIBackend backend) {
         this.skijaRenderer = new SkijaGlossaryRenderer(backend);
     }
 
     public void render(int windowWidth, int windowHeight) {
-        if (!visible) return;
+        if (!isVisible() || presentation.paint(windowWidth, windowHeight)) return;
         skijaRenderer.render(windowWidth, windowHeight, this);
     }
 
-    public boolean isVisible() { return visible; }
+    public boolean isVisible() { return presentation.isVisible(); }
 
     public void setVisible(boolean visible) {
-        this.visible = visible;
+        presentation.setVisible(visible);
+    }
+
+    /** Installs (or, with null, removes) the alternative presentation; the legacy one is the default. */
+    public void setPresentation(ScreenPresentation p) {
+        presentation.install(p);
+    }
+
+    /** The legacy renderer (fixtures read its layout sink). */
+    public SkijaGlossaryRenderer renderer() {
+        return skijaRenderer;
+    }
+
+    // ─────────────────────────────────────────────── Data (the local player's by default)
+
+    /** Where discoveries and kill counts come from; fixtures pin their own. */
+    public void setDataSource(java.util.function.Supplier<EntityDiscoveries> discoveries,
+                              java.util.function.Supplier<PlayerStats> stats) {
+        this.discoveries = discoveries == null ? GlossaryScreen::liveDiscoveries : discoveries;
+        this.stats = stats == null ? GlossaryScreen::liveStats : stats;
+    }
+
+    public EntityDiscoveries discoveries() {
+        return discoveries.get();
+    }
+
+    public PlayerStats stats() {
+        return stats.get();
+    }
+
+    private static EntityDiscoveries liveDiscoveries() {
+        Player player = Game.getPlayer();
+        return player != null ? player.getEntityDiscoveries() : null;
+    }
+
+    private static PlayerStats liveStats() {
+        Player player = Game.getPlayer();
+        return player != null ? player.getStats() : null;
     }
 
     // ─────────────────────────────────────────────── Selection state
@@ -63,6 +112,29 @@ public class GlossaryScreen {
         return ((idx % count) + count) % count;
     }
 
+    /** Selects sidebar row {@code index}. @return false when there is no such row */
+    public boolean select(int index) {
+        if (index < 0 || index >= GlossaryLayout.rowCount()) {
+            return false;
+        }
+        selectedEntityIndex = index;
+        return true;
+    }
+
+    /**
+     * Steps the selected entity's shown variant by {@code delta}, wrapping, as the preview arrows do.
+     *
+     * @return false when it has fewer than two discovered variants (no arrows are shown)
+     */
+    public boolean cycleVariant(int delta) {
+        int count = discoveredVariantCount();
+        if (count <= 1) {
+            return false;
+        }
+        cycleVariant(getSelectedEntityType(), count, delta);
+        return true;
+    }
+
     // ─────────────────────────────────────────────── Hover state (read by the renderer)
 
     public int getHoveredRowIndex() { return hoveredRowIndex; }
@@ -73,7 +145,7 @@ public class GlossaryScreen {
     // ─────────────────────────────────────────────── Input
 
     public boolean isBackButtonClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        if (!visible) return false;
+        if (!isVisible()) return false;
         float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
         return GlossaryLayout.contains(mouseX, mouseY,
                 GlossaryLayout.backButtonRect(windowWidth, windowHeight, scale));
@@ -85,7 +157,7 @@ public class GlossaryScreen {
      * Returns {@code true} if the click was consumed.
      */
     public boolean handleClick(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        if (!visible) return false;
+        if (!isVisible()) return false;
         float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
 
         for (int i = 0; i < GlossaryLayout.rowCount(); i++) {
@@ -118,7 +190,7 @@ public class GlossaryScreen {
         leftArrowHovered = false;
         rightArrowHovered = false;
         backButtonHovered = false;
-        if (!visible) return;
+        if (!isVisible()) return;
 
         float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
         for (int i = 0; i < GlossaryLayout.rowCount(); i++) {
@@ -139,9 +211,7 @@ public class GlossaryScreen {
     }
 
     private int discoveredVariantCount() {
-        Player player = Game.getPlayer();
-        EntityDiscoveries discoveries = (player != null) ? player.getEntityDiscoveries() : null;
-        return SkijaGlossaryRenderer.discoveredVariants(getSelectedEntityType(), discoveries).size();
+        return SkijaGlossaryRenderer.discoveredVariants(getSelectedEntityType(), discoveries()).size();
     }
 
     private void cycleVariant(EntityType type, int count, int delta) {

@@ -147,6 +147,10 @@ public record AnimProperty(String target, Interp interp, boolean motion, boolean
         if (a.kind() == StyleValues.Length.Kind.PERCENT && b.kind() == StyleValues.Length.Kind.PERCENT) {
             return UiValue.of(percent(lerp(a.value(), b.value(), f)));
         }
+        if (a.kind() == StyleValues.Length.Kind.DEVICE && b.kind() == StyleValues.Length.Kind.DEVICE) {
+            double v = Math.round(lerp(a.value(), b.value(), f) * 1e4) / 1e4;
+            return UiValue.of((v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v)) + "dpx");
+        }
         return from; // auto or mixed units: discrete
     }
 

@@ -17,8 +17,17 @@ import io.github.humbleui.types.Rect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * The main menu. Since #299 it may be shown as the shipped UI document {@value #DOCUMENT_ID} (a
+ * state screen, {@code runtime.screens.StateScreens}): the stage, the splash and every action stay
+ * here; the UI host publishes the stage's motion and runs the actions through {@link #choose} and
+ * {@link #clickTitle}.
+ */
 public class MainMenu {
     private static final Logger logger = LoggerFactory.getLogger(MainMenu.class);
+
+    /** The shipped document's screen id ({@code ui/documents/main_menu.sbui}). */
+    public static final String DOCUMENT_ID = "main_menu";
 
     private final SkijaMainMenuRenderer skijaRenderer;
     private final MainMenuStage stage = new MainMenuStage();
@@ -123,9 +132,37 @@ public class MainMenu {
     }
     
     public void render(int windowWidth, int windowHeight) {
+        advance(windowWidth, windowHeight);
+        skijaRenderer.render(this, windowWidth, windowHeight);
+    }
+
+    /** One frame of the title animation (the document's presentation calls this where render did). */
+    public void advance(int windowWidth, int windowHeight) {
         float scale = com.stonebreak.config.Settings.getInstance().getUiScale();
         stage.update(Game.getDeltaTime(), windowWidth, windowHeight, scale);
-        skijaRenderer.render(this, windowWidth, windowHeight);
+    }
+
+    /** The legacy renderer (fixtures read its layout sink and pin its clock). */
+    public SkijaMainMenuRenderer renderer() {
+        return skijaRenderer;
+    }
+
+    /** Pins the splash line (fixtures; the game picks one at random on entering the menu). */
+    public void setSplashText(String text) {
+        this.currentSplashText = text;
+    }
+
+    /** Runs button {@code index} (0 Singleplayer, 1 Multiplayer, 2 Settings, 3 Quit) as a click does. */
+    public void choose(int index) {
+        selectedButton = index;
+        executeSelectedAction();
+    }
+
+    /** A click on the title (the easter egg), as at its centre in a window of this size. */
+    public void clickTitle(int windowWidth, int windowHeight) {
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+        Rect logo = SkijaMainMenuRenderer.computeLogoRect(windowWidth, windowHeight, s);
+        stage.onTitleClick(logo.getLeft() + logo.getWidth() / 2f, logo.getTop() + logo.getHeight() / 2f);
     }
 
     public MainMenuStage getStage() {

@@ -108,4 +108,14 @@ class PauseDocumentGateTest {
         stage.view.pointerUp(cx, cy);
         stage.settle();
     }
+
+    @Test
+    void theKeyboardActivatesTheButtons() throws Exception {
+        requireLua();
+        try (DocumentStage stage = new DocumentStage(GameUiDocuments.readScreen("pause"), 1920, 1080, 1f)) {
+            stage.key(com.openmason.engine.ui.masonry.MKeys.KEY_TAB);
+            assertEquals(java.util.List.of("stonebreak:screen.pause.resume"),
+                stage.key(com.openmason.engine.ui.masonry.MKeys.KEY_ENTER), "Tab focuses Resume, Enter presses it (#299)");
+        }
+    }
 }

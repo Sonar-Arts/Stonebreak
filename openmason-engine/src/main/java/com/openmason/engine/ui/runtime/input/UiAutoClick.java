@@ -14,8 +14,8 @@ import java.util.Locale;
  * Development hook (#292): clicks elements of a hosted document at set times, through the real
  * router, so a screenshot script can show a document's interaction (code-behind handlers, awaited
  * host actions) in the game window or the editor preview without a human. Spec:
- * {@code key@seconds[,key@seconds...]}, e.g. {@code resync@2,resume@6.5}; times count from the
- * first {@link #tick}.
+ * {@code key@seconds[,key@seconds...]}, e.g. {@code resync@2,resume@6.5}; a key starting with
+ * {@code #} is a selector by name ({@code #multiplayer@1.5}); times count from the first {@link #tick}.
  */
 public final class UiAutoClick {
 
@@ -53,7 +53,7 @@ public final class UiAutoClick {
         elapsed += dt;
         while (next < steps.size() && steps.get(next).at <= elapsed) {
             Step s = steps.get(next++);
-            UiElement el = ui.find(s.key);
+            UiElement el = s.key.startsWith("#") ? ui.q(s.key) : ui.find(s.key);
             if (el == null) {
                 LOGGER.warn("[autoclick] no element {}", s.key);
                 continue;

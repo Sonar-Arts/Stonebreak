@@ -4,8 +4,10 @@ import com.stonebreak.ui.LegacyUiClock;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
+import com.stonebreak.ui.runtime.providers.DirtBackdropProvider;
 import com.stonebreak.ui.worldSelect.SectionBounds;
 import com.stonebreak.ui.worldSelect.WorldSelectLayout;
+import com.stonebreak.ui.worldSelect.WorldSelectText;
 import com.stonebreak.ui.worldSelect.handlers.WorldInputHandler;
 import com.stonebreak.ui.worldSelect.managers.WorldBackupService;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
@@ -13,20 +15,15 @@ import com.stonebreak.ui.worldSelect.managers.WorldStatsService;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
 import com.stonebreak.world.save.model.WorldData;
 import io.github.humbleui.skija.Canvas;
-import io.github.humbleui.skija.FilterTileMode;
 import io.github.humbleui.skija.Font;
-import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.PaintMode;
-import io.github.humbleui.skija.SamplingMode;
-import io.github.humbleui.skija.Shader;
 import io.github.humbleui.skija.Typeface;
 import io.github.humbleui.types.Rect;
 import io.github.humbleui.types.RRect;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 /**
  * Skija-backed renderer for the world select screen. Owns no state beyond the
@@ -54,11 +51,7 @@ public final class SkijaWorldSelectRenderer {
     private static final int COLOR_INPUT_BORDER      = 0xFF505050;
     private static final int COLOR_INPUT_BORDER_HOT  = 0xFF6496FF;
 
-    /**
-     * ASCII stand-ins: the bundled Minecraft typeface has no glyphs for the typographic
-     * em dash / ellipsis / middle dot, which draw as tofu boxes.
-     */
-    private static final String UNKNOWN  = "Unknown";
+    /** ASCII: the bundled Minecraft typeface has no ellipsis glyph. */
     private static final String ELLIPSIS = "...";
 
     private final SkijaUIBackend backend;
@@ -75,7 +68,8 @@ public final class SkijaWorldSelectRenderer {
     private Font fontInput;
     private float lastFontScale = -1f;
 
-    private Shader dirtShader;
+    /** Where each part was drawn, by the documents' names (fidelity gates, #299); null when nobody asks. */
+    private BiConsumer<String, float[]> layoutSink;
     private long lastCursorBlink = LegacyUiClock.millis();
     private boolean cursorVisible = true;
 
@@ -89,6 +83,21 @@ public final class SkijaWorldSelectRenderer {
         this.discoveryManager = discoveryManager;
         this.inputHandler = inputHandler;
         this.backupService = backupService;
+    }
+
+    /**
+     * Reports each part's rect ({@code x, y, w, h}) as it is drawn: {@code row0..row7} (the visible
+     * slots' hit rows), {@code back}, {@code create}, {@code delete}, {@code play}, {@code card},
+     * {@code folder}, {@code backup}, {@code dialog}, {@code confirm}, {@code cancel}.
+     */
+    public void setLayoutSink(BiConsumer<String, float[]> sink) {
+        this.layoutSink = sink;
+    }
+
+    private void report(String part, float x, float y, float w, float h) {
+        if (layoutSink != null) {
+            layoutSink.accept(part, new float[]{x, y, w, h});
+        }
     }
 
     private void ensureFonts(float scale) {
@@ -113,17 +122,9 @@ public final class SkijaWorldSelectRenderer {
         if (fontInput != null) { fontInput.close(); fontInput = null; }
     }
 
-    private void ensureDirtShader() {
-        if (dirtShader != null) return;
-        Image dirt = backend.getDirtTexture();
-        if (dirt == null) return;
-        dirtShader = dirt.makeShader(FilterTileMode.REPEAT, FilterTileMode.REPEAT, SamplingMode.DEFAULT, null);
-    }
-
     public void render(int windowWidth, int windowHeight) {
         if (!backend.isAvailable()) return;
         ensureFonts(com.stonebreak.config.Settings.getInstance().getUiScale());
-        ensureDirtShader();
 
         WorldSelectLayout layout = WorldSelectLayout.compute(windowWidth, windowHeight);
         backend.beginFrame(windowWidth, windowHeight, 1.0f);
@@ -151,18 +152,8 @@ public final class SkijaWorldSelectRenderer {
     // ─────────────────────────────────────────────────────────── Background
 
     private void drawBackground(Canvas canvas, int w, int h) {
-        // Solid base in case dirt fails to load
-        try (Paint p = new Paint().setColor(0xFF2C2C2C)) {
-            canvas.drawRect(Rect.makeXYWH(0, 0, w, h), p);
-        }
-        if (dirtShader != null) {
-            try (Paint p = new Paint().setShader(dirtShader)) {
-                canvas.save();
-                canvas.scale(4f, 4f);
-                canvas.drawRect(Rect.makeXYWH(0, 0, w / 4f, h / 4f), p);
-                canvas.restore();
-            }
-        }
+        // The shared menu backdrop (dark base under the dirt tiles), as the document draws it
+        DirtBackdropProvider.paint(canvas, 0, 0, w, h, DirtBackdropProvider.TILE_SCALE);
         // Vignette
         try (Paint p = new Paint().setColor(COLOR_OVERLAY_DARK)) {
             canvas.drawRect(Rect.makeXYWH(0, 0, w, h), p);
@@ -212,7 +203,7 @@ public final class SkijaWorldSelectRenderer {
     private void drawWorldList(Canvas canvas, WorldSelectLayout layout) {
         List<String> worlds = stateManager.getWorldList();
         if (worlds.isEmpty()) {
-            drawCenteredString(canvas, "No worlds yet - click 'Create New World' to begin.",
+            drawCenteredString(canvas, WorldSelectText.EMPTY_LIST,
                     layout.centerX, layout.listY + layout.listHeight / 2f,
                     fontItem, COLOR_TEXT_SECONDARY);
             return;
@@ -221,6 +212,7 @@ public final class SkijaWorldSelectRenderer {
         int end = stateManager.getVisibleEndIndex();
         for (int i = start; i < end; i++) {
             float itemY = layout.listY + (i - start) * layout.itemHeight;
+            report("row" + (i - start), layout.listX, itemY, layout.listWidth, layout.itemHeight);
             drawWorldItem(canvas, worlds.get(i), i, layout.listX, itemY, layout);
         }
     }
@@ -244,7 +236,7 @@ public final class SkijaWorldSelectRenderer {
         drawString(canvas, name, nameX, nameY, fontItem, COLOR_TEXT_PRIMARY);
         // Meta
         WorldData data = discoveryManager.getWorldData(name);
-        String meta = formatMeta(data);
+        String meta = WorldSelectText.meta(data);
         if (meta != null) {
             drawString(canvas, meta, nameX, y + 46f, fontMeta, COLOR_TEXT_SECONDARY);
         }
@@ -257,25 +249,6 @@ public final class SkijaWorldSelectRenderer {
             drawString(canvas, size, sizeX + 1, nameY + 1, fontMeta, COLOR_TEXT_SHADOW);
             drawString(canvas, size, sizeX, nameY, fontMeta, COLOR_TEXT_SECONDARY);
         }
-    }
-
-    private String formatMeta(WorldData data) {
-        if (data == null) return null;
-        StringBuilder sb = new StringBuilder();
-        if (data.getLastPlayed() != null) {
-            LocalDateTime dt = data.getLastPlayed();
-            LocalDateTime now = LocalDateTime.now();
-            if (dt.toLocalDate().equals(now.toLocalDate())) {
-                sb.append("Last played today at ").append(String.format("%d:%02d", dt.getHour(), dt.getMinute()));
-            } else {
-                sb.append(String.format("Last played %d/%d/%d", dt.getMonthValue(), dt.getDayOfMonth(), dt.getYear()));
-            }
-        }
-        if (data.getSeed() != 0) {
-            if (sb.length() > 0) sb.append("   -   ");
-            sb.append("Seed: ").append(data.getSeed());
-        }
-        return sb.length() == 0 ? null : sb.toString();
     }
 
     private void drawScrollbar(Canvas canvas, WorldSelectLayout layout) {
@@ -298,6 +271,12 @@ public final class SkijaWorldSelectRenderer {
                 && stateManager.getSelectedIndex() >= 0
                 && stateManager.getSelectedIndex() < stateManager.getWorldList().size();
         String hov = stateManager.getHoveredButton();
+        float bw = layout.actionButtonWidth;
+        float bh = layout.actionButtonHeight;
+        report("back", layout.backButtonX, layout.backButtonY, bw, bh);
+        report("create", layout.createButtonX, layout.createButtonY, bw, bh);
+        report("delete", layout.deleteButtonX, layout.deleteButtonY, bw, bh);
+        report("play", layout.playButtonX, layout.playButtonY, bw, bh);
         drawMinecraftButton(canvas, "Back", layout.backButtonX, layout.backButtonY,
                 layout.actionButtonWidth, layout.actionButtonHeight,
                 "back".equals(hov), true);
@@ -376,13 +355,16 @@ public final class SkijaWorldSelectRenderer {
 
         String target = stateManager.getWorldPendingDelete();
         if (target != null) {
-            drawCenteredString(canvas, "\"" + target + "\" will be permanently removed.",
+            drawCenteredString(canvas, WorldSelectText.deleteLine(target),
                     layout.centerX, layout.confirmDialogY + 80, fontMeta, COLOR_TEXT_SECONDARY);
             drawCenteredString(canvas, "This cannot be undone.",
                     layout.centerX, layout.confirmDialogY + 100, fontMeta, COLOR_TEXT_SECONDARY);
         }
 
         String hov = stateManager.getHoveredButton();
+        report("dialog", layout.confirmDialogX, layout.confirmDialogY, layout.confirmDialogWidth, layout.confirmDialogHeight);
+        report("confirm", layout.confirmConfirmX, layout.confirmButtonY, layout.dialogButtonWidth, layout.dialogButtonHeight);
+        report("cancel", layout.confirmCancelX, layout.confirmButtonY, layout.dialogButtonWidth, layout.dialogButtonHeight);
         drawMinecraftButton(canvas, "Delete", layout.confirmConfirmX, layout.confirmButtonY,
                 layout.dialogButtonWidth, layout.dialogButtonHeight,
                 "confirm-delete".equals(hov), true);
@@ -423,21 +405,20 @@ public final class SkijaWorldSelectRenderer {
         // Info rows
         WorldData data = discoveryManager.getWorldData(world);
         WorldStatsService.Stats stats = discoveryManager.getWorldStats(world);
-        String pending = "Measuring...";
 
         float rowY = card.y + 52f * s;
         rowY = drawCardRow(canvas, left, right, rowY, layout,
-                "Size", stats == null ? pending : WorldStatsService.formatSize(stats.bytes()));
+                "Size", WorldSelectText.cardSize(stats));
         rowY = drawCardRow(canvas, left, right, rowY, layout,
-                "Chunks", stats == null ? pending : String.format("%,d", stats.chunkCount()));
+                "Chunks", WorldSelectText.cardChunks(stats));
         rowY = drawCardRow(canvas, left, right, rowY, layout,
-                "Seed", data == null ? UNKNOWN : Long.toString(data.getSeed()));
+                "Seed", WorldSelectText.cardSeed(data));
         rowY = drawCardRow(canvas, left, right, rowY, layout,
-                "Created", data == null ? UNKNOWN : formatDate(data.getCreatedTime()));
+                "Created", WorldSelectText.cardCreated(data));
         rowY = drawCardRow(canvas, left, right, rowY, layout,
-                "Last played", data == null ? UNKNOWN : formatDate(data.getLastPlayed()));
+                "Last played", WorldSelectText.cardLastPlayed(data));
         drawCardRow(canvas, left, right, rowY, layout,
-                "Play time", data == null ? UNKNOWN : formatPlayTime(data.getTotalPlayTimeMillis()));
+                "Play time", WorldSelectText.cardPlayTime(data));
 
         // Buttons
         String hov = stateManager.getHoveredCardButton();
@@ -446,6 +427,9 @@ public final class SkijaWorldSelectRenderer {
 
         SectionBounds folderBtn = layout.cardOpenFolderBounds(card);
         SectionBounds backupBtn = layout.cardBackupBounds(card);
+        report("card", card.x, card.y, card.width, card.height);
+        report("folder", folderBtn.x, folderBtn.y, folderBtn.width, folderBtn.height);
+        report("backup", backupBtn.x, backupBtn.y, backupBtn.width, backupBtn.height);
         drawCardButton(canvas, "Open Folder", folderBtn, "card-folder".equals(hov), true);
         drawCardButton(canvas, backupRunning ? "Backing Up" : "Back Up", backupBtn,
                 !backupRunning && "card-backup".equals(hov), !backupRunning);
@@ -495,31 +479,16 @@ public final class SkijaWorldSelectRenderer {
                 bounds.getCenterY() + 5f, fontMeta, textColor, COLOR_TEXT_SHADOW);
     }
 
-    private static String formatDate(LocalDateTime dt) {
-        if (dt == null) return UNKNOWN;
-        LocalDateTime now = LocalDateTime.now();
-        if (dt.toLocalDate().equals(now.toLocalDate())) {
-            return String.format("Today %d:%02d", dt.getHour(), dt.getMinute());
-        }
-        return String.format("%d/%d/%d", dt.getMonthValue(), dt.getDayOfMonth(), dt.getYear());
-    }
-
-    private static String formatPlayTime(long millis) {
-        if (millis <= 0L) return "0m";
-        long minutes = millis / 60_000L;
-        if (minutes < 1L) return "< 1m";
-        long hours = minutes / 60L;
-        if (hours < 1L) return minutes + "m";
-        return hours + "h " + (minutes % 60L) + "m";
-    }
-
-    /** Shortens text with a trailing ellipsis until it fits {@code maxWidth}. */
+    /**
+     * Shortens text with a trailing ellipsis until it fits {@code maxWidth}; a word break left at the
+     * cut is dropped ("Named..." not "Named ..."), as the UI documents' ellipsis does (#299).
+     */
     private static String ellipsize(String text, Font font, float maxWidth) {
         if (text == null || text.isEmpty()) return "";
         if (measureWidthSafe(font, text) <= maxWidth) return text;
         String truncated = text;
         while (truncated.length() > 1 && measureWidthSafe(font, truncated + ELLIPSIS) > maxWidth) {
-            truncated = truncated.substring(0, truncated.length() - 1);
+            truncated = truncated.substring(0, truncated.length() - 1).stripTrailing();
         }
         return truncated + ELLIPSIS;
     }
@@ -593,7 +562,6 @@ public final class SkijaWorldSelectRenderer {
     }
 
     public void dispose() {
-        if (dirtShader != null) { dirtShader.close(); dirtShader = null; }
         disposeFonts();
     }
 }

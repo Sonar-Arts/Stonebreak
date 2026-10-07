@@ -4,12 +4,8 @@ import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
 import io.github.humbleui.skija.Canvas;
-import io.github.humbleui.skija.FilterTileMode;
 import io.github.humbleui.skija.Font;
-import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.Paint;
-import io.github.humbleui.skija.SamplingMode;
-import io.github.humbleui.skija.Shader;
 import io.github.humbleui.types.Rect;
 
 /**
@@ -29,32 +25,26 @@ public final class MultiplayerUIPainter {
     public static final int   COLOR_FIELD_BORDER = 0xFFFFFFFF;
 
     private final SkijaUIBackend backend;
-    private Shader dirtShader;
+    private java.util.function.BiConsumer<String, float[]> layoutSink;
+    private int fieldIndex;
+
+    /**
+     * Receives every button ({@code button:<label>}) and text field ({@code field:<n>}, in draw order)
+     * a frame draws, as {@code [x, y, w, h]}: the fidelity gates' geometry oracle (#299).
+     */
+    public void setLayoutSink(java.util.function.BiConsumer<String, float[]> sink) {
+        this.layoutSink = sink;
+    }
 
     public MultiplayerUIPainter(SkijaUIBackend backend) {
         this.backend = backend;
     }
 
-    public void ensureDirtShader() {
-        if (dirtShader != null) return;
-        Image dirt = backend.getDirtTexture();
-        if (dirt == null) return;
-        dirtShader = dirt.makeShader(FilterTileMode.REPEAT, FilterTileMode.REPEAT, SamplingMode.DEFAULT, null);
-    }
-
     public void drawBackground(Canvas canvas, int w, int h) {
-        ensureDirtShader();
-        try (Paint p = new Paint().setColor(0xFF2C2C2C)) {
-            canvas.drawRect(Rect.makeXYWH(0, 0, w, h), p);
-        }
-        if (dirtShader != null) {
-            try (Paint p = new Paint().setShader(dirtShader)) {
-                canvas.save();
-                canvas.scale(4f, 4f);
-                canvas.drawRect(Rect.makeXYWH(0, 0, w / 4f, h / 4f), p);
-                canvas.restore();
-            }
-        }
+        fieldIndex = 0; // every screen draws its backdrop first
+        // the shared menu backdrop (also the documents' stonebreak:dirt-backdrop provider, #299)
+        com.stonebreak.ui.runtime.providers.DirtBackdropProvider.paint(canvas, 0, 0, w, h,
+                com.stonebreak.ui.runtime.providers.DirtBackdropProvider.TILE_SCALE);
         try (Paint p = new Paint().setColor(COLOR_OVERLAY)) {
             canvas.drawRect(Rect.makeXYWH(0, 0, w, h), p);
         }
@@ -62,6 +52,9 @@ public final class MultiplayerUIPainter {
 
     public void drawButton(Canvas canvas, String label, float x, float y, float w, float h,
                            boolean highlighted, Font font) {
+        if (layoutSink != null) {
+            layoutSink.accept("button:" + label, new float[]{x, y, w, h});
+        }
         int fill = highlighted ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
         MPainter.stoneSurface(canvas, x, y, w, h, MStyle.BUTTON_RADIUS,
                 fill, MStyle.BUTTON_BORDER,
@@ -90,6 +83,10 @@ public final class MultiplayerUIPainter {
 
     public void drawTextField(Canvas canvas, String text, boolean focused, boolean showCaret,
                               float x, float y, float w, float h, Font font) {
+        if (layoutSink != null) {
+            layoutSink.accept("field:" + fieldIndex, new float[]{x, y, w, h});
+        }
+        fieldIndex++;
         try (Paint bg = new Paint().setColor(focused ? COLOR_FIELD_BG_FOCUS : COLOR_FIELD_BG)) {
             canvas.drawRect(Rect.makeXYWH(x, y, w, h), bg);
         }
@@ -109,6 +106,5 @@ public final class MultiplayerUIPainter {
     }
 
     public void dispose() {
-        if (dirtShader != null) { dirtShader.close(); dirtShader = null; }
     }
 }

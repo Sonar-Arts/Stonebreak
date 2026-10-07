@@ -82,9 +82,49 @@ public final class InputHandler {
         }
     }
 
+    /**
+     * One key press by the polled rules (#299: a UI document delivers keys as events, so each
+     * press and OS repeat is one step): Left/A and Right/D change category (Shift: adjust the
+     * selected value), Up/W and Down/S move the row, Enter activates, Escape goes back; while
+     * the UI-scale confirmation is up only Enter (keep) and Escape (revert) act.
+     */
+    public void key(int key, boolean shift) {
+        if (stateManager.isUiScaleConfirmActive()) {
+            if (key == GLFW_KEY_ENTER) actionHandler.confirmUiScale();
+            else if (key == GLFW_KEY_ESCAPE) actionHandler.revertUiScale();
+            return;
+        }
+        boolean left = key == GLFW_KEY_LEFT || key == GLFW_KEY_A;
+        boolean right = key == GLFW_KEY_RIGHT || key == GLFW_KEY_D;
+        if (left || right) {
+            if (shift) {
+                adjustSelectedSettingValue(left ? -1 : 1);
+            } else if (left) {
+                stateManager.navigateToPreviousCategory();
+            } else {
+                stateManager.navigateToNextCategory();
+            }
+        } else if (key == GLFW_KEY_UP || key == GLFW_KEY_W) {
+            stateManager.navigateToPreviousSettingInCategory();
+        } else if (key == GLFW_KEY_DOWN || key == GLFW_KEY_S) {
+            stateManager.navigateToNextSettingInCategory();
+        } else if (key == GLFW_KEY_ENTER) {
+            enter();
+        } else if (key == GLFW_KEY_ESCAPE) {
+            actionHandler.goBack();
+        }
+    }
+
     private void handleEnter(long window) {
         boolean down = pressed(window, GLFW_KEY_ENTER);
         if (down && !enterPressed) {
+            enter();
+        }
+        enterPressed = down;
+    }
+
+    private void enter() {
+        {
             CategoryState.SettingType[] settingsArr = stateManager.getSelectedCategory().getSettings();
             CategoryState.SettingType current;
             if (stateManager.getSelectedSettingInCategory() < settingsArr.length) {
@@ -99,7 +139,6 @@ public final class InputHandler {
                 actionHandler.executeSelectedAction();
             }
         }
-        enterPressed = down;
     }
 
     private void handleEscape(long window) {

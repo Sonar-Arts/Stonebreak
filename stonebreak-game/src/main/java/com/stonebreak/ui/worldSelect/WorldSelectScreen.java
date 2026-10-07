@@ -33,10 +33,16 @@ public class WorldSelectScreen {
      * Creates a new WorldSelectScreen backed by the Skija UI renderer.
      */
     public WorldSelectScreen(SkijaUIBackend skijaBackend) {
+        this(skijaBackend, new WorldDiscoveryManager(), new WorldBackupService());
+    }
+
+    /** Test seam (#299 fidelity fixtures): worlds and backups from somewhere other than the save folder. */
+    public WorldSelectScreen(SkijaUIBackend skijaBackend, WorldDiscoveryManager discoveryManager,
+                             WorldBackupService backupService) {
         // Initialize managers
         this.stateManager = new WorldStateManager();
-        this.discoveryManager = new WorldDiscoveryManager();
-        this.backupService = new WorldBackupService();
+        this.discoveryManager = discoveryManager;
+        this.backupService = backupService;
 
         // Initialize action handler
         this.actionHandler = new WorldActionHandler(stateManager, discoveryManager, backupService);
@@ -161,6 +167,127 @@ public class WorldSelectScreen {
         // even on frames where the cursor produced no move events.
         stateManager.tickCard(System.currentTimeMillis());
         skijaRenderer.render(width, height);
+    }
+
+    /** The legacy renderer (its layout sink feeds the #299 fidelity gates). */
+    public SkijaWorldSelectRenderer renderer() {
+        return skijaRenderer;
+    }
+
+    // ===== DOCUMENT ACTIONS (#299) =====
+    // The shipped document (ui/documents/world_select.sbui) reaches the screen through these, by
+    // the same rules the legacy mouse and keyboard handlers apply.
+
+    /** Advances the info card's open/close delays: once a frame while the document shows. */
+    public void tick(long nowMs) {
+        stateManager.tickCard(nowMs);
+    }
+
+    /** A click on the world at {@code index} (into the whole list): selects it. */
+    public boolean selectWorld(int index) {
+        if (stateManager.isAnyDialogOpen() || index < 0 || index >= stateManager.getWorldList().size()) {
+            return false;
+        }
+        stateManager.setSelectedIndex(index);
+        return true;
+    }
+
+    /**
+     * Where the pointer rests: the world row at {@code index} (-1 for none) or, with
+     * {@code overCard}, the open info card, which keeps it open and lights its row.
+     */
+    public void hover(int index, boolean overCard) {
+        long now = System.currentTimeMillis();
+        if (stateManager.isAnyDialogOpen()) {
+            stateManager.setHoveredIndex(-1);
+            return;
+        }
+        if (overCard && stateManager.isCardOpen()) {
+            stateManager.setHoveredIndex(stateManager.getCardIndex());
+            stateManager.updateCardHover(-1, true, now);
+            return;
+        }
+        stateManager.setHoveredIndex(index);
+        stateManager.updateCardHover(stateManager.getHoveredIndex(), false, now);
+    }
+
+    /** A mouse wheel tick ({@code yOffset} as GLFW reports it): one row per tick. */
+    public void wheel(double yOffset) {
+        mouseHandler.handleMouseWheel(yOffset);
+    }
+
+    /** Up/W ({@code -1}) and Down/S ({@code +1}). */
+    public void moveSelection(int delta) {
+        if (stateManager.isAnyDialogOpen()) return;
+        if (delta < 0) stateManager.moveSelectionUp();
+        else if (delta > 0) stateManager.moveSelectionDown();
+    }
+
+    /** Enter/Space: plays the selection, or goes to world creation when there are no worlds. */
+    public void activate() {
+        if (stateManager.isAnyDialogOpen()) return;
+        if (stateManager.hasWorlds()) {
+            actionHandler.loadSelectedWorld();
+        } else {
+            actionHandler.openCreateWorldDialog();
+        }
+    }
+
+    public boolean hasSelection() {
+        return stateManager.getSelectedWorld() != null;
+    }
+
+    public boolean playSelected() {
+        if (stateManager.isAnyDialogOpen() || !hasSelection()) return false;
+        actionHandler.loadSelectedWorld();
+        return true;
+    }
+
+    /** Create World (and N): on to character creation, then the terrain mapper. */
+    public void createWorld() {
+        actionHandler.openCreateWorldDialog();
+    }
+
+    public boolean requestDelete() {
+        if (stateManager.isAnyDialogOpen() || !hasSelection()) return false;
+        actionHandler.requestDeleteSelectedWorld();
+        return true;
+    }
+
+    public boolean confirmDelete() {
+        if (!stateManager.isShowDeleteDialog()) return false;
+        actionHandler.confirmDeleteWorld();
+        return true;
+    }
+
+    public boolean cancelDelete() {
+        if (!stateManager.isShowDeleteDialog()) return false;
+        actionHandler.cancelDeleteWorld();
+        return true;
+    }
+
+    public void back() {
+        actionHandler.returnToMainMenu();
+    }
+
+    /** The info card's Open Folder. */
+    public boolean openCardFolder() {
+        String world = stateManager.getCardWorld();
+        if (world == null) return false;
+        actionHandler.openWorldFolder(world);
+        return true;
+    }
+
+    /** The info card's Back Up (refused while that world's backup runs). */
+    public boolean backupCardWorld() {
+        String world = stateManager.getCardWorld();
+        if (world == null || backupService.isRunning(world)) return false;
+        actionHandler.backupWorld(world);
+        return true;
+    }
+
+    public WorldBackupService getBackupService() {
+        return backupService;
     }
 
     public void dispose() {

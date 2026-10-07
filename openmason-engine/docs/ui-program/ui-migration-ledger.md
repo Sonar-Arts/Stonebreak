@@ -131,26 +131,26 @@ These apply to every row unless the row says otherwise.
 | id | kind | owner | lifecycle | status |
 |---|---|---|---|---|
 | startup-intro | screen | `ui.startupIntro.SonarArtsIntroScreen` | shell-persistent | not started |
-| main-menu | screen | `ui.MainMenu` | shell-persistent | not started |
-| world-select | screen | `ui.worldSelect.WorldSelectScreen` | shell-persistent | not started |
-| world-select-info-card | tooltip | `ui.worldSelect.WorldSelectScreen` (card state in `managers.WorldStateManager`) | shell-persistent | not started |
-| world-select-delete-confirm | dialog | `ui.worldSelect.WorldSelectScreen` | shell-persistent | not started |
-| world-select-create-dialog | dialog | `ui.worldSelect.WorldSelectScreen` | shell-persistent (unreachable) | not started |
+| main-menu | screen | `ui.MainMenu` | shell-persistent | in progress |
+| world-select | screen | `ui.worldSelect.WorldSelectScreen` | shell-persistent | in progress |
+| world-select-info-card | tooltip | `ui.worldSelect.WorldSelectScreen` (card state in `managers.WorldStateManager`) | shell-persistent | in progress |
+| world-select-delete-confirm | dialog | `ui.worldSelect.WorldSelectScreen` | shell-persistent | in progress |
+| world-select-create-dialog | dialog | `ui.worldSelect.WorldSelectScreen` | shell-persistent (unreachable) | n/a |
 | character-creation | screen | `ui.characterCreation.CharacterCreationScreen` | shell-persistent | not started |
 | terrain-mapper | screen | `ui.terrainMapper.TerrainMapperScreen` | shell-persistent | not started |
-| loading-screen | screen | `ui.LoadingScreen` + `ui.SkijaLoadingScreenRenderer` | shell-persistent | not started |
-| settings | screen | `ui.settingsMenu.SettingsMenu` | shell-persistent | not started |
-| settings-ui-scale-confirm | dialog | `ui.settingsMenu.SettingsMenu` | shell-persistent | not started |
-| settings-dropdown-overlay | overlay | `rendering.UI.masonryUI.MDropdown` via `SettingsMenu` | shell-persistent | not started |
-| multiplayer-menu | screen | `ui.multiplayerMenu.MultiplayerMenu` | shell-persistent | not started |
-| host-world | screen | `ui.multiplayerMenu.HostWorldScreen` | shell-persistent | not started |
-| join-world | screen | `ui.multiplayerMenu.JoinWorldScreen` | shell-persistent | not started |
+| loading-screen | screen | `ui.LoadingScreen` + `ui.SkijaLoadingScreenRenderer` | shell-persistent | in progress |
+| settings | screen | `ui.settingsMenu.SettingsMenu` | shell-persistent | in progress |
+| settings-ui-scale-confirm | dialog | `ui.settingsMenu.SettingsMenu` | shell-persistent | in progress |
+| settings-dropdown-overlay | overlay | `rendering.UI.masonryUI.MDropdown` via `SettingsMenu` | shell-persistent | in progress |
+| multiplayer-menu | screen | `ui.multiplayerMenu.MultiplayerMenu` | shell-persistent | in progress |
+| host-world | screen | `ui.multiplayerMenu.HostWorldScreen` | shell-persistent | in progress |
+| join-world | screen | `ui.multiplayerMenu.JoinWorldScreen` | shell-persistent | in progress |
 | pause-menu-offline | dialog | `ui.PauseMenu` | shell-persistent | in progress |
 | pause-menu-online | dialog | `ui.PauseMenu` (Resync variant) | shell-persistent | in progress |
 | pause-menu-over-battle | dialog | `ui.PauseMenu` drawn by `FR.renderFocusBattle` | shell-persistent | in progress |
-| death-menu | dialog | `ui.DeathMenu` | shell-persistent | not started |
-| statistics | screen | `ui.statisticsScreen.StatisticsScreen` | shell-persistent | not started |
-| glossary | screen | `ui.glossaryScreen.GlossaryScreen` | shell-persistent | not started |
+| death-menu | dialog | `ui.DeathMenu` | shell-persistent | in progress |
+| statistics | screen | `ui.statisticsScreen.StatisticsScreen` | shell-persistent | in progress |
+| glossary | screen | `ui.glossaryScreen.GlossaryScreen` | shell-persistent | in progress |
 | inventory | screen | `ui.inventoryScreen.InventoryScreen` | per-world | not started |
 | inventory-tooltip | tooltip | `ui.inventoryScreen.InventoryScreen` via OR | per-world, per-frame | not started |
 | dragged-item-layer | overlay | OR + inventory/workbench/furnace screens | per-frame immediate | in progress |
@@ -291,6 +291,25 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Custom draw:** see Hard visuals #7. The splash text is rotated −15° with four shadow layers. The dirt-tile background is copy-pasted into world-select, settings and multiplayer.
 - **Fixtures:** `ui/MainMenuTest` has 4 tests, hit-test maths only.
 - **Performance:** the drop-shadow `ImageFilter` and the 64-gon path are allocated every frame. The space bake is cached per size.
+- **Fixtures:** `ui/fidelity/LegacyMainMenuBaselineTest` + `LegacyMainMenuCapture` (#299): pinned splash and space clock,
+  the stage driven in fixed 1/60 s steps through the easter egg (`shake`, `reveal`, `space`), the renderer's layout sink.
+- **Fidelity:** `main-menu/main-menu-idle_1920x1080_s1` `main-menu/main-menu-idle_1280x720_s0_75` `main-menu/main-menu-idle_3840x2160_s2` `main-menu/main-menu-idle_1921x1081_s1_25` `main-menu/main-menu-idle-hover-singleplayer_1920x1080_s1` `main-menu/main-menu-idle-hover-quit_1920x1080_s1` `main-menu/main-menu-shake_1920x1080_s1` `main-menu/main-menu-reveal_1920x1080_s1` `main-menu/main-menu-space_1920x1080_s1` `main-menu/main-menu-space_1921x1081_s1_25`
+- **Migration (#299, in progress):** shipped as `ui/documents/main_menu.sbui` + `menu_button` and the shared logo image
+  ("Stonebreak Menus": `UI/stonebreak/ui/screens/main_menu.omui`). A state screen (`runtime.screens.StateScreens`);
+  `ui.mainMenu.MainMenuDocument` advances the stage where the legacy `render` did and lets the host publish before it
+  paints. The scene (dirt, space, reveal, shockwave rings: Hard visual 7) is the Skia provider `stonebreak:menu-stage`
+  over the game's stage, drawn by `ui.mainMenu.MainMenuBackdrop`, which the legacy renderer now also uses (the dirt
+  tile comes from `stonebreak:dirt-backdrop`'s painter). Contract `stonebreak:screen.main-menu` 1
+  (`runtime.contracts.MainMenuContracts`): root `mainMenu` (splash, its beat, the title's and the screen's motion in
+  device px, the splash pivot the legacy rect math gives) and `.singleplayer`, `.multiplayer`, `.settings`, `.quit`,
+  `.title`. The logo is sized by `aspect-ratio` in a centred row, so its rect is the legacy float arithmetic.
+  While the document shows, the legacy menu gets no input (`MenuInputRouter.documentShowing`). New vs legacy:
+  keyboard focus (Tab, arrows, Enter) instead of the level-triggered Up/W/Down/S/Enter poll (W/S are not mapped);
+  during the shake, buttons are hit where they are drawn. Rollback `-Dstonebreak.ui.legacy=main_menu`.
+- **Gate:** `ui.fidelity.MainMenuDocumentGateTest`: idle and hover cases at `EXACT` (0 px) with the same hit regions
+  and actions; frames of the easter egg at a motion tolerance (canvas transforms vs layout offsets round apart: one
+  pixel of shift, 0.2 % of pixels, clumps up to 96 px for a flipped texel row of the tilted logo); keyboard and
+  title-click script.
 
 ### world-select
 - **Kind:** screen.
@@ -325,6 +344,29 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Custom draw:** none beyond Masonry painters.
 - **Fixtures:** `WorldStateManagerTest`, `WorldInfoCardStateTest`, `WorldBackupServiceTest`, `WorldStatsServiceTest`, `SectionBoundsTest` (logic only). No render or input tests.
 - **Performance:** `getWorldList()` copies the list several times per frame. Per-row `String.format` and `getWorldData` run every frame and hit the disk when the 5 s cache lapses.
+- **Fixtures (#299):** `ui/fidelity/LegacyWorldSelectBaselineTest` + `LegacyWorldSelectCapture` over
+  `WorldSelectFixtures` (worlds, sizes, stats and backup states from memory through the new
+  `WorldSelectScreen(backend, discovery, backups)` seam; dates away from today). The legacy renderer reports its parts
+  to a layout sink and now draws the shared `DirtBackdropProvider.paint` backdrop (it read the backend's dirt image).
+- **Fidelity:** `world-select/world-select-worlds_1920x1080_s1` `world-select/world-select-worlds_1280x720_s0_75` `world-select/world-select-worlds_3840x2160_s2` `world-select/world-select-worlds_1921x1081_s1_25` `world-select/world-select-many-card7_1920x1080_s1` `world-select/world-select-many-card7_1280x720_s0_75` `world-select/world-select-many-card7_3840x2160_s2` `world-select/world-select-many-card7_1921x1081_s1_25` `world-select/world-select-worlds-hover-row1_1920x1080_s1` `world-select/world-select-worlds-hover-play_1920x1080_s1` `world-select/world-select-worlds-hover-delete_1920x1080_s1` `world-select/world-select-worlds-hover-create_1920x1080_s1` `world-select/world-select-worlds-hover-back_1920x1080_s1` `world-select/world-select-empty_1920x1080_s1` `world-select/world-select-empty-hover-play_1920x1080_s1` `world-select/world-select-many_1920x1080_s1`
+- **Migration (#299, in progress):** shipped as `ui/documents/world_select.sbui` + the new shared component
+  `house_button` (stone button, house text colours, `disabled`/`small` instance classes; "Stonebreak Menus":
+  `UI/stonebreak/ui/screens/world_select.omui`). A state screen (`runtime.screens.StateScreens`, WORLD_SELECT). Contract
+  `stonebreak:screen.world-select` 1 (`runtime.contracts.WorldSelectContracts`): root `worldSelect` (the visible page of
+  rows with name/meta/size/selected/hovered, `empty`, `hasSelection`, the scrollbar thumb, the info card, the delete
+  confirmation; the legacy geometry the layout computes from the window, `titleY`/`subtitleY`/`panelY`/card x-y/thumb,
+  in device px from `WorldSelectLayout`) and actions `.select`, `.hover`, `.hover-card`, `.wheel`, `.move`, `.activate`,
+  `.play`, `.create`, `.delete`, `.confirm-delete`, `.cancel-delete`, `.back`, `.open-folder`, `.backup`, all through
+  `WorldSelectScreen` (new document-facing methods applying the legacy handlers' rules). The document reports where the
+  pointer rests (row enter/leave, card enter) so the host's card state machine keeps the 350/220 ms delays; the host
+  ticks it once per frame. Keys and the wheel go through the code-behind's `on_input` with the legacy mapping
+  (Up/W, Down/S, Enter/Space, N, Esc; Enter/Esc in the confirmation; one row per wheel tick). Legacy fix: the wheel was
+  inverted (a wheel-up tick moved the list down); `WorldMouseHandler.handleMouseWheel` now scrolls up on wheel-up, for
+  the legacy screen and the document alike. Text shared through `worldSelect.WorldSelectText`. Rollback
+  `-Dstonebreak.ui.legacy=world_select`. Legacy change: the card's ellipsis drops a trailing space ("Named..."), as
+  the engine's does.
+- **Gate:** `ui.fidelity.WorldSelectDocumentGateTest`: 27 cases at `EXACT` (0 px) with `FLOAT_EXACT` geometry, the same
+  hit regions and actions; keys, wheel, card rest/stickiness and the delete round trip scripted.
 
 ### world-select-info-card
 - **Kind:** tooltip (hover popover). Owner: as world-select; state in `WorldStateManager.java:179-228`.
@@ -336,6 +378,11 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Layout:** `layout.cardBounds(row)`, anchored to the row.
 - **Time:** `System.currentTimeMillis`, ticked from render (`WorldSelectScreen.java:162`).
 - **Fixtures:** `WorldInfoCardStateTest` (timing with injected `nowMs`).
+- **Fidelity:** `world-select/world-select-card_1920x1080_s1` `world-select/world-select-card-hover-folder_1920x1080_s1` `world-select/world-select-card-hover-backup_1920x1080_s1` `world-select/world-select-card-long_1920x1080_s1` `world-select/world-select-card-measuring_1920x1080_s1` `world-select/world-select-card-running_1920x1080_s1` `world-select/world-select-card-done_1920x1080_s1` `world-select/world-select-card-failed_1920x1080_s1` `world-select/world-select-many-card7_1921x1081_s1_25`
+- **Migration (#299, in progress):** part of `world_select.sbui` (see world-select): the card is a document box
+  placed at the host's `card.x`/`card.y` (`WorldSelectLayout.cardBounds`, flipped above the row where the window is
+  short), rows/buttons/status/progress bound to `worldSelect.card`, values and title ellipsized by `text-overflow`.
+- **Gate:** `ui.fidelity.WorldSelectDocumentGateTest` (the card cases).
 
 ### world-select-delete-confirm
 - **Kind:** dialog. Owner: as world-select.
@@ -344,7 +391,12 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - **Enter confirms the delete**, Esc cancels (`WorldInputHandler.java:45-57`).
   - A click outside the panel cancels (`WorldMouseHandler.java:166-181`).
 - **Draw:** 0xCC scrim, panel, "Delete World?", Delete/Cancel (renderer :366-391).
-- **Fixtures:** none.
+- **Fixtures:** the `delete` cases of `LegacyWorldSelectBaselineTest` (#299).
+- **Fidelity:** `world-select/world-select-delete_1920x1080_s1` `world-select/world-select-delete-hover-confirm_1920x1080_s1` `world-select/world-select-delete-hover-cancel_1920x1080_s1`
+- **Migration (#299, in progress):** part of `world_select.sbui`: a scrim box (click = `.cancel-delete`) under a
+  sibling panel (clicks inside never reach the scrim); Enter/Esc in the code-behind. The first dialog for the reusable
+  set: the settings UI-scale confirmation can follow its shape.
+- **Gate:** `ui.fidelity.WorldSelectDocumentGateTest` (the delete cases and the scrim/Escape script).
 
 ### world-select-create-dialog
 - **Kind:** dialog. **Unreachable in production.**
@@ -353,7 +405,8 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Input (existing, if revived):** name and seed fields; Backspace edge-only (no repeat); DELETE removes the last character; Ctrl+V.
 - **Notes:** the empty-list hint still says "click 'Create New World'" while the button reads "Create World".
 - **Fixtures:** `WorldStateManagerTest` only.
-- **Decision for #299:** keep or delete it.
+- **Decision (#299):** not migrated (`n/a`). New worlds are made through character creation and the terrain mapper;
+  the document has no create dialog, and the dead legacy code goes when the legacy screen is retired.
 
 ### character-creation
 - **Kind:** screen.
@@ -434,6 +487,22 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - The error panel, sub-stage line, ETA and recovery actions are dead (renderer :201-311).
   - The severity colours lack an alpha byte.
   - The bullets are glyphs the font does not have.
+- **Fixtures:** `ui/fidelity/LegacyLoadingBaselineTest` + `LegacyLoadingCapture` (#299): the real renderer on the
+  raster stage, which now carries the menu logo (`LegacyUiRaster` serves `getStonebreakLogo`); stages `first`,
+  `caves`, `meshing`, `density` (an alias); a check that the UI scale moves nothing.
+- **Fidelity:** `loading/loading-caves_1920x1080_s1` `loading/loading-caves_1280x720_s0_75` `loading/loading-caves_3840x2160_s2` `loading/loading-caves_1921x1081_s1_25` `loading/loading-caves_800x600_s1` `loading/loading-first_1920x1080_s1` `loading/loading-meshing_1920x1080_s1` `loading/loading-density_1920x1080_s1`
+- **Migration (#299, in progress):** shipped as `ui/documents/loading.sbui` + the shared image
+  `stonebreak:ui/images/stonebreak_logo` (`ui/shared/stonebreak/ui/images/stonebreak_logo.png`), authored in Open Mason
+  ("Stonebreak Menus": `UI/stonebreak/ui/screens/loading.omui`). Contract `stonebreak:screen.loading` 1 publishes
+  `loading` (`stage`, `progress`, `percent` written by `LoadingScreen.percentText`, `runtime.contracts.LoadingRecord`).
+  The stage fields are now `volatile` (reported from generation threads). Every length and font is `dpx`: the legacy
+  screen ignores the UI scale, and so does the document (switching the units to logical px would make it scale).
+  The logo uses `-sb-sampling: nearest-raw` and the image drop shadow. The dead error panel / sub-stage / ETA are not
+  in the document (nothing sets them). **Changed:** leaving LOADING by any route other than `hide()` (a failed
+  build, a disconnect) now `dismiss()`es the screen (`GameStateController.setState`), so neither presentation lingers.
+  Rollback `-Dstonebreak.ui.legacy=loading`.
+- **Gate:** `ui.fidelity.LoadingDocumentGateTest` (all 8 cases at `FLOAT_EXACT` + `EXACT`: 0 pixels differ, logo and
+  shadow included; the bar follows reports; clicks do nothing).
 
 ### settings
 - **Kind:** screen.
@@ -483,19 +552,48 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Fixtures:** `CategoryStateTest` only.
 - **Performance:** `refreshLabels()` rebuilds about 20 strings every frame.
 - **Notes:** culled widgets keep stale bounds, so they can be clicked outside the clip.
+- **Fixtures (#299):** `ui/fidelity/LegacySettingsBaselineTest` + `LegacySettingsCapture` over `SettingsFixtures` (every
+  shown value pinned and restored, the countdown on a pinned clock via `StateManager.setClock`); the renderer reports its
+  parts to a layout sink and draws the shared `DirtBackdropProvider.paint` backdrop.
+- **Fidelity:** `settings/settings-general_1920x1080_s1` `settings/settings-general_1280x720_s0_75` `settings/settings-general_3840x2160_s2` `settings/settings-general_1921x1081_s1_25` `settings/settings-quality_1920x1080_s1` `settings/settings-quality_1280x720_s0_75` `settings/settings-quality_3840x2160_s2` `settings/settings-quality_1921x1081_s1_25` `settings/settings-quality-scrolled_1920x1080_s1` `settings/settings-performance_1920x1080_s1` `settings/settings-advanced_1920x1080_s1` `settings/settings-extras_1920x1080_s1` `settings/settings-audio_1920x1080_s1` `settings/settings-general-hover-category2_1920x1080_s1` `settings/settings-general-hover-row0_1920x1080_s1` `settings/settings-general-hover-apply_1920x1080_s1` `settings/settings-general-hover-back_1920x1080_s1` `settings/settings-audio-hover-row2_1920x1080_s1`
+- **Migration (#299, in progress):** shipped as `ui/documents/settings.sbui` with new shared components `dropdown_button`
+  (closed MDropdown look + chevron, `open` class) and `house_slider` (MSlider: label, track, fill, thumb; the instance is the
+  3x-tall press area), plus `house_button` (`scaled`, `selected`). A state screen (SETTINGS). Contract
+  `stonebreak:screen.settings` 1 (`runtime.contracts.SettingsMenuContracts`, beside the value contract
+  `stonebreak:settings`): root `settingsMenu` (title y and scroll offset in device px, categories, the selected category's
+  rows with kind/label/fraction/open/items, the scrollbar thumb, the confirmation) and actions `.press {target, fraction}`,
+  `.drag`, `.scrollbar`, `.scrollbar-drag`, `.release`, `.wheel`, `.key {key, shift}`. The legacy `SettingsMenu` stays the
+  controller: the renderer was split into `layout` (scroll easing step, labels, positions; run by the contract poll while
+  the document shows) and paint, and `SettingsMenu.press` applies the legacy precedence (confirmation modal, an open
+  dropdown takes the press, then categories, rows, Apply, Back). The document sends presses on pointer-down (any button,
+  as legacy), drags from a root `pointer-move` handler, the wheel over the viewport, keys through `on_input` (each OS
+  repeat one step: the legacy poll was level-triggered, a step per frame). The viewport clips with the new engine style
+  `-sb-clip: antialias`; the dropdown list is `-sb-layer: 1` (escapes the clip), the confirmation `-sb-layer: 2`.
+  Legacy fix: rows outside the viewport no longer take presses (Quality's lower rows used to cover Apply/Back), and every
+  row is placed each frame (culled rows kept stale bounds). Rollback `-Dstonebreak.ui.legacy=settings`.
+- **Gate:** `ui.fidelity.SettingsDocumentGateTest`: 23 cases at `EXACT` (0 px) with `FLOAT_EXACT` geometry and the same hit
+  regions and presses; dropdown choose/close, slider drag, wheel and key scripts against the real menu.
 
 ### settings-ui-scale-confirm
 - **Kind:** dialog. Owner: as settings.
 - **Entry:** Apply with a changed UI scale. It applies the scale at once and starts a 10 s auto-revert countdown (`ActionHandler.java:99-132`, `SettingsMenu.java:82-86`, StateManager :510-531).
 - **Input (existing):** modal for mouse and keyboard; Enter keeps, Esc reverts (`InputHandler.java:34-53`).
 - **Draw:** 0xC8 scrim over the dropdown overlays (renderer :84-129).
-- **Time:** countdown on `currentTimeMillis`, ticked from `handleInput`.
-- **Fixtures:** none.
+- **Time:** countdown on `currentTimeMillis`, ticked from `handleInput` (under the document: from the contract poll).
+- **Fixtures:** the `-confirm` cases of `LegacySettingsBaselineTest` (#299, pinned clock).
+- **Fidelity:** `settings/settings-general-confirm_1920x1080_s1` `settings/settings-general-confirm-hover-keep_1920x1080_s1`
+- **Migration (#299, in progress):** part of `settings.sbui` (layer 2: scrim, panel, texts bound to `settingsMenu.confirm`,
+  Keep/Revert presses); Enter/Escape through `.key`.
+- **Gate:** `ui.fidelity.SettingsDocumentGateTest` (the confirm cases).
 
 ### settings-dropdown-overlay
 - **Kind:** overlay. Owner: `MDropdown` instances for Resolution, Arm Model, Crosshair, Shadow Quality and LOD Quality, drawn through the `MasonryUI.pushOverlay`/`renderOverlays` queue (`rendering/UI/masonryUI/MasonryUI.java:74-84`; renderer :80-81).
 - **Input (existing):** an open dropdown consumes clicks first (`MouseHandler.java:136-155`). Shift+arrows move the option while it is open.
 - **Fixtures:** `MDropdownInteractionTest` (widget level).
+- **Fidelity:** `settings/settings-general-open_1920x1080_s1` `settings/settings-general-open-hover-item2_1920x1080_s1` `settings/settings-advanced-open_1920x1080_s1`
+- **Migration (#299, in progress):** part of `settings.sbui`: each dropdown row carries its list (`-sb-layer: 1`, items
+  bound to `rows[i].items`, `:hover`/`current` fills, a 2 px rim child drawn last); presses go through `.press item<k>`.
+- **Gate:** `ui.fidelity.SettingsDocumentGateTest` (the open cases and the choose/close script).
 
 ### multiplayer-menu
 - **Kind:** screen.
@@ -508,7 +606,19 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - No keyboard navigation; Enter does nothing.
 - **Assets:** `Dirt.png`, font.
 - **Layout:** centred 400×40 buttons at a 50 px pitch, fixed font sizes. Ignores uiScale.
-- **Fixtures:** none.
+- **Fidelity:** `multiplayer/multiplayer-plain_1920x1080_s1` `multiplayer/multiplayer-plain_1280x720_s0_75` `multiplayer/multiplayer-plain_3840x2160_s2` `multiplayer/multiplayer-plain_1921x1081_s1_25` `multiplayer/multiplayer-hover-host_1920x1080_s1` `multiplayer/multiplayer-hover-join_1920x1080_s1` `multiplayer/multiplayer-hover-back_1920x1080_s1`
+- **Migration (#299, in progress):** shipped as `ui/documents/multiplayer.sbui` ("Stonebreak Menus":
+  `UI/stonebreak/ui/screens/multiplayer.omui`); contract `stonebreak:screen.multiplayer` 1 (`.host`, `.join`, `.back`).
+  Rollback `-Dstonebreak.ui.legacy=multiplayer`.
+  Shared by the three: the documents follow the game state through `runtime.screens.StateScreens` (the frame
+  renderer paints a state's document instead of its legacy screen); the dirt is the Skia-only provider
+  `stonebreak:dirt-backdrop` (`runtime.providers.DirtBackdropProvider`, which the legacy `MultiplayerUIPainter` now
+  also draws with); buttons are the shared `menu_button` component (#FFFFF0 text, lit #FFCC55, baseline 7 px under
+  the middle); everything is `dpx` because these screens ignore the UI scale. Contracts in
+  `runtime.contracts.MultiplayerContracts`; the legacy screen objects stay the controllers. Esc is still the legacy
+  level-triggered poll. Fixtures: `ui/fidelity/LegacyMultiplayerBaselineTest` + `LegacyMultiplayerCapture` (the
+  painter's layout sink names buttons and fields).
+- **Gate:** `ui.fidelity.MultiplayerDocumentGateTest` (all 7 cases, 0 px; same hit regions and actions).
 
 ### host-world
 - **Kind:** screen.
@@ -521,8 +631,15 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Actions:** validates the port 1–65535, saves it, calls `MultiplayerSession.startHosting` (:189-212).
 - **Layout:** absolute Y (70/100/130…) under a centred X. Ignores uiScale.
 - **Time:** caret on `currentTimeMillis`.
-- **Notes:** the empty-list text contains an em-dash, which renders as tofu (:94).
-- **Fixtures:** none.
+- **Notes:** the empty-list text had an em-dash, which rendered as tofu (:94); #299 made it a hyphen in both.
+- **Fidelity:** `multiplayer/host-world-worlds_1920x1080_s1` `multiplayer/host-world-worlds_1280x720_s0_75` `multiplayer/host-world-worlds_3840x2160_s2` `multiplayer/host-world-worlds_1921x1081_s1_25` `multiplayer/host-world-empty_1920x1080_s1` `multiplayer/host-world-nine_1920x1080_s1` `multiplayer/host-world-worlds-focused_1920x1080_s1` `multiplayer/host-world-worlds-status_1920x1080_s1` `multiplayer/host-world-worlds-hover-row1_1920x1080_s1` `multiplayer/host-world-worlds-hover-start_1920x1080_s1` `multiplayer/host-world-worlds-hover-back_1920x1080_s1`
+- **Migration (#299, in progress):** shipped as `ui/documents/host_world.sbui` (`UI/stonebreak/ui/screens/host_world.omui`);
+  contract `stonebreak:screen.host-world` 1: root `hostWorld` (the first eight worlds, selection, port, status) and
+  `.select {index}`, `.start {port}` (runs `HostWorldScreen.startHosting`: validation, Settings, session start; its
+  status line comes back and is published), `.back`. Still eight rows and no scrolling, as legacy. The port field is a
+  `TextField` (`digits`, max 5, underscore caret); the code-behind fills it from the host on open and keeps the
+  forwarding hint in step with it. Rollback `-Dstonebreak.ui.legacy=host_world`.
+- **Gate:** `ui.fidelity.MultiplayerDocumentGateTest` (all 11 cases, 0 px, the focused field's caret included).
 
 ### join-world
 - **Kind:** screen.
@@ -534,7 +651,14 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Esc polled level-triggered (:133-137).
 - **Actions:** validate → save to Settings → `MultiplayerSession.joinServer`. The status shows "Connecting..." while the screen stays put. The server then drives CHARACTER_CREATION or LOADING (:165-189).
 - **Layout:** absolute px. Ignores uiScale.
-- **Fixtures:** none.
+- **Fidelity:** `multiplayer/join-world-filled_1920x1080_s1` `multiplayer/join-world-filled_1280x720_s0_75` `multiplayer/join-world-filled_3840x2160_s2` `multiplayer/join-world-filled_1921x1081_s1_25` `multiplayer/join-world-filled-focused_1920x1080_s1` `multiplayer/join-world-filled-status_1920x1080_s1` `multiplayer/join-world-filled-hover-connect_1920x1080_s1` `multiplayer/join-world-filled-hover-back_1920x1080_s1`
+- **Migration (#299, in progress):** shipped as `ui/documents/join_world.sbui` (`UI/stonebreak/ui/screens/join_world.omui`);
+  contract `stonebreak:screen.join-world` 1: root `joinWorld` (fields as last saved, status) and
+  `.connect {host, port, username}` (runs `JoinWorldScreen.connect` with the typed fields cut to the legacy limits;
+  returns the status and the username, "Player" when blank), `.back`. Fields are `TextField`s (`ascii`/`digits`,
+  64/5/24). New vs legacy: Tab also reaches the buttons, long hosts scroll inside the field instead of overflowing it,
+  the caret can move (the legacy field only appended). Rollback `-Dstonebreak.ui.legacy=join_world`.
+- **Gate:** `ui.fidelity.MultiplayerDocumentGateTest` (all 8 cases, 0 px; typed fields reach the actions).
 
 ### pause-menu-offline
 - **Kind:** dialog.
@@ -619,7 +743,22 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Hover via UMR. No keyboard.
 - **Layout:** overlay 0xB4500000; "You Died!" at 96·s red with a +4 px shadow at centre − 100; one 360×50·s button at centre + 20·s (`DeathMenu.java:72-82`).
 - **Time / sound:** none.
-- **Fixtures:** none.
+- **Fixtures:** `ui/fidelity/LegacyDeathBaselineTest` + `LegacyDeathCapture` (#299): pixel baselines of the real
+  renderer (its layout sink reports the Respawn rect), hit region = `DeathMenu.isRespawnButtonClicked`, variants
+  `dead` / `dead-hover-respawn`.
+- **Fidelity:** `death/death-dead_1920x1080_s1` `death/death-dead_1280x720_s0_75` `death/death-dead_3840x2160_s2` `death/death-dead_1921x1081_s1_25` `death/death-dead-hover-respawn_1920x1080_s1` `death/death-dead-hover-respawn_1921x1081_s1_25`
+- **Migration (#299, in progress):** shipped as `ui/documents/death.sbui` (+ shared `stone_button`), authored in Open
+  Mason (project "Stonebreak Menus": `UI/stonebreak/ui/screens/death.omui`). `DeathMenu` keeps visibility (the game
+  loop's trigger, cursor release) through a `runtime.screens.PresentationSlot`; GS installs a
+  `runtime.screens.PresentedDocument` (`ownerPaints`, drawn where the legacy renderer drew in the modal pass).
+  Respawn → host action `stonebreak:screen.death.respawn` (contract `stonebreak:screen.death` 1) →
+  `ui.DeathMenuActions.respawn`, the rule the legacy click (UMR) now also calls; the action is refused unless the
+  death menu is up. The title's +4 px shadow is unscaled in the legacy renderer: the shadow label sits at
+  `left/top: 4dpx` (device pixels, #299) inside the title box. Rollback `-Dstonebreak.ui.legacy=death`.
+- **Gate:** `ui.fidelity.DeathDocumentGateTest` (all 6 cases at `FLOAT_EXACT` + `EXACT`: 0 pixels differ; same hit
+  region and action; clicks beside the button do nothing; the shadow stays 4 device px off at scale 1.5).
+  The source was written as a project file and normalised by the engine's `OmuiWriter` (the running editor predated
+  `dpx`); it opens in Open Mason like any other.
 
 ### statistics
 - **Kind:** screen (modal over the world).
@@ -635,7 +774,24 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - damage dealt
   - distances and air time
 - **Layout:** panel 520×580·s, rows at panelY + 115 every 30·s. `String.format` uses the default locale, so separators vary by locale.
-- **Fixtures:** none.
+- **Fixtures:** `ui/fidelity/LegacyStatisticsBaselineTest` + `LegacyStatisticsCapture` (#299): pinned stats
+  (`sample()`: grouping, km, hours) or none, captured in `Locale.US`; the renderer takes a stats source and reports
+  `panel`/`back` through its layout sink.
+- **Fidelity:** `statistics/statistics-played_1920x1080_s1` `statistics/statistics-played_1280x720_s0_75` `statistics/statistics-played_3840x2160_s2` `statistics/statistics-played_1921x1081_s1_25` `statistics/statistics-fresh_1920x1080_s1` `statistics/statistics-played-hover-back_1920x1080_s1` `statistics/statistics-played-hover-back_1921x1081_s1_25`
+- **Migration (#299, in progress):** shipped as `ui/documents/statistics.sbui` + shared components `stone_button` and
+  the new `stat_row` (label + right-aligned value; instance classes `header` / `indent` pick the variants through
+  `.header > .stat-row ...` selectors), authored in Open Mason ("Stonebreak Menus": `UI/stonebreak/ui/screens/statistics.omui`,
+  `UI/stonebreak/ui/components/stat_row.omui`). Values bind `stats.text.*` of the new host root `stats` (contract
+  `stonebreak:player.stats` 1, `runtime.contracts.StatsRecord`): numbers plus each one written by
+  `statisticsScreen.StatisticsFormat`, the formatter the legacy renderer now also calls, so locale rules stay in Java.
+  Back → `stonebreak:screen.statistics.back` (contract `stonebreak:screen.statistics` 1; refused unless the screen is up)
+  → `closeStatisticsScreen`. The two separators are 1 device px in the legacy renderer: `height: 1dpx`. Root
+  `-sb-font-grid: none` (this renderer sized fonts exactly). Paint order follows the legacy one (the section rule under
+  the MOVEMENT header). Escape still does nothing here. Rollback `-Dstonebreak.ui.legacy=statistics`.
+- **Gate:** `ui.fidelity.StatisticsDocumentGateTest` (all 7 cases at `FLOAT_EXACT` + `EXACT`: 0 pixels differ; same Back
+  hit region and action; values repaint when the host publishes; only Back reaches an action). Needed exact line
+  boxes off the pixel grid and the new root `-sb-font-grid: none` (15 px rows at 0.75/1.25 were half-pixel-snapped;
+  this renderer sized fonts exactly).
 
 ### glossary
 - **Kind:** screen.
@@ -643,7 +799,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Entry/exit:** mirrors statistics (GSC:286-301, state GLOSSARY). **Escape is dead here too.**
 - **Input (existing):**
   - Left press (UMR:111-125): `handleClick` selects a sidebar row or cycles the variant (wrapping, per type, stored in an EnumMap), then Back.
-  - **Hover never updates**: `GlossaryScreen.updateHover` (:116) has no caller.
+  - **Hover never updated** (`GlossaryScreen.updateHover` had no caller) until #299 wired it into `UMR.onMouseMove`.
 - **Bindings:**
   - `EntityType.GLOSSARY_TYPES` = cow, sheep, chicken, goose.
   - `player.getEntityDiscoveries()` (seen variants, weakness), `PlayerStats.getKillsByType`.
@@ -651,7 +807,28 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Layout:** pure `GlossaryLayout`: panel ≤1100×700·s and ≤92 % of the window, 34 % sidebar, compressing rows, preview ≤250 px or 42 % (`GlossaryLayout.java:25-130`).
 - **Time:** preview orbit and Idle clip on `getTotalTimeElapsed()`.
 - **Custom draw:** raw-GL mob preview after `endFrame` (Hard visuals #1); hard `canvas.clipRect` panes; MStatRow bars; MBadge; MSymbol.
-- **Fixtures:** `GlossaryLayoutTest` (7, geometry).
+- **Fixtures:** `GlossaryLayoutTest` (7, geometry). `ui/fidelity/LegacyGlossaryBaselineTest` + `LegacyGlossaryCapture`
+  (#299): pinned discoveries/kills through the screen's new data source (cow: 2 of 3 variants, weakness known,
+  1,234 defeated; sheep seen; chicken complete; goose unseen), the renderer's layout sink (`panel`, `row0..3`,
+  `left`/`right`, `back`), hit regions from `GlossaryLayout` as `handleClick` tests them. `Locale.US`.
+- **Fidelity:** `glossary/glossary-cow_1920x1080_s1` `glossary/glossary-cow_1280x720_s0_75` `glossary/glossary-cow_3840x2160_s2` `glossary/glossary-cow_1921x1081_s1_25` `glossary/glossary-cow_800x600_s2` `glossary/glossary-sheep_1920x1080_s1` `glossary/glossary-chicken_1920x1080_s1` `glossary/glossary-goose_1920x1080_s1` `glossary/glossary-cow-variant2_1920x1080_s1` `glossary/glossary-cow-hover-back_1920x1080_s1` `glossary/glossary-cow-hover-row1_1920x1080_s1` `glossary/glossary-cow-hover-right_1920x1080_s1` `glossary/glossary-cow-hover-left_1921x1081_s1_25`
+- **Migration (#299, in progress):** shipped as `ui/documents/glossary.sbui` + shared components `stone_button`,
+  `section_header` (MSectionHeader), `meter_row` (MStatRow, bar from a 0-1 `fraction`) and `icon_button` (30 px stone
+  button with an `-sb-symbol`), authored in Open Mason ("Stonebreak Menus": `UI/stonebreak/ui/screens/glossary.omui`).
+  The selection stays in `GlossaryScreen` (kept between visits): contract `stonebreak:screen.glossary` 1 publishes
+  `glossary` (header, the four sidebar `entries[i]`, the selected entity, attributes, weakness; strings from
+  `glossaryScreen.GlossaryText`, which the legacy renderer now also uses) and `glossaryAbilities` (a `ListView`; no
+  entity has abilities yet), with actions `.select {index}`, `.cycle {delta}` (refused without two discovered
+  variants) and `.back`. The 3D model is the `stonebreak:entity-preview` provider bound to `glossary.preview`
+  (Hard visual #1 resolved: it now composes and clips with the document). The sidebar is a fixed column of four rows
+  that shrink together like the legacy compression (a `ListView` would scroll instead). Rollback
+  `-Dstonebreak.ui.legacy=glossary`.
+  **Changed in both (#299):** hover now works: `GlossaryScreen.updateHover` existed but nothing called it; the mouse
+  router now feeds it (rows, arrows and Back light up, in the legacy renderer and the document alike). Escape is
+  still dead here.
+- **Gate:** `ui.fidelity.GlossaryDocumentGateTest` (all 13 cases at `FLOAT_EXACT` + `EXACT`: 0 pixels differ, small
+  window included; same hit region and effect for every row, arrow and Back; a click script that the selection
+  stays in the game). The 3D preview is GL on both sides and not in the raster capture (`DocumentStage.NO_GL`).
 
 ### inventory
 - **Kind:** screen.

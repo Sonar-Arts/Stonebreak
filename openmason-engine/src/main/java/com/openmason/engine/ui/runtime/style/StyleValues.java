@@ -9,7 +9,7 @@ public final class StyleValues {
 
     /** Properties whose computed value children inherit when they do not set it (USS set). */
     public static final Set<String> INHERITED = Set.of("color", "font", "font-size", "text-align", "visibility",
-        "pointer-events", "white-space");
+        "pointer-events", "white-space", "line-height");
 
     /** Properties Yoga reads; a change re-pushes the element's layout record. */
     public static final Set<String> LAYOUT = Set.of(
@@ -29,14 +29,15 @@ public final class StyleValues {
 
     /** Properties that change a measured leaf's intrinsic size. */
     public static final Set<String> MEASURE = Set.of("font", "font-size", "white-space", "-sb-max-lines",
-        "text-overflow");
+        "text-overflow", "line-height");
 
     private StyleValues() {
     }
 
-    /** A length: points, a percentage, {@code auto}, or unset. */
+    /** A length: points, device pixels ({@code Ndpx}), a percentage, {@code auto}, or unset. */
     public record Length(Kind kind, float value) {
-        public enum Kind { UNSET, POINTS, PERCENT, AUTO }
+        /** {@code DEVICE}: device pixels, never multiplied by the UI scale (#299). */
+        public enum Kind { UNSET, POINTS, PERCENT, AUTO, DEVICE }
 
         public static final Length UNSET = new Length(Kind.UNSET, Float.NaN);
         public static final Length AUTO = new Length(Kind.AUTO, Float.NaN);
@@ -49,8 +50,26 @@ public final class StyleValues {
             return new Length(Kind.PERCENT, v);
         }
 
+        public static Length device(float v) {
+            return new Length(Kind.DEVICE, v);
+        }
+
         public boolean isSet() {
             return kind != Kind.UNSET;
+        }
+
+        /** A fixed length (points or device pixels) in device px at {@code scale}; else {@code fallback}. */
+        public float px(float scale, float fallback) {
+            return switch (kind) {
+                case POINTS -> value * scale;
+                case DEVICE -> value;
+                default -> fallback;
+            };
+        }
+
+        /** Points or device pixels: a size that does not depend on the parent. */
+        public boolean isFixed() {
+            return kind == Kind.POINTS || kind == Kind.DEVICE;
         }
     }
 
@@ -63,6 +82,13 @@ public final class StyleValues {
             String t = s.value();
             if (t.equals("auto")) {
                 return Length.AUTO;
+            }
+            if (t.endsWith("dpx")) {
+                try {
+                    return Length.device(Float.parseFloat(t.substring(0, t.length() - 3)));
+                } catch (NumberFormatException e) {
+                    return Length.UNSET;
+                }
             }
             if (t.endsWith("%")) {
                 try {

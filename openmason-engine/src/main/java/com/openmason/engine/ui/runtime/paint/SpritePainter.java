@@ -65,6 +65,8 @@ public final class SpritePainter {
     private static final int LAYOUT_CACHE = 512;
 
     private static final ThreadLocal<Caches> CACHES = ThreadLocal.withInitial(Caches::new);
+    /** An image filter the next draws on this thread put on their paint ({@link #withFilter}). */
+    private static final ThreadLocal<io.github.humbleui.skija.ImageFilter> FILTER = new ThreadLocal<>();
     private static final Map<String, Integer> TINTS = new ConcurrentHashMap<>();
     private static final Map<UiElement, Start> STARTS = new WeakHashMap<>();
 
@@ -109,19 +111,45 @@ public final class SpritePainter {
         if (mode == ScaleMode.NINE_SLICE && (sp.slice().isNone() || !region.sliceUsable())) {
             mode = ScaleMode.STRETCH;
         }
-        boolean nearest = sp.sampling() != null ? sp.sampling() == Sampling.NEAREST
-            : !"linear".equals(s.keyword("-sb-sampling", "nearest"));
+        String styled = s.keyword("-sb-sampling", "nearest");
+        boolean nearest = sp.sampling() != null ? sp.sampling() == Sampling.NEAREST : !"linear".equals(styled);
+        // nearest-raw (#299): Skia's own nearest draw, exactly as a legacy drawImageRect call; ties at
+        // pixel centres then break per backend, the price of matching a legacy screen pixel for pixel
+        boolean raw = sp.sampling() == null && "nearest-raw".equals(styled);
         SamplingMode sampling = nearest ? SamplingMode.DEFAULT : SamplingMode.LINEAR;
         float kx = (float) (sp.layoutWidth() * scale / sp.w());
         float ky = (float) (sp.layoutHeight() * scale / sp.h());
         Caches caches = CACHES.get();
         List<SpriteSlices.Patch> patches = caches.layout(new LayoutKey(sx, sy, sp.w(), sp.h(), sp.slice(), sp.edges(),
-            sp.center(), mode, sp.pivotX(), sp.pivotY(), r.x(), r.y(), r.width(), r.height(), kx, ky, nearest));
+            sp.center(), mode, sp.pivotX(), sp.pivotY(), r.x(), r.y(), r.width(), r.height(), kx, ky, nearest && !raw));
         Paint paint = caches.paint(tint(sp.tint()), (float) Math.min(1, sp.opacity()));
-        for (SpriteSlices.Patch p : patches) {
-            patch(canvas, texture, img, p, sampling, nearest, paint, caches);
+        io.github.humbleui.skija.ImageFilter filter = FILTER.get();
+        if (filter != null) {
+            paint.setImageFilter(filter);
+        }
+        try {
+            for (SpriteSlices.Patch p : patches) {
+                patch(canvas, texture, img, p, sampling, nearest && !raw, paint, caches);
+            }
+        } finally {
+            if (filter != null) {
+                paint.setImageFilter(null);
+            }
         }
         return next;
+    }
+
+    /**
+     * Runs {@code draw} with {@code filter} on the sprite paint (a drop shadow under an Image,
+     * applied as the legacy screens applied it, #299).
+     */
+    public static void withFilter(io.github.humbleui.skija.ImageFilter filter, Runnable draw) {
+        FILTER.set(filter);
+        try {
+            draw.run();
+        } finally {
+            FILTER.remove();
+        }
     }
 
     /** The fill mode {@code s} asks for, else the sprite's own. */

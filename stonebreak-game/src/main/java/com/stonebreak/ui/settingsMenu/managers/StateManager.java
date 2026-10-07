@@ -59,12 +59,82 @@ public final class StateManager {
 
     private List<MCategoryButton<CategoryState>> categoryButtons;
 
+    // ─────────────────────────────────────────────── Rows
+
+    /** The widget a setting row shows, or null for the virtual Apply/Back rows. */
+    public MWidget widget(CategoryState.SettingType type) {
+        return switch (type) {
+            case RESOLUTION       -> resolutionButton;
+            case VOLUME           -> volumeSlider;
+            case MUSIC_VOLUME     -> musicVolumeSlider;
+            case MUSIC_ENABLED    -> musicEnabledButton;
+            case ARM_MODEL        -> armModelButton;
+            case CROSSHAIR_STYLE  -> crosshairStyleButton;
+            case CROSSHAIR_SIZE   -> crosshairSizeSlider;
+            case PLAYER_NAME_TAGS -> playerNameTagsButton;
+            case LEAF_TRANSPARENCY -> leafTransparencyButton;
+            case WATER_SHADER     -> waterShaderButton;
+            case CLOUDS_ENABLED   -> cloudsButton;
+            case GOD_RAYS         -> godRaysButton;
+            case SHADOWS          -> shadowsButton;
+            case SHADOW_QUALITY   -> shadowQualityButton;
+            case SHADOW_DISTANCE  -> shadowDistanceSlider;
+            case SMOOTH_LIGHTING  -> smoothLightingButton;
+            case RENDER_DISTANCE  -> renderDistanceSlider;
+            case LOD_DISTANCE     -> lodDistanceSlider;
+            case LOD_ENABLED      -> lodEnabledButton;
+            case LOD_QUALITY      -> lodQualityButton;
+            case VSYNC            -> vsyncButton;
+            case MAX_FPS          -> maxFpsSlider;
+            case UI_SCALE         -> uiScaleSlider;
+            default -> null;
+        };
+    }
+
+    public static boolean isSlider(CategoryState.SettingType type) {
+        return type == CategoryState.SettingType.VOLUME
+                || type == CategoryState.SettingType.MUSIC_VOLUME
+                || type == CategoryState.SettingType.CROSSHAIR_SIZE
+                || type == CategoryState.SettingType.SHADOW_DISTANCE
+                || type == CategoryState.SettingType.RENDER_DISTANCE
+                || type == CategoryState.SettingType.LOD_DISTANCE
+                || type == CategoryState.SettingType.MAX_FPS
+                || type == CategoryState.SettingType.UI_SCALE;
+    }
+
+    /** The open dropdown (at most one is), or null. */
+    public MDropdown openDropdown() {
+        for (MDropdown d : new MDropdown[]{resolutionButton, armModelButton, crosshairStyleButton,
+                shadowQualityButton, lodQualityButton}) {
+            if (d != null && d.isOpen()) return d;
+        }
+        return null;
+    }
+
+    /** Every slider, for drag routing. */
+    public MSlider[] sliders() {
+        return new MSlider[]{volumeSlider, musicVolumeSlider, crosshairSizeSlider, shadowDistanceSlider,
+                renderDistanceSlider, lodDistanceSlider, maxFpsSlider, uiScaleSlider};
+    }
+
     // ─────────────────────────────────────────────── UI-scale confirmation
+
+    /** The confirmation's first line ("New scale: 1.5x"). */
+    public String uiScalePendingText() {
+        return String.format("New scale: %.1fx", uiScaleSlider.value());
+    }
+
+    /** The confirmation's countdown line. */
+    public String uiScaleCountdownText() {
+        return "Reverting to " + String.format("%.1f", uiScalePreviousScale) + "x in " + getUiScaleConfirmSecondsLeft() + "s";
+    }
     /** Seconds the "keep this scale?" popup waits before auto-reverting. */
     private static final long UI_SCALE_CONFIRM_MS = 10_000L;
     private boolean uiScaleConfirmActive = false;
     private float uiScalePreviousScale = 1.0f;
     private long uiScaleConfirmDeadlineMs = 0L;
+    /** The countdown's clock (wall time; tests pin it). */
+    private java.util.function.LongSupplier clock = System::currentTimeMillis;
 
     // ─────────────────────────────────────────────── Navigation state
     private CategoryState selectedCategory = CategoryState.GENERAL;
@@ -510,7 +580,12 @@ public final class StateManager {
     public void startUiScaleConfirmation(float previousScale) {
         this.uiScalePreviousScale = previousScale;
         this.uiScaleConfirmActive = true;
-        this.uiScaleConfirmDeadlineMs = System.currentTimeMillis() + UI_SCALE_CONFIRM_MS;
+        this.uiScaleConfirmDeadlineMs = clock.getAsLong() + UI_SCALE_CONFIRM_MS;
+    }
+
+    /** Test seam: the clock the UI-scale countdown reads. */
+    public void setClock(java.util.function.LongSupplier clock) {
+        this.clock = clock;
     }
 
     public void endUiScaleConfirmation() {
@@ -522,12 +597,12 @@ public final class StateManager {
 
     /** Whole seconds remaining before auto-revert (never negative). */
     public int getUiScaleConfirmSecondsLeft() {
-        long remaining = uiScaleConfirmDeadlineMs - System.currentTimeMillis();
+        long remaining = uiScaleConfirmDeadlineMs - clock.getAsLong();
         return (int) Math.max(0, Math.ceil(remaining / 1000.0));
     }
 
     public boolean isUiScaleConfirmExpired() {
-        return uiScaleConfirmActive && System.currentTimeMillis() >= uiScaleConfirmDeadlineMs;
+        return uiScaleConfirmActive && clock.getAsLong() >= uiScaleConfirmDeadlineMs;
     }
 
     // ─────────────────────────────────────────────── Getters / setters

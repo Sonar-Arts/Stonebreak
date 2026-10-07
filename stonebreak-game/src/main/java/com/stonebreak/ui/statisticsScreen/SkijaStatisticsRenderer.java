@@ -35,6 +35,8 @@ public final class SkijaStatisticsRenderer {
     private static final int COLOR_OVERLAY = 0x78000000;
 
     private final SkijaUIBackend backend;
+    private java.util.function.BiConsumer<String, float[]> layoutSink;
+    private java.util.function.Supplier<PlayerStats> statsSource = SkijaStatisticsRenderer::liveStats;
 
     private Font fontTitle;
     private Font fontHeader;
@@ -44,6 +46,24 @@ public final class SkijaStatisticsRenderer {
 
     public SkijaStatisticsRenderer(SkijaUIBackend backend) {
         this.backend = backend;
+    }
+
+    /**
+     * Receives the {@code panel} and {@code back} rects {@code [x, y, w, h]} as {@link #render} draws
+     * them: the fidelity gate's geometry oracle (#299). Null (the default) costs nothing.
+     */
+    public void setLayoutSink(java.util.function.BiConsumer<String, float[]> sink) {
+        this.layoutSink = sink;
+    }
+
+    /** Where the rows come from (the local player's stats by default; fixtures pin their own). */
+    public void setStatsSource(java.util.function.Supplier<PlayerStats> source) {
+        this.statsSource = source == null ? SkijaStatisticsRenderer::liveStats : source;
+    }
+
+    private static PlayerStats liveStats() {
+        Player player = Game.getPlayer();
+        return player != null ? player.getStats() : null;
     }
 
     public void render(int windowWidth, int windowHeight, boolean backHovered) {
@@ -82,8 +102,7 @@ public final class SkijaStatisticsRenderer {
             }
 
             // Stats
-            Player player = Game.getPlayer();
-            PlayerStats stats = (player != null) ? player.getStats() : null;
+            PlayerStats stats = statsSource.get();
 
             float leftX  = panelX + 28f * scale;
             float rightX = panelX + panelW - 28f * scale;
@@ -137,6 +156,10 @@ public final class SkijaStatisticsRenderer {
             float btnTx = backBtnX + bw / 2f;
             float btnTy = backBtnY + bh / 2f + 7f * scale;
             MPainter.drawCenteredStringWithShadow(canvas, "Back", btnTx, btnTy, fontButton, btnTextColor, MStyle.TEXT_SHADOW);
+            if (layoutSink != null) {
+                layoutSink.accept("panel", new float[]{panelX, panelY, panelW, panelH});
+                layoutSink.accept("back", new float[]{backBtnX, backBtnY, bw, bh});
+            }
 
         } finally {
             backend.endFrame();
@@ -187,31 +210,22 @@ public final class SkijaStatisticsRenderer {
         MPainter.drawStringWithShadow(canvas, value, rightX - vw, y, fontStat, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
     }
 
-    // --- Formatters ---
+    // --- Formatters (shared with the UI host's display strings) ---
 
     private static String formatLong(long v) {
-        return String.format("%,d", v);
+        return StatisticsFormat.count(v);
     }
 
     private static String formatDamage(double v) {
-        return String.format("%.1f", v);
+        return StatisticsFormat.damage(v);
     }
 
     private static String formatDist(double meters) {
-        if (meters >= 1000.0) {
-            return String.format("%.2f km", meters / 1000.0);
-        }
-        return String.format("%.1f m", meters);
+        return StatisticsFormat.distance(meters);
     }
 
     private static String formatTime(double seconds) {
-        long total = (long) seconds;
-        long h = total / 3600;
-        long m = (total % 3600) / 60;
-        long s = total % 60;
-        if (h > 0) return String.format("%dh %dm %ds", h, m, s);
-        if (m > 0) return String.format("%dm %ds", m, s);
-        return String.format("%ds", s);
+        return StatisticsFormat.time(seconds);
     }
 
     private static long getKillCount(PlayerStats stats, EntityType type) {

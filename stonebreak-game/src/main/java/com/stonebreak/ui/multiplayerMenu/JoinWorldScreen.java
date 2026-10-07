@@ -41,6 +41,46 @@ public final class JoinWorldScreen {
         this.painter = new MultiplayerUIPainter(backend);
     }
 
+    // ── state the UI host publishes and its actions change (#299: the document shares these rules) ──
+
+    public String hostText() { return hostText; }
+    public String portText() { return portText; }
+    public String userText() { return userText; }
+    public String statusMessage() { return statusMessage; }
+
+    /** Sets the fields as typed and which one has focus (-1 none; fixtures). */
+    public void setFields(String host, String port, String user, int focused) {
+        hostText = host;
+        portText = port;
+        userText = user;
+        focusedField = focused;
+    }
+
+    /**
+     * Connect with the fields as typed, cut to what the legacy fields accept (host 64, port 5 digits,
+     * username 24).
+     *
+     * @return the status line the screen shows afterwards
+     */
+    public String connect(String host, String port, String user) {
+        hostText = clip(host, 64, false);
+        portText = clip(port, 5, true);
+        userText = clip(user, 24, false);
+        statusMessage = "";
+        connect();
+        return statusMessage;
+    }
+
+    private static String clip(String text, int max, boolean digitsOnly) {
+        StringBuilder out = new StringBuilder();
+        for (char ch : (text == null ? "" : text).toCharArray()) {
+            if (out.length() >= max) break;
+            if (ch < 32 || ch == 127 || digitsOnly && (ch < '0' || ch > '9')) continue;
+            out.append(ch);
+        }
+        return out.toString();
+    }
+
     public void onShow() {
         Settings s = Settings.getInstance();
         hostText = s.getLastJoinHost();
@@ -188,6 +228,12 @@ public final class JoinWorldScreen {
             statusMessage = "Connect failed: " + ex.getMessage();
         }
     }
+
+    /** The legacy painter (fixtures read its layout sink). */
+    public MultiplayerUIPainter painter() { return painter; }
+
+    /** 0 Connect, 1 Back, -1 none. */
+    public int hoveredButton() { return hoverButton; }
 
     public void dispose() {
         if (fontTitle != null) { fontTitle.close(); fontTitle = null; }

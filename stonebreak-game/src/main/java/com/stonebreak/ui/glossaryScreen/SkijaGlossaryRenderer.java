@@ -8,7 +8,6 @@ import com.stonebreak.mobs.sbe.SbeEntityAsset;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.mobs.sbe.SbeModelGeometry;
 import com.stonebreak.player.EntityDiscoveries;
-import com.stonebreak.player.Player;
 import com.stonebreak.player.PlayerStats;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
@@ -24,8 +23,6 @@ import com.stonebreak.rendering.models.entities.EntityRenderer;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Paint;
-import io.github.humbleui.skija.PaintMode;
-import io.github.humbleui.types.RRect;
 import io.github.humbleui.types.Rect;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -64,13 +61,11 @@ public final class SkijaGlossaryRenderer {
     private static final float FS_BUTTON    = 20f;
 
     private static final int COLOR_OVERLAY      = 0x78000000;
-    private static final int COLOR_INSET_FILL   = 0xFF1E1E1E;
-    private static final int COLOR_INSET_BORDER = 0xFF0A0A0A;
     private static final int COLOR_ROW_HOVER    = 0x1EFFFFFF;
     private static final int COLOR_CHIP_FILL    = 0xB4000000;
     private static final int COLOR_BADGE_DIM    = 0xFF474747;
 
-    private static final String[] ATTR_NAMES = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
+    private static final String[] ATTR_NAMES = GlossaryText.ATTRIBUTES;
 
     private final SkijaUIBackend backend;
     private final MasonryUI mui;
@@ -86,6 +81,23 @@ public final class SkijaGlossaryRenderer {
 
     /** A model preview to draw with GL once the Skija frame has closed. */
     private record PreviewSlot(EntityType type, String variant, float x, float y, float w, float h) {}
+
+    private java.util.function.BiConsumer<String, float[]> layoutSink;
+
+    /**
+     * Receives the rects {@code [x, y, w, h]} this frame drew ({@code panel}, {@code back},
+     * {@code row0..row3}, {@code left}/{@code right} when the cycler shows): the fidelity gate's
+     * geometry oracle (#299). Null (the default) costs nothing.
+     */
+    public void setLayoutSink(java.util.function.BiConsumer<String, float[]> sink) {
+        this.layoutSink = sink;
+    }
+
+    private void report(String part, float[] r) {
+        if (layoutSink != null) {
+            layoutSink.accept(part, r.clone());
+        }
+    }
 
     public SkijaGlossaryRenderer(SkijaUIBackend backend) {
         this.backend = backend;
@@ -113,10 +125,10 @@ public final class SkijaGlossaryRenderer {
 
             float[] panel = GlossaryLayout.panelRect(windowWidth, windowHeight, scale);
             MPainter.panel(canvas, panel[0], panel[1], panel[2], panel[3]);
+            report("panel", panel);
 
-            Player player = Game.getPlayer();
-            EntityDiscoveries discoveries = (player != null) ? player.getEntityDiscoveries() : null;
-            PlayerStats stats = (player != null) ? player.getStats() : null;
+            EntityDiscoveries discoveries = screen.discoveries();
+            PlayerStats stats = screen.stats();
 
             drawHeader(canvas, panel, discoveries, scale);
             drawSidebar(canvas, windowWidth, windowHeight, scale, discoveries, screen);
@@ -143,7 +155,7 @@ public final class SkijaGlossaryRenderer {
             if (!discoveredVariants(type, discoveries).isEmpty()) seen++;
         }
         Font fStat = mui.fonts().getScaled(FS_STAT);
-        String label = seen + " / " + total + " observed";
+        String label = GlossaryText.observed(seen, total);
         float barW = 200f * scale;
         float barH = 8f * scale;
         float labelW = MPainter.measureWidth(fStat, label);
@@ -191,6 +203,7 @@ public final class SkijaGlossaryRenderer {
             for (int i = 0; i < GlossaryLayout.rowCount(); i++) {
                 EntityType type = EntityType.GLOSSARY_TYPES[i];
                 float[] r = GlossaryLayout.listRowRect(i, ww, wh, scale);
+                report("row" + i, r);
                 boolean sel = i == screen.getSelectedEntityIndex();
                 boolean hov = i == screen.getHoveredRowIndex();
 
@@ -215,9 +228,7 @@ public final class SkijaGlossaryRenderer {
                         r[1] + r[3] * 0.42f + FS_ROW * scale * 0.35f, fRow,
                         nameColor, MStyle.TEXT_SHADOW);
 
-                String sub = observed
-                        ? seen.size() + "/" + totalVariants + " variants"
-                        : "Not yet observed";
+                String sub = GlossaryText.rowSubtitle(seen.size(), totalVariants);
                 MPainter.drawStringWithShadow(canvas, sub, tx,
                         r[1] + r[3] * 0.82f, fStat,
                         observed ? MStyle.TEXT_SECONDARY : MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
@@ -260,7 +271,7 @@ public final class SkijaGlossaryRenderer {
                     d[1] + 22f * scale, fName, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
 
             float badgeH = 20f * scale;
-            badge.text(kills > 0 ? formatLong(kills) + " defeated" : "Undefeated")
+            badge.text(GlossaryText.badge(kills))
                     .fillColor(kills > 0 ? MStyle.TEXT_ACCENT : COLOR_BADGE_DIM)
                     .textColor(kills > 0 ? 0xFF2B2317 : MStyle.TEXT_SECONDARY)
                     .size(0f, badgeH);
@@ -300,7 +311,7 @@ public final class SkijaGlossaryRenderer {
             float icon = 36f * scale;
             MSymbol.LOCK.drawWithShadow(canvas, pcx - icon / 2f, pv[1] + pv[3] / 2f - icon * 0.8f,
                     icon, icon, MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
-            MPainter.drawCenteredStringWithShadow(canvas, "Observe one in the world to unlock",
+            MPainter.drawCenteredStringWithShadow(canvas, GlossaryText.UNLOCK_HINT,
                     pcx, pv[1] + pv[3] / 2f + 16f * scale, mui.fonts().getScaled(FS_STAT),
                     MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
             return null;
@@ -311,7 +322,7 @@ public final class SkijaGlossaryRenderer {
 
         // Variant chip pinned to the preview's bottom edge
         Font fStat = mui.fonts().getScaled(FS_STAT);
-        String chip = count > 1 ? variant + "  " + (idx + 1) + "/" + count : variant;
+        String chip = GlossaryText.chip(variant, idx, count);
         float chipW = MPainter.measureWidth(fStat, chip) + 20f * scale;
         float chipH = 18f * scale;
         float chipY = pv[1] + pv[3] - chipH - 6f * scale;
@@ -322,9 +333,11 @@ public final class SkijaGlossaryRenderer {
         float sideInset = 8f * scale;
         if (count > 1) {
             float[] la = GlossaryLayout.leftArrowRect(ww, wh, scale);
+            float[] ra = GlossaryLayout.rightArrowRect(ww, wh, scale);
             drawArrowButton(canvas, la, true, screen.isLeftArrowHovered());
-            drawArrowButton(canvas, GlossaryLayout.rightArrowRect(ww, wh, scale), false,
-                    screen.isRightArrowHovered());
+            drawArrowButton(canvas, ra, false, screen.isRightArrowHovered());
+            report("left", la);
+            report("right", ra);
             sideInset = (la[0] + la[2] - pv[0]) + 6f * scale;
         }
 
@@ -347,13 +360,13 @@ public final class SkijaGlossaryRenderer {
 
         if (!unlocked || attrs == null) {
             for (String name : ATTR_NAMES) {
-                statRow.label(name).value("???").bar(0, 0f).bounds(x, y, w, rowH);
+                statRow.label(name).value(GlossaryText.LOCKED_VALUE).bar(0, 0f).bounds(x, y, w, rowH);
                 statRow.render(mui);
                 y += rowStep;
             }
             y += 8f * scale;
             float icon = 12f * scale;
-            String hint = "Defeat one to reveal";
+            String hint = GlossaryText.DEFEAT_HINT;
             Font fStat = mui.fonts().getScaled(FS_STAT);
             float hintW = MPainter.measureWidth(fStat, hint);
             float hx = x + (w - icon - 6f * scale - hintW) / 2f;
@@ -364,10 +377,10 @@ public final class SkijaGlossaryRenderer {
             return;
         }
 
-        int[] scores = {attrs.str(), attrs.dex(), attrs.con(), attrs.intel(), attrs.wis(), attrs.cha()};
+        int[] scores = GlossaryText.scores(attrs);
         for (int i = 0; i < 6; i++) {
             statRow.label(ATTR_NAMES[i])
-                    .value(scores[i] + " (" + modifierStr(scores[i]) + ")")
+                    .value(GlossaryText.score(scores[i]))
                     .bar(MStyle.TEXT_ACCENT, scores[i] / 20f)
                     .bounds(x, y, w, rowH);
             statRow.render(mui);
@@ -375,12 +388,8 @@ public final class SkijaGlossaryRenderer {
         }
 
         y += 8f * scale;
-        String[] derivedNames = {"HP", "SPD", "ATK"};
-        String[] derivedVals = {
-                String.format("%.0f", attrs.deriveMaxHealth()),
-                String.format("%.1f", attrs.deriveMoveSpeed()),
-                String.valueOf(attrs.deriveMeleeDamage())
-        };
+        String[] derivedNames = GlossaryText.DERIVED;
+        String[] derivedVals = GlossaryText.derived(attrs);
         for (int i = 0; i < 3; i++) {
             statRow.label(derivedNames[i]).value(derivedVals[i]).bar(0, 0f).bounds(x, y, w, rowH);
             statRow.render(mui);
@@ -417,10 +426,10 @@ public final class SkijaGlossaryRenderer {
             float icon = 12f * scale;
             MSymbol.LOCK.drawWithShadow(canvas, x, y - icon + 2f * scale, icon, icon,
                     MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
-            MPainter.drawStringWithShadow(canvas, "Unknown", x + icon + 6f * scale, y, fHeader,
+            MPainter.drawStringWithShadow(canvas, GlossaryText.WEAKNESS_UNKNOWN, x + icon + 6f * scale, y, fHeader,
                     MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
             y += 18f * scale;
-            for (String line : wrapText(fStat, "Study as Quarry (Ranger) to reveal", w)) {
+            for (String line : wrapText(fStat, GlossaryText.WEAKNESS_HINT, w)) {
                 MPainter.drawStringWithShadow(canvas, line, x, y, fStat,
                         MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
                 y += lineH;
@@ -452,7 +461,7 @@ public final class SkijaGlossaryRenderer {
                 y += 3f * scale;
             }
         } else {
-            MPainter.drawStringWithShadow(canvas, "None known", x, y, fStat,
+            MPainter.drawStringWithShadow(canvas, GlossaryText.NO_ABILITIES, x, y, fStat,
                     MStyle.TEXT_DISABLED, MStyle.TEXT_SHADOW);
         }
     }
@@ -461,6 +470,7 @@ public final class SkijaGlossaryRenderer {
 
     private void drawBackButton(Canvas canvas, int ww, int wh, float scale, GlossaryScreen screen) {
         float[] b = GlossaryLayout.backButtonRect(ww, wh, scale);
+        report("back", b);
         boolean hovered = screen.isBackButtonHovered();
         int fill = hovered ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
         MPainter.stoneSurface(canvas, b[0], b[1], b[2], b[3], MStyle.BUTTON_RADIUS,
@@ -574,13 +584,7 @@ public final class SkijaGlossaryRenderer {
     }
 
     private static void drawInset(Canvas canvas, float x, float y, float w, float h) {
-        try (Paint p = new Paint().setColor(COLOR_INSET_FILL).setAntiAlias(true)) {
-            canvas.drawRRect(RRect.makeXYWH(x, y, w, h, 3f), p);
-        }
-        try (Paint p = new Paint().setColor(COLOR_INSET_BORDER).setAntiAlias(true)
-                .setMode(PaintMode.STROKE).setStrokeWidth(1.5f)) {
-            canvas.drawRRect(RRect.makeXYWH(x + 0.5f, y + 0.5f, w - 1f, h - 1f, 3f), p);
-        }
+        MPainter.inset(canvas, x, y, w, h); // the house inset (document surface "inset", #299)
     }
 
     /** Greedy word-wrap that keeps every line within {@code maxWidth}. */
@@ -615,15 +619,6 @@ public final class SkijaGlossaryRenderer {
             if (discoveries != null && discoveries.hasSeenVariant(type, v)) out.add(v);
         }
         return out;
-    }
-
-    private static String formatLong(long v) {
-        return String.format("%,d", v);
-    }
-
-    private static String modifierStr(int score) {
-        int mod = EntityAttributes.getModifier(score);
-        return (mod >= 0 ? "+" : "") + mod;
     }
 
     public void dispose() {

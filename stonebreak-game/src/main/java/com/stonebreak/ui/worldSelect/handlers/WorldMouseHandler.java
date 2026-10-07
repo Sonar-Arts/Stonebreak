@@ -207,9 +207,13 @@ public class WorldMouseHandler {
         }
     }
 
+    /**
+     * One row per wheel tick. GLFW reports a wheel-up tick as a positive {@code yOffset}, which
+     * scrolls toward the top of the list (it used to be negated, so wheel-up moved the list down).
+     */
     public void handleMouseWheel(double yOffset) {
         if (!stateManager.isAnyDialogOpen()) {
-            stateManager.scroll(-yOffset);
+            stateManager.scroll(yOffset);
         }
     }
 }

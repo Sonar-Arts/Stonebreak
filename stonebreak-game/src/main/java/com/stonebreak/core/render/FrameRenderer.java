@@ -95,6 +95,22 @@ public final class FrameRenderer {
         int width = width();
         int height = height();
 
+        // A state whose screen is a shipped document draws that instead of its legacy screen (#299).
+        boolean presented = com.stonebreak.ui.runtime.screens.StateScreens.get().paint(game.getState(), width, height);
+
+        if (!presented) {
+            renderStateScreen(game, renderer, width, height);
+        }
+
+        renderDocumentScreens(renderer, width, height);
+        renderDebugOverlay(renderer);
+        // Closes and navigations scripts asked for this frame happen only now, after the frame was
+        // drawn: nothing is torn down underneath the dispatch that asked (C4).
+        com.stonebreak.ui.runtime.screens.DocumentScreenHost.get().endFrame();
+    }
+
+    /** The legacy screen of the current state, or the world for the in-game states. */
+    private void renderStateScreen(Game game, Renderer renderer, int width, int height) {
         switch (game.getState()) {
             case STARTUP_INTRO -> {
                 SonarArtsIntroScreen intro = game.getStartupIntroScreen();
@@ -139,12 +155,6 @@ public final class FrameRenderer {
             case FOCUS_BATTLE -> renderFocusBattle(game, renderer);
             default -> renderInGame(game, renderer);
         }
-
-        renderDocumentScreens(renderer, width, height);
-        renderDebugOverlay(renderer);
-        // Closes and navigations scripts asked for this frame happen only now, after the frame was
-        // drawn: nothing is torn down underneath the dispatch that asked (C4).
-        com.stonebreak.ui.runtime.screens.DocumentScreenHost.get().endFrame();
     }
 
     /**

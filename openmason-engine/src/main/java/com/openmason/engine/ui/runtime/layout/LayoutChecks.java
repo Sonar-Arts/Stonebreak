@@ -72,7 +72,7 @@ public final class LayoutChecks {
     static boolean definite(UiElement el, boolean horizontal) {
         ComputedStyle s = el.computedStyle();
         Length size = s.length(horizontal ? "width" : "height");
-        if (size.kind() == Length.Kind.POINTS) {
+        if (size.isFixed()) {
             return true;
         }
         UiElement parent = el.parent();
@@ -106,6 +106,6 @@ public final class LayoutChecks {
     }
 
     private static boolean isLength(Length l) {
-        return l.kind() == Length.Kind.POINTS || l.kind() == Length.Kind.PERCENT;
+        return l.isFixed() || l.kind() == Length.Kind.PERCENT;
     }
 }

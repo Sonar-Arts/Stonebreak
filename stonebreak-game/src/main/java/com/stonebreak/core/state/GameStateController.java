@@ -67,6 +67,12 @@ public final class GameStateController {
         }
         this.currentState = state;
 
+        // Leaving LOADING by any route other than LoadingScreen.hide() (a failed build, a disconnect):
+        // the loading screen stops showing, so its document never lingers in the input stack (#299).
+        if (stateChanged && previousGameState == GameState.LOADING && game.getLoadingScreen() != null) {
+            game.getLoadingScreen().dismiss();
+        }
+
         // Entering gameplay from any menu/UI state: drop residual mouse button
         // state so the click that closed the menu (or a release swallowed by a
         // menu-routed callback) can't trigger attacks/block breaking on its own.
@@ -91,6 +97,8 @@ public final class GameStateController {
         if (state == GameState.JOIN_WORLD_SCREEN && game.getJoinWorldScreen() != null) {
             game.getJoinWorldScreen().onShow();
         }
+        // The documents of screens that are a state follow it (after the legacy onShow refreshes, #299).
+        com.stonebreak.ui.runtime.screens.StateScreens.get().stateChanged(state);
 
         // Tear down any active session when returning to the main menu. In the two-world model
         // singleplayer also runs an integrated server + local client, so tear those down too.

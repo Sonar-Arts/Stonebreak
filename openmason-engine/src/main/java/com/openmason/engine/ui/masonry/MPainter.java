@@ -63,6 +63,25 @@ public final class MPainter {
         }
     }
 
+    // ─────────────────────────────────────────────── Inset
+
+    /**
+     * A recessed dark well (the glossary's list and preview panes, #299): near-black rounded fill
+     * with a darker 1.5 px rim, radius 3 device px at every UI scale.
+     */
+    public static void inset(Canvas canvas, float x, float y, float w, float h) {
+        try (Paint p = new Paint().setColor(INSET_FILL).setAntiAlias(true)) {
+            canvas.drawRRect(RRect.makeXYWH(x, y, w, h, 3f), p);
+        }
+        try (Paint p = new Paint().setColor(INSET_BORDER).setAntiAlias(true)
+                .setMode(PaintMode.STROKE).setStrokeWidth(1.5f)) {
+            canvas.drawRRect(RRect.makeXYWH(x + 0.5f, y + 0.5f, w - 1f, h - 1f, 3f), p);
+        }
+    }
+
+    private static final int INSET_FILL = 0xFF1E1E1E;
+    private static final int INSET_BORDER = 0xFF0A0A0A;
+
     // ─────────────────────────────────────────────── Panel
 
     /**

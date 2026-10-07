@@ -48,6 +48,12 @@ public final class MSlider extends MWidget {
     public void setOnChange(Consumer<Float> consumer) { this.onChange = consumer; }
     public void setLabel(String label) { this.label = label; }
 
+    /** The text drawn over the track: the label, with ": NN%" unless {@link #showPercent} is off. */
+    public String displayLabel() {
+        if (label == null) return "";
+        return showPercent ? String.format("%s: %d%%", label, Math.round(normalized() * 100f)) : label;
+    }
+
     public float value() { return value; }
     public void setValue(float v) {
         float clamped = clamp(v);
@@ -103,6 +109,20 @@ public final class MSlider extends MWidget {
 
     public void stopDragging() { dragging = false; }
 
+    /**
+     * A press at {@code fraction} of the track (0 = left end): starts a drag there, as a click
+     * {@link #handleClick hit} at that point would. For hosts that hit-test themselves (UI documents).
+     */
+    public void beginDragAt(float fraction) {
+        dragging = true;
+        dragTo(fraction);
+    }
+
+    /** Continues a drag at {@code fraction} of the track; no-op unless dragging. */
+    public void dragTo(float fraction) {
+        if (dragging) setValue(min + Math.max(0f, Math.min(1f, fraction)) * (max - min));
+    }
+
     public void adjustValue(float step) { setValue(value + step); }
 
     private void updateFromMouseX(float mouseX) {
@@ -123,9 +143,7 @@ public final class MSlider extends MWidget {
         float ts = textScale();
         Font labelFont = fontFor(ui, MStyle.FONT_META);
         if (label != null && !label.isEmpty()) {
-            String display = showPercent
-                    ? String.format("%s: %d%%", label, Math.round(normalized() * 100f))
-                    : label;
+            String display = displayLabel();
             MPainter.drawCenteredStringWithShadow(canvas, display, x, y - 14f * ts, labelFont,
                     MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
         }

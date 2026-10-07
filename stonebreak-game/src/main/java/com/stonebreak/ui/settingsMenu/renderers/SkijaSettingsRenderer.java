@@ -1,39 +1,43 @@
 package com.stonebreak.ui.settingsMenu.renderers;
 
 import com.openmason.engine.ui.masonry.MCategoryButton;
+import com.openmason.engine.ui.masonry.MDropdown;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
 import com.openmason.engine.ui.masonry.MWidget;
 import com.openmason.engine.ui.masonry.MasonryUI;
+import com.stonebreak.ui.runtime.providers.DirtBackdropProvider;
 import com.stonebreak.ui.settingsMenu.components.ScrollableSettingsContainer;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
 import io.github.humbleui.skija.Canvas;
-import io.github.humbleui.skija.FilterTileMode;
 import io.github.humbleui.skija.Font;
-import io.github.humbleui.skija.Image;
-import io.github.humbleui.skija.Paint;
-import io.github.humbleui.skija.SamplingMode;
-import io.github.humbleui.skija.Shader;
-import io.github.humbleui.types.Rect;
+
+import java.util.function.BiConsumer;
 
 /**
  * Skija-backed settings screen. Composes the two-panel layout (categories
  * left, scrollable settings right) using MasonryUI widgets and primitives —
  * no NanoVG path on this screen.
  *
- * Splits cleanly into background → categories → scroll viewport → action
- * buttons → dropdown overlays. Layout math mirrors the legacy
- * {@code SectionRenderer}; that logic was renderer-agnostic.
+ * <p>{@link #layout} is the per-frame half (scroll easing, labels, every widget's position: the
+ * hit tests' source of truth) and runs on its own while the screen's UI document shows (#299);
+ * {@link #render} lays out and then paints background → categories → scroll viewport → action
+ * buttons → dropdown overlays → the UI-scale confirmation.
  */
 public final class SkijaSettingsRenderer {
+
+    /** Where the frame's panel and title sit (device px), from {@link #layout}. */
+    public record Frame(float centerX, float centerY, float panelX, float panelY, float panelWidth,
+                        float panelHeight, float titleY) {
+    }
 
     private final MasonryUI ui;
     private final StateManager state;
     private final ScrollableSettingsContainer scrollContainer;
-
-    private Shader dirtShader;
+    /** Where each part sits, by the document's names (fidelity gates, #299); null when nobody asks. */
+    private BiConsumer<String, float[]> layoutSink;
 
     public SkijaSettingsRenderer(MasonryUI ui, StateManager state, ScrollableSettingsContainer scrollContainer) {
         this.ui = ui;
@@ -41,41 +45,39 @@ public final class SkijaSettingsRenderer {
         this.scrollContainer = scrollContainer;
     }
 
+    /**
+     * Reports each part's rect ({@code x, y, w, h}) at layout: {@code category0..5}, {@code row0..}
+     * (a slider's is its 3x-tall hit box), {@code apply}, {@code back}, {@code item0..} (the open
+     * dropdown's list), {@code viewport}, {@code scrollbar} (its press area) and, while the UI-scale
+     * confirmation is up, {@code dialog}, {@code keep}, {@code revert}.
+     */
+    public void setLayoutSink(BiConsumer<String, float[]> sink) {
+        this.layoutSink = sink;
+    }
+
+    private void report(String part, float x, float y, float w, float h) {
+        if (layoutSink != null) {
+            layoutSink.accept(part, new float[]{x, y, w, h});
+        }
+    }
+
     public void render(int windowWidth, int windowHeight) {
         if (!ui.isAvailable()) return;
         if (!ui.beginFrame(windowWidth, windowHeight, 1.0f)) return;
         try {
+            Frame f = layout(windowWidth, windowHeight);
             float s = com.stonebreak.config.Settings.getInstance().getUiScale();
-            float centerX = windowWidth / 2f;
-            float centerY = windowHeight / 2f;
-
-            float panelWidth = Math.min(700f * s, windowWidth * 0.92f);
-            float panelHeight = Math.min(550f * s, windowHeight * 0.92f);
-            float panelX = centerX - panelWidth / 2f;
-            float panelY = centerY - panelHeight / 2f;
-
             float backdropExtra = 40f * s;
 
             Canvas canvas = ui.canvas();
             drawBackground(canvas, windowWidth, windowHeight);
-            drawBackdropPanel(canvas, panelX, panelY, panelWidth, panelHeight + backdropExtra);
-
-            float titleY = panelY + Math.max(40f * s, panelHeight * 0.08f);
-            drawTitle(canvas, centerX, titleY);
-
-            if (state.getCurrentScrollMath() != null) {
-                state.getCurrentScrollMath().update(1f / 60f);
-            }
-            state.refreshLabels();
-
-            positionCategoryButtons(centerX, centerY);
-            state.updateButtonSelectionStates();
-
-            scrollContainer.updateBounds(centerX, centerY, panelHeight);
+            drawBackdropPanel(canvas, f.panelX(), f.panelY(), f.panelWidth(), f.panelHeight() + backdropExtra);
+            drawTitle(canvas, f.centerX(), f.titleY());
 
             drawCategoryPanel();
-            drawScrollableSettings(centerX, centerY);
-            drawActionButtons();
+            scrollContainer.render(ui, this::paintScrollContent);
+            state.getApplyButton().render(ui);
+            state.getBackButton().render(ui);
 
             // Dropdowns drew earlier but queued themselves as overlays.
             ui.renderOverlays();
@@ -87,6 +89,38 @@ public final class SkijaSettingsRenderer {
         } finally {
             ui.endFrame();
         }
+    }
+
+    /**
+     * The per-frame layout: advances the active category's scroll easing (one 1/60 s step a frame,
+     * as before), refreshes the labels and places every widget for this window.
+     */
+    public Frame layout(int windowWidth, int windowHeight) {
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+        float centerX = windowWidth / 2f;
+        float centerY = windowHeight / 2f;
+
+        float panelWidth = Math.min(700f * s, windowWidth * 0.92f);
+        float panelHeight = Math.min(550f * s, windowHeight * 0.92f);
+        float panelX = centerX - panelWidth / 2f;
+        float panelY = centerY - panelHeight / 2f;
+        float titleY = panelY + Math.max(40f * s, panelHeight * 0.08f);
+
+        if (state.getCurrentScrollMath() != null) {
+            state.getCurrentScrollMath().update(1f / 60f);
+        }
+        state.refreshLabels();
+
+        positionCategoryButtons(centerX, centerY);
+        state.updateButtonSelectionStates();
+
+        scrollContainer.updateBounds(centerX, centerY, panelHeight);
+        positionSettings();
+        positionActionButtons();
+        if (state.isUiScaleConfirmActive()) {
+            positionConfirmation(windowWidth, windowHeight, s);
+        }
+        return new Frame(centerX, centerY, panelX, panelY, panelWidth, panelHeight, titleY);
     }
 
     /**
@@ -110,55 +144,48 @@ public final class SkijaSettingsRenderer {
         MPainter.drawCenteredStringWithShadow(canvas, "Keep UI Scale?",
                 cx, dy + 42f * s, titleFont, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
 
-        String pendingStr  = String.format("New scale: %.1fx", state.getUiScaleSlider().value());
-        String countdown   = "Reverting to " + String.format("%.1f", state.getUiScalePreviousScale())
-                + "x in " + state.getUiScaleConfirmSecondsLeft() + "s";
-        MPainter.drawCenteredStringWithShadow(canvas, pendingStr,
+        MPainter.drawCenteredStringWithShadow(canvas, state.uiScalePendingText(),
                 cx, dy + 82f * s, bodyFont, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
-        MPainter.drawCenteredStringWithShadow(canvas, countdown,
+        MPainter.drawCenteredStringWithShadow(canvas, state.uiScaleCountdownText(),
                 cx, dy + 104f * s, bodyFont, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
 
+        state.getKeepUiScaleButton().render(ui);
+        state.getRevertUiScaleButton().render(ui);
+    }
+
+    private void positionConfirmation(int w, int h, float s) {
+        float dialogW = Math.min(460f * s, w * 0.9f);
+        float dialogH = Math.min(210f * s, h * 0.9f);
+        float dx = w / 2f - dialogW / 2f;
+        float dy = h / 2f - dialogH / 2f;
+        float cx = w / 2f;
         float bh  = SettingsConfig.getScaledButtonHeight();
         float gap = 16f * s;
         // Keep both buttons inside the dialog even when the base button width is wide.
         float bw  = Math.min(SettingsConfig.getScaledButtonWidth(), (dialogW - gap - 24f * s) / 2f);
         float btnY = dy + dialogH - bh - 22f * s;
 
-        state.getKeepUiScaleButton().size(bw, bh).position(cx - gap / 2f - bw, btnY).render(ui);
-        state.getRevertUiScaleButton().size(bw, bh).position(cx + gap / 2f, btnY).render(ui);
+        state.getKeepUiScaleButton().size(bw, bh).position(cx - gap / 2f - bw, btnY);
+        state.getRevertUiScaleButton().size(bw, bh).position(cx + gap / 2f, btnY);
+        report("dialog", dx, dy, dialogW, dialogH);
+        report("keep", cx - gap / 2f - bw, btnY, bw, bh);
+        report("revert", cx + gap / 2f, btnY, bw, bh);
     }
 
     public void dispose() {
-        if (dirtShader != null) { dirtShader.close(); dirtShader = null; }
     }
 
     // ─────────────────────────────────────────────── Background
 
     private void drawBackground(Canvas canvas, int w, int h) {
-        MPainter.fillRect(canvas, 0, 0, w, h, 0xFF2C2C2C);
-        ensureDirtShader();
-        if (dirtShader != null) {
-            try (Paint p = new Paint().setShader(dirtShader)) {
-                canvas.save();
-                canvas.scale(4f, 4f);
-                canvas.drawRect(Rect.makeXYWH(0, 0, w / 4f, h / 4f), p);
-                canvas.restore();
-            }
-        }
+        // The shared menu backdrop (dark base under the dirt tiles), as the document draws it
+        DirtBackdropProvider.paint(canvas, 0, 0, w, h, DirtBackdropProvider.TILE_SCALE);
         // Darker full-screen tint so the centered panel stands out.
         MPainter.fillRect(canvas, 0, 0, w, h, 0xB4000000);
     }
 
     private void drawBackdropPanel(Canvas canvas, float x, float y, float w, float h) {
         MPainter.panel(canvas, x, y, w, h);
-    }
-
-    private void ensureDirtShader() {
-        if (dirtShader != null) return;
-        Image dirt = ui.backend() instanceof com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend game
-                ? game.getDirtTexture() : null;
-        if (dirt == null) return;
-        dirtShader = dirt.makeShader(FilterTileMode.REPEAT, FilterTileMode.REPEAT, SamplingMode.DEFAULT, null);
     }
 
     private void drawTitle(Canvas canvas, float centerX, float titleY) {
@@ -186,7 +213,9 @@ public final class SkijaSettingsRenderer {
                 - 20f * com.stonebreak.config.Settings.getInstance().getUiScale();
         var buttons = state.getCategoryButtons();
         for (int i = 0; i < buttons.size(); i++) {
-            buttons.get(i).position(categoryX, categoryY + i * SettingsConfig.getScaledCategoryButtonSpacing());
+            MCategoryButton<CategoryState> b = buttons.get(i);
+            b.position(categoryX, categoryY + i * SettingsConfig.getScaledCategoryButtonSpacing());
+            report("category" + i, b.x(), b.y(), b.width(), b.height());
         }
     }
 
@@ -198,85 +227,69 @@ public final class SkijaSettingsRenderer {
 
     // ─────────────────────────────────────────────── Scroll viewport
 
-    private void drawScrollableSettings(float centerX, float centerY) {
-        scrollContainer.render(ui, this::paintScrollContent);
+    /** First row's top relative to the scrolled content (the legacy padding rule). */
+    private float rowTop(int i) {
+        float s = com.stonebreak.config.Settings.getInstance().getUiScale();
+        float topPadding = Math.max(SettingsConfig.getScaledScrollContentPadding(), 40f * s);
+        float startY = scrollContainer.getContainerY() - scrollContainer.getScrollOffset() + topPadding;
+        return startY + i * scrollContainer.getItemSpacing();
+    }
+
+    /**
+     * Places every row of the selected category (culled ones too: a stale position could be
+     * pressed outside the clip). Reports the viewport, the scrollbar and the open dropdown's list.
+     */
+    private void positionSettings() {
+        CategoryState.SettingType[] settings = state.getSelectedCategory().getSettings();
+        float centerX = scrollContainer.getContainerCenterX();
+        float bw = SettingsConfig.getScaledButtonWidth();
+        float bh = SettingsConfig.getScaledButtonHeight();
+        report("viewport", scrollContainer.getContainerX(), scrollContainer.getContainerY(),
+                scrollContainer.getContainerWidth(), scrollContainer.getContainerHeight());
+        for (int i = 0; i < settings.length; i++) {
+            MWidget widget = state.widget(settings[i]);
+            if (widget == null) continue;
+            float rowY = rowTop(i);
+            if (StateManager.isSlider(settings[i])) {
+                widget.position(centerX, rowY + bh / 2f);
+                report("row" + i, widget.x() - widget.width() / 2f,
+                        widget.y() - widget.height() * 3f / 2f, widget.width(), widget.height() * 3f);
+            } else {
+                widget.position(centerX - bw / 2f, rowY);
+                report("row" + i, widget.x(), widget.y(), widget.width(), widget.height());
+            }
+            if (widget instanceof MDropdown d && d.isOpen()) {
+                for (int k = 0; k < d.items().length; k++) {
+                    report("item" + k, d.x(), d.y() + d.height() + k * d.itemHeightPx(),
+                            d.width(), d.itemHeightPx());
+                }
+            }
+        }
+        float[] bar = scrollContainer.scrollbarHitBounds();
+        if (bar != null) {
+            report("scrollbar", bar[0], bar[1], bar[2], bar[3]);
+        }
     }
 
     private void paintScrollContent() {
-        CategoryState category = state.getSelectedCategory();
-        CategoryState.SettingType[] settings = category.getSettings();
-
+        CategoryState.SettingType[] settings = state.getSelectedCategory().getSettings();
         float s = com.stonebreak.config.Settings.getInstance().getUiScale();
-        float offset = scrollContainer.getScrollOffset();
-        float topPadding = Math.max(SettingsConfig.getScaledScrollContentPadding(), 40f * s);
-        float startY = scrollContainer.getContainerY() - offset + topPadding;
-        float centerX = scrollContainer.getContainerCenterX();
         float viewportY = scrollContainer.getContainerY();
         float viewportBottom = viewportY + scrollContainer.getContainerHeight();
         float cullBuffer = 50f * s;
 
         for (int i = 0; i < settings.length; i++) {
-            float rowY = startY + i * scrollContainer.getItemSpacing();
+            float rowY = rowTop(i);
             if (rowY + SettingsConfig.getScaledButtonHeight() < viewportY - cullBuffer) continue;
             if (rowY > viewportBottom + cullBuffer) continue;
-            positionAndRenderSetting(settings[i], centerX, rowY);
+            MWidget widget = state.widget(settings[i]);
+            if (widget != null) widget.render(ui);
         }
-    }
-
-    private void positionAndRenderSetting(CategoryState.SettingType type, float centerX, float y) {
-        MWidget widget = resolveWidget(type);
-        if (widget == null) return;
-        if (isSlider(type)) {
-            widget.position(centerX, y + SettingsConfig.getScaledButtonHeight() / 2f);
-        } else {
-            widget.position(centerX - SettingsConfig.getScaledButtonWidth() / 2f, y);
-        }
-        widget.render(ui);
-    }
-
-    private static boolean isSlider(CategoryState.SettingType type) {
-        return type == CategoryState.SettingType.VOLUME
-                || type == CategoryState.SettingType.MUSIC_VOLUME
-                || type == CategoryState.SettingType.CROSSHAIR_SIZE
-                || type == CategoryState.SettingType.SHADOW_DISTANCE
-                || type == CategoryState.SettingType.RENDER_DISTANCE
-                || type == CategoryState.SettingType.LOD_DISTANCE
-                || type == CategoryState.SettingType.MAX_FPS
-                || type == CategoryState.SettingType.UI_SCALE;
-    }
-
-    private MWidget resolveWidget(CategoryState.SettingType type) {
-        return switch (type) {
-            case RESOLUTION       -> state.getResolutionButton();
-            case VOLUME           -> state.getVolumeSlider();
-            case MUSIC_VOLUME     -> state.getMusicVolumeSlider();
-            case MUSIC_ENABLED    -> state.getMusicEnabledButton();
-            case ARM_MODEL        -> state.getArmModelButton();
-            case CROSSHAIR_STYLE  -> state.getCrosshairStyleButton();
-            case CROSSHAIR_SIZE   -> state.getCrosshairSizeSlider();
-            case PLAYER_NAME_TAGS -> state.getPlayerNameTagsButton();
-            case LEAF_TRANSPARENCY -> state.getLeafTransparencyButton();
-            case WATER_SHADER     -> state.getWaterShaderButton();
-            case CLOUDS_ENABLED   -> state.getCloudsButton();
-            case GOD_RAYS         -> state.getGodRaysButton();
-            case SHADOWS          -> state.getShadowsButton();
-            case SHADOW_QUALITY   -> state.getShadowQualityButton();
-            case SHADOW_DISTANCE  -> state.getShadowDistanceSlider();
-            case SMOOTH_LIGHTING  -> state.getSmoothLightingButton();
-            case RENDER_DISTANCE  -> state.getRenderDistanceSlider();
-            case LOD_DISTANCE     -> state.getLodDistanceSlider();
-            case LOD_ENABLED      -> state.getLodEnabledButton();
-            case LOD_QUALITY      -> state.getLodQualityButton();
-            case VSYNC            -> state.getVsyncButton();
-            case MAX_FPS          -> state.getMaxFpsSlider();
-            case UI_SCALE         -> state.getUiScaleSlider();
-            default -> null;
-        };
     }
 
     // ─────────────────────────────────────────────── Action buttons
 
-    private void drawActionButtons() {
+    private void positionActionButtons() {
         float s = com.stonebreak.config.Settings.getInstance().getUiScale();
         float bw = SettingsConfig.getScaledButtonWidth();
         float bh = SettingsConfig.getScaledButtonHeight();
@@ -284,7 +297,9 @@ public final class SkijaSettingsRenderer {
         float applyY = scrollContainer.getContainerBottom() + 20f * s;
         float backY  = applyY + bh + 15f * s;
 
-        state.getApplyButton().position(centerX - bw / 2f, applyY).render(ui);
-        state.getBackButton() .position(centerX - bw / 2f, backY) .render(ui);
+        state.getApplyButton().position(centerX - bw / 2f, applyY);
+        state.getBackButton() .position(centerX - bw / 2f, backY);
+        report("apply", centerX - bw / 2f, applyY, bw, bh);
+        report("back", centerX - bw / 2f, backY, bw, bh);
     }
 }

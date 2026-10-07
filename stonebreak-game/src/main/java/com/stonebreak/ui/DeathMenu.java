@@ -2,20 +2,28 @@ package com.stonebreak.ui;
 
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.ui.deathMenu.SkijaDeathMenuRenderer;
+import com.stonebreak.ui.runtime.screens.PresentationSlot;
+import com.stonebreak.ui.runtime.screens.ScreenPresentation;
 
 /**
  * Represents the death menu that appears when the player dies.
  * Skija/MasonryUI-backed; owns its renderer and self-contained hit-tests so
  * input code does not need to reach back into the UIRenderer.
+ *
+ * <p>Since #299 it may be shown as the shipped UI document {@value #DOCUMENT_ID}
+ * ({@link #setPresentation}); visibility, the game loop's trigger and the cursor stay here.
  */
 public class DeathMenu {
+
+    /** The shipped document's screen id ({@code ui/documents/death.sbui}). */
+    public static final String DOCUMENT_ID = "death";
 
     private static final float BASE_BUTTON_WIDTH  = SkijaDeathMenuRenderer.BUTTON_WIDTH;
     private static final float BASE_BUTTON_HEIGHT = SkijaDeathMenuRenderer.BUTTON_HEIGHT;
 
     private final SkijaDeathMenuRenderer skijaRenderer;
 
-    private boolean visible = false;
+    private final PresentationSlot presentation = new PresentationSlot();
     private boolean respawnButtonHovered = false;
 
     public DeathMenu(SkijaUIBackend skijaBackend) {
@@ -26,7 +34,7 @@ public class DeathMenu {
      * Renders the death menu using the Skija backend.
      */
     public void render(int windowWidth, int windowHeight) {
-        if (!visible) return;
+        if (!isVisible() || presentation.paint(windowWidth, windowHeight)) return;
         skijaRenderer.render(windowWidth, windowHeight, respawnButtonHovered);
     }
 
@@ -34,28 +42,33 @@ public class DeathMenu {
      * Checks if the menu is currently visible.
      */
     public boolean isVisible() {
-        return visible;
+        return presentation.isVisible();
+    }
+
+    /** Installs (or, with null, removes) the alternative presentation; the legacy one is the default. */
+    public void setPresentation(ScreenPresentation p) {
+        presentation.install(p);
     }
 
     /**
      * Sets the visibility of the menu.
      */
     public void setVisible(boolean visible) {
-        this.visible = visible;
+        presentation.setVisible(visible);
     }
 
     /**
      * Checks if the respawn button was clicked.
      */
     public boolean isRespawnButtonClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        return visible && hitRespawnButton(mouseX, mouseY, windowWidth, windowHeight);
+        return isVisible() && hitRespawnButton(mouseX, mouseY, windowWidth, windowHeight);
     }
 
     /**
      * Updates hover state for the respawn button.
      */
     public void updateHover(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        if (!visible) {
+        if (!isVisible()) {
             respawnButtonHovered = false;
             return;
         }

@@ -71,10 +71,11 @@ final class ScriptEvents {
         float s = scale <= 0 ? 1 : scale;
         switch (ev) {
             case PointerEvent p -> {
-                m.put("x", UiValue.of(p.logicalX()));
-                m.put("y", UiValue.of(p.logicalY()));
-                m.put("lx", UiValue.of(p.localX() / s));
-                m.put("ly", UiValue.of(p.localY() / s));
+                // a keyboard or controller click has no position (NaN): x/y stay nil (#299)
+                putFinite(m, "x", p.logicalX());
+                putFinite(m, "y", p.logicalY());
+                putFinite(m, "lx", p.localX() / s);
+                putFinite(m, "ly", p.localY() / s);
                 m.put("button", UiValue.of(p.button()));
                 m.put("mods", UiValue.of(p.modifiers()));
                 m.put("clicks", UiValue.of(p.clickCount()));
@@ -122,6 +123,12 @@ final class ScriptEvents {
             }
         }
         return new UiValue.Obj(m);
+    }
+
+    private static void putFinite(Map<String, UiValue> m, String key, double v) {
+        if (Double.isFinite(v)) {
+            m.put(key, UiValue.of(v));
+        }
     }
 
     /** Applies the flags a Lua handler set. */

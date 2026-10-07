@@ -29,6 +29,15 @@ public final class MenuInputRouter {
     /** Keys whose PRESS the battle HUD saw; see {@link #routeBattleKey}. */
     private final java.util.BitSet battleKeysDown = new java.util.BitSet();
 
+    /**
+     * True while {@code state}'s screen is its shipped document (#299): the legacy screen then gets no
+     * events or polls at all, so its hidden selection can never act under the document. Keys the
+     * document leaves still reach the global {@link InputHandler}.
+     */
+    private static boolean documentShowing(GameState state) {
+        return com.stonebreak.ui.runtime.screens.StateScreens.get().showing(state);
+    }
+
     public MenuInputRouter(GameWindow window) {
         this.window = window;
     }
@@ -49,7 +58,7 @@ public final class MenuInputRouter {
         if (state != GameState.FOCUS_BATTLE) {
             battleKeysDown.clear();
         }
-        boolean consumed = state != null && switch (state) {
+        boolean consumed = state != null && !documentShowing(state) && switch (state) {
             case WORLD_SELECT -> dispatch(game.getWorldSelectScreen(), s -> s.handleKeyInput(key, action, mods));
             case TERRAIN_MAPPER -> dispatch(game.getTerrainMapperScreen(), s -> s.handleKeyInput(key, action, mods));
             case HOST_WORLD_SELECT -> dispatch(game.getHostWorldScreen(), s -> s.handleKeyInput(key, action, mods));
@@ -76,7 +85,7 @@ public final class MenuInputRouter {
 
         Game game = Game.getInstance();
         GameState state = game.getState();
-        boolean consumed = state != null && switch (state) {
+        boolean consumed = state != null && !documentShowing(state) && switch (state) {
             case WORLD_SELECT -> dispatch(game.getWorldSelectScreen(), s -> s.handleCharacterInput(character));
             case TERRAIN_MAPPER -> dispatch(game.getTerrainMapperScreen(), s -> s.handleCharacterInput(character));
             case HOST_WORLD_SELECT -> dispatch(game.getHostWorldScreen(), s -> s.handleCharInput(character));
@@ -101,7 +110,7 @@ public final class MenuInputRouter {
         int width = window.width();
         int height = window.height();
 
-        boolean consumed = state != null && switch (state) {
+        boolean consumed = state != null && !documentShowing(state) && switch (state) {
             case STARTUP_INTRO -> isLeftPress(button, action)
                     && dispatch(game.getStartupIntroScreen(), s -> s.skipToMainMenu());
             // The main menu only reacts to a left press, but it still owns the event either way.
@@ -161,7 +170,7 @@ public final class MenuInputRouter {
         }
 
         GameState state = game.getState();
-        if (state == null) {
+        if (state == null || documentShowing(state)) {
             return;
         }
         switch (state) {
@@ -189,7 +198,7 @@ public final class MenuInputRouter {
             return;
         }
         GameState state = game.getState();
-        boolean consumed = state != null && switch (state) {
+        boolean consumed = state != null && !documentShowing(state) && switch (state) {
             // The world list scrolls wherever the pointer is, so it needs no cursor position.
             case WORLD_SELECT -> dispatch(game.getWorldSelectScreen(), s -> s.handleMouseWheel(yOffset));
             case CHARACTER_CREATION -> withUiCursor((x, y) -> dispatch(game.getCharacterCreationScreen(),
@@ -218,8 +227,8 @@ public final class MenuInputRouter {
         Game game = Game.getInstance();
         GameUiInput.get().frame(cursorCaptured(game));
         GameState state = game.getState();
-        if (state == null) {
-            return;
+        if (state == null || documentShowing(state)) {
+            return; // the state's shipped document takes its input (#299)
         }
         long handle = window.handle();
 

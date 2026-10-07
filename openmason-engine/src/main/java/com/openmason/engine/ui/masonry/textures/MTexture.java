@@ -145,8 +145,8 @@ public final class MTexture implements AutoCloseable {
      */
     public static MTexture decode(String cacheKey, byte[] bytes) {
         if (TextureBytes.isPng(bytes)) {
-            OmtCompositor.PngDecoder.Decoded png = decodePng(bytes);
-            return png == null ? null : fromImage(cacheKey, rgbaImage(png.width(), png.height(), png.rgba()));
+            Image png = decodePngPremul(bytes);
+            return png == null ? null : fromImage(cacheKey, png);
         }
         OMTArchive archive = TextureBytes.archive(bytes);
         if (archive == null) {
@@ -224,6 +224,29 @@ public final class MTexture implements AutoCloseable {
     public static Image rgbaImage(int w, int h, byte[] rgba) {
         return Image.makeRasterFromBytes(new ImageInfo(w, h, ColorType.RGBA_8888, ColorAlphaType.UNPREMUL),
                 rgba, w * 4L);
+    }
+
+    /**
+     * A plain PNG texture as the game's own image loading decodes it (premultiplied by the decoder,
+     * no colour management): a document image then draws exactly what a legacy screen's
+     * {@code Image.makeFromEncoded} drew, down to the rounding of translucent pixels (#299).
+     */
+    static Image decodePngPremul(byte[] png) {
+        try (Data data = Data.makeFromBytes(png); Codec codec = Codec.makeFromData(data)) {
+            int w = codec.getSize().getX();
+            int h = codec.getSize().getY();
+            ImageInfo info = new ImageInfo(w, h, ColorType.N32, ColorAlphaType.PREMUL);
+            try (Bitmap bitmap = new Bitmap()) {
+                if (!bitmap.allocPixels(info)) {
+                    return null;
+                }
+                codec.readPixels(bitmap);
+                return Image.makeRasterFromBytes(info, bitmap.readPixels(), w * 4L);
+            }
+        } catch (RuntimeException e) {
+            System.err.println("[MTexture] Failed to decode a PNG texture: " + e.getMessage());
+            return null;
+        }
     }
 
     /** Decodes a PNG to straight-alpha RGBA without colour management (texture bytes are data). */

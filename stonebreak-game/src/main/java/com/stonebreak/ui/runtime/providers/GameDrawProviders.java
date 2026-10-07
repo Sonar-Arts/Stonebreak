@@ -40,7 +40,9 @@ public final class GameDrawProviders implements AutoCloseable {
         ItemIconProvider.ID, ItemIconProvider.VERSION,
         EntityPreviewProvider.ID, EntityPreviewProvider.VERSION,
         FurnaceCrucibleProvider.BOWL_ID, FurnaceCrucibleProvider.VERSION,
-        FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.VERSION);
+        FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.VERSION,
+        DirtBackdropProvider.ID, DirtBackdropProvider.VERSION,
+        MenuStageProvider.ID, MenuStageProvider.VERSION);
 
     private static GameDrawProviders instance;
     private static boolean installed;
@@ -55,6 +57,8 @@ public final class GameDrawProviders implements AutoCloseable {
         map.put(EntityPreviewProvider.ID, new EntityPreviewProvider());
         map.put(FurnaceCrucibleProvider.BOWL_ID, FurnaceCrucibleProvider.bowl());
         map.put(FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.rings());
+        map.put(DirtBackdropProvider.ID, new DirtBackdropProvider());
+        map.put(MenuStageProvider.ID, new MenuStageProvider());
         this.providers = java.util.Collections.unmodifiableMap(map);
         if (!providers.keySet().equals(DECLARED.keySet())) {
             throw new IllegalStateException("declared providers " + DECLARED.keySet() + " != " + providers.keySet());
@@ -104,7 +108,9 @@ public final class GameDrawProviders implements AutoCloseable {
      */
     public static Map<String, UiPaintHost.UiDrawProvider> skiaOnly() {
         return Map.of(FurnaceCrucibleProvider.BOWL_ID, FurnaceCrucibleProvider.bowl(),
-            FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.rings());
+            FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.rings(),
+            DirtBackdropProvider.ID, new DirtBackdropProvider(),
+            MenuStageProvider.ID, new MenuStageProvider(() -> null, () -> 0));
     }
 
     /** Declares every provider on {@code host}, so activation accepts documents that need them. */

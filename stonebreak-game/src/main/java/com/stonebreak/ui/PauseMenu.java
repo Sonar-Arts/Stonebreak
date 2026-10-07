@@ -21,12 +21,7 @@ public class PauseMenu {
      * {@code ui.pauseMenu.PauseDocument}). Told when the menu shows and hides; {@link #paint}
      * returning false falls back to the legacy renderer for that call.
      */
-    public interface Presentation {
-        void shown();
-
-        void hidden();
-
-        boolean paint(int windowWidth, int windowHeight);
+    public interface Presentation extends com.stonebreak.ui.runtime.screens.ScreenPresentation {
     }
 
     private final SkijaPauseMenuRenderer skijaRenderer;

@@ -27,14 +27,7 @@ public class FurnaceScreen {
      * and closes; while it is {@link #showing()} the legacy mouse poll, dragged-item overlay and
      * renderer stand down, and {@link #paint} returning false falls back to the legacy renderer.
      */
-    public interface Presentation {
-        void shown();
-
-        void hidden();
-
-        boolean paint(int windowWidth, int windowHeight);
-
-        boolean showing();
+    public interface Presentation extends com.stonebreak.ui.runtime.screens.ScreenPresentation {
     }
 
     private final FurnaceController controller;

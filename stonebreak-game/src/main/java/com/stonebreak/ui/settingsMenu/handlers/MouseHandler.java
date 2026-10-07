@@ -117,7 +117,10 @@ public final class MouseHandler {
 
         CategoryState category = stateManager.getSelectedCategory();
         CategoryState.SettingType[] settings = category.getSettings();
-        for (int i = 0; i < settings.length; i++) {
+        // Rows are drawn clipped to the viewport; outside it they cannot be pressed (#299: a row
+        // scrolled past the bottom used to take presses meant for Apply/Back).
+        boolean inViewport = scrollableContainer == null || scrollableContainer.contains(mouseX, mouseY);
+        for (int i = 0; inViewport && i < settings.length; i++) {
             if (dispatchSettingClick(settings[i], mouseX, mouseY)) {
                 stateManager.setSelectedSettingInCategory(i);
                 return;
