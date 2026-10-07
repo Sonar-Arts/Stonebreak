@@ -70,6 +70,9 @@ public final class DisplayBackend {
      */
     public static void initialize() {
         GLFWErrorCallback.createPrint(System.err).set();
+        // Insurance, before the driver loads: NVIDIA threaded optimization garbles Skia GPU paints
+        // (seen in Open Mason). Opt out with -Dstonebreak.gl.threaded=true.
+        com.openmason.engine.rendering.gl.GlDriverThreading.disableThreadedDispatch("stonebreak.gl.threaded");
 
         boolean pinnedX11 = selectBackend();
         if (!glfwInit()) {

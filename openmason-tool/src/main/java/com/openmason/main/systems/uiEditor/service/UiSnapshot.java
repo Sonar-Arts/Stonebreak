@@ -10,7 +10,6 @@ import io.github.humbleui.skija.Typeface;
 
 import java.awt.image.BufferedImage;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Paints a UI document once on the CPU, through the same runtime, painter and fonts as the game
@@ -30,7 +29,7 @@ public final class UiSnapshot {
      */
     public static BufferedImage render(OmuiArchive doc, List<AssetSource> sources, Typeface typeface, int width,
                                        int height, float uiScale) throws java.io.IOException {
-        try (UiDocumentView view = GameUiDocuments.open(doc, sources, () -> typeface, Map.of())) {
+        try (UiDocumentView view = GameUiDocuments.open(doc, sources, () -> typeface, com.stonebreak.ui.runtime.GameUiProviders.skiaOnly())) {
             return render(view, typeface, width, height, uiScale);
         }
     }

@@ -165,6 +165,8 @@ public final class UiDocumentInstance implements AutoCloseable {
     private float pointerY = Float.NaN;
     /** Pointer-anchored elements found by the last placement; pointer moves re-place only when > 0. */
     private int pointerAnchors;
+    /** Of those, the ones displayed (not {@code display: none}, not hidden): a drag ghost on the cursor. */
+    private int shownPointerAnchors;
     private PaintOrder paintOrder;
     private UiRect dirtyRegion = UiRect.EMPTY;
     private UiRect animatedRegion = UiRect.EMPTY;
@@ -676,6 +678,15 @@ public final class UiDocumentInstance implements AutoCloseable {
         }
     }
 
+    /**
+     * True while a displayed {@code -sb-anchor: pointer} element rides the cursor (a carried item,
+     * a drag ghost): hover tooltips stay hidden then, as the legacy container screens hid them
+     * while an item was held (#298).
+     */
+    public boolean pointerGhostShown() {
+        return shownPointerAnchors > 0 && pointerInside();
+    }
+
     /** True while the pointer is over the frame (pointer-anchored elements paint only then). */
     public boolean pointerInside() {
         return !Float.isNaN(pointerX) && !Float.isNaN(pointerY);
@@ -977,6 +988,7 @@ public final class UiDocumentInstance implements AutoCloseable {
         }
         visualDirty = false;
         pointerAnchors = 0;
+        shownPointerAnchors = 0;
         place(root, 0, 0, null, null);
         paintOrder = null;
     }
@@ -997,6 +1009,9 @@ public final class UiDocumentInstance implements AutoCloseable {
             // The cursor layer (C2): at the pointer plus left/top, free of ancestor scroll,
             // translation, transforms and clips; children move with it.
             pointerAnchors++;
+            if (!el.computed.collapsed() && !el.computed.hidden()) {
+                shownPointerAnchors++;
+            }
             clip = null;
             outer = null;
             float px = pointerInside() ? pointerX : l.x();

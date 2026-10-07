@@ -78,6 +78,7 @@ final class ScriptEvents {
                 m.put("button", UiValue.of(p.button()));
                 m.put("mods", UiValue.of(p.modifiers()));
                 m.put("clicks", UiValue.of(p.clickCount()));
+                m.put("buttons", UiValue.of(p.buttons()));
                 m.put("device", UiValue.of(p.device().name().toLowerCase(Locale.ROOT)));
             }
             case KeyEvent k -> {

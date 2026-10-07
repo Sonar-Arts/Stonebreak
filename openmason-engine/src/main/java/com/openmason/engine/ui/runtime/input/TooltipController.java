@@ -7,8 +7,9 @@ import com.openmason.engine.ui.runtime.UiTexts;
 /**
  * Tooltips (#288). The element under the pointer, or its nearest ancestor with a
  * {@code tooltip}/{@code tooltipKey}, shows its text after {@link InputSettings#tooltipDelay()}
- * of steady hovering; keyboard and controller focus shows the focused element's tooltip below
- * it, so the text is reachable without a mouse.
+ * of steady hovering, never while a pointer-anchored element (a carried item) rides the cursor;
+ * keyboard and controller focus shows the focused element's tooltip below it, so the text is
+ * reachable without a mouse.
  *
  * <p>A tooltip hides on a press, wheel, key press, drag, when its element becomes unable to
  * receive input, and when interactions are cancelled. After a press it stays hidden until the
@@ -26,7 +27,8 @@ public final class TooltipController {
     public record Tooltip(UiElement target, String text, UiRect anchor, float x, float y, boolean fromFocus) {
     }
 
-    private final InputSettings settings;
+    private final java.util.function.Supplier<InputSettings> settings;
+    private final java.util.function.BooleanSupplier ghost;
     private UiElement hoverTarget;
     private float pointerX;
     private float pointerY;
@@ -35,8 +37,14 @@ public final class TooltipController {
     private UiElement focusTarget;
     private Tooltip current;
 
-    TooltipController(InputSettings settings) {
+    TooltipController(java.util.function.Supplier<InputSettings> settings) {
+        this(settings, () -> false);
+    }
+
+    /** @param ghost whether something rides the cursor (a carried item): no hover tooltip then */
+    TooltipController(java.util.function.Supplier<InputSettings> settings, java.util.function.BooleanSupplier ghost) {
         this.settings = settings;
+        this.ghost = ghost;
     }
 
     public Tooltip current() {
@@ -107,7 +115,7 @@ public final class TooltipController {
     }
 
     private void refresh() {
-        if (hoverTarget != null && !suppressed && hoverTime >= settings.tooltipDelay()) {
+        if (hoverTarget != null && !suppressed && hoverTime >= settings.get().tooltipDelay() && !ghost.getAsBoolean()) {
             String text = UiTexts.tooltip(hoverTarget);
             if (!text.isEmpty()) {
                 current = new Tooltip(hoverTarget, text, hoverTarget.rect(), pointerX, pointerY, false);
@@ -122,7 +130,8 @@ public final class TooltipController {
                 return;
             }
         }
-        if (current != null && (current.fromFocus() ? focusTarget == null : hoverTarget == null || suppressed)) {
+        if (current != null && (current.fromFocus() ? focusTarget == null
+            : hoverTarget == null || suppressed || ghost.getAsBoolean())) {
             current = null;
         }
     }

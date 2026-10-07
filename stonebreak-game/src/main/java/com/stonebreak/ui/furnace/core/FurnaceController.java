@@ -36,6 +36,9 @@ public class FurnaceController {
     private SlotSink slotSink = (pos, slots) ->
         com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(pos.x(), pos.y(), pos.z(), slots);
 
+    /** Where the bound furnace's block is checked; tests substitute it. */
+    private java.util.function.Predicate<BlockPos> furnaceAt = FurnaceController::worldHasFurnace;
+
     private ItemStack hoveredItemStack;
 
     // ── Furnace slot identifiers (for input manager) ─────────
@@ -96,6 +99,10 @@ public class FurnaceController {
 
     public void update(float deltaTime) {
         hotbarScreen.update(deltaTime);
+        if (visible && state != null && !isFurnaceStillThere()) {
+            abandonBrokenFurnace();
+            return;
+        }
         // Smelting is ticked by the AUTHORITATIVE (server-world) FurnaceStateRegistry; this
         // UI is bound to the client display registry, updated by BlockStateS2C echoes.
 
@@ -111,6 +118,39 @@ public class FurnaceController {
         if (visible && state != null) {
             syncSlots();
         }
+    }
+
+    private static boolean worldHasFurnace(BlockPos p) {
+        com.stonebreak.world.World world = Game.getWorld();
+        // no world to check against: leave the UI alone
+        return world == null || world.getBlockAt(p.x(), p.y(), p.z()) == com.stonebreak.blocks.BlockType.FURNACE;
+    }
+
+    private boolean isFurnaceStillThere() {
+        return furnaceAt.test(state.getPos());
+    }
+
+    /**
+     * The furnace was broken (by another player) while this UI was open. The server already dropped
+     * the contents it knew about, so the displayed slots are dead: detach from them first, so no
+     * later edit or snapshot can reach that furnace again, then give the player back only the stack
+     * on the cursor (inventory first, the world for what does not fit), and close.
+     */
+    void abandonBrokenFurnace() {
+        this.state = null;
+        if (inputManager != null) {
+            inputManager.returnCarriedToPlayer();
+        }
+        if (game != null) {
+            game.closeFurnaceScreen();
+        } else {
+            close();
+        }
+    }
+
+    /** Test seam: what counts as the furnace still standing. */
+    void setFurnaceAt(java.util.function.Predicate<BlockPos> test) {
+        this.furnaceAt = test;
     }
 
     /** Sends the slot snapshot if it changed since the last send (see {@link #update}). */

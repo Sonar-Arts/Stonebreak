@@ -125,6 +125,9 @@ public final class GameScreens {
                     inputHandler, craftingManager);
             furnaceScreen = new FurnaceScreen(game, player.getInventory(), renderer, uiRenderer,
                     inputHandler, smeltingManager);
+            // The shipped OMUI/SBUI furnace screen (#298) when present and not rolled back; legacy otherwise.
+            furnaceScreen.setPresentation(new com.stonebreak.ui.furnace.FurnaceDocument(
+                    com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
         } else {
             logger.error("Skipping WorkbenchScreen and FurnaceScreen: UI renderer is missing");
         }
