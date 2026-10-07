@@ -149,9 +149,11 @@ final class SbuiValidator {
     /**
      * Component documents whose bytes travel with the export, decoded once per distinct entry,
      * by dependency id. Rows that are malformed or disagree with the source are skipped here;
-     * {@link #dependencies} reports them.
+     * {@link #dependencies} reports them. All components together inflate within
+     * {@code limits.maxTotalBytes()}: each one reads under what the previous ones left.
      */
     static Map<String, OmuiArchive> components(SbuiArchive a, ArchiveLimits limits, UiDiagnostics d) {
+        long remaining = limits.maxTotalBytes();
         Map<String, OmuiArchive> out = new LinkedHashMap<>();
         Map<String, OmuiArchive> parsed = new HashMap<>();
         for (SbuiDependency row : a.manifest().dependencies()) {
@@ -171,7 +173,14 @@ final class SbuiValidator {
             OmuiArchive doc = null;
             if (bytes != null) {
                 try {
-                    doc = OmuiReader.read(bytes.toArray(), limits).archive();
+                    ArchiveLimits budget = limits.withRemainingTotal(remaining);
+                    UiDiagnostics nested = new UiDiagnostics();
+                    Map<String, byte[]> raw = ArchiveIO.read(bytes.toArray(), budget, nested);
+                    nested.throwIfErrors("Cannot open embedded component");
+                    for (byte[] entry : raw.values()) {
+                        remaining -= entry.length;
+                    }
+                    doc = OmuiReader.fromEntries(raw, budget).archive();
                 } catch (UiFormatException e) {
                     d.error(Code.INVALID_VALUE, row.entry(), "", "Embedded component '" + row.id() + "' is invalid");
                     d.addAll(e.diagnostics());

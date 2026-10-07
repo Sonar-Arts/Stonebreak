@@ -5,15 +5,20 @@ target_link_libraries(omformat_smoke PRIVATE cenda::omformat cenda_warnings)
 add_test(NAME omformat_smoke COMMAND omformat_smoke)
 
 if(CENDA_BUILD_KERNELS)
-    add_executable(kernels_smoke kernels_smoke_test.cpp)
-    target_link_libraries(kernels_smoke PRIVATE cenda_kernels cenda_warnings)
-    add_test(NAME kernels_smoke COMMAND kernels_smoke)
+    set(_kernel_tests kernels_smoke kernels_chunk lua_host flex_host)
+    foreach(_test IN LISTS _kernel_tests)
+        add_executable(${_test} ${_test}_test.cpp)
+        target_link_libraries(${_test} PRIVATE cenda_kernels cenda_warnings)
+        add_test(NAME ${_test} COMMAND ${_test})
+    endforeach()
 
-    add_executable(kernels_chunk kernels_chunk_test.cpp)
-    target_link_libraries(kernels_chunk PRIVATE cenda_kernels cenda_warnings)
-    add_test(NAME kernels_chunk COMMAND kernels_chunk)
-
-    add_executable(lua_host lua_host_test.cpp)
-    target_link_libraries(lua_host PRIVATE cenda_kernels cenda_warnings)
-    add_test(NAME lua_host COMMAND lua_host)
+    # Windows has no rpath: the test exes (tests/<Config>/) cannot see cenda_kernels.dll
+    # (native/kernels/<Config>/), and the loader's "DLL not found" box then blocks a headless
+    # CI runner until ctest's 1500 s default timeout. Put the DLL's folder on the test PATH.
+    if(WIN32)
+        set_tests_properties(${_kernel_tests} PROPERTIES
+                ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:cenda_kernels>")
+    endif()
+    # Each test finishes in well under a second; a hang should fail fast, not stall CI.
+    set_tests_properties(omformat_smoke ${_kernel_tests} PROPERTIES TIMEOUT 120)
 endif()

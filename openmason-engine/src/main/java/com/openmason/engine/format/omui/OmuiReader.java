@@ -2,6 +2,7 @@ package com.openmason.engine.format.omui;
 
 import com.openmason.engine.format.omui.UiDiagnostic.Code;
 import com.openmason.engine.format.omui.io.AnimationCodec;
+import com.openmason.engine.format.omui.io.StateMachineCodec;
 import com.openmason.engine.format.omui.io.ArchiveIO;
 import com.openmason.engine.format.omui.io.CanonicalJson;
 import com.openmason.engine.format.omui.io.DependencyCodec;
@@ -90,6 +91,7 @@ public final class OmuiReader {
         Map<String, UiStyleSheet> styles = new LinkedHashMap<>();
         Map<String, UiGraph> graphs = new LinkedHashMap<>();
         Map<String, UiAnimationClip> clips = new LinkedHashMap<>();
+        Map<String, UiStateMachine> machines = new LinkedHashMap<>();
         Map<String, String> scripts = new LinkedHashMap<>();
         Map<String, UiBytes> assets = new LinkedHashMap<>();
         Map<String, UiBytes> editor = new LinkedHashMap<>();
@@ -117,6 +119,11 @@ public final class OmuiReader {
                 if (v != null) {
                     clips.put(id, AnimationCodec.read(id, name, v, d));
                 }
+            } else if ((id = part(name, OmuiFormat.ANIMATIONS_DIR, OmuiFormat.STATE_MACHINE_SUFFIX)) != null) {
+                UiValue v = json(entries, name, true, limits, d);
+                if (v != null) {
+                    machines.put(id, StateMachineCodec.read(id, name, v, d));
+                }
             } else if ((id = part(name, OmuiFormat.SCRIPTS_DIR, OmuiFormat.SCRIPT_SUFFIX)) != null) {
                 String source = script(name, e.getValue(), d);
                 if (source != null) {
@@ -132,8 +139,9 @@ public final class OmuiReader {
         }
         d.throwIfErrors("Malformed OMUI document");
 
-        OmuiArchive archive = new OmuiArchive(manifest, document, styles, graphs, clips, scripts, deps, assets,
+        OmuiArchive archive = new OmuiArchive(manifest, document, styles, graphs, clips, machines, scripts, deps, assets,
                 editor, extra);
+        archive = UiFeatures.withImpliedRetroGated(archive, d);
         OmuiValidator.validate(archive, d);
         d.throwIfErrors("Invalid OMUI document");
         return new Result(archive, d.list());

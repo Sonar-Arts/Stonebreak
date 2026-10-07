@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-/** Checks style sheets, graphs, animation clips and embedded script ids. */
+/** Checks style sheets, graphs, animation clips, UI state machines and embedded script ids. */
 final class PartValidator {
 
     private static final Pattern NODE_KIND = Pattern.compile("[a-z0-9_.-]{1,64}:[a-z0-9_.-]{1,128}");
@@ -25,6 +25,7 @@ final class PartValidator {
         a.styles().values().forEach(s -> style(s, a.dependencies(), d));
         a.graphs().values().forEach(g -> graph(g, d));
         a.animations().values().forEach(c -> clip(c, nodeIds, d));
+        a.stateMachines().values().forEach(m -> machine(m, a, nodeIds, d));
         for (String id : a.scripts().keySet()) {
             partId(id, OmuiFormat.scriptEntry(id), d);
         }
@@ -74,6 +75,9 @@ final class PartValidator {
                 if (!seconds(tr.duration()) || !seconds(tr.delay())) {
                     d.error(Code.INVALID_VALUE, e, ptr + "/transitions/" + t, "Duration and delay must be in [0, "
                             + OmuiFormat.MAX_SECONDS + "] s");
+                }
+                if (tr.bezier() != null && tr.bezier().problem() != null) {
+                    d.error(Code.INVALID_VALUE, e, ptr + "/transitions/" + t + "/bezier", tr.bezier().problem());
                 }
                 if (t > 0 && rule.transitions().get(t - 1).property().equals(tr.property())) {
                     d.error(Code.DUPLICATE_ID, e, ptr + "/transitions/" + t, "Property transitions twice");
@@ -138,6 +142,77 @@ final class PartValidator {
         }
     }
 
+    /** Style key values must fit their property; unknown properties are preserved like transitions. */
+    private static void trackValues(AnimTrack t, String e, String ptr, UiDiagnostics d) {
+        String property = t.property().substring("style:".length());
+        if (!UiStyleProperties.isKnown(property)) {
+            d.warning(Code.UNKNOWN_FIELD_PRESERVED, e, ptr + "/property", "Unknown style property '" + property + "'");
+            return;
+        }
+        for (int k = 0; k < t.keys().size(); k++) {
+            UiValue v = t.keys().get(k).value();
+            String problem = v instanceof UiValue.Str s && s.value().startsWith("var(--") ? null
+                    : UiStyleProperties.problem(property, v);
+            if (problem != null) {
+                d.error(Code.INVALID_VALUE, e, ptr + "/keys/" + k + "/value", problem);
+            }
+        }
+    }
+
+    private static void machine(UiStateMachine m, OmuiArchive a, Set<String> nodeIds, UiDiagnostics d) {
+        String e = OmuiFormat.stateMachineEntry(m.id());
+        partId(m.id(), e, d);
+        Set<String> names = new HashSet<>();
+        for (int i = 0; i < m.states().size(); i++) {
+            UiStateMachine.MachineState s = m.states().get(i);
+            String ptr = "/states/" + i;
+            if (!UiSelectors.isIdent(s.name()) || !names.add(s.name())) {
+                d.error(Code.INVALID_ID, e, ptr + "/name", "Invalid or duplicate state '" + s.name() + "'");
+            }
+            if (m.driver() == UiStateMachine.Driver.INTERACTION
+                    && !UiStateMachine.INTERACTION_STATES.contains(s.name())) {
+                d.error(Code.INVALID_VALUE, e, ptr + "/name", "Interaction states are "
+                        + UiStateMachine.INTERACTION_STATES);
+            }
+            clipRef(s.clip(), a, e, ptr + "/clip", d);
+        }
+        if (!names.contains(m.initial())) {
+            d.error(Code.UNRESOLVED_REFERENCE, e, "/initial", "No state '" + m.initial() + "'");
+        }
+        if (m.driver() == UiStateMachine.Driver.INTERACTION) {
+            if (m.element() == null || !nodeIds.contains(m.element())) {
+                d.error(Code.UNRESOLVED_REFERENCE, e, "/element", "An interaction machine needs the id of the node"
+                        + " whose states drive it");
+            }
+        } else if (m.element() != null) {
+            d.warning(Code.UNKNOWN_FIELD_PRESERVED, e, "/element", "Only interaction machines read 'element'");
+        }
+        for (int i = 0; i < m.transitions().size(); i++) {
+            UiStateMachine.MachineTransition t = m.transitions().get(i);
+            String ptr = "/transitions/" + i;
+            if (!UiStateMachine.ANY.equals(t.from()) && !names.contains(t.from())) {
+                d.error(Code.UNRESOLVED_REFERENCE, e, ptr + "/from", "No state '" + t.from() + "'");
+            }
+            if (!names.contains(t.to())) {
+                d.error(Code.UNRESOLVED_REFERENCE, e, ptr + "/to", "No state '" + t.to() + "'");
+            }
+            if (!seconds(t.blend())) {
+                d.error(Code.INVALID_VALUE, e, ptr + "/blend", "Blend must be in [0, " + OmuiFormat.MAX_SECONDS + "] s");
+            }
+            if (i > 0 && UiStateMachine.MachineTransition.ORDER.compare(m.transitions().get(i - 1), t) == 0) {
+                d.error(Code.DUPLICATE_ID, e, ptr, "Two transitions from " + t.from() + " to " + t.to());
+            }
+            clipRef(t.clip(), a, e, ptr + "/clip", d);
+            clipRef(t.reduced(), a, e, ptr + "/reduced", d);
+        }
+    }
+
+    private static void clipRef(String clip, OmuiArchive a, String e, String ptr, UiDiagnostics d) {
+        if (clip != null && !a.animations().containsKey(clip)) {
+            d.error(Code.UNRESOLVED_REFERENCE, e, ptr, "No clip '" + clip + "'");
+        }
+    }
+
     private static void clip(UiAnimationClip c, Set<String> nodeIds, UiDiagnostics d) {
         String e = OmuiFormat.animationEntry(c.id());
         partId(c.id(), e, d);
@@ -153,6 +228,8 @@ final class PartValidator {
             String problem = UiPaths.targetProblem(t.property());
             if (problem != null) {
                 d.error(Code.INVALID_VALUE, e, ptr + "/property", problem);
+            } else if (t.property().startsWith("style:")) {
+                trackValues(t, e, ptr, d);
             }
             if (i > 0 && AnimTrack.ORDER.compare(c.tracks().get(i - 1), t) == 0) {
                 d.error(Code.DUPLICATE_ID, e, ptr, "Two tracks animate " + t.target() + " " + t.property());
@@ -160,6 +237,9 @@ final class PartValidator {
             double previous = -1;
             for (int k = 0; k < t.keys().size(); k++) {
                 AnimKey key = t.keys().get(k);
+                if (key.bezier() != null && key.bezier().problem() != null) {
+                    d.error(Code.INVALID_VALUE, e, ptr + "/keys/" + k + "/bezier", key.bezier().problem());
+                }
                 if (!(key.time() >= 0) || !(key.time() > previous) || !(key.time() <= c.duration())) {
                     d.error(Code.INVALID_VALUE, e, ptr + "/keys/" + k + "/time",
                             "Key times must increase strictly and stay within the duration");

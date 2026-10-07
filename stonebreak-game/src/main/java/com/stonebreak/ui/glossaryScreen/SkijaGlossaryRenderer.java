@@ -12,14 +12,14 @@ import com.stonebreak.player.Player;
 import com.stonebreak.player.PlayerStats;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.masonryUI.MBadge;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MProgressBar;
-import com.stonebreak.rendering.UI.masonryUI.MSectionHeader;
-import com.stonebreak.rendering.UI.masonryUI.MStatRow;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MSymbol;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MBadge;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MProgressBar;
+import com.openmason.engine.ui.masonry.MSectionHeader;
+import com.openmason.engine.ui.masonry.MStatRow;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MSymbol;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
@@ -521,7 +521,7 @@ public final class SkijaGlossaryRenderer {
         entityRenderer.renderEntityPreview(s.type(), s.variant(), "Idle", time,
                 new Vector3f(0f, 0f, 0f), 0f, new Vector3f(1f, 1f, 1f), view, proj);
 
-        // Restore a clean GL baseline matching SkiaContext.restoreGLDefaults().
+        // Restore a clean GL baseline matching GlBaseline.reset() (engine ui.rendering).
         GL11.glScissor(0, 0, windowWidth, windowHeight);
         GL11.glDisable(GL11.GL_SCISSOR_TEST);
         GL11.glDisable(GL11.GL_DEPTH_TEST);

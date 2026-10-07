@@ -18,6 +18,7 @@ import com.stonebreak.ui.inventoryScreen.renderers.WorkbenchRenderCoordinator;
 public class WorkbenchScreen {
 
     private final WorkbenchController controller;
+    private final WorkbenchInputManager slotInput;
 
     /**
      * Creates a new workbench screen using the modular inventory architecture.
@@ -38,6 +39,8 @@ public class WorkbenchScreen {
             inputHandler, inventory, slotManager, workbenchCraftingManager
         );
 
+        this.slotInput = inputManager;
+
         // Create workbench controller
         this.controller = new WorkbenchController(
             game, inventory, inputManager, workbenchCraftingManager, null
@@ -50,6 +53,11 @@ public class WorkbenchScreen {
 
         // Set the render coordinator in the controller
         this.controller.setRenderCoordinator(renderCoordinator);
+    }
+
+    /** Slot rules addressed by slot, for UI documents (#289). */
+    public com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput getSlotInput() {
+        return slotInput;
     }
 
     /**

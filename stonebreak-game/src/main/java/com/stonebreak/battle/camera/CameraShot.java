@@ -1,6 +1,6 @@
 package com.stonebreak.battle.camera;
 
-import com.stonebreak.ui.startupIntro.tween.EasingType;
+import com.openmason.engine.util.easing.EasingType;
 
 /**
  * One authored camera move. Pure data; {@link ShotEvaluator} turns it into a {@link CameraFrame}.

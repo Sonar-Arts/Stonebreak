@@ -31,8 +31,8 @@
       "kind": "ui:action.request",
       "x": 480,
       "y": 80,
-      "inputs": {
-        "action": "screen.resume"
+      "props": {
+        "action": "stonebreak:screen.pause.resume"
       }
     }
   ],
@@ -71,6 +71,11 @@
       ],
       "nodes": [
         {
+          "id": "done",
+          "kind": "ui:function.return",
+          "x": 400
+        },
+        {
           "id": "entry",
           "kind": "ui:function.entry"
         },
@@ -79,15 +84,28 @@
           "kind": "lua:call",
           "x": 200,
           "props": {
-            "function": "common.noop"
+            "function": "noop",
+            "module": "stonebreak:ui/scripts/common"
           }
         }
       ],
       "edges": [
         {
           "fromNode": "entry",
+          "fromPort": "label",
+          "toNode": "print",
+          "toPort": "label"
+        },
+        {
+          "fromNode": "entry",
           "fromPort": "then",
           "toNode": "print",
+          "toPort": "exec"
+        },
+        {
+          "fromNode": "print",
+          "fromPort": "then",
+          "toNode": "done",
           "toPort": "exec"
         }
       ]

@@ -66,6 +66,10 @@ public final class FrameRenderer {
             GameState.CHARACTER_SHEET_UI, GameState.FURNACE_UI, GameState.WORKBENCH_UI);
 
     private final GameWindow window;
+    private final com.stonebreak.ui.runtime.DevDocumentOverlay devDocument =
+            new com.stonebreak.ui.runtime.DevDocumentOverlay();
+    private final String devScreen = System.getProperty("stonebreak.uiscreen");
+    private boolean devScreenTried;
     private boolean firstRender = true;
 
     public FrameRenderer(GameWindow window) {
@@ -82,6 +86,9 @@ public final class FrameRenderer {
 
     public void renderFrame() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // UI data posted from the server/network threads and async action results land here,
+        // once per frame on the UI thread (#289).
+        com.stonebreak.ui.runtime.GameUiHost.get().drain();
 
         Game game = Game.getInstance();
         Renderer renderer = Game.getRenderer();
@@ -137,7 +144,43 @@ public final class FrameRenderer {
             default -> renderInGame(game, renderer);
         }
 
+        renderDocumentScreens(renderer, width, height);
         renderDebugOverlay(renderer);
+        // Closes and navigations scripts asked for this frame happen only now, after the frame was
+        // drawn: nothing is torn down underneath the dispatch that asked (C4).
+        com.stonebreak.ui.runtime.screens.DocumentScreenHost.get().endFrame();
+    }
+
+    /**
+     * UI document screens (#297 onward) and the {@code -Dstonebreak.uidoc} developer overlay
+     * (#287), bottom to top in the one stack input is also routed through. Legacy screens and the
+     * legacy HUD are always beneath them.
+     */
+    private void renderDocumentScreens(Renderer renderer, int width, int height) {
+        var host = com.stonebreak.ui.runtime.screens.DocumentScreenHost.get();
+        var backend = renderer == null ? null : renderer.getSkijaBackend();
+        devDocument.ensureOpen(host, backend);
+        openDevScreen(host);
+        host.frame();
+        host.render(backend, width, height, com.stonebreak.config.Settings.getInstance().getUiScale());
+    }
+
+    /**
+     * {@code -Dstonebreak.uiscreen=<id>}: opens the shipped screen {@code ui/documents/<id>.sbui}
+     * through the production path (activation, asset and input gates, derived graphs) once a
+     * world is running, so a migration can be checked in-game before any code opens it.
+     */
+    private void openDevScreen(com.stonebreak.ui.runtime.screens.DocumentScreenHost host) {
+        if (devScreenTried || devScreen == null || devScreen.isBlank()) {
+            return;
+        }
+        if (Game.getWorld() == null && !Boolean.getBoolean("stonebreak.uiscreen.menu")) {
+            return;
+        }
+        devScreenTried = true;
+        if (host.open(devScreen, com.stonebreak.ui.runtime.screens.DocumentScreen.Options.screen()).isEmpty()) {
+            logger.warn("[uiscreen] {} did not open as a document (not shipped, rolled back or refused)", devScreen);
+        }
     }
 
     // ─── In-game ──────────────────────────────────────────────────────────────

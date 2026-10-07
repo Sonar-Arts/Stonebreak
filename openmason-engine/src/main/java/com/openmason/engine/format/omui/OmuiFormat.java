@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
 
 /**
  * Constants of the OMUI container and schema (issue #284). The normative description is
- * {@code docs/ui-program/omui-sbui-wire-contract.md}; golden fixtures live under
+ * {@code openmason-engine/docs/ui-program/omui-sbui-wire-contract.md}; golden fixtures live under
  * {@code openmason-engine/src/test/resources/ui/omui/}.
  *
  * <p>Version boundaries are independent: the container/schema ({@link #SCHEMA_VERSION}),
@@ -46,7 +46,7 @@ public final class OmuiFormat {
     public static final int MAX_DEPENDENCIES = 4096;
 
     /** Format features this reader understands. Documents list what they need in {@code requires}. */
-    public static final Set<String> SUPPORTED_FEATURES = Set.of();
+    public static final Set<String> SUPPORTED_FEATURES = UiFeatures.ALL;
 
     // ── entries ──
     public static final String MANIFEST = "manifest.json";
@@ -58,6 +58,8 @@ public final class OmuiFormat {
     public static final String GRAPH_SUFFIX = ".graph.json";
     public static final String ANIMATIONS_DIR = "animations/";
     public static final String ANIMATION_SUFFIX = ".anim.json";
+    /** UI state machines share the clips' folder (#295). */
+    public static final String STATE_MACHINE_SUFFIX = ".states.json";
     public static final String SCRIPTS_DIR = "scripts/";
     public static final String SCRIPT_SUFFIX = ".lua";
     public static final String ASSETS_DIR = "assets/";
@@ -98,6 +100,10 @@ public final class OmuiFormat {
 
     public static String animationEntry(String id) {
         return ANIMATIONS_DIR + id + ANIMATION_SUFFIX;
+    }
+
+    public static String stateMachineEntry(String id) {
+        return ANIMATIONS_DIR + id + STATE_MACHINE_SUFFIX;
     }
 
     public static String scriptEntry(String id) {

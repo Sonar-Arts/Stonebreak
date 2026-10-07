@@ -60,6 +60,11 @@ public class MouseCaptureManager {
         if (deathMenu != null && deathMenu.isVisible()) {
             return false;
         }
+        // A UI document screen that needs the pointer (a migrated menu or panel) keeps it free.
+        if (com.stonebreak.ui.runtime.screens.DocumentScreenHost.ifCreated()
+                .map(com.stonebreak.ui.runtime.screens.DocumentScreenHost::needsPointer).orElse(false)) {
+            return false;
+        }
 
         switch (state) {
             case PLAYING -> {

@@ -17,6 +17,14 @@
     <description>Shared rendering engine and file format library for Stonebreak and Open Mason</description>
 
     <dependencies>
+        <!-- Skija (Skia bindings): the shared Masonry UI renderer (com.openmason.engine.ui.masonry,
+             com.openmason.engine.ui.rendering, #286). The platform jar carries the natives the
+             raster tests need; game and tool already depend on the same artifact. -->
+        <dependency>
+            <groupId>io.github.humbleui</groupId>
+            <artifactId>${skija.artifact}</artifactId>
+        </dependency>
+
         <!-- LWJGL core -->
         <dependency>
             <groupId>org.lwjgl</groupId>
@@ -145,6 +153,47 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+            <!-- Packages a built Cenda library (Lua + Yoga hosts and the kernels) as the classpath
+                 resource natives/<platform>/<lib>, which CendaKernels extracts to a per-user cache
+                 when no dev build directory is found: UI scripting and layout have no Java
+                 fallback, so a shipped game needs the library inside its jar. A missing build
+                 directory is skipped, never a build failure (CI and tool-only builds). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>package-cenda-natives</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/natives/${cenda.natives.dir}</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}/cenda/build/release/native/kernels</directory>
+                                    <filtering>false</filtering>
+                                    <includes>
+                                        <include>libcenda_kernels.so</include>
+                                        <include>libcenda_kernels.dylib</include>
+                                        <include>cenda_kernels.dll</include>
+                                    </includes>
+                                </resource>
+                                <resource>
+                                    <!-- multi-config generators (Visual Studio, Xcode) -->
+                                    <directory>${project.basedir}/cenda/build/release/native/kernels/Release</directory>
+                                    <filtering>false</filtering>
+                                    <includes>
+                                        <include>libcenda_kernels.dylib</include>
+                                        <include>cenda_kernels.dll</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

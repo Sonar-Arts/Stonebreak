@@ -5,8 +5,6 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_S;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_W;
-import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
-import static org.lwjgl.glfw.GLFW.glfwGetKey;
 
 import com.stonebreak.core.GameState;
 import com.stonebreak.core.Game;
@@ -38,14 +36,14 @@ public class MainMenu {
     
     public void handleInput(long window) {
         // Handle keyboard navigation - only if selectedButton is not -1 (mouse not hovering)
-        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+        if (com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_UP) || com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_W)) {
             if (selectedButton == -1) {
                 selectedButton = 0; // Start with first button
             } else {
                 selectedButton = Math.max(0, selectedButton - 1);
             }
         }
-        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+        if (com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_DOWN) || com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_S)) {
             if (selectedButton == -1) {
                 selectedButton = 0; // Start with first button
             } else {
@@ -54,7 +52,7 @@ public class MainMenu {
         }
         
         // Handle enter key - only if a button is selected
-        if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS && selectedButton >= 0) {
+        if (com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_ENTER) && selectedButton >= 0) {
             executeSelectedAction();
         }
     }

@@ -3,7 +3,7 @@ package com.stonebreak.rendering.UI.components.hotbar;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.player.combat.rogue.RogueAbilityController;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MStyle;
 
 /**
  * Rogue Momentum gauge — header with the current stack count, three discrete Momentum pips,

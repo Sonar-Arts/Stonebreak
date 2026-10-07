@@ -9,6 +9,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.core.window.GameWindow;
 import com.stonebreak.player.Player;
+import com.stonebreak.ui.runtime.GameUiInput;
 
 /**
  * Routes raw window input to whichever screen the current {@link GameState} puts in front.
@@ -17,6 +18,9 @@ import com.stonebreak.player.Player;
  * to {@link InputHandler}?" — so the GLFW callbacks stay one line each and the state-to-screen
  * mapping lives in exactly one place. Screens are consulted through {@link #dispatch}, which absorbs
  * the not-yet-constructed case; a screen that is absent simply does not consume the event.</p>
+ *
+ * <p>Open UI documents ({@link GameUiInput}, #288) are offered every event before any legacy
+ * screen or gameplay; what a document consumes goes no further.</p>
  */
 public final class MenuInputRouter {
 
@@ -37,6 +41,9 @@ public final class MenuInputRouter {
     // ─── Keyboard ─────────────────────────────────────────────────────────────
 
     public void onKey(int key, int action, int mods) {
+        if (GameUiInput.get().onKey(key, action, mods, cursorCaptured(Game.getInstance()))) {
+            return;
+        }
         Game game = Game.getInstance();
         GameState state = game.getState();
         if (state != GameState.FOCUS_BATTLE) {
@@ -56,6 +63,10 @@ public final class MenuInputRouter {
     }
 
     public void onCharacter(int codepoint) {
+        // Documents take whole code points (emoji included) before the legacy BMP filter.
+        if (GameUiInput.get().onCharacter(codepoint, cursorCaptured(Game.getInstance()))) {
+            return;
+        }
         // Drop codepoints outside the BMP; casting them to a single char would produce an unpaired
         // surrogate that crashes Skija's text layout on the next measureTextWidth call.
         if (codepoint < 0 || codepoint > 0xFFFF || Character.isSurrogate((char) codepoint)) {
@@ -82,6 +93,10 @@ public final class MenuInputRouter {
 
     public void onMouseButton(int button, int action, int mods) {
         Game game = Game.getInstance();
+        if (GameUiInput.get().active() && withUiCursor((x, y) ->
+                GameUiInput.get().onMouseButton(x, y, button, action, mods, cursorCaptured(game)))) {
+            return;
+        }
         GameState state = game.getState();
         int width = window.width();
         int height = window.height();
@@ -143,6 +158,9 @@ public final class MenuInputRouter {
         if (inputHandler != null) {
             inputHandler.updateMousePosition((float) x, (float) y);
         }
+        if (GameUiInput.get().onMouseMove(x, y, cursorCaptured(game))) {
+            return; // a document is under the pointer: legacy screens must not hover beneath it
+        }
 
         GameState state = game.getState();
         if (state == null) {
@@ -166,8 +184,13 @@ public final class MenuInputRouter {
         }
     }
 
-    public void onScroll(double yOffset) {
+    public void onScroll(double xOffset, double yOffset) {
         Game game = Game.getInstance();
+        int mods = heldMods();
+        if (GameUiInput.get().active() && withUiCursor((x, y) ->
+                GameUiInput.get().onScroll(x, y, xOffset, yOffset, mods, cursorCaptured(game)))) {
+            return;
+        }
         GameState state = game.getState();
         boolean consumed = state != null && switch (state) {
             // The world list scrolls wherever the pointer is, so it needs no cursor position.
@@ -196,6 +219,7 @@ public final class MenuInputRouter {
      */
     public void pollActiveScreen() {
         Game game = Game.getInstance();
+        GameUiInput.get().frame(cursorCaptured(game));
         GameState state = game.getState();
         if (state == null) {
             return;
@@ -284,6 +308,30 @@ public final class MenuInputRouter {
             window.uiCursorPos(x, y);
             return consumer.accept(x.get(0), y.get(0));
         }
+    }
+
+    /** Modifier bits held right now; GLFW's scroll callback carries none. */
+    private int heldMods() {
+        long h = window.handle();
+        int mods = 0;
+        if (PolledKeys.physicallyDown(h, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT)
+                || PolledKeys.physicallyDown(h, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT)) {
+            mods |= org.lwjgl.glfw.GLFW.GLFW_MOD_SHIFT;
+        }
+        if (PolledKeys.physicallyDown(h, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL)
+                || PolledKeys.physicallyDown(h, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL)) {
+            mods |= org.lwjgl.glfw.GLFW.GLFW_MOD_CONTROL;
+        }
+        if (PolledKeys.physicallyDown(h, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_ALT)
+                || PolledKeys.physicallyDown(h, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_ALT)) {
+            mods |= org.lwjgl.glfw.GLFW.GLFW_MOD_ALT;
+        }
+        return mods;
+    }
+
+    private static boolean cursorCaptured(Game game) {
+        MouseCaptureManager capture = game.getMouseCaptureManager();
+        return capture != null && capture.isMouseCaptured();
     }
 
     /** Invokes {@code action} on {@code screen} unless it does not exist yet. */

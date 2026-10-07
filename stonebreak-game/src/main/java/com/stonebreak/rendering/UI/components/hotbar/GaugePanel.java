@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.UI.components.hotbar;
 
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.rpg.classes.AbilityIconCache;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;

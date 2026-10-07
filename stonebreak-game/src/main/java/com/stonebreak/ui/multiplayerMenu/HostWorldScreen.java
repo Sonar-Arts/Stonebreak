@@ -1,5 +1,6 @@
 package com.stonebreak.ui.multiplayerMenu;
 
+import com.stonebreak.ui.LegacyUiClock;
 import com.stonebreak.config.Settings;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
@@ -47,7 +48,7 @@ public final class HostWorldScreen {
     private boolean portFocused = false;
     private String portText = "25565";
     private String statusMessage = "";
-    private long lastBlinkMs = System.currentTimeMillis();
+    private long lastBlinkMs = LegacyUiClock.millis();
     private boolean caretOn = true;
 
     public HostWorldScreen(SkijaUIBackend backend) {
@@ -75,7 +76,7 @@ public final class HostWorldScreen {
     public void render(int w, int h) {
         if (!backend.isAvailable()) return;
         ensureFonts();
-        long now = System.currentTimeMillis();
+        long now = LegacyUiClock.millis();
         if (now - lastBlinkMs > 500) { caretOn = !caretOn; lastBlinkMs = now; }
 
         backend.beginFrame(w, h, 1.0f);
@@ -164,7 +165,7 @@ public final class HostWorldScreen {
 
     public void handleInput(long window) {
         // ESC = back
-        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        if (com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_ESCAPE)) {
             Game.getInstance().setState(GameState.MULTIPLAYER_MENU);
         }
     }

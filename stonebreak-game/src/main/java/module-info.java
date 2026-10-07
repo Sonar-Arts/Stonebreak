@@ -68,6 +68,10 @@ module stonebreak.game {
     // (loadAttachable + the decoded geometry records the preview renderer draws)
     exports com.stonebreak.mobs.sbe;
 
+    // UI hosting seams other hosts use (#285 GameUiAssets, #286 GameUiResources for the Open Mason preview)
+    exports com.stonebreak.ui.runtime;
+    exports com.stonebreak.ui.runtime.contracts;
+
     // Open packages for Jackson JSON processing
     opens com.stonebreak.blocks to com.fasterxml.jackson.databind;
     opens com.stonebreak.items to com.fasterxml.jackson.databind;

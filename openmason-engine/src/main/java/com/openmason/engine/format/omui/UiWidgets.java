@@ -13,14 +13,22 @@ import java.util.Map;
  */
 public final class UiWidgets {
 
-    private static final Map<String, Integer> BUILT_IN = Map.of(
-            "Box", 1,
-            "Label", 1,
-            "Button", 1,
-            "Image", 1,
-            "ItemSlot", 1,
-            "DrawProvider", 1,
-            UiNode.INSTANCE_TYPE, 1);
+    private static final Map<String, Integer> BUILT_IN = Map.ofEntries(
+            Map.entry("Box", 1),
+            Map.entry("Label", 1),
+            Map.entry("Button", 1),
+            Map.entry("Image", 1),
+            Map.entry("ItemSlot", 1),
+            Map.entry("DrawProvider", 1),
+            Map.entry("ScrollView", 1),
+            Map.entry("TextField", 1),
+            Map.entry("ListView", 1),
+            Map.entry("Canvas", 1),
+            Map.entry(UiNode.INSTANCE_TYPE, 1));
+
+    /** Built-ins newer than schema 1.0 and the {@code requires} feature a document must list to use them. */
+    private static final Map<String, String> FEATURE = Map.of("ScrollView", UiFeatures.SCROLL,
+            "TextField", UiFeatures.INPUT, "ListView", UiFeatures.DATA, "Canvas", UiFeatures.CANVAS);
 
     private UiWidgets() {
     }
@@ -28,6 +36,11 @@ public final class UiWidgets {
     /** @return the newest supported version, or 0 for an unknown built-in type */
     public static int supportedVersion(String type) {
         return BUILT_IN.getOrDefault(type, 0);
+    }
+
+    /** @return the feature a document must declare in {@code requires} to use {@code type}, or null */
+    public static String requiredFeature(String type) {
+        return FEATURE.get(type);
     }
 
     public static boolean isNamespaced(String type) {

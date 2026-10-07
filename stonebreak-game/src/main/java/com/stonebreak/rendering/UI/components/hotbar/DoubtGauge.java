@@ -3,7 +3,7 @@ package com.stonebreak.rendering.UI.components.hotbar;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.combat.illusionist.IllusionistAbilityController;
 import com.stonebreak.player.combat.illusionist.IllusionistHudText;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MStyle;
 
 /**
  * Illusionist Doubt gauge — header summarizing how many enemies carry Doubt (and how many

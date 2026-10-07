@@ -1,7 +1,7 @@
 package com.stonebreak.ui.focusBattle.intro;
 
-import com.stonebreak.ui.startupIntro.tween.EasingFunctions;
-import com.stonebreak.ui.startupIntro.tween.EasingType;
+import com.openmason.engine.util.easing.EasingFunctions;
+import com.openmason.engine.util.easing.EasingType;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Data;
 import io.github.humbleui.skija.FilterTileMode;

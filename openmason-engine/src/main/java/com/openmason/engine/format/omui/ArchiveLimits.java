@@ -18,4 +18,14 @@ public record ArchiveLimits(int maxEntries, long maxEntryBytes, long maxTotalByt
 
     public static final ArchiveLimits DEFAULT = new ArchiveLimits(
             4096, 64L << 20, 256L << 20, 8L << 20, 20_000, 48, 10_000);
+
+    /**
+     * The same limits with {@code maxTotalBytes} lowered to what is left of a budget, clamped at
+     * zero. Nested archives (an SBUI's embedded OMUI, component documents inside it) read under
+     * the remainder of their container's budget, so nesting cannot multiply the memory bound.
+     */
+    public ArchiveLimits withRemainingTotal(long remaining) {
+        return new ArchiveLimits(maxEntries, maxEntryBytes, Math.max(0, Math.min(maxTotalBytes, remaining)),
+                maxJsonBytes, maxNodes, maxTreeDepth, maxGraphNodes);
+    }
 }

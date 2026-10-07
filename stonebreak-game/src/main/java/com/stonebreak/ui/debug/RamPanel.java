@@ -1,6 +1,6 @@
 package com.stonebreak.ui.debug;
 
-import com.stonebreak.rendering.UI.masonryUI.MStatPanel;
+import com.openmason.engine.ui.masonry.MStatPanel;
 import java.lang.management.BufferPoolMXBean;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;

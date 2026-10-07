@@ -57,7 +57,29 @@ public record UiDiagnostic(Severity severity, Code code, String entry, String po
         BINARY_SCRIPT,
         INVALID_TEXT,
         STALE_DERIVED,
-        INCONSISTENT_MANIFEST
+        INCONSISTENT_MANIFEST,
+        // Asset resolution, embedding and export planning (#285)
+        ASSET_EMBEDDED,
+        ASSET_REFRESHED,
+        ASSET_EXTRACTED,
+        ASSET_RELINKED,
+        ASSET_SHADOWED,
+        ENTRY_RENAMED,
+        ID_REMAPPED,
+        UNUSED_DEPENDENCY,
+        // Features (#287)
+        UNDECLARED_FEATURE,
+        // Host activation (#289)
+        UNKNOWN_DATA_SOURCE,
+        UNDECLARED_HOST_API,
+        // Behavior graphs (#291): a graph fails its checks, so it cannot be compiled or exported
+        GRAPH_INVALID,
+        // Sprite sheets (#294): a region outside its texture, a slice that does not fit its region,
+        // a texture whose size changed under its sheet, a reference to a region the sheet lacks
+        SPRITE_REGION_INVALID,
+        SPRITE_SLICE_INVALID,
+        TEXTURE_SIZE_CHANGED,
+        UNKNOWN_SPRITE
     }
 
     public UiDiagnostic {

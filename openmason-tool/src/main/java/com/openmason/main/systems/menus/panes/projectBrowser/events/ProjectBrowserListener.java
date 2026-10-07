@@ -20,6 +20,10 @@ public interface ProjectBrowserListener {
      */
     void onSceneSelected(SceneSelectedEvent event);
 
+    /** A UI document (.omui) was selected: the shell opens it in the UI Editor workspace (#293). */
+    default void onUiDocumentSelected(com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry entry) {
+    }
+
     /** Delete was chosen for an asset; the shell shows the confirmation dialog. */
     void onAssetDeleteRequested(AssetEntry entry);
 }

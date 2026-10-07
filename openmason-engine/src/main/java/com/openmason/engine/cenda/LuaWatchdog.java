@@ -9,6 +9,11 @@ import java.util.concurrent.locks.LockSupport;
  * state's {@link LuaState#watchToken()}; a call still running after the
  * deadline is interrupted and ends with {@link LuaState#ERR_DEADLINE}.
  *
+ * <p>The deadline bounds <em>Lua</em> time: time a call spends inside Java host functions
+ * (a slow action handler, a data read) is subtracted ({@link LuaState#hostNanos}), while Lua
+ * that runs before or after the host call, or in a script callback the host makes, still
+ * counts. A busy loop after a slow host call therefore still trips.
+ *
  * <p>Costs the UI thread nothing per call (no hook, no extra downcall): the VM
  * only compares two words at loop back-jumps and calls. Use it as the hang
  * breaker; {@link LuaState#setBudget} remains for exact instruction counts at
@@ -32,7 +37,7 @@ public final class LuaWatchdog implements AutoCloseable {
 
     /** Interrupt any single call on {@code state} that runs longer than {@code deadlineMillis}. */
     public void watch(LuaState state, double deadlineMillis) {
-        watches.add(new Watch(state, (long) (deadlineMillis * 1e6), new long[]{0L, 0L}));
+        watches.add(new Watch(state, (long) (deadlineMillis * 1e6), new long[]{0L, 0L, 0L}));
     }
 
     /**
@@ -51,10 +56,12 @@ public final class LuaWatchdog implements AutoCloseable {
             synchronized (sampleLock) {
                 for (Watch w : watches) {
                     long token = w.state.watchToken();
+                    long host = w.state.hostNanos(now);
                     if (token != w.seen[0]) {
                         w.seen[0] = token;
                         w.seen[1] = now;
-                    } else if (token != 0 && now - w.seen[1] > w.deadlineNanos) {
+                        w.seen[2] = host;
+                    } else if (token != 0 && (now - w.seen[1]) - (host - w.seen[2]) > w.deadlineNanos) {
                         w.state.interrupt(token);
                     }
                 }

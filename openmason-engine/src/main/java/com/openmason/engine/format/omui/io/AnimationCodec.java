@@ -39,7 +39,7 @@ public final class AnimationCodec {
                     value = UiValue.NULL;
                 }
                 keys.add(new AnimKey(k.requiredNumber("time", 0, OmuiFormat.MAX_SECONDS), value,
-                        k.optionalEnum("easing", UiEasing.class, UiEasing.LINEAR), k.unknown()));
+                        k.optionalEnum("easing", UiEasing.class, UiEasing.LINEAR), bezier(k), k.unknown()));
             }
             tracks.add(new AnimTrack(t.requiredString("target"), t.requiredString("property"), keys, t.unknown()));
         }
@@ -49,6 +49,19 @@ public final class AnimationCodec {
                     e.unknown()));
         }
         return new UiAnimationClip(id, duration, loop, tracks, events, r.unknown());
+    }
+
+    /** Optional {@code bezier: [x1, y1, x2, y2]} (#295); a malformed one is an error. */
+    static com.openmason.engine.format.omui.UiBezier bezier(ObjReader r) {
+        UiValue raw = r.raw("bezier");
+        if (raw == null) {
+            return null;
+        }
+        com.openmason.engine.format.omui.UiBezier b = com.openmason.engine.format.omui.UiBezier.fromWire(raw);
+        if (b == null) {
+            r.error(Code.WRONG_TYPE, "bezier", "bezier must be four numbers [x1, y1, x2, y2]");
+        }
+        return b;
     }
 
     public static UiValue.Obj write(UiAnimationClip c) {
@@ -63,6 +76,7 @@ public final class AnimationCodec {
                                 .putNumber("time", k.time())
                                 .put("value", k.value())
                                 .putEnumIfNot("easing", k.easing(), UiEasing.LINEAR)
+                                .putList("bezier", k.bezier() == null ? null : k.bezier().wire(), x -> x)
                                 .putUnknown(k.unknown())
                                 .build())
                         .putUnknown(t.unknown())

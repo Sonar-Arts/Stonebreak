@@ -107,6 +107,9 @@ public final class FurnaceState {
             }
         }
 
+        if (cooking || wasLit) {
+            notifyChanged();
+        }
         return wasLit != isLit();
     }
 
@@ -205,6 +208,32 @@ public final class FurnaceState {
         this.currentBurnUnitTotal = parsed.currentBurnUnitTotal;
         this.cookProgress = parsed.cookProgress;
         this.cooking = parsed.cookProgress > 0;
+        notifyChanged();
+    }
+
+    /** Called after this state's timers or slots change (tick or server echo); may run on any thread. */
+    private volatile Runnable changeListener;
+
+    /**
+     * Observes this furnace: an open furnace UI mirrors progress into its data source from here
+     * instead of reading the state every frame (#289). One listener; {@code null} detaches.
+     */
+    public void setChangeListener(Runnable listener) {
+        this.changeListener = listener;
+    }
+
+    private void notifyChanged() {
+        Runnable l = changeListener;
+        if (l != null) {
+            // Runs inside the server's furnace tick or a network echo handler: an observer's
+            // failure must never take the furnace (or the connection) down with it.
+            try {
+                l.run();
+            } catch (RuntimeException e) {
+                org.slf4j.LoggerFactory.getLogger(FurnaceState.class)
+                    .warn("Furnace change listener failed at {}", pos, e);
+            }
+        }
     }
 
     /** Slot snapshot taken just before the first server echo since the last poll; null if none. */

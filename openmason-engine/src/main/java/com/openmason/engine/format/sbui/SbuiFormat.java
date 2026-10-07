@@ -7,7 +7,7 @@ import com.openmason.engine.format.omui.SchemaVersion;
  * verbatim (it is the only editable tree), plus the game-facing identity, the union of
  * runtime requirements, a dependency table saying where each referenced asset resolves, any
  * dependencies collected at export, and derived caches keyed to their source hashes. The
- * normative description is {@code docs/ui-program/omui-sbui-wire-contract.md}.
+ * normative description is {@code openmason-engine/docs/ui-program/omui-sbui-wire-contract.md}.
  *
  * <p>Version history: 1.0 — first released schema.
  */

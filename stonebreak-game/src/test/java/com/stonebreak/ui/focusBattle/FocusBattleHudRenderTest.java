@@ -9,11 +9,11 @@ import com.stonebreak.battle.api.EnemyAction;
 import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.api.StatusView;
 import com.stonebreak.battle.api.TelegraphView;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MStyle;
 import io.github.humbleui.skija.Data;
 import io.github.humbleui.skija.EncoderPNG;
 import io.github.humbleui.skija.Image;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
+import com.openmason.engine.ui.masonry.MPainter;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;

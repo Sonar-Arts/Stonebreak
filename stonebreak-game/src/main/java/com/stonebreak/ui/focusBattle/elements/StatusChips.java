@@ -2,7 +2,7 @@ package com.stonebreak.ui.focusBattle.elements;
 
 import com.stonebreak.battle.api.BattleStatus;
 import com.stonebreak.battle.api.StatusView;
-import com.stonebreak.rendering.UI.masonryUI.MBadge;
+import com.openmason.engine.ui.masonry.MBadge;
 import com.stonebreak.ui.focusBattle.BattlePalette;
 
 import java.util.ArrayList;

@@ -1,0 +1,75 @@
+{
+  "contracts": {
+    "session": "stonebreak:session",
+    "furnace": "stonebreak:furnace",
+    "settings": "stonebreak:settings",
+    "inventory": "stonebreak:inventory",
+    "carried": "stonebreak:inventory",
+    "hotbar": "stonebreak:hotbar",
+    "vitals": "stonebreak:player.vitals"
+  },
+  "data": {
+    "session": { "mode": "singleplayer", "online": false, "hosting": false },
+    "furnace": {
+      "open": true, "lit": true, "progress": 0.5, "fuel": 0.75,
+      "ingredientSlot": { "item": 9, "objectId": "stonebreak:iron_ore", "name": "Iron Ore", "count": 12, "state": "", "maxStack": 64 },
+      "fuelSlot": { "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0 },
+      "outputSlot": { "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0 }
+    },
+    "carried": { "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0 },
+    "vitals": {
+      "present": true, "health": 16, "maxHealth": 20, "stamina": 80, "maxStamina": 100,
+      "mana": 35, "maxMana": 50, "level": 3, "xp": 120, "xpNext": 200, "dead": false
+    },
+    "settings": {
+      "windowWidth": 1920, "windowHeight": 1080, "vsyncEnabled": false, "maxFps": 144,
+      "masterVolume": 0.5, "musicVolume": 0.5, "musicEnabled": true,
+      "armModelType": "REGULAR", "selectedHat": "NONE", "selectedHair": "NONE",
+      "crosshairStyle": "SIMPLE_CROSS", "crosshairSize": 16, "crosshairThickness": 2, "crosshairGap": 4,
+      "crosshairOpacity": 1, "crosshairColorR": 1, "crosshairColorG": 1, "crosshairColorB": 1, "crosshairOutline": true,
+      "leafTransparency": true, "waterShaderEnabled": true, "cloudsEnabled": true, "godRaysEnabled": true,
+      "shadowsEnabled": true, "playerNameTagsEnabled": true, "shadowQuality": "MEDIUM", "shadowDistance": 96,
+      "smoothLightingEnabled": true, "renderDistance": 8, "lodDistance": 16, "lodEnabled": true, "lodQuality": "MEDIUM",
+      "uiScale": 1, "uiTextScale": 1, "reducedMotion": false
+    }
+  },
+  "editable": {
+    "settings": { "commit": "stonebreak:settings.apply" }
+  },
+  "collections": {
+    "inventory": {
+      "identity": "slot",
+      "items": [
+        { "slot": "main:0", "item": 3, "objectId": "stonebreak:stone", "name": "Stone", "count": 64, "state": "", "maxStack": 64, "selected": false },
+        { "slot": "main:1", "item": 2, "objectId": "stonebreak:dirt", "name": "Dirt", "count": 23, "state": "", "maxStack": 64, "selected": false },
+        { "slot": "main:2", "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0, "selected": false }
+      ]
+    },
+    "hotbar": {
+      "identity": "slot",
+      "items": [
+        { "slot": "hotbar:0", "item": 4, "objectId": "stonebreak:wood", "name": "Wood", "count": 10, "state": "", "maxStack": 64, "selected": true },
+        { "slot": "hotbar:1", "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0, "selected": false }
+      ]
+    }
+  },
+  "actions": {
+    "stonebreak:screen.pause.resume": { "contract": "stonebreak:screen.pause" },
+    "stonebreak:screen.pause.statistics": { "contract": "stonebreak:screen.pause" },
+    "stonebreak:screen.pause.glossary": { "contract": "stonebreak:screen.pause" },
+    "stonebreak:screen.pause.settings": { "contract": "stonebreak:screen.pause" },
+    "stonebreak:screen.pause.quit": { "contract": "stonebreak:screen.pause" },
+    "stonebreak:network.resync": { "contract": "stonebreak:network.resync", "result": { "audited": 12 } },
+    "stonebreak:settings.set-live": { "contract": "stonebreak:settings", "params": { "field": "string", "value": "any" } },
+    "stonebreak:settings.keep-ui-scale": { "contract": "stonebreak:settings" },
+    "stonebreak:settings.revert-ui-scale": { "contract": "stonebreak:settings" },
+    "stonebreak:inventory.slot-click": { "contract": "stonebreak:inventory", "params": { "slot": "string", "button": "int", "shift": "bool" }, "reentrancy": "parallel" },
+    "stonebreak:inventory.slot-press": { "contract": "stonebreak:inventory", "params": { "slot": "string", "button": "int", "shift": "bool" }, "reentrancy": "parallel" },
+    "stonebreak:inventory.slot-drag": { "contract": "stonebreak:inventory", "params": { "slot": "string", "button": "int" }, "reentrancy": "parallel" },
+    "stonebreak:inventory.slot-release": { "contract": "stonebreak:inventory", "reentrancy": "parallel" },
+    "stonebreak:inventory.sort": { "contract": "stonebreak:inventory", "reentrancy": "parallel" },
+    "stonebreak:inventory.craft-all": { "contract": "stonebreak:inventory", "reentrancy": "parallel" },
+    "stonebreak:inventory.close": { "contract": "stonebreak:inventory" },
+    "stonebreak:hotbar.select": { "contract": "stonebreak:hotbar", "params": { "index": "int" }, "reentrancy": "parallel" }
+  }
+}

@@ -20,7 +20,13 @@ public enum WritePolicy {
      * allowed silently when the tool call carries {@code overwrite:true}.
      * Game resources still ask.
      */
-    ASK_NEVER_IN_PROJECT("Only ask for game resources");
+    ASK_NEVER_IN_PROJECT("Only ask for game resources"),
+    /**
+     * Auto-approve every agent write, overwrites and game resources included. The sandbox
+     * still refuses anything outside the roots, and a tool call with {@code prompt:true}
+     * still shows the Save Sheet.
+     */
+    NEVER_ASK("Never ask (sandbox still applies)");
 
     private final String label;
 

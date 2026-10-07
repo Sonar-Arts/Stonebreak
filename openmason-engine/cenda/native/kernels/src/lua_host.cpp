@@ -8,6 +8,7 @@
 
 #include "cenda/lua_host.h"
 
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -30,10 +31,12 @@ namespace {
 // instructions before it is stopped).
 constexpr int HOOK_STRIDE = 1000;
 constexpr int MAX_HOST_VALUES = 16;
-// Fixed string-hash seed: pairs() order is then identical run to run, which
-// the deterministic UI fixtures rely on. UI scripts are not an untrusted
-// network input, so hash-flooding resistance buys nothing here.
+// String-hash seed of cl_state_new: pairs() order is then identical run to
+// run, which deterministic UI fixtures rely on. Hosts running documents they
+// did not write (mods) use cl_state_new_seeded with a random seed (ABI 3).
 constexpr unsigned STATE_SEED = 0x5eed5eedu;
+
+static_assert(std::endian::native == std::endian::little, "the CL value encoding is little-endian");
 
 struct Buffer {
     float* data;
@@ -55,10 +58,21 @@ struct cl_state {
     size_t allocated_total = 0;  // cumulative bytes requested (growth only) — "garbage" meter
     int64_t budget = 0;
     int64_t charged = 0;
+    int depth = 0;  // nesting of top-level entry points (host functions may re-enter)
     int hook_stride = HOOK_STRIDE;  // instructions per hook firing right now
     bool budget_hit = false;
+    // The first deadline raise of a top-level call, with where it hit and the traceback of
+    // that thread. Every re-raise while the deadline stays pending repeats it, so the host
+    // learns where the script was spinning, not where the unwinding happened to be.
+    std::string deadline_message;
     std::string error;
     std::vector<Buffer> buffers;
+    // Typed values (ABI 2): Lua->host args of the current upcall, host->Lua
+    // results of the last cl_call_v, and the host's result buffer.
+    std::vector<uint8_t> host_args;
+    std::vector<uint8_t> results;
+    uint8_t* host_buf = nullptr;
+    int32_t host_cap = 0;
 };
 
 namespace {
@@ -93,12 +107,27 @@ void* capped_alloc(void* ud, void* ptr, size_t osize, size_t nsize) {
     return grown;
 }
 
+// Raises the pending deadline. The first raise of a top-level call records where it hit;
+// every later one repeats that message.
+void raise_deadline(lua_State* L, cl_state* s) {
+    if (s->deadline_message.empty()) {
+        luaL_where(L, 1);
+        lua_pushliteral(L, "deadline exceeded (interrupted by the host watchdog)");
+        lua_concat(L, 2);
+        luaL_traceback(L, L, lua_tostring(L, -1), 1);
+        s->deadline_message = lua_tostring(L, -1);
+        lua_pop(L, 2);
+    }
+    lua_pushlstring(L, s->deadline_message.data(), s->deadline_message.size());
+    lua_error(L);
+}
+
 void count_hook(lua_State* L, lua_Debug*) {
     cl_state* s = state_of(L);
     if (cenda_pending(L)) {
         // Deadline: stays pending (and the hook stays at stride 1) until the
         // next top-level call, so pcall cannot swallow it either.
-        luaL_error(L, "deadline exceeded (interrupted by the host watchdog)");
+        raise_deadline(L, s);
     }
     s->charged += s->hook_stride;
     if (s->budget > 0 && s->charged > s->budget) {
@@ -116,22 +145,36 @@ void count_hook(lua_State* L, lua_Debug*) {
 }
 
 void begin_call(cl_state* s, lua_State* thread) {
-    s->cell.call_gen = s->cell.call_gen + 1;
-    s->active.store(1, std::memory_order_release);
-    s->charged = 0;
-    s->hook_stride = HOOK_STRIDE;
-    s->budget_hit = false;
+    // A host function may call back into the state (a script's signal reaching another
+    // environment, a converter run by a binding write). Only the outermost call is a new
+    // top-level call: it alone bumps the watch token, clears the error and resets the
+    // budget, so the watchdog keeps timing (and the budget keeps charging) the whole call.
+    const bool outermost = s->depth++ == 0;
+    if (outermost) {
+        s->cell.call_gen = s->cell.call_gen + 1;
+        s->active.store(1, std::memory_order_release);
+        s->charged = 0;
+        s->hook_stride = HOOK_STRIDE;
+        s->budget_hit = false;
+        s->deadline_message.clear();
+    }
     s->error.clear();
     if (s->budget > 0) {
-        lua_sethook(thread, count_hook, LUA_MASKCOUNT, HOOK_STRIDE);
-    } else {
+        if (outermost || lua_gethook(thread) != count_hook) {
+            lua_sethook(thread, count_hook, LUA_MASKCOUNT, s->hook_stride);
+        }
+    } else if (outermost || !cenda_pending(thread)) {
+        // Outermost: the new token cannot be pending, so an armed interrupt hook from an
+        // earlier call is dropped. Nested: keep an interrupt the outer call is unwinding with.
         lua_sethook(thread, nullptr, 0, 0);
     }
 }
 
 // Every top-level entry point calls this on each exit path.
 int32_t end_call(cl_state* s, int32_t status) {
-    s->active.store(0, std::memory_order_release);
+    if (--s->depth == 0) {
+        s->active.store(0, std::memory_order_release);
+    }
     return status;
 }
 
@@ -202,6 +245,243 @@ int32_t protected_op(cl_state* s, lua_CFunction fn, void* ctx) {
     return CL_OK;
 }
 
+
+// ──────────────────────────── value codec ────────────────────────────
+//
+// Both directions run inside a lua_CFunction under lua_pcall, so a Lua error
+// (bad value, memory) unwinds cleanly. The vectors live in cl_state, never on
+// a frame a longjmp could cross; vector growth that throws is turned into a
+// Lua error after the catch block has finished.
+
+bool append(std::vector<uint8_t>& v, const void* p, size_t n) noexcept {
+    try {
+        const auto* b = static_cast<const uint8_t*>(p);
+        v.insert(v.end(), b, b + n);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+void put(lua_State* L, std::vector<uint8_t>& v, const void* p, size_t n) {
+    // The encoding lives outside the Lua heap (and its cap), and a table may share one subtable
+    // many times (t = {a, a} doubled 32 times is 2^32 nodes in a few hundred bytes of Lua): the
+    // byte cap bounds both the memory and the time an encode can take.
+    if (v.size() + n > CL_MAX_ENCODED_BYTES) {
+        luaL_error(L, "host value larger than %d bytes (shared subtables are encoded once per use)",
+                   static_cast<int>(CL_MAX_ENCODED_BYTES));
+    }
+    if (!append(v, p, n)) {
+        luaL_error(L, "not enough memory to encode a host value");
+    }
+}
+
+void put_tag(lua_State* L, std::vector<uint8_t>& v, uint8_t tag) { put(L, v, &tag, 1); }
+
+void put_u32(lua_State* L, std::vector<uint8_t>& v, size_t n) {
+    if (n > 0x7fffffffu) {
+        luaL_error(L, "host value too large");
+    }
+    const auto u = static_cast<uint32_t>(n);
+    put(L, v, &u, 4);
+}
+
+void encode_value(lua_State* L, int idx, std::vector<uint8_t>& out, int depth);
+
+void encode_table(lua_State* L, int idx, std::vector<uint8_t>& out, int depth) {
+    if (depth >= CL_MAX_DEPTH) {
+        luaL_error(L, "table nested deeper than %d levels (or cyclic) cannot pass to the host", CL_MAX_DEPTH);
+    }
+    idx = lua_absindex(L, idx);
+    luaL_checkstack(L, 4, "encoding a host value");
+    size_t count = 0;
+    bool strings = true;
+    bool positive_ints = true;
+    lua_Integer max_key = 0;
+    lua_pushnil(L);
+    while (lua_next(L, idx) != 0) {
+        ++count;
+        if (lua_type(L, -2) == LUA_TSTRING) {
+            positive_ints = false;
+        } else {
+            strings = false;
+            if (lua_isinteger(L, -2) && lua_tointeger(L, -2) >= 1) {
+                const lua_Integer k = lua_tointeger(L, -2);
+                max_key = k > max_key ? k : max_key;
+            } else {
+                positive_ints = false;
+            }
+        }
+        lua_pop(L, 1);
+    }
+    if (count == 0 || strings) {
+        put_tag(L, out, CL_TAG_MAP);
+        put_u32(L, out, count);
+        lua_pushnil(L);
+        while (lua_next(L, idx) != 0) {
+            encode_value(L, -2, out, depth + 1);
+            encode_value(L, -1, out, depth + 1);
+            lua_pop(L, 1);
+        }
+        return;
+    }
+    // Lua cannot store nil in a list, so a JSON array with nulls comes back with
+    // holes. Dense integer keys (at most half holes) are an array with nil
+    // slots; anything sparser or mixed is refused rather than guessed at.
+    if (!positive_ints || max_key > static_cast<lua_Integer>(2 * count + 1)) {
+        luaL_error(L, "a table passed to the host needs all-string keys or the keys 1..n (a few nil holes allowed)");
+    }
+    put_tag(L, out, CL_TAG_ARRAY);
+    put_u32(L, out, static_cast<size_t>(max_key));
+    for (lua_Integer i = 1; i <= max_key; ++i) {
+        lua_rawgeti(L, idx, i);
+        encode_value(L, -1, out, depth + 1);
+        lua_pop(L, 1);
+    }
+}
+
+void encode_value(lua_State* L, int idx, std::vector<uint8_t>& out, int depth) {
+    switch (lua_type(L, idx)) {
+        case LUA_TNONE:
+        case LUA_TNIL:
+            put_tag(L, out, CL_TAG_NIL);
+            return;
+        case LUA_TBOOLEAN:
+            put_tag(L, out, lua_toboolean(L, idx) ? CL_TAG_TRUE : CL_TAG_FALSE);
+            return;
+        case LUA_TNUMBER:
+            if (lua_isinteger(L, idx)) {
+                const auto i = static_cast<int64_t>(lua_tointeger(L, idx));
+                put_tag(L, out, CL_TAG_INTEGER);
+                put(L, out, &i, 8);
+            } else {
+                const auto d = static_cast<double>(lua_tonumber(L, idx));
+                put_tag(L, out, CL_TAG_NUMBER);
+                put(L, out, &d, 8);
+            }
+            return;
+        case LUA_TSTRING: {
+            size_t len = 0;
+            const char* str = lua_tolstring(L, idx, &len);
+            put_tag(L, out, CL_TAG_STRING);
+            put_u32(L, out, len);
+            put(L, out, str, len);
+            return;
+        }
+        case LUA_TTABLE:
+            encode_table(L, idx, out, depth);
+            return;
+        default:
+            luaL_error(L, "a %s cannot pass to the host", luaL_typename(L, idx));
+    }
+}
+
+struct Reader {
+    const uint8_t* p;
+    size_t len;
+    size_t pos;
+};
+
+[[noreturn]] void malformed(lua_State* L, const Reader& r) {
+    luaL_error(L, "malformed host value at byte %d of %d", static_cast<int>(r.pos), static_cast<int>(r.len));
+    std::abort();  // unreachable: luaL_error longjmps
+}
+
+void need(lua_State* L, const Reader& r, size_t n) {
+    if (r.len - r.pos < n) {
+        malformed(L, r);
+    }
+}
+
+uint32_t read_u32(lua_State* L, Reader& r) {
+    need(L, r, 4);
+    uint32_t v = 0;
+    std::memcpy(&v, r.p + r.pos, 4);
+    r.pos += 4;
+    // Every element (and every string byte) takes at least one byte, so a
+    // count beyond what is left is corrupt — and never sizes an allocation.
+    if (v > r.len - r.pos) {
+        malformed(L, r);
+    }
+    return v;
+}
+
+void decode_value(lua_State* L, Reader& r, int depth) {
+    if (depth > CL_MAX_DEPTH) {
+        malformed(L, r);
+    }
+    need(L, r, 1);
+    const uint8_t tag = r.p[r.pos++];
+    switch (tag) {
+        case CL_TAG_NIL:
+            lua_pushnil(L);
+            return;
+        case CL_TAG_FALSE:
+        case CL_TAG_TRUE:
+            lua_pushboolean(L, tag == CL_TAG_TRUE);
+            return;
+        case CL_TAG_NUMBER: {
+            need(L, r, 8);
+            double d = 0;
+            std::memcpy(&d, r.p + r.pos, 8);
+            r.pos += 8;
+            lua_pushnumber(L, static_cast<lua_Number>(d));
+            return;
+        }
+        case CL_TAG_INTEGER: {
+            need(L, r, 8);
+            int64_t i = 0;
+            std::memcpy(&i, r.p + r.pos, 8);
+            r.pos += 8;
+            lua_pushinteger(L, static_cast<lua_Integer>(i));
+            return;
+        }
+        case CL_TAG_STRING: {
+            const uint32_t n = read_u32(L, r);
+            need(L, r, n);
+            lua_pushlstring(L, reinterpret_cast<const char*>(r.p + r.pos), n);
+            r.pos += n;
+            return;
+        }
+        case CL_TAG_ARRAY: {
+            const uint32_t n = read_u32(L, r);
+            luaL_checkstack(L, 3, "decoding a host value");
+            lua_createtable(L, static_cast<int>(n), 0);
+            for (uint32_t i = 0; i < n; ++i) {
+                decode_value(L, r, depth + 1);
+                lua_rawseti(L, -2, static_cast<lua_Integer>(i) + 1);
+            }
+            return;
+        }
+        case CL_TAG_MAP: {
+            const uint32_t n = read_u32(L, r);
+            luaL_checkstack(L, 4, "decoding a host value");
+            lua_createtable(L, 0, static_cast<int>(n));
+            for (uint32_t i = 0; i < n; ++i) {
+                need(L, r, 1);
+                if (r.p[r.pos] != CL_TAG_STRING) {
+                    malformed(L, r);
+                }
+                decode_value(L, r, depth + 1);
+                decode_value(L, r, depth + 1);
+                lua_rawset(L, -3);
+            }
+            return;
+        }
+        case CL_TAG_REF: {
+            need(L, r, 4);
+            int32_t ref = 0;
+            std::memcpy(&ref, r.p + r.pos, 4);
+            r.pos += 4;
+            lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+            return;
+        }
+        default:
+            --r.pos;
+            malformed(L, r);
+    }
+}
+
 // ───────────────────────────── sandbox ─────────────────────────────
 
 // Text-only `load`. Strings only (no reader functions); the chunk's _ENV
@@ -227,11 +507,39 @@ int sandbox_load(lua_State* L) {
     return 1;
 }
 
+// setmetatable that refuses __gc. A finalizer runs inside the collector with hooks disabled
+// (lgc.c GCTM), so neither the watchdog nor the budget could ever stop one, and lua_close would
+// run every pending finalizer unguarded. Lua only marks an object for finalization when its
+// metatable has __gc at setmetatable time, so refusing it here closes the door for good.
+int sandbox_setmetatable(lua_State* L) {
+    if (lua_istable(L, 2)) {
+        lua_pushliteral(L, "__gc");
+        const int t = lua_rawget(L, 2);
+        lua_pop(L, 1);
+        if (t != LUA_TNIL) {
+            return luaL_error(L, "__gc metamethods are not available to UI scripts");
+        }
+    }
+    lua_pushvalue(L, lua_upvalueindex(1));
+    lua_insert(L, 1);
+    lua_call(L, lua_gettop(L) - 1, 1);
+    return 1;
+}
+
 void install_load(lua_State* L, int env_index) {
     env_index = lua_absindex(L, env_index);
     lua_pushvalue(L, env_index);
     lua_pushcclosure(L, sandbox_load, 1);
     lua_setfield(L, env_index, "load");
+}
+
+// __cenda_traceback(co, msg): the one piece of the debug library a host
+// prelude needs (the traceback of a failed coroutine). See lua_host.h.
+int coroutine_traceback(lua_State* L) {
+    lua_State* co = lua_tothread(L, 1);
+    const char* msg = lua_tostring(L, 2);
+    luaL_traceback(L, co != nullptr ? co : L, msg, co != nullptr && co != L ? 0 : 1);
+    return 1;
 }
 
 int open_sandbox(lua_State* L) {
@@ -253,6 +561,11 @@ int open_sandbox(lua_State* L) {
         lua_setfield(L, -2, banned);
     }
     install_load(L, -1);
+    lua_getfield(L, -1, "setmetatable");
+    lua_pushcclosure(L, sandbox_setmetatable, 1);
+    lua_setfield(L, -2, "setmetatable");
+    lua_pushcfunction(L, coroutine_traceback);
+    lua_setfield(L, -2, "__cenda_traceback");
     lua_getfield(L, -1, LUA_STRLIBNAME);
     lua_pushnil(L);
     lua_setfield(L, -2, "dump");
@@ -337,6 +650,40 @@ int host_trampoline(lua_State* L) {
     return count;
 }
 
+int host_trampoline_v(lua_State* L) {
+    cl_host_vfn fn = nullptr;
+    void* raw = lua_touserdata(L, lua_upvalueindex(1));
+    std::memcpy(&fn, &raw, sizeof fn);
+    const auto user = static_cast<int64_t>(lua_tointeger(L, lua_upvalueindex(2)));
+    cl_state* s = state_of(L);
+    const int n = lua_gettop(L);
+    s->host_args.clear();
+    for (int i = 1; i <= n; ++i) {
+        encode_value(L, i, s->host_args, 0);
+    }
+    // The host may re-enter this state (and reuse host_args) before returning;
+    // it must read its args first, which it does.
+    const int32_t count = fn(user, s->host_args.data(), static_cast<int32_t>(s->host_args.size()), n);
+    if (count < 0) {
+        if (s->host_buf != nullptr && s->host_cap > 0) {
+            s->host_buf[s->host_cap - 1] = 0;
+            lua_pushstring(L, reinterpret_cast<const char*>(s->host_buf));
+        } else {
+            lua_pushliteral(L, "host function failed");
+        }
+        return lua_error(L);
+    }
+    if (count > 0 && s->host_buf == nullptr) {
+        return luaL_error(L, "host returned values without a host buffer");
+    }
+    luaL_checkstack(L, count + 4, "host results");
+    Reader r{s->host_buf, static_cast<size_t>(s->host_cap), 0};
+    for (int32_t i = 0; i < count; ++i) {
+        decode_value(L, r, 0);
+    }
+    return count;
+}
+
 Buffer& buffer_of(lua_State* L) {
     const auto idx = static_cast<size_t>(lua_tointeger(L, lua_upvalueindex(1)));
     return state_of(L)->buffers[idx];
@@ -375,6 +722,16 @@ int buffer_len(lua_State* L) {
     return 1;
 }
 
+int buffer_cursor_l(lua_State* L) {
+    lua_pushinteger(L, buffer_of(L).cursor);
+    return 1;
+}
+
+int buffer_reset_l(lua_State* L) {
+    buffer_of(L).cursor = 0;
+    return 0;
+}
+
 // ───────────────────────── protected op bodies ─────────────────────────
 
 struct RefFunctionCtx {
@@ -383,10 +740,14 @@ struct RefFunctionCtx {
     int32_t ref;
 };
 
+// The protected ops below run outside any watched call, so they touch environments with raw
+// access only: a script's __index/__newindex on its _ENV must never run here, where the
+// watchdog could not stop it.
 int op_ref_function(lua_State* L) {
     auto* c = static_cast<RefFunctionCtx*>(lua_touserdata(L, 1));
     push_env(L, c->env_ref);
-    lua_getfield(L, -1, c->name);
+    lua_pushstring(L, c->name);
+    lua_rawget(L, -2);
     c->ref = lua_isfunction(L, -1) ? luaL_ref(L, LUA_REGISTRYINDEX) : 0;
     return 0;
 }
@@ -396,17 +757,71 @@ struct RegisterHostCtx {
     const char* name;
     cl_host_fn fn;
     int64_t user;
+    cl_host_vfn vfn;
 };
 
 int op_register_host(lua_State* L) {
     auto* c = static_cast<RegisterHostCtx*>(lua_touserdata(L, 1));
     push_env(L, c->env_ref);
+    lua_pushstring(L, c->name);
     void* raw = nullptr;
     std::memcpy(&raw, &c->fn, sizeof raw);
     lua_pushlightuserdata(L, raw);
     lua_pushinteger(L, static_cast<lua_Integer>(c->user));
     lua_pushcclosure(L, host_trampoline, 2);
-    lua_setfield(L, -2, c->name);
+    lua_rawset(L, -3);
+    return 0;
+}
+
+int op_register_host_v(lua_State* L) {
+    auto* c = static_cast<RegisterHostCtx*>(lua_touserdata(L, 1));
+    push_env(L, c->env_ref);
+    lua_pushstring(L, c->name);
+    void* raw = nullptr;
+    std::memcpy(&raw, &c->vfn, sizeof raw);
+    lua_pushlightuserdata(L, raw);
+    lua_pushinteger(L, static_cast<lua_Integer>(c->user));
+    lua_pushcclosure(L, host_trampoline_v, 2);
+    lua_rawset(L, -3);
+    return 0;
+}
+
+struct CallVCtx {
+    int32_t fn_ref;
+    const uint8_t* args;
+    int32_t args_len;
+    int32_t nargs;
+    int32_t max_results;
+    int32_t count;
+};
+
+// Decode args, call, encode results — all under the caller's lua_pcall.
+int op_call_v(lua_State* L) {
+    auto* c = static_cast<CallVCtx*>(lua_touserdata(L, 1));
+    lua_pop(L, 1);
+    luaL_checkstack(L, c->nargs + 4, "call arguments");
+    lua_rawgeti(L, LUA_REGISTRYINDEX, c->fn_ref);
+    if (!lua_isfunction(L, -1)) {
+        return luaL_error(L, "not a function reference");
+    }
+    Reader r{c->args, static_cast<size_t>(c->args_len), 0};
+    for (int32_t i = 0; i < c->nargs; ++i) {
+        decode_value(L, r, 0);
+    }
+    if (r.pos != r.len) {
+        malformed(L, r);
+    }
+    lua_call(L, c->nargs, LUA_MULTRET);
+    int nres = lua_gettop(L);
+    if (nres > c->max_results) {
+        nres = c->max_results;
+    }
+    cl_state* s = state_of(L);
+    s->results.clear();
+    for (int i = 1; i <= nres; ++i) {
+        encode_value(L, i, s->results, 0);
+    }
+    c->count = nres;
     return 0;
 }
 
@@ -419,15 +834,16 @@ struct BindBufferCtx {
 int op_bind_buffer(lua_State* L) {
     auto* c = static_cast<BindBufferCtx*>(lua_touserdata(L, 1));
     push_env(L, c->env_ref);
-    lua_createtable(L, 0, 4);
-    const luaL_Reg methods[] = {
-        {"emit", buffer_emit}, {"put", buffer_put}, {"get", buffer_get}, {"len", buffer_len}};
+    lua_pushstring(L, c->name);
+    lua_createtable(L, 0, 6);
+    const luaL_Reg methods[] = {{"emit", buffer_emit}, {"put", buffer_put},       {"get", buffer_get},
+                                {"len", buffer_len},   {"cursor", buffer_cursor_l}, {"reset", buffer_reset_l}};
     for (const luaL_Reg& m : methods) {
         lua_pushinteger(L, c->index);
         lua_pushcclosure(L, m.func, 1);
         lua_setfield(L, -2, m.name);
     }
-    lua_setfield(L, -2, c->name);
+    lua_rawset(L, -3);
     return 0;
 }
 
@@ -475,6 +891,12 @@ extern "C" void cenda_lua_interrupt(lua_State* L) {
     }
 }
 
+extern "C" void cenda_lua_raise(lua_State* L) {
+    // Armed first, so a pcall that catches this is stopped at its very next instruction.
+    cenda_lua_interrupt(L);
+    raise_deadline(L, state_of(L));
+}
+
 namespace {
 
 int panic_handler(lua_State* L) {
@@ -491,13 +913,15 @@ int32_t cl_abi_version(void) { return CL_ABI_VERSION; }
 
 const char* cl_lua_release(void) { return LUA_RELEASE; }
 
-cl_state* cl_state_new(size_t mem_limit_bytes) {
+cl_state* cl_state_new(size_t mem_limit_bytes) { return cl_state_new_seeded(mem_limit_bytes, STATE_SEED); }
+
+cl_state* cl_state_new_seeded(size_t mem_limit_bytes, uint32_t seed) {
     auto* s = new (std::nothrow) cl_state();
     if (s == nullptr) {
         return nullptr;
     }
     s->limit = mem_limit_bytes;
-    s->L = lua_newstate(capped_alloc, s, STATE_SEED);
+    s->L = lua_newstate(capped_alloc, s, seed);
     if (s->L == nullptr) {
         delete s;
         return nullptr;
@@ -619,9 +1043,50 @@ int32_t cl_register_host(cl_state* s, int32_t env_ref, const char* name, cl_host
     if (fn == nullptr) {
         return CL_ERR_ARG;
     }
-    RegisterHostCtx ctx{env_ref, name, fn, user};
+    RegisterHostCtx ctx{env_ref, name, fn, user, nullptr};
     s->error.clear();
     return protected_op(s, op_register_host, &ctx);
+}
+
+void cl_set_host_buffer(cl_state* s, uint8_t* buf, int32_t capacity) {
+    s->host_buf = buf;
+    s->host_cap = buf != nullptr && capacity > 0 ? capacity : 0;
+}
+
+int32_t cl_register_host_v(cl_state* s, int32_t env_ref, const char* name, cl_host_vfn fn, int64_t user) {
+    if (fn == nullptr) {
+        return CL_ERR_ARG;
+    }
+    RegisterHostCtx ctx{env_ref, name, nullptr, user, fn};
+    s->error.clear();
+    return protected_op(s, op_register_host_v, &ctx);
+}
+
+int32_t cl_call_v(cl_state* s, int32_t fn_ref, const uint8_t* args, int32_t args_len, int32_t nargs,
+                  int32_t max_results, const uint8_t** out, int32_t* out_len, int32_t* out_count) {
+    *out = nullptr;
+    *out_len = 0;
+    *out_count = 0;
+    if (nargs < 0 || args_len < 0 || max_results < 0 || (args_len > 0 && args == nullptr)) {
+        return CL_ERR_ARG;
+    }
+    lua_State* L = s->L;
+    begin_call(s, L);
+    const int base = lua_gettop(L);
+    lua_pushcfunction(L, message_handler);
+    CallVCtx ctx{fn_ref, args, args_len, nargs, max_results, 0};
+    lua_pushcfunction(L, op_call_v);
+    lua_pushlightuserdata(L, &ctx);
+    const int status = lua_pcall(L, 1, 0, base + 1);
+    if (status == LUA_OK) {
+        *out = s->results.data();
+        *out_len = static_cast<int32_t>(s->results.size());
+        *out_count = ctx.count;
+    } else {
+        capture_error(s, L);
+    }
+    lua_settop(L, base);
+    return end_call(s, map_status(s, status));
 }
 
 int32_t cl_bind_buffer(cl_state* s, int32_t env_ref, const char* name, float* data, int32_t capacity) {

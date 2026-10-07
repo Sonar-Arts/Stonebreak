@@ -3,7 +3,7 @@ package com.stonebreak.ui.focusBattle;
 import com.stonebreak.battle.api.BattleStatus;
 import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.TimedGrade;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MStyle;
 
 /**
  * The battle HUD's ONLY private colours: the semantic gameplay colours the UI library should not

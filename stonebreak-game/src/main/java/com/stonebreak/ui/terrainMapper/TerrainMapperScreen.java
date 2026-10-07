@@ -1,7 +1,7 @@
 package com.stonebreak.ui.terrainMapper;
 
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.terrainMapper.handlers.TerrainActionHandler;
 import com.stonebreak.ui.terrainMapper.handlers.TerrainInputHandler;
 import com.stonebreak.ui.terrainMapper.handlers.TerrainMouseHandler;

@@ -28,3 +28,6 @@ com.openmason.engine.ui.layoutspike.FlexLayoutSpikeTest
 com.stonebreak.ui.scripting.LuaHostGameSmokeTest
 com.openmason.main.systems.scripting.LuaHostToolSmokeTest
 com.stonebreak.rendering.UI.masonryUI.RenderTargetSpikeTest
+
+# UI budget re-measurement on the machine at hand (#296, -Dui.bench=true).
+com.openmason.engine.ui.script.UiBudgetBenchTest

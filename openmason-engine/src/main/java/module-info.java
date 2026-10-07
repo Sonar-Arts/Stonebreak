@@ -10,6 +10,11 @@ module openmason.engine {
     requires org.lwjgl.stb;
     requires org.lwjgl.openal; // OpenAL for the engine audio subsystem
 
+    // Skija (Skia bindings) for the shared Masonry UI renderer (#286). Transitive: Canvas, Font,
+    // Image and Typeface appear in the exported Masonry API.
+    requires transitive io.github.humbleui.skija.shared;
+    requires transitive io.github.humbleui.types;
+
     // Math library
     requires org.joml;
 
@@ -121,6 +126,7 @@ module openmason.engine {
 
     // Export shared utilities (pure value/math types)
     exports com.openmason.engine.util;
+    exports com.openmason.engine.util.easing;
 
     // Export Wayfind: the generic A* core and the voxel navigation rules built on it
     exports com.openmason.engine.wayfind;
@@ -148,6 +154,39 @@ module openmason.engine {
     exports com.openmason.engine.format.omui.io;
     exports com.openmason.engine.format.sbui;
     exports com.openmason.engine.format.uiarchive;
+
+    // UI asset resolution, embedding, export planning and live invalidation (#285)
+    exports com.openmason.engine.ui.assets;
+    exports com.openmason.engine.ui.assets.edit;
+    exports com.openmason.engine.ui.assets.export;
+    exports com.openmason.engine.ui.assets.live;
+
+    // Masonry UI: widgets, painter, fonts, textures (#286) and render targets / GL state
+    exports com.openmason.engine.ui.masonry;
+    exports com.openmason.engine.ui.masonry.textures;
+    exports com.openmason.engine.ui.rendering;
+    // UI runtime (#287): element tree, cascade, widget descriptors, retained Yoga layout
+    exports com.openmason.engine.ui.l10n;
+    exports com.openmason.engine.ui.text;
+    exports com.openmason.engine.ui.runtime;
+    exports com.openmason.engine.ui.runtime.access;
+    exports com.openmason.engine.ui.runtime.input;
+    exports com.openmason.engine.ui.runtime.layout;
+    exports com.openmason.engine.ui.runtime.paint;
+    exports com.openmason.engine.ui.runtime.style;
+    exports com.openmason.engine.ui.runtime.widget;
+    // Typed host contracts (data sources, actions, scopes, edits) and bindings (#289)
+    exports com.openmason.engine.ui.data;
+    exports com.openmason.engine.ui.runtime.binding;
+    // Lua code-behind and the animation sampler (#292)
+    exports com.openmason.engine.ui.script;
+    // UI fidelity baselines + migration gate, runtime budget diagnostics (#296)
+    exports com.openmason.engine.ui.fidelity;
+    exports com.openmason.engine.ui.diag;
+    // Behavior graphs compiled to Lua, and their editing model (#291)
+    exports com.openmason.engine.ui.graph;
+    exports com.openmason.engine.ui.graph.edit;
+    exports com.openmason.engine.ui.runtime.anim;
 
     // Open format packages for Jackson JSON processing
     opens com.openmason.engine.format.sbo to com.fasterxml.jackson.databind;

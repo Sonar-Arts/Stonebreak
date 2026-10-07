@@ -45,7 +45,8 @@ public final class UiSamples {
     public static final String PANEL_TEXTURE_ID = "stonebreak:ui/textures/panel";
 
     public static final byte[] THEME_BYTES = utf8("{\"id\":\"stone\"}\n");
-    public static final byte[] COMMON_LUA_BYTES = utf8("local M = {}\nfunction M.noop() end\nreturn M\n");
+    public static final byte[] COMMON_LUA_BYTES = utf8("local M = {}\n\n--- Does nothing; graphs call it to show a Lua call.\n"
+            + "---@param label string?\nfunction M.noop(label) end\n\nreturn M\n");
     public static final byte[] PANEL_TEXTURE_BYTES = utf8("fake-sbt-panel-texture");
 
     public static final String PAUSE_LUA = """
@@ -147,15 +148,20 @@ public final class UiSamples {
                 List.of(new GraphVariable("clicks", ValueType.INT, UiValue.of(0), Map.of())),
                 List.of(new GraphNode("on_resume", "ui:event.click", 1, 40, 80, Map.of(), map("target", "resume"), Map.of()),
                         new GraphNode("count", "ui:variable.increment", 1, 260, 80, Map.of(), map("variable", "clicks"), Map.of()),
-                        new GraphNode("request", "ui:action.request", 1, 480, 80, map("action", "screen.resume"), Map.of(), Map.of())),
+                        new GraphNode("request", "ui:action.request", 1, 480, 80, Map.of(),
+                                map("action", "stonebreak:screen.pause.resume"), Map.of())),
                 List.of(new GraphEdge("on_resume", "then", "count", "exec", Map.of()),
                         new GraphEdge("count", "then", "request", "exec", Map.of())),
                 List.of(new GraphFunction("log_click",
                         List.of(new GraphPort("exec", GraphPort.EXEC, Map.of()), new GraphPort("label", "string", Map.of())),
                         List.of(new GraphPort("then", GraphPort.EXEC, Map.of())),
                         List.of(new GraphNode("entry", "ui:function.entry", 1, 0, 0, Map.of(), Map.of(), Map.of()),
-                                new GraphNode("print", "lua:call", 1, 200, 0, Map.of(), map("function", "common.noop"), Map.of())),
-                        List.of(new GraphEdge("entry", "then", "print", "exec", Map.of())), Map.of())),
+                                new GraphNode("print", "lua:call", 1, 200, 0, Map.of(),
+                                        map("module", COMMON_LUA_ID, "function", "noop"), Map.of()),
+                                new GraphNode("done", "ui:function.return", 1, 400, 0, Map.of(), Map.of(), Map.of())),
+                        List.of(new GraphEdge("entry", "then", "print", "exec", Map.of()),
+                                new GraphEdge("entry", "label", "print", "label", Map.of()),
+                                new GraphEdge("print", "then", "done", "exec", Map.of())), Map.of())),
                 Map.of());
 
         UiAnimationClip open = new UiAnimationClip("open", 0.25, LoopMode.ONCE, List.of(

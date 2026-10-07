@@ -31,6 +31,27 @@ public final class PartManagerSnapshot {
         this.parts = parts;
     }
 
+    /**
+     * True when {@code other} has the same parts with the same identity, transform, parent and
+     * flags (geometry is compared through the mesh snapshot by callers).
+     */
+    public boolean sameParts(PartManagerSnapshot other) {
+        if (other == null || other.parts.size() != parts.size()) {
+            return false;
+        }
+        for (int i = 0; i < parts.size(); i++) {
+            PartState a = parts.get(i);
+            PartState b = other.parts.get(i);
+            if (!a.id().equals(b.id()) || !java.util.Objects.equals(a.name(), b.name())
+                    || !java.util.Objects.equals(a.transform(), b.transform())
+                    || !java.util.Objects.equals(a.parentId(), b.parentId())
+                    || a.visible() != b.visible() || a.locked() != b.locked()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public static PartManagerSnapshot capture(ModelPartManager pm) {
         List<PartState> out = new ArrayList<>();
         for (ModelPartDescriptor part : pm.getAllParts()) {

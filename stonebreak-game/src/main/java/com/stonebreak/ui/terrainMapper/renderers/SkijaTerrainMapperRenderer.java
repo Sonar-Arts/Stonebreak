@@ -1,7 +1,7 @@
 package com.stonebreak.ui.terrainMapper.renderers;
 
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.terrainMapper.TerrainMapperLayout;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
 import io.github.humbleui.skija.Canvas;

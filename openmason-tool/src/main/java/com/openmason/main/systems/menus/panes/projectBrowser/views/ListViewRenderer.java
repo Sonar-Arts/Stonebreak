@@ -99,6 +99,7 @@ public class ListViewRenderer implements ViewRenderer {
             // Scenes have no thumbnail yet; every view already falls back to a
             // placeholder when the texture id is <= 0.
             case OMSC -> 0;
+            case OMUI -> com.openmason.main.systems.menus.panes.projectBrowser.thumbnails.UiThumbnailRenderer.get(item, THUMBNAIL_SIZE);
         };
     }
 }

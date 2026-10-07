@@ -58,6 +58,31 @@ public final class MultiplayerSession {
     // ─── Mode queries ──────────────────────────────────────────────────────────
 
     public static Mode getMode() { return mode; }
+
+    private static final java.util.List<java.util.function.Consumer<Mode>> modeListeners =
+        new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /**
+     * Notified (on the thread that changed it) after every session mode change: start, join,
+     * leave or disconnect. UI data sources mirror the session from here instead of polling it (#289).
+     */
+    public static void addModeListener(java.util.function.Consumer<Mode> listener) {
+        modeListeners.add(listener);
+    }
+
+    private static void setMode(Mode next) {
+        Mode previous = mode;
+        mode = next;
+        if (previous != next) {
+            for (java.util.function.Consumer<Mode> l : modeListeners) {
+                try {
+                    l.accept(next);
+                } catch (RuntimeException e) {
+                    System.err.println("[NET] session mode listener failed: " + e);
+                }
+            }
+        }
+    }
     /** In a world (any mode but MENU). The local player is a client whenever this is true. */
     public static boolean isInWorld() { return mode != Mode.MENU; }
     /** A real network is involved (host or remote join) — not pure singleplayer. */
@@ -281,7 +306,7 @@ public final class MultiplayerSession {
             shutdown();
         }
         localPlayerRestored = false;
-        mode = targetMode;
+        setMode(targetMode);
         serverRunning = true;
         final String username = Settings.getInstance().getMultiplayerUsername();
         final String localId = "sb-local-" + System.nanoTime();
@@ -357,7 +382,7 @@ public final class MultiplayerSession {
         ClientWorldView c = new ClientWorldView();
         c.connect(NetAddress.tcp(host, port), username);
         client = c;
-        mode = Mode.JOIN;
+        setMode(Mode.JOIN);
         System.out.println("[NET] Joining " + host + ":" + port);
     }
 
@@ -407,7 +432,7 @@ public final class MultiplayerSession {
             server = null;
         }
         localPlayerRestored = false;
-        mode = Mode.MENU;
+        setMode(Mode.MENU);
     }
 
     /** Shut down a server instance and its level (flush + close the save service, free the world). */
@@ -546,6 +571,8 @@ public final class MultiplayerSession {
                 String reason = c.kickReason();
                 System.out.println("[NET] Disconnected"
                         + (reason != null ? ": " + reason : "") + "; returning to menu.");
+                com.stonebreak.ui.runtime.GameUiInput.get().cancelAll(
+                        com.openmason.engine.ui.runtime.input.CancelReason.DISCONNECT);
                 shutdown();
                 Game.getInstance().setState(GameState.MAIN_MENU);
             }

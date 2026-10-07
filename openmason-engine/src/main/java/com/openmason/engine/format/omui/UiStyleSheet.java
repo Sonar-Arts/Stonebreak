@@ -39,8 +39,12 @@ public record UiStyleSheet(String id, Map<String, UiValue> variables, List<Strin
         }
     }
 
-    /** Durations and delays are seconds (binary64). */
-    public record StyleTransition(String property, double duration, UiEasing easing, double delay,
+    /**
+     * Durations and delays are seconds (binary64).
+     *
+     * @param bezier a custom timing curve overriding {@code easing}, or null (#295)
+     */
+    public record StyleTransition(String property, double duration, UiEasing easing, double delay, UiBezier bezier,
                                   Map<String, UiValue> unknown) {
         public StyleTransition {
             Objects.requireNonNull(property, "property");
@@ -48,6 +52,16 @@ public record UiStyleSheet(String id, Map<String, UiValue> variables, List<Strin
             duration = Canon.num(duration);
             delay = Canon.num(delay);
             unknown = Canon.unknown(unknown);
+        }
+
+        public StyleTransition(String property, double duration, UiEasing easing, double delay,
+                               Map<String, UiValue> unknown) {
+            this(property, duration, easing, delay, null, unknown);
+        }
+
+        /** Progress of the transition at time fraction {@code u}. */
+        public float ease(float u) {
+            return UiBezier.ease(easing, bezier, u);
         }
     }
 }

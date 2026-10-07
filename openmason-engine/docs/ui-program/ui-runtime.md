@@ -1,0 +1,465 @@
+# UI runtime: element tree, cascade, layout and painting (#287)
+
+The runtime turns an OMUI/SBUI document ([wire contract](omui-sbui-wire-contract.md)) into a live, styled,
+laid-out and painted element tree.
+
+| Part | Where |
+| --- | --- |
+| Java reference | `openmason-engine/src/main/java/com/openmason/engine/ui/runtime`, plus `style/`, `widget/`, `layout/`, `paint/` |
+| Native layout host | `cenda/native/kernels/{include/cenda/flex.h,src/flex_host.cpp}` |
+| Game host | `com.stonebreak.ui.runtime.GameUiDocuments` |
+| Editor host | `openmason-tool` `systems/uiPreview/UiDocumentPreviewPanel` |
+
+## 1. Three layers
+
+| Layer | Type | Lifetime | Written by |
+| --- | --- | --- | --- |
+| Definition | `OmuiArchive` / `UiNode` (format) | immutable, shared by every instance | the editor, through the format |
+| Instance | `UiDocumentInstance` / `UiElement` | one per open screen; `close()` frees the native tree | runtime, scripts, bindings, animation |
+| Editor session | tool state (selection, zoom, fixtures) | per tool session | the tool, never SBUI |
+
+A per-instance change (a class toggle, a local style or prop, a state, a scroll offset, an inserted element) lands
+on the instance. Nothing in the runtime writes a definition. Two instances of one document, or two instances of one
+component, share their definition nodes and nothing else.
+
+## 2. Identity and references
+
+`UiElement.key()` is built from stable node ids only:
+- the node id, for the instantiated document's own nodes;
+- `instanceKey/nodeId` for nodes authored inside a component, recursively (`quit/label`, `x/inner/frame`). This is
+  exactly the override-target syntax.
+
+Slot content keeps the key of the document that authored it.
+
+**Reference rule** (`UiReferences`):
+
+- **Identity references use keys.** These are:
+  - clip tracks (`target`)
+  - graph nodes (`props.target`)
+  - instance overrides and slot hosts
+  - binding owners
+  - script lookups by key (`ui.get(...)`, [ui-scripting.md](ui-scripting.md))
+
+  Renaming or reparenting a node never breaks them. `UiReferences.unresolved(instance)` lists any that do not resolve.
+- **`#name` is a style handle.** Selectors and `ui.q("#name")` match it, so a rename changes what they select.
+  - `UiReferences.renameImpact(doc, nodeId, newName)` returns the sheet rules it can rewrite (`#old` → `#new`), for
+    the editor to apply.
+  - It also returns every `"#old"` string in Lua as `script:line`. Lua is never rewritten (#285), so the author fixes
+    those.
+
+## 3. Widget descriptors
+
+`WidgetRegistry` holds a `WidgetDescriptor` per type: version, typed `PropertyDescriptor`s in inspector order,
+`acceptsChildren` and `measured`.
+
+The built-ins (`BuiltInWidgets`) are the format's set:
+- `Box`
+- `Label(text)`
+- `Button`
+- `Image(source)`
+- `ItemSlot(provider, slot, item, count, state, durability, stack, params)`; the item props are read by item
+  providers (see §11, host providers)
+- `DrawProvider(provider, params, item, count, stack)`
+- `ScrollView(vertical = true, horizontal = false)`, which needs the `ui-scroll` feature
+- `ListView(items, itemKey, itemHeight = 0, selectionMode = single)`, which needs the `ui-data` feature; its single
+  child is a row template that is never built directly ([ui-data-binding.md](ui-data-binding.md) §5)
+- `Canvas(capacity = 32768)`, which needs the `ui-canvas` feature; its content is the draw-command buffer its Lua
+  code-behind fills each frame ([ui-scripting.md](ui-scripting.md) §8)
+- `Instance`
+
+Their versions must equal the format's `UiWidgets` table. Host types (`stonebreak:CrucibleView`) register their own
+descriptors.
+
+Validation reports problems and never coerces values:
+
+| Problem | Code | Result |
+| --- | --- | --- |
+| unknown type | `UNKNOWN_WIDGET` | a placeholder container, so the screen still lays out |
+| `typeVersion` newer than the descriptor | `UNSUPPORTED_WIDGET_VERSION` | placeholder |
+| unknown property | `UNKNOWN_PROPERTY` (warning) | dropped |
+| mistyped property | `PROPERTY_TYPE` | dropped; the descriptor default applies |
+| children on a leaf | `CHILDREN_NOT_ALLOWED` | children not built |
+
+## 4. Components
+
+An `Instance` node becomes an **`Instance` element** (Unity's TemplateContainer) whose single child is the
+component's root. So `Instance .danger` selects into instances, and `display: none` on the instance collapses the
+whole component.
+
+- **Parameters** are validated against the contract (`UNKNOWN_PARAM`, `PARAM_TYPE`) and merged over the defaults.
+  - The resulting object is the component subtree's **data source**: `{"target": "prop:text", "path": ".label"}`
+    inside the component reads the parameter.
+  - Static parameter bindings are applied at build time. Live host data, live parameters (`prop:<param>` bindings
+    on the `Instance` node) and converters are the binder's ([ui-data-binding.md](ui-data-binding.md), #289).
+- **Overrides** apply after a node's authored values.
+  - The instance's own overrides go first, then overrides from enclosing instances (`inner/leaf`), so the outermost
+    author wins.
+  - An override whose target no longer exists in the component's current revision is reported once, at the instance
+    that wrote it (`OVERRIDE_TARGET_MISSING`).
+  - Removing an override is "reset to source".
+- **Slots**: content goes to the slot's host node, after the host's own children. Unknown slot names and missing
+  hosts are reported (`UNKNOWN_SLOT`).
+- **Errors never abort a build.** A missing component (`MISSING_COMPONENT`), a non-component document
+  (`NOT_A_COMPONENT`) or a recursive one (`RECURSIVE_COMPONENT`) leaves the `Instance` element empty.
+
+## 5. Cascade
+
+`StyleResolver.compute` resolves one element, lowest precedence first:
+
+1. **Sheet rules**, ordered by sheet **rank**, then specificity, then sheet order, then rule order.
+   - Ranks: the theme (rank 0) < components nested *n* deep (rank 1000 − *n*) < the instantiated document
+     (rank 1000).
+   - The rank wins over specificity, so an outer document can restyle a component's internals.
+   - A component's sheets are scoped to its subtree, slot content included.
+   - Interaction states are ordinary pseudo-class selectors inside this step.
+2. **Element layers**: inline `style` → instance overrides → binding values → local (script) writes. The result
+   is the element's `baseStyle()`; style transitions and animation channels overlay it to give `computedStyle()`
+   ([ui-animation.md](ui-animation.md) §4, #295).
+
+**Decision:** inline and instance overrides beat `:hover`-style sheet rules (USS/CSS semantics). The #283 table
+put pseudo-classes after inline; that reading would make an instance override un-hoverable.
+
+**Selectors**: type, `.class`, `#name`, `:state`, `*`, the descendant and `>` child combinators, matched right to left
+with backtracking. Namespaced host types never match a type selector.
+
+**Specificity** is (`#name` count, `.class` + `:state` count, type count).
+
+**Rule index**: each compiled sheet files every selector under its subject compound's most selective token
+(`#name`, else the first `.class`, else the type, else universal). An element only tests the selectors filed under
+its name, its classes, its type and the universal bucket (`CompiledSheet.candidates`), never every rule of every
+sheet. Results are identical to testing everything (`StyleInvalidationTest`).
+
+**Variables**: custom properties inherit. At each element they resolve as the parent's customs, overlaid with the
+`variables` of sheets attached at that element, overlaid with the element's own `--name` declarations.
+
+- An unresolved or cyclic `var()` is reported (`UNRESOLVED_VARIABLE`, `VARIABLE_CYCLE`), and the property is dropped.
+- So is a value that does not fit its property (`STYLE_VALUE`).
+
+**Inherited properties**: `color`, `font`, `font-size`, `text-align`, `visibility`.
+
+`ComputedStyle.transition(property)` carries the winning rule's transition; the sampler runs it when the cascade
+changes ([ui-animation.md](ui-animation.md) §5).
+
+**Ownership:** a target with a `to-target` or `once` binding is owned by it. A local write to it is reported
+(`BOUND_PROPERTY_WRITE`) and ignored. On a `two-way` or `to-source` target the local write is an edit the binder
+stages into the draft ([ui-data-binding.md](ui-data-binding.md) §3). Setting an undeclared custom state is reported (`UNKNOWN_STATE`).
+
+## 6. Layout
+
+**Engine:** Yoga v3.2.1 in the Cenda library, mandatory (`CendaFlex` throws `CendaFlexUnavailableException`; no
+Java fallback). `flex.h` ABI **2** adds a retained tree:
+
+- `cf_tree_new(point_scale, measure, baseline)`
+- `cf_node_new`/`free`/`insert`/`detach`
+- `cf_nodes_set_style` (batched)
+- `cf_node_mark_dirty`
+- `cf_tree_layout`, which returns how many parent-relative rects actually moved
+- `cf_nodes_read`
+
+The native side skips identical records, and Yoga compares before it dirties, so a restyle relayouts only what
+changed. The stateless `cf_layout` of the #283 spike shares the same 48-float record. `build-kernels.sh` warns on a
+`CF_ABI_VERSION` / `CendaFlex.EXPECTED_ABI` mismatch.
+
+**Record** (`FlexRecord`):
+- NaN means unset, which resolves to the `flex-1` defaults (column, shrink 0, align-items stretch, align-content
+  flex-start, border-box, auto sizes).
+- `PCT_MASK` and `AUTO_MASK` mark percentage and `auto` lengths.
+- `OVERFLOW` carries `overflow`: `scroll` and `ScrollView` map to Yoga's scroll overflow.
+
+**Units and scales** (`UiMetrics`): documents author logical pixels; layout runs in device pixels.
+
+| Input | Effect |
+| --- | --- |
+| viewport | the root's available size |
+| `uiScale` | multiplies every logical length |
+| `pixelRatio` (DPI) | multiplies every logical length, independently of `uiScale` |
+| editor zoom | not an input: a view transform after layout (`PreviewMapping`) |
+
+A scale change re-pushes every record. A viewport change only relayouts.
+
+**Pixel grid** (`UiRuntimeContext.pixelGrid`):
+- `1` (default, `flex-1`) snaps layout edges, translations and scroll offsets to device pixels, so painting never
+  anti-aliases an edge that hit testing treats as sharp.
+- `0` keeps fractional geometry. Today's pause menu matches the legacy oracle exactly with the grid off, and to
+  ≤ 1 px with it on (1921×1081 × 1.25).
+- **Open for #297:** which grid the pause pilot ships with.
+
+**Text**: measured widgets are Yoga leaves sized through `ContentMeasurer`. `paint/MasonryContentMeasurer` is the
+shared Masonry implementation; layout and painting use the same instance.
+
+- By default (`white-space: nowrap`) a `Label` is one line. Its intrinsic box is the text's advance by the font's
+  line height (descent − ascent) at `font-size × scale`. The default size is `MStyle.FONT_BUTTON`.
+- **Wrapped and rich labels** need the `ui-text` feature (`paint/TextLayout`, cached per element and shared by
+  measure, baseline and paint):
+  - `white-space: normal` collapses spaces, tabs and line breaks and wraps at spaces; `pre-wrap` keeps spaces and
+    `\n` breaks and wraps at spaces. Spaces at a wrap point hang (are dropped). A word wider than the line breaks
+    between grapheme clusters, never inside one.
+  - The intrinsic width is the widest line at the offered width (max-content when Yoga offers none); the height
+    is lines × line height. The block of lines is centred like the single line; the baseline is the first line's.
+  - `-sb-max-lines: <n>` keeps `n` lines; `text-overflow: ellipsis` ends the last kept line (or a `nowrap` line
+    wider than its box) with `...`.
+  - `rich: true` reads `[color=#RRGGBB(AA)]`, `[b]`, `[i]`, `[u]` and their closers (nesting allowed). Unknown
+    tags and unmatched closers are literal text; `\[` and `\\` escape. Bold and italic are the font emboldened
+    and slanted; a markup colour keeps the label colour's alpha, so fades still fade every run.
+- **Baseline rule:** when the box is taller than a line, the line is centred, and the baseline sits −ascent below
+  the line's top. This reproduces the legacy `y + h/2 + k·s` label placement as a rule.
+- The Yoga baseline upcall feeds `align-items: baseline`.
+- An `Image` measures as its sprite's logical size × scale (a whole texture: its texel size; a skin: its
+  normal region; [ui-sprites.md](ui-sprites.md)).
+- A content change (`setProp("text")`) marks only that leaf dirty.
+
+**Diagnostics** (`LayoutChecks`):
+- `CYCLIC_PERCENTAGE`: a percentage size along an axis where the parent is content-sized.
+- `CONFLICTING_CONSTRAINTS`: `min > max`, or an absolute element with both insets plus a size.
+- They are re-checked for every element whenever any layout record is pushed, and each element's previous findings
+  are replaced: a fixed conflict stops being reported, and a parent change that makes a child's percentage cyclic
+  (or definite) is seen although the child's own record did not change.
+
+## 7. Scrolling and overlays
+
+**Scroll containers** are `ScrollView` elements and any element with `overflow: scroll`. Both need the `ui-scroll`
+feature in the manifest's `requires`; the format reports `UNDECLARED_FEATURE` otherwise.
+
+- After layout, the runtime computes the content extent: children plus padding and borders. That gives
+  `maxScrollX/Y`.
+- `scrollTo`/`scrollBy` clamp to it, and `scrollIntoView` reveals an element in its nearest scroll ancestor. A
+  content change re-clamps.
+- Scrolling is **visual**: it moves `rect()` (where an element paints and is hit), never `layoutRect()`, and never
+  reaches Yoga.
+- Scroll containers clip their content.
+- Wheel, scrollbar dragging and focus-driven scrolling are the input router's ([ui-input.md](ui-input.md) §3–4).
+
+**Overlays**: `-sb-layer: <n>` (a number, default 0) lifts an element and its subtree into layer *n*.
+- Higher layers paint after, and are hit-tested before, everything lower. Equal layers keep tree order.
+- Overlays keep their layout position but escape ancestor clips, so a popup is not cut off by the scroll view that
+  opened it.
+- Overlays keep their ancestors' `scale`/`rotate` **and opacity**: a popup fades with the panel that opened it.
+- `PaintOrder` is the single ordering both the painter and `HitTester` walk.
+
+**Cursor layer** (`ui-cursor` feature): `-sb-anchor: pointer` places an element at the document's pointer plus its
+`left`/`top` (logical px) as an offset, free of ancestor scroll, translation, transforms, opacity and clips; its
+children move with it. It paints in `PaintOrder.CURSOR_LAYER`, after every authored layer **and the tooltip**, only
+while the pointer is over the frame, and is never hit. This is the carried-item / drag-ghost layer; author it
+`position: absolute` so it takes no space in the flow. Hosts feed the pointer each frame
+(`UiDocumentView.layout` passes the router's last pointer to `UiDocumentInstance.setPointer`).
+
+**Translation**: `translate-x/y` (logical px) move the element and its subtree in both painting and hit testing,
+like a CSS transform. `scale` and `rotate` (#295) then apply about the rect centre to the element and its subtree,
+in painting, hit testing and dirty bounds ([ui-animation.md](ui-animation.md) §3).
+
+## 8. Changing a running tree
+
+- **Structural edits:**
+  - `element.insertChild(index, UiNode)` builds the subtree in the parent's authoring scope. Keys, descriptors,
+    component expansion and sheet matching all work as for authored nodes. Duplicate keys and leaf parents throw.
+  - `element.remove()` frees the subtree's native nodes and keys, and drops the subtree's animation channels
+    (a clip or tween left animating nothing is interrupted). A removed key can be reused; it starts clean, and
+    nothing still running can write into the new element. A key the same insert finds taken throws every time.
+  - Yoga relayouts what the edit dirtied.
+- **Live reload:** `instance.reload(newDocument)`, or `reload()` to pick up changed components and sheets from the
+  source, rebuilds the tree against the new revision.
+  - Every element whose key survives keeps its instance state: local props, classes and styles, animation channels,
+    pseudo-states, enabled, scroll.
+  - Authored values, explicit overrides and component sources come from the new revision.
+  - `ReloadReport` lists the kept, dropped and added keys. Dropped keys lose their animation channels.
+  - Element objects are replaced, so hold keys, not elements.
+
+## 9. Frame update and invalidation
+
+`UiDocumentInstance.update()` runs in three steps:
+
+1. Dirty styles resolve in pre-order.
+   - A change of custom properties re-runs the children's cascade (their `var()` may resolve differently).
+   - A change of inherited values only (`color`, `font`, ...) re-inherits: each child keeps its own resolved
+     declarations (`StyleResolver.computeOwn`) and takes the parent's new values where it declares none, with no
+     selector matching. An animated colour on a HUD container costs no cascade in its subtree.
+   - A class or state change restyles only what a selector can reach (`SelectorUse`): nothing when no selector
+     tests it, the element alone when only subject compounds do (`.slot:hover`), the subtree when an ancestor
+     compound does (`.slot:hover > .count`). `:disabled` is inherited, so it restyles the subtree whenever any
+     selector tests it.
+   - Paint order is rebuilt only when `display`, `-sb-layer` or `-sb-anchor` changed (or placement ran).
+2. Changed layout properties re-push their records in one batch. Changed content re-measures. Yoga relayouts.
+   Structural edits force a rect read, so scroll extents follow.
+3. Visual placement: scroll offsets and translations are applied. With
+   `instance.setSubpixelAnimation(true)` (off by default, so static geometry and the fidelity baselines stay on whole
+   pixels) a subtree whose `translate-x/y` is driven by an animation channel is placed at fractional offsets, so slow
+   slides glide instead of stepping; paint and hits still share the same rects.
+
+`needsUpdate()` says whether an update has anything to do; `UiDocumentView.layout` uses it to run a second update
+only when reconciling input and bindings after the first one changed something (normally one update per frame).
+
+Moved rects and paint-only restyles fold into `consumeDirtyRegion()`, clipped by their ancestors' clips. A scroll
+dirties only the view's content area.
+
+`UpdateStats` reports the work done:
+- An unchanged frame resolves 0 styles and never calls Yoga.
+- A paint-only restyle never reaches Yoga.
+- A scroll never relayouts.
+
+**Lifetime**: `close()` is idempotent and `isClosed()` is true from then on, whether or not the instance ever laid
+out; `update()` after close is a no-op and never builds a native tree. The native flex tree also has a cleaner as a
+safety net, and its batch scratch grows geometrically with each outgrown buffer freed (O(n) native memory for a list
+that grows one row at a time).
+
+## 10. Visibility and hits
+
+`HitTester.pick` uses the same rects and `PaintOrder` as painting. Edges are inclusive (today's input).
+
+| State | Takes space | Paints | Hit |
+| --- | --- | --- | --- |
+| `display: none` (collapsed, subtree) | no | no | no |
+| `visibility: hidden` (inherited; a visible descendant still paints and hits) | yes | no | no |
+| `picking-mode: ignore` (children stay pickable) | yes | yes | passes through |
+| `pointer-events: none` (`ui-cursor`; inherited, a descendant may set `auto`) | yes | yes | passes through |
+| `opacity: 0` | yes | no | **yes**: opacity is a paint property; add `pointer-events: none` (or hide) to make a faded element click-through |
+| `-sb-anchor: pointer` (cursor layer) | no (absolute) | yes, on top | never |
+| disabled (`setEnabled(false)`, inherited, matches `:disabled`) | yes | yes | yes: blocks what is below, receives no events ([ui-input.md](ui-input.md) §3) |
+
+`overflow: hidden` and scroll containers clip descendants' hits. Overlays escape those clips.
+
+## 11. Painting and hosts
+
+`paint/UiPainter` paints a laid-out instance into an open Masonry frame, in `PaintOrder`.
+
+Per element:
+1. `background-color` (rounded by `border-radius`)
+2. `background-image`
+3. the widget's look
+4. borders
+5. clipped children
+6. a scroll container's scrollbar
+
+`opacity` fades the subtree, and `-sb-tint` multiplies the element's own drawing.
+
+`ui-masonry` (#297) makes the legacy house look authorable: `-sb-surface` paints a Masonry stone surface
+(`panel`, `button`, `button-hover`, `button-disabled`, `hud`) after the background, exactly as `MPainter.panel` /
+`stoneSurface` / `hudFrame` do (radii in device px, as the legacy screens never scaled them); any explicit value,
+`none` included, replaces a `Button`'s pseudo-state look, so a component decides its own hover in its sheet.
+`-sb-text-effect` picks a label's `shadow` (default), `none`, or `title` (`MPainter.drawTitleText`: the pause /
+statistics / glossary title stack, layers 2 device px apart). The root's `-sb-pixel-grid: none` lays out and places
+without snapping (the instance rebuilds its flex tree when the value changes); `device` snaps; absent = the host's
+`UiRuntimeContext.pixelGrid`. The pause document uses all three and matches the legacy renderer pixel for pixel
+(`PauseDocumentGateTest`).
+
+| Widget | Look |
+| --- | --- |
+| `Button` | the Masonry stone surface: highlight fill on `:hover`/`:active`, disabled fill when disabled, unless a background is styled |
+| `Label` | house-style shadowed text on the shared baseline, aligned by `text-align`, colour `color` (default `MStyle.TEXT_PRIMARY`) |
+| `Image` | its `source` |
+| `ItemSlot` | the Masonry slot frame plus its host provider |
+| `DrawProvider` | its host provider |
+| `Canvas` | the draw commands its script wrote this frame (`paint/CanvasPainter`), clipped to the element |
+
+Images and `background-image` are whole textures, sprite regions or skins (`<sheet>#<name>`, #294), drawn by
+`SpritePainter` ([ui-sprites.md](ui-sprites.md) §4). `-sb-image-scale` (`stretch`, `integer` by the pivot,
+`tile`, `nine-slice` with the sprite's insets, pixel-snapped under nearest sampling) overrides the sprite's
+own fill; a sprite's `sampling` overrides `-sb-sampling` (nearest by default, for pixel art). Animated sprites
+follow the document's UI clock and repaint only on frame boundaries.
+
+`paint/UiDocumentView` is a document on screen. It wraps the instance, the painter and the document's
+`UiInputRouter` (#288, [ui-input.md](ui-input.md)), which owns `:hover`, `:active`, `:focus`, `:focus-visible`,
+event dispatch, focus order, text editing and drag and drop. `pointerDown`/`pointerUp`/`pointerMove`/`focus` remain
+as primary-button shortcuts; `pointerUp` returns the clicked element (pressed and released on the same enabled
+element). A frame is `layout(w, h, uiScale, pixelRatio)` (layout, then input and binding reconciliation) →
+`prepareProviders()` (the providers' GL phase, outside any Skia frame) → the host opens its Masonry frame →
+`paint(masonry)` → the host closes it. `render(...)` = `layout` + `paint` inside an already-open frame, for hosts
+whose providers need no GL phase. The painter draws carets, selections, focus rings, status symbols and the tooltip
+from the router.
+
+**Missing providers are loud.** An `ItemSlot`/`DrawProvider` whose `provider` id the host does not know paints a
+magenta placeholder with a warning symbol and reports `MISSING_DRAW_PROVIDER` once per element; a provider that
+throws in `prepare` or `draw` reports `DRAW_PROVIDER_FAILED` and shows the placeholder. An `ItemSlot` with no
+`provider` is an empty slot and draws only its frame.
+
+**Hosts.** `paint/ResolvedUiAssets` serves components, shared sheets and textures through #285 asset resolution:
+- textures decode once per content hash in the shared `MTextureCache`;
+- PNG dependencies use `MTexture.fromImage`.
+
+`com.stonebreak.ui.runtime.GameUiDocuments` builds the one runtime context every host uses: built-in widgets,
+`ResolvedUiAssets` over the game's packaged root and packs, the game texture cache, and `MasonryContentMeasurer`.
+
+| Host | How it hosts documents |
+| --- | --- |
+| Game window | `ui.runtime.screens.DocumentScreenHost` (below), painting each view with `GameUiDocuments.render(view, masonry, w, h, uiScale)` on the game's Skija backend. Dev overlay: `-Dstonebreak.uidoc=<file.omui\|file.sbui>` draws a document over every game state as an `OVERLAY` screen of that host |
+| Open Mason | `UiDocumentPreviewPanel` (`-Dopenmason.uidoc.preview=<file>`) on `MasonryPreview`, on the GPU framebuffer or the raster upload path. "Reload" calls `instance.reload` (§8) |
+
+`UiDocumentGlTest` (`-Dstonebreak.ui.gl=true`) renders one document through both targets after hover, focus and
+disabled changes: **0 px differ**.
+
+**Game document screens** (`com.stonebreak.ui.runtime.screens`, #282 review). The game-side lifecycle every migrated
+screen goes through:
+- **Open.** `DocumentScreenHost.open(id, Options)` loads the shipped export `ui/documents/<id>.sbui` (game
+  classpath) through `GameUiDocuments.openBound` (activation, asset and input gates, derived graph Lua, code-behind)
+  and joins it to the game window's input stack. An empty result means "keep the legacy screen": nothing ships for
+  the id, it is rolled back (`DocumentScreenPolicy`: `-Dstonebreak.ui.legacy=<id,...>|all`, or `setOverride` at
+  runtime), or a gate refused it (logged, plus a red chat line; never a blank screen). Shared rows of shipped screens
+  live under `ui/shared/<ns>/<path><ext>` (the editor's "Deploy to game" writes both).
+- **Order.** `Options.layer` (`UiLayer` SCREEN < HUD < OVERLAY < TOOLTIP < CURSOR) places the screen in the one
+  ordered stack (`GameUiInput.views()`) that is both the draw order and, reversed, the input order. Legacy screens
+  and the legacy HUD are always beneath document screens.
+- **Frame.** `frame()` advances each screen by `UiFrameClock` (the `ui` clock by frame time, the `game` clock by
+  the simulated time the world stepped) and runs its scripts; `render(...)` draws them; `FrameRenderer` calls both.
+- **Close and navigate (C4).** `ui.close()`, `ui.navigate(target, args)` and `requestClose` only queue;
+  `endFrame()` performs them after the frame was drawn, so nothing is torn down underneath the dispatch that asked.
+  Navigation opens the target's document when it has one, else a `LegacyNavigation` target (`resume`, `pause`,
+  `settings`, `statistics`, `glossary`, `main_menu`, `world_select`, `multiplayer`), and replaces the asking screen
+  unless `args.push` is true. Unknown targets return false (the script gets an error).
+- **Owner-painted screens.** `Options.ownerPaints` keeps a screen in the stack (frames, scripts, input) but out
+  of `render`; its owner paints it with `DocumentScreenHost.paint` where the legacy screen drew. The pause menu uses
+  it (`ui.pauseMenu.PauseDocument` behind `PauseMenu.Presentation`) so the field pause stays composited twice.
+- **Pointer, keyboard, controller.** `releasesPointer` keeps the cursor free while the screen is open
+  (`MouseCaptureManager`); `claimsKeyboard` hides every key from gameplay polls; `claimsGamepad` gets controller
+  buttons while the cursor is captured. `perWorld` screens close when the player leaves the world.
+- **Checking a migration in-game:** `-Dstonebreak.uiscreen=<id>` opens a shipped screen through this exact path once
+  a world runs (`-Dstonebreak.uiscreen.menu=true`: also outside a world). `OpenBoundGameTest` proves the chain
+  editor export → shipped bytes → `openBound` → scripts → frames → `GameUiInput` → host action.
+
+**Game draw providers.** GL content reaches a document through a provider's two phases: `prepare` renders into
+the provider's own texture before the Skia frame, `draw` paints it with `ui.rendering.GlTextureImages.borrow`, so
+it follows the element's transforms, opacity, clips and layers. The game installs (`ui.runtime.providers.
+GameDrawProviders`, declared on `GameUiHost`):
+
+| Id (version) | Element | Shows |
+| --- | --- | --- |
+| `stonebreak:item-icon` (1) | `ItemSlot` or `DrawProvider` | the item named by `item` (objectId, numeric id or name), `stack` (a bound slot record `{objectId, count, state, durability}`) or `params`; blocks are 3D icons rendered once per block and device-pixel size into `ItemIconAtlas` by the legacy cube renderer, SBO items their sprite; `count` above 1 bottom-right in the legacy accent style; `durability` below 1 a bar. In an `ItemSlot` the icon is inset 3 logical px |
+| `stonebreak:entity-preview` (1) | `DrawProvider` | an orbiting model, `params`: `entity` (`player` or an `EntityType` name), `variant`, `state`, `elevation`, `orbitSpeed`, `margin`, `yaw` (fixed azimuth). Framing and orbit clock match the legacy previews |
+
+A host that paints providers must call `layout` → `prepareProviders` → open the Masonry frame → `paint`.
+Without a GL host (the raster preview), block icons and previews are left empty.
+
+The stone surface's noise speckles are now placed on whole pixels. A non-antialiased speckle on a half-pixel edge
+used to round differently on a bottom-left and a top-left target; see masonry-rendering §4.
+
+## 12. Not yet in the runtime
+
+These are outside #287 or tracked elsewhere:
+- grid layout (an optional extension)
+- (done in #295: `scale`/`rotate`, transitions, clips and state machines; see [ui-animation.md](ui-animation.md))
+- (done in the #282 hardening pass: wrapped, truncated and rich labels — `ui-text`, §6)
+- migrating real screens (#297/#298)
+
+Input routing, focus, text editing, localization and accessibility metadata are specified in
+[ui-input.md](ui-input.md) (#288). Data bindings, host actions, `ListView` and the activation gate are specified in
+[ui-data-binding.md](ui-data-binding.md) (#289). Lua code-behind, the `ui` API, `Canvas` and the animation sampler are
+specified in [ui-scripting.md](ui-scripting.md) (#292).
+
+## Tests
+
+| Test | Covers |
+| --- | --- |
+| `cenda/tests/flex_host_test.cpp` | retained = stateless geometry, no-op restyles, reset to defaults, masks, tree-edit validation, measure dirtying, baseline upcall |
+| `CendaFlexTest` | the same through FFM, plus load diagnostics |
+| `SelectorMatcherTest` | parsing, specificity, combinators, namespaced types |
+| `StyleCascadeTest` | rank/specificity/order, layers, states, variables, inheritance, transitions, ownership, undeclared states |
+| `ComponentInstanceTest` | isolation, golden pause expansion, overrides, slots, recursion, source edits, rename/reparent, sheet scope, descriptors |
+| `UiLayoutTest` | legacy pause geometry through documents and components (both grids, all cases); wrap/grow/shrink/justify/align/absolute/percent; scale and DPI; narrow and wide windows; visibility states; clipping; collapse reflow; invalidation; layout diagnostics |
+| `StyleInvalidationTest` | class/state reach (none/self/subtree, `:disabled`), inherited values without the cascade, custom-property changes, rule index = brute force |
+| `UiInstanceLifecycleTest` | repeated duplicate inserts, close before first layout, layout findings refreshed through parent changes, sub-pixel animated translation |
+| `RenderHitAgreementTest` | painted pixels vs hits at 0.75×/1×/1.25×/1.5× with translation, rotation, scale and nested transforms |
+| `FlexLayoutScratchTest` | geometric scratch growth, linear native memory, idempotent close |
+| `UiDynamicTreeTest` | scroll extents, clamping, visual-only scrolling, `scrollIntoView`, the `ui-scroll` feature, overlays, insert/remove, live reload with state carry-over, identity references after rename/reparent, rename impact |
+| `UiPaintTest` | every painted pixel equals the hit element's colour at 1×, 1.5× and 2× (overlays, scroll, clip, translate); label width = advance; glyphs inside their rect; baseline alignment; pseudo-state visuals; two hosts give identical pixels; click semantics; textures, tint, scale modes |
+| `TextLayoutTest` | wrapping modes, max-content width, hard breaks, grapheme-safe word breaking, line limits and ellipsis, rich markup parsing, runs across lines |
+| `UiPaintLayersTest` | wrapped label height/baseline/containment, `pointer-events`, the cursor layer (position, on top, never hit, hidden outside), overlay opacity, missing-provider placeholder, provider `prepare` only for painted elements and before `draw`, one update per steady frame, `ui-text`/`ui-cursor` inference |
+| `UiVisualFixtureTest` | committed PNGs (`src/test/resources/ui/runtime/visual/`): a menu at 1× and 1.5×, and text metrics; regenerate with `-Dui.visual.write=true` |
+| `UiDocumentGlTest` (game, GL-gated) | game window vs preview FBO, 0 px, across state changes |

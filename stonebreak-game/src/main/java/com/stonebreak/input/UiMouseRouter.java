@@ -2,10 +2,10 @@ package com.stonebreak.input;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
-import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.DeathMenu;
 import com.stonebreak.ui.PauseMenu;
+import com.stonebreak.ui.PauseMenuActions;
 import com.stonebreak.ui.characterScreen.CharacterScreen;
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.ui.furnace.FurnaceScreen;
@@ -13,7 +13,6 @@ import com.stonebreak.ui.glossaryScreen.GlossaryScreen;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.saveChanges.SaveChangesDialog;
-import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.statisticsScreen.StatisticsScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 
@@ -204,33 +203,17 @@ final class UiMouseRouter {
         int h = Game.getWindowHeight();
 
         if (pauseMenu.isResumeButtonClicked(mouse.x(), mouse.y(), w, h)) {
-            game.togglePauseMenu();
+            PauseMenuActions.resume(game);
         } else if (pauseMenu.isStatisticsButtonClicked(mouse.x(), mouse.y(), w, h)) {
-            game.openStatisticsScreen();
+            PauseMenuActions.openStatistics(game);
         } else if (pauseMenu.isGlossaryButtonClicked(mouse.x(), mouse.y(), w, h)) {
-            game.openGlossaryScreen();
+            PauseMenuActions.openGlossary(game);
         } else if (pauseMenu.isSettingsButtonClicked(mouse.x(), mouse.y(), w, h)) {
-            // Go to settings, remembering we came from the game.
-            SettingsMenu settingsMenu = game.getSettingsMenu();
-            if (settingsMenu != null) {
-                settingsMenu.setPreviousState(GameState.PLAYING);
-            }
-            game.setState(GameState.SETTINGS);
-            game.getPauseMenu().setVisible(false);
+            PauseMenuActions.openSettings(game);
         } else if (pauseMenu.isResyncButtonClicked(mouse.x(), mouse.y(), w, h)) {
-            int audited = MultiplayerSession.requestFullResync();
-            ChatSystem chat = game.getChatSystem();
-            if (chat != null) {
-                chat.addMessage(audited >= 0
-                    ? "Resyncing with server (" + audited + " chunks audited)..."
-                    : "Resync failed: not connected to a server.");
-            }
-            game.togglePauseMenu(); // resume so the re-stream is visible
+            PauseMenuActions.resync(game);
         } else if (pauseMenu.isQuitButtonClicked(mouse.x(), mouse.y(), w, h)) {
-            // Clean up world state before returning to the main menu.
-            game.resetWorld();
-            game.setState(GameState.MAIN_MENU);
-            game.getPauseMenu().setVisible(false);
+            PauseMenuActions.quitToMenu(game);
         }
     }
 }

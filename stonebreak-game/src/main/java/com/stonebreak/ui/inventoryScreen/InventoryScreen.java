@@ -23,6 +23,7 @@ import com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator;
 public class InventoryScreen {
 
     private final InventoryController controller;
+    private final InventoryInputManager slotInput;
     
     /**
      * Creates a new inventory screen using modular architecture.
@@ -36,6 +37,7 @@ public class InventoryScreen {
             slotManager, craftingManagerModule);
 
         this.controller = new InventoryController(inventory, inputManager, craftingManagerModule, null);
+        this.slotInput = inputManager;
 
         InventoryRenderCoordinator renderCoordinator = new InventoryRenderCoordinator(
             uiRenderer, renderer, inputHandler, inventory, controller, inputManager,
@@ -156,6 +158,11 @@ public class InventoryScreen {
      */
     public void renderHotbarTooltipsOnly(int screenWidth, int screenHeight) {
         controller.renderHotbarTooltipsOnly(screenWidth, screenHeight);
+    }
+
+    /** Slot rules addressed by slot, for UI documents (#289). */
+    public com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput getSlotInput() {
+        return slotInput;
     }
 
     // Method to handle mouse clicks for drag and drop

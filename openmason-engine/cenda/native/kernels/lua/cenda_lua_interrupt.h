@@ -26,6 +26,12 @@ typedef struct cenda_vm_cell {
 /* Arms the interrupt hook on L. Defined in lua_host.cpp; VM thread only. */
 void cenda_lua_interrupt(lua_State* L);
 
+/* Arms the hook and raises the deadline error right away (never returns). For loops inside C
+ * library functions (pattern matching, table.move): no hook fires until they return to the VM,
+ * so a pathological call would otherwise run to completion however long it takes. */
+void cenda_lua_raise(lua_State* L);
+
 #define cenda_poll(L) { if (l_unlikely(cenda_pending(L))) cenda_lua_interrupt(L); }
+#define cenda_check(L) { if (l_unlikely(cenda_pending(L))) cenda_lua_raise(L); }
 
 #endif

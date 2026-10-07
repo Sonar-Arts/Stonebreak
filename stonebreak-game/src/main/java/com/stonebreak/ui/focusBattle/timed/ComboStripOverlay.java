@@ -2,10 +2,10 @@ package com.stonebreak.ui.focusBattle.timed;
 
 import com.stonebreak.battle.api.ComboDirection;
 import com.stonebreak.battle.api.TimedGrade;
-import com.stonebreak.rendering.UI.masonryUI.MPromptStrip;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MSymbol;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MPromptStrip;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MSymbol;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
 

@@ -74,6 +74,8 @@ public class FurnaceController {
         // Baseline for the slot dirty check: the state as it stands when the UI opens is
         // already what the server knows (streamed/echoed), so don't re-send it.
         this.lastSentSlots = state.encodeSlots();
+        // UI documents bound to `furnace` follow this state by notification (#289).
+        com.stonebreak.ui.runtime.GameUiHost.ifPresent(h -> h.furnaceOpened(furnace));
     }
 
     public void close() {
@@ -85,6 +87,7 @@ public class FurnaceController {
         // Do NOT dump contents or clear state — the registry owns it and keeps ticking.
         this.visible = false;
         this.state = null;
+        com.stonebreak.ui.runtime.GameUiHost.ifPresent(com.stonebreak.ui.runtime.GameUiHost::furnaceClosed);
     }
 
     public boolean isVisible() {
@@ -198,6 +201,11 @@ public class FurnaceController {
 
     public void setRenderCoordinator(FurnaceRenderCoordinator renderCoordinator) {
         this.renderCoordinator = renderCoordinator;
+    }
+
+    /** Slot rules addressed by slot, for UI documents (#289). */
+    public FurnaceInputManager getInputManager() {
+        return inputManager;
     }
 
     public void setInputManager(FurnaceInputManager inputManager) {

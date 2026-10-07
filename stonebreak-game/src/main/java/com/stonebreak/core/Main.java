@@ -107,11 +107,14 @@ public class Main {
         long handle = window.handle();
 
         glfwSetKeyCallback(handle, (win, key, scancode, action, mods) -> inputRouter.onKey(key, action, mods));
+        // UI documents see letter keys by their layout label (Ctrl+Z on QWERTZ is the key labelled Z).
+        com.stonebreak.ui.runtime.GameUiInput.get().setKeyTranslator(
+                key -> com.stonebreak.ui.runtime.LayoutKeys.translate(key, 0));
         glfwSetCharCallback(handle, (win, codepoint) -> inputRouter.onCharacter(codepoint));
         glfwSetMouseButtonCallback(handle, (win, button, action, mods) ->
                 inputRouter.onMouseButton(button, action, mods));
         glfwSetCursorPosCallback(handle, (win, x, y) -> inputRouter.onMouseMove(x, y));
-        glfwSetScrollCallback(handle, (win, xOffset, yOffset) -> inputRouter.onScroll(yOffset));
+        glfwSetScrollCallback(handle, (win, xOffset, yOffset) -> inputRouter.onScroll(xOffset, yOffset));
 
         glfwSetFramebufferSizeCallback(handle, (win, w, h) -> window.onFramebufferResized(w, h));
         // Window (screen-coordinate) size can change independently of the framebuffer on
@@ -122,6 +125,10 @@ public class Main {
         glfwSetWindowPosCallback(handle, (win, x, y) -> window.refreshMonitorHz());
 
         glfwSetWindowFocusCallback(handle, (win, focused) -> {
+            if (!focused) {
+                // Releases made while unfocused never arrive: end UI drags, captures and held keys now (#288).
+                com.stonebreak.ui.runtime.GameUiInput.get().windowFocusLost();
+            }
             var mouseCapture = Game.getInstance().getMouseCaptureManager();
             if (mouseCapture == null) {
                 return;
@@ -178,6 +185,7 @@ public class Main {
             Game.getInstance().update();
             maybeAutoStartWorld();
             maybeAutoView();
+            maybeAutoPause();
             Game.displayDebugInfo();
             inputRouter.pollActiveScreen();
 
@@ -637,6 +645,55 @@ public class Main {
         autoBattleSkipIntro = parts.length > 1 && parts[1].trim().equalsIgnoreCase("skipintro");
     }
 
+    // ─── Dev: -Dstonebreak.autopause=<seconds>[:online] ─────────────────────────
+
+    private long autoPauseDeadlineNanos = -1;
+    private boolean autoPauseDone;
+
+    /**
+     * Fidelity captures of the pause menu (#296): N seconds after the world is entered, opens the
+     * pause menu; {@code :online} lays it out as in a host/join session (six buttons, Resync World;
+     * documents see {@code session.online = true}) without touching the network ({@code UiOnlineState}). Pair with
+     * {@code -Dstonebreak.autoscreenshot} (a later deadline) and {@code -Dstonebreak.ui.pinclock}.
+     * Inert unless the property is set.
+     */
+    private void maybeAutoPause() {
+        if (autoPauseDone) {
+            return;
+        }
+        String spec = System.getProperty("stonebreak.autopause");
+        if (spec == null || spec.isBlank()) {
+            autoPauseDone = true;
+            return;
+        }
+        if (autoPauseDeadlineNanos < 0) {
+            if (Game.getInstance().getState() != GameState.PLAYING) {
+                return;
+            }
+            double seconds = 3;
+            try {
+                seconds = Double.parseDouble(spec.split(":")[0].trim());
+            } catch (NumberFormatException ignored) {
+                // keep default
+            }
+            autoPauseDeadlineNanos = System.nanoTime() + (long) (seconds * 1e9);
+            return;
+        }
+        if (System.nanoTime() < autoPauseDeadlineNanos) {
+            return;
+        }
+        autoPauseDone = true;
+        if (spec.trim().endsWith(":online")) {
+            com.stonebreak.ui.UiOnlineState.override(() -> true);
+        }
+        com.stonebreak.ui.PauseMenu menu = Game.getInstance().getPauseMenu();
+        if (Game.getInstance().getState() == GameState.PLAYING && menu != null && !menu.isVisible()) {
+            Game.getInstance().togglePauseMenu();
+        }
+        System.out.println("[autopause] pause menu open: " + (menu != null && menu.isVisible())
+            + (spec.trim().endsWith(":online") ? " (online layout)" : ""));
+    }
+
     // ─── Dev: -Dstonebreak.autoscreenshot=<seconds>:<file.png>[:quit] ──────────
 
     private long autoShotDeadlineNanos = -1;
@@ -667,7 +724,10 @@ public class Main {
         // buffer still holds the rendered world behind the pause menu.
         // Arm on the first PLAYING frame; afterwards shoot on schedule whatever
         // UI state stray focus/keys may have toggled (the world is still drawn).
-        if (autoShotDeadlineNanos < 0 && state != GameState.PLAYING) {
+        // -Dstonebreak.autoscreenshot.anystate=true arms on the first frame of any state (the main
+        // menu with a -Dstonebreak.uidoc overlay needs no world).
+        boolean anyState = Boolean.getBoolean("stonebreak.autoscreenshot.anystate");
+        if (autoShotDeadlineNanos < 0 && state != GameState.PLAYING && !anyState) {
             return;
         }
         String[] parts = spec.split(":");
@@ -1020,6 +1080,16 @@ public class Main {
             logger.error("Error cleaning up CBRResourceManager", e);
         }
         Game.logDetailedMemoryInfo("After CBR cleanup");
+
+        // UI document screens (their Masonry handles) and the draw providers' GL textures (item
+        // icon atlas, model previews) go before the renderer and its Skija backend.
+        try {
+            com.stonebreak.ui.runtime.screens.DocumentScreenHost.ifCreated()
+                    .ifPresent(com.stonebreak.ui.runtime.screens.DocumentScreenHost::closeAll);
+            com.stonebreak.ui.runtime.providers.GameDrawProviders.shutdown();
+        } catch (Exception e) {
+            logger.error("Error cleaning up UI document screens and draw providers", e);
+        }
 
         if (renderer != null) {
             renderer.cleanup();

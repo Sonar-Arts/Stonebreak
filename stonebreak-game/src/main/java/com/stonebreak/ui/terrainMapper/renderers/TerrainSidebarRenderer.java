@@ -1,11 +1,12 @@
 package com.stonebreak.ui.terrainMapper.renderers;
 
-import com.stonebreak.rendering.UI.masonryUI.MButton;
-import com.stonebreak.rendering.UI.masonryUI.MCategoryButton;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MTooltip;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.stonebreak.ui.LegacyUiClock;
+import com.openmason.engine.ui.masonry.MButton;
+import com.openmason.engine.ui.masonry.MCategoryButton;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MTooltip;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.terrainMapper.TerrainMapperLayout;
 import com.stonebreak.ui.terrainMapper.TerrainMapperLayout.Rect;
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
@@ -153,6 +154,6 @@ public final class TerrainSidebarRenderer {
 
     /** Simple 500ms cursor blink tied to wall clock. */
     private static boolean cursorVisible() {
-        return (System.currentTimeMillis() / 500L) % 2L == 0L;
+        return (LegacyUiClock.millis() / 500L) % 2L == 0L;
     }
 }

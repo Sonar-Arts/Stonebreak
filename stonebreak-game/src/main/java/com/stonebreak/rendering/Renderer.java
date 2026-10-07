@@ -134,6 +134,8 @@ public class Renderer {
                                                  configManager.getProjectionMatrix());
         uiRenderer.initializeBlockIconRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, configManager.getWindowHeight());
 
+        com.openmason.engine.ui.masonry.MasonryEnvironment.installClipboard(
+                new com.stonebreak.rendering.UI.backend.skija.GlfwClipboard());
         skijaBackend = new SkijaUIBackend();
         try {
             skijaBackend.initialize(configManager.getWindowWidth(), configManager.getWindowHeight());

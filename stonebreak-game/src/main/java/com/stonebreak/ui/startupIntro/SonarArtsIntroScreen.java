@@ -10,7 +10,7 @@ import com.stonebreak.ui.startupIntro.entities.Submarine;
 import com.stonebreak.ui.startupIntro.render.IntroPainter;
 import com.stonebreak.ui.startupIntro.render.OceanBackgroundRenderer;
 import com.stonebreak.ui.startupIntro.render.SonarLogoRenderer;
-import com.stonebreak.ui.startupIntro.tween.EasingType;
+import com.openmason.engine.util.easing.EasingType;
 import com.stonebreak.ui.startupIntro.tween.FloatTween;
 import com.stonebreak.ui.startupIntro.tween.TweenEngine;
 import io.github.humbleui.skija.Canvas;
@@ -23,8 +23,6 @@ import java.util.concurrent.ThreadLocalRandom;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
-import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
-import static org.lwjgl.glfw.GLFW.glfwGetKey;
 
 /**
  * Sonar Arts intro screen: ocean + green sonar pulses + submarine + retro
@@ -220,9 +218,9 @@ public final class SonarArtsIntroScreen {
     }
 
     public void handleInput(long window) {
-        boolean esc = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
-        boolean space = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
-        boolean enter = glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS;
+        boolean esc = com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_ESCAPE);
+        boolean space = com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_SPACE);
+        boolean enter = com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_ENTER);
 
         boolean skipPressed = (esc && !prevEsc) || (space && !prevSpace) || (enter && !prevEnter);
         if (skipPressed) skipToMainMenu();

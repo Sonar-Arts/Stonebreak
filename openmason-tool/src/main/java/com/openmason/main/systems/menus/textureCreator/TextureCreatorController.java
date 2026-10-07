@@ -31,6 +31,8 @@ public class TextureCreatorController {
     private final TextureExporter exporter;
     private final TextureImporter importer;
     private final ClipboardManager clipboard;
+    private final java.util.List<java.util.function.Consumer<java.nio.file.Path>> saveListeners =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
 
     // Face-region editing state
     private boolean faceRegionActive = false;
@@ -195,9 +197,24 @@ public class TextureCreatorController {
             state.setIsProjectFile(true);
             state.markAsSaved();
             logger.info("Saved project to: {}", filePath);
+            for (java.util.function.Consumer<java.nio.file.Path> l : saveListeners) {
+                try {
+                    l.accept(java.nio.file.Path.of(filePath));
+                } catch (RuntimeException e) {
+                    logger.warn("Texture save listener failed: {}", e.getMessage());
+                }
+            }
         }
 
         return success;
+    }
+
+    /**
+     * Called with the file after every successful .OMT save, whichever path saved it (menu,
+     * shortcut, MCP). The UI editor refreshes the documents that use the texture (#294).
+     */
+    public void addSaveListener(java.util.function.Consumer<java.nio.file.Path> listener) {
+        saveListeners.add(java.util.Objects.requireNonNull(listener, "listener"));
     }
 
     /**

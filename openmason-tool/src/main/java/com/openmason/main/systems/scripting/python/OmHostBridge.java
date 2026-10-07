@@ -404,6 +404,36 @@ public final class OmHostBridge {
         return toJson(commands.summary());
     }
 
+    // ===================== UI documents (om.ui, #324) =====================
+
+    /** Queues one UI op (JSON object text); applied as one batch when the script succeeds. */
+    @HostAccess.Export
+    public void uiQueue(String opJson) {
+        commands.ui().queue(opJson);
+    }
+
+    @HostAccess.Export
+    public void uiUse(String doc) {
+        commands.ui().use(doc);
+    }
+
+    @HostAccess.Export
+    public void uiLabel(String label) {
+        commands.ui().label(label);
+    }
+
+    /** The queued batch as JSON (exactly what ui_ops would receive). */
+    @HostAccess.Export
+    public String uiPending() {
+        return toJson(commands.ui().batch());
+    }
+
+    /** documents / tree / get of the target document as it is BEFORE the queued ops. */
+    @HostAccess.Export
+    public String uiRead(String what, String key, boolean flag) {
+        return toJson(commands.ui().read(what, key, flag));
+    }
+
     // ===================== Helpers =====================
 
     private String toJson(Object value) {

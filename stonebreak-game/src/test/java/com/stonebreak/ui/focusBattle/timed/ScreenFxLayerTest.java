@@ -7,9 +7,9 @@ import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.api.StatusView;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
-import com.stonebreak.rendering.UI.masonryUI.MColor;
-import com.stonebreak.rendering.UI.masonryUI.MScreenFx;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MColor;
+import com.openmason.engine.ui.masonry.MScreenFx;
+import com.openmason.engine.ui.masonry.MStyle;
 import org.junit.jupiter.api.Test;
 
 import static com.stonebreak.ui.focusBattle.timed.TimedScenes.H;

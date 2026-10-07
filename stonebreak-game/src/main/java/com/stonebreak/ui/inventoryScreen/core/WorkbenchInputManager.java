@@ -34,7 +34,7 @@ public class WorkbenchInputManager extends InventoryInputManager {
 
     @Override
     protected void placeDraggedItem(InventoryLayoutCalculator.InventoryLayout layout) {
-        Vector2f mousePos = inputHandler.getMousePosition();
+        Vector2f mousePos = pointerPosition();
         WorkbenchDragDropHandler.placeDraggedItem(dragState, inventory,
                                                 craftingManager.getCraftingInputSlots(),
                                                 mousePos, layout, craftingManager::updateCraftingOutput);

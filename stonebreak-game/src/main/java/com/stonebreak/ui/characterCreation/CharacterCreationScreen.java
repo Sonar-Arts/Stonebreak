@@ -3,7 +3,7 @@ package com.stonebreak.ui.characterCreation;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.characterCreation.renderers.SkijaCharacterCreationRenderer;
 
 /**

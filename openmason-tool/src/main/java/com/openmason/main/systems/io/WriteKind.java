@@ -14,7 +14,11 @@ public enum WriteKind {
     OMSC(".omsc", WriteRoot.PROJECT, "Scenes", "scene"),
     PNG(".png", WriteRoot.EXPORTS, "", "texture"),
     SBO(".sbo", WriteRoot.GAME_RESOURCES, "sbo/blocks", "object"),
-    SBE(".sbe", WriteRoot.GAME_RESOURCES, "sbe/Mobs", "entity");
+    SBE(".sbe", WriteRoot.GAME_RESOURCES, "sbe/Mobs", "entity"),
+    /** UI Editor source documents (#324); bare names land beside the convention tree {@code UI/}. */
+    OMUI(".omui", WriteRoot.PROJECT, "UI", "screen"),
+    /** Exported UI documents, the editor's default export folder. */
+    SBUI(".sbui", WriteRoot.PROJECT, "Exports/UI", "screen");
 
     private final String extension;
     private final WriteRoot defaultRoot;

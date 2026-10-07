@@ -70,6 +70,9 @@ public final class UiComposition {
     private ScriptingWindow scriptingWindow;
     private AnimationEditorImGui animationEditor;
     private TexturePreviewPipeline texturePreviewPipeline;
+    private final com.openmason.main.systems.layout.WorkspaceState workspaceState =
+            new com.openmason.main.systems.layout.WorkspaceState();
+    private com.openmason.main.systems.uiEditor.view.UiEditorWorkspace uiEditor;
 
     public UiComposition(omConfig omConfig, long window, CenterTabTracker centerTabTracker, Host host) {
         this.omConfig = omConfig;
@@ -88,6 +91,8 @@ public final class UiComposition {
     public ScriptingWindow scriptingWindow() { return scriptingWindow; }
     public AnimationEditorImGui animationEditor() { return animationEditor; }
     public TexturePreviewPipeline texturePreviewPipeline() { return texturePreviewPipeline; }
+    public com.openmason.main.systems.layout.WorkspaceState workspaceState() { return workspaceState; }
+    public com.openmason.main.systems.uiEditor.view.UiEditorWorkspace uiEditor() { return uiEditor; }
 
     /**
      * Initialize UI components and wire up callbacks.
@@ -120,8 +125,12 @@ public final class UiComposition {
             sceneViewerInterface = new com.openmason.main.systems.scene.SceneViewerImGuiInterface(
                     mainInterface.getUIVisibilityState());
             // A scene belongs to its project: drop it whenever the session changes.
-            mainInterface.setOnProjectSessionReset(
-                    () -> sceneViewerInterface.getSceneService().clearCurrentScene());
+            mainInterface.setOnProjectSessionReset(() -> {
+                sceneViewerInterface.getSceneService().clearCurrentScene();
+                if (uiEditor != null) {
+                    uiEditor.discardAll(); // UI documents belong to their project too
+                }
+            });
 
             // Camera sensitivities are user preferences: apply them to both surfaces.
             mainInterface.setSceneCameraPreferenceSink(
@@ -225,6 +234,8 @@ public final class UiComposition {
             mainInterface.setAnimationEditorInterface(animationEditor);
             wireAnimationEditor();
 
+            wireUiEditor(sceneRoot);
+
             // Load custom keybinds AFTER both viewport and texture editor are initialized
             loadCustomKeybinds();
 
@@ -287,6 +298,119 @@ public final class UiComposition {
             logger.error("Failed to initialize UI interfaces", e);
             throw new RuntimeException("UI initialization failed", e);
         }
+    }
+
+    /**
+     * The UI workspace (#293): its own dockspace and panels behind the main window's
+     * {@code Scene | UI} tabs (or its own window when popped out), its toolbar, file dialogs,
+     * keybinds, the project-save hooks and the project file's uiEditor node (tab in front, popped
+     * out or not, open UI documents, active one, canvas settings).
+     */
+    private void wireUiEditor(java.util.function.Supplier<java.nio.file.Path> projectRoot) {
+        uiEditor = new com.openmason.main.systems.uiEditor.view.UiEditorWorkspace(projectRoot);
+        uiEditor.setOnActivateRequest(() -> workspaceState.set(com.openmason.main.systems.layout.Workspace.UI));
+        mainInterface.setUiEditor(uiEditor); // MCP / scripting reach the workspace here (#324)
+        var dialogs = mainInterface.getFileDialogService();
+        uiEditor.setFileDialogs(new com.openmason.main.systems.uiEditor.view.UiEditorWorkspace.FileDialogs() {
+            @Override
+            public void openUiDocument(java.util.function.Consumer<String> chosen) {
+                dialogs.showOpenUiDocumentDialog(chosen::accept);
+            }
+
+            @Override
+            public void saveOmui(String defaultName, java.util.function.Consumer<String> chosen) {
+                dialogs.showSaveOMUIDialog(defaultName, chosen::accept);
+            }
+
+            @Override
+            public void saveSbui(String defaultName, java.util.function.Consumer<String> chosen) {
+                dialogs.showSaveSBUIDialog(defaultName, chosen::accept);
+            }
+
+            @Override
+            public void openSbui(java.util.function.Consumer<String> chosen) {
+                dialogs.showOpenSBUIDialog(chosen::accept);
+            }
+        });
+        mainInterface.setOpenUiDocumentCallback(path -> {
+            workspaceState.set(com.openmason.main.systems.layout.Workspace.UI);
+            uiEditor.openFile(path);
+        });
+        uiEditor.registerKeybinds(com.openmason.main.systems.keybinds.KeybindRegistry.getInstance());
+        // #294: "Edit Texture" opens the texture behind a UI image; saves refresh every document.
+        uiEditor.setTextureEditor(omt -> {
+            var controller = textureCreatorInterface.getController();
+            String open = controller.getState().getCurrentFilePath();
+            boolean same = open != null && java.nio.file.Path.of(open).toAbsolutePath().normalize()
+                    .equals(omt.toAbsolutePath().normalize());
+            if (!same && controller.getState().hasUnsavedChanges()) {
+                host.showTextureEditor();
+                return "The Texture Editor has unsaved changes; save or discard them, then Edit Texture again";
+            }
+            if (!same && !controller.loadProject(omt.toString())) {
+                return "The Texture Editor could not open " + omt.getFileName();
+            }
+            host.showTextureEditor();
+            return null;
+        });
+        textureCreatorInterface.getController().addSaveListener(uiEditor::textureSaved);
+        var editor = uiEditor;
+        var workspaces = workspaceState;
+        mainInterface.setUiWorkspace(workspaces, new com.openmason.main.systems.layout.WorkspaceDock() {
+                    @Override
+                    public void applyLayout(int dockspaceId, float width, float height) {
+                        editor.applyLayout(dockspaceId, width, height);
+                    }
+
+                    @Override
+                    public void renderHeader() {
+                        editor.renderHeader();
+                    }
+                },
+                new com.openmason.main.systems.menus.FileMenuHandler.UiMenuHooks() {
+                    @Override
+                    public boolean anyDirty() {
+                        return editor.hasUnsavedChanges();
+                    }
+
+                    @Override
+                    public java.util.List<String> saveAllInPlace() {
+                        return editor.saveAllInPlace();
+                    }
+
+                    @Override
+                    public void discardAll() {
+                        editor.discardAll();
+                    }
+                });
+        var uiTab = com.openmason.main.systems.layout.Workspace.UI;
+        editor.setDockControls(() -> workspaces.isDetached(uiTab), () -> workspaces.canDetach(uiTab), () -> {
+            if (workspaces.isDetached(uiTab)) {
+                workspaces.attach(uiTab, true);
+            } else {
+                workspaces.detach(uiTab);
+            }
+        });
+        mainInterface.setUiEditorSessionHooks(
+                () -> new com.openmason.main.systems.project.OMPFormat.UiEditorReference(
+                        workspaces.current().name(), editor.sessionDocuments(), editor.sessionActive(),
+                        workspaces.detached().stream().map(Enum::name).toList(), editor.sessionSettings()),
+                ref -> {
+                    if (ref == null) {
+                        // A pre-1.3 project: Scene, as it always opened.
+                        workspaces.restore(com.openmason.main.systems.layout.Workspace.MODELING, java.util.List.of());
+                        return;
+                    }
+                    editor.restoreSession(ref.documents(), ref.activeDocument());
+                    editor.restoreSettings(ref.settings());
+                    workspaces.restore(com.openmason.main.systems.layout.Workspace.resolve(ref.workspace()),
+                            ref.detached().stream().map(com.openmason.main.systems.layout.Workspace::find)
+                                    .filter(java.util.Objects::nonNull).toList());
+                });
+        // Opening, closing, activating or saving a UI document and switching workspace change what the
+        // .omp records: the project turns dirty, so the session is not lost on exit.
+        editor.service().addListener(mainInterface::notifyUiEditorSessionChanged);
+        workspaceState.addListener(w -> mainInterface.notifyUiEditorSessionChanged());
     }
 
     /**

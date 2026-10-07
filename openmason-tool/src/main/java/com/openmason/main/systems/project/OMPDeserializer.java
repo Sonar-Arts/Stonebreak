@@ -79,7 +79,8 @@ public class OMPDeserializer {
                 parseModelReference(root.get("model")),
                 parseUIState(root.get("ui")),
                 parsePartsList(root.get("parts")),
-                parseSceneReference(root.get("scene"))
+                parseSceneReference(root.get("scene")),
+                parseUiEditorReference(root.get("uiEditor"))
         );
     }
 
@@ -144,6 +145,42 @@ public class OMPDeserializer {
                 text(node, "modelSource", "NONE"),
                 text(node, "modelFilePath", null)
         );
+    }
+
+    /** Absent node -> null, which is what a pre-1.3 project looks like. */
+    private OMPFormat.UiEditorReference parseUiEditorReference(JsonNode node) {
+        if (node == null || node.isNull() || !node.isObject()) {
+            return null;
+        }
+        java.util.List<String> docs = new java.util.ArrayList<>();
+        JsonNode arr = node.get("documents");
+        if (arr != null && arr.isArray()) {
+            arr.forEach(d -> {
+                if (d.isTextual() && !d.asText().isBlank()) {
+                    docs.add(d.asText());
+                }
+            });
+        }
+        java.util.Map<String, String> settings = new java.util.TreeMap<>();
+        JsonNode s = node.get("settings");
+        if (s != null && s.isObject()) {
+            s.properties().forEach(e -> {
+                if (e.getValue().isValueNode()) {
+                    settings.put(e.getKey(), e.getValue().asText());
+                }
+            });
+        }
+        java.util.List<String> detached = new java.util.ArrayList<>();
+        JsonNode out = node.get("detached");
+        if (out != null && out.isArray()) {
+            out.forEach(d -> {
+                if (d.isTextual() && !d.asText().isBlank()) {
+                    detached.add(d.asText());
+                }
+            });
+        }
+        return new OMPFormat.UiEditorReference(text(node, "workspace", "MODELING"), docs,
+                text(node, "activeDocument", null), detached, settings);
     }
 
     /** Absent node -> null, which is what a pre-1.2 project looks like. */

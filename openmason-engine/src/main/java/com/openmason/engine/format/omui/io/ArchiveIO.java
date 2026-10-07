@@ -31,18 +31,28 @@ import java.util.zip.ZipOutputStream;
  * <p>Reading streams local entries with inflated-size limits, validates every name
  * ({@link EntryPaths}), rejects exact and case-folded duplicates, and cross-checks the
  * local entries against the central directory so truncation or smuggled entries cannot
- * silently drop or add content. ZIP64 is out of scope (archives are far below 4 GiB).
+ * silently drop or add content: same names in the same order, same CRC-32 and size, and every
+ * central record's local-header offset must be exactly where the previous entry ended (the
+ * entries tile the archive up to the central directory), so a header hidden inside another
+ * entry's data cannot show a central-directory reader different bytes. ZIP64 is out of scope
+ * (archives are far below 4 GiB).
  *
  * <p>Writing emits entries in {@link EntryPaths#ORDER}, uncompressed ({@code STORED}), with a
- * fixed DOS timestamp of 1980-01-01 00:00:00, no extra fields and no comments. Without a
+ * fixed DOS timestamp of 1980-01-01 00:00:02 ({@link #FIXED_TIME}), no extra fields and no comments. Without a
  * compressor in the loop the bytes are a pure function of the entries, independent of the
  * platform's zlib build — which is what lets golden archives be compared byte for byte. UI
  * documents are small JSON; embedded assets (SBT/OMT/PNG) are already compressed.
  */
 public final class ArchiveIO {
 
-    /** Fixed entry timestamp: the DOS epoch, timezone-independent via setTimeLocal. */
-    public static final LocalDateTime FIXED_TIME = LocalDateTime.of(1980, 1, 1, 0, 0, 0);
+    /**
+     * Fixed entry timestamp, two seconds past the DOS epoch. Not 00:00:00: the JDK encodes exactly
+     * 1980-01-01 00:00:00 as its "before 1980" sentinel and then also writes a {@code UT} extended
+     * timestamp holding epoch seconds in the system timezone, which made archive bytes differ
+     * between machines (a UTC CI runner vs a UTC-5 workstation). Any later in-range local time is
+     * stored as plain DOS date/time with no extra field, so the bytes are the same everywhere.
+     */
+    public static final LocalDateTime FIXED_TIME = LocalDateTime.of(1980, 1, 1, 0, 0, 2);
 
     private static final int LOCAL_SIG = 0x04034b50;
     private static final int CENTRAL_SIG = 0x02014b50;
@@ -65,6 +75,9 @@ public final class ArchiveIO {
         }
         List<CentralEntry> central = centralDirectory(archive, limits, diagnostics);
         if (central == null) {
+            return null;
+        }
+        if (!tiles(archive, central, diagnostics)) {
             return null;
         }
 
@@ -158,7 +171,52 @@ public final class ArchiveIO {
         return out.toByteArray();
     }
 
-    private record CentralEntry(String name, long crc, long size) {
+    /**
+     * One central-directory record.
+     *
+     * @param end offset of the central directory itself (same for every record)
+     */
+    private record CentralEntry(String name, long crc, long size, long compressedSize, long localOffset, long end) {
+    }
+
+    /**
+     * Whether the local entries the central directory points at tile the archive: the first at
+     * offset 0, each next one exactly where the previous one's data (and data descriptor) ends,
+     * the last ending at the central directory, each with the central record's name.
+     */
+    private static boolean tiles(byte[] a, List<CentralEntry> central, UiDiagnostics d) {
+        long expected = 0;
+        for (CentralEntry c : central) {
+            long o = c.localOffset();
+            if (o != expected || o + 30 > a.length || le32(a, (int) o) != LOCAL_SIG) {
+                d.error(Code.TRUNCATED_ARCHIVE, c.name(), "",
+                        "Central-directory offset does not point at the next local entry");
+                return false;
+            }
+            int p = (int) o;
+            int flags = le16(a, p + 6);
+            int nameLen = le16(a, p + 26);
+            int extraLen = le16(a, p + 28);
+            long data = o + 30 + nameLen + extraLen;
+            if (data > a.length || !new String(a, p + 30, nameLen, StandardCharsets.UTF_8).equals(c.name())) {
+                d.error(Code.TRUNCATED_ARCHIVE, c.name(), "", "Local header name differs from its central-directory record");
+                return false;
+            }
+            long end = data + c.compressedSize();
+            if ((flags & 0x08) != 0) { // data descriptor: optional signature, crc, sizes
+                end += end + 4 <= a.length && le32(a, (int) end) == 0x08074b50 ? 16 : 12;
+            }
+            if (end > c.end()) {
+                d.error(Code.TRUNCATED_ARCHIVE, c.name(), "", "Entry data overlaps the central directory");
+                return false;
+            }
+            expected = end;
+        }
+        if (!central.isEmpty() && expected != central.getFirst().end()) {
+            d.error(Code.TRUNCATED_ARCHIVE, "", "", "Bytes between the last entry and the central directory");
+            return false;
+        }
+        return true;
     }
 
     /** Central-directory records, in order; {@code null} on damage. */
@@ -204,7 +262,8 @@ public final class ArchiveIO {
                 return null;
             }
             names.add(new CentralEntry(new String(a, p + 46, nameLen, StandardCharsets.UTF_8),
-                    le32(a, p + 16) & 0xFFFFFFFFL, le32(a, p + 24) & 0xFFFFFFFFL));
+                    le32(a, p + 16) & 0xFFFFFFFFL, le32(a, p + 24) & 0xFFFFFFFFL, le32(a, p + 20) & 0xFFFFFFFFL,
+                    le32(a, p + 42) & 0xFFFFFFFFL, offset));
             p += 46 + nameLen + extraLen + commentLen;
         }
         return names;

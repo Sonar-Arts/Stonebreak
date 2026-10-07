@@ -2,7 +2,7 @@ package com.stonebreak.ui.settingsMenu.handlers;
 
 import static org.lwjgl.glfw.GLFW.*;
 
-import com.stonebreak.rendering.UI.masonryUI.MCategoryButton;
+import com.openmason.engine.ui.masonry.MCategoryButton;
 import com.stonebreak.ui.settingsMenu.components.ScrollableSettingsContainer;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;

@@ -89,9 +89,10 @@ public final class ScriptingService {
                     "Editor not initialized", null, null, null));
         }
         // Match create_part's behavior: auto-create a blank model when none is
-        // open (the starter model contributes one default part).
+        // open (the starter model contributes one default part) — except for a
+        // script that only edits UI documents (om.ui), which must not touch the model.
         if ((vp.getPartManager() == null || vp.getPartManager().getPartCount() == 0)
-                && mainInterface.getModelOperations() != null) {
+                && mainInterface.getModelOperations() != null && !uiOnly(src)) {
             mainInterface.getModelOperations().newModel();
         }
         if (vp.getPartManager() == null || vp.getModelRenderer() == null) {
@@ -113,7 +114,7 @@ public final class ScriptingService {
         LiveModelDocument doc = new LiveModelDocument(vp);
         ScriptResult result;
         try {
-            result = executor.run(doc, canvasSurface, src, opts);
+            result = executor.run(doc, canvasSurface, uiTarget(), src, opts);
         } catch (RuntimeException e) {
             logger.error("Script execution failed unexpectedly", e);
             result = ScriptResult.failure(new ScriptError(
@@ -142,15 +143,21 @@ public final class ScriptingService {
             return result;
         }
 
-        // One undo entry for the whole run (model history).
+        // One undo entry for the whole run (model history). A run that applied an om.ui batch
+        // and left the model unchanged has its single step in the UI document's history instead.
         if (vp.getCommandHistory() != null && vp.getRendererSynchronizer() != null) {
             PartManagerSnapshot partsAfter = PartManagerSnapshot.capture(vp.getPartManager());
             MeshSnapshot meshAfter = MeshSnapshot.capture(vp.getModelRenderer());
             List<TexturePixelDelta> pixelDeltas = doc.pixelJournal() != null
                     ? doc.pixelJournal().buildDeltas() : List.of();
-            vp.getCommandHistory().pushCompleted(new ScriptRunCommand(
-                    "Run Script", partsBefore, meshBefore, partsAfter, meshAfter, pixelDeltas,
-                    vp.getPartManager(), vp.getModelRenderer(), vp.getRendererSynchronizer()));
+            boolean modelUnchanged = partsBefore.sameParts(partsAfter) && pixelDeltas.isEmpty()
+                    && meshBefore.snapshot() != null && meshAfter.snapshot() != null
+                    && meshBefore.snapshot().contentEquals(meshAfter.snapshot());
+            if (result.ui() == null || !modelUnchanged) {
+                vp.getCommandHistory().pushCompleted(new ScriptRunCommand(
+                        "Run Script", partsBefore, meshBefore, partsAfter, meshAfter, pixelDeltas,
+                        vp.getPartManager(), vp.getModelRenderer(), vp.getRendererSynchronizer()));
+            }
         }
 
         // Canvas edits get their own single entry in the texture editor's
@@ -163,6 +170,59 @@ public final class ScriptingService {
                     layerManager, canvasSurface::notifyModified));
         }
         return result;
+    }
+
+    /** The live UI Editor for {@code om.ui}, or null when it is not up. */
+    private com.openmason.main.systems.scripting.commands.UiScriptCommands.Target uiTarget() {
+        var ws = mainInterface.getUiEditor();
+        return ws == null ? null : new com.openmason.main.systems.scripting.live.LiveUiScriptTarget(
+                new com.openmason.main.systems.uiEditor.automation.UiAutomation(ws.context(), ws::reveal,
+                        ws::offerRecovery), mapper);
+    }
+
+    private static final java.util.regex.Pattern OM_CALL = java.util.regex.Pattern.compile("\\bom\\.(\\w+)");
+    private static final java.util.Set<String> UI_ONLY_NAMES = java.util.Set.of("ui", "UiRef", "help", "HELP",
+            "math", "OmError");
+
+    private static final java.util.regex.Pattern FROM_OM = java.util.regex.Pattern.compile(
+            "\\bfrom\\s+om\\s+import\\s+([^\\n#]+)");
+
+    /**
+     * True for a Python script whose uses of {@code om} are all {@code om.ui} (and helpers): such a
+     * run must not auto-create a model. Conservative: an aliased module ({@code import om as x})
+     * or any other imported name counts as a model script. (Whether a run gets a model undo entry
+     * is decided from what actually changed, not from this.)
+     */
+    static boolean uiOnly(ScriptSource src) {
+        if (src.language() != Language.PYTHON) {
+            return false;
+        }
+        String code = src.source();
+        if (java.util.regex.Pattern.compile("\\bimport\\s+om\\s+as\\b").matcher(code).find()) {
+            return false;
+        }
+        boolean any = false;
+        java.util.regex.Matcher from = FROM_OM.matcher(code);
+        while (from.find()) {
+            for (String raw : from.group(1).replace("(", "").replace(")", "").split(",")) {
+                String name = raw.trim().split("\\s+")[0];
+                if (name.isEmpty()) {
+                    continue;
+                }
+                if (!UI_ONLY_NAMES.contains(name)) {
+                    return false;
+                }
+                any |= name.equals("ui");
+            }
+        }
+        java.util.regex.Matcher m = OM_CALL.matcher(code);
+        while (m.find()) {
+            if (!UI_ONLY_NAMES.contains(m.group(1))) {
+                return false;
+            }
+            any |= m.group(1).equals("ui");
+        }
+        return any;
     }
 
     /** Serialize a result to a JsonNode for the tool layer. */

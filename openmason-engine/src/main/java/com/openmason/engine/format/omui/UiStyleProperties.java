@@ -61,16 +61,29 @@ public final class UiStyleProperties {
                 "margin-left", "margin-top", "margin-right", "margin-bottom", "left", "top", "right", "bottom");
         plain(Kind.LENGTH_NO_AUTO, "padding-left", "padding-top", "padding-right", "padding-bottom",
                 "border-left-width", "border-top-width", "border-right-width", "border-bottom-width",
-                "row-gap", "column-gap", "translate-x", "translate-y", "font-size", "border-radius");
+                "row-gap", "column-gap", "translate-x", "translate-y", "font-size", "border-radius",
+                "transform-origin-x", "transform-origin-y");
         plain(Kind.UNIT_INTERVAL, "opacity");
         plain(Kind.COLOR, "color", "background-color", "border-color", "-sb-tint");
         plain(Kind.ASSET, "background-image", "font");
         keyword("visibility", "visible", "hidden");
-        keyword("overflow", "visible", "hidden");
+        keyword("overflow", "visible", "hidden", "scroll"); // scroll needs the ui-scroll feature
+        plain(Kind.NUMBER, "-sb-layer");
         keyword("picking-mode", "position", "ignore");
         keyword("text-align", "left", "center", "right");
         keyword("-sb-image-scale", "stretch", "nine-slice", "tile", "integer");
         keyword("-sb-sampling", "nearest", "linear");
+        // ui-text: wrapping, truncation and line limits of labels
+        keyword("white-space", "nowrap", "normal", "pre-wrap");
+        keyword("text-overflow", "clip", "ellipsis");
+        plain(Kind.NUMBER, "-sb-max-lines");
+        // ui-cursor: pointer-anchored cursor layer and click-through subtrees
+        keyword("-sb-anchor", "none", "pointer");
+        keyword("pointer-events", "auto", "none");
+        // ui-masonry: the house look as style (#297)
+        keyword("-sb-surface", "auto", "none", "panel", "button", "button-hover", "button-disabled", "hud");
+        keyword("-sb-text-effect", "shadow", "none", "title");
+        keyword("-sb-pixel-grid", "device", "none");
     }
 
     private UiStyleProperties() {
@@ -89,6 +102,11 @@ public final class UiStyleProperties {
     /** @return the spec, or {@code null} for unknown and custom ({@code --}) properties */
     public static Spec spec(String property) {
         return SPECS.get(property);
+    }
+
+    /** Every built-in property name, sorted (editor pickers). */
+    public static java.util.SortedSet<String> names() {
+        return java.util.Collections.unmodifiableSortedSet(new java.util.TreeSet<>(SPECS.keySet()));
     }
 
     public static boolean isKnown(String property) {

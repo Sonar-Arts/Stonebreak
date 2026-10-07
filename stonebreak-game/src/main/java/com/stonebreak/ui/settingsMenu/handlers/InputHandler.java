@@ -3,8 +3,8 @@ package com.stonebreak.ui.settingsMenu.handlers;
 import static org.lwjgl.glfw.GLFW.*;
 
 import com.stonebreak.config.Settings;
-import com.stonebreak.rendering.UI.masonryUI.MDropdown;
-import com.stonebreak.rendering.UI.masonryUI.MSlider;
+import com.openmason.engine.ui.masonry.MDropdown;
+import com.openmason.engine.ui.masonry.MSlider;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
@@ -225,7 +225,7 @@ public final class InputHandler {
     // ─────────────────────────────────────────────── Helpers
 
     private static boolean pressed(long window, int key) {
-        return glfwGetKey(window, key) == GLFW_PRESS;
+        return com.stonebreak.input.PolledKeys.isDown(window, key);
     }
 
     private static boolean isShiftHeld(long window) {

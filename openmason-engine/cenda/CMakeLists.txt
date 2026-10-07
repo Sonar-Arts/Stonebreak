@@ -14,10 +14,16 @@ option(CENDA_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 
 # Shared strict-warnings interface target; link it PRIVATE from every Cenda target.
 add_library(cenda_warnings INTERFACE)
-target_compile_options(cenda_warnings INTERFACE
-        -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion)
-if(CENDA_WARNINGS_AS_ERRORS)
-    target_compile_options(cenda_warnings INTERFACE -Werror)
+if(MSVC)
+    # MSVC's /W4 diagnoses differently from GCC/Clang's -Wconversion set; the GCC/Clang build
+    # is the warning gate, so MSVC warns without failing the build.
+    target_compile_options(cenda_warnings INTERFACE /W3 /permissive- /utf-8)
+else()
+    target_compile_options(cenda_warnings INTERFACE
+            -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion)
+    if(CENDA_WARNINGS_AS_ERRORS)
+        target_compile_options(cenda_warnings INTERFACE -Werror)
+    endif()
 endif()
 
 option(CENDA_BUILD_KERNELS "Build the native chunk-kernels shared lib (FastNoise2 via FetchContent)" ON)

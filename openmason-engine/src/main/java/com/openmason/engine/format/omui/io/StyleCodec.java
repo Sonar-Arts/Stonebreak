@@ -32,7 +32,7 @@ public final class StyleCodec {
                 transitions.add(new StyleTransition(t.requiredString("property"),
                         t.requiredNumber("duration", 0, OmuiFormat.MAX_SECONDS),
                         t.optionalEnum("easing", UiEasing.class, UiEasing.LINEAR),
-                        t.optionalNumber("delay", 0, 0, OmuiFormat.MAX_SECONDS), t.unknown()));
+                        t.optionalNumber("delay", 0, 0, OmuiFormat.MAX_SECONDS), AnimationCodec.bezier(t), t.unknown()));
             }
             rules.add(new StyleRule(rule.requiredString("selector"), rule.freeMap("style"), transitions,
                     rule.unknown()));
@@ -53,6 +53,7 @@ public final class StyleCodec {
                                 .putNumber("duration", t.duration())
                                 .putEnumIfNot("easing", t.easing(), UiEasing.LINEAR)
                                 .putNumberIfNot("delay", t.delay(), 0)
+                                .putList("bezier", t.bezier() == null ? null : t.bezier().wire(), x -> x)
                                 .putUnknown(t.unknown())
                                 .build())
                         .putUnknown(rule.unknown())

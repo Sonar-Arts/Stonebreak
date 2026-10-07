@@ -59,13 +59,24 @@ public record UiAnimationClip(String id, double duration, LoopMode loop, List<An
         }
     }
 
-    /** {@code easing} shapes the segment from this key to the next. */
-    public record AnimKey(double time, UiValue value, UiEasing easing, Map<String, UiValue> unknown) {
+    /**
+     * {@code easing} (or {@code bezier} when set, #295) shapes the segment from this key to the next.
+     */
+    public record AnimKey(double time, UiValue value, UiEasing easing, UiBezier bezier, Map<String, UiValue> unknown) {
         public AnimKey {
             value = Canon.value(Objects.requireNonNull(value, "value"));
             time = Canon.num(time);
             easing = easing == null ? UiEasing.LINEAR : easing;
             unknown = Canon.unknown(unknown);
+        }
+
+        public AnimKey(double time, UiValue value, UiEasing easing, Map<String, UiValue> unknown) {
+            this(time, value, easing, null, unknown);
+        }
+
+        /** Progress of the segment after this key at time fraction {@code u}. */
+        public float ease(float u) {
+            return UiBezier.ease(easing, bezier, u);
         }
     }
 

@@ -188,6 +188,10 @@ public final class GameLoop {
 
     @SuppressWarnings("deprecation")
     private void updateGameWorld(float deltaTime) {
+        // The UI documents' game clock follows simulated time, not render frames (#295 review).
+        if (!game.isPaused()) {
+            com.stonebreak.ui.runtime.UiFrameClock.get().simulated(deltaTime);
+        }
         InventoryScreen inventoryScreen = game.getInventoryScreen();
         if (inventoryScreen != null) {
             inventoryScreen.update(deltaTime);

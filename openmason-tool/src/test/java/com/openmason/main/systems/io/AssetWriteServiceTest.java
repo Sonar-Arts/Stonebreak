@@ -73,6 +73,11 @@ class AssetWriteServiceTest {
         assertTrue(e.getMessage().startsWith("file_exists"));
         assertTrue(AssetWriteService.mustAsk(target(WriteRoot.GAME_RESOURCES, false), req(true),
                 WritePolicy.ASK_NEVER_IN_PROJECT));
+
+        // NEVER_ASK: overwrites and game resources write silently (the sandbox still bounds them)
+        assertFalse(AssetWriteService.mustAsk(target(WriteRoot.PROJECT, true), req(false), WritePolicy.NEVER_ASK));
+        assertFalse(AssetWriteService.mustAsk(target(WriteRoot.GAME_RESOURCES, true), req(false),
+                WritePolicy.NEVER_ASK));
     }
 
     @Test

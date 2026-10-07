@@ -12,6 +12,26 @@
 #include <vector>
 
 namespace {
+// setenv/unsetenv are POSIX; MSVC's CRT has _putenv_s, which updates the same environment
+// getenv() reads (an empty value removes the variable).
+void setEnv(const char* name, const char* value) {
+#ifdef _WIN32
+    _putenv_s(name, value);
+#else
+    setenv(name, value, 1);
+#endif
+}
+
+void unsetEnv(const char* name) {
+#ifdef _WIN32
+    _putenv_s(name, "");
+#else
+    unsetenv(name);
+#endif
+}
+} // namespace
+
+namespace {
 
 int failures = 0;
 
@@ -160,11 +180,11 @@ void checkScalarBitmaskParity(const std::vector<int16_t>& blocks,
                               int maxY, int smooth, const char* what) {
     static std::vector<float> outA(9 * 250000);
     static std::vector<float> outB(9 * 250000);
-    setenv("CENDA_MESHER_IMPL", "scalar", 1);
+    setEnv("CENDA_MESHER_IMPL", "scalar");
     int nA = ck_mesh_chunk(blocks.data(), cls, clsLen, AIR, pxn, pxp, pzn, pzp,
                            cnn, cpn, cnp, cpp2, heights.data(), maxY, smooth,
                            outA.data(), 250000);
-    unsetenv("CENDA_MESHER_IMPL");
+    unsetEnv("CENDA_MESHER_IMPL");
     int nB = ck_mesh_chunk(blocks.data(), cls, clsLen, AIR, pxn, pxp, pzn, pzp,
                            cnn, cpn, cnp, cpp2, heights.data(), maxY, smooth,
                            outB.data(), 250000);
@@ -284,12 +304,12 @@ void testMesherParity() {
         blocks[static_cast<std::size_t>((10 * 16 + 5) * 16 + 5)] = 1;
         std::array<int16_t, 18 * 18> heights{};
         std::array<float, 9> tiny{};
-        setenv("CENDA_MESHER_IMPL", "scalar", 1);
+        setEnv("CENDA_MESHER_IMPL", "scalar");
         int nA = ck_mesh_chunk(blocks.data(), cls.data(), 6, AIR,
                                nullptr, nullptr, nullptr, nullptr,
                                nullptr, nullptr, nullptr, nullptr,
                                heights.data(), 20, 1, tiny.data(), 1);
-        unsetenv("CENDA_MESHER_IMPL");
+        unsetEnv("CENDA_MESHER_IMPL");
         int nB = ck_mesh_chunk(blocks.data(), cls.data(), 6, AIR,
                                nullptr, nullptr, nullptr, nullptr,
                                nullptr, nullptr, nullptr, nullptr,

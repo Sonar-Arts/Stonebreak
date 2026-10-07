@@ -1,10 +1,10 @@
 package com.stonebreak.ui.settingsMenu.renderers;
 
-import com.stonebreak.rendering.UI.masonryUI.MCategoryButton;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MWidget;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MCategoryButton;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MWidget;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.settingsMenu.components.ScrollableSettingsContainer;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
@@ -155,7 +155,8 @@ public final class SkijaSettingsRenderer {
 
     private void ensureDirtShader() {
         if (dirtShader != null) return;
-        Image dirt = ui.backend() != null ? ui.backend().getDirtTexture() : null;
+        Image dirt = ui.backend() instanceof com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend game
+                ? game.getDirtTexture() : null;
         if (dirt == null) return;
         dirtShader = dirt.makeShader(FilterTileMode.REPEAT, FilterTileMode.REPEAT, SamplingMode.DEFAULT, null);
     }

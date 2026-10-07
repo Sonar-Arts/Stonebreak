@@ -48,6 +48,7 @@ public final class ModelCommands {
     private final AnimCommands anim;
     private final TextureCommands tex;
     private final CanvasCommands canvas;
+    private final UiScriptCommands ui;
     private final List<ObjectNode> opsTrace = new ArrayList<>();
 
     public ModelCommands(ModelDocument doc, ObjectMapper mapper) {
@@ -72,6 +73,7 @@ public final class ModelCommands {
         this.anim = new AnimCommands(doc, this::trace, animBaseDir);
         this.tex = new TextureCommands(this, doc, this::trace);
         this.canvas = new CanvasCommands(canvasSurface, this::trace);
+        this.ui = new UiScriptCommands(mapper);
     }
 
     /** Animation authoring commands (detached .omanim clips). */
@@ -87,6 +89,11 @@ public final class ModelCommands {
     /** Texture-editor canvas commands (painting + layers; live only). */
     public CanvasCommands canvas() {
         return canvas;
+    }
+
+    /** UI document edits ({@code om.ui}; queued, applied as one batch on success; live only). */
+    public UiScriptCommands ui() {
+        return ui;
     }
 
     // ===================== Results =====================

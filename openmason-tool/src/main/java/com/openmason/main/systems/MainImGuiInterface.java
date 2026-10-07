@@ -79,6 +79,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
     /** The Scene Viewer, once composed; null in headless/snapshot construction. */
     private com.openmason.main.systems.scene.SceneViewerImGuiInterface sceneViewer;
+    private com.openmason.main.systems.uiEditor.view.UiEditorWorkspace uiEditor;
 
     private PreferencesWindow preferencesWindow; // Initialized after components
     private SBOExportWindow sboExportWindow; // Initialized after components
@@ -391,7 +392,19 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      */
     public void render() {
         dockLayout.render(toolbarRenderer::render);
+        dockLayout.renderDetached();
         menuBarCoordinator.render();
+
+        if (!isWorkspaceShown(com.openmason.main.systems.layout.Workspace.MODELING)) {
+            // Scene is neither the main window's front tab nor a visible window of its own: its
+            // panels stay docked but hidden (the UI workspace draws its own).
+            aboutDialog.render();
+            dockLayout.tickCenterTabFocus();
+            if (fileMenuHandler != null && fileMenuHandler.getHomeScreenDialog() != null) {
+                fileMenuHandler.getHomeScreenDialog().render();
+            }
+            return;
+        }
 
         if (uiVisibilityState.getShowModelBrowser().get()) {
             renderProjectBrowser();
@@ -454,6 +467,20 @@ public class MainImGuiInterface implements ProjectBrowserListener {
             }
         } catch (Exception e) {
             logger.error("Failed to handle OMT selection event", e);
+        }
+    }
+
+    private java.util.function.Consumer<java.nio.file.Path> openUiDocumentCallback;
+
+    /** Set by the app: opens a .omui in the UI Editor workspace. */
+    public void setOpenUiDocumentCallback(java.util.function.Consumer<java.nio.file.Path> callback) {
+        this.openUiDocumentCallback = callback;
+    }
+
+    @Override
+    public void onUiDocumentSelected(com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry entry) {
+        if (openUiDocumentCallback != null) {
+            openUiDocumentCallback.accept(entry.path());
         }
     }
 
@@ -673,6 +700,15 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     /** The Scene Viewer (scene service, document, actions), or null before composition. */
     public com.openmason.main.systems.scene.SceneViewerImGuiInterface getSceneViewer() {
         return sceneViewer;
+    }
+
+    public void setUiEditor(com.openmason.main.systems.uiEditor.view.UiEditorWorkspace uiEditor) {
+        this.uiEditor = uiEditor;
+    }
+
+    /** The UI Editor workspace (#293; open UI documents, their runtimes), or null before composition. */
+    public com.openmason.main.systems.uiEditor.view.UiEditorWorkspace getUiEditor() {
+        return uiEditor;
     }
 
     // Convenience methods for backward compatibility
@@ -964,6 +1000,50 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      * Reset all editor state to defaults for a fresh session.
      * Called when creating a new blank project from the hub.
      */
+    private com.openmason.main.systems.layout.WorkspaceState workspaceState;
+
+    /**
+     * Installs the UI workspace (#293): its dockspace behind the main window's {@code Scene | UI}
+     * tabs (or its own window when popped out), the Tools menu entry, and the project-level save
+     * hooks (Save Project saves UI documents too).
+     */
+    public void setUiWorkspace(com.openmason.main.systems.layout.WorkspaceState state,
+                               com.openmason.main.systems.layout.WorkspaceDock dock,
+                               com.openmason.main.systems.menus.FileMenuHandler.UiMenuHooks hooks) {
+        this.workspaceState = state;
+        dockLayout.setUiWorkspace(state, dock);
+        toolsMenuHandler.setOpenUiEditorCallback(() -> state.set(com.openmason.main.systems.layout.Workspace.UI));
+        if (fileMenuHandler != null) {
+            fileMenuHandler.setUiHooks(hooks);
+        }
+    }
+
+    /**
+     * Whether {@code ws}'s panels should draw this frame: it is the main window's front tab or a
+     * popped-out window showing its contents. Valid once this frame's {@link #render()} ran.
+     */
+    public boolean isWorkspaceShown(com.openmason.main.systems.layout.Workspace ws) {
+        return dockLayout.isShown(ws);
+    }
+
+    public com.openmason.main.systems.layout.WorkspaceState getWorkspaceState() {
+        return workspaceState;
+    }
+
+    /** The project service's UI Editor session seams (v1.3 node). */
+    public void setUiEditorSessionHooks(
+            java.util.function.Supplier<com.openmason.main.systems.project.OMPFormat.UiEditorReference> supplier,
+            java.util.function.Consumer<com.openmason.main.systems.project.OMPFormat.UiEditorReference> hook) {
+        projectLifecycle.setUiEditorSessionHooks(supplier, hook);
+    }
+
+    /** The UI Editor's open documents or workspace changed: the project may need saving. */
+    public void notifyUiEditorSessionChanged() {
+        if (projectLifecycle.getProjectService() != null) {
+            projectLifecycle.getProjectService().uiSessionChanged();
+        }
+    }
+
     public void setOnProjectSessionReset(Runnable callback) {
         projectLifecycle.setOnProjectSessionReset(callback);
     }

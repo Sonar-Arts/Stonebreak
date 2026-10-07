@@ -1,5 +1,6 @@
 package com.stonebreak.ui.furnace.renderers;
 
+import com.stonebreak.ui.LegacyUiClock;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.input.InputHandler;
@@ -9,11 +10,11 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.components.MHotbarRenderer;
-import com.stonebreak.rendering.UI.masonryUI.MItemSlot;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MTooltip;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MItemSlot;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MTooltip;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.furnace.core.FurnaceController;
 import com.stonebreak.ui.furnace.core.FurnaceInputManager;
 import com.stonebreak.ui.furnace.core.FurnaceLayout;
@@ -37,7 +38,6 @@ public class FurnaceRenderCoordinator {
 
     private static final int PANEL_FILL_TRANS = 0xBF6B6B6B;
     private static final int PROGRESS_FILL    = 0xFFE87D1C;   // orange smelt-fill
-    private static final long ANIM_EPOCH      = System.nanoTime();
 
     private final UIRenderer uiRenderer;
     private final Renderer renderer;
@@ -446,7 +446,7 @@ public class FurnaceRenderCoordinator {
     }
 
     private float animTime() {
-        return (System.nanoTime() - ANIM_EPOCH) / 1_000_000_000f;
+        return (float) LegacyUiClock.seconds(); // pinned for fidelity captures (#296)
     }
 
     private static int withAlpha(int argb, int alpha) {

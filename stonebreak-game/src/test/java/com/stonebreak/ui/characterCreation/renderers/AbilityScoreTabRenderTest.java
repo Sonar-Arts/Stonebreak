@@ -2,7 +2,7 @@ package com.stonebreak.ui.characterCreation.renderers;
 
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.characterCreation.CharacterCreationLayout.Rect;
 import io.github.humbleui.skija.Bitmap;
 import io.github.humbleui.skija.Canvas;

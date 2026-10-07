@@ -1,9 +1,9 @@
 package com.stonebreak.ui.chat;
 
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.masonryUI.MFonts;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MFonts;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.ui.chat.chatSystem.ChatCommandExecutor;
 import com.stonebreak.ui.chat.chatSystem.commands.ChatCommand;
 import com.stonebreak.ui.chat.emoji.ChatEmoji;

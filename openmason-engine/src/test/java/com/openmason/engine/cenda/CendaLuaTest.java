@@ -278,4 +278,86 @@ class CendaLuaTest {
             assertInstanceOf(WrongThreadException.class, e.getCause());
         }
     }
+
+    // ─────────────────────────── #282 hardening (ABI 3) ───────────────────────────
+
+    @Test
+    void aStateCannotBeClosedFromInsideItsOwnCall() {
+        assumeLua();
+        LuaState lua = CendaLua.newState(0);
+        String[] refused = new String[1];
+        lua.register(0, "closeme", call -> {
+            try {
+                lua.close();
+            } catch (IllegalStateException e) {
+                refused[0] = e.getMessage();
+            }
+            return 0;
+        });
+        assertEquals(LuaState.OK, lua.run("closeme() survived = true"), lua.lastError());
+        assertTrue(refused[0] != null && refused[0].contains("inside one of its own calls"), String.valueOf(refused[0]));
+        assertTrue(!lua.isClosed(), "a refused close leaves the state usable");
+        lua.close();
+        assertTrue(lua.isClosed());
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> lua.run("x = 1"));
+        assertTrue(e.getMessage().contains("closed"), e.getMessage());
+        assertThrows(IllegalStateException.class, lua::memUsed, "no call reaches freed native memory");
+    }
+
+    @Test
+    void finalizersAreRefusedSoNoUnstoppableCodeRunsInTheCollector() {
+        assumeLua();
+        try (LuaState lua = CendaLua.newState(0)) {
+            assertEquals(LuaState.ERR_RUN, lua.run("setmetatable({}, { __gc = function() while true do end end })"));
+            assertTrue(lua.lastError().contains("__gc"), lua.lastError());
+            assertEquals(LuaState.OK, lua.run("t = setmetatable({}, { __index = { x = 1 }, __mode = 'k' })"));
+            lua.gcCollect();
+        }
+    }
+
+    @Test
+    void theDeadlineStopsLongRunningLibraryCalls() {
+        assumeLua();
+        try (LuaWatchdog dog = new LuaWatchdog(250); LuaState lua = CendaLua.newState(0)) {
+            dog.watch(lua, 20);
+            try {
+                for (String hang : new String[]{
+                    "local s = string.rep('a', 30000) string.find(s, string.rep('.-', 12) .. 'x')",
+                    "local s = string.rep('a', 1 << 22) string.find(s, string.rep('a', 1 << 19) .. 'b', 1, true)",
+                    "table.move({}, 1, math.maxinteger - 1, 2)"}) {
+                    long t0 = System.nanoTime();
+                    assertEquals(LuaState.ERR_DEADLINE, lua.run(hang), hang + ": " + lua.lastError());
+                    long ms = (System.nanoTime() - t0) / 1_000_000;
+                    assertTrue(ms < 1000, hang + " took " + ms + " ms");
+                }
+            } finally {
+                dog.unwatch(lua);
+            }
+        }
+    }
+
+    @Test
+    void hugeValuesForTheHostAreRefusedQuickly() {
+        assumeLua();
+        try (LuaState lua = CendaLua.newState(0)) {
+            lua.registerValues(0, "sink", (in, out) -> 0);
+            long t0 = System.nanoTime();
+            // 2^30 nodes once encoded, a few hundred bytes of Lua: the encoder's byte cap stops it.
+            assertEquals(LuaState.ERR_RUN, lua.run("local a = {} for i = 1, 30 do a = { a, a } end sink(a)"));
+            assertTrue(lua.lastError().contains("larger than"), lua.lastError());
+            assertTrue((System.nanoTime() - t0) / 1_000_000 < 2000);
+            assertEquals(LuaState.OK, lua.run("sink({ 1, 2, { x = 3 } })"), lua.lastError());
+        }
+    }
+
+    @Test
+    void seededStatesWork() {
+        assumeLua();
+        try (LuaState a = CendaLua.newState(0, 12345); LuaState b = CendaLua.newState(0, -7)) {
+            assertEquals(LuaState.OK, a.run("t = { x = 1, y = 2 } function f() return t.x + t.y end"));
+            assertEquals(3.0, a.call1(a.refFunction(0, "f")));
+            assertEquals(LuaState.OK, b.run("function g() return #('ab' .. 'c') end"));
+            assertEquals(3.0, b.call1(b.refFunction(0, "g")));
+        }
+    }
 }
