@@ -76,6 +76,16 @@ declared version is `CAPABILITY_MISSING`: the document was authored against a co
 must declare the newer version (`UiHost.openScopeAt(documentId, versions, problems)`; `UiBinder.open` passes the
 manifest's versions; `openScope(documentId, ids, problems)` leaves versions unchecked).
 
+**Data roots are gated too (#327).** A document observes only the roots whose contract it lists in `hostApis`,
+whoever asks: in its scope an undeclared root reads as `FAILED` (`CAPABILITY_MISSING: ...`), `typeOf` is `null`,
+`watch`/`watchList` return `Subscription.NONE` without subscribing the source, and `EditSession.stage` rejects it.
+Callers that can fail loudly check first: Lua `ui.read`/`ui.watch` (and graphs, which compile to them) call
+`UiScope.requireDeclared(path, site)`, which throws `UiActionException` `CAPABILITY_MISSING` naming the root's contract
+and the call site, so the script errors at its line; the binder reports a `CAPABILITY_MISSING` element diagnostic and
+the target keeps its authored value. A root the host lacks is not a capability problem; it reads as `MISSING`. A
+`null` declaration (`openScope(id, null, ...)`, host-side code and tests) is unchecked. Without the gate, an untrusted
+SBUI could bind an undeclared root and read the bound element's text back from Lua.
+
 **Authority.** The handler is where the game validates its rules, exactly as the legacy screen code did. The pause
 buttons and the `stonebreak:screen.pause.*` actions both call `PauseMenuActions`.
 
@@ -95,7 +105,8 @@ never stops the others, the scope or the screen.
 
 - `UNKNOWN_ACTION`
 - `CAPABILITY_MISSING`: the action's contract is not in the document's `hostApis`, or the action is newer than the
-  declared contract version
+  declared contract version; for `requireDeclared`, the data root's contract is not in `hostApis` (`actionId()` is
+  then the path)
 - `PARAM_MISMATCH`
 
 The message always names the call site, for example
@@ -300,7 +311,7 @@ items with `prop:items`.
 | --- | --- |
 | manifest needs an `uiApi`, layout semantics, feature, host API or provider the host lacks (`UiHostProfile.check`) | error; warning for an `optional` host API |
 | an absolute path (dataSource or binding, in the document or any component) names a root the host lacks: `UNKNOWN_DATA_SOURCE` | error |
-| a root's contract is missing from the manifest's `hostApis`: `UNDECLARED_HOST_API` | warning: works here, but would not tell a host that lacks it |
+| a root's contract is missing from the manifest's `hostApis`: `UNDECLARED_HOST_API` | error: the scope would refuse the document that root (#327) |
 
 An export is checked against its manifest's requirement union. `GameUiDocuments.openBound(sbui, ...)` refuses before
 instantiating anything, so the legacy screen stays. It also refuses (C9) when a required dependency does not resolve
@@ -357,7 +368,10 @@ members are:
 
 - `data`
 - `collections`
-- `contracts` (root → contract id)
+- `contracts` (root → contract id). A root it leaves out takes the declared contract that names it: local id (after
+  `ns:`) equal to the root, else ending in `.<root>` (`session` → `stonebreak:session`, `vitals` →
+  `stonebreak:player.vitals`; shortest wins). With none it is filed under `fixture:<root>`, which no document
+  declares, so the preview refuses it exactly as the game would: a fixture can never widen what a document sees.
 - `editable` (root → commit action)
 - `actions` (`result`, `error`, or `pending` held until `release`)
 
@@ -370,6 +384,7 @@ The preview drains the fixture queue once per frame.
 | Test | Covers |
 | --- | --- |
 | `DataContractTest` | schemas, paths, cells (notify on change, coalesced posts), collections, randomized identity-diff replay |
+| `DataRootGateTest`, `ScriptDataGateTest` | #327: undeclared roots read as failed, never subscribe, cannot be staged, leak no schema; `requireDeclared` names contract and call site; Lua `ui.read`/`ui.watch` refused on a game-like host and on `FixtureHost` (`GameUiHostTest`, `GameHostFixtureParityTest` cover the game host and its fixture) |
 | `UiScopeTest` | parameter mismatch with document/node, unknown action, undeclared capability, async results on the UI thread, result mismatch, reentrancy, completion after close / reload / epoch change, failing callbacks and cancel hooks during close, watch release |
 | `EditSessionTest` | validation, per-scope drafts, apply, failed apply, cancel, read-only roots |
 | `FixtureHostTest` | shorthand fixtures, deterministic action responses and held calls, editable roots, collections |

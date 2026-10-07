@@ -249,6 +249,11 @@ public final class UiBinder implements AutoCloseable {
         if (scope.host().data().root(path.rootName()) == null) {
             report(UiRuntimeDiagnostic.error(Code.UNKNOWN_DATA_SOURCE, el.key(),
                 "the host has no data root '" + path.rootName() + "' (" + path + ")"));
+        } else {
+            String undeclared = scope.undeclared(path); // the scope refuses it; say why (#327)
+            if (undeclared != null) {
+                report(UiRuntimeDiagnostic.error(Code.CAPABILITY_MISSING, el.key(), path + ": " + undeclared));
+            }
         }
         return new HostFeed(scope, path);
     }

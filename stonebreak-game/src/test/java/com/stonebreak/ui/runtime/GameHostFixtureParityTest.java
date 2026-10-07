@@ -53,6 +53,16 @@ class GameHostFixtureParityTest {
         assertEquals(actions(game), actions(preview), "actions");
     }
 
+    /** #327: a document observes only the roots of contracts it declares, so the preview must file them identically. */
+    @Test
+    void everyFixtureRootBelongsToTheGameHostsContract() throws IOException {
+        UiHost game = GameUiHost.declaration().host();
+        UiHost preview = fixture(game).host();
+        for (DataRoot r : game.data().roots()) {
+            assertEquals(r.contract().id(), preview.data().root(r.name()).contract().id(), r.name());
+        }
+    }
+
     private static Set<String> roots(UiHost h) {
         return h.data().roots().stream().map(DataRoot::name).collect(Collectors.toCollection(TreeSet::new));
     }

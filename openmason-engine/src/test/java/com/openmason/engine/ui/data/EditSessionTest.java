@@ -46,7 +46,7 @@ class EditSessionTest {
     }
 
     private UiScope open() {
-        return host.openScope("t:ui/settings", Set.of("t:settings"), p -> { });
+        return host.openScope("t:ui/settings", Set.of("t:settings", "t:session"), p -> { });
     }
 
     @Test

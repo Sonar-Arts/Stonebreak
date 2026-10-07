@@ -210,4 +210,26 @@ class GameUiHostTest {
         assertTrue(!scope.edits().isDirty());
         scope.close();
     }
+
+    @Test
+    void documentsOnlyObserveTheGameRootsTheyDeclare() {
+        GameUiHost game = new GameUiHost(new FakeServices(), MultiplayerSession.Mode.SINGLEPLAYER);
+        UiScope scope = game.host().openScope("stonebreak:ui/pause_menu",
+            Set.of("stonebreak:session", "stonebreak:screen.pause"), p -> { });
+        CallSite site = scope.site("hud", CallSite.Origin.SCRIPT);
+        assertTrue(scope.read(DataPath.parse("session.online")).isReady());
+        for (String path : List.of("vitals.health", "settings.uiScale", "carried.count", "furnace.lit")) {
+            DataPath p = DataPath.parse(path);
+            assertTrue(scope.read(p) instanceof com.openmason.engine.ui.data.DataState.Failed, path);
+            UiActionException e = assertThrows(UiActionException.class, () -> scope.requireDeclared(p, site), path);
+            assertEquals(UiActionException.Code.CAPABILITY_MISSING, e.code());
+        }
+        assertTrue(assertThrows(UiActionException.class,
+            () -> scope.requireDeclared(DataPath.parse("carried.count"), site)).getMessage().contains("stonebreak:inventory"),
+            "carried belongs to the inventory contract");
+        assertEquals(com.openmason.engine.ui.data.Subscription.NONE,
+            scope.watchList(DataPath.parse("inventory"), (st, ch) -> { }));
+        assertTrue(!scope.edits().stage(DataPath.parse("settings.uiScale"), UiValue.of(1.5), site).accepted());
+        scope.close();
+    }
 }

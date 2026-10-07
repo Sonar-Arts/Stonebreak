@@ -81,7 +81,7 @@ class UiActivationTest {
         assertEquals("/root/children/0/dataSource", unknown.pointer());
         UiDiagnostic undeclared = d.stream().filter(x -> x.code() == UiDiagnostic.Code.UNDECLARED_HOST_API).findFirst().orElseThrow();
         assertEquals("/root/children/0/children/0/bindings/0/path", undeclared.pointer());
-        assertEquals(UiDiagnostic.Severity.WARNING, undeclared.severity());
+        assertEquals(UiDiagnostic.Severity.ERROR, undeclared.severity(), "the scope would refuse it (#327)");
     }
 
     @Test

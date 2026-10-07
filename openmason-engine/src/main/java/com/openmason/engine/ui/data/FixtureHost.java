@@ -38,9 +38,13 @@ import java.util.concurrent.CompletableFuture;
  * }</pre>
  * Any other top-level member is shorthand for a {@code data} root, so the format's in-archive
  * {@code editor/fixtures.json} ({@code {"session": {"online": true}}}) is a fixture as it is.
- * Data types are inferred from the fixture values; a root without a {@code contracts} entry
- * belongs to {@code fixture:<root>}. An action without {@code contract} belongs to the longest
- * declared contract id it extends ({@code stonebreak:session.leave} → {@code stonebreak:session}).
+ * Data types are inferred from the fixture values. A root without a {@code contracts} entry
+ * belongs to the declared contract it names: the one whose local id (after the namespace) is the
+ * root or ends in {@code .<root>} ({@code session} → {@code stonebreak:session}, {@code vitals} →
+ * {@code stonebreak:player.vitals}); with no such contract it belongs to {@code fixture:<root>},
+ * which no document declares, so the document cannot observe it (#327) — name the contract in
+ * {@code contracts}. An action without {@code contract} belongs to the longest declared contract
+ * id it extends ({@code stonebreak:session.leave} → {@code stonebreak:session}).
  */
 public final class FixtureHost {
 
@@ -347,8 +351,39 @@ public final class FixtureHost {
     }
 
     private static HostContract contract(String root, Map<String, String> contracts, Map<String, Integer> versions) {
-        String id = contracts.getOrDefault(root, "fixture:" + root.toLowerCase(java.util.Locale.ROOT));
+        String id = contracts.get(root);
+        if (id == null) {
+            id = declaredContractOf(root, versions.keySet());
+        }
+        if (id == null) {
+            id = "fixture:" + root.toLowerCase(java.util.Locale.ROOT);
+        }
         return HostContract.of(id, versions.getOrDefault(id, 1));
+    }
+
+    /**
+     * The declared contract a fixture root stands for by name: local id (after {@code ns:}) equal
+     * to the root, else ending in {@code .<root>}; the shortest, then alphabetically first, wins.
+     */
+    static String declaredContractOf(String root, java.util.Collection<String> declared) {
+        String exact = null;
+        String suffix = null;
+        for (String id : declared) {
+            String local = id.substring(id.indexOf(':') + 1);
+            if (local.equals(root)) {
+                exact = pick(exact, id);
+            } else if (local.endsWith("." + root)) {
+                suffix = pick(suffix, id);
+            }
+        }
+        return exact != null ? exact : suffix;
+    }
+
+    private static String pick(String best, String id) {
+        if (best == null || id.length() < best.length() || id.length() == best.length() && id.compareTo(best) < 0) {
+            return id;
+        }
+        return best;
     }
 
     private static UiValue.Obj obj(UiValue v) {

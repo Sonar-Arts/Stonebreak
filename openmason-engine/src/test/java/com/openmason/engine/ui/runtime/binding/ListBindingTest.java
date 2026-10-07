@@ -95,7 +95,7 @@ class ListBindingTest {
     void plainListValuesAreDiffedByItemKey() {
         OmuiArchive doc = BindingRig.withData(screen("t:ui/x", box("root").kids(
             node("list", "ListView").prop("itemKey", "id").bind("prop:items", "lobby.players").kids(
-                label("row", "?").bind("prop:text", ".name")))));
+                label("row", "?").bind("prop:text", ".name")))), "t:lobby@1");
         UiHost host = new UiHost();
         DataCell lobby = host.data().register("lobby", new DataCell(DataType.ANY,
             obj("players", new UiValue.Arr(List.of(obj("id", 1, "name", "A"), obj("id", 2, "name", "B"))))),
@@ -117,7 +117,7 @@ class ListBindingTest {
         inv.setAll(List.of(slot("a", "Stone", 1), slot("b", "Dirt", 2)));
         OmuiArchive doc = BindingRig.withData(screen("t:ui/x", box("root").style("width", 200).style("height", 200).kids(
             node("list", "ListView").style("height", 100).bind("prop:items", "inventory").kids(
-                label("row", "?").style("height", 20).bind("prop:text", ".name")))));
+                label("row", "?").style("height", 20).bind("prop:text", ".name")))), "stonebreak:inventory@1");
         UiDocumentInstance ui = UiDocumentInstance.instantiate(doc, UiRuntimeContext.basic().withMeasurer(UiDocs.FIXED_TEXT));
         ui.setMetrics(UiMetrics.of(200, 200, 1));
         try (UiBinder b = UiBinder.open(ui, host, UiConverters.NONE)) {
@@ -144,7 +144,7 @@ class ListBindingTest {
         inv.setAll(items);
         OmuiArchive doc = BindingRig.withData(screen("t:ui/x", box("root").style("width", 200).style("height", 300).kids(
             node("list", "ListView").style("height", 100).prop("itemHeight", 20).bind("prop:items", "inventory").kids(
-                box("row").kids(label("name", "?").bind("prop:text", ".name"), label("count", "?").bind("prop:text", ".name"))))));
+                box("row").kids(label("name", "?").bind("prop:text", ".name"), label("count", "?").bind("prop:text", ".name"))))), "stonebreak:inventory@1");
         UiDocumentInstance ui = UiDocumentInstance.instantiate(doc, UiRuntimeContext.basic().withMeasurer(UiDocs.FIXED_TEXT));
         ui.setMetrics(UiMetrics.of(200, 300, 1));
         try (UiBinder b = UiBinder.open(ui, host, UiConverters.NONE)) {

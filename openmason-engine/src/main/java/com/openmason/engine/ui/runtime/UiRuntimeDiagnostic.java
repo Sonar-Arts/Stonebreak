@@ -50,6 +50,8 @@ public record UiRuntimeDiagnostic(Severity severity, Code code, String element, 
         INPUT_GATE_BLOCKED,
         // Bindings and host actions (#289)
         UNKNOWN_DATA_SOURCE,
+        /** A data root (or action) whose host contract the document does not declare in hostApis (#327). */
+        CAPABILITY_MISSING,
         BINDING_TYPE,
         MISSING_CONVERTER,
         CONVERTER_FAILED,

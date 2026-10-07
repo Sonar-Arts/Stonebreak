@@ -48,7 +48,7 @@ class UiScopeTest {
     }
 
     private UiScope open() {
-        return host.openScope(DOC, Set.of("t:network"), problems::add);
+        return host.openScope(DOC, Set.of("t:network", "t:session"), problems::add);
     }
 
     private static UiValue.Obj args(Object... kv) {

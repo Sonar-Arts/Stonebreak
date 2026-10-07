@@ -79,27 +79,73 @@ public final class UiScope implements AutoCloseable {
     }
 
     // ── data ────────────────────────────────────────────────────────────────
+    //
+    // A document only observes the roots whose contract it declares in hostApis (#327): a root
+    // of any other contract reads as FAILED, cannot be watched and cannot be edited, whoever
+    // asks (bindings, scripts, graphs). Callers that can fail loudly check first with
+    // requireDeclared; the binder reports an element diagnostic.
 
-    /** Current state at an absolute path, including this scope's drafted edits. */
+    /**
+     * True when this scope may observe data root {@code rootName}: the root exists and its
+     * contract is one the document declares (or the scope is unchecked).
+     */
+    public boolean declares(String rootName) {
+        DataRoot root = host.data().root(rootName);
+        return root != null && declares(root);
+    }
+
+    private boolean declares(DataRoot root) {
+        return declaredContracts == null || declaredContracts.containsKey(root.contract().id());
+    }
+
+    /**
+     * Throws {@code CAPABILITY_MISSING} when {@code path}'s root exists but belongs to a contract
+     * the document does not declare. An unknown root passes: it reads as {@link DataState#MISSING}.
+     */
+    public void requireDeclared(DataPath path, CallSite site) {
+        String problem = undeclared(path);
+        if (problem != null) {
+            throw new UiActionException(UiActionException.Code.CAPABILITY_MISSING, site, path.toString(), problem);
+        }
+    }
+
+    /** Why {@code path} may not be observed here, or {@code null} when it may (or names no root). */
+    public String undeclared(DataPath path) {
+        DataRoot root = host.data().root(path.rootName());
+        if (root == null || declares(root)) {
+            return null;
+        }
+        return "data root '" + root.name() + "' belongs to host contract " + root.contract().id()
+            + ", which the document does not declare in hostApis";
+    }
+
+    /**
+     * Current state at an absolute path, including this scope's drafted edits. A root the
+     * document does not declare reads as {@link DataState.Failed}.
+     */
     public DataState read(DataPath path) {
         DataRoot root = host.data().root(path.rootName());
         if (root == null) {
             return DataState.MISSING;
+        }
+        if (!declares(root)) {
+            return DataState.failed("CAPABILITY_MISSING: " + undeclared(path));
         }
         UiValue draft = edits.draft(root.name());
         DataState base = draft != null ? DataState.ready(draft) : root.source().state();
         return base.at(path.tail());
     }
 
-    /** Schema at an absolute path, or {@code null} when no root or member declares it. */
+    /** Schema at an absolute path, or {@code null} when no root or member declares it (or the root is undeclared). */
     public DataType typeOf(DataPath path) {
         DataRoot root = host.data().root(path.rootName());
-        return root == null ? null : path.typeFrom(root.source().type());
+        return root == null || !declares(root) ? null : path.typeFrom(root.source().type());
     }
 
     /**
      * Calls {@code listener} whenever the state at {@code path} changes (drafts included). The
-     * current state is not delivered; read it with {@link #read}.
+     * current state is not delivered; read it with {@link #read}. A root the document does not
+     * declare is never watched ({@link Subscription#NONE}).
      */
     public Subscription watch(DataPath path, Consumer<DataState> listener) {
         Objects.requireNonNull(listener, "listener");
@@ -134,8 +180,8 @@ public final class UiScope implements AutoCloseable {
             return Subscription.NONE;
         }
         DataRoot root = host.data().root(w.path.rootName());
-        if (root == null) {
-            return Subscription.NONE; // nothing will ever change; activation reports the unknown root
+        if (root == null || !declares(root)) {
+            return Subscription.NONE; // nothing will ever change; activation reports the unknown/undeclared root
         }
         Channel ch = channels.computeIfAbsent(root.name(), n -> new Channel(root));
         w.last = read(w.path);

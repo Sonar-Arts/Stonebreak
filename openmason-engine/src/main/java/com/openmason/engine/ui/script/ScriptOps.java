@@ -215,12 +215,15 @@ final class ScriptOps {
 
             // ── data and actions (#289) ─────────────────────────────────────
             case "read" -> {
-                DataState st = scope().read(DataPath.parse(str(a, 0, "path")));
+                DataPath path = DataPath.parse(str(a, 0, "path"));
+                scope().requireDeclared(path, site(ctx, null)); // only roots of hostApis contracts (#327)
+                DataState st = scope().read(path);
                 out.value(st.valueOrNull()).string(stateName(st));
             }
             case "watch" -> {
                 int id = (int) num(a, 1);
                 DataPath path = DataPath.parse(str(a, 0, "path"));
+                scope().requireDeclared(path, site(ctx, null));
                 if (ctx.watches.size() >= UiScriptRuntime.MAX_WATCHES) {
                     throw new IllegalStateException("this script holds " + UiScriptRuntime.MAX_WATCHES
                         + " watches; cancel some before watching more");

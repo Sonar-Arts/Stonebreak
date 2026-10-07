@@ -31,9 +31,9 @@ import java.util.stream.Collectors;
  *       optional one a warning;</li>
  *   <li>every absolute data path (node {@code dataSource}s and binding paths) must name a root
  *       the host registered ({@code UNKNOWN_DATA_SOURCE});</li>
- *   <li>a root whose contract the manifest does not declare is a warning
- *       ({@code UNDECLARED_HOST_API}): the document works here but would not tell a host that
- *       lacks it.</li>
+ *   <li>a root whose contract the manifest does not declare is an error
+ *       ({@code UNDECLARED_HOST_API}): the scope refuses to let the document observe it (#327),
+ *       so the binding could never show host data.</li>
  * </ul>
  */
 public final class UiActivation {
@@ -132,9 +132,9 @@ public final class UiActivation {
             d.error(UiDiagnostic.Code.UNKNOWN_DATA_SOURCE, entry, ptr,
                 "data root '" + p.rootName() + "' (" + raw + ") is not provided by this host");
         } else if (!declared.contains(root.contract().id())) {
-            d.warning(UiDiagnostic.Code.UNDECLARED_HOST_API, entry, ptr,
+            d.error(UiDiagnostic.Code.UNDECLARED_HOST_API, entry, ptr,
                 "'" + p.rootName() + "' belongs to host contract " + root.contract().id()
-                    + ", which the manifest does not list in hostApis");
+                    + ", which the manifest does not list in hostApis; the document may not observe it");
         }
     }
 }

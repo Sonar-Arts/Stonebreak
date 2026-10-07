@@ -87,4 +87,57 @@ class FixtureHostTest {
         f.collection("slots").remove("1");
         assertEquals(1, f.collection("slots").items().size());
     }
+
+    // ── #327: fixture roots stand in for the contracts the document declares ──
+
+    @Test
+    void shorthandRootsTakeTheDeclaredContractTheyName() {
+        FixtureHost f = parse("{\"session\": {\"online\": true}, \"vitals\": {\"health\": 3}, \"weather\": {\"rain\": 1}}",
+            declaring("stonebreak:session", "stonebreak:player.vitals", "stonebreak:screen.pause"));
+        assertEquals("stonebreak:session", f.host().data().root("session").contract().id());
+        assertEquals("stonebreak:player.vitals", f.host().data().root("vitals").contract().id(), "suffix match");
+        assertEquals("fixture:weather", f.host().data().root("weather").contract().id(), "no declared contract names it");
+
+        UiScope s = f.host().openScope("t:ui/pause", Set.of("stonebreak:session", "stonebreak:player.vitals",
+            "stonebreak:screen.pause"), p -> { });
+        assertEquals(DataState.ready(UiValue.TRUE), s.read(DataPath.parse("session.online")), "the preview keeps working");
+        assertEquals(DataState.ready(UiValue.of(3)), s.read(DataPath.parse("vitals.health")));
+        assertTrue(s.read(DataPath.parse("weather.rain")) instanceof DataState.Failed, "a fixture cannot widen access");
+        assertEquals(UiActionException.Code.CAPABILITY_MISSING, assertThrows(UiActionException.class,
+            () -> s.requireDeclared(DataPath.parse("weather.rain"), s.site("x", CallSite.Origin.SCRIPT))).code());
+        s.close();
+    }
+
+    @Test
+    void explicitContractsWinAndUndeclaredOnesStayRefused() {
+        FixtureHost f = parse("""
+            {"contracts": {"carried": "stonebreak:inventory", "session": "stonebreak:other"},
+             "data": {"carried": {"count": 1}, "session": {"online": true}}}
+            """, declaring("stonebreak:inventory", "stonebreak:session"));
+        assertEquals("stonebreak:inventory", f.host().data().root("carried").contract().id());
+        assertEquals("stonebreak:other", f.host().data().root("session").contract().id(), "the fixture's word is final");
+        UiScope s = f.host().openScope("t:ui/inv", Set.of("stonebreak:inventory", "stonebreak:session"), p -> { });
+        assertEquals(DataState.ready(UiValue.of(1)), s.read(DataPath.parse("carried.count")));
+        assertTrue(s.read(DataPath.parse("session.online")) instanceof DataState.Failed);
+        s.close();
+    }
+
+    @Test
+    void contractNamingPrefersAnExactLocalIdThenTheShortest() {
+        assertEquals("a:session", FixtureHost.declaredContractOf("session", List.of("b:net.session", "a:session")));
+        assertEquals("b:x.vitals", FixtureHost.declaredContractOf("vitals", List.of("b:player.vitals", "b:x.vitals")));
+        assertEquals(null, FixtureHost.declaredContractOf("vitals", List.of("b:vitalsx", "b:player.vitalsx")));
+        assertEquals("plain", FixtureHost.declaredContractOf("plain", List.of("plain")), "no namespace");
+    }
+
+    @Test
+    void theSamplePauseFixturePreviewsUnderItsDeclaredContracts() throws Exception {
+        com.openmason.engine.format.omui.OmuiArchive pause = com.openmason.engine.format.omui.UiSamples.pauseMenu();
+        FixtureHost f = FixtureHost.forArchive(pause);
+        Map<String, Integer> declared = new java.util.TreeMap<>();
+        pause.manifest().hostApis().forEach(h -> declared.put(h.id(), h.version()));
+        UiScope s = f.host().openScopeAt(pause.manifest().documentId(), declared, p -> { });
+        assertEquals(DataState.ready(UiValue.TRUE), s.read(DataPath.parse("session.online")));
+        s.close();
+    }
 }

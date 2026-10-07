@@ -78,6 +78,9 @@ public final class EditSession {
         if (root == null) {
             return reject(site, "no data root '" + path.rootName() + "'");
         }
+        if (!scope.declares(root.name())) {
+            return reject(site, "CAPABILITY_MISSING: " + scope.undeclared(path));
+        }
         if (!root.editable()) {
             return reject(site, path.rootName() + " is read-only");
         }

@@ -145,10 +145,10 @@ class UiBinderTest {
 
     @Test
     void relativePathsResolveAgainstTheNearestSource() {
-        OmuiArchive doc = screen("t:ui/x", box("root").data("world").kids(
+        OmuiArchive doc = BindingRig.withData(screen("t:ui/x", box("root").data("world").kids(
             box("player").data(".player").kids(label("name", "?").bind("prop:text", ".name")),
             label("seed", "?").bind("prop:text", ".seedText"),
-            label("abs", "?").bind("prop:text", "world.player.name")));
+            label("abs", "?").bind("prop:text", "world.player.name"))), "t:world@1");
         UiHost host = new UiHost();
         DataCell world = host.data().register("world", new DataCell(DataType.ANY,
             obj("seedText", "42", "player", obj("name", "Steve"))), HostContract.of("t:world", 1));
@@ -167,9 +167,9 @@ class UiBinderTest {
     void instanceParamBindingsFeedTheComponentAndSlotsKeepTheirAuthorsSource() {
         OmuiArchive button = component("t:ui/button", box("frame").kids(label("label", "?").bind("prop:text", ".label"),
             box("slot_host")), contract(List.of(param("label", ValueType.STRING, "Button")), List.of(UiDocs.slot("icon", "slot_host"))));
-        OmuiArchive doc = screen("t:ui/x", box("root").data("session").kids(
+        OmuiArchive doc = BindingRig.withData(screen("t:ui/x", box("root").data("session").kids(
             inst("b", "t:ui/button", Map.of(), List.of(), Map.of("icon", List.of(label("slotted", "?").bind("prop:text", ".user"))))
-                .bind("prop:label", ".user")));
+                .bind("prop:label", ".user"))), "stonebreak:session@1");
         UiHost host = new UiHost();
         DataCell s = host.data().register("session", new DataCell(DataType.object("user", DataType.string()),
             obj("user", "Steve")), SESSION);
@@ -189,8 +189,8 @@ class UiBinderTest {
 
     @Test
     void nonReadyStatesFallBackToTheAuthoredValue() {
-        OmuiArchive doc = screen("t:ui/x", box("root").kids(label("name", "unknown").bind("prop:text", "session.name"),
-            label("ghost", "none").bind("prop:text", "nope.name")));
+        OmuiArchive doc = BindingRig.withData(screen("t:ui/x", box("root").kids(label("name", "unknown").bind("prop:text", "session.name"),
+            label("ghost", "none").bind("prop:text", "nope.name"))), "stonebreak:session@1");
         UiHost host = new UiHost();
         DataCell s = host.data().register("session", new DataCell(DataType.object("name", DataType.string().orNull()),
             DataState.LOADING), SESSION);
@@ -214,10 +214,10 @@ class UiBinderTest {
 
     @Test
     void typeMismatchesAndMissingConvertersAreDiagnostics() {
-        OmuiArchive doc = screen("t:ui/x", box("root").kids(
+        OmuiArchive doc = BindingRig.withData(screen("t:ui/x", box("root").kids(
             label("count", "0").bind("prop:text", "stats.count"),
             box("c").bind("class:online", "stats.count"),
-            box("d").bind("style:display", "stats.count", UiNode.BindingMode.TO_TARGET, "no_such")));
+            box("d").bind("style:display", "stats.count", UiNode.BindingMode.TO_TARGET, "no_such"))), "t:stats@1");
         UiHost host = new UiHost();
         host.data().register("stats", new DataCell(DataType.object("count", DataType.integer()), obj("count", 3)),
             HostContract.of("t:stats", 1));
@@ -233,8 +233,8 @@ class UiBinderTest {
 
     @Test
     void onceAppliesTheFirstValueOnly() {
-        OmuiArchive doc = screen("t:ui/x", box("root").kids(
-            label("l", "?").bind("prop:text", "session.user", UiNode.BindingMode.ONCE, null)));
+        OmuiArchive doc = BindingRig.withData(screen("t:ui/x", box("root").kids(
+            label("l", "?").bind("prop:text", "session.user", UiNode.BindingMode.ONCE, null))), "stonebreak:session@1");
         UiHost host = new UiHost();
         DataCell s = host.data().register("session", new DataCell(DataType.object("user", DataType.string()),
             obj("user", "Steve")), SESSION);
@@ -248,7 +248,8 @@ class UiBinderTest {
 
     @Test
     void toTargetBindingsStillOwnTheirTargets() {
-        OmuiArchive doc = screen("t:ui/x", box("root").kids(label("l", "?").bind("prop:text", "session.user")));
+        OmuiArchive doc = BindingRig.withData(screen("t:ui/x", box("root").kids(label("l", "?").bind("prop:text", "session.user"))),
+            "stonebreak:session@1");
         UiHost host = new UiHost();
         host.data().register("session", new DataCell(DataType.object("user", DataType.string()), obj("user", "Steve")), SESSION);
         UiDocumentInstance ui = UiDocumentInstance.instantiate(doc, UiRuntimeContext.basic());
@@ -256,6 +257,27 @@ class UiBinderTest {
             assertFalse(ui.find("l").setProp("text", UiValue.of("hacked")));
             assertEquals("Steve", ui.find("l").text("text"));
             assertTrue(UiDocs.has(ui, UiRuntimeDiagnostic.Code.BOUND_PROPERTY_WRITE));
+        }
+    }
+
+    @Test
+    void bindingsToUndeclaredRootsAreRefusedWithADiagnostic() {
+        OmuiArchive doc = BindingRig.withData(screen("t:ui/x", box("root").kids(
+            label("ok", "?").bind("prop:text", "session.user"),
+            label("hp", "hidden").bind("prop:text", "vitals.health"))), "stonebreak:session@1");
+        UiHost host = new UiHost();
+        host.data().register("session", new DataCell(DataType.object("user", DataType.string()), obj("user", "Steve")), SESSION);
+        DataCell vitals = host.data().register("vitals", new DataCell(DataType.object("health", DataType.integer()),
+            obj("health", 20)), HostContract.of("stonebreak:player.vitals", 1));
+        UiDocumentInstance ui = UiDocumentInstance.instantiate(doc, UiRuntimeContext.basic());
+        try (UiBinder b = UiBinder.open(ui, host, UiConverters.NONE)) {
+            assertEquals("Steve", ui.find("ok").text("text"));
+            assertEquals("hidden", ui.find("hp").text("text"), "the authored value; host data never reaches the element (#327)");
+            assertEquals(BindingStatus.State.FAILED, b.status("hp", "prop:text").state());
+            assertTrue(UiDocs.has(ui, UiRuntimeDiagnostic.Code.CAPABILITY_MISSING));
+            assertEquals(0, vitals.subscriberCount());
+            vitals.set(obj("health", 3));
+            assertEquals("hidden", ui.find("hp").text("text"));
         }
     }
 
@@ -348,7 +370,7 @@ class UiBinderTest {
 
     @Test
     void runtimeInsertionsAndRemovalsBindAndRelease() {
-        OmuiArchive doc = screen("t:ui/x", box("root").data("session"));
+        OmuiArchive doc = BindingRig.withData(screen("t:ui/x", box("root").data("session")), "stonebreak:session@1");
         UiHost host = new UiHost();
         DataCell s = host.data().register("session", new DataCell(DataType.object("user", DataType.string()),
             obj("user", "Steve")), SESSION);
