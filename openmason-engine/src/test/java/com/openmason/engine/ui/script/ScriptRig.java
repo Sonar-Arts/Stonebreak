@@ -82,10 +82,15 @@ final class ScriptRig implements AutoCloseable {
             .withScript(part, source);
     }
 
+    /** What {@code UiDocumentView.layout} does: update, reconcile input, then the settle point (#325). */
     void layout() {
         ui.update();
         view.input().sync();
         ui.update();
+        if (rt != null) {
+            rt.settle();
+            ui.update();
+        }
     }
 
     /** One host frame of {@code dt} seconds. */

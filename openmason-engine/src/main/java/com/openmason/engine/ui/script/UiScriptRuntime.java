@@ -68,6 +68,16 @@ import java.util.Objects;
  * hot-swaps modules after a document or script change, and {@link #close} runs {@code on_close}
  * and releases everything.
  *
+ * <p><b>Component instances that come and go</b> (#325): rows a list builds or drops, instances a
+ * script inserts or removes, and virtualized rows recycled for another item. The instance reports
+ * them ({@link UiDocumentInstance.ScopeObserver}) and the runtime applies them at its next safe
+ * point, never in the middle of a tree change or a binding pass: the end of
+ * {@code UiDocumentView.layout} ({@link #settled}), {@link #open}, {@link #update}, and the return
+ * of the outermost Lua call that caused them. A new instance with code-behind gets a fresh
+ * environment (module top level, then {@code on_open} once the screen is open); one that left
+ * runs {@code on_close} and releases everything; a recycled one does both, so the next item never
+ * sees the last one's module state, handlers, watches or tasks.
+ *
  * <p><b>Execution model.</b> Everything runs synchronously on the UI thread at defined points:
  * input dispatch (element handlers, {@code on_input}), {@link #update} (completed actions, data
  * watches, animation completions and timers are delivered, then {@code update(dt)}) and binding
@@ -179,6 +189,42 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
 
     /** Runtime entries (and so Lua calls) on the stack; close/reload wait for 0. */
     private int entries;
+    /** Component instances added, removed or recycled since the last safe point (#325). */
+    private final ArrayDeque<ScopeChange> scopeChanges = new ArrayDeque<>();
+    /** A Lua call caused scope changes: apply them once the outermost call returns. */
+    private boolean scopesOnExit;
+    /** Code-behind found after load could not start (no Lua host, newer ui API): reported once. */
+    private boolean lateStartRefused;
+    private final UiDocumentInstance.ScopeObserver scopeObserver = new UiDocumentInstance.ScopeObserver() {
+        @Override
+        public void scopeAdded(UiDocumentInstance.AuthoringScope scope) {
+            queue(new ScopeChange.Added(scope));
+        }
+
+        @Override
+        public void scopeRemoved(UiDocumentInstance.AuthoringScope scope) {
+            queue(new ScopeChange.Removed(scope.instanceKey()));
+        }
+
+        @Override
+        public void scopesRecycled(java.util.Set<String> instanceKeys) {
+            queue(new ScopeChange.Recycled(java.util.Set.copyOf(instanceKeys)));
+        }
+    };
+
+    /** At most this many scope changes per safe point; the rest wait for the next one. */
+    static final int MAX_SCOPE_CHANGES = 1024;
+
+    private sealed interface ScopeChange {
+        record Added(UiDocumentInstance.AuthoringScope scope) implements ScopeChange {
+        }
+
+        record Removed(String instanceKey) implements ScopeChange {
+        }
+
+        record Recycled(java.util.Set<String> instanceKeys) implements ScopeChange {
+        }
+    }
     private boolean closeDeferred;
     private boolean reloadDeferred;
     /** Host epoch the tasks belong to; a change (world left) cancels them (#282 C5). */
@@ -211,6 +257,7 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
      */
     public static UiScriptRuntime load(UiDocumentInstance ui, UiScriptOptions options, UiScriptServices services) {
         UiScriptRuntime rt = new UiScriptRuntime(Objects.requireNonNull(ui, "ui"), options, services);
+        ui.addScopeObserver(rt.scopeObserver);
         List<ScriptContext> found = rt.discover();
         if (found.isEmpty()) {
             return rt;
@@ -219,12 +266,14 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         if (api > OmuiFormat.UI_API_VERSION) {
             rt.report(Severity.ERROR, Code.API_VERSION, null, "", "document targets ui API " + api
                 + "; this host implements " + OmuiFormat.UI_API_VERSION + ": code-behind not run");
+            rt.lateStartRefused = true;
             return rt;
         }
         try {
             CendaLua.require();
         } catch (RuntimeException e) {
             rt.report(Severity.ERROR, Code.UNAVAILABLE, null, "", e.getMessage());
+            ui.removeScopeObserver(rt.scopeObserver);
             throw e;
         }
         rt.start(found);
@@ -265,20 +314,50 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         this.epochSeen = scope == null ? 0 : scope.host().epoch();
     }
 
-    /** Runs {@code on_open} of every component module, then the screen's. */
+    /**
+     * Runs {@code on_open} of every component module, then the screen's. Instances built since
+     * {@link #load} (the binder's list rows) get their contexts first.
+     */
     public void open() {
-        if (lua == null || opened || closed) {
+        if (opened || closed) {
             return;
         }
-        opened = true;
         enter();
         try {
-            for (int i = contexts.size() - 1; i >= 0 && !closeDeferred; i--) {
+            applyScopeChanges(); // before opened: every context opens below, in order
+            opened = true;
+            for (int i = contexts.size() - 1; i >= 0 && !closeDeferred && lua != null; i--) {
                 openContext(contexts.get(i));
             }
         } finally {
             exit();
         }
+    }
+
+    /**
+     * Applies the component instances added, removed or recycled since the last safe point
+     * (#325). {@code UiDocumentView.layout} calls it through {@link #settled}; hosts driving the
+     * instance without a view call it after their binding pass.
+     */
+    public void settle() {
+        if (closed || closeDeferred || scopeChanges.isEmpty()) {
+            return;
+        }
+        if (entries > 0) {
+            scopesOnExit = true; // never start or stop contexts under a running call
+            return;
+        }
+        enter();
+        try {
+            applyScopeChanges();
+        } finally {
+            exit();
+        }
+    }
+
+    @Override
+    public void settled() {
+        settle();
     }
 
     /**
@@ -291,12 +370,16 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
             return;
         }
         time += dt; // animations were sampled by the view's frame before this (#295)
-        if (lua == null) {
+        if (lua == null && scopeChanges.isEmpty()) {
             return;
         }
         long t0 = System.nanoTime();
         enter();
         try {
+            applyScopeChanges();
+            if (lua == null) {
+                return; // nothing scripted appeared
+            }
             checkEpoch();
             tickTimers();
             deliverQueued(t0);
@@ -358,6 +441,9 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         } else if (reloadDeferred) {
             reloadDeferred = false;
             reload();
+        } else if (scopesOnExit) {
+            scopesOnExit = false;
+            settle();
         }
     }
 
@@ -389,6 +475,8 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     }
 
     private void reloadNow() {
+        scopeChanges.clear(); // discover() below sees the tree as it is now
+        scopesOnExit = false;
         generation++;
         cancelPending();
         for (ScriptContext ctx : contexts) {
@@ -481,6 +569,8 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
             }
         }
         closed = true;
+        ui.removeScopeObserver(scopeObserver);
+        scopeChanges.clear();
         cancelPending();
         for (ScriptContext ctx : contexts) {
             animator.clear(ctx);
@@ -588,6 +678,145 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     /** Pending awaited operations (actions, timers, animations) — 0 after close. */
     public int pendingCount() {
         return pending.size() + timers.size() + settlements.size();
+    }
+
+    // ── component instances that come and go (#325) ─────────────────────────
+
+    private void queue(ScopeChange change) {
+        if (closed) {
+            return;
+        }
+        scopeChanges.add(change);
+        if (entries > 0) {
+            scopesOnExit = true; // a script changed the tree: apply when its call returns
+        }
+    }
+
+    /** Applies queued scope changes; runs inside an entry, never under a Lua call. */
+    private void applyScopeChanges() {
+        if (scopeChanges.isEmpty()) {
+            scopesOnExit = false;
+            return; // the per-frame path allocates nothing
+        }
+        java.util.Set<String> fresh = new java.util.HashSet<>();
+        int budget = MAX_SCOPE_CHANGES;
+        ScopeChange c;
+        while (budget-- > 0 && !closed && !closeDeferred && (c = scopeChanges.poll()) != null) {
+            switch (c) {
+                case ScopeChange.Added a -> {
+                    if (addScope(a.scope())) {
+                        fresh.add(a.scope().instanceKey());
+                    }
+                }
+                case ScopeChange.Removed r -> {
+                    ScriptContext ctx = liveContext(r.instanceKey());
+                    if (ctx != null) {
+                        endContext(ctx);
+                        contexts.remove(ctx);
+                    }
+                }
+                case ScopeChange.Recycled r -> {
+                    for (String key : r.instanceKeys()) {
+                        ScriptContext ctx = liveContext(key);
+                        if (ctx != null && !fresh.contains(key)) { // a context made this pass is already fresh
+                            restartContext(ctx);
+                        }
+                    }
+                }
+            }
+        }
+        if (scopeChanges.isEmpty()) {
+            scopesOnExit = false;
+        }
+    }
+
+    /** A context for a component instance built after load. @return whether one started */
+    private boolean addScope(UiDocumentInstance.AuthoringScope scope) {
+        String key = scope.instanceKey();
+        UiElement el = ui.find(key);
+        if (key.isEmpty() || el == null || el.isRemoved() || !behaves(scope.archive()) || liveContext(key) != null) {
+            return false; // gone again before this safe point, nothing to run, or already running
+        }
+        ScriptContext ctx = context(key, key, scope.archive());
+        if (lua == null) {
+            if (!startLate(ctx)) {
+                return false;
+            }
+        } else {
+            contexts.add(ctx);
+            createContext(ctx);
+        }
+        if (opened && !ctx.closed) {
+            openContext(ctx);
+        }
+        return true;
+    }
+
+    /**
+     * The first code-behind of a document without any at load (a list row's component): starts
+     * the Lua state. A missing host or a newer ui API is reported once, as at load.
+     */
+    private boolean startLate(ScriptContext ctx) {
+        if (lateStartRefused) {
+            return false;
+        }
+        int api = ui.document().manifest().uiApi();
+        if (api > OmuiFormat.UI_API_VERSION) {
+            lateStartRefused = true;
+            report(Severity.ERROR, Code.API_VERSION, ctx, "", "document targets ui API " + api
+                + "; this host implements " + OmuiFormat.UI_API_VERSION + ": code-behind not run");
+            return false;
+        }
+        try {
+            CendaLua.require();
+            start(List.of(ctx));
+            return true;
+        } catch (RuntimeException e) {
+            lateStartRefused = true;
+            report(Severity.ERROR, Code.UNAVAILABLE, ctx, "", e.getMessage());
+            return false;
+        }
+    }
+
+    /** The open context of the component instance {@code instanceKey}, or null. */
+    private ScriptContext liveContext(String instanceKey) {
+        for (ScriptContext ctx : contexts) {
+            if (!ctx.closed && ctx.scopeKey.equals(instanceKey)) {
+                return ctx;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * A recycled instance starts over: the old context closes ({@code on_close}, tasks cancelled,
+     * handlers and watches released) and a fresh environment loads and opens in its place.
+     */
+    private void restartContext(ScriptContext old) {
+        int at = contexts.indexOf(old);
+        endContext(old);
+        ScriptContext ctx = context(old.scopeKey, old.rootKey, old.archive);
+        contexts.set(at, ctx);
+        createContext(ctx);
+        if (opened && !ctx.closed) {
+            openContext(ctx);
+        }
+    }
+
+    /** Stops one context for good: its animations and pending work, then {@link #closeContext}. */
+    private void endContext(ScriptContext ctx) {
+        animator.clear(ctx);
+        for (Map.Entry<Long, Pending> e : List.copyOf(pending.entrySet())) {
+            if (e.getValue().ctx == ctx) {
+                pending.remove(e.getKey()); // removed first: its settlement is never delivered
+                e.getValue().call.cancel();
+            }
+        }
+        timers.removeIf(t -> t.ctx == ctx);
+        settlements.removeIf(t -> t.ctx == ctx);
+        animEvents.removeIf(t -> t.ctx == ctx);
+        ctx.live.clear();
+        closeContext(ctx);
     }
 
     // ── setup ───────────────────────────────────────────────────────────────

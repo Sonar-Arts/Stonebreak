@@ -182,6 +182,23 @@ no filesystem search. Modules are cached per environment, and a require cycle is
 
 The game uses `GameUiDocuments.scripts/openBound`. The preview runs against its `FixtureHost`.
 
+**Component instances that come and go** (#325). ListView rows a binder builds or drops, instances inserted or
+removed at runtime, and virtualized rows recycled for another item are reported by the instance
+(`UiDocumentInstance.ScopeObserver`). The runtime queues them and applies them only at a safe point, never in
+the middle of a tree change or a binding pass:
+
+- the end of `UiDocumentView.layout` (`Extension.settled()` → `UiScriptRuntime.settle()`); hosts that drive the
+  instance without a view call `settle()` after their binding pass;
+- `open()` (rows the binder built before the screen opened) and every `update(dt)`;
+- the return of the outermost Lua call that caused them (a handler whose action trimmed a list).
+
+A new instance with code-behind gets a fresh environment: top level, then `on_open` once the screen is open. A
+document with no code-behind at load starts its Lua state at that point. An instance that left runs `on_close`,
+its tasks, timers, pending actions and animations are cancelled, and its handlers and watches are released. A
+**recycled** instance does both, in that order, so the next item never sees the last one's module globals,
+handlers, watches or tasks. `on_close` of a recycled instance runs after its row was rebound to the new item. At
+most 1,024 changes apply per safe point; the rest wait for the next one.
+
 ## 4. Execution model
 
 Everything runs synchronously on the UI thread, at defined points:
@@ -415,8 +432,6 @@ and `-Dopenmason.uidoc.preview=<file>` in the tool. Regenerate them with `-Dui.s
 
 ## 11. Not yet
 
-- **Runtime-inserted component instances** (ListView rows of a component with code-behind) get no script
-  context. Their template's bindings still work.
 - **Relative data paths** in `ui.read`/`ui.watch` (`.x` against the inherited source). Use absolute host paths.
 - **Packaging** is per platform: a jar carries the library of the machine that built it. A multi-platform release
   needs each CI platform's library added under its own `natives/<platform>/` folder.
@@ -436,6 +451,7 @@ and `-Dopenmason.uidoc.preview=<file>` in the tool. Regenerate them with `-Dui.s
 | `LuaHostTimeDeadlineTest`, `ScriptHostTimeTest` | host-function time is not charged to the deadline (slow upcall, slow action from a click handler: script stays enabled); a busy loop after a slow host call, or in a callback the host makes, still trips |
 | `ScriptSafetyTest` | sandbox denials, tamper-proof shared metatables, binary refusal, rollback + disable + `chunk:line`, deadline, memory cap, opt-in budget, failing `update`, syntax errors, pure converters, binding ownership, `on_close` failure, widget type checks |
 | `ScriptLifetimeTest` | cancellation on close, reload and world change (stale results never apply), await outside a task, `ui.sleep`, hot reload (new code, kept globals), a broken edit keeping the last good version, contexts added and removed by reload |
+| `ScriptListRowsTest` | scripted components in ListView rows start with their rows and stop when they go; a recycled virtualized row's script closes and starts over with fresh module state, handlers and tasks; rows a script's own call removed close as that call returns |
 | `ScriptHardeningTest` | close and reload from inside a handler deferred to the call's end, `ui.close()` from `on_close`, a world change cancelling sleeps/tweens/watch tasks, a failed handler releasing what it started, handle and watch caps, no context reachable from element/handle tables, several waiters on one handle, script and graph call sites, host option defaults |
 | `CendaLuaTest` (ABI 3 part), `NativeLibraryExtractorTest` | close refused inside a call and closed-state calls, `__gc` refusal, C-loop deadlines, the encode cap, seeded states; platform names, extract-once, per-build directories |
 | `ScriptModuleResolutionTest` | a shared module from a moved project, from a collect-all export with no project, and after a portable import; an embedded module after the `.omui` file moves and through an export; a missing module names itself at `pause.lua:2` |

@@ -271,8 +271,12 @@ items with `prop:items`.
 - **Virtualization.** Only visible rows exist (view height ÷ item height + 1). Two spacers keep the scroll extent at
   `items × itemHeight`. Scrolling **recycles** rows: their item feed is swapped, which rebinds the whole row subtree
   without new elements or leaked listeners. A recycled row starts clean: the local (script / edit-in-progress)
-  values of its subtree belonged to its old item and are dropped (the list's own row sizing stays), and `:invalid`
-  clears. `UiBinder.onRecycled((row, replacement) -> ...)` reports each recycle with the row now showing the old item
+  values of its subtree belonged to its old item and are dropped (the list's own row sizing stays), `:invalid`
+  clears, and so does its animation state (`UiDocumentInstance.recycled`, #325): held clip/tween values and running
+  transitions go, a clip or tween left animating nothing is interrupted (listener sees `stopped`), state machines of
+  component instances in the row restart in their initial state, their code-behind closes and starts over in a
+  fresh environment ([ui-scripting.md](ui-scripting.md) §3), and the new item's look settles without a
+  transition from the old one. `UiBinder.onRecycled((row, replacement) -> ...)` reports each recycle with the row now showing the old item
   (or null when it scrolled out); `UiDocumentView.bind` wires it to `FocusManager.recycled`, so **focus follows the
   item**, never the recycled element.
 - **Grid** (`columns > 1`, for inventories and hotbars). The view lays out as a wrapping row (`flex-direction: row`,
@@ -371,7 +375,7 @@ The preview drains the fixture queue once per frame.
 | `TwoWayBindingTest` | keystrokes stay local, commit stages, nothing saves before apply; invalid commit (`:invalid`), cancel restores; close drops edits |
 | `UiDataHardeningTest` | a UI-thread set supersedes a pending post; invalid posts fail the source instead of throwing into producers; coalesced, identity-diffed collection posts; confinement after the first drain; bounded drains; a handler closing its own screen or leaving the world succeeds; async handler that closed its screen is cancelled; only cancellable handlers are told; actions newer than the declared contract version; epoch hooks |
 | `EditSessionRebaseTest` | source changes show through untouched members and survive apply; `changed` paths; conflicts and per-member cancel; staging back to committed; edits staged during a commit stay |
-| `BindingHardeningTest` | `to-source` rollback; throwing back-converters; rows and virtual rows a script removed; recycled rows drop local edits and report focus replacements; grid layout and line virtualization |
+| `BindingHardeningTest` | `to-source` rollback; throwing back-converters; rows and virtual rows a script removed; recycled rows drop local edits, animation state (transitions, held/interrupted tweens, component state machines; #325) and report focus replacements; grid layout and line virtualization |
 | `UiActivationTest` | pause menu on complete/partial hosts (optional vs required), SBUI union, unknown roots and undeclared contracts with pointers, fixture host stands in |
 | `GameUiHostTest` (game) | pause and furnace pilots on `GameUiHost`, preview/game equivalence, epoch on leaving the world, pause/resync actions and their contract checks, settings validation before apply |
 | `GameUiHostContractsTest` (game) | slot actions through the real inventory/workbench/furnace rules (click, stack, right-drag sweep, shift transfer, crafting cells, every slot address hit-tests to its slot); refusals; furnace refreshes never stale; single-row grid updates for in-place changes; hotbar selection; world leave resets per-world roots; declared profile without a game |

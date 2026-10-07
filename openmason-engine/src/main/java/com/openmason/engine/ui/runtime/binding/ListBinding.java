@@ -33,7 +33,10 @@ import java.util.function.Consumer;
  *   <li><b>Virtualization.</b> With {@code itemHeight > 0} only the visible rows exist. Spacers
  *       keep the scroll extent at {@code items × itemHeight}; scrolling recycles rows by giving
  *       them other items, which rebinds their whole subtree. A recycled row drops its local
- *       (edit-in-progress) values, and focus follows its item ({@link UiBinder#onRecycled}).</li>
+ *       (edit-in-progress) values and its animation state (transitions, held clips and tweens,
+ *       state machines: {@link com.openmason.engine.ui.runtime.UiDocumentInstance#recycled}),
+ *       the code-behind of component instances inside starts over (the script runtime hears it
+ *       as a {@code ScopeObserver}), and focus follows its item ({@link UiBinder#onRecycled}).</li>
  *   <li><b>Grid.</b> With {@code columns > 1} the view wraps its rows into a grid: each row is
  *       {@code 1/columns} of the width and the view lays out as a wrapping row. Virtualization
  *       then works by lines of {@code columns} items, {@code itemHeight} tall.</li>

@@ -82,10 +82,7 @@ public final class UiStateMachines {
                 if (m != null) {
                     animator.clearAndRelease(m);
                 }
-                Machine fresh = new Machine(s, def);
-                machines.put(k, fresh);
-                String first = def.driver() == UiStateMachine.Driver.INTERACTION ? interactionState(fresh) : null;
-                enter(fresh, first != null ? first : def.initial(), false, null);
+                start(k, s, def);
             }
         }
         machines.entrySet().removeIf(e -> {
@@ -95,6 +92,33 @@ public final class UiStateMachines {
             }
             return false;
         });
+    }
+
+    /**
+     * Machines of the scopes {@code instanceKeys} start over in their initial state, as if just
+     * built (a recycled list row now shows another item, #325). Whatever they held goes back to
+     * the cascade first.
+     */
+    public void restart(Set<String> instanceKeys) {
+        List<Map.Entry<Key, Machine>> stale = new ArrayList<>();
+        for (Map.Entry<Key, Machine> e : machines.entrySet()) {
+            if (instanceKeys.contains(e.getKey().scope)) {
+                stale.add(e);
+            }
+        }
+        for (Map.Entry<Key, Machine> e : stale) {
+            Machine m = e.getValue();
+            m.generation++; // a pending transition clip must not chain into the old state's clip
+            animator.clearAndRelease(m);
+            start(e.getKey(), m.scope, m.def);
+        }
+    }
+
+    private void start(Key k, AuthoringScope s, UiStateMachine def) {
+        Machine fresh = new Machine(s, def);
+        machines.put(k, fresh);
+        String first = def.driver() == UiStateMachine.Driver.INTERACTION ? interactionState(fresh) : null;
+        enter(fresh, first != null ? first : def.initial(), false, null);
     }
 
     private static boolean stateClipChanged(Machine m, AuthoringScope before, AuthoringScope after) {

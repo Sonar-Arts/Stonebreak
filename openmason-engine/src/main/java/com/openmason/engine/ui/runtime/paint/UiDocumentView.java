@@ -39,6 +39,13 @@ public final class UiDocumentView implements AutoCloseable {
     public interface Extension extends AutoCloseable {
         void frame(double dt);
 
+        /**
+         * The end of {@link #layout}: the tree, its bindings and virtualized rows are consistent
+         * again. Extensions apply structure changes they queued meanwhile here.
+         */
+        default void settled() {
+        }
+
         @Override
         void close();
     }
@@ -119,6 +126,12 @@ public final class UiDocumentView implements AutoCloseable {
         }
         if (ui.needsUpdate()) {
             ui.update();
+        }
+        for (int i = 0; i < extensions.size(); i++) {
+            extensions.get(i).settled();
+        }
+        if (ui.needsUpdate()) {
+            ui.update(); // what settled extensions changed (a new row's on_open) shows this frame
         }
     }
 

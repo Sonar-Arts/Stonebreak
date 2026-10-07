@@ -356,9 +356,13 @@ public final class UiBinder implements AutoCloseable {
         this.recycleListener = Objects.requireNonNull(listener, "listener");
     }
 
-    /** A recycled row starts clean: local (script/edit) values of its subtree belong to its old item. */
+    /**
+     * A recycled row starts clean: local (script/edit) values and animation state (#325) of its
+     * subtree belong to its old item.
+     */
     void recycled(UiElement row) {
         clearLocal(row, true);
+        ui.recycled(row);
     }
 
     private void clearLocal(UiElement el, boolean isRow) {

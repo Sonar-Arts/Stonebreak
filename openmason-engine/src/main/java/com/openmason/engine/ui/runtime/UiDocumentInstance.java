@@ -76,6 +76,23 @@ public final class UiDocumentInstance implements AutoCloseable {
     }
 
     /**
+     * Told about component instances that come and go after instantiation (#325): rows a list
+     * builds or drops, instances a script inserts or removes, and list rows recycled for another
+     * item. Called while the tree changes, so an observer queues and acts at its next safe point
+     * (the script runtime does). A {@link #reload} reports nothing: hosts reload their observers.
+     */
+    public interface ScopeObserver {
+        /** A component instance was built into the tree. */
+        void scopeAdded(AuthoringScope scope);
+
+        /** A component instance left the tree. */
+        void scopeRemoved(AuthoringScope scope);
+
+        /** These component instances (keys) are inside a list row that now shows another item. */
+        void scopesRecycled(Set<String> instanceKeys);
+    }
+
+    /**
      * Outcome of a {@link #reload}.
      *
      * @param kept    keys present before and after; their instance state carried over
@@ -152,6 +169,7 @@ public final class UiDocumentInstance implements AutoCloseable {
     private double nextAnimationChange = Double.POSITIVE_INFINITY;
     private UpdateStats lastStats = UpdateStats.NONE;
     private final List<UpdateObserver> updateObservers = new ArrayList<>(1);
+    private final List<ScopeObserver> scopeObservers = new ArrayList<>(1);
     private float[] records = new float[FlexRecord.STRIDE * 16];
     private int[] nodeIds = new int[16];
     private float[] rects = new float[64];
@@ -396,6 +414,11 @@ public final class UiDocumentInstance implements AutoCloseable {
         }
         scopes.addAll(builder.scopes());
         scopesChanged |= !builder.scopes().isEmpty();
+        for (AuthoringScope s : builder.scopes()) {
+            for (int i = 0; i < scopeObservers.size(); i++) {
+                scopeObservers.get(i).scopeAdded(s);
+            }
+        }
         for (SheetBinding b : builder.sheets()) {
             customStates.addAll(b.sheet().source().customStates());
         }
@@ -468,8 +491,15 @@ public final class UiDocumentInstance implements AutoCloseable {
         if (sheets.removeIf(b -> b.scope() == el)) {
             selectorUse = null;
         }
-        if (scopes.removeIf(s -> s.instanceKey().equals(el.key()))) {
-            scopesChanged = true;
+        for (int i = scopes.size() - 1; i >= 0; i--) {
+            AuthoringScope s = scopes.get(i);
+            if (s.instanceKey().equals(el.key())) {
+                scopes.remove(i);
+                scopesChanged = true;
+                for (int j = 0; j < scopeObservers.size(); j++) {
+                    scopeObservers.get(j).scopeRemoved(s);
+                }
+            }
         }
         if (flex != null && el.flexNode >= 0) {
             flex.freeNode(el.flexNode);
@@ -655,6 +685,14 @@ public final class UiDocumentInstance implements AutoCloseable {
 
     public void removeUpdateObserver(UpdateObserver o) {
         updateObservers.remove(o);
+    }
+
+    public void addScopeObserver(ScopeObserver o) {
+        scopeObservers.add(Objects.requireNonNull(o, "observer"));
+    }
+
+    public void removeScopeObserver(ScopeObserver o) {
+        scopeObservers.remove(o);
     }
 
     /**
@@ -1181,6 +1219,43 @@ public final class UiDocumentInstance implements AutoCloseable {
     /** True when something will change on its own: an animated sprite, a transition, clip or tween. */
     public boolean animating() {
         return nextAnimationChange != Double.POSITIVE_INFINITY || animator.animating();
+    }
+
+    /**
+     * A virtualized list gave {@code row} another item (#325): its subtree drops every animation
+     * state of the old item, as if freshly built. Clips and tweens lose its channels (one left
+     * animating nothing else is interrupted: its listener sees {@code stopped}), held values and
+     * running transitions go, state machines of component instances inside restart in their
+     * initial state, and the cascade change the new item brings settles without a transition.
+     * {@link ScopeObserver}s hear which component instances inside were recycled, so their
+     * scripts start over too.
+     */
+    public void recycled(UiElement row) {
+        Set<String> keys = new HashSet<>();
+        dropAnimationState(row, keys);
+        machines.restart(keys);
+        Set<String> instances = new HashSet<>();
+        for (AuthoringScope s : scopes) {
+            if (keys.contains(s.instanceKey())) {
+                instances.add(s.instanceKey());
+            }
+        }
+        if (!instances.isEmpty()) {
+            Set<String> view = Collections.unmodifiableSet(instances);
+            for (int i = 0; i < scopeObservers.size(); i++) {
+                scopeObservers.get(i).scopesRecycled(view);
+            }
+        }
+    }
+
+    private void dropAnimationState(UiElement el, Set<String> keys) {
+        keys.add(el.key());
+        animator.forget(el.key());
+        el.baseResolved = false; // the next resolve is a first one: nothing to transition from
+        invalidateStyle(el);
+        for (UiElement c : el.children()) {
+            dropAnimationState(c, keys);
+        }
     }
 
     /** Device-pixel area changed since the last call (moves, restyles, content edits, scrolling). */

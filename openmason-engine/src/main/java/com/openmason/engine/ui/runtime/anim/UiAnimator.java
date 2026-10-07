@@ -465,13 +465,15 @@ public final class UiAnimator {
      * The element with {@code key} left the tree (removed, or dropped by a reload): its channels
      * go away with it, transitions on them stop, and a clip or tween left animating nothing else
      * is interrupted (its listener sees {@code stopped}). A later element under the same key starts
-     * with clean channels: nothing still running can write into it.
+     * with clean channels: nothing still running can write into it. An element still in the tree
+     * (a recycled list row, #325) shows its cascade again: no held or in-between value stays.
      */
     public void forget(String key) {
         Map<String, Channel> byTarget = channels.remove(key);
         if (byTarget == null) {
             return;
         }
+        UiElement el = ui.find(key);
         List<Playback> orphaned = new ArrayList<>();
         for (Channel ch : byTarget.values()) {
             if (ch.transition != null) {
@@ -488,6 +490,11 @@ public final class UiAnimator {
             }
             ch.explicit = null;
             ch.holder = null;
+            if (el != null && ch.property.isStyle()) {
+                el.clearAnimatedStyle(ch.property.name());
+            } else if (el != null) {
+                el.clearAnimatedProp(ch.property.name());
+            }
         }
         for (Playback p : orphaned) {
             end(p, true, false);
