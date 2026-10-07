@@ -314,8 +314,17 @@ public final class DocumentCommands {
      * component's defaults (unset).
      */
     public static UiCommand addInstance(String componentId, UiDependency row, NodeLocation at) {
+        return addInstance(componentId, row == null ? List.of() : List.of(row), at);
+    }
+
+    /**
+     * As {@link #addInstance(String, UiDependency, NodeLocation)} with every row the component's
+     * closure needs (nested components and their shared assets; see {@code ComponentDependencies}),
+     * each added unless the document already lists it.
+     */
+    public static UiCommand addInstance(String componentId, List<UiDependency> rows, NodeLocation at) {
         return UiCommand.of("Add " + UiIds.stem(componentId), ctx -> {
-            if (row != null) {
+            for (UiDependency row : rows) {
                 ensure(ctx, row, null);
             }
             if (ctx.doc().dependencies().find(componentId) == null) {

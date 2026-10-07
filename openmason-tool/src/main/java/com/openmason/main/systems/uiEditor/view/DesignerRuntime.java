@@ -382,7 +382,39 @@ public final class DesignerRuntime implements AutoCloseable {
         });
     }
 
+    /** Every forced pseudo-state, by element key (a copy). */
+    public Map<String, Set<String>> forcedStateMap() {
+        Map<String, Set<String>> out = new HashMap<>();
+        forcedStates.forEach((k, v) -> out.put(k, Set.copyOf(v)));
+        return out;
+    }
+
     // ── frame ───────────────────────────────────────────────────────────────
+
+    /**
+     * Advances the runtime by {@code dt} seconds without painting: in Preview the fixtures'
+     * queued results, the input router's clock and the scripts and their animations; in Design
+     * only the UI clock (animated sprites). {@link #paint} calls it every frame; automation calls
+     * it to let a preview settle deterministically (#324).
+     */
+    public void step(double dt) {
+        sync();
+        if (view == null) {
+            return;
+        }
+        if (mode == Mode.PREVIEW) {
+            if (fixtures != null) {
+                fixtures.host().drain();
+            }
+            if (input != null) {
+                input.router().tick(dt);
+            }
+            view.frame(dt);
+        } else {
+            view.instance().advanceClock(dt); // animated sprites (#294) play in design too
+        }
+    }
+
 
     /**
      * Advances and paints one frame at the given device size and scales.
@@ -396,17 +428,7 @@ public final class DesignerRuntime implements AutoCloseable {
             return null;
         }
         sincePaint += dt;
-        if (mode == Mode.PREVIEW) {
-            if (fixtures != null) {
-                fixtures.host().drain();
-            }
-            if (input != null) {
-                input.router().tick(dt);
-            }
-            view.frame(dt);
-        } else {
-            view.instance().advanceClock(dt); // animated sprites (#294) play in design too
-        }
+        step(dt);
         watchFiles(dt); // files changed outside the editor
         applyForcedStates();
         Object key = List.of(doc.revision(), width, height, uiScale, pixelRatio, mode, forcedStates.toString(),

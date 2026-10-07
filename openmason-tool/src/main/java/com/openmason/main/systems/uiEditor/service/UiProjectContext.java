@@ -156,6 +156,43 @@ public final class UiProjectContext {
         return UiDependency.shared(id, kind, b.sha256(), b.size(), relative(file));
     }
 
+    /**
+     * The shared dependency row for project component {@code documentId}, or null when the
+     * project has no such component.
+     *
+     * @throws IOException when the component file exists but cannot be read as a component
+     */
+    public UiDependency componentRow(String documentId) throws IOException {
+        for (Entry e : components()) {
+            if (documentId.equals(e.documentId())) {
+                if (read(e) == null) {
+                    throw new IOException(e.relative() + " is not a readable component");
+                }
+                return sharedRow(documentId, UiDependency.Kind.COMPONENT, e.path());
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Every row placing project component {@code documentId} needs: its own (requiring its
+     * closure) and the shared dependencies of it and of the components nested in it; empty when
+     * the project has no such component. See {@link ComponentDependencies}.
+     */
+    public List<UiDependency> componentRows(String documentId) throws IOException {
+        return ComponentDependencies.rows(documentId, this::componentRow, this::componentArchive);
+    }
+
+    /** The source of project component {@code documentId}, or null when the project has none (or it is unreadable). */
+    public OmuiArchive componentArchive(String documentId) {
+        for (Entry e : components()) {
+            if (documentId.equals(e.documentId())) {
+                return read(e);
+            }
+        }
+        return null;
+    }
+
     private List<Entry> scan(Path root) {
         List<Entry> out = new ArrayList<>();
         Path ui = root.resolve(ProjectLayout.UI_DIR);

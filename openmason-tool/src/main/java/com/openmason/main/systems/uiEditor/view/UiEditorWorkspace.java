@@ -315,6 +315,16 @@ public final class UiEditorWorkspace implements AutoCloseable {
         ctx.focusWindow = DesignerPanel.TITLE;
     }
 
+    /** Brings the UI Editor workspace and its Designer to the front (automation shows its work, #324). */
+    public void reveal() {
+        revealDesigner();
+    }
+
+    /** Shows the author the Restore/Discard banner for a newer crash-recovery copy (automation opens, #324). */
+    public void offerRecovery(UiEditorDocument doc, UiRecoveryService.Slot slot) {
+        designer.offerRecovery(doc, slot);
+    }
+
     public void openDocument() {
         if (files == null) {
             return;

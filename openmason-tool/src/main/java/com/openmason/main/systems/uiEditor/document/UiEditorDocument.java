@@ -222,6 +222,26 @@ public final class UiEditorDocument {
         }
     }
 
+    public UiHistory.Checkpoint checkpoint() {
+        return history.checkpoint();
+    }
+
+    /** Retracts the steps since {@code cp} without leaving redo entries (a run that made them failed). */
+    public boolean rollbackTo(UiHistory.Checkpoint cp) {
+        try {
+            UiHistory.Outcome o = history.rollbackTo(cp, project);
+            if (o != null) {
+                lastMessage = "Rolled back " + o.label() + " (the run that made it failed)";
+                apply(o, true);
+            }
+            return o != null;
+        } catch (UiCommandException e) {
+            lastMessage = e.getMessage();
+            fire();
+            return false;
+        }
+    }
+
     /** Ends a drag or typing session so the next mergeable edit starts a new undo step. */
     public void endInteraction() {
         history.endInteraction();

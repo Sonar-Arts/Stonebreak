@@ -308,6 +308,7 @@ public final class UiComposition {
     private void wireUiEditor(java.util.function.Supplier<java.nio.file.Path> projectRoot) {
         uiEditor = new com.openmason.main.systems.uiEditor.view.UiEditorWorkspace(projectRoot);
         uiEditor.setOnActivateRequest(() -> workspaceState.set(com.openmason.main.systems.layout.Workspace.UI));
+        mainInterface.setUiEditor(uiEditor); // MCP / scripting reach the workspace here (#324)
         var dialogs = mainInterface.getFileDialogService();
         uiEditor.setFileDialogs(new com.openmason.main.systems.uiEditor.view.UiEditorWorkspace.FileDialogs() {
             @Override

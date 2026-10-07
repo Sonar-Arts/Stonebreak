@@ -216,6 +216,23 @@ public final class UiDocumentService {
      * its convention path and opened.
      */
     public OpenResult importIntoProject(Path sbuiFile) {
+        return importIntoProject(sbuiFile, null);
+    }
+
+    /**
+     * Where {@link #importIntoProject} would save {@code sbuiFile}'s document: a fresh path at its
+     * convention location (never an existing file). Null without a project.
+     */
+    public Path importTarget(Path sbuiFile) throws IOException {
+        if (project.projectSource() == null) {
+            return null;
+        }
+        SbuiArchive sbui = SbuiReader.read(sbuiFile, SbuiReader.Options.EDITOR).archive();
+        return uniqueTarget(project.conventionPath(sbui.source().manifest().documentId()));
+    }
+
+    /** As {@link #importIntoProject(Path)}, saving the document at {@code target} (null = its convention path). */
+    public OpenResult importIntoProject(Path sbuiFile, Path target) {
         ProjectAssetSource source = project.projectSource();
         if (source == null) {
             return OpenResult.failed("Import needs an open project");
@@ -224,7 +241,9 @@ public final class UiDocumentService {
             SbuiArchive sbui = SbuiReader.read(sbuiFile, SbuiReader.Options.EDITOR).archive();
             SbuiProjectImport.Result r = SbuiProjectImport.importIntoProject(sbui, source);
             OmuiArchive doc = r.edit().apply(source.folder());
-            Path target = uniqueTarget(project.conventionPath(doc.manifest().documentId()));
+            if (target == null) {
+                target = uniqueTarget(project.conventionPath(doc.manifest().documentId()));
+            }
             try {
                 Files.createDirectories(target.getParent());
                 OmuiWriter.save(doc, target);

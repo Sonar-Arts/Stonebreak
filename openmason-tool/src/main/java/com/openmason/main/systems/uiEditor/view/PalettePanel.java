@@ -187,28 +187,15 @@ final class PalettePanel implements AutoCloseable {
         }
         String id = payload.substring("component:".length());
         UiEditorDocument doc = ctx.doc();
-        UiDependency row = doc == null ? null : doc.archive().dependencies().find(id);
-        if (row == null) {
-            for (UiProjectContext.Entry e : ctx.project.components()) {
-                if (id.equals(e.documentId())) {
-                    try {
-                        row = ctx.project.sharedRow(id, UiDependency.Kind.COMPONENT, e.path());
-                    } catch (java.io.IOException ex) {
-                        return UiCommand.of("Add component", c -> {
-                            throw new UiCommandException("Cannot read " + e.relative() + ": " + ex.getMessage());
-                        });
-                    }
-                    OmuiArchive comp = ctx.project.read(e);
-                    if (comp == null) {
-                        return UiCommand.of("Add component", c -> {
-                            throw new UiCommandException(e.relative() + " is not a readable component");
-                        });
-                    }
-                    break;
-                }
-            }
+        java.util.List<UiDependency> rows;
+        try {
+            rows = ctx.project.componentRows(id); // the component and everything nested in it needs
+        } catch (java.io.IOException ex) {
+            return UiCommand.of("Add component", c -> {
+                throw new UiCommandException("Cannot add " + id + ": " + ex.getMessage());
+            });
         }
-        return DocumentCommands.addInstance(id, row, at);
+        return DocumentCommands.addInstance(id, rows, at);
     }
 
     @Override

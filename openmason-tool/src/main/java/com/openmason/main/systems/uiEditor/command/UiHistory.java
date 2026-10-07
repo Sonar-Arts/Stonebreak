@@ -185,6 +185,46 @@ public final class UiHistory {
         return new Outcome(s.after(), s.selectionAfter(), s.label());
     }
 
+    /** The history as it is now, to {@link #rollbackTo} if a run that continues from here fails later. */
+    public record Checkpoint(Step top, List<Step> redo) {
+    }
+
+    public Checkpoint checkpoint() {
+        return new Checkpoint(undo.peekLast(), List.copyOf(redo));
+    }
+
+    /**
+     * Retracts every step recorded since {@code cp} as if it never ran (#324: an automation run
+     * that failed after applying its UI step): no redo entry is created and the redo stack the
+     * author had at {@code cp} comes back.
+     *
+     * @return the state at {@code cp}, or null when nothing was recorded since
+     */
+    public Outcome rollbackTo(Checkpoint cp, ProjectFolder folder) throws UiCommandException {
+        if (undo.peekLast() == cp.top()) {
+            return null;
+        }
+        Step first = null;
+        while (!undo.isEmpty() && undo.peekLast() != cp.top()) {
+            Step s = undo.removeLast();
+            for (int i = s.assetEdits().size() - 1; i >= 0; i--) {
+                AssetEdit e = s.assetEdits().get(i);
+                try {
+                    if (!e.writes().isEmpty()) {
+                        e.undo(folder);
+                    }
+                } catch (IOException ex) {
+                    throw new UiCommandException("Cannot retract " + s.label() + ": " + ex.getMessage(), ex);
+                }
+            }
+            first = s;
+        }
+        redo.clear();
+        redo.addAll(cp.redo());
+        mergeOpen = false;
+        return new Outcome(first.before(), first.selectionBefore(), first.label());
+    }
+
     /** The current state is now what is on disk. */
     public void markSaved() {
         Step top = undo.peekLast();

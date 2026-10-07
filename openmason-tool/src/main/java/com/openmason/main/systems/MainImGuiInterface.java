@@ -79,6 +79,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
     /** The Scene Viewer, once composed; null in headless/snapshot construction. */
     private com.openmason.main.systems.scene.SceneViewerImGuiInterface sceneViewer;
+    private com.openmason.main.systems.uiEditor.view.UiEditorWorkspace uiEditor;
 
     private PreferencesWindow preferencesWindow; // Initialized after components
     private SBOExportWindow sboExportWindow; // Initialized after components
@@ -698,6 +699,15 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     /** The Scene Viewer (scene service, document, actions), or null before composition. */
     public com.openmason.main.systems.scene.SceneViewerImGuiInterface getSceneViewer() {
         return sceneViewer;
+    }
+
+    public void setUiEditor(com.openmason.main.systems.uiEditor.view.UiEditorWorkspace uiEditor) {
+        this.uiEditor = uiEditor;
+    }
+
+    /** The UI Editor workspace (#293; open UI documents, their runtimes), or null before composition. */
+    public com.openmason.main.systems.uiEditor.view.UiEditorWorkspace getUiEditor() {
+        return uiEditor;
     }
 
     // Convenience methods for backward compatibility

@@ -37,6 +37,15 @@ public final class UiSnapshot {
 
     /** Paints an already open view (tests inspect the same view's geometry afterwards). */
     public static BufferedImage render(UiDocumentView view, Typeface typeface, int width, int height, float uiScale) {
+        return render(view, typeface, width, height, uiScale, 1f);
+    }
+
+    /**
+     * Paints an already open view at a UI scale and device pixel ratio, exactly like the designer
+     * canvas does for a frame of that size.
+     */
+    public static BufferedImage render(UiDocumentView view, Typeface typeface, int width, int height, float uiScale,
+                                       float pixelRatio) {
         RasterMasonryBackend raster = new RasterMasonryBackend(typeface, false);
         MasonryUI ui = new MasonryUI(raster);
         try {
@@ -45,7 +54,7 @@ public final class UiSnapshot {
             if (ui.beginFrame(width, height, 1f)) {
                 try {
                     ui.canvas().clear(BACKDROP);
-                    view.render(ui, width, height, uiScale, 1f);
+                    view.render(ui, width, height, uiScale, pixelRatio);
                 } finally {
                     ui.endFrame();
                 }

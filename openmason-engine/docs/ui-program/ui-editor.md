@@ -125,9 +125,43 @@ rename, overrides, cross-document paste), `UiTreeTest`, `CanvasMathTest`, `UiDoc
 (author, save, export, load like the game; canvas geometry at two scales, design picking, drop targets,
 painted pixels), `OMPUiEditorReferenceTest` (1.3 round trip, older files untouched).
 
+## Automation (#324)
+
+Agents and scripts edit UI documents through the same command layer as the panels.
+
+* **Op batches** (`systems/uiEditor/ops/`): `UiOpBatch` parses `{"ops":[{"op":...}], "label"?}`,
+  validates every op's fields and `$alias` references up front (`UiOpField`, `UiOpCatalog`; nothing runs
+  on a malformed batch), and compiles the batch into ONE `UiCommand`: one undo step, and a failing op
+  leaves the document untouched with `failure()` naming the op. After the ops run, the result is checked
+  with `OmuiValidator` (what the writer enforces): errors the batch introduced fail the op that first
+  produced them, so an accepted batch always saves. Internal keys are checked against the component's
+  source. `UiHistory.checkpoint/rollbackTo` retracts a step without leaving redo entries (a script whose
+  later deferred write failed). Each op is a thin adapter over
+  `NodeCommands`/`OverrideCommands`/`DocumentCommands`/`AnimationCommands`; internal keys
+  (`quit/label`) become overrides; `"as":"x"` binds what an op created (the selection it leaves) as
+  `$x`; `#name` resolves to the id. `UiInspector` = read-only tree / element (+ computed style origins
+  from `StyleTrace`) / style sheets.
+* **Facade** (`systems/uiEditor/automation/`): `UiAutomation` (documents, inspection, batches, undo,
+  approved file targets) and `UiPreviewAutomation` (mode, forced states, frame, capture, input through
+  the preview's `UiInputRouter`, console). Headless; preview state is runtime/view state only, so it
+  can never dirty a document. `DesignerRuntime.step(dt)` advances a preview without painting.
+* **MCP** (`systems/mcp/UiEditingService` + `UiToolDefinitions`): 20 `ui_*` tools (`ui_save` in place or at the convention path, `ui_save_as` elsewhere); writes go through
+  `AssetWriteService` (`WriteKind.OMUI`/`SBUI`); preview captures read the live GPU frame back
+  (`UiPreviewFrameGrabber`), design captures paint the source on the CPU (`UiSnapshot`). Guide topic
+  `ui_editor`. Reached via `MainImGuiInterface.getUiEditor()`.
+* **Python** (`om.ui`): calls queue ops into `UiScriptCommands` (validated per call, line-accurate
+  errors); on success the queue runs as one `ui_ops` batch through `LiveUiScriptTarget`, so a script and
+  the equivalent batch produce identical documents (`UiScriptEquivalenceTest`).
+* Nested components: internal keys reach through nested instances (`card/btn/label`), resolving each
+  component where its placer lists it (embedded in that archive, embedded in the document, else the
+  project). Placing a component adds its whole closure to the document's table
+  (`service/ComponentDependencies`: nested components and their shared assets, the component's row
+  `requires` them), which the export's `ComponentClosure` demands. The palette uses the same rows.
+* Tests: `UiOpBatchTest`, `UiToolsEndToEndTest` (new → ops → capture → save → export → load like the
+  game; preview never dirties; sandbox), `UiNestedComponentsTest`, `UiScriptEquivalenceTest`.
+
 ## Not yet
 
-* MCP/Python automation of UI documents (they must go through `UiEditorActions`/`UiCommand`s).
 * (Timeline landed in #295: the Timeline tab, [ui-animation.md](ui-animation.md) §9.) (Texture and sprite authoring landed in #294: the
   Sprites panel, the inspector's image picker, Edit Texture — see [ui-sprites.md](ui-sprites.md) §6.)
 * Box (marquee) selection of component internals; resizing several elements at once.
