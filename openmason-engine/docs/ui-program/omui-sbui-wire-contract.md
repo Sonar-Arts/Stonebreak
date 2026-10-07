@@ -54,6 +54,7 @@ build contracts and never appear in documents.
   | `ui-states` | UI state machines, `animations/<part id>.states.json` (§5.7, [ui-animation.md](ui-animation.md)) | #295 |
   | `ui-motion` | custom `bezier` timing on clip keys and style transitions; the `transform-origin-x` / `transform-origin-y` properties. Retro-gated | #295 |
   | `ui-layers` | the `-sb-layer` paint-layer property. Retro-gated | #287 |
+  | `ui-masonry` | the house look as style: `-sb-surface` (`auto` `none` `panel` `button` `button-hover` `button-disabled` `hud`: a Masonry stone surface on any element, at the legacy painters' device-px radii; an explicit value replaces a `Button`'s state-driven look), `-sb-text-effect` (`shadow` `none` `title`: a label's house shadow, none, or the layered screen title), `-sb-pixel-grid` on the root (`device` `none`: `none` keeps fractional geometry, as float-math legacy screens draw) | #297 |
 - `uiApi`, `layoutSemantics`, `hostApis` and `providers` are checked by the **host** before instantiating
   (`UiHostProfile.check`), not by the reader, so an editor can open and preserve a document its preview cannot run.
   An unmet optional requirement is a warning; an unmet required one is an error and the host refuses the document.

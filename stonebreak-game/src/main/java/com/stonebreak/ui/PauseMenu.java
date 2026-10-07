@@ -16,9 +16,24 @@ public class PauseMenu {
     private static final float BASE_BUTTON_WIDTH  = SkijaPauseMenuRenderer.BUTTON_WIDTH;
     private static final float BASE_BUTTON_HEIGHT = SkijaPauseMenuRenderer.BUTTON_HEIGHT;
 
+    /**
+     * Another way to show the menu while the lifecycle stays here (#297: the shipped UI document,
+     * {@code ui.pauseMenu.PauseDocument}). Told when the menu shows and hides; {@link #paint}
+     * returning false falls back to the legacy renderer for that call.
+     */
+    public interface Presentation {
+        void shown();
+
+        void hidden();
+
+        boolean paint(int windowWidth, int windowHeight);
+    }
+
     private final SkijaPauseMenuRenderer skijaRenderer;
+    private Presentation presentation;
 
     private boolean visible = false;
+    private boolean resumeButtonHovered = false;
     private boolean quitButtonHovered = false;
     private boolean settingsButtonHovered = false;
     private boolean statisticsButtonHovered = false;
@@ -29,9 +44,23 @@ public class PauseMenu {
         this.skijaRenderer = new SkijaPauseMenuRenderer(skijaBackend);
     }
 
+    /** Installs (or, with null, removes) the alternative presentation; the legacy one is the default. */
+    public void setPresentation(Presentation presentation) {
+        if (this.presentation != null && visible) {
+            this.presentation.hidden();
+        }
+        this.presentation = presentation;
+        if (presentation != null && visible) {
+            presentation.shown();
+        }
+    }
+
     public void render(int windowWidth, int windowHeight) {
         if (!visible) return;
-        skijaRenderer.render(windowWidth, windowHeight, statisticsButtonHovered, glossaryButtonHovered,
+        if (presentation != null && presentation.paint(windowWidth, windowHeight)) {
+            return;
+        }
+        skijaRenderer.render(windowWidth, windowHeight, resumeButtonHovered, statisticsButtonHovered, glossaryButtonHovered,
                 settingsButtonHovered, isResyncButtonVisible(), resyncButtonHovered, quitButtonHovered);
     }
 
@@ -40,11 +69,19 @@ public class PauseMenu {
     }
 
     public void setVisible(boolean visible) {
+        boolean changed = this.visible != visible;
         this.visible = visible;
+        if (changed && presentation != null) {
+            if (visible) {
+                presentation.shown();
+            } else {
+                presentation.hidden();
+            }
+        }
     }
 
     public void toggleVisibility() {
-        this.visible = !this.visible;
+        setVisible(!this.visible);
     }
 
     /**
@@ -86,6 +123,7 @@ public class PauseMenu {
 
     public void updateHover(float mouseX, float mouseY, int windowWidth, int windowHeight) {
         if (!visible) {
+            resumeButtonHovered = false;
             quitButtonHovered = false;
             settingsButtonHovered = false;
             statisticsButtonHovered = false;
@@ -93,6 +131,7 @@ public class PauseMenu {
             resyncButtonHovered = false;
             return;
         }
+        resumeButtonHovered     = isResumeButtonClicked(mouseX, mouseY, windowWidth, windowHeight);
         statisticsButtonHovered = isStatisticsButtonClicked(mouseX, mouseY, windowWidth, windowHeight);
         glossaryButtonHovered   = isGlossaryButtonClicked(mouseX, mouseY, windowWidth, windowHeight);
         settingsButtonHovered   = isSettingsButtonClicked(mouseX, mouseY, windowWidth, windowHeight);

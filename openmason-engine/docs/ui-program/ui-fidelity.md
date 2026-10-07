@@ -126,6 +126,11 @@ MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT,
 assertTrue(r.passed(), r.table());
 ```
 
+**Pause (#297)** runs it: `ui.fidelity.PauseDocumentGateTest` with `DocumentPauseCapture` (the shipped
+`ui/documents/pause.sbui` opened through `GameUiDocuments.openBound` on the same `LegacyUiRaster`, painted twice for
+`field` and once for `battle`, hover by a real pointer move, actions by real clicks against a recording
+`GameUiHost`). All 12 cases (incl. `field-offline-hover-resume`, #297) pass at `FLOAT_EXACT` + `EXACT`: 0 pixels differ, worst channel delta 0.
+
 **After the legacy renderer is deleted** (`migrated`), `MigrationGate` can no longer run against it. The gate
 then becomes the candidate against the legacy baselines committed while both existed, at `EXACT` (or the
 `assetScale` contract at fractional scales), not `RASTER_DRIFT`. Never regenerate those PNGs from the candidate

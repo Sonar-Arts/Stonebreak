@@ -83,12 +83,21 @@ public final class UiFeatures {
     public static final String LAYERS = "ui-layers";
 
     /**
+     * The Masonry house look as style (#297): {@code -sb-surface} (stone panel, button and HUD
+     * surfaces on any element, or none on a {@code Button}), {@code -sb-text-effect} (a label's
+     * house shadow, no shadow, or the layered title) and {@code -sb-pixel-grid} (a root that keeps
+     * fractional legacy geometry). An older reader would drop the surfaces and effects and snap the
+     * layout, with only "unknown property" warnings.
+     */
+    public static final String MASONRY = "ui-masonry";
+
+    /**
      * Every feature this code understands: the reader's {@code SUPPORTED_FEATURES}. A new
      * feature is one constant here plus its entries in {@link #STYLE_FEATURES} /
      * {@link #PROP_FEATURES} (or a predicate in {@link #used}).
      */
     public static final Set<String> ALL = Set.of(SCROLL, INPUT, L10N, DATA, CANVAS, SPRITES, STATES, MOTION, LAYERS,
-            TEXT, CURSOR);
+            TEXT, CURSOR, MASONRY);
 
     /**
      * Features gated after documents could already use their syntax. Files that use one without
@@ -111,7 +120,10 @@ public final class UiFeatures {
             Map.entry("text-overflow", TEXT),
             Map.entry("-sb-max-lines", TEXT),
             Map.entry("-sb-anchor", CURSOR),
-            Map.entry("pointer-events", CURSOR));
+            Map.entry("pointer-events", CURSOR),
+            Map.entry("-sb-surface", MASONRY),
+            Map.entry("-sb-text-effect", MASONRY),
+            Map.entry("-sb-pixel-grid", MASONRY));
 
     /**
      * Properties every widget accepts under {@link #INPUT}. Focus: {@code focusable},

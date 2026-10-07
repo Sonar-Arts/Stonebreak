@@ -64,6 +64,13 @@ the project or the game's packaged assets; `embed:true` snapshots it. `remove_de
 while anything still references the id (`force:true` overrides). `extract_dependency {collision:
 fail|keep_project|replace}`, `relink_dependency {id, path}`, `refresh_dependency {id}`.
 
+## Host contracts
+A document reads host data (`session.online`) and calls host actions (`stonebreak:screen.pause.resume`)
+only under the contracts its manifest declares (`hostApis`); undeclared roots read as failed and the
+game refuses the screen. `set_host_api {id, version, optional?}` declares one (`version: null` removes
+it); `set_provider` does the same for draw providers (`stonebreak:item-icon`). Every export's
+`hostCheck` lists what the game host knows.
+
 ## Inspect
 `ui_tree`, `ui_get {key, computed?}` (computed values + origin: `rule sheet#i selector`,
 inline, override, binding, local, animation), `ui_style_sheets {key?}`, `ui_diagnostics`.

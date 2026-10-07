@@ -46,6 +46,7 @@ class LegacyPauseBaselineTest {
         Viewport hd = FidelityCase.STANDARD.get(0);
         out.add(new FidelityCase("pause", "battle-offline", hd));
         out.add(new FidelityCase("pause", "field-offline-hover-quit", hd));
+        out.add(new FidelityCase("pause", "field-offline-hover-resume", hd)); // #297: Resume hovers like the rest
         out.add(new FidelityCase("pause", "field-online-hover-resync", FidelityCase.STANDARD.get(3)));
         return out;
     }

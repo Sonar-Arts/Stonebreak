@@ -3,7 +3,8 @@
 Pinned to commit 2b4bcc91
 
 Scope: every Stonebreak game screen, HUD element, dialog, tooltip, overlay, screen effect and reusable custom
-renderer. Open Mason's own tool UI is out of scope (#282). **Nothing is migrated yet.**
+renderer. Open Mason's own tool UI is out of scope (#282). **Nothing is migrated yet**; the pause menu (#297) ships as a
+document with the legacy renderer kept as its rollback.
 
 **Status** (summary table, checked by `UiMigrationLedgerCoverageTest`, #296):
 - `not started`: inventoried only.
@@ -144,9 +145,9 @@ These apply to every row unless the row says otherwise.
 | multiplayer-menu | screen | `ui.multiplayerMenu.MultiplayerMenu` | shell-persistent | not started |
 | host-world | screen | `ui.multiplayerMenu.HostWorldScreen` | shell-persistent | not started |
 | join-world | screen | `ui.multiplayerMenu.JoinWorldScreen` | shell-persistent | not started |
-| pause-menu-offline | dialog | `ui.PauseMenu` | shell-persistent | baselined |
-| pause-menu-online | dialog | `ui.PauseMenu` (Resync variant) | shell-persistent | baselined |
-| pause-menu-over-battle | dialog | `ui.PauseMenu` drawn by `FR.renderFocusBattle` | shell-persistent | baselined |
+| pause-menu-offline | dialog | `ui.PauseMenu` | shell-persistent | in progress |
+| pause-menu-online | dialog | `ui.PauseMenu` (Resync variant) | shell-persistent | in progress |
+| pause-menu-over-battle | dialog | `ui.PauseMenu` drawn by `FR.renderFocusBattle` | shell-persistent | in progress |
 | death-menu | dialog | `ui.DeathMenu` | shell-persistent | not started |
 | statistics | screen | `ui.statisticsScreen.StatisticsScreen` | shell-persistent | not started |
 | glossary | screen | `ui.glossaryScreen.GlossaryScreen` | shell-persistent | not started |
@@ -568,10 +569,21 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   `ui/fidelity/LegacyPauseBaselineTest` (#296): pixel baselines of the real renderer on a pinned CPU raster, scrim
   darkness (field 2 passes vs battle 1), hover isolation, renderer rects = the geometry oracle. Legacy capture for
   the #297 gate: `ui.fidelity.LegacyPauseCapture` (variants `field|battle`-`offline|online`[-`hover-<button>`]).
-- **Fidelity:** `pause/pause-field-offline_1920x1080_s1` `pause/pause-field-offline_1280x720_s0_75` `pause/pause-field-offline_3840x2160_s2` `pause/pause-field-offline_1921x1081_s1_25` `pause/pause-field-offline-hover-quit_1920x1080_s1`
+- **Fidelity:** `pause/pause-field-offline_1920x1080_s1` `pause/pause-field-offline_1280x720_s0_75` `pause/pause-field-offline_3840x2160_s2` `pause/pause-field-offline_1921x1081_s1_25` `pause/pause-field-offline-hover-quit_1920x1080_s1` `pause/pause-field-offline-hover-resume_1920x1080_s1`
 - **Notes:**
-  - **The Resume button never shows hover**: `false` is hard-coded (renderer :88) and there is no `resumeHovered` field.
+  - **The Resume button never showed hover** (a hard-coded `false`) until #297 gave it the same hover as the other
+    buttons, in the document and the legacy renderer alike (case `field-offline-hover-resume`).
   - Escape while the death menu is up opens an unclickable pause menu under it.
+- **Migration (#297, in progress):** shipped as `ui/documents/pause.sbui` (+ shared `ui/shared/stonebreak/ui/components/stone_button.omui`),
+  authored in Open Mason (project "Stonebreak Menus": `UI/stonebreak/ui/screens/pause.omui`, component
+  `UI/stonebreak/ui/components/stone_button.omui`). `PauseMenu` keeps the lifecycle and both draw calls; its
+  `Presentation` seam (`ui.pauseMenu.PauseDocument`) opens the document as an `ownerPaints` screen, so the field pause is
+  still composited twice and the battle pause once. Resume hovers like the other buttons (user decision, 2026-10-07; legacy changed to match). The
+  legacy renderer stays as the rollback (`-Dstonebreak.ui.legacy=pause`, or automatically when the document is refused,
+  fails a frame, or the death menu is up) until sign-off; then this row becomes `migrated` and the legacy renderer goes.
+  New vs legacy: Tab/Enter keyboard focus on the buttons (legacy had none).
+- **Gate:** `ui.fidelity.PauseDocumentGateTest` (all 12 committed cases at `FLOAT_EXACT` + `EXACT`: 0 pixels differ;
+  hit regions and one action per button; Resync reflow on a live session change; a failing resync action).
 
 ### pause-menu-online
 - **Kind:** dialog, a variant of pause-menu-offline.

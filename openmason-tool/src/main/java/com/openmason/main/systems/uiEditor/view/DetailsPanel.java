@@ -765,11 +765,7 @@ final class DetailsPanel implements AutoCloseable {
             row("Copied From", doc.importedFrom().getFileName().toString());
         }
         EditorWidgets.caption("Host Contracts");
-        if (m.hostApis().isEmpty() && m.providers().isEmpty()) {
-            ImGui.textDisabled("None declared");
-        }
-        m.hostApis().forEach(h -> ImGui.bulletText(h.id() + " v" + h.version() + (h.optional() ? " (optional)" : "")));
-        m.providers().forEach(h -> ImGui.bulletText(h.id() + " v" + h.version() + " (provider)"));
+        HostContractsSection.draw(ctx, m);
         if (doc.archive().document().component() != null) {
             UiDocument.ComponentDef def = doc.archive().document().component();
             EditorWidgets.caption("Component Contract");

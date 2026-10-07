@@ -107,7 +107,7 @@ public final class UiToolDefinitions {
                         + "wrap{type} {keys}; reorder{key,delta|to} rename{key,name} set_prop|clear_prop{keys,prop,"
                         + "value} set_style{keys,style:{p:v|null}} clear_style{keys,properties} set_classes{keys,"
                         + "classes|add|remove} set_data_source{key,path} bind{key,target,path,mode,converter} "
-                        + "unbind set_param{key,param,value} reset_override{keys} set_display_name add_sheet{id} "
+                        + "unbind set_param{key,param,value} reset_override{keys} set_display_name set_host_api|set_provider{id,version|null,optional} add_sheet{id} "
                         + "attach_sheet move_sheet add_rule{sheet,selector,style} set_rule{sheet,rule,selector,"
                         + "style} remove_rule move_rule set_token{sheet,name,value} set_script{id,source} "
                         + "set_code_behind{module} put_clip{clip} remove_clip{id} put_state_machine{machine} "

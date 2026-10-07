@@ -777,6 +777,14 @@ class _Ui:
     def set_display_name(self, name):
         self._queue("set_display_name", dict(name=name))
 
+    def set_host_api(self, id, version, optional=False):
+        """Declare host contract `id` at `version` (None removes it): data roots and actions need it."""
+        self._queue("set_host_api", dict(id=id, version=version, optional=optional))
+
+    def set_provider(self, id, version, optional=False):
+        """Declare host draw provider `id` at `version` (None removes it)."""
+        self._queue("set_provider", dict(id=id, version=version, optional=optional))
+
     def add_sheet(self, id):
         self._queue("add_sheet", dict(id=id))
 

@@ -76,6 +76,9 @@ public final class GameScreens {
         var skija = renderer.getSkijaBackend();
 
         pauseMenu = new PauseMenu(skija);
+        // The shipped OMUI/SBUI pause screen (#297) when present and not rolled back; legacy otherwise.
+        pauseMenu.setPresentation(new com.stonebreak.ui.pauseMenu.PauseDocument(
+                com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
         statisticsScreen = new StatisticsScreen(skija);
         glossaryScreen = new GlossaryScreen(skija);
         deathMenu = new DeathMenu(skija);

@@ -331,6 +331,16 @@ Per element:
 
 `opacity` fades the subtree, and `-sb-tint` multiplies the element's own drawing.
 
+`ui-masonry` (#297) makes the legacy house look authorable: `-sb-surface` paints a Masonry stone surface
+(`panel`, `button`, `button-hover`, `button-disabled`, `hud`) after the background, exactly as `MPainter.panel` /
+`stoneSurface` / `hudFrame` do (radii in device px, as the legacy screens never scaled them); any explicit value,
+`none` included, replaces a `Button`'s pseudo-state look, so a component decides its own hover in its sheet.
+`-sb-text-effect` picks a label's `shadow` (default), `none`, or `title` (`MPainter.drawTitleText`: the pause /
+statistics / glossary title stack, layers 2 device px apart). The root's `-sb-pixel-grid: none` lays out and places
+without snapping (the instance rebuilds its flex tree when the value changes); `device` snaps; absent = the host's
+`UiRuntimeContext.pixelGrid`. The pause document uses all three and matches the legacy renderer pixel for pixel
+(`PauseDocumentGateTest`).
+
 | Widget | Look |
 | --- | --- |
 | `Button` | the Masonry stone surface: highlight fill on `:hover`/`:active`, disabled fill when disabled, unless a background is styled |
@@ -394,6 +404,9 @@ screen goes through:
   Navigation opens the target's document when it has one, else a `LegacyNavigation` target (`resume`, `pause`,
   `settings`, `statistics`, `glossary`, `main_menu`, `world_select`, `multiplayer`), and replaces the asking screen
   unless `args.push` is true. Unknown targets return false (the script gets an error).
+- **Owner-painted screens.** `Options.ownerPaints` keeps a screen in the stack (frames, scripts, input) but out
+  of `render`; its owner paints it with `DocumentScreenHost.paint` where the legacy screen drew. The pause menu uses
+  it (`ui.pauseMenu.PauseDocument` behind `PauseMenu.Presentation`) so the field pause stays composited twice.
 - **Pointer, keyboard, controller.** `releasesPointer` keeps the cursor free while the screen is open
   (`MouseCaptureManager`); `claimsKeyboard` hides every key from gameplay polls; `claimsGamepad` gets controller
   buttons while the cursor is captured. `perWorld` screens close when the player leaves the world.

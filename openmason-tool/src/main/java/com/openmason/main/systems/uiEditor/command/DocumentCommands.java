@@ -45,6 +45,36 @@ public final class DocumentCommands {
         });
     }
 
+    /**
+     * Declares the host contract (or, with {@code provider}, the draw provider) {@code id} at
+     * {@code version}, replacing an existing declaration of it; a null version removes it. A
+     * document reads host data and calls host actions only under the contracts it declares (#327).
+     */
+    public static UiCommand setHostRequirement(boolean provider, String id, Integer version, boolean optional) {
+        String what = provider ? "provider" : "host API";
+        return UiCommand.of((version == null ? "Remove " : "Declare ") + what + " " + id, "host:" + what + ":" + id,
+            ctx -> {
+                if (id == null || !id.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
+                    throw new UiCommandException("'" + id + "' is not a host contract id (namespace:name, lowercase)");
+                }
+                if (version != null && version < 1) {
+                    throw new UiCommandException(what + " version must be 1 or more, not " + version);
+                }
+                UiManifest m = ctx.doc().manifest();
+                List<UiManifest.HostRequirement> list = new ArrayList<>(provider ? m.providers() : m.hostApis());
+                boolean had = list.removeIf(h -> h.id().equals(id));
+                if (version == null && !had) {
+                    throw new UiCommandException("The document declares no " + what + " " + id);
+                }
+                if (version != null) {
+                    list.add(new UiManifest.HostRequirement(id, version, optional, Map.of()));
+                }
+                ctx.setDoc(ctx.doc().withManifest(new UiManifest(m.schemaVersion(), m.documentId(), m.kind(),
+                    m.displayName(), m.uiApi(), m.layoutSemantics(), m.requires(), provider ? m.hostApis() : list,
+                    provider ? list : m.providers(), m.unknown())));
+            });
+    }
+
     // ── style sheets ────────────────────────────────────────────────────────
 
     /** Creates an in-archive sheet {@code id} and attaches it last (highest precedence). */

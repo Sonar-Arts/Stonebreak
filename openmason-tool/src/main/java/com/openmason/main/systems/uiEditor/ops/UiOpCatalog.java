@@ -15,6 +15,7 @@ import com.openmason.main.systems.uiEditor.command.AnimationCommands;
 import com.openmason.main.systems.uiEditor.command.DocumentCommands;
 import com.openmason.main.systems.uiEditor.command.NodeCommands;
 import com.openmason.main.systems.uiEditor.command.OverrideCommands;
+import com.openmason.main.systems.uiEditor.command.UiCommand;
 import com.openmason.main.systems.uiEditor.command.UiCommandException;
 import com.openmason.main.systems.uiEditor.document.NodeLocation;
 import com.openmason.main.systems.uiEditor.document.Nodes;
@@ -153,6 +154,10 @@ final class UiOpCatalog {
         // ── document ──
         op("set_display_name", fields("name", STRING), List.of("name"), false, Check.NONE,
             (s, o) -> s.run(DocumentCommands.setDisplayName(o.get("name").asText())));
+        op("set_host_api", fields("id", STRING, "version", ANY, "optional", BOOL), List.of("id", "version"), false,
+            UiOpCatalog::checkHostVersion, (s, o) -> s.run(hostRequirement(false, o)));
+        op("set_provider", fields("id", STRING, "version", ANY, "optional", BOOL), List.of("id", "version"), false,
+            UiOpCatalog::checkHostVersion, (s, o) -> s.run(hostRequirement(true, o)));
         op("add_sheet", fields("id", STRING), List.of("id"), false, Check.NONE,
             (s, o) -> s.run(DocumentCommands.addStyleSheet(o.get("id").asText())));
         op("attach_sheet", fields("id", STRING, "attached", BOOL), List.of("id"), false, Check.NONE,
@@ -603,6 +608,22 @@ final class UiOpCatalog {
             }
         });
         return out;
+    }
+
+    // ── host contracts ──────────────────────────────────────────────────────
+
+    /** {@code version}: a positive integer declares the contract, {@code null} removes it. */
+    private static void checkHostVersion(JsonNode o) {
+        JsonNode v = o.get("version");
+        if (!v.isNull() && !(v.isIntegralNumber() && v.canConvertToInt() && v.asInt() >= 1)) {
+            throw new IllegalArgumentException("version must be a positive integer, or null to remove the declaration");
+        }
+    }
+
+    private static UiCommand hostRequirement(boolean provider, JsonNode o) {
+        JsonNode v = o.get("version");
+        return DocumentCommands.setHostRequirement(provider, o.get("id").asText(), v.isNull() ? null : v.asInt(),
+            o.path("optional").asBoolean(false));
     }
 
     // ── animation ───────────────────────────────────────────────────────────

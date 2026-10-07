@@ -159,6 +159,14 @@ rename, overrides, cross-document paste), `UiTreeTest`, `CanvasMathTest`, `UiDoc
 (author, save, export, load like the game; canvas geometry at two scales, design picking, drop targets,
 painted pixels), `OMPUiEditorReferenceTest` (1.3 round trip, older files untouched).
 
+## Host contracts (#297)
+
+The Details panel (nothing selected) lists the manifest's `hostApis` and `providers` with a remove button each, and
+"+ host API" / "+ provider" pickers over what the game host implements (`GameUiHost.declaredProfile()`, at its
+newest version). Agents and scripts use the `set_host_api` / `set_provider` ops (`{id, version, optional?}`,
+`version: null` removes; `om.ui.set_host_api`). One undo step each (`DocumentCommands.setHostRequirement`). A screen
+reads host data and calls host actions only under declared contracts (#327).
+
 ## Automation (#324)
 
 Agents and scripts edit UI documents through the same command layer as the panels.

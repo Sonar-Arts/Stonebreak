@@ -23,7 +23,7 @@ import java.util.Map;
  *       72 % darkness; {@code battle}: over a Focus battle, drawn once (about 47 %). The ledger's
  *       hard visual 13: a migration must reproduce the darker field pause on purpose.</li>
  *   <li>{@code offline} (five buttons) or {@code online} (six, with Resync World).</li>
- *   <li>{@code hover-<button>}: that button highlighted. Resume never highlights (ledger).</li>
+ *   <li>{@code hover-<button>}: that button highlighted (Resume too since #297; it never did before).</li>
  * </ul>
  */
 public final class LegacyPauseCapture implements MigrationGate.Renderer {
@@ -56,7 +56,7 @@ public final class LegacyPauseCapture implements MigrationGate.Renderer {
             renderer.setLayoutSink(drawn::put); // what the renderer drew, not a transcription of it
             try {
                 for (int i = 0; i < passes; i++) {
-                    renderer.render(w, h, hover.equals("statistics"), hover.equals("glossary"), hover.equals("settings"),
+                    renderer.render(w, h, hover.equals("resume"), hover.equals("statistics"), hover.equals("glossary"), hover.equals("settings"),
                         online, hover.equals("resync"), hover.equals("quit"));
                 }
             } finally {
@@ -123,7 +123,7 @@ public final class LegacyPauseCapture implements MigrationGate.Renderer {
     }
 
     @FunctionalInterface
-    private interface HitProbe {
+    interface HitProbe {
         boolean at(float x, float y);
     }
 
@@ -132,7 +132,7 @@ public final class LegacyPauseCapture implements MigrationGate.Renderer {
      * float resolution, so an inclusive {@code x + width} edge comes back exact (the gate compares
      * hit regions as strictly as painted rects).
      */
-    private static float edge(HitProbe probe, float cx, float cy, int dx, int dy, int w, int h) {
+    static float edge(HitProbe probe, float cx, float cy, int dx, int dy, int w, int h) {
         float from = dx != 0 ? cx : cy;
         float in = from;
         float out = from + (dx + dy) * (Math.max(w, h) + 1);
@@ -173,7 +173,7 @@ public final class LegacyPauseCapture implements MigrationGate.Renderer {
             Map<String, float[]> drawn = new LinkedHashMap<>();
             renderer.setLayoutSink(drawn::put);
             try {
-                renderer.render(w, h, false, false, false, online, false, false);
+                renderer.render(w, h, false, false, false, false, online, false, false);
             } finally {
                 renderer.dispose();
             }

@@ -46,6 +46,10 @@ import java.util.List;
  * {@code opacity} fades the element with its subtree; {@code -sb-tint} multiplies the element's
  * own drawing; {@code visibility: hidden} skips the element but not visible descendants.
  *
+ * <p>{@code -sb-surface} (any element, {@code ui-masonry}) paints a house surface after the
+ * background and replaces a {@code Button}'s state-driven look; {@code -sb-text-effect} picks a
+ * label's shadow, none, or the layered title.
+ *
  * <p>Widget looks: {@code Button} is the Masonry stone surface (hover/active → highlight fill,
  * disabled → disabled fill) unless a background is styled; {@code Label} draws house-style
  * shadowed text on the {@link MasonryContentMeasurer} baseline with {@code text-align};
@@ -323,9 +327,13 @@ public final class UiPainter {
         if (bgImage != null) {
             image(ui, canvas, el, bgImage, r, s, scale);
         }
+        String surface = s.keyword("-sb-surface", "auto");
+        if (!"auto".equals(surface)) {
+            surface(canvas, surface, r);
+        }
         switch (el.type()) {
             case "Button" -> {
-                if (!styledBackground) {
+                if (!styledBackground && "auto".equals(surface)) {
                     int fill = !el.isEnabledInHierarchy() ? MStyle.BUTTON_FILL_DIS
                         : el.hasState(UiElement.HOVER) || el.hasState(UiElement.ACTIVE)
                         || el.hasState(UiElement.FOCUS_VISIBLE) ? MStyle.BUTTON_FILL_HI
@@ -523,11 +531,46 @@ public final class UiPainter {
             lines(canvas, el, r, s, scale, color, baseline);
             return;
         }
+        String effect = s.keyword("-sb-text-effect", "shadow");
         switch (s.keyword("text-align", "left")) {
-            case "center" -> MPainter.drawText(canvas, str, r.x() + r.width() / 2f, baseline, font, color,
+            case "center" -> labelText(canvas, effect, str, r.x() + r.width() / 2f, baseline, font, color,
                 MPainter.Align.CENTER);
-            case "right" -> MPainter.drawText(canvas, str, r.right(), baseline, font, color, MPainter.Align.RIGHT);
-            default -> MPainter.drawText(canvas, str, r.x(), baseline, font, color, MPainter.Align.LEFT);
+            case "right" -> labelText(canvas, effect, str, r.right(), baseline, font, color, MPainter.Align.RIGHT);
+            default -> labelText(canvas, effect, str, r.x(), baseline, font, color, MPainter.Align.LEFT);
+        }
+    }
+
+    /** One run of label text in its {@code -sb-text-effect}: the house shadow, none, or the title stack. */
+    private static void labelText(Canvas canvas, String effect, String str, float x, float baseline, Font font, int color,
+                             MPainter.Align align) {
+        switch (effect) {
+            case "none" -> MPainter.drawTextPlain(canvas, str, x, baseline, font, color, align);
+            case "title" -> MPainter.drawTitleText(canvas, str, x, baseline, font, color, align);
+            default -> MPainter.drawText(canvas, str, x, baseline, font, color, align);
+        }
+    }
+
+    /**
+     * The {@code -sb-surface} house surfaces, at the legacy painters' radii in device px (the stone
+     * screens never scaled them): what lets a document reproduce a Masonry panel or a button that
+     * does not follow its pseudo-states.
+     */
+    private static void surface(Canvas canvas, String surface, UiRect r) {
+        switch (surface) {
+            case "panel" -> MPainter.panel(canvas, r.x(), r.y(), r.width(), r.height());
+            case "hud" -> MPainter.hudFrame(canvas, r.x(), r.y(), r.width(), r.height());
+            case "button", "button-hover", "button-disabled" -> {
+                int fill = switch (surface) {
+                    case "button-hover" -> MStyle.BUTTON_FILL_HI;
+                    case "button-disabled" -> MStyle.BUTTON_FILL_DIS;
+                    default -> MStyle.BUTTON_FILL;
+                };
+                MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), MStyle.BUTTON_RADIUS,
+                    fill, MStyle.BUTTON_BORDER, MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW,
+                    MStyle.BUTTON_DROP_SHADOW, MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
+            }
+            default -> {
+            }
         }
     }
 
@@ -538,6 +581,7 @@ public final class UiPainter {
         Font base = text.font(el, scale);
         float lineHeight = (float) Math.ceil(base.getMetrics().getDescent() - base.getMetrics().getAscent());
         String align = s.keyword("text-align", "left");
+        String effect = s.keyword("-sb-text-effect", "shadow");
         int alpha = color >>> 24;
         for (int i = 0; i < layout.lineCount(); i++) {
             TextLayout.Line line = layout.lines().get(i);
@@ -554,7 +598,7 @@ public final class UiPainter {
                     ? (((st.color() >>> 24) * alpha / 255) << 24) | (st.color() & 0xFFFFFF)
                     : color;
                 Font f = text.font(el, scale, st.bold(), st.italic());
-                MPainter.drawText(canvas, run.text(), x + run.x(), y, f, c, MPainter.Align.LEFT);
+                labelText(canvas, effect, run.text(), x + run.x(), y, f, c, MPainter.Align.LEFT);
                 if (st.underline() && !run.text().isBlank()) {
                     float t = Math.max(1f, f.getSize() * 0.07f);
                     MPainter.fillRect(canvas, x + run.x(), y + Math.max(1f, f.getSize() * 0.1f), run.width(), t, c);

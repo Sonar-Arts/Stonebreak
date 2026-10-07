@@ -72,7 +72,7 @@ public final class SkijaPauseMenuRenderer {
         }
     }
 
-    public void render(int windowWidth, int windowHeight,
+    public void render(int windowWidth, int windowHeight, boolean resumeHovered,
                        boolean statisticsHovered, boolean glossaryHovered, boolean settingsHovered,
                        boolean resyncVisible, boolean resyncHovered, boolean quitHovered) {
         if (backend == null || !backend.isAvailable()) return;
@@ -105,7 +105,7 @@ public final class SkijaPauseMenuRenderer {
             float buttonX = centerX - buttonWidth / 2f;
             int count = resyncVisible ? 6 : 5;
             int slot = 0;
-            drawButton(canvas, "resume", "Resume Game", buttonX, centerY + buttonOffset(slot++, count) * scale, false,             buttonWidth, buttonHeight);
+            drawButton(canvas, "resume", "Resume Game", buttonX, centerY + buttonOffset(slot++, count) * scale, resumeHovered,     buttonWidth, buttonHeight);
             drawButton(canvas, "statistics", "Statistics",  buttonX, centerY + buttonOffset(slot++, count) * scale, statisticsHovered, buttonWidth, buttonHeight);
             drawButton(canvas, "glossary", "Glossary",    buttonX, centerY + buttonOffset(slot++, count) * scale, glossaryHovered,   buttonWidth, buttonHeight);
             drawButton(canvas, "settings", "Settings",    buttonX, centerY + buttonOffset(slot++, count) * scale, settingsHovered,   buttonWidth, buttonHeight);

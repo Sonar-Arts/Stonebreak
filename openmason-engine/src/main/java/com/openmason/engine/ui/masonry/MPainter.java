@@ -485,6 +485,41 @@ public final class MPainter {
         drawStringWithShadow(canvas, text, left, y, font, color, shadow);
     }
 
+    /** Text with no shadow, anchored like {@link #drawText}. */
+    public static void drawTextPlain(Canvas canvas, String text, float x, float y, Font font, int color, Align align) {
+        if (canvas == null || font == null || text == null || text.isEmpty() || (color & 0xFF000000) == 0) return;
+        drawString(canvas, text, alignedX(font, text, x, align), y, font, color);
+    }
+
+    /**
+     * The house screen title (pause, statistics, glossary): four stacked layers behind the text,
+     * each 2 device px further down-right (three translucent greys, then dark gold), with the text
+     * itself on top in {@code color}. Offsets are device pixels at every UI scale, as the legacy
+     * title renderers draw them.
+     */
+    public static void drawTitleText(Canvas canvas, String text, float x, float y, Font font, int color, Align align) {
+        if (canvas == null || font == null || text == null || text.isEmpty() || (color & 0xFF000000) == 0) return;
+        float left = alignedX(font, text, x, align);
+        float fade = ((color >>> 24) & 0xFF) / 255f;
+        for (int i = 4; i >= 1; i--) {
+            int layer;
+            if (i == 1) {
+                layer = TITLE_GOLD_SHADE;
+            } else {
+                int v = Math.max(30, 100 - i * 20);
+                layer = (0xC8 << 24) | (v << 16) | (v << 8) | v;
+            }
+            float offset = i * 2.0f;
+            drawString(canvas, text, left + offset, y + offset, font, fade >= 1f ? layer : MColor.fade(layer, fade));
+        }
+        drawString(canvas, text, left, y, font, color);
+    }
+
+    /** Front colour of the house title. */
+    public static final int TITLE_GOLD = 0xFFFFDC64;
+    /** The darker gold layer just under the house title's front. */
+    public static final int TITLE_GOLD_SHADE = 0xFFDCB450;
+
     /**
      * Text with a dark outline, for words drawn straight over the scene with no frame behind them
      * (floating numbers, prompts). One rule for every such word: a stroked pass under the fill.

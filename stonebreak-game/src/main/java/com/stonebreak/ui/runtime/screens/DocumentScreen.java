@@ -20,12 +20,20 @@ public final class DocumentScreen {
      * @param claimsGamepad   receives controller buttons even while the cursor is captured
      * @param perWorld        closed automatically when the player leaves the world
      * @param onClosed        run after the screen closed (frame end), or null
+     * @param ownerPaints     the host frames it and routes its input, but never paints it: its owner
+     *                        draws it with {@link DocumentScreenHost#paint} where the legacy screen
+     *                        drew (the pause menu keeps its double field composite, #297)
      */
     public record Options(UiLayer layer, boolean releasesPointer, boolean claimsKeyboard, boolean claimsGamepad,
-                          boolean perWorld, Runnable onClosed) {
+                          boolean perWorld, Runnable onClosed, boolean ownerPaints) {
 
         public Options {
             layer = layer == null ? UiLayer.SCREEN : layer;
+        }
+
+        public Options(UiLayer layer, boolean releasesPointer, boolean claimsKeyboard, boolean claimsGamepad,
+                       boolean perWorld, Runnable onClosed) {
+            this(layer, releasesPointer, claimsKeyboard, claimsGamepad, perWorld, onClosed, false);
         }
 
         /** A full screen or panel: frees the cursor; closed when the world is left. */
@@ -49,19 +57,23 @@ public final class DocumentScreen {
         }
 
         public Options withLayer(UiLayer l) {
-            return new Options(l, releasesPointer, claimsKeyboard, claimsGamepad, perWorld, onClosed);
+            return new Options(l, releasesPointer, claimsKeyboard, claimsGamepad, perWorld, onClosed, ownerPaints);
         }
 
         public Options withClaimsKeyboard(boolean claims) {
-            return new Options(layer, releasesPointer, claims, claimsGamepad, perWorld, onClosed);
+            return new Options(layer, releasesPointer, claims, claimsGamepad, perWorld, onClosed, ownerPaints);
         }
 
         public Options withClaimsGamepad(boolean claims) {
-            return new Options(layer, releasesPointer, claimsKeyboard, claims, perWorld, onClosed);
+            return new Options(layer, releasesPointer, claimsKeyboard, claims, perWorld, onClosed, ownerPaints);
         }
 
         public Options withOnClosed(Runnable r) {
-            return new Options(layer, releasesPointer, claimsKeyboard, claimsGamepad, perWorld, r);
+            return new Options(layer, releasesPointer, claimsKeyboard, claimsGamepad, perWorld, r, ownerPaints);
+        }
+
+        public Options withOwnerPaints(boolean owner) {
+            return new Options(layer, releasesPointer, claimsKeyboard, claimsGamepad, perWorld, onClosed, owner);
         }
     }
 

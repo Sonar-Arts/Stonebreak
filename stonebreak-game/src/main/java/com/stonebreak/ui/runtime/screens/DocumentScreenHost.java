@@ -352,18 +352,34 @@ public final class DocumentScreenHost {
         }
         for (UiDocumentView v : GameUiInput.get().views()) {
             DocumentScreen s = byView.get(v);
-            if (s == null || s.isClosed()) {
+            if (s == null || s.isClosed() || s.options().ownerPaints()) {
                 continue;
             }
-            if (s.masonry() == null) {
-                s.masonry(new MasonryUI(backend));
-            }
-            try {
-                GameUiDocuments.render(v, s.masonry(), width, height, uiScale);
-            } catch (RuntimeException e) {
-                LOGGER.error("[ui-screen] {} failed to render; closing it", s.id(), e);
-                requestClose(s);
-            }
+            paint(s, backend, width, height, uiScale);
+        }
+    }
+
+    /**
+     * Paints one screen now, as one Masonry frame: what {@link #render} does per screen, and what
+     * the owner of an {@link DocumentScreen.Options#ownerPaints ownerPaints} screen calls where its
+     * legacy screen used to draw. A screen that throws is closed at frame end.
+     *
+     * @return false when nothing was painted (closed, or no backend)
+     */
+    public boolean paint(DocumentScreen s, MasonryBackend backend, int width, int height, float uiScale) {
+        if (s == null || s.isClosed() || s.view() == null || backend == null || !backend.isAvailable()) {
+            return false;
+        }
+        if (s.masonry() == null) {
+            s.masonry(new MasonryUI(backend));
+        }
+        try {
+            GameUiDocuments.render(s.view(), s.masonry(), width, height, uiScale);
+            return true;
+        } catch (RuntimeException e) {
+            LOGGER.error("[ui-screen] {} failed to render; closing it", s.id(), e);
+            requestClose(s);
+            return false;
         }
     }
 

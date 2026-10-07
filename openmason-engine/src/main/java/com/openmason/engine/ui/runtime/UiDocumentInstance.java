@@ -152,6 +152,8 @@ public final class UiDocumentInstance implements AutoCloseable {
     private UiPreferences preferences = UiPreferences.DEFAULTS;
     private int textRevision;
     private FlexLayoutTree flex;
+    /** The grid {@link #flex} was created with ({@link #pixelGrid()} at that time). */
+    private float flexGrid = Float.NaN;
     private UiElement[] byFlexNode = new UiElement[16];
     private boolean orderDirty;
     private boolean structureChanged;
@@ -854,6 +856,11 @@ public final class UiDocumentInstance implements AutoCloseable {
     }
 
     private boolean ensureFlexTree() {
+        float grid = pixelGrid();
+        if (flex != null && grid != flexGrid) {
+            flex.close(); // the root changed -sb-pixel-grid: Yoga's grid is fixed per tree
+            flex = null;
+        }
         if (flex != null) {
             return false;
         }
@@ -861,9 +868,26 @@ public final class UiDocumentInstance implements AutoCloseable {
             throw new IllegalStateException("UI document instance is closed");
         }
         CendaFlex.require();
-        flex = CendaFlex.newTree(context.pixelGrid());
+        flex = CendaFlex.newTree(grid);
+        flexGrid = grid;
         createFlexNodes(root);
         return true;
+    }
+
+    /**
+     * The pixel grid this document lays out and places on: the root's {@code -sb-pixel-grid}
+     * ({@code none} keeps fractional geometry, as float-math legacy screens such as pause draw;
+     * {@code device} snaps to device pixels), else the host's {@link UiRuntimeContext#pixelGrid()}.
+     */
+    public float pixelGrid() {
+        String declared = root == null || root.computed == null ? null : root.computed.keyword("-sb-pixel-grid", null);
+        if ("none".equals(declared)) {
+            return UiRuntimeContext.NO_PIXEL_GRID;
+        }
+        if ("device".equals(declared)) {
+            return UiRuntimeContext.DEVICE_PIXEL_GRID;
+        }
+        return context.pixelGrid();
     }
 
     private void createFlexNodes(UiElement el) {
@@ -1116,7 +1140,7 @@ public final class UiDocumentInstance implements AutoCloseable {
     }
 
     private float snap(float v) {
-        float grid = context.pixelGrid();
+        float grid = flex != null ? flexGrid : pixelGrid();
         return grid > 0 ? Math.round(v * grid) / grid : v;
     }
 
