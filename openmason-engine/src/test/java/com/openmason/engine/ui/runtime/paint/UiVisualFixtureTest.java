@@ -7,12 +7,10 @@ import com.openmason.engine.ui.runtime.UiRuntimeContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
+import com.openmason.engine.ui.fidelity.FidelityImage;
+import com.openmason.engine.ui.fidelity.GoldenStore;
+import com.openmason.engine.ui.fidelity.PixelTolerance;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 import static com.openmason.engine.ui.runtime.UiDocs.box;
 import static com.openmason.engine.ui.runtime.UiDocs.label;
@@ -20,7 +18,6 @@ import static com.openmason.engine.ui.runtime.UiDocs.node;
 import static com.openmason.engine.ui.runtime.UiDocs.rule;
 import static com.openmason.engine.ui.runtime.UiDocs.screen;
 import static com.openmason.engine.ui.runtime.UiDocs.sheet;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -36,8 +33,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class UiVisualFixtureTest {
 
-    private static final boolean WRITE = Boolean.getBoolean("ui.visual.write");
-    private static final Path DIR = Path.of("src/test/resources/ui/runtime/visual");
+    private static final GoldenStore STORE = GoldenStore.forTests("ui/runtime/visual", "ui.visual.write");
 
     @BeforeEach
     void requireNative() {
@@ -104,39 +100,6 @@ class UiVisualFixtureTest {
             assertTrue(host.ui().diagnostics().isEmpty(), host.ui().diagnostics().toString());
             actual = host.pixels();
         }
-        Path file = DIR.resolve(name + ".png");
-        if (WRITE) {
-            BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-            img.setRGB(0, 0, w, h, actual, 0, w);
-            Files.createDirectories(DIR);
-            ImageIO.write(img, "png", file.toFile());
-            return;
-        }
-        BufferedImage golden;
-        try (InputStream in = UiVisualFixtureTest.class.getResourceAsStream("/ui/runtime/visual/" + name + ".png")) {
-            assertNotNull(in, "missing fixture " + file + " (run with -Dui.visual.write=true)");
-            golden = ImageIO.read(in);
-        }
-        assertTrue(golden.getWidth() == w && golden.getHeight() == h, name + " fixture size changed");
-        int[] expected = golden.getRGB(0, 0, w, h, null, 0, w);
-        int over = 0;
-        int worst = 0;
-        for (int i = 0; i < expected.length; i++) {
-            int d = delta(expected[i], actual[i]);
-            worst = Math.max(worst, d);
-            if (d > 2) {
-                over++;
-            }
-        }
-        assertTrue(over <= expected.length / 1000,
-            name + ": " + over + " of " + expected.length + " pixels differ by more than 2 levels (worst " + worst + ")");
-    }
-
-    private static int delta(int a, int b) {
-        int max = 0;
-        for (int shift = 0; shift < 32; shift += 8) {
-            max = Math.max(max, Math.abs((a >>> shift & 0xFF) - (b >>> shift & 0xFF)));
-        }
-        return max;
+        STORE.verify(name, new FidelityImage(w, h, actual), PixelTolerance.RASTER_DRIFT);
     }
 }

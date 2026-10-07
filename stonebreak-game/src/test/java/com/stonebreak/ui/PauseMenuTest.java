@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -30,10 +31,9 @@ import com.stonebreak.ui.support.Resolutions;
  * state, not a fake. This test never calls {@code render} or {@code cleanup}, so no GPU resource is
  * ever touched.
  *
- * <p><b>Offline layout only.</b> The resync button exists only when
- * {@code MultiplayerSession.isOnline()} is true, and that reads a private static with no setter, so
- * under test the menu is always the five-button offline column. The six-button online variant is
- * unreachable without a production seam and is therefore not covered here.
+ * <p><b>Online layout.</b> The resync button exists only when {@code MultiplayerSession.isOnline()}
+ * is true, which no test can make so. Since #296 {@link UiOnlineState#override} pins the UI's notion
+ * of online, so the six-button column is covered below; it is reset after every test.
  */
 class PauseMenuTest {
 
@@ -43,6 +43,11 @@ class PauseMenuTest {
     void setUp() {
         menu = new PauseMenu(null);
         menu.setVisible(true);
+    }
+
+    @AfterEach
+    void restoreLiveSession() {
+        UiOnlineState.override(null);
     }
 
     /** The five always-present buttons, in slot order, paired with a label for failure messages. */
@@ -197,5 +202,37 @@ class PauseMenuTest {
         float last = SkijaPauseMenuRenderer.buttonOffset(4, 5);
         assertEquals(-first, last, 0.0001f,
             "the column must extend symmetrically above and below center");
+    }
+
+    @Test
+    void theOnlineColumnHasSixButtonsWithResyncAboveQuit() {
+        UiOnlineState.override(() -> true);
+        assertTrue(PauseMenu.isResyncButtonVisible());
+        for (Resolutions.Size size : Resolutions.ALL) {
+            int w = size.width();
+            int h = size.height();
+            String[] names = {"Resume", "Statistics", "Glossary", "Settings", "Resync", "Quit"};
+            for (int slot = 0; slot < 6; slot++) {
+                float[] c = slotCenter(slot, 6, w, h);
+                boolean[] hits = {
+                    menu.isResumeButtonClicked(c[0], c[1], w, h),
+                    menu.isStatisticsButtonClicked(c[0], c[1], w, h),
+                    menu.isGlossaryButtonClicked(c[0], c[1], w, h),
+                    menu.isSettingsButtonClicked(c[0], c[1], w, h),
+                    menu.isResyncButtonClicked(c[0], c[1], w, h),
+                    menu.isQuitButtonClicked(c[0], c[1], w, h)};
+                for (int b = 0; b < 6; b++) {
+                    assertEquals(b == slot, hits[b], size + ": the centre of slot " + slot + " ("
+                        + names[slot] + ") and button " + names[b]);
+                }
+            }
+        }
+    }
+
+    @Test
+    void releasingTheOverrideReturnsToTheLiveOfflineSession() {
+        UiOnlineState.override(() -> true);
+        UiOnlineState.override(null);
+        assertFalse(PauseMenu.isResyncButtonVisible());
     }
 }

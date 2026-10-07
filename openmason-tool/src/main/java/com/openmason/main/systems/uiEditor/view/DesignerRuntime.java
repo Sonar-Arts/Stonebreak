@@ -10,7 +10,7 @@ import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.UiRect;
 import com.openmason.engine.ui.runtime.input.PreviewInput;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
-import com.openmason.engine.ui.script.UiScriptOptions;
+import com.openmason.engine.ui.diag.UiBudgets;
 import com.openmason.engine.ui.script.UiScriptRuntime;
 import com.openmason.engine.ui.script.UiScriptServices;
 import com.openmason.engine.ui.script.UiScripts;
@@ -179,8 +179,9 @@ public final class DesignerRuntime implements AutoCloseable {
             if (mode == Mode.PREVIEW) {
                 fixtures = fixtures(a);
                 activation = GameUiDocuments.activationGate(view, fixtures.host());
+                // The game's hard limits (#296): a script that would fail in the game fails here first
                 scripts = GameUiDocuments.scripts(view, fixtures.host(), null, services(),
-                    UiScriptOptions.DEFAULTS.withGraphDebug(true));
+                    UiBudgets.forDocument(a).scriptOptions().withGraphDebug(true));
                 input = new PreviewInput(view.input());
             }
             error = null;

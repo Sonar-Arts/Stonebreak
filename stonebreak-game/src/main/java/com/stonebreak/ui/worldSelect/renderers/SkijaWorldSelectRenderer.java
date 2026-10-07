@@ -1,5 +1,6 @@
 package com.stonebreak.ui.worldSelect.renderers;
 
+import com.stonebreak.ui.LegacyUiClock;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
@@ -75,7 +76,7 @@ public final class SkijaWorldSelectRenderer {
     private float lastFontScale = -1f;
 
     private Shader dirtShader;
-    private long lastCursorBlink = System.currentTimeMillis();
+    private long lastCursorBlink = LegacyUiClock.millis();
     private boolean cursorVisible = true;
 
     public SkijaWorldSelectRenderer(SkijaUIBackend backend,
@@ -567,7 +568,7 @@ public final class SkijaWorldSelectRenderer {
     }
 
     private void updateCursorBlink() {
-        long now = System.currentTimeMillis();
+        long now = LegacyUiClock.millis();
         if (now - lastCursorBlink > 500L) {
             cursorVisible = !cursorVisible;
             lastCursorBlink = now;

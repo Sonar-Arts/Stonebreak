@@ -136,6 +136,11 @@ public final class GameUiHost {
 
     // ── sources ─────────────────────────────────────────────────────────────
 
+    /** Republishes {@code session} for the current mode, e.g. after {@code UiOnlineState.override} (#296). */
+    public void refreshSession() {
+        session.post(sessionValue(MultiplayerSession.getMode()));
+    }
+
     /** Any thread. Leaving to the menu also ends the world epoch: pending actions are cancelled. */
     public void sessionChanged(MultiplayerSession.Mode mode) {
         session.post(sessionValue(mode));
@@ -176,7 +181,7 @@ public final class GameUiHost {
 
     static UiValue.Obj sessionValue(MultiplayerSession.Mode mode) {
         return new UiValue.Obj(Map.of("mode", UiValue.of(mode.name().toLowerCase(java.util.Locale.ROOT)),
-            "online", UiValue.of(mode == MultiplayerSession.Mode.HOST || mode == MultiplayerSession.Mode.JOIN),
+            "online", UiValue.of(com.stonebreak.ui.UiOnlineState.isOnline(mode)), // overridable (#296)
             "hosting", UiValue.of(mode == MultiplayerSession.Mode.HOST)));
     }
 

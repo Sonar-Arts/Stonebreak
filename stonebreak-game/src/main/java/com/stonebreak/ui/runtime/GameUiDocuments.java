@@ -25,6 +25,8 @@ import com.openmason.engine.ui.runtime.paint.ResolvedUiAssets;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
 import com.openmason.engine.ui.runtime.paint.UiPaintHost;
 import com.openmason.engine.ui.runtime.paint.UiPainter;
+import com.openmason.engine.ui.diag.UiBudgets;
+import com.openmason.engine.ui.diag.UiFrameMonitor;
 import com.openmason.engine.ui.script.UiScriptOptions;
 import com.openmason.engine.ui.script.UiScriptRuntime;
 import com.openmason.engine.ui.script.UiScriptServices;
@@ -170,7 +172,20 @@ public final class GameUiDocuments {
      */
     public static UiScriptRuntime scripts(UiDocumentView view, UiHost host, UiConverters fallback,
                                           UiScriptServices services) {
-        return UiScripts.open(view, host, fallback, UiScriptOptions.DEFAULTS, services);
+        // Hard limits from the document's budgets (#296): 4 MiB / 50 ms, 32 MiB for Canvas minigames
+        UiScriptOptions options = UiBudgets.forDocument(view.instance().document()).scriptOptions();
+        return UiScripts.open(view, host, fallback, options, services);
+    }
+
+    /**
+     * Attaches the runtime budget monitor (#296) to {@code view} and lists it under {@code name}
+     * in the F3 overlay's UI card; overruns are logged. Call after {@link #scripts} so the first
+     * frame is not charged with loading the code-behind. It closes with the view.
+     */
+    public static UiFrameMonitor monitor(UiDocumentView view, String name) {
+        UiFrameMonitor m = UiFrameMonitor.attach(view);
+        GameUiDiagnostics.register(name, m);
+        return m;
     }
 
     /**

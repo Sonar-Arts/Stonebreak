@@ -1,6 +1,5 @@
 package com.stonebreak.ui;
 
-import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.ui.pauseMenu.SkijaPauseMenuRenderer;
 
@@ -48,9 +47,12 @@ public class PauseMenu {
         this.visible = !this.visible;
     }
 
-    /** The resync button only exists when a real network session is live (host or join). */
+    /**
+     * The resync button only exists when a real network session is live (host or join), as
+     * {@link UiOnlineState} reports it: overridable for fixtures and dev runs (#296).
+     */
     public static boolean isResyncButtonVisible() {
-        return MultiplayerSession.isOnline();
+        return UiOnlineState.isOnline();
     }
 
     private static int buttonCount() {

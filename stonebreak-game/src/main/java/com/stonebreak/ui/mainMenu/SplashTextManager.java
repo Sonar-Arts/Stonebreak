@@ -1,5 +1,6 @@
 package com.stonebreak.ui.mainMenu;
 
+import com.stonebreak.ui.LegacyUiClock;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -23,7 +24,7 @@ public class SplashTextManager {
 
     private SplashTextManager() {
         this.splashTexts = new ArrayList<>();
-        this.random = new Random();
+        this.random = LegacyUiClock.random();
         loadSplashTexts();
     }
 

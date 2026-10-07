@@ -182,6 +182,7 @@ public class Main {
             Game.getInstance().update();
             maybeAutoStartWorld();
             maybeAutoView();
+            maybeAutoPause();
             Game.displayDebugInfo();
             inputRouter.pollActiveScreen();
 
@@ -638,6 +639,55 @@ public class Main {
                 + com.stonebreak.battle.stage.FocusBattle.isStartPending() + ")");
         autoBattleScript = com.stonebreak.battle.stage.BattleAutoScript.parse(parts);
         autoBattleSkipIntro = parts.length > 1 && parts[1].trim().equalsIgnoreCase("skipintro");
+    }
+
+    // ─── Dev: -Dstonebreak.autopause=<seconds>[:online] ─────────────────────────
+
+    private long autoPauseDeadlineNanos = -1;
+    private boolean autoPauseDone;
+
+    /**
+     * Fidelity captures of the pause menu (#296): N seconds after the world is entered, opens the
+     * pause menu; {@code :online} lays it out as in a host/join session (six buttons, Resync World;
+     * documents see {@code session.online = true}) without touching the network ({@code UiOnlineState}). Pair with
+     * {@code -Dstonebreak.autoscreenshot} (a later deadline) and {@code -Dstonebreak.ui.pinclock}.
+     * Inert unless the property is set.
+     */
+    private void maybeAutoPause() {
+        if (autoPauseDone) {
+            return;
+        }
+        String spec = System.getProperty("stonebreak.autopause");
+        if (spec == null || spec.isBlank()) {
+            autoPauseDone = true;
+            return;
+        }
+        if (autoPauseDeadlineNanos < 0) {
+            if (Game.getInstance().getState() != GameState.PLAYING) {
+                return;
+            }
+            double seconds = 3;
+            try {
+                seconds = Double.parseDouble(spec.split(":")[0].trim());
+            } catch (NumberFormatException ignored) {
+                // keep default
+            }
+            autoPauseDeadlineNanos = System.nanoTime() + (long) (seconds * 1e9);
+            return;
+        }
+        if (System.nanoTime() < autoPauseDeadlineNanos) {
+            return;
+        }
+        autoPauseDone = true;
+        if (spec.trim().endsWith(":online")) {
+            com.stonebreak.ui.UiOnlineState.override(() -> true);
+        }
+        com.stonebreak.ui.PauseMenu menu = Game.getInstance().getPauseMenu();
+        if (Game.getInstance().getState() == GameState.PLAYING && menu != null && !menu.isVisible()) {
+            Game.getInstance().togglePauseMenu();
+        }
+        System.out.println("[autopause] pause menu open: " + (menu != null && menu.isVisible())
+            + (spec.trim().endsWith(":online") ? " (online layout)" : ""));
     }
 
     // ─── Dev: -Dstonebreak.autoscreenshot=<seconds>:<file.png>[:quit] ──────────

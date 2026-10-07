@@ -57,10 +57,21 @@ import java.util.Set;
  */
 public final class UiDocumentInstance implements AutoCloseable {
 
-    /** Counters from the most recent {@link #update()}, for invalidation tests and diagnostics. */
+    /**
+     * Counters from the most recent {@link #update()}, for invalidation tests and diagnostics.
+     *
+     * @param nanos wall time of the whole update (styles, layout, placement); the runtime budget
+     *              monitor (#296) judges the ones with {@code laidOut} against the layout budget
+     */
     public record UpdateStats(int stylesResolved, int recordsPushed, int remeasured, int rectsChanged,
-                              boolean laidOut) {
-        static final UpdateStats NONE = new UpdateStats(0, 0, 0, 0, false);
+                              boolean laidOut, long nanos) {
+        static final UpdateStats NONE = new UpdateStats(0, 0, 0, 0, false, 0);
+    }
+
+    /** Told about every {@link #update()} as it finishes (budget monitoring, #296). */
+    @FunctionalInterface
+    public interface UpdateObserver {
+        void updated(UiDocumentInstance ui, UpdateStats stats);
     }
 
     /**
@@ -123,6 +134,7 @@ public final class UiDocumentInstance implements AutoCloseable {
     private UiRect animatedRegion = UiRect.EMPTY;
     private double nextAnimationChange = Double.POSITIVE_INFINITY;
     private UpdateStats lastStats = UpdateStats.NONE;
+    private final List<UpdateObserver> updateObservers = new ArrayList<>(1);
     private float[] records = new float[FlexRecord.STRIDE * 16];
     private int[] nodeIds = new int[16];
     private float[] rects = new float[64];
@@ -199,14 +211,23 @@ public final class UiDocumentInstance implements AutoCloseable {
         return root;
     }
 
+    /** How many elements the tree has (no list wrapper: the budget monitor reads it per relayout). */
+    public int elementCount() {
+        return preOrder().size();
+    }
+
     /** Elements in pre-order. */
     public List<UiElement> elements() {
+        return Collections.unmodifiableList(preOrder());
+    }
+
+    private List<UiElement> preOrder() {
         if (orderDirty) {
             elements.clear();
             collect(root, elements);
             orderDirty = false;
         }
-        return Collections.unmodifiableList(elements);
+        return elements;
     }
 
     private static void collect(UiElement el, List<UiElement> out) {
@@ -540,19 +561,33 @@ public final class UiDocumentInstance implements AutoCloseable {
 
     /** Resolves dirty styles, lays out, then places elements. Requires the native flex library. */
     public UpdateStats update() {
+        long start = System.nanoTime();
         int rev = context.localizer().revision();
         if (rev != textRevision) {
             textRevision = rev; // locale, catalog or pseudo-localization changed: every text may differ
             remeasureAll();
         }
         int styles = resolveStyles();
-        lastStats = layout(styles);
+        boolean laidOut = layout();
         applyVisuals();
+        lastStats = new UpdateStats(styles, lastPushed, lastRemeasured, lastRectsChanged, laidOut,
+            System.nanoTime() - start);
+        for (int i = 0; i < updateObservers.size(); i++) {
+            updateObservers.get(i).updated(this, lastStats);
+        }
         return lastStats;
     }
 
     public UpdateStats lastUpdate() {
         return lastStats;
+    }
+
+    public void addUpdateObserver(UpdateObserver o) {
+        updateObservers.add(Objects.requireNonNull(o, "observer"));
+    }
+
+    public void removeUpdateObserver(UpdateObserver o) {
+        updateObservers.remove(o);
     }
 
     /**
@@ -628,7 +663,13 @@ public final class UiDocumentInstance implements AutoCloseable {
         }
     }
 
-    private UpdateStats layout(int stylesResolved) {
+    /** Counters of the last {@link #layout()}, folded into one {@link UpdateStats} per update. */
+    private int lastPushed;
+    private int lastRemeasured;
+    private int lastRectsChanged;
+
+    /** Pushes dirty records and runs Yoga when anything changed; true when it ran. */
+    private boolean layout() {
         boolean created = ensureFlexTree();
         int pushed = 0;
         int remeasured = 0;
@@ -650,15 +691,19 @@ public final class UiDocumentInstance implements AutoCloseable {
                 remeasured++;
             }
         }
+        lastPushed = pushed;
+        lastRemeasured = remeasured;
+        lastRectsChanged = 0;
         if (pushed == 0 && remeasured == 0 && !layoutForced && !created) {
-            return new UpdateStats(stylesResolved, 0, 0, 0, false);
+            return false;
         }
         layoutForced = false;
         int changed = flex.layout(root.flexNode, metrics.viewportWidth(), metrics.viewportHeight(), flexMeasure);
         // A structural edit can change a scroll extent without moving any surviving rect.
         int rectsChanged = changed > 0 || created || structureChanged ? readRects() : 0;
         structureChanged = false;
-        return new UpdateStats(stylesResolved, pushed, remeasured, rectsChanged, true);
+        lastRectsChanged = rectsChanged;
+        return true;
     }
 
     private boolean ensureFlexTree() {

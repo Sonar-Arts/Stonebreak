@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.UI.components;
 
+import com.stonebreak.ui.LegacyUiClock;
 import com.stonebreak.player.Player;
 import org.lwjgl.opengl.GL11;
 
@@ -28,7 +29,7 @@ public class ScreenDropletOverlay {
     }
 
     private final List<Droplet> droplets = new ArrayList<>();
-    private final Random random = new Random();
+    private final Random random = LegacyUiClock.random();
 
     /**
      * Spawns a couple of droplets scattered across the screen. Call once on the frame the

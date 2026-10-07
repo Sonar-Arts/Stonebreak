@@ -9,6 +9,7 @@ import com.stonebreak.ui.debug.DebugPanel;
 import com.stonebreak.ui.debug.GpuInfoProbe;
 import com.stonebreak.ui.debug.MobPathWireframeDrawer;
 import com.stonebreak.ui.debug.RamPanel;
+import com.stonebreak.ui.debug.UiBudgetPanel;
 import com.stonebreak.ui.debug.VramPanel;
 
 /**
@@ -26,6 +27,7 @@ public class DebugOverlay {
     private final DebugPanel ramPanel = new RamPanel();
     private final DebugPanel vramPanel = new VramPanel(gpuInfo);
     private final DebugPanel debugPanel = new DebugInfoPanel(diagnostics, gpuInfo);
+    private final UiBudgetPanel uiBudgetPanel = new UiBudgetPanel();
     private final MobPathWireframeDrawer wireframes = new MobPathWireframeDrawer();
 
     // MasonryUI for the right-side debug panel and left-side resource panel. Lazily built once a Renderer exists.
@@ -43,6 +45,7 @@ public class DebugOverlay {
     private MStatPanel cachedRamPanel = null;
     private MStatPanel cachedVramPanel = null;
     private MStatPanel cachedDebugPanel = null;
+    private MStatPanel cachedUiBudgetPanel = null;
 
     public DebugOverlay() {
     }
@@ -85,6 +88,8 @@ public class DebugOverlay {
                 || now - lastResourcePanelRebuildMs >= RESOURCE_PANEL_REBUILD_INTERVAL_MS) {
             cachedRamPanel = ramPanel.build();
             cachedVramPanel = vramPanel.build();
+            // UI document budgets (#296): only while a document is monitored
+            cachedUiBudgetPanel = uiBudgetPanel.hasContent() ? uiBudgetPanel.build() : null;
             lastResourcePanelRebuildMs = now;
         }
 
@@ -105,7 +110,10 @@ public class DebugOverlay {
             float ramHeight = cachedRamPanel.render(masonryUI, leftMargin, y, panelWidth);
             y += ramHeight + gap;
 
-            cachedVramPanel.render(masonryUI, leftMargin, y, panelWidth);
+            float vramHeight = cachedVramPanel.render(masonryUI, leftMargin, y, panelWidth);
+            if (cachedUiBudgetPanel != null) {
+                cachedUiBudgetPanel.render(masonryUI, leftMargin, y + vramHeight + gap, panelWidth);
+            }
 
             // Right-side debug info panel
             float rightX = sw - leftMargin - panelWidth;

@@ -1,5 +1,6 @@
 package com.stonebreak.ui.multiplayerMenu;
 
+import com.stonebreak.ui.LegacyUiClock;
 import com.stonebreak.config.Settings;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
@@ -32,7 +33,7 @@ public final class JoinWorldScreen {
     private int focusedField = 0; // 0 host, 1 port, 2 user, -1 none
     private int hoverButton = -1; // 0 connect, 1 back
     private String statusMessage = "";
-    private long lastBlinkMs = System.currentTimeMillis();
+    private long lastBlinkMs = LegacyUiClock.millis();
     private boolean caretOn = true;
 
     public JoinWorldScreen(SkijaUIBackend backend) {
@@ -60,7 +61,7 @@ public final class JoinWorldScreen {
     public void render(int w, int h) {
         if (!backend.isAvailable()) return;
         ensureFonts();
-        long now = System.currentTimeMillis();
+        long now = LegacyUiClock.millis();
         if (now - lastBlinkMs > 500) { caretOn = !caretOn; lastBlinkMs = now; }
 
         backend.beginFrame(w, h, 1.0f);

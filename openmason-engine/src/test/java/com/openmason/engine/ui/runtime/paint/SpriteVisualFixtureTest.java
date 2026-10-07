@@ -21,11 +21,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
+import com.openmason.engine.ui.fidelity.FidelityImage;
+import com.openmason.engine.ui.fidelity.GoldenStore;
+import com.openmason.engine.ui.fidelity.PixelTolerance;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -45,8 +44,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class SpriteVisualFixtureTest {
 
-    private static final boolean WRITE = Boolean.getBoolean("ui.visual.write");
-    private static final Path DIR = Path.of("src/test/resources/ui/runtime/visual");
+    private static final GoldenStore STORE = GoldenStore.forTests("ui/runtime/visual", "ui.visual.write");
 
     @TempDir
     Path tmp;
@@ -124,35 +122,6 @@ class SpriteVisualFixtureTest {
             assertTrue(assets.spriteDiagnostics().isEmpty(), assets.spriteDiagnostics()::toString);
             actual = host.pixels();
         }
-        Path file = DIR.resolve(name + ".png");
-        if (WRITE) {
-            BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-            img.setRGB(0, 0, w, h, actual, 0, w);
-            Files.createDirectories(DIR);
-            ImageIO.write(img, "png", file.toFile());
-            return;
-        }
-        BufferedImage golden;
-        try (InputStream in = SpriteVisualFixtureTest.class.getResourceAsStream("/ui/runtime/visual/" + name + ".png")) {
-            assertNotNull(in, "missing fixture " + file + " (run with -Dui.visual.write=true)");
-            golden = ImageIO.read(in);
-        }
-        assertTrue(golden.getWidth() == w && golden.getHeight() == h, name + " fixture size changed");
-        int[] expected = golden.getRGB(0, 0, w, h, null, 0, w);
-        int over = 0;
-        for (int i = 0; i < expected.length; i++) {
-            if (delta(expected[i], actual[i]) > 2) {
-                over++;
-            }
-        }
-        assertTrue(over <= expected.length / 1000, name + ": " + over + " pixels differ by more than 2 levels");
-    }
-
-    private static int delta(int a, int b) {
-        int max = 0;
-        for (int shift = 0; shift < 32; shift += 8) {
-            max = Math.max(max, Math.abs((a >>> shift & 0xFF) - (b >>> shift & 0xFF)));
-        }
-        return max;
+        STORE.verify(name, new FidelityImage(w, h, actual), PixelTolerance.RASTER_DRIFT);
     }
 }

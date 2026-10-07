@@ -26,7 +26,8 @@ import java.util.Locale;
  * comparison with the editor. Since #292 the document's Lua code-behind runs too (the
  * {@code ui/script/*.omui} samples in the engine's test resources are made for this), and a
  * script's {@code ui.close()} hides the overlay. {@code -Dstonebreak.uidoc.autoclick=key@seconds,...}
- * clicks elements on a schedule for screenshot runs.
+ * clicks elements on a schedule for screenshot runs. Since #296 its runtime budgets (Lua time per
+ * frame, Lua heap, relayout time) show in the F3 overlay and overruns are logged.
  */
 public final class DevDocumentOverlay {
 
@@ -82,6 +83,8 @@ public final class DevDocumentOverlay {
             if (scripts.isScripted()) {
                 LOGGER.info("[uidoc] scripts running: {}", scripts.modules());
             }
+            // Runtime budgets (#296): F3 "UI Documents" card, [ui-budget] log lines on overruns
+            GameUiDocuments.monitor(view, file);
             masonry = new MasonryUI(backend);
             for (UiRuntimeDiagnostic d : view.instance().diagnostics()) {
                 LOGGER.warn("[uidoc] {}", d);

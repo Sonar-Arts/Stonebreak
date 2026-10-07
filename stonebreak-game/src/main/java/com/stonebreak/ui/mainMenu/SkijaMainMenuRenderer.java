@@ -1,5 +1,6 @@
 package com.stonebreak.ui.mainMenu;
 
+import com.stonebreak.ui.LegacyUiClock;
 import com.stonebreak.core.Game;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.openmason.engine.ui.masonry.MPainter;
@@ -268,7 +269,7 @@ public final class SkijaMainMenuRenderer {
     }
 
     private void drawSplashText(Canvas canvas, float cx, float cy, String splash) {
-        long now = System.currentTimeMillis();
+        long now = LegacyUiClock.millis();
         float t = (now % 500L) / 500.0f;
         float scale = 1.0f + (float) (Math.sin(t * Math.PI * 2.0) * 0.05);
 

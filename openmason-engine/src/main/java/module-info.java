@@ -179,6 +179,9 @@ module openmason.engine {
     exports com.openmason.engine.ui.runtime.binding;
     // Lua code-behind and the animation sampler (#292)
     exports com.openmason.engine.ui.script;
+    // UI fidelity baselines + migration gate, runtime budget diagnostics (#296)
+    exports com.openmason.engine.ui.fidelity;
+    exports com.openmason.engine.ui.diag;
     // Behavior graphs compiled to Lua, and their editing model (#291)
     exports com.openmason.engine.ui.graph;
     exports com.openmason.engine.ui.graph.edit;

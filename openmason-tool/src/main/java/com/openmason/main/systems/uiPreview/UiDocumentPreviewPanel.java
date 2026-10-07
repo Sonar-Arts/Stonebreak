@@ -12,6 +12,9 @@ import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic;
 import com.openmason.engine.ui.runtime.access.AccessibilityTree;
 import com.openmason.engine.ui.runtime.input.PreviewInput;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
+import com.openmason.engine.ui.diag.UiBudgetTracker;
+import com.openmason.engine.ui.diag.UiBudgets;
+import com.openmason.engine.ui.diag.UiFrameMonitor;
 import com.openmason.engine.ui.script.UiApiStubs;
 import com.openmason.engine.ui.script.UiScriptChecker;
 import com.openmason.engine.ui.rendering.PreviewMapping;
@@ -86,6 +89,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
     private PreviewInput input;
     private FixtureHost fixtures;
     private UiScriptRuntime scripts;
+    private UiFrameMonitor budgets;
     private com.openmason.engine.ui.script.UiNativeHealth.Status nativeStatus;
     private final List<String> requests = new ArrayList<>();
     /** The behavior graph editor (#291) and the element it asked the preview to highlight. */
@@ -242,6 +246,26 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
 
     // ── code-behind (#292) ──────────────────────────────────────────────────
 
+    /**
+     * The document's runtime budgets (#296): Lua time per frame, Lua heap, relayout time, as the
+     * game judges them. Preview frames include the graph debugger's trace calls, so script time
+     * reads a little high here; over-budget lines are red.
+     */
+    private void budgetLines() {
+        if (budgets == null) {
+            return;
+        }
+        UiBudgetTracker.Snapshot snap = budgets.snapshot();
+        ImGui.textDisabled("Budgets (" + snap.budgets().kind().name().toLowerCase(Locale.ROOT) + "):");
+        for (String line : snap.lines()) {
+            if (line.startsWith("!")) {
+                ImGui.textColored(0xFF5050FF, line);
+            } else {
+                ImGui.text(line);
+            }
+        }
+    }
+
     private void scriptsSection() {
         if (scripts == null || !ImGui.collapsingHeader("Scripts")) {
             return;
@@ -253,6 +277,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
                     + " last frame %.1f us", scripts.modules(), scripts.memoryUsed() / 1024, scripts.memoryPeak() / 1024,
                 scripts.calls(), scripts.callNanos() / 1e6, scripts.lastUpdateNanos() / 1e3));
         }
+        budgetLines();
         if (ImGui.button("Check scripts")) {
             checked = check(view.instance().document());
         }
@@ -475,6 +500,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
                 view = null;
                 input = null;
                 scripts = null;
+                budgets = null;
             }
             checked = List.of();
             requests.clear();
@@ -487,8 +513,11 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
             List<UiDiagnostic> gate = GameUiDocuments.activationGate(view, fixtures.host());
             // Code-behind (#292) binds the view with its converters and runs against the fixtures.
             // Debug build: graphs compile with trace calls for the graph editor's highlighting (#291).
+            // Hard limits are the document's game budgets (#296), so a script that would fail in
+            // the game fails here first.
             scripts = GameUiDocuments.scripts(view, fixtures.host(), null, previewServices(),
-                UiScriptOptions.DEFAULTS.withGraphDebug(true));
+                UiBudgets.forDocument(view.instance().document()).scriptOptions().withGraphDebug(true));
+            budgets = UiFrameMonitor.attach(view);
             input = new PreviewInput(view.input());
             status = summary("Loaded", view.instance());
             for (UiDiagnostic d : gate) {
@@ -507,6 +536,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
                 view = null;
                 input = null;
                 scripts = null;
+                budgets = null;
             }
             status = "Cannot load: " + e.getMessage();
             logger.warn("UI document preview: cannot load {}", file.get(), e);
@@ -632,6 +662,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
             view.close();
             view = null;
             scripts = null;
+            budgets = null;
         }
         if (preview != null) {
             preview.close();

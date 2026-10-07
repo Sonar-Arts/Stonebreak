@@ -66,7 +66,11 @@ public record UiRuntimeDiagnostic(Severity severity, Code code, String element, 
         // Animation (#295): a clip track whose target, property or key values do not fit
         ANIMATION_TRACK,
         // A state machine that cannot run (missing clip, unknown state)
-        STATE_MACHINE
+        STATE_MACHINE,
+        // Soft runtime budgets (#296): warnings from ui.diag.UiFrameMonitor, never failures
+        BUDGET_SCRIPT_FRAME,
+        BUDGET_MEMORY,
+        BUDGET_LAYOUT
     }
 
     public UiRuntimeDiagnostic {

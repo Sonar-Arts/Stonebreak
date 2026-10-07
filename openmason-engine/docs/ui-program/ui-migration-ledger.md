@@ -3,7 +3,16 @@
 Pinned to commit 2b4bcc91
 
 Scope: every Stonebreak game screen, HUD element, dialog, tooltip, overlay, screen effect and reusable custom
-renderer. Open Mason's own tool UI is out of scope (#282). **Nothing is migrated: every row is `not started`.**
+renderer. Open Mason's own tool UI is out of scope (#282). **Nothing is migrated yet.**
+
+**Status** (summary table, checked by `UiMigrationLedgerCoverageTest`, #296):
+- `not started`: inventoried only.
+- `baselined`: committed pixel baselines of the legacy rendering exist. The row's `**Fidelity:**` line names them
+  (`<screen>/<case id>` under `stonebreak-game/src/test/resources/ui/fidelity/`), and the test fails if one is missing.
+- `in progress`: a document exists behind the per-screen switch; the baselines still hold.
+- `migrated`: the legacy path is gone. Also needs a `**Gate:**` line naming the test class that runs
+  `ui.fidelity.MigrationGate` for it (document vs legacy capture). See [ui-fidelity.md](ui-fidelity.md).
+- `n/a`: not a legacy surface.
 
 Paths are relative to `stonebreak-game/src/main/java/com/stonebreak/` unless they start with a module name.
 Abbreviations:
@@ -113,9 +122,9 @@ These apply to every row unless the row says otherwise.
 | multiplayer-menu | screen | `ui.multiplayerMenu.MultiplayerMenu` | shell-persistent | not started |
 | host-world | screen | `ui.multiplayerMenu.HostWorldScreen` | shell-persistent | not started |
 | join-world | screen | `ui.multiplayerMenu.JoinWorldScreen` | shell-persistent | not started |
-| pause-menu-offline | dialog | `ui.PauseMenu` | shell-persistent | not started |
-| pause-menu-online | dialog | `ui.PauseMenu` (Resync variant) | shell-persistent | not started |
-| pause-menu-over-battle | dialog | `ui.PauseMenu` drawn by `FR.renderFocusBattle` | shell-persistent | not started |
+| pause-menu-offline | dialog | `ui.PauseMenu` | shell-persistent | baselined |
+| pause-menu-online | dialog | `ui.PauseMenu` (Resync variant) | shell-persistent | baselined |
+| pause-menu-over-battle | dialog | `ui.PauseMenu` drawn by `FR.renderFocusBattle` | shell-persistent | baselined |
 | death-menu | dialog | `ui.DeathMenu` | shell-persistent | not started |
 | statistics | screen | `ui.statisticsScreen.StatisticsScreen` | shell-persistent | not started |
 | glossary | screen | `ui.glossaryScreen.GlossaryScreen` | shell-persistent | not started |
@@ -123,7 +132,7 @@ These apply to every row unless the row says otherwise.
 | inventory-tooltip | tooltip | `ui.inventoryScreen.InventoryScreen` via OR | per-world, per-frame | not started |
 | dragged-item-layer | overlay | OR + inventory/workbench/furnace screens | per-frame immediate | not started |
 | workbench | screen | `ui.workbench.WorkbenchScreen` | per-world | not started |
-| furnace | screen | `ui.furnace.FurnaceScreen` | per-world | not started |
+| furnace | screen | `ui.furnace.FurnaceScreen` | per-world | baselined |
 | recipe-book | overlay | `ui.recipeScreen.RecipeScreen` | per-world | not started |
 | recipe-book-tooltip | tooltip | `ui.recipeScreen.RecipeScreen` via OR | per-world | not started |
 | character-sheet | screen | `ui.characterScreen.CharacterScreen` | per-world | not started |
@@ -534,6 +543,10 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - **Drawn twice per frame in PLAYING/PAUSED**: `renderGameUI` → `renderActivePauseMenu` (FR:313, 398-406) and `renderModalMenus` (FR:431-435). That is two Skia paints, with the scrim stacked to about 72 %.
   - The depth curtain follows (row `effect-pause-depth-curtain`).
 - **Fixtures:** `ui/PauseMenuTest`: hit-tests across `Resolutions.ALL`, hidden state, Resync hidden offline, hover = hit-test.
+  `ui/fidelity/LegacyPauseBaselineTest` (#296): pixel baselines of the real renderer on a pinned CPU raster, scrim
+  darkness (field 2 passes vs battle 1), hover isolation, renderer rects = the geometry oracle. Legacy capture for
+  the #297 gate: `ui.fidelity.LegacyPauseCapture` (variants `field|battle`-`offline|online`[-`hover-<button>`]).
+- **Fidelity:** `pause/pause-field-offline_1920x1080_s1` `pause/pause-field-offline_1280x720_s0_75` `pause/pause-field-offline_3840x2160_s2` `pause/pause-field-offline_1921x1081_s1_25` `pause/pause-field-offline-hover-quit_1920x1080_s1`
 - **Notes:**
   - **The Resume button never shows hover**: `false` is hard-coded (renderer :88) and there is no `resumeHovered` field.
   - Escape while the death menu is up opens an unclickable pause menu under it.
@@ -543,7 +556,9 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Owner:** `PauseMenu.isResyncButtonVisible()` = `MultiplayerSession.isOnline()` = mode HOST or JOIN (`network/MultiplayerSession.java:64`), read live every frame. Singleplayer, even as integrated server + client, counts as offline.
 - **Layout:** 6 buttons, with "Resync World" in slot 4 and Quit in slot 5. Offsets ±175 instead of ±140, so **every button moves 35 px**. The panel stays 520×560.
 - **Actions:** Resync → `MultiplayerSession.requestFullResync()` (chunk audit + entity snapshot; −1 when not connected) → chat message → resume (UMR:194-202).
-- **Fixtures:** **none for the 6-button layout.** `isOnline` reads a private static with no test seam (PauseMenuTest javadoc).
+- **Fixtures:** since #296 `ui.UiOnlineState.override` is the seam (also feeds documents' `session.online`): `PauseMenuTest` covers the 6-button hit-tests,
+  `LegacyPauseBaselineTest` the pixels. Live: `-Dstonebreak.autopause=<s>:online`.
+- **Fidelity:** `pause/pause-field-online_1920x1080_s1` `pause/pause-field-online_1280x720_s0_75` `pause/pause-field-online_3840x2160_s2` `pause/pause-field-online_1921x1081_s1_25` `pause/pause-field-online-hover-resync_1921x1081_s1_25`
 
 ### pause-menu-over-battle
 - **Kind:** dialog, a variant.
@@ -556,6 +571,8 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Time:** C1 and C2 freeze (GL:119-123 runs only in FOCUS_BATTLE). BATTLE music keeps playing.
 - **Notes:** UTK:68 `battleOwnsToggles` keeps E, C, T and Q blocked under the pause.
 - **Fixtures:** only checks that `openPauseMenu` is called (`FocusBattleScreenInputTest`, `ResultPanelTest`).
+  The single-scrim menu itself is baselined over the fixture backdrop (the frozen battle frame behind it is not).
+- **Fidelity:** `pause/pause-battle-offline_1920x1080_s1`
 
 ### death-menu
 - **Kind:** dialog.
@@ -683,8 +700,13 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - The UI's "lit" test is `isCooking() || fuelRatio>0`, while the block's `isLit()` is `burnTimeRemaining>0`.
 - **Layout:** radial slots from `FurnaceLayout.compute` (:43-82) × uiScale. Halos and strokes are absolute px.
 - **Draw:** only via `renderFullscreenMenus`. Three phases with no outer Skija frame. Crucible art (Hard visuals #9). Tooltip in its own pass. **No hotbar**, but the hotbar-item tooltip leaks in (OR:66-79).
-- **Time:** `System.nanoTime` since a static `ANIM_EPOCH` (renderer :40,448-450).
-- **Fixtures:** `FurnaceLayoutTest`, `PacketRoundTripTest`, `BlockLightSourceTest`.
+- **Time:** `System.nanoTime` since a static `ANIM_EPOCH` (renderer :40,448-450). Since #296: `LegacyUiClock.seconds()`
+  (pinnable).
+- **Fixtures:** `FurnaceLayoutTest`, `PacketRoundTripTest`, `BlockLightSourceTest`. `ui/fidelity/LegacyFurnaceBaselineTest`
+  (#296): pixel baselines with empty slots (item icons are GL, hard visual 2), lit vs unlit isolation, pinned-clock
+  repeatability, renderer rects = the geometry oracle. Legacy capture for the #298 gate:
+  `ui.furnace.core.LegacyFurnaceCapture` (variants `unlit`, `lit`, `lit-hover-<slot>`).
+- **Fidelity:** `furnace/furnace-unlit_1920x1080_s1` `furnace/furnace-unlit_1280x720_s0_75` `furnace/furnace-unlit_3840x2160_s2` `furnace/furnace-unlit_1921x1081_s1_25` `furnace/furnace-unlit_800x600_s2` `furnace/furnace-lit_1920x1080_s1` `furnace/furnace-lit_1280x720_s0_75` `furnace/furnace-lit_3840x2160_s2` `furnace/furnace-lit_1921x1081_s1_25` `furnace/furnace-lit-hover-main0_1920x1080_s1`
 - **Performance:** per frame about 40 `new MItemSlot`, Paint/Path objects and `encodeSlots` string building.
 - **Notes:**
   - **Closing while carrying an item taken from a furnace slot loses it**: the local put-back is followed by `state = null` and never sent (`FurnaceController.java:70-75`).
@@ -958,7 +980,8 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 ### effect-screen-droplets
 - **Kind:** effect. Owner: `ScreenDropletOverlay` (same path).
 - **Draw:** 2–4 `GL_POINTS` with `POINT_SMOOTH`, 10–28 px, life 0.8–1.4 s, sliding 6 % of the height per second, spawned on `justEnteredWaterThisFrame()`.
-- **Notes:** random spawn, so it is not deterministic for fixtures.
+- **Notes:** random spawn. Since #296 the `Random` comes from `LegacyUiClock.random()`, seeded while the clock is
+  pinned (`-Dstonebreak.ui.pinclock=<s>[:<seed>]`), so spawns repeat in fixture runs.
 - **Fixtures:** none.
 
 ### effect-pause-depth-curtain
@@ -1254,8 +1277,8 @@ Run from `stonebreak-game/src/main/java/com/stonebreak/` unless noted (zsh: quot
 
 | gap | suggested owner |
 |---|---|
-| No golden images anywhere. The battle raster tests are relative, so a pixel-different migration passes. No resolution × DPI × uiScale fixture set exists for any non-battle screen. | #296 |
-| Online 6-button pause layout has no test seam (`MultiplayerSession.isOnline` is a private static). | #297 (+#296) |
+| No golden images anywhere. The battle raster tests are relative, so a pixel-different migration passes. No resolution × DPI × uiScale fixture set exists for any non-battle screen. **#296: pause and furnace baselined** (`ui/fidelity/`, standard viewports × variants, pinned font/clock/seed); other screens get theirs when their wave starts. DPI stays 1 (no DPI handling exists). | #296 → each wave |
+| ~~Online 6-button pause layout has no test seam~~ **Done (#296):** `ui.UiOnlineState.override`. | #297 (+#296) |
 | Field pause drawn twice (≈72 % scrim) vs battle pause once (≈47 %); Resume never highlights. Decide preserve vs fix and record it. | #297 |
 | Raw-GL 3D previews (character creation, character sheet, glossary) and 3D block icons need a render-provider or viewport-hole contract in the document model. | #286, #289 |
 | Battle timing contracts: C1/C2 split, WYSIWYG grading, identity-deduped events, render-locked floater births, three 4 s accumulators, card-to-camera constants. These need explicit Lua and animation semantics before the battle migrates. | #292, #295, #301 |
@@ -1264,11 +1287,11 @@ Run from `stonebreak-game/src/main/java/com/stonebreak/` unless noted (zsh: quot
 | Hit-test/render mismatches: chat tabs (unscaled 70 px vs 80·s); workbench pickup offset by slotPadding; invisible workbench buttons and tabs; inventory side-column drop; scrolled-out buttons in character tabs and settings. | #300, #299, #301 |
 | Item-loss bugs (furnace close while dragging, furnace shift-click into full inventory, workbench cursor stack on quit); server accepts furnace snapshots without conservation. File as separate bugs; migration must not "fix" them silently. | #298, #300 (+ new Mortar bugs) |
 | Mixed scaling: hearts, gauges, crosshair, stealth HUD, world markers, F3, emoji picker, recipe book, character creation, terrain mapper, loading and multiplayer ignore uiScale; no DPI awareness. Define layout units. | #287 |
-| Clock zoo: `nanoTime` epoch (furnace), `currentTimeMillis` (chat fade, GIF, carets, splash, world-select card), `getTotalTimeElapsed` (previews, sparkles), render-path dt (damage numbers, overlays), fixed 1/60 (settings scroll), frame dt. Define a UI time source. | #295 |
-| Legacy immediate-mode GL effects (underwater, dodge, droplets) need a compatibility profile; droplets use unseeded randomness. | #286, #301 |
+| Clock zoo: `nanoTime` epoch (furnace), `currentTimeMillis` (chat fade, GIF, carets, splash, world-select card), `getTotalTimeElapsed` (previews, sparkles), render-path dt (damage numbers, overlays), fixed 1/60 (settings scroll), frame dt. Define a UI time source. **#296:** the presentation wall-clock reads (furnace, chat fade, GIF, carets, splash pulse and pick) go through the pinnable `ui.LegacyUiClock`; the dt-driven ones (`getTotalTimeElapsed`, render-path dt) and input/safety timing (double-click, search debounce, world-select card delays, UI-scale auto-revert) do not. Documents use #295 `UiClocks`. | #295, #296 |
+| Legacy immediate-mode GL effects (underwater, dodge, droplets) need a compatibility profile; droplets used unseeded randomness (**#296: seeded through `LegacyUiClock`**). | #286, #301 |
 | Lifecycle leaks: no shell or per-world screen disposed except four; loading screen leaks 9 Fonts per frame; AbilityIconCache, emoji caches and SoundEmitterRenderer VBO never released. Define instance and dispose rules. | #289, #302 |
 | Dead or vestigial code: world-select create dialog, loading error panel, `HotbarRenderer.java`, workbench/furnace hotbar renderers, `InventoryMouseHandler`, OpenGLQuadRenderer API, four depth-curtain methods, `ui.Font`, `WorldSelectConfig`, `HotbarTheme` colours. Decide migrate vs delete per item. | #299, #300, #301 |
 | World-pass UI-like markers (Illusionist revealed outline) and the block crack overlay (judged world geometry, out of scope). Confirm the ownership boundary. | #301 |
 | Shared `ui.startupIntro.tween` easing package used by MasonryUI and the battle camera must move before the Masonry extraction. | #286 |
 | No controller/gamepad support and no keybinding system exist for legacy screens; hard-coded "SPACE" and "W/A/S/D" hints. #288 added controllers, `UiActionMap` bindings and remappable `actionHints` for documents only; a migrated screen gains them, and that is an addition, not a regression baseline. | #297–#301 |
-| Representative-state screenshots at each supported resolution/DPI/scale with pinned fonts, time and seed were **not captured** in this pass (ledger only). | #296 |
+| Representative-state screenshots at each supported resolution/DPI/scale with pinned fonts, time and seed were **not captured** in this pass (ledger only). **#296:** pause and furnace captured as committed baselines; live back-buffer shots via `-Dstonebreak.autopause` + `-Dstonebreak.autoscreenshot` + `-Dstonebreak.ui.pinclock` (world behind is not pinned). | #296 → each wave |
