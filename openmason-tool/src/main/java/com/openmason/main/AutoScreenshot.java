@@ -33,6 +33,10 @@ import static org.lwjgl.opengl.GL11.glReadPixels;
  * popped-out workspace, the Texture Editor, a floating panel) is written beside it as
  * {@code <file>.<window title>.png}, re-drawn from its own ImGui draw data (never a desktop grab).
  * Called right before the buffer swap, after the platform windows were rendered.
+ *
+ * <p>{@code -Dopenmason.autoscreenshot.burst=<n>} captures {@code n} consecutive frames instead
+ * ({@code <file>-f01.png}, ...; main window only), for transient glitches such as the first
+ * frames of a freshly opened workspace. Quitting waits for the last frame of the burst.
  */
 final class AutoScreenshot {
 
@@ -42,12 +46,15 @@ final class AutoScreenshot {
     private final Path file;
     private final boolean quit;
     private final long start = System.nanoTime();
+    private final int burst;
+    private int shots;
     private boolean done;
 
-    private AutoScreenshot(double at, Path file, boolean quit) {
+    private AutoScreenshot(double at, Path file, boolean quit, int burst) {
         this.at = at;
         this.file = file;
         this.quit = quit;
+        this.burst = Math.max(0, burst);
     }
 
     /** The configured hook, or null. */
@@ -59,7 +66,8 @@ final class AutoScreenshot {
         String[] parts = spec.split(":");
         return new AutoScreenshot(Double.parseDouble(parts[0]),
             Path.of(parts.length > 1 ? parts[1] : "openmason-shot.png"),
-            parts.length > 2 && "quit".equalsIgnoreCase(parts[2]));
+            parts.length > 2 && "quit".equalsIgnoreCase(parts[2]),
+            Integer.getInteger("openmason.autoscreenshot.burst", 0));
     }
 
     /**
@@ -70,17 +78,14 @@ final class AutoScreenshot {
         if (done || (System.nanoTime() - start) / 1e9 < at) {
             return false;
         }
+        if (burst > 0) {
+            shots++;
+            done = shots >= burst;
+            captureMain(window, file.resolveSibling(stem() + String.format("-f%02d.png", shots)));
+            return done && quit;
+        }
         done = true;
-        int[] w = new int[1];
-        int[] h = new int[1];
-        glfwGetFramebufferSize(window, w, h);
-        ByteBuffer px = BufferUtils.createByteBuffer(w[0] * h[0] * 4);
-        org.lwjgl.glfw.GLFW.glfwMakeContextCurrent(window); // multi-viewport rendering may have switched it
-        org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, 0);
-        glReadBuffer(GL_BACK);
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glReadPixels(0, 0, w[0], h[0], GL_RGBA, GL_UNSIGNED_BYTE, px);
-        write(file, w[0], h[0], px);
+        captureMain(window, file); // also makes the main context current (multi-viewport may have switched it)
         if (others != null) {
             List<ImGuiBackend.ViewportPixels> shots;
             try {
@@ -98,10 +103,27 @@ final class AutoScreenshot {
         return quit;
     }
 
+    private String stem() {
+        String name = file.getFileName().toString();
+        return name.toLowerCase(Locale.ROOT).endsWith(".png") ? name.substring(0, name.length() - 4) : name;
+    }
+
+    private static void captureMain(long window, Path target) {
+        int[] w = new int[1];
+        int[] h = new int[1];
+        glfwGetFramebufferSize(window, w, h);
+        ByteBuffer px = BufferUtils.createByteBuffer(w[0] * h[0] * 4);
+        org.lwjgl.glfw.GLFW.glfwMakeContextCurrent(window);
+        org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, 0);
+        glReadBuffer(GL_BACK);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels(0, 0, w[0], h[0], GL_RGBA, GL_UNSIGNED_BYTE, px);
+        write(target, w[0], h[0], px);
+    }
+
     /** {@code <file stem>.<slug of title>.png} beside the main shot, unique within one capture. */
     private Path siblingFor(String title, Set<String> used) {
-        String name = file.getFileName().toString();
-        String stem = name.toLowerCase(Locale.ROOT).endsWith(".png") ? name.substring(0, name.length() - 4) : name;
+        String stem = stem();
         String slug = title.replaceAll("###.*$", "").toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-")
             .replaceAll("^-+|-+$", "");
         if (slug.isEmpty()) {

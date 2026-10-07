@@ -69,6 +69,21 @@ public final class AppWindow {
         glfwSwapInterval(omConfig.isVSyncEnabled() ? 1 : 0);
 
         GL.createCapabilities();
+        if (GL_DEBUG) {
+            // Dev: the driver's own error/performance messages on stderr, synchronous so a stack
+            // trace points at the offending call. -Dopenmason.gldebug=true
+            org.lwjgl.opengl.GL11.glEnable(org.lwjgl.opengl.GL43.GL_DEBUG_OUTPUT);
+            org.lwjgl.opengl.GL11.glEnable(org.lwjgl.opengl.GL43.GL_DEBUG_OUTPUT_SYNCHRONOUS);
+            // Notifications are chatty (NVIDIA reports every buffer placement); anything worse is
+            // printed with the Java stack of the GL call that caused it.
+            org.lwjgl.opengl.GL43.glDebugMessageCallback((source, type, id, severity, length, message, user) -> {
+                if (severity == org.lwjgl.opengl.GL43.GL_DEBUG_SEVERITY_NOTIFICATION) {
+                    return;
+                }
+                System.err.println("[gldebug] " + org.lwjgl.opengl.GLDebugMessageCallback.getMessage(length, message));
+                new Throwable("[gldebug] GL call").printStackTrace(System.err);
+            }, 0L);
+        }
         glfwShowWindow(window);
 
         // GLFW posts the Windows taskbar-icon update as a window message. If the event loop is
@@ -86,7 +101,13 @@ public final class AppWindow {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+        if (GL_DEBUG) {
+            glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
+        }
     }
+
+    /** {@code -Dopenmason.gldebug=true}: a debug GL context reporting driver messages on stderr. */
+    private static final boolean GL_DEBUG = Boolean.getBoolean("openmason.gldebug");
 
     private int getValidWindowWidth() {
         int width = omConfig.getLastWindowWidth();
