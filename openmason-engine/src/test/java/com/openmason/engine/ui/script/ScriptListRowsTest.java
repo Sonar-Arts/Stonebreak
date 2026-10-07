@@ -150,28 +150,30 @@ class ScriptListRowsTest {
             rig.frame(0.016);
             int realized = rig.rt.modules().size();
             assertTrue(realized > 1 && realized < 50, "only the window's rows run scripts: " + realized);
-            String first = cardKey(rig, 0);
-            assertEquals("item0", rig.text(row(rig, 0).children().get(1).key()));
+            // The second row: after a one-line scroll the first row sits in the overscan line above
+            // the view (#326), where no click reaches it.
+            String first = cardKey(rig, 1);
+            assertEquals("item1", rig.text(row(rig, 1).children().get(1).key()));
             rig.click(first + "/frame");
             assertTrue(rig.log().contains("picked " + first), rig.log().toString());
 
-            rig.el("list").scrollTo(0, 20); // the first row now shows item1
+            rig.el("list").scrollTo(0, 40); // past the overscan line: the second row now shows item2
             rig.frame(0.016);
-            assertEquals("item1", rig.text(row(rig, 0).children().get(1).key()));
-            assertEquals(cardKey(rig, 0), first, "the row and its card element were recycled, not rebuilt");
-            assertTrue(rig.log().contains("close " + first + " picked=true"), "item0's script closed: " + rig.log());
+            assertEquals("item2", rig.text(row(rig, 1).children().get(1).key()));
+            assertEquals(cardKey(rig, 1), first, "the row and its card element were recycled, not rebuilt");
+            assertTrue(rig.log().contains("close " + first + " picked=true"), "item1's script closed: " + rig.log());
             assertEquals(2, count(rig, "open " + first + " "), rig.log().toString());
-            // Scrolling one row recycles every row of the window; the first card's new context
+            // Scrolling one row recycles every row of the window; the card's new context
             // opened after its old one closed, with fresh module state.
             assertTrue(rig.log().indexOf("close " + first + " picked=true")
                     < rig.log().lastIndexOf("open " + first + " picked=nil"),
-                "item1's script starts with fresh module state: " + rig.log());
+                "item2's script starts with fresh module state: " + rig.log());
             assertEquals(realized, rig.rt.modules().size(), "one context per realized row, still");
 
             rig.click(first + "/frame"); // the old click handler is gone: one pick, from the new context
             assertEquals(2, count(rig, "picked " + first), rig.log().toString());
 
-            rig.frame(6); // every sleep that is still pending wakes; item0's was cancelled with its context
+            rig.frame(6); // every sleep that is still pending wakes; item1's was cancelled with its context
             assertEquals(realized, count(rig, "woke "), rig.log().toString());
             assertTrue(rig.rt.diagnostics().isEmpty(), rig.rt.diagnostics().toString());
         }
