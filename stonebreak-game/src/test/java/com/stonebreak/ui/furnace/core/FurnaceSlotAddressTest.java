@@ -87,11 +87,35 @@ class FurnaceSlotAddressTest {
         Inventory inv = emptyInventory();
         FurnaceController controller = new FurnaceController(null, inv, null, null, null);
         FurnaceInputManager input = new FurnaceInputManager(null, inv, controller);
-        for (String s : List.of("ingredient", "fuel", "output", "hotbar:0", "hotbar:8", "main:0", "main:26", "outside")) {
+        for (String s : List.of("ingredient", "fuel", "output", "hotbar:0", "hotbar:8", "main:0", "main:26", "outside",
+                "panel")) {
             assertNotNull(input.slotOrigin(s, W, H), s);
         }
         for (String s : List.of("craft:0", "main:27", "hotbar:-1", "nonsense")) {
             assertNull(input.slotOrigin(s, W, H), s);
         }
+    }
+
+    @Test
+    void aPressOnTheBarePanelPutsTheCarriedStackBack() {
+        Inventory inv = emptyInventory();
+        FurnaceController controller = new FurnaceController(null, inv, null, null, null);
+        FurnaceInputManager input = new FurnaceInputManager(null, inv, controller);
+        controller.setInputManager(input);
+        controller.bind(new FurnaceState(new BlockPos(0, 64, 0)));
+        inv.setMainInventorySlot(3, new ItemStack(BlockType.DIRT, 7));
+
+        com.stonebreak.ui.runtime.contracts.ContainerSlots.click(input, "main:3", 0, false, W, H);
+        assertTrue(input.getDragState().isDragging(), "picked up");
+        assertTrue(inv.getMainInventorySlot(3).isEmpty());
+
+        // "panel" lands inside the panel on no slot: the legacy bare-panel click (return to origin)
+        float[] at = input.slotCentre("panel", W, H);
+        var layout = com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator.calculateWorkbenchLayout(W, H);
+        assertTrue(at[0] >= layout.panelStartX && at[1] >= layout.panelStartY, "inside the panel");
+        com.stonebreak.ui.runtime.contracts.ContainerSlots.click(input, "panel", 0, false, W, H);
+
+        assertTrue(!input.getDragState().isDragging(), "nothing left on the cursor");
+        assertEquals(7, inv.getMainInventorySlot(3).getCount(), "back in its slot, not dropped into the world");
     }
 }

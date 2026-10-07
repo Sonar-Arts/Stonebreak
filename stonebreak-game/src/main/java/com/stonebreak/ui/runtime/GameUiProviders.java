@@ -28,6 +28,14 @@ public final class GameUiProviders {
         }
     }
 
+    /**
+     * The game providers that paint with Skia alone (the furnace crucible), for hosts without the
+     * game's GL (the editor preview, raster captures). Fresh instances per call.
+     */
+    public static Map<String, UiPaintHost.UiDrawProvider> skiaOnly() {
+        return com.stonebreak.ui.runtime.providers.GameDrawProviders.skiaOnly();
+    }
+
     /** A snapshot of every registered provider, for a document being opened. */
     public static Map<String, UiPaintHost.UiDrawProvider> all() {
         com.stonebreak.ui.runtime.providers.GameDrawProviders.install(); // item icons, 3D previews (once)

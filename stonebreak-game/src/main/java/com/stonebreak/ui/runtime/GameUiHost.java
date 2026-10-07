@@ -46,9 +46,10 @@ import java.util.function.Consumer;
  *   <tr><th>Contract</th><th>Offers</th></tr>
  *   <tr><td>{@code stonebreak:session} 1</td><td>root {@code session}: {@code mode}, {@code online},
  *       {@code hosting}; follows {@link MultiplayerSession} mode changes</td></tr>
- *   <tr><td>{@code stonebreak:furnace} 2</td><td>root {@code furnace}: the open furnace's {@code open},
+ *   <tr><td>{@code stonebreak:furnace} 3</td><td>root {@code furnace}: the open furnace's {@code open},
  *       {@code lit}, {@code progress} and {@code fuel} (0–1); since 2 its {@code ingredientSlot},
- *       {@code fuelSlot} and {@code outputSlot} stacks</td></tr>
+ *       {@code fuelSlot} and {@code outputSlot} stacks; since 3 {@code cooking} (a smelt is under way:
+ *       the furnace screen's crucible glows while cooking or with fuel left, #298)</td></tr>
  *   <tr><td>{@code stonebreak:inventory} 1</td><td>collection {@code inventory} ({@code main:0..26}),
  *       root {@code carried} (the stack on the cursor); slot actions {@code stonebreak:inventory.slot-click},
  *       {@code .slot-press}, {@code .slot-drag}, {@code .slot-release}, {@code .sort}, {@code .craft-all},
@@ -78,7 +79,7 @@ import java.util.function.Consumer;
 public final class GameUiHost {
 
     public static final HostContract SESSION = HostContract.of("stonebreak:session", 1);
-    public static final HostContract FURNACE = HostContract.of("stonebreak:furnace", 2);
+    public static final HostContract FURNACE = HostContract.of("stonebreak:furnace", 3);
     public static final HostContract SETTINGS = HostContract.of("stonebreak:settings", 2);
     public static final HostContract PAUSE = HostContract.of("stonebreak:screen.pause", 1);
     public static final HostContract RESYNC = HostContract.of("stonebreak:network.resync", 1);
@@ -119,7 +120,7 @@ public final class GameUiHost {
         "hosting", DataType.bool());
     static final DataType.Obj FURNACE_TYPE = DataType.object("open", DataType.bool(), "lit", DataType.bool(),
         "progress", DataType.number(), "fuel", DataType.number(), "ingredientSlot", SlotRecords.STACK,
-        "fuelSlot", SlotRecords.STACK, "outputSlot", SlotRecords.STACK);
+        "fuelSlot", SlotRecords.STACK, "outputSlot", SlotRecords.STACK, "cooking", DataType.bool());
     static final DataType.Obj SETTINGS_TYPE = SettingsContract.TYPE;
 
     private static final DataType.Obj SLOT_ARGS = DataType.object("slot", DataType.string(),
@@ -427,6 +428,7 @@ public final class GameUiHost {
         m.put("ingredientSlot", SlotRecords.stack(s.getIngredient()));
         m.put("fuelSlot", SlotRecords.stack(s.getFuel()));
         m.put("outputSlot", SlotRecords.stack(s.getOutput()));
+        m.put("cooking", UiValue.of(s.isCooking()));
         return new UiValue.Obj(m);
     }
 
@@ -439,6 +441,7 @@ public final class GameUiHost {
         m.put("ingredientSlot", SlotRecords.emptyStack());
         m.put("fuelSlot", SlotRecords.emptyStack());
         m.put("outputSlot", SlotRecords.emptyStack());
+        m.put("cooking", UiValue.FALSE);
         return new UiValue.Obj(m);
     }
 

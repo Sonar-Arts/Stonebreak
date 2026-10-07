@@ -25,6 +25,9 @@ import java.util.function.Supplier;
  *       {@code DrawProvider}'s {@code params})</li>
  *   <li>{@value EntityPreviewProvider#ID} v{@value EntityPreviewProvider#VERSION}: orbiting 3D
  *       player/mob previews ({@code DrawProvider} {@code params})</li>
+ *   <li>{@value FurnaceCrucibleProvider#BOWL_ID} and {@value FurnaceCrucibleProvider#RINGS_ID}
+ *       v{@value FurnaceCrucibleProvider#VERSION}: the furnace crucible and its progress rings
+ *       (Skia only, {@code params} = the {@code furnace} record)</li>
  * </ul>
  *
  * Providers render GL in {@code prepare}, so hosts must run {@code UiDocumentView.prepareProviders()}
@@ -35,7 +38,9 @@ public final class GameDrawProviders implements AutoCloseable {
     /** Declared id → version of every provider this game implements. */
     public static final Map<String, Integer> DECLARED = Map.of(
         ItemIconProvider.ID, ItemIconProvider.VERSION,
-        EntityPreviewProvider.ID, EntityPreviewProvider.VERSION);
+        EntityPreviewProvider.ID, EntityPreviewProvider.VERSION,
+        FurnaceCrucibleProvider.BOWL_ID, FurnaceCrucibleProvider.VERSION,
+        FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.VERSION);
 
     private static GameDrawProviders instance;
     private static boolean installed;
@@ -48,6 +53,8 @@ public final class GameDrawProviders implements AutoCloseable {
         Map<String, UiPaintHost.UiDrawProvider> map = new LinkedHashMap<>();
         map.put(ItemIconProvider.ID, new ItemIconProvider(atlas, typeface));
         map.put(EntityPreviewProvider.ID, new EntityPreviewProvider());
+        map.put(FurnaceCrucibleProvider.BOWL_ID, FurnaceCrucibleProvider.bowl());
+        map.put(FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.rings());
         this.providers = java.util.Collections.unmodifiableMap(map);
         if (!providers.keySet().equals(DECLARED.keySet())) {
             throw new IllegalStateException("declared providers " + DECLARED.keySet() + " != " + providers.keySet());
@@ -89,6 +96,15 @@ public final class GameDrawProviders implements AutoCloseable {
     /** Provider id → implementation, for {@code UiPaintHost}. */
     public Map<String, UiPaintHost.UiDrawProvider> providers() {
         return providers;
+    }
+
+    /**
+     * The providers that paint with Skia alone (no GL, no running game): what an editor preview
+     * or a raster capture can draw too, instead of placeholders. Fresh instances per call.
+     */
+    public static Map<String, UiPaintHost.UiDrawProvider> skiaOnly() {
+        return Map.of(FurnaceCrucibleProvider.BOWL_ID, FurnaceCrucibleProvider.bowl(),
+            FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.rings());
     }
 
     /** Declares every provider on {@code host}, so activation accepts documents that need them. */

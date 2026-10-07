@@ -8,8 +8,10 @@ package com.stonebreak.ui.inventoryScreen.handlers;
  * legacy mouse path run the same code.
  *
  * <p>Slot addresses: {@code main:<0-26>}, {@code hotbar:<0-8>}, {@code craft:<i>},
- * {@code craft-output}, {@code ingredient}, {@code fuel}, {@code output} (furnace) and
- * {@code outside} (beyond the panel: a held stack is dropped into the world).
+ * {@code craft-output}, {@code ingredient}, {@code fuel}, {@code output} (furnace),
+ * {@code panel} (a point of the panel no slot covers: a press there while holding a stack returns
+ * it, as a click on the bare panel does; only screens that place it answer) and {@code outside}
+ * (beyond the panel: a held stack is dropped into the world).
  */
 public interface ContainerSlotInput {
 

@@ -289,7 +289,7 @@ class GameUiHostContractsTest {
             "stonebreak:player.vitals")) {
             assertTrue(p.hostApis().containsKey(c), c);
         }
-        assertEquals(2, p.hostApis().get("stonebreak:furnace"));
+        assertEquals(3, p.hostApis().get("stonebreak:furnace"));
         assertEquals(2, p.hostApis().get("stonebreak:settings"));
         assertFalse(p.providers().isEmpty(), "draw providers are declared");
         assertTrue(p.providers().containsKey("stonebreak:item-icon"));

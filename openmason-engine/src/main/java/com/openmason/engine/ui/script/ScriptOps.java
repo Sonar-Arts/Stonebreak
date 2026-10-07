@@ -315,6 +315,12 @@ final class ScriptOps {
                 out.value(st == null ? UiValue.NULL : UiValue.of(st));
             }
             case "clock" -> out.number(rt.ui.clocks().now(arg(a, 0) instanceof UiValue.Str c ? c.value() : "ui"));
+            case "metrics" -> {
+                com.openmason.engine.ui.runtime.UiMetrics m = rt.ui.metrics();
+                out.value(new UiValue.Obj(java.util.Map.of("width", UiValue.of(m.viewportWidth()),
+                    "height", UiValue.of(m.viewportHeight()), "uiScale", UiValue.of(m.uiScale()),
+                    "pixelRatio", UiValue.of(m.pixelRatio()), "scale", UiValue.of(m.scale()))));
+            }
 
             // ── host services ───────────────────────────────────────────────
             case "sound" -> rt.services.playSound(str(a, 0, "sound"), obj(a, 1));

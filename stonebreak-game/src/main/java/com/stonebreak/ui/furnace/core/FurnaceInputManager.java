@@ -26,6 +26,10 @@ public class FurnaceInputManager implements ContainerSlotInput {
     private long lastClickTimeMs = 0L;
     private float lastClickX = 0f, lastClickY = 0f;
 
+    /** Drops a carried stack at the player's feet; tests observe it. */
+    private java.util.function.Consumer<InventoryDragDropHandler.DragState> worldDrop =
+        InventoryDragDropHandler::dropEntireStackIntoWorld;
+
     // Right-click drag state
     private boolean rightDragActive = false;
     private final java.util.Set<Integer> rightDragVisitedSlots = new java.util.HashSet<>();
@@ -108,6 +112,12 @@ public class FurnaceInputManager implements ContainerSlotInput {
             }
             case "output" -> {
                 return new float[]{f.outputX, f.outputY};
+            }
+            case "panel" -> {
+                // the panel's top-left inner corner: inside the panel, on no slot (a held stack
+                // goes back where it came from instead of into the world)
+                float half = ss / 2f;
+                return new float[]{layout.panelStartX + 1 - half, layout.panelStartY + 1 - half};
             }
             default -> { }
         }
@@ -540,6 +550,39 @@ public class FurnaceInputManager implements ContainerSlotInput {
         return false;
     }
 
+    /**
+     * The furnace this screen showed is gone (its block was broken): a stack taken from one of its
+     * slots can no longer go back there, so the carried stack goes to the inventory, else the
+     * world. Never into a furnace slot: that state is dead.
+     */
+    void returnCarriedToPlayer() {
+        if (!dragState.isDragging()) return;
+        if (dragState.draggedItemOriginalSlotIndex < 3000) {
+            InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory, new ItemStack[0], null);
+        }
+        intoInventoryOrWorld();
+    }
+
+    /**
+     * Whatever of the carried stack fits goes into the inventory; only the rest is dropped. (Adding
+     * part of it and then dropping the whole stack duplicated the part that fit.)
+     */
+    private void intoInventoryOrWorld() {
+        if (!dragState.isDragging()) return;
+        ItemStack rest = FurnaceShiftTransfer.intoInventory(dragState.draggedItemStack, inventory);
+        if (rest.isEmpty()) {
+            dragState.clear();
+        } else {
+            dragState.draggedItemStack = rest;
+            worldDrop.accept(dragState);
+        }
+    }
+
+    /** Test seam: where stacks dropped into the world go. */
+    void setWorldDrop(java.util.function.Consumer<InventoryDragDropHandler.DragState> drop) {
+        this.worldDrop = drop;
+    }
+
     public void handleCloseWithDraggedItems() {
         if (!dragState.isDragging()) return;
 
@@ -559,14 +602,8 @@ public class FurnaceInputManager implements ContainerSlotInput {
             InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory, new ItemStack[0], null);
         }
 
-        // Try adding to any available inventory space
-        if (dragState.isDragging()) {
-            if (inventory.addItem(dragState.draggedItemStack)) {
-                dragState.clear();
-            } else {
-                InventoryDragDropHandler.dropEntireStackIntoWorld(dragState);
-            }
-        }
+        // Then any inventory space; only what does not fit is dropped
+        intoInventoryOrWorld();
     }
 
     record FurnaceSlot(int id, int x, int y) {}

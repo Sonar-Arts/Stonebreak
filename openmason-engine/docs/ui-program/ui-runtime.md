@@ -332,7 +332,8 @@ Per element:
 `opacity` fades the subtree, and `-sb-tint` multiplies the element's own drawing.
 
 `ui-masonry` (#297) makes the legacy house look authorable: `-sb-surface` paints a Masonry stone surface
-(`panel`, `button`, `button-hover`, `button-disabled`, `hud`) after the background, exactly as `MPainter.panel` /
+(`panel`, `container` (the translucent panel of the inventory/workbench/furnace/character screens, #298), `button`,
+`button-hover`, `button-disabled`, `hud`) after the background, exactly as `MPainter.panel` / `containerPanel` /
 `stoneSurface` / `hudFrame` do (radii in device px, as the legacy screens never scaled them); any explicit value,
 `none` included, replaces a `Button`'s pseudo-state look, so a component decides its own hover in its sheet.
 `-sb-text-effect` picks a label's `shadow` (default), `none`, or `title` (`MPainter.drawTitleText`: the pause /
@@ -421,8 +422,10 @@ GameDrawProviders`, declared on `GameUiHost`):
 
 | Id (version) | Element | Shows |
 | --- | --- | --- |
-| `stonebreak:item-icon` (1) | `ItemSlot` or `DrawProvider` | the item named by `item` (objectId, numeric id or name), `stack` (a bound slot record `{objectId, count, state, durability}`) or `params`; blocks are 3D icons rendered once per block and device-pixel size into `ItemIconAtlas` by the legacy cube renderer, SBO items their sprite; `count` above 1 bottom-right in the legacy accent style; `durability` below 1 a bar. In an `ItemSlot` the icon is inset 3 logical px |
+| `stonebreak:item-icon` (1) | `ItemSlot` or `DrawProvider` | the item named by `item` (objectId, numeric id or name), `stack` (a bound slot record `{objectId, count, state, durability}`) or `params`; blocks are 3D icons rendered once per block and device-pixel size into `ItemIconAtlas` by the legacy cube renderer, SBO items their sprite; `count` above 1 bottom-right in the legacy accent style; `durability` below 1 a bar. In an `ItemSlot` the icon is inset 3 logical px; `params` `insetPx` / `countMarginPx` fix the inset and count margin in device px instead (the container screens' unscaled 3 and 2, #298). An `ItemSlot` whose `stack` record is `selected` gets the selected-hotbar ring |
 | `stonebreak:entity-preview` (1) | `DrawProvider` | an orbiting model, `params`: `entity` (`player` or an `EntityType` name), `variant`, `state`, `elevation`, `orbitSpeed`, `margin`, `yaw` (fixed azimuth). Framing and orbit clock match the legacy previews |
+
+| `stonebreak:furnace-crucible` (1) / `stonebreak:furnace-progress` (1) | `DrawProvider` over the furnace's slot band | the crucible (chutes, bowl, lava, flames; under the slots) and its cook/fuel rings (over them), centred on the element, by the legacy `CruciblePainter`; `params` = the `furnace` record (`fuel`, `progress`, `cooking`), optional `slotSize`/`slotGap` (logical, default 40/8). Skia only: the editor preview draws them too (`GameUiProviders.skiaOnly()`) |
 
 A host that paints providers must call `layout` → `prepareProviders` → open the Masonry frame → `paint`.
 Without a GL host (the raster preview), block icons and previews are left empty.

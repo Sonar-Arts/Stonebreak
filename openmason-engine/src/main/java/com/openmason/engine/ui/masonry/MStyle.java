@@ -27,6 +27,8 @@ public final class MStyle {
     // ─────────────────────────────────────────────── Panels (stone look)
     public static final int PANEL_FILL        = 0xFF6B6B6B;
     public static final int PANEL_FILL_DEEP   = 0xFF4E4E4E;
+    /** Translucent fill of the container screens (inventory, workbench, furnace, character sheet). */
+    public static final int PANEL_FILL_TRANS  = 0xBF6B6B6B;
     public static final int PANEL_HIGHLIGHT   = 0x38FFFFFF;
     public static final int PANEL_SHADOW      = 0x55000000;
     public static final int PANEL_DROP_SHADOW = 0x66000000;

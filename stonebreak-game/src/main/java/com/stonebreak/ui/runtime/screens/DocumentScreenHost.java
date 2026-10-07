@@ -165,6 +165,12 @@ public final class DocumentScreenHost {
         // cannot type or draw closes the screen instead of leaving input silently missing.
         screen.inputGate(UiInputGate.monitor(view.instance(), GameUiInput.CAPABILITIES));
         screen.inputGate().poll(Locale.getDefault());
+        // Dev: -Dstonebreak.ui.autoclick.<id>=key@seconds,... clicks elements of a shipped screen
+        // (seconds from its opening) for screenshot runs, e.g. a furnace slot to carry its stack.
+        String clicks = System.getProperty("stonebreak.ui.autoclick." + id);
+        if (clicks != null && !clicks.isBlank()) {
+            attachAutoClick(screen, com.openmason.engine.ui.runtime.input.UiAutoClick.parse(clicks));
+        }
         return Optional.of(screen);
     }
 

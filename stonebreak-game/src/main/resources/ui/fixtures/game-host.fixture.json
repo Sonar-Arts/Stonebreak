@@ -14,7 +14,8 @@
       "open": true, "lit": true, "progress": 0.5, "fuel": 0.75,
       "ingredientSlot": { "item": 9, "objectId": "stonebreak:iron_ore", "name": "Iron Ore", "count": 12, "state": "", "maxStack": 64 },
       "fuelSlot": { "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0 },
-      "outputSlot": { "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0 }
+      "outputSlot": { "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0 },
+      "cooking": true
     },
     "carried": { "item": 0, "objectId": "", "name": "", "count": 0, "state": "", "maxStack": 0 },
     "vitals": {

@@ -81,7 +81,7 @@ public final class UiStyleProperties {
         keyword("-sb-anchor", "none", "pointer");
         keyword("pointer-events", "auto", "none");
         // ui-masonry: the house look as style (#297)
-        keyword("-sb-surface", "auto", "none", "panel", "button", "button-hover", "button-disabled", "hud");
+        keyword("-sb-surface", "auto", "none", "panel", "container", "button", "button-hover", "button-disabled", "hud");
         keyword("-sb-text-effect", "shadow", "none", "title");
         keyword("-sb-pixel-grid", "device", "none");
     }

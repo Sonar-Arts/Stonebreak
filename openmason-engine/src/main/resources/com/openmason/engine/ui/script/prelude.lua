@@ -471,6 +471,7 @@ local function make_ui(ctx, env, info)
     function ui.setState(machine, state) return new_handle(ctx, (call("machineSet", machine, state)), "anim") end
     function ui.machineState(machine) return (call("machineState", machine)) end
     function ui.clock(name) return (call("clock", name)) end
+    function ui.metrics() return (call("metrics")) end
 
     function ui.sound(id, opts) call("sound", id, opts or {}) end
     function ui.navigate(target, args) call("navigate", target, args or {}) end

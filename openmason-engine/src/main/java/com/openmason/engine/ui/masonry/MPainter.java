@@ -105,6 +105,14 @@ public final class MPainter {
                 MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
     }
 
+    /** The container screens' panel: the stone panel on the translucent {@link MStyle#PANEL_FILL_TRANS}. */
+    public static void containerPanel(Canvas canvas, float x, float y, float w, float h) {
+        stoneSurface(canvas, x, y, w, h, MStyle.PANEL_RADIUS,
+                MStyle.PANEL_FILL_TRANS, MStyle.PANEL_BORDER,
+                MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW, MStyle.PANEL_DROP_SHADOW,
+                MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
+    }
+
     /**
      * HUD-weight frame for chrome drawn over the 3D scene: the stone panel's construction (drop
      * shadow, bevel, speckle, near-black border) on the darker translucent {@code MStyle.HUD_*} fill.

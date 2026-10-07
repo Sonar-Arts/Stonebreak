@@ -215,7 +215,9 @@ A visible element with `focusScope: modal` or `popup` opens a scope; code can al
   - A popup opened from code runs its callback instead.
 
 **Tooltips**: the hovered element, or its nearest ancestor with `tooltip`/`tooltipKey`, shows after `tooltipDelay`
-(0.5 s; a migrating screen sets its legacy timing). Keyboard and controller focus shows the
+(0.5 s; a migrating screen sets its legacy timing with `UiInputRouter.setSettings`, e.g. the furnace's 0 s, #298). No hover
+tooltip shows while a displayed `-sb-anchor: pointer` element (a carried stack) rides the cursor
+(`UiDocumentInstance.pointerGhostShown`), as the legacy container screens hid it while an item was held. Keyboard and controller focus shows the
 focused element's tooltip below it; it follows focus and is not hidden by the keys that move it. The hover tooltip
 hides on a press, wheel, key, drag, target loss or cancellation, and stays hidden after a press until the pointer
 moves to another element. Painted last, above every layer, with

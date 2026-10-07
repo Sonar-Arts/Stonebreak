@@ -66,7 +66,7 @@ public final class UiInputRouter {
     private final TooltipController tooltips;
     private final DragDropController drag;
     private final Map<UiElement, TextFieldController> textFields = new IdentityHashMap<>();
-    private final InputSettings settings;
+    private InputSettings settings;
     private UiActionMap actionMap;
     private double time;
     private InputDevice lastDevice = InputDevice.MOUSE;
@@ -121,7 +121,7 @@ public final class UiInputRouter {
         this.actionMap = Objects.requireNonNull(actionMap, "actionMap");
         this.dispatcher = new EventDispatcher(this::handlerFailed);
         this.focus = new FocusManager(ui, dispatcher, this::time);
-        this.tooltips = new TooltipController(settings);
+        this.tooltips = new TooltipController(this::settings, ui::pointerGhostShown);
         this.drag = new DragDropController(dispatcher, this::time, ui::root, ui::find);
         focus.setListener(this::focusChanged);
     }
@@ -150,6 +150,14 @@ public final class UiInputRouter {
 
     public InputSettings settings() {
         return settings;
+    }
+
+    /**
+     * Replaces this view's timings, from the next event on: a migrating screen sets its legacy
+     * values (the furnace shows slot tooltips at once, #298).
+     */
+    public void setSettings(InputSettings s) {
+        this.settings = Objects.requireNonNull(s, "settings");
     }
 
     public UiActionMap actionMap() {

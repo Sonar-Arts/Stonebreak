@@ -203,7 +203,7 @@ public final class UiPreviewAutomation {
                 : UiSnapshot.render(rt.view(), tf, f.width(), f.height(), f.uiScale(), f.pixelRatio());
         }
         try (UiDocumentView view = GameUiDocuments.open(d.archive(), ui.context().project.sources(), () -> tf,
-            Map.of())) {
+            com.stonebreak.ui.runtime.GameUiProviders.skiaOnly())) {
             UiDocumentInstance inst = view.instance();
             inst.setMetrics(new com.openmason.engine.ui.runtime.UiMetrics(f.width(), f.height(), f.uiScale(),
                 f.pixelRatio()));

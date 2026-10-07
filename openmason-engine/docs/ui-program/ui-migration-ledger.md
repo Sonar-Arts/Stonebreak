@@ -153,9 +153,9 @@ These apply to every row unless the row says otherwise.
 | glossary | screen | `ui.glossaryScreen.GlossaryScreen` | shell-persistent | not started |
 | inventory | screen | `ui.inventoryScreen.InventoryScreen` | per-world | not started |
 | inventory-tooltip | tooltip | `ui.inventoryScreen.InventoryScreen` via OR | per-world, per-frame | not started |
-| dragged-item-layer | overlay | OR + inventory/workbench/furnace screens | per-frame immediate | not started |
+| dragged-item-layer | overlay | OR + inventory/workbench/furnace screens | per-frame immediate | in progress |
 | workbench | screen | `ui.workbench.WorkbenchScreen` | per-world | not started |
-| furnace | screen | `ui.furnace.FurnaceScreen` | per-world | baselined |
+| furnace | screen | `ui.furnace.FurnaceScreen` | per-world | in progress |
 | recipe-book | overlay | `ui.recipeScreen.RecipeScreen` | per-world | not started |
 | recipe-book-tooltip | tooltip | `ui.recipeScreen.RecipeScreen` via OR | per-world | not started |
 | character-sheet | screen | `ui.characterScreen.CharacterScreen` | per-world | not started |
@@ -697,6 +697,14 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Owner:** `OR.renderDraggedItems` (OR:106-131). It calls `renderDraggedItemOnly` on the inventory (INVENTORY_UI only), the workbench and the furnace. The item is drawn at slotSize − 4 at the cursor, above all UI.
 - **Custom draw:** 3D block icon with the `isDraggedItem` z-offset, which has no effect because depth is cleared per slot; or a Skija sprite.
 - **Fixtures:** none.
+- **Fidelity:** `furnace/furnace-lit_1920x1080_s1`
+- **Migration (#298, in progress, furnace only):** the furnace document carries its stack itself: a `DrawProvider`
+  (`stonebreak:item-icon`, `params {insetPx: 2, countMarginPx: 2}`) on the cursor layer (`-sb-anchor: pointer`), bound
+  to `carried` and shown only while it holds something, so it paints above the panel, slots and tooltip in the same
+  Masonry paint (legacy order kept). Its icon is `slotSize - 4` centred on the pointer, as the legacy overlay drew it.
+  While it shows, hover tooltips stay hidden (engine rule, `UiDocumentInstance.pointerGhostShown`), the legacy
+  "no tooltip while dragging". `FurnaceScreen.renderDraggedItemOnly` stands down while the document shows. The
+  inventory and workbench keep the legacy overlay until #300.
 
 ### workbench
 - **Kind:** screen.
@@ -744,8 +752,43 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Fidelity:** `furnace/furnace-unlit_1920x1080_s1` `furnace/furnace-unlit_1280x720_s0_75` `furnace/furnace-unlit_3840x2160_s2` `furnace/furnace-unlit_1921x1081_s1_25` `furnace/furnace-unlit_800x600_s2` `furnace/furnace-lit_1920x1080_s1` `furnace/furnace-lit_1280x720_s0_75` `furnace/furnace-lit_3840x2160_s2` `furnace/furnace-lit_1921x1081_s1_25` `furnace/furnace-lit-hover-main0_1920x1080_s1`
 - **Performance:** per frame about 40 `new MItemSlot`, Paint/Path objects and `encodeSlots` string building.
 - **Notes:**
-  - **Closing while carrying an item taken from a furnace slot loses it**: the local put-back is followed by `state = null` and never sent (`FurnaceController.java:70-75`).
-  - Shift-click into a full inventory deletes the stack (`FurnaceInputManager.java:150-151`).
+  - Fixed before the migration: closing while carrying a stack from a furnace slot lost it (#320); shift-click into a
+    full inventory deleted the stack (#319).
+  - Fixed in #298: closing with a carried stack that only partly fits the inventory added part of it and then dropped
+    the **whole** stack (duplication); now only the rest is dropped (`FurnaceInputManager.intoInventoryOrWorld`,
+    `FurnaceAbandonTest`). A furnace whose block disappears while its screen is open is abandoned like the workbench:
+    the screen detaches from the dead state first (no edit or snapshot can reach it), the carried stack goes to the
+    inventory (else the world), and the screen closes (`FurnaceController.abandonBrokenFurnace`). Legacy had no
+    auto-close and let the player keep taking items the server had already dropped.
+- **Migration (#298, in progress):** shipped as `ui/documents/furnace.sbui` + shared component
+  `ui/shared/stonebreak/ui/components/item_slot.omui`, authored over the Open Mason MCP in the project "Stonebreak Menus"
+  (`UI/stonebreak/ui/screens/furnace.omui`, `UI/stonebreak/ui/components/item_slot.omui`). `FurnaceScreen` keeps the
+  lifecycle (open at a block, Escape, FURNACE_UI, close puts the carried stack back) and every slot rule; its
+  `Presentation` seam (`ui.furnace.FurnaceDocument`) opens the document as an `ownerPaints` screen painted where the
+  legacy screen drew, with the legacy mouse poll, dragged-item overlay and renderer standing down while it shows.
+  Rollback: `-Dstonebreak.ui.legacy=furnace` (or automatically when refused or a frame fails).
+  - **Slots:** the `item_slot` component (reusable by inventory/workbench, #300) is an `ItemSlot` bound to a slot
+    record (icon/count via `stonebreak:item-icon` with the legacy unscaled 3 px inset and 2 px count margin, tooltip =
+    the record's name, selected-hotbar ring from `selected`). Its code-behind sends a press as
+    `stonebreak:inventory.slot-press {slot, button, shift}` and a right-button sweep entering it as `slot-drag`; the
+    screen's code-behind sends presses on the bare panel (`panel`, new address: a held stack goes back) or beyond it
+    (`outside`), and every release (`slot-release`). So every click variant runs `FurnaceInputManager` at the slot.
+  - **Crucible (hard visual 9):** host draw providers `stonebreak:furnace-crucible` (chutes + bowl, under the slots) and
+    `stonebreak:furnace-progress` (rings, over them), painted by the same `CruciblePainter` as the legacy screen from
+    `FurnaceLayout.around` the element's centre; `params` = the `furnace` record (contract 3 adds `cooking`, the legacy
+    glow rule is `cooking || fuel > 0`). Skia only, so the editor preview draws them too.
+  - **Layout:** constant authored geometry plus a code-behind `place()` that reproduces the legacy integer maths from
+    `ui.metrics()` (tokens `round(K * s)`, truncating centring, the int-halved title band, the unscaled −20 px title
+    offset), on a `-sb-pixel-grid: none` root; so it lands on the legacy pixels at every UI scale, not only the matrix.
+  - Tooltips: the router's (`MTooltip`), shown at once (`FurnaceDocument.SETTINGS`, tooltip delay 0). Differences from
+    legacy: the offset is `15 * uiScale` (legacy furnace: unscaled 15, legacy inventory: scaled); after a press the
+    tooltip stays hidden until the pointer reaches another slot (router rule; legacy showed it again at once).
+- **Gate:** `ui.fidelity.FurnaceDocumentGateTest` (all 10 committed cases at `FLOAT_EXACT` + `EXACT`: 0 pixels differ)
+  and `ui.furnace.core.FurnaceDocumentInteractionTest` (a 19-step press/shift/right/middle/right-drag/panel/outside
+  script: the same inventory, furnace slots, cursor stack and world drops after every step as the legacy pointer path,
+  items conserved, and what the document shows equals the state). Live (`-Dstonebreak.autofurnace=3
+  -Dstonebreak.autofurnace.ui=30`, rolled back vs not): the panels agree except icon pixels under count digits
+  (atlas-rendered block icons vs direct GL) and the world behind the translucent panel.
 
 ### recipe-book
 - **Kind:** overlay (full panel over the hotbar).

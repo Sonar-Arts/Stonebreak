@@ -178,7 +178,8 @@ public final class DesignerRuntime implements AutoCloseable {
         assetsStale = false;
         disposeView();
         try {
-            view = GameUiDocuments.open(a, project.sources(), () -> typeface, Map.of());
+            // the game's Skia-only providers (the furnace crucible) draw here too; GL ones stay placeholders
+            view = GameUiDocuments.open(a, project.sources(), () -> typeface, com.stonebreak.ui.runtime.GameUiProviders.skiaOnly());
             if (mode == Mode.PREVIEW) {
                 fixtures = fixtures(a);
                 activation = GameUiDocuments.activationGate(view, fixtures.host());

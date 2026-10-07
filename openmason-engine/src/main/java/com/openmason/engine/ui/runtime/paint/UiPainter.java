@@ -53,7 +53,8 @@ import java.util.List;
  * <p>Widget looks: {@code Button} is the Masonry stone surface (hover/active → highlight fill,
  * disabled → disabled fill) unless a background is styled; {@code Label} draws house-style
  * shadowed text on the {@link MasonryContentMeasurer} baseline with {@code text-align};
- * {@code Image} draws its {@code source}; {@code ItemSlot} draws the Masonry slot frame and
+ * {@code Image} draws its {@code source}; {@code ItemSlot} draws the Masonry slot frame (with the
+ * selected-hotbar ring when its {@code stack} record is {@code selected}) and
  * then its host provider; {@code DrawProvider} calls its provider. Images and
  * {@code background-image} are whole textures, sprite regions or skins
  * ({@code <sheet>#<name>}, #294) drawn by {@link SpritePainter}: {@code -sb-image-scale}
@@ -235,6 +236,11 @@ public final class UiPainter {
         return w <= 0 || h <= 0 ? null : new UiRect(x, y, w, h);
     }
 
+    /** A slot record ({@code stack} prop) flagged {@code selected}: the selected hotbar slot's ring. */
+    private static boolean selectedSlot(UiElement el) {
+        return el.prop("stack") instanceof UiValue.Obj o && o.get("selected") instanceof UiValue.Bool b && b.value();
+    }
+
     private static String providerId(UiElement el) {
         if (!"ItemSlot".equals(el.type()) && !"DrawProvider".equals(el.type())) {
             return null;
@@ -353,6 +359,7 @@ public final class UiPainter {
             case "ItemSlot" -> {
                 slotFrame.bounds(r.x(), r.y(), r.width(), r.height());
                 slotFrame.setHovered(el.hasState(UiElement.HOVER));
+                slotFrame.hotbarSelected(selectedSlot(el));
                 slotFrame.render(masonry);
                 provider(ui, canvas, el, r, scale);
             }
@@ -558,6 +565,7 @@ public final class UiPainter {
     private static void surface(Canvas canvas, String surface, UiRect r) {
         switch (surface) {
             case "panel" -> MPainter.panel(canvas, r.x(), r.y(), r.width(), r.height());
+            case "container" -> MPainter.containerPanel(canvas, r.x(), r.y(), r.width(), r.height());
             case "hud" -> MPainter.hudFrame(canvas, r.x(), r.y(), r.width(), r.height());
             case "button", "button-hover", "button-disabled" -> {
                 int fill = switch (surface) {

@@ -1,5 +1,6 @@
 package com.stonebreak.ui.runtime.providers;
 
+import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
 import com.openmason.engine.ui.masonry.textures.MTexture;
@@ -53,6 +54,10 @@ import static org.lwjgl.opengl.GL11.glBindTexture;
  * In an {@code ItemSlot} the icon is inset by 3 logical pixels (the legacy slot inset) and the
  * count anchors to the slot; in a bare {@code DrawProvider} (a carried item, a recipe result) the
  * icon fills the element. What to show comes from {@link ItemRef#of}.
+ *
+ * <p>Optional {@code params}: {@code insetPx} and {@code countMarginPx} replace the inset and the
+ * count margin with fixed device pixels. The container screens (furnace, inventory, workbench)
+ * never scaled them: 3 px and 2 px at every UI scale (#298).
  */
 public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
 
@@ -81,7 +86,13 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
 
     /** Device-pixel square the icon occupies inside {@code rect}, snapped to whole pixels. */
     static Rect iconRect(String elementType, UiRect rect, float scale) {
-        float inset = "ItemSlot".equals(elementType) ? Math.round(SLOT_INSET * scale) : 0f;
+        return iconRect(elementType, rect, scale, Float.NaN);
+    }
+
+    /** @param insetPx fixed device-pixel inset, or NaN for the element type's default */
+    static Rect iconRect(String elementType, UiRect rect, float scale, float insetPx) {
+        float inset = !Float.isNaN(insetPx) ? insetPx
+            : "ItemSlot".equals(elementType) ? Math.round(SLOT_INSET * scale) : 0f;
         float x = Math.round(rect.x() + inset);
         float y = Math.round(rect.y() + inset);
         float side = Math.round(Math.min(rect.width(), rect.height()) - 2f * inset);
@@ -103,7 +114,7 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
         if (ref == null || !(ref.item() instanceof BlockType block) || !block.hasIcon()) {
             return;
         }
-        Rect icon = iconRect(element.type(), rect, scale);
+        Rect icon = iconRect(element.type(), rect, scale, pixels(element, "insetPx"));
         if (icon == null) {
             return;
         }
@@ -137,7 +148,7 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
         if (ref == null || !ref.item().hasIcon()) {
             return;
         }
-        Rect icon = iconRect(element.type(), rect, scale);
+        Rect icon = iconRect(element.type(), rect, scale, pixels(element, "insetPx"));
         if (icon != null) {
             drawIcon(canvas, ref, icon);
         }
@@ -147,8 +158,16 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
             drawDurability(canvas, anchor, (float) Math.max(0.0, ref.durability()), scale);
         }
         if (anchor != null && ref.count() > 1) {
-            drawCount(canvas, Integer.toString(ref.count()), anchor, scale);
+            float margin = pixels(element, "countMarginPx");
+            drawCount(canvas, Integer.toString(ref.count()), anchor, scale,
+                Float.isNaN(margin) ? COUNT_MARGIN * scale : margin);
         }
+    }
+
+    /** A device-pixel override from the element's {@code params}, or NaN. */
+    private static float pixels(UiElement element, String name) {
+        return element.prop("params") instanceof UiValue.Obj p && p.get(name) instanceof UiValue.Num n
+            ? (float) n.value() : Float.NaN;
     }
 
     private void drawIcon(Canvas canvas, ItemRef ref, Rect icon) {
@@ -180,12 +199,11 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
         canvas.drawRect(icon, paint);
     }
 
-    private void drawCount(Canvas canvas, String text, Rect anchor, float scale) {
+    private void drawCount(Canvas canvas, String text, Rect anchor, float scale, float margin) {
         Font f = font(MStyle.FONT_META * scale);
         if (f == null) {
             return;
         }
-        float margin = COUNT_MARGIN * scale;
         float x = anchor.getRight() - MPainter.measureWidth(f, text) - margin;
         float y = anchor.getBottom() - margin;
         MPainter.drawStringWithShadow(canvas, text, x, y, f, MStyle.TEXT_ACCENT, MStyle.TEXT_SHADOW);
