@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.format.omui.OmuiReader;
 import com.openmason.engine.format.omui.OmuiWriter;
+import com.openmason.engine.format.omui.UiFormatException;
 import com.openmason.engine.format.omui.io.AtomicFiles;
 import com.openmason.main.AppPaths;
 import com.openmason.main.systems.uiEditor.document.UiEditorDocument;
@@ -75,19 +76,49 @@ public final class UiRecoveryService {
         }
     }
 
-    /** Writes {@code doc}'s current state to its slot. */
+    /**
+     * Writes {@code doc}'s current state to its slot. A document the writer refuses (an edit
+     * left a format error) still gets a slot: the newest state in its history that does write,
+     * so a crash loses only the edits since that state, never everything since the last save.
+     */
     public boolean write(UiEditorDocument doc) {
         try {
             Files.createDirectories(dir);
+            byte[] bytes = null;
+            int skipped = 0;
+            String refused = null;
+            for (OmuiArchive state : candidates(doc)) {
+                try {
+                    bytes = OmuiWriter.write(state);
+                    break;
+                } catch (UiFormatException e) {
+                    if (refused == null) {
+                        refused = e.diagnostics().isEmpty() ? e.getMessage() : e.diagnostics().getFirst().message();
+                    }
+                    skipped++;
+                }
+            }
+            if (bytes == null) {
+                logger.warn("Could not write UI recovery for {}: no state in its history is saveable ({})",
+                    doc.title(), refused);
+                return false;
+            }
             String key = keys.computeIfAbsent(doc, UiRecoveryService::key);
-            AtomicFiles.write(dir.resolve(key + ".omui"), OmuiWriter.write(doc.archive()));
+            AtomicFiles.write(dir.resolve(key + ".omui"), bytes);
             ObjectNode meta = json.createObjectNode();
             if (doc.file() != null) {
-                meta.put("file", doc.file().toAbsolutePath().toString());
+                meta.put("file", normalize(doc.file()).toString());
             }
             meta.put("title", doc.title());
             meta.put("documentId", doc.archive().manifest().documentId());
             meta.put("savedAt", System.currentTimeMillis());
+            if (skipped > 0) {
+                // the newest edits make the document unsaveable: recovery holds the last good state
+                meta.put("skippedEdits", skipped);
+                meta.put("reason", refused);
+                doc.setLastMessage("The document cannot be saved (" + refused + "); crash recovery keeps the"
+                    + " state before the last " + skipped + " edit(s)");
+            }
             AtomicFiles.write(dir.resolve(key + ".json"), json.writerWithDefaultPrettyPrinter()
                 .writeValueAsBytes(meta));
             return true;
@@ -95,6 +126,25 @@ public final class UiRecoveryService {
             logger.warn("Could not write UI recovery for {}: {}", doc.title(), e.getMessage());
             return false;
         }
+    }
+
+    /** The document's current state, then older states from its history, newest first. */
+    private static List<OmuiArchive> candidates(UiEditorDocument doc) {
+        List<OmuiArchive> out = new ArrayList<>();
+        out.add(doc.archive());
+        for (OmuiArchive a : doc.history().recentStates()) {
+            if (out.getLast() != a) {
+                out.add(a);
+            }
+        }
+        return out;
+    }
+
+    /** True when {@code slot} was written by this session (an open document's own autosave). */
+    public boolean isOwn(Slot slot) {
+        String name = slot.meta().getFileName().toString();
+        String key = name.substring(0, name.length() - ".json".length());
+        return keys.containsValue(key);
     }
 
     /** Removes {@code doc}'s slot (saved, or discarded on purpose). */
@@ -105,6 +155,17 @@ public final class UiRecoveryService {
         }
         delete(dir.resolve(key + ".omui"));
         delete(dir.resolve(key + ".json"));
+    }
+
+    /**
+     * Writes {@code doc}'s slot one last time and lets go of it: the document is closing with
+     * unsaved changes it was told to drop, but the slot outlives it so the author can still
+     * restore them (offered like a crashed session's slot). False when nothing could be kept.
+     */
+    public boolean release(UiEditorDocument doc) {
+        boolean kept = write(doc);
+        keys.remove(doc);
+        return kept;
     }
 
     public void clear(Slot slot) {
@@ -136,11 +197,15 @@ public final class UiRecoveryService {
         return out;
     }
 
-    /** The slot for {@code file} when it is newer than the file itself, else null. */
+    /**
+     * A slot for {@code file} that is newer than the file itself and was left by another
+     * session (a crash), else null. This session's own autosaves never count: they are the
+     * open document's state, which saving writes anyway.
+     */
     public Slot newerThan(Path file) {
-        Path abs = file.toAbsolutePath();
+        Path abs = normalize(file);
         for (Slot s : slots()) {
-            if (s.file() != null && s.file().equals(abs)) {
+            if (s.file() != null && normalize(s.file()).equals(abs) && !isOwn(s)) {
                 try {
                     long modified = Files.exists(file) ? Files.getLastModifiedTime(file).toMillis() : 0;
                     return s.savedAt() > modified ? s : null;
@@ -150,6 +215,16 @@ public final class UiRecoveryService {
             }
         }
         return null;
+    }
+
+    /** Absolute, normalized and, when the file exists, with symbolic links resolved. */
+    static Path normalize(Path p) {
+        Path abs = p.toAbsolutePath().normalize();
+        try {
+            return Files.exists(abs) ? abs.toRealPath() : abs;
+        } catch (IOException e) {
+            return abs;
+        }
     }
 
     /** Reads a slot's archive. */

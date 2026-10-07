@@ -14,7 +14,8 @@ import java.util.Objects;
 /**
  * File access under one root by portable relative path ({@code textures/ui/panel.sbt}). Paths
  * follow the archive entry rules, so whatever a document records as a {@code sourceHint} can
- * be read here on any OS, and nothing can escape the root. Writes are atomic.
+ * be read here on any OS, and nothing can escape the root — neither lexically ({@code ..}) nor
+ * through a symbolic link inside the project that points elsewhere. Writes are atomic.
  */
 public final class ProjectFolder {
 
@@ -35,10 +36,33 @@ public final class ProjectFolder {
             throw new IOException("Unsafe project path '" + relative + "': " + problem);
         }
         Path p = root.resolve(relative).normalize();
-        if (!p.startsWith(root)) {
+        if (!p.startsWith(root) || !insideReally(p)) {
             throw new IOException("Project path '" + relative + "' escapes the project");
         }
         return p;
+    }
+
+    /**
+     * Whether {@code p}, with every symbolic link its existing part crosses resolved, still lies
+     * under the root's real location. The deepest existing ancestor is resolved, so a path whose
+     * tail does not exist yet (a file about to be written) is judged by the folder it lands in.
+     */
+    private boolean insideReally(Path p) throws IOException {
+        if (!Files.exists(root)) {
+            return true; // nothing on disk to follow yet
+        }
+        Path realRoot = root.toRealPath();
+        Path existing = p;
+        while (existing != null && !Files.exists(existing, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            existing = existing.getParent();
+        }
+        if (existing == null) {
+            return true;
+        }
+        if (Files.isSymbolicLink(existing) && !Files.exists(existing)) {
+            return false; // a dangling link: refuse rather than write through it
+        }
+        return existing.toRealPath().startsWith(realRoot);
     }
 
     /** True when {@code relative} is a safe path naming an existing regular file. */

@@ -12,9 +12,10 @@ import java.util.Objects;
  * directory, so {@code dir} is a source path such as {@code src/test/resources/ui/fidelity/pause}:
  * baselines are read from where they are reviewed, never from a stale {@code target/} copy.
  *
- * <p>When the source directory is not under the working directory (a runner started elsewhere),
+ * <p>When the source tree is not under the working directory (a runner started elsewhere),
  * baselines are read from the classpath copy at {@code /<resourceDir>/} instead, and write mode
- * refuses rather than writing somewhere unexpected.
+ * refuses rather than writing somewhere unexpected. A screen's first baselines may be written
+ * into a directory that does not exist yet, as long as the module's resource root does.
  *
  * <p>In write mode ({@code -D<flag>=true}) {@link #verify} records the capture as the new baseline
  * and passes; review the PNG diff before committing. On a mismatch the capture and a diff image
@@ -27,17 +28,19 @@ public final class GoldenStore {
     private final boolean write;
     private final String flag;
     private final String classpathDir;
+    private final Path sourceRoot;
 
     public GoldenStore(Path dir, Path out, boolean write, String flag) {
-        this(dir, out, write, flag, null);
+        this(dir, out, write, flag, null, null);
     }
 
-    private GoldenStore(Path dir, Path out, boolean write, String flag, String classpathDir) {
+    private GoldenStore(Path dir, Path out, boolean write, String flag, String classpathDir, Path sourceRoot) {
         this.dir = Objects.requireNonNull(dir, "dir");
         this.out = Objects.requireNonNull(out, "out");
         this.write = write;
         this.flag = Objects.requireNonNull(flag, "flag");
         this.classpathDir = classpathDir;
+        this.sourceRoot = sourceRoot;
     }
 
     /**
@@ -45,8 +48,9 @@ public final class GoldenStore {
      * {@code target/ui-fidelity/<resourceDir>}, write mode from system property {@code flag}.
      */
     public static GoldenStore forTests(String resourceDir, String flag) {
-        return new GoldenStore(Path.of("src/test/resources").resolve(resourceDir),
-            Path.of("target/ui-fidelity").resolve(resourceDir), Boolean.getBoolean(flag), flag, resourceDir);
+        Path root = Path.of("src/test/resources");
+        return new GoldenStore(root.resolve(resourceDir), Path.of("target/ui-fidelity").resolve(resourceDir),
+            Boolean.getBoolean(flag), flag, resourceDir, root);
     }
 
     public boolean writing() {
@@ -57,9 +61,12 @@ public final class GoldenStore {
         return dir.resolve(name + ".png");
     }
 
-    /** Whether the source directory is reachable from the working directory. */
+    /**
+     * Whether the source tree is reachable from the working directory: the screen's directory,
+     * or (for a screen with no baselines yet) the module's resource root it will be created in.
+     */
     private boolean sourceTreeVisible() {
-        return Files.isDirectory(dir) || classpathDir == null;
+        return Files.isDirectory(dir) || classpathDir == null || (sourceRoot != null && Files.isDirectory(sourceRoot));
     }
 
     /** The committed baseline, or null when none exists. */

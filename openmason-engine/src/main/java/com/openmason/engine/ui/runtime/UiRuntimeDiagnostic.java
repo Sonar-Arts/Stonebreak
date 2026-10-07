@@ -69,8 +69,13 @@ public record UiRuntimeDiagnostic(Severity severity, Code code, String element, 
         STATE_MACHINE,
         // Soft runtime budgets (#296): warnings from ui.diag.UiFrameMonitor, never failures
         BUDGET_SCRIPT_FRAME,
+        BUDGET_SCRIPT_SPIKE,
         BUDGET_MEMORY,
-        BUDGET_LAYOUT
+        BUDGET_LAYOUT,
+        // Host draw providers: an id no provider is registered under (drawn as a placeholder),
+        // or a provider that threw while preparing or drawing
+        MISSING_DRAW_PROVIDER,
+        DRAW_PROVIDER_FAILED
     }
 
     public UiRuntimeDiagnostic {

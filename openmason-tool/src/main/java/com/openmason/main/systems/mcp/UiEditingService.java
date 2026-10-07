@@ -8,6 +8,7 @@ import com.openmason.main.systems.io.AssetWriteService;
 import com.openmason.main.systems.io.AssetWriteService.WriteOutcome;
 import com.openmason.main.systems.io.AssetWriteService.WriteRequest;
 import com.openmason.main.systems.io.WriteKind;
+import com.openmason.main.systems.io.WriteRoot;
 import com.openmason.main.systems.threading.MainThreadExecutor;
 import com.openmason.main.systems.uiEditor.automation.UiAutomation;
 import com.openmason.main.systems.uiEditor.automation.UiPreviewAutomation;
@@ -17,6 +18,7 @@ import com.openmason.main.systems.uiEditor.ops.UiJson;
 import com.openmason.main.systems.uiEditor.ops.UiOpBatch;
 import com.openmason.main.systems.uiEditor.ops.UiOpException;
 import com.openmason.main.systems.uiEditor.service.UiDocumentService;
+import com.openmason.main.systems.uiEditor.service.UiGameDeploy;
 import com.openmason.main.systems.uiEditor.view.UiEditorWorkspace;
 
 import java.awt.image.BufferedImage;
@@ -105,8 +107,10 @@ public final class UiEditingService {
             UiAutomation ui = automation.get();
             UiEditorDocument d = ui.document(doc);
             String id = d.archive().manifest().documentId();
-            ui.close(d, discard);
-            return McpAck.ok().with("closed", id).with("open", ui.service().documents().size());
+            boolean kept = ui.close(d, discard);
+            McpAck ack = McpAck.ok().with("closed", id).with("open", ui.service().documents().size());
+            return kept ? ack.with("recovery", "the unsaved changes were kept in crash recovery; the author can"
+                + " restore them by reopening the document") : ack;
         });
     }
 
@@ -255,7 +259,9 @@ public final class UiEditingService {
             return new Target(d, d.file(), ui.defaultSaveTarget(d), id.substring(id.lastIndexOf('/') + 1));
         });
         AssetWriteService.Writer writer = target -> {
-            automation.get().saveTo(t.doc(), target);
+            // a re-save of the document's own file refuses when someone changed it on disk meanwhile,
+            // unless the agent acknowledged replacing it (overwrite)
+            automation.get().saveTo(t.doc(), target, path != null || prompt || overwrite);
             return true;
         };
         WriteOutcome outcome;
@@ -300,6 +306,23 @@ public final class UiEditingService {
 
     /** Exports an SBUI (and its report) through the sandbox; default {@code Exports/UI/<stem>.sbui}. */
     public Object export(String doc, String path, String mode, boolean prompt, boolean overwrite) {
+        return export(doc, path, mode, prompt, overwrite, false);
+    }
+
+    /**
+     * As {@link #export(String, String, String, boolean, boolean)}; {@code deploy} instead ships the
+     * screen into the game (C14): {@code game:ui/documents/<screen>.sbui} plus the shared project
+     * assets it needs under {@code game:ui/shared/}, through the write policy (game resources ask
+     * the user). An export the real game host would refuse is never deployed.
+     */
+    public Object export(String doc, String path, String mode, boolean prompt, boolean overwrite, boolean deploy) {
+        if (deploy) {
+            if (path != null) {
+                throw new IllegalArgumentException("deploy writes to the game's own layout (ui/documents/,"
+                    + " ui/shared/): drop path");
+            }
+            return deploy(doc, exportMode(mode), overwrite);
+        }
         ExportMode m = exportMode(mode);
         Target t = onMain(() -> {
             UiAutomation ui = automation.get();
@@ -336,6 +359,69 @@ public final class UiEditingService {
             out.put("diagnostics", result[0].diagnostics().stream()
                 .filter(x -> x.severity() != com.openmason.engine.format.omui.UiDiagnostic.Severity.INFO)
                 .map(x -> x.severity().name().toLowerCase(Locale.ROOT) + ": " + x.message()).limit(20).toList());
+        }
+        if (result[0] != null && result[0].hostCheck() != null) {
+            out.put("hostCheck", hostCheck(result[0].hostCheck()));
+        }
+        out.put("promptedUser", Boolean.TRUE.equals(outcome.promptedUser()));
+        return out;
+    }
+
+    private static Map<String, Object> hostCheck(UiGameDeploy.HostCheck c) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("gameWouldOpen", c.runnable());
+        List<String> lines = c.lines();
+        if (!lines.isEmpty()) {
+            m.put("findings", lines.stream().limit(30).toList());
+        }
+        return m;
+    }
+
+    private Object deploy(String doc, ExportMode mode, boolean overwrite) {
+        Path game = writes.sandbox().roots().path(WriteRoot.GAME_RESOURCES);
+        if (game == null) {
+            throw new IllegalStateException("The game's resource folder is not available to the tool");
+        }
+        UiGameDeploy.Plan plan = onMain(() -> {
+            UiAutomation ui = automation.get();
+            return ui.service().planDeploy(ui.document(doc), mode, game);
+        });
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("screen", plan.screenId());
+        out.put("hostCheck", hostCheck(plan.check()));
+        if (!plan.check().runnable()) {
+            out.put("ok", false);
+            out.put("reason", "the game would refuse this screen: fix hostCheck.findings first (nothing written)");
+            return out;
+        }
+        if (!plan.conflicts().isEmpty() && !overwrite) {
+            out.put("ok", false);
+            out.put("reason", "these game files exist with different content; pass overwrite:true to replace them"
+                + " (nothing written)");
+            out.put("conflicts", plan.conflicts().stream().map(f -> game.relativize(f.target()).toString()).toList());
+            return out;
+        }
+        String sbuiRel = UiGameDeploy.screenPath(plan.screenId());
+        List<String> details = new java.util.ArrayList<>();
+        details.add("Deploy UI screen '" + plan.screenId() + "' into the game (" + plan.files().size() + " file(s))");
+        plan.files().forEach(f -> details.add((f.conflict() ? "replace " : "write ") + game.relativize(f.target())));
+        List<Path> written = new java.util.ArrayList<>();
+        WriteOutcome outcome = writes.save(WriteRequest.of(WriteKind.SBUI, "game:" + sbuiRel, false,
+                overwrite || plan.files().getFirst().conflict(), plan.screenId()).withDetails(details),
+            target -> {
+                if (!target.toAbsolutePath().normalize().equals(game.resolve(sbuiRel).toAbsolutePath().normalize())) {
+                    throw new IllegalArgumentException("deploy only writes the game's own layout (" + sbuiRel + ")");
+                }
+                written.addAll(UiGameDeploy.write(plan, overwrite));
+                return true;
+            });
+        if (!outcome.ok()) {
+            return outcome;
+        }
+        out.put("ok", true);
+        out.put("written", written.stream().map(p -> game.relativize(p).toString()).toList());
+        if (!plan.notes().isEmpty()) {
+            out.put("notes", plan.notes());
         }
         out.put("promptedUser", Boolean.TRUE.equals(outcome.promptedUser()));
         return out;
@@ -379,11 +465,33 @@ public final class UiEditingService {
 
     // ── threading ───────────────────────────────────────────────────────────
 
-    private static <T> T onMain(Callable<T> task) {
+    /**
+     * Runs {@code task} on the UI thread and waits for it. A call that times out before the UI
+     * thread picked it up is cancelled: it never runs later, so an agent retrying after a timeout
+     * cannot apply the same edit twice. One that already started is reported as such.
+     */
+    static <T> T onMain(Callable<T> task) {
+        return onMain(task, TIMEOUT_MS);
+    }
+
+    static <T> T onMain(Callable<T> task, long timeoutMs) {
+        // 0 = queued, 1 = running (or done), 2 = cancelled before it ran
+        java.util.concurrent.atomic.AtomicInteger state = new java.util.concurrent.atomic.AtomicInteger();
+        Callable<T> guarded = () -> {
+            if (!state.compareAndSet(0, 1)) {
+                throw new java.util.concurrent.CancellationException("timed out before it ran");
+            }
+            return task.call();
+        };
         try {
-            return MainThreadExecutor.submit(task).get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            return MainThreadExecutor.submit(guarded).get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
-            throw new RuntimeException("UI editor call timed out on the main thread", e);
+            if (state.compareAndSet(0, 2)) {
+                throw new RuntimeException("UI editor call timed out waiting for the main thread (the editor is busy"
+                    + " or a modal is open); it was cancelled and nothing was applied: retry", e);
+            }
+            throw new RuntimeException("UI editor call timed out while running on the main thread; it may still"
+                + " finish: check ui_documents (undo label, dirty) before retrying", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);

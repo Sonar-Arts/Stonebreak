@@ -36,3 +36,5 @@
 *.oma    binary
 *.omanim binary
 *.omt    binary
+*.omui   binary
+*.sbui   binary

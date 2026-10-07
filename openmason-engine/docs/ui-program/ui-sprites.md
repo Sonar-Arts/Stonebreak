@@ -90,13 +90,16 @@ logical size (a skin: its normal region).
 
 - **Nine-slice**: corners keep their texels at every size; edges stretch or tile along their length and match
   the corners across; the centre stretches, tiles or is hidden.
-- **Pixel-art snapping** (nearest sampling): corner scales round to a whole number of device px per texel
-  (≥ 1), so each texel covers the same pixels at fractional DPI (1.25× → 1, 1.5× → 2), and every patch edge
-  lands on a whole device pixel (no seams, no overlap). Linear sampling keeps exact geometry.
+- **Pixel-art snapping** (nearest sampling): at `k ≥ 1` corner scales round to a whole number of device px per
+  texel, so each texel covers the same pixels at fractional DPI (1.25× → 1, 1.5× → 2). Below 1 (a 0.75× UI)
+  there is no whole-pixel mapping and corners keep the exact `k` — never rounded up to 1, which would draw them
+  larger than the layout around them. Every patch edge lands on a whole device pixel (no seams, no overlap).
+  Linear sampling keeps exact geometry.
 - **Below the minimum size** (narrower than left + right, shorter than top + bottom): all four corners shrink
   by one common factor until they fit (CSS border-image rule); edges and centre get no space.
-- **Integer**: the largest whole multiple of the region that fits (≥ 1), placed by the pivot. **Tile**:
-  repeats from the top-left at `k` (snapped with nearest). **Stretch**: fills the rect.
+- **Integer**: the largest whole multiple of the region that fits, placed by the pivot; when not even 1× fits,
+  the largest whole fraction (½, ⅓ …) that does, so it never overflows its rect. **Tile**: repeats from the
+  top-left at `k` (snapped like corners with nearest). **Stretch**: fills the rect.
 
 **Precedence**: the element's `-sb-image-scale` beats the sprite's `scale`; the sprite's `sampling` beats the
 element's `-sb-sampling` (the sheet author knows whether the art is pixel art). Element `-sb-tint` and
@@ -111,6 +114,10 @@ survive it.
 `UiDocumentView.frame(dt)`; the editor's design mode advances it too). The painter records each animated
 area and its next frame boundary (`noteAnimation`); `advanceClock` marks only that area dirty when the
 boundary passes, so hosts repaint exactly on frame changes. Reduced motion holds the still region.
+Looping and ping-pong sprites run on the document clock, so every copy animates in step. A **play-once**
+sprite starts when its element starts showing it (`SpritePainter.startTime`): a slot flash or a furnace flame
+lighting plays from its first frame whenever it appears, and again when the element switches to another
+sprite, instead of having finished long ago on the document's clock.
 
 **Compositing is one rule everywhere**: `MTexture` flattens OMT layers with the engine's `OmtCompositor`
 (straight-alpha source-over, layer opacity and visibility, bottom to top — the rule the 3D viewport uses) and
@@ -123,11 +130,16 @@ headless `TextureSizes` recognise SBT, OMT and PNG through one probe (`format.om
 are cached per content hash, and every reference resolves once (`image(ref)` is a map lookup, no per-frame
 allocation); a frame never re-reads or re-decodes a source. Resolved bytes are remembered per id.
 `ResolvedUiAssets.refresh()` re-resolves them and replaces only what changed, returning the superseded texture
-keys; `forget(keys)` drops those from the shared cache without closing them (anything still drawing keeps its
-image until the GC collects it). The editor refreshes every open document on a Texture Editor save or sheet
+keys; `forget(keys)` releases those from the shared cache (`MTextureCache.release`: closed after a 500 ms
+grace, deterministically rather than by the GC; a stale holder of a closed texture draws nothing). The editor refreshes every open document on a Texture Editor save or sheet
 Apply, rebuilds views whose bytes changed (layout re-measures), evicts revisions no open document draws, and
 notices edits made outside the editor by polling the modification time and size of the project files a view
 resolved, once a second, without reading them.
+
+**No per-draw native allocation**: `SpritePainter` keeps, per paint thread, one `Paint` per tint/opacity (its
+colour filter set once), the tiled-patch shaders per sub-image (scale-only matrix; the patch origin is a canvas
+translate; keyed weakly so a released texture takes its shaders with it), and recent patch layouts. A steady
+frame of a 40-slot inventory creates no Skia objects.
 
 Dynamic item icons and model thumbnails stay `DrawProvider`s (typed host providers); they are never
 flattened into sheets.
@@ -136,7 +148,9 @@ flattened into sheets.
 
 `ExportPlanner` runs `SpriteChecks` before writing anything. **Blocking**: an unreadable sheet, an unbound or
 unresolvable texture, a referenced name the sheet lacks, a referenced region outside its texture or whose
-slice no longer fits — in the document and in every component the export carries. **Warnings**: a resized
+slice no longer fits — in the document and in every component the export carries. A component's reference
+resolves as at runtime: through the host's table when that lists the sheet, else through a sheet (and texture)
+the component embeds itself, which is checked against the textures the component can reach. **Warnings**: a resized
 texture, problems in regions nothing references, a sheet bound only through its authored id. Collect-all
 carries sheets and their textures like any other rows; SBUI round trips and portable or project imports keep
 references, sheets and bindings intact (`SpriteExportTest`).
@@ -157,8 +171,11 @@ references, sheets and bindings intact (`SpriteExportTest`).
   replaces its snapshot, and the row records the new hash.
 - **Edit Texture** (`TextureEditBridge`): opens the project OMT in the Texture Editor (refused with a reason
   for embedded snapshots, packaged assets and flat PNGs, or when the Texture Editor holds unsaved work). An SBT
-  opens through its layered source `<name>.omt` beside it (written from the SBT once, never overwritten); every
-  Texture Editor save of that OMT re-wraps the SBT with its own identity and metadata.
+  opens through its layered source `<name>.omt` beside it (written from the SBT when absent); every Texture
+  Editor save of that OMT re-wraps the SBT with its own identity and metadata. The link is the file convention,
+  so it holds after a restart and when the OMT is opened straight from the Texture Editor. A sibling the author
+  edited is never overwritten; a sibling *older* than an SBT that differs from it (a pull, a re-export) is
+  refreshed from the SBT before opening, the previous layers kept as `<name>.omt.stale`.
 - **Propagation**: `TextureCreatorController.addSaveListener` → `UiEditorWorkspace.textureSaved` →
   every open document's runtime invalidates and repaints, so every shared reference updates; embedded
   snapshots stay as they are until **Refresh Snapshot**. UI Assets marks a shared row whose file changed since

@@ -89,8 +89,10 @@ final class DraftUpgradeStage implements UpgradeStage {
 
     private static UiValue.Obj document(UiValue.Obj doc, UiDiagnostics d) {
         Map<String, UiValue> f = new LinkedHashMap<>(doc.fields());
-        UiValue script = f.remove("script");
-        if (script instanceof UiValue.Str s) {
+        // Only a string is the draft's code-behind path; any other value is an unknown field
+        // and is carried over like every other one.
+        if (f.get("script") instanceof UiValue.Str s) {
+            f.remove("script");
             String id = OmuiReader.part(s.value(), OmuiFormat.SCRIPTS_DIR, OmuiFormat.SCRIPT_SUFFIX);
             if (id == null) {
                 d.error(Code.INVALID_VALUE, OmuiFormat.DOCUMENT, "/script", "Draft script path must be scripts/<id>.lua");

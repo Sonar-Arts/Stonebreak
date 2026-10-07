@@ -152,8 +152,10 @@ class UiSpriteSheetTest {
         OmuiArchive undeclared = doc.withManifest(new UiManifest(doc.manifest().schemaVersion(),
                 doc.manifest().documentId(), doc.manifest().kind(), "", doc.manifest().uiApi(),
                 doc.manifest().layoutSemantics(), List.of(), List.of(), List.of(), Map.of()));
-        assertTrue(assertThrows(UiFormatException.class, () -> OmuiWriter.write(undeclared))
-                .has(Code.UNDECLARED_FEATURE));
+        // Undeclared is invalid as a document, but the writer infers the feature instead of refusing.
+        assertTrue(OmuiValidator.validate(undeclared).stream().anyMatch(x -> x.code() == Code.UNDECLARED_FEATURE));
+        assertEquals(List.of(UiFeatures.SPRITES),
+                OmuiReader.read(OmuiWriter.write(undeclared)).archive().manifest().requires());
 
         OmuiArchive wrongKind = SpriteFixtures.screen("t:ui/s", SpriteFixtures.sharedRows(tex, sheet),
                 SpriteFixtures.TEXTURE_ID + "#panel", 40, 20);

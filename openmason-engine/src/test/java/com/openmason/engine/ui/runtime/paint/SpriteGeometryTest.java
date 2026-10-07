@@ -120,6 +120,56 @@ class SpriteGeometryTest {
     }
 
     @Test
+    void belowOneTimesCornersFollowTheLayoutInsteadOfRoundingUp() {
+        // 0.75x: rounding up to 1 px/texel would draw 3 px corners where the layout leaves 2.25.
+        UiRect dst = new UiRect(0, 0, 60, 30);
+        List<SpriteSlices.Patch> p = nine(dst, 0.75f, true, Fill.STRETCH, Fill.STRETCH);
+        SpriteSlices.Patch tl = p.getFirst();
+        assertEquals(2, tl.dw(), 1e-6, "2.25 snapped to its whole-pixel edge, never 3");
+        assertTiles(p, dst);
+        assertEquals(0.75f, SpriteSlices.pixelScale(0.75f, true));
+        assertEquals(2f, SpriteSlices.pixelScale(1.5f, true), "at 1 or more corners stay whole px per texel");
+        List<SpriteSlices.Patch> tile = SpriteSlices.layout(0, 0, 4, 4, Slice.NONE, Fill.STRETCH, Fill.STRETCH,
+            ScaleMode.TILE, 0, 0, dst, 0.75f, 0.75f, true);
+        assertEquals(0.75f, tile.getFirst().tileKx(), 1e-6);
+    }
+
+    @Test
+    void integerModeNeverOverflowsASmallRect() {
+        UiRect dst = new UiRect(0, 0, 10, 10);
+        SpriteSlices.Patch p = SpriteSlices.layout(0, 0, 16, 16, Slice.NONE, Fill.STRETCH, Fill.STRETCH,
+            ScaleMode.INTEGER, 0, 0, dst, 1, 1, true).getFirst();
+        assertEquals(8, p.dw(), 1e-6, "half size: the largest whole fraction that fits");
+        assertTrue(p.dx() + p.dw() <= dst.right());
+        assertEquals(1f / 3, SpriteSlices.integerScale(0.4f), 1e-6);
+        assertEquals(2f, SpriteSlices.integerScale(2.9f));
+    }
+
+    @Test
+    void playOnceSpritesStartWhenTheirElementStartsShowingThem() {
+        var sprite = com.openmason.engine.format.omui.UiSpriteSheet.Sprite.of("flash", 0, 0, 4, 4)
+            .withFrames(List.of(new Frame(0, 0, 0.1), new Frame(4, 0, 0.1)), LoopMode.ONCE);
+        var other = com.openmason.engine.format.omui.UiSpriteSheet.Sprite.of("glow", 0, 0, 4, 4)
+            .withFrames(List.of(new Frame(0, 0, 0.1), new Frame(4, 0, 0.1)), LoopMode.ONCE);
+        try (var ui = com.openmason.engine.ui.runtime.UiDocumentInstance.instantiate(
+            com.openmason.engine.ui.runtime.UiDocs.screen("t:ui/s", com.openmason.engine.ui.runtime.UiDocs.box("root")),
+            com.openmason.engine.ui.runtime.UiRuntimeContext.basic())) {
+            assertOneShots(ui.root(), sprite, other);
+        }
+    }
+
+    private static void assertOneShots(com.openmason.engine.ui.runtime.UiElement a,
+                                       com.openmason.engine.format.omui.UiSpriteSheet.Sprite sprite,
+                                       com.openmason.engine.format.omui.UiSpriteSheet.Sprite other) {
+        assertEquals(0, SpritePainter.startTime(null, sprite, 5), "no owner: document time");
+        assertEquals(5, SpritePainter.startTime(a, sprite, 5), "a slot flash shown at t=5 starts at t=5");
+        assertEquals(5, SpritePainter.startTime(a, sprite, 7));
+        assertEquals(8, SpritePainter.startTime(a, other, 8), "switching sprite restarts it");
+        var looping = sprite.withFrames(sprite.frames(), LoopMode.LOOP);
+        assertEquals(0, SpritePainter.startTime(a, looping, 9), "loops stay in step on the document clock");
+    }
+
+    @Test
     void frameTimingLoopsOncesAndPingPongs() {
         List<Frame> f = List.of(new Frame(0, 0, 0.1), new Frame(8, 0, 0.2), new Frame(16, 0, 0.1));
         assertEquals(0, SpriteFrames.frameAt(f, LoopMode.LOOP, 0));

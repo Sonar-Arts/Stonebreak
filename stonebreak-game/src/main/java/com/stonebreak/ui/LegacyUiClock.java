@@ -52,6 +52,24 @@ public final class LegacyUiClock {
         pin = null;
     }
 
+    /** Puts back the clock state a {@link #pinScoped} replaced. */
+    @FunctionalInterface
+    public interface Restore extends AutoCloseable {
+        @Override
+        void close();
+    }
+
+    /**
+     * Pins like {@link #pin} and returns a handle that restores whatever was in force before:
+     * a live {@code -Dstonebreak.ui.pinclock} pin or an outer test's pin survives a nested
+     * capture, where {@link #release} would have wiped it (#296 review).
+     */
+    public static Restore pinScoped(double seconds, long seed) {
+        Pin previous = pin;
+        pin(seconds, seed);
+        return () -> pin = previous;
+    }
+
     public static boolean isPinned() {
         return pin != null;
     }

@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -26,24 +25,33 @@ import java.util.function.Consumer;
  * as stale, so an old screen or world never receives a late result. Closing never throws, even
  * when cancel hooks or callbacks do.
  *
+ * <p><b>Closing from inside a handler.</b> An action whose handler closes its own screen, reloads
+ * it or leaves the world synchronously (pause "quit", "resume") is not cancelled by that: the
+ * call it is running completes with the handler's synchronous result ({@code SUCCEEDED}), so
+ * a script awaiting it sees success. A handler that returned an unfinished stage is cancelled
+ * once it returns, and its late completion is dropped as stale.
+ *
  * <p>UI-thread confined.
  */
 public final class UiScope implements AutoCloseable {
 
     private final UiHost host;
     private final String documentId;
-    private final Set<String> declaredContracts;
+    /** Contract id → version the document declares; {@code null} = unchecked. */
+    private final Map<String, Integer> declaredContracts;
     private final Consumer<UiProblem> problems;
     private final Map<String, Channel> channels = new HashMap<>();
     private final List<ActionCall> pending = new ArrayList<>();
+    /** Calls whose handler is executing right now (synchronously, on this thread). */
+    private final List<ActionCall> running = new ArrayList<>();
     private final EditSession edits;
     private long generation = 1;
     private boolean closed;
 
-    UiScope(UiHost host, String documentId, Set<String> declaredContracts, Consumer<UiProblem> problems) {
+    UiScope(UiHost host, String documentId, Map<String, Integer> declaredContracts, Consumer<UiProblem> problems) {
         this.host = host;
         this.documentId = documentId == null ? "" : documentId;
-        this.declaredContracts = declaredContracts == null ? null : Set.copyOf(declaredContracts);
+        this.declaredContracts = declaredContracts == null ? null : Map.copyOf(declaredContracts);
         this.problems = problems == null ? p -> { } : problems;
         this.edits = new EditSession(this);
     }
@@ -214,9 +222,17 @@ public final class UiScope implements AutoCloseable {
                 "the host has no such action");
         }
         ActionSpec spec = entry.spec();
-        if (declaredContracts != null && !declaredContracts.contains(spec.contract().id())) {
-            throw new UiActionException(UiActionException.Code.CAPABILITY_MISSING, site, actionId,
-                "belongs to host contract " + spec.contract().id() + ", which the document does not declare in hostApis");
+        if (declaredContracts != null) {
+            Integer declared = declaredContracts.get(spec.contract().id());
+            if (declared == null) {
+                throw new UiActionException(UiActionException.Code.CAPABILITY_MISSING, site, actionId,
+                    "belongs to host contract " + spec.contract().id() + ", which the document does not declare in hostApis");
+            }
+            if (spec.since() > declared) {
+                throw new UiActionException(UiActionException.Code.CAPABILITY_MISSING, site, actionId,
+                    "was added in version " + spec.since() + " of host contract " + spec.contract().id()
+                        + "; the document declares version " + declared + " in hostApis");
+            }
         }
         UiValue.Obj a = args == null ? UiValue.Obj.EMPTY : args;
         String problem = spec.params().problem(a);
@@ -237,19 +253,28 @@ public final class UiScope implements AutoCloseable {
         }
         ActionCall call = new ActionCall(spec, site, a, this, generation, host.epoch());
         pending.add(call);
+        running.add(call);
         CompletionStage<UiValue> stage;
         try {
             stage = entry.handler().handle(a, call.context());
         } catch (RuntimeException e) {
+            running.remove(call);
             fail(call, e);
             return call;
         }
+        running.remove(call);
         if (stage == null) {
             stage = CompletableFuture.completedFuture(UiValue.NULL);
         }
         if (stage instanceof CompletableFuture<UiValue> f && f.isDone()) {
-            complete(call, now(f), cause(f));
+            // Synchronous result: delivered even when the handler itself closed the screen,
+            // reloaded it or left the world (the call was exempt from that cancellation).
+            settleResult(call, now(f), cause(f));
         } else {
+            if (call.isPending() && isStale(call)) {
+                call.cancel(staleReason(call)); // the handler closed its screen and went async
+            }
+            // A late completion of a cancelled call is reported as stale and dropped.
             stage.whenComplete((v, t) -> host.queue().post(() -> complete(call, v, t)));
         }
         return call;
@@ -269,11 +294,22 @@ public final class UiScope implements AutoCloseable {
         return List.copyOf(pending);
     }
 
+    private boolean isStale(ActionCall call) {
+        return closed || call.generation() != generation || call.epoch() != host.epoch();
+    }
+
     private void complete(ActionCall call, UiValue value, Throwable error) {
-        if (!call.isPending() || closed || call.generation() != generation || call.epoch() != host.epoch()) {
+        if (!call.isPending() || isStale(call)) {
             call.cancel("stale");
             problem(new UiProblem(UiProblem.Kind.STALE_COMPLETION, call.site(),
                 call.spec().id() + " completed after its " + staleReason(call) + "; result dropped"));
+            return;
+        }
+        settleResult(call, value, error);
+    }
+
+    private void settleResult(ActionCall call, UiValue value, Throwable error) {
+        if (!call.isPending()) {
             return;
         }
         if (error != null) {
@@ -350,9 +386,12 @@ public final class UiScope implements AutoCloseable {
 
     // ── lifetime ────────────────────────────────────────────────────────────
 
+    /** Cancels pending calls, except those whose handler is running right now (it caused this). */
     void cancelPending(String reason) {
         for (ActionCall c : List.copyOf(pending)) {
-            c.cancel(reason);
+            if (!running.contains(c)) {
+                c.cancel(reason);
+            }
         }
     }
 

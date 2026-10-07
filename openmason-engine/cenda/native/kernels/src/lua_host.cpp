@@ -31,9 +31,9 @@ namespace {
 // instructions before it is stopped).
 constexpr int HOOK_STRIDE = 1000;
 constexpr int MAX_HOST_VALUES = 16;
-// Fixed string-hash seed: pairs() order is then identical run to run, which
-// the deterministic UI fixtures rely on. UI scripts are not an untrusted
-// network input, so hash-flooding resistance buys nothing here.
+// String-hash seed of cl_state_new: pairs() order is then identical run to
+// run, which deterministic UI fixtures rely on. Hosts running documents they
+// did not write (mods) use cl_state_new_seeded with a random seed (ABI 3).
 constexpr unsigned STATE_SEED = 0x5eed5eedu;
 
 static_assert(std::endian::native == std::endian::little, "the CL value encoding is little-endian");
@@ -107,21 +107,27 @@ void* capped_alloc(void* ud, void* ptr, size_t osize, size_t nsize) {
     return grown;
 }
 
+// Raises the pending deadline. The first raise of a top-level call records where it hit;
+// every later one repeats that message.
+void raise_deadline(lua_State* L, cl_state* s) {
+    if (s->deadline_message.empty()) {
+        luaL_where(L, 1);
+        lua_pushliteral(L, "deadline exceeded (interrupted by the host watchdog)");
+        lua_concat(L, 2);
+        luaL_traceback(L, L, lua_tostring(L, -1), 1);
+        s->deadline_message = lua_tostring(L, -1);
+        lua_pop(L, 2);
+    }
+    lua_pushlstring(L, s->deadline_message.data(), s->deadline_message.size());
+    lua_error(L);
+}
+
 void count_hook(lua_State* L, lua_Debug*) {
     cl_state* s = state_of(L);
     if (cenda_pending(L)) {
         // Deadline: stays pending (and the hook stays at stride 1) until the
         // next top-level call, so pcall cannot swallow it either.
-        if (s->deadline_message.empty()) {
-            luaL_where(L, 1);
-            lua_pushliteral(L, "deadline exceeded (interrupted by the host watchdog)");
-            lua_concat(L, 2);
-            luaL_traceback(L, L, lua_tostring(L, -1), 1);
-            s->deadline_message = lua_tostring(L, -1);
-            lua_pop(L, 2);
-        }
-        lua_pushlstring(L, s->deadline_message.data(), s->deadline_message.size());
-        lua_error(L);
+        raise_deadline(L, s);
     }
     s->charged += s->hook_stride;
     if (s->budget > 0 && s->charged > s->budget) {
@@ -258,6 +264,13 @@ bool append(std::vector<uint8_t>& v, const void* p, size_t n) noexcept {
 }
 
 void put(lua_State* L, std::vector<uint8_t>& v, const void* p, size_t n) {
+    // The encoding lives outside the Lua heap (and its cap), and a table may share one subtable
+    // many times (t = {a, a} doubled 32 times is 2^32 nodes in a few hundred bytes of Lua): the
+    // byte cap bounds both the memory and the time an encode can take.
+    if (v.size() + n > CL_MAX_ENCODED_BYTES) {
+        luaL_error(L, "host value larger than %d bytes (shared subtables are encoded once per use)",
+                   static_cast<int>(CL_MAX_ENCODED_BYTES));
+    }
     if (!append(v, p, n)) {
         luaL_error(L, "not enough memory to encode a host value");
     }
@@ -494,6 +507,25 @@ int sandbox_load(lua_State* L) {
     return 1;
 }
 
+// setmetatable that refuses __gc. A finalizer runs inside the collector with hooks disabled
+// (lgc.c GCTM), so neither the watchdog nor the budget could ever stop one, and lua_close would
+// run every pending finalizer unguarded. Lua only marks an object for finalization when its
+// metatable has __gc at setmetatable time, so refusing it here closes the door for good.
+int sandbox_setmetatable(lua_State* L) {
+    if (lua_istable(L, 2)) {
+        lua_pushliteral(L, "__gc");
+        const int t = lua_rawget(L, 2);
+        lua_pop(L, 1);
+        if (t != LUA_TNIL) {
+            return luaL_error(L, "__gc metamethods are not available to UI scripts");
+        }
+    }
+    lua_pushvalue(L, lua_upvalueindex(1));
+    lua_insert(L, 1);
+    lua_call(L, lua_gettop(L) - 1, 1);
+    return 1;
+}
+
 void install_load(lua_State* L, int env_index) {
     env_index = lua_absindex(L, env_index);
     lua_pushvalue(L, env_index);
@@ -529,6 +561,9 @@ int open_sandbox(lua_State* L) {
         lua_setfield(L, -2, banned);
     }
     install_load(L, -1);
+    lua_getfield(L, -1, "setmetatable");
+    lua_pushcclosure(L, sandbox_setmetatable, 1);
+    lua_setfield(L, -2, "setmetatable");
     lua_pushcfunction(L, coroutine_traceback);
     lua_setfield(L, -2, "__cenda_traceback");
     lua_getfield(L, -1, LUA_STRLIBNAME);
@@ -705,10 +740,14 @@ struct RefFunctionCtx {
     int32_t ref;
 };
 
+// The protected ops below run outside any watched call, so they touch environments with raw
+// access only: a script's __index/__newindex on its _ENV must never run here, where the
+// watchdog could not stop it.
 int op_ref_function(lua_State* L) {
     auto* c = static_cast<RefFunctionCtx*>(lua_touserdata(L, 1));
     push_env(L, c->env_ref);
-    lua_getfield(L, -1, c->name);
+    lua_pushstring(L, c->name);
+    lua_rawget(L, -2);
     c->ref = lua_isfunction(L, -1) ? luaL_ref(L, LUA_REGISTRYINDEX) : 0;
     return 0;
 }
@@ -724,24 +763,26 @@ struct RegisterHostCtx {
 int op_register_host(lua_State* L) {
     auto* c = static_cast<RegisterHostCtx*>(lua_touserdata(L, 1));
     push_env(L, c->env_ref);
+    lua_pushstring(L, c->name);
     void* raw = nullptr;
     std::memcpy(&raw, &c->fn, sizeof raw);
     lua_pushlightuserdata(L, raw);
     lua_pushinteger(L, static_cast<lua_Integer>(c->user));
     lua_pushcclosure(L, host_trampoline, 2);
-    lua_setfield(L, -2, c->name);
+    lua_rawset(L, -3);
     return 0;
 }
 
 int op_register_host_v(lua_State* L) {
     auto* c = static_cast<RegisterHostCtx*>(lua_touserdata(L, 1));
     push_env(L, c->env_ref);
+    lua_pushstring(L, c->name);
     void* raw = nullptr;
     std::memcpy(&raw, &c->vfn, sizeof raw);
     lua_pushlightuserdata(L, raw);
     lua_pushinteger(L, static_cast<lua_Integer>(c->user));
     lua_pushcclosure(L, host_trampoline_v, 2);
-    lua_setfield(L, -2, c->name);
+    lua_rawset(L, -3);
     return 0;
 }
 
@@ -793,6 +834,7 @@ struct BindBufferCtx {
 int op_bind_buffer(lua_State* L) {
     auto* c = static_cast<BindBufferCtx*>(lua_touserdata(L, 1));
     push_env(L, c->env_ref);
+    lua_pushstring(L, c->name);
     lua_createtable(L, 0, 6);
     const luaL_Reg methods[] = {{"emit", buffer_emit}, {"put", buffer_put},       {"get", buffer_get},
                                 {"len", buffer_len},   {"cursor", buffer_cursor_l}, {"reset", buffer_reset_l}};
@@ -801,7 +843,7 @@ int op_bind_buffer(lua_State* L) {
         lua_pushcclosure(L, m.func, 1);
         lua_setfield(L, -2, m.name);
     }
-    lua_setfield(L, -2, c->name);
+    lua_rawset(L, -3);
     return 0;
 }
 
@@ -849,6 +891,12 @@ extern "C" void cenda_lua_interrupt(lua_State* L) {
     }
 }
 
+extern "C" void cenda_lua_raise(lua_State* L) {
+    // Armed first, so a pcall that catches this is stopped at its very next instruction.
+    cenda_lua_interrupt(L);
+    raise_deadline(L, state_of(L));
+}
+
 namespace {
 
 int panic_handler(lua_State* L) {
@@ -865,13 +913,15 @@ int32_t cl_abi_version(void) { return CL_ABI_VERSION; }
 
 const char* cl_lua_release(void) { return LUA_RELEASE; }
 
-cl_state* cl_state_new(size_t mem_limit_bytes) {
+cl_state* cl_state_new(size_t mem_limit_bytes) { return cl_state_new_seeded(mem_limit_bytes, STATE_SEED); }
+
+cl_state* cl_state_new_seeded(size_t mem_limit_bytes, uint32_t seed) {
     auto* s = new (std::nothrow) cl_state();
     if (s == nullptr) {
         return nullptr;
     }
     s->limit = mem_limit_bytes;
-    s->L = lua_newstate(capped_alloc, s, STATE_SEED);
+    s->L = lua_newstate(capped_alloc, s, seed);
     if (s->L == nullptr) {
         delete s;
         return nullptr;

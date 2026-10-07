@@ -71,7 +71,7 @@ public final class SbuiProjectImport {
                 String id = row.id();
                 ResolvedAsset there = null;
                 if (existing == null) {
-                    path = project.placementFor(id, row.kind(), row.sourceHint());
+                    path = project.importPlacementFor(id, row.kind(), row.sourceHint());
                 } else {
                     id = freshId(doc, project, row, bytes);
                     renames.put(row.id(), id);

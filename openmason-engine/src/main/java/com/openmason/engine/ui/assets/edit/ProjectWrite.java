@@ -19,6 +19,22 @@ public record ProjectWrite(String path, UiBytes previous, UiBytes next) {
         Objects.requireNonNull(path, "path");
     }
 
+    /** @throws IOException when the file no longer holds {@link #previous} (applying would clobber) */
+    void checkApplicable(ProjectFolder folder) throws IOException {
+        expect(folder, previous);
+    }
+
+    /** @throws IOException when the file no longer holds {@link #next} (reverting would clobber) */
+    void checkRevertible(ProjectFolder folder) throws IOException {
+        expect(folder, next);
+    }
+
+    private void expect(ProjectFolder folder, UiBytes from) throws IOException {
+        if (!Objects.equals(folder.read(path), from)) {
+            throw new IOException("'" + path + "' changed outside this command; refusing to overwrite it");
+        }
+    }
+
     void apply(ProjectFolder folder) throws IOException {
         transition(folder, previous, next);
     }
@@ -32,10 +48,7 @@ public record ProjectWrite(String path, UiBytes previous, UiBytes next) {
      * between: undo never clobbers an edit made after the command.
      */
     private void transition(ProjectFolder folder, UiBytes from, UiBytes to) throws IOException {
-        UiBytes current = folder.read(path);
-        if (!Objects.equals(current, from)) {
-            throw new IOException("'" + path + "' changed outside this command; refusing to overwrite it");
-        }
+        expect(folder, from);
         if (to == null) {
             folder.delete(path);
         } else {

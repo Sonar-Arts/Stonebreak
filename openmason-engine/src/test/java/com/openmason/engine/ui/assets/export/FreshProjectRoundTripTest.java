@@ -4,6 +4,7 @@ import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.format.omui.OmuiReader;
 import com.openmason.engine.format.omui.OmuiWriter;
 import com.openmason.engine.format.omui.UiBytes;
+import com.openmason.engine.format.omui.UiDependency;
 import com.openmason.engine.format.omui.UiDependency.Mode;
 import com.openmason.engine.format.omui.UiHostProfile;
 import com.openmason.engine.format.omui.UiSamples;
@@ -78,7 +79,10 @@ class FreshProjectRoundTripTest {
         Resolution viaProject = AssetResolver.forDocument(doc, List.of(clean)).resolveAll();
         assertTrue(viaProject.complete(), viaProject.diagnostics()::toString);
         assertEquals(AssetOrigin.PROJECT, viaProject.get(UiSamples.PANEL_TEXTURE_ID).origin());
-        assertEquals(UiBytes.copyOf(UiSamples.PANEL_TEXTURE_BYTES), clean.folder().read(PANEL_HINT));
+        // the SBUI's hint lies outside UI/, so the import places the copy by convention instead
+        assertNull(clean.folder().read(PANEL_HINT));
+        assertEquals(UiBytes.copyOf(UiSamples.PANEL_TEXTURE_BYTES), clean.folder().read(
+                clean.conventionPath(UiSamples.PANEL_TEXTURE_ID, UiDependency.Kind.TEXTURE, PANEL_HINT)));
     }
 
     @Test

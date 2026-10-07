@@ -412,6 +412,62 @@ void test_traceback_helper() {
     cl_state_close(s);
 }
 
+int32_t sink_v(int64_t, const uint8_t*, int32_t, int32_t) { return 0; }
+
+// #282 hardening (ABI 3): C library loops honour the deadline, __gc is refused, raw setup
+// access, the encoded-value cap and seeded states.
+void test_hardening() {
+    cl_state* s = cl_state_new(0);
+    const auto deadline = std::chrono::milliseconds(20);
+    const char* c_loops[] = {
+        "local s = string.rep('a', 30000) string.find(s, string.rep('.-', 12) .. 'x')",
+        "local s = string.rep('a', 1 << 22) string.find(s, string.rep('a', 1 << 19) .. 'b', 1, true)",
+        "table.move({}, 1, math.maxinteger - 1, 2)",
+        "local s = string.rep('a', 30000) while true do pcall(string.find, s, string.rep('.-', 12) .. 'x') end",
+        "local s = string.rep('a', 30000) for _ in s:gmatch(string.rep('.-', 12) .. 'x') do end",
+    };
+    for (const char* src : c_loops) {
+        const auto t0 = std::chrono::steady_clock::now();
+        const int32_t st = run_with_watchdog(s, src, deadline);
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+        check(st == CL_ERR_DEADLINE && ms < 1000, (std::string("deadline stops a C loop: ") + src).c_str(), s);
+    }
+    check(run(s, "ok = string.find('hello', 'l+') == 3") == CL_OK && eval(s, "ok and 1 or 0") == 1.0,
+          "patterns still work after an interrupt", s);
+
+    check(run(s, "setmetatable({}, { __gc = function() while true do end end })") == CL_ERR_RUN
+              && std::strstr(cl_last_error(s), "__gc") != nullptr,
+          "setmetatable refuses __gc", s);
+    check(eval(s, "getmetatable(setmetatable({}, { __index = { x = 4 } })).__index.x") == 4.0,
+          "setmetatable still works", s);
+    check(eval(s, "select('#', setmetatable({}, {}))") == 1.0, "setmetatable returns the table", s);
+
+    // Setup ops never run a script's _ENV metamethods (they run outside any watched call).
+    const int32_t env = cl_env_new(s);
+    check(run(s, "setmetatable(_ENV, { __index = function() while true do end end,"
+                 " __newindex = function() while true do end end })", env) == CL_OK, "env metatable", s);
+    check(cl_ref_function(s, env, "missing") <= 0, "ref_function uses raw access", s);
+    check(cl_register_host_v(s, env, "sink", sink_v, 0) == CL_OK, "register uses raw access", s);
+    float buf[8];
+    check(cl_bind_buffer(s, env, "buf", buf, 8) >= 0, "bind_buffer uses raw access", s);
+
+    // A DAG of shared subtables is 2^30 nodes once encoded: the byte cap stops it quickly.
+    const auto t0 = std::chrono::steady_clock::now();
+    const int32_t big = run(s, "local a = {} for i = 1, 30 do a = { a, a } end sink(a)", env);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+    check(big == CL_ERR_RUN && std::strstr(cl_last_error(s), "larger than") != nullptr && ms < 2000,
+          "encoded-value byte cap", s);
+    check(run(s, "sink({ 1, 2, 3 }, 'small')", env) == CL_OK, "small values still cross", s);
+    cl_unref(s, env);
+    cl_state_close(s);
+
+    cl_state* seeded = cl_state_new_seeded(0, 0xdeadbeefu);
+    check(seeded != nullptr && eval(seeded, "#('abc' .. 'def')") == 6.0, "seeded state", seeded);
+    cl_state_close(seeded);
+}
+
 }  // namespace
 
 int main() {
@@ -427,6 +483,7 @@ int main() {
     test_values();
     test_traceback_helper();
     test_reentrant_calls();
+    test_hardening();
     if (failures == 0) {
         std::printf("lua_host: all checks passed (%s)\n", cl_lua_release());
         return EXIT_SUCCESS;

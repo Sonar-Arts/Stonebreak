@@ -7,7 +7,7 @@ script contexts as code-behind.
 
 | Part | Where |
 | --- | --- |
-| Native host (ABI) | `cenda/native/kernels/{include/cenda/lua_host.h,src/lua_host.cpp}`, `CL_ABI_VERSION` **2** |
+| Native host (ABI) | `cenda/native/kernels/{include/cenda/lua_host.h,src/lua_host.cpp}`, `CL_ABI_VERSION` **3** |
 | FFM binding | `engine/cenda/{CendaLua,LuaState,LuaValueWriter,LuaValueReader,LuaValueFunction,LuaWatchdog}` |
 | Runtime | `engine/ui/script`: `UiScriptRuntime`, `UiScripts` (host sequence), `ScriptOps` (host side of the API), `prelude.lua` (Lua side) |
 | Animation sampler | `engine/ui/runtime/anim/UiAnimator` (the seam #295 grows) |
@@ -20,6 +20,15 @@ script contexts as code-behind.
 
 Lua 5.5.1 is built into `libcenda_kernels`. It is fetched by SHA-256, and `io`, `os`, `debug`, `package` and `linit`
 are not compiled in. It has its own handshake, `cl_abi_version`.
+
+**Packaging (#282 C11).** The engine POM copies a built library into the jar as the classpath resource
+`natives/<platform>/<lib>` (`<platform>` = `linux-x86_64`, `windows-x86_64`, `macos-aarch64`, ...: the parent POM's
+`cenda.natives.dir` profile property). A missing build directory is skipped, never a build failure.
+`CendaKernels.locateLibrary` searches `-Dcenda.kernels.path`, `CENDA_KERNELS_PATH` and the dev build directories
+first; only then does it extract the packaged copy (`NativeLibraryExtractor`) to `<cache>/<sha256 prefix>/<lib>`
+(`-Dcenda.natives.cache`, else `%LOCALAPPDATA%\Stonebreak\natives`, `$XDG_CACHE_HOME/stonebreak/natives` or
+`~/.cache/stonebreak/natives`). The directory is keyed by the bytes, so two game versions never overwrite each
+other's library, and the file is written to a temp name and moved into place atomically.
 
 There is **no Java fallback**:
 
@@ -83,7 +92,19 @@ cannot cross: encoding one raises a Lua error that names it.
 **Re-entrancy.** A host function may call back into its own state: a signal reaching another environment, or a
 converter run by a binding write. Only the outermost entry point bumps the watchdog token and resets the budget.
 So a nested call is timed and charged as part of the outer one, and a deadline inside it ends the outer call
-(`lua_host_test` `test_reentrant_calls`).
+(`lua_host_test` `test_reentrant_calls`). `LuaState.close()` from inside one of the state's own host calls throws
+(`lua_close` under a running VM is a use-after-free), and every call on a closed `LuaState` throws instead of
+touching freed memory.
+
+### ABI 3: hardening for documents the host did not write (#282)
+
+| Change | Why |
+| --- | --- |
+| `cl_state_new_seeded(limit, seed)` | `UiScriptOptions.randomHashSeed` (on for host options, off in `DEFAULTS`) seeds string hashing randomly, so crafted keys cannot degrade table lookups. `cl_state_new` keeps the fixed seed for deterministic fixtures. |
+| `CL_MAX_ENCODED_BYTES` (1 MiB) | A value crossing to the host is encoded outside the Lua heap. A table that shares one subtable many times (`a = {a, a}` doubled 30 times) is 2^30 nodes in a few hundred bytes of Lua; the byte cap stops it in milliseconds. |
+| Deadline checks in C library loops | `patch_lvm.cmake` also patches `lstrlib.c` (every backtracking step of the matcher and the plain `string.find` loop) and `ltablib.c` (`table.move`): `cenda_check` raises the deadline right there, because no hook fires inside a C function. The patch re-runs (idempotently, per file) at every configure, so a shared deps cache picks it up. |
+| `setmetatable` refuses `__gc` | A finalizer runs inside the collector with hooks disabled, so neither the watchdog nor the budget could stop one, and `lua_close` would run every pending finalizer unguarded. Lua only marks an object for finalization when its metatable has `__gc` at `setmetatable` time, so refusing it there is complete. |
+| Raw table access in setup ops | `cl_ref_function`, `cl_register_host*`, `cl_bind_buffer` run outside any watched call; a script's `__index`/`__newindex` on its `_ENV` must never run there. |
 
 **Java side.** `LuaValueWriter` and `LuaValueReader` are allocation-free for numbers and booleans. Strings are
 UTF-8 encoded char by char into reused native memory, and reads use one absolute view of the address space.
@@ -103,7 +124,7 @@ is a copy of the curated globals with its own library tables, so each instance h
 | Limit (`UiScriptOptions`) | Default | Enforcement |
 | --- | --- | --- |
 | `memoryLimitBytes` | 16 MiB | Per-state capped allocator. An allocation over the cap is a Lua memory error. |
-| `deadlineMillis` | 100 ms | Watchdog thread: any single call into the state that runs longer is interrupted. Costs ~0: the patched VM polls at back-jumps and calls. |
+| `deadlineMillis` | 100 ms | Watchdog thread: any single call into the state that spends longer *in Lua* is interrupted. Time inside Java host functions (a slow action handler such as Resync, a data read) is subtracted (`LuaState.hostNanos`), so host work never disables a script; Lua before or after a host call, and Lua a host function calls back into, still counts, so a busy loop after a slow action still trips. Costs ~0: the patched VM polls at back-jumps and calls; each host upcall reads the clock twice. |
 | `instructionBudget` | 0 (off) | Opt-in exact budget per call. Any count hook doubles VM-bound cost in Lua 5.5 (#283). |
 
 **Sandbox.** The sandbox allows:
@@ -190,9 +211,32 @@ end)
 
 - closing the screen;
 - a reload (the generation moves on);
-- leaving the world (`UiHost.advanceEpoch`, which the game calls on `MENU`).
+- leaving the world (`UiHost.advanceEpoch`, which the game calls on `MENU`). The runtime polls `host.epoch()` at
+  the start of every `update`; a change cancels **every** waiting task (actions, `ui.sleep`, tweens, clips and
+  watch callbacks alike), reports `TASK_CANCELLED`, and keeps handlers, watches and module state.
 
-`<close>` handlers run. A completion that arrives later is dropped, never applied (`ScriptLifetimeTest`).
+`<close>` handlers run. A completion that arrives later is dropped, never applied (`ScriptLifetimeTest`,
+`ScriptHardeningTest`). Several tasks may await one handle; all of them resume when it settles.
+
+**Close and reload never run under a call.** A host may close a screen from inside a call into its script: a
+handler's action whose Java handler closes the screen, or `ui.close()` on a host that closes at once. The runtime
+defers `close()` and `reload()` requested while any of its entries is on the stack (input dispatch, `update`, a
+converter) until the outermost one returns; `isClosed()` is true from the request on, and a close or reload
+requested from `on_close` is a no-op. Hosts should still close at a frame boundary (the game does), since the
+document instance itself may be closed by the host right after the request.
+
+**Limits per context.** 4,096 unsettled handles (actions, timers, animations, state-machine moves), 1,024 watches
+and 4,096 handlers or signal listeners; past them the op raises at the script's line. `update` stops delivering
+results and events once the frame has spent the deadline on deliveries (each dispatch may legally use up to the
+deadline); the rest arrive next frame.
+
+**Isolation.** An element, canvas or handle table holds no reference to its context (a weak side table in the
+prelude maps them), so a script cannot reach its own host function, handler or task tables. Cancelling an action
+or stopping, seeking or re-timing an animation by token only works on the context's own tokens.
+
+**Call sites (#289).** An action call reports the element whose handler made it (`CallSite.Origin.SCRIPT`), or the
+graph node when a compiled graph frame is on the Lua stack (`Origin.GRAPH`, key `graph#node`), so a contract
+mismatch names what to fix.
 
 ## 5. The `ui` API (uiApi 1)
 
@@ -225,7 +269,10 @@ descriptor before they are set.
 Errors, deadlines, memory and budget violations, and invalid values never escape the runtime:
 
 1. The dispatch's **local writes are rolled back** (`ScriptJournal`: props, styles, classes, states, enabled), so
-   the screen keeps its last good presentation.
+   the screen keeps its last good presentation. What the dispatch registered or started is undone too: handlers,
+   signal listeners, watches and timers are removed, and tweens and clips are released, so they cannot re-claim
+   the restored values. Host actions already invoked, focus moves, scroll positions and state-machine moves are
+   not undone.
 2. The culprit is **disabled**: the handler (Java `off` + Lua drop), `update`, `on_input`, the watch or the
    converter. A failing `on_open` or `on_close` is reported.
 3. A `UiScriptDiagnostic` is recorded, with the code (`SYNTAX`, `RUNTIME`, `DEADLINE`, `MEMORY`, `BUDGET`,
@@ -371,8 +418,8 @@ and `-Dopenmason.uidoc.preview=<file>` in the tool. Regenerate them with `-Dui.s
 - **Runtime-inserted component instances** (ListView rows of a component with code-behind) get no script
   context. Their template's bindings still work.
 - **Relative data paths** in `ui.read`/`ui.watch` (`.x` against the inherited source). Use absolute host paths.
-- **Packaging.** The native library is not packaged in the jars; it is found in the build tree, or through
-  `-Dcenda.kernels.path` / `CENDA_KERNELS_PATH`.
+- **Packaging** is per platform: a jar carries the library of the machine that built it. A multi-platform release
+  needs each CI platform's library added under its own `natives/<platform>/` folder.
 - **Windows and macOS** are covered by the CI workflow, but until it has run they are unverified. Linux is built
   and tested, and the Clang build passes locally.
 - **#295 delivered** style transitions, `prop:` animation tracks, `scale`/`rotate`, precedence and blending ([ui-animation.md](ui-animation.md)).
@@ -383,11 +430,14 @@ and `-Dopenmason.uidoc.preview=<file>` in the tool. Regenerate them with `-Dui.s
 
 | Test | Covers |
 | --- | --- |
-| `cenda/tests/lua_host_test.cpp` | value codec round trips and refusals, holes, malformed and over-cap args, host errors, value calls, refs, buffer reset, coroutine tracebacks, re-entrant calls with one watch token and nested deadlines |
+| `cenda/tests/lua_host_test.cpp` | value codec round trips and refusals, holes, malformed and over-cap args, host errors, value calls, refs, buffer reset, coroutine tracebacks, re-entrant calls with one watch token and nested deadlines; ABI 3: C-loop deadlines (patterns, plain find, `table.move`, under `pcall`), `__gc` refusal, raw setup access against a hostile `_ENV`, the encode cap, seeded states |
 | `CendaLuaValuesTest` | the codec through FFM: UI value round trip, host exceptions, unencodable values, re-entrancy, buffer growth, allocation-free number calls |
 | `ScriptBehaviourTest` | the acceptance screen (events, Lua-converter binding, awaited action, tween), failed actions, clips and events, two isolated component instances with lifecycles and signals, scope limits, watches, `on_input`, `require`, documents without code-behind, canvas buffer, key events |
+| `LuaHostTimeDeadlineTest`, `ScriptHostTimeTest` | host-function time is not charged to the deadline (slow upcall, slow action from a click handler: script stays enabled); a busy loop after a slow host call, or in a callback the host makes, still trips |
 | `ScriptSafetyTest` | sandbox denials, tamper-proof shared metatables, binary refusal, rollback + disable + `chunk:line`, deadline, memory cap, opt-in budget, failing `update`, syntax errors, pure converters, binding ownership, `on_close` failure, widget type checks |
 | `ScriptLifetimeTest` | cancellation on close, reload and world change (stale results never apply), await outside a task, `ui.sleep`, hot reload (new code, kept globals), a broken edit keeping the last good version, contexts added and removed by reload |
+| `ScriptHardeningTest` | close and reload from inside a handler deferred to the call's end, `ui.close()` from `on_close`, a world change cancelling sleeps/tweens/watch tasks, a failed handler releasing what it started, handle and watch caps, no context reachable from element/handle tables, several waiters on one handle, script and graph call sites, host option defaults |
+| `CendaLuaTest` (ABI 3 part), `NativeLibraryExtractorTest` | close refused inside a call and closed-state calls, `__gc` refusal, C-loop deadlines, the encode cap, seeded states; platform names, extract-once, per-build directories |
 | `ScriptModuleResolutionTest` | a shared module from a moved project, from a collect-all export with no project, and after a portable import; an embedded module after the `.omui` file moves and through an export; a missing module names itself at `pause.lua:2` |
 | `ScriptSampleTest` | packed samples match their sources; the scripted pause on `FixtureHost` |
 | `MinigameBenchmarkTest` | 1,000-sprite frame budget and zero Java garbage; raster pixels of the canvas |

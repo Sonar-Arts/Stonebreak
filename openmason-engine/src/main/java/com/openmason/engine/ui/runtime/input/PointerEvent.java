@@ -22,10 +22,18 @@ public final class PointerEvent extends UiEvent {
     private final int modifiers;
     private final int clickCount;
     private final InputDevice device;
+    private final int buttons;
 
     public PointerEvent(UiEventType type, double time, float x, float y, float scale, int button, int modifiers,
                         int clickCount, InputDevice device) {
+        this(type, time, x, y, scale, button, modifiers, clickCount, device, 0);
+    }
+
+    /** @param buttons mouse buttons held when the event happened, as {@link #buttons()} */
+    public PointerEvent(UiEventType type, double time, float x, float y, float scale, int button, int modifiers,
+                        int clickCount, InputDevice device, int buttons) {
         super(type, time);
+        this.buttons = buttons;
         this.x = x;
         this.y = y;
         this.scale = scale;
@@ -69,9 +77,27 @@ public final class PointerEvent extends UiEvent {
         return button;
     }
 
-    /** GLFW modifier bits ({@code MKeys.MOD_*}). */
+    /**
+     * GLFW modifier bits ({@code MKeys.MOD_*}) held at the event. Moves, enters and leaves carry
+     * the modifiers the router last saw (from the host's events and modifier key presses), so a
+     * handler can tell a Shift-drag across slots from a plain one.
+     */
     public int modifiers() {
         return modifiers;
+    }
+
+    /**
+     * Mouse buttons held during the event, bit {@code 1 << button} ({@link #PRIMARY} = bit 0);
+     * on a down event it includes the button just pressed, on an up event it no longer includes
+     * the button just released. Lets a move handler implement right-drag distribution.
+     */
+    public int buttons() {
+        return buttons;
+    }
+
+    /** {@code button} is held during this event. */
+    public boolean isHeld(int button) {
+        return button >= 0 && button < 31 && (buttons & (1 << button)) != 0;
     }
 
     /** 1 for a single click, 2 for a double click, ... */

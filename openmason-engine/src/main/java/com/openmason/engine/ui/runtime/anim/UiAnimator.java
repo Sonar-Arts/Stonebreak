@@ -461,6 +461,58 @@ public final class UiAnimator {
         }
     }
 
+    /**
+     * The element with {@code key} left the tree (removed, or dropped by a reload): its channels
+     * go away with it, transitions on them stop, and a clip or tween left animating nothing else
+     * is interrupted (its listener sees {@code stopped}). A later element under the same key starts
+     * with clean channels: nothing still running can write into it.
+     */
+    public void forget(String key) {
+        Map<String, Channel> byTarget = channels.remove(key);
+        if (byTarget == null) {
+            return;
+        }
+        List<Playback> orphaned = new ArrayList<>();
+        for (Channel ch : byTarget.values()) {
+            if (ch.transition != null) {
+                transitions.remove(ch.transition);
+                ch.transition = null;
+                ch.transitionValue = null;
+            }
+            Playback p = ch.owner;
+            if (p != null) {
+                lose(p, ch);
+                if (!p.alive() && !orphaned.contains(p)) {
+                    orphaned.add(p);
+                }
+            }
+            ch.explicit = null;
+            ch.holder = null;
+        }
+        for (Playback p : orphaned) {
+            end(p, true, false);
+        }
+    }
+
+    /** Animated (element, property) channels currently tracked; for leak tests and diagnostics. */
+    public int channelCount() {
+        int n = 0;
+        for (Map<String, Channel> byTarget : channels.values()) {
+            n += byTarget.size();
+        }
+        return n;
+    }
+
+    /**
+     * Stops every animation of {@code owner} without notifying and hands every value it holds back
+     * to the cascade (a state machine that was replaced or removed: nothing would ever release
+     * what it held otherwise).
+     */
+    public void clearAndRelease(Object owner) {
+        clear(owner);
+        releaseHeld(owner, 0);
+    }
+
     /** Stops every animation of {@code owner} without notifying (script reload, machine teardown); values stay held. */
     public void clear(Object owner) {
         for (int i = running.size() - 1; i >= 0; i--) {

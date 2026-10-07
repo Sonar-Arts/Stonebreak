@@ -1,25 +1,33 @@
 package com.openmason.engine.ui.data;
 
 import com.openmason.engine.format.omui.UiValue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * An observable list with item identity (#289). Edits notify listeners with the incremental
  * {@link ListChange}s, so a bound list view inserts, removes, moves or rebinds single rows;
  * {@link #setAll} diffs a fresh snapshot by identity and sends the same kind of changes.
  *
- * <p>UI-thread confined, like {@link DataCell}.
+ * <p>UI-thread confined, like {@link DataCell}; from another thread {@link #post} a whole new
+ * snapshot (posts coalesce and are diffed by identity at the next drain).
  */
 public final class DataCollection implements DataSource {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(DataCollection.class);
 
     private final DataType.ListOf type;
     private final Listeners listeners = new Listeners();
     private final List<UiValue> items = new ArrayList<>();
+    private final AtomicReference<List<UiValue>> pending = new AtomicReference<>();
     private DataState state;
+    private UiThreadQueue queue;
 
     /** @param type a list type with an identity field */
     public DataCollection(DataType.ListOf type) {
@@ -58,6 +66,7 @@ public final class DataCollection implements DataSource {
     }
 
     public void insert(int index, UiValue item) {
+        owner();
         checkItem(item);
         if (indexOfKey(DataType.identityOf(item, type.identity())) >= 0) {
             throw new IllegalArgumentException("identity " + rawId(item) + " is already in the collection");
@@ -68,6 +77,7 @@ public final class DataCollection implements DataSource {
 
     /** Replaces the item with the same identity. */
     public void update(UiValue item) {
+        owner();
         checkItem(item);
         int i = indexOfKey(DataType.identityOf(item, type.identity()));
         if (i < 0) {
@@ -81,6 +91,7 @@ public final class DataCollection implements DataSource {
 
     /** @return false when no item has that identity */
     public boolean remove(String identityValue) {
+        owner();
         int i = indexOf(identityValue);
         if (i < 0) {
             return false;
@@ -91,19 +102,65 @@ public final class DataCollection implements DataSource {
     }
 
     public void move(int from, int to) {
+        owner();
         if (from != to) {
             items.add(to, items.remove(from));
             changed(List.of(new ListChange.Moved(from, to)));
         }
     }
 
-    /** Replaces the contents, notifying the identity diff against the previous contents. */
+    /**
+     * Replaces the contents, notifying the identity diff against the previous contents. Any
+     * {@link #post} still waiting for the drain is superseded.
+     */
     public void setAll(List<UiValue> next) {
-        UiValue.Arr arr = new UiValue.Arr(next);
-        String problem = type.problem(arr);
+        owner();
+        String problem = problem(next);
         if (problem != null) {
-            throw new IllegalArgumentException("collection of type " + type.describe() + ": " + problem);
+            throw new IllegalArgumentException(problem);
         }
+        pending.set(null);
+        replace(next);
+    }
+
+    /**
+     * Thread-safe {@link #setAll}: the snapshot is copied now and applied on the UI thread at the
+     * next drain of the host it is registered with, as the same identity diff. Only the latest
+     * posted snapshot is applied. Like {@link DataCell#post}, an invalid snapshot is reported on
+     * the UI thread (logged, collection failed) instead of throwing into the producer.
+     *
+     * @throws IllegalStateException when the collection is not registered with a host
+     */
+    public void post(List<UiValue> next) {
+        UiThreadQueue q = queue;
+        if (q == null) {
+            throw new IllegalStateException("post() needs a collection registered with a UiHost");
+        }
+        List<UiValue> snapshot = List.copyOf(next);
+        if (pending.getAndSet(snapshot) == null) {
+            q.post(() -> {
+                List<UiValue> s = pending.getAndSet(null);
+                if (s == null) {
+                    return; // superseded by a UI-thread edit
+                }
+                String problem = problem(s);
+                if (problem != null) {
+                    LOGGER.error("posted collection rejected: {}", problem);
+                    state = DataState.failed("host posted an invalid list: " + problem);
+                    listeners.fire(state, List.of(ListChange.RESET));
+                } else {
+                    replace(s);
+                }
+            });
+        }
+    }
+
+    private String problem(List<UiValue> next) {
+        String problem = type.problem(new UiValue.Arr(next));
+        return problem == null ? null : "collection of type " + type.describe() + ": " + problem;
+    }
+
+    private void replace(List<UiValue> next) {
         List<ListChange> changes = ListDiff.diff(items, next, type.identity());
         items.clear();
         items.addAll(next);
@@ -113,11 +170,13 @@ public final class DataCollection implements DataSource {
     }
 
     public void loading() {
+        owner();
         state = DataState.LOADING;
         listeners.fire(state, List.of(ListChange.RESET));
     }
 
     public void fail(String message) {
+        owner();
         state = DataState.failed(message);
         listeners.fire(state, List.of(ListChange.RESET));
     }
@@ -130,6 +189,19 @@ public final class DataCollection implements DataSource {
     @Override
     public int subscriberCount() {
         return listeners.size();
+    }
+
+    void attach(UiThreadQueue q) {
+        this.queue = q;
+    }
+
+    /** UI-thread edits supersede a post still waiting for the drain. */
+    private void owner() {
+        UiThreadQueue q = queue;
+        if (q != null) {
+            q.checkOwner("DataCollection edit");
+        }
+        pending.set(null);
     }
 
     private void changed(List<ListChange> changes) {

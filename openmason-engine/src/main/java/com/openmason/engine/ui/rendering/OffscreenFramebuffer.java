@@ -113,7 +113,11 @@ public final class OffscreenFramebuffer implements AutoCloseable {
         int prevTexture = glGetInteger(GL_TEXTURE_BINDING_2D);
         int prevRenderbuffer = glGetInteger(GL_RENDERBUFFER_BINDING);
         int prevFramebuffer = glGetInteger(GL_FRAMEBUFFER_BINDING);
+        int prevUnpackBuffer = glGetInteger(GL_PIXEL_UNPACK_BUFFER_BINDING);
         try {
+            // A caller's bound unpack buffer would turn the null data pointer below into an
+            // offset into that buffer (or GL_INVALID_OPERATION when it is too small).
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
             colorTexture = glGenTextures();
             glBindTexture(GL_TEXTURE_2D, colorTexture);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -138,6 +142,7 @@ public final class OffscreenFramebuffer implements AutoCloseable {
             allocWidth = w;
             allocHeight = h;
         } finally {
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, prevUnpackBuffer);
             glBindTexture(GL_TEXTURE_2D, prevTexture);
             glBindRenderbuffer(GL_RENDERBUFFER, prevRenderbuffer);
             glBindFramebuffer(GL_FRAMEBUFFER, prevFramebuffer);

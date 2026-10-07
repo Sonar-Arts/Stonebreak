@@ -31,7 +31,8 @@ public final class UiStateMachines {
 
     /** One running machine of one scope. */
     private final class Machine {
-        final AuthoringScope scope;
+        /** Replaced on every sync: a reload brings a new archive revision (edited clips) for the same machine. */
+        AuthoringScope scope;
         final UiStateMachine def;
         String state;
         long token;
@@ -56,7 +57,12 @@ public final class UiStateMachines {
         this.animator = animator;
     }
 
-    /** Starts machines of new scopes in their initial state and stops those whose scope is gone. */
+    /**
+     * Starts machines of new scopes in their initial state and stops those whose scope is gone.
+     * A machine whose definition is unchanged keeps its state but reads clips from the new
+     * revision; when the clip of its current state changed (a Timeline edit), that clip restarts.
+     * A replaced or removed machine hands everything it held back to the cascade.
+     */
     public void sync(List<AuthoringScope> scopes) {
         Set<Key> live = new HashSet<>();
         for (AuthoringScope s : scopes) {
@@ -64,24 +70,37 @@ public final class UiStateMachines {
                 Key k = new Key(s.instanceKey(), def.id());
                 live.add(k);
                 Machine m = machines.get(k);
-                if (m == null || !m.def.equals(def)) {
-                    if (m != null) {
-                        animator.clear(m);
+                if (m != null && m.def.equals(def)) {
+                    AuthoringScope before = m.scope;
+                    m.scope = s;
+                    if (before.archive() != s.archive() && m.state != null && stateClipChanged(m, before, s)) {
+                        m.generation++; // a pending transition clip must not chain into the old state clip
+                        playState(m, 0, null);
                     }
-                    Machine fresh = new Machine(s, def);
-                    machines.put(k, fresh);
-                    String first = def.driver() == UiStateMachine.Driver.INTERACTION ? interactionState(fresh) : null;
-                    enter(fresh, first != null ? first : def.initial(), false, null);
+                    continue;
                 }
+                if (m != null) {
+                    animator.clearAndRelease(m);
+                }
+                Machine fresh = new Machine(s, def);
+                machines.put(k, fresh);
+                String first = def.driver() == UiStateMachine.Driver.INTERACTION ? interactionState(fresh) : null;
+                enter(fresh, first != null ? first : def.initial(), false, null);
             }
         }
         machines.entrySet().removeIf(e -> {
             if (!live.contains(e.getKey())) {
-                animator.clear(e.getValue());
+                animator.clearAndRelease(e.getValue());
                 return true;
             }
             return false;
         });
+    }
+
+    private static boolean stateClipChanged(Machine m, AuthoringScope before, AuthoringScope after) {
+        UiStateMachine.MachineState s = m.def.state(m.state);
+        String id = s == null ? null : s.clip();
+        return id != null && !Objects.equals(before.archive().animations().get(id), after.archive().animations().get(id));
     }
 
     /** Interaction machines follow their element. Once per frame, before sampling. */

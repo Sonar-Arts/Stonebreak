@@ -75,6 +75,19 @@ public final class ProjectAssetSource implements AssetSource {
         return conventionPath(id, kind, sourceHint);
     }
 
+    /**
+     * Where an <em>imported</em> copy of {@code id} goes. The hint comes from someone else's
+     * archive, so it is honoured only when it lies under the convention folder ({@code UI/});
+     * anything else (a path among models, scripts or project settings) lands at the convention
+     * path instead, so an import can never place files outside the UI asset folder.
+     */
+    public String importPlacementFor(String id, Kind kind, String sourceHint) {
+        if (sourceHint != null && EntryPaths.problem(sourceHint) == null && sourceHint.startsWith(conventionDir)) {
+            return sourceHint;
+        }
+        return conventionPath(id, kind, sourceHint);
+    }
+
     /** Every convention path {@link #find} tries for {@code id}, in order. */
     public List<String> conventionCandidates(String id, Kind kind) {
         return AssetKinds.candidates(id, kind).stream().map(c -> conventionDir + c).toList();

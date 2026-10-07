@@ -19,11 +19,18 @@ public final class BuiltInWidgets {
     public static final WidgetDescriptor BOX = WidgetDescriptor.of("Box", 1, true, false,
         "Flex container with optional background", props());
 
+    /**
+     * Text measured by the host font and placed by baseline: one line by default; wrapped,
+     * truncated and rich ({@code rich} markup: {@code [color=#RRGGBB] [b] [i] [u]}) under the
+     * {@code ui-text} feature.
+     */
     public static final WidgetDescriptor LABEL = WidgetDescriptor.of("Label", 1, false, true,
-        "Single run of text, measured by the host font and placed by baseline",
+        "Text measured by the host font and placed by baseline; wraps with white-space (ui-text)",
         props(prop("text", ValueType.STRING, UiValue.of(""), "Displayed text (the fallback when textKey is set)"),
             prop("textKey", ValueType.STRING, UiValue.NULL, "Localized message key (ui-l10n)"),
-            prop("textArgs", ValueType.OBJECT, UiValue.NULL, "Arguments of the localized message")));
+            prop("textArgs", ValueType.OBJECT, UiValue.NULL, "Arguments of the localized message"),
+            prop("rich", ValueType.BOOL, UiValue.FALSE,
+                "Interprets [color=#RRGGBB] [b] [i] [u] markup in the text (ui-text)")));
 
     public static final WidgetDescriptor BUTTON = WidgetDescriptor.of("Button", 1, true, false,
         "Pressable Masonry stone surface; content goes in children", props());
@@ -35,11 +42,21 @@ public final class BuiltInWidgets {
     public static final WidgetDescriptor ITEM_SLOT = WidgetDescriptor.of("ItemSlot", 1, false, false,
         "Masonry slot frame; a host draw provider paints the icon and count",
         props(prop("provider", ValueType.STRING, UiValue.NULL, "Host draw provider id"),
-            prop("slot", ValueType.INT, UiValue.NULL, "Slot index passed to the provider")));
+            prop("slot", ValueType.INT, UiValue.NULL, "Slot index passed to the provider"),
+            prop("item", ValueType.STRING, UiValue.NULL, "Item shown by an item provider: objectId or numeric id"),
+            prop("count", ValueType.INT, UiValue.NULL, "Stack count shown by an item provider (drawn when above 1)"),
+            prop("state", ValueType.STRING, UiValue.NULL, "SBO state of the shown item"),
+            prop("durability", ValueType.NUMBER, UiValue.NULL, "Remaining durability 0..1 (a bar below 1)"),
+            prop("stack", ValueType.OBJECT, UiValue.NULL, "Whole slot record {objectId, count, state, durability}"),
+            prop("params", ValueType.OBJECT, UiValue.NULL, "Provider-specific parameters")));
 
     public static final WidgetDescriptor DRAW_PROVIDER = WidgetDescriptor.of("DrawProvider", 1, false, false,
         "Host immediate drawing inside the element's rect",
-        props(prop("provider", ValueType.STRING, UiValue.NULL, "Host draw provider id")));
+        props(prop("provider", ValueType.STRING, UiValue.NULL, "Host draw provider id"),
+            prop("params", ValueType.OBJECT, UiValue.NULL, "Provider-specific parameters"),
+            prop("item", ValueType.STRING, UiValue.NULL, "Item shown by an item provider: objectId or numeric id"),
+            prop("count", ValueType.INT, UiValue.NULL, "Stack count shown by an item provider (drawn when above 1)"),
+            prop("stack", ValueType.OBJECT, UiValue.NULL, "Whole slot record {objectId, count, state, durability}")));
 
     /**
      * Scroll container (needs the {@code ui-scroll} feature): content may exceed the element;
@@ -82,6 +99,8 @@ public final class BuiltInWidgets {
             prop("itemKey", ValueType.STRING, UiValue.NULL,
                 "Identity field of items when the source is not a host collection; empty = by position"),
             prop("itemHeight", ValueType.NUMBER, UiValue.of(0), "Fixed row height in logical px; > 0 virtualizes"),
+            prop("columns", ValueType.INT, UiValue.of(1),
+                "Items per line; > 1 lays rows out as a wrapping grid (virtualized by lines)"),
             new PropertyDescriptor("selectionMode", ValueType.STRING, UiValue.of("single"),
                 "Clicking a row selects it (:checked)", Set.of("none", "single"))));
 

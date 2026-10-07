@@ -37,6 +37,7 @@ public final class UiHost {
     private final DataRegistry data = new DataRegistry(queue, this::changed);
     private final ActionRegistry actions = new ActionRegistry(this::changed);
     private final Set<UiScope> scopes = new LinkedHashSet<>();
+    private final List<Consumer<String>> epochListeners = new ArrayList<>();
     private long epoch = 1;
     private int revision;
 
@@ -105,7 +106,26 @@ public final class UiHost {
      * @param problems          receives run-time findings (failed results, stale completions)
      */
     public UiScope openScope(String documentId, Set<String> declaredContracts, Consumer<UiProblem> problems) {
-        UiScope s = new UiScope(this, documentId, declaredContracts, problems);
+        Map<String, Integer> versions = null;
+        if (declaredContracts != null) {
+            versions = new TreeMap<>();
+            for (String id : declaredContracts) {
+                versions.put(id, Integer.MAX_VALUE); // no version declared: any action of the contract
+            }
+        }
+        return openScopeAt(documentId, versions, problems);
+    }
+
+    /**
+     * Opens a scope whose document declares each contract at a version (manifest
+     * {@code hostApis}). An action introduced ({@link ActionSpec#since}) after the declared
+     * version fails with {@code CAPABILITY_MISSING}: the document was authored against a contract
+     * that did not have it, so it must declare the newer version.
+     *
+     * @param declaredVersions contract id → declared version; {@code null} skips both checks
+     */
+    public UiScope openScopeAt(String documentId, Map<String, Integer> declaredVersions, Consumer<UiProblem> problems) {
+        UiScope s = new UiScope(this, documentId, declaredVersions, problems);
         scopes.add(s);
         return s;
     }
@@ -129,9 +149,28 @@ public final class UiHost {
      */
     public void advanceEpoch(String reason) {
         epoch++;
+        String why = Objects.requireNonNullElse(reason, "");
         for (UiScope s : new ArrayList<>(scopes)) {
-            s.cancelPending("epoch change: " + Objects.requireNonNullElse(reason, ""));
+            s.cancelPending("epoch change: " + why);
         }
+        for (Consumer<String> l : List.copyOf(epochListeners)) {
+            try {
+                l.accept(why);
+            } catch (RuntimeException e) {
+                org.slf4j.LoggerFactory.getLogger(UiHost.class).error("epoch listener failed", e);
+            }
+        }
+    }
+
+    /**
+     * Runs {@code listener} (with the reason) after every {@link #advanceEpoch}, once pending
+     * calls are cancelled: hosts reset per-world data there (a furnace that was open, the
+     * inventory), so a screen of the next world never shows the last world's values.
+     */
+    public Subscription onEpoch(Consumer<String> listener) {
+        Objects.requireNonNull(listener, "listener");
+        epochListeners.add(listener);
+        return () -> epochListeners.remove(listener);
     }
 
     private void changed() {

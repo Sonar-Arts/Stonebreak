@@ -27,17 +27,20 @@ import java.nio.file.Path;
  * <p>The method handles are {@code static final} on purpose: the JIT can then
  * inline the downcall, which is the difference between ~10 ns and ~50 ns per
  * crossing. Discovery uses the same search as the kernels
- * ({@code -Dcenda.kernels.path}, {@code CENDA_KERNELS_PATH}, build dirs).
+ * ({@code -Dcenda.kernels.path}, {@code CENDA_KERNELS_PATH}, build dirs, then the library
+ * packaged in the jar).
  *
  * <p>ABI 2 (#292) adds typed values ({@link LuaValueWriter}, {@link LuaValueReader},
  * {@link LuaValueFunction}); the {@code ui} API is built on them in {@code engine.ui.script}.
+ * ABI 3 (#282 hardening) adds seeded states, the encoded-value byte cap, deadline checks in the
+ * C library loops and a {@code setmetatable} that refuses {@code __gc}.
  */
 public final class CendaLua {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CendaLua.class);
 
     /** Must equal {@code CL_ABI_VERSION} in lua_host.h. */
-    public static final int EXPECTED_ABI = 2;
+    public static final int EXPECTED_ABI = 3;
 
     private static final Linker LINKER = Linker.nativeLinker();
     private static final ValueLayout.OfInt I32 = ValueLayout.JAVA_INT;
@@ -48,6 +51,7 @@ public final class CendaLua {
     private static final CendaLuaUnavailableException FAILURE;
 
     static final MethodHandle STATE_NEW;
+    static final MethodHandle STATE_NEW_SEEDED;
     static final MethodHandle STATE_CLOSE;
     static final MethodHandle MEM_USED;
     static final MethodHandle MEM_PEAK;
@@ -93,9 +97,11 @@ public final class CendaLua {
             Path lib = CendaKernels.locateLibrary();
             if (lib == null) {
                 throw new CendaLuaUnavailableException(
-                    "Cenda library not found (searched -Dcenda.kernels.path, CENDA_KERNELS_PATH and "
+                    "Cenda library not found (searched -Dcenda.kernels.path, CENDA_KERNELS_PATH, "
                         + "openmason-engine/cenda/build/{release,debug}/native/kernels relative to "
-                        + Path.of("").toAbsolutePath() + "). Build it: openmason-engine/cenda/build-kernels.sh");
+                        + Path.of("").toAbsolutePath() + " and the packaged classpath resource "
+                        + NativeLibraryExtractor.resourceName(System.mapLibraryName("cenda_kernels"))
+                        + "). Build it: openmason-engine/cenda/build-kernels.sh");
             }
             lookup = verify(lib, EXPECTED_ABI);
             release = string((MemorySegment) LINKER.downcallHandle(
@@ -126,6 +132,7 @@ public final class CendaLua {
         HOST_STUB = stub;
         HOST_V_STUB = stubV;
         STATE_NEW = handle(lookup, "cl_state_new", FunctionDescriptor.of(ADDR, I64));
+        STATE_NEW_SEEDED = handle(lookup, "cl_state_new_seeded", FunctionDescriptor.of(ADDR, I64, I32));
         STATE_CLOSE = handle(lookup, "cl_state_close", FunctionDescriptor.ofVoid(ADDR));
         MEM_USED = handle(lookup, "cl_mem_used", FunctionDescriptor.of(I64, ADDR), Linker.Option.critical(false));
         MEM_PEAK = handle(lookup, "cl_mem_peak", FunctionDescriptor.of(I64, ADDR), Linker.Option.critical(false));
@@ -187,10 +194,22 @@ public final class CendaLua {
         return RELEASE;
     }
 
-    /** A new sandboxed state; {@code memLimitBytes == 0} means uncapped. */
+    /**
+     * A new sandboxed state; {@code memLimitBytes == 0} means uncapped. Its string-hash seed is
+     * fixed, so {@code pairs()} order repeats run to run (fixtures, tests).
+     */
     public static LuaState newState(long memLimitBytes) {
         require();
         return new LuaState(memLimitBytes);
+    }
+
+    /**
+     * A new sandboxed state with string-hash seed {@code seed}. Hosts running documents they did
+     * not author pass a random seed, so crafted keys cannot degrade table lookups.
+     */
+    public static LuaState newState(long memLimitBytes, int seed) {
+        require();
+        return new LuaState(memLimitBytes, seed);
     }
 
     /**

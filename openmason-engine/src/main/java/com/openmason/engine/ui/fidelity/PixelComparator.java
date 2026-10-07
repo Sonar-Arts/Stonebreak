@@ -34,20 +34,27 @@ public final class PixelComparator {
         int mismatched = 0;
         int shifted = 0;
         int worst = 0;
+        int worstMismatch = 0;
         int minX = Integer.MAX_VALUE;
         int minY = Integer.MAX_VALUE;
         int maxX = -1;
         int maxY = -1;
+        boolean[] mask = null;
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
                 int i = y * w + x;
                 int d = channelDelta(e[i], a[i]);
                 worst = Math.max(worst, d);
-                int verdict = classify(expected, x, y, d, a[i], tolerance);
+                int verdict = classify(expected, actual, x, y, d, tolerance);
                 if (verdict == SHIFTED) {
                     shifted++;
                 } else if (verdict == MISMATCH) {
                     mismatched++;
+                    worstMismatch = Math.max(worstMismatch, d);
+                    if (mask == null) {
+                        mask = new boolean[e.length];
+                    }
+                    mask[i] = true;
                     minX = Math.min(minX, x);
                     minY = Math.min(minY, y);
                     maxX = Math.max(maxX, x);
@@ -55,25 +62,94 @@ public final class PixelComparator {
                 }
             }
         }
+        int cluster = mask == null ? 0 : largestCluster(mask, w, h);
         long allowed = (long) Math.floor(tolerance.maxMismatchRatio() * e.length);
-        boolean passed = mismatched <= allowed;
+        String why = "";
+        if (mismatched > 0 && mismatched <= allowed) {
+            if (worstMismatch > tolerance.maxOutlierDelta()) {
+                why = "a mismatched pixel is " + worstMismatch + " levels off (outlier cap "
+                    + tolerance.maxOutlierDelta() + ")";
+            } else if (cluster > tolerance.maxClusterPixels()) {
+                why = cluster + " mismatched pixels touch (clump cap " + tolerance.maxClusterPixels()
+                    + "): a missing or moved feature, not drift";
+            }
+        }
+        boolean passed = mismatched <= allowed && why.isEmpty();
         PixelTolerance.Region bounds = maxX < 0 ? null
             : new PixelTolerance.Region(minX, minY, maxX - minX + 1, maxY - minY + 1);
         // The diff is a full frame: built only for a failing comparison, so a passing gate over a
         // 4K matrix holds no images (#296 review).
         FidelityImage diff = passed ? null : diff(expected, actual, tolerance);
-        return new PixelReport(passed, w, h, mismatched, shifted, worst, bounds, diff, "");
+        PixelReport base = new PixelReport(passed, w, h, mismatched, shifted, worst, bounds, diff, "", cluster,
+            worstMismatch);
+        return why.isEmpty() ? base
+            : new PixelReport(false, w, h, mismatched, shifted, worst, bounds, diff, base.summary() + "; " + why,
+                cluster, worstMismatch);
+    }
+
+    /** Size of the largest 8-connected group of {@code true} cells (iterative flood fill). */
+    static int largestCluster(boolean[] mask, int w, int h) {
+        boolean[] seen = new boolean[mask.length];
+        int[] stack = new int[64];
+        int best = 0;
+        for (int start = 0; start < mask.length; start++) {
+            if (!mask[start] || seen[start]) {
+                continue;
+            }
+            int size = 0;
+            int top = 0;
+            stack[top++] = start;
+            seen[start] = true;
+            while (top > 0) {
+                int i = stack[--top];
+                size++;
+                int x = i % w;
+                int y = i / w;
+                for (int dy = -1; dy <= 1; dy++) {
+                    int ny = y + dy;
+                    if (ny < 0 || ny >= h) {
+                        continue;
+                    }
+                    for (int dx = -1; dx <= 1; dx++) {
+                        int nx = x + dx;
+                        if (nx < 0 || nx >= w || (dx == 0 && dy == 0)) {
+                            continue;
+                        }
+                        int n = ny * w + nx;
+                        if (mask[n] && !seen[n]) {
+                            seen[n] = true;
+                            if (top == stack.length) {
+                                stack = java.util.Arrays.copyOf(stack, stack.length * 2);
+                            }
+                            stack[top++] = n;
+                        }
+                    }
+                }
+            }
+            best = Math.max(best, size);
+        }
+        return best;
     }
 
     private static final int MATCH = 0;
     private static final int SHIFTED = 1;
     private static final int MISMATCH = 2;
 
-    private static int classify(FidelityImage expected, int x, int y, int delta, int value, PixelTolerance t) {
+    /**
+     * A pixel off by more than {@code levels} still matches inside a shift region when the
+     * displacement explains it <em>both ways</em>: the capture's pixel appears in the baseline
+     * nearby, and the baseline's pixel appears in the capture nearby. One-way matching passed a
+     * deleted outline or focus ring: where it vanished the capture shows backdrop, and backdrop is
+     * always within reach in the baseline (#296 review).
+     */
+    private static int classify(FidelityImage expected, FidelityImage actual, int x, int y, int delta,
+                                PixelTolerance t) {
         if (delta <= t.levels()) {
             return MATCH;
         }
-        return t.shiftAllowedAt(x, y) && nearMatch(expected, x, y, value, t) ? SHIFTED : MISMATCH;
+        return t.shiftAllowedAt(x, y)
+            && nearMatch(expected, x, y, actual.pixel(x, y), t)
+            && nearMatch(actual, x, y, expected.pixel(x, y), t) ? SHIFTED : MISMATCH;
     }
 
     /** Grey baseline, red mismatches, amber shift matches. */
@@ -85,7 +161,7 @@ public final class PixelComparator {
         for (int i = 0; i < e.length; i++) {
             int x = i % w;
             int y = i / w;
-            out[i] = switch (classify(expected, x, y, channelDelta(e[i], a[i]), a[i], t)) {
+            out[i] = switch (classify(expected, actual, x, y, channelDelta(e[i], a[i]), t)) {
                 case MATCH -> dim(e[i]);
                 case SHIFTED -> AMBER;
                 default -> RED;
@@ -94,16 +170,16 @@ public final class PixelComparator {
         return new FidelityImage(w, expected.height(), out);
     }
 
-    /** Whether the baseline holds a pixel within the shift radius that {@code value} matches. */
-    private static boolean nearMatch(FidelityImage expected, int x, int y, int value, PixelTolerance t) {
+    /** Whether {@code image} holds a pixel within the shift radius that {@code value} matches. */
+    private static boolean nearMatch(FidelityImage image, int x, int y, int value, PixelTolerance t) {
         int r = t.shiftPixels();
         int x0 = Math.max(0, x - r);
-        int x1 = Math.min(expected.width() - 1, x + r);
+        int x1 = Math.min(image.width() - 1, x + r);
         int y0 = Math.max(0, y - r);
-        int y1 = Math.min(expected.height() - 1, y + r);
+        int y1 = Math.min(image.height() - 1, y + r);
         for (int yy = y0; yy <= y1; yy++) {
             for (int xx = x0; xx <= x1; xx++) {
-                if (channelDelta(expected.pixel(xx, yy), value) <= t.levels()) {
+                if (channelDelta(image.pixel(xx, yy), value) <= t.levels()) {
                     return true;
                 }
             }

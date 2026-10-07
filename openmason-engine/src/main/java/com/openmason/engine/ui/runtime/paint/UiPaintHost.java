@@ -27,12 +27,41 @@ public interface UiPaintHost {
         return t == null ? null : UiImage.whole(t);
     }
 
+    /**
+     * {@link #image(String)} for a reference made by {@code element}: hosts that resolve per
+     * component table (#285 {@code ResolvedUiAssets}) let a component's own embedded rows win over
+     * another component's same-named rows. Painters and measurers call this one.
+     */
+    default UiImage image(UiElement element, String assetRef) {
+        return image(assetRef);
+    }
+
     /** Draw provider registered under {@code id}, or null. */
     UiDrawProvider drawProvider(String id);
 
-    /** Host immediate drawing inside an element (item icons, 3D previews, the crucible). */
+    /**
+     * Host immediate drawing inside an element (item icons, 3D previews, the crucible).
+     *
+     * <p>Two phases per frame. {@link #prepare} runs on the GL thread after layout and before the
+     * host opens its Masonry (Skia) frame, once for every element using the provider that will
+     * paint this frame: the only place a provider may issue its own GL work (render an icon or a
+     * model into its own texture). {@link #draw} runs inside the Skia frame in paint order, so the
+     * result follows the element's transforms, opacity, clips and layers; a GL-backed provider
+     * shows its texture there through {@code ui.rendering.GlTextureImages.borrow}. Hosts drive
+     * the phases with {@code UiDocumentView.layout} → {@code prepareProviders} → {@code paint}.
+     */
     @FunctionalInterface
     interface UiDrawProvider {
+        /**
+         * GL-side preparation for {@code element} this frame (outside any Skia frame). Must leave
+         * the GL state it found (bindings, viewport, framebuffer). Default: nothing to prepare.
+         *
+         * @param rect  the element's device-pixel rect (before its own scale/rotate)
+         * @param scale device pixels per logical pixel
+         */
+        default void prepare(UiElement element, UiRect rect, float scale) {
+        }
+
         /**
          * @param rect  the element's device-pixel rect
          * @param scale device pixels per logical pixel

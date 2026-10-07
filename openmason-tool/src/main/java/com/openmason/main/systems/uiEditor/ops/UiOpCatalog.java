@@ -187,6 +187,46 @@ final class UiOpCatalog {
         }, UiOpCatalog::putClip);
         op("remove_clip", fields("id", STRING), List.of("id"), false, Check.NONE,
             (s, o) -> s.run(AnimationCommands.removeClip(o.get("id").asText())));
+        op("put_state_machine", fields("machine", OBJECT), List.of("machine"), false, o -> {
+            if (!o.get("machine").path("id").isTextual()) {
+                throw new IllegalArgumentException("machine.id is required (the state machine's id)");
+            }
+        }, UiAssetOps::putStateMachine);
+        op("remove_state_machine", fields("id", STRING), List.of("id"), false, Check.NONE,
+            UiAssetOps::removeStateMachine);
+
+        // ── behavior graphs ──
+        op("put_graph", fields("graph", OBJECT), List.of("graph"), false, o -> {
+            if (!o.get("graph").path("id").isTextual()) {
+                throw new IllegalArgumentException("graph.id is required (the graph's id, e.g. \"behaviors\")");
+            }
+        }, UiAssetOps::putGraph);
+        op("remove_graph", fields("id", STRING), List.of("id"), false, Check.NONE, UiAssetOps::removeGraph);
+
+        // ── dependency table (textures, sprites, fonts, sounds, shared scripts/sheets) ──
+        op("add_dependency", fields("path", STRING, "id", STRING, "kind", STRING, "embed", BOOL, "optional", BOOL,
+                "fallback", NULLABLE_STRING, "requires", STRING_LIST, "license", NULLABLE_STRING), List.of(), false,
+            o -> {
+                if (!o.hasNonNull("path") && !o.hasNonNull("id")) {
+                    throw new IllegalArgumentException("give path (a project file) or id + kind");
+                }
+            }, UiAssetOps::add);
+        op("set_dependency", fields("id", STRING, "optional", BOOL, "fallback", NULLABLE_STRING,
+                "requires", STRING_LIST, "license", NULLABLE_STRING), List.of("id"), false, Check.NONE,
+            UiAssetOps::set);
+        op("remove_dependency", fields("id", STRING, "force", BOOL), List.of("id"), false, Check.NONE,
+            UiAssetOps::remove);
+        op("embed_dependency", fields("id", STRING), List.of("id"), false, Check.NONE,
+            (s, o) -> UiAssetOps.embed(s, o.get("id").asText()));
+        op("refresh_dependency", fields("id", STRING), List.of("id"), false, Check.NONE, UiAssetOps::refresh);
+        op("extract_dependency", fields("id", STRING, "collision", STRING), List.of("id"), false, o -> {
+            if (o.hasNonNull("collision") && !Set.of("fail", "keep_project", "replace")
+                    .contains(o.get("collision").asText())) {
+                throw new IllegalArgumentException("collision is fail, keep_project or replace");
+            }
+        }, UiAssetOps::extract);
+        op("relink_dependency", fields("id", STRING, "path", STRING), List.of("id", "path"), false, Check.NONE,
+            UiAssetOps::relink);
     }
 
     private UiOpCatalog() {

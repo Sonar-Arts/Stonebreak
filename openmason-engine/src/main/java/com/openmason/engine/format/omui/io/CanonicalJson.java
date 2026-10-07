@@ -44,7 +44,14 @@ import java.util.TreeMap;
  */
 public final class CanonicalJson {
 
-    public static final int MAX_DEPTH = 64;
+    /**
+     * JSON nesting bound. Sized so the deepest tree {@link
+     * com.openmason.engine.format.omui.ArchiveLimits#DEFAULT} allows fits with room for its
+     * values: every level of slot content costs four JSON levels (instance, slots, slot list,
+     * node), so a 48-deep tree of slot content puts its last node at depth 190; the remaining
+     * levels are free-form values (props, overrides). Writers apply the same bound (§3.5).
+     */
+    public static final int MAX_DEPTH = 256;
     public static final int MAX_STRING_CHARS = 1 << 20;
     private static final long MAX_SAFE_INTEGER = 1L << 53;
 

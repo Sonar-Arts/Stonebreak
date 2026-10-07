@@ -5,7 +5,9 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.core.Game;
 import com.stonebreak.rpg.CharacterPanelTab;
+import com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
+import com.stonebreak.ui.inventoryScreen.handlers.PointerFrame;
 import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
 
@@ -16,7 +18,7 @@ import org.lwjgl.glfw.GLFW;
  * supply {@link #layoutFor}, {@link #placeDraggedItem} and {@link #hasCharacterTabs}, never their
  * own copy of {@link #handleMouseInput} (issue #317).
  */
-public class InventoryInputManager {
+public class InventoryInputManager implements ContainerSlotInput {
 
     protected final InputHandler inputHandler;
     protected final Inventory inventory;
@@ -26,6 +28,9 @@ public class InventoryInputManager {
 
     // Screen dimensions (updated each frame for drag release)
     protected int lastScreenWidth, lastScreenHeight;
+
+    // Pointer of the frame being handled (polled or synthesized)
+    private float pointerX, pointerY;
 
     // Double-click detection
     private static final long DOUBLE_CLICK_THRESHOLD_MS = 350L;
@@ -62,22 +67,31 @@ public class InventoryInputManager {
     }
 
     public final void handleMouseInput(int screenWidth, int screenHeight) {
+        handlePointer(PointerFrame.poll(inputHandler), screenWidth, screenHeight);
+    }
+
+    /**
+     * One frame of pointer input. The legacy mouse path polls it; UI documents synthesize it at a
+     * slot (#289, {@link ContainerSlotInput}), so both run every rule below.
+     */
+    @Override
+    public final void handlePointer(PointerFrame pointer, int screenWidth, int screenHeight) {
         InventoryLayoutCalculator.InventoryLayout layout = layoutFor(screenWidth, screenHeight);
 
-        Vector2f mousePos = inputHandler.getMousePosition();
-        float mouseX = mousePos.x;
-        float mouseY = mousePos.y;
+        float mouseX = pointer.x();
+        float mouseY = pointer.y();
+        this.pointerX = mouseX;
+        this.pointerY = mouseY;
         this.lastScreenWidth = screenWidth;
         this.lastScreenHeight = screenHeight;
-        boolean shiftDown = inputHandler.isKeyDown(GLFW.GLFW_KEY_LEFT_SHIFT) ||
-                           inputHandler.isKeyDown(GLFW.GLFW_KEY_RIGHT_SHIFT);
+        boolean shiftDown = pointer.shift();
 
-        boolean leftMouseButtonPressed = inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-        boolean rightMouseButtonPressed = inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
-        boolean rightMouseButtonDown = inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+        boolean leftMouseButtonPressed = pointer.leftPressed();
+        boolean rightMouseButtonPressed = pointer.rightPressed();
+        boolean rightMouseButtonDown = pointer.rightDown();
 
         // Middle click: balance the crafting grid when aimed at a cell, otherwise sort.
-        if (tryHandleMiddleClick(mouseX, mouseY, layout)) {
+        if (tryHandleMiddleClick(pointer.middlePressed(), mouseX, mouseY, layout)) {
             return;
         }
 
@@ -94,6 +108,25 @@ public class InventoryInputManager {
         if (!rightMouseButtonDown) {
             clearRightDrag();
         }
+    }
+
+    @Override
+    public float[] slotOrigin(String slot, int screenWidth, int screenHeight) {
+        if ("outside".equals(slot)) {
+            return new float[]{OUTSIDE, OUTSIDE};
+        }
+        int[] o = slotManager.slotOrigin(slot, layoutFor(screenWidth, screenHeight));
+        return o == null ? null : new float[]{o[0], o[1]};
+    }
+
+    @Override
+    public float slotSize() {
+        return InventoryLayoutCalculator.getSlotSize();
+    }
+
+    /** Where the pointer of the frame being handled is. */
+    protected Vector2f pointerPosition() {
+        return new Vector2f(pointerX, pointerY);
     }
 
     /**
@@ -119,14 +152,21 @@ public class InventoryInputManager {
      * Consumes the press so it does not leak into further handling. Returns true
      * when a middle-click was processed.
      */
-    protected boolean tryHandleMiddleClick(float mouseX, float mouseY,
+    protected boolean tryHandleMiddleClick(boolean middlePressed, float mouseX, float mouseY,
                                            InventoryLayoutCalculator.InventoryLayout layout) {
-        if (!inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)) {
+        if (!middlePressed) {
             return false;
         }
         handleMiddleClick(mouseX, mouseY, layout);
-        inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_MIDDLE);
+        consumePress(GLFW.GLFW_MOUSE_BUTTON_MIDDLE);
         return true;
+    }
+
+    /** Marks the real button press handled, so nothing else acts on it this frame. */
+    protected final void consumePress(int button) {
+        if (inputHandler != null) {
+            inputHandler.consumeMouseButtonPress(button);
+        }
     }
 
     private void handleMiddleClick(float mouseX, float mouseY,
@@ -144,7 +184,7 @@ public class InventoryInputManager {
                                   InventoryLayoutCalculator.InventoryLayout layout) {
         if (shiftDown) {
             handleShiftClickTransfer(mouseX, mouseY, layout);
-            inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             return;
         }
 
@@ -152,17 +192,17 @@ public class InventoryInputManager {
         // output slot, then check for double-click gather before placing.
         if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
             if (tryCraftOntoDraggedStack(mouseX, mouseY, layout)) {
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
             if (isDoubleClick(mouseX, mouseY)) {
                 handleDoubleClickGather();
                 recordClick(mouseX, mouseY);
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
             placeDraggedItem(layout);
-            inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             return;
         }
 
@@ -171,53 +211,53 @@ public class InventoryInputManager {
             if (hasCharacterTabs() && isCharTabClicked(mouseX, mouseY, layout)) {
                 Game.getInstance().toggleInventoryScreen();
                 Game.getInstance().toggleCharacterScreen();
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
             if (hasCharacterTabs() && isClassesTabClicked(mouseX, mouseY, layout)) {
                 Game.getInstance().toggleInventoryScreen();
                 Game.getInstance().openCharacterTab(CharacterPanelTab.CLASSES);
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
             if (hasCharacterTabs() && isSkillsTabClicked(mouseX, mouseY, layout)) {
                 Game.getInstance().toggleInventoryScreen();
                 Game.getInstance().openCharacterTab(CharacterPanelTab.SKILLS);
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
             if (hasCharacterTabs() && isFeatsTabClicked(mouseX, mouseY, layout)) {
                 Game.getInstance().toggleInventoryScreen();
                 Game.getInstance().openCharacterTab(CharacterPanelTab.FEATS);
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
 
             // Check recipe button first
             if (isRecipeButtonClicked(mouseX, mouseY, layout)) {
                 Game.getInstance().openRecipeBookScreen();
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
 
             // Check craft all button
             if (isCraftAllButtonClicked(mouseX, mouseY, layout)) {
                 handleCraftAll();
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
 
             // Check sort button
             if (isSortButtonClicked(mouseX, mouseY, layout)) {
                 handleSort();
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
 
             // Try to pick up item
             if (tryPickUpItem(mouseX, mouseY, layout)) {
                 recordClick(mouseX, mouseY);
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             }
         }
     }
@@ -228,7 +268,7 @@ public class InventoryInputManager {
         if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
             boolean placedOne = tryHandleRightClickDropSingle(mouseX, mouseY, layout);
             if (placedOne) {
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
             }
         }
     }
@@ -334,6 +374,20 @@ public class InventoryInputManager {
         updateCharTabBounds(layout);
         return mouseX >= featsTabX && mouseX <= featsTabX + charTabWidth
             && mouseY >= charTabY  && mouseY <= charTabY  + charTabHeight;
+    }
+
+    /** The Craft All button's rule, for UI documents (#289). */
+    @Override
+    public boolean craftAll() {
+        handleCraftAll();
+        return true;
+    }
+
+    /** The Sort button's rule (never mid-drag), for UI documents (#289). */
+    @Override
+    public boolean sort() {
+        handleSort();
+        return true;
     }
 
     private void handleCraftAll() {
@@ -487,7 +541,7 @@ public class InventoryInputManager {
      * their own drop handler.
      */
     protected void placeDraggedItem(InventoryLayoutCalculator.InventoryLayout layout) {
-        Vector2f mousePos = inputHandler.getMousePosition();
+        Vector2f mousePos = pointerPosition();
         InventoryDragDropHandler.placeDraggedItem(dragState, inventory,
                                                 craftingManager.getCraftingInputSlots(),
                                                 mousePos, layout,

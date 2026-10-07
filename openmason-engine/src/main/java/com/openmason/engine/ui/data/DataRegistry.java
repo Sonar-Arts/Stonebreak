@@ -44,6 +44,8 @@ public final class DataRegistry {
         }
         if (r.source() instanceof DataCell cell) {
             cell.attach(queue);
+        } else if (r.source() instanceof DataCollection col) {
+            col.attach(queue);
         }
         onChange.run();
     }

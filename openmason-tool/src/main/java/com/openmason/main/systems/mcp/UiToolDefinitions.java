@@ -110,7 +110,11 @@ public final class UiToolDefinitions {
                         + "unbind set_param{key,param,value} reset_override{keys} set_display_name add_sheet{id} "
                         + "attach_sheet move_sheet add_rule{sheet,selector,style} set_rule{sheet,rule,selector,"
                         + "style} remove_rule move_rule set_token{sheet,name,value} set_script{id,source} "
-                        + "set_code_behind{module} put_clip{clip} remove_clip{id}. Guide: describe_api ui_editor.",
+                        + "set_code_behind{module} put_clip{clip} remove_clip{id} put_state_machine{machine} "
+                        + "remove_state_machine put_graph{graph} remove_graph{id} add_dependency{path|id+kind,embed,"
+                        + "optional,fallback,requires} set_dependency remove_dependency{id,force} embed_|refresh_"
+                        + "dependency{id} extract_dependency{id,collision} relink_dependency{id,path}. Guide: "
+                        + "describe_api ui_editor.",
                 schema().str("doc", DOC)
                         .arr("ops", "object", "The ops, in order")
                         .str("label", "History label for the step (default \"Agent: ...\")")
@@ -199,13 +203,17 @@ public final class UiToolDefinitions {
 
         registry.register(new McpTool("ui_export",
                 "Export .sbui + <name>.report.json (default Exports/UI/<stem>.sbui). mode shared (the "
-                        + "report lists what must ship) or collect_all (packs every dependency). Sandboxed like ui_save_as.",
+                        + "report lists what must ship) or collect_all (packs every dependency). Sandboxed like "
+                        + "ui_save_as. Result hostCheck = what the real game host would say. deploy:true ships it "
+                        + "into the game (ui/documents/<screen>.sbui + shared assets under ui/shared/).",
                 schema().str("doc", DOC).str("path", "Target .sbui")
                         .enumStr("mode", "shared (default) | collect_all", "shared", "collect_all")
                         .bool("prompt", "Ask in the Save Sheet").bool("overwrite", "Acknowledge replacing a file")
+                        .bool("deploy", "Ship into the game instead of Exports/")
                         .build(),
                 args -> ui.export(optString(args, "doc"), optString(args, "path"), optString(args, "mode"),
-                        optBool(args, "prompt", false), optBool(args, "overwrite", false))));
+                        optBool(args, "prompt", false), optBool(args, "overwrite", false),
+                        optBool(args, "deploy", false))));
 
         registry.register(new McpTool("ui_import_sbui",
                 "Import an .sbui into the project (new files only; colliding ids get -imported), save it at "

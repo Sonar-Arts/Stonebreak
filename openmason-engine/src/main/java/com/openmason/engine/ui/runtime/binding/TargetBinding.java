@@ -191,7 +191,20 @@ final class TargetBinding {
                     "converter '" + def.converter() + "' has no way back for " + def.mode().wire()));
                 return;
             }
-            v = converter.back().apply(edited);
+            try {
+                v = converter.back().apply(edited);
+            } catch (RuntimeException e) {
+                el.setState(UiElement.INVALID, true); // the user's input stays visible to be fixed
+                binder.report(UiRuntimeDiagnostic.error(Code.CONVERTER_FAILED, el.key(),
+                    "converter '" + def.converter() + "' failed converting back: " + e));
+                return;
+            }
+            if (v == null) {
+                el.setState(UiElement.INVALID, true);
+                binder.report(UiRuntimeDiagnostic.error(Code.CONVERTER_FAILED, el.key(),
+                    "converter '" + def.converter() + "' returned nothing converting back"));
+                return;
+            }
         }
         CallSite site = binder.scope().site(el.key(), CallSite.Origin.BINDING);
         EditSession.Result r = binder.scope().edits().stage(path, v, site);

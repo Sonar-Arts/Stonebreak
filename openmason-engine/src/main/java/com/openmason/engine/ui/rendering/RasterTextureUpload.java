@@ -33,17 +33,25 @@ public final class RasterTextureUpload implements AutoCloseable {
         int prevUnpackBuffer = glGetInteger(GL_PIXEL_UNPACK_BUFFER_BINDING);
         int prevAlignment = glGetInteger(GL_UNPACK_ALIGNMENT);
         int prevRowLength = glGetInteger(GL_UNPACK_ROW_LENGTH);
+        int prevSkipRows = glGetInteger(GL_UNPACK_SKIP_ROWS);
+        int prevSkipPixels = glGetInteger(GL_UNPACK_SKIP_PIXELS);
         try {
-            ensure(w, h);
+            // Unbound before the allocation too: with a caller's unpack buffer bound, ensure()'s
+            // null-data glTexImage2D would read from (or fail on) that buffer (#296 review).
             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+            ensure(w, h);
             glBindTexture(GL_TEXTURE_2D, texture);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
             glPixelStorei(GL_UNPACK_ROW_LENGTH, frame.rowBytes() / 4);
+            glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+            glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
             ByteBuffer pixels = memByteBuffer(frame.pixelAddress(), frame.rowBytes() * h);
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, frame.isBgra() ? GL_BGRA : GL_RGBA, GL_UNSIGNED_BYTE, pixels);
             width = w;
             height = h;
         } finally {
+            glPixelStorei(GL_UNPACK_SKIP_PIXELS, prevSkipPixels);
+            glPixelStorei(GL_UNPACK_SKIP_ROWS, prevSkipRows);
             glPixelStorei(GL_UNPACK_ROW_LENGTH, prevRowLength);
             glPixelStorei(GL_UNPACK_ALIGNMENT, prevAlignment);
             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, prevUnpackBuffer);

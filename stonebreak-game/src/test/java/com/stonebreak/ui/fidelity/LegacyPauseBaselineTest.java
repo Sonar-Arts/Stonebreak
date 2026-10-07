@@ -22,7 +22,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * Pixel baselines of the legacy pause menu (#296): the real {@link
@@ -106,14 +106,15 @@ class LegacyPauseBaselineTest {
     }
 
     /**
-     * The game renderer's layout agrees with the transcribed oracle the engine fixtures pin
+     * What the game renderer actually draws (read through its layout sink, not a copy of its
+     * maths) agrees with the oracle the engine fixtures pin
      * ({@code openmason-engine/src/test/resources/ui/fixtures/legacy-geometry.json}), so a gate
-     * run here and the engine's flexbox gate judge the same rects.
+     * run here and the engine's flexbox gate judge the same rects. Never skipped: a runner that
+     * cannot see the fixture fails loudly (#296 review).
      */
     @Test
     void rendererRectsMatchTheCommittedLegacyOracle() throws IOException {
-        Path oracle = Path.of("../openmason-engine/src/test/resources/ui/fixtures/legacy-geometry.json");
-        assumeTrue(Files.isRegularFile(oracle), "engine fixture not next to this module");
+        Path oracle = engineFixture("ui/fixtures/legacy-geometry.json");
         int compared = 0;
         for (JsonNode c : new ObjectMapper().readTree(oracle.toFile()).get("cases")) {
             if (!c.get("screen").asText().equals("pause")) {
@@ -132,5 +133,36 @@ class LegacyPauseBaselineTest {
             compared++;
         }
         assertTrue(compared >= 6, "pause cases in the oracle: " + compared);
+    }
+
+    /** {@code openmason-engine/src/test/resources/<relative>}, found from the working directory or a parent. */
+    private static Path engineFixture(String relative) {
+        for (Path dir = Path.of("").toAbsolutePath(); dir != null; dir = dir.getParent()) {
+            Path candidate = dir.resolve("openmason-engine/src/test/resources").resolve(relative);
+            if (Files.isRegularFile(candidate)) {
+                return candidate;
+            }
+        }
+        throw new AssertionError("engine fixture " + relative + " not found from " + Path.of("").toAbsolutePath()
+            + ": run from the repository or a module directory");
+    }
+
+    @Test
+    void hitRegionsAndActionsComeFromTheLegacyInputCode() {
+        FidelityCase c = new FidelityCase("pause", "field-online", FidelityCase.STANDARD.get(3));
+        MigrationGate.Capture cap = new LegacyPauseCapture().render(c);
+        assertEquals(cap.rects().keySet().stream().filter(k -> !k.equals("panel")).collect(java.util.stream.Collectors.toSet()),
+            cap.hits().keySet(), "every drawn button is clickable");
+        assertEquals(6, cap.hits().size(), "online: six buttons");
+        for (String b : cap.hits().keySet()) {
+            float[] drawn = cap.rects().get(b);
+            float[] hit = cap.hits().get(b);
+            for (int i = 0; i < 4; i++) {
+                assertEquals(drawn[i], hit[i], 1e-3, b + " hit region axis " + i);
+            }
+        }
+        assertEquals("stonebreak:network.resync", cap.actions().get("resync"));
+        assertEquals("stonebreak:screen.pause.quit", cap.actions().get("quit"));
+        assertFalse(LegacyPauseCapture.actions(false).containsKey("resync"));
     }
 }

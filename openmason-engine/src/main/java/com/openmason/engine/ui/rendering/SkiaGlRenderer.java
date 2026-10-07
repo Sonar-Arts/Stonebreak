@@ -73,6 +73,7 @@ public final class SkiaGlRenderer implements AutoCloseable {
         }
         painting = target;
         context.resetAll();
+        GlTextureImages.beginGpuFrame(context);
         return surface.getCanvas();
     }
 
@@ -84,13 +85,14 @@ public final class SkiaGlRenderer implements AutoCloseable {
         painting = null;
         try {
             context.flushAndSubmit(surface);
+            GlTextureImages.endGpuFrame();
             context.resetAll();
         } finally {
             if (saved != null) {
                 saved.restore();
                 saved = null;
             } else {
-                GlBaseline.reset(target.framebufferId());
+                GlBaseline.reset(target.framebufferId(), target.width(), target.height());
             }
         }
     }
@@ -112,6 +114,9 @@ public final class SkiaGlRenderer implements AutoCloseable {
 
     /** The GL context is gone: forget GPU objects without freeing them through it. */
     public void abandon() {
+        if (painting != null) {
+            GlTextureImages.endGpuFrame();
+        }
         painting = null;
         saved = null;
         if (context != null) {

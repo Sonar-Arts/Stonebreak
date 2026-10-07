@@ -204,7 +204,7 @@ public class LoadingScreen {
      */
     public void handleInput(long window) {
         if (hasError) {
-            boolean escPressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_ESCAPE) == GLFW.GLFW_PRESS;
+            boolean escPressed = com.stonebreak.input.PolledKeys.isDown(window, GLFW.GLFW_KEY_ESCAPE);
             if (escPressed) {
                 System.out.println("LoadingScreen: ESC pressed during error, returning to main menu");
                 Game.getInstance().setState(GameState.MAIN_MENU);

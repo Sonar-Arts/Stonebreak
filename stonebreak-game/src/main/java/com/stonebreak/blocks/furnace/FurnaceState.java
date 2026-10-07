@@ -225,7 +225,14 @@ public final class FurnaceState {
     private void notifyChanged() {
         Runnable l = changeListener;
         if (l != null) {
-            l.run();
+            // Runs inside the server's furnace tick or a network echo handler: an observer's
+            // failure must never take the furnace (or the connection) down with it.
+            try {
+                l.run();
+            } catch (RuntimeException e) {
+                org.slf4j.LoggerFactory.getLogger(FurnaceState.class)
+                    .warn("Furnace change listener failed at {}", pos, e);
+            }
         }
     }
 

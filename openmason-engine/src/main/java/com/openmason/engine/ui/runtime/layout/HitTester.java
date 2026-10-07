@@ -17,6 +17,12 @@ import java.util.List;
  *   <li>{@code visibility: hidden} elements are not hit, but a visible descendant still is;</li>
  *   <li>{@code picking-mode: ignore} elements let hits through to what is below, while their
  *       children stay pickable (Unity semantics);</li>
+ *   <li>{@code pointer-events: none} (inherited) elements are never hit, so a subtree is
+ *       see-through unless a descendant sets {@code auto}; the pointer-anchored cursor layer
+ *       is never hit at all;</li>
+ *   <li>{@code opacity: 0} does not stop hits (it is a paint property, as in Unity and CSS):
+ *       hide with {@code visibility}/{@code display} or add {@code pointer-events: none} to make
+ *       a faded-out element click-through;</li>
  *   <li>{@code overflow: hidden} and scroll containers clip their descendants' hit area;
  *       overlays escape the clips of their ancestors;</li>
  *   <li>disabled elements are still returned; input routing (#288) decides what that means.</li>
@@ -37,6 +43,9 @@ public final class HitTester {
         List<PaintOrder.Entry> entries = order.entries();
         float[] p = new float[2];
         for (int i = entries.size() - 1; i >= 0; i--) {
+            if (entries.get(i).cursor()) {
+                continue;
+            }
             UiElement root = entries.get(i).root();
             if (!intoAncestors(root, x, y, p)) {
                 continue;
@@ -128,7 +137,8 @@ public final class HitTester {
                 return hit;
             }
         }
-        boolean self = !el.computedStyle().hidden() && !el.computedStyle().pickingIgnored() && r.contains(x, y);
+        boolean self = !el.computedStyle().hidden() && !el.computedStyle().pickingIgnored()
+            && !el.computedStyle().pointerEventsNone() && r.contains(x, y);
         return self ? el : null;
     }
 

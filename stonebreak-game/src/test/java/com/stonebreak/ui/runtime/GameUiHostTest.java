@@ -21,7 +21,9 @@ import com.openmason.engine.ui.runtime.binding.UiConverter;
 import com.openmason.engine.ui.runtime.binding.UiConverters;
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.blocks.furnace.FurnaceState;
+import com.stonebreak.config.Settings;
 import com.stonebreak.network.MultiplayerSession;
+import com.stonebreak.ui.runtime.contracts.SettingsContract;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -39,8 +41,7 @@ class GameUiHostTest {
     /** Records what the game was asked to do instead of doing it. */
     private static final class FakeServices implements GameUiHost.Services {
         final List<String> calls = new ArrayList<>();
-        UiValue.Obj settings = new UiValue.Obj(Map.of("uiScale", UiValue.of(1), "uiTextScale", UiValue.of(1),
-            "reducedMotion", UiValue.FALSE, "renderDistance", UiValue.of(8), "maxFps", UiValue.of(120)));
+        UiValue.Obj settings = SettingsContract.read(Settings.defaults());
 
         @Override public void resume() { calls.add("resume"); }
         @Override public void openStatistics() { calls.add("statistics"); }
@@ -49,7 +50,16 @@ class GameUiHostTest {
         @Override public void quitToMenu() { calls.add("quit"); }
         @Override public int resync() { calls.add("resync"); return 42; }
         @Override public UiValue.Obj settings() { return settings; }
-        @Override public void applySettings(UiValue.Obj value) { calls.add("apply"); settings = value; }
+        @Override public void applySettings(UiValue.Obj value) {
+            calls.add("apply");
+            Map<String, UiValue> merged = new java.util.LinkedHashMap<>(settings.fields());
+            value.fields().forEach((k, v) -> {
+                if (!(v instanceof UiValue.Null)) {
+                    merged.put(k, v);
+                }
+            });
+            settings = new UiValue.Obj(merged);
+        }
     }
 
     private static final UiConverters DISPLAY_IF = UiConverters.of(Map.of("display_if",

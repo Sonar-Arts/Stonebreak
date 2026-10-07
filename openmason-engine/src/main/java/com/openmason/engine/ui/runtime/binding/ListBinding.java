@@ -32,7 +32,14 @@ import java.util.function.Consumer;
  *       goes; the selected row matches {@code :checked}.</li>
  *   <li><b>Virtualization.</b> With {@code itemHeight > 0} only the visible rows exist. Spacers
  *       keep the scroll extent at {@code items × itemHeight}; scrolling recycles rows by giving
- *       them other items, which rebinds their whole subtree.</li>
+ *       them other items, which rebinds their whole subtree. A recycled row drops its local
+ *       (edit-in-progress) values, and focus follows its item ({@link UiBinder#onRecycled}).</li>
+ *   <li><b>Grid.</b> With {@code columns > 1} the view wraps its rows into a grid: each row is
+ *       {@code 1/columns} of the width and the view lays out as a wrapping row. Virtualization
+ *       then works by lines of {@code columns} items, {@code itemHeight} tall.</li>
+ *   <li><b>Robustness.</b> A row removed behind the binding's back (a script's
+ *       {@code remove}) or a change that cannot be replayed rebuilds the rows from the items
+ *       instead of failing.</li>
  * </ul>
  */
 public final class ListBinding {
@@ -64,6 +71,7 @@ public final class ListBinding {
     private String selectedId;
     private UiElement topSpacer;
     private UiElement bottomSpacer;
+    private boolean gridApplied;
     private int first;
     private int rowSeq;
     private BindingStatus status = BindingStatus.LOADING;
@@ -116,6 +124,11 @@ public final class ListBinding {
         return itemHeight() > 0;
     }
 
+    /** Items per line: the {@code columns} property, at least 1. */
+    public int columns() {
+        return view.prop("columns") instanceof UiValue.Num n && n.value() >= 1 ? (int) n.value() : 1;
+    }
+
     /** Index of the first item a row shows (0 unless virtualized and scrolled). */
     public int firstVisibleIndex() {
         return isVirtualized() ? first : 0;
@@ -162,6 +175,8 @@ public final class ListBinding {
             dropRow(r);
         }
         rows.clear();
+        topSpacer = null; // dropped with the view's subtree by the binder
+        bottomSpacer = null;
     }
 
     private String resolveIdentity() {
@@ -214,6 +229,7 @@ public final class ListBinding {
             items.addAll(next);
             return;
         }
+        applyGridLayout();
         if (isVirtualized()) {
             items.clear();
             items.addAll(next);
@@ -221,6 +237,29 @@ public final class ListBinding {
             refreshWindow(true);
             return;
         }
+        List<ListChange> plan = anyRowGone() ? List.of(ListChange.RESET) : changes;
+        try {
+            replay(plan, next);
+        } catch (RuntimeException e) {
+            binder.report(UiRuntimeDiagnostic.warning(UiRuntimeDiagnostic.Code.LIST_TEMPLATE, view.key(),
+                "list rows out of step (" + e.getMessage() + "); rebuilt"));
+            replay(List.of(ListChange.RESET), next);
+        }
+        retainSelection();
+        refreshChecked();
+    }
+
+    /** True when a script removed one of the rows (or a spacer) behind the binding's back. */
+    private boolean anyRowGone() {
+        for (Row r : rows) {
+            if (r.el.isRemoved()) {
+                return true;
+            }
+        }
+        return topSpacer != null && (topSpacer.isRemoved() || bottomSpacer.isRemoved());
+    }
+
+    private void replay(List<ListChange> changes, List<UiValue> next) {
         for (ListChange c : changes) {
             switch (c) {
                 case ListChange.Inserted ins -> {
@@ -258,8 +297,6 @@ public final class ListBinding {
                 }
             }
         }
-        retainSelection();
-        refreshChecked();
     }
 
     // ── rows ────────────────────────────────────────────────────────────────
@@ -275,12 +312,42 @@ public final class ListBinding {
             el.setStyle("height", UiValue.of(itemHeight()));
             el.setStyle("flex-shrink", UiValue.of(0));
         }
+        if (columns() > 1) {
+            el.setStyle("width", UiValue.of(cellWidth()));
+            el.setStyle("flex-shrink", UiValue.of(0));
+        }
         return new Row(el, feed);
     }
 
-    private void show(Row row, int index) {
+    /**
+     * Gives {@code row} the item at {@code index}.
+     *
+     * @return the identity the row showed before when it now shows another item (it was
+     *         recycled), else {@code null}
+     */
+    private String show(Row row, int index) {
+        String before = row.id;
         row.id = idOf(index);
         row.item.set(DataState.ready(items.get(index)));
+        if (before != null && !before.equals(row.id)) {
+            binder.recycled(row.el);
+            return before;
+        }
+        return null;
+    }
+
+    /** Lays the view out as a wrapping row of {@code columns} cells (once, when columns > 1). */
+    private void applyGridLayout() {
+        if (columns() > 1 && !gridApplied) {
+            gridApplied = true;
+            view.setStyle("flex-direction", UiValue.of("row"));
+            view.setStyle("flex-wrap", UiValue.of("wrap"));
+            view.setStyle("align-content", UiValue.of("flex-start"));
+        }
+    }
+
+    private String cellWidth() {
+        return String.format(java.util.Locale.ROOT, "%.6f%%", 100.0 / columns());
     }
 
     private void dropRow(Row row) {
@@ -294,13 +361,25 @@ public final class ListBinding {
         if (!isVirtualized() || template == null) {
             return;
         }
+        if (anyRowGone()) {
+            // A script removed a row or spacer: rebuild the window from scratch.
+            for (Row r : List.copyOf(rows)) {
+                dropRow(r);
+            }
+            rows.clear();
+            dropSpacers();
+            force = true;
+        }
+        int cols = columns();
         float scale = view.owner().metrics().scale();
-        float itemPx = (float) itemHeight() * scale;
+        float linePx = (float) itemHeight() * scale;
         float viewPx = view.rect().height();
         int n = items.size();
-        int visible = viewPx > 0 ? (int) Math.ceil(viewPx / itemPx) + 1 : UNLAID_WINDOW;
-        int slots = Math.min(visible, n);
-        int firstNow = Math.clamp((int) Math.floor(view.scrollY() / itemPx), 0, Math.max(0, n - slots));
+        int lines = (n + cols - 1) / cols;
+        int visibleLines = viewPx > 0 ? (int) Math.ceil(viewPx / linePx) + 1 : UNLAID_WINDOW;
+        int firstLine = Math.clamp((int) Math.floor(view.scrollY() / linePx), 0, Math.max(0, lines - visibleLines));
+        int firstNow = firstLine * cols;
+        int slots = Math.min(visibleLines * cols, n - firstNow);
         if (!force && firstNow == first && slots == rows.size()) {
             return;
         }
@@ -309,16 +388,55 @@ public final class ListBinding {
         while (rows.size() < slots) {
             rows.add(newRow(rows.size(), items.get(first + rows.size())));
         }
-        while (rows.size() > slots) {
-            dropRow(rows.removeLast());
-        }
+        List<Row> moved = new ArrayList<>();
+        List<String> previous = new ArrayList<>();
         for (int i = 0; i < slots; i++) {
-            show(rows.get(i), first + i);
+            String before = show(rows.get(i), first + i);
+            if (before != null) {
+                moved.add(rows.get(i));
+                previous.add(before);
+            }
+        }
+        List<Row> gone = new ArrayList<>();
+        while (rows.size() > slots) {
+            gone.add(rows.removeLast());
+        }
+        // Focus follows its item to the row now showing it, or moves on when it scrolled away.
+        for (int i = 0; i < moved.size(); i++) {
+            binder.recycledAway(moved.get(i).el, rowShowing(previous.get(i)));
+        }
+        for (Row r : gone) {
+            binder.recycledAway(r.el, rowShowing(r.id));
+            dropRow(r);
         }
         double h = itemHeight();
-        topSpacer.setStyle("height", UiValue.of(first * h));
-        bottomSpacer.setStyle("height", UiValue.of(Math.max(0, n - first - slots) * h));
+        int shownLines = (slots + cols - 1) / cols;
+        topSpacer.setStyle("height", UiValue.of(firstLine * h));
+        bottomSpacer.setStyle("height", UiValue.of(Math.max(0, lines - firstLine - shownLines) * h));
         refreshChecked();
+    }
+
+    /** The row element now showing the item with {@code id}, or {@code null}. */
+    private UiElement rowShowing(String id) {
+        if (id == null) {
+            return null;
+        }
+        for (Row r : rows) {
+            if (id.equals(r.id)) {
+                return r.el;
+            }
+        }
+        return null;
+    }
+
+    private void dropSpacers() {
+        for (UiElement sp : new UiElement[] {topSpacer, bottomSpacer}) {
+            if (sp != null) {
+                binder.dropRow(sp);
+            }
+        }
+        topSpacer = null;
+        bottomSpacer = null;
     }
 
     private void ensureSpacers() {
@@ -327,6 +445,10 @@ public final class ListBinding {
         }
         topSpacer = binder.buildSpacer(view, 0, view.key() + "/~top");
         bottomSpacer = binder.buildSpacer(view, -1, view.key() + "/~bottom");
+        if (columns() > 1) {
+            topSpacer.setStyle("width", UiValue.of("100%")); // a spacer takes a whole line of the grid
+            bottomSpacer.setStyle("width", UiValue.of("100%"));
+        }
     }
 
     private double itemHeight() {

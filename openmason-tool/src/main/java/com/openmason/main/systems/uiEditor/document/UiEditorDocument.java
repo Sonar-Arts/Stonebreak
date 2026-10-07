@@ -47,6 +47,8 @@ public final class UiEditorDocument {
     private long revision;
     private String lastMessage;
     private ProjectFolder project;
+    /** Fingerprint of {@link #file} as last read or written by the editor (null = unknown). */
+    private String diskStamp;
 
     public UiEditorDocument(OmuiArchive archive, Path file, Origin origin, Path importedFrom) {
         this.archive = Objects.requireNonNull(archive, "archive");
@@ -265,6 +267,15 @@ public final class UiEditorDocument {
     }
 
     // ── file identity ───────────────────────────────────────────────────────
+
+    /** The file's fingerprint when the editor last read or wrote it, or null when unknown. */
+    public String diskStamp() {
+        return diskStamp;
+    }
+
+    public void setDiskStamp(String stamp) {
+        diskStamp = stamp;
+    }
 
     /** The document was written to {@code target}; it is now the document's file and clean. */
     public void savedTo(Path target, OmuiArchive written) {

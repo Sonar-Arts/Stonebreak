@@ -409,8 +409,8 @@ public final class UiComposition {
                     }
 
                     @Override
-                    public void saveAllInPlace() {
-                        editor.saveAllInPlace();
+                    public java.util.List<String> saveAllInPlace() {
+                        return editor.saveAllInPlace();
                     }
 
                     @Override
@@ -430,6 +430,10 @@ public final class UiComposition {
                     editor.restoreSession(ref.documents(), ref.activeDocument());
                     workspaceState.set(com.openmason.main.systems.layout.Workspace.resolve(ref.workspace()));
                 });
+        // Opening, closing, activating or saving a UI document and switching workspace change what the
+        // .omp records: the project turns dirty, so the session is not lost on exit.
+        editor.service().addListener(mainInterface::notifyUiEditorSessionChanged);
+        workspaceState.addListener(w -> mainInterface.notifyUiEditorSessionChanged());
     }
 
     /**

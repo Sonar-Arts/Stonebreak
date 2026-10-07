@@ -19,10 +19,18 @@ import com.openmason.engine.ui.script.UiScriptOptions;
 public record UiBudgets(Kind kind, double scriptFrameMillis, long memoryBytes, double deadlineMillis,
                         double layoutMillis, int layoutNodes) {
 
-    public enum Kind { MENU, MINIGAME }
+    public enum Kind { MENU, HUD, MINIGAME }
 
-    /** Menus, HUDs, dialogs: 0.5 ms of script per frame, 4 MiB, 50 ms, 0.25 ms per relayout of ≤100 nodes. */
+    /** Menus and dialogs: 0.5 ms of script per frame, 4 MiB, 50 ms, 0.25 ms per relayout of ≤100 nodes. */
     public static final UiBudgets MENU = new UiBudgets(Kind.MENU, 0.5, 4L << 20, 50, 0.25, 100);
+
+    /**
+     * Documents drawn every frame <em>while the world runs</em> (hotbar, vitals, crosshair
+     * widgets, chat feed): their cost is paid on top of the world's frame, so half the menu
+     * script time, 2 MiB, a 16 ms watchdog (one frame, not a visible freeze) and 0.15 ms per
+     * relayout of ≤100 nodes. Hosts opt in ({@link #forDocument(OmuiArchive, boolean)}).
+     */
+    public static final UiBudgets HUD = new UiBudgets(Kind.HUD, 0.25, 2L << 20, 16, 0.15, 100);
 
     /** Documents with a {@code Canvas} ({@code ui-canvas}): 2 ms of script per frame, 32 MiB. */
     public static final UiBudgets MINIGAME = new UiBudgets(Kind.MINIGAME, 2.0, 32L << 20, 50, 0.25, 100);
@@ -36,7 +44,27 @@ public record UiBudgets(Kind kind, double scriptFrameMillis, long memoryBytes, d
 
     /** {@link #MINIGAME} for a document that declares {@code ui-canvas}, else {@link #MENU}. */
     public static UiBudgets forDocument(OmuiArchive doc) {
-        return doc.manifest().requires().contains(UiFeatures.CANVAS) ? MINIGAME : MENU;
+        return forDocument(doc, false);
+    }
+
+    /**
+     * The budgets for {@code doc} in its host role: {@link #MINIGAME} for {@code ui-canvas}
+     * documents whatever the role, else {@link #HUD} when the host draws it every gameplay frame,
+     * else {@link #MENU}.
+     */
+    public static UiBudgets forDocument(OmuiArchive doc, boolean everyGameplayFrame) {
+        if (doc.manifest().requires().contains(UiFeatures.CANVAS)) {
+            return MINIGAME;
+        }
+        return everyGameplayFrame ? HUD : MENU;
+    }
+
+    /**
+     * A single frame's Lua time past which the frame counts as a spike: eight times the
+     * per-frame budget (4 ms for menus, 2 ms for HUDs), never less than 1 ms.
+     */
+    public double scriptSpikeMillis() {
+        return Math.max(1.0, scriptFrameMillis * 8);
     }
 
     /** The hard limits as Lua state options (no instruction budget, no graph tracing). */

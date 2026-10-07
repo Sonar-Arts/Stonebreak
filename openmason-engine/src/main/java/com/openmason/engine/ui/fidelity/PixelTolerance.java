@@ -14,17 +14,30 @@ import java.util.Objects;
  * @param shiftPixels      inside {@code shiftRegions}, a pixel also matches when the baseline has a
  *                         matching pixel within this many pixels (resampling moves texel edges)
  * @param shiftRegions     where the shift allowance applies, in framebuffer pixels
+ * @param maxOutlierDelta  how far (per channel) a pixel counted against {@code maxMismatchRatio}
+ *                         may stray; a worse pixel fails the comparison however few there are
+ * @param maxClusterPixels largest 8-connected group of mismatched pixels allowed: drift scatters
+ *                         single pixels along glyph edges, a dropped icon or label is one blob
  */
-public record PixelTolerance(int levels, double maxMismatchRatio, int shiftPixels, List<Region> shiftRegions) {
+public record PixelTolerance(int levels, double maxMismatchRatio, int shiftPixels, List<Region> shiftRegions,
+                             int maxOutlierDelta, int maxClusterPixels) {
 
     /** Identical pixels: same renderer, integer asset scale. */
     public static final PixelTolerance EXACT = new PixelTolerance(0, 0, 0, List.of());
 
     /**
      * Guard for goldens of one renderer across Skia point releases: 2 levels per channel, at most
-     * 0.1 % of pixels beyond (glyph coverage drifts). What the #287/#294/#295 goldens always used.
+     * 0.1 % of pixels beyond (glyph coverage drifts), none of them more than 96 levels off and no
+     * clump larger than 12 pixels. The caps are what keep the ratio from hiding a dropped 16 px
+     * icon or a short label (#296 review): drift is scattered anti-aliasing, a missing feature
+     * is a solid region. What the #287/#294/#295 goldens use.
      */
-    public static final PixelTolerance RASTER_DRIFT = new PixelTolerance(2, 0.001, 0, List.of());
+    public static final PixelTolerance RASTER_DRIFT = new PixelTolerance(2, 0.001, 0, List.of(), 96, 12);
+
+    /** No outlier or cluster cap: only the ratio limits the mismatches. */
+    public PixelTolerance(int levels, double maxMismatchRatio, int shiftPixels, List<Region> shiftRegions) {
+        this(levels, maxMismatchRatio, shiftPixels, shiftRegions, 255, Integer.MAX_VALUE);
+    }
 
     /** An axis-aligned pixel rectangle, origin top-left. */
     public record Region(int x, int y, int width, int height) {
@@ -50,7 +63,8 @@ public record PixelTolerance(int levels, double maxMismatchRatio, int shiftPixel
     }
 
     public PixelTolerance {
-        if (levels < 0 || levels > 255 || !(maxMismatchRatio >= 0 && maxMismatchRatio <= 1) || shiftPixels < 0) {
+        if (levels < 0 || levels > 255 || !(maxMismatchRatio >= 0 && maxMismatchRatio <= 1) || shiftPixels < 0
+                || maxOutlierDelta < levels || maxOutlierDelta > 255 || maxClusterPixels < 1) {
             throw new IllegalArgumentException("invalid pixel tolerance");
         }
         shiftRegions = List.copyOf(Objects.requireNonNull(shiftRegions, "shiftRegions"));
@@ -72,11 +86,17 @@ public record PixelTolerance(int levels, double maxMismatchRatio, int shiftPixel
     }
 
     public PixelTolerance withLevels(int perChannel) {
-        return new PixelTolerance(perChannel, maxMismatchRatio, shiftPixels, shiftRegions);
+        return new PixelTolerance(perChannel, maxMismatchRatio, shiftPixels, shiftRegions,
+            Math.max(perChannel, maxOutlierDelta), maxClusterPixels);
     }
 
     public PixelTolerance withMaxMismatchRatio(double ratio) {
-        return new PixelTolerance(levels, ratio, shiftPixels, shiftRegions);
+        return new PixelTolerance(levels, ratio, shiftPixels, shiftRegions, maxOutlierDelta, maxClusterPixels);
+    }
+
+    /** Caps the outliers the ratio admits: per-channel delta and 8-connected clump size. */
+    public PixelTolerance withOutlierCaps(int maxDelta, int maxCluster) {
+        return new PixelTolerance(levels, maxMismatchRatio, shiftPixels, shiftRegions, maxDelta, maxCluster);
     }
 
     boolean shiftAllowedAt(int x, int y) {

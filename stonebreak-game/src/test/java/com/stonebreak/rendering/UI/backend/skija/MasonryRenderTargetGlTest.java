@@ -8,6 +8,7 @@ import com.openmason.engine.ui.masonry.MVitalBar;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.masonry.textures.MTexture;
 import com.openmason.engine.ui.rendering.GlStateSnapshot;
+import com.openmason.engine.ui.rendering.GlTextureImages;
 import com.openmason.engine.ui.rendering.GpuMasonryBackend;
 import com.openmason.engine.ui.rendering.MasonryBackend;
 import com.openmason.engine.ui.rendering.OffscreenFramebuffer;
@@ -232,6 +233,169 @@ class MasonryRenderTargetGlTest {
             glDeleteSamplers(sampler);
             resetCallerState();
         }
+    }
+
+    @Test
+    void restoreCoversElementBindingsAndTheRestOfTheConfiguration() {
+        int vao = glGenVertexArrays();
+        int[] ebo = {glGenBuffers(), glGenBuffers()};
+        try {
+            glBindVertexArray(vao);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo[0]);
+            glBlendColor(0.1f, 0.2f, 0.3f, 0.4f);
+            glClearColor(0.5f, 0.25f, 0.125f, 1f);
+            glPolygonOffset(2f, 3f);
+            glPixelStorei(GL_PACK_ROW_LENGTH, 7);
+            glPixelStorei(GL_UNPACK_SKIP_ROWS, 2);
+            glStencilFuncSeparate(GL_BACK, GL_LESS, 3, 0x0F);
+            glDisable(GL_DITHER);
+            GlStateSnapshot before = GlStateSnapshot.capture();
+
+            renderPreview(W, H);
+            GlStateSnapshot afterPaint = GlStateSnapshot.capture();
+            assertTrue(before.sameAs(afterPaint), "paint changed state: " + before.firstDifference(afterPaint));
+            // An element bind while the caller's VAO is still current (before Skia switches to its
+            // own) lands in that VAO; restore must put the caller's buffer back into it.
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo[1]);
+            before.restore();
+
+            assertEquals(vao, glGetInteger(GL_VERTEX_ARRAY_BINDING));
+            assertEquals(ebo[0], glGetInteger(GL_ELEMENT_ARRAY_BUFFER_BINDING), "the VAO's element buffer is back");
+            GlStateSnapshot after = GlStateSnapshot.capture();
+            assertTrue(before.sameAs(after), "state changed: " + before.firstDifference(after));
+            assertEquals(GL_NO_ERROR, glGetError());
+        } finally {
+            glBindVertexArray(0);
+            glDeleteVertexArrays(vao);
+            glDeleteBuffers(ebo[0]);
+            glDeleteBuffers(ebo[1]);
+            glBlendColor(0, 0, 0, 0);
+            glClearColor(0, 0, 0, 0);
+            glPolygonOffset(0, 0);
+            glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+            glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+            glStencilFuncSeparate(GL_BACK, GL_ALWAYS, 0, 0xFF);
+            glEnable(GL_DITHER);
+            resetCallerState();
+        }
+    }
+
+    @Test
+    void aBoundUnpackBufferNeverReachesUiTextureAllocation() {
+        int pbo = glGenBuffers();
+        RasterMasonryBackend raster = new RasterMasonryBackend(W, H, typeface, false);
+        RasterTextureUpload upload = new RasterTextureUpload();
+        try {
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
+            glBufferData(GL_PIXEL_UNPACK_BUFFER, 16, GL_STREAM_DRAW); // far too small for any texture
+            int[] gpu = renderPreview(W, H);
+            assertEquals(GL_NO_ERROR, glGetError(), "offscreen allocation with a caller PBO bound");
+            assertEquals(BG >>> 24 & 0xFF, gpu[0] & 0xFF, "and the frame is real (opaque background)");
+
+            raster.beginFrame(W, H, 1f);
+            raster.getCanvas().clear(BG);
+            raster.endFrame();
+            upload.upload(raster);
+            assertEquals(GL_NO_ERROR, glGetError(), "raster upload allocation with a caller PBO bound");
+            assertEquals(pbo, glGetInteger(GL_PIXEL_UNPACK_BUFFER_BINDING), "the caller's PBO is back");
+        } finally {
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+            glDeleteBuffers(pbo);
+            upload.close();
+            raster.dispose();
+            resetCallerState();
+        }
+    }
+
+    @Test
+    void aWarmContextPaintsFrameAfterFrameIdenticallyAndRestoresEachTime() {
+        GpuMasonryBackend backend = previewBackend();
+        OffscreenFramebuffer fbo = new OffscreenFramebuffer();
+        try {
+            GlStateSnapshot before = GlStateSnapshot.capture();
+            int[] first = paintScene(backend, fbo, W, H);
+            for (int frame = 0; frame < 5; frame++) {
+                int[] again = paintScene(backend, fbo, W, H);
+                assertEquals(0, countDiff(first, again, 0), "frame " + frame + ": " + describeDiff(first, again));
+                GlStateSnapshot after = GlStateSnapshot.capture();
+                assertTrue(before.sameAs(after), "frame " + frame + ": " + before.firstDifference(after));
+            }
+            assertEquals(GL_NO_ERROR, glGetError());
+        } finally {
+            backend.releaseTargetSurface();
+            fbo.close();
+            backend.dispose();
+            resetCallerState();
+        }
+    }
+
+    // ───────────────────────── host GL textures (#282 C1b) ─────────────────────────
+
+    @Test
+    void aHostGlTextureDrawsThroughTheDocumentCanvasOnTheGpu() {
+        int tex = stripedTexture(); // first uploaded rows red, last rows green
+        try {
+            int[] px = paintPreview(64, 64, (ui, canvas) -> {
+                canvas.clear(0xFF000000);
+                assertTrue(GlTextureImages.inGpuFrame());
+                io.github.humbleui.skija.Image topDown = GlTextureImages.borrow(canvas, tex, 8, 8, false);
+                assertSame(topDown, GlTextureImages.borrow(canvas, tex, 8, 8, false), "one wrap per frame");
+                io.github.humbleui.skija.Image flipped = GlTextureImages.borrow(canvas, tex, 8, 8, true);
+                canvas.drawImageRect(topDown, Rect.makeXYWH(8, 8, 8, 8));
+                canvas.drawImageRect(flipped, Rect.makeXYWH(32, 8, 8, 8));
+            });
+            assertFalse(GlTextureImages.inGpuFrame(), "the frame ended");
+            assertEquals(0xFF0000FF, px[9 * 64 + 9], "texture row 0 at the top");
+            assertEquals(0x00FF00FF, px[15 * 64 + 9]);
+            assertEquals(0x00FF00FF, px[9 * 64 + 33], "bottom-left origin flips it");
+            assertEquals(0xFF0000FF, px[15 * 64 + 33]);
+            assertTrue(glIsTexture(tex), "the texture stays the caller's");
+            assertEquals(GL_NO_ERROR, glGetError());
+        } finally {
+            glDeleteTextures(tex);
+            resetCallerState();
+        }
+    }
+
+    @Test
+    void aHostGlTextureReadsBackOntoTheRasterPath() {
+        int tex = stripedTexture();
+        RasterMasonryBackend raster = new RasterMasonryBackend(64, 64, typeface, false);
+        try {
+            raster.beginFrame(64, 64, 1f);
+            Canvas canvas = raster.getCanvas();
+            canvas.clear(0xFF000000);
+            io.github.humbleui.skija.Image img = GlTextureImages.borrow(canvas, tex, 8, 8, false);
+            assertNotNull(img, "read back without a GPU frame");
+            canvas.drawImageRect(img, Rect.makeXYWH(8, 8, 8, 8));
+            raster.endFrame();
+            assertEquals(0xFFFF0000, raster.colorAt(9, 9));
+            assertEquals(0xFF00FF00, raster.colorAt(9, 15));
+            assertTrue(img.isClosed(), "closed when the raster frame ended");
+        } finally {
+            raster.dispose();
+            glDeleteTextures(tex);
+            resetCallerState();
+        }
+    }
+
+    /** 8x8 RGBA8: rows 0-3 (first uploaded) opaque red, rows 4-7 opaque green. */
+    private static int stripedTexture() {
+        ByteBuffer data = BufferUtils.createByteBuffer(8 * 8 * 4);
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
+                data.put((byte) (row < 4 ? 255 : 0)).put((byte) (row < 4 ? 0 : 255)).put((byte) 0).put((byte) 255);
+            }
+        }
+        data.flip();
+        int tex = glGenTextures();
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 8, 8, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        return tex;
     }
 
     // ───────────────────────────── lifecycle ─────────────────────────────

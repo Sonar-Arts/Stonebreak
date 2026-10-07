@@ -813,6 +813,47 @@ class _Ui:
     def remove_clip(self, id):
         self._queue("remove_clip", dict(id=id))
 
+    def put_state_machine(self, machine):
+        self._queue("put_state_machine", dict(machine=machine))
+
+    def remove_state_machine(self, id):
+        self._queue("remove_state_machine", dict(id=id))
+
+    # -- behavior graphs (wire JSON, see describe_api ui_editor)
+    def put_graph(self, graph):
+        self._queue("put_graph", dict(graph=graph))
+
+    def remove_graph(self, id):
+        self._queue("remove_graph", dict(id=id))
+
+    # -- dependency table (textures, sprites, fonts, sounds, shared scripts / sheets)
+    def add_dependency(self, path=_UNSET, id=_UNSET, kind=_UNSET, embed=_UNSET, optional=_UNSET,
+                       fallback=_UNSET, requires=_UNSET, license=_UNSET):
+        """path: a project file (UI/stonebreak/ui/textures/panel.sbt), or id + kind found in the
+        project / the game's packaged assets. embed=True snapshots it into the document."""
+        self._queue("add_dependency", dict(path=path, id=id, kind=kind, embed=embed, optional=optional,
+            fallback=fallback, requires=requires, license=license))
+
+    def set_dependency(self, id, optional=_UNSET, fallback=_UNSET, requires=_UNSET, license=_UNSET):
+        self._queue("set_dependency", dict(id=id, optional=optional, fallback=fallback,
+            requires=requires, license=license))
+
+    def remove_dependency(self, id, force=_UNSET):
+        self._queue("remove_dependency", dict(id=id, force=force))
+
+    def embed_dependency(self, id):
+        self._queue("embed_dependency", dict(id=id))
+
+    def refresh_dependency(self, id):
+        self._queue("refresh_dependency", dict(id=id))
+
+    def extract_dependency(self, id, collision=_UNSET):
+        """collision: "fail" (default), "keep_project" or "replace"."""
+        self._queue("extract_dependency", dict(id=id, collision=collision))
+
+    def relink_dependency(self, id, path):
+        self._queue("relink_dependency", dict(id=id, path=path))
+
 
 ui = _Ui()
 
@@ -865,6 +906,7 @@ UI docs:  p = om.ui.create("Box", name="panel", style={"width": 400, "row-gap": 
           om.ui.set_prop(b.inner("label"), "text", "Resume")     # inside an instance = override
           om.ui.add_sheet("hud"); om.ui.add_rule("hud", "#panel", {"background-color": "#203040"})
           om.ui.tree(); om.ui.get("panel"); om.ui.use("stonebreak:ui/hud")   # one undo step on success
+          om.ui.add_dependency(path="UI/stonebreak/ui/textures/panel.sbt")     # + put_graph/put_state_machine
 """
 
 # Install as the `om` module so user scripts `import om`.

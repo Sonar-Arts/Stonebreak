@@ -85,10 +85,15 @@ public final class UiInputRouter {
     private ScrollbarDrag scrollbarDrag;
     private UiElement lastClick;
     private UiElement lastDownTarget;
+    private int lastDownButton = -1;
     private double lastDownTime = Double.NEGATIVE_INFINITY;
     private float lastDownX;
     private float lastDownY;
     private int clickCount;
+    /** Mouse buttons held, bit {@code 1 << button}, from every press/release the host reported. */
+    private int heldButtons;
+    /** Modifier bits as last reported by the host's events, kept current by modifier key presses. */
+    private int currentMods;
 
     // keys and controller
     private final BitSet buttonsConsumed = new BitSet();
@@ -117,7 +122,7 @@ public final class UiInputRouter {
         this.dispatcher = new EventDispatcher(this::handlerFailed);
         this.focus = new FocusManager(ui, dispatcher, this::time);
         this.tooltips = new TooltipController(settings);
-        this.drag = new DragDropController(dispatcher, this::time, ui::root);
+        this.drag = new DragDropController(dispatcher, this::time, ui::root, ui::find);
         focus.setListener(this::focusChanged);
     }
 
@@ -166,6 +171,16 @@ public final class UiInputRouter {
         return time;
     }
 
+    /** Mouse buttons held (bit {@code 1 << button}), as {@link PointerEvent#buttons()}. */
+    public int heldButtons() {
+        return heldButtons;
+    }
+
+    /** Modifier bits ({@code MKeys.MOD_*}) as last seen. */
+    public int modifiers() {
+        return currentMods;
+    }
+
     /** The element the last {@link #pointerUp} clicked, or null. */
     public UiElement lastClick() {
         return lastClick;
@@ -187,6 +202,16 @@ public final class UiInputRouter {
 
     public UiElement pointerCapture() {
         return captured;
+    }
+
+    /** Last pointer position over the frame in device pixels, or {@code NaN} after it left. */
+    public float pointerX() {
+        return lastX;
+    }
+
+    /** @see #pointerX() */
+    public float pointerY() {
+        return lastY;
     }
 
     /** All pointer input goes to {@code el} until the primary button is released or {@link #releasePointer}. */
@@ -288,7 +313,7 @@ public final class UiInputRouter {
             return true;
         }
         if (InputTraits.canReceivePointer(h.target())) {
-            dispatcher.dispatch(pointer(UiEventType.POINTER_MOVE, x, y, -1, 0, 0), h.target());
+            dispatcher.dispatch(pointer(UiEventType.POINTER_MOVE, x, y, -1, currentMods, 0), h.target());
         }
         return h.target() != null || h.blocked() || pressed != null;
     }
@@ -304,6 +329,10 @@ public final class UiInputRouter {
     }
 
     public boolean pointerDown(float x, float y, int button, int mods) {
+        currentMods = mods;
+        if (button >= 0 && button < 31) {
+            heldButtons |= 1 << button;
+        }
         boolean consumed = down(x, y, button, mods);
         if (button >= 0) {
             buttonsConsumed.set(button, consumed);
@@ -340,7 +369,7 @@ public final class UiInputRouter {
         if (!InputTraits.canReceivePointer(target)) {
             return true; // a disabled element blocks without receiving anything
         }
-        countClick(target, x, y);
+        countClick(target, button, x, y);
         pressed = target;
         pressButton = button;
         pressX = x;
@@ -372,6 +401,10 @@ public final class UiInputRouter {
     public boolean pointerUp(float x, float y, int button, int mods) {
         lastDevice = InputDevice.MOUSE;
         lastClick = null;
+        currentMods = mods;
+        if (button >= 0 && button < 31) {
+            heldButtons &= ~(1 << button);
+        }
         DragSession session = drag.session();
         if (session != null) {
             if (button == session.button()) {
@@ -388,7 +421,9 @@ public final class UiInputRouter {
         boolean inside = UiCoordinates.onCanvas(ui.metrics(), x, y);
         Hit h = inside ? pick(x, y) : new Hit(null, false);
         boolean wasPressed = pressed != null && button == pressButton;
-        boolean wasCaptured = captured != null;
+        // Only the primary release ends a capture, so only it is the capture's: a right press the
+        // world took during a text-field drag must get its release back (#288 review).
+        boolean endedCapture = captured != null && button == PointerEvent.PRIMARY;
         if (captured != null) {
             if (InputTraits.canReceivePointer(captured)) {
                 dispatcher.dispatch(pointer(UiEventType.POINTER_UP, x, y, button, mods, clickCount), captured);
@@ -419,12 +454,13 @@ public final class UiInputRouter {
         if (button >= 0) {
             buttonsConsumed.clear(button);
         }
-        return pressConsumed || wasPressed || wasCaptured;
+        return pressConsumed || wasPressed || endedCapture;
     }
 
     /** Wheel notches at {@code (x, y)}; Shift turns vertical wheel into horizontal scrolling. */
     public boolean wheel(float x, float y, float dx, float dy, int mods) {
         lastDevice = InputDevice.MOUSE;
+        currentMods = mods;
         if (!UiCoordinates.onCanvas(ui.metrics(), x, y)) {
             return false;
         }
@@ -472,6 +508,7 @@ public final class UiInputRouter {
         if (key < 0) {
             return false;
         }
+        currentMods = mods | modifierBit(key);
         lastDevice = InputDevice.KEYBOARD;
         if (repeat) {
             if (!keysDown.get(key) || !keysConsumed.get(key)) {
@@ -505,6 +542,9 @@ public final class UiInputRouter {
     }
 
     public boolean keyUp(int key, int mods) {
+        if (key >= 0) {
+            currentMods = mods & ~modifierBit(key);
+        }
         if (key < 0 || !keysDown.get(key)) {
             return false;
         }
@@ -609,10 +649,18 @@ public final class UiInputRouter {
         if (e.isHandled()) {
             return true;
         }
+        DragSession dragging = drag.session();
+        if (dragging != null && dragging.focusDriven() && action == UiAction.SUBMIT) {
+            drag.drop(); // a controller pick-up drops on the focused slot instead of clicking it
+            return true;
+        }
         return switch (action) {
             case NAVIGATE_UP, NAVIGATE_DOWN, NAVIGATE_LEFT, NAVIGATE_RIGHT, NEXT, PREVIOUS -> {
                 boolean moved = focus.navigate(action, device);
                 tooltips.focus(focus.focused(), focus.focusVisible());
+                if (dragging != null && dragging.focusDriven() && drag.session() == dragging) {
+                    drag.hover(focus.focused());
+                }
                 yield moved;
             }
             case SUBMIT -> submit(device);
@@ -659,6 +707,19 @@ public final class UiInputRouter {
             }
         }
         return false;
+    }
+
+    /**
+     * Starts a focus-driven drag (a controller or keyboard "pick up" of {@code source}): it is
+     * immediately over the focused element (else the source), focus navigation moves it, Submit
+     * drops it on the acceptor and Cancel cancels it.
+     */
+    public DragSession startDrag(UiElement source, Object payload, InputDevice device) {
+        DragSession s = drag.start(source, payload, device);
+        tooltips.hide();
+        UiElement f = focus.focused();
+        drag.hover(f != null && InputTraits.canReceivePointer(f) ? f : source);
+        return s;
     }
 
     // ── popups ──────────────────────────────────────────────────────────────
@@ -740,7 +801,13 @@ public final class UiInputRouter {
      * screen close also drops focus.
      */
     public void cancelInteractions(CancelReason reason) {
-        drag.cancel(reason);
+        if (reason == CancelReason.SCREEN_CLOSED || reason == CancelReason.DISCONNECT) {
+            drag.abandon(reason); // a late reply to an earlier drop no longer applies
+        } else {
+            drag.cancel(reason);
+        }
+        heldButtons = 0;
+        currentMods = 0;
         if (captured != null) {
             cancelPointer(captured);
             releasePointer();
@@ -846,6 +913,9 @@ public final class UiInputRouter {
     }
 
     private void setHover(UiElement target) {
+        if (sameChain(target, hoverChain)) {
+            return; // the common per-frame case: nothing to restyle, nothing to allocate
+        }
         List<UiElement> next = new ArrayList<>();
         for (UiElement e = target; e != null; e = e.parent()) {
             next.add(e);
@@ -854,7 +924,7 @@ public final class UiInputRouter {
             if (!next.contains(old) && !old.isRemoved()) {
                 old.setState(UiElement.HOVER, false);
                 if (InputTraits.canReceivePointer(old)) {
-                    dispatcher.dispatch(pointer(UiEventType.POINTER_LEAVE, lastX, lastY, -1, 0, 0), old);
+                    dispatcher.dispatch(pointer(UiEventType.POINTER_LEAVE, lastX, lastY, -1, currentMods, 0), old);
                 }
             }
         }
@@ -863,7 +933,7 @@ public final class UiInputRouter {
             if (!hoverChain.contains(e)) {
                 e.setState(UiElement.HOVER, true);
                 if (InputTraits.canReceivePointer(e)) {
-                    dispatcher.dispatch(pointer(UiEventType.POINTER_ENTER, lastX, lastY, -1, 0, 0), e);
+                    dispatcher.dispatch(pointer(UiEventType.POINTER_ENTER, lastX, lastY, -1, currentMods, 0), e);
                 }
             }
         }
@@ -872,6 +942,9 @@ public final class UiInputRouter {
     }
 
     private void setActive(UiElement target) {
+        if (sameChain(target, activeChain)) {
+            return;
+        }
         List<UiElement> next = new ArrayList<>();
         for (UiElement e = target; e != null; e = e.parent()) {
             next.add(e);
@@ -890,12 +963,27 @@ public final class UiInputRouter {
         activeChain.addAll(next);
     }
 
-    private void countClick(UiElement target, float x, float y) {
+    /** Multi-click counting: same element, same button, within the time and distance limits. */
+    /** {@code chain} is exactly {@code target} and its ancestors, none removed. */
+    private static boolean sameChain(UiElement target, List<UiElement> chain) {
+        int i = 0;
+        for (UiElement e = target; e != null; e = e.parent()) {
+            if (i >= chain.size() || chain.get(i) != e || e.isRemoved()) {
+                return false;
+            }
+            i++;
+        }
+        return i == chain.size();
+    }
+
+    private void countClick(UiElement target, int button, float x, float y) {
         float slop = settings.doubleClickDistance() * ui.metrics().scale();
-        boolean again = target == lastDownTarget && time - lastDownTime <= settings.doubleClickTime()
+        boolean again = target == lastDownTarget && button == lastDownButton
+            && time - lastDownTime <= settings.doubleClickTime()
             && Math.abs(x - lastDownX) <= slop && Math.abs(y - lastDownY) <= slop;
         clickCount = again ? clickCount + 1 : 1;
         lastDownTarget = target;
+        lastDownButton = button;
         lastDownTime = time;
         lastDownX = x;
         lastDownY = y;
@@ -937,7 +1025,7 @@ public final class UiInputRouter {
             releasePointer();
             return;
         }
-        dispatcher.dispatch(pointer(UiEventType.POINTER_MOVE, x, y, -1, 0, 0), captured);
+        dispatcher.dispatch(pointer(UiEventType.POINTER_MOVE, x, y, -1, currentMods, 0), captured);
         if (scrollbarDrag != null) {
             float scale = ui.metrics().scale();
             UiElement c = scrollbarDrag.container();
@@ -1007,7 +1095,19 @@ public final class UiInputRouter {
     }
 
     private PointerEvent pointer(UiEventType type, float x, float y, int button, int mods, int clicks) {
-        return new PointerEvent(type, time, x, y, ui.metrics().scale(), button, mods, clicks, InputDevice.MOUSE);
+        return new PointerEvent(type, time, x, y, ui.metrics().scale(), button, mods, clicks, InputDevice.MOUSE,
+            heldButtons);
+    }
+
+    /** GLFW modifier keys: left/right Shift, Control, Alt, Super (340-347). */
+    private static int modifierBit(int key) {
+        return switch (key) {
+            case 340, 344 -> MKeys.MOD_SHIFT;
+            case 341, 345 -> MKeys.MOD_CONTROL;
+            case 342, 346 -> MKeys.MOD_ALT;
+            case 343, 347 -> MKeys.MOD_SUPER;
+            default -> 0;
+        };
     }
 
     TextLineMetrics lineMetrics(UiElement el) {

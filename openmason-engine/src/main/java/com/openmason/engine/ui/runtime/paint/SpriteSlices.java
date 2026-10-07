@@ -15,11 +15,13 @@ import java.util.List;
  * <ul>
  *   <li><b>Device scale.</b> {@code kx}/{@code ky} are device pixels per source pixel: the
  *       sprite's logical size × UI scale ÷ its source size.</li>
- *   <li><b>Pixel-art snapping</b> ({@code snap}, used with nearest sampling): corner scales round
- *       to a whole number of device pixels per source pixel (at least 1), so every source pixel of
- *       a corner covers the same number of device pixels at fractional DPI (1.25×, 1.5×); every
- *       patch edge lands on a whole device pixel, so neighbouring patches never leave a seam or
- *       overlap. Without snapping (linear sampling) geometry is exact.</li>
+ *   <li><b>Pixel-art snapping</b> ({@code snap}, used with nearest sampling): at a device scale of
+ *       1 or more, corner scales round to a whole number of device pixels per source pixel, so
+ *       every source pixel of a corner covers the same number of device pixels at fractional DPI
+ *       (1.25×, 1.5×). Below 1 (a 0.75× UI) there is no whole-pixel mapping: corners keep the exact
+ *       scale (never rounded up to 1, which would draw them larger than the surrounding layout).
+ *       Every patch edge lands on a whole device pixel, so neighbouring patches never leave a seam
+ *       or overlap. Without snapping (linear sampling) geometry is exact.</li>
  *   <li><b>Below the minimum size</b> (the element is narrower than left + right corners, or
  *       shorter than top + bottom): all four corners shrink by one common factor until they fit,
  *       keeping their aspect (CSS border-image rule); edges and the centre get no space. Nothing
@@ -27,9 +29,10 @@ import java.util.List;
  *   <li><b>Edges</b> stretch along their length, or tile at the corner scale; across their depth
  *       they always match the corners. The <b>centre</b> stretches, tiles at the corner scale, or
  *       is hidden.</li>
- *   <li><b>Integer</b> mode draws the largest whole multiple of the source size that fits (at
- *       least 1) and places it by the sprite's pivot; <b>tile</b> repeats from the top-left at the
- *       device scale.</li>
+ *   <li><b>Integer</b> mode draws the largest whole multiple of the source size that fits and
+ *       places it by the sprite's pivot; when not even 1× fits it draws the largest whole fraction
+ *       (½, ⅓ …) that does, so it never overflows its rect. <b>Tile</b> repeats from the top-left
+ *       at the device scale (snapped like corners).</li>
  * </ul>
  */
 public final class SpriteSlices {
@@ -64,7 +67,7 @@ public final class SpriteSlices {
         }
         switch (mode) {
             case INTEGER -> {
-                float k = (float) Math.max(1, Math.floor(Math.min(dst.width() / srcW, dst.height() / srcH)));
+                float k = integerScale(Math.min(dst.width() / srcW, dst.height() / srcH));
                 float w = srcW * k;
                 float h = srcH * k;
                 float x = Math.round(dst.x() + (dst.width() - w) * (float) pivotX);
@@ -72,8 +75,8 @@ public final class SpriteSlices {
                 out.add(new Patch(srcX, srcY, srcW, srcH, x, y, w, h, false, false, 0, 0));
             }
             case TILE -> {
-                float tkx = snap ? Math.max(1, Math.round(kx)) : kx;
-                float tky = snap ? Math.max(1, Math.round(ky)) : ky;
+                float tkx = pixelScale(kx, snap);
+                float tky = pixelScale(ky, snap);
                 out.add(new Patch(srcX, srcY, srcW, srcH, edge(dst.x(), snap), edge(dst.y(), snap),
                         edge(dst.right(), snap) - edge(dst.x(), snap), edge(dst.bottom(), snap) - edge(dst.y(), snap),
                         true, true, tkx, tky));
@@ -88,8 +91,8 @@ public final class SpriteSlices {
 
     private static void nineSlice(List<Patch> out, int srcX, int srcY, int srcW, int srcH, Slice s, Fill edges,
                                   Fill center, UiRect dst, float kx, float ky, boolean snap) {
-        float cx = snap ? Math.max(1, Math.round(kx)) : kx;
-        float cy = snap ? Math.max(1, Math.round(ky)) : ky;
+        float cx = pixelScale(kx, snap);
+        float cy = pixelScale(ky, snap);
         float l = s.left() * cx;
         float r = s.right() * cx;
         float t = s.top() * cy;
@@ -147,6 +150,22 @@ public final class SpriteSlices {
                         tileX ? tileKx : dw / sw, tileY ? tileKy : dh / sh));
             }
         }
+    }
+
+    /** Device px per source px for corners and tiles: whole numbers at 1 or more when snapping, else exact. */
+    static float pixelScale(float k, boolean snap) {
+        return snap && k >= 1 ? Math.round(k) : k;
+    }
+
+    /** The largest whole multiple (or whole fraction, below 1) of the source that fits {@code fit}. */
+    static float integerScale(float fit) {
+        if (!(fit > 0)) {
+            return 0;
+        }
+        if (fit >= 1) {
+            return (float) Math.floor(fit);
+        }
+        return 1f / (float) Math.ceil(1 / fit - 1e-6);
     }
 
     private static float edge(float v, boolean snap) {

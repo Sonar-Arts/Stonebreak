@@ -66,8 +66,12 @@ public class FileMenuHandler {
 
         boolean anyDirty();
 
-        /** Saves every dirty UI document that has (or can derive) a location. */
-        void saveAllInPlace();
+        /**
+         * Saves every dirty UI document that has (or can derive) a location.
+         *
+         * @return one line per document that was not saved (empty when all were)
+         */
+        java.util.List<String> saveAllInPlace();
 
         /** Drops open UI documents without asking (the user chose to discard). */
         void discardAll();
@@ -424,7 +428,7 @@ public class FileMenuHandler {
 
         boolean success = projectService.saveProject(viewport, modelState, uiVisibilityState);
         if (success) {
-            statusService.updateStatus("Project saved: " + projectService.getCurrentProjectName());
+            statusService.updateStatus("Project saved: " + projectService.getCurrentProjectName() + uiSaveSuffix());
             addToRecentProjects(projectService.getCurrentProjectName(), projectService.getCurrentProjectPath());
         } else {
             statusService.updateStatus("Failed to save project");
@@ -449,7 +453,8 @@ public class FileMenuHandler {
             boolean success = projectService.saveProjectAs(filePath, viewport, modelState,
                     uiVisibilityState, null);
             if (success) {
-                statusService.updateStatus("Project saved as: " + projectService.getCurrentProjectName());
+                statusService.updateStatus("Project saved as: " + projectService.getCurrentProjectName()
+                        + uiSaveSuffix());
                 addToRecentProjects(projectService.getCurrentProjectName(), projectService.getCurrentProjectPath());
                 notifyProjectPathChanged();
             } else {
@@ -478,9 +483,17 @@ public class FileMenuHandler {
         if (onSaveOpenScene != null) {
             onSaveOpenScene.run();
         }
-        if (uiHooks != null) {
-            uiHooks.saveAllInPlace();
+        uiSaveFailures = uiHooks != null ? uiHooks.saveAllInPlace() : java.util.List.of();
+    }
+
+    /** UI documents the last project save could not save, shown with its status (never silently). */
+    private java.util.List<String> uiSaveFailures = java.util.List.of();
+
+    private String uiSaveSuffix() {
+        if (uiSaveFailures == null || uiSaveFailures.isEmpty()) {
+            return "";
         }
+        return " - but " + uiSaveFailures.size() + " UI document(s) were NOT saved: " + String.join("; ", uiSaveFailures);
     }
 
     /**

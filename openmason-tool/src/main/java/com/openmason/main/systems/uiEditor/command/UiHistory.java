@@ -2,7 +2,6 @@ package com.openmason.main.systems.uiEditor.command;
 
 import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.format.omui.UiFeatures;
-import com.openmason.engine.format.omui.UiManifest;
 import com.openmason.engine.ui.assets.ProjectFolder;
 import com.openmason.engine.ui.assets.edit.AssetEdit;
 
@@ -11,9 +10,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
-import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
 
 /**
  * Transactional undo/redo for one UI document. Each step is a pair of immutable document
@@ -185,6 +181,16 @@ public final class UiHistory {
         return new Outcome(s.after(), s.selectionAfter(), s.label());
     }
 
+    /**
+     * Earlier document states, newest first: the state before each undo step from the top down
+     * (crash recovery falls back to the newest one that still writes).
+     */
+    public List<OmuiArchive> recentStates() {
+        List<OmuiArchive> out = new ArrayList<>();
+        undo.descendingIterator().forEachRemaining(s -> out.add(s.before()));
+        return out;
+    }
+
     /** The history as it is now, to {@link #rollbackTo} if a run that continues from here fails later. */
     public record Checkpoint(Step top, List<Step> redo) {
     }
@@ -205,6 +211,7 @@ public final class UiHistory {
             return null;
         }
         Step first = null;
+        List<Step> retracted = new ArrayList<>();
         while (!undo.isEmpty() && undo.peekLast() != cp.top()) {
             Step s = undo.removeLast();
             for (int i = s.assetEdits().size() - 1; i >= 0; i--) {
@@ -214,15 +221,38 @@ public final class UiHistory {
                         e.undo(folder);
                     }
                 } catch (IOException ex) {
-                    throw new UiCommandException("Cannot retract " + s.label() + ": " + ex.getMessage(), ex);
+                    // all or nothing: put back what this step and the steps before it reverted, so
+                    // the history and the project files keep describing the same document
+                    reapply(s, i + 1, folder);
+                    undo.addLast(s);
+                    for (int r = retracted.size() - 1; r >= 0; r--) {
+                        reapply(retracted.get(r), 0, folder);
+                        undo.addLast(retracted.get(r));
+                    }
+                    throw new UiCommandException("Cannot retract " + s.label() + " (nothing was retracted): "
+                        + ex.getMessage(), ex);
                 }
             }
+            retracted.add(s);
             first = s;
         }
         redo.clear();
         redo.addAll(cp.redo());
         mergeOpen = false;
         return new Outcome(first.before(), first.selectionBefore(), first.label());
+    }
+
+    /** Re-applies {@code s}'s asset edits from index {@code from} on (best effort; a compensation). */
+    private static void reapply(Step s, int from, ProjectFolder folder) {
+        for (int j = from; j < s.assetEdits().size(); j++) {
+            try {
+                if (!s.assetEdits().get(j).writes().isEmpty()) {
+                    s.assetEdits().get(j).apply(folder);
+                }
+            } catch (IOException ignored) {
+                // reported by the caller's exception
+            }
+        }
     }
 
     /** The current state is now what is on disk. */
@@ -256,14 +286,7 @@ public final class UiHistory {
      * declared them on purpose, and removing one is a separate, explicit edit.
      */
     public static OmuiArchive withRequiredFeatures(OmuiArchive doc) {
-        SortedSet<String> used = UiFeatures.used(doc);
-        UiManifest m = doc.manifest();
-        if (m.requires().containsAll(used)) {
-            return doc;
-        }
-        Set<String> all = new TreeSet<>(m.requires());
-        all.addAll(used);
-        return doc.withManifest(new UiManifest(m.schemaVersion(), m.documentId(), m.kind(), m.displayName(), m.uiApi(),
-            m.layoutSemantics(), List.copyOf(all), m.hostApis(), m.providers(), m.unknown()));
+        return UiFeatures.withInferred(doc); // the writer's own inference: the two can never drift
     }
+
 }

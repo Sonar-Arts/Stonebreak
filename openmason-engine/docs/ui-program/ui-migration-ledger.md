@@ -11,8 +11,16 @@ renderer. Open Mason's own tool UI is out of scope (#282). **Nothing is migrated
   (`<screen>/<case id>` under `stonebreak-game/src/test/resources/ui/fidelity/`), and the test fails if one is missing.
 - `in progress`: a document exists behind the per-screen switch; the baselines still hold.
 - `migrated`: the legacy path is gone. Also needs a `**Gate:**` line naming the test class that runs
-  `ui.fidelity.MigrationGate` for it (document vs legacy capture). See [ui-fidelity.md](ui-fidelity.md).
+  `ui.fidelity.MigrationGate` for it (document vs legacy capture); the test checks that the class really uses
+  `MigrationGate`. See [ui-fidelity.md](ui-fidelity.md).
+- `blocked`: cannot proceed until something else lands. Needs a `**Blocked:**` line naming what (an issue `#nnn` or a
+  missing capability).
+- `retained-bridge`: decided to stay host code, drawn into documents through a host draw provider (or kept outside
+  documents). Needs a `**Decision:**` line saying why and how it is bridged.
 - `n/a`: not a legacy surface.
+
+The coverage guard counts a class only when the summary table or a `### row` names it: a mention in the cross-cutting
+notes, hard visuals or known gaps is not a row.
 
 Paths are relative to `stonebreak-game/src/main/java/com/stonebreak/` unless they start with a module name.
 Abbreviations:
@@ -886,6 +894,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 ### debug-overlay
 - **Kind:** overlay (F3).
 - **Owner:** `com.stonebreak.ui.DebugOverlay` (`core/bootstrap/GameBootstrap.java:60`) with `ui.debug.{DebugInfoPanel, RamPanel, VramPanel, DebugDiagnostics, DebugFormat, GpuInfoProbe}`.
+  - Cards share the `ui.debug.DebugPanel` base; `ui.debug.UiBudgetPanel` (#296) is the "UI Documents" card listing every live document's budget snapshot from `GameUiDiagnostics`.
   - Toggled by `GameDiagnostics.toggleDebugOverlay`.
   - Hidden on entering SETTINGS (GSC:114-119) and in `WorldLifecycle` (:85-89).
 - **Entry:**
@@ -967,7 +976,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 
 ### effect-underwater-tint
 - **Kind:** effect.
-- **Owner:** `UnderwaterOverlayRenderer`, held by OR (OR:32-34). Updated **and** rendered in `OR.renderUnderwaterOverlay` (OR:138-148) at FR:158, before the HUD, in non-battle in-game states (PAUSED included).
+- **Owner:** `UnderwaterOverlayRenderer`, held by OR (`rendering.UI.components.OverlayRenderer`, OR:32-34). Updated **and** rendered in `OR.renderUnderwaterOverlay` (OR:138-148) at FR:158, before the HUD, in non-battle in-game states (PAUSED included).
 - **Draw:** legacy immediate-mode GL (Hard visuals #10). RGB (0, 0.4, 0.8) at 0.3, fading 3 alpha/s, keyed on `player.isInWater()`.
 - **Time:** `game.getDeltaTime()` from the render path.
 - **Fixtures:** none.

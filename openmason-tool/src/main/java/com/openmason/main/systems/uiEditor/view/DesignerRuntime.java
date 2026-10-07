@@ -74,6 +74,8 @@ public final class DesignerRuntime implements AutoCloseable {
     private double sinceWatch;
     private boolean assetsStale;
     private final Map<Path, String> watched = new HashMap<>();
+    /** Project paths where currently unresolved shared rows would be found. */
+    private final Set<Path> unresolvedPaths = new HashSet<>();
     private java.util.function.Consumer<List<Path>> onFilesChanged;
     private MasonryPreview.Frame lastFrame;
 
@@ -81,7 +83,8 @@ public final class DesignerRuntime implements AutoCloseable {
         this.doc = doc;
         this.project = project;
         this.typeface = typeface;
-        this.preview = new MasonryPreview(typeface, MasonryPreview.Path.GPU);
+        // one Skia context for all open documents (one glyph atlas and resource cache), not one each
+        this.preview = new MasonryPreview(typeface, MasonryPreview.Path.GPU, true);
     }
 
     public Mode mode() {
@@ -210,8 +213,10 @@ public final class DesignerRuntime implements AutoCloseable {
             return java.util.Set.of();
         }
         var refresh = assets.refresh();
-        if (refresh.any()) {
-            assetsStale = true;
+        boolean appeared = unresolvedPaths.stream().anyMatch(Files::isRegularFile);
+        unresolvedPaths.clear();
+        if (refresh.any() || appeared) {
+            assetsStale = true; // a row that resolved nowhere may resolve now: rebuild the view
             builtRevision = -1;
         }
         return refresh.staleTextureKeys();
@@ -247,20 +252,35 @@ public final class DesignerRuntime implements AutoCloseable {
         }
         sinceWatch = 0;
         List<Path> changed = new ArrayList<>();
+        Set<String> resolvedIds = new HashSet<>();
         for (var a : assets.resolvedAssets()) {
+            resolvedIds.add(a.id());
             if (a.origin() != com.openmason.engine.ui.assets.AssetOrigin.PROJECT) {
                 continue;
             }
-            Path file = root.resolve(a.location());
-            String stamp;
-            try {
-                stamp = Files.getLastModifiedTime(file).toMillis() + ":" + Files.size(file);
-            } catch (java.io.IOException e) {
-                stamp = "missing";
-            }
-            String before = watched.put(file, stamp);
-            if (before != null && !before.equals(stamp)) {
-                changed.add(file);
+            watch(root.resolve(a.location()), changed);
+        }
+        // shared rows that resolve nowhere yet: watch where the project would find them, so a file
+        // that appears outside the editor (a git checkout, a copy) shows up without a reopen
+        var projectSource = project.projectSource();
+        if (projectSource != null) {
+            for (var row : doc.archive().dependencies().entries()) {
+                if (row.mode() != com.openmason.engine.format.omui.UiDependency.Mode.SHARED
+                        || resolvedIds.contains(row.id())) {
+                    continue;
+                }
+                List<String> candidates = new ArrayList<>();
+                if (row.sourceHint() != null) {
+                    candidates.add(row.sourceHint());
+                }
+                candidates.addAll(projectSource.conventionCandidates(row.id(), row.kind()));
+                for (String rel : candidates) {
+                    Path file = root.resolve(rel).normalize();
+                    if (file.startsWith(root)) {
+                        unresolvedPaths.add(file);
+                        watch(file, changed);
+                    }
+                }
             }
         }
         if (!changed.isEmpty() && onFilesChanged != null) {
@@ -268,6 +288,25 @@ public final class DesignerRuntime implements AutoCloseable {
         }
     }
 
+    /** Records {@code file}'s stamp; a change since the last poll (incl. missing -> present) is reported. */
+    private void watch(Path file, List<Path> changed) {
+        String stamp;
+        try {
+            stamp = Files.getLastModifiedTime(file).toMillis() + ":" + Files.size(file);
+        } catch (java.io.IOException e) {
+            stamp = "missing";
+        }
+        String before = watched.put(file, stamp);
+        if (before != null && !before.equals(stamp)) {
+            changed.add(file);
+        }
+    }
+
+    /**
+     * Preview data: the document's {@code <file>.fixture.json} sidecar, else its archive fixture,
+     * else (a screen written against the game's host contracts) the game's canonical fixture, so
+     * the preview binds the same roots and shapes the game host serves (C15).
+     */
     private FixtureHost fixtures(OmuiArchive a) throws java.io.IOException {
         Path file = doc.file();
         if (file != null) {
@@ -276,7 +315,15 @@ public final class DesignerRuntime implements AutoCloseable {
                 return FixtureHost.parse(Files.readAllBytes(sidecar), sidecar.getFileName().toString(), a.manifest());
             }
         }
+        if (a.editor().get(FixtureHost.ARCHIVE_ENTRY) == null && usesGameHost(a)) {
+            return FixtureHost.parse(com.stonebreak.ui.runtime.GameUiHost.fixtureJson(),
+                com.stonebreak.ui.runtime.GameUiHost.FIXTURE_RESOURCE, a.manifest());
+        }
         return FixtureHost.forArchive(a);
+    }
+
+    private static boolean usesGameHost(OmuiArchive a) {
+        return a.manifest().hostApis().stream().anyMatch(h -> h.id().startsWith("stonebreak:"));
     }
 
     private UiScriptServices services() {

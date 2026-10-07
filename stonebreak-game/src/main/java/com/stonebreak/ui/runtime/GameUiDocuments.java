@@ -6,6 +6,7 @@ import com.openmason.engine.format.sbui.SbuiArchive;
 import com.openmason.engine.format.sbui.SbuiReader;
 import com.openmason.engine.ui.assets.AssetResolver;
 import com.openmason.engine.ui.assets.AssetSource;
+import com.openmason.engine.ui.assets.HostCompatibility;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.anim.UiClocks;
@@ -32,6 +33,8 @@ import com.openmason.engine.ui.script.UiScriptRuntime;
 import com.openmason.engine.ui.script.UiScriptServices;
 import com.openmason.engine.ui.script.UiScripts;
 import com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry;
+import com.stonebreak.ui.runtime.screens.DocumentScreenPolicy;
+import com.stonebreak.ui.runtime.screens.UiLayer;
 import io.github.humbleui.skija.Typeface;
 
 import java.io.IOException;
@@ -46,8 +49,11 @@ import java.util.function.Supplier;
  * preview also uses (built-in widgets, #285 asset resolution, the game's texture cache, the
  * Masonry font measurer) and paints through the game's Skija backend.
  *
- * <p>Screens migrate onto this in #297 onward. Until then the {@link DevDocumentOverlay} shows a
- * document over any game state for comparison with the editor preview.
+ * <p>Screens migrate onto this in #297 onward through
+ * {@link com.stonebreak.ui.runtime.screens.DocumentScreenHost}, which opens shipped exports with
+ * {@link #openScreen} ({@link #openBound}: activation, asset and input gates). The
+ * {@link DevDocumentOverlay} shows any document over every game state for comparison with the
+ * editor preview.
  */
 public final class GameUiDocuments {
 
@@ -87,7 +93,7 @@ public final class GameUiDocuments {
 
     /** Reads {@code .sbui} or {@code .omui} from disk. */
     public static UiDocumentView open(Path file, Supplier<Typeface> typeface) throws IOException {
-        return open(read(file), typeface, Map.of());
+        return open(read(file), typeface, GameUiProviders.all());
     }
 
     /** The editable tree of a {@code .sbui} (its embedded source) or {@code .omui} file. */
@@ -129,32 +135,126 @@ public final class GameUiDocuments {
     // ── host bindings (#289) ────────────────────────────────────────────────
 
     /**
-     * Opens an exported screen bound to {@code host}, after its activation gate: a required host
-     * contract, provider, feature or data root the host lacks refuses the screen before anything
-     * is instantiated, so the caller keeps the legacy screen instead of showing a broken one. Its
-     * Lua code-behind (#292) and behavior graphs (#291, from the SBUI's {@code derived/} Lua while it
-     * is current) are loaded and opened; {@code view.frame(dt)} drives them per frame.
+     * Opens an exported screen bound to {@code host} in the {@link UiLayer#SCREEN} layer. See
+     * {@link #openBound(SbuiArchive, Map, Supplier, Map, UiHost, UiConverters, UiScriptServices, UiLayer)}.
+     */
+    public static UiDocumentView openBound(SbuiArchive sbui, Map<String, Path> packs, Supplier<Typeface> typeface,
+                                           Map<String, UiPaintHost.UiDrawProvider> providers, UiHost host,
+                                           UiConverters converters, UiScriptServices services) throws IOException {
+        return openBound(sbui, packs, typeface, providers, host, converters, services, UiLayer.SCREEN);
+    }
+
+    /**
+     * Opens an exported screen bound to {@code host}: the production path every migrated screen
+     * takes (#297 onward, C9). The screen is refused, before anything runs, when
+     * <ul>
+     *   <li>its activation gate fails: a required host contract, provider, feature or data root
+     *       the host lacks ({@link UiActivation});</li>
+     *   <li>a required dependency does not resolve, or the export does not fit the game's host
+     *       profile ({@link HostCompatibility}): no blank textures at runtime;</li>
+     *   <li>its input gate fails: an input need the game window cannot meet ({@link #requireInputGate}).</li>
+     * </ul>
+     * The caller keeps the legacy screen instead of showing a broken one. Its Lua code-behind (#292)
+     * and behavior graphs (#291, from the SBUI's {@code derived/} Lua while it is current) are loaded
+     * and opened, and the view joins the game window's input stack ({@link GameUiInput}) in
+     * {@code layer}; close it with {@link #close}. {@code view.frame(dt)} drives it per frame.
      *
      * @param converters Java converters for names no script declares, or null
-     * @throws UiActivationException listing every unmet need
+     * @throws UiActivationException listing every unmet activation or asset need
+     * @throws IllegalStateException when the input gate blocks the screen
      * @throws com.openmason.engine.cenda.CendaLuaUnavailableException when the screen has
      *         code-behind and the Lua host cannot load
      */
     public static UiDocumentView openBound(SbuiArchive sbui, Map<String, Path> packs, Supplier<Typeface> typeface,
                                            Map<String, UiPaintHost.UiDrawProvider> providers, UiHost host,
-                                           UiConverters converters, UiScriptServices services) throws IOException {
+                                           UiConverters converters, UiScriptServices services, UiLayer layer)
+            throws IOException {
+        return openBound(sbui, packs, typeface, providers, host, converters, services, layer, false);
+    }
+
+    /**
+     * As above; {@code firstParty} marks an export the game itself ships (a classpath
+     * {@code ui/documents/} screen): its {@code derived/} graph Lua is trusted as built by the
+     * editor. Documents from anywhere else have their graphs compiled at load (#292 review).
+     */
+    static UiDocumentView openBound(SbuiArchive sbui, Map<String, Path> packs, Supplier<Typeface> typeface,
+                                    Map<String, UiPaintHost.UiDrawProvider> providers, UiHost host,
+                                    UiConverters converters, UiScriptServices services, UiLayer layer,
+                                    boolean firstParty) throws IOException {
         List<AssetSource> sources = GameUiAssets.sources(packs);
         ResolvedUiAssets assets = new ResolvedUiAssets(AssetResolver.forExport(sbui, sources), sources,
             MTextureRegistry.cache()).withDerived(sbui); // graph Lua compiled at export (#291)
         UiActivation.require(sbui, assets, host);
+        requireAssets(sbui, host, sources);
+        List<UiDiagnostic> unresolved = assets.check().stream().filter(UiDiagnostic::isError).toList();
+        if (!unresolved.isEmpty()) { // resolution through the runtime's own tables (fallbacks, hashes)
+            throw new UiActivationException(sbui.source().manifest().documentId(), unresolved);
+        }
         UiDocumentView view = view(sbui.source(), assets, typeface, providers);
         try {
-            scripts(view, host, converters, services);
+            requireInputGate(view, Locale.getDefault());
+            UiScriptOptions options = budgets(view, layer).scriptOptions();
+            scripts(view, host, converters, services, firstParty ? options.withTrustedDerivedGraphs(true) : options);
+            GameUiInput.get().open(view, layer);
             return view;
         } catch (RuntimeException e) {
             view.close();
             throw e;
         }
+    }
+
+    /**
+     * Refuses an export whose required dependencies do not resolve here or that does not fit the
+     * host's profile: a missing texture would otherwise draw nothing, silently (#285 review).
+     */
+    static void requireAssets(SbuiArchive sbui, UiHost host, List<AssetSource> sources) {
+        HostCompatibility compat = HostCompatibility.check(sbui, host.profile(), sources);
+        if (!compat.runnable()) {
+            List<UiDiagnostic> all = new java.util.ArrayList<>(compat.host());
+            all.addAll(compat.assets());
+            throw new UiActivationException(sbui.source().manifest().documentId(), all);
+        }
+    }
+
+    /** Takes {@code view} out of the input stack and closes it (scripts, bindings and monitor with it). */
+    public static void close(UiDocumentView view) {
+        GameUiInput.get().close(view);
+        view.close();
+    }
+
+    /**
+     * Opens the shipped screen {@code id} ({@code ui/documents/<id>.sbui} on the game classpath,
+     * C14) bound to the game's host through {@link #openBound}.
+     *
+     * @throws java.io.FileNotFoundException when the game ships no such screen
+     */
+    public static UiDocumentView openScreen(String id, Supplier<Typeface> typeface, UiScriptServices services,
+                                            UiLayer layer) throws IOException {
+        UiDocumentView view = openBound(readScreen(id), Map.of(), typeface, GameUiProviders.all(),
+            GameUiHost.get().host(), null, services, layer, true);
+        monitor(view, id, layer);
+        return view;
+    }
+
+    /**
+     * The runtime budgets of {@code view} in {@code layer}: HUD-layer documents run every gameplay
+     * frame and get the tighter {@link UiBudgets#HUD} (#296 review).
+     */
+    static UiBudgets budgets(UiDocumentView view, UiLayer layer) {
+        return UiBudgets.forDocument(view.instance().document(), layer == UiLayer.HUD);
+    }
+
+    /** The shipped export of screen {@code id}, read with the runtime's stale-cache policy. */
+    public static SbuiArchive readScreen(String id) throws IOException {
+        String path = DocumentScreenPolicy.resourcePath(id);
+        byte[] bytes;
+        try (java.io.InputStream in = GameUiDocuments.class.getResourceAsStream("/" + path)) {
+            if (in == null) {
+                throw new java.io.FileNotFoundException("no shipped UI document " + path);
+            }
+            bytes = in.readAllBytes();
+        }
+        return SbuiReader.read(bytes, SbuiReader.Options.RUNTIME).archive();
     }
 
     /**
@@ -183,7 +283,12 @@ public final class GameUiDocuments {
      * frame is not charged with loading the code-behind. It closes with the view.
      */
     public static UiFrameMonitor monitor(UiDocumentView view, String name) {
-        UiFrameMonitor m = UiFrameMonitor.attach(view);
+        return monitor(view, name, UiLayer.OVERLAY);
+    }
+
+    /** As {@link #monitor(UiDocumentView, String)} with the budgets of {@code layer} (HUD: every gameplay frame). */
+    public static UiFrameMonitor monitor(UiDocumentView view, String name, UiLayer layer) {
+        UiFrameMonitor m = UiFrameMonitor.attach(view, budgets(view, layer));
         GameUiDiagnostics.register(name, m);
         return m;
     }
@@ -237,10 +342,19 @@ public final class GameUiDocuments {
      * @param gameRunning false while gameplay is paused or not in a world
      */
     public static void frame(UiDocumentView view, double dt, boolean gameRunning) {
-        if (gameRunning) {
-            view.instance().clocks().advance(UiClocks.GAME, dt);
+        frame(view, dt, gameRunning ? dt : 0);
+    }
+
+    /**
+     * One host frame with separate clocks: {@code uiDt} for the {@code ui} clock and scripts,
+     * {@code gameDt} (simulation time stepped this frame, {@link UiFrameClock#gameDt()}) for the
+     * {@code game} clock.
+     */
+    public static void frame(UiDocumentView view, double uiDt, double gameDt) {
+        if (gameDt > 0) {
+            view.instance().clocks().advance(UiClocks.GAME, gameDt);
         }
-        view.frame(dt);
+        view.frame(uiDt);
     }
 
     /** True while gameplay advances (in a world and not paused): what {@link #frame}'s game clock follows. */
@@ -250,16 +364,26 @@ public final class GameUiDocuments {
     }
 
     /**
-     * Paints {@code view} as one Masonry frame over whatever is on screen.
+     * Paints {@code view} as one Masonry frame over whatever is on screen: layout, then the draw
+     * providers' GL phase (item icons, model previews render into their textures) outside the
+     * Skia frame, then the paint inside it.
+     *
+     * <p>UI space is framebuffer pixels: {@code width}/{@code height} are the framebuffer size
+     * ({@code GameWindow.width()}, from {@code glfwGetFramebufferSize}) and pointer input arrives in
+     * the same space ({@code GameWindow.toUiX}), so layout and hit-testing agree on HiDPI
+     * displays. The pixel ratio stays 1, as for every legacy Skija screen: the player's UI scale
+     * setting is the only magnification, so documents match the legacy screens they replace.
      *
      * @param masonry a per-view Masonry handle on the game backend
      */
     public static void render(UiDocumentView view, MasonryUI masonry, int width, int height, float uiScale) {
+        view.layout(width, height, uiScale, 1f);
+        view.prepareProviders();
         if (!masonry.beginFrame(width, height, 1f)) {
             return;
         }
         try {
-            view.render(masonry, width, height, uiScale, 1f);
+            view.paint(masonry);
         } finally {
             masonry.endFrame();
         }

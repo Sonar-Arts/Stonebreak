@@ -65,6 +65,7 @@ public final class UiBinder implements AutoCloseable {
     private final Map<UiElement, VarFeed> params = new IdentityHashMap<>();
     private final Map<UiElement, VarFeed> rowItems = new IdentityHashMap<>();
     private final Set<UiElement> spacers = Collections.newSetFromMap(new IdentityHashMap<>());
+    private java.util.function.BiConsumer<UiElement, UiElement> recycleListener = (a, b) -> { };
     private boolean closed;
 
     private UiBinder(UiDocumentInstance ui, UiScope scope, boolean ownsScope, UiConverters converters) {
@@ -84,8 +85,9 @@ public final class UiBinder implements AutoCloseable {
      */
     public static UiBinder open(UiDocumentInstance ui, UiHost host, UiConverters converters) {
         UiManifest m = ui.document().manifest();
-        Set<String> declared = m.hostApis().stream().map(UiManifest.HostRequirement::id).collect(Collectors.toSet());
-        UiScope scope = host.openScope(m.documentId(), declared, p -> ui.reportDiagnostic(diagnostic(p)));
+        Map<String, Integer> declared = m.hostApis().stream()
+            .collect(Collectors.toMap(UiManifest.HostRequirement::id, UiManifest.HostRequirement::version, Math::max));
+        UiScope scope = host.openScopeAt(m.documentId(), declared, p -> ui.reportDiagnostic(diagnostic(p)));
         try {
             return new UiBinder(ui, scope, true, converters);
         } catch (RuntimeException e) {
@@ -167,12 +169,16 @@ public final class UiBinder implements AutoCloseable {
         return scope.edits().applyAll(scope.site(elementKey, CallSite.Origin.BINDING));
     }
 
-    /** Rollback: drops the draft and every edit in progress; bound elements show committed values. */
+    /**
+     * Rollback: drops the draft and every edit in progress; bound elements show committed values.
+     * A {@code to-source} target has no value of its own to fall back to, so its local edit is
+     * dropped and the authored value shows again.
+     */
     public void revertEdits() {
         scope.edits().cancel();
         for (Bound b : bound.values()) {
             for (TargetBinding t : b.targets) {
-                if (t.mode() == UiNode.BindingMode.TWO_WAY) {
+                if (t.mode() == UiNode.BindingMode.TWO_WAY || t.mode() == UiNode.BindingMode.TO_SOURCE) {
                     t.revertLocal();
                 }
             }
@@ -338,6 +344,49 @@ public final class UiBinder implements AutoCloseable {
 
     private boolean isSpacer(UiElement el) {
         return spacers.contains(el);
+    }
+
+    /**
+     * Called with {@code (row, replacement)} when a virtualized list gives {@code row} another item
+     * or drops it while scrolling: {@code replacement} is the row now showing the item {@code row}
+     * showed, or {@code null} when that item is no longer realized. A view wires the input
+     * router's {@code FocusManager.recycled} here, so focus follows the item.
+     */
+    public void onRecycled(java.util.function.BiConsumer<UiElement, UiElement> listener) {
+        this.recycleListener = Objects.requireNonNull(listener, "listener");
+    }
+
+    /** A recycled row starts clean: local (script/edit) values of its subtree belong to its old item. */
+    void recycled(UiElement row) {
+        clearLocal(row, true);
+    }
+
+    private void clearLocal(UiElement el, boolean isRow) {
+        for (String target : el.localTargets()) {
+            if (isRow && isRowLayout(target)) {
+                continue; // the list's own sizing of the row
+            }
+            access.clearLocal(el, target);
+        }
+        el.setState(UiElement.INVALID, false);
+        for (UiElement c : el.children()) {
+            clearLocal(c, false);
+        }
+    }
+
+    private static boolean isRowLayout(String target) {
+        return switch (target) {
+            case "style:height", "style:width", "style:flex-shrink" -> true;
+            default -> false;
+        };
+    }
+
+    void recycledAway(UiElement row, UiElement replacement) {
+        try {
+            recycleListener.accept(row, replacement);
+        } catch (RuntimeException e) {
+            report(UiRuntimeDiagnostic.warning(Code.ACTION_CALLBACK_FAILED, row.key(), "recycle listener: " + e));
+        }
     }
 
     void dropRow(UiElement row) {

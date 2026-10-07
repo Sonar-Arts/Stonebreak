@@ -5,21 +5,18 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.player.Player;
 
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_1;
-import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
-import static org.lwjgl.glfw.GLFW.glfwGetKey;
 
 /**
- * Tracks the desired hotbar slot and applies it to the player's inventory,
- * driven by the number keys (1–9) and scroll-wheel cycling.
+ * Applies hotbar selection to the player's inventory, driven by the number keys (1–9) and
+ * scroll-wheel cycling. The inventory's selected index is the one source of truth: UI documents
+ * select slots too ({@code stonebreak:hotbar.select}), so cycling always starts from it.
  */
 final class HotbarSelector {
-
-    private int selectedIndex = 0;
 
     /** Polls number keys 1–9 and selects the matching slot. PLAYING-state gating is the caller's job. */
     void pollNumberKeys(long window) {
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
-            if (glfwGetKey(window, GLFW_KEY_1 + i) == GLFW_PRESS) {
+            if (PolledKeys.isDown(window, GLFW_KEY_1 + i)) {
                 select(i);
             }
         }
@@ -27,23 +24,29 @@ final class HotbarSelector {
 
     /** Cycles the selection by one slot: positive offset = next, negative = previous. */
     void cycle(double yOffset) {
-        int newIndex = selectedIndex;
+        int current = current();
+        int newIndex = current;
         if (yOffset > 0) {
-            newIndex = (selectedIndex + 1) % Inventory.HOTBAR_SIZE;
+            newIndex = (current + 1) % Inventory.HOTBAR_SIZE;
         } else if (yOffset < 0) {
-            newIndex = (selectedIndex - 1 + Inventory.HOTBAR_SIZE) % Inventory.HOTBAR_SIZE;
+            newIndex = (current - 1 + Inventory.HOTBAR_SIZE) % Inventory.HOTBAR_SIZE;
         }
         select(newIndex);
+    }
+
+    private static int current() {
+        Player player = Game.getPlayer();
+        Inventory inventory = player == null ? null : player.getInventory();
+        return inventory == null ? 0 : inventory.getSelectedHotbarSlotIndex();
     }
 
     private void select(int index) {
         if (index < 0 || index >= Inventory.HOTBAR_SIZE) {
             return;
         }
-        selectedIndex = index;
         Player player = Game.getPlayer();
         if (player != null && player.getInventory() != null) {
-            player.getInventory().setSelectedHotbarSlotIndex(selectedIndex);
+            player.getInventory().setSelectedHotbarSlotIndex(index);
         }
     }
 }

@@ -210,13 +210,28 @@ public final class UiAutomation {
         return r.document();
     }
 
-    /** Closes a document; a dirty one only with {@code discard}. */
-    public void close(UiEditorDocument d, boolean discard) {
-        if (d.isDirty() && !discard) {
+    /**
+     * Closes a document; a dirty one only with {@code discard}. Discarding never destroys the
+     * author's work: the unsaved state stays in a crash-recovery slot the author can restore.
+     *
+     * @return true when unsaved changes were moved to crash recovery
+     */
+    public boolean close(UiEditorDocument d, boolean discard) {
+        boolean dirty = d.isDirty() || ctx.hasPendingEdits(d);
+        if (dirty && !discard) {
             throw new IllegalStateException("'" + d.title() + "' has unsaved changes: ui_save it first, or pass"
-                + " discard:true to drop them");
+                + " discard:true to close it (the changes stay in crash recovery for the author)");
+        }
+        if (dirty) {
+            ctx.flushPendingEdits(d);
+            if (!ctx.service.closeKeepingRecovery(d)) {
+                throw new IllegalStateException("'" + d.title() + "' was not closed: its unsaved changes could not"
+                    + " be kept in crash recovery (see the log); save or close it in the editor");
+            }
+            return true;
         }
         ctx.service.close(d);
+        return false;
     }
 
     public void activate(UiEditorDocument d) {
@@ -347,6 +362,11 @@ public final class UiAutomation {
             public com.openmason.engine.format.omui.OmuiArchive archive(String id) {
                 return ctx.project.componentArchive(id);
             }
+
+            @Override
+            public com.openmason.main.systems.uiEditor.service.UiProjectContext project() {
+                return ctx.project;
+            }
         };
     }
 
@@ -377,8 +397,17 @@ public final class UiAutomation {
 
     /** Writes {@code d} to {@code target} (it becomes the document's file); throws with the reason. */
     public void saveTo(UiEditorDocument d, Path target) {
+        saveTo(d, target, true);
+    }
+
+    /**
+     * As {@link #saveTo(UiEditorDocument, Path)}; without {@code overwriteExternal} a re-save
+     * of the document's own file refuses when someone changed that file on disk meanwhile.
+     */
+    public void saveTo(UiEditorDocument d, Path target, boolean overwriteExternal) {
         requireSavable(d);
-        String err = ctx.service.saveAs(d, target);
+        ctx.flushPendingEdits(d);
+        String err = ctx.service.saveAs(d, target, overwriteExternal);
         if (err != null) {
             throw new IllegalStateException(err);
         }

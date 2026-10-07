@@ -6,7 +6,6 @@ import com.openmason.engine.format.omui.OmuiValidator;
 import com.openmason.engine.format.omui.OmuiWriter;
 import com.openmason.engine.format.omui.UiDiagnostic;
 import com.openmason.engine.format.omui.UiFeatures;
-import com.openmason.engine.format.omui.UiFormatException;
 import com.openmason.engine.format.omui.UiManifest;
 import com.openmason.engine.format.omui.UiNode;
 import com.openmason.engine.format.omui.UiStyleSheet;
@@ -38,7 +37,6 @@ import static com.openmason.engine.ui.runtime.UiDocs.screen;
 import static com.openmason.engine.ui.runtime.UiDocs.sheet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -69,7 +67,7 @@ class AccessibilityMetadataTest {
     }
 
     @Test
-    void inputMetadataNeedsTheFeatureDeclared() {
+    void inputMetadataNeedsTheFeatureDeclared() throws Exception {
         List<UiDiagnostic> problems = OmuiValidator.validate(dialog(false));
         List<String> pointers = new ArrayList<>();
         for (UiDiagnostic d : problems) {
@@ -80,7 +78,9 @@ class AccessibilityMetadataTest {
         assertTrue(pointers.contains("/root/children/0/props/focusScope"), pointers.toString());
         assertTrue(pointers.contains("/root/children/0/children/1/type"), "TextField is a ui-input widget");
         assertTrue(pointers.contains("/rules/0/selector"), ":focus-visible needs the feature");
-        assertThrows(UiFormatException.class, () -> OmuiWriter.write(dialog(false)), "the writer refuses");
+        // The writer infers the feature (#282 hardening) rather than refusing: the saved bytes declare it.
+        assertTrue(OmuiReader.read(OmuiWriter.write(dialog(false))).archive().manifest().requires()
+            .contains(UiFeatures.INPUT), "the writer declares what the document uses");
         assertTrue(OmuiValidator.validate(dialog(true)).stream().noneMatch(UiDiagnostic::isError));
     }
 

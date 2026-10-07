@@ -175,9 +175,20 @@ public record AnimProperty(String target, Interp interp, boolean motion, boolean
         return hex(StyleValues.color(color, 0) & 0x00FFFFFF);
     }
 
-    private static UiValue hex(int argb) {
-        return UiValue.of(String.format("#%02X%02X%02X%02X", (argb >>> 16) & 0xFF, (argb >>> 8) & 0xFF, argb & 0xFF,
-            argb >>> 24));
+    private static final char[] HEX = "0123456789ABCDEF".toCharArray();
+    /** R, G, B, A byte positions in ARGB. */
+    private static final int[] HEX_SHIFTS = {16, 8, 0, 24};
+
+    /** {@code #RRGGBBAA} without {@code String.format} (sampled every frame of a colour animation). */
+    static UiValue hex(int argb) {
+        char[] c = new char[9];
+        c[0] = '#';
+        for (int i = 0; i < 4; i++) {
+            int b = (argb >>> HEX_SHIFTS[i]) & 0xFF;
+            c[1 + i * 2] = HEX[b >>> 4];
+            c[2 + i * 2] = HEX[b & 0xF];
+        }
+        return UiValue.of(new String(c));
     }
 
     /** The value a key track of this channel shows at clip time {@code t}, exactly as playback samples it. */

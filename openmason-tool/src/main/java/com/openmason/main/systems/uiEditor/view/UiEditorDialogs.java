@@ -55,6 +55,10 @@ final class UiEditorDialogs {
     private final ImString exportPath = new ImString(1024);
     private final ImInt exportMode = new ImInt(0);
     private UiDocumentService.ExportResult exportResult;
+    /** A planned deploy waiting for the author to confirm replacing existing game files. */
+    private com.openmason.main.systems.uiEditor.service.UiGameDeploy.Plan deployPlan;
+    private String deployMessage;
+    private boolean deployFailed;
     // recovery
     private boolean openRecover;
     private List<UiRecoveryService.Slot> slots = List.of();
@@ -103,6 +107,8 @@ final class UiEditorDialogs {
         exportDoc = doc;
         exportPath.set(ctx.service.defaultExportTarget(doc).toString());
         exportResult = null;
+        deployPlan = null;
+        deployMessage = null;
         openExport = true;
     }
 
@@ -344,7 +350,9 @@ final class UiEditorDialogs {
                 }
             }
             ImGui.endChild();
+            hostCheck(exportResult.hostCheck());
         }
+        deploySection();
         ModalDialogs.buttonsBegin();
         if (ModalDialogs.primary("Export", !exportPath.get().isBlank())) {
             Path target = Path.of(exportPath.get().trim());
@@ -359,6 +367,96 @@ final class UiEditorDialogs {
             ModalDialogs.close();
         }
         ModalDialogs.end();
+    }
+
+    /** What the real game host says about the export (C15): the gates openBound runs. */
+    private static void hostCheck(com.openmason.main.systems.uiEditor.service.UiGameDeploy.HostCheck check) {
+        if (check == null) {
+            return;
+        }
+        List<String> lines = check.lines();
+        if (check.runnable() && lines.isEmpty()) {
+            ThemeColors.push(imgui.flag.ImGuiCol.Text, ThemeColors.Tone.SUCCESS);
+            ImGui.textWrapped("Game host: the game would open this screen.");
+            ImGui.popStyleColor();
+            return;
+        }
+        ThemeColors.push(imgui.flag.ImGuiCol.Text, check.runnable() ? ThemeColors.Tone.WARNING : ThemeColors.Tone.ERROR);
+        ImGui.textWrapped(check.runnable() ? "Game host: opens, with warnings:"
+            : "Game host: the game would REFUSE this screen:");
+        ImGui.popStyleColor();
+        for (String l : lines) {
+            ImGui.bulletText(l);
+        }
+    }
+
+    /** Deploy to the game (C14): ui/documents/<screen>.sbui + shared project assets under ui/shared/. */
+    private void deploySection() {
+        ImGui.separator();
+        ImGui.textDisabled("Deploy writes the screen and its shared project assets into the game's resources.");
+        if (deployMessage != null) {
+            ThemeColors.push(imgui.flag.ImGuiCol.Text, deployFailed ? ThemeColors.Tone.ERROR : ThemeColors.Tone.SUCCESS);
+            ImGui.textWrapped(deployMessage);
+            ImGui.popStyleColor();
+        }
+        ExportMode mode = exportMode.get() == 0 ? ExportMode.SHARED : ExportMode.COLLECT_ALL;
+        if (deployPlan != null && !deployPlan.conflicts().isEmpty()) {
+            ThemeColors.push(imgui.flag.ImGuiCol.Text, ThemeColors.Tone.WARNING);
+            ImGui.textWrapped("These game files exist with different content and would be replaced:");
+            ImGui.popStyleColor();
+            for (var f : deployPlan.conflicts()) {
+                ImGui.bulletText(f.target().toString());
+            }
+            if (ImGui.button("Replace and Deploy")) {
+                runDeploy(deployPlan, true);
+            }
+            ImGui.sameLine();
+            if (ImGui.button("Keep the game's files")) {
+                deployPlan = null;
+                deployMessage = "Not deployed";
+                deployFailed = false;
+            }
+            return;
+        }
+        if (ImGui.button("Deploy to Game")) {
+            java.nio.file.Path game = com.openmason.main.systems.menus.dialogs.GameResourceDirs.resourcesRoot();
+            if (game == null) {
+                deployMessage = "The game's resource folder was not found next to the tool";
+                deployFailed = true;
+                return;
+            }
+            try {
+                deployPlan = ctx.service.planDeploy(exportDoc, mode, game);
+                if (!deployPlan.check().runnable()) {
+                    deployMessage = "Not deployed: the game would refuse this screen ("
+                        + String.join("; ", deployPlan.check().lines()) + ")";
+                    deployFailed = true;
+                    deployPlan = null;
+                } else if (deployPlan.conflicts().isEmpty()) {
+                    runDeploy(deployPlan, false);
+                }
+            } catch (com.openmason.engine.format.omui.UiFormatException e) {
+                deployMessage = "Export blocked: " + (e.diagnostics().isEmpty() ? e.getMessage()
+                    : e.diagnostics().getFirst().message());
+                deployFailed = true;
+            } catch (java.io.IOException | RuntimeException e) {
+                deployMessage = "Deploy failed: " + e.getMessage();
+                deployFailed = true;
+            }
+        }
+    }
+
+    private void runDeploy(com.openmason.main.systems.uiEditor.service.UiGameDeploy.Plan plan, boolean overwrite) {
+        try {
+            List<java.nio.file.Path> written = com.openmason.main.systems.uiEditor.service.UiGameDeploy.write(plan, overwrite);
+            deployMessage = "Deployed screen '" + plan.screenId() + "' (" + written.size() + " file(s) written"
+                + (plan.notes().isEmpty() ? "" : "; " + String.join("; ", plan.notes())) + ")";
+            deployFailed = false;
+        } catch (java.io.IOException | RuntimeException e) {
+            deployMessage = e.getMessage();
+            deployFailed = true;
+        }
+        deployPlan = null;
     }
 
     // ── recovery ────────────────────────────────────────────────────────────

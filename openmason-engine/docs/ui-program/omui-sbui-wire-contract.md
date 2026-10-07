@@ -31,8 +31,17 @@ build contracts and never appear in documents.
 - A newer major MUST be refused with `UNSUPPORTED_SCHEMA_VERSION`.
 - Anything an older reader must understand (a new enum value, a field with semantics) is announced in the manifest
   `requires` list. A reader MUST refuse a document that lists a feature it does not support
-  (`UNSUPPORTED_REQUIRED_FEATURE`), and a writer MUST refuse a document that uses a feature without listing it
-  (`UNDECLARED_FEATURE`).
+  (`UNSUPPORTED_REQUIRED_FEATURE`) or that uses a feature without listing it (`UNDECLARED_FEATURE`, a validation
+  error). **Writers infer `requires`**: before validating, the writer adds every feature the document uses
+  (`UiFeatures.withInferred`), so saved bytes always declare what they need and an older reader refuses them
+  cleanly instead of silently mis-rendering. Declared-but-unused features are kept.
+- **Retro-gated features** (`ui-motion`, `ui-layers`) gate syntax that documents could already carry before the
+  feature existed. A reader adds a retro-gated feature a file uses but does not declare (info diagnostic
+  `UNDECLARED_FEATURE`), so those files keep opening; the next save declares it. Any other undeclared feature
+  stays an error.
+- The registry is `UiFeatures`: `STYLE_FEATURES` (style property → feature, consulted for inline styles,
+  instance overrides, sheet rules and `style:` clip tracks), `PROP_FEATURES` (widget property → feature) and
+  `ALL` (= the reader's supported set). A new gated property is one registry entry.
 
   | Feature | Adds | Owner |
   | --- | --- | --- |
@@ -43,6 +52,8 @@ build contracts and never appear in documents.
   | `ui-canvas` | the `Canvas` widget (version 1, prop `capacity` = 32768): a surface its Lua code-behind draws each frame | #292 |
   | `ui-sprites` | sprite references `<sheet id>#<name>` in asset values (a region or skin of a `sprites` dependency, [ui-sprites.md](ui-sprites.md)) | #294 |
   | `ui-states` | UI state machines, `animations/<part id>.states.json` (§5.7, [ui-animation.md](ui-animation.md)) | #295 |
+  | `ui-motion` | custom `bezier` timing on clip keys and style transitions; the `transform-origin-x` / `transform-origin-y` properties. Retro-gated | #295 |
+  | `ui-layers` | the `-sb-layer` paint-layer property. Retro-gated | #287 |
 - `uiApi`, `layoutSemantics`, `hostApis` and `providers` are checked by the **host** before instantiating
   (`UiHostProfile.check`), not by the reader, so an editor can open and preserve a document its preview cannot run.
   An unmet optional requirement is a warning; an unmet required one is an error and the host refuses the document.
@@ -68,8 +79,10 @@ to `assets/a/b`), both `DUPLICATE_ENTRY`, so an archive extracts the same way on
 
 - Entries are written in **canonical entry order**: `manifest.json` first, then all other names by Unicode code
   point (equivalently, UTF-8 byte order).
-- Every entry is `STORED` (uncompressed), with CRC-32 and sizes in the local header, DOS time
-  1980-01-01 00:00:00, no extra fields, no comments, UTF-8 names.
+- Every entry is `STORED` (uncompressed), with CRC-32 and sizes in the local header, no general-purpose flags
+  (no data descriptor), DOS time **1980-01-01 00:00:02** (time field `0x0001`, date field `0x0021`), no extra
+  fields, no comments, UTF-8 names. Not 00:00:00: the JDK writes that exact instant as its "before 1980" sentinel
+  plus a `UT` extra field in the machine's timezone, which made archive bytes machine-dependent.
 - Without a compressor, the archive bytes are a function of the entries alone, so the golden fixtures compare byte
   for byte on every platform. UI JSON is small, and embedded assets (SBT, OMT, PNG) are already compressed.
 - Saves MUST be atomic: write a temporary sibling, flush it to disk, then rename it over the target. The target is
@@ -90,13 +103,24 @@ Defaults (`ArchiveLimits.DEFAULT`). Sizes are measured on the inflated stream, n
 | Tree depth | 48 |
 | Graph nodes (functions included) | 10,000 |
 | Dependency rows (and SBUI derived rows) | 4,096 |
-| JSON nesting depth | 64 |
+| JSON nesting depth | 256 (a 48-deep tree of slot content reaches depth 190; the rest is free-form values) |
 | JSON string length | 1,048,576 chars |
 
 Readers MUST read the end-of-central-directory record and check that the central directory lists exactly the
-local entries, in the same order, with the CRC-32 and uncompressed size of the bytes actually read, so a
-central-directory reader and a streaming reader can never see different content. A mismatch or a missing record
-is `TRUNCATED_ARCHIVE`. ZIP64 is not supported.
+local entries, in the same order, with the CRC-32 and uncompressed size of the bytes actually read, and that the
+entries **tile** the archive: the first local header at offset 0, each central record's local-header offset
+exactly where the previous entry's data (and data descriptor, if flagged) ended, and the last entry ending at the
+central directory. A CRC-32 can be forged, so without the offset check a header hidden inside another entry's
+data could show a central-directory reader different bytes than a streaming reader. A mismatch or a missing
+record is `TRUNCATED_ARCHIVE`. ZIP64 is not supported.
+
+**Nested archives share the budget.** An SBUI's embedded OMUI and the component documents inside it inflate
+under what the container's entries left of "all entries together" (the embedded archive's own stored bytes
+count once as an outer entry and again as its inflated entries), so nesting cannot multiply the memory bound.
+
+**Writers apply the reader's limits** (§3.5): entry count and sizes, every JSON entry through the strict decoder
+(nesting, string and number bounds), the document tree's node count and depth, graph sizes, and the finished
+archive's file size. An SBUI writer reads its own entries back with the runtime reader before returning them.
 ZIP readers accept DEFLATE entries (hand-made archives), but writers always emit `STORED`.
 
 ### 2.4 Content digest
@@ -158,14 +182,15 @@ Readers never drop content silently.
 
 All numbers are binary64 on the wire. Integer-typed fields (`uiApi`, `version`, `typeVersion`, `kindVersion`,
 `size`) MUST be integral: versions in [1, 1,000,000] (`uiApi` from 0), `size` ≥ 0. Graph coordinates lie in
-±1e7. Writers enforce the same bounds as readers, so a document that saves always reopens. Layout lengths are logical pixels; the runtime
+±1e7. Writers enforce the same bounds as readers — numeric, structural (§2.3) and nesting — so **a document that
+saves always reopens** (`OmuiWriter` runs the reader's own decoders on the canonical entries; see `WriteLimits`). Layout lengths are logical pixels; the runtime
 narrows them to binary32 for Yoga. Times and durations are seconds (binary64), with a maximum of 3,600.
 
 ## 4. Identifiers and references
 
 | Kind | Pattern | Examples |
 | --- | --- | --- |
-| Logical id (documents, dependencies, host contracts) | `[a-z0-9_.-]{1,64}:[a-z0-9_.-]+(/[a-z0-9_.-]+){0,15}` | `stonebreak:ui/pause_menu` |
+| Logical id (documents, dependencies, host contracts) | `S:S(/S){0,15}`, where a segment `S` is `[a-z0-9_-]` or `[a-z0-9_-][a-z0-9_.-]{0,62}[a-z0-9_-]` (1–64 chars; never starts or ends with `.`, so an id mapped to an archive path cannot form `.`/`..`) | `stonebreak:ui/pause_menu` |
 | Local id (nodes, graph nodes, functions, variables, converters) | `[A-Za-z_][A-Za-z0-9_-]{0,63}` | `resume`, `on_resume` |
 | Part id (in-archive sheets, graphs, clips, scripts) | `[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,7}` | `pause`, `menu/buttons` |
 | Widget type | `([a-z0-9_.-]{1,64}:)?[A-Z][A-Za-z0-9]{0,63}` | `Button`, `stonebreak:CrucibleView` |
@@ -390,7 +415,8 @@ write. In-place upgrades first save the exact bytes that were upgraded to `<file
   - `grow` / `shrink` / `basis` → `flex-*`; `gap` → `row-gap` + `column-gap`; boolean `wrap` → `flex-wrap`
   - `margin`, `padding` and `border` as `[left, top, right, bottom]` (`null` = unset) → per-side properties
   - `insets{left, top, right, bottom}` → the inset properties
-- `script: "scripts/<id>.lua"` → `codeBehind: "<id>"`.
+- `script: "scripts/<id>.lua"` → `codeBehind: "<id>"`. A `script` that is not a string is not a code-behind
+  path; it is carried over as an unknown field like any other.
 
 An unknown draft layout key or keyword is an error, because guessing would change geometry silently. Every other
 unknown field is carried over.
@@ -418,7 +444,10 @@ Fields, in order:
   every feature; per contract, the highest version, optional only if every document marks it optional.
 - `dependencies[]` and `derived[]`, below
 
-**Dependency rows** carry the source row's fields plus `location`, `entry` and `pack`. There is exactly one SBUI
+**Dependency rows** carry the source row's fields plus `location`, `entry` and `pack`. The source row's unknown
+fields travel too (§3.4), except names an SBUI row defines itself (`location`, `entry`, `pack`, ...), which are
+dropped so they can never shadow a resolution field. Two collected dependencies whose `assets/` entries collide
+(case-folded) block the export with `DUPLICATE_ENTRY`. There is exactly one SBUI
 row per source row (`INCONSISTENT_MANIFEST` otherwise; a repeated id is `DUPLICATE_ID`). `kind`, `version`,
 `requires`, `optional`, `fallback` and `license` MUST equal the source row's; a shared row also keeps its `sha256`
 and `size`.
@@ -443,7 +472,8 @@ Source precedence, resource packs, the convention layout and the export planner 
 - **Import** returns the embedded OMUI unchanged plus `editor/provenance.json`
   (`{importedFrom, sbuiSchemaVersion, sourceDigest, collected[]}`). Import never runs scripts.
 - **Portable import** additionally turns collected rows into OMUI-embedded snapshots, so the document opens in an
-  empty project.
+  empty project. A collected entry that would coincide with (or overlap as file/directory) one of the source's own
+  embedded assets moves to the first free sibling `<stem>~N<ext>`; the result is validated before it is returned.
 
 ### 7.3 Derived caches
 
@@ -475,7 +505,9 @@ malformed input.
 `UiPacker.unpack` writes an archive's canonical entries as files, for Git review. `UiPacker.pack` reads a
 directory, validates it like an archive and emits canonical archive bytes, so hand edits are normalized.
 
-`pack` skips names that start with `.` and refuses symlinks. `unpack` refuses a non-empty target unless asked to
+`pack` skips names that start with `.` and refuses symlinks. `pack` and `unpack` apply the same SBUI policy as
+the runtime reader and the writer: an export carrying a stale derived cache is refused both ways (re-export it),
+so a tree that unpacks always packs again. `unpack` refuses a non-empty target unless asked to
 replace it, and the files appear all at once (staged in a sibling directory, then renamed; if the final rename
 fails, the original directory is moved back).
 

@@ -112,12 +112,19 @@ public final class ActionCall {
         cancel("cancelled by caller");
     }
 
+    /**
+     * Settles the call {@code CANCELLED}. Only a {@link ActionSpec#cancellable cancellable}
+     * handler is told (its context turns cancelled and its hooks run); any other keeps running
+     * and its result is dropped when it arrives.
+     */
     void cancel(String why) {
         if (state != State.PENDING) {
             return;
         }
-        for (RuntimeException e : context.cancel()) {
-            scope.problem(new UiProblem(UiProblem.Kind.CANCEL_HOOK_FAILED, site, spec.id() + ": " + e));
+        if (spec.cancellable()) {
+            for (RuntimeException e : context.cancel()) {
+                scope.problem(new UiProblem(UiProblem.Kind.CANCEL_HOOK_FAILED, site, spec.id() + ": " + e));
+            }
         }
         settle(State.CANCELLED, null, new java.util.concurrent.CancellationException(why));
     }

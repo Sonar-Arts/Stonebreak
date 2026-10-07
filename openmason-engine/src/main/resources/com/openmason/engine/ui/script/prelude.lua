@@ -11,8 +11,8 @@
 local traceback = __cenda_traceback
 __cenda_traceback = nil
 
-local type, error, select, setmetatable, rawget, rawset, pairs, tostring, xpcall, load =
-    type, error, select, setmetatable, rawget, rawset, pairs, tostring, xpcall, load
+local type, error, select, setmetatable, rawget, rawset, pairs, next, tostring, xpcall, load =
+    type, error, select, setmetatable, rawget, rawset, pairs, next, tostring, xpcall, load
 local co_create, co_resume, co_status, co_yield, co_close, co_running =
     coroutine.create, coroutine.resume, coroutine.status, coroutine.yield, coroutine.close, coroutine.running
 local concat, tremove = table.concat, table.remove
@@ -28,6 +28,11 @@ local MAX_RAISED = 256
 local AWAIT = {} -- yielded by ui.await; any other yield from a task is a script error
 
 local contexts = {}
+
+-- Which context an element, canvas or handle belongs to. A side table, never a field: a field
+-- would hand every script its own context table (the raw host function, the handler and task
+-- tables), letting it re-enable what the host disabled after an error.
+local owner = setmetatable({}, { __mode = "k" })
 
 local function on_error(e)
     return traceback(co_running(), tostring(e))
@@ -49,7 +54,8 @@ local function element(ctx, key)
     end
     local e = ctx.els[key]
     if e == nil then
-        e = setmetatable({ key = key, __ctx = ctx }, Element)
+        e = setmetatable({ key = key }, Element)
+        owner[e] = ctx
         ctx.els[key] = e
     end
     return e
@@ -64,7 +70,7 @@ local function elements(ctx, keys)
 end
 
 local function key_of(v, level)
-    if type(v) == "table" and rawget(v, "__ctx") ~= nil then
+    if type(v) == "table" and owner[v] ~= nil then
         return v.key
     end
     if type(v) == "string" then
@@ -73,43 +79,43 @@ local function key_of(v, level)
     error("expected a ui.Element", level + 1)
 end
 
-function Element:name() return (self.__ctx.call("info", self.key, "name")) end
-function Element:type() return (self.__ctx.call("info", self.key, "type")) end
-function Element:id() return (self.__ctx.call("info", self.key, "id")) end
-function Element:exists() return (self.__ctx.call("info", self.key, "exists")) end
-function Element:parent() return element(self.__ctx, (self.__ctx.call("parent", self.key))) end
-function Element:children() return elements(self.__ctx, (self.__ctx.call("children", self.key))) end
-function Element:q(selector) return element(self.__ctx, (self.__ctx.call("q", self.key, selector))) end
-function Element:qAll(selector) return elements(self.__ctx, (self.__ctx.call("qAll", self.key, selector))) end
+function Element:name() return (owner[self].call("info", self.key, "name")) end
+function Element:type() return (owner[self].call("info", self.key, "type")) end
+function Element:id() return (owner[self].call("info", self.key, "id")) end
+function Element:exists() return (owner[self].call("info", self.key, "exists")) end
+function Element:parent() return element(owner[self], (owner[self].call("parent", self.key))) end
+function Element:children() return elements(owner[self], (owner[self].call("children", self.key))) end
+function Element:q(selector) return element(owner[self], (owner[self].call("q", self.key, selector))) end
+function Element:qAll(selector) return elements(owner[self], (owner[self].call("qAll", self.key, selector))) end
 
-function Element:prop(name) return (self.__ctx.call("prop", self.key, name)) end
-function Element:set(name, value) self.__ctx.call("setProp", self.key, name, value) return self end
-function Element:clear(name) self.__ctx.call("clearProp", self.key, name) return self end
-function Element:text() return (self.__ctx.call("prop", self.key, "text")) end
-function Element:setText(s) self.__ctx.call("setProp", self.key, "text", tostring(s)) return self end
+function Element:prop(name) return (owner[self].call("prop", self.key, name)) end
+function Element:set(name, value) owner[self].call("setProp", self.key, name, value) return self end
+function Element:clear(name) owner[self].call("clearProp", self.key, name) return self end
+function Element:text() return (owner[self].call("prop", self.key, "text")) end
+function Element:setText(s) owner[self].call("setProp", self.key, "text", tostring(s)) return self end
 
-function Element:classes() return (self.__ctx.call("classes", self.key)) end
-function Element:hasClass(c) return (self.__ctx.call("hasClass", self.key, c)) end
-function Element:addClass(c) self.__ctx.call("addClass", self.key, c) return self end
-function Element:removeClass(c) self.__ctx.call("removeClass", self.key, c) return self end
+function Element:classes() return (owner[self].call("classes", self.key)) end
+function Element:hasClass(c) return (owner[self].call("hasClass", self.key, c)) end
+function Element:addClass(c) owner[self].call("addClass", self.key, c) return self end
+function Element:removeClass(c) owner[self].call("removeClass", self.key, c) return self end
 function Element:toggleClass(c, on)
-    self.__ctx.call("toggleClass", self.key, c, on == nil and "flip" or on and true or false)
+    owner[self].call("toggleClass", self.key, c, on == nil and "flip" or on and true or false)
     return self
 end
 
-function Element:style(property, value) self.__ctx.call("setStyle", self.key, property, value) return self end
-function Element:clearStyle(property) self.__ctx.call("clearStyle", self.key, property) return self end
-function Element:computed(property) return (self.__ctx.call("computed", self.key, property)) end
+function Element:style(property, value) owner[self].call("setStyle", self.key, property, value) return self end
+function Element:clearStyle(property) owner[self].call("clearStyle", self.key, property) return self end
+function Element:computed(property) return (owner[self].call("computed", self.key, property)) end
 
-function Element:hasState(s) return (self.__ctx.call("hasState", self.key, s)) end
-function Element:setState(s, on) self.__ctx.call("setState", self.key, s, on ~= false) return self end
-function Element:enabled() return (self.__ctx.call("enabled", self.key)) end
-function Element:setEnabled(on) self.__ctx.call("setEnabled", self.key, on ~= false) return self end
-function Element:focus() return (self.__ctx.call("focus", self.key)) end
-function Element:scrollTo(x, y) self.__ctx.call("scrollTo", self.key, x, y) return self end
+function Element:hasState(s) return (owner[self].call("hasState", self.key, s)) end
+function Element:setState(s, on) owner[self].call("setState", self.key, s, on ~= false) return self end
+function Element:enabled() return (owner[self].call("enabled", self.key)) end
+function Element:setEnabled(on) owner[self].call("setEnabled", self.key, on ~= false) return self end
+function Element:focus() return (owner[self].call("focus", self.key)) end
+function Element:scrollTo(x, y) owner[self].call("scrollTo", self.key, x, y) return self end
 
 function Element:rect()
-    local x, y, w, h = self.__ctx.call4("rect", self.key)
+    local x, y, w, h = owner[self].call4("rect", self.key)
     return x, y, w, h
 end
 
@@ -119,7 +125,7 @@ function Element:on(event, fn, phase)
     if type(fn) ~= "function" then
         error("on(event, fn): fn must be a function", 2)
     end
-    local ctx = self.__ctx
+    local ctx = owner[self]
     local id = ctx.next_id + 1
     ctx.next_id = id
     ctx.call("on", self.key, event, id, phase == "trickle")
@@ -135,7 +141,7 @@ end
 
 -- el:off(event, fn | id)
 function Element:off(event, fn)
-    local ctx = self.__ctx
+    local ctx = owner[self]
     if type(fn) == "number" then
         if ctx.handlers[fn] ~= nil then
             ctx.call("off", self.key, event, fn)
@@ -173,8 +179,10 @@ local C_RECT, C_CIRCLE, C_LINE, C_SPRITE, C_TEXT, C_NUMBER, C_CLIP, C_UNCLIP, C_
       2, 3, 4, 5, 6, 7, 8, 9, 10, 11
 
 local function new_canvas(ctx, key, buf)
-    return setmetatable({ key = key, ctx = ctx, emit = buf.emit, reset = buf.reset, cursor = buf.cursor,
+    local c = setmetatable({ key = key, emit = buf.emit, reset = buf.reset, cursor = buf.cursor,
         capacity = buf.len(), strings = {}, textures = {} }, Canvas)
+    owner[c] = ctx
+    return c
 end
 
 -- Text and textures are registered once and referenced by number; a string argument is
@@ -185,7 +193,7 @@ local function string_id(c, s)
     end
     local id = c.strings[s]
     if id == nil then
-        id = c.ctx.call("canvasString", c.key, tostring(s))
+        id = owner[c].call("canvasString", c.key, tostring(s))
         c.strings[s] = id
     end
     return id
@@ -197,7 +205,7 @@ local function texture_id(c, t)
     end
     local id = c.textures[t]
     if id == nil then
-        id = c.ctx.call("canvasTexture", c.key, t)
+        id = owner[c].call("canvasTexture", c.key, t)
         c.textures[t] = id
     end
     return id
@@ -229,12 +237,12 @@ function Canvas:used() return self.cursor() end
 function Canvas:texture(ref) return texture_id(self, ref) end
 function Canvas:str(s) return string_id(self, s) end
 function Canvas:size()
-    local _, _, w, h = self.ctx.call4("rect", self.key)
+    local _, _, w, h = owner[self].call4("rect", self.key)
     return w, h
 end
 
 function Element:canvas()
-    local c = self.__ctx.canvases[self.key]
+    local c = owner[self].canvases[self.key]
     if c == nil then
         error("element " .. self.key .. " is not a Canvas in this script's scope", 2)
     end
@@ -261,7 +269,15 @@ local function step(ctx, co, ...)
         co_close(co)
         return false, "a UI task may only yield through ui.await (use coroutine.wrap for your own coroutines)", origin
     end
-    ctx.waiting[b] = co
+    -- Several tasks may await one handle: every one of them resumes when it settles.
+    local w = ctx.waiting[b]
+    if w == nil then
+        ctx.waiting[b] = co
+    elseif type(w) == "thread" then
+        ctx.waiting[b] = { w, co }
+    else
+        w[#w + 1] = co
+    end
     return true
 end
 
@@ -272,11 +288,12 @@ local function spawn(ctx, origin, fn, ...)
 end
 
 local function cancel_all(ctx)
-    for co in pairs(ctx.tasks) do
-        co_close(co)
-    end
+    local tasks = ctx.tasks
     ctx.tasks = {}
     ctx.waiting = {}
+    for co in pairs(tasks) do
+        co_close(co)
+    end
 end
 
 -- Awaitable handle: an action call, an animation or a timer.
@@ -287,7 +304,8 @@ Handle.__metatable = "ui.Handle"
 local is_handle = setmetatable({}, { __mode = "k" }) -- unforgeable identity (metatables are hidden)
 
 local function new_handle(ctx, token, kind)
-    local hd = setmetatable({ token = token, kind = kind, ctx = ctx }, Handle)
+    local hd = setmetatable({ token = token, kind = kind }, Handle)
+    owner[hd] = ctx
     ctx.handles[token] = hd
     is_handle[hd] = true
     return hd
@@ -296,7 +314,7 @@ end
 function Handle:done() return self.status ~= nil end
 function Handle:cancel()
     if self.status == nil and self.kind ~= "timer" then
-        self.ctx.call(self.kind == "action" and "cancelAction" or "stopAnim", self.token)
+        owner[self].call(self.kind == "action" and "cancelAction" or "stopAnim", self.token)
     end
 end
 
@@ -350,8 +368,15 @@ local function make_ui(ctx, env, info)
     end
 
     -- Actions (#289): ui.action returns an awaitable handle; ui.request fires and forgets.
-    function ui.action(id, args) return new_handle(ctx, (call("action", id, args or {})), "action") end
-    function ui.request(id, args) return new_handle(ctx, (call("action", id, args or {})), "action") end
+    -- With graphs loaded, the stack tells the host which graph node made the call (#289 call sites).
+    local function site()
+        if next(ctx.graphs) ~= nil then
+            return traceback(co_running(), "")
+        end
+        return nil
+    end
+    function ui.action(id, args) return new_handle(ctx, (call("action", id, args or {}, site())), "action") end
+    function ui.request(id, args) return new_handle(ctx, (call("action", id, args or {}, site())), "action") end
 
     -- local result, err = ui.await(handle): inside a task only (event handlers, on_open, watch and
     -- animation callbacks, ui.async). Closing, reloading or leaving the world cancels the task.
@@ -745,18 +770,30 @@ dispatch[OP_SETTLE] = function(ctx, token, status, value)
         hd.status, hd.value = status, value
     end
     ctx.anim_events[token] = nil
-    local co = ctx.waiting[token]
-    if co == nil then
+    local w = ctx.waiting[token]
+    if w == nil then
         return true
     end
     ctx.waiting[token] = nil
+    if type(w) == "thread" then
+        w = { w }
+    end
     if status == "cancelled" then
-        -- A cancelled call (close, reload, world change) never resumes its task.
-        ctx.tasks[co] = nil
-        co_close(co)
+        -- A cancelled call (close, reload, world change) never resumes its tasks.
+        for i = 1, #w do
+            ctx.tasks[w[i]] = nil
+            co_close(w[i])
+        end
         return true
     end
-    return flush_failed(ctx, step(ctx, co, status, value))
+    local ok, msg, origin = true, nil, nil
+    for i = 1, #w do
+        local ok2, msg2, origin2 = step(ctx, w[i], status, value)
+        if not ok2 and ok then
+            ok, msg, origin = false, msg2, origin2 -- the first failure is reported; the rest still run
+        end
+    end
+    return flush_failed(ctx, ok, msg, origin)
 end
 
 dispatch[OP_CANCEL_ALL] = function(ctx)
@@ -834,7 +871,7 @@ local function graph_debug(ctx, graph)
         local t = type(value)
         if t == "function" or t == "thread" or t == "userdata" then
             value = tostring(value)
-        elseif t == "table" and rawget(value, "__ctx") ~= nil then
+        elseif t == "table" and owner[value] ~= nil then
             value = "ui.Element(" .. tostring(value.key) .. ")"
         end
         pcall(ctx.h, "traceValue", graph, node, port, value) -- a value that cannot cross is skipped

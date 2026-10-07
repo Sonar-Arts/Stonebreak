@@ -176,7 +176,10 @@ final class CanvasView {
         }
         MasonryPreview.Frame frame = null;
         if (rt != null) {
-            rt.preview().setPath(ctx.gpuPath ? MasonryPreview.Path.GPU : MasonryPreview.Path.RASTER);
+            // A designer popped out into its own OS window shows the CPU raster path: the shared GPU
+            // framebuffer flickers there on Mesa/XWayland (masonry-rendering.md)
+            boolean poppedOut = ImGui.getWindowViewport().getID() != ImGui.getMainViewport().getID();
+            rt.preview().setPath(ctx.gpuPath && !poppedOut ? MasonryPreview.Path.GPU : MasonryPreview.Path.RASTER);
             frame = rt.paint(v.frameWidth, v.frameHeight, v.uiScale, v.pixelRatio, ImGui.getIO().getDeltaTime(), false);
         }
         if (frame != null) {

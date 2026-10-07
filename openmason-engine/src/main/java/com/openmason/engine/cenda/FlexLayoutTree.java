@@ -3,17 +3,53 @@ package com.openmason.engine.cenda;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.lang.ref.Cleaner;
 
 /**
  * A retained Yoga node tree owned by one UI instance (#287). Styles are pushed in batches of
  * {@link FlexRecord} records; the native side skips unchanged records and Yoga only dirties
  * what really changed, so a relayout costs what the edit touched.
  *
- * <p>Not thread-safe: one UI thread owns a tree. {@link #close()} frees every native node.
+ * <p>Not thread-safe: one UI thread owns a tree. {@link #close()} frees every native node; a
+ * tree dropped without closing is freed by a cleaner (a safety net, not a substitute).
+ *
+ * <p>Scratch buffers for batched calls grow geometrically and each lives in its own arena, freed
+ * when it is outgrown, so a list that grows one row at a time keeps O(n) native memory.
  */
 public final class FlexLayoutTree implements AutoCloseable {
 
-    private final Arena arena = Arena.ofShared();
+    private static final Cleaner CLEANER = Cleaner.create();
+
+    /** Everything native the tree owns; the cleaner's action, so it must not reach the tree. */
+    private static final class Native implements Runnable {
+        MemorySegment tree;
+        Arena idsArena;
+        Arena floatsArena;
+
+        @Override
+        public void run() {
+            try {
+                if (tree != null) {
+                    CendaFlex.TREE_FREE.invokeExact(tree);
+                }
+            } catch (Throwable t) {
+                throw rethrow(t);
+            } finally {
+                tree = null;
+                if (idsArena != null) {
+                    idsArena.close();
+                    idsArena = null;
+                }
+                if (floatsArena != null) {
+                    floatsArena.close();
+                    floatsArena = null;
+                }
+            }
+        }
+    }
+
+    private final Native nat = new Native();
+    private final Cleaner.Cleanable cleanable;
     private MemorySegment tree;
     private MemorySegment ids = MemorySegment.NULL;
     private MemorySegment floats = MemorySegment.NULL;
@@ -23,13 +59,13 @@ public final class FlexLayoutTree implements AutoCloseable {
             tree = (MemorySegment) CendaFlex.TREE_NEW.invokeExact(pointScale, CendaFlex.MEASURE_STUB,
                 CendaFlex.BASELINE_STUB);
         } catch (Throwable t) {
-            arena.close();
             throw new IllegalStateException("cf_tree_new failed", t);
         }
         if (tree.equals(MemorySegment.NULL)) {
-            arena.close();
             throw new IllegalStateException("cf_tree_new returned null");
         }
+        nat.tree = tree;
+        cleanable = CLEANER.register(this, nat);
     }
 
     /** @return a new detached node handle with default style */
@@ -150,14 +186,10 @@ public final class FlexLayoutTree implements AutoCloseable {
         if (tree == null) {
             return;
         }
-        try {
-            CendaFlex.TREE_FREE.invokeExact(tree);
-        } catch (Throwable t) {
-            throw rethrow(t);
-        } finally {
-            tree = null;
-            arena.close();
-        }
+        tree = null;
+        ids = MemorySegment.NULL;
+        floats = MemorySegment.NULL;
+        cleanable.clean(); // runs once: frees the tree and the scratch arenas
     }
 
     private MemorySegment live() {
@@ -170,7 +202,12 @@ public final class FlexLayoutTree implements AutoCloseable {
     private MemorySegment ids(int count) {
         long bytes = (long) count * Integer.BYTES;
         if (ids.byteSize() < bytes) {
-            ids = arena.allocate(Math.max(bytes, 256), 8);
+            Arena next = Arena.ofShared();
+            ids = next.allocate(grow(ids.byteSize(), bytes, 256), 8);
+            if (nat.idsArena != null) {
+                nat.idsArena.close();
+            }
+            nat.idsArena = next;
         }
         return ids;
     }
@@ -178,9 +215,24 @@ public final class FlexLayoutTree implements AutoCloseable {
     private MemorySegment floats(long count) {
         long bytes = count * Float.BYTES;
         if (floats.byteSize() < bytes) {
-            floats = arena.allocate(Math.max(bytes, 4096), 8);
+            Arena next = Arena.ofShared();
+            floats = next.allocate(grow(floats.byteSize(), bytes, 4096), 8);
+            if (nat.floatsArena != null) {
+                nat.floatsArena.close();
+            }
+            nat.floatsArena = next;
         }
         return floats;
+    }
+
+    /** Next scratch size: at least {@code needed}, at least double the current, at least {@code min}. */
+    static long grow(long current, long needed, long min) {
+        return Math.max(needed, Math.max(min, current * 2));
+    }
+
+    /** Bytes of scratch currently held (tests). */
+    long scratchBytes() {
+        return ids.byteSize() + floats.byteSize();
     }
 
     private static void check(int status, String op, int node) {

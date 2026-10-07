@@ -59,20 +59,28 @@ Each frame runs in this order:
    widgets, inside the same clip stack.
 4. `end()` calls `flushAndSubmit` and `resetAll()`, then applies the target's policy:
    - `RESTORE` puts back everything `GlStateSnapshot` holds:
-     - program, VAO and buffers,
+     - program, VAO and buffers, including the element buffer of the caller's VAO (a bind that landed in that
+       VAO while it was still current is undone),
      - draw and read framebuffers,
      - viewport and scissor,
-     - capabilities,
-     - blend, depth and stencil configuration,
+     - capabilities (incl. dither, logic op, alpha-to-coverage, polygon offset fill/line),
+     - blend equation, function and constant colour; depth configuration; front **and back** stencil
+       function, ops and write mask,
+     - polygon mode and offset, clear colour,
      - write masks and front face,
      - the 2D texture and sampler of units 0–15,
-     - pixel-store state and pixel-pack/unpack buffers.
+     - every pack and unpack pixel-store parameter, and the pixel-pack/unpack buffers.
 
      It never binds framebuffer 0 unless the caller had it bound. Use this policy when ImGui or a viewport pass
      owns the frame.
    - `RESET_TO_BASELINE` is the historical game behaviour that NanoVG and the world pass after the UI rely on
-     (`GlBaseline`). It binds the target's framebuffer and clears samplers and 2D bindings on 16 units (the
-     terrain-smear fix), with blend `SRC_ALPHA/ONE_MINUS_SRC_ALPHA` and depth, scissor, stencil and cull off.
+     (`GlBaseline`). It binds the target's framebuffer, sets the viewport to the target's size and clears
+     samplers and 2D bindings on 16 units (the terrain-smear fix), with blend `FUNC_ADD` +
+     `SRC_ALPHA/ONE_MINUS_SRC_ALPHA` (constant colour 0), polygon mode `FILL`, and depth, scissor, stencil, cull,
+     polygon offset, `FRAMEBUFFER_SRGB` and logic op off; no pixel buffers bound, default pixel-store.
+- **Pixel buffers.** `OffscreenFramebuffer` and `RasterTextureUpload` unbind `GL_PIXEL_UNPACK_BUFFER` before
+  allocating their textures (and restore it): with a caller's buffer bound, the null data pointer would read from
+  it or fail with `GL_INVALID_OPERATION`.
 - **Nesting.** `beginFrame`/`endFrame` nest; only the outermost pair opens and flushes. A resize applies only at
   the outermost frame, and a non-positive size (a minimized window) keeps the last size.
 - **Exceptions.** Hosts call `endFrame()` in `finally`, so state is restored even when a widget throws. `begin`
@@ -84,7 +92,24 @@ Each frame runs in this order:
   dead context), then `initialize(target)` on the new context.
 - **Threading.** Everything runs on the thread that owns the GL context. `MTextureCache` lookups are thread-safe.
 
-## 4. Resource lifetime
+## 4. Host GL textures in a document (`GlTextureImages`, #282 C1)
+
+Item icons and 3D previews are GL work that must still follow a document's transforms, clips, opacity and paint
+order. A host draw provider renders into its own texture in `UiDrawProvider.prepare` (before the frame opens),
+then paints it in `draw` with `GlTextureImages.borrow(canvas, texture, w, h, bottomLeftOrigin)`:
+
+- **GPU frames.** `SkiaGlRenderer.begin` announces its `DirectContext` for the thread; `borrow` wraps the texture
+  with `Image.borrowTextureFrom` (no copy; Skia never deletes it). The texture must be `GL_TEXTURE_2D` RGBA8.
+- **Raster frames.** Without a GPU frame the texture is read back with `glGetTexImage` (needs a current GL
+  context, else null). Slow: tests and the raster editor preview only.
+- **Lifetime.** Images are cached per (texture, size, origin) within the frame and closed when the outermost
+  frame ends, after Skia flushed. Never keep one across frames.
+- `bottomLeftOrigin` is true for anything rendered through a GL framebuffer (first row at the bottom).
+
+Checked by `MasonryRenderTargetGlTest` (`-Dstonebreak.ui.gl=true`): orientation both ways, one wrap per frame,
+the texture stays the caller's, and the raster read-back.
+
+## 5. Resource lifetime
 
 - **Typeface.** One per backend, shared by every screen. The backend that loaded it closes it on `dispose()`.
 - **Fonts.** `MFonts` is per `MasonryUI` (per screen). `MasonryUI.dispose()` closes only that screen's `Font`
@@ -104,7 +129,7 @@ Each frame runs in this order:
   not depend on the target. At non-integer scales, framebuffers of different heights round texel-boundary ties
   differently (#283).
 
-## 5. Editor preview (`openmason-tool` `systems/uiPreview`)
+## 6. Editor preview (`openmason-tool` `systems/uiPreview`)
 
 `MasonryPreview` paints a frame and shows it as an ImGui image with an invisible button over it. It has two paths:
 - **GPU**: `GpuMasonryBackend` draws into an `OffscreenFramebuffer`. The output is pixel-identical to the game
@@ -122,7 +147,7 @@ zoom`, with no Y inversion. `MasonryPreviewPanel` (`-Dopenmason.masonry.preview=
 surface. It has a path switch, zoom, UI scale, hover routed through the mapping, and the game font and SBT
 texture. The UI Editor (#293) will host real documents with the same component.
 
-## 6. Evidence
+## 7. Evidence
 
 | Check | Result |
 | --- | --- |
@@ -137,7 +162,7 @@ texture. The UI Editor (#293) will host real documents with the same component.
 | GL context destroyed and recreated | same frame, 0 px differ |
 | In-game HUD (autoworld screenshot, same seed) before and after | identical hearts, item icons, slots and text |
 
-## 7. Not done here
+## 8. Not done here
 
 - Moving the remaining game screens onto documents (#287 onward). Their Masonry calls now go through the engine.
 - A GPU-path toggle for the game: the game keeps `RESET_TO_BASELINE`. Switching it to `RESTORE` should wait for a

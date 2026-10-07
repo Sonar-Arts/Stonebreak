@@ -47,8 +47,15 @@ public final class UiDocumentService {
         }
     }
 
-    /** An export: where it went and what the plan said. */
-    public record ExportResult(Path target, List<UiDiagnostic> diagnostics, String error) {
+    /**
+     * An export: where it went, what the plan said, and what the real game host would say about it
+     * ({@code hostCheck}, null when the export itself failed).
+     */
+    public record ExportResult(Path target, List<UiDiagnostic> diagnostics, String error,
+                               UiGameDeploy.HostCheck hostCheck) {
+        public ExportResult(Path target, List<UiDiagnostic> diagnostics, String error) {
+            this(target, diagnostics, error, null);
+        }
     }
 
     private final UiProjectContext project;
@@ -133,6 +140,25 @@ public final class UiDocumentService {
         fire();
     }
 
+    /**
+     * Closes {@code doc} dropping its unsaved changes from the editor but keeping them in a crash
+     * recovery slot (automation's {@code discard}: an agent must never destroy the author's work
+     * for good). @return whether a recovery copy was kept
+     */
+    public boolean closeKeepingRecovery(UiEditorDocument doc) {
+        if (!documents.contains(doc)) {
+            return false;
+        }
+        boolean kept = doc.isDirty() && recovery.release(doc);
+        documents.remove(doc);
+        recoveryWritten.remove(doc);
+        if (active == doc) {
+            active = documents.isEmpty() ? null : documents.getLast();
+        }
+        fire();
+        return kept;
+    }
+
     /** Closes everything (project change). */
     public void closeAll() {
         for (UiEditorDocument d : documents()) {
@@ -149,10 +175,10 @@ public final class UiDocumentService {
 
     /** Opens {@code file}; an already open file is just activated. */
     public OpenResult open(Path file) {
-        Path abs = file.toAbsolutePath().normalize();
+        Path abs = UiRecoveryService.normalize(file);
         for (UiEditorDocument d : documents) {
-            if (abs.equals(d.file() == null ? null : d.file().toAbsolutePath().normalize())
-                    || abs.equals(d.importedFrom() == null ? null : d.importedFrom().toAbsolutePath().normalize())) {
+            if (abs.equals(d.file() == null ? null : UiRecoveryService.normalize(d.file()))
+                    || abs.equals(d.importedFrom() == null ? null : UiRecoveryService.normalize(d.importedFrom()))) {
                 activate(d);
                 return new OpenResult(d, null, null);
             }
@@ -166,7 +192,9 @@ public final class UiDocumentService {
                     null, null);
             }
             OmuiReader.Result r = OmuiReader.read(abs);
-            UiEditorDocument doc = adopt(new UiEditorDocument(r.archive(), abs, UiEditorDocument.Origin.FILE, null));
+            UiEditorDocument doc = new UiEditorDocument(r.archive(), abs, UiEditorDocument.Origin.FILE, null);
+            doc.setDiskStamp(diskStamp(abs));
+            adopt(doc);
             for (UiDiagnostic d : r.diagnostics()) {
                 if (d.severity() != UiDiagnostic.Severity.INFO) {
                     doc.setLastMessage("Opened with problems: " + d.message());
@@ -189,7 +217,9 @@ public final class UiDocumentService {
             OmuiArchive recovered = recovery.read(slot);
             boolean ok = doc.execute(com.openmason.main.systems.uiEditor.command.UiCommand.of("Restore recovered changes",
                 ctx -> ctx.setDoc(recovered)));
-            recovery.clear(slot);
+            if (ok) {
+                recovery.clear(slot); // a refused restore keeps the slot: it is still the only copy
+            }
             return ok;
         } catch (IOException e) {
             doc.setLastMessage("Cannot restore: " + e.getMessage());
@@ -203,6 +233,9 @@ public final class UiDocumentService {
             OmuiArchive a = recovery.read(slot);
             Path file = slot.file() != null && Files.exists(slot.file()) ? slot.file() : null;
             UiEditorDocument doc = new UiEditorDocument(a, file, UiEditorDocument.Origin.RECOVERED, null);
+            if (file != null) {
+                doc.setDiskStamp(diskStamp(file));
+            }
             recovery.clear(slot);
             return new OpenResult(adopt(doc), null, null);
         } catch (IOException e) {
@@ -282,13 +315,56 @@ public final class UiDocumentService {
         if (doc.file() == null && Files.exists(target)) {
             return "A document already exists at " + project.relative(target) + ": use Save As";
         }
-        return saveAs(doc, target);
+        return saveAs(doc, target, false);
+    }
+
+    /** True when {@code target} is {@code doc}'s own file and its bytes differ from what the editor last saw. */
+    public boolean changedOnDisk(UiEditorDocument doc, Path target) {
+        if (doc.file() == null || doc.diskStamp() == null || !Files.exists(target)
+                || !UiRecoveryService.normalize(target).equals(UiRecoveryService.normalize(doc.file()))) {
+            return false;
+        }
+        return !doc.diskStamp().equals(diskStamp(target));
+    }
+
+    /** Size and SHA-256 of a file's bytes, or null when unreadable. */
+    static String diskStamp(Path file) {
+        try {
+            byte[] bytes = Files.readAllBytes(file);
+            byte[] h = java.security.MessageDigest.getInstance("SHA-256").digest(bytes);
+            return bytes.length + ":" + java.util.HexFormat.of().formatHex(h);
+        } catch (IOException | java.security.NoSuchAlgorithmException e) {
+            return null;
+        }
+    }
+
+    private static OmuiArchive withoutEditorEntry(OmuiArchive a, String entry) {
+        if (!a.editor().containsKey(entry)) {
+            return a;
+        }
+        Map<String, UiBytes> editor = new java.util.LinkedHashMap<>(a.editor());
+        editor.remove(entry);
+        return new OmuiArchive(a.manifest(), a.document(), a.styles(), a.graphs(), a.animations(), a.stateMachines(),
+            a.scripts(), a.dependencies(), a.assets(), editor, a.extraEntries());
     }
 
     /** Atomic write to {@code target}; the document adopts it as its file. */
     public String saveAs(UiEditorDocument doc, Path target) {
+        return saveAs(doc, target, true);
+    }
+
+    /**
+     * As {@link #saveAs(UiEditorDocument, Path)}. Without {@code overwriteExternal}, saving over
+     * the document's own file refuses when the file changed on disk since the editor read or
+     * wrote it (a git pull, another editor): the save would silently bury that version.
+     */
+    public String saveAs(UiEditorDocument doc, Path target, boolean overwriteExternal) {
         if (!target.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(OmuiFormat.FILE_EXTENSION)) {
             target = target.resolveSibling(target.getFileName() + OmuiFormat.FILE_EXTENSION);
+        }
+        if (!overwriteExternal && changedOnDisk(doc, target)) {
+            return "Not saved: " + target.getFileName() + " changed on disk since it was opened (reopen it to"
+                + " see that version, or Save As over it to replace it)";
         }
         OmuiArchive out = doc.archive();
         UiBytes ws = workspaceStamp.apply(doc);
@@ -296,9 +372,7 @@ public final class UiDocumentService {
             out = out.withEditorEntry(OmuiFormat.EDITOR_DIR + "workspace.json", ws);
         }
         for (Map.Entry<String, UiBytes> e : editorStamps.apply(doc).entrySet()) {
-            if (e.getValue() != null) {
-                out = out.withEditorEntry(e.getKey(), e.getValue());
-            }
+            out = e.getValue() != null ? out.withEditorEntry(e.getKey(), e.getValue()) : withoutEditorEntry(out, e.getKey());
         }
         try {
             if (target.getParent() != null) {
@@ -314,6 +388,7 @@ public final class UiDocumentService {
         recovery.clear(doc);
         recoveryWritten.remove(doc);
         doc.savedTo(target, out);
+        doc.setDiskStamp(diskStamp(target));
         doc.setLastMessage("Saved " + (project.relative(target) != null ? project.relative(target) : target));
         fire();
         return null;
@@ -328,13 +403,39 @@ public final class UiDocumentService {
                 Files.createDirectories(target.getParent());
             }
             UiExportService.save(r, target);
-            return new ExportResult(target, r.diagnostics(), null);
+            return new ExportResult(target, r.diagnostics(), null, hostCheck(r.sbui()));
         } catch (UiFormatException e) {
             return new ExportResult(target, e.diagnostics(), "Export blocked: "
                 + (e.diagnostics().isEmpty() ? e.getMessage() : e.diagnostics().getFirst().message()));
         } catch (IOException | RuntimeException e) {
             return new ExportResult(target, List.of(), "Export failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * What the game's host would say about {@code sbui} (C15): its declared contracts, data roots,
+     * actions and providers, with shared rows resolving through the game and then this project.
+     */
+    public UiGameDeploy.HostCheck hostCheck(SbuiArchive sbui) {
+        try {
+            return UiGameDeploy.check(sbui, project.sources());
+        } catch (RuntimeException e) {
+            logger.warn("Game host check failed", e);
+            com.openmason.engine.format.omui.UiDiagnostics d = new com.openmason.engine.format.omui.UiDiagnostics();
+            d.warning(UiDiagnostic.Code.INVALID_VALUE, "", "", "The game host check could not run: " + e.getMessage());
+            return new UiGameDeploy.HostCheck(d.list(), List.of());
+        }
+    }
+
+    /**
+     * Plans shipping {@code doc} into the game's resources (C14); nothing is written yet.
+     *
+     * @param gameResources {@code stonebreak-game/src/main/resources}
+     */
+    public UiGameDeploy.Plan planDeploy(UiEditorDocument doc, ExportMode mode, Path gameResources)
+            throws UiFormatException, IOException {
+        // project first, then the game's packaged root: project copies ship, the game's own stay
+        return UiGameDeploy.plan(doc.archive(), project.sources(), mode, gameResources);
     }
 
     /** Default export location: {@code <project>/Exports/UI/<stem>.sbui}, else beside the document. */

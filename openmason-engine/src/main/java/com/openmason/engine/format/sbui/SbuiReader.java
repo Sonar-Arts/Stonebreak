@@ -103,14 +103,20 @@ public final class SbuiReader {
             d.error(Code.MISSING_ENTRY, manifest.source().entry(), "", "Embedded source OMUI is missing");
             d.throwIfErrors("Incomplete SBUI archive");
         }
+        // One memory budget for the whole export: the embedded OMUI and the component documents
+        // inside it inflate under what the outer archive left over, so a nested archive cannot
+        // multiply the bound (a DEFLATE bomb inside a stored inner archive).
+        long remaining = options.limits().maxTotalBytes() - totalSize(entries);
         OmuiArchive source;
         Map<String, UiBytes> sourceEntries = new LinkedHashMap<>();
         try {
             UiDiagnostics nested = new UiDiagnostics();
-            Map<String, byte[]> raw = ArchiveIO.read(sourceBytes, options.limits(), nested);
+            ArchiveLimits inner = options.limits().withRemainingTotal(remaining);
+            Map<String, byte[]> raw = ArchiveIO.read(sourceBytes, inner, nested);
             nested.throwIfErrors("Cannot open embedded OMUI");
             raw.forEach((k, v) -> sourceEntries.put(k, UiBytes.copyOf(v)));
-            OmuiReader.Result r = OmuiReader.fromEntries(raw, options.limits());
+            remaining -= totalSize(raw);
+            OmuiReader.Result r = OmuiReader.fromEntries(raw, inner);
             source = r.archive();
             d.addAll(r.diagnostics());
         } catch (UiFormatException e) {
@@ -139,9 +145,19 @@ public final class SbuiReader {
         }
         UiBytes sourceBlob = UiBytes.copyOf(sourceBytes);
         SbuiArchive archive = new SbuiArchive(manifest, source, sourceBlob, assets, derived, extra);
-        List<DerivedEntry> stale = SbuiValidator.validate(archive, sourceEntries, options, d);
+        Options budgeted = new Options(options.stalePolicy(), options.compilerVersions(),
+                options.limits().withRemainingTotal(remaining));
+        List<DerivedEntry> stale = SbuiValidator.validate(archive, sourceEntries, budgeted, d);
         d.throwIfErrors("Invalid SBUI archive");
         return new Result(archive, new ArrayList<>(stale), d.list());
+    }
+
+    private static long totalSize(Map<String, byte[]> entries) {
+        long n = 0;
+        for (byte[] b : entries.values()) {
+            n += b.length;
+        }
+        return n;
     }
 
     private static void negotiate(SchemaVersion version, UiDiagnostics d) {

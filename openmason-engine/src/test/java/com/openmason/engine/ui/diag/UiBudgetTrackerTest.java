@@ -46,7 +46,43 @@ class UiBudgetTrackerTest {
         }
         assertTrue(seen.isEmpty());
         menu.frame(10 * MS, 0);
-        assertEquals(1, seen.size());
+        assertEquals(List.of(Metric.SCRIPT_FRAME, Metric.SCRIPT_SPIKE), seen.stream().map(Overrun::metric).toList());
+    }
+
+    @Test
+    void recurringOneFrameStallsAreSpikesEvenWhenTheMeanIsFine() {
+        for (int i = 0; i < 60; i++) {
+            menu.frame(i % 20 == 10 ? 6 * MS : MS / 20, 0); // a 6 ms stall every 20 frames
+        }
+        assertEquals(List.of(Metric.SCRIPT_SPIKE), seen.stream().map(Overrun::metric).toList(),
+            "mean " + menu.snapshot().scriptMeanMillis() + " ms is inside 0.5 ms; the stalls are not");
+        assertTrue(seen.get(0).message().contains("spike limit is 4.00 ms"), seen.get(0).message());
+        for (int i = 0; i < 60; i++) {
+            menu.frame(MS / 20, 0);
+        }
+        assertEquals(Set.of(), menu.snapshot().over(), "a window without spikes clears it");
+    }
+
+    @Test
+    void theFirstLayoutAfterAReloadIsColdAgain() {
+        menu.layout(20 * MS, 50); // cold
+        for (int i = 0; i < 3; i++) {
+            menu.layout(MS / 100, 50);
+        }
+        for (int reload = 0; reload < 5; reload++) {
+            menu.coldStart();
+            menu.layout(20 * MS, 50); // rebuilt tree after each reload
+            menu.layout(MS / 100, 50);
+        }
+        assertTrue(seen.isEmpty(), "reload rebuilds are not a layout trend: " + seen);
+        assertEquals(20.0, menu.snapshot().coldLayoutMillis(), 1e-9);
+    }
+
+    @Test
+    void hudBudgetsAreTighterThanMenusAndChosenByTheHost() {
+        assertTrue(UiBudgets.HUD.scriptFrameMillis() < UiBudgets.MENU.scriptFrameMillis());
+        assertTrue(UiBudgets.HUD.deadlineMillis() <= 16.7, "a HUD stall must stay within one frame");
+        assertEquals(2.0, UiBudgets.HUD.scriptSpikeMillis(), 1e-9);
     }
 
     @Test

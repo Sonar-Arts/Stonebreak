@@ -78,10 +78,25 @@ class GraphDerivedRuntimeTest {
         return c.lua().replace("local G, F, H = {}, {}, {}", "local G, F, H = {}, {}, {}\nui.log(\"from cache\")");
     }
 
+    /** First-party hosts opt in; the derived chunk itself cannot be verified without compiling again. */
+    static final UiScriptOptions TRUSTED = UiScriptOptions.DEFAULTS.withTrustedDerivedGraphs(true);
+
+    @Test
+    void anUntrustedHostNeverRunsShippedGraphLua() {
+        OmuiArchive d = doc(ONE);
+        // A pack could ship Lua whose recorded hashes name an innocent graph: by default it compiles.
+        try (ScriptRig rig = new ScriptRig(d, shipping(d, shipped(d)), null, UiScriptOptions.DEFAULTS,
+            UiScriptServices.NONE)) {
+            assertTrue(rig.log().stream().noneMatch(l -> l.equals("from cache")), rig.log().toString());
+            rig.click("go");
+            assertEquals("fresh", rig.text("out"));
+        }
+    }
+
     @Test
     void aCurrentCacheRunsAsShipped() {
         OmuiArchive d = doc(ONE);
-        try (ScriptRig rig = new ScriptRig(d, shipping(d, shipped(d)), null, UiScriptOptions.DEFAULTS,
+        try (ScriptRig rig = new ScriptRig(d, shipping(d, shipped(d)), null, TRUSTED,
             UiScriptServices.NONE)) {
             assertTrue(rig.log().contains("from cache"), rig.log().toString());
             assertTrue(rig.rt.diagnostics().isEmpty(), rig.rt.diagnostics().toString());
@@ -94,7 +109,7 @@ class GraphDerivedRuntimeTest {
     void aCacheBuiltAgainstOtherLuaSignaturesIsCompiledAgain() {
         OmuiArchive built = doc(ONE);
         OmuiArchive now = doc(TWO);
-        try (ScriptRig rig = new ScriptRig(now, shipping(built, shipped(built)), null, UiScriptOptions.DEFAULTS,
+        try (ScriptRig rig = new ScriptRig(now, shipping(built, shipped(built)), null, TRUSTED,
             UiScriptServices.NONE)) {
             assertTrue(rig.log().stream().noneMatch(l -> l.equals("from cache")), rig.log().toString());
             assertTrue(rig.rt.diagnostics().stream().anyMatch(x -> x.message().contains("other Lua signatures")),

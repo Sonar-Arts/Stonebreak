@@ -132,7 +132,7 @@ public final class JoinWorldScreen {
     }
 
     public void handleInput(long window) {
-        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        if (com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_ESCAPE)) {
             Game.getInstance().setState(GameState.MULTIPLAYER_MENU);
         }
     }

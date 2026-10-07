@@ -31,6 +31,18 @@ import java.util.regex.PatternSyntaxException;
  * Backspace/Delete (Ctrl = word), Ctrl+A/C/X/V, Ctrl+Z/Y and Ctrl+Shift+Z, Enter (newline in
  * a multi-line field, Ctrl+Enter commits there). Printable keys are consumed so their text
  * arrives through text input instead of triggering UI actions (Space would otherwise submit).
+ *
+ * <p><b>Keyboard layouts.</b> Shortcuts read the key token the host passes. GLFW tokens name
+ * physical US-layout keys, so hosts translate letter keys to the active layout first (the game's
+ * and the editor's {@code LayoutKeys}); then Ctrl+Z is undo on QWERTZ and AZERTY too. Ctrl
+ * together with Alt is AltGr on Windows (AltGr+A types "ą" on a Polish layout), so it is
+ * never a shortcut: a printable key with AltGr is typing and is consumed like any other.
+ *
+ * <p><b>What a focused field keeps from the screen and the world.</b> Every key it edits with,
+ * printable and keypad keys, and the modifier keys themselves (a Shift held to type a capital
+ * must not also make the player sneak). Function keys, Tab, Escape with nothing to revert and
+ * plain-Alt chords pass through: screenshots, debug keys and screen shortcuts keep working
+ * while a field has focus.
  * A {@code password} field never copies or cuts. A field whose {@code text} is owned by a
  * binding is read-only until two-way bindings (#289) exist.
  */
@@ -234,10 +246,14 @@ public final class TextFieldController {
 
     /** @return true when the key belongs to the field (it must not also trigger a UI action) */
     boolean key(int key, int mods) {
-        boolean ctrl = (mods & (MKeys.MOD_CONTROL | MKeys.MOD_SUPER)) != 0;
+        boolean altGr = (mods & MKeys.MOD_CONTROL) != 0 && (mods & MKeys.MOD_ALT) != 0;
+        boolean ctrl = (mods & MKeys.MOD_SUPER) != 0 || (mods & MKeys.MOD_CONTROL) != 0 && !altGr;
         boolean shift = (mods & MKeys.MOD_SHIFT) != 0;
         if (model.isComposing()) {
             return key != MKeys.KEY_TAB; // the IME owns editing keys while composing
+        }
+        if (modifierKey(key)) {
+            return true; // typing modifiers are the field's, not gameplay's
         }
         String before = model.text();
         boolean rtl = TextDirection.leftArrowMovesForward(currentLine());
@@ -293,7 +309,8 @@ public final class TextFieldController {
                 model.setText(valueAtFocus);
             }
             case MKeys.KEY_TAB -> handled = false;
-            default -> handled = ctrl ? shortcut(key, shift) : printable(key) && (mods & MKeys.MOD_ALT) == 0;
+            default -> handled = ctrl ? shortcut(key, shift)
+                : printable(key) && ((mods & MKeys.MOD_ALT) == 0 || altGr);
         }
         changed(before);
         blink();
@@ -329,10 +346,21 @@ public final class TextFieldController {
         return true;
     }
 
-    /** GLFW printable key range: their characters arrive as text input. */
+    /** GLFW printable keys and the keypad's text keys: their characters arrive as text input. */
     private static boolean printable(int key) {
-        return key >= MKeys.KEY_SPACE && key <= 96 || key == 161 || key == 162;
+        return key >= MKeys.KEY_SPACE && key <= 96 || key == 161 || key == 162
+            || key >= KEY_KP_0 && key <= KEY_KP_EQUAL && key != MKeys.KEY_KP_ENTER;
     }
+
+    /** GLFW left/right Shift, Control, Alt, Super. */
+    private static boolean modifierKey(int key) {
+        return key >= KEY_LEFT_SHIFT && key <= KEY_RIGHT_SUPER;
+    }
+
+    private static final int KEY_KP_0 = 320;
+    private static final int KEY_KP_EQUAL = 336;
+    private static final int KEY_LEFT_SHIFT = 340;
+    private static final int KEY_RIGHT_SUPER = 347;
 
     /** Inserts typed or pasted text through the field's rules. Always consumed while focused. */
     void text(String s) {

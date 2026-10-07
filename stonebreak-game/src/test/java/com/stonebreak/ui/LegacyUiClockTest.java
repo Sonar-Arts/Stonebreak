@@ -53,4 +53,18 @@ class LegacyUiClockTest {
         assertThrows(IllegalArgumentException.class, () -> LegacyUiClock.parsedSeconds("-1"));
         assertThrows(IllegalArgumentException.class, () -> LegacyUiClock.pin(Double.NaN, 0));
     }
+
+    @Test
+    void aScopedPinRestoresTheOuterPinInsteadOfUnpinning() {
+        LegacyUiClock.pin(7, 1); // a live -Dstonebreak.ui.pinclock run, or an outer test
+        try (LegacyUiClock.Restore inner = LegacyUiClock.pinScoped(12.5, 296)) {
+            assertEquals(12.5, LegacyUiClock.seconds());
+        }
+        assertTrue(LegacyUiClock.isPinned(), "a nested capture must not wipe the outer pin");
+        assertEquals(7, LegacyUiClock.seconds());
+
+        LegacyUiClock.release();
+        LegacyUiClock.pinScoped(1, 1).close();
+        assertTrue(!LegacyUiClock.isPinned(), "and an unpinned clock stays unpinned");
+    }
 }

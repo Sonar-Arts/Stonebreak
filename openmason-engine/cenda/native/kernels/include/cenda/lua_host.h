@@ -6,6 +6,9 @@
  * typed values (ABI 2): host functions and calls that carry nil, booleans,
  * numbers, strings and nested tables in the CL value encoding below. The `ui`
  * API itself is a Lua prelude on the Java side, built on these two calls.
+ * ABI 3 (#282 hardening) adds cl_state_new_seeded, the encoded-value byte cap,
+ * deadline checks inside the C string/table library loops and a sandboxed
+ * setmetatable that refuses __gc.
  *
  * Contract notes:
  *  - Lives in the same shared library as the kernels but has its OWN ABI
@@ -16,7 +19,15 @@
  *  - Sandbox: text chunks only (binary chunks are rejected), and only the
  *    base (minus dofile/loadfile/collectgarbage), coroutine, math, string
  *    (minus dump), table and utf8 libraries exist. io/os/debug/package are not
- *    compiled into the library at all. `load` is text-only.
+ *    compiled into the library at all. `load` is text-only. `setmetatable`
+ *    refuses a metatable with __gc: finalizers run with hooks disabled, so no
+ *    deadline could stop one (and lua_close would run them unguarded).
+ *  - Deadline: besides loop back-jumps and calls in the VM, the pattern
+ *    matcher, plain string.find and table.move check the deadline inside their
+ *    C loops (patch_lvm.cmake), so no single library call outlives it.
+ *  - Host-side work: the protected setup operations (cl_env_new,
+ *    cl_ref_function, cl_register_host*, cl_bind_buffer) use raw table access
+ *    only, so no script metamethod runs outside a watched call.
  *  - Memory: every allocation goes through a per-state capped allocator; an
  *    over-cap allocation fails with a Lua memory error, never a crash.
  *  - Instructions: a count hook enforces the budget set by cl_set_budget for
@@ -35,7 +46,7 @@
 extern "C" {
 #endif
 
-#define CL_ABI_VERSION 2
+#define CL_ABI_VERSION 3
 
 /* Status codes. Values >= 0 mirror Lua's own; CL_ERR_BUDGET is ours. */
 #define CL_OK         0
@@ -61,8 +72,12 @@ int32_t cl_abi_version(void);
 /* "Lua 5.5.1" — static string, never freed. */
 const char* cl_lua_release(void);
 
-/* New sandboxed state. mem_limit_bytes == 0 means uncapped. NULL on failure. */
+/* New sandboxed state. mem_limit_bytes == 0 means uncapped. NULL on failure.
+ * Uses a fixed string-hash seed (deterministic pairs() order for fixtures). */
 cl_state* cl_state_new(size_t mem_limit_bytes);
+/* Same with an explicit string-hash seed (ABI 3): hosts running documents
+ * they did not author pass a random one (hash-flooding resistance). */
+cl_state* cl_state_new_seeded(size_t mem_limit_bytes, uint32_t seed);
 void cl_state_close(cl_state* s);
 
 size_t cl_mem_used(const cl_state* s);
@@ -144,6 +159,10 @@ int32_t cl_thread_status(cl_state* s, int32_t thread_ref);
 #define CL_TAG_MAP 0x07
 #define CL_TAG_REF 0x08
 #define CL_MAX_DEPTH 32
+/* Largest encoding of one call's values (ABI 3). A shared subtable is encoded
+ * once per use, so the cap also bounds the time an encode can take. Encoding
+ * more raises a Lua error at the script's call. */
+#define CL_MAX_ENCODED_BYTES (1024 * 1024)
 
 /* A value-typed Java upcall. `args` holds `nargs` encoded values (valid only
  * during the call). The host writes its results, encoded, into the buffer it

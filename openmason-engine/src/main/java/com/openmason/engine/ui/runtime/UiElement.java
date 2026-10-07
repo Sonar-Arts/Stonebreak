@@ -104,6 +104,8 @@ public final class UiElement implements Styleable {
     ComputedStyle computed = ComputedStyle.INITIAL;
     /** The cascade without animation; style transitions ease its changes. */
     ComputedStyle base = ComputedStyle.INITIAL;
+    /** {@link #base} before inherited fallbacks: what this element's own rules and layers declare. */
+    ComputedStyle own = ComputedStyle.INITIAL;
     boolean baseResolved;
     /** Own {@code scale}/{@code rotate} about the rect centre, or null for none (#295). */
     com.openmason.engine.ui.runtime.input.UiTransform transform;
@@ -125,6 +127,8 @@ public final class UiElement implements Styleable {
     boolean styleDirty = true;
     /** Only the animation channel changed: re-overlay without running the cascade. */
     boolean overlayDirty;
+    /** Only the parent's inherited values changed: re-inherit {@link #own} without the cascade. */
+    boolean inheritDirty;
     boolean recordDirty = true;
     boolean measureDirty;
 
@@ -287,6 +291,20 @@ public final class UiElement implements Styleable {
         return localProps.get(name);
     }
 
+    /**
+     * Names of every prop, style property and class the local (script) layer sets, as
+     * {@code prop:<name>}, {@code style:<name>} and {@code class:<name>} targets. A recycled
+     * list row clears these so the next item never inherits the last one's edits (#289).
+     */
+    public java.util.List<String> localTargets() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        localProps.keySet().forEach(n -> out.add("prop:" + n));
+        localStyle.keySet().forEach(n -> out.add("style:" + n));
+        localAdded.forEach(n -> out.add("class:" + n));
+        localRemoved.forEach(n -> out.add("class:" + n));
+        return out;
+    }
+
     /** The animation channel's value of prop {@code name}, or null when no animation drives it (#295). */
     public UiValue animatedProp(String name) {
         return animationProps.get(name);
@@ -343,6 +361,16 @@ public final class UiElement implements Styleable {
     @Override
     public boolean hasClass(String className) {
         return effectiveClasses.contains(className);
+    }
+
+    @Override
+    public Iterable<String> styleClasses() {
+        return effectiveClasses;
+    }
+
+    /** True while an animation channel drives {@code translate-x} or {@code translate-y} (#295). */
+    boolean animatesTranslation() {
+        return animationStyle.containsKey("translate-x") || animationStyle.containsKey("translate-y");
     }
 
     public void addClass(String className) {
@@ -419,7 +447,7 @@ public final class UiElement implements Styleable {
         Set<String> before = effectiveClasses;
         recomputeClasses();
         if (!before.equals(effectiveClasses)) {
-            owner.invalidateSubtreeStyle(this);
+            owner.classesChanged(this, before, effectiveClasses);
         }
     }
 
@@ -549,7 +577,7 @@ public final class UiElement implements Styleable {
                 ":" + state + " is neither built in nor declared by any style sheet of this document"));
         }
         if (on ? states.add(state) : states.remove(state)) {
-            owner.invalidateSubtreeStyle(this);
+            owner.stateChanged(this, state);
         }
     }
 
@@ -557,7 +585,7 @@ public final class UiElement implements Styleable {
     public void setEnabled(boolean enabled) {
         if (this.enabled != enabled) {
             this.enabled = enabled;
-            owner.invalidateSubtreeStyle(this);
+            owner.stateChanged(this, DISABLED);
         }
     }
 
@@ -728,6 +756,14 @@ public final class UiElement implements Styleable {
     /** Clips its descendants: {@code overflow: hidden} or a scroll container. */
     public boolean clipsChildren() {
         return isScrollContainer() || "hidden".equals(computed.keyword("overflow", "visible"));
+    }
+
+    /**
+     * {@code -sb-anchor: pointer}: placed at the document's pointer and painted in the cursor
+     * layer above everything, never hit (a carried item, a drag ghost).
+     */
+    public boolean isPointerAnchored() {
+        return "pointer".equals(computed.keyword("-sb-anchor", "none"));
     }
 
     /** Explicit {@code -sb-layer}, or {@code null} to stay in the parent's layer. */

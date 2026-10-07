@@ -117,6 +117,14 @@ public class Settings {
     Settings() {
     }
 
+    /**
+     * A fresh instance holding the built-in defaults, never loaded from or saved to disk by
+     * itself: what a setting is before the player changes it (UI host declarations, fixtures).
+     */
+    public static Settings defaults() {
+        return new Settings();
+    }
+
     // No synchronization needed: getInstance() is always called from the main thread during startup,
     // before any background threads are spawned. Post-init access is read-only.
     public static Settings getInstance() {

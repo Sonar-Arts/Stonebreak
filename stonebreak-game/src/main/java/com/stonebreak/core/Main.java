@@ -107,6 +107,9 @@ public class Main {
         long handle = window.handle();
 
         glfwSetKeyCallback(handle, (win, key, scancode, action, mods) -> inputRouter.onKey(key, action, mods));
+        // UI documents see letter keys by their layout label (Ctrl+Z on QWERTZ is the key labelled Z).
+        com.stonebreak.ui.runtime.GameUiInput.get().setKeyTranslator(
+                key -> com.stonebreak.ui.runtime.LayoutKeys.translate(key, 0));
         glfwSetCharCallback(handle, (win, codepoint) -> inputRouter.onCharacter(codepoint));
         glfwSetMouseButtonCallback(handle, (win, button, action, mods) ->
                 inputRouter.onMouseButton(button, action, mods));
@@ -833,6 +836,16 @@ public class Main {
             logger.error("Error cleaning up CBRResourceManager", e);
         }
         Game.logDetailedMemoryInfo("After CBR cleanup");
+
+        // UI document screens (their Masonry handles) and the draw providers' GL textures (item
+        // icon atlas, model previews) go before the renderer and its Skija backend.
+        try {
+            com.stonebreak.ui.runtime.screens.DocumentScreenHost.ifCreated()
+                    .ifPresent(com.stonebreak.ui.runtime.screens.DocumentScreenHost::closeAll);
+            com.stonebreak.ui.runtime.providers.GameDrawProviders.shutdown();
+        } catch (Exception e) {
+            logger.error("Error cleaning up UI document screens and draw providers", e);
+        }
 
         if (renderer != null) {
             renderer.cleanup();

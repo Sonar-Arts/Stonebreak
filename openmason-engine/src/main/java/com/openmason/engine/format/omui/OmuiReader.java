@@ -141,6 +141,7 @@ public final class OmuiReader {
 
         OmuiArchive archive = new OmuiArchive(manifest, document, styles, graphs, clips, machines, scripts, deps, assets,
                 editor, extra);
+        archive = UiFeatures.withImpliedRetroGated(archive, d);
         OmuiValidator.validate(archive, d);
         d.throwIfErrors("Invalid OMUI document");
         return new Result(archive, d.list());

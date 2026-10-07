@@ -38,6 +38,7 @@ public final class UiFrameMonitor implements UiDocumentView.Extension, UiDocumen
     private long lastCallNanos;
     private int lookupIn;
     private boolean closed;
+    private Object lastDocument;
     private final boolean[] reported = new boolean[UiBudgetTracker.Metric.values().length];
 
     private UiFrameMonitor(UiDocumentView view, UiBudgets budgets) {
@@ -45,7 +46,7 @@ public final class UiFrameMonitor implements UiDocumentView.Extension, UiDocumen
         this.tracker = new UiBudgetTracker(budgets, WINDOW, this::overrun);
     }
 
-    /** Attaches a monitor with the document's own budgets ({@link UiBudgets#forDocument}). */
+    /** Attaches a monitor with the document's own menu/minigame budgets ({@link UiBudgets#forDocument}). */
     public static UiFrameMonitor attach(UiDocumentView view) {
         return attach(view, UiBudgets.forDocument(view.instance().document()));
     }
@@ -115,7 +116,15 @@ public final class UiFrameMonitor implements UiDocumentView.Extension, UiDocumen
 
     @Override
     public void updated(UiDocumentInstance ui, UiDocumentInstance.UpdateStats stats) {
-        if (stats.laidOut() && !closed) {
+        if (closed) {
+            return;
+        }
+        Object doc = ui.document();
+        if (lastDocument != null && doc != lastDocument) {
+            tracker.coldStart(); // a reload rebuilt the tree: its first layout is cold, not a trend
+        }
+        lastDocument = doc;
+        if (stats.laidOut()) {
             tracker.layout(stats.nanos(), ui.elementCount());
         }
     }
@@ -146,6 +155,7 @@ public final class UiFrameMonitor implements UiDocumentView.Extension, UiDocumen
         recent.addLast(o);
         UiRuntimeDiagnostic.Code code = switch (o.metric()) {
             case SCRIPT_FRAME -> UiRuntimeDiagnostic.Code.BUDGET_SCRIPT_FRAME;
+            case SCRIPT_SPIKE -> UiRuntimeDiagnostic.Code.BUDGET_SCRIPT_SPIKE;
             case MEMORY -> UiRuntimeDiagnostic.Code.BUDGET_MEMORY;
             case LAYOUT -> UiRuntimeDiagnostic.Code.BUDGET_LAYOUT;
         };

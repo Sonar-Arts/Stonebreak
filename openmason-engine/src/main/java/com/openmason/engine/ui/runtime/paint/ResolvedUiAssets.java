@@ -47,12 +47,25 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * component's table, built over the same sources when the component is loaded. Decoded
  * documents and sheets are cached; textures go through the shared {@link MTextureCache} under
  * {@code ui:<sha256>} so identical bytes decode once across documents.
+ *
+ * <p><b>Precedence.</b> An id resolves through the document's own table first; a reference made
+ * inside a component ({@link #image(String, String)} with the element's component id) then
+ * tries that component's table, so two components embedding different snapshots under one id
+ * each draw their own; anything else falls through the remaining tables in load order. A
+ * missing optional row follows its {@code fallback} chain, as at export.
+ *
+ * <p><b>Diagnostics.</b> Every resolution problem (missing required rows, fallbacks taken, hash
+ * drift, unreadable embedded snapshots) and every sprite problem is logged once and kept:
+ * {@link #diagnostics()}. {@link #check()} resolves the whole root table up front so a host can
+ * refuse a screen whose required assets are missing instead of drawing blanks.
  */
 public final class ResolvedUiAssets implements UiDocumentSource {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ResolvedUiAssets.class);
 
     private final List<AssetResolver> resolvers = new CopyOnWriteArrayList<>();
+    /** Each loaded component's own table, by dependency id: its references resolve there before other components'. */
+    private final Map<String, AssetResolver> componentTables = new ConcurrentHashMap<>();
     private final List<? extends AssetSource> sources;
     private final MTextureCache textures;
     private final Map<String, OmuiArchive> components = new HashMap<>();
@@ -65,6 +78,7 @@ public final class ResolvedUiAssets implements UiDocumentSource {
     private final Map<String, Optional<UiImage>> images = new ConcurrentHashMap<>();
     private final Map<String, Optional<MTexture>> texturesById = new ConcurrentHashMap<>();
     private final Map<String, UiDiagnostic> spriteFindings = new LinkedHashMap<>();
+    private final Map<String, UiDiagnostic> resolutionFindings = new LinkedHashMap<>();
 
     public ResolvedUiAssets(AssetResolver resolver, List<? extends AssetSource> sources, MTextureCache textures) {
         resolvers.add(resolver);
@@ -105,7 +119,9 @@ public final class ResolvedUiAssets implements UiDocumentSource {
         if (asset != null) {
             try {
                 archive = OmuiReader.read(asset.bytes().toArray()).archive();
-                resolvers.add(AssetResolver.forDocument(archive, sources));
+                AssetResolver table = AssetResolver.forDocument(archive, sources);
+                resolvers.add(table);
+                componentTables.put(dependencyId, table);
                 resolved.values().removeIf(Optional::isEmpty); // the new table may hold a remembered miss
                 images.values().removeIf(Optional::isEmpty);
                 texturesById.values().removeIf(Optional::isEmpty);
@@ -159,17 +175,26 @@ public final class ResolvedUiAssets implements UiDocumentSource {
 
     /** Texture for an asset reference, decoded once per content hash; null when unresolvable. */
     public MTexture texture(String assetRef) {
+        return texture(null, assetRef);
+    }
+
+    /**
+     * {@link #texture(String)} for a reference made inside component {@code componentId} (null =
+     * the document): that component's own table is consulted right after the document's.
+     */
+    public MTexture texture(String componentId, String assetRef) {
         if (assetRef == null) {
             return null;
         }
-        Optional<MTexture> known = texturesById.get(assetRef);
+        String key = scoped(componentId, assetRef);
+        Optional<MTexture> known = texturesById.get(key);
         if (known != null) {
             return known.orElse(null);
         }
-        ResolvedAsset asset = resolve(assetRef);
+        ResolvedAsset asset = resolve(componentId, assetRef);
         MTexture t = asset == null ? null
-            : textures.get("ui:" + asset.sha256(), key -> MTexture.decode(key, asset.bytes().toArray()));
-        texturesById.put(assetRef, Optional.ofNullable(t));
+            : textures.get("ui:" + asset.sha256(), k -> MTexture.decode(k, asset.bytes().toArray()));
+        texturesById.put(key, Optional.ofNullable(t));
         return t;
     }
 
@@ -180,24 +205,47 @@ public final class ResolvedUiAssets implements UiDocumentSource {
      * element every frame is a map lookup.
      */
     public UiImage image(String assetRef) {
+        return image(null, assetRef);
+    }
+
+    /** {@link #image(String)} for a reference made inside component {@code componentId} (null = the document). */
+    public UiImage image(String componentId, String assetRef) {
         if (assetRef == null) {
             return null;
         }
-        Optional<UiImage> known = images.get(assetRef);
+        String key = scoped(componentId, assetRef);
+        Optional<UiImage> known = images.get(key);
         if (known != null) {
             return known.orElse(null);
         }
         UiImage img;
         UiSpriteRef ref = UiSpriteRef.parse(assetRef);
         if (ref == null) {
-            MTexture t = texture(assetRef);
+            MTexture t = texture(componentId, assetRef);
             img = t == null ? null : UiImage.whole(t);
         } else {
-            SheetView view = sheetView(ref.sheet());
+            SheetView view = sheetView(componentId, ref.sheet());
             img = view == null ? null : view.image(ref.name());
         }
-        images.put(assetRef, Optional.ofNullable(img));
+        images.put(key, Optional.ofNullable(img));
         return img;
+    }
+
+    /** Cache key: a component's lookups are kept apart only when its table could change the answer. */
+    private String scoped(String componentId, String id) {
+        if (componentId == null) {
+            return id;
+        }
+        AssetResolver own = componentTables.get(componentId);
+        if (own == null || resolvers.getFirst().ids().contains(sheetOf(id)) || !own.ids().contains(sheetOf(id))) {
+            return id;
+        }
+        return componentId + "\u0000" + id;
+    }
+
+    private static String sheetOf(String ref) {
+        int hash = ref.indexOf('#');
+        return hash < 0 ? ref : ref.substring(0, hash);
     }
 
     @Override
@@ -227,7 +275,7 @@ public final class ResolvedUiAssets implements UiDocumentSource {
 
     /** The geometry check of a sheet against its resolved texture, or null when either is missing. */
     public UiSpriteSheets.Check spriteCheck(String sheetId) {
-        SheetView view = sheetView(sheetId);
+        SheetView view = sheetView(null, sheetId);
         return view == null ? null : view.check;
     }
 
@@ -237,11 +285,41 @@ public final class ResolvedUiAssets implements UiDocumentSource {
     }
 
     /**
+     * Every problem met so far, resolution first (missing rows, fallbacks taken, hash drift),
+     * then sprites; each logged once. Refreshed by {@link #refresh}/{@link #invalidate}.
+     */
+    public synchronized List<UiDiagnostic> diagnostics() {
+        List<UiDiagnostic> out = new ArrayList<>(resolutionFindings.values());
+        out.addAll(spriteFindings.values());
+        return out;
+    }
+
+    /**
+     * Resolves every row of the document's own table now (following optional fallbacks) and
+     * returns what that found: errors mean a required asset is missing, unreadable or corrupt, and
+     * a host should refuse to open the screen. Warnings (fallbacks, drift) are informational.
+     */
+    public List<UiDiagnostic> check() {
+        AssetResolver root = resolvers.getFirst();
+        UiDiagnostics d = new UiDiagnostics();
+        for (String id : new java.util.TreeSet<>(root.ids())) {
+            ResolvedAsset a = root.resolveWithFallback(id, d);
+            resolved.putIfAbsent(id, Optional.ofNullable(a));
+        }
+        d.list().forEach(this::reportResolution);
+        return d.list();
+    }
+
+    /**
      * Forgets resolved bytes so the next lookup reads the sources again (a texture or sheet was
      * saved). Decoded textures and parsed sheets are keyed by content hash and stay valid.
      */
     public void invalidate() {
         resolved.clear();
+        synchronized (this) {
+            resolutionFindings.clear();
+            spriteFindings.clear();
+        }
         dropDerivedLookups();
     }
 
@@ -260,6 +338,7 @@ public final class ResolvedUiAssets implements UiDocumentSource {
     public synchronized Refresh refresh() {
         Set<String> changed = new java.util.TreeSet<>();
         Set<String> stale = new java.util.TreeSet<>();
+        resolutionFindings.clear();
         for (Map.Entry<String, Optional<ResolvedAsset>> e : new ArrayList<>(resolved.entrySet())) {
             ResolvedAsset old = e.getValue().orElse(null);
             ResolvedAsset now = resolveNow(e.getKey());
@@ -274,6 +353,7 @@ public final class ResolvedUiAssets implements UiDocumentSource {
             }
         }
         if (!changed.isEmpty()) {
+            spriteFindings.clear();
             dropDerivedLookups();
         }
         return new Refresh(changed, stale);
@@ -294,11 +374,12 @@ public final class ResolvedUiAssets implements UiDocumentSource {
     }
 
     /**
-     * Drops {@code keys} from the shared texture cache without closing them: an image still drawn
-     * somewhere stays alive until the GC collects it, and a later lookup decodes it again.
+     * Releases {@code keys} from the shared texture cache: they are closed after the cache's
+     * release grace ({@link MTextureCache#release}), deterministically rather than by the GC. Only
+     * for revisions no open document still draws; a later lookup decodes the key again.
      */
     public void forget(java.util.Collection<String> keys) {
-        keys.forEach(textures::forget);
+        keys.forEach(textures::release);
     }
 
     private void dropDerivedLookups() {
@@ -307,8 +388,8 @@ public final class ResolvedUiAssets implements UiDocumentSource {
         sheetViews.clear();
     }
 
-    private SheetView sheetView(String sheetId) {
-        ResolvedAsset asset = resolve(sheetId);
+    private SheetView sheetView(String componentId, String sheetId) {
+        ResolvedAsset asset = resolve(componentId, sheetId);
         if (asset == null) {
             return null;
         }
@@ -316,12 +397,12 @@ public final class ResolvedUiAssets implements UiDocumentSource {
         if (sheet == null) {
             return null;
         }
-        SpriteBinding binding = SpriteBinding.of(sheetId, sheet, this::row);
+        SpriteBinding binding = SpriteBinding.of(sheetId, sheet, id -> row(componentId, id));
         if (binding.problem() != null) {
             report(new UiDiagnostic(binding.fatal() ? UiDiagnostic.Severity.ERROR : UiDiagnostic.Severity.WARNING,
                 UiDiagnostic.Code.UNRESOLVED_REFERENCE, sheetId, "", binding.problem()));
         }
-        MTexture texture = binding.texture() == null ? null : texture(binding.texture());
+        MTexture texture = binding.texture() == null ? null : texture(componentId, binding.texture());
         if (texture == null) {
             if (!binding.fatal()) {
                 report(new UiDiagnostic(UiDiagnostic.Severity.ERROR, UiDiagnostic.Code.UNRESOLVED_REFERENCE, sheetId,
@@ -344,6 +425,17 @@ public final class ResolvedUiAssets implements UiDocumentSource {
             d.list().stream().filter(UiDiagnostic::isError).forEach(this::report);
             return Optional.ofNullable(d.hasErrors() ? null : sheet);
         }).orElse(null);
+    }
+
+    private synchronized void reportResolution(UiDiagnostic d) {
+        String key = d.code() + "|" + d.entry() + "|" + d.pointer() + "|" + d.message();
+        if (resolutionFindings.putIfAbsent(key, d) == null) {
+            if (d.isError()) {
+                LOGGER.error("UI assets: {}", d);
+            } else {
+                LOGGER.warn("UI assets: {}", d);
+            }
+        }
     }
 
     private synchronized void report(UiDiagnostic d) {
@@ -406,12 +498,33 @@ public final class ResolvedUiAssets implements UiDocumentSource {
 
     /** A paint host serving this document's textures plus the host's draw providers. */
     public UiPaintHost paintHost(Map<String, UiPaintHost.UiDrawProvider> providers) {
-        return UiPaintHost.of(this::texture, this::image, providers);
+        Map<String, UiPaintHost.UiDrawProvider> p = Map.copyOf(providers);
+        return new UiPaintHost() {
+            @Override
+            public MTexture texture(String assetRef) {
+                return ResolvedUiAssets.this.texture(assetRef);
+            }
+
+            @Override
+            public UiImage image(String assetRef) {
+                return ResolvedUiAssets.this.image(assetRef);
+            }
+
+            @Override
+            public UiImage image(com.openmason.engine.ui.runtime.UiElement element, String assetRef) {
+                return ResolvedUiAssets.this.image(element == null ? null : element.componentId(), assetRef);
+            }
+
+            @Override
+            public UiDrawProvider drawProvider(String id) {
+                return id == null ? null : p.get(id);
+            }
+        };
     }
 
-    /** The row {@code id} has in the first table that lists it. */
-    private AssetRow row(String id) {
-        for (AssetResolver r : resolvers) {
+    /** The row {@code id} has in the first table that lists it, the component's own table right after the document's. */
+    private AssetRow row(String componentId, String id) {
+        for (AssetResolver r : chain(componentId)) {
             AssetRow row = r.row(id);
             if (row != null) {
                 return row;
@@ -421,28 +534,57 @@ public final class ResolvedUiAssets implements UiDocumentSource {
     }
 
     private ResolvedAsset resolve(String id) {
+        return resolve(null, id);
+    }
+
+    private ResolvedAsset resolve(String componentId, String id) {
         if (id == null) {
             return null;
         }
-        Optional<ResolvedAsset> known = resolved.get(id);
+        String key = scoped(componentId, id);
+        Optional<ResolvedAsset> known = resolved.get(key);
         if (known != null) {
             return known.orElse(null);
         }
-        ResolvedAsset a = resolveNow(id);
-        resolved.put(id, Optional.ofNullable(a));
+        ResolvedAsset a = resolveNow(componentId, id);
+        resolved.put(key, Optional.ofNullable(a));
         return a;
     }
 
-    private ResolvedAsset resolveNow(String id) {
-        List<AssetResolver> chain = new ArrayList<>(resolvers);
-        for (AssetResolver r : chain) {
+    /** Re-resolves a cache key ({@code id} or {@code component\0id}). */
+    private ResolvedAsset resolveNow(String key) {
+        int split = key.indexOf('\u0000');
+        return split < 0 ? resolveNow(null, key) : resolveNow(key.substring(0, split), key.substring(split + 1));
+    }
+
+    private ResolvedAsset resolveNow(String componentId, String id) {
+        for (AssetResolver r : chain(componentId)) {
             if (r.ids().contains(id)) {
-                ResolvedAsset a = r.resolveOne(id, new UiDiagnostics());
+                UiDiagnostics d = new UiDiagnostics();
+                ResolvedAsset a = r.resolveWithFallback(id, d);
+                d.list().forEach(this::reportResolution);
                 if (a != null) {
                     return a;
                 }
             }
         }
         return null;
+    }
+
+    /** Tables in lookup order: the document's, then {@code componentId}'s own, then the rest in load order. */
+    private List<AssetResolver> chain(String componentId) {
+        AssetResolver own = componentId == null ? null : componentTables.get(componentId);
+        if (own == null) {
+            return resolvers;
+        }
+        List<AssetResolver> out = new ArrayList<>(resolvers.size());
+        out.add(resolvers.getFirst());
+        out.add(own);
+        for (AssetResolver r : resolvers) {
+            if (r != own && r != resolvers.getFirst()) {
+                out.add(r);
+            }
+        }
+        return out;
     }
 }

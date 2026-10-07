@@ -52,7 +52,9 @@ class UiBezierFormatTest {
             .withStyle(sheet).withAnimation(clip);
         byte[] bytes = OmuiWriter.write(doc);
         OmuiArchive back = OmuiReader.read(bytes).archive();
-        assertEquals(doc, back);
+        // The writer declares the curve's feature, so a reader that predates bezier refuses cleanly.
+        assertEquals(UiFeatures.withInferred(doc), back);
+        assertEquals(List.of(UiFeatures.MOTION), back.manifest().requires());
         String json = new String(OmuiWriter.entries(doc).get("animations/pop.anim.json").toArray(), StandardCharsets.UTF_8);
         assertTrue(json.replace(" ", "").contains("\"bezier\"") && json.replace(" ", "").contains("\"easing\":\"ease-out\""),
             "the named easing stays as the fallback older readers use: " + json);

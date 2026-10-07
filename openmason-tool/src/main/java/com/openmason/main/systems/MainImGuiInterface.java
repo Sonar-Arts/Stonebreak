@@ -1024,6 +1024,13 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         projectLifecycle.setUiEditorSessionHooks(supplier, hook);
     }
 
+    /** The UI Editor's open documents or workspace changed: the project may need saving. */
+    public void notifyUiEditorSessionChanged() {
+        if (projectLifecycle.getProjectService() != null) {
+            projectLifecycle.getProjectService().uiSessionChanged();
+        }
+    }
+
     public void setOnProjectSessionReset(Runnable callback) {
         projectLifecycle.setOnProjectSessionReset(callback);
     }

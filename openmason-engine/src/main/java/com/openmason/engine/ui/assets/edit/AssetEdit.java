@@ -34,17 +34,58 @@ public record AssetEdit(String label, OmuiArchive before, OmuiArchive after, Lis
     }
 
     /**
-     * Performs the project writes in order and returns {@link #after}. A write that fails
-     * rolls back the ones already made, so the project never holds half a command.
+     * Performs the project writes in order and returns {@link #after}. All-or-nothing: every file
+     * is checked before any is touched (a file changed since the command refuses the whole
+     * edit), and a write that fails rolls back the ones already made, so the project never holds
+     * half a command.
      */
     public OmuiArchive apply(ProjectFolder folder) throws IOException {
-        for (int i = 0; i < writes.size(); i++) {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (ProjectWrite w : writes) {
+            if (seen.add(w.path())) {
+                w.checkApplicable(folder); // a later write to the same path starts from this one's result
+            }
+        }
+        transition(folder, true);
+        return after;
+    }
+
+    /**
+     * Reverts the project writes in reverse order and returns {@link #before}. All-or-nothing
+     * like {@link #apply}: when any file was changed after the command (an edit undo must not
+     * clobber) nothing is reverted, and a revert that fails part-way re-applies the ones already
+     * reverted, so the document and the project never disagree.
+     */
+    public OmuiArchive undo(ProjectFolder folder) throws IOException {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (int i = writes.size() - 1; i >= 0; i--) {
+            if (seen.add(writes.get(i).path())) {
+                writes.get(i).checkRevertible(folder);
+            }
+        }
+        transition(folder, false);
+        return before;
+    }
+
+    private void transition(ProjectFolder folder, boolean forward) throws IOException {
+        int n = writes.size();
+        for (int step = 0; step < n; step++) {
+            ProjectWrite w = writes.get(forward ? step : n - 1 - step);
             try {
-                writes.get(i).apply(folder);
+                if (forward) {
+                    w.apply(folder);
+                } else {
+                    w.revert(folder);
+                }
             } catch (IOException e) {
-                for (int j = i - 1; j >= 0; j--) {
+                for (int back = step - 1; back >= 0; back--) {
+                    ProjectWrite done = writes.get(forward ? back : n - 1 - back);
                     try {
-                        writes.get(j).revert(folder);
+                        if (forward) {
+                            done.revert(folder);
+                        } else {
+                            done.apply(folder);
+                        }
                     } catch (IOException suppressed) {
                         e.addSuppressed(suppressed);
                     }
@@ -52,14 +93,5 @@ public record AssetEdit(String label, OmuiArchive before, OmuiArchive after, Lis
                 throw e;
             }
         }
-        return after;
-    }
-
-    /** Reverts the project writes in reverse order and returns {@link #before}. */
-    public OmuiArchive undo(ProjectFolder folder) throws IOException {
-        for (int i = writes.size() - 1; i >= 0; i--) {
-            writes.get(i).revert(folder);
-        }
-        return before;
     }
 }

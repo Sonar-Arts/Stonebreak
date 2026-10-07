@@ -11,6 +11,7 @@ import com.openmason.engine.format.omui.UiDiagnostic.Code;
 import com.openmason.engine.format.omui.UiDiagnostics;
 import com.openmason.engine.format.omui.UiFormatException;
 import com.openmason.engine.format.omui.UiRequirements;
+import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.format.omui.io.ArchiveDigest;
 import com.openmason.engine.format.omui.io.ArchiveIO;
 import com.openmason.engine.format.omui.io.EntryPaths;
@@ -140,7 +141,7 @@ public final class SbuiExporter {
         if (dep.mode() == UiDependency.Mode.EMBEDDED) {
             return new SbuiDependency(dep.id(), dep.kind(), dep.version(), dep.sha256(), dep.size(),
                     UiDependency.Mode.EMBEDDED, Location.SOURCE, dep.entry(), null, dep.requires(), dep.optional(),
-                    dep.fallback(), dep.license(), Map.of());
+                    dep.fallback(), dep.license(), rowUnknown(dep));
         }
         UiBytes bytes = options.collected().get(dep.id());
         if (bytes == null) {
@@ -149,7 +150,7 @@ public final class SbuiExporter {
             }
             return new SbuiDependency(dep.id(), dep.kind(), dep.version(), dep.sha256(), dep.size(),
                     UiDependency.Mode.SHARED, null, null, options.packs().get(dep.id()), dep.requires(),
-                    dep.optional(), dep.fallback(), dep.license(), Map.of());
+                    dep.optional(), dep.fallback(), dep.license(), rowUnknown(dep));
         }
         if ((dep.kind() == UiDependency.Kind.FONT || dep.kind() == UiDependency.Kind.SOUND) && dep.license() == null) {
             d.error(Code.MISSING_FIELD, OmuiFormat.DEPENDENCIES, "",
@@ -164,10 +165,33 @@ public final class SbuiExporter {
         if (problem != null) {
             d.error(Code.UNSAFE_ENTRY_PATH, entry, "", "Cannot collect '" + dep.id() + "': " + problem);
         }
+        for (String other : assets.keySet()) {
+            if (EntryPaths.collisionKey(other).equals(EntryPaths.collisionKey(entry))) {
+                d.error(Code.DUPLICATE_ENTRY, entry, "", "Collected '" + dep.id() + "' and another dependency both"
+                        + " collect to '" + other + "'");
+            }
+        }
         assets.put(entry, bytes);
         return new SbuiDependency(dep.id(), dep.kind(), dep.version(), bytes.sha256(), bytes.size(),
                 UiDependency.Mode.EMBEDDED, Location.SBUI, entry, null, dep.requires(), dep.optional(), dep.fallback(),
-                dep.license(), Map.of());
+                dep.license(), rowUnknown(dep));
+    }
+
+    /** Fields of an SBUI dependency row; an OMUI row's unknown field may never shadow one. */
+    private static final java.util.Set<String> SBUI_ROW_FIELDS = java.util.Set.of("id", "kind", "version", "sha256",
+            "size", "mode", "location", "entry", "pack", "requires", "optional", "fallback", "license");
+
+    /**
+     * The source row's unknown fields travel into the resolution row (wire contract §7.1), so a
+     * future optional row field reaches runtimes that resolve from the SBUI table alone.
+     */
+    private static Map<String, UiValue> rowUnknown(UiDependency dep) {
+        if (dep.unknown().isEmpty()) {
+            return Map.of();
+        }
+        Map<String, UiValue> out = new LinkedHashMap<>(dep.unknown());
+        out.keySet().removeAll(SBUI_ROW_FIELDS);
+        return out;
     }
 
     /**

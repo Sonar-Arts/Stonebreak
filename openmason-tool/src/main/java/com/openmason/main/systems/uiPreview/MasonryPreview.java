@@ -33,9 +33,33 @@ public final class MasonryPreview implements AutoCloseable {
 
     private static int nextId;
 
+    /**
+     * One Skia GPU context for every preview that shares it (the UI editor opens a runtime per
+     * document): one resource cache and glyph atlas however many documents are open, instead of a
+     * {@code DirectContext} each. Each preview keeps its own framebuffer and points the shared
+     * backend at it for its paint. GL thread only, like everything here.
+     */
+    private static final class SharedGpu {
+        final GpuMasonryBackend backend;
+        final MasonryUI ui;
+        int users;
+        /** The framebuffer the backend's surface wraps now (the last preview that painted). */
+        OffscreenFramebuffer surfaceOf;
+
+        SharedGpu(Typeface typeface) {
+            backend = new SharedTypefaceGpuBackend(typeface);
+            backend.initialize(UiRenderTarget.offscreen(0, 1, 1, 1f));
+            ui = new MasonryUI(backend);
+        }
+    }
+
+    private static final java.util.Map<Typeface, SharedGpu> SHARED = new java.util.IdentityHashMap<>();
+
     private final Typeface typeface;
+    private final boolean shareContext;
     private final String buttonId = "##masonry_preview_" + (++nextId);
     private Path path;
+    private SharedGpu shared;
     private GpuMasonryBackend gpu;
     private OffscreenFramebuffer framebuffer;
     private RasterMasonryBackend raster;
@@ -45,8 +69,22 @@ public final class MasonryPreview implements AutoCloseable {
 
     /** @param typeface shared typeface, owned by the caller and outliving the preview */
     public MasonryPreview(Typeface typeface, Path path) {
+        this(typeface, path, false);
+    }
+
+    /**
+     * @param shareContext on the GPU path, paint through one Skia context shared by every preview
+     *                     created with the same typeface and this flag (many previews open at once)
+     */
+    public MasonryPreview(Typeface typeface, Path path, boolean shareContext) {
         this.typeface = typeface;
         this.path = path;
+        this.shareContext = shareContext;
+    }
+
+    /** Previews that currently share a GPU context (tests, diagnostics). */
+    public static int sharedContexts() {
+        return SHARED.size();
     }
 
     public Path path() {
@@ -93,8 +131,12 @@ public final class MasonryPreview implements AutoCloseable {
         ensureBackend();
         int[] size = {canvasW, canvasH};
         if (path == Path.GPU) {
-            if (framebuffer.ensureSize(canvasW, canvasH)) {
-                gpu.releaseTargetSurface();
+            boolean resized = framebuffer.ensureSize(canvasW, canvasH);
+            if (resized || shared != null && shared.surfaceOf != framebuffer) {
+                gpu.releaseTargetSurface(); // a shared backend last painted some other preview's framebuffer
+            }
+            if (shared != null) {
+                shared.surfaceOf = framebuffer;
             }
             gpu.setTarget(framebuffer.target(1f));
             paint(painter, size, framebuffer.allocatedWidth(), framebuffer.allocatedHeight());
@@ -160,6 +202,14 @@ public final class MasonryPreview implements AutoCloseable {
             return;
         }
         MasonryBackend backend;
+        if (path == Path.GPU && shareContext) {
+            shared = SHARED.computeIfAbsent(typeface, SharedGpu::new);
+            shared.users++;
+            gpu = shared.backend;
+            framebuffer = new OffscreenFramebuffer();
+            ui = shared.ui;
+            return;
+        }
         if (path == Path.GPU) {
             gpu = new SharedTypefaceGpuBackend(typeface);
             gpu.initialize(UiRenderTarget.offscreen(0, 1, 1, 1f));
@@ -174,6 +224,20 @@ public final class MasonryPreview implements AutoCloseable {
     }
 
     private void releaseBackend() {
+        if (shared != null) {
+            if (shared.surfaceOf == framebuffer) {
+                shared.backend.releaseTargetSurface(); // it wraps this preview's framebuffer
+                shared.surfaceOf = null;
+            }
+            if (--shared.users == 0) {
+                SHARED.remove(typeface);
+                shared.ui.dispose();
+                shared.backend.dispose();
+            }
+            shared = null;
+            gpu = null;
+            ui = null;
+        }
         if (ui != null) {
             ui.dispose();
             ui = null;

@@ -82,6 +82,19 @@ final class ScriptContext {
     final Map<String, UiConverter> converters = new LinkedHashMap<>();
     final java.util.Set<String> disabledConverters = new java.util.HashSet<>();
     final Map<String, ScriptCanvas> canvases = new LinkedHashMap<>();
+    /**
+     * Awaitable handles this context started and that have not settled (actions, timers,
+     * animations, state-machine moves): the per-context cap counts these, and only their owner
+     * may cancel them.
+     */
+    final java.util.Set<Long> live = new java.util.HashSet<>();
+    /** Animation tokens this context started (bounded, oldest forgotten): stop/seek/speed ownership. */
+    final java.util.Set<Long> anims = java.util.Collections.newSetFromMap(new LinkedHashMap<>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Long, Boolean> eldest) {
+            return size() > UiScriptRuntime.MAX_HANDLES;
+        }
+    });
     UiEventHandler inputHook;
     UiElement inputHookElement;
 

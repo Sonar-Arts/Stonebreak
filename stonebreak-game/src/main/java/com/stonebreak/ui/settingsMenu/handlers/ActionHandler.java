@@ -4,10 +4,9 @@ import com.stonebreak.config.Settings;
 import com.stonebreak.core.GameState;
 import com.stonebreak.core.Game;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
+import com.stonebreak.ui.settingsMenu.managers.SettingsEffects;
 import com.stonebreak.ui.settingsMenu.managers.SettingsManager;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
-import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
-import org.joml.Vector3f;
 
 /**
  * Handles action execution and navigation for the settings menu.
@@ -207,10 +206,7 @@ public class ActionHandler {
      */
     public void onMusicVolumeChange(Float newVolume) {
         settings.setMusicVolume(newVolume);
-        com.stonebreak.audio.MusicManager musicManager = Game.getMusicManager();
-        if (musicManager != null) {
-            musicManager.setVolume(newVolume);
-        }
+        SettingsEffects.musicVolume(newVolume);
     }
 
     /**
@@ -219,10 +215,7 @@ public class ActionHandler {
     public void toggleMusic() {
         boolean now = !settings.getMusicEnabled();
         settings.setMusicEnabled(now);
-        com.stonebreak.audio.MusicManager musicManager = Game.getMusicManager();
-        if (musicManager != null) {
-            musicManager.setEnabled(now);
-        }
+        SettingsEffects.musicEnabled(now);
         System.out.println("Music toggled to: " + (now ? "ON" : "OFF"));
     }
 
@@ -257,10 +250,7 @@ public class ActionHandler {
     public void toggleLodEnabled() {
         boolean now = !settings.getLodEnabled();
         settings.setLodEnabled(now);
-        com.stonebreak.world.World world = Game.getWorld();
-        if (world != null && world.getConfig() != null) {
-            world.getConfig().setLodEnabled(now);
-        }
+        SettingsEffects.lodEnabled(now);
         System.out.println("Distant Terrain LOD toggled to: " + (now ? "ON" : "OFF"));
     }
 
@@ -272,7 +262,7 @@ public class ActionHandler {
     public void toggleVsync() {
         boolean now = !settings.isVsyncEnabled();
         settings.setVsyncEnabled(now);
-        com.stonebreak.core.Main.applyVsyncSetting();
+        SettingsEffects.vsync();
     }
 
     /**
@@ -290,28 +280,9 @@ public class ActionHandler {
     public void toggleLeafTransparency() {
         boolean currentValue = settings.getLeafTransparency();
         settings.setLeafTransparency(!currentValue);
-
-        // Refresh leaf block definitions immediately so the setting preview updates in the settings menu
-        // This is safer than full reinitialization as it doesn't dispose OpenGL resources
-        try {
-            CBRResourceManager.refreshLeafDefinitions();
-            System.out.println("Leaf transparency toggled to: " + (!currentValue ? "ON" : "OFF"));
-        } catch (Exception e) {
-            System.err.println("Failed to refresh leaf definitions: " + e.getMessage());
-        }
-
-        // Force rebuild of all loaded chunks since transparency affects face culling and render layers
-        // This ensures the world view is updated immediately if visible behind the settings menu
-        try {
-            if (Game.getWorld() != null && Game.getPlayer() != null) {
-                Vector3f playerPos = Game.getPlayer().getPosition();
-                int playerChunkX = (int) Math.floor(playerPos.x / 16);
-                int playerChunkZ = (int) Math.floor(playerPos.z / 16);
-                Game.getWorld().rebuildAllLoadedChunks(playerChunkX, playerChunkZ);
-            }
-        } catch (Exception e) {
-            System.err.println("Failed to rebuild chunks after leaf transparency change: " + e.getMessage());
-        }
+        System.out.println("Leaf transparency toggled to: " + (!currentValue ? "ON" : "OFF"));
+        // Refreshes leaf definitions (no GL disposal) and remeshes, so the world behind the menu updates.
+        SettingsEffects.leafTransparency();
     }
 
     /**
@@ -377,10 +348,7 @@ public class ActionHandler {
         String value = com.stonebreak.ui.settingsMenu.config.SettingsConfig.LOD_QUALITY_VALUES[index];
         settings.setLodQuality(value);
         stateManager.setSelectedLodQualityIndex(index);
-        com.stonebreak.world.World world = Game.getWorld();
-        if (world != null && world.getConfig() != null) {
-            world.getConfig().setLodQuality(com.stonebreak.world.fastlod.FastLodQuality.parse(value));
-        }
+        SettingsEffects.lodQuality(value);
     }
 
     public void onShadowQualityChange() {
@@ -406,17 +374,7 @@ public class ActionHandler {
         boolean now = !settings.getSmoothLightingEnabled();
         settings.setSmoothLightingEnabled(now);
         System.out.println("Smooth lighting toggled to: " + (now ? "ON" : "OFF"));
-
-        try {
-            if (Game.getWorld() != null && Game.getPlayer() != null) {
-                Vector3f playerPos = Game.getPlayer().getPosition();
-                int playerChunkX = (int) Math.floor(playerPos.x / 16);
-                int playerChunkZ = (int) Math.floor(playerPos.z / 16);
-                Game.getWorld().rebuildAllLoadedChunks(playerChunkX, playerChunkZ);
-            }
-        } catch (Exception e) {
-            System.err.println("Failed to rebuild chunks after smooth lighting change: " + e.getMessage());
-        }
+        SettingsEffects.smoothLighting();
     }
 
     /**

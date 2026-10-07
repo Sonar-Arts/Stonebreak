@@ -42,6 +42,7 @@ final class UiTreeBuilder {
     private final List<UiElement> elements = new ArrayList<>();
     private final Map<String, UiElement> byKey = new LinkedHashMap<>();
     private final Map<String, UiElement> existing;
+    private int duplicates;
     private final List<SheetBinding> sheets = new ArrayList<>();
     private final List<UiDocumentInstance.AuthoringScope> scopes = new ArrayList<>();
     private final List<OverrideSet.Authored> authoredOverrides = new ArrayList<>();
@@ -61,6 +62,14 @@ final class UiTreeBuilder {
 
     List<UiElement> elements() {
         return elements;
+    }
+
+    /**
+     * Keys this build found already taken (counted, not read back from the instance's
+     * deduplicated diagnostics: the same duplicate inserted twice reports one diagnostic).
+     */
+    int duplicates() {
+        return duplicates;
     }
 
     Map<String, UiElement> byKey() {
@@ -137,6 +146,7 @@ final class UiTreeBuilder {
         }
         UiElement el = new UiElement(owner, key, node, descriptor, props, scope.depth, scope.componentId);
         if (byKey.putIfAbsent(key, el) != null || existing.containsKey(key)) {
+            duplicates++;
             owner.report(UiRuntimeDiagnostic.error(Code.DUPLICATE_ELEMENT_KEY, key, "element key is not unique"));
         }
         elements.add(el);

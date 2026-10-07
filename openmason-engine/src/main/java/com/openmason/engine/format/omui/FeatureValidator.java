@@ -42,8 +42,38 @@ final class FeatureValidator {
                 String entry = OmuiFormat.styleEntry(id);
                 v.selector(rules.get(i).selector(), entry, "/rules/" + i + "/selector");
                 v.style(rules.get(i).style(), entry, "/rules/" + i + "/style");
+                List<UiStyleSheet.StyleTransition> transitions = rules.get(i).transitions();
+                for (int t = 0; t < transitions.size(); t++) {
+                    if (transitions.get(t).bezier() != null) {
+                        v.need(UiFeatures.MOTION, entry, "/rules/" + i + "/transitions/" + t + "/bezier",
+                                "a bezier timing curve");
+                    }
+                }
             }
         });
+        archive.animations().forEach((id, clip) -> {
+            String entry = OmuiFormat.animationEntry(id);
+            List<UiAnimationClip.AnimTrack> tracks = clip.tracks();
+            for (int t = 0; t < tracks.size(); t++) {
+                UiAnimationClip.AnimTrack track = tracks.get(t);
+                String f = UiFeatures.forTrack(track.property());
+                if (f != null) {
+                    v.need(f, entry, "/tracks/" + t + "/property", "track " + track.property());
+                }
+                for (int k = 0; k < track.keys().size(); k++) {
+                    if (track.keys().get(k).bezier() != null) {
+                        v.need(UiFeatures.MOTION, entry, "/tracks/" + t + "/keys/" + k + "/bezier",
+                                "a bezier timing curve");
+                    }
+                }
+            }
+        });
+    }
+
+    private void need(String feature, String entry, String ptr, String what) {
+        if (!declared.contains(feature)) {
+            d.error(Code.UNDECLARED_FEATURE, entry, ptr, what + " needs \"" + feature + "\" in the manifest's requires");
+        }
     }
 
     private void node(UiNode n, String ptr) {
@@ -90,10 +120,12 @@ final class FeatureValidator {
     }
 
     private void style(Map<String, UiValue> style, String entry, String ptr) {
-        String f = UiFeatures.forStyle(style);
-        if (f != null && !declared.contains(f)) {
-            d.error(Code.UNDECLARED_FEATURE, entry, ptr + "/overflow",
-                    "overflow: scroll needs \"" + f + "\" in the manifest's requires");
+        for (Map.Entry<String, UiValue> e : style.entrySet()) {
+            String f = UiFeatures.forStyle(e.getKey(), e.getValue());
+            if (f != null) {
+                String what = "overflow".equals(e.getKey()) ? "overflow: scroll" : "property " + e.getKey();
+                need(f, entry, ptr + "/" + e.getKey(), what);
+            }
         }
     }
 }

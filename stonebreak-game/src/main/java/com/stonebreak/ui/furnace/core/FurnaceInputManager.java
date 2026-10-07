@@ -4,16 +4,17 @@ import com.stonebreak.core.Game;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
+import com.stonebreak.ui.inventoryScreen.handlers.PointerFrame;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
-import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
 
 /**
  * Handles mouse input for the furnace screen: clicking furnace slots,
  * drag-and-drop into furnace, and normal inventory drag-and-drop.
  */
-public class FurnaceInputManager {
+public class FurnaceInputManager implements ContainerSlotInput {
 
     protected final InputHandler inputHandler;
     protected final Inventory inventory;
@@ -42,18 +43,25 @@ public class FurnaceInputManager {
     }
 
     public void handleMouseInput(int screenWidth, int screenHeight) {
+        handlePointer(PointerFrame.poll(inputHandler), screenWidth, screenHeight);
+    }
+
+    /**
+     * One frame of pointer input. The legacy mouse path polls it; UI documents synthesize it at a
+     * slot (#289, {@link ContainerSlotInput}), so both run every rule below.
+     */
+    @Override
+    public void handlePointer(PointerFrame pointer, int screenWidth, int screenHeight) {
         InventoryLayoutCalculator.InventoryLayout layout =
                 InventoryLayoutCalculator.calculateWorkbenchLayout(screenWidth, screenHeight);
 
-        Vector2f mousePos = inputHandler.getMousePosition();
-        float mouseX = mousePos.x;
-        float mouseY = mousePos.y;
-        boolean shiftDown = inputHandler.isKeyDown(GLFW.GLFW_KEY_LEFT_SHIFT) ||
-                           inputHandler.isKeyDown(GLFW.GLFW_KEY_RIGHT_SHIFT);
+        float mouseX = pointer.x();
+        float mouseY = pointer.y();
+        boolean shiftDown = pointer.shift();
 
-        boolean leftPressed = inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-        boolean rightPressed = inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
-        boolean rightDown = inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+        boolean leftPressed = pointer.leftPressed();
+        boolean rightPressed = pointer.rightPressed();
+        boolean rightDown = pointer.rightDown();
 
         if (leftPressed) {
             if (shiftDown) {
@@ -61,7 +69,9 @@ public class FurnaceInputManager {
             } else {
                 handleLeftClick(mouseX, mouseY, layout);
             }
-            inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            if (inputHandler != null) {
+                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            }
         } else if (rightDown && dragState.isDragging()) {
             handleRightDrag(mouseX, mouseY, layout);
         } else if (rightPressed) {
@@ -74,6 +84,56 @@ public class FurnaceInputManager {
             rightDragActive = false;
             rightDragVisitedSlots.clear();
         }
+    }
+
+    @Override
+    public float[] slotOrigin(String slot, int screenWidth, int screenHeight) {
+        if (slot == null) {
+            return null;
+        }
+        InventoryLayoutCalculator.InventoryLayout layout =
+                InventoryLayoutCalculator.calculateWorkbenchLayout(screenWidth, screenHeight);
+        FurnaceLayout.Slots f = FurnaceLayout.compute(layout);
+        int ss = InventoryLayoutCalculator.getSlotSize();
+        int pad = InventoryLayoutCalculator.getSlotPadding();
+        switch (slot) {
+            case "outside" -> {
+                return new float[]{OUTSIDE, OUTSIDE};
+            }
+            case "ingredient" -> {
+                return new float[]{f.ingredientX, f.ingredientY};
+            }
+            case "fuel" -> {
+                return new float[]{f.fuelX, f.fuelY};
+            }
+            case "output" -> {
+                return new float[]{f.outputX, f.outputY};
+            }
+            default -> { }
+        }
+        int colon = slot.indexOf(':');
+        if (colon < 0) {
+            return null;
+        }
+        int i;
+        try {
+            i = Integer.parseInt(slot.substring(colon + 1));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        return switch (slot.substring(0, colon)) {
+            case "main" -> i < 0 || i >= Inventory.MAIN_INVENTORY_SIZE ? null : new float[]{
+                layout.inventorySectionStartX + pad + (i % Inventory.MAIN_INVENTORY_COLS) * (ss + pad),
+                layout.mainInvContentStartY + pad + (i / Inventory.MAIN_INVENTORY_COLS) * (ss + pad)};
+            case "hotbar" -> i < 0 || i >= Inventory.HOTBAR_SIZE ? null : new float[]{
+                layout.inventorySectionStartX + pad + i * (ss + pad), layout.hotbarRowY};
+            default -> null;
+        };
+    }
+
+    @Override
+    public float slotSize() {
+        return InventoryLayoutCalculator.getSlotSize();
     }
 
     /* ── Left-click ──────────────────────────────────────── */

@@ -17,6 +17,14 @@ public interface Styleable {
 
     boolean hasClass(String className);
 
+    /**
+     * Every class the element has, so sheets only test selectors that could match
+     * ({@link CompiledSheet#candidates}); null (the default) means "unknown: test every rule".
+     */
+    default Iterable<String> styleClasses() {
+        return null;
+    }
+
     /** Built-in ({@code hover active focus disabled checked}) or declared custom state. */
     boolean hasState(String state);
 

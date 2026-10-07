@@ -20,6 +20,7 @@ import com.openmason.engine.ui.runtime.style.ComputedStyle;
 import com.openmason.engine.ui.runtime.style.Selector;
 import com.openmason.engine.ui.runtime.style.SelectorMatcher;
 import com.openmason.engine.ui.runtime.style.SelectorParser;
+import com.openmason.engine.ui.runtime.style.SelectorUse;
 import com.openmason.engine.ui.runtime.style.SheetBinding;
 import com.openmason.engine.ui.runtime.style.StyleResolver;
 import com.openmason.engine.ui.runtime.style.StyleValues;
@@ -103,6 +104,9 @@ public final class UiDocumentInstance implements AutoCloseable {
     /** Root class while the player asks for reduced motion, so sheets can author alternates (#295). */
     public static final String REDUCED_MOTION_CLASS = "sb-reduced-motion";
 
+    /** Properties {@link PaintOrder} reads: only their changes rebuild it. */
+    private static final Set<String> PAINT_ORDER_PROPERTIES = Set.of("display", "-sb-layer", "-sb-anchor");
+
     private final UiRuntimeContext context;
     private final Set<UiRuntimeDiagnostic> diagnostics = new LinkedHashSet<>();
     private final List<UiElement> elements = new ArrayList<>();
@@ -115,6 +119,14 @@ public final class UiDocumentInstance implements AutoCloseable {
     private final UiAnimator animator;
     private final UiStateMachines machines;
     private boolean scopesChanged = true;
+    /** Which classes/states the sheets test and where; rebuilt when sheets attach or detach. */
+    private SelectorUse selectorUse;
+    /** Layout findings ({@link LayoutChecks}) currently reported, by element key: replaced on each check. */
+    private final Map<String, List<UiRuntimeDiagnostic>> layoutFindings = new HashMap<>();
+    private boolean closed;
+    private boolean subpixelAnimation;
+    /** True while {@link #place} walks a subtree whose translation animates (sub-pixel mode). */
+    private boolean placingFree;
     private OmuiArchive document;
     private UiElement root;
     private BindingAccess bindings;
@@ -129,6 +141,11 @@ public final class UiDocumentInstance implements AutoCloseable {
     private boolean layoutForced = true;
     private boolean anyStyleDirty = true;
     private boolean visualDirty = true;
+    /** The host pointer in device pixels (NaN outside), for {@code -sb-anchor: pointer} elements. */
+    private float pointerX = Float.NaN;
+    private float pointerY = Float.NaN;
+    /** Pointer-anchored elements found by the last placement; pointer moves re-place only when > 0. */
+    private int pointerAnchors;
     private PaintOrder paintOrder;
     private UiRect dirtyRegion = UiRect.EMPTY;
     private UiRect animatedRegion = UiRect.EMPTY;
@@ -183,6 +200,8 @@ public final class UiDocumentInstance implements AutoCloseable {
         byKey.putAll(builder.byKey());
         sheets.clear();
         sheets.addAll(builder.sheets());
+        selectorUse = null;
+        layoutFindings.clear();
         customStates.clear();
         for (SheetBinding b : sheets) {
             customStates.addAll(b.sheet().source().customStates());
@@ -365,15 +384,16 @@ public final class UiDocumentInstance implements AutoCloseable {
             throw new IllegalArgumentException(parent.type() + " [" + parent.key() + "] cannot have children");
         }
         UiTreeBuilder builder = new UiTreeBuilder(this, context, byKey);
-        int before = diagnostics.size();
         UiElement child = key == null ? builder.buildChild(parent, definition) : builder.buildRow(parent, definition, key);
-        if (diagnostics.stream().skip(before).anyMatch(d -> d.code() == UiRuntimeDiagnostic.Code.DUPLICATE_ELEMENT_KEY)) {
+        if (builder.duplicates() > 0) {
             throw new IllegalArgumentException("element key " + child.key() + " is already in use");
         }
         int at = index < 0 || index > parent.children().size() ? parent.children().size() : index;
         parent.insertChildAt(at, child);
         byKey.putAll(builder.byKey());
-        sheets.addAll(builder.sheets());
+        if (sheets.addAll(builder.sheets())) {
+            selectorUse = null;
+        }
         scopes.addAll(builder.scopes());
         scopesChanged |= !builder.scopes().isEmpty();
         for (SheetBinding b : builder.sheets()) {
@@ -441,8 +461,13 @@ public final class UiDocumentInstance implements AutoCloseable {
             markRemoved(c);
         }
         dirtyRegion = dirtyRegion.union(el.bounds);
-        byKey.remove(el.key(), el);
-        sheets.removeIf(b -> b.scope() == el);
+        if (byKey.remove(el.key(), el)) {
+            animator.forget(el.key()); // its channels die with it; a reused key starts clean
+        }
+        dropLayoutFindings(el.key());
+        if (sheets.removeIf(b -> b.scope() == el)) {
+            selectorUse = null;
+        }
         if (scopes.removeIf(s -> s.instanceKey().equals(el.key()))) {
             scopesChanged = true;
         }
@@ -492,6 +517,7 @@ public final class UiDocumentInstance implements AutoCloseable {
             }
         }
         old.values().forEach(e -> e.removed = true);
+        old.keySet().forEach(animator::forget); // dropped keys take their animation channels with them
         dirtyRegion = new UiRect(0, 0, metrics.viewportWidth(), metrics.viewportHeight());
         ReloadReport report = new ReloadReport(kept, new LinkedHashSet<>(old.keySet()), added);
         BindingAccess.Listener l = bindingListener();
@@ -561,6 +587,9 @@ public final class UiDocumentInstance implements AutoCloseable {
 
     /** Resolves dirty styles, lays out, then places elements. Requires the native flex library. */
     public UpdateStats update() {
+        if (closed) {
+            return UpdateStats.NONE; // never rebuild a native tree for a closed instance
+        }
         long start = System.nanoTime();
         int rev = context.localizer().revision();
         if (rev != textRevision) {
@@ -582,6 +611,44 @@ public final class UiDocumentInstance implements AutoCloseable {
         return lastStats;
     }
 
+    /**
+     * True when {@link #update()} has work: dirty styles, layout records or measurements,
+     * placement, or a forced layout. Lets a host skip a second update in a frame when the input
+     * and binding reconciliation after the first one changed nothing.
+     */
+    public boolean needsUpdate() {
+        if (anyStyleDirty || visualDirty || layoutForced || structureChanged || flex == null) {
+            return true;
+        }
+        for (UiElement el : elements()) {
+            if (el.styleDirty || el.overlayDirty || el.recordDirty || el.measureDirty) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Where the host's pointer is, in device pixels ({@code NaN} when it is outside the frame).
+     * {@code -sb-anchor: pointer} elements follow it; hosts set it once per frame before
+     * {@link #update()} ({@code UiDocumentView.layout} does).
+     */
+    public void setPointer(float x, float y) {
+        if (Float.compare(x, pointerX) == 0 && Float.compare(y, pointerY) == 0) {
+            return;
+        }
+        pointerX = x;
+        pointerY = y;
+        if (pointerAnchors > 0) {
+            visualDirty = true;
+        }
+    }
+
+    /** True while the pointer is over the frame (pointer-anchored elements paint only then). */
+    public boolean pointerInside() {
+        return !Float.isNaN(pointerX) && !Float.isNaN(pointerY);
+    }
+
     public void addUpdateObserver(UpdateObserver o) {
         updateObservers.add(Objects.requireNonNull(o, "observer"));
     }
@@ -601,15 +668,20 @@ public final class UiDocumentInstance implements AutoCloseable {
         anyStyleDirty = false;
         int resolved = 0;
         for (UiElement el : elements()) {
-            if (!el.styleDirty && !el.overlayDirty) {
+            if (!el.styleDirty && !el.overlayDirty && !el.inheritDirty) {
                 continue;
             }
             resolved++;
-            if (el.styleDirty) {
-                el.styleDirty = false;
+            if (el.styleDirty || el.inheritDirty) {
                 ComputedStyle parentStyle = el.parent() == null ? ComputedStyle.INITIAL : el.parent().computed;
-                ComputedStyle nextBase = StyleResolver.compute(el, sheets, el.baseLayers(), parentStyle, el.key(),
-                    this::report);
+                if (el.styleDirty) {
+                    el.own = StyleResolver.computeOwn(el, sheets, el.baseLayers(), parentStyle, el.key(),
+                        this::report);
+                }
+                // Only the parent's inherited values changed: re-inherit, no selector matching.
+                ComputedStyle nextBase = el.own.inheriting(parentStyle);
+                el.styleDirty = false;
+                el.inheritDirty = false;
                 ComputedStyle prevBase = el.base;
                 el.base = nextBase;
                 if (el.baseResolved && !nextBase.equals(prevBase)) {
@@ -625,7 +697,10 @@ public final class UiDocumentInstance implements AutoCloseable {
             }
             el.computed = next;
             Set<String> changed = next.changedProperties(prev);
-            boolean inheritedChanged = !next.customs().equals(prev.customs());
+            // Children resolve var() against these customs: they need the full cascade.
+            boolean customsChanged = !next.customs().equals(prev.customs());
+            boolean inheritedChanged = false;
+            boolean orderChanged = false;
             boolean subtreePaint = false;
             for (String p : changed) {
                 if (StyleValues.LAYOUT.contains(p)) {
@@ -639,13 +714,20 @@ public final class UiDocumentInstance implements AutoCloseable {
                 }
                 subtreePaint |= StyleValues.SUBTREE_PAINT.contains(p);
                 inheritedChanged |= StyleValues.INHERITED.contains(p);
+                orderChanged |= PAINT_ORDER_PROPERTIES.contains(p);
             }
-            if (inheritedChanged) {
+            if (customsChanged) {
                 for (UiElement c : el.children()) {
                     c.styleDirty = true;
                 }
+            } else if (inheritedChanged) {
+                for (UiElement c : el.children()) {
+                    c.inheritDirty = true;
+                }
             }
-            paintOrder = null;
+            if (orderChanged) {
+                paintOrder = null;
+            }
             if (subtreePaint) {
                 subtreeChanged(el);
             } else {
@@ -680,8 +762,10 @@ public final class UiDocumentInstance implements AutoCloseable {
                 FlexStyleMapper.write(el.computed, metrics.scale(), el.descriptor().measured() ? el.flexNode : -1,
                     el.isScrollWidget(), records, pushed * FlexRecord.STRIDE);
                 nodeIds[pushed++] = el.flexNode;
-                LayoutChecks.check(el, this::report);
             }
+        }
+        if (pushed > 0 || created) {
+            recheckLayout(); // a parent's record decides whether its children's percentages are cyclic
         }
         flex.setStyles(nodeIds, records, pushed);
         for (UiElement el : elements()) {
@@ -706,9 +790,37 @@ public final class UiDocumentInstance implements AutoCloseable {
         return true;
     }
 
+    /**
+     * Re-runs {@link LayoutChecks} on every element, replacing each one's previous findings, so a
+     * fixed conflict stops being reported and a parent change that makes a child's percentage
+     * cyclic (or no longer cyclic) is seen even though the child's own record did not change.
+     */
+    private void recheckLayout() {
+        List<UiRuntimeDiagnostic> found = new ArrayList<>(2);
+        for (UiElement el : elements()) {
+            dropLayoutFindings(el.key());
+            LayoutChecks.check(el, found::add);
+            if (!found.isEmpty()) {
+                layoutFindings.put(el.key(), List.copyOf(found));
+                diagnostics.addAll(found);
+                found.clear();
+            }
+        }
+    }
+
+    private void dropLayoutFindings(String key) {
+        List<UiRuntimeDiagnostic> old = layoutFindings.remove(key);
+        if (old != null) {
+            old.forEach(diagnostics::remove);
+        }
+    }
+
     private boolean ensureFlexTree() {
         if (flex != null) {
             return false;
+        }
+        if (closed) {
+            throw new IllegalStateException("UI document instance is closed");
         }
         CendaFlex.require();
         flex = CendaFlex.newTree(context.pixelGrid());
@@ -802,6 +914,7 @@ public final class UiDocumentInstance implements AutoCloseable {
             return;
         }
         visualDirty = false;
+        pointerAnchors = 0;
         place(root, 0, 0, null, null);
         paintOrder = null;
     }
@@ -811,15 +924,32 @@ public final class UiDocumentInstance implements AutoCloseable {
      * @param outer the ancestors' composed transform, or null for none
      */
     private void place(UiElement el, float dx, float dy, UiRect clip, UiTransform outer) {
-        if (el.explicitLayer() != null) {
-            clip = null; // overlays escape ancestor clips
+        Integer layer = el.explicitLayer();
+        if (layer != null && layer != inheritedLayer(el)) {
+            clip = null; // overlays escape ancestor clips (an element restating its parent's layer is not lifted)
         }
         float scale = metrics.scale();
-        // Offsets snap to the same device grid Yoga rounds layout to, so translated and
-        // scrolled edges stay on whole pixels and paint exactly where hits land.
-        float tx = snap(dx + (float) el.computed.number("translate-x", 0) * scale);
-        float ty = snap(dy + (float) el.computed.number("translate-y", 0) * scale);
         UiRect l = el.layoutRect;
+        boolean anchored = el.isPointerAnchored();
+        if (anchored) {
+            // The cursor layer (C2): at the pointer plus left/top, free of ancestor scroll,
+            // translation, transforms and clips; children move with it.
+            pointerAnchors++;
+            clip = null;
+            outer = null;
+            float px = pointerInside() ? pointerX : l.x();
+            float py = pointerInside() ? pointerY : l.y();
+            dx = px + lengthPx(el.computed, "left", scale) - l.x();
+            dy = py + lengthPx(el.computed, "top", scale) - l.y();
+        }
+        // Offsets snap to the same device grid Yoga rounds layout to, so translated and
+        // scrolled edges stay on whole pixels and paint exactly where hits land. With sub-pixel
+        // animation on, a subtree whose translation is animating moves in fractional steps
+        // instead (paint and hits still share the same rects).
+        boolean wasFree = placingFree;
+        placingFree |= subpixelAnimation && el.animatesTranslation();
+        float tx = placeSnap(dx + (float) el.computed.number("translate-x", 0) * scale);
+        float ty = placeSnap(dy + (float) el.computed.number("translate-y", 0) * scale);
         UiRect next = tx == 0 && ty == 0 ? l : new UiRect(l.x() + tx, l.y() + ty, l.width(), l.height());
         el.rect = next;
         el.transform = ownTransform(el, next);
@@ -833,12 +963,48 @@ public final class UiDocumentInstance implements AutoCloseable {
         float cx = tx;
         float cy = ty;
         if (el.isScrollContainer()) {
-            cx = snap(cx - el.scrollX);
-            cy = snap(cy - el.scrollY);
+            cx = placeSnap(cx - el.scrollX);
+            cy = placeSnap(cy - el.scrollY);
         }
         for (UiElement c : el.children()) {
             place(c, cx, cy, childClip, total);
         }
+        placingFree = wasFree;
+    }
+
+    private float placeSnap(float v) {
+        return placingFree ? v : snap(v);
+    }
+
+    /**
+     * Sub-pixel placement of animated translations (off by default: static geometry and the
+     * fidelity baselines stay on whole device pixels). When on, an element whose
+     * {@code translate-x/y} is driven by an animation channel, and its subtree, are placed at
+     * fractional offsets so slow slides glide instead of stepping a pixel at a time.
+     */
+    public void setSubpixelAnimation(boolean on) {
+        if (subpixelAnimation != on) {
+            subpixelAnimation = on;
+            visualDirty = true;
+        }
+    }
+
+    public boolean subpixelAnimation() {
+        return subpixelAnimation;
+    }
+
+    /** The layer {@code el} would paint in without its own {@code -sb-layer}: its nearest layered ancestor's. */
+    private static int inheritedLayer(UiElement el) {
+        for (UiElement p = el.parent(); p != null; p = p.parent()) {
+            if (p.isPointerAnchored()) {
+                return PaintOrder.CURSOR_LAYER;
+            }
+            Integer l = p.explicitLayer();
+            if (l != null) {
+                return l;
+            }
+        }
+        return 0;
     }
 
     /**
@@ -1043,6 +1209,52 @@ public final class UiDocumentInstance implements AutoCloseable {
         anyStyleDirty = true;
     }
 
+    /** {@code el}'s classes changed: restyles what a selector testing one of them can reach. */
+    void classesChanged(UiElement el, Set<String> before, Set<String> after) {
+        SelectorUse use = selectorUse();
+        SelectorUse.Reach reach = SelectorUse.Reach.NONE;
+        for (String c : before) {
+            if (!after.contains(c)) {
+                reach = SelectorUse.max(reach, use.classReach(c));
+            }
+        }
+        for (String c : after) {
+            if (!before.contains(c)) {
+                reach = SelectorUse.max(reach, use.classReach(c));
+            }
+        }
+        invalidate(el, reach);
+    }
+
+    /**
+     * {@code el}'s pseudo-state changed. {@code :disabled} is inherited (descendants match it too),
+     * so it restyles the subtree whenever any selector tests it.
+     */
+    void stateChanged(UiElement el, String state) {
+        SelectorUse use = selectorUse();
+        if (UiElement.DISABLED.equals(state)) {
+            invalidate(el, use.usesState(state) ? SelectorUse.Reach.SUBTREE : SelectorUse.Reach.NONE);
+        } else {
+            invalidate(el, use.stateReach(state));
+        }
+    }
+
+    private void invalidate(UiElement el, SelectorUse.Reach reach) {
+        switch (reach) {
+            case SUBTREE -> invalidateSubtreeStyle(el);
+            case SELF -> invalidateStyle(el);
+            case NONE -> {
+            }
+        }
+    }
+
+    private SelectorUse selectorUse() {
+        if (selectorUse == null) {
+            selectorUse = SelectorUse.of(sheets);
+        }
+        return selectorUse;
+    }
+
     private static void markSubtree(UiElement el) {
         el.styleDirty = true;
         for (UiElement c : el.children()) {
@@ -1066,12 +1278,22 @@ public final class UiDocumentInstance implements AutoCloseable {
 
     // ── lifecycle ───────────────────────────────────────────────────────────
 
+    /** True once {@link #close()} ran, whether or not the instance ever laid out. */
     public boolean isClosed() {
-        return flex != null && flex.isClosed();
+        return closed;
     }
 
+    /**
+     * Stops animations and frees the native layout tree. Idempotent; {@link #update()} is a no-op
+     * afterwards (it never creates a new tree). The tree also has a cleaner as a safety net for
+     * instances dropped without closing.
+     */
     @Override
     public void close() {
+        if (closed) {
+            return;
+        }
+        closed = true;
         machines.clear();
         animator.clear();
         if (flex != null) {

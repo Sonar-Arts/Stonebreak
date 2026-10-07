@@ -280,18 +280,20 @@ class UiToolsEndToEndTest {
         call("ui_close", "{\"discard\":true}");
         call("ui_activate", "{\"doc\":\"test:ui/screens/dup\"}");
 
-        // a newer crash-recovery copy blocks automation saves until the author decides
+        // a newer crash-recovery copy left by another session (a crash) blocks automation saves until
+        // the author decides; this session's own autosave never does (UiAgentHardeningTest)
         Path rec = Files.createDirectories(project.resolve("UI/rec")).resolve("pause_menu.omui");
         Files.copy(Path.of("../openmason-engine/src/test/resources/ui/omui/pause_menu.omui"), rec);
         Files.setLastModifiedTime(rec, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() - 60_000));
         call("ui_open", "{\"path\":\"project:UI/rec/pause_menu.omui\"}");
         call("ui_ops", "{\"ops\":[{\"op\":\"set_prop\",\"keys\":\"title\",\"prop\":\"text\",\"value\":\"y\"}]}");
         UiEditorDocument recovered = doc("stonebreak:ui/pause_menu");
-        assertTrue(ctx.service.recovery().write(recovered));
+        UiRecoveryService crashed = new UiRecoveryService(tmp.resolve("rec"));
+        assertTrue(crashed.write(recovered));
         assertTrue(call("ui_documents", "{}").toString().contains("crash-recovery"));
         IllegalStateException buried = assertThrows(IllegalStateException.class, () -> call("ui_save", "{}"));
         assertTrue(buried.getMessage().contains("Restore or Discard"), buried.getMessage());
-        ctx.service.recovery().clear(recovered);
+        crashed.clear(recovered);
         call("ui_save", "{}");
         assertFalse(recovered.isDirty());
         call("ui_close", "{}");

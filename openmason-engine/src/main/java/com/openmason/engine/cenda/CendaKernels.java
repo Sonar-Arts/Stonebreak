@@ -24,7 +24,9 @@ import java.nio.file.Path;
  *
  * Library discovery order: {@code -Dcenda.kernels.path=<file>}, then the
  * {@code CENDA_KERNELS_PATH} environment variable, then known build locations
- * relative to the working directory.
+ * relative to the working directory, then the copy packaged in the jar
+ * ({@code natives/<platform>/<lib>}, extracted to a per-user cache by
+ * {@link NativeLibraryExtractor}) — how a shipped game finds it.
  */
 public final class CendaKernels {
 
@@ -334,7 +336,30 @@ public final class CendaKernels {
                 }
             }
         }
-        return null;
+        return packagedLibrary(libName);
+    }
+
+    private static volatile Path packaged;
+
+    /** The library packaged in the jar, extracted once per launch (null when not packaged). */
+    private static Path packagedLibrary(String libName) {
+        Path p = packaged;
+        if (p != null) {
+            return p;
+        }
+        synchronized (CendaKernels.class) {
+            if (packaged != null) {
+                return packaged;
+            }
+            String resource = NativeLibraryExtractor.resourceName(libName);
+            try {
+                packaged = NativeLibraryExtractor.extract(resource, libName, NativeLibraryExtractor::openResource,
+                    NativeLibraryExtractor.cacheRoot());
+            } catch (java.io.IOException | RuntimeException e) {
+                LOGGER.warn("Cenda library packaged as {} could not be extracted: {}", resource, e.toString());
+            }
+            return packaged;
+        }
     }
 
     /**

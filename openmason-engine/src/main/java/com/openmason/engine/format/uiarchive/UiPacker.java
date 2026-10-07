@@ -64,7 +64,9 @@ public final class UiPacker {
             case OMUI -> OmuiWriter.entries(OmuiReader.fromEntries(raw, ArchiveLimits.DEFAULT).archive());
             case SBUI -> {
                 // Validated, then written as stored: the embedded OMUI and caches are opaque blobs.
-                SbuiReader.fromEntries(raw, SbuiReader.Options.EDITOR);
+                // Same policy as pack (and SbuiWriter): an export carrying a stale derived cache is
+                // refused both ways, so a tree that unpacks always packs again. Re-export it.
+                SbuiReader.fromEntries(raw, SbuiReader.Options.RUNTIME);
                 Map<String, UiBytes> verbatim = new LinkedHashMap<>();
                 raw.forEach((k, v) -> verbatim.put(k, UiBytes.copyOf(v)));
                 yield verbatim;

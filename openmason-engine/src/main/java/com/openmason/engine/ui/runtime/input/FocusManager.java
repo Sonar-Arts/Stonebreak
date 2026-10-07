@@ -84,8 +84,12 @@ public final class FocusManager {
     };
     private UiElement focused;
     private boolean visible;
-    private List<UiElement> lastOrder = List.of();
+    /** Navigation order when focus was last confirmed; reused buffers, so a steady frame allocates nothing. */
+    private List<UiElement> lastOrder = new ArrayList<>();
+    private List<UiElement> spareOrder = new ArrayList<>();
     private int lastIndex = -1;
+    private final List<UiElement> declaredScratch = new ArrayList<>();
+    private final List<ScopeEntry> goneScratch = new ArrayList<>();
 
     public FocusManager(UiDocumentInstance ui, EventDispatcher dispatcher, DoubleSupplier clock) {
         this.ui = ui;
@@ -390,8 +394,12 @@ public final class FocusManager {
     }
 
     private void remember(UiElement el) {
-        lastOrder = navigationOrder();
-        lastIndex = lastOrder.indexOf(el);
+        List<UiElement> order = spareOrder;
+        order.clear();
+        collect(scopeRoot(), order);
+        spareOrder = lastOrder;
+        lastOrder = order;
+        lastIndex = order.indexOf(el);
     }
 
     // ── scopes ──────────────────────────────────────────────────────────────
@@ -479,21 +487,25 @@ public final class FocusManager {
                 e.element = twin;
             }
         }
-        List<UiElement> declared = new ArrayList<>();
+        List<UiElement> declared = declaredScratch;
+        declared.clear();
         for (UiElement el : ui.elements()) {
             InputTraits.Scope k = InputTraits.scope(el);
             if ((k == InputTraits.Scope.MODAL || k == InputTraits.Scope.POPUP) && el.isVisible()) {
                 declared.add(el);
             }
         }
-        List<ScopeEntry> gone = new ArrayList<>();
+        List<ScopeEntry> gone = goneScratch;
+        gone.clear();
         for (int i = scopes.size() - 1; i >= 0; i--) {
             ScopeEntry e = scopes.get(i);
             if (e.element.isRemoved() || !e.element.isVisible() || e.declarative && !declared.contains(e.element)) {
                 gone.add(e);
             }
         }
-        for (ScopeEntry e : gone) { // callbacks may open or close scopes: never index into a list they change
+        // Callbacks may open or close scopes, or even sync again (which reuses the scratch lists):
+        // iterate over copies, made only when there is something to do.
+        for (ScopeEntry e : gone.isEmpty() ? List.<ScopeEntry>of() : List.copyOf(gone)) {
             int at = scopes.indexOf(e);
             if (at >= 0) {
                 closeAt(at);
@@ -502,9 +514,15 @@ public final class FocusManager {
                 }
             }
         }
-        for (UiElement el : declared) {
-            if (!isOpen(el)) {
-                open(el, InputTraits.scope(el), true, null, null);
+        boolean opening = false;
+        for (int i = 0; i < declared.size() && !opening; i++) {
+            opening = !isOpen(declared.get(i));
+        }
+        if (opening) {
+            for (UiElement el : List.copyOf(declared)) {
+                if (!isOpen(el)) {
+                    open(el, InputTraits.scope(el), true, null, null);
+                }
             }
         }
         validate();

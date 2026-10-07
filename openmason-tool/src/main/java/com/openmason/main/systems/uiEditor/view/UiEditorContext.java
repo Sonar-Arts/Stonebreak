@@ -78,6 +78,42 @@ public final class UiEditorContext implements AutoCloseable {
     /** The inspector's texture/sprite field. */
     final ImagePicker images = new ImagePicker(this);
 
+    /** Edits a panel holds but has not written to the document yet (the Script panel's typed buffer). */
+    public interface PendingEdits {
+        boolean has(UiEditorDocument doc);
+
+        /** Writes them as an ordinary undo step (save, close and automation call this first). */
+        void flush(UiEditorDocument doc);
+
+        PendingEdits NONE = new PendingEdits() {
+            @Override
+            public boolean has(UiEditorDocument doc) {
+                return false;
+            }
+
+            @Override
+            public void flush(UiEditorDocument doc) {
+            }
+        };
+    }
+
+    private PendingEdits pendingEdits = PendingEdits.NONE;
+
+    public void setPendingEdits(PendingEdits p) {
+        pendingEdits = p == null ? PendingEdits.NONE : p;
+    }
+
+    /** True when a panel holds unapplied edits for {@code doc} (counts as unsaved). */
+    public boolean hasPendingEdits(UiEditorDocument doc) {
+        return doc != null && pendingEdits.has(doc);
+    }
+
+    public void flushPendingEdits(UiEditorDocument doc) {
+        if (hasPendingEdits(doc)) {
+            pendingEdits.flush(doc);
+        }
+    }
+
     /** A focused panel consumed this frame's key press; the workspace's {@code ui} shortcuts stand down. */
     public void claimKeys() {
         keysClaimed = true;
@@ -199,8 +235,8 @@ public final class UiEditorContext implements AutoCloseable {
         for (DesignerRuntime r : runtimes.values()) {
             stale.addAll(r.assetsChanged());
         }
-        // evict superseded texture revisions no open document still draws (never closed here:
-        // an image still referenced somewhere lives until the GC collects it)
+        // release superseded texture revisions no open document still draws (closed after the
+        // texture cache's grace period, so a frame already holding one finishes with it)
         com.openmason.engine.ui.runtime.paint.ResolvedUiAssets any = null;
         for (DesignerRuntime r : runtimes.values()) {
             stale.removeAll(r.textureKeysInUse());

@@ -93,7 +93,7 @@ class CanonicalJsonTest {
         assertRejected("", Code.MALFORMED_JSON);
         assertRejected("[9007199254740993]", Code.NUMBER_PRECISION);
         assertRejected("[1e400]", Code.NUMBER_PRECISION);
-        assertRejected("[" + "[".repeat(80) + "]".repeat(80) + "]", Code.LIMIT_EXCEEDED);
+        assertRejected("[".repeat(CanonicalJson.MAX_DEPTH + 1) + "]".repeat(CanonicalJson.MAX_DEPTH + 1), Code.LIMIT_EXCEEDED);
         assertRejected("{'a':1}", Code.MALFORMED_JSON);
         assertRejected("[NaN]", Code.MALFORMED_JSON);
     }

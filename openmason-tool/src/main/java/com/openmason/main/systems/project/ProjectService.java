@@ -57,10 +57,29 @@ public class ProjectService {
     private java.util.function.Consumer<OMPFormat.UiEditorReference> uiEditorRestoreHook;
 
     /** Wire the UI Editor session seams (same pattern as the scene's). */
+    /** The UI Editor session the .omp on disk records (null = none / unknown). */
+    private OMPFormat.UiEditorReference recordedUiSession;
+    /** True while a project's recorded session is being restored (its own changes are not edits). */
+    private boolean restoringUiSession;
+
     public void setUiEditorSessionHooks(java.util.function.Supplier<OMPFormat.UiEditorReference> supplier,
                                         java.util.function.Consumer<OMPFormat.UiEditorReference> hook) {
         this.uiEditorStateSupplier = supplier;
         this.uiEditorRestoreHook = hook;
+    }
+
+    /**
+     * The UI Editor's session (open documents, active one, workspace) may have changed: the project
+     * becomes dirty when it no longer matches what the .omp records, so exit asks to save it and
+     * reopening the project restores the documents the author had open.
+     */
+    public void uiSessionChanged() {
+        if (restoringUiSession || currentProjectPath == null || uiEditorStateSupplier == null) {
+            return;
+        }
+        if (!java.util.Objects.equals(uiEditorStateSupplier.get(), recordedUiSession)) {
+            dirty = true;
+        }
     }
 
     public ProjectService() {
@@ -279,6 +298,7 @@ public class ProjectService {
         boolean success = serializer.save(document, currentProjectPath);
         if (success) {
             dirty = false;
+            recordedUiSession = document.uiEditor();
         }
         return success;
     }
@@ -303,6 +323,7 @@ public class ProjectService {
         boolean success = serializer.save(document, currentProjectPath);
         if (success) {
             dirty = false;
+            recordedUiSession = document.uiEditor();
             logger.info("Project saved as: {}", currentProjectPath);
         }
         return success;
@@ -343,8 +364,15 @@ public class ProjectService {
             sceneRestoreHook.accept(document.scene());
         }
         if (uiEditorRestoreHook != null) {
-            uiEditorRestoreHook.accept(document.uiEditor());
+            restoringUiSession = true;
+            try {
+                uiEditorRestoreHook.accept(document.uiEditor());
+            } finally {
+                restoringUiSession = false;
+            }
         }
+        // what the editor holds after the restore (missing files skipped) is the baseline
+        recordedUiSession = uiEditorStateSupplier != null ? uiEditorStateSupplier.get() : document.uiEditor();
 
         logger.info("Project opened: {} ({})", currentProjectName, filePath);
         return true;
@@ -440,6 +468,7 @@ public class ProjectService {
         this.currentProjectName = null;
         this.createdAt = null;
         this.dirty = false;
+        this.recordedUiSession = null;
         logger.debug("Project state cleared");
     }
 }

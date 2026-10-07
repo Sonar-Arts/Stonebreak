@@ -203,6 +203,11 @@ public class FurnaceController {
         this.renderCoordinator = renderCoordinator;
     }
 
+    /** Slot rules addressed by slot, for UI documents (#289). */
+    public FurnaceInputManager getInputManager() {
+        return inputManager;
+    }
+
     public void setInputManager(FurnaceInputManager inputManager) {
         this.inputManager = inputManager;
     }

@@ -51,6 +51,10 @@ public final class FixtureHost {
     private final UiHost host = new UiHost();
     private final List<Call> calls = new ArrayList<>();
     private final Map<String, Deque<CompletableFuture<UiValue>>> held = new HashMap<>();
+    /** Fixture values as written (before type inference), for {@link #compatibility}. */
+    private final Map<String, UiValue> fixtureData = new LinkedHashMap<>();
+    private final Map<String, List<UiValue>> fixtureCollections = new LinkedHashMap<>();
+    private final Map<String, UiValue> fixtureResults = new LinkedHashMap<>();
 
     private FixtureHost() {
     }
@@ -154,6 +158,7 @@ public final class FixtureHost {
             }
         });
         data.forEach((root, value) -> {
+            fixtureData.put(root, value);
             HostContract c = contract(root, contracts, versions);
             DataCell cell = new DataCell(DataType.infer(value), value);
             String commit = commits.get(root);
@@ -175,6 +180,9 @@ public final class FixtureHost {
             DataCollection col = new DataCollection(DataType.list(DataType.ANY, identity));
             if (s.get("items") instanceof UiValue.Arr items) {
                 col.setAll(items.items());
+                fixtureCollections.put(root, items.items());
+            } else {
+                fixtureCollections.put(root, List.of());
             }
             host.data().register(root, col, contract(root, contracts, versions));
         });
@@ -192,6 +200,9 @@ public final class FixtureHost {
             params.put(name, t == null || t == ValueType.LIST || t == ValueType.OBJECT ? DataType.ANY : DataType.of(t));
         });
         UiValue result = spec.get("result");
+        if (result != null) {
+            fixtureResults.put(id, result);
+        }
         DataType resultType = result == null ? DataType.ANY : DataType.infer(result);
         boolean pending = spec.get("pending") instanceof UiValue.Bool b && b.value();
         String error = spec.get("error") instanceof UiValue.Str e ? e.value() : null;
@@ -212,6 +223,123 @@ public final class FixtureHost {
                 }
                 return CompletableFuture.completedFuture(result == null ? UiValue.NULL : result);
             });
+    }
+
+    // ── drift against the real host ─────────────────────────────────────────
+
+    /**
+     * Where this fixture disagrees with {@code reference}, the host the document really runs
+     * against (the game's): data roots or actions the reference does not have, a root under a
+     * different contract, fixture values or results the reference's schema would reject, and
+     * action parameters it does not declare (or declares with another type). A fixture may leave
+     * fields out (a preview shows a subset), but everything it does say must be true of the real
+     * host, so a preview never works with data the game can never produce.
+     *
+     * @return problems, empty when the fixture is a faithful stand-in
+     */
+    public List<String> compatibility(UiHost reference) {
+        List<String> out = new ArrayList<>();
+        fixtureData.forEach((root, value) -> {
+            DataRoot ref = reference.data().root(root);
+            if (ref == null) {
+                out.add("data root '" + root + "': the host has none");
+                return;
+            }
+            sameContract(root, ref, out);
+            String p = conforms(ref.source().type(), value, root);
+            if (p != null) {
+                out.add("data root '" + root + "': " + p);
+            }
+            DataRoot mine = host.data().root(root);
+            if (mine != null && mine.editable() != ref.editable()) {
+                out.add("data root '" + root + "': " + (ref.editable() ? "editable" : "read-only")
+                    + " on the host, " + (mine.editable() ? "editable" : "read-only") + " in the fixture");
+            }
+        });
+        fixtureCollections.forEach((root, items) -> {
+            DataRoot ref = reference.data().root(root);
+            if (ref == null) {
+                out.add("collection '" + root + "': the host has none");
+                return;
+            }
+            sameContract(root, ref, out);
+            if (!(ref.source().type() instanceof DataType.ListOf l)) {
+                out.add("collection '" + root + "': the host's root is " + ref.source().type().describe());
+                return;
+            }
+            for (int i = 0; i < items.size(); i++) {
+                String p = conforms(l.item(), items.get(i), root + "[" + i + "]");
+                if (p != null) {
+                    out.add("collection '" + root + "': " + p);
+                }
+            }
+        });
+        for (ActionSpec mine : host.actions().specs()) {
+            ActionRegistry.Entry ref = reference.actions().entry(mine.id());
+            if (ref == null) {
+                out.add("action " + mine.id() + ": the host has none");
+                continue;
+            }
+            ActionSpec r = ref.spec();
+            if (!r.contract().id().equals(mine.contract().id())) {
+                out.add("action " + mine.id() + ": contract " + mine.contract().id() + " in the fixture, "
+                    + r.contract().id() + " on the host");
+            }
+            mine.params().fields().forEach((name, type) -> {
+                DataType rt = r.params().fields().get(name);
+                if (rt == null) {
+                    out.add("action " + mine.id() + ": parameter '" + name + "' is not declared by the host");
+                } else if (!(type instanceof DataType.Any) && !rt.describe().equals(type.describe())
+                    && !rt.orNull().describe().equals(type.orNull().describe())) {
+                    out.add("action " + mine.id() + ": parameter '" + name + "' is " + type.describe()
+                        + " in the fixture, " + rt.describe() + " on the host");
+                }
+            });
+            UiValue result = fixtureResults.get(mine.id());
+            if (result != null) {
+                String p = r.result().problem(result);
+                if (p != null) {
+                    out.add("action " + mine.id() + ": fixture result " + p);
+                }
+            }
+        }
+        return out;
+    }
+
+    private void sameContract(String root, DataRoot ref, List<String> out) {
+        DataRoot mine = host.data().root(root);
+        if (mine != null && !mine.contract().id().startsWith("fixture:")
+            && !mine.contract().id().equals(ref.contract().id())) {
+            out.add("data root '" + root + "': contract " + mine.contract().id() + " in the fixture, "
+                + ref.contract().id() + " on the host");
+        }
+    }
+
+    /** {@code type.problem}, except that members the fixture leaves out are fine. */
+    private static String conforms(DataType type, UiValue value, String at) {
+        if (type instanceof DataType.Obj o && value instanceof UiValue.Obj v) {
+            for (Map.Entry<String, UiValue> f : v.fields().entrySet()) {
+                DataType ft = o.fields().get(f.getKey());
+                if (ft == null) {
+                    return at + "." + f.getKey() + " is not a field of " + o.describe();
+                }
+                String p = conforms(ft, f.getValue(), at + "." + f.getKey());
+                if (p != null) {
+                    return p;
+                }
+            }
+            return null;
+        }
+        if (type instanceof DataType.ListOf l && value instanceof UiValue.Arr a) {
+            for (int i = 0; i < a.items().size(); i++) {
+                String p = conforms(l.item(), a.items().get(i), at + "[" + i + "]");
+                if (p != null) {
+                    return p;
+                }
+            }
+            return null;
+        }
+        return type.problem(value, at);
     }
 
     private void record(String id, UiValue.Obj args, ActionContext ctx) {

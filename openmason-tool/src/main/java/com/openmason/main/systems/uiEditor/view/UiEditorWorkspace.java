@@ -65,6 +65,8 @@ public final class UiEditorWorkspace implements AutoCloseable {
     private final GraphEditorWindow graphs = new GraphEditorWindow();
     private UiEditorDocument graphDoc;
     private long graphRevision = -1;
+    /** The document state the graph window's copy started from (or last synced with): the merge base. */
+    private OmuiArchive graphBase;
     private FileDialogs files;
     private boolean recoveryChecked;
     private boolean keybindsRegistered;
@@ -91,6 +93,17 @@ public final class UiEditorWorkspace implements AutoCloseable {
             UiBytes timeline = ctx.view(d).timeline.stamp(d.archive());
             return timeline == null ? java.util.Map.of() : java.util.Map.of(
                 com.openmason.main.systems.uiEditor.timeline.TimelineViewState.ENTRY, timeline);
+        });
+        ctx.setPendingEdits(new UiEditorContext.PendingEdits() {
+            @Override
+            public boolean has(UiEditorDocument doc) {
+                return script.hasUnapplied(doc);
+            }
+
+            @Override
+            public void flush(UiEditorDocument doc) {
+                script.flush(doc);
+            }
         });
         graphs.setJumpHandler(path -> {
             UiEditorDocument d = ctx.doc();
@@ -215,7 +228,14 @@ public final class UiEditorWorkspace implements AutoCloseable {
             return;
         }
         KeybindRegistry r = KeybindRegistry.getInstance();
+        // Keys pressed while the designer shows a running Preview belong to the previewed document:
+        // only view and file shortcuts may act on the editor there, never edits of the source.
+        boolean previewing = designer.focused && ctx.runtime() != null
+            && ctx.runtime().mode() == DesignerRuntime.Mode.PREVIEW;
         for (KeybindAction action : r.getActionsByContext("ui")) {
+            if (previewing && !allowedInPreview(action)) {
+                continue;
+            }
             if (r.getKeybind(action.getId()).isPressed(false)) {
                 action.execute();
                 return;
@@ -241,6 +261,12 @@ public final class UiEditorWorkspace implements AutoCloseable {
         }
     }
 
+    /** Shortcuts that never change the source: the only ones a focused Preview lets through. */
+    static boolean allowedInPreview(KeybindAction action) {
+        String c = action.getCategory();
+        return UiKeybindActions.VIEW.equals(c) || UiKeybindActions.FILE.equals(c);
+    }
+
     // ── graphs ──────────────────────────────────────────────────────────────
 
     void openGraphs() {
@@ -263,13 +289,18 @@ public final class UiEditorWorkspace implements AutoCloseable {
                 if (!service.documents().contains(doc)) {
                     return "The document was closed";
                 }
-                boolean ok = doc.execute(DocumentCommands.replaceGraphs(edited));
+                ctx.flushPendingEdits(doc); // typed Lua joins the document before the merge sees it
+                boolean ok = doc.execute(DocumentCommands.replaceGraphs(edited, graphBase));
                 doc.endInteraction();
                 graphRevision = doc.revision();
+                if (ok) {
+                    graphBase = edited; // later saves merge against what the window has now written
+                }
                 return ok ? null : doc.lastMessage();
             }
         });
         graphRevision = doc.revision();
+        graphBase = doc.archive();
     }
 
     private UiDocumentSource source() {
@@ -284,7 +315,9 @@ public final class UiEditorWorkspace implements AutoCloseable {
         }
         if (graphDoc != null && graphDoc.revision() != graphRevision) {
             graphRevision = graphDoc.revision();
-            graphs.documentReloaded(graphDoc.archive(), source(), false);
+            if (graphs.documentReloaded(graphDoc.archive(), source(), false)) {
+                graphBase = graphDoc.archive(); // the window took the new state: it is the new base
+            }
         }
         DesignerRuntime rt = graphDoc == null ? null : ctx.runtime(graphDoc);
         UiScriptRuntime scripts = rt == null ? null : rt.scripts();
@@ -365,9 +398,7 @@ public final class UiEditorWorkspace implements AutoCloseable {
 
     /** Saves {@code doc}: in place, at its convention path, or through a Save dialog. */
     boolean save(UiEditorDocument doc) {
-        if (doc == ctx.doc()) {
-            script.applyPending();
-        }
+        ctx.flushPendingEdits(doc);
         String error = service.save(doc);
         if (error == null) {
             ctx.project.entries(true);
@@ -412,17 +443,29 @@ public final class UiEditorWorkspace implements AutoCloseable {
         }
     }
 
-    /** Saves every dirty document that already has a file or a convention path (project save). */
-    public void saveAllInPlace() {
-        script.applyPending();
+    /**
+     * Saves every dirty document that already has a file or a convention path (project save).
+     *
+     * @return one line per document that was not saved (the caller shows them; empty = all saved)
+     */
+    public List<String> saveAllInPlace() {
+        List<String> failed = new ArrayList<>();
+        for (UiEditorDocument d : service.documents()) {
+            ctx.flushPendingEdits(d);
+        }
         for (UiEditorDocument d : service.dirtyDocuments()) {
-            if (service.defaultTarget(d) != null) {
-                String err = service.save(d);
-                if (err != null) {
-                    logger.warn("UI document {} not saved: {}", d.title(), err);
-                }
+            if (service.defaultTarget(d) == null) {
+                failed.add(d.title() + ": no location (use Save As)");
+                continue;
+            }
+            String err = service.save(d);
+            if (err != null) {
+                logger.warn("UI document {} not saved: {}", d.title(), err);
+                d.setLastMessage(err);
+                failed.add(d.title() + ": " + err);
             }
         }
+        return failed;
     }
 
     public void exportActive() {
@@ -446,12 +489,16 @@ public final class UiEditorWorkspace implements AutoCloseable {
     public void closeActive() {
         UiEditorDocument d = ctx.doc();
         if (d != null) {
+            ctx.flushPendingEdits(d); // typed Lua becomes a dirty edit, so the close prompt covers it
             dialogs.close(List.of(d), null);
         }
     }
 
     /** Closes every document (asking about dirty ones), then runs {@code then}; Cancel skips it. */
     public void closeAll(Runnable then) {
+        for (UiEditorDocument d : service.documents()) {
+            ctx.flushPendingEdits(d);
+        }
         dialogs.close(service.documents(), then);
     }
 
@@ -463,7 +510,8 @@ public final class UiEditorWorkspace implements AutoCloseable {
     }
 
     public boolean hasUnsavedChanges() {
-        return service.hasUnsavedChanges();
+        return service.hasUnsavedChanges() || service.documents().stream().anyMatch(ctx::hasPendingEdits)
+            || graphs.isDirty();
     }
 
     void zoomActual() {

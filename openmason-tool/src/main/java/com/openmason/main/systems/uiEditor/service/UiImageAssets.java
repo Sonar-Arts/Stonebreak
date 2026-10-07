@@ -381,17 +381,44 @@ public final class UiImageAssets {
 
     /**
      * The layered source of an SBT: {@code <name>.omt} beside it. Written from the SBT's
-     * embedded OMT when absent, so the Texture Editor keeps the SBT's layers; an existing
-     * sibling is the author's source and is never overwritten.
+     * embedded OMT when absent, so the Texture Editor keeps the SBT's layers. An existing sibling
+     * is the author's source and is kept, unless the SBT changed after it (a pull, a re-export)
+     * and the two disagree: opening the stale layers would let the next save overwrite the newer
+     * SBT, so the sibling is refreshed from the SBT and the old one kept as {@code <name>.omt.stale}.
      */
     public static Path omtSourceFor(Path sbt) throws IOException {
-        String name = sbt.getFileName().toString();
-        Path omt = sbt.resolveSibling(name.substring(0, name.length() - ".sbt".length()) + ".omt");
+        Path omt = omtSiblingOf(sbt);
+        byte[] embedded = new SBTParser().read(sbt).omtBytes();
         if (!Files.isRegularFile(omt)) {
-            byte[] bytes = new SBTParser().read(sbt).omtBytes();
-            com.openmason.engine.format.omui.io.AtomicFiles.write(omt, bytes);
+            com.openmason.engine.format.omui.io.AtomicFiles.write(omt, embedded);
+            return omt;
+        }
+        if (Files.getLastModifiedTime(sbt).compareTo(Files.getLastModifiedTime(omt)) > 0
+                && !java.util.Arrays.equals(Files.readAllBytes(omt), embedded)) {
+            Path stale = omt.resolveSibling(omt.getFileName() + ".stale");
+            Files.copy(omt, stale, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            com.openmason.engine.format.omui.io.AtomicFiles.write(omt, embedded);
+            org.slf4j.LoggerFactory.getLogger(UiImageAssets.class).warn(
+                    "{} is newer than its layered source; refreshed {} (previous layers kept as {})",
+                    sbt.getFileName(), omt.getFileName(), stale.getFileName());
         }
         return omt;
+    }
+
+    /** {@code <name>.omt} beside {@code <name>.sbt}: by convention the SBT's layered source. */
+    public static Path omtSiblingOf(Path sbt) {
+        String name = sbt.getFileName().toString();
+        return sbt.resolveSibling(name.substring(0, name.length() - ".sbt".length()) + ".omt");
+    }
+
+    /** {@code <name>.sbt} beside {@code <name>.omt} when it exists, else null. */
+    public static Path sbtSiblingOf(Path omt) {
+        String name = omt.getFileName().toString();
+        if (!name.toLowerCase(Locale.ROOT).endsWith(".omt")) {
+            return null;
+        }
+        Path sbt = omt.resolveSibling(name.substring(0, name.length() - ".omt".length()) + ".sbt");
+        return Files.isRegularFile(sbt) ? sbt : null;
     }
 
     /** Re-wraps {@code omt} into {@code sbt}, keeping the SBT's identity and metadata. */

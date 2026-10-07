@@ -73,6 +73,13 @@ public final class UiStyleProperties {
         keyword("text-align", "left", "center", "right");
         keyword("-sb-image-scale", "stretch", "nine-slice", "tile", "integer");
         keyword("-sb-sampling", "nearest", "linear");
+        // ui-text: wrapping, truncation and line limits of labels
+        keyword("white-space", "nowrap", "normal", "pre-wrap");
+        keyword("text-overflow", "clip", "ellipsis");
+        plain(Kind.NUMBER, "-sb-max-lines");
+        // ui-cursor: pointer-anchored cursor layer and click-through subtrees
+        keyword("-sb-anchor", "none", "pointer");
+        keyword("pointer-events", "auto", "none");
     }
 
     private UiStyleProperties() {

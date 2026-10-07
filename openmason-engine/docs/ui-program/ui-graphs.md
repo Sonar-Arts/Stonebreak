@@ -103,7 +103,7 @@ error compiles.
 | `UNKNOWN_SIGNAL`, `UNKNOWN_VARIABLE`, `UNKNOWN_FUNCTION`, `UNKNOWN_LUA_FUNCTION`, `UNKNOWN_CLIP` | the named thing does not exist |
 | `REQUIRED_INPUT`, `INVALID_LITERAL` | an input with no link, literal or default; or a literal of the wrong type |
 | `BROKEN_LINK`, `WRONG_DIRECTION`, `TYPE_MISMATCH`, `DUPLICATE_LINK` | a link to a port that is gone (after a signature change), from an input, between types that do not connect, or a second link where one is allowed |
-| `SYNC_CYCLE` | a data cycle among pure nodes; an exec loop with no wait in it; a recursive function |
+| `SYNC_CYCLE` | a data cycle among pure nodes; an exec loop with a way around it that never waits (checked on the exec graph with the waiting nodes removed, so a Branch whose one side waits and whose other side skips the Wait is caught); a recursive function |
 | `LATENT_IN_SYNC` | a wait (wait, awaited tween or clip, invoke, an async Lua call, or a function that contains one) after `update` or `close`, or inside a pure function |
 | `OUT_OF_SCOPE` | a value read from a statement that does not run in the same event. Share values through variables. |
 | `FUNCTION_SHAPE` | a missing or extra entry or return node, statements in a pure function, or events in a function |
@@ -150,8 +150,10 @@ return G
   Unit locals spill into a table beyond 120, which keeps clear of Lua's 200-local limit.
 - **Waits** become `ui.await(...)` yields inside the handler's task.
 - **Values from statements** are unit locals. A value cannot leak into another event: that is `OUT_OF_SCOPE`.
-- **Literals and names.** Every literal is quoted by `LuaText` with escapes, and never spliced raw. Locals never shadow
-  the globals the code uses.
+- **Literals and names.** Every literal is quoted by `LuaText` with escapes, and never spliced raw. A number literal
+  is always one primary expression: negatives are parenthesized (`(-2) ^ x`; bare `-2 ^ x` is `-(2 ^ x)` in Lua) and
+  non-finite values are arithmetic (`(1/0)`, `(-1/0)`, `(0/0)`), never identifiers a script could define. Locals
+  never shadow the globals the code uses.
 
 ## 4. Running with code-behind
 
@@ -216,7 +218,7 @@ Release builds (the game, and derived caches) contain no trace calls.
 
 - the release Lua goes to `derived/graphs/<id>.lua`;
 - the row records `source: graph:<id>`, the SHA-256 of the canonical graph entry, `compiler: omui-graphc` and
-  `compilerVersion: 1`;
+  `compilerVersion` (`GraphCompiler.VERSION`, **2** since the #282 hardening: literal and loop-check changes);
 - a graph with errors **blocks the export**, with `GRAPH_INVALID` diagnostics whose pointer names the node
   (`/functions/0/nodes/2`).
 
@@ -230,6 +232,13 @@ At run time the game serves the caches through `ResolvedUiAssets.withDerived(sbu
 
 So a shared module or component that changed its signatures cannot leave stale code running. Otherwise the runtime
 compiles the graph itself and logs an INFO line. The editor always compiles, with the debug build.
+
+**Trust (#282).** Those hashes only prove which graph a chunk *claims* to come from; nothing proves its body is that
+graph's code short of compiling it again. A pack could ship Lua that differs from its graph, which defeats reviewing
+the graph and node attribution (it gains nothing over code-behind, which the same pack could ship openly). So the
+runtime uses a cache only when the host opts in with `UiScriptOptions.withTrustedDerivedGraphs(true)`, which a host
+should do only for first-party documents it packaged itself. The default, and `UiBudgets.scriptOptions()`, compile
+every graph at load.
 `SbuiReader` already rejects caches whose source changed (`STALE_DERIVED`).
 
 Layout lives in `editor/graphs/<id>.layout.json` (comment frames and node groups), apart from the graph file. It never

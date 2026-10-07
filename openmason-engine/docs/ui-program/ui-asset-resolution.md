@@ -34,6 +34,11 @@ never identities:
 | Packaged resources | `MountedAssetSource.packaged(prefix, opener)` | `PACKAGED` | no | shared rows without a pack |
 | Resource pack | `MountedAssetSource.pack(id, opener)` | `PACK` | no | only rows whose `pack` is this id |
 
+Paths are contained twice: lexically (`EntryPaths`, no `..`, absolute or drive paths) and on disk —
+`ProjectFolder` resolves the deepest existing part of a path through symbolic links and refuses anything whose real
+location leaves the project's real root (a symlinked folder inside the project cannot be used to read or write
+elsewhere; a dangling link is refused).
+
 Packaged resources are opened by the module that owns them (`ResourceOpener.streams(Class::getResourceAsStream)`),
 because JPMS hides another module's resources from the engine. Packs are directories or ZIPs
 (`ResourceOpener.directory`, `ResourceOpener.zip`, read under the archive limits).
@@ -59,14 +64,24 @@ Hosts:
 The editor resolves OMUI rows (`forDocument`); the game resolves the SBUI table (`forExport`), never the embedded
 OMUI's own table.
 
+**Runtime lookups** (`ResolvedUiAssets`) follow the same rules, fallbacks included (`resolveWithFallback`; the strict
+`resolveOne` is for tools that must not substitute). An id resolves in the document's table first; a reference made
+inside a component (`UiPaintHost.image(element, ref)`, keyed by the element's `componentId`) then tries that
+component's own table before other components' tables, so two components embedding different snapshots under one id
+each draw their own bytes. Every problem met is logged once and kept: `diagnostics()` (resolution findings, then
+sprite findings). `check()` resolves the whole root table up front; an error there means a required asset is missing,
+unreadable or corrupt, and a host should refuse the screen rather than draw blanks.
+
 `AssetResolver.candidates(id)` lists every eligible source holding an id; the export planner reports lower sources
 with different bytes as `ASSET_SHADOWED`.
 
 ## 4. Editing commands (`ui.assets.edit`)
 
 Commands return an `AssetEdit` (document before/after + `ProjectWrite`s + findings) and touch nothing until
-`apply(folder)`. `undo(folder)` reverts the writes in reverse order. A write or revert refuses to proceed if the file
-no longer holds the bytes the command expects, so undo never clobbers a later edit. Commands that cannot complete
+`apply(folder)`. `undo(folder)` reverts the writes in reverse order. Both are **all-or-nothing**: every file is checked
+first and if any no longer holds the bytes the command expects, nothing is touched (so undo never clobbers a later
+edit, and a refused undo never leaves the document pointing at files it already deleted); an I/O failure part-way
+re-applies (or reverts) the steps already done. Commands that cannot complete
 throw `UiFormatException` and change nothing. Every result is validated with the OMUI writer, so a command can
 never produce an unsavable document.
 
@@ -142,7 +157,9 @@ Absent optional fields are omitted. Locations are source-qualified and portable,
 ### Import into a project (`SbuiProjectImport`)
 
 Each collected dependency becomes a shared project asset:
-- If the project holds nothing under the id, the bytes are written to the hint, or else the convention path.
+- If the project holds nothing under the id, the bytes are written to the hint when it lies under the convention
+  folder (`UI/`), else to the convention path: a hint is someone else's path, so an import never places files among
+  the project's models, scripts or settings.
 - If the project holds identical bytes, they are reused and nothing is written.
 - If the project holds different bytes, the import gets a fresh id (`<id>-imported`, `-imported-2`, ...), is written
   to its convention path, and every reference is remapped. Existing project files are never overwritten.
@@ -164,7 +181,8 @@ host lacks is a warning. The editor previews with its own profile and fixture da
 - `projectFileChanged(path)` and `assetChanged(id)` invalidate the id in every registered `UiAssetCache` and notify
   listeners with the affected documents. This includes documents reached through components (texture → component →
   screen).
-- `UiAssetCache<T>`:
+- `UiAssetCache<T>` (not used by the shipped editor or game, which resolve through `ResolvedUiAssets` and the shared
+  `MTextureCache`; kept as the generic per-id cache for hosts that load asynchronously):
   - A current entry is a map hit.
   - A failed load is remembered per revision and never retried per frame. Invalidation clears it, so a file that
     appears, or a relink, recovers.
@@ -172,14 +190,21 @@ host lacks is a warning. The editor previews with its own profile and fixture da
     newer ones.
   - Replaced values are queued and freed by `drainReleases()` on the thread that owns the GL/Skia context.
     `peek(id)` keeps the old value drawable until the new one is ready.
+  - `close()` stops the cache: later lookups return null and a load still in flight is released instead of
+    installed (on its loading thread: it was never drawn).
+- **Texture release.** Superseded texture revisions (`ResolvedUiAssets.forget`) go through
+  `MTextureCache.release(key)`: dropped from the cache at once and closed after a grace of
+  `RELEASE_GRACE_NANOS` (500 ms) by `drainReleases()` (also run opportunistically by lookups), so memory comes back
+  deterministically rather than when the GC runs, and a frame already holding the image never meets a closed one. A
+  closed `MTexture` answers `image() == null`, so a stale holder draws nothing rather than crashing.
 
 ## 8. Not in this layer yet
 
 - (Done in #293/#294: the editor UI calls these classes — the UI Assets panel, the export dialog, texture and
   sprite authoring. A shared row whose file changed since it was recorded is badged `changed` and can be
   re-recorded with Accept Current Version, a relink to the same file.)
-- Preview rendering of resolved assets (#286). Its texture cache is a `UiAssetCache<MTexture>` registered with
-  `LiveAssets`.
+- Preview rendering of resolved assets (#286) goes through `ResolvedUiAssets` + `MTextureCache`, refreshed by the
+  editor's file polling and Texture Editor saves (`refresh()`), not through `LiveAssets`/`UiAssetCache`.
 - The `UiArchiveTool export` command still performs a plain shared export without resolving a project.
 - `SbuiExporter.collectedEntry` uses the hint's last extension (`.json` for `x.uss.json`). The OMUI embed naming uses
   the kind extension. Both are deterministic, and the runtime reads entries by the name the table records.

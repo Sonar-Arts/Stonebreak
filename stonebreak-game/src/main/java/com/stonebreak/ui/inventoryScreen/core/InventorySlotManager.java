@@ -590,6 +590,59 @@ public class InventorySlotManager {
         }
     }
 
+    /**
+     * Top-left of a slot by address ({@code main:<i>}, {@code hotbar:<i>}, {@code craft:<i>},
+     * {@code craft-output}) in {@code layout} — the same geometry the hit tests above use, so a
+     * pointer synthesized there (#289) lands on that slot. Null for an unknown address.
+     */
+    public int[] slotOrigin(String slot, InventoryLayoutCalculator.InventoryLayout layout) {
+        int ss = InventoryLayoutCalculator.getSlotSize();
+        int pad = InventoryLayoutCalculator.getSlotPadding();
+        if ("craft-output".equals(slot)) {
+            return new int[]{layout.outputSlotX, layout.outputSlotY};
+        }
+        int colon = slot == null ? -1 : slot.indexOf(':');
+        if (colon < 0) {
+            return null;
+        }
+        int i;
+        try {
+            i = Integer.parseInt(slot.substring(colon + 1));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        switch (slot.substring(0, colon)) {
+            case "main" -> {
+                if (i < 0 || i >= Inventory.MAIN_INVENTORY_SIZE) {
+                    return null;
+                }
+                int width = Inventory.MAIN_INVENTORY_COLS * (ss + pad) - pad;
+                int startX = layout.panelStartX + (layout.inventoryPanelWidth - width) / 2;
+                return new int[]{startX + (i % Inventory.MAIN_INVENTORY_COLS) * (ss + pad),
+                    layout.mainInvContentStartY + pad + (i / Inventory.MAIN_INVENTORY_COLS) * (ss + pad)};
+            }
+            case "hotbar" -> {
+                if (i < 0 || i >= Inventory.HOTBAR_SIZE) {
+                    return null;
+                }
+                int width = Inventory.HOTBAR_SIZE * (ss + pad) - pad;
+                int startX = layout.panelStartX + (layout.inventoryPanelWidth - width) / 2;
+                return new int[]{startX + i * (ss + pad), layout.hotbarRowY};
+            }
+            case "craft" -> {
+                int size = craftingManager.getCraftingGridSize();
+                if (i < 0 || i >= size * size) {
+                    return null;
+                }
+                return new int[]{layout.craftingElementsStartX + (i % size) * (ss + pad),
+                    layout.craftingGridStartY + (i / size) * (ss + pad)};
+            }
+            default -> {
+                return null;
+            }
+        }
+    }
+
     private boolean isMouseOverSlot(float mouseX, float mouseY, int slotX, int slotY) {
         return mouseX >= slotX && mouseX <= slotX + InventoryLayoutCalculator.getSlotSize() &&
                mouseY >= slotY && mouseY <= slotY + InventoryLayoutCalculator.getSlotSize();

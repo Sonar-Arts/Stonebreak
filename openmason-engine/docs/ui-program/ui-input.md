@@ -74,12 +74,20 @@ preview input stays within the displayed canvas.
   below it, like a disabled button in a menu blocks the world.
 - **Consumed**: a press when the hit test found an element, a modal is open, or a popup was dismissed; a release
   exactly when its press was (or it ends a capture or drag), so a button pressed in the world is always released
-  to the world. Full-screen containers that should let clicks reach the world set `picking-mode: ignore`.
+  to the world. Only the primary release ends a capture, so only it is the capture's: a right press the world took
+  during a text-field drag gets its release back. Full-screen containers that should let clicks reach the world set
+  `picking-mode: ignore`.
 - **Hover**: `:hover` is set on the hit element and every ancestor. `POINTER_LEAVE` is sent deepest first and
   `POINTER_ENTER` outermost first, so moving between siblings never leaves their shared parent. A modal hides
   hover outside itself. Hover is re-evaluated after every layout under a still pointer.
-- **Click**: press and release over the same enabled element. `clickCount` grows for presses on the same element
-  within `doubleClickTime` and `doubleClickDistance` (0.4 s, 4 logical px).
+- **Click**: press and release over the same enabled element. `clickCount` grows for presses of the same button on
+  the same element within `doubleClickTime` and `doubleClickDistance` (0.4 s, 4 logical px); a left click then a
+  right click is two single clicks.
+- **Held state**: every pointer event carries the held mouse buttons (`PointerEvent.buttons()` / `isHeld(button)`)
+  and the modifiers (`modifiers()`). Moves, enters and leaves use what the router last saw: the host's pointer, wheel
+  and key events, kept current by modifier key presses and releases, so a move handler can tell a right-drag or a
+  Shift-drag across slots (inventory distribution) without tracking buttons itself. `UiInputRouter.heldButtons()`
+  and `modifiers()` expose the same state.
 - **Capture**: `capturePointer(el)` sends every pointer event to `el`, also outside the canvas, until the primary
   button is released, the element can no longer receive input (`POINTER_CANCEL`), or interactions are cancelled.
   Text fields capture for drag selection, scrollbars for thumb dragging.
@@ -104,6 +112,10 @@ preview input stays within the displayed canvas.
   rule, `MenuInputRouter.routeBattleKey`).
 - **Repeat**: keyboard repeats come from the platform at the player's OS rate (`MKeys.REPEAT`). Navigation and paging
   repeat; **submit and cancel never repeat**.
+- **Keyboard layouts**: GLFW key tokens name physical US-layout keys. Hosts translate letter keys to the active
+  layout before forwarding (game and editor: `LayoutKeys.translate(key, scancode)` over `glfwGetKeyName`), so
+  Ctrl+Z is undo where the Z key is printed, on QWERTZ and AZERTY too. Ctrl together with Alt is AltGr on Windows
+  and is never a shortcut (§7).
 - **Text**: committed text goes to the focused text field (consumed even when its filter drops it). Whole code points
   arrive: the game routes supplementary-plane characters (emoji) to documents, while legacy screens keep their BMP
   filter. Lone surrogates are dropped.
@@ -206,8 +218,12 @@ moves to another element. Painted last, above every layer, with
 ## 6. Drag and drop
 
 1. **Start**: a press on (or inside) a `draggable` element that moves past `dragThreshold` (4 logical px) sends
-   `DRAG_START` (bubbling). A handler calls `setPayload`; without a payload the press stays an ordinary press. Code
-   can start a drag for controller pick-up (`DragDropController.start`).
+   `DRAG_START` (bubbling). A handler calls `setPayload`; without a payload the press stays an ordinary press.
+   A controller or keyboard pick-up starts a **focus-driven** drag from code (`UiInputRouter.startDrag(source,
+   payload, device)`, or `DragDropController.start(source, payload, device)`): it is immediately over the focused
+   element, focus navigation moves it (`DRAG_LEAVE`/`DRAG_ENTER`/`DRAG_OVER` to the newly focused element), Submit
+   (A, Enter) drops it on the acceptor instead of clicking, and Cancel (B, Escape) cancels it. A primary click also
+   drops it at the pointer. `DragDropController.hover(el)` / `drop()` drive a drag from code.
 2. **Over**: `DRAG_ENTER`/`DRAG_LEAVE` per element as the pointer moves; `DRAG_OVER` bubbles from the hit element,
    and the element whose handler calls `acceptDrop()` becomes the target. Leaving withdraws acceptance.
 3. **Drop**: releasing the drag button sends `DRAG_DROP` to the accepting element; preventing it rejects the drop.
@@ -217,8 +233,15 @@ moves to another element. Painted last, above every layer, with
 - A cancelled drag never drops, including when a handler cancels it mid-negotiation.
 - A drop handler that throws counts as a rejected drop: the source keeps its payload.
 - `DRAG_DROP` reaches at most one element.
-- A `DragSession` id is never reused, and `isLive()` turns false the moment the drag ends. Asynchronous work started
-  from a drop (a server request to move an item) checks it before acting on a late reply.
+- A `DragSession` id is never reused, and `isLive()` turns false the moment the drag ends, by drop or cancel.
+- **Late replies**: asynchronous work started from a drop (a server request to move an item) checks
+  `isCurrent()` before acting on the reply. A dropped session stays current until a newer drag starts or the
+  router abandons its interactions (`SCREEN_CLOSED`, `DISCONNECT`); a cancelled one never is. (`isLive()` is the
+  wrong check: it is already false when the drop handler returns, so every confirmed move would look stale.)
+- **Rebuilt elements**: a slot re-rendered under the same key (an inventory sync, a ListView diff) does not cancel
+  the drag. The source, the acceptor and the enter/leave chain follow the key to the new element; only a key with no
+  live element left cancels (`SOURCE_REMOVED` / `TARGET_REMOVED`). The re-render must wire the new element's
+  handlers, as it does for any re-rendered row.
 - The source owns its payload until it sees `DROPPED`, so no cancellation can lose an item.
 
 | Ends with | When |
@@ -226,14 +249,15 @@ moves to another element. Painted last, above every layer, with
 | `DROPPED` | an accepting element took the payload |
 | `REJECTED` | released where nothing accepts, or the drop handler prevented it |
 | `ESCAPE` | the cancel action (Escape, B) |
-| `SOURCE_REMOVED` / `TARGET_REMOVED` | the source or the accepting element was removed, disabled or collapsed |
+| `SOURCE_REMOVED` / `TARGET_REMOVED` | the source or the accepting element was removed (with no element left under its key), disabled or collapsed |
 | `DISCONNECT` | multiplayer disconnect or world unload (`MultiplayerSession`, `WorldLifecycle.resetWorld`, before the inventory is saved) |
 | `WINDOW_FOCUS_LOST` | the game window lost focus (its releases will never arrive) |
 | `SCREEN_CLOSED` | the hosting document closed |
 
 **Cancelling interactions** (`cancelInteractions(reason)`):
-- Always: the drag ends; a capture or press gets `POINTER_CANCEL`; held keys and buttons are forgotten (their later
-  releases are ignored); controller repeat stops; composition is cancelled; the tooltip hides.
+- Always: the drag ends; a capture or press gets `POINTER_CANCEL`; held keys, buttons and modifiers are forgotten
+  (their later releases are ignored); controller repeat stops; composition is cancelled; the tooltip hides.
+- Screen close and disconnect also supersede the latest drag, so a late reply to an earlier drop no longer applies.
 - Window focus loss and screen close also dismiss popups and clear hover.
 - Screen close also drops focus.
 
@@ -265,7 +289,14 @@ moves to another element. Painted last, above every layer, with
   whole text). Up/Down move between lines of a multi-line field, keeping the goal x.
 - Backspace/Delete remove one character (Ctrl: one word). Ctrl+A/C/X/V edit, Ctrl+Z undoes, and Ctrl+Y or
   Ctrl+Shift+Z redoes.
-- Printable keys are consumed so their text arrives as text input; Space never submits from a field.
+- Printable keys and the keypad's text keys are consumed so their text arrives as text input; Space never submits
+  from a field.
+- **AltGr**: Ctrl together with Alt is never a shortcut. On Windows AltGr arrives as Ctrl+Alt, and AltGr+A types
+  "ą" on a Polish layout; the key is consumed as typing and its character arrives as text. Ctrl+Z, Ctrl+A etc. use
+  the layout-translated key the host passes (§3).
+- **What a focused field keeps**: its editing keys, printable and keypad keys, and the modifier keys themselves (a
+  Shift held for a capital must not make the player sneak). Function keys, Tab, Escape with nothing to revert and
+  plain-Alt chords pass through, so screenshots, debug keys and screen shortcuts keep working while typing.
 - Tab and, in a single-line field, Up/Down navigate away.
 
 **Pointer**: a click places the caret by measured glyph advances (not the legacy per-character estimate); a double
@@ -333,9 +364,21 @@ reader.
 `UiInputGate` derives what a document needs and blocks it when the host lacks any of it, so a missing feature
 **blocks the screen's migration instead of silently degrading it**. `GameUiDocuments.requireInputGate` throws,
 reports `INPUT_GATE_BLOCKED`, and the legacy screen stays. A document needs:
-- for a `TextField`: keyboard, text, clipboard, and supplementary-plane text unless its filter is ASCII-range;
+- for a `TextField`: keyboard, text, clipboard, and, unless its filter is ASCII-range, supplementary-plane text and
+  **fallback fonts** (a player can type or paste an emoji or CJK character the game font cannot draw: it would show
+  as a box). Legacy chat's rule (`inputFilter: ascii`) needs neither;
 - for a `TextField` in zh/ja/ko: IME composition;
-- for any text in an RTL locale: RTL and shaping.
+- for any text in an RTL locale: RTL and shaping;
+- for any text in a locale written outside Latin script (Cyrillic, Greek, CJK, Arabic, Hebrew, Indic, Thai, ...):
+  fallback fonts.
+
+`ACCESSIBILITY_BRIDGE` is never derived: no legacy screen has a screen-reader bridge either, so lacking one cannot be
+a regression a migration introduces.
+
+**Locale changes**: needs depend on the locale, which a player can change while a screen is open. Hosts re-check with
+`UiInputGate.monitor(instance, capabilities)`: `poll(locale)` re-evaluates only when the locale, the host's
+capabilities or the element count changed (cheap enough per frame), and a screen that becomes blocked falls back to
+its legacy implementation.
 
 | Capability | Legacy screens today | Documents, game (`GameUiInput.CAPABILITIES`) | Documents, editor preview |
 | --- | --- | --- | --- |
@@ -360,6 +403,22 @@ reports `INPUT_GATE_BLOCKED`, and the legacy screen stays. A document needs:
   filter. Gamepads are polled every frame, so a button held when a document opens is not a new press. The focus callback cancels interactions on loss.
   `pollActiveScreen` runs the clock and the controller poll. The dev overlay (`-Dstonebreak.uidoc`) is a full input
   host now and consumes what its document consumes.
+  - **Polled keys** (#282 review). Gameplay and legacy menus poll held keys (`glfwGetKey`: movement, Escape, E, T,
+    Q, 1-9, F-keys), which no callback consumption can stop. Every such poll goes through `input/PolledKeys` /
+    `KeyEdgeTracker`, which read a key as up while `GameUiInput.masksKey(key)`: a document consumed its press (until
+    its release), or a document owns the keyboard (`ownsKeyboard()`: a focused `TextField` with a free cursor, an open
+    modal, or a screen opened with `claimsKeyboard`). A key held through a field does not fire as a fresh press when
+    the field lets go of it. Escape that closes a document's dialog never also toggles pause.
+  - **One stack.** `GameUiInput.views()` is ordered by `screens.UiLayer` (SCREEN < HUD < OVERLAY < TOOLTIP < CURSOR),
+    then open order; the game draws it bottom to top and routes input top to bottom.
+  - **Layout keys** (C8). Letter keys reach documents by their layout label (`LayoutKeys.translate`, via
+    `glfwGetKeyName`): Ctrl+Z is the key labelled Z on QWERTZ/AZERTY. Gameplay keeps physical keys.
+  - **Wheel modifiers**: GLFW's scroll callback carries none, so `MenuInputRouter` samples Shift/Ctrl/Alt; Shift+wheel
+    scrolls sideways as in the preview.
+  - **Controllers while looking around**: with the cursor captured, buttons reach only a document with an open modal
+    or one opened with `claimsGamepad` (a focused HUD button never takes A from gameplay).
+  - **Clock**: `UiFrameClock` is sampled once per frame (clamped to 0.1 s); routers, the `ui` clock and scripts all
+    advance by it, and the `game` clock by the simulated time the world stepped (`GameLoop`).
 - **Editor**:
   - `ToolInputTap` taps GLFW keys and chars ahead of ImGui, which chains to it.
   - The preview forwards keys and text only while its window has keyboard focus and no ImGui text field is active;
@@ -407,6 +466,7 @@ A reader that predates them refuses the document instead of dropping focus order
 | `PluralRulesTest`, `MessageFormatterTest`, `UiLocalizerTest`, `PseudoLocalizerTest`, `LocalizedTextTest` | localization, and labels re-measuring on a locale or text-scale change |
 | `AccessibilityMetadataTest` | feature gating, OMUI/SBUI round trips, the semantic tree |
 | `ReviewRegressionTest` | release pairing with world presses and pre-modal keys, focus and hover tooltips, prevented submenu dismissal, drag cancelled by its own handler, throwing drop handlers, caret stability, live reload of a focused field and mid-press, binding typos |
-| `ActionMapTest`, `CoordinatesTest`, `UiInputGateTest` | bindings and hints, coordinate spaces and inversion, the gate |
+| `ActionMapTest`, `CoordinatesTest`, `UiInputGateTest` | bindings and hints, coordinate spaces and inversion, the gate (fallback fonts per field and per locale) |
+| `InputHardeningTest` | AltGr typing and layout-translated shortcuts, what a focused field keeps (modifiers, keypad) and lets through (F-keys), a world right press released during a text capture, per-button click counts, held buttons and modifiers on moves, controller drags moved by focus and dropped with Submit, `isCurrent()` for late drop replies, drags across a slot rebuilt under its key, a modal in a lower document under a non-modal one, the locale monitor |
 | `InputReplayTest` | headless replay (`ui/input/replay/settings.replay`) through the game path and the preview path at UI scale 1.25: identical traces, equal to the committed `settings.trace` (regenerate with `-Dui.replay.write=true`) |
 | `GameUiInputTest`, `ChatTextRulesTest`, `SettingsPersistenceTest` (game) | document stacking, captured cursor, cancellation, settings, the game's gate; chat parity; persisted preferences |

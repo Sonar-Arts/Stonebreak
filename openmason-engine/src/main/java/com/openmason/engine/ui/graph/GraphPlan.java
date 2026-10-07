@@ -666,31 +666,43 @@ final class GraphPlan {
         }
     }
 
-    /** Every exec loop must contain a node that waits; otherwise it would spin within one call. */
+    /**
+     * Every exec loop must wait on every way around; otherwise it would spin within one call. The
+     * check runs on the exec graph with the waiting (latent) nodes removed: any cycle left there
+     * is a way around the loop that never waits. (A depth-first back-edge test on the full graph
+     * misses loops that rejoin through a node already finished, e.g. a Branch whose true side
+     * waits and whose false side skips the Wait.)
+     */
     private void loops(Body b, Unit u, Node entry) {
         Map<String, Integer> state = new HashMap<>();
-        List<String> path = new ArrayList<>();
-        loopVisit(b, u, entry, state, path);
+        Set<Set<String>> reported = new HashSet<>();
+        for (String id : u.nodes) {
+            Node n = b.nodes.get(id);
+            if (n != null && !state.containsKey(id) && !latent(b, n)) {
+                loopVisit(b, u, n, state, new ArrayList<>(), reported);
+            }
+        }
     }
 
-    private void loopVisit(Body b, Unit u, Node n, Map<String, Integer> state, List<String> path) {
+    private void loopVisit(Body b, Unit u, Node n, Map<String, Integer> state, List<String> path,
+                           Set<Set<String>> reported) {
         state.put(n.id(), 1);
         path.add(n.id());
         for (PortSpec p : n.ports.execOutputs()) {
             GraphEdge e = b.exec(n.id(), p.name());
             Node next = e == null ? null : b.nodes.get(e.toNode());
-            if (next == null) {
-                continue;
+            if (next == null || !u.nodes.contains(next.id()) || latent(b, next)) {
+                continue; // a waiting node breaks every cycle through it
             }
             Integer s = state.get(next.id());
             if (s == null) {
-                loopVisit(b, u, next, state, path);
+                loopVisit(b, u, next, state, path, reported);
             } else if (s == 1) {
                 List<String> cycle = path.subList(path.indexOf(next.id()), path.size());
-                boolean waits = cycle.stream().anyMatch(id -> latent(b, b.nodes.get(id)));
-                if (!waits) {
+                if (reported.add(Set.copyOf(cycle))) {
                     error(Code.SYNC_CYCLE, b, next.id(), "", "exec loop " + String.join(" > ", cycle) + " > "
-                        + next.id() + " never waits: it would run forever within one event; add a Wait");
+                        + next.id() + " never waits: it would run forever within one event; add a Wait"
+                        + " on every way around the loop");
                 }
             }
         }

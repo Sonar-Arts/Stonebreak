@@ -105,7 +105,8 @@ value.
 | Final value | `fill = "hold"` (default) keeps showing the last values until released; `"release"` hands back at the end. |
 | Reset / release | `release(el, prop)` and fill/stop release hand the channel back **through the property's declared transition**, if any; otherwise the cascade shows at once. |
 | Bindings | The binding keeps updating the cascade underneath any animation; after release its **latest** value shows (`UiAnimationPrecedenceTest`). |
-| Lifecycle | Closing the instance stops everything; a script reload or close stops only that script's animations (owner = its context) and leaves held values; transitions outlive script reloads; elements removed while animated drop their channels. Component instances have their own element keys, so their animations never collide. |
+| Lifecycle | Closing the instance stops everything; a script reload or close stops only that script's animations (owner = its context) and leaves held values; transitions outlive script reloads. An element removed (or dropped by a reload) takes its channels with it (`UiAnimator.forget`): held values and transitions go, and a clip or tween left animating nothing is interrupted, so faded-out chat lines and list rows never accumulate channels and a reused key starts clean. Component instances have their own element keys, so their animations never collide. |
+| Events | A clip event at clip time `t` occurs at `t` (once), `t + k·d` (loop) or `t + 2k·d` and `2d − t + 2k·d` (ping-pong: once per forward and once per backward pass). Each sample fires every occurrence crossed since the previous one, in time order, so a frame step longer than the clip fires each crossed event (at most 64 per event per sample). A one-shot that finishes fires events at or past its end; a clock that went backwards fires nothing; seeks skip what lies between. |
 
 ## 5. Style transitions
 
@@ -146,6 +147,10 @@ component instance (`UiDocumentInstance.authoringScopes()`), so every button ins
   state's own clip. Channels the new clips do not pose go back to the cascade (`UiAnimator.releaseHeld`). The
   initial state's clip poses at once, without a transition. A state with no clip is the cascade.
 - They choose which clip plays; they never replace gameplay state machines.
+- **Reload**: a machine whose definition did not change keeps its state but reads clips from the new revision; if
+  the clip of its current state changed (a Timeline edit), that clip restarts. A machine whose definition changed,
+  or that disappeared, hands everything it held back to the cascade (`UiAnimator.clearAndRelease`) before the new
+  one starts.
 
 ## 8. Lua and graphs
 
@@ -210,6 +215,7 @@ The UI Editor's **Timeline** tab (bottom dock) authors the document's clips and 
 | `UiStyleTransitionTest` | `:hover` with no script, reversal mid-way, class/inline triggers, `all` vs layout, delays, neutral ends, reduced motion, `sb-reduced-motion` alternates |
 | `UiTimeSourcesTest` | paused game vs UI clips, external clocks incl. rewind, refused clocks |
 | `UiStateMachineTest` | interaction machines per component instance, precedence, release to cascade, manual transition then state, arrival, reduced alternate, close |
+| `UiAnimationLifecycleTest` | channels released on remove and reload (no accumulation, reused keys start clean), ping-pong and long-step event crossing, backwards clocks, reduced-motion loops, state machines following edited clips and releasing on removal, colour hex formatting |
 | `UiTransformTest` | scale/rotate bounds, hits, overlays, local coordinates, scale 0 |
 | `UiAnimationVisualFixtureTest` | fixed-timestamp screenshots (`anim_t000/025/050/100.png`, `-Dui.visual.write=true`) and identical pixels for differently stepped hosts |
 | `UiStateMachineFormatTest` | round trip, `UNDECLARED_FEATURE`, broken machines, clip value checks |

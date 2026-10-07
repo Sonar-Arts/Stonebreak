@@ -390,6 +390,41 @@ class GraphValidationTest {
         assertTrue(GraphCompiler.compile(g, env(DOC), false).ok());
     }
 
+    /** A loop that waits on one way around but not the other still spins (#282 hardening). */
+    @Test
+    void syncCycleWhenOnlyOneBranchOfTheLoopWaits() {
+        UiGraph g = new GraphBuilder("g")
+            .node("opened", "ui:event.open")
+            .node("check", "ui:flow.branch", "=condition", true)
+            .node("wait", "ui:flow.wait", "=seconds", 1)
+            .node("tick", "ui:log", "=message", "tick")
+            .link("opened.then", "check.exec")
+            .link("check.true", "wait.exec").link("wait.then", "tick.exec")
+            .link("check.false", "tick.exec")
+            .link("tick.then", "check.exec")
+            .build();
+        List<GraphDiagnostic> d = check(g);
+        GraphDiagnostic c = one(d, Code.SYNC_CYCLE);
+        assertTrue(c.message().contains("check") && c.message().contains("tick"), c.toString());
+        assertFalse(GraphCompiler.compile(g, env(DOC), false).ok());
+    }
+
+    @Test
+    void aLoopThatWaitsOnEveryWayAroundIsAccepted() {
+        UiGraph g = new GraphBuilder("g")
+            .node("opened", "ui:event.open")
+            .node("check", "ui:flow.branch", "=condition", true)
+            .node("wait", "ui:flow.wait", "=seconds", 1)
+            .node("pause", "ui:flow.wait", "=seconds", 2)
+            .node("tick", "ui:log", "=message", "tick")
+            .link("opened.then", "check.exec")
+            .link("check.true", "wait.exec").link("wait.then", "tick.exec")
+            .link("check.false", "pause.exec").link("pause.then", "tick.exec")
+            .link("tick.then", "check.exec")
+            .build();
+        assertEquals(List.of(), check(g));
+    }
+
     @Test
     void syncCycleRecursiveFunction() {
         List<GraphDiagnostic> d = check(clickLog()

@@ -225,7 +225,7 @@ public final class InputHandler {
     // ─────────────────────────────────────────────── Helpers
 
     private static boolean pressed(long window, int key) {
-        return glfwGetKey(window, key) == GLFW_PRESS;
+        return com.stonebreak.input.PolledKeys.isDown(window, key);
     }
 
     private static boolean isShiftHeld(long window) {

@@ -240,11 +240,22 @@ public final class DocumentCommands {
 
     // ── graphs and clips ────────────────────────────────────────────────────
 
-    /**
-     * Takes the graphs (and their editor layout entries) of an edited copy of the document: the
-     * graph editor saves through this, so its whole session lands as one undo step.
-     */
+    /** As {@link #replaceGraphs(OmuiArchive, OmuiArchive)} with no merge base (the copy owns everything it holds). */
     public static UiCommand replaceGraphs(OmuiArchive edited) {
+        return replaceGraphs(edited, null);
+    }
+
+    /**
+     * Takes the graph editor's work from an edited copy of the document, as one undo step: its
+     * graphs and their editor layout entries, and the Lua modules / code-behind it changed ("Convert
+     * to script"). It is a three-way merge against {@code base}, the state the copy started from:
+     * only what the copy changed relative to {@code base} is taken, so edits made meanwhile
+     * elsewhere (the Script panel, an agent's {@code set_script}, another graph op) survive. When
+     * both sides changed the same Lua module or the code-behind, the save is refused naming it,
+     * instead of silently reverting either side. {@code base == null} takes the copy's graphs,
+     * scripts and code-behind as they are.
+     */
+    public static UiCommand replaceGraphs(OmuiArchive edited, OmuiArchive base) {
         return UiCommand.of("Edit behavior graphs", ctx -> {
             OmuiArchive d = ctx.doc();
             Map<String, UiBytes> editor = new LinkedHashMap<>();
@@ -258,16 +269,70 @@ public final class DocumentCommands {
                     editor.put(k, v);
                 }
             });
-            Map<String, String> scripts = new LinkedHashMap<>(d.scripts());
-            scripts.putAll(edited.scripts()); // "convert to script" adds a module
+            Map<String, com.openmason.engine.format.omui.UiGraph> graphs = base == null ? new LinkedHashMap<>(edited.graphs())
+                : merge(base.graphs(), d.graphs(), edited.graphs(), null);
+            List<String> conflicts = new ArrayList<>();
+            Map<String, String> scripts = base == null ? withAll(d.scripts(), edited.scripts())
+                : merge(base.scripts(), d.scripts(), edited.scripts(), conflicts);
             UiDocument doc = d.document();
             UiDocument ed = edited.document();
-            UiDocument merged = new UiDocument(doc.root(), doc.styleSheets(),
-                ed.codeBehind() != null ? ed.codeBehind() : doc.codeBehind(), doc.component(), doc.unknown());
-            ctx.setDoc(new OmuiArchive(d.manifest(), merged, d.styles(), edited.graphs(), d.animations(),
+            String codeBehind;
+            if (base == null) {
+                codeBehind = ed.codeBehind() != null ? ed.codeBehind() : doc.codeBehind();
+            } else {
+                String was = base.document().codeBehind();
+                boolean ours = !java.util.Objects.equals(was, ed.codeBehind());
+                boolean theirs = !java.util.Objects.equals(was, doc.codeBehind());
+                if (ours && theirs && !java.util.Objects.equals(ed.codeBehind(), doc.codeBehind())) {
+                    conflicts.add("code-behind");
+                }
+                codeBehind = ours ? ed.codeBehind() : doc.codeBehind();
+            }
+            if (!conflicts.isEmpty()) {
+                throw new UiCommandException("Not saved: " + String.join(", ", conflicts) + " changed both here and"
+                    + " in the document since the graph editor opened it; apply or undo the other change, then save"
+                    + " again (the graph edits are kept)");
+            }
+            UiDocument merged = new UiDocument(doc.root(), doc.styleSheets(), codeBehind, doc.component(), doc.unknown());
+            ctx.setDoc(new OmuiArchive(d.manifest(), merged, d.styles(), graphs, d.animations(),
                 d.stateMachines(), scripts,
                 d.dependencies(), d.assets(), editor, d.extraEntries()));
         });
+    }
+
+    private static <V> Map<String, V> withAll(Map<String, V> a, Map<String, V> b) {
+        Map<String, V> out = new LinkedHashMap<>(a);
+        out.putAll(b);
+        return out;
+    }
+
+    /**
+     * Three-way merge of id-keyed parts: {@code theirs} (the document now) plus every id {@code ours}
+     * changed, added or removed relative to {@code base}. With {@code conflicts}, ids both sides
+     * changed differently are reported there (and ours is taken); without, ours wins.
+     */
+    static <V> Map<String, V> merge(Map<String, V> base, Map<String, V> theirs, Map<String, V> ours,
+                                    List<String> conflicts) {
+        Map<String, V> out = new LinkedHashMap<>(theirs);
+        java.util.Set<String> ids = new java.util.LinkedHashSet<>(base.keySet());
+        ids.addAll(ours.keySet());
+        for (String id : ids) {
+            V b = base.get(id);
+            V o = ours.get(id);
+            if (java.util.Objects.equals(b, o)) {
+                continue; // we did not touch it: theirs stands
+            }
+            V t = theirs.get(id);
+            if (conflicts != null && !java.util.Objects.equals(b, t) && !java.util.Objects.equals(o, t)) {
+                conflicts.add(id);
+            }
+            if (o == null) {
+                out.remove(id);
+            } else {
+                out.put(id, o);
+            }
+        }
+        return out;
     }
 
     public static UiCommand putClip(UiAnimationClip clip) {

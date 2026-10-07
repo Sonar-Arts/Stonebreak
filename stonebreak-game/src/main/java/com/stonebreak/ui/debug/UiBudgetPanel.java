@@ -31,6 +31,8 @@ public final class UiBudgetPanel implements DebugPanel {
             panel.section(shortName(e.name()) + " (" + s.budgets().kind().name().toLowerCase(Locale.ROOT) + ")");
             panel.row(mark(s, UiBudgetTracker.Metric.SCRIPT_FRAME) + "Lua / frame",
                 String.format(Locale.ROOT, "%.3f / %.2f ms", s.scriptMeanMillis(), s.budgets().scriptFrameMillis()));
+            panel.row(mark(s, UiBudgetTracker.Metric.SCRIPT_SPIKE) + "Lua frame max",
+                String.format(Locale.ROOT, "%.3f / %.2f ms", s.scriptMaxMillis(), s.budgets().scriptSpikeMillis()));
             panel.row(mark(s, UiBudgetTracker.Metric.MEMORY) + "Lua heap",
                 DebugFormat.formatBytes(s.memoryBytes()) + " / " + DebugFormat.formatBytes(s.budgets().memoryBytes()));
             panel.row(mark(s, UiBudgetTracker.Metric.LAYOUT) + "Relayout max",

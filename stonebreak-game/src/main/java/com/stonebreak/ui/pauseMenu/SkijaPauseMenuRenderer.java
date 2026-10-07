@@ -9,6 +9,8 @@ import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.Typeface;
 import io.github.humbleui.types.Rect;
 
+import java.util.function.BiConsumer;
+
 /**
  * Skija/MasonryUI-backed renderer for the in-game pause menu. Mirrors the
  * pattern used by {@code SkijaMainMenuRenderer} so all menus share one GL
@@ -35,6 +37,7 @@ public final class SkijaPauseMenuRenderer {
     private static final int COLOR_OVERLAY        = 0x78000000; // ~120/255
 
     private final SkijaUIBackend backend;
+    private BiConsumer<String, float[]> layoutSink;
 
     private Font fontTitle;
     private Font fontButton;
@@ -51,6 +54,22 @@ public final class SkijaPauseMenuRenderer {
      */
     public static float buttonOffset(int slot, int count) {
         return (slot - (count - 1) / 2f) * BUTTON_SPACING;
+    }
+
+    /**
+     * Receives every part's rect {@code [x, y, w, h]} as {@link #render} draws it ({@code panel},
+     * {@code resume}, {@code statistics}, {@code glossary}, {@code settings}, {@code resync},
+     * {@code quit}): the fidelity gate's geometry oracle, read from the drawing code itself
+     * rather than a transcription of it (#296 review). Null (the default) costs nothing.
+     */
+    public void setLayoutSink(BiConsumer<String, float[]> sink) {
+        this.layoutSink = sink;
+    }
+
+    private void report(String part, float x, float y, float w, float h) {
+        if (layoutSink != null) {
+            layoutSink.accept(part, new float[]{x, y, w, h});
+        }
     }
 
     public void render(int windowWidth, int windowHeight,
@@ -79,20 +98,21 @@ public final class SkijaPauseMenuRenderer {
             float panelY = centerY - panelHeight / 2f;
 
             MPainter.panel(canvas, panelX, panelY, panelWidth, panelHeight);
+            report("panel", panelX, panelY, panelWidth, panelHeight);
 
             drawTitle(canvas, centerX, panelY + 70f * scale, "GAME PAUSED");
 
             float buttonX = centerX - buttonWidth / 2f;
             int count = resyncVisible ? 6 : 5;
             int slot = 0;
-            drawButton(canvas, "Resume Game", buttonX, centerY + buttonOffset(slot++, count) * scale, false,             buttonWidth, buttonHeight);
-            drawButton(canvas, "Statistics",  buttonX, centerY + buttonOffset(slot++, count) * scale, statisticsHovered, buttonWidth, buttonHeight);
-            drawButton(canvas, "Glossary",    buttonX, centerY + buttonOffset(slot++, count) * scale, glossaryHovered,   buttonWidth, buttonHeight);
-            drawButton(canvas, "Settings",    buttonX, centerY + buttonOffset(slot++, count) * scale, settingsHovered,   buttonWidth, buttonHeight);
+            drawButton(canvas, "resume", "Resume Game", buttonX, centerY + buttonOffset(slot++, count) * scale, false,             buttonWidth, buttonHeight);
+            drawButton(canvas, "statistics", "Statistics",  buttonX, centerY + buttonOffset(slot++, count) * scale, statisticsHovered, buttonWidth, buttonHeight);
+            drawButton(canvas, "glossary", "Glossary",    buttonX, centerY + buttonOffset(slot++, count) * scale, glossaryHovered,   buttonWidth, buttonHeight);
+            drawButton(canvas, "settings", "Settings",    buttonX, centerY + buttonOffset(slot++, count) * scale, settingsHovered,   buttonWidth, buttonHeight);
             if (resyncVisible) {
-                drawButton(canvas, "Resync World", buttonX, centerY + buttonOffset(slot++, count) * scale, resyncHovered, buttonWidth, buttonHeight);
+                drawButton(canvas, "resync", "Resync World", buttonX, centerY + buttonOffset(slot++, count) * scale, resyncHovered, buttonWidth, buttonHeight);
             }
-            drawButton(canvas, "Quit to Main Menu", buttonX, centerY + buttonOffset(slot, count) * scale, quitHovered, buttonWidth, buttonHeight);
+            drawButton(canvas, "quit", "Quit to Main Menu", buttonX, centerY + buttonOffset(slot, count) * scale, quitHovered, buttonWidth, buttonHeight);
         } finally {
             backend.endFrame();
         }
@@ -128,8 +148,9 @@ public final class SkijaPauseMenuRenderer {
         }
     }
 
-    private void drawButton(Canvas canvas, String text, float x, float y, boolean highlighted,
+    private void drawButton(Canvas canvas, String part, String text, float x, float y, boolean highlighted,
                             float buttonWidth, float buttonHeight) {
+        report(part, x, y, buttonWidth, buttonHeight);
         int fill = highlighted ? MStyle.BUTTON_FILL_HI : MStyle.BUTTON_FILL;
 
         MPainter.stoneSurface(canvas, x, y, buttonWidth, buttonHeight, MStyle.BUTTON_RADIUS,

@@ -57,6 +57,9 @@ public final class RasterMasonryBackend extends MasonryBackend {
     public void endFrame() {
         if (frameDepth > 0) {
             frameDepth--;
+            if (frameDepth == 0) {
+                GlTextureImages.endRasterFrame();
+            }
         }
     }
 

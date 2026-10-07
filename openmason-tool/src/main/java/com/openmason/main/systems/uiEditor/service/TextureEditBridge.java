@@ -13,6 +13,11 @@ import java.util.Map;
  * Texture Editor saves that OMT the SBT is re-wrapped with its own identity, so the UI keeps
  * referencing the SBT and the layers stay editable. The pixel and layer editor is never
  * duplicated: this only routes files.
+ *
+ * <p>The link is the file convention, not session memory: {@code <name>.omt} beside
+ * {@code <name>.sbt} is that SBT's source ({@link UiImageAssets#omtSiblingOf}). Saving the OMT
+ * re-wraps the SBT whether it was opened through "Edit texture" in this session, after a restart,
+ * or straight from the Texture Editor.
  */
 public final class TextureEditBridge {
 
@@ -51,7 +56,7 @@ public final class TextureEditBridge {
      */
     public List<Path> saved(Path file) throws IOException {
         List<Path> changed = new ArrayList<>(List.of(file));
-        Path sbt = sbtForOmt.get(key(file));
+        Path sbt = sbtFor(file);
         if (sbt != null) {
             UiImageAssets.rewrapSbt(sbt, file);
             changed.add(sbt);
@@ -59,9 +64,10 @@ public final class TextureEditBridge {
         return changed;
     }
 
-    /** The SBT an OMT is the source of, or null. */
+    /** The SBT an OMT is the source of (linked this session, else its sibling by convention), or null. */
     public Path sbtFor(Path omt) {
-        return sbtForOmt.get(key(omt));
+        Path linked = sbtForOmt.get(key(omt));
+        return linked != null ? linked : UiImageAssets.sbtSiblingOf(omt);
     }
 
     private static Path key(Path p) {

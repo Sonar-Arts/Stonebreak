@@ -221,7 +221,16 @@ final class ScriptOps {
             case "watch" -> {
                 int id = (int) num(a, 1);
                 DataPath path = DataPath.parse(str(a, 0, "path"));
-                ctx.watches.put(id, scope().watch(path, st -> rt.queueWatch(ctx, id, st)));
+                if (ctx.watches.size() >= UiScriptRuntime.MAX_WATCHES) {
+                    throw new IllegalStateException("this script holds " + UiScriptRuntime.MAX_WATCHES
+                        + " watches; cancel some before watching more");
+                }
+                var sub = scope().watch(path, st -> rt.queueWatch(ctx, id, st));
+                ctx.watches.put(id, sub);
+                rt.journal.callback(() -> {
+                    sub.close();
+                    ctx.watches.remove(id);
+                });
             }
             case "unwatch" -> {
                 var sub = ctx.watches.remove((int) num(a, 0));
@@ -236,24 +245,36 @@ final class ScriptOps {
                 if (obj == null) {
                     throw new IllegalArgumentException("action arguments must be a table of named fields");
                 }
+                rt.admitHandle(ctx);
                 ActionCall call = scope().invoke(str(a, 0, "action"), obj,
-                    scope().site(ctx.rootKey, CallSite.Origin.SCRIPT));
+                    site(ctx, arg(a, 2) instanceof UiValue.Str trace ? trace.value() : null));
                 long token = rt.token();
                 rt.trackAction(ctx, token, call);
                 out.integer(token);
             }
-            case "cancelAction" -> out.bool(rt.cancelAction((long) num(a, 0)));
+            case "cancelAction" -> out.bool(rt.cancelAction(ctx, (long) num(a, 0)));
             case "sleep" -> {
+                rt.admitHandle(ctx);
                 long token = rt.token();
                 rt.addTimer(ctx, token, num(a, 0));
+                rt.journal.callback(() -> rt.removeTimer(ctx, token));
                 out.integer(token);
             }
             case "converter" -> converter(ctx, a);
 
             // ── animation ───────────────────────────────────────────────────
-            case "tween" -> out.integer(tween(ctx, a));
-            case "play" -> out.integer(play(ctx, a));
-            case "stopAnim" -> out.bool(rt.animator.stop((long) num(a, 0), stopMode(arg(a, 1))));
+            case "tween", "play" -> {
+                rt.admitHandle(ctx);
+                long token = "tween".equals(op) ? tween(ctx, a) : play(ctx, a);
+                rt.trackAnim(ctx, token);
+                // A failed handler's animation must not re-claim the values its rollback restores.
+                rt.journal.callback(() -> rt.animator.stop(token, UiAnimator.StopMode.RELEASE));
+                out.integer(token);
+            }
+            case "stopAnim" -> {
+                long token = (long) num(a, 0);
+                out.bool(rt.ownsAnim(ctx, token) && rt.animator.stop(token, stopMode(arg(a, 1))));
+            }
             case "stopClip" -> {
                 boolean any = false;
                 for (long t : rt.animator.clipTokens(ctx, str(a, 0, "clip"))) {
@@ -275,11 +296,14 @@ final class ScriptOps {
                 rt.animator.release(key, str(a, 1, "property"));
             }
             case "machineSet" -> {
+                rt.admitHandle(ctx);
                 long token = rt.ui.stateMachines().set(ctx.isScreen() ? "" : ctx.scopeKey, str(a, 0, "machine"),
                     str(a, 1, "state"), rt.animListener(ctx));
                 if (token == 0) { // reached at once: a handle that settles next frame
                     token = rt.token();
                     rt.addTimer(ctx, token, 0);
+                } else {
+                    rt.trackAnim(ctx, token);
                 }
                 out.integer(token);
             }
@@ -437,10 +461,15 @@ final class ScriptOps {
         UiElement el = element(ctx, key);
         String event = str(a, 1, "event");
         int id = (int) num(a, 2);
+        if (ctx.handlers.size() + ctx.signals.size() >= UiScriptRuntime.MAX_HANDLERS) {
+            throw new IllegalStateException("this script registered " + UiScriptRuntime.MAX_HANDLERS
+                + " handlers; remove some (el:off) before adding more");
+        }
         UiEventType type = ScriptEvents.type(event);
         if (type == null) {
             if (signals(el).contains(event)) {
                 rt.addSignalListener(ctx, new ScriptContext.SignalListener(id, key, event));
+                rt.journal.callback(() -> rt.removeSignalListener(ctx, id));
                 return;
             }
             throw new IllegalArgumentException("unknown event '" + event + "'"
@@ -451,6 +480,12 @@ final class ScriptOps {
         UiEventHandler java = ev -> rt.onEvent(ctx, id, ev);
         el.on(type, java, phase);
         ctx.handlers.put(id, new ScriptContext.Handler(id, key, type, phase, el, java));
+        rt.journal.callback(() -> {
+            ScriptContext.Handler h = ctx.handlers.remove(id);
+            if (h != null) {
+                h.element().off(h.type(), h.java(), h.phase());
+            }
+        });
     }
 
     private void off(ScriptContext ctx, UiValue[] a) {
@@ -637,7 +672,8 @@ final class ScriptOps {
     /** {@code (token, nil, x)} names one handle, {@code (nil, clipId, x)} this context's playbacks of a clip. */
     private List<Long> animTokens(ScriptContext ctx, UiValue[] a) {
         if (arg(a, 0) instanceof UiValue.Num t) {
-            return List.of((long) t.value());
+            long token = (long) t.value();
+            return rt.ownsAnim(ctx, token) ? List.of(token) : List.of();
         }
         return rt.animator.clipTokens(ctx, str(a, 1, "clip"));
     }
@@ -694,6 +730,19 @@ final class ScriptOps {
             throw new IllegalArgumentException("element " + str(a, 0, "canvas") + " is not a Canvas of this script");
         }
         return c;
+    }
+
+    /**
+     * Where an action call came from (#289): the graph node when a compiled graph frame is on the
+     * Lua stack ({@code trace}, sent by the prelude only for documents with graphs), else the
+     * element whose handler is running, else the script's scope root.
+     */
+    private CallSite site(ScriptContext ctx, String trace) {
+        String node = rt.graphNodeAt(ctx, trace);
+        if (node != null) {
+            return scope().site(node, CallSite.Origin.GRAPH);
+        }
+        return scope().site(rt.currentElement != null ? rt.currentElement : ctx.rootKey, CallSite.Origin.SCRIPT);
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────

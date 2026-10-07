@@ -245,7 +245,7 @@ public class WorldInputHandler {
      * Checks if a key is currently pressed.
      */
     private boolean isKeyPressed(long window, int key) {
-        return glfwGetKey(window, key) == GLFW_PRESS;
+        return com.stonebreak.input.PolledKeys.isDown(window, key);
     }
 
     /**

@@ -56,6 +56,14 @@ public final class UiOpBatch {
             return null;
         }
 
+        /**
+         * The project the document belongs to, for dependency-table ops (project files, asset
+         * sources, project writes), or null when there is none (those ops then refuse).
+         */
+        default com.openmason.main.systems.uiEditor.service.UiProjectContext project() {
+            return null;
+        }
+
         Components NONE = id -> java.util.List.of();
     }
 

@@ -41,6 +41,7 @@ public final class MTexture implements AutoCloseable {
     private final int width;
     private final int height;
     private final Map<IRect, Image> regions = new HashMap<>();
+    private volatile boolean closed;
 
     private MTexture(String resourcePath, Image image, int width, int height) {
         this.resourcePath = resourcePath;
@@ -54,7 +55,9 @@ public final class MTexture implements AutoCloseable {
         return image == null ? null : new MTexture(key, image, image.getWidth(), image.getHeight());
     }
 
-    public Image image() { return image; }
+    /** The composited image; null once the texture is {@link #close closed} (a caller still holding a released texture draws nothing). */
+    public Image image() { return closed ? null : image; }
+    public boolean isClosed() { return closed; }
     public int width()   { return width; }
     public int height()  { return height; }
     public String resourcePath() { return resourcePath; }
@@ -65,7 +68,7 @@ public final class MTexture implements AutoCloseable {
      * borrow it and never close it. Null when the rect is outside the texture.
      */
     public synchronized Image region(int x, int y, int w, int h) {
-        if (image == null || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > width || y + h > height) {
+        if (closed || image == null || w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > width || y + h > height) {
             return null;
         }
         if (x == 0 && y == 0 && w == width && h == height) {
@@ -76,6 +79,8 @@ public final class MTexture implements AutoCloseable {
 
     @Override
     public synchronized void close() {
+        if (closed) return;
+        closed = true;
         regions.values().forEach(Image::close);
         regions.clear();
         if (image != null) image.close();

@@ -281,6 +281,44 @@ class UiImageAssetsTest {
     }
 
     @Test
+    void theSbtLinkSurvivesARestartAndAStaleSiblingIsRefreshed() throws Exception {
+        Path omt = saveTexture("work/bands.omt", RED, GREEN, BLUE);
+        Path sbt = project.resolve("UI/test/ui/textures/bands.sbt");
+        Files.createDirectories(sbt.getParent());
+        SBTFormat.ExportParameters p = new SBTFormat.ExportParameters();
+        p.setTextureId("stonebreak:bands");
+        p.setTextureName("Bands");
+        p.setTexturePack("core");
+        p.setAuthor("tests");
+        assertTrue(new SBTSerializer().export(p, omt, sbt.toString()));
+        Path sibling = UiImageAssets.omtSourceFor(sbt);
+
+        // A new bridge (a tool restart, or the OMT opened straight from the Texture Editor) still re-wraps.
+        saveTexture("UI/test/ui/textures/bands.omt", BLUE, BLUE, BLUE);
+        TextureEditBridge fresh = new TextureEditBridge();
+        assertEquals(sbt, fresh.sbtFor(sibling));
+        assertEquals(List.of(sibling, sbt), fresh.saved(sibling));
+        assertArrayEquals(Files.readAllBytes(sibling), new SBTParser().read(sbt).omtBytes());
+
+        // The SBT changes after the sibling (a pull): opening must not hand out the stale layers.
+        byte[] siblingBefore = Files.readAllBytes(sibling);
+        assertTrue(new SBTSerializer().export(p, omt, sbt.toString()));
+        Files.setLastModifiedTime(sbt, java.nio.file.attribute.FileTime.fromMillis(
+            Files.getLastModifiedTime(sibling).toMillis() + 5_000));
+        Path reopened = UiImageAssets.omtSourceFor(sbt);
+        assertArrayEquals(new SBTParser().read(sbt).omtBytes(), Files.readAllBytes(reopened));
+        assertArrayEquals(siblingBefore, Files.readAllBytes(sibling.resolveSibling("bands.omt.stale")),
+            "the previous layers are kept, never silently lost");
+
+        // An author's newer sibling is their source and stays as it is.
+        saveTexture("UI/test/ui/textures/bands.omt", GREEN, GREEN, GREEN);
+        byte[] authored = Files.readAllBytes(reopened);
+        Files.setLastModifiedTime(reopened, java.nio.file.attribute.FileTime.fromMillis(
+            Files.getLastModifiedTime(sbt).toMillis() + 5_000));
+        assertArrayEquals(authored, Files.readAllBytes(UiImageAssets.omtSourceFor(sbt)));
+    }
+
+    @Test
     void draftUndoMergesDragsAndRemovalKeepsSkinsValid() {
         SpriteSheetDraft d = new SpriteSheetDraft("s", bands());
         Sprite left = d.sheet().sprite("left").orElseThrow();

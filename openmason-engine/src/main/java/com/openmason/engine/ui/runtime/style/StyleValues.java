@@ -8,7 +8,8 @@ import java.util.Set;
 public final class StyleValues {
 
     /** Properties whose computed value children inherit when they do not set it (USS set). */
-    public static final Set<String> INHERITED = Set.of("color", "font", "font-size", "text-align", "visibility");
+    public static final Set<String> INHERITED = Set.of("color", "font", "font-size", "text-align", "visibility",
+        "pointer-events", "white-space");
 
     /** Properties Yoga reads; a change re-pushes the element's layout record. */
     public static final Set<String> LAYOUT = Set.of(
@@ -21,13 +22,14 @@ public final class StyleValues {
 
     /** Properties that move painted geometry or paint order without a relayout. */
     public static final Set<String> VISUAL = Set.of("translate-x", "translate-y", "scale", "rotate",
-        "transform-origin-x", "transform-origin-y", "-sb-layer", "overflow");
+        "transform-origin-x", "transform-origin-y", "-sb-layer", "overflow", "-sb-anchor");
 
     /** Properties whose change repaints the whole subtree (it fades or hides with the element). */
     public static final Set<String> SUBTREE_PAINT = Set.of("opacity", "visibility");
 
     /** Properties that change a measured leaf's intrinsic size. */
-    public static final Set<String> MEASURE = Set.of("font", "font-size");
+    public static final Set<String> MEASURE = Set.of("font", "font-size", "white-space", "-sb-max-lines",
+        "text-overflow");
 
     private StyleValues() {
     }

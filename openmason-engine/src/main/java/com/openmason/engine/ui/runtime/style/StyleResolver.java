@@ -56,6 +56,19 @@ public final class StyleResolver {
     public static ComputedStyle compute(Styleable element, List<SheetBinding> sheets, List<Map<String, UiValue>> layers,
                                         ComputedStyle parent, String elementKey,
                                         Consumer<UiRuntimeDiagnostic> diagnostics) {
+        return computeOwn(element, sheets, layers, parent, elementKey, diagnostics).inheriting(parent);
+    }
+
+    /**
+     * {@link #compute} without the inherited fallbacks: what the element's own rules and layers
+     * declare (custom properties still resolve through {@code parent}). When only a parent's
+     * inherited values change, {@link ComputedStyle#inheriting} re-applies them to this result
+     * with no selector matching (an animated colour on a container no longer re-cascades its
+     * subtree every frame).
+     */
+    public static ComputedStyle computeOwn(Styleable element, List<SheetBinding> sheets,
+                                           List<Map<String, UiValue>> layers, ComputedStyle parent,
+                                           String elementKey, Consumer<UiRuntimeDiagnostic> diagnostics) {
         List<Match> matches = new ArrayList<>();
         List<SheetBinding> attachedHere = new ArrayList<>();
         for (SheetBinding b : sheets) {
@@ -65,12 +78,7 @@ public final class StyleResolver {
             if (!b.applies(element)) {
                 continue;
             }
-            for (CompiledSheet.Rule rule : b.sheet().rules()) {
-                int specificity = rule.match(element);
-                if (specificity >= 0) {
-                    matches.add(new Match(b, rule, specificity));
-                }
-            }
+            match(b, element, matches);
         }
         matches.sort(PRECEDENCE);
 
@@ -126,12 +134,27 @@ public final class StyleResolver {
             }
             values.put(property, v);
         });
-        for (String property : StyleValues.INHERITED) {
-            if (!values.containsKey(property) && parent.get(property) != null) {
-                values.put(property, parent.get(property));
-            }
-        }
         return new ComputedStyle(values, customs, transitions);
+    }
+
+    /** Adds the rules of {@code b} that match {@code element} (best specificity per rule), via the sheet's index. */
+    private static void match(SheetBinding b, Styleable element, List<Match> matches) {
+        int start = matches.size();
+        b.sheet().candidates(element, e -> {
+            int spec = e.selector().specificity();
+            for (int i = start; i < matches.size(); i++) {
+                Match m = matches.get(i);
+                if (m.rule == e.rule()) {
+                    if (spec > m.specificity && SelectorMatcher.matches(e.selector(), element)) {
+                        matches.set(i, new Match(b, e.rule(), spec));
+                    }
+                    return;
+                }
+            }
+            if (SelectorMatcher.matches(e.selector(), element)) {
+                matches.add(new Match(b, e.rule(), spec));
+            }
+        });
     }
 
     /**
@@ -141,14 +164,8 @@ public final class StyleResolver {
     public static StyleTrace trace(Styleable element, List<SheetBinding> sheets, List<Map<String, UiValue>> layers) {
         List<Match> matches = new ArrayList<>();
         for (SheetBinding b : sheets) {
-            if (!b.applies(element)) {
-                continue;
-            }
-            for (CompiledSheet.Rule rule : b.sheet().rules()) {
-                int specificity = rule.match(element);
-                if (specificity >= 0) {
-                    matches.add(new Match(b, rule, specificity));
-                }
+            if (b.applies(element)) {
+                match(b, element, matches);
             }
         }
         matches.sort(PRECEDENCE);

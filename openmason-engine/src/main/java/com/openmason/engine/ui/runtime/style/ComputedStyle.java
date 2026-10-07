@@ -84,6 +84,14 @@ public final class ComputedStyle {
     }
 
     /**
+     * {@code pointer-events: none} (inherited, so a whole subtree unless a descendant sets
+     * {@code auto}): never hit; pointer input goes to what is below.
+     */
+    public boolean pointerEventsNone() {
+        return "none".equals(keyword("pointer-events", "auto"));
+    }
+
+    /**
      * This style with animated values on top (#295): each value replaces the property's, after
      * {@code var()} resolves against this style's customs. A value that does not fit is reported
      * and skipped. Inherited properties of children follow the result.
@@ -105,6 +113,26 @@ public final class ComputedStyle {
             out.put(property, v);
         });
         return new ComputedStyle(out, customs, transitions);
+    }
+
+    /**
+     * This style with {@code parent}'s inherited properties ({@link StyleValues#INHERITED}) filled
+     * in where this one does not declare them. Returns {@code this} when nothing is added.
+     */
+    public ComputedStyle inheriting(ComputedStyle parent) {
+        Map<String, UiValue> out = null;
+        for (String property : StyleValues.INHERITED) {
+            if (!values.containsKey(property)) {
+                UiValue v = parent.values.get(property);
+                if (v != null) {
+                    if (out == null) {
+                        out = new HashMap<>(values);
+                    }
+                    out.put(property, v);
+                }
+            }
+        }
+        return out == null ? this : new ComputedStyle(out, customs, transitions);
     }
 
     /** Names of properties whose value differs from {@code other} (customs excluded). */

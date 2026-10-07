@@ -68,12 +68,26 @@ public final class LuaText {
     }
 
     /** Integral values within ±2^53 print as Lua integers ({@code 3}), others in round-trip form. */
+    /**
+     * A number literal that is one primary expression wherever it lands: negatives are
+     * parenthesized ({@code -2 ^ x} is {@code -(2 ^ x)} in Lua) and non-finite values are
+     * arithmetic, never identifiers ({@code Infinity} would be a global lookup).
+     */
     static String number(double d) {
-        if (d == Math.rint(d) && Math.abs(d) <= 9.007199254740992E15) {
-            return Long.toString((long) d);
+        if (Double.isNaN(d)) {
+            return "(0/0)";
         }
-        String s = Double.toString(d);
-        return s.contains("E") ? String.format(Locale.ROOT, "%.17g", d) : s;
+        if (Double.isInfinite(d)) {
+            return d > 0 ? "(1/0)" : "(-1/0)";
+        }
+        String s;
+        if (d == Math.rint(d) && Math.abs(d) <= 9.007199254740992E15) {
+            s = Long.toString((long) d);
+        } else {
+            s = Double.toString(d);
+            s = s.contains("E") ? String.format(Locale.ROOT, "%.17g", d) : s;
+        }
+        return s.startsWith("-") ? "(" + s + ")" : s;
     }
 
     /** A table key: {@code name} when it is a plain identifier, else {@code ["na-me"]}. */

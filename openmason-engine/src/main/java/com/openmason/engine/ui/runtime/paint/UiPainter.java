@@ -11,6 +11,7 @@ import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.TextLineMetrics;
 import com.openmason.engine.ui.runtime.UiRect;
+import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic;
 import com.openmason.engine.ui.runtime.input.UiCoordinates;
 import com.openmason.engine.ui.runtime.input.UiTransform;
 import com.openmason.engine.ui.runtime.UiTexts;
@@ -62,6 +63,13 @@ import java.util.List;
  * caret visible. A {@code status} (or an {@code :invalid} field) is drawn as a symbol, never as
  * colour alone. The router's tooltip paints last, above every layer.
  *
+ * <p>Layers: overlays ({@code -sb-layer}) paint after lower layers and keep their ancestors'
+ * transforms and opacity; the router's tooltip paints above every authored layer; the
+ * pointer-anchored cursor layer ({@code -sb-anchor: pointer}) paints last, only while the
+ * pointer is over the frame. Host draw providers get their GL phase from {@link #prepare}
+ * before the frame; a provider id the host does not know paints a placeholder and reports
+ * {@code MISSING_DRAW_PROVIDER} instead of leaving the element silently empty.
+ *
  * <p>The caller owns the frame: {@code masonry.beginFrame(...)} before, {@code endFrame()} after.
  */
 public final class UiPainter {
@@ -71,6 +79,11 @@ public final class UiPainter {
     private final MItemSlot slotFrame = new MItemSlot();
     private final CanvasPainter canvasPainter;
     private UiInputRouter input;
+    /** Provider problems already reported ({@code key|id}), so a broken slot does not report every frame. */
+    private final java.util.Set<String> providerReports = new java.util.HashSet<>();
+
+    private static final int PLACEHOLDER_FILL = 0x66FF00FF;
+    private static final int PLACEHOLDER_EDGE = 0xFFFF00FF;
 
     private static final int FIELD_FILL = 0xFF1F1F1F;
     private static final int FIELD_FILL_ACTIVE = 0xFF2A2A2A;
@@ -104,20 +117,131 @@ public final class UiPainter {
             float scale = ui.metrics().scale();
             PaintOrder order = ui.paintOrder();
             for (PaintOrder.Entry e : order.entries()) {
-                UiTransform outer = UiCoordinates.ancestorTransform(e.root());
-                int saved = canvas.getSaveCount();
-                if (outer != null) { // a lifted overlay still turns and scales with its ancestors (#295)
-                    canvas.save();
-                    canvas.concat(matrix(outer));
+                if (!e.cursor()) {
+                    paintEntry(ui, masonry, canvas, order, e, scale);
                 }
-                paintSubtree(ui, masonry, canvas, order, e.root(), scale);
-                canvas.restoreToCount(saved);
             }
             if (router != null) {
                 tooltip(masonry, router.tooltips().current(), ui, scale);
             }
+            if (ui.pointerInside()) {
+                for (PaintOrder.Entry e : order.entries()) {
+                    if (e.cursor()) {
+                        paintEntry(ui, masonry, canvas, order, e, scale);
+                    }
+                }
+            }
         } finally {
             input = null;
+        }
+    }
+
+    private void paintEntry(UiDocumentInstance ui, MasonryUI masonry, Canvas canvas, PaintOrder order,
+                            PaintOrder.Entry e, float scale) {
+        // A lifted overlay still turns, scales (#295) and fades with its ancestors; the cursor
+        // layer follows only the pointer.
+        float alpha = e.cursor() ? 1f : ancestorOpacity(e.root());
+        if (alpha <= 0f) {
+            return;
+        }
+        int saved = canvas.getSaveCount();
+        if (alpha < 1f) {
+            try (Paint p = new Paint().setAlphaf(alpha)) {
+                canvas.saveLayer(null, p);
+            }
+        }
+        UiTransform outer = e.cursor() ? null : UiCoordinates.ancestorTransform(e.root());
+        if (outer != null) {
+            canvas.save();
+            canvas.concat(matrix(outer));
+        }
+        paintSubtree(ui, masonry, canvas, order, e.root(), scale);
+        canvas.restoreToCount(saved);
+    }
+
+    /** Product of the ancestors' {@code opacity} (1 for the tree root). */
+    static float ancestorOpacity(UiElement el) {
+        float a = 1f;
+        for (UiElement p = el.parent(); p != null && a > 0f; p = p.parent()) {
+            a *= (float) p.computedStyle().number("opacity", 1);
+        }
+        return a;
+    }
+
+    // ── host providers' GL phase (C1) ───────────────────────────────────────
+
+    /**
+     * Runs {@code UiDrawProvider.prepare} for every provider-backed element that will paint in
+     * the next frame of {@code ui} (already laid out): not collapsed, not faded to 0, not hidden,
+     * inside its clips and the viewport. Call outside the Masonry frame, on the GL thread.
+     */
+    public void prepare(UiDocumentInstance ui) {
+        float scale = ui.metrics().scale();
+        UiRect viewport = new UiRect(0, 0, ui.metrics().viewportWidth(), ui.metrics().viewportHeight());
+        PaintOrder order = ui.paintOrder();
+        for (PaintOrder.Entry e : order.entries()) {
+            if (e.cursor() ? !ui.pointerInside() : ancestorOpacity(e.root()) <= 0f) {
+                continue;
+            }
+            prepareSubtree(ui, order, e.root(), viewport, scale);
+        }
+    }
+
+    private void prepareSubtree(UiDocumentInstance ui, PaintOrder order, UiElement el, UiRect clip, float scale) {
+        ComputedStyle s = el.computedStyle();
+        if (s.collapsed() || s.number("opacity", 1) <= 0) {
+            return;
+        }
+        UiRect bounds = el.paintBounds();
+        if (!s.hidden() && overlaps(bounds, clip)) {
+            String id = providerId(el);
+            UiPaintHost.UiDrawProvider p = id == null ? null : host.drawProvider(id);
+            UiRect r = el.rect();
+            if (p != null && r.width() > 0 && r.height() > 0) {
+                try {
+                    p.prepare(el, r, scale);
+                } catch (RuntimeException ex) {
+                    reportProvider(ui, el, id, UiRuntimeDiagnostic.Code.DRAW_PROVIDER_FAILED,
+                        "draw provider '" + id + "' failed to prepare: " + ex);
+                }
+            }
+        }
+        UiRect childClip = el.clipsChildren() ? intersect(clip, bounds) : clip;
+        if (childClip == null) {
+            return;
+        }
+        for (UiElement c : el.children()) {
+            if (!order.isLifted(c)) {
+                prepareSubtree(ui, order, c, childClip, scale);
+            }
+        }
+    }
+
+    private static boolean overlaps(UiRect a, UiRect b) {
+        return a.width() > 0 && a.height() > 0 && a.x() < b.right() && b.x() < a.right()
+            && a.y() < b.bottom() && b.y() < a.bottom();
+    }
+
+    /** Intersection, or null when empty. */
+    private static UiRect intersect(UiRect a, UiRect b) {
+        float x = Math.max(a.x(), b.x());
+        float y = Math.max(a.y(), b.y());
+        float w = Math.min(a.right(), b.right()) - x;
+        float h = Math.min(a.bottom(), b.bottom()) - y;
+        return w <= 0 || h <= 0 ? null : new UiRect(x, y, w, h);
+    }
+
+    private static String providerId(UiElement el) {
+        if (!"ItemSlot".equals(el.type()) && !"DrawProvider".equals(el.type())) {
+            return null;
+        }
+        return el.prop("provider") instanceof UiValue.Str str && !str.value().isEmpty() ? str.value() : null;
+    }
+
+    private void reportProvider(UiDocumentInstance ui, UiElement el, String id, UiRuntimeDiagnostic.Code code,
+                                String message) {
+        if (providerReports.add(code + "|" + el.key() + "|" + id)) {
+            ui.reportDiagnostic(UiRuntimeDiagnostic.error(code, el.key(), message));
         }
     }
 
@@ -195,7 +319,7 @@ public final class UiPainter {
         if (bg != null) {
             MPainter.fillRoundedRect(canvas, r.x(), r.y(), r.width(), r.height(), radius, StyleValues.color(bg, 0));
         }
-        UiImage bgImage = host.image(assetRef(s.get("background-image")));
+        UiImage bgImage = host.image(el, assetRef(s.get("background-image")));
         if (bgImage != null) {
             image(ui, canvas, el, bgImage, r, s, scale);
         }
@@ -213,7 +337,7 @@ public final class UiPainter {
             }
             case "Label" -> label(canvas, el, r, s, scale);
             case "Image" -> {
-                UiImage img = host.image(assetRef(el.prop("source")));
+                UiImage img = host.image(el, assetRef(el.prop("source")));
                 if (img != null) {
                     image(ui, canvas, el, img, r, s, scale);
                 }
@@ -222,9 +346,9 @@ public final class UiPainter {
                 slotFrame.bounds(r.x(), r.y(), r.width(), r.height());
                 slotFrame.setHovered(el.hasState(UiElement.HOVER));
                 slotFrame.render(masonry);
-                provider(canvas, el, r, scale);
+                provider(ui, canvas, el, r, scale);
             }
-            case "DrawProvider" -> provider(canvas, el, r, scale);
+            case "DrawProvider" -> provider(ui, canvas, el, r, scale);
             case "TextField" -> textField(canvas, el, r, s, scale, styledBackground);
             case "Canvas" -> canvasPainter.paint(canvas, ui.canvas(el.key()), r, scale, ui);
             default -> {
@@ -395,6 +519,10 @@ public final class UiPainter {
         }
         int color = s.color("color", MStyle.TEXT_PRIMARY);
         float baseline = r.y() + text.baseline(el, r.width(), r.height(), scale);
+        if (text.usesTextLayout(el)) {
+            lines(canvas, el, r, s, scale, color, baseline);
+            return;
+        }
         switch (s.keyword("text-align", "left")) {
             case "center" -> MPainter.drawText(canvas, str, r.x() + r.width() / 2f, baseline, font, color,
                 MPainter.Align.CENTER);
@@ -403,16 +531,77 @@ public final class UiPainter {
         }
     }
 
-    private void provider(Canvas canvas, UiElement el, UiRect r, float scale) {
-        String id = el.prop("provider") instanceof UiValue.Str str ? str.value() : null;
-        UiPaintHost.UiDrawProvider p = host.drawProvider(id);
-        if (p != null) {
-            int saved = canvas.save();
-            try {
-                p.draw(canvas, el, r, scale);
-            } finally {
-                canvas.restoreToCount(saved);
+    /** Wrapped, truncated or rich label text ({@code ui-text}): the measurer's cached lines. */
+    private void lines(Canvas canvas, UiElement el, UiRect r, ComputedStyle s, float scale, int color,
+                       float baseline) {
+        TextLayout.Result layout = text.labelLayout(el, r.width(), scale);
+        Font base = text.font(el, scale);
+        float lineHeight = (float) Math.ceil(base.getMetrics().getDescent() - base.getMetrics().getAscent());
+        String align = s.keyword("text-align", "left");
+        int alpha = color >>> 24;
+        for (int i = 0; i < layout.lineCount(); i++) {
+            TextLayout.Line line = layout.lines().get(i);
+            float y = baseline + i * lineHeight;
+            float x = switch (align) {
+                case "center" -> r.x() + (r.width() - line.width()) / 2f;
+                case "right" -> r.right() - line.width();
+                default -> r.x();
+            };
+            for (TextLayout.Run run : line.runs()) {
+                TextLayout.Span st = run.style();
+                // A markup colour keeps the element's alpha, so fading the label fades every run.
+                int c = st.hasColor()
+                    ? (((st.color() >>> 24) * alpha / 255) << 24) | (st.color() & 0xFFFFFF)
+                    : color;
+                Font f = text.font(el, scale, st.bold(), st.italic());
+                MPainter.drawText(canvas, run.text(), x + run.x(), y, f, c, MPainter.Align.LEFT);
+                if (st.underline() && !run.text().isBlank()) {
+                    float t = Math.max(1f, f.getSize() * 0.07f);
+                    MPainter.fillRect(canvas, x + run.x(), y + Math.max(1f, f.getSize() * 0.1f), run.width(), t, c);
+                }
             }
+        }
+    }
+
+    private void provider(UiDocumentInstance ui, Canvas canvas, UiElement el, UiRect r, float scale) {
+        String id = providerId(el);
+        if (id == null) {
+            return; // an empty slot: nothing to draw
+        }
+        if (canvas.quickReject(Rect.makeXYWH(r.x(), r.y(), r.width(), r.height()))) {
+            return; // clipped away: prepare skipped it too, so never draw a stale texture
+        }
+        UiPaintHost.UiDrawProvider p = host.drawProvider(id);
+        if (p == null) {
+            reportProvider(ui, el, id, UiRuntimeDiagnostic.Code.MISSING_DRAW_PROVIDER,
+                "no draw provider '" + id + "' is registered with this host");
+            placeholder(canvas, r, scale);
+            return;
+        }
+        int saved = canvas.save();
+        try {
+            p.draw(canvas, el, r, scale);
+        } catch (RuntimeException ex) {
+            canvas.restoreToCount(saved);
+            reportProvider(ui, el, id, UiRuntimeDiagnostic.Code.DRAW_PROVIDER_FAILED,
+                "draw provider '" + id + "' failed: " + ex);
+            placeholder(canvas, r, scale);
+        } finally {
+            canvas.restoreToCount(saved);
+        }
+    }
+
+    /** Loud stand-in for a provider that is missing or broken: never a silently empty element. */
+    private static void placeholder(Canvas canvas, UiRect r, float scale) {
+        float inset = Math.min(2f * scale, Math.min(r.width(), r.height()) / 4f);
+        MPainter.fillRect(canvas, r.x() + inset, r.y() + inset, r.width() - 2 * inset, r.height() - 2 * inset,
+            PLACEHOLDER_FILL);
+        MPainter.strokeRect(canvas, r.x() + inset, r.y() + inset, r.width() - 2 * inset, r.height() - 2 * inset,
+            PLACEHOLDER_EDGE, Math.max(1f, scale));
+        float size = Math.min(r.width(), r.height()) * 0.5f;
+        if (size > 4) {
+            MSymbol.WARNING.draw(canvas, r.x() + (r.width() - size) / 2f, r.y() + (r.height() - size) / 2f, size, size,
+                PLACEHOLDER_EDGE);
         }
     }
 
@@ -423,8 +612,9 @@ public final class UiPainter {
         if (region == null) {
             return;
         }
-        double next = SpritePainter.draw(canvas, region, r, s, scale, ui.clock(), ui.preferences().reducedMotion());
-        ui.noteAnimation(r, next);
+        double next = SpritePainter.draw(canvas, el, region, r, s, scale, ui.clock(), ui.preferences().reducedMotion());
+        // The area on screen: transformed with the element and its ancestors, not the layout rect.
+        ui.noteAnimation(el.paintBounds(), next);
     }
 
     private static void border(Canvas canvas, UiRect r, ComputedStyle s, float radius, float scale) {

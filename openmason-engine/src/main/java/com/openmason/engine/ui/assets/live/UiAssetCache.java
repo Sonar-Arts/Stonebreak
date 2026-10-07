@@ -51,6 +51,7 @@ public final class UiAssetCache<T> implements AutoCloseable {
     private final Map<String, Long> revisions = new HashMap<>();
     private final List<T> pendingRelease = new ArrayList<>();
     private final AtomicLong loads = new AtomicLong();
+    private boolean closed;
 
     /**
      * @param resolver id → resolved asset, {@code null} when unresolved (an
@@ -63,10 +64,13 @@ public final class UiAssetCache<T> implements AutoCloseable {
         this.release = release;
     }
 
-    /** The value for {@code id}, loading synchronously when it is absent or invalidated. */
+    /** The value for {@code id}, loading synchronously when it is absent or invalidated; null once closed. */
     public T get(String id) {
         long revision;
         synchronized (this) {
+            if (closed) {
+                return null;
+            }
             revision = revision(id);
             Entry<T> e = entries.get(id);
             if (e != null && e.revision() == revision) {
@@ -83,6 +87,9 @@ public final class UiAssetCache<T> implements AutoCloseable {
     public CompletableFuture<T> getAsync(String id, Executor executor) {
         long revision;
         synchronized (this) {
+            if (closed) {
+                return CompletableFuture.completedFuture(null);
+            }
             revision = revision(id);
             Entry<T> e = entries.get(id);
             if (e != null && e.revision() == revision) {
@@ -131,10 +138,15 @@ public final class UiAssetCache<T> implements AutoCloseable {
         }
     }
 
-    /** Queues every value for release and drains the queue on the calling thread. */
+    /**
+     * Queues every value for release and drains the queue on the calling thread. A load still in
+     * flight finishes into the release queue, never into the cache: {@link #drainReleases} after
+     * it completes frees it (a closed cache also releases such a value right away).
+     */
     @Override
     public void close() {
         synchronized (this) {
+            closed = true;
             for (Entry<T> e : entries.values()) {
                 if (e.value() != null) {
                     pendingRelease.add(e.value());
@@ -156,7 +168,29 @@ public final class UiAssetCache<T> implements AutoCloseable {
         }
     }
 
-    private synchronized T install(String id, long revision, T value) {
+    public synchronized boolean isClosed() {
+        return closed;
+    }
+
+    private T install(String id, long revision, T value) {
+        boolean releaseNow;
+        synchronized (this) {
+            releaseNow = closed;
+            if (!closed) {
+                return installOpen(id, revision, value);
+            }
+        }
+        if (releaseNow && value != null) {
+            try {
+                release.accept(value); // late load after close: nobody will drain again
+            } catch (RuntimeException e) {
+                logger.warn("Releasing a UI asset failed: {}", e.toString());
+            }
+        }
+        return null;
+    }
+
+    private synchronized T installOpen(String id, long revision, T value) {
         if (revision(id) != revision) {
             if (value != null) {
                 pendingRelease.add(value);

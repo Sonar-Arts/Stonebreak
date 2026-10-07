@@ -183,8 +183,9 @@ public final class MenuInputRouter {
 
     public void onScroll(double xOffset, double yOffset) {
         Game game = Game.getInstance();
+        int mods = heldMods();
         if (GameUiInput.get().active() && withUiCursor((x, y) ->
-                GameUiInput.get().onScroll(x, y, xOffset, yOffset, cursorCaptured(game)))) {
+                GameUiInput.get().onScroll(x, y, xOffset, yOffset, mods, cursorCaptured(game)))) {
             return;
         }
         GameState state = game.getState();
@@ -214,8 +215,8 @@ public final class MenuInputRouter {
      * applies while the world is paused for a UI.
      */
     public void pollActiveScreen() {
-        GameUiInput.get().frame();
         Game game = Game.getInstance();
+        GameUiInput.get().frame(cursorCaptured(game));
         GameState state = game.getState();
         if (state == null) {
             return;
@@ -303,6 +304,25 @@ public final class MenuInputRouter {
             window.uiCursorPos(x, y);
             return consumer.accept(x.get(0), y.get(0));
         }
+    }
+
+    /** Modifier bits held right now; GLFW's scroll callback carries none. */
+    private int heldMods() {
+        long h = window.handle();
+        int mods = 0;
+        if (PolledKeys.physicallyDown(h, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT)
+                || PolledKeys.physicallyDown(h, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT)) {
+            mods |= org.lwjgl.glfw.GLFW.GLFW_MOD_SHIFT;
+        }
+        if (PolledKeys.physicallyDown(h, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL)
+                || PolledKeys.physicallyDown(h, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL)) {
+            mods |= org.lwjgl.glfw.GLFW.GLFW_MOD_CONTROL;
+        }
+        if (PolledKeys.physicallyDown(h, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_ALT)
+                || PolledKeys.physicallyDown(h, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_ALT)) {
+            mods |= org.lwjgl.glfw.GLFW.GLFW_MOD_ALT;
+        }
+        return mods;
     }
 
     private static boolean cursorCaptured(Game game) {

@@ -143,7 +143,13 @@ public final class AssetResolver {
         return out;
     }
 
-    private ResolvedAsset resolveWithFallback(String id, UiDiagnostics d) {
+    /**
+     * {@code id}, or for a missing optional row the first fallback in its chain that resolves
+     * (the returned asset's {@link ResolvedAsset#id()} then names the fallback). Errors, drift
+     * and every fallback taken go to {@code d}. This is what runtimes use; {@link #resolveOne}
+     * is the strict single-row lookup.
+     */
+    public ResolvedAsset resolveWithFallback(String id, UiDiagnostics d) {
         String current = id;
         Set<String> visited = new HashSet<>();
         visited.add(id);

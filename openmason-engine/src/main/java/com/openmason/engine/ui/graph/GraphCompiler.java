@@ -23,7 +23,7 @@ public final class GraphCompiler {
     /** Compiler id recorded with derived caches. */
     public static final String COMPILER = "omui-graphc";
     /** Bumped whenever generated code changes for the same graph; stale caches then regenerate. */
-    public static final String VERSION = "1";
+    public static final String VERSION = "2"; // 2: parenthesized negative/non-finite literals, stricter exec-loop check
     public static final String CHUNK_SUFFIX = ".graph.lua";
 
     private GraphCompiler() {

@@ -3,10 +3,15 @@ package com.openmason.engine.ui.runtime.input;
 import com.openmason.engine.ui.runtime.UiElement;
 
 /**
- * One drag and drop (#288). The id is unique per router and never reused, so a handler that
- * starts asynchronous work from a drop (a server request to move an item) can check
- * {@link #isLive()} or compare ids before acting on a late reply: once a session ends, by drop
- * or cancel, it never drops again.
+ * One drag and drop (#288). The id is unique per router and never reused. {@link #isLive()} is
+ * true only while the drag is in progress; once it ends, by drop or cancel, it never drops again.
+ *
+ * <p><b>Late replies.</b> A handler that starts asynchronous work from a drop (a server request to
+ * move an item) checks {@link #isCurrent()} before applying the reply: a dropped session stays
+ * current until a newer drag starts or the router abandons its interactions (screen closed,
+ * disconnect), so a server-confirmed move is applied, and a reply that arrives after the player
+ * moved on is not. {@code isLive()} is the wrong check there: it is already false when the drop
+ * handler returns.
  *
  * <p><b>Contract.</b> The source receives exactly one {@code DRAG_END} with the
  * {@link #outcome()}; {@code DRAG_DROP} reaches at most one element and never after a cancel.
@@ -23,19 +28,22 @@ public final class DragSession {
     }
 
     private final long id;
-    private final UiElement source;
+    private UiElement source;
     private final Object payload;
     private final int button;
+    private final InputDevice device;
+    private boolean superseded;
     private UiElement acceptor;
     private UiElement dropTarget;
     private Outcome outcome = Outcome.IN_PROGRESS;
     private CancelReason cancelReason;
 
-    DragSession(long id, UiElement source, Object payload, int button) {
+    DragSession(long id, UiElement source, Object payload, int button, InputDevice device) {
         this.id = id;
         this.source = source;
         this.payload = payload;
         this.button = button;
+        this.device = device;
     }
 
     public long id() {
@@ -50,8 +58,26 @@ public final class DragSession {
         return payload;
     }
 
+    /** In progress: not yet dropped or cancelled. */
     public boolean isLive() {
         return outcome == Outcome.IN_PROGRESS;
+    }
+
+    /**
+     * In progress, or dropped and not yet superseded by a newer drag or an abandoned screen: the
+     * check for applying a late asynchronous reply to this drag's drop. Always false once cancelled.
+     */
+    public boolean isCurrent() {
+        return outcome != Outcome.CANCELLED && !superseded;
+    }
+
+    /**
+     * What started the drag: {@link InputDevice#MOUSE} for a pointer drag, otherwise the device
+     * passed to {@link DragDropController#start(UiElement, Object, InputDevice)} (a controller or
+     * keyboard pick-up, which focus navigation moves and Submit drops).
+     */
+    public InputDevice device() {
+        return device;
     }
 
     public Outcome outcome() {
@@ -75,6 +101,19 @@ public final class DragSession {
 
     int button() {
         return button;
+    }
+
+    /** A pointer drag follows the pointer; any other is moved by focus navigation. */
+    boolean focusDriven() {
+        return device != InputDevice.MOUSE;
+    }
+
+    void rebindSource(UiElement twin) {
+        source = twin;
+    }
+
+    void supersede() {
+        superseded = true;
     }
 
     void accept(UiElement element) {

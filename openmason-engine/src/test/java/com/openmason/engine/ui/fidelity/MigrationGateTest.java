@@ -75,6 +75,70 @@ class MigrationGateTest {
         assertTrue(bad.table().contains("FAIL demo-a_41x21_s1_25"), bad.table());
     }
 
+    @Test
+    void twoCapturesWithoutRectsProveNothingAndFail() {
+        MigrationGate.Renderer blank = c -> new MigrationGate.Capture(capture(c, 10, 0xFF808080).image(), Map.of());
+        MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.EXACT)
+            .run("demo", List.of(DEMO), blank, blank);
+        assertFalse(r.passed());
+        assertTrue(r.table().contains("no named rects"), r.table());
+    }
+
+    // Controlled regressions (#296 AC: the harness catches a changed hit region, a missing
+    // overlay and a stale callback). Each candidate paints the legacy pixels and rects exactly
+    // and breaks one channel only.
+
+    @Test
+    void aChangedHitRegionFailsEvenWhenThePixelsMatch() {
+        MigrationGate.Renderer legacy = c -> interactive(c, new float[]{10, 2, 8, 8}, "resume", false);
+        MigrationGate.Renderer shrunk = c -> interactive(c, new float[]{10, 2, 8, 4}, "resume", false);
+        MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.EXACT)
+            .run("demo", List.of(DEMO), legacy, shrunk);
+        assertFalse(r.passed());
+        MigrationGate.CaseResult only = r.cases().get(0);
+        assertTrue(only.geometry().passed() && only.pixels().passed());
+        assertEquals(List.of("hit box.height: 4 vs legacy 8"), only.hits().problems());
+    }
+
+    @Test
+    void aStaleCallbackFails() {
+        MigrationGate.Renderer legacy = c -> interactive(c, new float[]{10, 2, 8, 8}, "resume", false);
+        MigrationGate.Renderer stale = c -> interactive(c, new float[]{10, 2, 8, 8}, "quit", false);
+        MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.EXACT)
+            .run("demo", List.of(DEMO), legacy, stale);
+        assertFalse(r.passed());
+        assertEquals(List.of("action box: quit vs legacy resume"), r.cases().get(0).hits().problems());
+    }
+
+    @Test
+    void aMissingOverlayFailsEvenUnderTheDriftTolerance() {
+        FidelityCase big = new FidelityCase("demo", "a", new FidelityCase.Viewport(400, 300, 1f));
+        MigrationGate.Renderer legacy = c -> interactive(c, new float[]{10, 2, 8, 8}, "resume", true);
+        MigrationGate.Renderer noOverlay = c -> interactive(c, new float[]{10, 2, 8, 8}, "resume", false);
+        MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.RASTER_DRIFT)
+            .run("demo", List.of(big), legacy, noOverlay);
+        assertFalse(r.passed(), "a 10x10 overlay is 0.08 % of the frame: the ratio alone would pass it");
+        assertTrue(r.cases().get(0).pixels().largestCluster() >= 100, r.table());
+    }
+
+    private static final FidelityCase DEMO = new FidelityCase("demo", "a", new FidelityCase.Viewport(40, 20, 1f));
+
+    /** Grey frame with the box, an optional 10x10 overlay at (20, 5), a hit rect and an action. */
+    private static MigrationGate.Capture interactive(FidelityCase c, float[] hit, String action, boolean overlay) {
+        MigrationGate.Capture base = capture(c, 10, 0xFF808080);
+        int w = c.viewport().width();
+        int[] px = base.image().argb().clone();
+        if (overlay) {
+            for (int y = 5; y < 15; y++) {
+                for (int x = 20; x < 30; x++) {
+                    px[y * w + x] = 0xFFFFFFFF;
+                }
+            }
+        }
+        return new MigrationGate.Capture(new FidelityImage(w, c.viewport().height(), px), base.rects(),
+            Map.of("box", hit), Map.of("box", action));
+    }
+
     private static MigrationGate.Capture capture(FidelityCase c, float x, int color) {
         int w = c.viewport().width();
         int h = c.viewport().height();

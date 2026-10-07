@@ -63,9 +63,11 @@ class UiStateMachineFormatTest {
     }
 
     @Test
-    void theWriterRefusesAnUndeclaredFeature() {
-        UiFormatException e = assertThrows(UiFormatException.class, () -> OmuiWriter.write(withMachine(look(), false)));
-        assertTrue(e.diagnostics().stream().anyMatch(d -> d.code() == Code.UNDECLARED_FEATURE), e.getMessage());
+    void anUndeclaredFeatureIsInvalidAndTheWriterDeclaresIt() throws Exception {
+        OmuiArchive undeclared = withMachine(look(), false);
+        assertTrue(OmuiValidator.validate(undeclared).stream().anyMatch(d -> d.code() == Code.UNDECLARED_FEATURE));
+        assertTrue(OmuiReader.read(OmuiWriter.write(undeclared)).archive().manifest().requires()
+            .contains(UiFeatures.STATES));
     }
 
     @Test

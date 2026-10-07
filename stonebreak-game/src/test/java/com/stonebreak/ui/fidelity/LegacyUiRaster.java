@@ -23,7 +23,7 @@ import java.io.InputStream;
  * hands the legacy renderers this canvas without {@code initialize()}, the
  * {@code BattleRasterFixture} seam, so no GL context is touched.
  *
- * <p>Close it to restore the UI scale and release the clock. Not a test class.
+ * <p>Close it to restore the UI scale and the clock as it was before. Not a test class.
  */
 public final class LegacyUiRaster implements AutoCloseable {
 
@@ -44,6 +44,7 @@ public final class LegacyUiRaster implements AutoCloseable {
     private final Canvas canvas;
     private final SkijaUIBackend backend;
     private final float previousScale;
+    private final LegacyUiClock.Restore clock;
 
     public LegacyUiRaster(int width, int height, float uiScale) {
         this.width = width;
@@ -55,7 +56,7 @@ public final class LegacyUiRaster implements AutoCloseable {
         backend = new RasterBackend(canvas);
         previousScale = Settings.getInstance().getUiScale();
         Settings.getInstance().setUiScale(uiScale);
-        LegacyUiClock.pin(PINNED_SECONDS, PINNED_SEED);
+        clock = LegacyUiClock.pinScoped(PINNED_SECONDS, PINNED_SEED);
     }
 
     public SkijaUIBackend backend() {
@@ -97,7 +98,7 @@ public final class LegacyUiRaster implements AutoCloseable {
     @Override
     public void close() {
         Settings.getInstance().setUiScale(previousScale);
-        LegacyUiClock.release();
+        clock.close(); // back to the outer pin (a live -Dstonebreak.ui.pinclock), not unpinned
         canvas.close();
         bitmap.close();
     }

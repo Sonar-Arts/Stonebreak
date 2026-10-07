@@ -31,17 +31,37 @@ class UiInputGateTest {
     void aMenuWithoutTextNeedsNothingSpecial() {
         OmuiArchive menu = screen("t:ui/menu", box("root").kids(node("b", "Button").kids(label("l", "Resume"))));
         assertEquals(List.of(), UiInputGate.check(menu, Locale.ENGLISH, GAME));
-        assertEquals(List.of(), UiInputGate.check(menu, Locale.forLanguageTag("ja"), GAME));
+        assertEquals(List.of(), UiInputGate.check(menu, Locale.GERMAN, GAME));
     }
 
     @Test
-    void textFieldsPassInEnglishOnTheGameHost() {
-        assertEquals(List.of(), UiInputGate.check(chatLike(), Locale.ENGLISH, GAME));
+    void labelsInANonLatinScriptNeedFallbackFonts() {
+        OmuiArchive menu = screen("t:ui/menu", box("root").kids(node("b", "Button").kids(label("l", "Resume"))));
+        List<UiInputGate.Block> blocks = UiInputGate.check(menu, Locale.forLanguageTag("ja"), GAME);
+        assertEquals(List.of(InputCapability.FONT_FALLBACK), blocks.stream().map(UiInputGate.Block::capability).toList(),
+            "the game font has no CJK glyphs: the labels would draw as boxes");
+        assertEquals("l", blocks.getFirst().nodeId());
+        Set<InputCapability> withFallback = EnumSet.copyOf(GAME);
+        withFallback.add(InputCapability.FONT_FALLBACK);
+        assertEquals(List.of(), UiInputGate.check(menu, Locale.forLanguageTag("ja"), withFallback));
+    }
+
+    @Test
+    void anUnrestrictedTextFieldNeedsFallbackFontsEvenInEnglish() {
+        List<UiInputGate.Block> blocks = UiInputGate.check(chatLike(), Locale.ENGLISH, GAME);
+        assertEquals(List.of(InputCapability.FONT_FALLBACK), blocks.stream().map(UiInputGate.Block::capability).toList(),
+            "a player can type or paste an emoji the game font cannot draw");
+        assertEquals("line", blocks.getFirst().nodeId());
+        OmuiArchive ascii = screen("t:ui/chat", box("root").kids(label("title", "Chat"),
+            node("line", "TextField").prop("inputFilter", "ascii")));
+        assertEquals(List.of(), UiInputGate.check(ascii, Locale.ENGLISH, GAME), "legacy chat's ASCII rule passes");
     }
 
     @Test
     void japaneseTextEntryIsBlockedUntilThereIsAnImeSource() {
-        List<UiInputGate.Block> blocks = UiInputGate.check(chatLike(), Locale.JAPANESE, GAME);
+        Set<InputCapability> withFallback = EnumSet.copyOf(GAME);
+        withFallback.add(InputCapability.FONT_FALLBACK);
+        List<UiInputGate.Block> blocks = UiInputGate.check(chatLike(), Locale.JAPANESE, withFallback);
         assertEquals(1, blocks.size());
         assertEquals(InputCapability.IME_COMPOSITION, blocks.getFirst().capability());
         assertEquals("line", blocks.getFirst().nodeId());
@@ -49,7 +69,9 @@ class UiInputGateTest {
 
     @Test
     void rightToLeftLocalesAreBlockedUntilShapingExists() {
-        List<InputCapability> caps = UiInputGate.check(chatLike(), Locale.forLanguageTag("ar"), GAME).stream()
+        Set<InputCapability> withFallback = EnumSet.copyOf(GAME);
+        withFallback.add(InputCapability.FONT_FALLBACK);
+        List<InputCapability> caps = UiInputGate.check(chatLike(), Locale.forLanguageTag("ar"), withFallback).stream()
             .map(UiInputGate.Block::capability).toList();
         assertEquals(List.of(InputCapability.RTL_TEXT, InputCapability.COMPLEX_SHAPING), caps);
     }

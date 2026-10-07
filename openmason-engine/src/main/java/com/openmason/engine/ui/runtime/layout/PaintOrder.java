@@ -20,19 +20,34 @@ import java.util.Map;
  * by the scroll view that opened it) but keep their layout position. Collapsed subtrees are
  * left out entirely.
  *
+ * <p>A {@code -sb-anchor: pointer} element is always lifted into {@link #CURSOR_LAYER}, above
+ * every authored layer and the tooltip; it is never hit.
+ *
  * @param entries subtrees in paint order; hit testing walks them backwards
  */
 public record PaintOrder(List<Entry> entries, Map<UiElement, Entry> lifted) {
 
     /** One subtree painted as a unit in {@code layer}. */
     public record Entry(UiElement root, int layer) {
+
+        /** The pointer-anchored cursor layer: painted last, never hit. */
+        public boolean cursor() {
+            return layer == CURSOR_LAYER;
+        }
+    }
+
+    /** Layer of pointer-anchored subtrees (C2): above every {@code -sb-layer} and the tooltip. */
+    public static final int CURSOR_LAYER = Integer.MAX_VALUE;
+
+    private static Integer layerOf(UiElement el) {
+        return el.isPointerAnchored() ? Integer.valueOf(CURSOR_LAYER) : el.explicitLayer();
     }
 
     public static PaintOrder of(UiElement root) {
         List<Entry> entries = new ArrayList<>();
         Map<UiElement, Entry> lifted = new IdentityHashMap<>();
         if (!root.computedStyle().collapsed()) {
-            Integer own = root.explicitLayer();
+            Integer own = layerOf(root);
             Entry first = new Entry(root, own == null ? 0 : own);
             entries.add(first);
             collect(root, first.layer(), entries, lifted);
@@ -48,7 +63,7 @@ public record PaintOrder(List<Entry> entries, Map<UiElement, Entry> lifted) {
             if (c.computedStyle().collapsed()) {
                 continue;
             }
-            Integer own = c.explicitLayer();
+            Integer own = layerOf(c);
             if (own != null && own != layer) {
                 Entry e = new Entry(c, own);
                 entries.add(e);

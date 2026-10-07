@@ -14,8 +14,8 @@ final class UiKeybindActions {
 
     private static final String EDITING = "Editing";
     private static final String SELECTION = "Selection";
-    private static final String VIEW = "View";
-    private static final String FILE = "File";
+    static final String VIEW = "View";
+    static final String FILE = "File";
 
     private UiKeybindActions() {
     }

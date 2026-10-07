@@ -36,6 +36,15 @@ FetchContent_Declare(lua
         PATCH_COMMAND ${CMAKE_COMMAND} -DLUA_SRC_DIR=<SOURCE_DIR>
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/lua/patch_lvm.cmake)
 FetchContent_MakeAvailable(lua)
+# PATCH_COMMAND only runs on a fresh download; the deps cache is shared across builds, so re-run
+# the (idempotent, per-file) patch at every configure to pick up patches added since.
+execute_process(COMMAND ${CMAKE_COMMAND} -DLUA_SRC_DIR=${lua_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/lua/patch_lvm.cmake
+        RESULT_VARIABLE _cenda_lua_patch)
+if(NOT _cenda_lua_patch EQUAL 0)
+    message(FATAL_ERROR "Lua interrupt patch failed (${_cenda_lua_patch})")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/lua/patch_lvm.cmake)
 
 set(CENDA_LUA_SOURCES)
 foreach(_src lapi lcode lctype ldebug ldo ldump lfunc lgc llex lmem lobject

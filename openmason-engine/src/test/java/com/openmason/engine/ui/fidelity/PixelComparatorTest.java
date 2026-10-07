@@ -82,6 +82,65 @@ class PixelComparatorTest {
     }
 
     @Test
+    void theShiftAllowanceNeverHidesAVanishedThinFeature() {
+        // A 1 px outline inside an asset rect at 1.25x (shift radius 2): moving it one pixel is
+        // resampling, deleting it is a regression. The old one-way check passed both, because the
+        // backdrop showing where the outline vanished is always within reach in the baseline.
+        int[] outline = new int[200];
+        Arrays.fill(outline, BG);
+        for (int yy = 2; yy < 8; yy++) {
+            outline[yy * 20 + 8] = INK;
+        }
+        int[] moved = new int[200];
+        Arrays.fill(moved, BG);
+        for (int yy = 2; yy < 8; yy++) {
+            moved[yy * 20 + 9] = INK;
+        }
+        int[] gone = new int[200];
+        Arrays.fill(gone, BG);
+        PixelTolerance t = PixelTolerance.assetScale(1.25f, List.of(new PixelTolerance.Region(4, 0, 12, 10)));
+        FidelityImage baseline = new FidelityImage(20, 10, outline);
+        assertTrue(PixelComparator.compare(baseline, new FidelityImage(20, 10, moved), t).passed());
+        PixelReport r = PixelComparator.compare(baseline, new FidelityImage(20, 10, gone), t);
+        assertFalse(r.passed(), r.summary());
+        assertEquals(6, r.mismatched());
+    }
+
+    @Test
+    void driftToleranceAdmitsScatteredAntiAliasingButNotADroppedIcon() {
+        int w = 400;
+        int h = 300;
+        int[] base = new int[w * h];
+        Arrays.fill(base, BG);
+        FidelityImage expected = new FidelityImage(w, h, base);
+
+        int[] drift = base.clone();
+        for (int i = 0; i < 100; i++) {
+            drift[(i * 37 % h) * w + (i * 113 % w)] = BG + 40; // isolated glyph-edge pixels, 40 levels off
+        }
+        PixelReport ok = PixelComparator.compare(expected, new FidelityImage(w, h, drift), PixelTolerance.RASTER_DRIFT);
+        assertTrue(ok.passed(), ok.summary());
+
+        int[] icon = base.clone();
+        for (int y = 100; y < 116; y++) {
+            for (int x = 100; x < 116; x++) {
+                icon[y * w + x] = INK; // a 16 px icon: 256 px, 0.2 % of the frame... at 1080p only 0.012 %
+            }
+        }
+        FidelityImage withIcon = new FidelityImage(w, h, icon);
+        PixelTolerance loose = PixelTolerance.RASTER_DRIFT.withMaxMismatchRatio(0.01);
+        PixelReport dropped = PixelComparator.compare(withIcon, expected, loose);
+        assertFalse(dropped.passed(), "the ratio admits 256 px here; the clump cap must not");
+        assertEquals(256, dropped.largestCluster());
+        assertTrue(dropped.summary().contains("clump"), dropped.summary());
+
+        int[] glare = base.clone();
+        glare[5 * w + 5] = 0xFFFFFFFF; // one pixel, but far beyond any anti-aliasing drift
+        PixelReport outlier = PixelComparator.compare(expected, new FidelityImage(w, h, glare), PixelTolerance.RASTER_DRIFT);
+        assertFalse(outlier.passed(), outlier.summary());
+    }
+
+    @Test
     void integerAssetScalesAreExact() {
         assertEquals(PixelTolerance.EXACT, PixelTolerance.assetScale(2f, List.of(new PixelTolerance.Region(0, 0, 9, 9))));
         assertEquals(PixelTolerance.EXACT, PixelTolerance.assetScale(1f, List.of()));

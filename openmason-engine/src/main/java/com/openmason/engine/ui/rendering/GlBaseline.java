@@ -24,7 +24,18 @@ public final class GlBaseline {
     private GlBaseline() {
     }
 
-    /** Resets to the baseline with {@code framebufferId} bound (0 for the game window). */
+    /**
+     * Resets to the baseline with {@code framebufferId} bound and the viewport covering its
+     * {@code width x height} pixels (Skia sets the viewport to whatever surface it drew last).
+     */
+    public static void reset(int framebufferId, int width, int height) {
+        reset(framebufferId);
+        if (width > 0 && height > 0) {
+            glViewport(0, 0, width, height);
+        }
+    }
+
+    /** Resets to the baseline with {@code framebufferId} bound (0 for the game window); viewport untouched. */
     public static void reset(int framebufferId) {
         glUseProgram(0);
         glBindVertexArray(0);
@@ -52,8 +63,21 @@ public final class GlBaseline {
         glDepthMask(true);
         glColorMask(true, true, true, true);
         glStencilMask(0xFF);
+        glDisable(GL_POLYGON_OFFSET_FILL);
+        glDisable(GL_FRAMEBUFFER_SRGB);
+        glDisable(GL_COLOR_LOGIC_OP);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glEnable(GL_BLEND);
+        glBlendEquation(GL_FUNC_ADD);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glBlendColor(0, 0, 0, 0);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+        glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        glPixelStorei(GL_PACK_ROW_LENGTH, 0);
     }
 }

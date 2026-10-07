@@ -19,12 +19,31 @@ import java.util.function.Function;
  */
 public final class MigrationGate {
 
-    /** What one renderer produced for a case: the frame and the rects of its named parts. */
-    public record Capture(FidelityImage image, Map<String, float[]> rects) {
+    /**
+     * What one renderer produced for a case: the frame, the rects of its named parts, the rects
+     * its input actually responds to, and what activating each named control does.
+     *
+     * @param rects   painted geometry of named parts (panel, buttons, labels)
+     * @param hits    where a press lands on each named control, from the renderer's own hit
+     *                testing (legacy bounds checks; the document's {@code hitTest}); empty when
+     *                the capture has no input
+     * @param actions per named control, the action id its activation fires ({@code resume},
+     *                {@code stonebreak:screen.pause.quit}); catches a control wired to a stale or
+     *                wrong callback, which no pixel shows
+     */
+    public record Capture(FidelityImage image, Map<String, float[]> rects, Map<String, float[]> hits,
+                          Map<String, String> actions) {
 
         public Capture {
             Objects.requireNonNull(image, "image");
             rects = Map.copyOf(rects);
+            hits = Map.copyOf(hits);
+            actions = Map.copyOf(actions);
+        }
+
+        /** A capture without input channels. */
+        public Capture(FidelityImage image, Map<String, float[]> rects) {
+            this(image, rects, Map.of(), Map.of());
         }
     }
 
@@ -34,11 +53,17 @@ public final class MigrationGate {
         Capture render(FidelityCase c);
     }
 
-    /** One case's verdict. */
-    public record CaseResult(FidelityCase c, GeometryComparator.GeometryReport geometry, PixelReport pixels) {
+    /**
+     * One case's verdict.
+     *
+     * @param hits    hit regions compared like geometry (prefixed {@code hit }), plus action wiring
+     *                ({@code action <name>}) problems
+     */
+    public record CaseResult(FidelityCase c, GeometryComparator.GeometryReport geometry, PixelReport pixels,
+                             GeometryComparator.GeometryReport hits) {
 
         public boolean passed() {
-            return geometry.passed() && pixels.passed();
+            return geometry.passed() && pixels.passed() && hits.passed();
         }
     }
 
@@ -58,8 +83,9 @@ public final class MigrationGate {
             StringBuilder sb = new StringBuilder("fidelity gate: ").append(screen)
                 .append(passed() ? " PASS" : " FAIL").append('\n');
             for (CaseResult r : cases) {
-                sb.append(String.format(java.util.Locale.ROOT, "  %-4s %-44s %s | %s%n",
-                    r.passed() ? "ok" : "FAIL", r.c().id(), r.geometry().summary(), r.pixels().summary()));
+                sb.append(String.format(java.util.Locale.ROOT, "  %-4s %-44s %s | %s | %s%n",
+                    r.passed() ? "ok" : "FAIL", r.c().id(), r.geometry().summary(), r.pixels().summary(),
+                    r.hits().passed() ? "input ok" : r.hits().summary()));
             }
             return sb.toString();
         }
@@ -91,11 +117,40 @@ public final class MigrationGate {
         for (FidelityCase c : cases) {
             Capture want = legacy.render(c);
             Capture got = candidate.render(c);
-            GeometryComparator.GeometryReport g = GeometryComparator.compare(want.rects(), got.rects(),
-                c.viewport().width(), c.viewport().height(), geometry);
+            int w = c.viewport().width();
+            int h = c.viewport().height();
+            GeometryComparator.GeometryReport g = GeometryComparator.compare(want.rects(), got.rects(), w, h, geometry);
+            if (want.rects().isEmpty() && got.rects().isEmpty()) {
+                // Two blank captures agree perfectly and prove nothing: a renderer that lost its
+                // rect reporting must not pass the gate (#296 review).
+                g = new GeometryComparator.GeometryReport(List.of("no named rects captured on either side"), 0);
+            }
             PixelReport p = PixelComparator.compare(want.image(), got.image(), pixels.apply(c));
-            out.add(new CaseResult(c, g, p));
+            out.add(new CaseResult(c, g, p, input(want, got, w, h)));
         }
         return new Report(screen, out);
+    }
+
+    /** Hit regions under the same geometry rule as the paint, then the action each control fires. */
+    private GeometryComparator.GeometryReport input(Capture want, Capture got, int w, int h) {
+        GeometryComparator.GeometryReport hits = GeometryComparator.compare(prefixed(want.hits()),
+            prefixed(got.hits()), w, h, geometry);
+        List<String> problems = new ArrayList<>(hits.problems());
+        java.util.TreeSet<String> names = new java.util.TreeSet<>(want.actions().keySet());
+        names.addAll(got.actions().keySet());
+        for (String name : names) {
+            String a = want.actions().get(name);
+            String b = got.actions().get(name);
+            if (!Objects.equals(a, b)) {
+                problems.add("action " + name + ": " + (b == null ? "none" : b) + " vs legacy " + (a == null ? "none" : a));
+            }
+        }
+        return new GeometryComparator.GeometryReport(problems, hits.worst());
+    }
+
+    private static Map<String, float[]> prefixed(Map<String, float[]> hits) {
+        Map<String, float[]> out = new java.util.HashMap<>();
+        hits.forEach((k, v) -> out.put("hit " + k, v));
+        return out;
     }
 }

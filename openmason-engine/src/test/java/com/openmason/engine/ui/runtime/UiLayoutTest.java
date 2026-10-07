@@ -263,40 +263,8 @@ class UiLayoutTest {
 
     // ── hits and visibility ─────────────────────────────────────────────────
 
-    @Test
-    void renderAndHitRegionsAgreeAtEveryScale() {
-        for (float scale : new float[]{0.75f, 1f, 1.25f, 2f}) {
-            UiRuntimeContext ctx = pauseContext(UiRuntimeContext.DEVICE_PIXEL_GRID);
-            try (UiDocumentInstance ui = laid(pauseDocument(true), ctx, UiMetrics.of(1921, 1081, scale))) {
-                for (UiElement e : ui.elements()) {
-                    UiRect r = e.rect();
-                    if (!e.isPickable() || r.isEmpty()) {
-                        continue;
-                    }
-                    for (float[] p : new float[][]{{r.x() + r.width() / 2, r.y() + r.height() / 2},
-                        {r.x(), r.y()}, {r.right(), r.bottom()}}) {
-                        UiElement hit = ui.hitTest(p[0], p[1]);
-                        assertTrue(hit != null && isSelfOrDescendant(hit, e) || covers(ui, hit, p),
-                            "scale " + scale + ": " + e.key() + " at " + p[0] + "," + p[1] + " hit " + hit);
-                    }
-                }
-            }
-        }
-    }
-
-    private static boolean isSelfOrDescendant(UiElement hit, UiElement e) {
-        for (UiElement x = hit; x != null; x = x.parent()) {
-            if (x == e) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /** At a shared edge a later sibling may win; that is fine as long as it also covers the point. */
-    private static boolean covers(UiDocumentInstance ui, UiElement hit, float[] p) {
-        return hit != null && hit.rect().contains(p[0], p[1]);
-    }
+    // Render-vs-hit agreement is checked against painted pixels in paint/RenderHitAgreementTest
+    // (fractional scales, translation, rotation, scale) and paint/UiPaintTest.
 
     @Test
     void hiddenCollapsedIgnoredAndDisabledBehaveDifferently() {

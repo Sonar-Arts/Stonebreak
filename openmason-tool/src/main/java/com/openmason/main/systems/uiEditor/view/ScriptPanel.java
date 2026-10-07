@@ -107,11 +107,43 @@ final class ScriptPanel {
         return edited;
     }
 
-    /** Applies pending text (Save calls this first so a save never misses typed code). */
+    /** True when the editor holds text not yet applied to {@code doc}. */
+    boolean hasUnapplied(UiEditorDocument doc) {
+        return edited && doc != null && doc == loadedDoc;
+    }
+
+    /**
+     * Applies pending text (Save calls this first so a save never misses typed code). Text that
+     * conflicts with a newer version of the module (an agent, a graph conversion or undo changed
+     * it meanwhile) is never applied silently: it stays here until the author resolves it.
+     */
     void applyPending() {
         if (edited && module != null && !readOnly && loadedDoc == ctx.doc()) {
+            if (conflicted(loadedDoc)) {
+                loadedDoc.setLastMessage("Unapplied Lua for " + module + " conflicts with a newer version of the"
+                    + " module and was not saved: resolve it in the Script panel");
+                return;
+            }
             apply();
         }
+    }
+
+    /** Applies pending text to {@code doc} whether or not it is active (automation, close). */
+    void flush(UiEditorDocument doc) {
+        if (doc == ctx.doc()) {
+            applyPending();
+        } else if (hasUnapplied(doc) && !conflicted(doc)) {
+            applyPendingFor(doc);
+        }
+    }
+
+    /** The module changed in the document since this panel loaded it, while it holds edits. */
+    private boolean conflicted(UiEditorDocument doc) {
+        if (!edited || module == null || readOnly || doc == null) {
+            return false;
+        }
+        String src = doc.archive().scripts().get(module);
+        return !java.util.Objects.equals(src, loadedSource);
     }
 
     void render() {
@@ -126,6 +158,11 @@ final class ScriptPanel {
             return;
         }
         if (doc != loadedDoc) {
+            if (conflicted(loadedDoc)) {
+                loadedDoc.setLastMessage("Unapplied Lua for " + module + " was dropped: the module changed in the"
+                    + " document meanwhile (the document keeps the newer version)");
+                edited = false;
+            }
             applyPendingFor(loadedDoc);
             loadedDoc = doc;
             module = doc.archive().document().codeBehind();
@@ -143,6 +180,8 @@ final class ScriptPanel {
             if (src != null && !src.equals(loadedSource)) {
                 loadModule(doc); // undo/redo or a graph conversion changed it
             }
+        } else if (conflicted(doc)) {
+            conflictBanner(doc);
         }
         checkIn -= ImGui.getIO().getDeltaTime();
         if (checkIn < 0 && checkIn > -1) {
@@ -296,8 +335,28 @@ final class ScriptPanel {
             """;
     }
 
+    /** Shown while the typed text and a newer document version of the module disagree. */
+    private void conflictBanner(UiEditorDocument doc) {
+        ImGui.pushStyleColor(ImGuiCol.Text, ThemeColors.u32(ThemeColors.Tone.WARNING, 1f));
+        ImGui.textWrapped("The module changed in the document (undo, an agent or the graph editor) while you were"
+            + " typing here. Apply is paused so neither version is lost.");
+        ImGui.popStyleColor();
+        if (ImGui.button("Reload Module (discard my text)")) {
+            loadModule(doc);
+        }
+        ImGui.sameLine();
+        if (ImGui.button("Keep My Text")) {
+            loadedSource = doc.archive().scripts().get(module); // the next Apply replaces the newer version
+            status = "Your text will replace the newer version on Apply";
+        }
+    }
+
     private void apply() {
         if (module == null || readOnly) {
+            return;
+        }
+        if (conflicted(ctx.doc())) {
+            status = "Not applied: the module changed meanwhile (see above)";
             return;
         }
         ctx.actions.run(DocumentCommands.setScript(module, buffer.get()));
@@ -400,7 +459,7 @@ final class ScriptPanel {
                 apply();
                 ctx.saveRequest = true; // the editor owns the keyboard, so the workspace saves for it
             }
-            if (ImGui.isItemDeactivated() && edited) {
+            if (ImGui.isItemDeactivated() && edited && !conflicted(doc)) {
                 apply(); // leaving the editor applies, so the canvas never lags the code
             }
             // keep the caret visible inside the scrolling child

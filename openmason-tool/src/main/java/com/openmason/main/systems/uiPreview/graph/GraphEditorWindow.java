@@ -113,22 +113,26 @@ public final class GraphEditorWindow {
     /**
      * The preview (re)loaded a document. Unsaved edits are kept unless {@code force}; otherwise the
      * editor restarts on the new document, keeping the camera and selection where it can.
+     *
+     * @return true when the editor now holds {@code doc} (it rebound, or already showed it); false
+     *         when it kept unsaved edits made against an older state
      */
-    public void documentReloaded(OmuiArchive doc, UiDocumentSource src, boolean force) {
+    public boolean documentReloaded(OmuiArchive doc, UiDocumentSource src, boolean force) {
         if (st == null) {
-            return;
+            return false;
         }
         source = src == null ? UiDocumentSource.EMPTY : src;
         boolean dirty = isDirty();
         if (dirty && !force) {
             st.status = "Preview reloaded; the graph has unsaved edits and was not replaced";
-            return;
+            return false;
         }
         if (!force && doc.equals(st.editor.document())) {
-            return;
+            return true;
         }
         st.rebind(GraphEditor.open(doc, st.graphId(), source), !force);
         shownGraph = st.graphId();
+        return true;
     }
 
     /** Ctrl+click on a preview element: selects the nodes that target it. Returns whether any did. */

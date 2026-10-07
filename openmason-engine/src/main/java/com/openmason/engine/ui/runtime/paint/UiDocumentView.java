@@ -63,6 +63,7 @@ public final class UiDocumentView implements AutoCloseable {
             throw new IllegalArgumentException("binder belongs to another document instance");
         }
         this.binder = b;
+        b.onRecycled(router.focus()::recycled); // focus follows a virtualized row's item
         return this;
     }
 
@@ -99,20 +100,53 @@ public final class UiDocumentView implements AutoCloseable {
     }
 
     /**
-     * Lays out at the frame's size, reconciles input state with the new geometry (hover under a
-     * still pointer, focus on an element that disappeared, open scopes), and paints into
-     * {@code masonry}'s open frame (the host calls {@code beginFrame}/{@code endFrame} around it
-     * and clears first).
+     * Lays out at the frame's size and reconciles input and bindings with the new geometry
+     * (hover under a still pointer, focus on an element that disappeared, open scopes,
+     * virtualized rows, pointer-anchored elements). The first of a frame's three steps:
+     * {@code layout} → {@link #prepareProviders} (GL, outside any Skia frame) → the host opens
+     * its Masonry frame → {@link #paint} → the host closes it.
+     *
+     * <p>One {@code update} per frame normally; a second only when the reconciliation after the
+     * first one changed styles, rows or placement.
      */
-    public void render(MasonryUI masonry, int width, int height, float uiScale, float pixelRatio) {
+    public void layout(int width, int height, float uiScale, float pixelRatio) {
         ui.setMetrics(new UiMetrics(width, height, uiScale, pixelRatio));
+        ui.setPointer(router.pointerX(), router.pointerY());
         ui.update();
         router.sync();
         if (binder != null) {
-            binder.sync();
+            binder.sync(); // after layout: virtualized lists read the laid-out viewport
         }
-        ui.update();
+        if (ui.needsUpdate()) {
+            ui.update();
+        }
+    }
+
+    /**
+     * Gives every host draw provider in view its GL phase ({@code UiDrawProvider.prepare}) for
+     * the geometry of the last {@link #layout}. Call on the GL thread before the Masonry frame
+     * opens; a no-op for documents without providers.
+     */
+    public void prepareProviders() {
+        painter.prepare(ui);
+    }
+
+    /**
+     * Paints the last {@link #layout} into {@code masonry}'s open frame (the host calls
+     * {@code beginFrame}/{@code endFrame} around it and clears first).
+     */
+    public void paint(MasonryUI masonry) {
         painter.paint(ui, masonry, router);
+    }
+
+    /**
+     * {@link #layout} then {@link #paint} inside the host's already-open frame: for hosts whose
+     * providers need no GL phase (the editor preview, raster tests). Hosts with GL providers use
+     * the three steps instead.
+     */
+    public void render(MasonryUI masonry, int width, int height, float uiScale, float pixelRatio) {
+        layout(width, height, uiScale, pixelRatio);
+        paint(masonry);
     }
 
     /** Pointer moved to device-pixel {@code (x, y)} on the frame. */

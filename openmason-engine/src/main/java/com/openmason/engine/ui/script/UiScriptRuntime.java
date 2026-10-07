@@ -79,6 +79,16 @@ import java.util.Objects;
  * dispatch's local writes (last good presentation), disables the failing handler, hook, watch or
  * converter, and is reported with its {@code chunk:line} ({@link #diagnostics()}, the
  * {@link #console()}, and the instance's diagnostics as {@code SCRIPT_ERROR}).
+ *
+ * <p><b>Re-entrancy.</b> {@link #close} and {@link #reload} requested while a call into Lua is on
+ * the stack (a handler whose action closes the screen, {@code ui.close()} on a host that closes at
+ * once) are deferred until the outermost call returns: freeing or swapping the state under a
+ * running VM would be a use-after-free. {@link #isClosed()} is true from the request on.
+ *
+ * <p><b>Limits per context</b>: {@value #MAX_HANDLES} unsettled handles (actions, timers,
+ * animations), {@value #MAX_WATCHES} watches and {@value #MAX_HANDLERS} handlers; past them the op
+ * raises at the script's line. Deliveries in one {@link #update} stop once the frame has spent the
+ * deadline on them; the rest arrive next frame.
  */
 public final class UiScriptRuntime implements UiDocumentView.Extension {
 
@@ -102,7 +112,15 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     static final int OP_GRAPH_LOAD = 15;
     static final int OP_GRAPH_HOOK = 16;
 
+    /** Unsettled handles (actions, timers, animations) one context may hold. */
+    static final int MAX_HANDLES = 4096;
+    /** Live {@code ui.watch} subscriptions one context may hold. */
+    static final int MAX_WATCHES = 1024;
+    /** Event handlers and signal listeners one context may register. */
+    static final int MAX_HANDLERS = 4096;
+
     private static final String PRELUDE = prelude();
+    private static final java.security.SecureRandom SEEDS = new java.security.SecureRandom();
     private static final Object WATCHDOG_LOCK = new Object();
     private static LuaWatchdog watchdog;
 
@@ -150,13 +168,23 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     private boolean closed;
 
     private final Map<Long, Pending> pending = new HashMap<>();
-    private final List<Timer> timers = new ArrayList<>();
+    private final java.util.PriorityQueue<Timer> timers = new java.util.PriorityQueue<>(
+        java.util.Comparator.comparingDouble(Timer::due).thenComparingLong(Timer::token));
     private final ArrayDeque<Settlement> settlements = new ArrayDeque<>();
     private final ArrayDeque<AnimEvent> animEvents = new ArrayDeque<>();
     private final Map<WatchKey, DataState> watchQueue = new LinkedHashMap<>();
     /** Instance key → signal listeners registered on that component instance. */
     final Map<String, List<ScriptContext.SignalListener>> signalListeners = new HashMap<>();
     private final Map<ScriptContext.SignalListener, ScriptContext> signalOwners = new HashMap<>();
+
+    /** Runtime entries (and so Lua calls) on the stack; close/reload wait for 0. */
+    private int entries;
+    private boolean closeDeferred;
+    private boolean reloadDeferred;
+    /** Host epoch the tasks belong to; a change (world left) cancels them (#282 C5). */
+    private long epochSeen;
+    /** Element whose handler is running, for action call sites (#289): null outside handlers. */
+    String currentElement;
 
     private long calls;
     private long callNanos;
@@ -234,6 +262,7 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     public void attach(UiScope scope, UiInputRouter router) {
         this.scope = scope;
         this.router = router;
+        this.epochSeen = scope == null ? 0 : scope.host().epoch();
     }
 
     /** Runs {@code on_open} of every component module, then the screen's. */
@@ -242,8 +271,13 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
             return;
         }
         opened = true;
-        for (int i = contexts.size() - 1; i >= 0; i--) {
-            openContext(contexts.get(i));
+        enter();
+        try {
+            for (int i = contexts.size() - 1; i >= 0 && !closeDeferred; i--) {
+                openContext(contexts.get(i));
+            }
+        } finally {
+            exit();
         }
     }
 
@@ -253,7 +287,7 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
      * pending and number-only updates this allocates no Java memory.
      */
     public void update(double dt) {
-        if (closed) {
+        if (closed || closeDeferred) {
             return;
         }
         time += dt; // animations were sampled by the view's frame before this (#295)
@@ -261,19 +295,70 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
             return;
         }
         long t0 = System.nanoTime();
-        tickTimers();
-        deliverQueued();
-        for (int i = 0; i < contexts.size(); i++) {
-            ScriptContext ctx = contexts.get(i);
-            if (ctx.hasUpdate && !ctx.closed) {
-                lua.args().integer(ctx.id).integer(OP_UPDATE).number(dt);
-                dispatch(ctx, "update", true);
+        enter();
+        try {
+            checkEpoch();
+            tickTimers();
+            deliverQueued(t0);
+            for (int i = 0; i < contexts.size() && !closeDeferred; i++) {
+                ScriptContext ctx = contexts.get(i);
+                if (ctx.hasUpdate && !ctx.closed) {
+                    lua.args().integer(ctx.id).integer(OP_UPDATE).number(dt);
+                    dispatch(ctx, "update", true);
+                }
             }
-        }
-        for (int i = 0; i < canvases.size(); i++) {
-            ui.canvasChanged(canvases.get(i).key);
+            for (int i = 0; i < canvases.size(); i++) {
+                ui.canvasChanged(canvases.get(i).key);
+            }
+        } finally {
+            exit();
         }
         lastUpdateNanos = System.nanoTime() - t0;
+    }
+
+    /**
+     * A host epoch change (the world was left or changed) cancels every waiting task: action
+     * calls (the scope already cancelled them), sleeps, tweens and watch callbacks alike, with
+     * their {@code <close>} handlers. Handlers, watches and module state stay.
+     */
+    private void checkEpoch() {
+        if (scope == null) {
+            return;
+        }
+        long epoch = scope.host().epoch();
+        if (epoch == epochSeen) {
+            return;
+        }
+        epochSeen = epoch;
+        generation++;
+        cancelPending();
+        for (ScriptContext ctx : contexts) {
+            if (ctx.created && !ctx.closed) {
+                lua.args().integer(ctx.id).integer(OP_CANCEL_ALL);
+                dispatch(ctx, "world change", false);
+            }
+        }
+        report(Severity.INFO, Code.TASK_CANCELLED, null, "", "the host changed worlds: waiting tasks were cancelled");
+    }
+
+    /** One more runtime entry on the stack (any path that may call into Lua). */
+    private void enter() {
+        entries++;
+    }
+
+    /** Leaves an entry; the outermost runs a close or reload requested meanwhile. */
+    private void exit() {
+        if (--entries > 0) {
+            return;
+        }
+        if (closeDeferred) {
+            closeDeferred = false;
+            reloadDeferred = false;
+            closeNow();
+        } else if (reloadDeferred) {
+            reloadDeferred = false;
+            reload();
+        }
     }
 
     @Override
@@ -288,9 +373,22 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
      * state survives by key through the instance reload. Pending tasks are cancelled.
      */
     public void reload() {
-        if (closed) {
+        if (closed || closeDeferred) {
             return;
         }
+        if (entries > 0) {
+            reloadDeferred = true; // never swap modules under a running call
+            return;
+        }
+        enter();
+        try {
+            reloadNow();
+        } finally {
+            exit();
+        }
+    }
+
+    private void reloadNow() {
         generation++;
         cancelPending();
         for (ScriptContext ctx : contexts) {
@@ -352,14 +450,34 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     /** Runs {@code on_close} (screen first), cancels every task and frees the state. */
     @Override
     public void close() {
+        if (closed || closeDeferred) {
+            return;
+        }
+        if (entries > 0) {
+            closeDeferred = true; // the state is freed once the call on the stack returns
+            return;
+        }
+        closeNow();
+    }
+
+    private void closeNow() {
         if (closed) {
             return;
         }
         if (lua != null) {
-            for (ScriptContext ctx : contexts) {
-                if (ctx.created && !ctx.closed) {
-                    closeHooks(ctx);
+            // on_close runs as an entry with the close already requested: a script calling
+            // ui.close() (or a host closing again) from inside it is a no-op, never a re-entry.
+            entries++;
+            closeDeferred = true;
+            try {
+                for (ScriptContext ctx : contexts) {
+                    if (ctx.created && !ctx.closed) {
+                        closeHooks(ctx);
+                    }
                 }
+            } finally {
+                entries--;
+                closeDeferred = false;
             }
         }
         closed = true;
@@ -386,8 +504,9 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         }
     }
 
+    /** True once closed, or once a close was requested and waits for the running call to return. */
     public boolean isClosed() {
-        return closed;
+        return closed || closeDeferred;
     }
 
     /** Problems so far, oldest first. */
@@ -506,7 +625,8 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     }
 
     private void start(List<ScriptContext> found) {
-        lua = CendaLua.newState(options.memoryLimitBytes());
+        lua = options.randomHashSeed() ? CendaLua.newState(options.memoryLimitBytes(), SEEDS.nextInt())
+            : CendaLua.newState(options.memoryLimitBytes());
         try {
             lua.setBudget(options.instructionBudget());
             if (lua.run(PRELUDE, "prelude.lua", 0) != LuaState.OK) {
@@ -653,7 +773,9 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
 
     /** A {@code derived/} chunk still keyed to this graph and compiler, or null (then the graph compiles). */
     private String cachedGraph(ScriptContext ctx, UiGraph graph) {
-        if (options.graphDebug()) {
+        // The recorded hashes only prove which graph a chunk claims to come from, not that its
+        // body is that graph's code: untrusted documents always compile (#282 hardening).
+        if (options.graphDebug() || !options.trustDerivedGraphs()) {
             return null;
         }
         UiDocumentSource.DerivedLua d = ui.context().source().derivedGraph(ctx.documentId(), graph.id());
@@ -1062,27 +1184,41 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     // ── events and hooks ────────────────────────────────────────────────────
 
     void onEvent(ScriptContext ctx, int handlerId, UiEvent ev) {
-        if (closed || ctx.closed || lua == null) {
+        if (closed || closeDeferred || ctx.closed || lua == null) {
             return;
         }
-        LuaValueWriter w = lua.args().integer(ctx.id).integer(OP_EVENT).integer(handlerId);
-        w.value(ScriptEvents.encode(ev, ui.metrics().scale()));
-        LuaValueReader r = dispatch(ctx, handlerId, true);
-        if (r != null) {
-            ScriptEvents.apply(ev, (int) r.number());
+        ScriptContext.Handler h = ctx.handlers.get(handlerId);
+        String outer = currentElement;
+        currentElement = h == null ? null : h.key();
+        enter();
+        try {
+            LuaValueWriter w = lua.args().integer(ctx.id).integer(OP_EVENT).integer(handlerId);
+            w.value(ScriptEvents.encode(ev, ui.metrics().scale()));
+            LuaValueReader r = dispatch(ctx, handlerId, true);
+            if (r != null) {
+                ScriptEvents.apply(ev, (int) r.number());
+            }
+        } finally {
+            currentElement = outer;
+            exit();
         }
     }
 
     private void onInput(ScriptContext ctx, UiEvent ev) {
-        if (closed || ctx.closed || lua == null || !ctx.hasInput) {
+        if (closed || closeDeferred || ctx.closed || lua == null || !ctx.hasInput) {
             return;
         }
-        LuaValueWriter w = lua.args().integer(ctx.id).integer(OP_INPUT);
-        w.value(ScriptEvents.encode(ev, ui.metrics().scale()));
-        LuaValueReader r = dispatch(ctx, "on_input", true);
-        if (r != null && r.bool()) {
-            ev.stopPropagation();
-            ev.preventDefault();
+        enter();
+        try {
+            LuaValueWriter w = lua.args().integer(ctx.id).integer(OP_INPUT);
+            w.value(ScriptEvents.encode(ev, ui.metrics().scale()));
+            LuaValueReader r = dispatch(ctx, "on_input", true);
+            if (r != null && r.bool()) {
+                ev.stopPropagation();
+                ev.preventDefault();
+            }
+        } finally {
+            exit();
         }
     }
 
@@ -1094,7 +1230,7 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         }
         for (ScriptContext.SignalListener l : List.copyOf(list)) {
             ScriptContext target = signalOwners.get(l);
-            if (target == null || target.closed || !l.signal().equals(signal)) {
+            if (closed || lua == null || target == null || target.closed || !l.signal().equals(signal)) {
                 continue;
             }
             lua.args().integer(target.id).integer(OP_SIGNAL).integer(l.id()).value(args);
@@ -1125,6 +1261,7 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
             throw new IllegalStateException("the code-behind of converter " + name + " is closed");
         }
         pure++;
+        enter();
         try {
             lua.args().integer(ctx.id).integer(OP_CONVERT).string(name).bool(back).value(value);
             LuaValueReader r = dispatch(ctx, "converter:" + name, false);
@@ -1134,6 +1271,7 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
             return r.value();
         } finally {
             pure--;
+            exit();
         }
     }
 
@@ -1143,8 +1281,17 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         return nextToken++;
     }
 
+    /** Refuses a new handle past the per-context cap: an unawaited flood would grow without bound. */
+    void admitHandle(ScriptContext ctx) {
+        if (ctx.live.size() >= MAX_HANDLES) {
+            throw new IllegalStateException("this script holds " + MAX_HANDLES + " unsettled handles (actions,"
+                + " timers, animations); await, stop or cancel some before starting more");
+        }
+    }
+
     void trackAction(ScriptContext ctx, long token, ActionCall call) {
         long gen = generation;
+        ctx.live.add(token);
         pending.put(token, new Pending(ctx, call));
         call.whenSettled(c -> {
             if (pending.remove(token) == null || gen != generation || closed) {
@@ -1163,9 +1310,10 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         });
     }
 
-    boolean cancelAction(long token) {
+    /** Cancels an action {@code ctx} started; another context's token is refused (isolation). */
+    boolean cancelAction(ScriptContext ctx, long token) {
         Pending p = pending.get(token);
-        if (p != null) {
+        if (p != null && p.ctx == ctx) {
             p.call.cancel();
             return true;
         }
@@ -1173,7 +1321,27 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     }
 
     void addTimer(ScriptContext ctx, long token, double seconds) {
+        ctx.live.add(token);
         timers.add(new Timer(ctx, token, time + Math.max(0, seconds)));
+    }
+
+    /** Removes a timer that has not fired (a failed dispatch's {@code ui.sleep}). */
+    void removeTimer(ScriptContext ctx, long token) {
+        timers.removeIf(t -> t.token == token);
+        ctx.live.remove(token);
+    }
+
+    /** Records an animation {@code ctx} started, for the cap and stop/seek/speed ownership. */
+    void trackAnim(ScriptContext ctx, long token) {
+        if (token != 0) {
+            ctx.live.add(token);
+            ctx.anims.add(token);
+        }
+    }
+
+    /** Whether {@code token} is an animation {@code ctx} started (another context's is refused). */
+    boolean ownsAnim(ScriptContext ctx, long token) {
+        return ctx.anims.contains(token);
     }
 
     UiAnimator.Listener animListener(ScriptContext ctx) {
@@ -1202,25 +1370,33 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
     }
 
     private void tickTimers() {
-        for (int i = timers.size() - 1; i >= 0; i--) {
-            Timer t = timers.get(i);
-            if (time >= t.due) {
-                timers.remove(i);
-                settlements.add(new Settlement(t.ctx, t.token, "ok", UiValue.NULL, generation));
-            }
+        Timer t;
+        while ((t = timers.peek()) != null && time >= t.due) {
+            timers.poll();
+            settlements.add(new Settlement(t.ctx, t.token, "ok", UiValue.NULL, generation));
         }
     }
 
-    private void deliverQueued() {
+    private void deliverQueued(long frameStart) {
         // Deliveries may queue more (a task awaiting again, a watch firing an action): a few
-        // rounds drain them; anything still queued goes next frame.
+        // rounds drain them; anything still queued goes next frame. So does everything once this
+        // frame has spent the deadline on deliveries: each dispatch may legally run up to the
+        // deadline, and eight rounds of them must not stall one frame eight times over.
+        long budget = (long) (options.deadlineMillis() * 1e6);
         for (int round = 0; round < 8; round++) {
             if (settlements.isEmpty() && animEvents.isEmpty() && watchQueue.isEmpty()) {
+                return;
+            }
+            if (round > 0 && System.nanoTime() - frameStart > budget) {
                 return;
             }
             int n = settlements.size();
             for (int i = 0; i < n; i++) {
                 Settlement s = settlements.poll();
+                if (s == null || closed || closeDeferred) {
+                    return; // the queue was cleared (cancelled) or the screen is closing
+                }
+                s.ctx.live.remove(s.token);
                 if (s.generation != generation || s.ctx.closed) {
                     continue;
                 }
@@ -1233,6 +1409,9 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
             int m = animEvents.size();
             for (int i = 0; i < m; i++) {
                 AnimEvent e = animEvents.poll();
+                if (e == null || closed || closeDeferred) {
+                    return;
+                }
                 if (e.generation != generation || e.ctx.closed) {
                     continue;
                 }
@@ -1244,6 +1423,9 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
                 watchQueue.clear();
                 for (Map.Entry<WatchKey, DataState> e : batch) {
                     ScriptContext ctx = e.getKey().ctx;
+                    if (closed || closeDeferred) {
+                        return;
+                    }
                     if (ctx.closed || !ctx.watches.containsKey(e.getKey().id)) {
                         continue;
                     }
@@ -1265,6 +1447,9 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
         }
         pending.clear();
         timers.clear();
+        for (ScriptContext ctx : contexts) {
+            ctx.live.clear();
+        }
         settlements.clear();
         animEvents.clear();
         watchQueue.clear();
@@ -1287,20 +1472,26 @@ public final class UiScriptRuntime implements UiDocumentView.Extension {
      * called fails in its own chunk; the graph frame below it names the calling node).
      */
     private UiScriptDiagnostic graphNode(ScriptContext ctx, UiScriptDiagnostic d) {
-        if (d.message() == null || ctx.graphs.isEmpty()) {
-            return d;
+        String node = graphNodeAt(ctx, d.message());
+        return node == null ? d : d.atNode(node);
+    }
+
+    /** The graph node of the first compiled-graph frame in {@code text} (a message or traceback), or null. */
+    String graphNodeAt(ScriptContext ctx, String text) {
+        if (text == null || ctx.graphs.isEmpty()) {
+            return null;
         }
-        java.util.regex.Matcher m = GRAPH_FRAME.matcher(d.message());
+        java.util.regex.Matcher m = GRAPH_FRAME.matcher(text);
         while (m.find()) {
             ScriptContext.GraphModule g = ctx.graph(m.group(1));
             if (g != null && g.map != null) {
                 SourceMap.Location loc = g.map.at(Integer.parseInt(m.group(2)));
                 if (loc != null) {
-                    return d.atNode(loc.toString());
+                    return loc.toString();
                 }
             }
         }
-        return d;
+        return null;
     }
 
     private void record(ScriptContext ctx, UiScriptDiagnostic d, String element) {

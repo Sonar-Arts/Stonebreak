@@ -69,6 +69,7 @@ module stonebreak.game {
 
     // UI hosting seams other hosts use (#285 GameUiAssets, #286 GameUiResources for the Open Mason preview)
     exports com.stonebreak.ui.runtime;
+    exports com.stonebreak.ui.runtime.contracts;
 
     // Open packages for Jackson JSON processing
     opens com.stonebreak.blocks to com.fasterxml.jackson.databind;
