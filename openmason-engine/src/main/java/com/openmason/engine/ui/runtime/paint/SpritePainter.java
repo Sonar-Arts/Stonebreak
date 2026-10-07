@@ -34,9 +34,9 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Draws one resolved image region into an element rect (#294): picks the animation frame, the
  * fill mode and the sampling, lays the pieces out with {@link SpriteSlices}, and applies the
- * sprite's tint and opacity. Every source rect is drawn with Skia's strict constraint, and tiled
- * pieces repeat their own cached sub-image, so filtering never bleeds in neighbouring sprites of
- * the sheet — a sheet needs no gutters.
+ * sprite's tint and opacity. Stretched linear pieces are drawn with Skia's strict constraint;
+ * tiled and nearest pieces sample their own cached sub-image, so filtering never bleeds in
+ * neighbouring sprites of the sheet — a sheet needs no gutters.
  *
  * <p>Precedence: an element's {@code -sb-image-scale} beats the sprite's {@code scale}; a sprite's
  * {@code sampling} beats the element's {@code -sb-sampling} (the sheet author knows whether the
@@ -44,8 +44,22 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>A steady frame allocates no native objects: paints (with their tint filter), tiled-patch
  * shaders and patch layouts are cached per paint thread.
+ *
+ * <p>Nearest sampling at a fractional texel scale (a texture stretched 4.5×, 0.75× tiles) puts
+ * some texel edges exactly on a pixel centre. The game window, the editor's preview framebuffer
+ * and the CPU raster each break that tie their own way, so a texel row would land a pixel apart
+ * between game and preview (#328). Nearest draws therefore sample {@link #NEAREST_TIE_BIAS} of a
+ * texel further into the region, through a shader on the region's own sub-image: a tie always
+ * picks the next texel, on every backend, and geometry (anti-aliased edges) stays exact.
  */
 public final class SpritePainter {
+
+    /**
+     * How far (texels) nearest sampling reads past the pixel centre: far above the GPU's and Skia
+     * raster's interpolation error, small enough that no texel edge visibly moves. The sub-image
+     * shader clamps, so a biased sample never reaches a neighbouring sprite.
+     */
+    static final float NEAREST_TIE_BIAS = 1f / 64;
 
     /** Patch layouts kept per paint thread; a steady frame re-lays nothing out. */
     private static final int LAYOUT_CACHE = 512;
@@ -105,7 +119,7 @@ public final class SpritePainter {
             sp.center(), mode, sp.pivotX(), sp.pivotY(), r.x(), r.y(), r.width(), r.height(), kx, ky, nearest));
         Paint paint = caches.paint(tint(sp.tint()), (float) Math.min(1, sp.opacity()));
         for (SpriteSlices.Patch p : patches) {
-            patch(canvas, texture, img, p, sampling, paint, caches);
+            patch(canvas, texture, img, p, sampling, nearest, paint, caches);
         }
         return next;
     }
@@ -144,23 +158,30 @@ public final class SpritePainter {
     }
 
     private static void patch(Canvas canvas, MTexture texture, Image img, SpriteSlices.Patch p, SamplingMode sampling,
-                              Paint paint, Caches caches) {
-        Rect dst = Rect.makeXYWH(p.dx(), p.dy(), p.dw(), p.dh());
-        if (!p.tiled()) {
+                              boolean nearest, Paint paint, Caches caches) {
+        if (!p.tiled() && !nearest) {
+            Rect dst = Rect.makeXYWH(p.dx(), p.dy(), p.dw(), p.dh());
             canvas.drawImageRect(img, Rect.makeXYWH(p.sx(), p.sy(), p.sw(), p.sh()), dst, sampling, paint, true);
             return;
         }
         Image sub = texture.region(p.sx(), p.sy(), p.sw(), p.sh());
-        if (sub == null) {
+        if (sub == null || p.dw() <= 0 || p.dh() <= 0) {
             return;
         }
-        // the shader's matrix is scale-only (cached per sub-image); the patch origin is a canvas translate
-        Shader shader = caches.shader(sub, p.tileX(), p.tileY(), sampling, p.tileKx(), p.tileKy());
+        float bias = nearest ? NEAREST_TIE_BIAS : 0;
         int saved = canvas.save();
         try {
+            // the shader's matrix is scale-only (cached per sub-image); the patch origin is a canvas translate
             canvas.translate(p.dx(), p.dy());
-            paint.setShader(shader);
-            canvas.drawRect(Rect.makeXYWH(0, 0, p.dw(), p.dh()), paint);
+            if (p.tiled()) {
+                paint.setShader(caches.shader(sub, p.tileX(), p.tileY(), sampling, bias, p.tileKx(), p.tileKy()));
+                canvas.drawRect(Rect.makeXYWH(0, 0, p.dw(), p.dh()), paint);
+            } else {
+                // a stretched nearest patch scales on the canvas, so one shader serves every element size
+                canvas.scale(p.dw() / p.sw(), p.dh() / p.sh());
+                paint.setShader(caches.shader(sub, false, false, sampling, bias, 1, 1));
+                canvas.drawRect(Rect.makeXYWH(0, 0, p.sw(), p.sh()), paint);
+            }
         } finally {
             paint.setShader(null);
             canvas.restoreToCount(saved);
@@ -175,7 +196,7 @@ public final class SpritePainter {
                              float ky, boolean nearest) {
     }
 
-    private record ShaderKey(boolean tileX, boolean tileY, SamplingMode sampling, float kx, float ky) {
+    private record ShaderKey(boolean tileX, boolean tileY, SamplingMode sampling, float bias, float kx, float ky) {
     }
 
     /**
@@ -222,11 +243,13 @@ public final class SpritePainter {
             return paint;
         }
 
-        Shader shader(Image sub, boolean tileX, boolean tileY, SamplingMode sampling, float kx, float ky) {
-            ShaderKey key = new ShaderKey(tileX, tileY, sampling, kx, ky);
+        /** {@code bias}: texels every sample lands further in (the nearest tie-break). */
+        Shader shader(Image sub, boolean tileX, boolean tileY, SamplingMode sampling, float bias, float kx, float ky) {
+            ShaderKey key = new ShaderKey(tileX, tileY, sampling, bias, kx, ky);
             return shaders.computeIfAbsent(sub, i -> new HashMap<>()).computeIfAbsent(key, k ->
                 sub.makeShader(tileX ? FilterTileMode.REPEAT : FilterTileMode.CLAMP,
-                    tileY ? FilterTileMode.REPEAT : FilterTileMode.CLAMP, sampling, Matrix33.makeScale(kx, ky)));
+                    tileY ? FilterTileMode.REPEAT : FilterTileMode.CLAMP, sampling,
+                    Matrix33.makeScale(kx, ky).makeConcat(Matrix33.makeTranslate(-bias, -bias))));
         }
     }
 }
