@@ -193,6 +193,17 @@ class FocusNavigationTest {
     }
 
     @Test
+    void aRecycleBatchMovesFocusOnceEvenWhenTheReplacementWasRecycledToo() {
+        try (InputRig r = new InputRig(grid())) {
+            r.router.focus().focus(r.el("b"), InputDevice.KEYBOARD);
+            // A backward shift (#326): b's item is now on e, e's on f; the pairs describe the rows
+            // before the refresh, so focus must stop at e instead of hopping on to f.
+            r.router.focus().recycled(List.of(r.el("b"), r.el("e")), List.of(r.el("e"), r.el("f")));
+            assertEquals("e", r.focusKey());
+        }
+    }
+
+    @Test
     void liveReloadKeepsFocusOnTheRebuiltElement() {
         OmuiArchive doc = grid();
         try (InputRig r = new InputRig(doc)) {

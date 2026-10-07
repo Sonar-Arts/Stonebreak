@@ -65,7 +65,7 @@ public final class UiBinder implements AutoCloseable {
     private final Map<UiElement, VarFeed> params = new IdentityHashMap<>();
     private final Map<UiElement, VarFeed> rowItems = new IdentityHashMap<>();
     private final Set<UiElement> spacers = Collections.newSetFromMap(new IdentityHashMap<>());
-    private java.util.function.BiConsumer<UiElement, UiElement> recycleListener = (a, b) -> { };
+    private RecycleListener recycleListener = (rows, replacements) -> { };
     private boolean closed;
 
     private UiBinder(UiDocumentInstance ui, UiScope scope, boolean ownsScope, UiConverters converters) {
@@ -346,13 +346,25 @@ public final class UiBinder implements AutoCloseable {
         return spacers.contains(el);
     }
 
+    /** Hears which rows a virtualized list's window refresh recycled (see {@link #onRecycled}). */
+    @FunctionalInterface
+    public interface RecycleListener {
+        /**
+         * One window refresh: {@code rows.get(i)} got another item or was dropped, and
+         * {@code replacements.get(i)} is the row now showing the item it showed, or {@code null}
+         * when that item is no longer realized. Every pair describes the rows as they were
+         * before the refresh, so a row can be both recycled and another's replacement (a scroll
+         * shifts every row's item along); apply the batch at once, never pair by pair.
+         */
+        void recycled(List<UiElement> rows, List<UiElement> replacements);
+    }
+
     /**
-     * Called with {@code (row, replacement)} when a virtualized list gives {@code row} another item
-     * or drops it while scrolling: {@code replacement} is the row now showing the item {@code row}
-     * showed, or {@code null} when that item is no longer realized. A view wires the input
-     * router's {@code FocusManager.recycled} here, so focus follows the item.
+     * Called once per window refresh in which a virtualized list gave rows other items or
+     * dropped them while scrolling. A view wires the input router's {@code FocusManager.recycled}
+     * here, so focus follows its item.
      */
-    public void onRecycled(java.util.function.BiConsumer<UiElement, UiElement> listener) {
+    public void onRecycled(RecycleListener listener) {
         this.recycleListener = Objects.requireNonNull(listener, "listener");
     }
 
@@ -385,11 +397,15 @@ public final class UiBinder implements AutoCloseable {
         };
     }
 
-    void recycledAway(UiElement row, UiElement replacement) {
+    void recycledAway(List<UiElement> rows, List<UiElement> replacements) {
+        if (rows.isEmpty()) {
+            return;
+        }
         try {
-            recycleListener.accept(row, replacement);
+            recycleListener.recycled(Collections.unmodifiableList(rows), Collections.unmodifiableList(replacements));
         } catch (RuntimeException e) {
-            report(UiRuntimeDiagnostic.warning(Code.ACTION_CALLBACK_FAILED, row.key(), "recycle listener: " + e));
+            report(UiRuntimeDiagnostic.warning(Code.ACTION_CALLBACK_FAILED, rows.getFirst().key(),
+                "recycle listener: " + e));
         }
     }
 

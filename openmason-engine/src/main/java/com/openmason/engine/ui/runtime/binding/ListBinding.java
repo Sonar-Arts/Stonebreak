@@ -30,13 +30,16 @@ import java.util.function.Consumer;
  *       its item through moves and updates, keeping its element state.</li>
  *   <li><b>Selection</b> is retained by identity across any change and cleared when its item
  *       goes; the selected row matches {@code :checked}.</li>
- *   <li><b>Virtualization.</b> With {@code itemHeight > 0} only the visible rows exist. Spacers
- *       keep the scroll extent at {@code items × itemHeight}; scrolling recycles rows by giving
- *       them other items, which rebinds their whole subtree. A recycled row drops its local
+ *   <li><b>Virtualization.</b> With {@code itemHeight > 0} only the visible rows exist, plus one
+ *       line of overscan on each side (so keyboard/controller navigation can step past the
+ *       view's edge, #326). Spacers keep the scroll extent at {@code items × itemHeight};
+ *       scrolling recycles rows by giving them other items, which rebinds their whole subtree.
+ *       A recycled row drops its local
  *       (edit-in-progress) values and its animation state (transitions, held clips and tweens,
  *       state machines: {@link com.openmason.engine.ui.runtime.UiDocumentInstance#recycled}),
  *       the code-behind of component instances inside starts over (the script runtime hears it
- *       as a {@code ScopeObserver}), and focus follows its item ({@link UiBinder#onRecycled}).</li>
+ *       as a {@code ScopeObserver}), and focus follows its item ({@link UiBinder#onRecycled},
+ *       told once per window refresh).</li>
  *   <li><b>Grid.</b> With {@code columns > 1} the view wraps its rows into a grid: each row is
  *       {@code 1/columns} of the width and the view lays out as a wrapping row. Virtualization
  *       then works by lines of {@code columns} items, {@code itemHeight} tall.</li>
@@ -132,7 +135,7 @@ public final class ListBinding {
         return view.prop("columns") instanceof UiValue.Num n && n.value() >= 1 ? (int) n.value() : 1;
     }
 
-    /** Index of the first item a row shows (0 unless virtualized and scrolled). */
+    /** Index of the first item a row shows, overscan included (0 unless virtualized and scrolled). */
     public int firstVisibleIndex() {
         return isVirtualized() ? first : 0;
     }
@@ -379,8 +382,11 @@ public final class ListBinding {
         float viewPx = view.rect().height();
         int n = items.size();
         int lines = (n + cols - 1) / cols;
-        int visibleLines = viewPx > 0 ? (int) Math.ceil(viewPx / linePx) + 1 : UNLAID_WINDOW;
-        int firstLine = Math.clamp((int) Math.floor(view.scrollY() / linePx), 0, Math.max(0, lines - visibleLines));
+        // One line of overscan on each side of the view: directional navigation only moves between
+        // existing rows, so the line past either edge must exist for focus to step onto it (which
+        // scrolls it in, and the next window recycles the rows with focus following its item).
+        int visibleLines = viewPx > 0 ? (int) Math.ceil(viewPx / linePx) + 2 : UNLAID_WINDOW;
+        int firstLine = Math.clamp((int) Math.floor(view.scrollY() / linePx) - 1, 0, Math.max(0, lines - visibleLines));
         int firstNow = firstLine * cols;
         int slots = Math.min(visibleLines * cols, n - firstNow);
         if (!force && firstNow == first && slots == rows.size()) {
@@ -404,12 +410,21 @@ public final class ListBinding {
         while (rows.size() > slots) {
             gone.add(rows.removeLast());
         }
-        // Focus follows its item to the row now showing it, or moves on when it scrolled away.
+        // Focus follows its item to the row now showing it, or moves on when it scrolled away. One
+        // batch: told pair by pair, focus would hop along a backward shift (row i's item is now on
+        // row i + cols, whose own item is on row i + 2·cols, ...) to the end of the window.
+        List<UiElement> recycledRows = new ArrayList<>(moved.size() + gone.size());
+        List<UiElement> replacements = new ArrayList<>(moved.size() + gone.size());
         for (int i = 0; i < moved.size(); i++) {
-            binder.recycledAway(moved.get(i).el, rowShowing(previous.get(i)));
+            recycledRows.add(moved.get(i).el);
+            replacements.add(rowShowing(previous.get(i)));
         }
         for (Row r : gone) {
-            binder.recycledAway(r.el, rowShowing(r.id));
+            recycledRows.add(r.el);
+            replacements.add(rowShowing(r.id));
+        }
+        binder.recycledAway(recycledRows, replacements);
+        for (Row r : gone) {
             dropRow(r);
         }
         double h = itemHeight();

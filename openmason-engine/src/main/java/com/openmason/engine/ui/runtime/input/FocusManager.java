@@ -573,13 +573,30 @@ public final class FocusManager {
      * removed.
      */
     public void recycled(UiElement element, UiElement replacement) {
-        if (focused == null || !InputTraits.isInside(focused, element)) {
+        recycled(List.of(element), Collections.singletonList(replacement));
+    }
+
+    /**
+     * One window refresh of a virtualized container: {@code elements.get(i)} was reused, its item
+     * now shown by {@code replacements.get(i)} (or by nothing). Every pair describes the rows
+     * before the refresh, so focus moves at most once: a row that took focus over from another
+     * may itself appear as recycled in the same batch, and following that pair too would carry
+     * focus on to a third item.
+     */
+    public void recycled(List<UiElement> elements, List<UiElement> replacements) {
+        if (focused == null) {
             return;
         }
-        if (replacement != null && InputTraits.canFocus(replacement) && inActiveScope(replacement)) {
-            set(replacement, InputDevice.PROGRAM);
-        } else {
-            lose();
+        for (int i = 0; i < elements.size(); i++) {
+            if (InputTraits.isInside(focused, elements.get(i))) {
+                UiElement replacement = replacements.get(i);
+                if (replacement != null && InputTraits.canFocus(replacement) && inActiveScope(replacement)) {
+                    set(replacement, InputDevice.PROGRAM);
+                } else {
+                    lose();
+                }
+                return;
+            }
         }
     }
 

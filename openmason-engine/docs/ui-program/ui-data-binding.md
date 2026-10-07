@@ -268,7 +268,9 @@ items with `prop:items`.
   items lose their rows.
 - **Selection** is kept by identity across every change and cleared when its item goes. The selected row matches
   `:checked`, and `onSelectionChanged` reports changes.
-- **Virtualization.** Only visible rows exist (view height ÷ item height + 1). Two spacers keep the scroll extent at
+- **Virtualization.** Only visible rows exist, plus one line of overscan beyond each edge (view height ÷ item height
+  + 2 lines; the window starts a line above the view), so keyboard/controller navigation can step past either edge
+  and the list scrolls a line at a time (#326). Two spacers keep the scroll extent at
   `items × itemHeight`. Scrolling **recycles** rows: their item feed is swapped, which rebinds the whole row subtree
   without new elements or leaked listeners. A recycled row starts clean: the local (script / edit-in-progress)
   values of its subtree belonged to its old item and are dropped (the list's own row sizing stays), `:invalid`
@@ -276,8 +278,9 @@ items with `prop:items`.
   transitions go, a clip or tween left animating nothing is interrupted (listener sees `stopped`), state machines of
   component instances in the row restart in their initial state, their code-behind closes and starts over in a
   fresh environment ([ui-scripting.md](ui-scripting.md) §3), and the new item's look settles without a
-  transition from the old one. `UiBinder.onRecycled((row, replacement) -> ...)` reports each recycle with the row now showing the old item
-  (or null when it scrolled out); `UiDocumentView.bind` wires it to `FocusManager.recycled`, so **focus follows the
+  transition from the old one. `UiBinder.onRecycled((rows, replacements) -> ...)` reports each window refresh as one batch:
+  every recycled row with the row now showing its old item (or null when it scrolled out), all as they were before the
+  refresh; `UiDocumentView.bind` wires it to `FocusManager.recycled`, so **focus follows the
   item**, never the recycled element.
 - **Grid** (`columns > 1`, for inventories and hotbars). The view lays out as a wrapping row (`flex-direction: row`,
   `flex-wrap: wrap`, set on its local layer) and every row is `100% / columns` wide. Spacing between cells belongs

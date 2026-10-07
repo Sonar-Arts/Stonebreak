@@ -160,7 +160,9 @@ Caps/Num Lock are ignored. `UiActionMap.toWire`/`fromWire` round-trip remaps thr
      missing or unfocusable target reports `NAV_TARGET_MISSING` and falls back to the search.
   2. The spatial search (`SpatialNavigator`). A candidate qualifies when its near edge is past the current centre
      and its far edge past the current far edge. Its score is the gap along the direction plus twice the gap across
-     it (0 when "in the beam"); the lowest score wins; ties go to tree order.
+     it (0 when "in the beam"); the lowest score wins; ties go to the candidate whose centre is closest across the
+     direction (grid cells whose edges merely touch are all "in the beam", so this keeps the column, #326), then to
+     tree order.
   3. Elements inside the nearest `focusScope: group` are tried first.
 - **No wrap-around** for directions. With nothing focused, any navigation focuses the scope's `autofocus` element,
   else its first in tab order.
@@ -178,9 +180,13 @@ opened scope):
 2. Focus indication is kept, so a controller player is never left without a focus.
 3. Focus clears only when nothing in the scope can take it.
 
-**Virtualized items**: a container that recycles an element for another item calls
-`FocusManager.recycled(element, replacement)`. Focus follows the *item* to `replacement` (the element now showing
-it), or, when the item is no longer realized, moves as if the element were removed.
+**Virtualized items**: a container that recycles elements for other items calls
+`FocusManager.recycled(elements, replacements)` once per refresh (`recycled(element, replacement)` for a single
+one). Focus follows the *item* to its replacement (the element now showing it), or, when the item is no longer
+realized, moves as if the element were removed. Focus moves at most once per batch: every pair describes the rows
+before the refresh, and a backward scroll makes a replacement a recycled row too, so following pairs one by one would
+carry focus to the end of the window. A virtualized ListView keeps one line of overscan beyond each edge of its
+view, so directional navigation steps onto it, scrolls it in and walks the whole list (#326).
 
 **Live reload**: focus moves to the rebuilt twin with the same key, which carries `:focus`.
 
@@ -457,7 +463,8 @@ A reader that predates them refuses the document instead of dropping focus order
 | --- | --- |
 | `EventDispatchTest` | phases and order, non-bubbling, stop/immediate/prevent, throwing handlers, handlers added or elements removed mid-dispatch |
 | `PointerRoutingTest` | enter/leave chains, consumption, disabled blocking, hidden/collapsed/ignore pass-through, clip and scroll hit regions, nested wheel scrolling, scrollbar drag, capture, off-canvas input, click counts, local coordinates through scroll + translate |
-| `FocusNavigationTest` | tab order and `tabIndex`, spatial and explicit navigation, groups, focus-visible, submit, focus loss on disable/collapse/hide/remove, recycle, live reload, scroll-into-view, focusable defaults |
+| `FocusNavigationTest` | tab order and `tabIndex`, spatial and explicit navigation, groups, focus-visible, submit, focus loss on disable/collapse/hide/remove, recycle, live reload, scroll-into-view, focusable defaults, recycle batches move focus once |
+| `GridNavigationTest` | #326: arrows walk a 200-item virtualized 9-column grid past the window up and down in one column (one line of scroll per press, focus on the slot showing its item, still focus-visible) and left/right on a scrolled line without wrap; a plain grid keeps its column between touching cells |
 | `ModalPopupTest` | modal trapping, blocking and restoration (nested, removed), cancel bubbling, popup outside-press/Escape/anchor dismissal, prevent, show again, focus loss, popups above modals |
 | `KeyRoutingTest` | fall-through, release/repeat pairing, stale keys across a screen switch, navigation repeats and confirm does not (keyboard and controller), a modal prompt outranks a command window and consumes every key (the Focus battle precedence fixtures), handler precedence, remapping, focus-loss forgetting |
 | `DragDropTest` | drop, wiggle-is-click, reject, every cancellation (exactly one end, no stale drop, no item lost), Escape consumption, enter/leave, controller-started drags |

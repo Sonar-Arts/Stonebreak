@@ -152,18 +152,18 @@ class ListBindingTest {
             ui.update();
             b.sync();
             ui.update();
-            assertEquals(6, list.rows().size(), "100 px view / 20 px rows + 1");
+            assertEquals(7, list.rows().size(), "100 px view / 20 px rows + a line of overscan each side");
             assertEquals(1900, ui.find("list").maxScrollY(), 0.5, "spacers keep the full extent");
             List<UiElement> before = list.rows();
             int listeners = b.localListenerCount();
             int elements = ui.elements().size();
 
-            ui.find("list").scrollTo(0, 400);
+            ui.find("list").scrollTo(0, 420); // line 21 at the top: the window starts a line above
             ui.update();
             assertEquals(20, list.firstVisibleIndex());
             assertEquals(before, list.rows(), "the same row elements, recycled");
             assertEquals("item20", label(list.rows().getFirst()).text("text"));
-            assertEquals("item25", label(list.rows().getLast()).text("text"));
+            assertEquals("item26", label(list.rows().getLast()).text("text"));
             assertEquals(listeners, b.localListenerCount(), "recycling rebinds without leaking listeners");
             assertEquals(elements, ui.elements().size());
 
@@ -171,7 +171,7 @@ class ListBindingTest {
             ui.find("list").scrollTo(0, 0);
             ui.update();
             assertTrue(list.rows().stream().noneMatch(r -> r.hasState("checked")), "item 21 is off screen");
-            ui.find("list").scrollTo(0, 400);
+            ui.find("list").scrollTo(0, 420); // line 21 at the top: the window starts a line above
             assertTrue(list.rows().get(1).hasState("checked"), "selection follows the item, not the recycled row");
 
             inv.update(slot("s20", "renamed", 20));

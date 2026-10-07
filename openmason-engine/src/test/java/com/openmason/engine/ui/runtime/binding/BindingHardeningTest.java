@@ -167,9 +167,9 @@ class BindingHardeningTest {
             l.rows().getFirst().remove();
             ui.find("list").scrollTo(0, 200);
             assertDoesNotThrow(() -> frame(ui, b));
-            assertEquals(10, l.firstVisibleIndex());
+            assertEquals(9, l.firstVisibleIndex(), "a line of overscan above the view");
             assertTrue(l.rows().stream().noneMatch(UiElement::isRemoved));
-            assertEquals("item10", BindingRig.label(l.rows().getFirst()).text("text"));
+            assertEquals("item9", BindingRig.label(l.rows().getFirst()).text("text"));
         }
     }
 
@@ -185,7 +185,11 @@ class BindingHardeningTest {
         UiDocumentInstance ui = layout(list(100, 20, 1));
         try (UiBinder b = UiBinder.open(ui, host, UiConverters.NONE)) {
             List<UiElement[]> recycled = new ArrayList<>();
-            b.onRecycled((row, replacement) -> recycled.add(new UiElement[] {row, replacement}));
+            b.onRecycled((rows, replacements) -> {
+                for (int i = 0; i < rows.size(); i++) {
+                    recycled.add(new UiElement[] {rows.get(i), replacements.get(i)});
+                }
+            });
             frame(ui, b);
             ListBinding l = b.list("list");
             UiElement first = l.rows().getFirst();
@@ -193,7 +197,7 @@ class BindingHardeningTest {
             first.setStyle("background-color", UiValue.of("#ff0000")); // a script highlighted item0
             first.addClass("picked");
 
-            ui.find("list").scrollTo(0, 20); // one row down: item1 is now shown by the first row
+            ui.find("list").scrollTo(0, 40); // past the overscan line: item1 is now shown by the first row
             frame(ui, b);
             assertEquals("item1", BindingRig.label(first).text("text"));
             assertNull(first.localStyle("background-color"), "the highlight belonged to item0");
@@ -294,7 +298,7 @@ class BindingHardeningTest {
             ui.resolveStyles();
             assertEquals(UiValue.of(10.0), first.animatedStyle("translate-x"), "a finished tween holds its value");
 
-            ui.find("list").scrollTo(0, 20); // the first row now shows item1 (rare)
+            ui.find("list").scrollTo(0, 40); // the first row now shows item1 (rare)
             frame(ui, b);
             assertEquals("item1", name.text("text"));
             assertEquals(List.of("stopped"), tween, "the tween on item0's label was interrupted");
@@ -329,7 +333,7 @@ class BindingHardeningTest {
             ui.resolveStyles();
             assertEquals(0.3, num(frameEl, "opacity"), 1e-6);
 
-            ui.find("list").scrollTo(0, 20);
+            ui.find("list").scrollTo(0, 40);
             frame(ui, b);
             assertEquals("idle", ui.stateMachines().state(cardEl.key(), "look"), "item1 was never picked");
             assertNull(frameEl.animatedStyle("opacity"));
@@ -351,7 +355,7 @@ class BindingHardeningTest {
             frame(ui, b);
             ListBinding l = b.list("list");
             assertEquals(9, l.columns());
-            assertEquals(6 * 9, l.rows().size(), "(100 px / 20 px + 1) lines of 9");
+            assertEquals(7 * 9, l.rows().size(), "(100 px / 20 px + 2 overscan) lines of 9");
             assertEquals(10 * 20 - 100, ui.find("list").maxScrollY(), 0.5, "10 lines of 20 px");
             UiElement a = l.rows().get(0);
             UiElement b1 = l.rows().get(1);
@@ -363,13 +367,13 @@ class BindingHardeningTest {
 
             ui.find("list").scrollTo(0, 60);
             frame(ui, b);
-            assertEquals(27, l.firstVisibleIndex(), "three lines down");
-            assertEquals("item27", BindingRig.label(l.rows().getFirst()).text("text"));
-            assertEquals(6 * 9, l.rows().size());
+            assertEquals(18, l.firstVisibleIndex(), "three lines down, less a line of overscan");
+            assertEquals("item18", BindingRig.label(l.rows().getFirst()).text("text"));
+            assertEquals(7 * 9, l.rows().size());
 
             ui.find("list").scrollTo(0, 100); // the end
             frame(ui, b);
-            assertEquals(36, l.firstVisibleIndex(), "the window is clamped so its 6 lines end at the last line");
+            assertEquals(27, l.firstVisibleIndex(), "the window is clamped so its 7 lines end at the last line");
             assertEquals("item89", BindingRig.label(l.rows().getLast()).text("text"));
         }
     }

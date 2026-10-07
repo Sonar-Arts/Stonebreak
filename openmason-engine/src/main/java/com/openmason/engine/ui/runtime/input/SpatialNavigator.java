@@ -13,7 +13,8 @@ import java.util.List;
  * (so a wider element stacked above is not "to the right"). Its
  * score is the gap along the direction plus twice the gap across it, where an element that
  * overlaps the current one across the direction (it is "in the beam") has no cross gap. The
- * lowest score wins; ties go to the earlier element in tree order. There is no wrap-around:
+ * lowest score wins; ties go to the candidate whose centre is closest across the direction, then
+ * to the earlier element in tree order. There is no wrap-around:
  * at an edge, focus stays.
  */
 public final class SpatialNavigator {
@@ -26,17 +27,35 @@ public final class SpatialNavigator {
         UiRect f = from.rect();
         UiElement best = null;
         float bestScore = Float.MAX_VALUE;
+        float bestOffset = Float.MAX_VALUE;
         for (UiElement c : candidates) {
             if (c == from) {
                 continue;
             }
             float score = score(f, c.rect(), direction);
-            if (score < bestScore) {
+            if (score == Float.MAX_VALUE) {
+                continue;
+            }
+            float offset = centreOffset(f, c.rect(), direction);
+            if (score < bestScore || score == bestScore && offset < bestOffset) {
                 bestScore = score;
+                bestOffset = offset;
                 best = c;
             }
         }
         return best;
+    }
+
+    /**
+     * Distance between the centres across the direction: breaks ties between candidates that are
+     * all "in the beam", such as grid cells whose edges merely touch the current one's, so focus
+     * keeps its column (row) instead of drifting to the earliest neighbour in tree order.
+     */
+    static float centreOffset(UiRect f, UiRect r, UiAction direction) {
+        return switch (direction) {
+            case NAVIGATE_UP, NAVIGATE_DOWN -> Math.abs((r.x() + r.right()) - (f.x() + f.right())) / 2f;
+            default -> Math.abs((r.y() + r.bottom()) - (f.y() + f.bottom())) / 2f;
+        };
     }
 
     /** {@link Float#MAX_VALUE} when {@code r} is not in {@code direction} from {@code f}. */
