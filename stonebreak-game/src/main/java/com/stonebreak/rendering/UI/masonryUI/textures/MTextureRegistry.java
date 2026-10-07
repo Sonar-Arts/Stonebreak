@@ -39,6 +39,10 @@ public final class MTextureRegistry {
      * water bucket render with the correct OMT independently. Pass
      * {@code null} (or a state name the item doesn't declare) to fall back
      * to the default-state texture.
+     *
+     * <p>This is the one image every item slot draws for an SBO item, with its
+     * alpha (#330): hotbar, legacy screens via {@code ItemIconRenderer}, and the
+     * {@code stonebreak:item-icon} document provider.
      */
     public static MTexture getForSboItem(com.stonebreak.items.ItemType itemType, String state) {
         if (itemType == null) return null;

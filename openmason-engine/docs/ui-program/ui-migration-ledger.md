@@ -106,6 +106,20 @@ These apply to every row unless the row says otherwise.
 - `ui/startupIntro/tween/*` (EasingType, EasingFunctions, TweenEngine) lives inside a screen package.
 - It is also used by MainMenuStage, `masonryUI` (MBanner, MGauge, MPipRow, MPromptStrip, MResultCard), focusBattle and the battle camera.
 
+**Item sprites in slots (decided, #330)**
+- An SBO item sprite in any slot (hotbar, inventory, workbench, furnace, recipe book, dragged item, document
+  `ItemSlot`/`ItemIcon`) is drawn **with its alpha**, from the one shared image `MTextureRegistry.getForSboItem(type, state)`
+  (straight alpha, composited by `OmtCompositor`). The slot shows through transparent pixels.
+- Until #330 the legacy screens drew it through `ItemIconRenderer`'s own copy flagged `ColorAlphaType.OPAQUE`, so
+  transparent pixels came out black. That was a porting accident, not a design: the NanoVG version uploaded the sprite with
+  `nvgCreateImageRGBA` (alpha), and the Skia port (3da7c4a8) switched it to OPAQUE. #330 points `ItemIconRenderer` at the
+  shared image, so the legacy screens already follow the rule.
+- Gates (#298 furnace, #300 inventory/hotbar): SBO sprite rects are compared like any other pixel, legacy vs document, since
+  both draw the same image. Do not copy the opaque look. 3D block icons are still GL (Hard visuals #2) and stay out of the
+  CPU-raster baselines.
+- Pinned by `rendering/UI/menus/ItemSlotSpriteAlphaTest` (legacy path draws the hotbar's image; it is never OPAQUE; every
+  transparent pixel shows the backdrop).
+
 **Focus battle clocks**
 - **C1** is real battle time: dt clamped to 1/15 s in `FocusBattle.step` (`battle/stage/FocusBattle.java:51,442`). It drives the swirl, camera and `screen.update(dt)` (:446, 458, 463).
 - **C2** is simulated time: `sim.update(dt*camera.timeScale())` (:456-457). Slow-motion beats run at 0.4–0.5×.
@@ -207,7 +221,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 
    All three orbit on `getTotalTimeElapsed()*0.6` and restore GL state only partially.
 2. **3D block icons in item slots** (`rendering/UI/menus/BlockIconRenderer.java:141-405`): per-slot viewport, scissor and depth clear in the shared world depth buffer, the world shader, and hard-coded blending for leaves. They interleave with Skija in three phases (Skija → GL → Skija for counts) in the hotbar, inventory, workbench, furnace and recipe book.
-3. **SBO sprite icons via `SpriteVoxelizer`** and SBT/OMT composited images. These are two different item-icon paths: the hotbar uses MTextureRegistry, the screens use an OPAQUE ItemIconRenderer image.
+3. **SBO sprite icons** and SBT/OMT composited images. Since #330 every slot draws the same `MTextureRegistry` image with alpha (see Cross-cutting facts, "Item sprites in slots"); before that the screens used an OPAQUE `ItemIconRenderer` copy built by `SpriteVoxelizer`.
 4. **Battle timed-input overlays** (ring, parry brackets, combo timer, cast-bar window). What the player sees is exactly what is graded on the C2 clock. **Never interpolate or extrapolate them from a render clock.**
 5. **Battle HUD events are consumed per tick by identity** (`FocusBattleScreen.java:205-210`, `timed/TimedInputState.java:132-140`). Decoupling HUD updates from `sim.update` 1:1 silently drops floaters, flashes, shakes and the end-of-battle hold.
 6. **Encounter swirl**: a synchronous back-buffer `glReadPixels` freeze-frame plus a runtime SkSL shader (10 taps per pixel, compiled on its first paint), handing off white-to-white to the name card. See `ui/focusBattle/intro/*`.
@@ -644,7 +658,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Right click drops one; right-drag distributes one per slot.
   - Middle click balances the grid or sorts.
   - Scroll swallowed (IH:159-162). Q and T blocked. No number-key swap.
-- **Assets:** font; item icons via `block-icon-renderer` and `item-icon-renderer`.
+- **Assets:** font; item icons via `block-icon-renderer` and `item-icon-renderer` (SBO sprites with alpha, #330).
 - **Bindings:** `Inventory`; `CharacterStats` (the left equipment/status/resistance column is placeholder).
 - **Actions:** client-side `CraftingManager` craft / craftAll; sort; overflow `DropUtil.dropItemFromPlayer` → `sendDropItem(id,count)` (item state lost).
 - **Layout:** `calculateThreeColumnLayout`: 180/10/centre/10/180 columns × uiScale.
@@ -711,9 +725,10 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Time:** `System.nanoTime` since a static `ANIM_EPOCH` (renderer :40,448-450). Since #296: `LegacyUiClock.seconds()`
   (pinnable).
 - **Fixtures:** `FurnaceLayoutTest`, `PacketRoundTripTest`, `BlockLightSourceTest`. `ui/fidelity/LegacyFurnaceBaselineTest`
-  (#296): pixel baselines with empty slots (item icons are GL, hard visual 2), lit vs unlit isolation, pinned-clock
+  (#296): pixel baselines with empty slots (block icons are GL, hard visual 2), lit vs unlit isolation, pinned-clock
   repeatability, renderer rects = the geometry oracle. Legacy capture for the #298 gate:
-  `ui.furnace.core.LegacyFurnaceCapture` (variants `unlit`, `lit`, `lit-hover-<slot>`).
+  `ui.furnace.core.LegacyFurnaceCapture` (variants `unlit`, `lit`, `lit-hover-<slot>`). SBO item sprites in slots follow
+  the #330 rule (alpha, shared image): compare them, do not exclude them or reproduce the old black fill.
 - **Fidelity:** `furnace/furnace-unlit_1920x1080_s1` `furnace/furnace-unlit_1280x720_s0_75` `furnace/furnace-unlit_3840x2160_s2` `furnace/furnace-unlit_1921x1081_s1_25` `furnace/furnace-unlit_800x600_s2` `furnace/furnace-lit_1920x1080_s1` `furnace/furnace-lit_1280x720_s0_75` `furnace/furnace-lit_3840x2160_s2` `furnace/furnace-lit_1921x1081_s1_25` `furnace/furnace-lit-hover-main0_1920x1080_s1`
 - **Performance:** per frame about 40 `new MItemSlot`, Paint/Path objects and `encodeSlots` string building.
 - **Notes:**
@@ -783,7 +798,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Number keys 1–9, polled while held, PLAYING only (`input/HotbarSelector.java:20-26`).
   - Scroll in PLAYING (IH:143-178): **wheel up = next slot**.
   - `HotbarSelector` keeps its own index, never synced from `Inventory`.
-- **Assets:** font; SBO item icons via `MTextureRegistry.getForSboItem` (state-aware, `hotbar/HotbarSlotRenderer.java:65-87`); blocks via `block-icon-renderer`; other legacy items via ItemIconRenderer or a purple swatch.
+- **Assets:** font; SBO item icons via `MTextureRegistry.getForSboItem` (state-aware, `hotbar/HotbarSlotRenderer.java:65-87`), the #330 slot-sprite rule; blocks via `block-icon-renderer`; other legacy items via ItemIconRenderer or a purple swatch.
 - **Bindings:** `Inventory.getHotbarSlots()` and the selected index.
 - **Layout:** `ui/hotbar/core/HotbarLayoutCalculator.java:59-88`: centred, `y = sh − bgH − 50·s`, slots 40/5 × uiScale.
 - **Draw:**
@@ -1209,7 +1224,8 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Kind:** custom-renderer.
 - **Owner:** `com.stonebreak.rendering.UI.menus.ItemIconRenderer` (Skija), built in `UIRenderer.initializeSkijaRenderers`.
 - **Draw:**
-  - SBO items: `SpriteVoxelizer` raster, cached per item and state, created as `ColorAlphaType.OPAQUE` (:211).
+  - SBO items: the shared `MTextureRegistry.getForSboItem` image (state-aware), drawn with alpha (#330). It used to be a
+    private `SpriteVoxelizer` raster created as `ColorAlphaType.OPAQUE`, which painted transparent pixels black.
   - Block items: the top face read back from the texture array.
   - Fallback swatches: green or purple.
   - **Each call opens its own Skija frame** (:86-98), so outside an outer frame that is a full flush per icon.
@@ -1294,6 +1310,7 @@ Run from `stonebreak-game/src/main/java/com/stonebreak/` unless noted (zsh: quot
 | Escape is dead in STATISTICS and GLOSSARY (not polled); glossary hover never fires; character-creation keyboard dead; level-triggered keys in the main menu, settings and multiplayer; Esc cascade Host/Join → main menu; Esc-closes-chat-also-pauses (inferred). Existing behaviour must be recorded and preserved or consciously changed. | #288 |
 | Double-polled input (workbench and recipe book) and double `update` (inventory, workbench). The new router's event ordering is defined in [ui-input.md](ui-input.md) §2–3 (#288); each screen's legacy quirks are still recorded and preserved or consciously changed when it migrates. | #297–#301 |
 | Hit-test/render mismatches: chat tabs (unscaled 70 px vs 80·s); workbench pickup offset by slotPadding; invisible workbench buttons and tabs; inventory side-column drop; scrolled-out buttons in character tabs and settings. | #300, #299, #301 |
+| ~~Item sprites opaque in screens, alpha in the hotbar~~ **Decided (#330):** alpha everywhere from the shared `MTextureRegistry` image; the legacy `ItemIconRenderer` now follows it, so gates compare sprite rects normally. | #298, #300 |
 | Item-loss bugs (furnace close while dragging, furnace shift-click into full inventory, workbench cursor stack on quit); server accepts furnace snapshots without conservation. File as separate bugs; migration must not "fix" them silently. | #298, #300 (+ new Mortar bugs) |
 | Mixed scaling: hearts, gauges, crosshair, stealth HUD, world markers, F3, emoji picker, recipe book, character creation, terrain mapper, loading and multiplayer ignore uiScale; no DPI awareness. Define layout units. | #287 |
 | Clock zoo: `nanoTime` epoch (furnace), `currentTimeMillis` (chat fade, GIF, carets, splash, world-select card), `getTotalTimeElapsed` (previews, sparkles), render-path dt (damage numbers, overlays), fixed 1/60 (settings scroll), frame dt. Define a UI time source. **#296:** the presentation wall-clock reads (furnace, chat fade, GIF, carets, splash pulse and pick) go through the pinnable `ui.LegacyUiClock`; the dt-driven ones (`getTotalTimeElapsed`, render-path dt) and input/safety timing (double-click, search debounce, world-select card delays, UI-scale auto-revert) do not. Documents use #295 `UiClocks`. | #295, #296 |

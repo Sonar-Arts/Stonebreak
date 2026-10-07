@@ -4,6 +4,8 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
+import com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry;
+import com.openmason.engine.ui.masonry.textures.MTexture;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.rendering.textures.BlockTextureArray;
@@ -15,14 +17,13 @@ import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.types.Rect;
 
-import java.awt.image.BufferedImage;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
  * Skija-based renderer for item icons in the UI layer.
  *
- * Draws atlas-sliced 2D item icons and SBO-backed item sprites using Skija
+ * Draws block top-face icons and SBO-backed item sprites using Skija
  * {@link Canvas} calls. Replaces the old NanoVG version that relied on
  * {@code nvgImagePattern} for UV mapping.
  *
@@ -32,20 +33,7 @@ import java.util.Map;
  */
 public class ItemIconRenderer {
 
-    /**
-     * Cache key for an SBO item icon: an item type plus optional state name
-     * so each state caches its own composited Skija image (e.g. empty vs
-     * water bucket icons render independently).
-     */
-    private record SboIconKey(ItemType itemType, String state) {
-        static SboIconKey of(ItemType type, String state) {
-            return new SboIconKey(type, (state == null || state.isBlank()) ? null : state);
-        }
-    }
-
     private final SkijaUIBackend skijaBackend;
-    private final Map<SboIconKey, Image> sboItemImageCache = new HashMap<>();
-    private final Map<SboIconKey, Boolean> sboItemLoadFailed = new HashMap<>();
     /** Cached Skija images for block-texture-array layers, keyed by layer index. */
     private final Map<Integer, Image> blockLayerImageCache = new HashMap<>();
 
@@ -165,7 +153,7 @@ public class ItemIconRenderer {
     // ===== SBO item rendering =====
 
     private void renderSboItemIcon(float x, float y, float w, float h, ItemType itemType, String state) {
-        Image img = getSboItemImage(itemType, state);
+        Image img = sboItemImage(itemType, state);
         if (img == null) return;
 
         int windowWidth = com.stonebreak.core.Game.getWindowWidth();
@@ -177,46 +165,15 @@ public class ItemIconRenderer {
     }
 
     /**
-     * Loads or retrieves a cached Skija {@link Image} for an SBO-backed item.
-     * Converts the BufferedImage from SpriteVoxelizer into an RGBA raster.
+     * The sprite every item slot draws for an SBO item (#330): the shared
+     * {@link MTextureRegistry} image, with straight alpha, as the hotbar and the
+     * {@code stonebreak:item-icon} document provider draw it. This renderer used to
+     * build its own copy flagged {@code OPAQUE}, which filled the transparent pixels
+     * with black in the inventory, workbench, furnace and recipe book.
      */
-    private Image getSboItemImage(ItemType itemType, String state) {
-        SboIconKey key = SboIconKey.of(itemType, state);
-        if (sboItemLoadFailed.containsKey(key)) return null;
-
-        Image cached = sboItemImageCache.get(key);
-        if (cached != null) return cached;
-
-        BufferedImage img = SpriteVoxelizer.loadSpriteFromSboItem(itemType, state);
-        if (img == null) {
-            sboItemLoadFailed.put(key, Boolean.TRUE);
-            return null;
-        }
-
-        try {
-            int imgW = img.getWidth();
-            int imgH = img.getHeight();
-            int[] argb = new int[imgW * imgH];
-            img.getRGB(0, 0, imgW, imgH, argb, 0, imgW);
-
-            byte[] bytes = new byte[imgW * imgH * 4];
-            for (int i = 0, off = 0; i < argb.length; i++, off += 4) {
-                int px = argb[i];
-                bytes[off]     = (byte) (px         & 0xFF); // B (N32)
-                bytes[off + 1] = (byte) ((px >> 8)  & 0xFF); // G
-                bytes[off + 2] = (byte) ((px >> 16) & 0xFF); // R (N32)
-                bytes[off + 3] = (byte) ((px >> 24) & 0xFF); // A
-            }
-
-            ImageInfo info = ImageInfo.makeN32(imgW, imgH, ColorAlphaType.OPAQUE);
-            Image skijaImg = Image.makeRasterFromBytes(info, bytes, imgW * 4);
-            sboItemImageCache.put(key, skijaImg);
-            return skijaImg;
-        } catch (Exception e) {
-            System.err.println("ItemIconRenderer: Failed to create Skija image for SBO item " + itemType + ": " + e.getMessage());
-            sboItemLoadFailed.put(key, Boolean.TRUE);
-            return null;
-        }
+    static Image sboItemImage(ItemType itemType, String state) {
+        MTexture tex = MTextureRegistry.getForSboItem(itemType, state);
+        return tex == null ? null : tex.image();
     }
 
     /**
