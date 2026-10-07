@@ -13,12 +13,16 @@ import java.util.List;
  *   <li>1.2 - Added the optional scene reference (active .omsc + which centre tab was
  *       last active). Absent in 1.0/1.1 files, which is exactly how an upgrading user is
  *       recognised: no node means "Model Editor", so nothing changes for them.</li>
+ *   <li>1.3 - Added the optional UI Editor node (workspace in front, open UI documents, active one).</li>
+ *   <li>1.4 - The UI Editor node also records whether the UI tab was popped out into its own
+ *       window ({@code detached}, the list of popped-out tabs) and the editor's canvas settings ({@code settings}); both
+ *       optional, absent = docked, defaults.</li>
  * </ul>
  */
 public final class OMPFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.3";
+    public static final String FORMAT_VERSION = "1.4";
 
     /** File extension for OMP files */
     public static final String FILE_EXTENSION = ".omp";
@@ -273,13 +277,26 @@ public final class OMPFormat {
      * @param documents      project-relative paths of open, saved UI documents (absolute
      *                       when outside the project), in tab order
      * @param activeDocument the one in front, or null
+     * @param detached       workspaces popped out into their own windows ({@code MODELING}/{@code UI});
+     *                       never all of them, the main window keeps one (v1.4)
+     * @param settings       the editor's canvas settings (overlays, snapping, renderer), owned and
+     *                       interpreted by the UI Editor; sorted, never null (v1.4)
      */
-    public record UiEditorReference(String workspace, List<String> documents, String activeDocument) {
+    public record UiEditorReference(String workspace, List<String> documents, String activeDocument,
+                                    List<String> detached, java.util.Map<String, String> settings) {
         public UiEditorReference {
             if (workspace == null || workspace.isBlank()) {
                 workspace = "MODELING";
             }
             documents = documents == null ? List.of() : List.copyOf(documents);
+            detached = detached == null ? List.of() : List.copyOf(detached);
+            settings = settings == null ? java.util.Map.of()
+                    : java.util.Collections.unmodifiableMap(new java.util.TreeMap<>(settings));
+        }
+
+        /** A pre-1.4 node: docked, default settings. */
+        public UiEditorReference(String workspace, List<String> documents, String activeDocument) {
+            this(workspace, documents, activeDocument, null, null);
         }
     }
 }

@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** The .omp 1.3 UI Editor node (#293): round trip, and older projects untouched. */
+/** The .omp UI Editor node (#293; 1.4 adds detached + settings): round trip, and older projects untouched. */
 class OMPUiEditorReferenceTest {
 
     @TempDir
@@ -47,6 +47,31 @@ class OMPUiEditorReferenceTest {
         assertEquals(2, loaded.uiEditor().documents().size());
         assertEquals("UI/stonebreak/ui/screens/pause.omui", loaded.uiEditor().activeDocument());
         assertEquals("MODEL_EDITOR", loaded.scene().activeCenterTab(), "the scene node is unaffected");
+    }
+
+    @Test
+    void detachedTabsAndCanvasSettingsRoundTrip() throws Exception {
+        OMPFormat.Document loaded = roundTrip(doc(new OMPFormat.UiEditorReference("MODELING",
+                List.of("UI/a.omui"), "UI/a.omui", List.of("UI"), java.util.Map.of("snapGrid", "true", "gridStep", "16"))));
+        assertEquals(List.of("UI"), loaded.uiEditor().detached());
+        assertEquals("16", loaded.uiEditor().settings().get("gridStep"));
+        assertEquals("true", loaded.uiEditor().settings().get("snapGrid"));
+    }
+
+    @Test
+    void aVersion13NodeReadsAsDockedWithDefaultSettings() throws Exception {
+        Path file = tempDir.resolve("v13.omp");
+        Files.writeString(file, "{\"version\":\"1.3\",\"projectName\":\"P\",\"uiEditor\":"
+                + "{\"workspace\":\"UI\",\"documents\":[\"UI/a.omui\"]}}", StandardCharsets.UTF_8);
+        OMPFormat.UiEditorReference ui = new OMPDeserializer().load(file.toString()).uiEditor();
+        assertTrue(ui.detached().isEmpty());
+        assertTrue(ui.settings().isEmpty());
+        assertEquals(new OMPFormat.UiEditorReference("UI", List.of("UI/a.omui"), null), ui);
+        // a docked node with no settings writes neither key, so a 1.3 reader sees its old shape
+        Path again = tempDir.resolve("again13.omp");
+        assertTrue(new OMPSerializer().save(doc(ui), again.toString()));
+        String text = Files.readString(again);
+        assertFalse(text.contains("detached") || text.contains("settings"), text);
     }
 
     @Test

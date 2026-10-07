@@ -60,6 +60,9 @@ final class DesignerPanel {
         recovery.put(doc, slot);
     }
 
+    private final com.openmason.main.systems.layout.TabRightClickGuard tabRightClick =
+        new com.openmason.main.systems.layout.TabRightClickGuard();
+
     void render() {
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0, 0);
         boolean open = ImGui.begin(TITLE, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
@@ -104,6 +107,7 @@ final class DesignerPanel {
             forceTab = active;
         }
         ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 10, 5);
+        tabRightClick.begin(); // right-clicking a tab opens its menu without switching documents
         if (ImGui.beginTabBar("##uiDocTabs", ImGuiTabBarFlags.Reorderable | ImGuiTabBarFlags.FittingPolicyScroll
                 | ImGuiTabBarFlags.AutoSelectNewTabs)) {
             List<UiEditorDocument> toClose = new ArrayList<>();
@@ -120,6 +124,7 @@ final class DesignerPanel {
                         + (d.origin() == UiEditorDocument.Origin.SBUI_COPY ? "\nEditable copy of " + d.importedFrom()
                         .getFileName() : "") + "\n" + d.archive().manifest().documentId());
                 }
+                tabRightClick.openContextMenu("##tabctx" + System.identityHashCode(d));
                 if (ImGui.beginPopupContextItem("##tabctx" + System.identityHashCode(d))) {
                     if (ImGui.menuItem("Close")) {
                         toClose.add(d);
@@ -143,10 +148,12 @@ final class DesignerPanel {
                 }
             }
             ImGui.endTabBar();
+            tabRightClick.end();
             if (!toClose.isEmpty()) {
                 workspace.dialogs().close(toClose, null);
             }
         }
+        tabRightClick.end(); // no-op when already ended inside the bar
         ImGui.popStyleVar();
         forceTab = null;
         shownTab = ctx.service.active();

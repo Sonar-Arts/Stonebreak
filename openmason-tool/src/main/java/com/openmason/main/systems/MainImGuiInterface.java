@@ -391,12 +391,13 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      * Main render method - called every frame.
      */
     public void render() {
-        boolean uiWorkspace = workspaceState != null && workspaceState.isUi();
-        dockLayout.render(uiWorkspace ? null : toolbarRenderer::render);
+        dockLayout.render(toolbarRenderer::render);
+        dockLayout.renderDetached();
         menuBarCoordinator.render();
 
-        if (uiWorkspace) {
-            // The UI Editor workspace draws its own panels; Modeling's stay docked but hidden.
+        if (!isWorkspaceShown(com.openmason.main.systems.layout.Workspace.MODELING)) {
+            // Scene is neither the main window's front tab nor a visible window of its own: its
+            // panels stay docked but hidden (the UI workspace draws its own).
             aboutDialog.render();
             dockLayout.tickCenterTabFocus();
             if (fileMenuHandler != null && fileMenuHandler.getHomeScreenDialog() != null) {
@@ -1001,16 +1002,28 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      */
     private com.openmason.main.systems.layout.WorkspaceState workspaceState;
 
-    /** Installs the UI Editor workspace (#293): its dockspace, the menu bar tabs and the File menu group. */
+    /**
+     * Installs the UI workspace (#293): its dockspace behind the main window's {@code Scene | UI}
+     * tabs (or its own window when popped out), the Tools menu entry, and the project-level save
+     * hooks (Save Project saves UI documents too).
+     */
     public void setUiWorkspace(com.openmason.main.systems.layout.WorkspaceState state,
-                               MainDockLayout.WorkspaceDock dock,
+                               com.openmason.main.systems.layout.WorkspaceDock dock,
                                com.openmason.main.systems.menus.FileMenuHandler.UiMenuHooks hooks) {
         this.workspaceState = state;
         dockLayout.setUiWorkspace(state, dock);
-        menuBarCoordinator.setWorkspaceState(state);
+        toolsMenuHandler.setOpenUiEditorCallback(() -> state.set(com.openmason.main.systems.layout.Workspace.UI));
         if (fileMenuHandler != null) {
             fileMenuHandler.setUiHooks(hooks);
         }
+    }
+
+    /**
+     * Whether {@code ws}'s panels should draw this frame: it is the main window's front tab or a
+     * popped-out window showing its contents. Valid once this frame's {@link #render()} ran.
+     */
+    public boolean isWorkspaceShown(com.openmason.main.systems.layout.Workspace ws) {
+        return dockLayout.isShown(ws);
     }
 
     public com.openmason.main.systems.layout.WorkspaceState getWorkspaceState() {

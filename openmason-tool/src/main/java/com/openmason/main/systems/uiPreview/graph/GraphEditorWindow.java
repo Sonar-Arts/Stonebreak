@@ -162,6 +162,29 @@ public final class GraphEditorWindow {
         return st != null && st.editor.dirty();
     }
 
+    /**
+     * Applies unsaved graph edits to the host document, the way Save does but without choosing a
+     * file (a project save writes the document afterwards).
+     *
+     * @return null when applied or there was nothing to apply, else the reason
+     */
+    public String applyToDocument() {
+        if (!isDirty()) {
+            return null;
+        }
+        if (host == null) {
+            return "No preview document to save to";
+        }
+        String error = host.save(st.editor.document(), host.documentPath());
+        if (error == null) {
+            st.editor.markSaved();
+            st.status = "";
+        } else {
+            st.status = error;
+        }
+        return error;
+    }
+
     // ── frame ───────────────────────────────────────────────────────────────
 
     public void render() {

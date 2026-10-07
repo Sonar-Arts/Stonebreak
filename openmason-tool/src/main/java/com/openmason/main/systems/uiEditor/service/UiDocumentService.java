@@ -318,6 +318,25 @@ public final class UiDocumentService {
         return saveAs(doc, target, false);
     }
 
+    /**
+     * True when the editor's view of {@code doc} (the workspace stamp: zoom, pan, frame, selection,
+     * hidden/locked; plus the other editor stamps such as the Timeline's) differs from what its
+     * archive last recorded, so a project save should write it even though the source is clean.
+     */
+    public boolean editorStampsChanged(UiEditorDocument doc) {
+        Map<String, UiBytes> recorded = doc.archive().editor();
+        UiBytes ws = workspaceStamp.apply(doc);
+        if (ws != null && !ws.equals(recorded.get(OmuiFormat.EDITOR_DIR + "workspace.json"))) {
+            return true;
+        }
+        for (Map.Entry<String, UiBytes> e : editorStamps.apply(doc).entrySet()) {
+            if (!java.util.Objects.equals(e.getValue(), recorded.get(e.getKey()))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** True when {@code target} is {@code doc}'s own file and its bytes differ from what the editor last saw. */
     public boolean changedOnDisk(UiEditorDocument doc, Path target) {
         if (doc.file() == null || doc.diskStamp() == null || !Files.exists(target)

@@ -22,13 +22,6 @@ public class MenuBarCoordinator extends BaseMenuBarRenderer {
 
     private static final float HOME_ICON_DISPLAY_SIZE = 16.0f;
 
-    private com.openmason.main.systems.layout.WorkspaceState workspaceState;
-
-    /** Shows the workspace tabs (Modeling | UI Editor) and, in the UI workspace, its own menu. */
-    public void setWorkspaceState(com.openmason.main.systems.layout.WorkspaceState state) {
-        this.workspaceState = state;
-    }
-
     public MenuBarCoordinator(UIVisibilityState uiState, LogoManager logoManager,
                               FileMenuHandler fileMenu, EditMenuHandler editMenu,
                               ViewMenuHandler viewMenu, ToolsMenuHandler toolsMenu,
@@ -52,16 +45,6 @@ public class MenuBarCoordinator extends BaseMenuBarRenderer {
         editMenu.render();
         viewMenu.render();
         toolsMenu.render();
-        if (workspaceState != null && workspaceState.isUi() && fileMenu.getUiHooks() != null) {
-            if (ImGui.beginMenu("UI")) {
-                fileMenu.renderUiItems();
-                ImGui.separator();
-                if (ImGui.menuItem("Reset UI Editor Layout")) {
-                    fileMenu.getUiHooks().resetLayout();
-                }
-                ImGui.endMenu();
-            }
-        }
         aboutMenu.render();
 
         // Spacer + right-aligned items
@@ -84,14 +67,8 @@ public class MenuBarCoordinator extends BaseMenuBarRenderer {
             toolbarButtonWidth = ImGui.calcTextSize("Show Toolbar").x + framePadX * 2 + 8.0f;
         }
 
-        float tabsWidth = workspaceState == null ? 0 : WorkspaceTabs.width() + 12f;
-        float totalRightWidth = homeButtonWidth + toolbarButtonWidth + tabsWidth;
+        float totalRightWidth = homeButtonWidth + toolbarButtonWidth;
         ImGui.setCursorPosX(ImGui.getCursorPosX() + availWidth - totalRightWidth);
-
-        if (workspaceState != null) {
-            WorkspaceTabs.render(workspaceState);
-            ImGui.sameLine(0, 12f);
-        }
 
         // Toolbar restore button
         if (showToolbarRestore) {

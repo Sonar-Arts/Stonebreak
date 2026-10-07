@@ -63,6 +63,7 @@ public final class UiEditorWorkspace implements AutoCloseable {
     private final AssetsPanel assets;
     private final UiEditorDialogs dialogs;
     private final GraphEditorWindow graphs = new GraphEditorWindow();
+    private final UiWorkspaceHeader header = new UiWorkspaceHeader(this);
     private UiEditorDocument graphDoc;
     private long graphRevision = -1;
     /** The document state the graph window's copy started from (or last synced with): the merge base. */
@@ -173,6 +174,66 @@ public final class UiEditorWorkspace implements AutoCloseable {
 
     public void resetLayout() {
         layout.requestReset();
+    }
+
+    /** The workspace's toolbar (File/Window menus, Save, Export, pop-out), above its dockspace. */
+    public void renderHeader() {
+        header.render();
+    }
+
+    /**
+     * Wires the toolbar's pop-out control: whether the workspace is in its own window, whether it
+     * may leave the main window now (one tab always stays), and how to move it between windows.
+     */
+    public void setDockControls(java.util.function.BooleanSupplier detached,
+                                java.util.function.BooleanSupplier canDetach, Runnable toggleDetached) {
+        header.setDockControls(detached, canDetach, toggleDetached);
+    }
+
+    // ── session settings (the .omp uiEditor node's settings map) ────────────
+
+    /** The canvas settings to record in the project: overlays, snapping, renderer. */
+    public java.util.Map<String, String> sessionSettings() {
+        java.util.Map<String, String> m = new java.util.TreeMap<>();
+        m.put("showBounds", Boolean.toString(ctx.showBounds));
+        m.put("showFlex", Boolean.toString(ctx.showFlex));
+        m.put("showSpacing", Boolean.toString(ctx.showSpacing));
+        m.put("showRulers", Boolean.toString(ctx.showRulers));
+        m.put("snapEdges", Boolean.toString(ctx.snapEdges));
+        m.put("snapGrid", Boolean.toString(ctx.snapGrid));
+        m.put("gridStep", Integer.toString(ctx.gridStep));
+        m.put("renderer", ctx.gpuPath ? "gpu" : "raster");
+        return m;
+    }
+
+    /** Applies recorded settings; absent or unreadable values leave the current ones. */
+    public void restoreSettings(java.util.Map<String, String> settings) {
+        if (settings == null || settings.isEmpty()) {
+            return;
+        }
+        ctx.showBounds = bool(settings, "showBounds", ctx.showBounds);
+        ctx.showFlex = bool(settings, "showFlex", ctx.showFlex);
+        ctx.showSpacing = bool(settings, "showSpacing", ctx.showSpacing);
+        ctx.showRulers = bool(settings, "showRulers", ctx.showRulers);
+        ctx.snapEdges = bool(settings, "snapEdges", ctx.snapEdges);
+        ctx.snapGrid = bool(settings, "snapGrid", ctx.snapGrid);
+        String step = settings.get("gridStep");
+        if (step != null) {
+            try {
+                ctx.gridStep = Math.max(1, Math.min(256, Integer.parseInt(step.trim())));
+            } catch (NumberFormatException ignored) {
+                // keep the current step
+            }
+        }
+        String renderer = settings.get("renderer");
+        if ("gpu".equals(renderer) || "raster".equals(renderer)) {
+            ctx.gpuPath = "gpu".equals(renderer);
+        }
+    }
+
+    private static boolean bool(java.util.Map<String, String> m, String key, boolean current) {
+        String v = m.get(key);
+        return "true".equals(v) || (!"false".equals(v) && current);
     }
 
     /**
@@ -301,6 +362,19 @@ public final class UiEditorWorkspace implements AutoCloseable {
         });
         graphRevision = doc.revision();
         graphBase = doc.archive();
+    }
+
+    /**
+     * Applies the Graphs window's unsaved edits to their document, the window's own Save without
+     * the file part, so a project save cannot leave graph work behind.
+     *
+     * @return null when there was nothing to apply or it applied, else the reason it did not
+     */
+    private String flushGraphs() {
+        if (graphDoc == null || !graphs.isDirty() || !service.documents().contains(graphDoc)) {
+            return null;
+        }
+        return graphs.applyToDocument();
     }
 
     private UiDocumentSource source() {
@@ -450,8 +524,23 @@ public final class UiEditorWorkspace implements AutoCloseable {
      */
     public List<String> saveAllInPlace() {
         List<String> failed = new ArrayList<>();
+        String graphError = flushGraphs();
+        if (graphError != null) {
+            failed.add("graphs of " + (graphDoc != null ? graphDoc.title() : "a document") + ": " + graphError);
+        }
         for (UiEditorDocument d : service.documents()) {
             ctx.flushPendingEdits(d);
+        }
+        // Clean documents whose view changed (zoom, pan, frame size, selection, Timeline) keep it too:
+        // the project save is "save my UI editor state", not only the edited sources.
+        for (UiEditorDocument d : service.documents()) {
+            if (!d.isDirty() && d.file() != null && d.origin() != UiEditorDocument.Origin.SBUI_COPY
+                    && service.editorStampsChanged(d)) {
+                String err = service.save(d);
+                if (err != null) {
+                    logger.warn("UI document {}: view state not saved: {}", d.title(), err);
+                }
+            }
         }
         for (UiEditorDocument d : service.dirtyDocuments()) {
             if (service.defaultTarget(d) == null) {

@@ -125,6 +125,14 @@ public class OMPSerializer {
             if (doc.uiEditor().activeDocument() != null) {
                 ui.put("activeDocument", doc.uiEditor().activeDocument());
             }
+            if (!doc.uiEditor().detached().isEmpty()) {
+                var detached = ui.putArray("detached");
+                doc.uiEditor().detached().forEach(detached::add);
+            }
+            if (!doc.uiEditor().settings().isEmpty()) {
+                ObjectNode settings = ui.putObject("settings");
+                doc.uiEditor().settings().forEach(settings::put);
+            }
             root.set("uiEditor", ui);
         }
 

@@ -99,9 +99,29 @@ through `UiEditorContext.PendingEdits`).
 
 ## Project integration
 
-* Workspaces: menu bar tabs `Modeling | UI Editor` (`layout/Workspace`, `WorkspaceState`). The UI
-  workspace has its own dockspace (`OpenMasonUiDockSpace`, default layout `UiWorkspaceLayout`); the
-  inactive one is kept alive with `KeepAliveOnly`.
+* Workspaces: the main window's tab strip `Scene | UI` (Unity-style document tabs above each
+  workspace's toolbar; `layout/WorkspaceTabStrip`, `Workspace`, `WorkspaceState`). Each workspace has
+  its own dockspace (Scene `OpenMasonDockSpace` + `MainLayoutBuilder`; UI `OpenMasonUiDockSpace` +
+  `UiWorkspaceLayout`); the one not in front is kept alive with `KeepAliveOnly`. Either tab can be
+  popped out into its own WM-decorated OS window (`layout/DetachedWorkspaceWindow`, the Texture
+  Editor's treatment) as long as one tab stays in the main window: drag the tab off the strip, its
+  context menu, or (UI) the toolbar's Pop Out / Window > Open in New Window. The same dockspace id moves
+  into that window with the workspace's toolbar (the main host keeps it alive every frame), so panels
+  keep their arrangement; closing the window docks the tab back behind the front one, Dock Back puts
+  it in front. A popped-out tab stays on the strip as its name plus a pop-out icon; clicking it raises the window
+  (ImGui focus + `glfwRestoreWindow`/`glfwFocusWindow` on its platform handle, since ImGui focus alone
+  never raises an OS window), as does asking for a detached workspace (`WorkspaceState.set`, opening a
+  `.omui`, Tools > UI Editor). Right-clicking any tab opens its menu without switching to it
+  (`TabRightClickGuard`, also on the UI document tabs).
+  Panels draw while their workspace is the front tab or a visible window (`MainDockLayout.isShown`).
+  Caveat: Scene's 3D views sample GL-framebuffer textures, which flickered across contexts in pop-out
+  windows on Mesa/XWayland before; the UI canvas switches to CPU raster when popped out. Dev hook
+  `-Dopenmason.uieditor.detached=true|scene`.
+* UI toolbar (`UiWorkspaceHeader`, drawn above the UI dockspace in whichever window holds it; same
+  28 px flat style as the Scene toolbar): File (New Screen/Component, Open, Import SBUI, Save, Save As,
+  Save All, Export SBUI, Close) and Window (pop out / dock back, Graphs, Reset Layout) menus, quick
+  Save / Save All / Export, the active document's path, Pop Out / Dock Back. UI document actions are
+  NOT in the main File menu (Unity UI Builder keeps its File menu inside the builder).
 * Files: documents save at their convention path `UI/<namespace>/<path>.omui` (so screens resolve the
   components they use without configuration); Save As otherwise. Saves are atomic (`OmuiWriter.save`)
   and stamp `editor/workspace.json` (frame size, scales, zoom/pan, selection, hidden/locked); a stamp
@@ -121,15 +141,22 @@ through `UiEditorContext.PendingEdits`).
   `stonebreak-game/src/main/resources` (the layout `GameUiAssets` and `GameUiDocuments.readScreen`
   read). Never deploys an export the game would refuse; files that exist with different bytes are
   replaced only on confirmation (`overwrite:true`).
-* `.omp` 1.3 optional `uiEditor` node: `workspace`, `documents` (project-relative), `activeDocument`.
-  Absent (older files) = Modeling, no UI documents. Unknown workspace values read as Modeling.
+* `.omp` optional `uiEditor` node: `workspace`, `documents` (project-relative), `activeDocument`
+  (1.3); `detached` (names of popped-out tabs, written only when non-empty; never all of them) and `settings` (canvas overlays, snapping,
+  grid step, renderer; owned by `UiEditorWorkspace.sessionSettings/restoreSettings`, written only
+  when non-empty) (1.4). Absent (older files) = Scene, no UI documents, docked, default settings.
+  Unknown workspace values read as Scene (stored name `MODELING`).
   Opening, closing, activating or saving a UI document and switching workspace mark the project dirty
   when the session no longer matches what the `.omp` records (`ProjectService.uiSessionChanged`), so
   exit offers to save it; restoring the recorded session on open is not an edit. Save Project reports
   UI documents it could not save in its status line.
-* File menu UI group, a `UI` menu in the UI workspace, Project Browser `.omui` entries with runtime
-  thumbnails (`UiThumbnailRenderer`), dirty checks on exit/home/open-project, Save Project saves UI
-  documents in place, "Don't Save" discards UI documents and their recovery slots.
+* Project Browser `.omui` entries with runtime thumbnails (`UiThumbnailRenderer`), dirty checks on
+  exit/home/open-project, "Don't Save" discards UI documents and their recovery slots. Save Project
+  (`UiEditorWorkspace.saveAllInPlace`) first applies the Graphs window's unsaved edits to their
+  document (`GraphEditorWindow.applyToDocument`) and typed Lua, saves every dirty document in place,
+  and re-saves clean documents whose editor view changed (`UiDocumentService.editorStampsChanged`:
+  zoom/pan, frame, scales, selection, hidden/locked, Timeline view), so the project save keeps the UI
+  editor's state; untouched documents are not rewritten.
 * Recovery: dirty documents are written to `<data>/recovery/ui` every 20 s (complete OMUI archives);
   opening a file with a newer slot shows a Restore/Discard banner (restore is one undo step; a refused
   restore keeps the slot); untitled slots are offered at workspace start; shutdown keeps slots of
@@ -157,7 +184,13 @@ keeps aspect on corner resize, Esc cancels a drag.
 rename, overrides, cross-document paste), `UiTreeTest`, `CanvasMathTest`, `UiDocumentServiceTest`
 (create/save/reopen, SBUI copy, import, missing dependencies kept, recovery), `UiAuthoringEndToEndTest`
 (author, save, export, load like the game; canvas geometry at two scales, design picking, drop targets,
-painted pixels), `OMPUiEditorReferenceTest` (1.3 round trip, older files untouched).
+painted pixels), `OMPUiEditorReferenceTest` (1.3/1.4 round trip, older files untouched),
+`UiProjectSaveTest` (project save keeps view state of clean documents, never rewrites untouched ones,
+settings round trip), `WorkspaceStateTest` (tabs, either tab pops out, the last one stays).
+Live runs: `-Dopenmason.autoscreenshot` also writes every other Open Mason window as
+`<file>.<window title>.png`, re-drawn offscreen from its own ImGui draw data
+(`ImGuiBackend.captureSecondaryViewports`), so popped-out workspaces can be checked without desktop
+screenshots.
 
 ## Host contracts (#297)
 

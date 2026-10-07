@@ -176,7 +176,7 @@ public class mainOpenMason {
 
             imGuiBackend.handleMultiViewport();
 
-            if (shot != null && shot.beforeSwap(window)) {
+            if (shot != null && shot.beforeSwap(window, imGuiBackend::captureSecondaryViewports)) {
                 shouldClose = true;
             }
             glfwSwapBuffers(window);
@@ -357,18 +357,20 @@ public class mainOpenMason {
             renderComponent(projectHubScreen, deltaTime, "Project Hub");
         }
 
-        boolean uiWorkspace = workspaceState != null && workspaceState.isUi();
-        if (showModelEditor && uiWorkspace) {
+        if (showModelEditor) {
             renderComponent(mainInterface, deltaTime, "Main Interface");
-            if (uiEditor != null) {
-                safeRender(() -> uiEditor.render(deltaTime, true), "UI Editor");
-            }
-        } else if (uiEditor != null) {
-            safeRender(() -> uiEditor.render(deltaTime, false), "UI Editor (background)");
+        }
+        // Each workspace draws while it is the main window's front tab or a visible popped-out
+        // window; the main interface has just submitted the dockspaces they dock into.
+        boolean uiShown = showModelEditor && mainInterface != null
+                && mainInterface.isWorkspaceShown(com.openmason.main.systems.layout.Workspace.UI);
+        boolean sceneShown = showModelEditor && (mainInterface == null
+                || mainInterface.isWorkspaceShown(com.openmason.main.systems.layout.Workspace.MODELING));
+        if (uiEditor != null) {
+            safeRender(() -> uiEditor.render(deltaTime, uiShown), uiShown ? "UI Editor" : "UI Editor (background)");
         }
 
-        if (showModelEditor && !uiWorkspace) {
-            renderComponent(mainInterface, deltaTime, "Main Interface");
+        if (sceneShown) {
             renderComponent(viewportInterface, deltaTime, "Viewport");
             renderComponent(sceneViewerInterface, deltaTime, "Scene Viewer");
 
@@ -497,7 +499,9 @@ public class mainOpenMason {
      * Add {@code -Dopenmason.uieditor.select=<key>} to select an element and
      * {@code -Dopenmason.uieditor.preview=true} to start in Preview, and
      * {@code -Dopenmason.uieditor.sprites=<sheet id>} to open that sprite sheet in the Sprites panel, and
-     * {@code -Dopenmason.uieditor.timeline=<clip>[@seconds]} to show a clip in the Timeline at a time.
+     * {@code -Dopenmason.uieditor.timeline=<clip>[@seconds]} to show a clip in the Timeline at a time, and
+     * {@code -Dopenmason.uieditor.detached=true|scene} to start with the UI (or the Scene) tab popped out
+     * into its own window.
      */
     private void devOpenUiEditor() {
         String spec = System.getProperty("openmason.uieditor");
@@ -510,6 +514,13 @@ public class mainOpenMason {
             mainInterface.openProjectFromHub(parts[0].trim());
         }
         workspaceState.set(com.openmason.main.systems.layout.Workspace.UI);
+        String detach = System.getProperty("openmason.uieditor.detached");
+        if (detach != null && !detach.isBlank() && !"false".equalsIgnoreCase(detach)) {
+            // start with a tab popped out into its own window: true/ui = UI, scene = Scene
+            workspaceState.detach("scene".equalsIgnoreCase(detach.trim())
+                    ? com.openmason.main.systems.layout.Workspace.MODELING
+                    : com.openmason.main.systems.layout.Workspace.UI);
+        }
         if (parts.length > 1 && !parts[1].isBlank()) {
             uiEditor.openFile(java.nio.file.Path.of(parts[1].trim()));
         }

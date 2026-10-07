@@ -44,30 +44,18 @@ public class FileMenuHandler {
     private UIVisibilityState uiVisibilityState;
     private RecentProjectsService recentProjectsService;
 
-    /** The UI Editor's document actions (#293), supplied by the app so this handler need not know the editor. */
+    /**
+     * What a project save, exit or Home needs from the UI workspace (#293), supplied by the app so
+     * this handler need not know the editor. The UI documents' own New/Open/Save/Export live in
+     * the UI workspace's toolbar, not this menu.
+     */
     public interface UiMenuHooks {
-        void newScreen();
-
-        void newComponent();
-
-        void open();
-
-        void importSbui();
-
-        void save();
-
-        void saveAs();
-
-        void export();
-
-        void resetLayout();
-
-        boolean hasDocument();
 
         boolean anyDirty();
 
         /**
-         * Saves every dirty UI document that has (or can derive) a location.
+         * Saves every UI document with unsaved work (and the editor's view state of the rest)
+         * that has, or can derive, a location.
          *
          * @return one line per document that was not saved (empty when all were)
          */
@@ -81,39 +69,6 @@ public class FileMenuHandler {
 
     public void setUiHooks(UiMenuHooks hooks) {
         this.uiHooks = hooks;
-    }
-
-    public UiMenuHooks getUiHooks() {
-        return uiHooks;
-    }
-
-    /** The File menu's UI group (also the body of the UI Editor's own menu). */
-    public void renderUiItems() {
-        if (uiHooks == null) {
-            return;
-        }
-        if (ImGui.menuItem("New UI Screen...")) {
-            uiHooks.newScreen();
-        }
-        if (ImGui.menuItem("New UI Component...")) {
-            uiHooks.newComponent();
-        }
-        if (ImGui.menuItem("Open UI Document...")) {
-            uiHooks.open();
-        }
-        if (ImGui.menuItem("Import SBUI into Project...")) {
-            uiHooks.importSbui();
-        }
-        boolean has = uiHooks.hasDocument();
-        if (ImGui.menuItem("Save UI Document", "", false, has)) {
-            uiHooks.save();
-        }
-        if (ImGui.menuItem("Save UI Document As...", "", false, has)) {
-            uiHooks.saveAs();
-        }
-        if (ImGui.menuItem("Export SBUI...", "", false, has)) {
-            uiHooks.export();
-        }
     }
 
     public FileMenuHandler(ModelState modelState, ModelOperationService modelOperations,
@@ -312,12 +267,6 @@ public class FileMenuHandler {
         }
 
         ImGui.separator();
-
-        // --- UI documents (#293) ---
-        if (uiHooks != null) {
-            renderUiItems();
-            ImGui.separator();
-        }
 
         // --- Save (Project) ---
         boolean hasProject = projectService != null && projectService.hasCurrentProject();

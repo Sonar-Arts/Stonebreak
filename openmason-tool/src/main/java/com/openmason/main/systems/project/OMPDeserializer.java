@@ -161,8 +161,26 @@ public class OMPDeserializer {
                 }
             });
         }
+        java.util.Map<String, String> settings = new java.util.TreeMap<>();
+        JsonNode s = node.get("settings");
+        if (s != null && s.isObject()) {
+            s.properties().forEach(e -> {
+                if (e.getValue().isValueNode()) {
+                    settings.put(e.getKey(), e.getValue().asText());
+                }
+            });
+        }
+        java.util.List<String> detached = new java.util.ArrayList<>();
+        JsonNode out = node.get("detached");
+        if (out != null && out.isArray()) {
+            out.forEach(d -> {
+                if (d.isTextual() && !d.asText().isBlank()) {
+                    detached.add(d.asText());
+                }
+            });
+        }
         return new OMPFormat.UiEditorReference(text(node, "workspace", "MODELING"), docs,
-                text(node, "activeDocument", null));
+                text(node, "activeDocument", null), detached, settings);
     }
 
     /** Absent node -> null, which is what a pre-1.2 project looks like. */

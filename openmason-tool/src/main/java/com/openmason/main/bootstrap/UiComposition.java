@@ -301,9 +301,10 @@ public final class UiComposition {
     }
 
     /**
-     * The UI Editor workspace (#293): its own dockspace and panels behind the menu bar's
-     * workspace tabs, the File/UI menu group, file dialogs, keybinds and the project file's
-     * v1.3 node (workspace in front, open UI documents, active one).
+     * The UI workspace (#293): its own dockspace and panels behind the main window's
+     * {@code Scene | UI} tabs (or its own window when popped out), its toolbar, file dialogs,
+     * keybinds, the project-save hooks and the project file's uiEditor node (tab in front, popped
+     * out or not, open UI documents, active one, canvas settings).
      */
     private void wireUiEditor(java.util.function.Supplier<java.nio.file.Path> projectRoot) {
         uiEditor = new com.openmason.main.systems.uiEditor.view.UiEditorWorkspace(projectRoot);
@@ -354,55 +355,19 @@ public final class UiComposition {
         });
         textureCreatorInterface.getController().addSaveListener(uiEditor::textureSaved);
         var editor = uiEditor;
-        mainInterface.setUiWorkspace(workspaceState, editor::applyLayout,
+        var workspaces = workspaceState;
+        mainInterface.setUiWorkspace(workspaces, new com.openmason.main.systems.layout.WorkspaceDock() {
+                    @Override
+                    public void applyLayout(int dockspaceId, float width, float height) {
+                        editor.applyLayout(dockspaceId, width, height);
+                    }
+
+                    @Override
+                    public void renderHeader() {
+                        editor.renderHeader();
+                    }
+                },
                 new com.openmason.main.systems.menus.FileMenuHandler.UiMenuHooks() {
-                    @Override
-                    public void newScreen() {
-                        editor.newDocument(com.openmason.main.systems.uiEditor.service.UiDocumentTemplates.MENU_SCREEN);
-                    }
-
-                    @Override
-                    public void newComponent() {
-                        editor.newDocument(
-                                com.openmason.main.systems.uiEditor.service.UiDocumentTemplates.BUTTON_COMPONENT);
-                    }
-
-                    @Override
-                    public void open() {
-                        workspaceState.set(com.openmason.main.systems.layout.Workspace.UI);
-                        editor.openDocument();
-                    }
-
-                    @Override
-                    public void importSbui() {
-                        editor.importSbuiFromMenu();
-                    }
-
-                    @Override
-                    public void save() {
-                        editor.saveActive();
-                    }
-
-                    @Override
-                    public void saveAs() {
-                        editor.saveActiveAs();
-                    }
-
-                    @Override
-                    public void export() {
-                        editor.exportActive();
-                    }
-
-                    @Override
-                    public void resetLayout() {
-                        editor.resetLayout();
-                    }
-
-                    @Override
-                    public boolean hasDocument() {
-                        return editor.context().doc() != null;
-                    }
-
                     @Override
                     public boolean anyDirty() {
                         return editor.hasUnsavedChanges();
@@ -418,17 +383,29 @@ public final class UiComposition {
                         editor.discardAll();
                     }
                 });
+        var uiTab = com.openmason.main.systems.layout.Workspace.UI;
+        editor.setDockControls(() -> workspaces.isDetached(uiTab), () -> workspaces.canDetach(uiTab), () -> {
+            if (workspaces.isDetached(uiTab)) {
+                workspaces.attach(uiTab, true);
+            } else {
+                workspaces.detach(uiTab);
+            }
+        });
         mainInterface.setUiEditorSessionHooks(
                 () -> new com.openmason.main.systems.project.OMPFormat.UiEditorReference(
-                        workspaceState.current().name(), editor.sessionDocuments(), editor.sessionActive()),
+                        workspaces.current().name(), editor.sessionDocuments(), editor.sessionActive(),
+                        workspaces.detached().stream().map(Enum::name).toList(), editor.sessionSettings()),
                 ref -> {
                     if (ref == null) {
-                        // A pre-1.3 project: Modeling, as it always opened.
-                        workspaceState.set(com.openmason.main.systems.layout.Workspace.MODELING);
+                        // A pre-1.3 project: Scene, as it always opened.
+                        workspaces.restore(com.openmason.main.systems.layout.Workspace.MODELING, java.util.List.of());
                         return;
                     }
                     editor.restoreSession(ref.documents(), ref.activeDocument());
-                    workspaceState.set(com.openmason.main.systems.layout.Workspace.resolve(ref.workspace()));
+                    editor.restoreSettings(ref.settings());
+                    workspaces.restore(com.openmason.main.systems.layout.Workspace.resolve(ref.workspace()),
+                            ref.detached().stream().map(com.openmason.main.systems.layout.Workspace::find)
+                                    .filter(java.util.Objects::nonNull).toList());
                 });
         // Opening, closing, activating or saving a UI document and switching workspace change what the
         // .omp records: the project turns dirty, so the session is not lost on exit.
