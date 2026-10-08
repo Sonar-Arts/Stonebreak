@@ -61,6 +61,14 @@ import java.util.function.Consumer;
  *       root {@code carried} (the stack on the cursor); slot actions {@code stonebreak:inventory.slot-click},
  *       {@code .slot-press}, {@code .slot-drag}, {@code .slot-release}, {@code .sort}, {@code .craft-all},
  *       {@code .close} acting on the open container screen</td></tr>
+ *   <tr><td>{@code stonebreak:crafting} 1</td><td>collection {@code crafting} ({@code craft:0..n-1}) and
+ *       root {@code craftOutput} of the open crafting screen; {@code stonebreak:crafting.recipes}
+ *       ({@link com.stonebreak.ui.runtime.contracts.CraftingContracts}, #300)</td></tr>
+ *   <tr><td>{@code stonebreak:player.character} 1, {@code stonebreak:screen.inventory} 1</td><td>root
+ *       {@code character} (the inventory's side columns) and {@code .tab {tab}}
+ *       ({@link com.stonebreak.ui.runtime.contracts.InventoryContracts}, #300)</td></tr>
+ *   <tr><td>{@code stonebreak:hud} 1</td><td>root {@code hud} and collection {@code hearts}: the
+ *       HUD around the hotbar ({@link com.stonebreak.ui.runtime.contracts.HudContracts}, #300)</td></tr>
  *   <tr><td>{@code stonebreak:hotbar} 1</td><td>collection {@code hotbar} ({@code hotbar:0..8}, the
  *       selected one flagged {@code selected}); {@code stonebreak:hotbar.select}</td></tr>
  *   <tr><td>{@code stonebreak:player.vitals} 1</td><td>root {@code vitals}: health, stamina, mana
@@ -161,7 +169,9 @@ public final class GameUiHost {
 
     /** The game behind the host. Tests substitute it; nothing here reaches game singletons directly. */
     public interface Services extends MultiplayerContracts.Services, MainMenuContracts.Services,
-            WorldSelectContracts.Services, SettingsMenuContracts.Services {
+            WorldSelectContracts.Services, SettingsMenuContracts.Services,
+            com.stonebreak.ui.runtime.contracts.InventoryContracts.Services,
+            com.stonebreak.ui.runtime.contracts.HudContracts.Services {
         void resume();
 
         void openStatistics();
@@ -214,6 +224,11 @@ public final class GameUiHost {
 
         /** Closes the open container screen the way its legacy close does (carried stack put back). */
         default void closeContainer() {
+        }
+
+        /** The crafting screens' Recipes button. @return null, or why it was refused */
+        default String openRecipeBook() {
+            return "no crafting screen is showing";
         }
 
         /** Pixel size the container screens lay out in. */
@@ -271,6 +286,9 @@ public final class GameUiHost {
     private final MainMenuContracts mainMenu;
     private final WorldSelectContracts worldSelect;
     private final SettingsMenuContracts settingsMenu;
+    private final com.stonebreak.ui.runtime.contracts.CraftingContracts crafting;
+    private final com.stonebreak.ui.runtime.contracts.InventoryContracts inventoryScreen;
+    private final com.stonebreak.ui.runtime.contracts.HudContracts hud;
     private LoadingRecord lastLoading = LoadingRecord.NONE;
     private final SlotGridSource inventory = new SlotGridSource("main");
     private final SlotGridSource hotbar = new SlotGridSource("hotbar");
@@ -301,6 +319,10 @@ public final class GameUiHost {
         mainMenu = new MainMenuContracts(host, services);
         worldSelect = new WorldSelectContracts(host, services);
         settingsMenu = new SettingsMenuContracts(host, services);
+        crafting = new com.stonebreak.ui.runtime.contracts.CraftingContracts(host, services::openContainer,
+            services::openRecipeBook);
+        inventoryScreen = new com.stonebreak.ui.runtime.contracts.InventoryContracts(host, services);
+        hud = new com.stonebreak.ui.runtime.contracts.HudContracts(host, services);
         host.data().register("glossaryAbilities", glossary.abilities(), GLOSSARY);
         PROVIDERS.forEach(host::offerProvider);
         registerActions();
@@ -335,6 +357,21 @@ public final class GameUiHost {
     /** A host with every contract registered and no game behind it (declarations, schema checks). */
     public static GameUiHost declaration() {
         return new GameUiHost(new Declaration(), MultiplayerSession.Mode.MENU);
+    }
+
+    /**
+     * Runs {@code task} now when called on the UI thread (or before it is known), else posts it to the
+     * UI queue for the next frame: screens shown or hidden from a world-build or network thread must not
+     * open documents there (#300).
+     */
+    public static void onUiThread(Runnable task) {
+        GameUiHost h = instance;
+        Thread owner = h == null ? null : h.host.queue().owner();
+        if (owner == null || owner == Thread.currentThread()) {
+            task.run();
+        } else {
+            h.host.queue().post(task);
+        }
     }
 
     /** Runs {@code action} with the host if it exists; game code paths that run headless in tests use this. */
@@ -451,6 +488,9 @@ public final class GameUiHost {
             hotbar.refresh(Inventory.HOTBAR_SIZE, hotbarSlots, inv.getSelectedHotbarSlotIndex());
         }
         ContainerSlotInput screen = services.openContainer();
+        crafting.poll();
+        inventoryScreen.poll();
+        hud.poll();
         ItemStack held = screen == null ? null : screen.getDragState().draggedItemStack;
         if (!sameStack(held, lastCarried)) {
             lastCarried = held == null || held.isEmpty() ? null : held.copy();
@@ -486,6 +526,9 @@ public final class GameUiHost {
         polledInventory = null;
         lastCarried = null;
         carried.set(SlotRecords.emptyStack());
+        crafting.clear();
+        inventoryScreen.clear();
+        hud.clear();
         lastVitals = Vitals.NONE;
         vitals.set(Vitals.NONE.value());
         lastStats = StatsRecord.NONE;
@@ -900,6 +943,64 @@ public final class GameUiHost {
             } else if (game.getInventoryScreen() != null && game.getInventoryScreen().isVisible()) {
                 game.toggleInventoryScreen();
             }
+        }
+
+        @Override
+        public Player hudPlayer() {
+            return Game.getPlayer();
+        }
+
+        @Override
+        public com.stonebreak.ui.HotbarScreen hotbarScreen() {
+            Game game = Game.getInstance();
+            return game == null || game.getInventoryScreen() == null ? null : game.getInventoryScreen().getHotbarScreen();
+        }
+
+        @Override
+        public com.stonebreak.player.CharacterStats characterStats() {
+            Player p = Game.getPlayer();
+            return p == null ? null : p.getCharacterStats();
+        }
+
+        @Override
+        public String inventoryTab(String tab) {
+            Game game = Game.getInstance();
+            if (game == null || game.getInventoryScreen() == null || !game.getInventoryScreen().isVisible()
+                    || game.getState() != com.stonebreak.core.GameState.INVENTORY_UI) {
+                return "no inventory is showing";
+            }
+            if (carrying()) {
+                return "a stack is on the cursor"; // the legacy strip ignored tabs while dragging
+            }
+            // the legacy tab strip: close the inventory, then open the sheet on the tab
+            game.toggleInventoryScreen();
+            if ("character".equals(tab)) {
+                game.toggleCharacterScreen();
+            } else {
+                game.openCharacterTab(com.stonebreak.rpg.CharacterPanelTab.valueOf(
+                    tab.toUpperCase(java.util.Locale.ROOT)));
+            }
+            return null;
+        }
+
+        private boolean carrying() {
+            ContainerSlotInput open = openContainer();
+            return open != null && open.getDragState().isDragging();
+        }
+
+        @Override
+        public String openRecipeBook() {
+            Game game = Game.getInstance();
+            boolean crafting = game != null && ((game.getWorkbenchScreen() != null && game.getWorkbenchScreen().isVisible())
+                || (game.getInventoryScreen() != null && game.getInventoryScreen().isVisible()));
+            if (!crafting) {
+                return "no crafting screen is showing";
+            }
+            if (carrying()) {
+                return "a stack is on the cursor"; // the legacy button ignored presses while dragging
+            }
+            game.openRecipeBookScreen();
+            return null;
         }
 
         @Override

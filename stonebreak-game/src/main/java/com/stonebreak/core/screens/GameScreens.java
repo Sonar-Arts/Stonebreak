@@ -139,6 +139,14 @@ public final class GameScreens {
                     uiRenderer, inputHandler, craftingManager, player.getCharacterStats());
             // The inventory needs the back-reference to drive tooltips and hover state.
             player.getInventory().setInventoryScreen(inventoryScreen);
+            // The shipped inventory screen (#300) when present and not rolled back; legacy otherwise.
+            inventoryScreen.setPresentation(new com.stonebreak.ui.runtime.screens.ContainerDocument(
+                    InventoryScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
+            // ... and the gameplay HUD around the hotbar (informational: it never takes input).
+            inventoryScreen.setHudPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(
+                    InventoryScreen.HUD_DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                    com.stonebreak.ui.runtime.screens.DocumentScreen.Options.hud()));
+            inventoryScreen.syncPresentation(game.getState());
         } else {
             logger.error("Skipping InventoryScreen: renderer font or block texture array is missing");
         }
@@ -153,6 +161,9 @@ public final class GameScreens {
             // The shipped OMUI/SBUI furnace screen (#298) when present and not rolled back; legacy otherwise.
             furnaceScreen.setPresentation(new com.stonebreak.ui.furnace.FurnaceDocument(
                     com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
+            // The shipped workbench screen (#300), same rules.
+            workbenchScreen.setPresentation(new com.stonebreak.ui.runtime.screens.ContainerDocument(
+                    WorkbenchScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
         } else {
             logger.error("Skipping WorkbenchScreen and FurnaceScreen: UI renderer is missing");
         }

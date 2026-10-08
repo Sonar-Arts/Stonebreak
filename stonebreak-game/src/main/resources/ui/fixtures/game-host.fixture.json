@@ -15,7 +15,12 @@
     "glossary": "stonebreak:screen.glossary",
     "glossaryAbilities": "stonebreak:screen.glossary",
     "worldSelect": "stonebreak:screen.world-select",
-    "settingsMenu": "stonebreak:screen.settings"
+    "settingsMenu": "stonebreak:screen.settings",
+    "crafting": "stonebreak:crafting",
+    "craftOutput": "stonebreak:crafting",
+    "character": "stonebreak:player.character",
+    "hud": "stonebreak:hud",
+    "hearts": "stonebreak:hud"
   },
   "data": {
     "session": {
@@ -438,6 +443,98 @@
         "pending": "",
         "countdown": ""
       }
+    },
+    "craftOutput": {
+      "slot": "craft-output",
+      "item": 5,
+      "objectId": "stonebreak:wood_planks",
+      "name": "Wood Planks",
+      "count": 4,
+      "state": "",
+      "maxStack": 64,
+      "selected": false
+    },
+    "character": {
+      "present": true,
+      "level": 3,
+      "levelText": "Level 3",
+      "xp": 40,
+      "xpNext": 200,
+      "xpText": "40 / 200 xp",
+      "xpFraction": 0.2,
+      "hp": {
+        "value": 17,
+        "max": 20,
+        "text": "17/20",
+        "fraction": 0.85
+      },
+      "mp": {
+        "value": 6,
+        "max": 10,
+        "text": "6/10",
+        "fraction": 0.6
+      },
+      "sp": {
+        "value": 30,
+        "max": 40,
+        "text": "30/40",
+        "fraction": 0.75
+      },
+      "str": {
+        "score": 14,
+        "text": "14 (+2)",
+        "fraction": 0.4666666666666667
+      },
+      "dex": {
+        "score": 12,
+        "text": "12 (+1)",
+        "fraction": 0.4
+      },
+      "con": {
+        "score": 13,
+        "text": "13 (+1)",
+        "fraction": 0.43333333333333335
+      },
+      "int": {
+        "score": 10,
+        "text": "10 (+0)",
+        "fraction": 0.3333333333333333
+      },
+      "wis": {
+        "score": 8,
+        "text": "8 (-1)",
+        "fraction": 0.26666666666666666
+      },
+      "cha": {
+        "score": 11,
+        "text": "11 (+0)",
+        "fraction": 0.36666666666666664
+      }
+    },
+    "hud": {
+      "present": true,
+      "heartSize": 28,
+      "stamina": {
+        "shown": true,
+        "fraction": 0.75
+      },
+      "mana": {
+        "shown": false,
+        "fraction": 0
+      },
+      "dodge": {
+        "ready": true,
+        "fraction": 1,
+        "text": "Dodge: Ready"
+      },
+      "classId": "",
+      "tooltip": {
+        "shown": true,
+        "text": "Wood",
+        "alpha": 1,
+        "slot": 0
+      },
+      "hearts": 10
     }
   },
   "editable": {
@@ -516,6 +613,146 @@
           "state": "",
           "maxStack": 0,
           "selected": false
+        }
+      ]
+    },
+    "crafting": {
+      "identity": "slot",
+      "items": [
+        {
+          "slot": "craft:0",
+          "item": 4,
+          "objectId": "stonebreak:wood",
+          "name": "Wood",
+          "count": 1,
+          "state": "",
+          "maxStack": 64,
+          "selected": false
+        },
+        {
+          "slot": "craft:1",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:2",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:3",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:4",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:5",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:6",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:7",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:8",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        }
+      ]
+    },
+    "hearts": {
+      "identity": "heart",
+      "items": [
+        {
+          "heart": "heart:0",
+          "state": "full"
+        },
+        {
+          "heart": "heart:1",
+          "state": "full"
+        },
+        {
+          "heart": "heart:2",
+          "state": "full"
+        },
+        {
+          "heart": "heart:3",
+          "state": "full"
+        },
+        {
+          "heart": "heart:4",
+          "state": "full"
+        },
+        {
+          "heart": "heart:5",
+          "state": "full"
+        },
+        {
+          "heart": "heart:6",
+          "state": "full"
+        },
+        {
+          "heart": "heart:7",
+          "state": "half"
+        },
+        {
+          "heart": "heart:8",
+          "state": "empty"
+        },
+        {
+          "heart": "heart:9",
+          "state": "empty"
         }
       ]
     }
@@ -802,6 +1039,15 @@
         "shift": "bool"
       },
       "reentrancy": "parallel"
+    },
+    "stonebreak:crafting.recipes": {
+      "contract": "stonebreak:crafting"
+    },
+    "stonebreak:screen.inventory.tab": {
+      "contract": "stonebreak:screen.inventory",
+      "params": {
+        "tab": "string"
+      }
     }
   }
 }

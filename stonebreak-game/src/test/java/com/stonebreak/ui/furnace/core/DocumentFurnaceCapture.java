@@ -86,7 +86,7 @@ public final class DocumentFurnaceCapture implements MigrationGate.Renderer {
             controller.bind(furnace);
             host = new GameUiHost(services(input, inventory, w, h), MultiplayerSession.Mode.SINGLEPLAYER);
             host.furnaceOpened(furnace);
-            providers = new GameDrawProviders((type, x, y, size) -> { }, raster.backend()::getMinecraftTypeface);
+            providers = new GameDrawProviders(null, raster.backend()::getMinecraftTypeface);
             view = GameUiDocuments.openBound(sbui, Map.of(), raster.backend()::getMinecraftTypeface,
                 providers.providers(), host.host(), null, new GameUiScriptServices(null), UiLayer.SCREEN);
             view.input().setSettings(FurnaceDocument.SETTINGS);

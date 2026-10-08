@@ -54,19 +54,27 @@ public class WorkbenchController extends InventoryController {
      * table's grid appear; edits go straight to it.
      */
     public void open(BlockPos pos) {
-        WorkbenchStateRegistry registry = game.getWorkbenchRegistry();
-        this.state = (registry != null) ? registry.getOrCreate(pos) : new WorkbenchState(pos);
+        WorkbenchStateRegistry registry = game == null ? null : game.getWorkbenchRegistry();
+        bind((registry != null) ? registry.getOrCreate(pos) : new WorkbenchState(pos));
+
+        // Update mouse capture state when workbench opens
+        if (game != null && game.getMouseCaptureManager() != null) {
+            game.getMouseCaptureManager().updateCaptureState();
+        }
+    }
+
+    /**
+     * Binds the UI to {@code table}'s grid and shows it, without the mouse-capture update (tests and
+     * {@link #open}).
+     */
+    void bind(WorkbenchState table) {
+        this.state = table;
         // An echo that landed while the UI was closed is not an edit of ours — drop its
         // marker, and baseline on the grid as it stands (already what the server knows).
         state.consumePreEchoSlots();
         this.lastSentSlots = state.encodeSlots();
         getCraftingManager().bindInputSlots(state.getSlots());
         setVisible(true);
-
-        // Update mouse capture state when workbench opens
-        if (game.getMouseCaptureManager() != null) {
-            game.getMouseCaptureManager().updateCaptureState();
-        }
     }
 
     /**
@@ -83,7 +91,7 @@ public class WorkbenchController extends InventoryController {
         setVisible(false);
 
         // Update mouse capture state when workbench closes
-        if (game.getMouseCaptureManager() != null) {
+        if (game != null && game.getMouseCaptureManager() != null) {
             game.getMouseCaptureManager().updateCaptureState();
         }
     }

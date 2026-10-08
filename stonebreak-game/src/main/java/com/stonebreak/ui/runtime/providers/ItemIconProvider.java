@@ -79,6 +79,7 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
     private float fontSize;
     private boolean prepareFailed;
 
+    /** @param atlas the shared block icon atlas, or null on a GL-free stage (block icons paint nothing) */
     public ItemIconProvider(ItemIconAtlas atlas, Supplier<Typeface> typeface) {
         this.atlas = atlas;
         this.typeface = typeface;
@@ -107,7 +108,7 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
 
     @Override
     public void prepare(UiElement element, UiRect rect, float scale) {
-        if (prepareFailed) {
+        if (prepareFailed || atlas == null) {
             return;
         }
         ItemRef ref = ItemRef.of(element);
@@ -173,7 +174,7 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
     private void drawIcon(Canvas canvas, ItemRef ref, Rect icon) {
         Item item = ref.item();
         if (item instanceof BlockType block) {
-            ItemIconAtlas.Icon cell = prepareFailed ? null : atlas.find(block, (int) icon.getWidth());
+            ItemIconAtlas.Icon cell = prepareFailed || atlas == null ? null : atlas.find(block, (int) icon.getWidth());
             Image page = cell == null ? null
                 : GlTextureImages.borrow(canvas, cell.texture(), cell.pageSize(), cell.pageSize(), true);
             if (page == null) {
@@ -226,6 +227,9 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
     }
 
     private Font font(float size) {
+        // MFonts' half-pixel grid: every legacy slot drew its count with MFonts.getScaled, so at a scale
+        // whose meta size is off the grid (0.85x: 11.9 -> 12, 1.8x: 25.2 -> 25) the digits match it (#300)
+        size = Math.round(Math.max(6f, size) * 2f) / 2f;
         if (font != null && fontSize == size) {
             return font;
         }

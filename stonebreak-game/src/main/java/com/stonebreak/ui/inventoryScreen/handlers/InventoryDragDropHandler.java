@@ -47,6 +47,19 @@ public class InventoryDragDropHandler {
     public static boolean placeDraggedItem(DragState dragState, Inventory inventory, ItemStack[] craftingInputSlots,
                                          Vector2f mousePos, InventoryLayoutCalculator.InventoryLayout layout,
                                          Runnable updateCraftingOutput) {
+        return placeDraggedItem(dragState, inventory, craftingInputSlots, mousePos, layout,
+                isMouseOutsideInventoryBounds(mousePos.x, mousePos.y, layout), updateCraftingOutput);
+    }
+
+    /**
+     * As above, with the caller deciding whether the pointer is beyond the screen's panel: a stack
+     * that lands on no slot is dropped into the world only then, and otherwise goes back to where it
+     * came from. The inventory screen's panel is wider than the slot layout (its side columns and
+     * tab strip), so it cannot be derived from {@code layout}.
+     */
+    public static boolean placeDraggedItem(DragState dragState, Inventory inventory, ItemStack[] craftingInputSlots,
+                                         Vector2f mousePos, InventoryLayoutCalculator.InventoryLayout layout,
+                                         boolean outsidePanel, Runnable updateCraftingOutput) {
         if (!dragState.isDragging()) return false;
 
         float mouseX = mousePos.x;
@@ -71,7 +84,7 @@ public class InventoryDragDropHandler {
         if (placed && !dragState.isDragging()) {
             dragState.clear();
         } else if (!placed && dragState.isDragging()) {
-            if (isMouseOutsideInventoryBounds(mouseX, mouseY, layout)) {
+            if (outsidePanel) {
                 dropEntireStackIntoWorld(dragState);
             } else {
                 tryReturnToOriginalSlot(dragState, inventory, craftingInputSlots, updateCraftingOutput);
@@ -287,12 +300,28 @@ public class InventoryDragDropHandler {
             return;
         }
 
+        worldDrop.accept(dragState.draggedItemStack.copy());
+        dragState.clear();
+    }
+
+    /** Where a dropped stack goes: in front of the local player (nowhere without one). */
+    private static java.util.function.Consumer<ItemStack> worldDrop = InventoryDragDropHandler::dropFromPlayer;
+
+    private static void dropFromPlayer(ItemStack stack) {
         Player player = Game.getPlayer();
         if (player != null) {
-            com.stonebreak.util.DropUtil.dropItemFromPlayer(player, dragState.draggedItemStack.copy());
+            com.stonebreak.util.DropUtil.dropItemFromPlayer(player, stack);
         }
+    }
 
-        dragState.clear();
+    /**
+     * Sends every stack the container screens drop into the world to {@code sink} until the returned
+     * handle is closed (interaction tests count them instead of losing them). Main thread only.
+     */
+    public static AutoCloseable redirectWorldDrops(java.util.function.Consumer<ItemStack> sink) {
+        java.util.function.Consumer<ItemStack> previous = worldDrop;
+        worldDrop = sink;
+        return () -> worldDrop = previous;
     }
 
     private static boolean isMouseOverSlot(float mouseX, float mouseY, int slotX, int slotY) {

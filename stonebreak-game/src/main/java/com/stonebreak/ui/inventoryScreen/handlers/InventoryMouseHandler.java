@@ -284,7 +284,8 @@ public class InventoryMouseHandler {
                                               java.util.function.Consumer<ItemStack> directSlotSetter,
                                               boolean isCraftingSlot, Runnable updateCraftingOutput) {
         if (targetSlot.isEmpty()) {
-            ItemStack newItem = new ItemStack(dragState.draggedItemStack.getItem(), 1);
+            ItemStack newItem = new ItemStack(dragState.draggedItemStack.getItem(), 1,
+                                              dragState.draggedItemStack.getState());
             directSlotSetter.accept(newItem);
             dragState.draggedItemStack.decrementCount(1);
             if (dragState.draggedItemStack.isEmpty()) dragState.clear();

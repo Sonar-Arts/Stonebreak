@@ -84,9 +84,7 @@ class WorkbenchInputDispatchTest {
     }
 
     private float[] mainSlotCenter(int index) {
-        int width = Inventory.MAIN_INVENTORY_COLS * stride() - InventoryLayoutCalculator.getSlotPadding();
-        int startX = layout.panelStartX + (layout.inventoryPanelWidth - width) / 2;
-        int x = startX + (index % Inventory.MAIN_INVENTORY_COLS) * stride();
+        int x = InventoryLayoutCalculator.gridStartX(layout) + (index % Inventory.MAIN_INVENTORY_COLS) * stride();
         int y = layout.mainInvContentStartY + InventoryLayoutCalculator.getSlotPadding()
                 + (index / Inventory.MAIN_INVENTORY_COLS) * stride();
         return center(x, y);

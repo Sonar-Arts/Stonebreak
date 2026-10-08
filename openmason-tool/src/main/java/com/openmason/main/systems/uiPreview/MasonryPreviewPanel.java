@@ -31,7 +31,7 @@ public final class MasonryPreviewPanel implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(MasonryPreviewPanel.class);
     private static final int BACKDROP = 0xFF203040;
-    private static final String HEART = "/ui/HUD/Health Icon/SB_Full_Health_Icon.sbt";
+    private static final String HEART = "/ui/shared/stonebreak/ui/hud/heart_full.sbt";
 
     private final ImBoolean visible = new ImBoolean(true);
     private final ImInt zoom = new ImInt(2);

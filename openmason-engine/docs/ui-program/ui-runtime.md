@@ -357,6 +357,13 @@ More of the house look as style (#299, all `ui-masonry` unless noted):
 - **`-sb-symbol`**: a house vector symbol (`lock`, `check`, `warning`, `star`, `chevron-left`, ... = `MSymbol`)
   centred in the element's box, in its `color`, with the 1 px house shadow unless `-sb-text-effect: none`.
 - **`-sb-surface: inset`**: the recessed dark well (`MPainter.inset`, the glossary's panes).
+- **`-sb-surface: tab | tab-hover | tab-active`** (#300): the inventory/character tab strip, a button surface without
+  the drop shadow (`tab-active` = the selected tab's lighter fill; a sheet keeps it on `:hover` too).
+  **`hotbar`**: the gameplay hotbar's dark translucent frame (radius 8). **`panel-deep`**: a stone panel on the deep
+  fill (the hotbar's item-name tooltip).
+- **`-sb-symbol: crafting-arrow`** (#300): the container screens' crafting arrow (`MPainter.craftingArrow`), spanning
+  the whole box rather than centred in its square; with `-sb-text-effect: none` it has no shadow, as the legacy
+  screens drew it.
 - **`-sb-shadow-color`** (+ `-sb-shadow-offset-x/-y`, `-sb-shadow-blur` = sigma, logical or `dpx`): a Skia drop
   shadow under the element's own paint. On an `Image` without a background it rides on the image's paint, exactly
   as a legacy `drawImageRect` with an image-filter paint (the menu logo); otherwise the element paints into a
@@ -399,7 +406,8 @@ element). A frame is `layout(w, h, uiScale, pixelRatio)` (layout, then input and
 `prepareProviders()` (the providers' GL phase, outside any Skia frame) → the host opens its Masonry frame →
 `paint(masonry)` → the host closes it. `render(...)` = `layout` + `paint` inside an already-open frame, for hosts
 whose providers need no GL phase. The painter draws carets, selections, focus rings, status symbols and the tooltip
-from the router.
+from the router (a pointer tooltip sits `round(15 x scale)` px right of and below the pointer, whole pixels as the
+legacy container screens placed it, #300).
 
 **Missing providers are loud.** An `ItemSlot`/`DrawProvider` whose `provider` id the host does not know paints a
 magenta placeholder with a warning symbol and reports `MISSING_DRAW_PROVIDER` once per element; a provider that

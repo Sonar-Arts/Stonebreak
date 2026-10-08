@@ -2,6 +2,7 @@ package com.stonebreak.ui.workbench;
 
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.core.Game;
+import com.stonebreak.core.GameState;
 import com.stonebreak.crafting.CraftingManager;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
@@ -9,16 +10,31 @@ import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.inventoryScreen.core.*;
 import com.stonebreak.ui.inventoryScreen.renderers.WorkbenchRenderCoordinator;
+import com.stonebreak.ui.runtime.screens.PresentationSlot;
+import com.stonebreak.ui.runtime.screens.ScreenPresentation;
 
 /**
  * A workbench screen that extends the inventory system architecture.
  * Uses a 3x3 crafting grid instead of the 2x2 inventory crafting grid.
  * Follows SOLID principles by composing existing modular components.
+ *
+ * <p>Shown by a {@link ScreenPresentation} when one is installed (#300: the shipped document
+ * {@value #DOCUMENT_ID}, {@code ui.runtime.screens.ContainerDocument}): the controller keeps the
+ * lifecycle (open at a table, Escape, WORKBENCH_UI, the grid bound to the table, a broken table
+ * abandoned, close puts the cursor stack back) and every slot rule; while the presentation shows,
+ * the legacy renderer, mouse poll, tooltip and dragged-item overlay stand down. It shows only in
+ * WORKBENCH_UI: the recipe book opened over the table hides it (the legacy screen was not drawn
+ * there either) and Escape back shows it again.
  */
 public class WorkbenchScreen {
 
+    /** The shipped document: {@code ui/documents/workbench.sbui}. */
+    public static final String DOCUMENT_ID = "workbench";
+
     private final WorkbenchController controller;
     private final WorkbenchInputManager slotInput;
+    private final PresentationSlot presentation = new PresentationSlot();
+    private volatile GameState state;
 
     /**
      * Creates a new workbench screen using the modular inventory architecture.
@@ -66,6 +82,7 @@ public class WorkbenchScreen {
      */
     public void open(BlockPos pos) {
         controller.open(pos);
+        syncPresentation(GameState.WORKBENCH_UI); // the state controller enters it before opening
     }
 
     /**
@@ -73,6 +90,25 @@ public class WorkbenchScreen {
      */
     public void close() {
         controller.close();
+        presentation.setVisible(false);
+    }
+
+    /** Installs (or, with null, removes) the alternative presentation; the legacy one is the default. */
+    public void setPresentation(ScreenPresentation p) {
+        presentation.install(p);
+    }
+
+    /** The game entered {@code state}: the presentation shows while the table is open in WORKBENCH_UI. */
+    public void syncPresentation(GameState state) {
+        this.state = state;
+        // posted from another thread, it runs on the UI thread with whatever state is current by then
+        com.stonebreak.ui.runtime.GameUiHost.onUiThread(
+            () -> presentation.setVisible(isVisible() && this.state == GameState.WORKBENCH_UI));
+    }
+
+    /** True while a presentation shows the screen instead of the legacy renderer. */
+    public boolean presentationShowing() {
+        return presentation.showing();
     }
 
     /**
@@ -95,6 +131,9 @@ public class WorkbenchScreen {
     public void render() {
         int screenWidth = Game.getWindowWidth();
         int screenHeight = Game.getWindowHeight();
+        if (presentation.paint(screenWidth, screenHeight)) {
+            return; // the document draws the panel, tooltip and carried stack in one paint
+        }
         controller.render(screenWidth, screenHeight);
     }
 
@@ -104,6 +143,9 @@ public class WorkbenchScreen {
     public void renderWithoutTooltips() {
         int screenWidth = Game.getWindowWidth();
         int screenHeight = Game.getWindowHeight();
+        if (presentation.paint(screenWidth, screenHeight)) {
+            return; // the document draws everything, its tooltip included
+        }
         controller.renderWithoutTooltips(screenWidth, screenHeight);
     }
 
@@ -111,6 +153,9 @@ public class WorkbenchScreen {
      * Renders only tooltips for the workbench screen.
      */
     public void renderTooltipsOnly() {
+        if (presentation.showing()) {
+            return;
+        }
         int screenWidth = Game.getWindowWidth();
         int screenHeight = Game.getWindowHeight();
         controller.renderTooltipsOnly(screenWidth, screenHeight);
@@ -120,6 +165,9 @@ public class WorkbenchScreen {
      * Renders only the dragged item for the workbench screen.
      */
     public void renderDraggedItemOnly(int screenWidth, int screenHeight) {
+        if (presentation.showing()) {
+            return; // the document's cursor layer carries it
+        }
         controller.renderDraggedItemOnly(screenWidth, screenHeight);
     }
 
@@ -127,7 +175,7 @@ public class WorkbenchScreen {
      * Handles input for the workbench screen.
      */
     public void handleInput(InputHandler inputHandler) {
-        if (!isVisible()) return;
+        if (!isVisible() || presentation.showing()) return; // a document routes its own input
 
         int screenWidth = Game.getWindowWidth();
         int screenHeight = Game.getWindowHeight();

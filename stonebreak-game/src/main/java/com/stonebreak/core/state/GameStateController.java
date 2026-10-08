@@ -99,6 +99,14 @@ public final class GameStateController {
         }
         // The documents of screens that are a state follow it (after the legacy onShow refreshes, #299).
         com.stonebreak.ui.runtime.screens.StateScreens.get().stateChanged(state);
+        // Container screens that stay open under another state (the recipe book over a crafting
+        // table) show their document only in their own state (#300).
+        if (game.getWorkbenchScreen() != null) {
+            game.getWorkbenchScreen().syncPresentation(state);
+        }
+        if (game.getInventoryScreen() != null) {
+            game.getInventoryScreen().syncPresentation(state);
+        }
 
         // Tear down any active session when returning to the main menu. In the two-world model
         // singleplayer also runs an integrated server + local client, so tear those down too.
@@ -312,8 +320,25 @@ public final class GameStateController {
         RecipeScreen recipeScreen = game.getRecipeBookScreen();
         if (recipeScreen != null && currentState == GameState.RECIPE_BOOK_UI) {
             recipeScreen.onClose();
-            setState(previousGameState);
+            setState(returnStateFromRecipeBook());
         }
+    }
+
+    /**
+     * Where closing the recipe book goes: the screen it was opened over, unless that screen closed in
+     * the meantime (a crafting table broken by another player abandons its screen while the book is up,
+     * #300). Returning to WORKBENCH_UI with no table open left the world paused with nothing drawn.
+     */
+    private GameState returnStateFromRecipeBook() {
+        if (previousGameState == GameState.WORKBENCH_UI
+                && (game.getWorkbenchScreen() == null || !game.getWorkbenchScreen().isVisible())) {
+            return GameState.PLAYING;
+        }
+        if (previousGameState == GameState.INVENTORY_UI
+                && (game.getInventoryScreen() == null || !game.getInventoryScreen().isVisible())) {
+            return GameState.PLAYING;
+        }
+        return previousGameState;
     }
 
 }

@@ -41,6 +41,16 @@ public interface ContainerSlotInput {
         return false;
     }
 
+    /** The screen's crafting grid, read in place (row-major), or null when it has none (#300). */
+    default com.stonebreak.items.ItemStack[] craftingSlots() {
+        return null;
+    }
+
+    /** What the crafting grid makes now, or null. */
+    default com.stonebreak.items.ItemStack craftingOutput() {
+        return null;
+    }
+
     /** Runs the screen's Sort rule; false when the screen has none. */
     default boolean sort() {
         return false;

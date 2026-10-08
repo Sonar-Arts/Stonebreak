@@ -71,6 +71,9 @@ public class OverlayRenderer {
         if (state == GameState.RECIPE_BOOK_UI || state == GameState.WORKBENCH_UI) {
             return; // Owner screen renders its own tooltips.
         }
+        if (state == GameState.FURNACE_UI) {
+            return; // no hotbar under the furnace: its item tooltip must not float there (#300)
+        }
 
         if (inventoryScreen.isVisible()) {
             inventoryScreen.renderTooltipsOnly(windowWidth, windowHeight);

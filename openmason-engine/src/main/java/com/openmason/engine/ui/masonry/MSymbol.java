@@ -34,7 +34,12 @@ public enum MSymbol {
     /** Solid block arrows: direction prompts, where a chevron is too light to read at a glance. */
     ARROW_UP, ARROW_DOWN, ARROW_LEFT, ARROW_RIGHT,
     /** Pointing hand (points right): the list cursor of a keyboard/gamepad-driven menu. */
-    HAND_POINT;
+    HAND_POINT,
+    /**
+     * The container screens' crafting arrow ({@link MPainter#craftingArrow}): a shaft and head
+     * spanning the whole box, not centred in its square like the others (#300).
+     */
+    CRAFTING_ARROW;
 
     /**
      * Draws this symbol centered in the box {@code (x, y, w, h)}. Ignores
@@ -89,6 +94,7 @@ public enum MSymbol {
             case ARROW_LEFT -> drawArrow(canvas, cx, cy, s, color, -1f, 0f);
             case ARROW_RIGHT -> drawArrow(canvas, cx, cy, s, color, 1f, 0f);
             case HAND_POINT -> drawHand(canvas, cx, cy, s, color);
+            case CRAFTING_ARROW -> MPainter.craftingArrow(canvas, x, y, w, h, color);
         }
     }
 

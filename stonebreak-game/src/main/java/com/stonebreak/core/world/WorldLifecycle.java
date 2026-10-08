@@ -100,15 +100,44 @@ public final class WorldLifecycle {
     }
 
     /**
-     * Returns the inventory's 2x2 grid and cursor stack to the player before the save captures
-     * the inventory. Crafting tables are not emptied: their grid is block state that is saved
-     * with the chunk (issue #307). Also called by {@code GameShutdown}.
+     * Returns the inventory's 2x2 grid and every open screen's cursor stack to the player before
+     * the save captures the inventory. Crafting tables and furnaces are not emptied: their slots are
+     * block state saved with the chunk (issue #307); closing an open one puts its cursor stack back
+     * and ships its slots, as Escape does (quitting from WORKBENCH_UI used to lose the stack, #300).
+     * Also called by {@code GameShutdown}.
      */
     public static void returnCraftingGridsToPlayer(Game game) {
         try {
+            if (game.getWorkbenchScreen() != null && game.getWorkbenchScreen().isVisible()) {
+                cursorToInventory(game.getWorkbenchScreen().getSlotInput(), game);
+                game.getWorkbenchScreen().close();
+            }
+            if (game.getFurnaceScreen() != null && game.getFurnaceScreen().isVisible()) {
+                cursorToInventory(game.getFurnaceScreen().getController().getInputManager(), game);
+                game.getFurnaceScreen().close();
+            }
             if (game.getInventoryScreen() != null) game.getInventoryScreen().returnHeldItemsToPlayer();
         } catch (RuntimeException e) {
             System.err.println("[WORLD-ISOLATION] Error returning crafting grids: " + e.getMessage());
+        }
+    }
+
+    /**
+     * The open screen's cursor stack straight into the player's inventory, which the save that follows
+     * captures: closing would put it back into the table or furnace slot, and that slot reaches the
+     * server's save only by an asynchronous packet. What does not fit stays for {@code close()} (its slot,
+     * else the world).
+     */
+    private static void cursorToInventory(com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput screen, Game game) {
+        var player = Game.getPlayer();
+        var drag = screen == null ? null : screen.getDragState();
+        if (player == null || drag == null || !drag.isDragging()) {
+            return;
+        }
+        com.stonebreak.items.ItemStack held = drag.draggedItemStack;
+        held.setCount(held.getCount() - player.getInventory().addItemAndReturnCount(held));
+        if (held.isEmpty()) {
+            drag.clear();
         }
     }
 

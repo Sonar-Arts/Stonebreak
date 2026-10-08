@@ -50,7 +50,15 @@ public class MHotbarRenderer {
     private final DodgeIndicator        dodge;
     private final HotbarTooltipRenderer tooltip;
 
+    private final java.util.function.Supplier<Player> player;
+
     public MHotbarRenderer(UIRenderer uiRenderer, Renderer renderer) {
+        this(uiRenderer, renderer, () -> Game.getInstance() == null ? null : Game.getInstance().getPlayer());
+    }
+
+    /** @param player whose hearts, bars, gauge and dodge the HUD shows (the fidelity captures pass a fixture) */
+    public MHotbarRenderer(UIRenderer uiRenderer, Renderer renderer, java.util.function.Supplier<Player> player) {
+        this.player      = player;
         this.ui          = new MasonryUI(renderer.getSkijaBackend());
         this.slots       = new HotbarSlotRenderer(uiRenderer, renderer, ui);
         this.hearts      = new HealthHeartsRenderer();
@@ -120,7 +128,7 @@ public class MHotbarRenderer {
 
     /** Hearts, stamina/mana bars, the selected class's gauge and the dodge indicator. */
     private void drawPlayerHud(Canvas canvas, HotbarLayoutCalculator.HotbarLayout layout) {
-        Player player = Game.getInstance().getPlayer();
+        Player player = this.player.get();
         if (player == null) return;
 
         hearts.draw(canvas, player, layout);

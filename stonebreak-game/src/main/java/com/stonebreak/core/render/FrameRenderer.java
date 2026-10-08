@@ -426,17 +426,19 @@ public final class FrameRenderer {
             return;
         }
 
+        // The hotbar's item tooltip is the overlay pass's (OverlayRenderer, above block drops):
+        // drawing it here as well double-blended its translucent fill (#300).
         if (state == GameState.CHARACTER_SHEET_UI && characterScreen != null && characterScreen.isVisible()) {
             // Character screen is open — draw it, but keep the hotbar visible below.
             characterScreen.render(width, height);
             if (inventory != null) {
-                inventory.renderHotbar(width, height);
+                inventory.renderHotbarWithoutTooltips(width, height);
             }
         } else if (inventory != null) {
             if (inventory.isVisible()) {
                 inventory.render(width, height);
             } else {
-                inventory.renderHotbar(width, height);
+                inventory.renderHotbarWithoutTooltips(width, height);
             }
         }
     }
@@ -462,7 +464,7 @@ public final class FrameRenderer {
         if (game.getState() == GameState.WORKBENCH_UI) {
             WorkbenchScreen workbench = game.getWorkbenchScreen();
             if (workbench != null && workbench.isVisible()) {
-                workbench.render();
+                workbench.renderWithoutTooltips(); // its tooltip is the overlay pass's (#300)
             }
         }
         if (game.getState() == GameState.FURNACE_UI) {

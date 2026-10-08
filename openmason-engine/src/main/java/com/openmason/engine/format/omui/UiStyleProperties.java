@@ -59,7 +59,7 @@ public final class UiStyleProperties {
     private static final Map<String, Spec> SPECS = new HashMap<>();
 
     /** {@code -sb-symbol} keywords: {@code none} and the Masonry {@code MSymbol}s, lower-case with hyphens. */
-    public static final String[] SYMBOLS = {"none", "chevron-up", "chevron-down", "chevron-left", "chevron-right", "plus", "minus", "cross", "check", "gear", "magnifier", "warning", "info", "star", "heart", "lock", "play", "pause", "arrow-up", "arrow-down", "arrow-left", "arrow-right", "hand-point"};
+    public static final String[] SYMBOLS = {"none", "chevron-up", "chevron-down", "chevron-left", "chevron-right", "plus", "minus", "cross", "check", "gear", "magnifier", "warning", "info", "star", "heart", "lock", "play", "pause", "arrow-up", "arrow-down", "arrow-left", "arrow-right", "hand-point", "crafting-arrow"};
 
     static {
         keyword("display", "flex", "none");
@@ -96,7 +96,8 @@ public final class UiStyleProperties {
         keyword("-sb-anchor", "none", "pointer");
         keyword("pointer-events", "auto", "none");
         // ui-masonry: the house look as style (#297)
-        keyword("-sb-surface", "auto", "none", "panel", "container", "button", "button-hover", "button-disabled", "hud",
+        keyword("-sb-surface", "auto", "none", "panel", "container", "button", "button-hover", "button-disabled",
+                "tab", "tab-hover", "tab-active", "hotbar", "panel-deep", "hud",
                 "inset");
         keyword("-sb-text-effect", "shadow", "none", "title");
         keyword("-sb-pixel-grid", "device", "none");

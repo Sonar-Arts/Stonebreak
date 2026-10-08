@@ -23,9 +23,9 @@ public final class HealthHeartsRenderer {
     private static final int   HEART_ROW_GAP             = 4;
     private static final float HEART_MIN_VISIBLE_FRACTION = 0.40f;
 
-    private static final String HEART_EMPTY_SBT = "/ui/HUD/Health Icon/SB_Empty_Health_Icon.sbt";
-    private static final String HEART_HALF_SBT  = "/ui/HUD/Health Icon/SB_Half_Health_Icon.sbt";
-    private static final String HEART_FULL_SBT  = "/ui/HUD/Health Icon/SB_Full_Health_Icon.sbt";
+    private static final String HEART_EMPTY_SBT = "/ui/shared/stonebreak/ui/hud/heart_empty.sbt";
+    private static final String HEART_HALF_SBT  = "/ui/shared/stonebreak/ui/hud/heart_half.sbt";
+    private static final String HEART_FULL_SBT  = "/ui/shared/stonebreak/ui/hud/heart_full.sbt";
 
     private record HeartLayout(int heartsPerRow, int numRows, float step) {}
 
@@ -41,21 +41,35 @@ public final class HealthHeartsRenderer {
 
         int heartSize = heartSize(empty, half, full);
 
-        HeartLayout hl = computeHeartLayout(totalHearts, heartSize, layout.backgroundWidth);
-        if (hl.heartsPerRow() == 0) return;
+        float[][] rects = heartRects(totalHearts, heartSize, layout);
+        for (int i = 0; i < rects.length; i++) {
+            float fill = Math.max(0f, Math.min(1f, filled - i));
 
+            MTexture sprite = fill >= 0.75f ? full : fill >= 0.25f ? half : empty;
+            if (sprite != null) {
+                MPainter.drawImage(canvas, sprite.image(), rects[i][0], rects[i][1], heartSize, heartSize);
+            }
+        }
+    }
+
+    /**
+     * Where each of {@code totalHearts} hearts sits ({x, y, size, size}, device px): rows of hearts
+     * starting at the hotbar's left edge {@value #HEART_Y_GAP} px above it, the step compressed once a row
+     * no longer fits, further rows stacked upwards. The UI document's code-behind lays them out the same
+     * way (#300).
+     */
+    public static float[][] heartRects(int totalHearts, int heartSize, HotbarLayoutCalculator.HotbarLayout layout) {
+        HeartLayout hl = computeHeartLayout(totalHearts, heartSize, layout.backgroundWidth);
+        if (hl.heartsPerRow() == 0) return new float[0][];
+        float[][] out = new float[totalHearts][];
         for (int i = 0; i < totalHearts; i++) {
             int   row  = i / hl.heartsPerRow();
             int   col  = i % hl.heartsPerRow();
             float x    = layout.backgroundX + col * hl.step();
             float y    = layout.backgroundY - HEART_Y_GAP - row * (heartSize + HEART_ROW_GAP);
-            float fill = Math.max(0f, Math.min(1f, filled - i));
-
-            MTexture sprite = fill >= 0.75f ? full : fill >= 0.25f ? half : empty;
-            if (sprite != null) {
-                MPainter.drawImage(canvas, sprite.image(), x, y, heartSize, heartSize);
-            }
+            out[i] = new float[]{x, y, heartSize, heartSize};
         }
+        return out;
     }
 
     /** Y of the topmost heart row for this player's max health — the anchor for bars stacked above. */
@@ -65,10 +79,28 @@ public final class HealthHeartsRenderer {
         MTexture half  = MTextureRegistry.get(HEART_HALF_SBT);
         MTexture full  = MTextureRegistry.get(HEART_FULL_SBT);
         int heartSize  = heartSize(empty, half, full);
+        return topRowY(totalHearts, heartSize, layout);
+    }
 
+    /**
+     * Y of the topmost heart row the layout plans for {@code totalHearts} (its row count, which a
+     * compressed layout may not fill): the anchor the stamina and mana bars stack above.
+     */
+    public static float topRowY(int totalHearts, int heartSize, HotbarLayoutCalculator.HotbarLayout layout) {
         HeartLayout hl   = computeHeartLayout(totalHearts, heartSize, layout.backgroundWidth);
         int         rows = Math.max(1, hl.numRows());
         return layout.backgroundY - HEART_Y_GAP - (rows - 1) * (heartSize + HEART_ROW_GAP);
+    }
+
+    /** The heart edge the HUD draws at, in device pixels (the UI document reads it too, #300). */
+    public static int heartSize() {
+        return heartSize(MTextureRegistry.get(HEART_EMPTY_SBT), MTextureRegistry.get(HEART_HALF_SBT),
+                MTextureRegistry.get(HEART_FULL_SBT));
+    }
+
+    /** {@code fill} (0..1 of one heart) as the sprite the HUD shows: full, half or empty. */
+    public static String heartState(float fill) {
+        return fill >= 0.75f ? "full" : fill >= 0.25f ? "half" : "empty";
     }
 
     /** Native heart edge snapped up to the nearest integer multiple near the target size. */
@@ -77,7 +109,7 @@ public final class HealthHeartsRenderer {
         return nativeSize * Math.max(1, Math.round((float) HEART_SIZE_TARGET / nativeSize));
     }
 
-    private HeartLayout computeHeartLayout(int totalHearts, int heartSize, int availableWidth) {
+    private static HeartLayout computeHeartLayout(int totalHearts, int heartSize, int availableWidth) {
         if (totalHearts <= 0) return new HeartLayout(0, 0, 0f);
 
         float naturalStep   = heartSize + HEART_SPACING;

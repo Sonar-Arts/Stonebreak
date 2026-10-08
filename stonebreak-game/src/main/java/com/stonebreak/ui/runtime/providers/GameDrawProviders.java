@@ -25,6 +25,8 @@ import java.util.function.Supplier;
  *       {@code DrawProvider}'s {@code params})</li>
  *   <li>{@value EntityPreviewProvider#ID} v{@value EntityPreviewProvider#VERSION}: orbiting 3D
  *       player/mob previews ({@code DrawProvider} {@code params})</li>
+ *   <li>{@value ClassGaugeProvider#ID} v{@value ClassGaugeProvider#VERSION}: the selected class's HUD gauge
+ *       (Skia only, the game's player; {@code params.classId})</li>
  *   <li>{@value FurnaceCrucibleProvider#BOWL_ID} and {@value FurnaceCrucibleProvider#RINGS_ID}
  *       v{@value FurnaceCrucibleProvider#VERSION}: the furnace crucible and its progress rings
  *       (Skia only, {@code params} = the {@code furnace} record)</li>
@@ -42,7 +44,8 @@ public final class GameDrawProviders implements AutoCloseable {
         FurnaceCrucibleProvider.BOWL_ID, FurnaceCrucibleProvider.VERSION,
         FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.VERSION,
         DirtBackdropProvider.ID, DirtBackdropProvider.VERSION,
-        MenuStageProvider.ID, MenuStageProvider.VERSION);
+        MenuStageProvider.ID, MenuStageProvider.VERSION,
+        ClassGaugeProvider.ID, ClassGaugeProvider.VERSION);
 
     private static GameDrawProviders instance;
     private static boolean installed;
@@ -50,8 +53,19 @@ public final class GameDrawProviders implements AutoCloseable {
     private final ItemIconAtlas atlas;
     private final Map<String, UiPaintHost.UiDrawProvider> providers;
 
+    /**
+     * @param blockIcons renders block icons into the shared atlas (GL), or null for a GL-free set (CPU
+     *                   raster stages, the fidelity gates): block icons then paint nothing, as the
+     *                   legacy screens' GL phase does on such a stage
+     */
     public GameDrawProviders(ItemIconAtlas.BlockIconPainter blockIcons, Supplier<Typeface> typeface) {
-        this.atlas = new ItemIconAtlas(blockIcons);
+        this(blockIcons, typeface, () -> null);
+    }
+
+    /** @param player whose class gauge the HUD shows (the game's local player) */
+    public GameDrawProviders(ItemIconAtlas.BlockIconPainter blockIcons, Supplier<Typeface> typeface,
+                             Supplier<com.stonebreak.player.Player> player) {
+        this.atlas = blockIcons == null ? null : new ItemIconAtlas(blockIcons);
         Map<String, UiPaintHost.UiDrawProvider> map = new LinkedHashMap<>();
         map.put(ItemIconProvider.ID, new ItemIconProvider(atlas, typeface));
         map.put(EntityPreviewProvider.ID, new EntityPreviewProvider());
@@ -59,6 +73,7 @@ public final class GameDrawProviders implements AutoCloseable {
         map.put(FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.rings());
         map.put(DirtBackdropProvider.ID, new DirtBackdropProvider());
         map.put(MenuStageProvider.ID, new MenuStageProvider());
+        map.put(ClassGaugeProvider.ID, new ClassGaugeProvider(player, typeface));
         this.providers = java.util.Collections.unmodifiableMap(map);
         if (!providers.keySet().equals(DECLARED.keySet())) {
             throw new IllegalStateException("declared providers " + DECLARED.keySet() + " != " + providers.keySet());
@@ -68,7 +83,8 @@ public final class GameDrawProviders implements AutoCloseable {
     /** The game's shared set (legacy block icons, the game backend's typeface). */
     public static synchronized GameDrawProviders get() {
         if (instance == null) {
-            instance = new GameDrawProviders(ItemIconAtlas.BlockIconPainter.LEGACY, GameDrawProviders::gameTypeface);
+            instance = new GameDrawProviders(ItemIconAtlas.BlockIconPainter.LEGACY, GameDrawProviders::gameTypeface,
+                com.stonebreak.core.Game::getPlayer);
         }
         return instance;
     }
@@ -110,7 +126,8 @@ public final class GameDrawProviders implements AutoCloseable {
         return Map.of(FurnaceCrucibleProvider.BOWL_ID, FurnaceCrucibleProvider.bowl(),
             FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.rings(),
             DirtBackdropProvider.ID, new DirtBackdropProvider(),
-            MenuStageProvider.ID, new MenuStageProvider(() -> null, () -> 0));
+            MenuStageProvider.ID, new MenuStageProvider(() -> null, () -> 0),
+            ClassGaugeProvider.ID, new ClassGaugeProvider(() -> null, () -> null));
     }
 
     /** Declares every provider on {@code host}, so activation accepts documents that need them. */
@@ -124,7 +141,9 @@ public final class GameDrawProviders implements AutoCloseable {
 
     @Override
     public void close() {
-        atlas.close();
+        if (atlas != null) {
+            atlas.close();
+        }
         for (UiPaintHost.UiDrawProvider p : providers.values()) {
             if (p instanceof AutoCloseable c) {
                 try {

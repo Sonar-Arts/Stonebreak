@@ -571,7 +571,9 @@ public final class UiPainter {
         if (t.fromFocus()) {
             MTooltip.draw(masonry, t.text(), t.x(), t.y() + 4f * scale, (int) w, (int) h);
         } else {
-            MTooltip.draw(masonry, t.text(), t.x() + 15f * scale, t.y() + 15f * scale, (int) w, (int) h);
+            // whole pixels from the pointer, as the legacy container screens placed it (#300)
+            float off = Math.round(15f * scale);
+            MTooltip.draw(masonry, t.text(), t.x() + off, t.y() + off, (int) w, (int) h);
         }
     }
 
@@ -620,6 +622,25 @@ public final class UiPainter {
             case "container" -> MPainter.containerPanel(canvas, r.x(), r.y(), r.width(), r.height());
             case "hud" -> MPainter.hudFrame(canvas, r.x(), r.y(), r.width(), r.height());
             case "inset" -> MPainter.inset(canvas, r.x(), r.y(), r.width(), r.height());
+            case "hotbar" -> // the gameplay hotbar's frame (#300): dark translucent stone, radius 8
+                MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), 8f,
+                    0xC8282828, 0xFF505050, 0x22FFFFFF, 0x44000000, 0x78000000,
+                    MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
+            case "panel-deep" -> // a stone panel on the deep fill: the hotbar's item-name tooltip (#300)
+                MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), MStyle.PANEL_RADIUS,
+                    MStyle.PANEL_FILL_DEEP, MStyle.PANEL_BORDER, MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW,
+                    MStyle.PANEL_DROP_SHADOW, MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
+            case "tab", "tab-hover", "tab-active" -> {
+                // the inventory/character sheet tab strip: a button without the drop shadow (#300)
+                int fill = switch (surface) {
+                    case "tab-active" -> 0xFF7A7A7A;
+                    case "tab-hover" -> MStyle.BUTTON_FILL_HI;
+                    default -> MStyle.BUTTON_FILL;
+                };
+                MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), MStyle.BUTTON_RADIUS,
+                    fill, MStyle.BUTTON_BORDER, MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
+                    MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
+            }
             case "button", "button-hover", "button-disabled" -> {
                 int fill = switch (surface) {
                     case "button-hover" -> MStyle.BUTTON_FILL_HI;

@@ -256,13 +256,9 @@ public final class MenuInputRouter {
         if (inputHandler == null) {
             return;
         }
-        // Inventory and character-screen input is handled inside InputHandler.handleInput below —
-        // calling their mouse handlers here too breaks single-click drag.
-        if (game.getRecipeBookScreen() != null && game.getRecipeBookScreen().isVisible()) {
-            game.getRecipeBookScreen().handleInput();
-        } else if (game.getWorkbenchScreen() != null && game.getWorkbenchScreen().isVisible()) {
-            game.getWorkbenchScreen().handleInput(inputHandler);
-        }
+        // Every in-game screen's mouse input (inventory, character sheet, workbench, furnace, recipe
+        // book) is handled once, inside InputHandler.handleInput below: polling the workbench and the
+        // recipe book here as well ran their clicks twice a frame (#300).
         Player player = game.getPlayer();
         if (player != null) {
             inputHandler.handleInput(player);

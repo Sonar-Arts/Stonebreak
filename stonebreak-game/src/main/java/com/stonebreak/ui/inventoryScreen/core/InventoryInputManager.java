@@ -115,6 +115,12 @@ public class InventoryInputManager implements ContainerSlotInput {
         if ("outside".equals(slot)) {
             return new float[]{OUTSIDE, OUTSIDE};
         }
+        if ("panel".equals(slot)) {
+            // just inside the slot panel's top-left corner, which no slot, button or tab covers
+            InventoryLayoutCalculator.InventoryLayout layout = layoutFor(screenWidth, screenHeight);
+            float half = slotSize() / 2f;
+            return new float[]{layout.panelStartX + 1 - half, layout.panelStartY + 1 - half};
+        }
         int[] o = slotManager.slotOrigin(slot, layoutFor(screenWidth, screenHeight));
         return o == null ? null : new float[]{o[0], o[1]};
     }
@@ -376,6 +382,16 @@ public class InventoryInputManager implements ContainerSlotInput {
             && mouseY >= charTabY  && mouseY <= charTabY  + charTabHeight;
     }
 
+    @Override
+    public ItemStack[] craftingSlots() {
+        return craftingManager.getCraftingInputSlots();
+    }
+
+    @Override
+    public ItemStack craftingOutput() {
+        return craftingManager.getCraftingOutputSlot();
+    }
+
     /** The Craft All button's rule, for UI documents (#289). */
     @Override
     public boolean craftAll() {
@@ -545,7 +561,21 @@ public class InventoryInputManager implements ContainerSlotInput {
         InventoryDragDropHandler.placeDraggedItem(dragState, inventory,
                                                 craftingManager.getCraftingInputSlots(),
                                                 mousePos, layout,
+                                                isOutsidePanel(mousePos.x, mousePos.y, lastScreenWidth, lastScreenHeight),
                                                 craftingManager::updateCraftingOutput);
+    }
+
+    /**
+     * Whether a point is beyond everything the inventory screen draws: all three columns and the
+     * tab strip above them. Only there does a stack that landed on no slot go into the world; on
+     * the side columns or a tab it goes back where it came from.
+     */
+    protected boolean isOutsidePanel(float x, float y, int screenWidth, int screenHeight) {
+        InventoryLayoutCalculator.InventoryLayout3Col l =
+            InventoryLayoutCalculator.calculateThreeColumnLayout(screenWidth, screenHeight);
+        int top = com.stonebreak.ui.TabStripLayout.tabY(l.panelStartY);
+        return x < l.panelStartX || x > l.panelStartX + l.totalPanelWidth
+            || y < top || y > l.panelStartY + l.totalPanelHeight;
     }
 
     private void handleFailedDrop() {

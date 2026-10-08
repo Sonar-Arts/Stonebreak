@@ -151,20 +151,20 @@ These apply to every row unless the row says otherwise.
 | death-menu | dialog | `ui.DeathMenu` | shell-persistent | in progress |
 | statistics | screen | `ui.statisticsScreen.StatisticsScreen` | shell-persistent | in progress |
 | glossary | screen | `ui.glossaryScreen.GlossaryScreen` | shell-persistent | in progress |
-| inventory | screen | `ui.inventoryScreen.InventoryScreen` | per-world | not started |
-| inventory-tooltip | tooltip | `ui.inventoryScreen.InventoryScreen` via OR | per-world, per-frame | not started |
+| inventory | screen | `ui.inventoryScreen.InventoryScreen` | per-world | in progress |
+| inventory-tooltip | tooltip | `ui.inventoryScreen.InventoryScreen` via OR | per-world, per-frame | in progress |
 | dragged-item-layer | overlay | OR + inventory/workbench/furnace screens | per-frame immediate | in progress |
-| workbench | screen | `ui.workbench.WorkbenchScreen` | per-world | not started |
+| workbench | screen | `ui.workbench.WorkbenchScreen` | per-world | in progress |
 | furnace | screen | `ui.furnace.FurnaceScreen` | per-world | in progress |
 | recipe-book | overlay | `ui.recipeScreen.RecipeScreen` | per-world | not started |
 | recipe-book-tooltip | tooltip | `ui.recipeScreen.RecipeScreen` via OR | per-world | not started |
 | character-sheet | screen | `ui.characterScreen.CharacterScreen` | per-world | not started |
-| hotbar | hud | `rendering.UI.components.MHotbarRenderer` + `ui.HotbarScreen` | per-world (via InventoryScreen) | not started |
-| hud-health-hearts | hud | `rendering.UI.components.hotbar.HealthHeartsRenderer` | per-frame immediate | not started |
-| hud-stamina-mana | hud | `rendering.UI.components.hotbar.StaminaBarRenderer` | per-frame immediate | not started |
-| hud-class-gauge | hud | `rendering.UI.components.hotbar.{Rage,Quarry,Resonance,Doubt,Momentum}Gauge` + `GaugePanel` | per-frame immediate | not started |
-| hud-dodge-indicator | hud | `rendering.UI.components.hotbar.DodgeIndicator` | per-frame immediate | not started |
-| hotbar-item-tooltip | tooltip | `rendering.UI.components.hotbar.HotbarTooltipRenderer` + `ui.HotbarScreen` | per-world | not started |
+| hotbar | hud | `rendering.UI.components.MHotbarRenderer` + `ui.HotbarScreen` | per-world (via InventoryScreen) | in progress |
+| hud-health-hearts | hud | `rendering.UI.components.hotbar.HealthHeartsRenderer` | per-frame immediate | in progress |
+| hud-stamina-mana | hud | `rendering.UI.components.hotbar.StaminaBarRenderer` | per-frame immediate | in progress |
+| hud-class-gauge | hud | `rendering.UI.components.hotbar.{Rage,Quarry,Resonance,Doubt,Momentum}Gauge` + `GaugePanel` | per-frame immediate | in progress |
+| hud-dodge-indicator | hud | `rendering.UI.components.hotbar.DodgeIndicator` | per-frame immediate | in progress |
+| hotbar-item-tooltip | tooltip | `rendering.UI.components.hotbar.HotbarTooltipRenderer` + `ui.HotbarScreen` | per-world | in progress |
 | crosshair | hud | `rendering.UI.components.MCrosshairRenderer` | process-persistent | not started |
 | chat | hud | `ui.chat.ChatSystem` + `ui.chat.SkijaChatRenderer` | process-persistent | not started |
 | chat-emoji-picker | dialog | `ui.chat.emoji.EmojiPickerRenderer` + `ChatEmojiSystem` | process-persistent | not started |
@@ -863,12 +863,40 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Tab 0 is not hit-tested.
   - `handlers/InventoryMouseHandler.java` is dead.
 
+- **Fidelity:** `inventory/inventory-empty_1920x1080_s1` `inventory/inventory-empty_1280x720_s0_75` `inventory/inventory-empty_3840x2160_s2` `inventory/inventory-empty_1921x1081_s1_25` `inventory/inventory-empty_800x600_s2` `inventory/inventory-stocked_1920x1080_s1` `inventory/inventory-stocked_1280x720_s0_75` `inventory/inventory-stocked_3840x2160_s2` `inventory/inventory-stocked_1921x1081_s1_25` `inventory/inventory-empty-hover-tab1_1920x1080_s1` `inventory/inventory-empty-hover-tab0_1920x1080_s1` `inventory/inventory-empty-hover-equip0_1920x1080_s1` `inventory/inventory-empty-hover-status5_1920x1080_s1` `inventory/inventory-empty-hover-recipes_1920x1080_s1` `inventory/inventory-stocked-hover-craftall_1920x1080_s1` `inventory/inventory-empty-hover-sort_1920x1080_s1`
+- **Fixed before the migration (#300):** a stack released over the side columns or the tab strip went into the
+  world (the drop test used the centre column's bounds); it now goes back to its slot, only beyond all three
+  columns and the strip is it dropped (`InventoryInputManager.isOutsidePanel`). `update` ran twice per frame in
+  INVENTORY_UI (GameLoop). Right-click "place one" lost the stack's state. E and C opened the inventory / character
+  sheet under the pause or death menu (unpausing the world); they are now ignored there (`UiToggleKeyHandler`).
+  Regression: `ContainerSlotRulesRegressionTest`.
+- **Migration (#300, in progress):** shipped as `ui/documents/inventory.sbui` (OM project "Stonebreak Menus",
+  `UI/stonebreak/ui/screens/inventory.omui`), over the shared `item_slot` and `house_button` components and the
+  engine `-sb-surface: tab|tab-hover|tab-active` and `-sb-symbol: crafting-arrow`. `InventoryScreen` keeps the
+  lifecycle and every slot rule; its presentation (`ui.runtime.screens.ContainerDocument`) shows only in
+  INVENTORY_UI (`syncPresentation`, from `GameStateController.setState`): the recipe book over it hides it. The
+  code-behind re-derives the legacy three-column layout (side columns' float cursors, unscaled widget fonts in
+  `dpx`) from `ui.metrics()`. Contracts: `stonebreak:crafting` 1 (`crafting`, `craftOutput`, `.recipes`),
+  `stonebreak:player.character` 1 (`character`: level/XP, HP/MP/SP, ability scores, each with its legacy text),
+  `stonebreak:screen.inventory` 1 (`.tab {tab}`). Presses follow the legacy precedence in Lua: a plain left press
+  with an empty hand on a tab (not the first) or a button runs it; anything else is a `panel` (on the columns or
+  the strip) or `outside` press. Equipment, status and resistances stay placeholders, as in the legacy screen.
+  Rollback: `-Dstonebreak.ui.legacy=inventory`.
+- **Gate:** `ui.fidelity.InventoryDocumentGateTest` (22 cases, `FLOAT_EXACT` + `EXACT`, 0 px) and
+  `ui.inventoryScreen.core.InventoryDocumentInteractionTest` (a 25-step script incl. presses on the side columns
+  and the tab strip: same inventory, grid, output, cursor stack and world drops after every step as the legacy
+  pointer path; items conserved); lifecycle `InventoryDocumentLifecycleTest`.
 ### inventory-tooltip
 - **Kind:** tooltip.
 - **Owner:** `InventoryScreen.renderTooltipsOnly`, driven by `OR.renderInventoryTooltips` (OR:66-80). Gated off in RECIPE_BOOK_UI and WORKBENCH_UI.
 - **Content:** `item.getName()` offset 15·s from the cursor (MTooltip, uiScale).
 - **Fixtures:** none.
 
+- **Fidelity:** `inventory/inventory-stocked-hover-main0_1920x1080_s1` `inventory/inventory-stocked-hover-hot2_1920x1080_s1` `inventory/inventory-stocked-hover-craft3_1920x1080_s1` `inventory/inventory-stocked-hover-output_1920x1080_s1` `inventory/inventory-stocked-hover-main4_1921x1081_s1_25`
+- **Migration (#300, in progress):** the document's router tooltip (`MTooltip`), shown at once
+  (`ContainerDocument.SETTINGS`); its offset is now `Math.round(15 * scale)` in the engine painter, the legacy
+  inventory/workbench rule. Hidden while a carried stack shows (engine rule). `InventoryScreen.renderTooltipsOnly`
+  stands down while the document shows.
 ### dragged-item-layer
 - **Kind:** overlay.
 - **Owner:** `OR.renderDraggedItems` (OR:106-131). It calls `renderDraggedItemOnly` on the inventory (INVENTORY_UI only), the workbench and the furnace. The item is drawn at slotSize − 4 at the cursor, above all UI.
@@ -883,6 +911,9 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   "no tooltip while dragging". `FurnaceScreen.renderDraggedItemOnly` stands down while the document shows. The
   inventory and workbench keep the legacy overlay until #300.
 
+- **Migration (#300):** the inventory and workbench documents carry the stack the same way as the furnace
+  (`stonebreak:item-icon` on the cursor layer, `carried`); their `renderDraggedItemOnly` stand down while the
+  document shows.
 ### workbench
 - **Kind:** screen.
 - **Owner:** `com.stonebreak.ui.workbench.WorkbenchScreen` with `inventoryScreen.core.{WorkbenchController, WorkbenchInputManager}`, `handlers.WorkbenchDragDropHandler` and `renderers.WorkbenchRenderCoordinator`.
@@ -901,7 +932,27 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Notes:**
   - **Pickup hitboxes sit `slotPadding`·s px left of the drawn slots** (render :252,260 vs `InventorySlotManager` :29-58).
   - Quitting in WORKBENCH_UI loses the cursor stack.
+  - Fixed in #300: a table abandoned (broken) while the recipe book was open over it left the game in WORKBENCH_UI
+    with nothing drawn when the book closed; closing the book now returns to PLAYING when the screen it was
+    opened over is gone (`GameStateController.closeRecipeBookScreen`, `RecipeBookReturnTest`).
 
+- **Fidelity:** `workbench/workbench-empty_1920x1080_s1` `workbench/workbench-empty_1280x720_s0_75` `workbench/workbench-empty_3840x2160_s2` `workbench/workbench-empty_1921x1081_s1_25` `workbench/workbench-empty_800x600_s2` `workbench/workbench-stocked_1920x1080_s1` `workbench/workbench-stocked_1280x720_s0_75` `workbench/workbench-stocked_3840x2160_s2` `workbench/workbench-stocked_1921x1081_s1_25` `workbench/workbench-stocked-hover-main0_1920x1080_s1` `workbench/workbench-stocked-hover-hot2_1920x1080_s1` `workbench/workbench-stocked-hover-craft4_1920x1080_s1` `workbench/workbench-stocked-hover-output_1920x1080_s1` `workbench/workbench-empty-hover-recipes_1920x1080_s1` `workbench/workbench-stocked-hover-craftall_1920x1080_s1` `workbench/workbench-empty-hover-sort_1920x1080_s1` `workbench/workbench-stocked-hover-main4_1921x1081_s1_25`
+- **Fixed before the migration (#300):** the pickup/right-click/shift hitboxes sat one `slotPadding` left of the
+  drawn slots (one rule now: `InventoryLayoutCalculator.gridStartX`); quitting in WORKBENCH_UI lost the cursor
+  stack (`WorldLifecycle.returnCraftingGridsToPlayer` now closes an open table or furnace first); input polled
+  twice per frame (`MIR.pollInGame`) and `update` run twice; the tooltip drawn twice (FR + OR). The invisible
+  tab hitboxes were already gone (#317). Regression: `ContainerSlotRulesRegressionTest`.
+- **Migration (#300, in progress):** shipped as `ui/documents/workbench.sbui` (`UI/stonebreak/ui/screens/workbench.omui`),
+  the furnace pattern: `WorkbenchScreen` keeps the lifecycle and every rule, its presentation
+  (`ContainerDocument`) shows only in WORKBENCH_UI (`syncPresentation`). The 3x3 grid and output are the
+  `stonebreak:crafting` contract; Recipes / Craft All / Sort are `house_button`s whose presses follow the legacy
+  precedence (only a plain left press with an empty hand runs a button; with a stack carried a button is bare
+  panel). `item_slot` gained the `iconParams` param: the workbench and inventory pass `{}` (the provider's
+  scaled inset and count margin, as these screens drew them); the furnace keeps its fixed 3 px / 2 px.
+  Rollback: `-Dstonebreak.ui.legacy=workbench`.
+- **Gate:** `ui.fidelity.WorkbenchDocumentGateTest` (18 cases, 0 px), `ui.inventoryScreen.core.WorkbenchDocumentInteractionTest`
+  (23 steps incl. crafting batches onto the cursor, shift-crafting, Craft All, Sort, middle balance/sort,
+  double-click gather), lifecycle `WorkbenchDocumentLifecycleTest`.
 ### furnace
 - **Kind:** screen.
 - **Owner:** `com.stonebreak.ui.furnace.FurnaceScreen` with `core.{FurnaceController, FurnaceInputManager, FurnaceLayout}` and `renderers.FurnaceRenderCoordinator`.
@@ -1042,19 +1093,41 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Performance:** per frame 9 `new MItemSlot` plus gauge panels.
 - **Notes:** `ui/hotbar/styling/HotbarTheme` colours are vestigial; colours are hard-coded in `HotbarSlotRenderer.java:27-32`.
 
+- **Fidelity:** `hud/hud-full_1920x1080_s1` `hud/hud-full_1280x720_s0_75` `hud/hud-full_3840x2160_s2` `hud/hud-full_1921x1081_s1_25` `hud/hud-hurt_1920x1080_s1` `hud/hud-hurt_1280x720_s0_75` `hud/hud-hurt_3840x2160_s2` `hud/hud-hurt_1921x1081_s1_25` `hud/hud-hurt_800x600_s2`
+- **Migration (#300, in progress):** shipped as `ui/documents/hud.sbui` (`UI/stonebreak/ui/screens/hud.omui`): the
+  hotbar, hearts, stamina/mana bars, class gauge, dodge indicator and the selected item's tooltip in one
+  informational document (`DocumentScreen.Options.hud()`: HUD layer, never takes the cursor or the keyboard;
+  every element `picking-mode: ignore`). `InventoryScreen` (which paints the hotbar) owns its presentation, shown
+  wherever the legacy hotbar is drawn: PLAYING/PAUSED with the inventory closed, CHARACTER_SHEET_UI,
+  RECIPE_BOOK_UI. Slots are plain `ItemSlot`s with `stonebreak:item-icon` (not the interactive `item_slot`); the
+  engine `-sb-surface: hotbar` is the frame. Contract `stonebreak:hud` 1 (`hud`, `hearts`). The hotbar's own icon
+  inset `max(2, ss/12)` (it parts from the container screens' `round(3 s)` at some scales, e.g. 0.85x and 1.8x) is
+  set on the slots' provider `params` by the code-behind; counts use MFonts' half-pixel font grid in the provider,
+  as every legacy slot did (both caught by the `kit` cases at 0.85x / 1.8x). Rollback: `-Dstonebreak.ui.legacy=hud`.
+- **Gate:** `ui.fidelity.HudDocumentGateTest` (21 cases, 0 px); input pass-through `ui.hotbar.HudDocumentInputTest`;
+  per-frame cost `ui.hotbar.HudUpdateCostTest` (a bar changing every frame: about 0.23 ms mean; an unchanged frame
+  republishes nothing).
 ### hud-health-hearts
 - **Kind:** hud. Owner: `rendering.UI.components.hotbar.HealthHeartsRenderer`, inside hotbar Phase A. Always shown with the hotbar.
-- **Assets:** `/ui/HUD/Health Icon/SB_{Empty,Half,Full}_Health_Icon.sbt` via MTextureRegistry (:26-28).
+- **Assets:** `/ui/shared/stonebreak/ui/hud/heart_{empty,half,full}.sbt` via MTextureRegistry (moved from `/ui/HUD/Health Icon/` in #300 so the document shares the file).
 - **Bindings:** `player.getHealth()/getMaxHealth()`; 2 HP per heart; sprite thresholds 0.75 / 0.25 (:33-58).
 - **Layout:** size snapped to an integer multiple of the texture near 28 px, **not uiScaled**; fixed 38 px gap; multi-row with 40 % overlap (:20-100).
 - **Fixtures:** none.
 
+- **Fidelity:** `hud/hud-full_1920x1080_s1` `hud/hud-hurt_1920x1080_s1` `hud/hud-hardy_1920x1080_s1`
+- **Migration (#300, in progress):** `Image`s over the shared textures `stonebreak:ui/hud/heart_{full,half,empty}`
+  (the `.sbt`s moved to `ui/shared/stonebreak/ui/hud/`, which the legacy renderer reads too: one file, one decode
+  by content hash), `-sb-sampling: nearest-raw`; one row per heart from the `hearts` collection (`state`), placed
+  by the code-behind with `HealthHeartsRenderer.heartRects`' rules (row compression, rows stacked upwards).
 ### hud-stamina-mana
 - **Kind:** hud. Owner: `rendering.UI.components.hotbar.StaminaBarRenderer`.
 - **Shown:** stamina when `maxStamina>0`; a mana bar for **Arcanist only** (:40-47).
 - **Layout:** fixed 8 px tall, full hotbar width, 6 px above the hearts. Colours 0xDC50C850 and 0xDC3C78DC.
 - **Fixtures:** none.
 
+- **Fidelity:** `hud/hud-hurt_1920x1080_s1` `hud/hud-arcanist_1920x1080_s1` `hud/hud-arcanist_1921x1081_s1_25`
+- **Migration (#300, in progress):** authored bars (background, bound fill, a centred 1 px rim child), anchored to
+  `HealthHeartsRenderer.topRowY` of the planned rows; `hud.stamina`/`hud.mana` `{shown, fraction}`.
 ### hud-class-gauge
 - **Kind:** hud.
 - **Owner:** one `ClassGauge` per class (`RageGauge` Berserker, `QuarryGauge` Ranger, `ResonanceGauge` Arcanist, `DoubtGauge` Illusionist, `MomentumGauge` Rogue) drawn on a `GaugePanel`.
@@ -1071,12 +1144,20 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Performance:** `MomentumGauge` calls `String.format` every frame.
 - **Fixtures:** none.
 
+- **Fidelity:** `hud/hud-arcanist_1920x1080_s1` `hud/hud-arcanist_1921x1081_s1_25`
+- **Migration (#300, in progress):** draw provider `stonebreak:class-gauge` (`ui.runtime.providers.ClassGaugeProvider`)
+  over the same `ClassGauge` painters (params = the `hud` record, `classId`). Each gauge reads a dozen ability
+  controllers and ability icons; it stays a provider until those publish a record of their own. Without a player
+  (the editor preview) it draws nothing.
 ### hud-dodge-indicator
 - **Kind:** hud. Owner: `rendering.UI.components.hotbar.DodgeIndicator`. Every class.
 - **Layout:** 120 px panel left of the hotbar.
 - **Bindings:** `player.getDodge().getCooldownProgress()`; label "Dodge" / "Dodge: Ready".
 - **Fixtures:** none.
 
+- **Fidelity:** `hud/hud-full_1920x1080_s1` `hud/hud-hurt_1920x1080_s1`
+- **Migration (#300, in progress):** an authored label + bar (`hud.dodge {ready, fraction, text}`), unscaled panel
+  geometry with the scaled meta font, as `GaugePanel` drew it.
 ### hotbar-item-tooltip
 - **Kind:** tooltip.
 - **Owner:** `rendering.UI.components.hotbar.HotbarTooltipRenderer` + `ui.HotbarScreen`.
@@ -1089,6 +1170,16 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Also leaks into FURNACE_UI with no hotbar under it.
 - **Fixtures:** `HotbarScreenTest` (alpha logic).
 
+- **Fidelity:** `hud/hud-tip_1920x1080_s1` `hud/hud-tip_1280x720_s0_75` `hud/hud-tip_3840x2160_s2` `hud/hud-tip_1921x1081_s1_25`
+- **Fixed before the migration (#300):** drawn twice per PLAYING frame (FR + OR; its translucent fill
+  double-blended), leaked into FURNACE_UI, faded at double speed while the inventory was open (double update).
+- **Migration (#300, in progress):** part of the HUD document: `-sb-surface: panel-deep`, centred on the selected
+  slot by a wide flex row, clamped to the window by the code-behind; `hud.tooltip {shown, text, alpha, slot}`
+  from `HotbarScreen`. Differences: the fade is a group `opacity` (the legacy multiplied each colour's alpha, so
+  overlapping strokes fade slightly differently mid-fade; identical at full opacity), and it is painted with the
+  hotbar, under the chat, where the legacy overlay pass drew it above the chat. Measured at alpha 0.5 (fixture
+  `fade`): about 2,400 px differ at 1x, worst channel delta 30 (the legacy text over the half-faded panel is
+  more solid); not a gate case.
 ### crosshair
 - **Kind:** hud.
 - **Owner:** `com.stonebreak.rendering.UI.components.MCrosshairRenderer` (own MasonryUI), built in `UIRenderer.initializeSkijaRenderers` (`rendering/UI/UIRenderer.java:73-77`). Not disposed.

@@ -455,7 +455,7 @@ class MasonryRenderTargetGlTest {
                 if (v != 0) painted++;
             }
             assertTrue(painted > 100, "text still renders through the shared typeface");
-            MTexture heart = MTextureRegistry.get("/ui/HUD/Health Icon/SB_Full_Health_Icon.sbt");
+            MTexture heart = MTextureRegistry.get("/ui/shared/stonebreak/ui/hud/heart_full.sbt");
             assertNotNull(heart.image(), "shared textures belong to the cache, not to a screen");
         } finally {
             second.dispose();
@@ -504,7 +504,7 @@ class MasonryRenderTargetGlTest {
                 .bounds(186, 10, 64, 24);
         dropdown.open();
         dropdown.render(ui);
-        MTexture heart = MTextureRegistry.get("/ui/HUD/Health Icon/SB_Full_Health_Icon.sbt");
+        MTexture heart = MTextureRegistry.get("/ui/shared/stonebreak/ui/hud/heart_full.sbt");
         c.save();
         c.clipRect(Rect.makeXYWH(186, 90, 40, 40));
         MPainter.drawImage(c, heart.image(), 186, 90, heart.width() * 2f, heart.height() * 2f);

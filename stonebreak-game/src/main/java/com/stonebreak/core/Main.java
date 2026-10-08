@@ -191,6 +191,7 @@ public class Main {
 
             frameRenderer.renderFrame();
             maybeAutoFurnace();
+            maybeAutoScreen();
             maybeAutoTorch();
             maybeAutoBattle();
             maybeAutoScreenshot();
@@ -426,6 +427,65 @@ public class Main {
         float dy = y - (pos.y + 1.6f);
         player.getCamera().setYaw((float) Math.toDegrees(Math.atan2(dz, dx)));
         player.getCamera().setPitch((float) Math.toDegrees(Math.atan2(dy, Math.hypot(dx, dz))));
+    }
+
+    // ─── Dev: -Dstonebreak.autoscreen=<seconds>:<inventory|workbench> ─────────
+
+    private long autoScreenDeadlineNanos = -1;
+    private boolean autoScreenDone;
+
+    /**
+     * Development shortcut paired with {@code stonebreak.autoworld} (#300): N seconds after the world is
+     * entered, opens the inventory screen, or places a crafting table in front of the player and opens
+     * it, through the game's own paths, so the container documents can be screenshotted from a script.
+     * Inert unless the property is set.
+     */
+    private void maybeAutoScreen() {
+        if (autoScreenDone) {
+            return;
+        }
+        String spec = System.getProperty("stonebreak.autoscreen");
+        if (spec == null || spec.isBlank()) {
+            autoScreenDone = true;
+            return;
+        }
+        if (Game.getInstance().getState() != GameState.PLAYING) {
+            return;
+        }
+        String[] parts = spec.split(":");
+        if (autoScreenDeadlineNanos < 0) {
+            double seconds = 5;
+            try {
+                seconds = Double.parseDouble(parts[0].trim());
+            } catch (NumberFormatException ignored) {
+                // keep default
+            }
+            autoScreenDeadlineNanos = System.nanoTime() + (long) (seconds * 1e9);
+            return;
+        }
+        if (System.nanoTime() < autoScreenDeadlineNanos) {
+            return;
+        }
+        autoScreenDone = true;
+        String which = parts.length > 1 ? parts[1].trim() : "inventory";
+        if (which.equals("workbench")) {
+            var world = Game.getWorld();
+            var player = Game.getPlayer();
+            if (world == null || player == null) {
+                System.err.println("[autoscreen] world/player not ready");
+                return;
+            }
+            org.joml.Vector3f pos = player.getPosition();
+            int x = (int) Math.floor(pos.x) + 2;
+            int y = (int) Math.floor(pos.y);
+            int z = (int) Math.floor(pos.z);
+            world.setBlockAt(x, y, z, com.stonebreak.blocks.BlockType.WORKBENCH, true);
+            System.out.println("[autoscreen] opening a crafting table at " + x + "," + y + "," + z);
+            Game.getInstance().openWorkbenchScreen(new com.openmason.engine.util.BlockPos(x, y, z));
+        } else {
+            System.out.println("[autoscreen] opening the inventory");
+            Game.getInstance().toggleInventoryScreen();
+        }
     }
 
     // ─── Dev: -Dstonebreak.autofurnace=<seconds> ─────────────────────────────
