@@ -7,6 +7,7 @@ import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
 import com.openmason.main.systems.viewport.ViewportActions;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.themes.utils.TransformGroupWidget;
+import com.openmason.engine.rendering.viewer.camera.CameraMath;
 import com.openmason.engine.rendering.viewer.gizmo.GizmoState;
 import imgui.ImDrawList;
 import com.openmason.main.systems.themes.utils.ThemeColors;
@@ -15,6 +16,7 @@ import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
+import imgui.flag.ImGuiSliderFlags;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
@@ -189,7 +191,8 @@ public class ToolPaneRenderer {
         label("Position");
 
         labeledSlider("Distance", "##cam_dist", state.getCameraDistance().getData(),
-                1.0f, 20.0f, "%.1f", actions::updateCameraDistance);
+                CameraMath.MIN_DISTANCE, CameraMath.MAX_DISTANCE, "%.2f",
+                ImGuiSliderFlags.Logarithmic, actions::updateCameraDistance);
 
         labeledSlider("Pitch", "##cam_pitch", state.getCameraPitch().getData(),
                 -89.0f, 89.0f, "%.1f\u00B0", actions::updateCameraPitch);
@@ -706,9 +709,14 @@ public class ToolPaneRenderer {
     /** Label + full-width slider. */
     private void labeledSlider(String label, String id, float[] data,
                                float min, float max, String fmt, Runnable onChange) {
+        labeledSlider(label, id, data, min, max, fmt, ImGuiSliderFlags.None, onChange);
+    }
+
+    private void labeledSlider(String label, String id, float[] data,
+                               float min, float max, String fmt, int flags, Runnable onChange) {
         ImGui.textUnformatted(label);
         ImGui.setNextItemWidth(-1);
-        if (ImGui.sliderFloat(id, data, min, max, fmt)) {
+        if (ImGui.sliderFloat(id, data, min, max, fmt, flags)) {
             onChange.run();
         }
         ImGui.spacing();
