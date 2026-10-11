@@ -1,7 +1,8 @@
 package com.openmason.main.systems.menus.panes.projectBrowser;
 
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry;
-import com.openmason.main.systems.menus.textureCreator.TextureCreatorState;
+import com.openmason.main.systems.menus.textureCreator.TextureCreatorController;
+import com.openmason.main.systems.menus.textureCreator.TextureDocument;
 import com.openmason.main.systems.stateHandling.ModelState;
 
 import java.nio.file.InvalidPathException;
@@ -18,13 +19,13 @@ public class AssetEditorDetacher {
      * Resolve the detach decisions after a delete. No-op when the delete failed —
      * the editor stays attached to a file that still exists.
      */
-    public void afterDelete(AssetEntry entry, boolean deleted, ModelState modelState, TextureCreatorState textureState) {
+    public void afterDelete(AssetEntry entry, boolean deleted, ModelState modelState, TextureCreatorController textures) {
         if (!deleted) {
             return;  // delete failed; editor stays attached
         }
         switch (entry.type()) {
             case OMO -> detachModel(entry, modelState);
-            case OMT -> detachTexture(entry, textureState);
+            case OMT -> detachTexture(entry, textures);
             case OMSC -> { }
         }
     }
@@ -46,18 +47,18 @@ public class AssetEditorDetacher {
     }
 
     /**
-     * {@code hasFilePath()}/{@code isProjectFile()} false -> {@code FileOperationsCoordinator.saveProject}
-     * routes to Save Project As; canvas/layers stay editable and {@code markAsModified()}
-     * flags the only remaining copy unsaved so closing prompts to save it.
+     * Every open texture document on the deleted file loses its path, so its Save routes to Save
+     * Project As; its layers stay editable and it is flagged unsaved, so closing its tab prompts
+     * to save the only remaining copy.
      */
-    private void detachTexture(AssetEntry entry, TextureCreatorState textureState) {
-        if (textureState == null) {
+    private void detachTexture(AssetEntry entry, TextureCreatorController textures) {
+        if (textures == null) {
             return;
         }
-        if (pathsEqual(entry.path(), textureState.getCurrentFilePath())) {
-            textureState.setCurrentFilePath(null);
-            textureState.setIsProjectFile(false);
-            textureState.markAsModified();
+        for (TextureDocument doc : textures.getDocuments()) {
+            if (pathsEqual(entry.path(), doc.getFilePath())) {
+                textures.detachFromFile(doc);
+            }
         }
     }
 

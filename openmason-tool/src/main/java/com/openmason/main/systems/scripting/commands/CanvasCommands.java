@@ -493,8 +493,9 @@ public final class CanvasCommands {
 
     private CanvasSurface requireSurface() {
         if (surface == null) {
-            throw new CommandException("canvas ops need the texture editor open",
-                    "open it in Open Mason first — canvas scripting is live-only");
+            throw new CommandException("canvas ops need a texture open in the texture editor",
+                    "open one first (tex_open_editor / tex_load_project) — canvas scripting is live-only"
+                            + " and targets the texture that is active when the run starts");
         }
         return surface;
     }

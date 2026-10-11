@@ -26,6 +26,19 @@ public final class WorkspaceState {
     private final EnumSet<Workspace> detached = EnumSet.noneOf(Workspace.class);
     private final EnumSet<Workspace> focusRequests = EnumSet.noneOf(Workspace.class);
     private final List<Consumer<Workspace>> listeners = new CopyOnWriteArrayList<>();
+    private final java.util.EnumMap<Workspace, CloseGuard> closeGuards = new java.util.EnumMap<>(Workspace.class);
+
+    /**
+     * Lets a closable workspace hold a user's close until its unsaved work is dealt with.
+     */
+    @FunctionalInterface
+    public interface CloseGuard {
+        /**
+         * @param proceed closes the tab; call it later when this guard took over
+         * @return true to close now; false when the guard took over (e.g. it is asking the user)
+         */
+        boolean allowClose(Runnable proceed);
+    }
 
     public WorkspaceState() {
         for (Workspace w : Workspace.values()) {
@@ -94,6 +107,32 @@ public final class WorkspaceState {
         open.add(ws);
         current = ws;
         fire();
+    }
+
+    /** Installs (or, with null, removes) {@code ws}'s close guard, consulted by {@link #requestClose}. */
+    public void setCloseGuard(Workspace ws, CloseGuard guard) {
+        if (guard == null) {
+            closeGuards.remove(ws);
+        } else {
+            closeGuards.put(ws, guard);
+        }
+    }
+
+    /**
+     * The user asked to close {@code ws} (its tab's close button or menu): closes it unless its
+     * guard takes over, in which case the guard closes it later (or never, when the user cancels).
+     *
+     * @return true when the tab closed now
+     */
+    public boolean requestClose(Workspace ws) {
+        if (ws == null || !ws.closable() || !open.contains(ws)) {
+            return false;
+        }
+        CloseGuard guard = closeGuards.get(ws);
+        if (guard != null && !guard.allowClose(() -> close(ws))) {
+            return false;
+        }
+        return close(ws);
     }
 
     /**

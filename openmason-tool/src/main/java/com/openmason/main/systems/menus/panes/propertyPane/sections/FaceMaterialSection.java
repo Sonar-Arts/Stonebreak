@@ -422,6 +422,17 @@ public class FaceMaterialSection implements IPanelSection {
             return false;
         }
 
+        // Already open as a document tab for its current material: just bring that tab forward
+        // (re-reading the GPU pixels would flatten its layers and drop its undo history).
+        FaceTextureMapping current = ftm.getFaceMapping(faceId);
+        if (current != null && faceEditorBridge.focusOpenFaceDocument(faceId, current.materialId())) {
+            viewportConnector.setEditingFaceIndex(faceId);
+            if (onEditTextureRequested != null) {
+                onEditTextureRequested.run();
+            }
+            return true;
+        }
+
         if (materialName.equals("Default")) {
             // Compute texture dimensions from face geometry (falls back to default if unavailable)
             int[] faceDims = viewportConnector.computeFaceTextureDimensions(

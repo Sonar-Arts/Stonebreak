@@ -314,11 +314,6 @@ public class mainOpenMason {
                 }
 
                 @Override
-                public void close() {
-                    closeTextureEditor();
-                }
-
-                @Override
                 public boolean isVisible() {
                     return showTextureEditor && workspaceState != null
                             && workspaceState.isOpen(com.openmason.main.systems.layout.Workspace.TEXTURE);
@@ -668,24 +663,15 @@ public class mainOpenMason {
     }
 
     /**
-     * Tear-down that runs once the texture editor's tab has gone away — either
-     * the user closed it or {@link #closeTextureEditor()} was called. Flushes
-     * pending canvas edits to the face's GPU texture BEFORE closing the region
-     * (closeFaceRegion clears the material ID, so a later flush would target
-     * the wrong texture), clears the viewport highlight and auto-saves the
-     * .OMO so per-face texture edits are persisted.
+     * Tear-down that runs once the texture editor's tab has gone away (the user closed it; unsaved
+     * textures were saved or discarded first, see {@code TextureEditorWorkspace.confirmClose}):
+     * every document closes. The controller's listeners flush face documents to their textures,
+     * clear the viewport highlight and save the .OMO when face edits were open.
      */
     private void onTextureEditorClosed() {
         showTextureEditor = false;
-        boolean wasFaceEdit = textureCreatorInterface.getController().isFaceRegionActive();
-        if (texturePreviewPipeline != null) {
-            texturePreviewPipeline.flush();
-        }
-        textureCreatorInterface.getController().closeFaceRegion();
-        mainInterface.getPropertyPanel().clearEditingFace();
-        if (wasFaceEdit && mainInterface.getModelOperations() != null) {
-            mainInterface.getModelOperations().saveModel();
-        }
+        textureCreatorInterface.getController().closeAll(
+                com.openmason.main.systems.menus.textureCreator.TextureCreatorController.CloseReason.WORKSPACE_CLOSED);
     }
 
     /**
@@ -698,17 +684,6 @@ public class mainOpenMason {
         }
         showTextureEditor = true;
         workspaceState.open(com.openmason.main.systems.layout.Workspace.TEXTURE);
-    }
-
-    /** Programmatic close of the texture editor (MCP): same path as the tab's close button. */
-    private void closeTextureEditor() {
-        if (!showTextureEditor) {
-            return;
-        }
-        if (workspaceState != null) {
-            workspaceState.close(com.openmason.main.systems.layout.Workspace.TEXTURE);
-        }
-        onTextureEditorClosed();
     }
 
     /**

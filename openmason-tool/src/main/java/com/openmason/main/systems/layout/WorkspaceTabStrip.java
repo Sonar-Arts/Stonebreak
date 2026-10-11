@@ -99,7 +99,7 @@ public final class WorkspaceTabStrip {
             style.setTabCloseButtonMinWidthUnselected(closeMinWidth);
             rightClick.end();
             if (closed != null) {
-                state.close(closed);
+                state.requestClose(closed);
             } else if (forceTab == null && clicked != null && clicked != state.current()) {
                 // A forced frame only shows the new selection; afterwards, what the user picks wins.
                 state.set(clicked);
@@ -173,7 +173,7 @@ public final class WorkspaceTabStrip {
 
         if (pressed) {
             if (overClose) {
-                state.close(ws);
+                state.requestClose(ws);
                 return;
             }
             state.set(ws); // raises the detached window
@@ -196,7 +196,7 @@ public final class WorkspaceTabStrip {
         if (ws.closable()) {
             ImGui.separator();
             if (ImGui.menuItem("Close " + ws.label())) {
-                state.close(ws);
+                state.requestClose(ws);
             }
         }
     }

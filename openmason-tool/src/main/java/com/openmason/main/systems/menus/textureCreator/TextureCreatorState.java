@@ -7,7 +7,10 @@ import com.openmason.main.systems.menus.textureCreator.tools.DrawingTool;
 import imgui.type.ImBoolean;
 
 /**
- * State management for the Texture Creator component.
+ * State management for the Texture Creator component. Tool, colour, symmetry, grid and hover state
+ * are shared by every open texture; canvas size, file, dirty flag and selection belong to the
+ * bound {@link TextureDocument} (the controller binds its active document, so readers always see
+ * the texture on screen).
  */
 public class TextureCreatorState {
 
@@ -30,13 +33,9 @@ public class TextureCreatorState {
     }
 
     // State fields
-    private CanvasSize currentCanvasSize;
+    private TextureDocument document; // per-texture state: size, file, dirty flag, selection
     private DrawingTool currentTool;
     private int currentColor; // RGBA packed as int
-    private String currentFilePath;
-    private boolean unsavedChanges;
-    private boolean isProjectFile; // true if opened/saved as .OMT, false for new/PNG
-    private final SelectionManager selectionManager; // Centralized selection management
     private final SymmetryState symmetryState; // Symmetry/mirror mode state
     private final ImBoolean showGrid;
     private final CanvasHoverInfo canvasHoverInfo; // Hovered pixel for status bar
@@ -45,16 +44,23 @@ public class TextureCreatorState {
      * Create new texture creator state with defaults.
      */
     public TextureCreatorState() {
-        this.currentCanvasSize = new CanvasSize(16, 16);
+        this.document = new TextureDocument("unbound", "Untitled",
+                new com.openmason.main.systems.menus.textureCreator.layers.LayerManager(16, 16));
         this.currentTool = null; // Will be set when tools are initialized
         this.currentColor = 0xFF000000; // Black, full alpha
-        this.currentFilePath = null;
-        this.unsavedChanges = false;
-        this.isProjectFile = false;
-        this.selectionManager = new SelectionManager(); // Initialize selection manager
         this.symmetryState = new SymmetryState(); // Initialize symmetry state
         this.showGrid = new ImBoolean(true);
         this.canvasHoverInfo = new CanvasHoverInfo();
+    }
+
+    /** The texture the per-document accessors read and write. */
+    public TextureDocument getDocument() {
+        return document;
+    }
+
+    /** Called by the controller whenever its active document changes. */
+    void bindDocument(TextureDocument document) {
+        this.document = java.util.Objects.requireNonNull(document, "document");
     }
 
     /**
@@ -67,11 +73,11 @@ public class TextureCreatorState {
     // Getters and setters
 
     public CanvasSize getCurrentCanvasSize() {
-        return currentCanvasSize;
+        return document.getCanvasSize();
     }
 
     public void setCurrentCanvasSize(CanvasSize size) {
-        this.currentCanvasSize = size;
+        document.setCanvasSize(size);
     }
 
     public DrawingTool getCurrentTool() {
@@ -91,15 +97,15 @@ public class TextureCreatorState {
     }
 
     public String getCurrentFilePath() {
-        return currentFilePath;
+        return document.getFilePath();
     }
 
     public void setCurrentFilePath(String filePath) {
-        this.currentFilePath = filePath;
+        document.setFilePath(filePath);
     }
 
     public void setUnsavedChanges(boolean unsavedChanges) {
-        this.unsavedChanges = unsavedChanges;
+        document.setUnsavedChanges(unsavedChanges);
     }
 
     public ImBoolean getShowGrid() {
@@ -111,26 +117,27 @@ public class TextureCreatorState {
      * @return true if a file path is set
      */
     public boolean hasFilePath() {
-        return currentFilePath != null && !currentFilePath.trim().isEmpty();
+        String path = document.getFilePath();
+        return path != null && !path.trim().isEmpty();
     }
 
     /** True when the canvas changed since the last save/load. */
     public boolean hasUnsavedChanges() {
-        return unsavedChanges;
+        return document.hasUnsavedChanges();
     }
 
     /**
      * Mark as saved (clears unsaved changes flag).
      */
     public void markAsSaved() {
-        this.unsavedChanges = false;
+        document.setUnsavedChanges(false);
     }
 
     /**
      * Mark as modified (sets unsaved changes flag).
      */
     public void markAsModified() {
-        this.unsavedChanges = true;
+        document.setUnsavedChanges(true);
     }
 
     /**
@@ -138,7 +145,7 @@ public class TextureCreatorState {
      * @return true if project file, false if new or PNG
      */
     public boolean isProjectFile() {
-        return isProjectFile;
+        return document.isProjectFile();
     }
 
     /**
@@ -146,15 +153,15 @@ public class TextureCreatorState {
      * @param isProjectFile true if project file
      */
     public void setIsProjectFile(boolean isProjectFile) {
-        this.isProjectFile = isProjectFile;
+        document.setProjectFile(isProjectFile);
     }
 
     /**
-     * Get the SelectionManager for this texture creator.
+     * Get the SelectionManager of the bound document (each texture keeps its own selection).
      * @return The SelectionManager instance
      */
     public SelectionManager getSelectionManager() {
-        return selectionManager;
+        return document.getSelectionManager();
     }
 
     /**
@@ -171,7 +178,7 @@ public class TextureCreatorState {
      * @return The current selection, or null if no selection exists
      */
     public SelectionRegion getCurrentSelection() {
-        return selectionManager.getActiveSelection();
+        return document.getSelectionManager().getActiveSelection();
     }
 
     /**
@@ -180,7 +187,7 @@ public class TextureCreatorState {
      * @param selection The selection region to set (can be null to clear selection)
      */
     public void setCurrentSelection(SelectionRegion selection) {
-        selectionManager.setActiveSelection(selection);
+        document.getSelectionManager().setActiveSelection(selection);
     }
 
     /**
@@ -189,7 +196,7 @@ public class TextureCreatorState {
      * @return true if there is an active selection, false otherwise
      */
     public boolean hasSelection() {
-        return selectionManager.hasActiveSelection();
+        return document.getSelectionManager().hasActiveSelection();
     }
 
     /**
@@ -197,6 +204,6 @@ public class TextureCreatorState {
      * Delegates to SelectionManager.
      */
     public void clearSelection() {
-        selectionManager.clearSelection();
+        document.getSelectionManager().clearSelection();
     }
 }

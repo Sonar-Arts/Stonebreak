@@ -286,9 +286,15 @@ public class PropertyPanelImGui {
         return faceMaterialSection.openFaceForEditing(faceId);
     }
 
+    /** Outline {@code faceId} in the viewport as the face being texture-edited. */
+    public void setEditingFace(int faceId) {
+        if (viewportConnector != null) {
+            viewportConnector.setEditingFaceIndex(faceId);
+        }
+    }
+
     /**
-     * Clear the editing face highlight in the viewport overlay.
-     * Should be called when the texture editor window closes.
+     * Clear the editing face highlight in the viewport overlay (no face document is active).
      */
     public void clearEditingFace() {
         if (viewportConnector != null) {

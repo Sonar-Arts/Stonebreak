@@ -516,7 +516,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         }
         boolean deleted = projectBrowserImGui.getController().deleteAsset(entry);
         assetEditorDetacher.afterDelete(entry, deleted, getModelState(),
-                textureCreatorImGui != null ? textureCreatorImGui.getState() : null);
+                textureCreatorImGui != null ? textureCreatorImGui.getController() : null);
     }
 
     /**
@@ -839,29 +839,24 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     }
 
     /**
-     * Window-level control of the texture editor (show / hide / visibility),
-     * owned by the application shell. Lets external drivers such as the MCP
-     * server summon or dismiss the editor exactly as the Tools menu and the
-     * property panel's "Edit Texture" button do.
+     * The application shell's side of the texture editor, for external drivers such as the MCP
+     * server. Drivers work on documents (the editor's controller opens, focuses and closes them);
+     * the shell only makes sure the Texture workspace is on screen. Closing the workspace is the
+     * user's alone (its tab's close button or menu), so there is deliberately no close here.
      */
     public interface TextureEditorPresenter {
-        /** Open the Texture workspace tab and bring it forward (raises its window when popped out). */
-        void show();
-
         /**
-         * Close the Texture workspace tab, flushing pending canvas edits to the
-         * face texture, closing any active face region and auto-saving the
-         * model — the same path the tab's own close button takes (#331 moves the
-         * MCP to document tabs inside the editor instead).
+         * Bring the Texture workspace forward, opening its tab first when it is not open (raises
+         * its window when popped out). Never closes anything.
          */
-        void close();
+        void show();
 
         /** Whether the Texture workspace tab is open. */
         boolean isVisible();
 
         /**
-         * Push pending canvas edits to the face's GPU texture without closing
-         * the editor (no-op when no face session is active).
+         * Push the active face document's pending canvas edits to its GPU texture (no-op for a
+         * standalone texture).
          */
         void flush();
     }

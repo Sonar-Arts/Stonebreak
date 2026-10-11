@@ -176,4 +176,36 @@ class WorkspaceStateTest {
         assertEquals(Set.of(Workspace.TEXTURE, Workspace.MODELING), s.detached());
         assertEquals(Workspace.UI, s.current());
     }
+
+    @Test
+    void aCloseGuardHoldsTheUsersCloseUntilItProceeds() {
+        WorkspaceState s = new WorkspaceState();
+        s.open(Workspace.TEXTURE);
+        List<Runnable> held = new ArrayList<>();
+        s.setCloseGuard(Workspace.TEXTURE, proceed -> {
+            held.add(proceed);
+            return false; // e.g. asking about unsaved textures
+        });
+
+        assertFalse(s.requestClose(Workspace.TEXTURE));
+        assertTrue(s.isOpen(Workspace.TEXTURE), "still open while the guard asks");
+
+        held.get(0).run(); // the user answered Save / Don't Save
+        assertFalse(s.isOpen(Workspace.TEXTURE));
+    }
+
+    @Test
+    void aGuardThatAllowsClosesAtOnceAndFixedTabsNeverClose() {
+        WorkspaceState s = new WorkspaceState();
+        s.open(Workspace.TEXTURE);
+        s.setCloseGuard(Workspace.TEXTURE, proceed -> true);
+        assertTrue(s.requestClose(Workspace.TEXTURE));
+        assertFalse(s.isOpen(Workspace.TEXTURE));
+
+        assertFalse(s.requestClose(Workspace.MODELING));
+        assertTrue(s.isOpen(Workspace.MODELING));
+        s.setCloseGuard(Workspace.TEXTURE, null);
+        s.open(Workspace.TEXTURE);
+        assertTrue(s.requestClose(Workspace.TEXTURE), "no guard: closes as before");
+    }
 }

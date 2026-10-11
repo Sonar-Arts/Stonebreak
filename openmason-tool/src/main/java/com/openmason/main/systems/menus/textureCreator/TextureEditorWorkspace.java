@@ -22,7 +22,11 @@ import org.slf4j.LoggerFactory;
  * {@link #renderPanels(boolean)}, like the UI workspace's.
  *
  * <p>Opening and closing the tab is the editor's lifecycle (it replaced the standalone
- * TextureEditorWindow); the app runs the close tear-down when the tab goes away.
+ * TextureEditorWindow). Inside it, every open texture is a document tab above the canvas
+ * ({@link TextureCreatorController} documents, #331); opening textures — from the UI or an agent —
+ * adds or focuses documents and opens this tab only when it is closed. Only the user closes the
+ * tab: unsaved textures are asked about first ({@link TextureCreatorImGui#confirmCloseAll}, the
+ * workspace's close guard), then the app closes every document when the tab goes away.
  */
 public final class TextureEditorWorkspace implements WorkspaceDock {
 

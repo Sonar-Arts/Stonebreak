@@ -81,6 +81,8 @@ public final class McpRequestRouter {
             Map.entry("model_face_commit", "sessions retired — edits apply immediately, one undo step per call"),
             Map.entry("model_face_discard", "sessions retired — edits apply immediately; use undo (model domain) to revert"),
             Map.entry("model_face_list_sessions", "sessions retired — there is no session state"),
+            Map.entry("tex_close_editor", "the texture editor is multi-document — tex_close_document closes one "
+                    + "document tab (face tabs flush + save the model); the editor itself is only closed by the user"),
             Map.entry("model_face_draw_rect", "script it: om.tex.of(part, face).rect(x,y,w,h,color) via run_python_script"),
             Map.entry("model_face_draw_line", "script it: om.tex.of(part, face).line(x0,y0,x1,y1,color) via run_python_script"),
             Map.entry("model_face_flood_fill", "script it: om.tex.of(part, face).flood(x,y,color) via run_python_script"),

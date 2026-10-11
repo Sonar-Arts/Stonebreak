@@ -103,12 +103,15 @@ public final class ScriptingService {
         PartManagerSnapshot partsBefore = PartManagerSnapshot.capture(vp.getPartManager());
         MeshSnapshot meshBefore = MeshSnapshot.capture(vp.getModelRenderer());
 
-        // Canvas ops target the texture editor when it's open; otherwise the
-        // command layer raises a teaching error on first canvas op.
+        // Canvas ops target the texture document active when the run starts (pinned: a tab
+        // switch mid-run does not redirect them); with none open the command layer raises a
+        // teaching error on the first canvas op.
         LiveCanvasSurface canvasSurface = null;
         var textureCreator = mainInterface.getTextureCreator();
-        if (textureCreator != null && textureCreator.getController() != null) {
-            canvasSurface = new LiveCanvasSurface(textureCreator.getController());
+        if (textureCreator != null && textureCreator.getController() != null
+                && textureCreator.getController().hasOpenDocument()) {
+            var controller = textureCreator.getController();
+            canvasSurface = new LiveCanvasSurface(controller, controller.getActiveDocument());
         }
 
         LiveModelDocument doc = new LiveModelDocument(vp);

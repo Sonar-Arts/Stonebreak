@@ -83,6 +83,7 @@ class TextureEditorKeybindActionsTest {
         registry.clear();
         state = new TextureCreatorState();
         controller = new TextureCreatorController(state);
+        controller.newTexture(new TextureCreatorState.CanvasSize(16, 16)); // the shortcuts act on an open texture
         newTextureDialog = new NewTextureDialog();
         // The file-dialog service is only reached by actions that open a native dialog,
         // which these tests never trigger.
@@ -231,8 +232,11 @@ class TextureEditorKeybindActionsTest {
         registry.getAction("texture.save_project").execute();
 
         assertTrue(Files.isRegularFile(project));
-        assertTrue(controller.loadProject(project.toString()));
-        assertEquals(0xFFFFFFFF, controller.getActiveLayerCanvas().getPixel(2, 2), "the edit was saved");
+        var onDisk = new com.openmason.main.systems.menus.textureCreator.io.TextureImporter()
+                .importFromOMT(project.toString());
+        assertNotNull(onDisk);
+        assertEquals(0xFFFFFFFF, onDisk.getLayer(0).getCanvas().getPixel(2, 2), "the edit was saved");
         assertFalse(state.hasUnsavedChanges());
+        assertEquals(1, controller.getDocuments().size(), "saving never opens another tab");
     }
 }
