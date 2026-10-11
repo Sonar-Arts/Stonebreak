@@ -22,9 +22,7 @@ import com.stonebreak.ui.characterCreation.CharacterCreationLayout;
 import com.stonebreak.ui.characterCreation.CharacterCreationScreen;
 import com.stonebreak.ui.characterCreation.CharacterCreationStateManager;
 import com.stonebreak.ui.characterCreation.CharacterCreationTab;
-import com.stonebreak.ui.characterCreation.renderers.BackgroundTabRenderer;
-import com.stonebreak.ui.characterCreation.renderers.CharacterModelPreviewRenderer;
-import com.stonebreak.ui.characterCreation.renderers.SkijaCharacterCreationRenderer.TabMetric;
+import com.stonebreak.ui.characterCreation.CharacterCreationLayout.TabMetric;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -36,7 +34,7 @@ import java.util.concurrent.CompletableFuture;
  * Character creation ({@code stonebreak:screen.character-creation} 1, #301). {@link CharacterCreationScreen}
  * stays the controller (its stats, the scroll offsets, every rule, Back/Next and join mode); the document shows
  * it. Root {@code characterCreation}: the active {@code tab}, the window {@code layout} (panels, tab strip,
- * content, the preview frame: float window pixels, as the legacy layout computes them), {@code tabs} (label
+ * content, the preview frame: float window pixels, as {@link CharacterCreationLayout} computes them), {@code tabs} (label
  * geometry measured with the game font), footer labels, the preview labels, the four point counters, the class
  * header, the six ability {@code tiles} and the three clamped scroll offsets. Collections {@code ccBackgrounds},
  * {@code ccClasses}, {@code ccAbilities} (the selected class's), {@code ccSkills}, {@code ccFeats}, {@code ccHair},
@@ -45,7 +43,7 @@ import java.util.concurrent.CompletableFuture;
  * <p>Actions: {@code .tab {tab}}, {@code .nav {name}} (back / next), {@code .background {id}},
  * {@code .ability {index, delta}}, {@code .class {id}}, {@code .spend {index}}, {@code .skill {id}},
  * {@code .feat {id}}, {@code .hair {id}}, {@code .hat {id}}, {@code .wheel {dy}}; each refuses unless the screen
- * is showing, and runs the legacy click rule of that control (spending needs points, an equipped cosmetic or an
+ * is showing, and runs the click rule of that control (spending needs points, an equipped cosmetic or an
  * acquired feat takes no press).
  */
 public final class CharacterCreationContracts {
@@ -166,7 +164,7 @@ public final class CharacterCreationContracts {
         action(ui, "spend", DataType.object("index", DataType.number()), (c, a) -> {
             int sel = c.state().getSelectedClassIndex();
             if (sel < 0 || sel >= ClassRegistry.ALL.size() || c.getCharacterStats().getRemainingCp() <= 0) {
-                return null; // the legacy press found no spend button to take it
+                return null; // no class or no CP: no spend button takes the press
             }
             c.actions().onSpendCp(ClassRegistry.ALL.get(sel).id() + ":" + (int) num(a, "index"));
             return null;
@@ -202,7 +200,7 @@ public final class CharacterCreationContracts {
         });
     }
 
-    /** UI thread, once per frame (the scrolls are clamped here, as the legacy renderers did per frame). */
+    /** UI thread, once per frame (the scrolls are clamped here). */
     public void poll() {
         CharacterCreationScreen c = services.characterCreation();
         int[] size = services.screenSize();
@@ -239,7 +237,7 @@ public final class CharacterCreationContracts {
         CharacterCreationLayout.Rect right = layout.rightPanel(w, h);
         CharacterCreationLayout.Rect tabBar = layout.tabBar(right);
         CharacterCreationLayout.Rect content = layout.tabContent(right, tabBar);
-        CharacterModelPreviewRenderer.PreviewRect preview = CharacterModelPreviewRenderer.previewRect(left.x(),
+        CharacterCreationLayout.PreviewRect preview = CharacterCreationLayout.previewRect(left.x(),
             left.y(), left.width(), left.height());
         Map<String, UiValue> l = new LinkedHashMap<>();
         l.put("left", rect(left));
@@ -249,7 +247,7 @@ public final class CharacterCreationContracts {
         l.put("content", rect(content));
         l.put("preview", preview == null ? rect(0, 0, 0, 0) : rect(preview.x(), preview.y(), preview.w(), preview.h()));
         l.put("hasPreview", UiValue.of(preview != null));
-        // AbilityScoreTabRenderer's centred 3 x 2 grid, SkillsTabRenderer's level column (relative offsets)
+        // the ability tiles' centred 3 x 2 grid, the skills' level column (relative offsets)
         l.put("gridX", UiValue.of((content.width() - (3 * 90f + 2 * 12f)) / 2f));
         l.put("lvlX", UiValue.of((content.width() - 16f * 2f) * 0.55f));
         m.put("layout", new UiValue.Obj(l));
@@ -275,7 +273,7 @@ public final class CharacterCreationContracts {
         m.put("classLabel", UiValue.of("Class: " + stats.getCharacterClass()));
         String bgId = stats.getSelectedBackground();
         m.put("backgroundLabel", UiValue.of("Background: "
-            + (bgId != null ? CharacterModelPreviewRenderer.capitalize(bgId) : "No Background")));
+            + (bgId != null ? capitalize(bgId) : "No Background")));
         m.put("ap", UiValue.of("AP Remaining: " + stats.getRemainingAp()));
         m.put("cp", UiValue.of("CP Remaining: " + stats.getRemainingCp()));
         m.put("sp", UiValue.of("SP Remaining: " + stats.getRemainingSkillPoints()));
@@ -316,7 +314,7 @@ public final class CharacterCreationContracts {
         List<UiValue> out = new ArrayList<>();
         for (BackgroundDefinition bg : BackgroundRegistry.ALL) {
             out.add(obj("id", bg.id(), "name", bg.name(), "description", bg.description(),
-                "bonus", BackgroundTabRenderer.formatBonusLine(bg.abilityScoreBonuses()),
+                "bonus", formatBonusLine(bg.abilityScoreBonuses()),
                 "selected", stats != null && bg.id().equals(stats.getSelectedBackground())));
         }
         return out;
@@ -382,6 +380,26 @@ public final class CharacterCreationContracts {
                 "rule", i < options.size() - 1));
         }
         return out;
+    }
+
+    /** "No Background" style capitalisation. */
+    private static String capitalize(String s) {
+        if (s == null || s.isEmpty()) return s;
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    /** The bonus line of a background row. */
+    private static String formatBonusLine(int[] bonuses) {
+        if (bonuses == null) return "No stat changes";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 6 && i < bonuses.length; i++) {
+            if (bonuses[i] == 0) continue;
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(ABBREV[i]).append(' ');
+            if (bonuses[i] > 0) sb.append('+');
+            sb.append(bonuses[i]);
+        }
+        return sb.length() == 0 ? "No stat changes" : sb.toString();
     }
 
     private static UiValue icon(String path) {

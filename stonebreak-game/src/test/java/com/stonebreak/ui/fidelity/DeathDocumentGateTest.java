@@ -1,6 +1,8 @@
 package com.stonebreak.ui.fidelity;
 
 import com.openmason.engine.cenda.CendaLua;
+import com.openmason.engine.ui.fidelity.FidelityCase;
+import com.openmason.engine.ui.fidelity.FrozenCaptures;
 import com.openmason.engine.ui.fidelity.GeometryRule;
 import com.openmason.engine.ui.fidelity.MigrationGate;
 import com.openmason.engine.ui.fidelity.PixelTolerance;
@@ -9,21 +11,29 @@ import com.stonebreak.ui.runtime.GameUiDocuments;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * The death menu migration gate (#299): the shipped {@code ui/documents/death.sbui}, authored in
- * Open Mason, against the legacy renderer's committed cases at the strictest rules (geometry
+ * Open Mason, against the legacy renderer's frozen captures at the strictest rules (geometry
  * {@code FLOAT_EXACT}, pixels {@code EXACT}, the same hit region and the same action). Plus what
  * the static cases cannot show: a click beside the button does nothing, and a UI-scale change
  * moves the title's device-pixel shadow with it.
  */
 @Tag("regression")
 class DeathDocumentGateTest {
+
+    /** Every frozen death capture. */
+    static List<FidelityCase> cases() {
+        List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("death", List.of("dead"), FidelityCase.STANDARD));
+        out.add(new FidelityCase("death", "dead-hover-respawn", FidelityCase.STANDARD.get(0)));
+        out.add(new FidelityCase("death", "dead-hover-respawn", FidelityCase.STANDARD.get(3)));
+        return out;
+    }
 
     static void requireLua() {
         if (!CendaLua.isAvailable()) {
@@ -37,7 +47,7 @@ class DeathDocumentGateTest {
     void theShippedDeathDocumentPassesTheMigrationGate() throws Exception {
         requireLua();
         MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.EXACT)
-            .run("death", LegacyDeathBaselineTest.cases(), new LegacyDeathCapture(), DocumentDeathCapture.shipped());
+            .run("death", cases(), FrozenCaptures.forTests("death").replay(), DocumentDeathCapture.shipped());
         GateAssert.passed(r);
     }
 

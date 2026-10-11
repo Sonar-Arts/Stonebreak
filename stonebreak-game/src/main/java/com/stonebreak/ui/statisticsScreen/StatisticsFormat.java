@@ -1,8 +1,8 @@
 package com.stonebreak.ui.statisticsScreen;
 
 /**
- * How the statistics screen writes its values, in one place: the legacy renderer and the UI
- * host's {@code stonebreak:player.stats} display strings (#299) both use it. {@code String.format}
+ * How the statistics screen writes its values, in one place: the UI host's
+ * {@code stonebreak:player.stats} display strings (#299). {@code String.format}
  * with the default locale, so grouping and decimal separators follow the player's locale.
  */
 public final class StatisticsFormat {

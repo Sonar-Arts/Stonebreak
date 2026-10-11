@@ -16,7 +16,7 @@ import java.util.function.Supplier;
 
 /**
  * {@value #ID}: the terrain mapper's live map (#301, ledger hard visual 11) filling the element, drawn by
- * the legacy {@link TerrainMapRenderer#paint} from the screen's state: the cached noise raster at the
+ * {@link TerrainMapRenderer#paint} from the screen's state: the cached noise raster at the
  * current pan/zoom/mode/seed, the spawn waypoint, the hover crosshair and the 2 px frame. No params: the map
  * is game state. Pure Skia. Without a game (the editor preview) it shows the empty map: background and frame.
  */

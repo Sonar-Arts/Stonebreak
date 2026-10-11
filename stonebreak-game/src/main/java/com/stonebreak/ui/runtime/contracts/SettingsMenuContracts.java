@@ -11,10 +11,10 @@ import com.openmason.engine.ui.masonry.MCategoryButton;
 import com.openmason.engine.ui.masonry.MDropdown;
 import com.openmason.engine.ui.masonry.MSlider;
 import com.openmason.engine.ui.masonry.MWidget;
+import com.stonebreak.ui.settingsMenu.SettingsLayout;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
-import com.stonebreak.ui.settingsMenu.renderers.SkijaSettingsRenderer;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -24,7 +24,7 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * The settings screen's host contract ({@code stonebreak:screen.settings} 1, #299), next to the
- * value contract {@code stonebreak:settings}: the legacy {@link SettingsMenu} stays the controller
+ * value contract {@code stonebreak:settings}: {@link SettingsMenu} stays the controller
  * (widgets, labels, scroll easing, dropdowns, the UI-scale confirmation and its countdown, Apply's
  * side effects, where Back goes), root {@code settingsMenu} mirrors it and the actions call it.
  *
@@ -105,7 +105,7 @@ public final class SettingsMenuContracts {
             }));
     }
 
-    /** Action {@code name} on {@code menu} by the legacy handlers' rules: null on success, else why not. */
+    /** Action {@code name} on {@code menu} by the menu's rules: null on success, else why not. */
     public static String perform(SettingsMenu menu, String name, UiValue.Obj args) {
         if (menu == null) {
             return "no settings screen is showing";
@@ -135,7 +135,7 @@ public final class SettingsMenuContracts {
 
     private void poll(boolean frame) {
         SettingsMenu menu = services.settingsMenu();
-        SkijaSettingsRenderer.Frame f = null;
+        SettingsLayout.Frame f = null;
         if (menu != null) {
             if (frame) {
                 menu.tick();
@@ -152,9 +152,9 @@ public final class SettingsMenuContracts {
         }
     }
 
-    private SkijaSettingsRenderer.Frame lastFrame;
+    private SettingsLayout.Frame lastFrame;
 
-    static UiValue.Obj value(SettingsMenu menu, SkijaSettingsRenderer.Frame f) {
+    static UiValue.Obj value(SettingsMenu menu, SettingsLayout.Frame f) {
         Map<String, UiValue> m = new LinkedHashMap<>();
         StateManager st = menu == null ? null : menu.getStateManager();
         m.put("titleY", UiValue.of(f == null ? 0f : f.titleY()));

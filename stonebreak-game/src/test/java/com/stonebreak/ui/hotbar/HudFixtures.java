@@ -8,7 +8,7 @@ import com.stonebreak.player.Player;
 import com.stonebreak.player.combat.arcanist.ArcanistAbilityController;
 import com.stonebreak.player.combat.arcanist.ResonanceTracker;
 import com.stonebreak.player.combat.dodge.DodgeController;
-import com.stonebreak.rendering.UI.components.hotbar.HealthHeartsRenderer;
+import com.stonebreak.ui.hotbar.core.HealthHeartsLayout;
 import com.stonebreak.ui.HotbarScreen;
 import com.stonebreak.ui.hotbar.core.HotbarLayoutCalculator;
 import com.stonebreak.ui.support.UiTestFixtures;
@@ -125,13 +125,13 @@ public final class HudFixtures {
             out.put("slot" + i, new float[]{s.x, s.y, s.width, s.height});
         }
         Player p = hud.player();
-        int size = HealthHeartsRenderer.heartSize();
+        int size = HealthHeartsLayout.heartSize();
         int total = (int) Math.ceil(p.getMaxHealth() / 2.0f);
-        float[][] hearts = HealthHeartsRenderer.heartRects(total, size, l);
+        float[][] hearts = heartRects(total, size, l);
         for (int i = 0; i < hearts.length; i++) {
             out.put("heart" + i, hearts[i]);
         }
-        float topRow = HealthHeartsRenderer.topRowY(total, size, l);
+        float topRow = topRowY(total, size, l);
         if (p.getMaxStamina() > 0) {
             float y = topRow - 6 - 8;
             out.put("stamina", new float[]{l.backgroundX, y, l.backgroundWidth, 8});
@@ -140,5 +140,64 @@ public final class HudFixtures {
             }
         }
         return out;
+    }
+
+    // The retired hearts renderer's layout, the oracle for the document's heart rows.
+    private static final int HEART_SPACING = 2;
+    private static final int HEART_Y_GAP = 38; // pixels above the hotbar background
+    private static final int HEART_ROW_GAP = 4;
+    private static final float HEART_MIN_VISIBLE_FRACTION = 0.40f;
+
+    private record HeartLayout(int heartsPerRow, int numRows, float step) {}
+
+    /**
+     * Where each of {@code totalHearts} hearts sits ({x, y, size, size}, device px): rows of hearts
+     * starting at the hotbar's left edge {@value #HEART_Y_GAP} px above it, the step compressed once a row
+     * no longer fits, further rows stacked upwards.
+     */
+    static float[][] heartRects(int totalHearts, int heartSize, HotbarLayoutCalculator.HotbarLayout layout) {
+        HeartLayout hl = computeHeartLayout(totalHearts, heartSize, layout.backgroundWidth);
+        if (hl.heartsPerRow() == 0) return new float[0][];
+        float[][] out = new float[totalHearts][];
+        for (int i = 0; i < totalHearts; i++) {
+            int row = i / hl.heartsPerRow();
+            int col = i % hl.heartsPerRow();
+            float x = layout.backgroundX + col * hl.step();
+            float y = layout.backgroundY - HEART_Y_GAP - row * (heartSize + HEART_ROW_GAP);
+            out[i] = new float[]{x, y, heartSize, heartSize};
+        }
+        return out;
+    }
+
+    /**
+     * Y of the topmost heart row the layout plans for {@code totalHearts} (its row count, which a
+     * compressed layout may not fill): the anchor the stamina and mana bars stack above.
+     */
+    static float topRowY(int totalHearts, int heartSize, HotbarLayoutCalculator.HotbarLayout layout) {
+        HeartLayout hl = computeHeartLayout(totalHearts, heartSize, layout.backgroundWidth);
+        int rows = Math.max(1, hl.numRows());
+        return layout.backgroundY - HEART_Y_GAP - (rows - 1) * (heartSize + HEART_ROW_GAP);
+    }
+
+    private static HeartLayout computeHeartLayout(int totalHearts, int heartSize, int availableWidth) {
+        if (totalHearts <= 0) return new HeartLayout(0, 0, 0f);
+
+        float naturalStep = heartSize + HEART_SPACING;
+        int naturalPerRow = Math.max(1, (int) Math.floor((availableWidth + HEART_SPACING) / naturalStep));
+
+        if (totalHearts <= naturalPerRow) {
+            return new HeartLayout(totalHearts, 1, naturalStep);
+        }
+
+        float minStep = heartSize * HEART_MIN_VISIBLE_FRACTION;
+        int maxPerRow = availableWidth <= heartSize ? 1
+                : (int) Math.floor((availableWidth - heartSize) / minStep) + 1;
+
+        int numRows = (int) Math.ceil((float) totalHearts / Math.max(1, maxPerRow));
+        int heartsPerRow = (int) Math.ceil((float) totalHearts / numRows);
+        float step = heartsPerRow <= 1 ? 0f
+                : (float) (availableWidth - heartSize) / (heartsPerRow - 1);
+
+        return new HeartLayout(heartsPerRow, numRows, Math.min(naturalStep, step));
     }
 }

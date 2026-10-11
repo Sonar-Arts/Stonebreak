@@ -4,7 +4,6 @@ import com.openmason.engine.format.sbui.SbuiArchive;
 import com.openmason.engine.ui.fidelity.FidelityCase;
 import com.openmason.engine.ui.fidelity.MigrationGate;
 import com.stonebreak.network.MultiplayerSession;
-import com.stonebreak.rendering.UI.components.MCrosshairRenderer;
 import com.stonebreak.ui.fidelity.DocumentStage;
 import com.stonebreak.ui.fidelity.RecordingServices;
 import com.stonebreak.ui.runtime.GameUiDocuments;
@@ -12,7 +11,7 @@ import com.stonebreak.ui.runtime.GameUiDocuments;
 
 /**
  * The candidate side of the crosshair's fidelity gate (#301): the shipped {@code ui/documents/crosshair.sbui}
- * on a {@link DocumentStage}, its {@code stonebreak:crosshair} data read from a renderer configured as
+ * on a {@link DocumentStage}, its {@code stonebreak:crosshair} data read from a configuration of
  * {@link CrosshairFixtures} (the applied configuration the game publishes). Not a test class.
  */
 public final class DocumentCrosshairCapture implements MigrationGate.Renderer {
@@ -28,10 +27,10 @@ public final class DocumentCrosshairCapture implements MigrationGate.Renderer {
     }
 
     /** Services publishing {@code crosshair} as the applied configuration. */
-    public static RecordingServices services(MCrosshairRenderer crosshair) {
+    public static RecordingServices services(CrosshairSettings crosshair) {
         return new RecordingServices() {
             @Override
-            public MCrosshairRenderer crosshair() {
+            public CrosshairSettings crosshair() {
                 return crosshair;
             }
         };
@@ -41,7 +40,7 @@ public final class DocumentCrosshairCapture implements MigrationGate.Renderer {
     public MigrationGate.Capture render(FidelityCase c) {
         FidelityCase.Viewport vp = c.viewport();
         try (DocumentStage stage = new DocumentStage(shipped, vp.width(), vp.height(), vp.uiScale(),
-                services(CrosshairFixtures.crosshair(c.variant(), null)), MultiplayerSession.Mode.SINGLEPLAYER)) {
+                services(CrosshairFixtures.crosshair(c.variant())), MultiplayerSession.Mode.SINGLEPLAYER)) {
             stage.paint();
             return new MigrationGate.Capture(stage.raster.capture(),
                 stage.rects(java.util.List.of("arm1", "arm2", "arm3", "arm4", "ring", "dot")));

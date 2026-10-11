@@ -22,8 +22,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The world select screen's host contract ({@code stonebreak:screen.world-select} 1, #299). The
- * legacy {@link WorldSelectScreen} stays the controller (selection, scrolling, the info card's
+ * The world select screen's host contract ({@code stonebreak:screen.world-select} 1, #299).
+ * {@link WorldSelectScreen} stays the controller (selection, scrolling, the info card's
  * open/close delays, the delete confirmation, loading, deleting and backing worlds up); root
  * {@code worldSelect} mirrors it and the actions call it.
  *
@@ -31,9 +31,9 @@ import java.util.concurrent.CompletableFuture;
  * name, {@code index} into the whole list, {@code name}, {@code meta}, {@code size}, {@code selected},
  * {@code hovered}), {@code empty}, {@code hasSelection}, {@code scrollbar} with {@code thumbOffset} and
  * {@code thumbHeight}, {@code card} (the info card: {@code shown}, its rows, backup state) and
- * {@code delete} (the confirmation: {@code shown}, {@code line}). Geometry the legacy screen computes
- * from the window ({@code titleY}, {@code subtitleY}, {@code panelY}, the card's {@code x}/{@code y},
- * the thumb) is in device pixels, from {@link WorldSelectLayout}, the hit tests' source of truth.
+ * {@code delete} (the confirmation: {@code shown}, {@code line}). Geometry computed from the window
+ * ({@code titleY}, {@code subtitleY}, {@code panelY}, the card's {@code x}/{@code y}, the thumb) is in
+ * device pixels, from {@link WorldSelectLayout}.
  *
  * <p>Actions {@code stonebreak:screen.world-select.<name>}: {@code select {index}}, {@code hover {index}}
  * (-1 = none), {@code hover-card}, {@code wheel {dy}}, {@code move {delta}}, {@code activate}
@@ -95,7 +95,7 @@ public final class WorldSelectContracts {
     }
 
     /**
-     * Action {@code name} on {@code screen}, by the legacy handlers' rules: null on success, else why it
+     * Action {@code name} on {@code screen}, by the screen's rules: null on success, else why it
      * refused (a disabled button, no card open, no confirmation showing).
      */
     public static String perform(WorldSelectScreen screen, String name, double arg) {
@@ -182,7 +182,7 @@ public final class WorldSelectContracts {
         m.put("panelY", UiValue.of(layout.panelY));
         int total = worlds.size();
         boolean scrollbar = total > WorldSelectLayout.ITEMS_PER_PAGE;
-        // the legacy thumb maths (renderer drawScrollbar), offset from the list top
+        // the scrollbar thumb, offset from the list top
         float thumbH = scrollbar ? layout.listHeight * WorldSelectLayout.ITEMS_PER_PAGE / (float) total : 0f;
         float thumbOffset = scrollbar ? (layout.listHeight - thumbH) * state.getScrollOffset()
             / Math.max(1, total - WorldSelectLayout.ITEMS_PER_PAGE) : 0f;

@@ -20,12 +20,18 @@ import java.util.Map;
  */
 public final class DocumentWorldSelectCapture implements MigrationGate.Renderer {
 
+    /** The parts a dialog case compares (everything else is under its scrim). */
+    static final List<String> DIALOG_PARTS = List.of("dialog", "confirm", "cancel");
+    /** Parts that are drawn, not pressed. */
+    static final List<String> PANELS = List.of("card", "dialog");
+
     static DocumentStage stage(FidelityCase c) throws Exception {
         RecordingServices services = new RecordingServices();
         services.window = new int[]{c.viewport().width(), c.viewport().height()};
-        LegacyUiRaster probe = new LegacyUiRaster(c.viewport().width(), c.viewport().height(), c.viewport().uiScale());
+        // the case's UI scale and pinned clock while the screen is set up
+        UiRaster probe = new UiRaster(c.viewport().width(), c.viewport().height(), c.viewport().uiScale());
         try {
-            services.worldSelect = WorldSelectFixtures.screen(probe.backend(), c.variant());
+            services.worldSelect = WorldSelectFixtures.screen(c.variant());
         } finally {
             probe.close();
         }
@@ -34,10 +40,10 @@ public final class DocumentWorldSelectCapture implements MigrationGate.Renderer 
             MultiplayerSession.Mode.MENU, Map.of(DirtBackdropProvider.ID, new DirtBackdropProvider()));
     }
 
-    /** The parts the legacy capture reports, in its order (card parts first; a dialog case only the dialog). */
+    /** The parts the frozen captures report, in their order (card parts first; a dialog case only the dialog). */
     static List<String> parts(DocumentStage stage, String variant) {
         if (variant.startsWith("delete")) {
-            return LegacyWorldSelectCapture.DIALOG_PARTS;
+            return DIALOG_PARTS;
         }
         List<String> out = new ArrayList<>(List.of("card", "folder", "backup"));
         for (int i = 0; i < 8; i++) {
@@ -61,7 +67,7 @@ public final class DocumentWorldSelectCapture implements MigrationGate.Renderer 
             stage.services.worldSelectLive.clear();
             Map<String, float[]> rects = stage.rects(parts(stage, c.variant()));
             Map<String, float[]> pressed = new LinkedHashMap<>(rects);
-            LegacyWorldSelectCapture.PANELS.forEach(pressed::remove);
+            PANELS.forEach(pressed::remove);
             return new MigrationGate.Capture(image, rects, stage.hits(pressed), stage.actions(pressed));
         } catch (Exception e) {
             throw new IllegalStateException("could not capture " + c.id(), e);

@@ -5,9 +5,8 @@ import com.stonebreak.input.MouseCaptureManager;
 import com.stonebreak.player.Player;
 
 /**
- * What the death menu's Respawn does, in one place: the legacy click handler
- * ({@code UiMouseRouter}) and the UI host's {@code stonebreak:screen.death.respawn} action (#299)
- * both call it, so the migrated death screen runs exactly the rule the old one did.
+ * What the death menu's Respawn does: the UI host's {@code stonebreak:screen.death.respawn}
+ * action (#299) calls it.
  */
 public final class DeathMenuActions {
 

@@ -299,6 +299,10 @@ public final class FixtureHost {
                         + " in the fixture, " + rt.describe() + " on the host");
                 }
             });
+            // A parameter the fixture leaves out makes every real call fail in the preview (PARAM_MISMATCH).
+            r.params().fields().keySet().stream().filter(name -> !mine.params().fields().containsKey(name))
+                .forEach(name -> out.add("action " + mine.id() + ": parameter '" + name
+                    + "' is declared by the host but missing from the fixture"));
             UiValue result = fixtureResults.get(mine.id());
             if (result != null) {
                 String p = r.result().problem(result);

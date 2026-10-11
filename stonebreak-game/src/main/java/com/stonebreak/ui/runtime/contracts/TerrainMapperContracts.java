@@ -6,7 +6,7 @@ import com.openmason.engine.ui.data.DataCell;
 import com.openmason.engine.ui.data.DataType;
 import com.openmason.engine.ui.data.HostContract;
 import com.openmason.engine.ui.data.UiHost;
-import com.stonebreak.ui.LegacyUiClock;
+import com.stonebreak.ui.UiWallClock;
 import com.stonebreak.ui.terrainMapper.TerrainMapperScreen;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager.ActiveField;
@@ -24,7 +24,7 @@ import java.util.concurrent.CompletableFuture;
  * controller (the keyboard: typing, Tab, Enter creates, Esc goes back, Ctrl+V; the seed's live preview; world
  * creation); the map itself is the {@code stonebreak:terrain-map} provider. Root {@code terrainMapper}: the two
  * fields ({@code name}/{@code seed} as typed, {@code nameDisplay}/{@code seedDisplay} with the placeholder,
- * {@code nameEmpty}/{@code seedEmpty}, {@code field} = name/seed/none, {@code caretOn}: the legacy 2 Hz blink,
+ * {@code nameEmpty}/{@code seedEmpty}, {@code field} = name/seed/none, {@code caretOn}: the 2 Hz blink,
  * {@code nameFocused}/{@code seedFocused}, {@code nameCaret}/{@code seedCaret}: the blink in that field),
  * {@code modes} ({@code mode}, {@code label}, {@code selected}), the spawn buttons ({@code spawnSet},
  * {@code spawnLabel}), {@code error}, the footer readout ({@code modeLabel}, {@code hover}).
@@ -126,8 +126,8 @@ public final class TerrainMapperContracts {
             case SEED -> "seed";
             case NONE -> "none";
         }));
-        // TerrainSidebarRenderer's caret: 500 ms on the legacy UI clock, in the focused field
-        boolean caret = (LegacyUiClock.millis() / 500L) % 2L == 0L;
+        // the caret blinks every 500 ms on the UI clock, in the focused field
+        boolean caret = (UiWallClock.millis() / 500L) % 2L == 0L;
         m.put("caretOn", UiValue.of(caret));
         m.put("nameFocused", UiValue.of(field == ActiveField.WORLD_NAME));
         m.put("seedFocused", UiValue.of(field == ActiveField.SEED));

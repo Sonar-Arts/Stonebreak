@@ -5,8 +5,8 @@ import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
 
 /**
  * Pure layout math. Given a window size, computes the rectangular regions
- * for sidebar, map viewport, and footer. Shared by every renderer and mouse
- * handler so hit tests and draws agree on bounds.
+ * for sidebar, map viewport, and footer. The mouse handler resolves map
+ * presses, drags and zooms against it.
  */
 public final class TerrainMapperLayout {
 

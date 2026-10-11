@@ -18,9 +18,9 @@ import java.util.Map;
 
 /**
  * Holds the MasonryUI widgets and navigation state for the settings menu.
- * Pure state — no rendering, no GL, no NanoVG. Handlers and renderers read
- * and mutate these fields; the {@link com.stonebreak.ui.settingsMenu.renderers.SkijaSettingsRenderer}
- * positions and draws them.
+ * Pure state — no rendering, no GL, no NanoVG. Handlers and the UI host read
+ * and mutate these fields; {@link com.stonebreak.ui.settingsMenu.SettingsLayout}
+ * positions them.
  */
 public final class StateManager {
 
@@ -613,8 +613,6 @@ public final class StateManager {
 
     public GameState getPreviousState() { return previousState; }
     public void setPreviousState(GameState state) { this.previousState = state; }
-
-    public int getSelectedButton() { return selectedSettingInCategory; }
 
     public int getSelectedResolutionIndex() { return selectedResolutionIndex; }
     public void setSelectedResolutionIndex(int i) { this.selectedResolutionIndex = i; }

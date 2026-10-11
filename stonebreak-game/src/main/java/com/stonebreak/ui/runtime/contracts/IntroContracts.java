@@ -18,7 +18,7 @@ import java.util.concurrent.CompletableFuture;
  * {@code time} (intro seconds, also the document's {@code intro} clock), {@code phase} (submarine, hold,
  * fade, complete), {@code reveal} (logo opacity), {@code fade} (black over the scene, 0..1) and
  * {@code scale} (the intro's own fit to 1920x1080, which ignores the UI scale) and {@code logo}
- * {@code {x, y, width, height, shadowX, shadowY}} (device px, as {@code SonarLogoRenderer} places it); action
+ * {@code {x, y, width, height, shadowX, shadowY}} (device px, from {@link IntroConfig#logoPlacement}); action
  * {@code stonebreak:screen.intro.skip} (Esc, Space, Enter or a left press). The game's
  * {@link IntroScene} stays the timeline: the document only presents it.
  */
@@ -76,7 +76,7 @@ public final class IntroContracts {
         m.put("fade", SettingsContract.exact(s == null ? 0f : s.fade()));
         m.put("scale", SettingsContract.exact(s == null || !s.entered() ? 1f : IntroConfig.scale()));
         float[] at = s == null || !s.entered() ? new float[5]
-            : com.stonebreak.ui.startupIntro.render.SonarLogoRenderer.placement(s.width(), s.height());
+            : IntroConfig.logoPlacement(s.width(), s.height());
         Map<String, UiValue> logo = new LinkedHashMap<>();
         logo.put("x", SettingsContract.exact(at[0]));
         logo.put("y", SettingsContract.exact(at[1]));

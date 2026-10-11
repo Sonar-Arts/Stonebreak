@@ -1,0 +1,531 @@
+{
+  "screen" : "multiplayer",
+  "units" : "framebuffer pixels; rect = [x, y, width, height], origin top-left",
+  "cases" : {
+    "multiplayer-plain_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "host" : [ 760.0, 520.0, 400.0, 40.0 ],
+        "join" : [ 760.0, 570.0, 400.0, 40.0 ]
+      },
+      "hits" : {
+        "back" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "host" : [ 760.0, 520.0, 400.0, 40.0 ],
+        "join" : [ 760.0, 570.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.multiplayer.back",
+        "host" : "stonebreak:screen.multiplayer.host",
+        "join" : "stonebreak:screen.multiplayer.join"
+      }
+    },
+    "multiplayer-plain_1280x720_s0_75" : {
+      "rects" : {
+        "back" : [ 440.0, 440.0, 400.0, 40.0 ],
+        "host" : [ 440.0, 340.0, 400.0, 40.0 ],
+        "join" : [ 440.0, 390.0, 400.0, 40.0 ]
+      },
+      "hits" : {
+        "back" : [ 440.0, 440.0, 400.0, 40.0 ],
+        "host" : [ 440.0, 340.0, 400.0, 40.0 ],
+        "join" : [ 440.0, 390.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.multiplayer.back",
+        "host" : "stonebreak:screen.multiplayer.host",
+        "join" : "stonebreak:screen.multiplayer.join"
+      }
+    },
+    "multiplayer-plain_3840x2160_s2" : {
+      "rects" : {
+        "back" : [ 1720.0, 1160.0, 400.0, 40.0 ],
+        "host" : [ 1720.0, 1060.0, 400.0, 40.0 ],
+        "join" : [ 1720.0, 1110.0, 400.0, 40.0 ]
+      },
+      "hits" : {
+        "back" : [ 1720.0, 1160.0, 400.0, 40.0 ],
+        "host" : [ 1720.0, 1060.0, 400.0, 40.0 ],
+        "join" : [ 1720.0, 1110.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.multiplayer.back",
+        "host" : "stonebreak:screen.multiplayer.host",
+        "join" : "stonebreak:screen.multiplayer.join"
+      }
+    },
+    "multiplayer-plain_1921x1081_s1_25" : {
+      "rects" : {
+        "back" : [ 760.5, 620.5, 400.0, 40.0 ],
+        "host" : [ 760.5, 520.5, 400.0, 40.0 ],
+        "join" : [ 760.5, 570.5, 400.0, 40.0 ]
+      },
+      "hits" : {
+        "back" : [ 760.5, 620.5, 400.0, 40.0 ],
+        "host" : [ 760.5, 520.5, 400.0, 40.0 ],
+        "join" : [ 760.5, 570.5, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.multiplayer.back",
+        "host" : "stonebreak:screen.multiplayer.host",
+        "join" : "stonebreak:screen.multiplayer.join"
+      }
+    },
+    "multiplayer-hover-host_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "host" : [ 760.0, 520.0, 400.0, 40.0 ],
+        "join" : [ 760.0, 570.0, 400.0, 40.0 ]
+      },
+      "hits" : {
+        "back" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "host" : [ 760.0, 520.0, 400.0, 40.0 ],
+        "join" : [ 760.0, 570.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.multiplayer.back",
+        "host" : "stonebreak:screen.multiplayer.host",
+        "join" : "stonebreak:screen.multiplayer.join"
+      }
+    },
+    "multiplayer-hover-join_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "host" : [ 760.0, 520.0, 400.0, 40.0 ],
+        "join" : [ 760.0, 570.0, 400.0, 40.0 ]
+      },
+      "hits" : {
+        "back" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "host" : [ 760.0, 520.0, 400.0, 40.0 ],
+        "join" : [ 760.0, 570.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.multiplayer.back",
+        "host" : "stonebreak:screen.multiplayer.host",
+        "join" : "stonebreak:screen.multiplayer.join"
+      }
+    },
+    "multiplayer-hover-back_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "host" : [ 760.0, 520.0, 400.0, 40.0 ],
+        "join" : [ 760.0, 570.0, 400.0, 40.0 ]
+      },
+      "hits" : {
+        "back" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "host" : [ 760.0, 520.0, 400.0, 40.0 ],
+        "join" : [ 760.0, 570.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.multiplayer.back",
+        "host" : "stonebreak:screen.multiplayer.host",
+        "join" : "stonebreak:screen.multiplayer.join"
+      }
+    },
+    "host-world-worlds_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "port" : [ 810.0, 402.0, 140.0, 32.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.host-world.back",
+        "row0" : "stonebreak:screen.host-world.select 0",
+        "row1" : "stonebreak:screen.host-world.select 1",
+        "row2" : "stonebreak:screen.host-world.select 2",
+        "start" : "stonebreak:screen.host-world.start"
+      }
+    },
+    "host-world-worlds_1280x720_s0_75" : {
+      "rects" : {
+        "back" : [ 650.0, 458.0, 200.0, 36.0 ],
+        "port" : [ 490.0, 402.0, 140.0, 32.0 ],
+        "row0" : [ 410.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 410.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 410.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 430.0, 458.0, 200.0, 36.0 ]
+      },
+      "hits" : {
+        "back" : [ 650.0, 458.0, 200.0, 36.0 ],
+        "row0" : [ 410.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 410.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 410.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 430.0, 458.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.host-world.back",
+        "row0" : "stonebreak:screen.host-world.select 0",
+        "row1" : "stonebreak:screen.host-world.select 1",
+        "row2" : "stonebreak:screen.host-world.select 2",
+        "start" : "stonebreak:screen.host-world.start"
+      }
+    },
+    "host-world-worlds_3840x2160_s2" : {
+      "rects" : {
+        "back" : [ 1930.0, 458.0, 200.0, 36.0 ],
+        "port" : [ 1770.0, 402.0, 140.0, 32.0 ],
+        "row0" : [ 1690.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 1690.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 1690.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 1710.0, 458.0, 200.0, 36.0 ]
+      },
+      "hits" : {
+        "back" : [ 1930.0, 458.0, 200.0, 36.0 ],
+        "row0" : [ 1690.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 1690.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 1690.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 1710.0, 458.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.host-world.back",
+        "row0" : "stonebreak:screen.host-world.select 0",
+        "row1" : "stonebreak:screen.host-world.select 1",
+        "row2" : "stonebreak:screen.host-world.select 2",
+        "start" : "stonebreak:screen.host-world.start"
+      }
+    },
+    "host-world-worlds_1921x1081_s1_25" : {
+      "rects" : {
+        "back" : [ 970.5, 458.0, 200.0, 36.0 ],
+        "port" : [ 810.5, 402.0, 140.0, 32.0 ],
+        "row0" : [ 730.5, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.5, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.5, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.5, 458.0, 200.0, 36.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.5, 458.0, 200.0, 36.0 ],
+        "row0" : [ 730.5, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.5, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.5, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.5, 458.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.host-world.back",
+        "row0" : "stonebreak:screen.host-world.select 0",
+        "row1" : "stonebreak:screen.host-world.select 1",
+        "row2" : "stonebreak:screen.host-world.select 2",
+        "start" : "stonebreak:screen.host-world.start"
+      }
+    },
+    "host-world-empty_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "port" : [ 810.0, 402.0, 140.0, 32.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.host-world.back",
+        "start" : "stonebreak:screen.host-world.start"
+      }
+    },
+    "host-world-nine_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "port" : [ 810.0, 402.0, 140.0, 32.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "row3" : [ 730.0, 226.0, 460.0, 28.0 ],
+        "row4" : [ 730.0, 258.0, 460.0, 28.0 ],
+        "row5" : [ 730.0, 290.0, 460.0, 28.0 ],
+        "row6" : [ 730.0, 322.0, 460.0, 28.0 ],
+        "row7" : [ 730.0, 354.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "row3" : [ 730.0, 226.0, 460.0, 28.0 ],
+        "row4" : [ 730.0, 258.0, 460.0, 28.0 ],
+        "row5" : [ 730.0, 290.0, 460.0, 28.0 ],
+        "row6" : [ 730.0, 322.0, 460.0, 28.0 ],
+        "row7" : [ 730.0, 354.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.host-world.back",
+        "row0" : "stonebreak:screen.host-world.select 0",
+        "row1" : "stonebreak:screen.host-world.select 1",
+        "row2" : "stonebreak:screen.host-world.select 2",
+        "row3" : "stonebreak:screen.host-world.select 3",
+        "row4" : "stonebreak:screen.host-world.select 4",
+        "row5" : "stonebreak:screen.host-world.select 5",
+        "row6" : "stonebreak:screen.host-world.select 6",
+        "row7" : "stonebreak:screen.host-world.select 7",
+        "start" : "stonebreak:screen.host-world.start"
+      }
+    },
+    "host-world-worlds-focused_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "port" : [ 810.0, 402.0, 140.0, 32.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.host-world.back",
+        "row0" : "stonebreak:screen.host-world.select 0",
+        "row1" : "stonebreak:screen.host-world.select 1",
+        "row2" : "stonebreak:screen.host-world.select 2",
+        "start" : "stonebreak:screen.host-world.start"
+      }
+    },
+    "host-world-worlds-status_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "port" : [ 810.0, 402.0, 140.0, 32.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.host-world.back",
+        "row0" : "stonebreak:screen.host-world.select 0",
+        "row1" : "stonebreak:screen.host-world.select 1",
+        "row2" : "stonebreak:screen.host-world.select 2",
+        "start" : "stonebreak:screen.host-world.start"
+      }
+    },
+    "host-world-worlds-hover-row1_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "port" : [ 810.0, 402.0, 140.0, 32.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.host-world.back",
+        "row0" : "stonebreak:screen.host-world.select 0",
+        "row1" : "stonebreak:screen.host-world.select 1",
+        "row2" : "stonebreak:screen.host-world.select 2",
+        "start" : "stonebreak:screen.host-world.start"
+      }
+    },
+    "host-world-worlds-hover-start_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "port" : [ 810.0, 402.0, 140.0, 32.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.host-world.back",
+        "row0" : "stonebreak:screen.host-world.select 0",
+        "row1" : "stonebreak:screen.host-world.select 1",
+        "row2" : "stonebreak:screen.host-world.select 2",
+        "start" : "stonebreak:screen.host-world.start"
+      }
+    },
+    "host-world-worlds-hover-back_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "port" : [ 810.0, 402.0, 140.0, 32.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.0, 458.0, 200.0, 36.0 ],
+        "row0" : [ 730.0, 130.0, 460.0, 28.0 ],
+        "row1" : [ 730.0, 162.0, 460.0, 28.0 ],
+        "row2" : [ 730.0, 194.0, 460.0, 28.0 ],
+        "start" : [ 750.0, 458.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.host-world.back",
+        "row0" : "stonebreak:screen.host-world.select 0",
+        "row1" : "stonebreak:screen.host-world.select 1",
+        "row2" : "stonebreak:screen.host-world.select 2",
+        "start" : "stonebreak:screen.host-world.start"
+      }
+    },
+    "join-world-filled_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 970.0, 622.0, 200.0, 36.0 ],
+        "connect" : [ 750.0, 622.0, 200.0, 36.0 ],
+        "host" : [ 800.0, 440.0, 320.0, 32.0 ],
+        "port" : [ 800.0, 500.0, 320.0, 32.0 ],
+        "username" : [ 800.0, 560.0, 320.0, 32.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.0, 622.0, 200.0, 36.0 ],
+        "connect" : [ 750.0, 622.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.join-world.back",
+        "connect" : "stonebreak:screen.join-world.connect"
+      }
+    },
+    "join-world-filled_1280x720_s0_75" : {
+      "rects" : {
+        "back" : [ 650.0, 442.0, 200.0, 36.0 ],
+        "connect" : [ 430.0, 442.0, 200.0, 36.0 ],
+        "host" : [ 480.0, 260.0, 320.0, 32.0 ],
+        "port" : [ 480.0, 320.0, 320.0, 32.0 ],
+        "username" : [ 480.0, 380.0, 320.0, 32.0 ]
+      },
+      "hits" : {
+        "back" : [ 650.0, 442.0, 200.0, 36.0 ],
+        "connect" : [ 430.0, 442.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.join-world.back",
+        "connect" : "stonebreak:screen.join-world.connect"
+      }
+    },
+    "join-world-filled_3840x2160_s2" : {
+      "rects" : {
+        "back" : [ 1930.0, 1162.0, 200.0, 36.0 ],
+        "connect" : [ 1710.0, 1162.0, 200.0, 36.0 ],
+        "host" : [ 1760.0, 980.0, 320.0, 32.0 ],
+        "port" : [ 1760.0, 1040.0, 320.0, 32.0 ],
+        "username" : [ 1760.0, 1100.0, 320.0, 32.0 ]
+      },
+      "hits" : {
+        "back" : [ 1930.0, 1162.0, 200.0, 36.0 ],
+        "connect" : [ 1710.0, 1162.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.join-world.back",
+        "connect" : "stonebreak:screen.join-world.connect"
+      }
+    },
+    "join-world-filled_1921x1081_s1_25" : {
+      "rects" : {
+        "back" : [ 970.5, 622.5, 200.0, 36.0 ],
+        "connect" : [ 750.5, 622.5, 200.0, 36.0 ],
+        "host" : [ 800.5, 440.5, 320.0, 32.0 ],
+        "port" : [ 800.5, 500.5, 320.0, 32.0 ],
+        "username" : [ 800.5, 560.5, 320.0, 32.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.5, 622.5, 200.0, 36.0 ],
+        "connect" : [ 750.5, 622.5, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.join-world.back",
+        "connect" : "stonebreak:screen.join-world.connect"
+      }
+    },
+    "join-world-filled-focused_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 970.0, 622.0, 200.0, 36.0 ],
+        "connect" : [ 750.0, 622.0, 200.0, 36.0 ],
+        "host" : [ 800.0, 440.0, 320.0, 32.0 ],
+        "port" : [ 800.0, 500.0, 320.0, 32.0 ],
+        "username" : [ 800.0, 560.0, 320.0, 32.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.0, 622.0, 200.0, 36.0 ],
+        "connect" : [ 750.0, 622.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.join-world.back",
+        "connect" : "stonebreak:screen.join-world.connect"
+      }
+    },
+    "join-world-filled-status_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 970.0, 622.0, 200.0, 36.0 ],
+        "connect" : [ 750.0, 622.0, 200.0, 36.0 ],
+        "host" : [ 800.0, 440.0, 320.0, 32.0 ],
+        "port" : [ 800.0, 500.0, 320.0, 32.0 ],
+        "username" : [ 800.0, 560.0, 320.0, 32.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.0, 622.0, 200.0, 36.0 ],
+        "connect" : [ 750.0, 622.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.join-world.back",
+        "connect" : "stonebreak:screen.join-world.connect"
+      }
+    },
+    "join-world-filled-hover-connect_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 970.0, 622.0, 200.0, 36.0 ],
+        "connect" : [ 750.0, 622.0, 200.0, 36.0 ],
+        "host" : [ 800.0, 440.0, 320.0, 32.0 ],
+        "port" : [ 800.0, 500.0, 320.0, 32.0 ],
+        "username" : [ 800.0, 560.0, 320.0, 32.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.0, 622.0, 200.0, 36.0 ],
+        "connect" : [ 750.0, 622.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.join-world.back",
+        "connect" : "stonebreak:screen.join-world.connect"
+      }
+    },
+    "join-world-filled-hover-back_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 970.0, 622.0, 200.0, 36.0 ],
+        "connect" : [ 750.0, 622.0, 200.0, 36.0 ],
+        "host" : [ 800.0, 440.0, 320.0, 32.0 ],
+        "port" : [ 800.0, 500.0, 320.0, 32.0 ],
+        "username" : [ 800.0, 560.0, 320.0, 32.0 ]
+      },
+      "hits" : {
+        "back" : [ 970.0, 622.0, 200.0, 36.0 ],
+        "connect" : [ 750.0, 622.0, 200.0, 36.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.join-world.back",
+        "connect" : "stonebreak:screen.join-world.connect"
+      }
+    }
+  }
+}

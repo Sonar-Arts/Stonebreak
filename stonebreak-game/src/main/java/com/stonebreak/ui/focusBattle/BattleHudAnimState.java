@@ -27,7 +27,7 @@ public final class BattleHudAnimState {
     /** 0 = submenu tucked behind the command window, 1 = in place. */
     public float submenuSlideIn = 1f;
 
-    /** Hit recoil of the party window, applied by the renderer to the window's rect. */
+    /** Hit recoil of the party window, applied to the window's rect. */
     public float partyShakeX;
     public float partyShakeY;
     /** Hit recoil of the enemy plate. */

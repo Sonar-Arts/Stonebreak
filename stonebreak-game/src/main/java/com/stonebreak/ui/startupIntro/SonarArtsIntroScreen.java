@@ -3,16 +3,8 @@ package com.stonebreak.ui.startupIntro;
 import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
-import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.ui.startupIntro.render.IntroPainter;
-import com.stonebreak.ui.startupIntro.render.SonarLogoRenderer;
-import io.github.humbleui.skija.Canvas;
 
 import java.util.concurrent.ThreadLocalRandom;
-
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
 
 /**
  * Sonar Arts intro screen: ocean + green sonar pulses + submarine + retro
@@ -20,29 +12,21 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
  * of the submarine/sonar slice of TheMythalProphecy's StartupAnimationState
  * with the flash transition and airship/sky portions removed.
  *
- * <p>The simulation and timeline are {@link IntroScene}; since #301 the shipped document
- * {@code ui/documents/intro.sbui} ({@link IntroDocument}, the STARTUP_INTRO state screen) shows it,
- * and {@link #render} is the legacy fallback (not shipped, refused, {@code -Dstonebreak.ui.legacy=intro}).
+ * <p>The simulation and timeline are {@link IntroScene}; the shipped document
+ * {@code ui/documents/intro.sbui} ({@link IntroDocument}, the STARTUP_INTRO state screen) shows it.
  */
 public final class SonarArtsIntroScreen {
 
     /** The shipped document: {@code ui/documents/intro.sbui}. */
     public static final String DOCUMENT_ID = "intro";
 
-    private final SkijaUIBackend backend;
-    private final SonarLogoRenderer logoRenderer = new SonarLogoRenderer();
     private final IntroScene scene;
-
-    private boolean prevEsc;
-    private boolean prevSpace;
-    private boolean prevEnter;
 
     private static final String SONAR_SOUND_NAME = "StartupSonar";
     private static final String SONAR_SOUND_RESOURCE = "/sounds/StartupSonar.wav";
     private boolean sonarSoundRegistered;
 
-    public SonarArtsIntroScreen(SkijaUIBackend backend) {
-        this.backend = backend;
+    public SonarArtsIntroScreen() {
         this.scene = new IntroScene(ThreadLocalRandom.current(), this::playSonarPing);
         registerSonarSound();
     }
@@ -80,50 +64,9 @@ public final class SonarArtsIntroScreen {
         }
     }
 
-    /** Sizes the scene to the window (first frame, resize); every painter calls it before drawing. */
+    /** Sizes the scene to the window (first frame, resize); the document calls it before each paint. */
     public void enterIfNeeded(int width, int height) {
         scene.enter(width, height);
-    }
-
-    public void render(int width, int height) {
-        enterIfNeeded(width, height);
-        if (!backend.isAvailable()) return;
-
-        backend.beginFrame(width, height, 1f);
-        try {
-            Canvas canvas = backend.getCanvas();
-            paintLegacy(canvas, scene, logoRenderer, width, height);
-        } finally {
-            backend.endFrame();
-        }
-    }
-
-    /** The legacy frame: ocean, logo, rings, bubbles, submarine, then the fade to black. */
-    public static void paintLegacy(Canvas canvas, IntroScene scene, SonarLogoRenderer logo, int width, int height) {
-        IntroPainter painter = new IntroPainter(canvas);
-        scene.paintOcean(canvas);
-        logo.draw(painter, width, height, scene.reveal());
-        scene.paintSonar(canvas);
-
-        if (scene.phase() == IntroScene.Phase.FADE_TO_BLACK) {
-            int color = IntroConfig.withAlpha(0xFF000000, scene.fade());
-            painter.drawRectangle(0, 0, width, height, color);
-        } else if (scene.phase() == IntroScene.Phase.COMPLETE) {
-            painter.drawRectangle(0, 0, width, height, 0xFF000000);
-        }
-    }
-
-    public void handleInput(long window) {
-        boolean esc = com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_ESCAPE);
-        boolean space = com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_SPACE);
-        boolean enter = com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_ENTER);
-
-        boolean skipPressed = (esc && !prevEsc) || (space && !prevSpace) || (enter && !prevEnter);
-        if (skipPressed) skipToMainMenu();
-
-        prevEsc = esc;
-        prevSpace = space;
-        prevEnter = enter;
     }
 
     public void skipToMainMenu() {
@@ -137,8 +80,4 @@ public final class SonarArtsIntroScreen {
     }
 
     public boolean isComplete() { return scene.phase() == IntroScene.Phase.COMPLETE; }
-
-    public void dispose() {
-        logoRenderer.close();
-    }
 }

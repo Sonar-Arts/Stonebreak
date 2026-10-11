@@ -6,10 +6,9 @@ import com.openmason.engine.ui.data.DataCell;
 import com.openmason.engine.ui.data.DataType;
 import com.openmason.engine.ui.data.HostContract;
 import com.openmason.engine.ui.data.UiHost;
-import com.stonebreak.ui.LegacyUiClock;
+import com.stonebreak.ui.UiWallClock;
 import com.stonebreak.ui.MainMenu;
 import com.stonebreak.ui.mainMenu.MainMenuStage;
-import com.stonebreak.ui.mainMenu.SkijaMainMenuRenderer;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,7 +22,7 @@ import java.util.concurrent.CompletableFuture;
  * {@code titleRotation} in degrees, {@code splashScale} the splash's beat, {@code splashX}/{@code splashY}
  * the splash's pivot in device pixels), republished every frame it
  * moves; actions {@code .singleplayer}, {@code .multiplayer}, {@code .settings}, {@code .quit} and
- * {@code .title} (the easter-egg click). The legacy {@link MainMenu} stays the controller.
+ * {@code .title} (the easter-egg click). {@link MainMenu} stays the controller.
  */
 public final class MainMenuContracts {
 
@@ -69,7 +68,7 @@ public final class MainMenuContracts {
     /** UI thread, once per frame: the splash beat and the title motion change continuously. */
     public void poll() {
         MainMenu menu = services.mainMenu();
-        UiValue v = value(menu, LegacyUiClock.millis(), services.menuWindow(), services.menuScale());
+        UiValue v = value(menu, UiWallClock.millis(), services.menuWindow(), services.menuScale());
         if (!v.equals(last)) {
             last = v;
             cell.set(v);
@@ -81,15 +80,15 @@ public final class MainMenuContracts {
         Map<String, UiValue> m = new LinkedHashMap<>();
         String splash = menu == null ? null : menu.getCurrentSplashText();
         m.put("splash", UiValue.of(splash == null ? "" : splash));
-        m.put("splashScale", SettingsContract.exact(SkijaMainMenuRenderer.splashPulse(millis)));
+        m.put("splashScale", SettingsContract.exact(MainMenu.splashPulse(millis)));
         m.put("titleX", SettingsContract.exact(s == null ? 0f : s.getTitleOffsetX()));
         m.put("titleY", SettingsContract.exact(s == null ? 0f : s.getTitleOffsetY()));
         m.put("titleScale", SettingsContract.exact(s == null ? 1f : s.getTitleScale()));
         m.put("titleRotation", SettingsContract.exact(s == null ? 0f : s.getTitleRotationDeg()));
         m.put("shakeX", SettingsContract.exact(s == null ? 0f : s.getScreenShakeX()));
         m.put("shakeY", SettingsContract.exact(s == null ? 0f : s.getScreenShakeY()));
-        // the splash pivot, as the legacy renderer computes it (device px, exact)
-        float[] anchor = SkijaMainMenuRenderer.splashAnchor(window[0], window[1], scale);
+        // the splash pivot (device px, exact)
+        float[] anchor = MainMenu.splashAnchor(window[0], window[1], scale);
         m.put("splashX", SettingsContract.exact(anchor[0]));
         m.put("splashY", SettingsContract.exact(anchor[1]));
         return new UiValue.Obj(m);

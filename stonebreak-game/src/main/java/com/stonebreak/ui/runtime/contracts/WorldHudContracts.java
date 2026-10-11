@@ -6,8 +6,8 @@ import com.openmason.engine.ui.data.DataCollection;
 import com.openmason.engine.ui.data.DataType;
 import com.openmason.engine.ui.data.HostContract;
 import com.openmason.engine.ui.data.UiHost;
-import com.stonebreak.rendering.UI.components.StealthHudRenderer;
-import com.stonebreak.rendering.UI.components.WorldMarker;
+import com.stonebreak.ui.worldHud.StealthHud;
+import com.stonebreak.ui.worldHud.WorldMarker;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -15,8 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The world-anchored HUD ({@code stonebreak:world.hud} 1, #301): what the legacy world-space renderers
- * draw over the 3D view in PLAYING, as typed data.
+ * The world-anchored HUD ({@code stonebreak:world.hud} 1, #301): what is drawn over the 3D view in
+ * PLAYING, as typed data.
  * <ul>
  *   <li>collection {@code worldMarkers} (identity {@code marker}), in paint order (damage numbers, the Ranger's
  *       prey and snare, Doubt counts, awareness glyphs, name tags): {@code kind} (damage, prey, trap, doubt,
@@ -28,7 +28,7 @@ import java.util.Map;
  * </ul>
  * <b>Projection contract:</b> markers are projected by {@link WorldMarker#project} through the player
  * camera's {@code proj × view} at render time and left out when behind the camera or outside the view
- * ({@code |ndc| > 1}). There is no occlusion: markers read through terrain, as the legacy ones did. The
+ * ({@code |ndc| > 1}). There is no occlusion: markers read through terrain. The
  * game publishes right before the document paints, so positions are never a frame behind the camera.
  */
 public final class WorldHudContracts {
@@ -45,15 +45,15 @@ public final class WorldHudContracts {
     private final DataCollection markers = new DataCollection(MARKERS);
     private final DataCell stealth;
     private List<WorldMarker> lastMarkers = List.of();
-    private StealthHudRenderer.State lastStealth = StealthHudRenderer.State.NONE;
+    private StealthHud.State lastStealth = StealthHud.State.NONE;
 
     public WorldHudContracts(UiHost ui) {
         ui.data().register("worldMarkers", markers, WORLD_HUD);
-        stealth = ui.data().register("stealth", new DataCell(STEALTH, value(StealthHudRenderer.State.NONE)), WORLD_HUD);
+        stealth = ui.data().register("stealth", new DataCell(STEALTH, value(StealthHud.State.NONE)), WORLD_HUD);
     }
 
     /** UI thread, right before the world HUD paints: republishes only what changed. */
-    public void publish(List<WorldMarker> now, StealthHudRenderer.State stealthNow) {
+    public void publish(List<WorldMarker> now, StealthHud.State stealthNow) {
         if (!now.equals(lastMarkers)) {
             lastMarkers = List.copyOf(now);
             List<UiValue> rows = new ArrayList<>(now.size());
@@ -70,7 +70,7 @@ public final class WorldHudContracts {
 
     /** Back to nothing (world left). */
     public void clear() {
-        publish(List.of(), StealthHudRenderer.State.NONE);
+        publish(List.of(), StealthHud.State.NONE);
     }
 
     private static UiValue row(WorldMarker m) {
@@ -88,7 +88,7 @@ public final class WorldHudContracts {
         return new UiValue.Obj(r);
     }
 
-    private static UiValue.Obj value(StealthHudRenderer.State s) {
+    private static UiValue.Obj value(StealthHud.State s) {
         Map<String, UiValue> m = new LinkedHashMap<>();
         m.put("shown", UiValue.of(s.shown()));
         m.put("label", UiValue.of(s.label()));

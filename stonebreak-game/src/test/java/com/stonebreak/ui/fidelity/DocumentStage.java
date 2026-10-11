@@ -16,13 +16,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A shipped screen document open on a {@link LegacyUiRaster}, exactly as the game opens it
+ * A shipped screen document open on a {@link UiRaster}, exactly as the game opens it
  * ({@code GameUiDocuments.openBound} against a {@link GameUiHost}, Lua code-behind running), bound
  * to {@link RecordingServices}: the candidate side of the #299 migration gates. Not a test class.
  */
 public class DocumentStage implements AutoCloseable {
 
-    public final LegacyUiRaster raster;
+    public final UiRaster raster;
     public final RecordingServices services;
     public final GameUiHost host;
     public final UiDocumentView view;
@@ -47,7 +47,7 @@ public class DocumentStage implements AutoCloseable {
                          MultiplayerSession.Mode mode,
                          Map<String, com.openmason.engine.ui.runtime.paint.UiPaintHost.UiDrawProvider> providers)
             throws Exception {
-        raster = new LegacyUiRaster(w, h, scale);
+        raster = new UiRaster(w, h, scale);
         this.scale = scale;
         this.services = services;
         host = new GameUiHost(services, mode);
@@ -139,15 +139,61 @@ public class DocumentStage implements AutoCloseable {
         return out;
     }
 
-    /** Where the document's hit test answers for each named element, probed like the legacy captures. */
+    /** Where the document's hit test answers for each named element ({@link #probeRegion}). */
     public Map<String, float[]> hits(Map<String, float[]> rects) {
         Map<String, float[]> out = new LinkedHashMap<>();
         rects.forEach((n, r) -> {
             UiElement target = q("#" + n);
-            LegacyPauseCapture.HitProbe probe = (x, y) -> within(view.instance().hitTest(x, y), target);
-            out.put(n, LegacyDeathCapture.probeRegion(probe, r, raster.width, raster.height));
+            HitProbe probe = (x, y) -> within(view.instance().hitTest(x, y), target);
+            out.put(n, probeRegion(probe, r, raster.width, raster.height));
         });
         return out;
+    }
+
+    /** Whether a point hits the part being measured. */
+    @FunctionalInterface
+    public interface HitProbe {
+        boolean at(float x, float y);
+    }
+
+    /**
+     * The region a probe answers for around a drawn rect: bisected out from its centre along both
+     * axes ({@link #edge}); a centre that misses reports a zero-sized region.
+     */
+    public static float[] probeRegion(HitProbe probe, float[] r, int w, int h) {
+        float cx = r[0] + r[2] / 2f;
+        float cy = r[1] + r[3] / 2f;
+        if (!probe.at(cx, cy)) {
+            return new float[]{cx, cy, 0, 0};
+        }
+        float x0 = edge(probe, cx, cy, -1, 0, w, h);
+        float x1 = edge(probe, cx, cy, 1, 0, w, h);
+        float y0 = edge(probe, cx, cy, 0, -1, w, h);
+        float y1 = edge(probe, cx, cy, 0, 1, w, h);
+        return new float[]{x0, y0, x1 - x0, y1 - y0};
+    }
+
+    /**
+     * The farthest coordinate from the centre along one axis that still hits, bisected down to
+     * float resolution, so an inclusive {@code x + width} edge comes back exact (the gates compare
+     * hit regions as strictly as painted rects).
+     */
+    public static float edge(HitProbe probe, float cx, float cy, int dx, int dy, int w, int h) {
+        float from = dx != 0 ? cx : cy;
+        float in = from;
+        float out = from + (dx + dy) * (Math.max(w, h) + 1);
+        for (int i = 0; i < 64; i++) {
+            float mid = (in + out) / 2f;
+            if (mid == in || mid == out) {
+                break;
+            }
+            if (dx != 0 ? probe.at(mid, cy) : probe.at(cx, mid)) {
+                in = mid;
+            } else {
+                out = mid;
+            }
+        }
+        return in;
     }
 
     /** The host action a click on each named element reaches (exactly one, else what fired). */

@@ -11,11 +11,10 @@ import com.stonebreak.ui.runtime.screens.ScreenPresentation;
 import java.util.function.Supplier;
 
 /**
- * Where the chat is shown (#301): the shipped {@code ui/documents/chat.sbui} in the HUD states, else the
- * legacy {@link SkijaChatRenderer} (not shipped, refused, {@code -Dstonebreak.ui.legacy=chat}).
+ * The chat's presentation (#301): the shipped {@code ui/documents/chat.sbui} in the HUD states.
  * {@link ChatSystem} stays the controller: the keyboard still goes to it, the document takes the chat's
  * pointer input (tabs, scrollbars, command buttons, the emoji button and picker) through
- * {@code stonebreak:chat} actions, and the legacy pointer router stands down while it shows.
+ * {@code stonebreak:chat} actions.
  */
 public final class ChatDocument {
 
@@ -38,23 +37,15 @@ public final class ChatDocument {
         slot.setVisible(visible);
     }
 
-    public boolean showing() {
-        return slot.showing();
-    }
-
     /**
-     * Paints the chat document where the legacy chat was drawn: publishes the chat first (lines fade on
-     * the wall clock). @return true when the document handled it (a chat with nothing to show paints nothing)
+     * Paints the chat document at the chat's place in the HUD: publishes the chat first (lines fade on
+     * the wall clock). A chat with nothing to show (closed, every line faded) paints nothing.
      */
-    public boolean paint(Supplier<ChatSystem> chat, int width, int height) {
-        if (!slot.showing()) {
-            return false;
-        }
-        ChatSystem c = chat.get();
-        if (!ChatContracts.shows(c)) {
-            return true; // closed and every line faded: the legacy renderer drew nothing either
+    public void paint(Supplier<ChatSystem> chat, int width, int height) {
+        if (!slot.showing() || !ChatContracts.shows(chat.get())) {
+            return;
         }
         GameUiHost.get().chat().poll();
-        return slot.paint(width, height);
+        slot.paint(width, height);
     }
 }

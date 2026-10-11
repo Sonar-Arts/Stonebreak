@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The recipe book document's pointer input (#301) runs the legacy click rules: a category press selects it,
+ * The recipe book document's pointer input (#301) runs the book's click rules: a category press selects it,
  * a press on the search field focuses it and anywhere else unfocuses it, a recipe cell selects the recipe
  * with its variants, Prev/Next cycle them (a disabled one falls through as a plain press), and the wheel
  * scrolls the grid by whole rows, clamped.

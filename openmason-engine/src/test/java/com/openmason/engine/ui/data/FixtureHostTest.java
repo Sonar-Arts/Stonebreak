@@ -67,6 +67,21 @@ class FixtureHostTest {
         assertEquals("stonebreak:network", f.host().actions().spec("stonebreak:network.load").contract().id());
     }
 
+    /** #302: a fixture action without the host's parameters failed every real call in the preview, unreported. */
+    @Test
+    void aParameterTheFixtureLeavesOutIsAnIncompatibility() {
+        UiManifest m = declaring("stonebreak:screen.character-creation");
+        UiHost game = parse("""
+            {"actions": {"stonebreak:screen.character-creation.nav": {"params": {"name": "string"}}}}""", m).host();
+        FixtureHost bare = parse("""
+            {"actions": {"stonebreak:screen.character-creation.nav": {}}}""", m);
+        assertEquals(List.of("action stonebreak:screen.character-creation.nav: parameter 'name' is declared by the host"
+            + " but missing from the fixture"), bare.compatibility(game));
+        assertEquals(List.of(), parse("""
+            {"actions": {"stonebreak:screen.character-creation.nav": {"params": {"name": "string"}}}}""", m)
+            .compatibility(game));
+    }
+
     @Test
     void editableFixtureRootsCommitToTheCell() {
         FixtureHost f = parse("""

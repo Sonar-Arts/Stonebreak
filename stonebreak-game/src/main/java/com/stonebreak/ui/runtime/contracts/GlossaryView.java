@@ -11,7 +11,6 @@ import com.stonebreak.player.EntityDiscoveries;
 import com.stonebreak.player.PlayerStats;
 import com.stonebreak.ui.glossaryScreen.GlossaryScreen;
 import com.stonebreak.ui.glossaryScreen.GlossaryText;
-import com.stonebreak.ui.glossaryScreen.SkijaGlossaryRenderer;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -19,11 +18,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The entity glossary for its document ({@code stonebreak:screen.glossary}, #299): what the legacy
- * renderer computes from the player's discoveries and kills and the screen's selection, as two
+ * The entity glossary for its document ({@code stonebreak:screen.glossary}, #299): what the screen
+ * shows, computed from the player's discoveries and kills and the screen's selection, as two
  * roots: {@code glossary} (header, the sidebar rows {@code entries[i]} in {@code GLOSSARY_TYPES}
  * order, selected entity, attributes, weakness) and the selected entity's {@code glossaryAbilities}. Every string comes
- * from {@link GlossaryText}, the formatter the legacy renderer uses. Republished only when a value
+ * from {@link GlossaryText}, the glossary's formatter. Republished only when a value
  * changed; nothing is computed while the glossary is closed.
  */
 public final class GlossaryView {
@@ -84,7 +83,7 @@ public final class GlossaryView {
         int total = EntityType.GLOSSARY_TYPES.length;
         int seen = 0;
         for (EntityType t : EntityType.GLOSSARY_TYPES) {
-            if (!SkijaGlossaryRenderer.discoveredVariants(t, d).isEmpty()) {
+            if (!GlossaryScreen.discoveredVariants(t, d).isEmpty()) {
                 seen++;
             }
         }
@@ -96,7 +95,7 @@ public final class GlossaryView {
         m.put("badge", UiValue.of(GlossaryText.badge(kills)));
         m.put("defeated", UiValue.of(kills > 0));
 
-        List<String> variants = SkijaGlossaryRenderer.discoveredVariants(type, d);
+        List<String> variants = GlossaryScreen.discoveredVariants(type, d);
         int count = variants.size();
         int idx = screen.getSelectedVariantIndex(type, count);
         String variant = count > 0 ? variants.get(idx) : "";
@@ -136,7 +135,7 @@ public final class GlossaryView {
         List<UiValue> out = new ArrayList<>();
         for (int i = 0; i < EntityType.GLOSSARY_TYPES.length; i++) {
             EntityType t = EntityType.GLOSSARY_TYPES[i];
-            int seen = SkijaGlossaryRenderer.discoveredVariants(t, d).size();
+            int seen = GlossaryScreen.discoveredVariants(t, d).size();
             String[] all = t.getTextureVariants();
             int totalVariants = all != null ? all.length : 0;
             Map<String, UiValue> r = new LinkedHashMap<>();

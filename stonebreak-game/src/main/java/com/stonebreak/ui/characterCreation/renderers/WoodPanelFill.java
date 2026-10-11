@@ -14,8 +14,8 @@ import io.github.humbleui.types.Rect;
 /**
  * The character creation left panel's wood: the recipe screen's {@code Elm_UI.sbt} repeated at 4x from the
  * panel's corner through a shader, clipped to the panel's rounded rect (anti-aliased), under a dark tint so
- * the preview and labels stay legible. Nothing without the texture. One painter for the legacy renderer and
- * the {@code stonebreak:wood-panel} draw provider (#301).
+ * the preview and labels stay legible. Nothing without the texture. Painted by the
+ * {@code stonebreak:wood-panel} draw provider (#301).
  */
 public final class WoodPanelFill {
 

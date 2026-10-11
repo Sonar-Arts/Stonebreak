@@ -18,10 +18,10 @@ import com.stonebreak.rpg.feats.FeatRegistry;
 import com.stonebreak.rpg.skills.SkillDefinition;
 import com.stonebreak.rpg.skills.SkillRegistry;
 import com.stonebreak.ui.TabStripLayout;
-import com.stonebreak.ui.characterScreen.CharacterRenderCoordinator;
+import com.stonebreak.ui.characterScreen.CharacterController;
 import com.stonebreak.ui.characterScreen.CharacterScreen;
-import com.stonebreak.ui.characterScreen.renderers.ClassesTabRenderer;
-import com.stonebreak.ui.characterScreen.renderers.FeatsTabRenderer;
+import com.stonebreak.ui.characterScreen.ClassesTab;
+import com.stonebreak.ui.characterScreen.FeatsTab;
 import io.github.humbleui.skija.Font;
 
 import java.util.ArrayList;
@@ -32,17 +32,17 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The in-game character sheet ({@code stonebreak:screen.character-sheet} 1, #301). {@link CharacterScreen} and its
- * tab renderers stay the controller (stats, the class shown, scrolls, feat filters and selection); the document shows
- * them. One root {@code characterSheet}: the active {@code tab}, the {@code panel} and the shared five-tab strip in
- * window pixels, and one record per tab with the legacy renderers' derived values (a scaled column split, wrapped
- * description lines, the dirt pane, scrollbars, labels) — offsets that are plain multiples of the UI scale are the
- * document's own.
+ * The in-game character sheet ({@code stonebreak:screen.character-sheet} 1, #301). {@link CharacterScreen}'s
+ * controller and its tab states are the sheet's state (stats, the class shown, scrolls, feat filters and selection);
+ * the document shows them. One root {@code characterSheet}: the active {@code tab}, the {@code panel} and the shared
+ * five-tab strip in window pixels, and one record per tab with the sheet's derived values (a scaled column split,
+ * wrapped description lines, the dirt pane, scrollbars, labels) — offsets that are plain multiples of the UI scale are
+ * the document's own.
  *
  * <p>Actions: {@code .tab {tab}} (inventory, character, classes, skills, feats), {@code .ability {index, delta}},
  * {@code .class {id}}, {@code .spend {index}}, {@code .skill {index}}, {@code .level-filter {direction}},
  * {@code .general}, {@code .feat {id}}, {@code .acquire}, {@code .wheel {dy, sidebar}}; each refuses unless the sheet
- * is showing and runs that control's legacy rule.
+ * is showing and runs that control's rule.
  */
 public final class CharacterSheetContracts {
 
@@ -77,7 +77,7 @@ public final class CharacterSheetContracts {
         action(ui, "tab", DataType.object("tab", DataType.string()), (c, a) -> {
             var controller = c.getController();
             switch (str(a, "tab")) {
-                case "inventory" -> c.coordinator().openInventory();
+                case "inventory" -> c.getController().openInventory();
                 case "character" -> controller.setActiveTab(CharacterPanelTab.OVERVIEW);
                 case "classes" -> controller.setActiveTab(CharacterPanelTab.CLASSES);
                 case "skills" -> controller.setActiveTab(CharacterPanelTab.SKILLS);
@@ -89,44 +89,44 @@ public final class CharacterSheetContracts {
             return null;
         });
         action(ui, "ability", DataType.object("index", DataType.number(), "delta", DataType.number()), (c, a) -> {
-            c.coordinator().pressAbility((int) num(a, "index"), (int) Math.signum(num(a, "delta")));
+            c.getController().pressAbility((int) num(a, "index"), (int) Math.signum(num(a, "delta")));
             return null;
         });
         action(ui, "class", id, (c, a) -> {
-            c.coordinator().classes().selectClass(str(a, "id"));
+            c.getController().classes().selectClass(str(a, "id"));
             return null;
         });
         action(ui, "spend", index, (c, a) -> {
-            c.coordinator().classes().spend(c.coordinator().stats(), (int) num(a, "index"));
+            c.getController().classes().spend(c.getController().stats(), (int) num(a, "index"));
             return null;
         });
         action(ui, "skill", index, (c, a) -> {
-            c.coordinator().skills().invest(c.coordinator().stats(), (int) num(a, "index"));
+            c.getController().skills().invest(c.getController().stats(), (int) num(a, "index"));
             return null;
         });
         action(ui, "level-filter", DataType.object("direction", DataType.number()), (c, a) -> {
-            c.coordinator().feats().cycleLevel(num(a, "direction") < 0 ? -1 : 1);
+            c.getController().feats().cycleLevel(num(a, "direction") < 0 ? -1 : 1);
             return null;
         });
         action(ui, "general", DataType.object(), (c, a) -> {
-            c.coordinator().feats().toggleGeneral();
+            c.getController().feats().toggleGeneral();
             return null;
         });
         action(ui, "feat", id, (c, a) -> {
-            c.coordinator().feats().selectFeat(str(a, "id"));
+            c.getController().feats().selectFeat(str(a, "id"));
             return null;
         });
         action(ui, "acquire", DataType.object(), (c, a) -> {
-            c.coordinator().feats().acquire(c.coordinator().stats());
+            c.getController().feats().acquire(c.getController().stats());
             return null;
         });
         action(ui, "wheel", DataType.object("dy", DataType.number(), "sidebar", DataType.bool()), (c, a) -> {
             float s = com.stonebreak.config.Settings.getInstance().getUiScale();
             float dy = (float) num(a, "dy");
             switch (c.getController().getActiveTab()) {
-                case CLASSES -> c.coordinator().classes().scroll(dy, a.get("sidebar") instanceof UiValue.Bool b
+                case CLASSES -> c.getController().classes().scroll(dy, a.get("sidebar") instanceof UiValue.Bool b
                     && b.value(), s);
-                case FEATS -> c.coordinator().feats().handleScroll(dy, 0, 0, s);
+                case FEATS -> c.getController().feats().handleScroll(dy, s);
                 default -> {
                 }
             }
@@ -149,13 +149,13 @@ public final class CharacterSheetContracts {
         return obj("tab", "OVERVIEW", "open", false);
     }
 
-    // ── the legacy renderers' geometry (CharacterRenderCoordinator and the three tab renderers) ──
+    // ── the sheet's geometry ──
 
     static UiValue model(CharacterScreen screen, int w, int h) {
-        CharacterRenderCoordinator rc = screen.coordinator();
+        CharacterController rc = screen.getController();
         CharacterStats stats = rc.stats();
         float s = com.stonebreak.config.Settings.getInstance().getUiScale();
-        float[] p = CharacterRenderCoordinator.panel(w, h, s);
+        float[] p = CharacterController.panel(w, h, s);
         Map<String, UiValue> m = new LinkedHashMap<>();
         CharacterPanelTab tab = screen.getController().getActiveTab();
         m.put("tab", UiValue.of(tab.name()));
@@ -185,7 +185,7 @@ public final class CharacterSheetContracts {
         m.put("tabs", new UiValue.Arr(tabs));
         m.put("tabBaseline", UiValue.of(tabH * 0.5f + MStyle.FONT_META * 0.38f * s));
 
-        Font meta = rc.ui().fonts().getScaled(MStyle.FONT_META);
+        Font meta = rc.fonts().getScaled(MStyle.FONT_META);
         switch (tab) {
             case OVERVIEW -> m.put("overview", overview(stats, p, s, meta));
             case CLASSES -> m.put("classes", classes(rc.classes(), stats, p, s, meta));
@@ -263,7 +263,7 @@ public final class CharacterSheetContracts {
         return new UiValue.Obj(o);
     }
 
-    private static UiValue classes(ClassesTabRenderer r, CharacterStats stats, float[] p, float s, Font meta) {
+    private static UiValue classes(ClassesTab r, CharacterStats stats, float[] p, float s, Font meta) {
         Map<String, UiValue> o = new LinkedHashMap<>();
         String shown = r.displayedClassId();
         float btnH = 22f * s;
@@ -284,7 +284,7 @@ public final class CharacterSheetContracts {
         float cw = 391f * s;
         float cy = 20f * s; // relative to the panel's top
         o.put("className", UiValue.of(cls.map(PlayerClassDefinition::name).orElse("Select a class")));
-        List<String> desc = ClassesTabRenderer.wrap(meta, cls.map(PlayerClassDefinition::description)
+        List<String> desc = ClassesTab.wrap(meta, cls.map(PlayerClassDefinition::description)
             .orElse("Choose a class from the list on the left."), cw - 8f);
         List<UiValue> lines = new ArrayList<>();
         for (int i = 0; i < desc.size(); i++) {
@@ -300,7 +300,7 @@ public final class CharacterSheetContracts {
         o.put("dirtY", UiValue.of(dirtY));
         o.put("dirtH", UiValue.of(dirtH));
         float clip2 = Math.max(0f, dirtH - 35f * s);
-        r.abilityClipHeight(clip2); // the scroll clamp's view height, as the legacy draw left it
+        r.abilityClipHeight(clip2); // the scroll clamp's view height
         o.put("abilityClipH", UiValue.of(clip2));
         o.put("cp", UiValue.of("CP Available: " + stats.getRemainingCp()));
         List<UiValue> abilities = new ArrayList<>();
@@ -338,7 +338,7 @@ public final class CharacterSheetContracts {
         return new UiValue.Obj(o);
     }
 
-    private static UiValue feats(FeatsTabRenderer r, CharacterStats stats, float[] p, float s) {
+    private static UiValue feats(FeatsTab r, CharacterStats stats, float[] p, float s) {
         Map<String, UiValue> o = new LinkedHashMap<>();
         o.put("levelLabel", UiValue.of(r.filterLevel() == 0 ? "Level: All" : "Level: " + r.filterLevel()));
         o.put("general", UiValue.of(r.filterGeneral()));
@@ -365,7 +365,7 @@ public final class CharacterSheetContracts {
         return new UiValue.Obj(o);
     }
 
-    /** The legacy drawScrollbar: shown only when the content overflows; thumb at least 20 px. */
+    /** A scrollbar: shown only when the content overflows; thumb at least 20 px. */
     private static UiValue scrollbar(float y, float viewH, float offset, float contentH) {
         boolean shown = contentH > viewH;
         float thumbH = shown ? Math.max(20f, viewH * viewH / contentH) : 0f;

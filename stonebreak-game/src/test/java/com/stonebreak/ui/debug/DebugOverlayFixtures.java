@@ -3,9 +3,7 @@ package com.stonebreak.ui.debug;
 import com.openmason.engine.ui.masonry.MStatPanel;
 import com.stonebreak.ui.DebugOverlay;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /** Synthetic F3 cards for the #301 fidelity cases (fixed numbers, every card shape). Not a test class. */
 public final class DebugOverlayFixtures {
@@ -31,20 +29,5 @@ public final class DebugOverlayFixtures {
             .section("Player").row("Position", "120.52, 64.00, -38.11").row("Chunk", "7, -3")
             .row("Biome", "Snowy Peaks").section("World").row("Looking At", "SNOWY_DIRT").row("Meshes", "1432");
         return new DebugOverlay.Cards(ram, vram, budgets, debug);
-    }
-
-    /** The cards' rects as {@code DebugOverlay.paintLegacy} stacks them: the gate's geometry oracle. */
-    public static Map<String, float[]> rects(DebugOverlay.Cards c, int w) {
-        Map<String, float[]> out = new LinkedHashMap<>();
-        float y = 10f;
-        out.put("card0", new float[]{10f, y, 280f, c.ram().measureHeight()});
-        y += c.ram().measureHeight() + 8f;
-        out.put("card1", new float[]{10f, y, 280f, c.vram().measureHeight()});
-        int i = 2;
-        if (c.uiBudget() != null) {
-            out.put("card" + i++, new float[]{10f, y + c.vram().measureHeight() + 8f, 280f, c.uiBudget().measureHeight()});
-        }
-        out.put("card" + i, new float[]{w - 10f - 280f, 10f, 280f, c.debug().measureHeight()});
-        return out;
     }
 }

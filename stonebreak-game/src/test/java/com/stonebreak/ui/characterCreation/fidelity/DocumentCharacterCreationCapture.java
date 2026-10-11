@@ -8,7 +8,7 @@ import com.openmason.engine.ui.runtime.UiRect;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.ui.characterCreation.CharacterCreationScreen;
 import com.stonebreak.ui.fidelity.DocumentStage;
-import com.stonebreak.ui.fidelity.LegacyUiRaster;
+import com.stonebreak.ui.fidelity.UiRaster;
 import com.stonebreak.ui.fidelity.RecordingServices;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import com.stonebreak.ui.runtime.providers.AbilityIconProvider;
@@ -23,7 +23,7 @@ import java.util.Map;
  * The candidate side of character creation's gate (#301): {@code ui/documents/character_creation.sbui} opened as
  * the game opens it, bound to a real {@link CharacterCreationScreen} in the fixture's state (its actions run the
  * legacy rules; its fonts measure the tab strip), with the Skia providers and the GL model preview stood in by
- * nothing (the legacy raster has no renderer either). Not a test class.
+ * nothing (the frozen legacy captures had no renderer either). Not a test class.
  */
 public final class DocumentCharacterCreationCapture implements MigrationGate.Renderer {
 
@@ -64,7 +64,7 @@ public final class DocumentCharacterCreationCapture implements MigrationGate.Ren
         FidelityCase.Viewport vp = c.viewport();
         int w = vp.width();
         int h = vp.height();
-        try (LegacyUiRaster fonts = new LegacyUiRaster(w, h, vp.uiScale())) {
+        try (UiRaster fonts = new UiRaster(w, h, vp.uiScale())) {
             CharacterCreationScreen screen = new CharacterCreationScreen(fonts.backend());
             CharacterCreationFixtures.prepare(screen, c.variant());
             try (DocumentStage stage = stage(shipped, screen, w, h, vp.uiScale())) {

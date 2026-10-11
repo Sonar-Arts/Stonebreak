@@ -18,9 +18,8 @@ import java.util.random.RandomGenerator;
 
 /**
  * The Sonar Arts intro's simulation and timeline (#301): ocean time, sonar rings and their pings,
- * bubbles, the logo reveal and the phases (submarine 1.8 s, hold 1.2 s, fade 1.0 s). Split out of
- * {@link SonarArtsIntroScreen} unchanged, so the legacy renderer, the intro document and its draw
- * providers all show one scene. Deterministic for a given random source and sequence of frame steps
+ * bubbles, the logo reveal and the phases (submarine 1.8 s, hold 1.2 s, fade 1.0 s). Owned by
+ * {@link SonarArtsIntroScreen}; the intro document and its draw providers show it. Deterministic for a given random source and sequence of frame steps
  * (the game uses {@code ThreadLocalRandom}; fixtures a seeded generator).
  */
 public final class IntroScene {
@@ -214,7 +213,7 @@ public final class IntroScene {
         return lastHeight;
     }
 
-    // ── painting (the legacy draw calls) ────────────────────────────────────
+    // ── painting (the scene providers' draw calls) ────────────────────────────────
 
     /** The deep-ocean bands and caustic shafts. */
     public void paintOcean(Canvas canvas) {

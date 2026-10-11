@@ -9,7 +9,7 @@ import com.stonebreak.ui.runtime.screens.PresentedDocument;
  * The STARTUP_INTRO state screen as the shipped {@code ui/documents/intro.sbui} (#301). Before each paint
  * it sizes the scene to the window, publishes {@code stonebreak:screen.intro} and sets the document's
  * {@code intro} clock to the scene's time (the intro's explicit clock: clips on it follow the timeline,
- * never the frame clock). Falls back to the legacy renderer like every {@link PresentedDocument}.
+ * never the frame clock).
  */
 public final class IntroDocument extends PresentedDocument {
 

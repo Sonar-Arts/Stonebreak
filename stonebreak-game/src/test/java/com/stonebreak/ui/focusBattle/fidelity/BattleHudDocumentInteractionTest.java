@@ -29,7 +29,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
 
 /**
- * The battle HUD document's pointer (#301) reaches the screen's legacy mouse rules unchanged: a hover selects the row
+ * The battle HUD document's pointer (#301) reaches the screen's pointer rules unchanged: a hover selects the row
  * under it, a press on a target-taking row enters the target step, the result panel's buttons act once it has risen;
  * and the document takes no key, so the screen's keyboard precedence (MenuInputRouter.routeBattleKey) stays the only
  * one.

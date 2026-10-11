@@ -7,11 +7,10 @@ import com.stonebreak.ui.runtime.screens.PresentedDocument;
 import com.stonebreak.ui.runtime.screens.ScreenPresentation;
 
 /**
- * Where the crosshair is shown (#301): the shipped {@code ui/documents/crosshair.sbui} while it is
- * visible, else the legacy {@code MCrosshairRenderer} (not shipped, refused, or rolled back with
- * {@code -Dstonebreak.ui.legacy=crosshair}). The frame renderer decides visibility every frame (PLAYING
- * with no container screen open, the legacy rule) and paints it at the legacy crosshair's place in the
- * HUD's composite order. The document reads the applied configuration from {@code stonebreak:crosshair}.
+ * The crosshair's presentation (#301): the shipped {@code ui/documents/crosshair.sbui} while it is
+ * visible. The frame renderer decides visibility every frame (PLAYING with no container screen open)
+ * and paints it at the crosshair's place in the HUD's composite order. The document reads the applied
+ * {@link CrosshairSettings} from {@code stonebreak:crosshair}.
  */
 public final class Crosshair {
 
@@ -35,12 +34,12 @@ public final class Crosshair {
         slot.setVisible(visible);
     }
 
-    /** @return true when the document painted the crosshair (the legacy renderer must not) */
+    /** @return true when the document painted the crosshair */
     public boolean paint(int windowWidth, int windowHeight) {
         return slot.paint(windowWidth, windowHeight);
     }
 
-    /** True while the document, not the legacy renderer, shows the crosshair. */
+    /** True while the document shows the crosshair. */
     public boolean showing() {
         return slot.showing();
     }

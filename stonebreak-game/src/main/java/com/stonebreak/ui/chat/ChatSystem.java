@@ -132,10 +132,6 @@ public class ChatSystem {
         }
     }
 
-    public void copyMessageToClipboard(String message) {
-        inputHandler.copyToClipboard(message);
-    }
-    
     public void handleEnter() {
         if (!isOpen) {
             return;
@@ -284,26 +280,6 @@ public class ChatSystem {
         // Reset scroll when switching tabs
         this.scrollOffset = 0;
         this.commandScrollOffset = 0;
-    }
-
-    /**
-     * Switch to the next tab
-     */
-    public void switchToNextTab() {
-        ChatTab[] tabs = ChatTab.values();
-        int currentIndex = currentTab.ordinal();
-        int nextIndex = (currentIndex + 1) % tabs.length;
-        setCurrentTab(tabs[nextIndex]);
-    }
-
-    /**
-     * Switch to the previous tab
-     */
-    public void switchToPreviousTab() {
-        ChatTab[] tabs = ChatTab.values();
-        int currentIndex = currentTab.ordinal();
-        int previousIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-        setCurrentTab(tabs[previousIndex]);
     }
 
     // ─────────────────────────────────────────────── Emoji system

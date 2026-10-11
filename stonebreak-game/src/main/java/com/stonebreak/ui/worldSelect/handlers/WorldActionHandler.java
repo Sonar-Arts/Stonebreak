@@ -115,47 +115,6 @@ public class WorldActionHandler {
     }
 
     /**
-     * Closes the create world dialog.
-     */
-    public void closeCreateWorldDialog() {
-        stateManager.closeCreateDialog();
-    }
-
-    /**
-     * Creates a new world from the dialog input.
-     */
-    public void createWorldFromDialog() {
-        String worldName = stateManager.getNewWorldName().trim();
-        String seedText = stateManager.getNewWorldSeed().trim();
-
-        // Validate world name
-        String validationError = discoveryManager.validateWorldName(worldName);
-        if (validationError != null) {
-            System.err.println("Invalid world name: " + validationError);
-            return;
-        }
-
-        // Parse seed
-        long seed;
-        if (seedText.isEmpty()) {
-            seed = new Random().nextLong();
-        } else {
-            try {
-                seed = Long.parseLong(seedText);
-            } catch (NumberFormatException e) {
-                // Use hash of seed text
-                seed = seedText.hashCode();
-            }
-        }
-
-        // Create the world
-        if (createNewWorld(worldName, seed)) {
-            stateManager.closeCreateDialog();
-            refreshWorlds();
-        }
-    }
-
-    /**
      * Creates a new world with the specified name and seed.
      */
     public boolean createNewWorld(String worldName, String seedText) {
@@ -342,7 +301,7 @@ public class WorldActionHandler {
 
     /**
      * Starts a background zip of the named world into the backups folder. Progress and the
-     * result are polled from the backup service by the renderer.
+     * result are polled from the backup service by the UI host.
      */
     public void backupWorld(String worldName) {
         if (worldName == null || worldName.isBlank()) {

@@ -68,7 +68,7 @@ public final class DocumentBattleHudCapture implements MigrationGate.Renderer {
         int w = vp.width();
         int h = vp.height();
         FakeBattleView view = new FakeBattleView();
-        // the scene's layout reads the UI scale: set it first, as the legacy raster does before its scene
+        // the scene's layout reads the UI scale: set it first, as the frozen captures did before their scene
         float previous = com.stonebreak.config.Settings.getInstance().getUiScale();
         com.stonebreak.config.Settings.getInstance().setUiScale(vp.uiScale());
         FocusBattleScreen screen = BattleHudFixtures.screen(c.variant(), view, w, h);

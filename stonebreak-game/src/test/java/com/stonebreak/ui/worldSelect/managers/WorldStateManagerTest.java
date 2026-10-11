@@ -256,17 +256,6 @@ class WorldStateManagerTest {
     // ===== DIALOG FLAGS =====
 
     @Test
-    void openAndCloseCreateDialog() {
-        assertFalse(state.isShowCreateDialog());
-
-        state.openCreateDialog();
-        assertTrue(state.isShowCreateDialog(), "create dialog must be open");
-
-        state.closeCreateDialog();
-        assertFalse(state.isShowCreateDialog(), "create dialog must close");
-    }
-
-    @Test
     void openAndCloseDeleteDialog() {
         assertFalse(state.isShowDeleteDialog());
 
@@ -280,13 +269,9 @@ class WorldStateManagerTest {
     }
 
     @Test
-    void anyDialogOpenReturnsTrueWhenEitherIsOpen() {
+    void anyDialogOpenWhileTheDeleteDialogIs() {
         assertFalse(state.isAnyDialogOpen(), "no dialog open initially");
 
-        state.openCreateDialog();
-        assertTrue(state.isAnyDialogOpen(), "create dialog open");
-
-        state.closeCreateDialog();
         state.openDeleteDialog("WorldA");
         assertTrue(state.isAnyDialogOpen(), "delete dialog open");
     }

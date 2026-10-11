@@ -222,8 +222,11 @@ public final class GameLoop {
         if (player != null) {
             player.update();
 
-            if (player.isDead() && deathMenu != null && !deathMenu.isVisible()) {
-                deathMenu.setVisible(true);
+            // The death menu follows the player both ways: one left up by quitting while dead must
+            // not outlive the death into the next session (it kept the cursor free and the world
+            // unclickable under no visible menu, #302).
+            if (deathMenu != null && player.isDead() != deathMenu.isVisible()) {
+                deathMenu.setVisible(player.isDead());
                 if (mouseCaptureManager != null) {
                     mouseCaptureManager.updateCaptureState();
                 }

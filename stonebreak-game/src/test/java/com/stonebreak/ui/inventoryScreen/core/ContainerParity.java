@@ -15,10 +15,11 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Drives one interaction script through a container screen two ways (#300): as the legacy screen's
- * polled pointer frames at the legacy geometry, and as pointer events on its document (whose Lua
- * routes them to the {@code stonebreak:inventory.slot-*} and button actions), and renders both
- * states as one comparable line. Shared by the crafting table and inventory parity tests. Not a test class.
+ * Drives one interaction script through a container screen two ways (#300): straight into the screen's
+ * rules (pointer frames at the legacy geometry, the geometry the frozen captures were clicked at, and the
+ * buttons' rules), and as pointer events on its document (whose Lua routes them to the
+ * {@code stonebreak:inventory.slot-*} and button actions), and renders both states as one comparable
+ * line. Shared by the crafting table and inventory parity tests. Not a test class.
  */
 public final class ContainerParity {
 
@@ -49,21 +50,35 @@ public final class ContainerParity {
         }
     }
 
-    /** Legacy: the frames the screen's poll would see, at the centres of the legacy rects. */
-    public static void legacy(ContainerSlotInput input, Map<String, float[]> rects, Step s, int w, int h) {
-        float[] at = legacyPoint(rects, s.at());
+    /**
+     * The rules: pointer frames at the centres of the legacy rects, as the screen's poll used to see them,
+     * except a plain left press on Sort or Craft All with an empty hand, which runs that button's rule
+     * ({@link ContainerSlotInput#sort}, {@link ContainerSlotInput#craftAll}), as the document's button does.
+     */
+    public static void rules(ContainerSlotInput input, Map<String, float[]> rects, Step s, int w, int h) {
+        if (s.button() == LEFT && !s.shift() && s.sweep().isEmpty() && !input.getDragState().isDragging()) {
+            if ("sort".equals(s.at())) {
+                input.sort();
+                return;
+            }
+            if ("craftall".equals(s.at())) {
+                input.craftAll();
+                return;
+            }
+        }
+        float[] at = layoutPoint(rects, s.at());
         boolean right = s.button() == RIGHT;
         input.handlePointer(new PointerFrame(at[0], at[1], s.button() == LEFT, right, right, s.button() == MIDDLE,
             s.shift()), w, h);
         float[] end = at;
         for (String over : s.sweep()) {
-            end = legacyPoint(rects, over);
+            end = layoutPoint(rects, over);
             input.handlePointer(new PointerFrame(end[0], end[1], false, false, true, false, false), w, h);
         }
         input.handlePointer(PointerFrame.idle(end[0], end[1]), w, h);
     }
 
-    private static float[] legacyPoint(Map<String, float[]> rects, String name) {
+    private static float[] layoutPoint(Map<String, float[]> rects, String name) {
         return switch (name) {
             case "outside" -> new float[]{5, 5};
             case "panel" -> {

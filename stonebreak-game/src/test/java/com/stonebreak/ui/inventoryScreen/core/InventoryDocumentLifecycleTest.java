@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import com.openmason.engine.cenda.CendaLua;
 import com.openmason.engine.format.omui.UiValue;
@@ -17,9 +16,7 @@ import com.stonebreak.core.GameState;
 import com.stonebreak.crafting.CraftingManager;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.network.MultiplayerSession;
-import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.UI.UIRenderer;
-import com.stonebreak.ui.fidelity.LegacyUiRaster;
+import com.stonebreak.ui.fidelity.UiRaster;
 import com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import com.stonebreak.ui.runtime.GameUiHost;
@@ -30,7 +27,6 @@ import com.stonebreak.ui.runtime.screens.ScreenPresentation;
 import com.stonebreak.ui.runtime.screens.UiLayer;
 import com.stonebreak.ui.support.UiTestFixtures;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
-import com.stonebreak.player.CharacterStats;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -64,7 +60,7 @@ class InventoryDocumentLifecycleTest {
         boolean[] open = {false};
         GameUiHost host = new GameUiHost(services(in[0], open, player), MultiplayerSession.Mode.SINGLEPLAYER);
 
-        try (LegacyUiRaster raster = new LegacyUiRaster(W, H, 1f);
+        try (UiRaster raster = new UiRaster(W, H, 1f);
              GameDrawProviders providers = new GameDrawProviders(null, raster.backend()::getMinecraftTypeface)) {
             host.drain();
             int views = GameUiInput.get().views().size();
@@ -106,36 +102,32 @@ class InventoryDocumentLifecycleTest {
 
     @Test
     void theDocumentShowsOnlyInTheInventoryState() {
-        try (LegacyUiRaster raster = new LegacyUiRaster(W, H, 1f)) {
-            Renderer renderer = mock(Renderer.class);
-            when(renderer.getSkijaBackend()).thenReturn(raster.backend());
-            InventoryScreen screen = new InventoryScreen(UiTestFixtures.emptyInventory(), renderer,
-                mock(UIRenderer.class), mock(InputHandler.class), new CraftingManager(), new CharacterStats(null));
-            List<String> events = new ArrayList<>();
-            screen.setPresentation(new ScreenPresentation() {
-                boolean shown;
-                @Override public void shown() { shown = true; events.add("shown"); }
-                @Override public void hidden() { shown = false; events.add("hidden"); }
-                @Override public boolean paint(int w, int h) { return shown; }
-                @Override public boolean showing() { return shown; }
-            });
+        InventoryScreen screen = new InventoryScreen(UiTestFixtures.emptyInventory(), mock(InputHandler.class),
+            new CraftingManager());
+        List<String> events = new ArrayList<>();
+        screen.setPresentation(new ScreenPresentation() {
+            boolean shown;
+            @Override public void shown() { shown = true; events.add("shown"); }
+            @Override public void hidden() { shown = false; events.add("hidden"); }
+            @Override public boolean paint(int w, int h) { return shown; }
+            @Override public boolean showing() { return shown; }
+        });
 
-            screen.toggleVisibility();                          // E: visible, the state follows
-            assertFalse(screen.presentationShowing(), "not before the state controller enters INVENTORY_UI");
-            screen.syncPresentation(GameState.INVENTORY_UI);
-            assertTrue(screen.presentationShowing());
-            screen.syncPresentation(GameState.RECIPE_BOOK_UI);  // Recipes: the inventory stays open underneath
-            assertFalse(screen.presentationShowing());
-            assertTrue(screen.isVisible());
-            screen.syncPresentation(GameState.INVENTORY_UI);    // Escape back
-            assertTrue(screen.presentationShowing());
-            screen.toggleVisibility();                          // E again (or a tab): closed at once
-            assertFalse(screen.presentationShowing());
-            screen.syncPresentation(GameState.CHARACTER_SHEET_UI);
-            screen.syncPresentation(GameState.INVENTORY_UI);    // a closed inventory never shows
-            assertFalse(screen.presentationShowing());
-            assertEquals(List.of("shown", "hidden", "shown", "hidden"), events);
-        }
+        screen.toggleVisibility();                          // E: visible, the state follows
+        assertFalse(screen.presentationShowing(), "not before the state controller enters INVENTORY_UI");
+        screen.syncPresentation(GameState.INVENTORY_UI);
+        assertTrue(screen.presentationShowing());
+        screen.syncPresentation(GameState.RECIPE_BOOK_UI);  // Recipes: the inventory stays open underneath
+        assertFalse(screen.presentationShowing());
+        assertTrue(screen.isVisible());
+        screen.syncPresentation(GameState.INVENTORY_UI);    // Escape back
+        assertTrue(screen.presentationShowing());
+        screen.toggleVisibility();                          // E again (or a tab): closed at once
+        assertFalse(screen.presentationShowing());
+        screen.syncPresentation(GameState.CHARACTER_SHEET_UI);
+        screen.syncPresentation(GameState.INVENTORY_UI);    // a closed inventory never shows
+        assertFalse(screen.presentationShowing());
+        assertEquals(List.of("shown", "hidden", "shown", "hidden"), events);
     }
 
     private static Map<String, Integer> subscribers(GameUiHost host) {

@@ -14,9 +14,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The crafting table both sides of the workbench's fidelity gate (#300) open: an inventory, a table
- * grid and a crafting manager per variant, plus the legacy geometry oracle. Block items only: their
- * icons are the GL phase of both renderers (ledger hard visual 2), so the pixels compared are the
+ * The crafting table the workbench's fidelity gate (#300) opens (the frozen legacy captures show the
+ * same tables): an inventory, a table grid and a crafting manager per variant, plus the legacy geometry
+ * oracle. Block items only: their icons are GL (ledger hard visual 2), so the pixels compared are the
  * chrome, slot frames, counts, buttons and tooltip.
  *
  * <p>Contents: {@code empty}; {@code stocked} (stacks with counts across the inventory, the
@@ -68,7 +68,7 @@ public final class WorkbenchFixtures {
             InventoryLayoutCalculator.getWorkbenchCraftingGridSize());
         WorkbenchInputManager in = new WorkbenchInputManager(null, t.inventory(),
             new InventorySlotManager(t.inventory(), grid), grid);
-        WorkbenchController c = new WorkbenchController(null, t.inventory(), in, grid, null);
+        WorkbenchController c = new WorkbenchController(null, t.inventory(), in, grid);
         c.bind(t.state());
         grid.updateCraftingOutput();
         input[0] = in;
@@ -88,8 +88,8 @@ public final class WorkbenchFixtures {
     }
 
     /**
-     * The legacy renderer's geometry at the current UI scale: {@code panel}, {@code craft0..8},
-     * {@code output}, {@code main0..26}, {@code hot0..8} and the buttons {@code recipes},
+     * The legacy renderer's geometry (the frozen captures' oracle) at the current UI scale: {@code panel},
+     * {@code craft0..8}, {@code output}, {@code main0..26}, {@code hot0..8} and the buttons {@code recipes},
      * {@code sort} and (while the grid makes something) {@code craftall}.
      */
     public static Map<String, float[]> rects(int w, int h, boolean craftAll) {
@@ -111,18 +111,29 @@ public final class WorkbenchFixtures {
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             out.put("hot" + i, new float[]{gx + i * pitch, l.hotbarRowY, ss, ss});
         }
-        InventoryInputManager buttons = new InventoryInputManager(null, null, null, null);
-        buttons.updateRecipeButtonBoundsForRendering(l);
-        out.put("recipes", new float[]{buttons.getRecipeButtonX(), buttons.getRecipeButtonY(),
-            buttons.getRecipeButtonWidth(), buttons.getRecipeButtonHeight()});
-        buttons.updateSortButtonBoundsForRendering(l);
-        out.put("sort", new float[]{buttons.getSortButtonX(), buttons.getSortButtonY(),
-            buttons.getSortButtonWidth(), buttons.getSortButtonHeight()});
-        if (craftAll) {
-            buttons.updateCraftAllButtonBoundsForRendering(l);
-            out.put("craftall", new float[]{buttons.getCraftAllButtonX(), buttons.getCraftAllButtonY(),
-                buttons.getCraftAllButtonWidth(), buttons.getCraftAllButtonHeight()});
-        }
+        buttons(out, l, craftAll);
         return out;
+    }
+
+    /**
+     * The container screens' buttons in the legacy layout, beside and below the output slot and above
+     * the inventory grid: {@code recipes}, {@code sort} and (while the grid makes something) {@code craftall}.
+     */
+    static void buttons(Map<String, float[]> out, InventoryLayoutCalculator.InventoryLayout l, boolean craftAll) {
+        int ss = InventoryLayoutCalculator.getSlotSize();
+        int pad = InventoryLayoutCalculator.getSlotPadding();
+        float recipesW = Math.max(80, (int) (l.inventoryPanelWidth * 0.25f));
+        out.put("recipes", new float[]{l.outputSlotX + ss + pad * 2, l.outputSlotY, recipesW, ss});
+        float sortW = Math.max(70, ss * 1.5f);
+        float sortH = ss / 2f;
+        int gridWidth = Inventory.MAIN_INVENTORY_COLS * (ss + pad) - pad;
+        out.put("sort", new float[]{l.inventorySectionStartX + gridWidth - sortW, l.mainInvContentStartY - sortH - pad,
+            sortW, sortH});
+        if (craftAll) {
+            float craftAllW = Math.max(70, ss * 1.5f);
+            float craftAllH = ss / 2;
+            out.put("craftall", new float[]{l.outputSlotX + (ss - craftAllW) / 2, l.outputSlotY + ss + pad,
+                craftAllW, craftAllH});
+        }
     }
 }

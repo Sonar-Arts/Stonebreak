@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Manages the UI state for the WorldSelectScreen including selected world,
- * dialog states, scroll position, and user input.
+ * Manages the UI state for the WorldSelectScreen: the selected and hovered world, the delete
+ * dialog, the info card and the scroll position.
  */
 public class WorldStateManager {
 
@@ -13,13 +13,9 @@ public class WorldStateManager {
     private List<String> worldList = new ArrayList<>();
     private int selectedIndex = 0;
     private int hoveredIndex = -1;
-    private String hoveredButton = null;
     private int scrollOffset = 0;
 
     // ===== DIALOG STATE =====
-    private boolean showCreateDialog = false;
-    private String newWorldName = "";
-    private String newWorldSeed = "";
     private boolean showDeleteDialog = false;
     private String worldPendingDelete = null;
 
@@ -33,7 +29,6 @@ public class WorldStateManager {
     private int pendingCardIndex = -1;
     private long pendingSinceMs = 0L;
     private long leavingSinceMs = 0L;
-    private String hoveredCardButton = null;
 
     // ===== SCROLL STATE =====
     private static final int ITEMS_PER_PAGE = 8;
@@ -128,13 +123,8 @@ public class WorldStateManager {
 
     public void clearHover() {
         hoveredIndex = -1;
-        hoveredButton = null;
         closeCard();
     }
-
-    public String getHoveredButton() { return hoveredButton; }
-
-    public void setHoveredButton(String key) { this.hoveredButton = key; }
 
     // ===== HOVER CARD MANAGEMENT =====
 
@@ -155,14 +145,6 @@ public class WorldStateManager {
 
     public boolean isCardOpen() {
         return getCardWorld() != null;
-    }
-
-    public String getHoveredCardButton() {
-        return hoveredCardButton;
-    }
-
-    public void setHoveredCardButton(String key) {
-        this.hoveredCardButton = key;
     }
 
     /**
@@ -189,10 +171,7 @@ public class WorldStateManager {
                 pendingSinceMs = nowMs;
             }
             // Moved onto a different row: the old card is no longer what the cursor is asking about
-            if (cardIndex >= 0) {
-                cardIndex = -1;
-                hoveredCardButton = null;
-            }
+            cardIndex = -1;
             leavingSinceMs = 0L;
             return;
         }
@@ -224,7 +203,6 @@ public class WorldStateManager {
         pendingCardIndex = -1;
         pendingSinceMs = 0L;
         leavingSinceMs = 0L;
-        hoveredCardButton = null;
     }
 
     // ===== SCROLL MANAGEMENT =====
@@ -294,23 +272,6 @@ public class WorldStateManager {
 
     // ===== DIALOG MANAGEMENT =====
 
-    public boolean isShowCreateDialog() {
-        return showCreateDialog;
-    }
-
-    public void openCreateDialog() {
-        closeCard();
-        showCreateDialog = true;
-        newWorldName = "";
-        newWorldSeed = "";
-    }
-
-    public void closeCreateDialog() {
-        showCreateDialog = false;
-        newWorldName = "";
-        newWorldSeed = "";
-    }
-
     public boolean isShowDeleteDialog() {
         return showDeleteDialog;
     }
@@ -332,75 +293,7 @@ public class WorldStateManager {
     }
 
     public boolean isAnyDialogOpen() {
-        return showCreateDialog || showDeleteDialog;
-    }
-
-    // ===== TEXT INPUT MANAGEMENT =====
-
-    public String getNewWorldName() {
-        return newWorldName;
-    }
-
-    public void setNewWorldName(String name) {
-        this.newWorldName = name != null ? name : "";
-    }
-
-    public String getNewWorldSeed() {
-        return newWorldSeed;
-    }
-
-    public void setNewWorldSeed(String seed) {
-        this.newWorldSeed = seed != null ? seed : "";
-    }
-
-    public void appendToWorldName(char character) {
-        if (Character.isSurrogate(character)) return;
-        if (Character.isLetterOrDigit(character) || character == ' ' || character == '-' || character == '_') {
-            if (newWorldName.length() < 32) { // Reasonable limit
-                newWorldName += character;
-            }
-        }
-    }
-
-    /** Appends every character the field accepts, dropping the rest (paste). */
-    public void appendToWorldName(String text) {
-        if (text == null) return;
-        for (int i = 0; i < text.length(); i++) {
-            appendToWorldName(text.charAt(i));
-        }
-    }
-
-    public void removeLastCharacterFromWorldName() {
-        if (!newWorldName.isEmpty()) {
-            newWorldName = newWorldName.substring(0, newWorldName.length() - 1);
-        }
-    }
-
-    public void appendToWorldSeed(char character) {
-        if (Character.isSurrogate(character)) return;
-        if (Character.isLetterOrDigit(character) || character == '-') {
-            if (newWorldSeed.length() < 20) { // Reasonable limit
-                newWorldSeed += character;
-            }
-        }
-    }
-
-    /** Appends every character the field accepts, dropping the rest (paste). */
-    public void appendToWorldSeed(String text) {
-        if (text == null) return;
-        for (int i = 0; i < text.length(); i++) {
-            appendToWorldSeed(text.charAt(i));
-        }
-    }
-
-    public void removeLastCharacterFromWorldSeed() {
-        if (!newWorldSeed.isEmpty()) {
-            newWorldSeed = newWorldSeed.substring(0, newWorldSeed.length() - 1);
-        }
-    }
-
-    public boolean isValidWorldName() {
-        return !newWorldName.trim().isEmpty() && !worldList.contains(newWorldName.trim());
+        return showDeleteDialog;
     }
 
     // ===== UTILITY METHODS =====
@@ -410,7 +303,6 @@ public class WorldStateManager {
         hoveredIndex = -1;
         scrollOffset = 0;
         closeCard();
-        closeCreateDialog();
         closeDeleteDialog();
     }
 }

@@ -4,68 +4,34 @@ import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.openmason.engine.ui.masonry.MasonryUI;
-import com.stonebreak.ui.characterCreation.renderers.SkijaCharacterCreationRenderer;
 
 /**
  * Facade for the character creation screen. Builds the modular components
- * (state → handlers → renderer), wires the button callbacks, and exposes
- * the input/render surface that Main and Game consume.
- *
- * Mirrors the shape of TerrainMapperScreen so every MasonryUI-backed screen
- * in the game follows the same lifecycle.
+ * (state → handlers) and wires the button callbacks. The shipped document
+ * {@value #DOCUMENT_ID} presents it and reaches it through the seams below (#301).
  */
 public final class CharacterCreationScreen {
 
     private final CharacterCreationStateManager state;
     private final CharacterCreationActionHandler actionHandler;
-    private final CharacterCreationInputHandler  inputHandler;
     private final CharacterCreationMouseHandler  mouseHandler;
+    /** Measures the tab labels with the game font. */
     private final MasonryUI ui;
-    private final SkijaCharacterCreationRenderer renderer;
     private final CharacterCreationLayout layout;
 
     public CharacterCreationScreen(SkijaUIBackend skijaBackend) {
         this.layout       = new CharacterCreationLayout();
         this.state        = new CharacterCreationStateManager();
         this.actionHandler= new CharacterCreationActionHandler(state);
-        this.inputHandler = new CharacterCreationInputHandler(state, actionHandler);
-        this.mouseHandler = new CharacterCreationMouseHandler(state, actionHandler, layout);
+        this.mouseHandler = new CharacterCreationMouseHandler(state);
         this.ui           = new MasonryUI(skijaBackend);
-        this.renderer     = new SkijaCharacterCreationRenderer(ui, state, layout);
 
-        mouseHandler.setRenderer(renderer);
         wireCallbacks();
     }
 
     private void wireCallbacks() {
         state.getBackToWorldSelectButton().onClick(actionHandler::goBackToWorldSelect);
         state.getTerrainMapperButton().onClick(actionHandler::goToTerrainMapper);
-    }
-
-    // ─────────────────────────────────────────────── Input
-
-    public void handleInput(long window) {
-        inputHandler.handleInput(window);
-    }
-
-    public void handleCharacterInput(char c) {
-        inputHandler.handleCharacterInput(c);
-    }
-
-    public void handleKeyInput(int key, int action, int mods) {
-        inputHandler.handleKeyInput(key, action, mods);
-    }
-
-    public void handleMouseMove(double x, double y, int w, int h) {
-        mouseHandler.handleMouseMove(x, y, w, h);
-    }
-
-    public void handleMouseClick(double x, double y, int w, int h, int btn, int action) {
-        mouseHandler.handleMouseClick(x, y, w, h, btn, action);
-    }
-
-    public void handleMouseWheel(double x, double y, double delta) {
-        mouseHandler.handleMouseWheel(x, y, delta);
     }
 
     // ─────────────────────────────────────────────── Lifecycle
@@ -79,10 +45,6 @@ public final class CharacterCreationScreen {
             state.getBackToWorldSelectButton().text("World Select");
             state.getTerrainMapperButton().text("Terrain Mapper");
         }
-    }
-
-    public void render(int windowWidth, int windowHeight) {
-        renderer.render(windowWidth, windowHeight);
     }
 
     public void reset() {
@@ -107,13 +69,11 @@ public final class CharacterCreationScreen {
     public CharacterCreationLayout layout() { return layout; }
 
     /** The tab strip in a {@code w}x{@code h} window, measured with this screen's fonts. */
-    public com.stonebreak.ui.characterCreation.renderers.SkijaCharacterCreationRenderer.TabMetric[] tabMetrics(
-            int w, int h) {
-        return com.stonebreak.ui.characterCreation.renderers.SkijaCharacterCreationRenderer.tabMetrics(ui,
-                layout.tabBar(layout.rightPanel(w, h)));
+    public CharacterCreationLayout.TabMetric[] tabMetrics(int w, int h) {
+        return CharacterCreationLayout.tabMetrics(ui, layout.tabBar(layout.rightPanel(w, h)));
     }
 
-    /** Clamps the three list scrolls as the legacy renderers do on every frame. */
+    /** Clamps the three list scrolls to their lists' overflow (once a frame, by the UI host). */
     public void clampScrolls() {
         int i = state.getSelectedClassIndex();
         var classes = com.stonebreak.rpg.classes.ClassRegistry.ALL;
@@ -132,7 +92,6 @@ public final class CharacterCreationScreen {
     }
 
     public void dispose() {
-        renderer.dispose();
         ui.dispose();
     }
 

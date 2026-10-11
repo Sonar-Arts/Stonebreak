@@ -10,7 +10,7 @@ import com.openmason.engine.ui.runtime.UiRect;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.network.MultiplayerSession;
-import com.stonebreak.ui.fidelity.LegacyUiRaster;
+import com.stonebreak.ui.fidelity.UiRaster;
 import com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import com.stonebreak.ui.runtime.GameUiHost;
@@ -31,7 +31,7 @@ import java.util.Map;
  * {@code ui/documents/workbench.sbui}, opened as the game opens it ({@code GameUiDocuments.openBound}
  * against a {@link GameUiHost} whose open container is a real {@link WorkbenchInputManager} bound to
  * a {@link WorkbenchFixtures} table, Lua code-behind running, the game's draw providers) and painted
- * on the same {@link LegacyUiRaster} stage as {@link LegacyWorkbenchCapture}.
+ * on a {@link UiRaster} stage.
  *
  * <p>Rects are named as in {@link WorkbenchFixtures#rects}. Not a test class.
  */
@@ -50,7 +50,7 @@ public final class DocumentWorkbenchCapture implements MigrationGate.Renderer {
 
     /** The document open on a raster stage, bound to a game host whose open container is a real crafting table. */
     public static final class Stage implements AutoCloseable {
-        public final LegacyUiRaster raster;
+        public final UiRaster raster;
         public final WorkbenchFixtures.Table table;
         public final WorkbenchController controller;
         public final WorkbenchInputManager input;
@@ -62,7 +62,7 @@ public final class DocumentWorkbenchCapture implements MigrationGate.Renderer {
         final float scale;
 
         public Stage(SbuiArchive sbui, int w, int h, float scale, WorkbenchFixtures.Table table) throws Exception {
-            raster = new LegacyUiRaster(w, h, scale);
+            raster = new UiRaster(w, h, scale);
             this.scale = scale;
             this.table = table;
             WorkbenchInputManager[] in = new WorkbenchInputManager[1];

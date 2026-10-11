@@ -3,9 +3,9 @@ package com.stonebreak.ui.glossaryScreen;
 import com.stonebreak.mobs.entities.EntityAttributes;
 
 /**
- * Every string the glossary shows that is built from data, in one place: the legacy renderer and
- * the UI host's {@code glossary} roots (#299) both use these, so the document shows exactly the
- * legacy text (counts use the default locale's grouping, as {@code String.format} does).
+ * Every string the glossary shows that is built from data, in one place: the UI host's
+ * {@code glossary} roots (#299) publish these to the document (counts use the default locale's
+ * grouping, as {@code String.format} does).
  */
 public final class GlossaryText {
 

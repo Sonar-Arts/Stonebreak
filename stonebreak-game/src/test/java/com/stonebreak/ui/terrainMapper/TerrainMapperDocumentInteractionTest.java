@@ -1,7 +1,7 @@
 package com.stonebreak.ui.terrainMapper;
 
 import com.openmason.engine.format.sbui.SbuiArchive;
-import com.stonebreak.ui.LegacyUiClock;
+import com.stonebreak.ui.UiWallClock;
 import com.stonebreak.ui.chat.ChatDocumentGateTest;
 import com.stonebreak.ui.fidelity.DocumentStage;
 import com.stonebreak.ui.runtime.GameUiDocuments;
@@ -23,7 +23,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_TAB;
 
 /**
- * The terrain mapper document's pointer (#301) runs the legacy mouse rules: view modes, field focus, a map
+ * The terrain mapper document's pointer (#301) runs the screen's mouse rules: view modes, field focus, a map
  * press that barely moves sets the spawn while a drag pans, the spawn buttons, the wheel zooms about the
  * pointer on the map only, Create validates; and the document never takes the keyboard (the screen keeps it).
  */
@@ -40,7 +40,7 @@ class TerrainMapperDocumentInteractionTest {
 
     @AfterEach
     void release() {
-        LegacyUiClock.release();
+        UiWallClock.release();
     }
 
     private static float[] centre(String name) {
@@ -67,7 +67,7 @@ class TerrainMapperDocumentInteractionTest {
 
     @Test
     void pressesRunTheLegacyRules() throws Exception {
-        TerrainMapperScreen screen = new TerrainMapperScreen(null);
+        TerrainMapperScreen screen = new TerrainMapperScreen();
         TerrainMapperStateManager s = screen.getStateManager();
         TerrainMapperFixtures.prepare(s, "default");
         try (DocumentStage stage = DocumentTerrainMapperCapture.stage(shipped, screen, 1920, 1080, 1f, 0.1)) {
@@ -111,7 +111,7 @@ class TerrainMapperDocumentInteractionTest {
 
     @Test
     void theDocumentLeavesTheKeyboardToTheScreen() throws Exception {
-        TerrainMapperScreen screen = new TerrainMapperScreen(null);
+        TerrainMapperScreen screen = new TerrainMapperScreen();
         TerrainMapperFixtures.prepare(screen.getStateManager(), "default");
         try (DocumentStage stage = DocumentTerrainMapperCapture.stage(shipped, screen, 1920, 1080, 1f, 0.1)) {
             click(stage, "name");
@@ -127,7 +127,7 @@ class TerrainMapperDocumentInteractionTest {
 
     @Test
     void actionsAreRefusedWhenTheMapperIsNotShowing() throws Exception {
-        TerrainMapperScreen screen = new TerrainMapperScreen(null);
+        TerrainMapperScreen screen = new TerrainMapperScreen();
         TerrainMapperFixtures.prepare(screen.getStateManager(), "default");
         com.stonebreak.ui.fidelity.RecordingServices none = new com.stonebreak.ui.fidelity.RecordingServices();
         try (DocumentStage stage = new DocumentStage(shipped, 1920, 1080, 1f, none,

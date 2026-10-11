@@ -8,122 +8,23 @@ import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager.Active
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
 
-import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT;
-import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
-import static org.lwjgl.glfw.GLFW.GLFW_RELEASE;
-
 /**
- * Mouse dispatch for the terrain mapper. Order of priority on press:
- *   1. Footer buttons (back / create / simulate)
- *   2. Mode category buttons
- *   3. Sidebar text fields
- *   4. Map viewport (begin drag, clear field focus)
- *
- * Wheel inside the map zooms; elsewhere it's ignored. Move events update
- * widget hover, the map hover readout, and — if dragging — pan the viewport.
+ * The terrain mapper's pointer rules, addressed by target: the document's actions (#301) press a
+ * named button or field, or press, drag, release and wheel on the map. A press on the map unfocuses
+ * the fields and begins a drag; a release that barely moved sets the spawn. The wheel zooms inside
+ * the map only. Moves update the map hover readout and, while dragging, pan the viewport.
  */
 public final class TerrainMouseHandler {
 
     private final TerrainMapperStateManager state;
-    private final TerrainActionHandler actions;
 
     private boolean pendingSpawnSet;
     private float pressStartX;
     private float pressStartY;
     private static final float CLICK_THRESHOLD_PX = 4f;
 
-    public TerrainMouseHandler(TerrainMapperStateManager state, TerrainActionHandler actions) {
+    public TerrainMouseHandler(TerrainMapperStateManager state) {
         this.state = state;
-        this.actions = actions;
-    }
-
-    // ─────────────────────────────────────────────── Move
-
-    public void handleMouseMove(double mouseX, double mouseY, int windowWidth, int windowHeight) {
-        float mx = (float) mouseX;
-        float my = (float) mouseY;
-        TerrainMapperLayout layout = new TerrainMapperLayout(windowWidth, windowHeight);
-
-        updateHoverStates(mx, my);
-
-        if (state.isDragging()) {
-            float dx = state.consumeDragDx(mx);
-            float dy = state.consumeDragDy(my);
-            state.getViewport().panBy(dx, dy);
-        }
-
-        updateHoverReadout(mx, my, layout);
-    }
-
-    // ─────────────────────────────────────────────── Click
-
-    public void handleMouseClick(double mouseX, double mouseY, int windowWidth, int windowHeight,
-                                 int button, int action) {
-        if (button != GLFW_MOUSE_BUTTON_LEFT) return;
-        float mx = (float) mouseX;
-        float my = (float) mouseY;
-
-        if (action == GLFW_RELEASE) {
-            if (pendingSpawnSet) {
-                float dx = mx - pressStartX;
-                float dy = my - pressStartY;
-                if (dx * dx + dy * dy < CLICK_THRESHOLD_PX * CLICK_THRESHOLD_PX) {
-                    TerrainMapperLayout releaseLayout = new TerrainMapperLayout(windowWidth, windowHeight);
-                    TerrainMapperLayout.Rect map = releaseLayout.map();
-                    float cx = map.centerX();
-                    float cz = map.y() + map.height() / 2f;
-                    state.setSpawnPoint(
-                            Math.round(state.getViewport().screenToWorldX(mx, cx)),
-                            Math.round(state.getViewport().screenToWorldZ(my, cz))
-                    );
-                }
-                pendingSpawnSet = false;
-            }
-            state.endDrag();
-            return;
-        }
-        if (action != GLFW_PRESS) return;
-
-        TerrainMapperLayout layout = new TerrainMapperLayout(windowWidth, windowHeight);
-
-        if (state.getBackButton().handleClick(mx, my)) return;
-        if (state.getCharacterButton().handleClick(mx, my)) return;
-        if (state.getCreateButton().handleClick(mx, my)) return;
-        if (state.getSimulateSeedButton().handleClick(mx, my)) return;
-
-        for (MCategoryButton<VisualizerKind> mode : state.getModeButtons()) {
-            if (mode.handleClick(mx, my)) return;
-        }
-
-        if (state.getSetSpawnButton().handleClick(mx, my)) return;
-        if (state.getCenterOnSpawnButton().handleClick(mx, my)) return;
-
-        if (layout.worldNameField().contains(mx, my)) {
-            state.setActiveField(ActiveField.WORLD_NAME);
-            return;
-        }
-        if (layout.seedField().contains(mx, my)) {
-            state.setActiveField(ActiveField.SEED);
-            return;
-        }
-
-        if (layout.map().contains(mx, my)) {
-            state.setActiveField(ActiveField.NONE);
-            state.beginDrag(mx, my);
-            pendingSpawnSet = true;
-            pressStartX = mx;
-            pressStartY = my;
-        }
-    }
-
-    // ─────────────────────────────────────────────── Wheel
-
-    public void handleMouseWheel(double mouseX, double mouseY, double delta) {
-        // Reconstruct the layout against the current window size. The caller
-        // (Main's scroll callback) already has the GLFW context for the
-        // dimensions; we just pull them from Game for consistency.
-        wheel(mouseX, mouseY, delta, com.stonebreak.core.Game.getWindowWidth(),
-                com.stonebreak.core.Game.getWindowHeight());
     }
 
     // ─────────────────────────────────────────────── The document's pointer (#301)
@@ -131,7 +32,7 @@ public final class TerrainMouseHandler {
     /**
      * A press on a named control: {@code back}, {@code character}, {@code create}, {@code simulate},
      * {@code spawn}, {@code center} or {@code mode:<VisualizerKind>}. A disabled button takes the press
-     * and does nothing, as its legacy hit-test did. @return false for an unknown name
+     * and does nothing. @return false for an unknown name
      */
     public boolean pressButton(String name) {
         if (name.startsWith("mode:")) {
@@ -173,12 +74,31 @@ public final class TerrainMouseHandler {
 
     /** The left button came up anywhere: ends a drag; a press that barely moved sets the spawn. */
     public void release(float x, float y, int windowWidth, int windowHeight) {
-        handleMouseClick(x, y, windowWidth, windowHeight, GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
+        if (pendingSpawnSet) {
+            float dx = x - pressStartX;
+            float dy = y - pressStartY;
+            if (dx * dx + dy * dy < CLICK_THRESHOLD_PX * CLICK_THRESHOLD_PX) {
+                TerrainMapperLayout.Rect map = new TerrainMapperLayout(windowWidth, windowHeight).map();
+                float cx = map.centerX();
+                float cz = map.y() + map.height() / 2f;
+                state.setSpawnPoint(
+                        Math.round(state.getViewport().screenToWorldX(x, cx)),
+                        Math.round(state.getViewport().screenToWorldZ(y, cz))
+                );
+            }
+            pendingSpawnSet = false;
+        }
+        state.endDrag();
     }
 
     /** The pointer moved: pans while dragging and refreshes the map readout. */
     public void move(float x, float y, int windowWidth, int windowHeight) {
-        handleMouseMove(x, y, windowWidth, windowHeight);
+        if (state.isDragging()) {
+            float dx = state.consumeDragDx(x);
+            float dy = state.consumeDragDy(y);
+            state.getViewport().panBy(dx, dy);
+        }
+        updateHoverReadout(x, y, new TerrainMapperLayout(windowWidth, windowHeight));
     }
 
     /** The wheel at window pixel {@code (x, y)}: zooms about it, on the map only. */
@@ -197,19 +117,6 @@ public final class TerrainMouseHandler {
     }
 
     // ─────────────────────────────────────────────── Internals
-
-    private void updateHoverStates(float mx, float my) {
-        state.getBackButton().updateHover(mx, my);
-        state.getCharacterButton().updateHover(mx, my);
-        state.getCreateButton().updateHover(mx, my);
-        state.getSimulateSeedButton().updateHover(mx, my);
-        for (MCategoryButton<VisualizerKind> mode : state.getModeButtons()) {
-            mode.updateHover(mx, my);
-            mode.setSelected(mode.tag() == state.getActiveVisualizer());
-        }
-        state.getSetSpawnButton().updateHover(mx, my);
-        state.getCenterOnSpawnButton().updateHover(mx, my);
-    }
 
     private void updateHoverReadout(float mx, float my, TerrainMapperLayout layout) {
         TerrainMapperLayout.Rect map = layout.map();

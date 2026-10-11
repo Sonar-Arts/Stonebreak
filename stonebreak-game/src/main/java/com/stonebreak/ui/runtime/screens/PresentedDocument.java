@@ -4,41 +4,30 @@ import com.openmason.engine.ui.rendering.MasonryBackend;
 import com.stonebreak.config.Settings;
 import com.stonebreak.core.Game;
 
-import java.util.function.BooleanSupplier;
-
 /**
- * A legacy screen shown as its shipped UI document {@code ui/documents/<id>.sbui}: the
- * {@link ScreenPresentation} every migrated screen (#297 onward) installs. The legacy screen keeps
+ * A screen shown as its shipped UI document {@code ui/documents/<id>.sbui}: the
+ * {@link ScreenPresentation} every migrated screen (#297 onward) installs. The screen class keeps
  * its lifecycle and opens this when it shows and closes it when it hides. The document is an
- * {@code ownerPaints} screen: {@link #paint} draws it exactly where the legacy renderer drew, so the
- * frame's composite order does not change.
+ * {@code ownerPaints} screen: {@link #paint} draws it where the frame renderer draws that screen, so
+ * the frame's composite order does not change.
  *
- * <p>Falls back to the legacy renderer whenever the document is not showing: not shipped, rolled
- * back ({@code -Dstonebreak.ui.legacy=<id>}), refused by a gate, closed after a failing frame, or
- * {@link #suppressed} when it would open.
+ * <p>Paints nothing while the document is not showing: not shipped, refused by a gate, or closed
+ * after a failing frame.
  */
 public class PresentedDocument implements ScreenPresentation {
 
     private final String id;
     private final DocumentScreenHost host;
     private final DocumentScreen.Options options;
-    private final BooleanSupplier suppressed;
     private DocumentScreen screen;
 
     /**
-     * @param options    how the screen behaves; {@code ownerPaints} and {@code onClosed} are set here
-     * @param suppressed asked on every show: true keeps the legacy screen this time
+     * @param options how the screen behaves; {@code ownerPaints} and {@code onClosed} are set here
      */
-    public PresentedDocument(String id, DocumentScreenHost host, DocumentScreen.Options options,
-                             BooleanSupplier suppressed) {
+    public PresentedDocument(String id, DocumentScreenHost host, DocumentScreen.Options options) {
         this.id = id;
         this.host = host;
         this.options = options.withOwnerPaints(true).withOnClosed(this::closed);
-        this.suppressed = suppressed == null ? () -> false : suppressed;
-    }
-
-    public PresentedDocument(String id, DocumentScreenHost host, DocumentScreen.Options options) {
-        this(id, host, options, null);
     }
 
     public final String id() {
@@ -48,10 +37,6 @@ public class PresentedDocument implements ScreenPresentation {
     @Override
     public void shown() {
         if (screen != null && !screen.isClosing()) {
-            return;
-        }
-        screen = null;
-        if (suppressed.getAsBoolean()) {
             return;
         }
         screen = host.open(id, options).orElse(null);
@@ -86,13 +71,13 @@ public class PresentedDocument implements ScreenPresentation {
         return screen != null && !screen.isClosing();
     }
 
-    /** The open screen, or null while the legacy screen shows. */
+    /** The open screen, or null while none is showing. */
     protected final DocumentScreen screen() {
         return showing() ? screen : null;
     }
 
     private void closed() {
-        // A frame or render failure closes the screen from the host: the legacy screen takes over.
+        // A frame or render failure closes the screen from the host: nothing shows until the next open.
         if (screen != null && screen.isClosed()) {
             screen = null;
         }

@@ -1,6 +1,7 @@
 package com.stonebreak.ui.fidelity;
 
 import com.openmason.engine.ui.fidelity.FidelityCase;
+import com.openmason.engine.ui.fidelity.FrozenCaptures;
 import com.openmason.engine.ui.fidelity.GeometryRule;
 import com.openmason.engine.ui.fidelity.MigrationGate;
 import com.openmason.engine.ui.fidelity.PixelTolerance;
@@ -9,25 +10,39 @@ import com.stonebreak.ui.runtime.GameUiDocuments;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * The entity glossary migration gate (#299): the shipped {@code ui/documents/glossary.sbui} against
- * the legacy renderer's committed cases at {@code FLOAT_EXACT} geometry and {@code EXACT} pixels,
+ * the legacy renderer's frozen captures at {@code FLOAT_EXACT} geometry and {@code EXACT} pixels,
  * with the same hit region and effect for every row, arrow and Back. Plus the selection staying in
- * the game: clicking a row then an arrow changes exactly what the legacy clicks change.
+ * the game: clicking rows and arrows changes the screen's selection and shown variant.
  */
 @Tag("regression")
 class GlossaryDocumentGateTest {
 
+    /** Every frozen glossary capture. */
+    static List<FidelityCase> cases() {
+        List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("glossary", List.of("cow"), FidelityCase.STANDARD));
+        FidelityCase.Viewport hd = FidelityCase.STANDARD.get(0);
+        out.add(new FidelityCase("glossary", "cow", new FidelityCase.Viewport(800, 600, 2f)));
+        for (String v : List.of("sheep", "chicken", "goose", "cow-variant2", "cow-hover-back", "cow-hover-row1",
+                "cow-hover-right")) {
+            out.add(new FidelityCase("glossary", v, hd));
+        }
+        out.add(new FidelityCase("glossary", "cow-hover-left", FidelityCase.STANDARD.get(3)));
+        return out;
+    }
+
     @Test
     void theShippedGlossaryDocumentPassesTheMigrationGate() throws Exception {
         DeathDocumentGateTest.requireLua();
-        MigrationGate.Report r = LegacyStatisticsBaselineTest.inUs(() ->
+        MigrationGate.Report r = StatisticsDocumentGateTest.inUs(() ->
             new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.EXACT).run("glossary",
-                LegacyGlossaryBaselineTest.cases(), new LegacyGlossaryCapture(), DocumentGlossaryCapture.shipped()));
+                cases(), FrozenCaptures.forTests("glossary").replay(), DocumentGlossaryCapture.shipped()));
         GateAssert.passed(r);
     }
 

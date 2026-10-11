@@ -11,8 +11,8 @@ import java.util.Map;
 
 /**
  * The candidate side of the death menu's fidelity gate (#299): the shipped
- * {@code ui/documents/death.sbui} on a {@link DocumentStage}, with the variants of
- * {@link LegacyDeathCapture}. Not a test class.
+ * {@code ui/documents/death.sbui} on a {@link DocumentStage}. Variants: {@code dead} or
+ * {@code dead-hover-respawn} (the button highlighted). Not a test class.
  */
 public final class DocumentDeathCapture implements MigrationGate.Renderer {
 

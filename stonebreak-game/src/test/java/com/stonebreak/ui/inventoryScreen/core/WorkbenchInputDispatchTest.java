@@ -5,27 +5,22 @@ import static com.stonebreak.ui.support.UiTestFixtures.emptyInventory;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.crafting.CraftingManager;
-import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator.InventoryLayout;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler.DragState;
-import org.joml.Vector2f;
+import com.stonebreak.ui.inventoryScreen.handlers.PointerFrame;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.lwjgl.glfw.GLFW;
 
 /**
  * Issue #317: the crafting table's 3x3 grid gets every inventory-screen interaction because it
- * shares {@link InventoryInputManager#handleMouseInput} instead of keeping its own copy. Drives
- * the real dispatch frame by frame through a mocked {@link InputHandler}, against the real
- * workbench layout. Slot centres transcribe {@link InventorySlotManager}'s geometry (see
- * {@code InventorySlotManagerTest}).
+ * shares {@link InventoryInputManager#handlePointer} instead of keeping its own copy. Drives
+ * the real dispatch frame by frame, against the real workbench layout. Slot centres transcribe
+ * {@link InventorySlotManager}'s geometry (see {@code InventorySlotManagerTest}).
  */
 class WorkbenchInputDispatchTest {
 
@@ -34,7 +29,6 @@ class WorkbenchInputDispatchTest {
 
     private Inventory inventory;
     private InventoryCraftingManager grid;
-    private InputHandler input;
     private WorkbenchInputManager workbench;
     private InventoryLayout layout;
 
@@ -43,8 +37,7 @@ class WorkbenchInputDispatchTest {
         inventory = emptyInventory();
         grid = new InventoryCraftingManager(new CraftingManager(),
                 InventoryLayoutCalculator.getWorkbenchCraftingGridSize());
-        input = mock(InputHandler.class);
-        workbench = new WorkbenchInputManager(input, inventory,
+        workbench = new WorkbenchInputManager(null, inventory,
                 new InventorySlotManager(inventory, grid), grid);
         layout = InventoryLayoutCalculator.calculateWorkbenchLayout(SCREEN_W, SCREEN_H);
     }
@@ -53,11 +46,8 @@ class WorkbenchInputDispatchTest {
 
     /** One frame of input: cursor position plus this frame's button edges/levels. */
     private void frame(float[] at, boolean leftPressed, boolean rightPressed, boolean rightDown) {
-        when(input.getMousePosition()).thenReturn(new Vector2f(at[0], at[1]));
-        when(input.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)).thenReturn(leftPressed);
-        when(input.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT)).thenReturn(rightPressed);
-        when(input.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT)).thenReturn(rightDown);
-        workbench.handleMouseInput(SCREEN_W, SCREEN_H);
+        workbench.handlePointer(new PointerFrame(at[0], at[1], leftPressed, rightPressed, rightDown, false, false),
+                SCREEN_W, SCREEN_H);
     }
 
     private void leftClick(float[] at) {
@@ -143,10 +133,5 @@ class WorkbenchInputDispatchTest {
 
         assertFalse(workbench.getDragState().isDragging());
         assertEquals(12, grid.getCraftingInputSlots()[8].getCount());
-    }
-
-    @Test
-    void workbenchHasNoCharacterTabHotspots() {
-        assertFalse(workbench.hasCharacterTabs(), "the workbench draws no tab strip to click");
     }
 }

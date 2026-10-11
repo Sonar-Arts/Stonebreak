@@ -7,13 +7,12 @@ import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.UiRect;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.ui.fidelity.DocumentStage;
-import com.stonebreak.ui.fidelity.LegacyUiRaster;
+import com.stonebreak.ui.fidelity.UiRaster;
 import com.stonebreak.ui.fidelity.RecordingServices;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import com.stonebreak.ui.runtime.providers.AbilityIconProvider;
 import com.stonebreak.ui.runtime.providers.EntityPreviewProvider;
 import com.stonebreak.ui.runtime.providers.PipsProvider;
-import org.joml.Vector2f;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,8 +61,8 @@ public final class DocumentCharacterSheetCapture implements MigrationGate.Render
         FidelityCase.Viewport vp = c.viewport();
         int w = vp.width();
         int h = vp.height();
-        try (LegacyUiRaster fonts = new LegacyUiRaster(w, h, vp.uiScale())) {
-            CharacterScreen screen = CharacterSheetFixtures.screen(fonts.backend(), new Vector2f(-100, -100));
+        try (UiRaster fonts = new UiRaster(w, h, vp.uiScale())) {
+            CharacterScreen screen = CharacterSheetFixtures.screen(fonts.backend());
             CharacterSheetFixtures.prepare(screen, c.variant());
             try (DocumentStage stage = stage(shipped, screen, w, h, vp.uiScale())) {
                 CharacterSheetFixtures.scroll(screen, c.variant());

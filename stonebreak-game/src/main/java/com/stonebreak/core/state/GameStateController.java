@@ -97,7 +97,7 @@ public final class GameStateController {
         if (state == GameState.JOIN_WORLD_SCREEN && game.getJoinWorldScreen() != null) {
             game.getJoinWorldScreen().onShow();
         }
-        // The documents of screens that are a state follow it (after the legacy onShow refreshes, #299).
+        // The documents of screens that are a state follow it (after the screens' onShow refreshes, #299).
         com.stonebreak.ui.runtime.screens.StateScreens.get().stateChanged(state);
         // Container screens that stay open under another state (the recipe book over a crafting
         // table) show their document only in their own state (#300).

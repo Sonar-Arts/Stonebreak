@@ -8,7 +8,7 @@ import com.openmason.engine.ui.data.HostContract;
 import com.openmason.engine.ui.data.UiHost;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.combat.arcanist.ArcanistAbilityController;
-import com.stonebreak.rendering.UI.components.hotbar.HealthHeartsRenderer;
+import com.stonebreak.ui.hotbar.core.HealthHeartsLayout;
 import com.stonebreak.ui.HotbarScreen;
 
 import java.util.ArrayList;
@@ -18,7 +18,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * The gameplay HUD around the hotbar ({@code stonebreak:hud} 1, #300), as the legacy HUD reads it:
+ * The gameplay HUD around the hotbar ({@code stonebreak:hud} 1, #300), as the HUD document reads it:
  * <ul>
  *   <li>root {@code hud}: {@code present}, {@code heartSize} (device px, the heart sprite's native size
  *       snapped near 28), {@code hearts} (how many: 2 HP each), {@code stamina}/{@code mana} {@code {shown, fraction}} (mana only for the
@@ -57,9 +57,9 @@ public final class HudContracts {
             return null;
         }
 
-        /** The heart sprite's drawn edge in device px ({@link HealthHeartsRenderer#heartSize}). */
+        /** The heart sprite's drawn edge in device px ({@link HealthHeartsLayout#heartSize}). */
         default int heartSize() {
-            return HealthHeartsRenderer.heartSize();
+            return HealthHeartsLayout.heartSize();
         }
     }
 
@@ -155,7 +155,7 @@ public final class HudContracts {
         boolean changed = total != heartStates.length;
         if (!changed) {
             for (int i = 0; i < total; i++) {
-                if (!heartStates[i].equals(HealthHeartsRenderer.heartState(Math.max(0f, Math.min(1f, filled - i))))) {
+                if (!heartStates[i].equals(HealthHeartsLayout.heartState(Math.max(0f, Math.min(1f, filled - i))))) {
                     changed = true;
                     break;
                 }
@@ -167,7 +167,7 @@ public final class HudContracts {
         heartStates = new String[total];
         List<UiValue> rows = new ArrayList<>(total);
         for (int i = 0; i < total; i++) {
-            heartStates[i] = HealthHeartsRenderer.heartState(Math.max(0f, Math.min(1f, filled - i)));
+            heartStates[i] = HealthHeartsLayout.heartState(Math.max(0f, Math.min(1f, filled - i)));
             rows.add(new UiValue.Obj(Map.of("heart", UiValue.of("heart:" + i), "state", UiValue.of(heartStates[i]))));
         }
         hearts.setAll(rows);

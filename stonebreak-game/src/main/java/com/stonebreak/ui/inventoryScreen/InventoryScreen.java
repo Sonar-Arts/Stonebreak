@@ -1,18 +1,14 @@
 package com.stonebreak.ui.inventoryScreen;
 
-import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.crafting.CraftingManager;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
-import com.stonebreak.player.CharacterStats;
-import com.stonebreak.rendering.Renderer;
 import com.stonebreak.ui.HotbarScreen;
 import com.stonebreak.ui.inventoryScreen.core.InventoryController;
 import com.stonebreak.ui.inventoryScreen.core.InventoryCraftingManager;
 import com.stonebreak.ui.inventoryScreen.core.InventoryInputManager;
 import com.stonebreak.ui.inventoryScreen.core.InventorySlotManager;
-import com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator;
 import com.stonebreak.core.GameState;
 import com.stonebreak.ui.runtime.screens.PresentationSlot;
 import com.stonebreak.ui.runtime.screens.ScreenPresentation;
@@ -22,12 +18,11 @@ import com.stonebreak.ui.runtime.screens.ScreenPresentation;
  * A 2D UI for displaying the player's inventory.
  * Refactored to follow SOLID principles using composition and delegation.
  *
- * <p>Shown by a {@link ScreenPresentation} when one is installed (#300: the shipped document
- * {@value #DOCUMENT_ID}, {@code ui.runtime.screens.ContainerDocument}): the controller keeps the
- * lifecycle (E, Escape, C and the tabs, INVENTORY_UI, closing returns the cursor stack and the 2x2
- * grid) and every slot rule; while the presentation shows, the legacy renderer, mouse poll, tooltip
- * and dragged-item overlay stand down. It shows only in INVENTORY_UI: the recipe book opened over the
- * inventory hides it, as the legacy panel was not drawn there either. The hotbar is not part of it.
+ * <p>Shown by its {@link ScreenPresentation} (#300: the shipped document {@value #DOCUMENT_ID},
+ * {@code ui.runtime.screens.ContainerDocument}): the controller keeps the lifecycle (E, Escape, C and
+ * the tabs, INVENTORY_UI, closing returns the cursor stack and the 2x2 grid) and every slot rule. It
+ * shows only in INVENTORY_UI: the recipe book opened over the inventory hides it. The hotbar is not
+ * part of it.
  */
 public class InventoryScreen {
 
@@ -36,7 +31,7 @@ public class InventoryScreen {
 
     /**
      * The shipped gameplay HUD around the hotbar: {@code ui/documents/hud.sbui} (#300). This screen
-     * paints the hotbar, so it owns that presentation too: shown wherever the legacy hotbar is drawn.
+     * paints the hotbar, so it owns that presentation too: shown wherever the hotbar is drawn.
      */
     public static final String HUD_DOCUMENT_ID = "hud";
 
@@ -49,22 +44,14 @@ public class InventoryScreen {
     /**
      * Creates a new inventory screen using modular architecture.
      */
-    public InventoryScreen(Inventory inventory, Renderer renderer, UIRenderer uiRenderer,
-                           InputHandler inputHandler, CraftingManager craftingManager,
-                           CharacterStats stats) {
+    public InventoryScreen(Inventory inventory, InputHandler inputHandler, CraftingManager craftingManager) {
         InventoryCraftingManager craftingManagerModule = new InventoryCraftingManager(craftingManager);
         InventorySlotManager slotManager = new InventorySlotManager(inventory, craftingManagerModule);
         InventoryInputManager inputManager = new InventoryInputManager(inputHandler, inventory,
             slotManager, craftingManagerModule);
 
-        this.controller = new InventoryController(inventory, inputManager, craftingManagerModule, null);
+        this.controller = new InventoryController(inventory, inputManager, craftingManagerModule);
         this.slotInput = inputManager;
-
-        InventoryRenderCoordinator renderCoordinator = new InventoryRenderCoordinator(
-            uiRenderer, renderer, inputHandler, inventory, controller, inputManager,
-            craftingManagerModule, stats);
-
-        this.controller.setRenderCoordinator(renderCoordinator);
     }
 
     /**
@@ -78,7 +65,7 @@ public class InventoryScreen {
         hud.setVisible(hudShows(state));
     }
 
-    /** Installs (or, with null, removes) the alternative presentation; the legacy one is the default. */
+    /** Installs (or, with null, removes) the presentation. */
     public void setPresentation(ScreenPresentation p) {
         presentation.install(p);
     }
@@ -95,14 +82,9 @@ public class InventoryScreen {
         });
     }
 
-    /** Installs (or, with null, removes) the HUD's presentation; the legacy hotbar renderer is the default. */
+    /** Installs (or, with null, removes) the HUD's presentation. */
     public void setHudPresentation(ScreenPresentation p) {
         hud.install(p);
-    }
-
-    /** True while the HUD's presentation, not the legacy hotbar renderer, shows the hotbar. */
-    public boolean hudShowing() {
-        return hud.showing();
     }
 
     /**
@@ -117,7 +99,7 @@ public class InventoryScreen {
             || ((s == GameState.PLAYING || s == GameState.PAUSED) && !isVisible());
     }
 
-    /** True while a presentation shows the screen instead of the legacy renderer. */
+    /** True while the presentation shows the screen. */
     public boolean presentationShowing() {
         return presentation.showing();
     }
@@ -166,96 +148,18 @@ public class InventoryScreen {
         return controller.getHotbarScreen();
     }
 
-    /**
-     * Renders the inventory screen.
-     */
+    /** Paints the presentation: the panel, tooltip and carried stack in one paint. */
     public void render(int screenWidth, int screenHeight) {
-        if (presentation.paint(screenWidth, screenHeight)) {
-            return; // the document draws the panel, tooltip and carried stack in one paint
-        }
-        controller.render(screenWidth, screenHeight);
-    }
-    /**
-     * Render the full inventory screen without tooltips.
-     * This method is called during the main UI phase, before block drops are rendered.
-     */
-    public void renderWithoutTooltips(int screenWidth, int screenHeight) {
-        if (presentation.paint(screenWidth, screenHeight)) {
-            return;
-        }
-        controller.renderWithoutTooltips(screenWidth, screenHeight);
-    }
-    
-    /**
-     * Render only tooltips for the full inventory screen.
-     * This method is called after block drops are rendered to ensure tooltips appear above them.
-     */
-    public void renderTooltipsOnly(int screenWidth, int screenHeight) {
-        if (presentation.showing()) {
-            return; // the document's router draws its tooltip
-        }
-        controller.renderTooltipsOnly(screenWidth, screenHeight);
+        presentation.paint(screenWidth, screenHeight);
     }
 
-    /**
-     * Render only the dragged item for the inventory screen.
-     * This method is called during the overlay phase to ensure dragged items appear above all other UI.
-     */
-    public void renderDraggedItemOnly(int screenWidth, int screenHeight) {
-        if (presentation.showing()) {
-            return; // the document's cursor layer carries it
-        }
-        controller.renderDraggedItemOnly(screenWidth, screenHeight);
-    }
-
-    // All rendering methods have been delegated to the InventoryRenderCoordinator
-
-
-    /**
-     * Renders the separate hotbar at the bottom of the screen when inventory is closed.
-     */
+    /** Paints the HUD's presentation: the hotbar, its surroundings and its tooltip in one paint. */
     public void renderHotbar(int screenWidth, int screenHeight) {
-        if (hud.paint(screenWidth, screenHeight)) {
-            return; // the HUD document draws the hotbar, its surroundings and its tooltip in one paint
-        }
-        controller.renderHotbar(screenWidth, screenHeight);
-    }
-
-    /**
-     * Renders the separate hotbar at the bottom of the screen without tooltips.
-     * This method is called during the main UI phase, before block drops are rendered.
-     */
-    public void renderHotbarWithoutTooltips(int screenWidth, int screenHeight) {
-        if (hud.paint(screenWidth, screenHeight)) {
-            return;
-        }
-        controller.renderHotbarWithoutTooltips(screenWidth, screenHeight);
-    }
-
-    /**
-     * Renders only the hotbar tooltip.
-     * This method is called after block drops are rendered to ensure tooltips appear above them.
-     */
-    public void renderHotbarTooltipsOnly(int screenWidth, int screenHeight) {
-        if (hud.showing()) {
-            return; // the HUD document paints the tooltip with the hotbar
-        }
-        controller.renderHotbarTooltipsOnly(screenWidth, screenHeight);
+        hud.paint(screenWidth, screenHeight);
     }
 
     /** Slot rules addressed by slot, for UI documents (#289). */
     public com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput getSlotInput() {
         return slotInput;
     }
-
-    // Method to handle mouse clicks for drag and drop
-    public void handleMouseInput(int screenWidth, int screenHeight) {
-        if (presentation.showing()) {
-            return; // a document routes its own input
-        }
-        controller.handleInput(screenWidth, screenHeight);
-    }
-
-    // All input handling methods have been delegated to the InventoryInputManager
-
 }

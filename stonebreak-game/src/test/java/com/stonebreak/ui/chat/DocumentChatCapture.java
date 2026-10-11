@@ -5,7 +5,7 @@ import com.openmason.engine.ui.fidelity.FidelityCase;
 import com.openmason.engine.ui.fidelity.MigrationGate;
 import com.openmason.engine.ui.runtime.UiRect;
 import com.stonebreak.network.MultiplayerSession;
-import com.stonebreak.ui.LegacyUiClock;
+import com.stonebreak.ui.UiWallClock;
 import com.stonebreak.ui.fidelity.DocumentStage;
 import com.stonebreak.ui.fidelity.RecordingServices;
 import com.stonebreak.ui.runtime.GameUiDocuments;
@@ -52,7 +52,7 @@ public final class DocumentChatCapture implements MigrationGate.Renderer {
         ChatSystem chat = ChatFixtures.chat(c.variant());
         try (DocumentStage stage = stage(shipped, chat, vp.width(), vp.height(), vp.uiScale())) {
             // the stage's raster pins its own clock: back to the chat's instant (fades, the GIF's frame)
-            LegacyUiClock.pin(ChatFixtures.NOW, LegacyUiClock.DEFAULT_SEED);
+            UiWallClock.pin(ChatFixtures.NOW, UiWallClock.DEFAULT_SEED);
             stage.host.chat().poll();
             stage.settle();
             stage.paint();
@@ -69,7 +69,7 @@ public final class DocumentChatCapture implements MigrationGate.Renderer {
         } catch (Exception e) {
             throw new IllegalStateException("could not capture the chat document for " + c.id(), e);
         } finally {
-            LegacyUiClock.release();
+            UiWallClock.release();
         }
     }
 }

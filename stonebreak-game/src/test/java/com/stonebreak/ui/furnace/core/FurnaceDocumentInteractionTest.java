@@ -10,7 +10,7 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
 import com.stonebreak.ui.inventoryScreen.handlers.PointerFrame;
 import com.stonebreak.ui.runtime.GameUiDocuments;
-import com.stonebreak.ui.fidelity.LegacyUiRaster;
+import com.stonebreak.ui.fidelity.UiRaster;
 import com.stonebreak.ui.support.UiTestFixtures;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -24,12 +24,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * #298 acceptance 2: every slot click and drag through the shipped furnace document yields the same
- * validated outcome as the legacy mouse path. One script of presses (left, shift-left, right,
- * middle, right-drag sweeps, bare panel, outside the panel) runs against two identical furnaces:
- * once as the legacy screen's polled pointer frames at the legacy slot centres, once as pointer
- * events on the document (its Lua routing them to {@code stonebreak:inventory.slot-*}). After every
- * step the inventory, the three furnace slots and the cursor stack must be the same, and nothing is
- * created or lost along the way.
+ * validated outcome as the furnace's slot rules driven directly. One script of presses (left,
+ * shift-left, right, middle, right-drag sweeps, bare panel, outside the panel) runs against two
+ * identical furnaces: once as pointer frames fed to {@link FurnaceInputManager#handlePointer} at the
+ * layout's slot centres ({@link DocumentFurnaceCapture#layoutRects}, the geometry the legacy screen
+ * was clicked at), once as pointer events on the document (its Lua routing them to
+ * {@code stonebreak:inventory.slot-*}). After every step the inventory, the three furnace slots and
+ * the cursor stack must be the same, and nothing is created or lost along the way.
  */
 @Tag("regression")
 class FurnaceDocumentInteractionTest {
@@ -90,7 +91,7 @@ class FurnaceDocumentInteractionTest {
         }
         Inventory legacyInv = inventory();
         FurnaceState legacyFurnace = new FurnaceState(new BlockPos(0, 64, 0));
-        FurnaceController legacy = new FurnaceController(null, legacyInv, null, DocumentFurnaceCapture.smelting(), null);
+        FurnaceController legacy = new FurnaceController(null, null, DocumentFurnaceCapture.smelting());
         FurnaceInputManager legacyInput = new FurnaceInputManager(null, legacyInv, legacy);
         legacy.setInputManager(legacyInput);
         legacy.setSlotSink((p, s) -> { });
@@ -112,12 +113,12 @@ class FurnaceDocumentInteractionTest {
             assertEquals(snapshot(legacyInv, legacyFurnace, legacyInput), snapshot(doc.inventory, doc.furnace, doc.input));
 
             Map<String, float[]> legacyRects;
-            try (LegacyUiRaster ignored = new LegacyUiRaster(W, H, 1f)) {
-                legacyRects = LegacyFurnaceCapture.rects(W, H);
+            try (UiRaster ignored = new UiRaster(W, H, 1f)) {
+                legacyRects = DocumentFurnaceCapture.layoutRects(W, H);
             }
             for (int i = 0; i < SCRIPT.size(); i++) {
                 Step step = SCRIPT.get(i);
-                runLegacy(legacyInput, legacyRects, step);
+                runRules(legacyInput, legacyRects, step);
                 runDocument(doc, step);
                 String what = "after step " + i + " " + step;
                 assertEquals(snapshot(legacyInv, legacyFurnace, legacyInput),
@@ -130,22 +131,22 @@ class FurnaceDocumentInteractionTest {
         }
     }
 
-    // ── legacy: the polled pointer frames the screen sees ──────────────────
+    // ── rules: the pointer frames the slot rules read, at the layout's slots ─
 
-    private static void runLegacy(FurnaceInputManager input, Map<String, float[]> rects, Step s) {
-        float[] at = legacyPoint(rects, s.at());
+    private static void runRules(FurnaceInputManager input, Map<String, float[]> rects, Step s) {
+        float[] at = layoutPoint(rects, s.at());
         boolean right = s.button() == RIGHT;
         input.handlePointer(new PointerFrame(at[0], at[1], s.button() == LEFT, right, right, s.button() == MIDDLE,
             s.shift()), W, H);
         for (String over : s.sweep()) {
-            float[] o = legacyPoint(rects, over);
+            float[] o = layoutPoint(rects, over);
             input.handlePointer(new PointerFrame(o[0], o[1], false, false, true, false, false), W, H);
         }
-        float[] end = s.sweep().isEmpty() ? at : legacyPoint(rects, s.sweep().getLast());
+        float[] end = s.sweep().isEmpty() ? at : layoutPoint(rects, s.sweep().getLast());
         input.handlePointer(PointerFrame.idle(end[0], end[1]), W, H);
     }
 
-    private static float[] legacyPoint(Map<String, float[]> rects, String name) {
+    private static float[] layoutPoint(Map<String, float[]> rects, String name) {
         return switch (name) {
             case "outside" -> new float[]{5, 5};
             case "panel" -> {

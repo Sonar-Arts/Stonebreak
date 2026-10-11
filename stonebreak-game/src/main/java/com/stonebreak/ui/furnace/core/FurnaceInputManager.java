@@ -31,7 +31,6 @@ public class FurnaceInputManager implements ContainerSlotInput {
         InventoryDragDropHandler::dropEntireStackIntoWorld;
 
     // Right-click drag state
-    private boolean rightDragActive = false;
     private final java.util.Set<Integer> rightDragVisitedSlots = new java.util.HashSet<>();
 
     public FurnaceInputManager(InputHandler inputHandler, Inventory inventory,
@@ -46,13 +45,9 @@ public class FurnaceInputManager implements ContainerSlotInput {
         return dragState;
     }
 
-    public void handleMouseInput(int screenWidth, int screenHeight) {
-        handlePointer(PointerFrame.poll(inputHandler), screenWidth, screenHeight);
-    }
-
     /**
-     * One frame of pointer input. The legacy mouse path polls it; UI documents synthesize it at a
-     * slot (#289, {@link ContainerSlotInput}), so both run every rule below.
+     * One frame of pointer input, synthesized at a slot by the furnace document (#289,
+     * {@link ContainerSlotInput}): every rule below runs from it.
      */
     @Override
     public void handlePointer(PointerFrame pointer, int screenWidth, int screenHeight) {
@@ -85,7 +80,6 @@ public class FurnaceInputManager implements ContainerSlotInput {
         }
 
         if (!rightDown) {
-            rightDragActive = false;
             rightDragVisitedSlots.clear();
         }
     }

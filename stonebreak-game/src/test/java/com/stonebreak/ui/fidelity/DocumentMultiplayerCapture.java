@@ -5,6 +5,8 @@ import com.openmason.engine.ui.fidelity.FidelityCase;
 import com.openmason.engine.ui.fidelity.MigrationGate;
 import com.openmason.engine.ui.runtime.UiRect;
 import com.stonebreak.network.MultiplayerSession;
+import com.stonebreak.ui.multiplayerMenu.HostWorldScreen;
+import com.stonebreak.ui.multiplayerMenu.JoinWorldScreen;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import com.stonebreak.ui.runtime.providers.DirtBackdropProvider;
 
@@ -16,11 +18,66 @@ import java.util.Map;
 /**
  * The candidate side of the multiplayer screens' fidelity gates (#299): the shipped
  * {@code multiplayer}, {@code host_world} and {@code join_world} documents on a {@link DocumentStage}
- * bound to the legacy screen objects in the state {@link LegacyMultiplayerCapture} puts them in. A
- * {@code -focused} case focuses the field by clicking at its right end (the caret then sits after the
- * text, where the legacy one is drawn). Not a test class.
+ * bound to the screen objects in the case's state, by the case's screen:
+ *
+ * <ul>
+ *   <li>{@code multiplayer}: the menu; variants {@code plain}, {@code hover-host|join|back}.</li>
+ *   <li>{@code host-world}: three worlds ({@link #WORLDS}) or {@code empty} or {@code nine} (only eight
+ *       show), port 25565; {@code -focused} (port field with its caret), {@code -status} (an invalid
+ *       port refused), {@code -hover-<part>} with parts {@code row0..row7}, {@code start}, {@code back}.</li>
+ *   <li>{@code join-world}: fields filled ({@code filled}); {@code -focused} (host field), {@code -status}
+ *       (an empty port refused), {@code -hover-connect|back}.</li>
+ * </ul>
+ *
+ * A {@code -focused} case focuses the field by clicking at its right end (the caret then sits after
+ * the text, where the legacy one was drawn). Not a test class.
  */
 public final class DocumentMultiplayerCapture implements MigrationGate.Renderer {
+
+    public static final List<String> WORLDS = List.of("Alpha", "Beta Base", "Gamma");
+
+    static List<String> worlds(String variant) {
+        if (variant.startsWith("empty")) {
+            return List.of();
+        }
+        if (variant.startsWith("nine")) {
+            List<String> out = new ArrayList<>();
+            for (int i = 1; i <= 9; i++) {
+                out.add("World " + i);
+            }
+            return out;
+        }
+        return WORLDS;
+    }
+
+    /** A host screen in the variant's state (worlds listed, port typed, maybe refused). */
+    public static HostWorldScreen host(String variant) {
+        HostWorldScreen s = new HostWorldScreen();
+        List<String> worlds = worlds(variant);
+        s.setWorldSource(() -> worlds);
+        s.onShow();
+        s.setPortText("25565");
+        if (variant.contains("-status")) {
+            s.startHosting("0"); // refused: Invalid port
+            s.setPortText("0");
+        }
+        return s;
+    }
+
+    /** A join screen in the variant's state. */
+    public static JoinWorldScreen join(String variant) {
+        JoinWorldScreen s = new JoinWorldScreen();
+        s.setFields("play.example.net", "25565", "Steve");
+        if (variant.contains("-status")) {
+            s.connect("play.example.net", "", "Steve"); // refused: Invalid port
+        }
+        return s;
+    }
+
+    static String hover(String variant) {
+        int i = variant.indexOf("hover-");
+        return i < 0 ? "" : variant.substring(i + "hover-".length());
+    }
 
     static String documentId(String screen) {
         return switch (screen) {
@@ -33,18 +90,13 @@ public final class DocumentMultiplayerCapture implements MigrationGate.Renderer 
 
     static DocumentStage stage(FidelityCase c) throws Exception {
         RecordingServices services = new RecordingServices();
-        LegacyUiRaster probe = new LegacyUiRaster(c.viewport().width(), c.viewport().height(), c.viewport().uiScale());
-        try {
-            switch (c.screen()) {
-                case "host-world" -> services.hostWorld = LegacyMultiplayerCapture.host(probe.backend(), c.variant());
-                case "join-world" -> {
-                    services.joinWorld = LegacyMultiplayerCapture.join(probe.backend(), c.variant());
-                    services.multiplayerBack = "stonebreak:screen.join-world.back";
-                }
-                default -> { }
+        switch (c.screen()) {
+            case "host-world" -> services.hostWorld = host(c.variant());
+            case "join-world" -> {
+                services.joinWorld = join(c.variant());
+                services.multiplayerBack = "stonebreak:screen.join-world.back";
             }
-        } finally {
-            probe.close();
+            default -> { }
         }
         SbuiArchive sbui = GameUiDocuments.readScreen(documentId(c.screen()));
         return new DocumentStage(sbui, c.viewport().width(), c.viewport().height(), c.viewport().uiScale(), services,
@@ -82,7 +134,7 @@ public final class DocumentMultiplayerCapture implements MigrationGate.Renderer 
                 UiRect r = stage.rect(f);
                 stage.clickAt(r.right() - 2, r.y() + r.height() / 2f);
             }
-            String hover = LegacyMultiplayerCapture.hover(c.variant());
+            String hover = hover(c.variant());
             if (!hover.isEmpty()) {
                 stage.hover(hover);
             }

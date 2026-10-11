@@ -121,7 +121,7 @@ class ScreenActionsTest {
     }
 
     private com.stonebreak.ui.glossaryScreen.GlossaryScreen openGlossary() {
-        var g = new com.stonebreak.ui.glossaryScreen.GlossaryScreen(null);
+        var g = new com.stonebreak.ui.glossaryScreen.GlossaryScreen();
         var d = new com.stonebreak.player.EntityDiscoveries();
         d.recordVariantSeen(com.stonebreak.mobs.entities.EntityType.COW, "Default");
         d.recordVariantSeen(com.stonebreak.mobs.entities.EntityType.COW, "Highland");

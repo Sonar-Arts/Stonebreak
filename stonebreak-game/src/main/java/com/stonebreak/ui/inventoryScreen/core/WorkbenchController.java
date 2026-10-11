@@ -7,8 +7,6 @@ import com.stonebreak.blocks.workbench.WorkbenchStateRegistry;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.world.World;
-import com.stonebreak.ui.inventoryScreen.renderers.InventoryRenderCoordinator;
-import com.stonebreak.ui.inventoryScreen.renderers.WorkbenchRenderCoordinator;
 
 /**
  * Controller responsible for coordinating workbench UI operations.
@@ -18,7 +16,6 @@ import com.stonebreak.ui.inventoryScreen.renderers.WorkbenchRenderCoordinator;
 public class WorkbenchController extends InventoryController {
 
     private final Game game;
-    private WorkbenchRenderCoordinator workbenchRenderCoordinator;
 
     /**
      * The crafting table bound to the UI (issue #307) — the grid the player edits IS this
@@ -33,9 +30,8 @@ public class WorkbenchController extends InventoryController {
     public WorkbenchController(Game game,
                               Inventory inventory,
                               InventoryInputManager inputManager,
-                              InventoryCraftingManager craftingManager,
-                              InventoryRenderCoordinator renderCoordinator) {
-        super(inventory, inputManager, craftingManager, renderCoordinator);
+                              InventoryCraftingManager craftingManager) {
+        super(inventory, inputManager, craftingManager);
         this.game = game;
     }
 
@@ -184,67 +180,6 @@ public class WorkbenchController extends InventoryController {
         InventoryInputManager inputManager = getInputManager();
         if (inputManager != null) {
             inputManager.handleCloseWithDraggedItems();
-        }
-    }
-
-    /**
-     * Opens the recipe book screen from the workbench.
-     */
-    public void openRecipeBook() {
-        if (game != null) {
-            game.openRecipeBookScreen();
-        }
-    }
-
-    /**
-     * Sets the workbench render coordinator.
-     */
-    public void setRenderCoordinator(WorkbenchRenderCoordinator renderCoordinator) {
-        this.workbenchRenderCoordinator = renderCoordinator;
-    }
-
-    @Override
-    public void render(int screenWidth, int screenHeight) {
-        if (!isVisible() || workbenchRenderCoordinator == null) return;
-        workbenchRenderCoordinator.render(screenWidth, screenHeight);
-    }
-
-    @Override
-    public void renderWithoutTooltips(int screenWidth, int screenHeight) {
-        if (!isVisible() || workbenchRenderCoordinator == null) return;
-        workbenchRenderCoordinator.renderWithoutTooltips(screenWidth, screenHeight);
-    }
-
-    @Override
-    public void renderTooltipsOnly(int screenWidth, int screenHeight) {
-        if (!isVisible() || workbenchRenderCoordinator == null) return;
-        workbenchRenderCoordinator.renderTooltipsOnly(screenWidth, screenHeight);
-    }
-
-    @Override
-    public void renderDraggedItemOnly(int screenWidth, int screenHeight) {
-        if (!isVisible() || workbenchRenderCoordinator == null) return;
-        workbenchRenderCoordinator.renderDraggedItemOnly(screenWidth, screenHeight);
-    }
-
-    @Override
-    public void renderHotbar(int screenWidth, int screenHeight) {
-        if (!isVisible() && workbenchRenderCoordinator != null) {
-            workbenchRenderCoordinator.renderHotbar(screenWidth, screenHeight);
-        }
-    }
-
-    @Override
-    public void renderHotbarWithoutTooltips(int screenWidth, int screenHeight) {
-        if (!isVisible() && workbenchRenderCoordinator != null) {
-            workbenchRenderCoordinator.renderHotbarWithoutTooltips(screenWidth, screenHeight);
-        }
-    }
-
-    @Override
-    public void renderHotbarTooltipsOnly(int screenWidth, int screenHeight) {
-        if (!isVisible() && workbenchRenderCoordinator != null) {
-            workbenchRenderCoordinator.renderHotbarTooltipsOnly(screenWidth, screenHeight);
         }
     }
 }

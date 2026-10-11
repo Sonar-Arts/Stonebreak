@@ -37,7 +37,7 @@ class FurnaceSlotAddressTest {
     @Test
     void documentSlotClicksUseTheFurnaceRulesAndSync() {
         Inventory inv = emptyInventory();
-        FurnaceController controller = new FurnaceController(null, inv, null, null, null);
+        FurnaceController controller = new FurnaceController(null, null, null);
         FurnaceInputManager input = new FurnaceInputManager(null, inv, controller);
         controller.setInputManager(input);
         List<String> sent = new ArrayList<>();
@@ -85,7 +85,7 @@ class FurnaceSlotAddressTest {
     @Test
     void everyFurnaceAddressResolves() {
         Inventory inv = emptyInventory();
-        FurnaceController controller = new FurnaceController(null, inv, null, null, null);
+        FurnaceController controller = new FurnaceController(null, null, null);
         FurnaceInputManager input = new FurnaceInputManager(null, inv, controller);
         for (String s : List.of("ingredient", "fuel", "output", "hotbar:0", "hotbar:8", "main:0", "main:26", "outside",
                 "panel")) {
@@ -99,7 +99,7 @@ class FurnaceSlotAddressTest {
     @Test
     void aPressOnTheBarePanelPutsTheCarriedStackBack() {
         Inventory inv = emptyInventory();
-        FurnaceController controller = new FurnaceController(null, inv, null, null, null);
+        FurnaceController controller = new FurnaceController(null, null, null);
         FurnaceInputManager input = new FurnaceInputManager(null, inv, controller);
         controller.setInputManager(input);
         controller.bind(new FurnaceState(new BlockPos(0, 64, 0)));

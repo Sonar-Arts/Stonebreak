@@ -14,8 +14,9 @@ import com.stonebreak.blocks.furnace.FurnaceState;
 import com.stonebreak.crafting.SmeltingManager;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.network.MultiplayerSession;
-import com.stonebreak.ui.fidelity.LegacyUiRaster;
+import com.stonebreak.ui.fidelity.UiRaster;
 import com.stonebreak.ui.furnace.FurnaceDocument;
+import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 import com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import com.stonebreak.ui.runtime.GameUiHost;
@@ -33,12 +34,12 @@ import java.util.Map;
  * The candidate side of the furnace's fidelity gate (#298): the shipped export
  * {@code ui/documents/furnace.sbui}, opened as the game opens it ({@code GameUiDocuments.openBound}
  * against a {@link GameUiHost} whose open container is a real {@link FurnaceInputManager}, Lua
- * code-behind running, the game's draw providers) and painted on the same {@link LegacyUiRaster}
- * stage as {@link LegacyFurnaceCapture}, with the same furnace state per variant.
+ * code-behind running, the game's draw providers) and painted on a {@link UiRaster} stage,
+ * with the furnace state of the frozen legacy capture per variant.
  *
  * <p>Rects are named as in the legacy oracle: {@code panel}, the three furnace slots,
- * {@code main0..26} and {@code hot0..8}. Must live in this package for {@link FurnaceController#bind}.
- * Not a test class.
+ * {@code main0..26} and {@code hot0..8} ({@link #layoutRects}). Must live in this package for
+ * {@link FurnaceController#bind}. Not a test class.
  */
 public final class DocumentFurnaceCapture implements MigrationGate.Renderer {
 
@@ -62,7 +63,7 @@ public final class DocumentFurnaceCapture implements MigrationGate.Renderer {
 
     /** The document open on a raster stage, bound to a game host whose open container is a real furnace screen. */
     static final class Stage implements AutoCloseable {
-        final LegacyUiRaster raster;
+        final UiRaster raster;
         final Inventory inventory;
         final FurnaceController controller;
         final FurnaceInputManager input;
@@ -74,11 +75,11 @@ public final class DocumentFurnaceCapture implements MigrationGate.Renderer {
         final float scale;
 
         Stage(SbuiArchive sbui, int w, int h, float scale, FurnaceState furnace, Inventory inventory) throws Exception {
-            raster = new LegacyUiRaster(w, h, scale);
+            raster = new UiRaster(w, h, scale);
             this.scale = scale;
             this.inventory = inventory;
             this.furnace = furnace;
-            controller = new FurnaceController(null, inventory, null, smelting(), null);
+            controller = new FurnaceController(null, null, smelting());
             input = new FurnaceInputManager(null, inventory, controller);
             controller.setInputManager(input);
             controller.setSlotSink((pos, slots) -> { });
@@ -196,7 +197,34 @@ public final class DocumentFurnaceCapture implements MigrationGate.Renderer {
         }
     }
 
-    /** Rects named as in {@link LegacyFurnaceCapture#rects}. */
+    /**
+     * The furnace's layout maths ({@link FurnaceLayout} over the workbench layout) at the current UI scale,
+     * named as in {@code ui/fixtures/legacy-geometry.json}: {@code panel}, the three furnace slots,
+     * {@code main0..26} and {@code hot0..8}.
+     */
+    public static Map<String, float[]> layoutRects(int w, int h) {
+        InventoryLayoutCalculator.InventoryLayout l = InventoryLayoutCalculator.calculateWorkbenchLayout(w, h);
+        FurnaceLayout.Slots s = FurnaceLayout.compute(l);
+        int ss = InventoryLayoutCalculator.getSlotSize();
+        int pad = InventoryLayoutCalculator.getSlotPadding();
+        Map<String, float[]> out = new LinkedHashMap<>();
+        out.put("panel", new float[]{l.panelStartX, l.panelStartY, l.inventoryPanelWidth, l.inventoryPanelHeight});
+        out.put("ingredient", new float[]{s.ingredientX, s.ingredientY, ss, ss});
+        out.put("fuel", new float[]{s.fuelX, s.fuelY, ss, ss});
+        out.put("output", new float[]{s.outputX, s.outputY, ss, ss});
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
+            int row = i / Inventory.MAIN_INVENTORY_COLS;
+            int col = i % Inventory.MAIN_INVENTORY_COLS;
+            out.put("main" + i, new float[]{l.inventorySectionStartX + pad + col * (ss + pad),
+                l.mainInvContentStartY + pad + row * (ss + pad), ss, ss});
+        }
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            out.put("hot" + i, new float[]{l.inventorySectionStartX + pad + i * (ss + pad), l.hotbarRowY, ss, ss});
+        }
+        return out;
+    }
+
+    /** Rects named as in {@link #layoutRects}, read off the document. */
     static Map<String, float[]> rects(Stage stage) {
         Map<String, float[]> out = new LinkedHashMap<>();
         put(out, "panel", stage.q("#panel"));

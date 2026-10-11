@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import com.openmason.engine.cenda.CendaLua;
 import com.openmason.engine.format.omui.UiValue;
@@ -18,9 +17,7 @@ import com.stonebreak.core.GameState;
 import com.stonebreak.crafting.CraftingManager;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.network.MultiplayerSession;
-import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.UI.UIRenderer;
-import com.stonebreak.ui.fidelity.LegacyUiRaster;
+import com.stonebreak.ui.fidelity.UiRaster;
 import com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import com.stonebreak.ui.runtime.GameUiHost;
@@ -65,7 +62,7 @@ class WorkbenchDocumentLifecycleTest {
         boolean[] open = {false};
         GameUiHost host = new GameUiHost(services(in[0], open), MultiplayerSession.Mode.SINGLEPLAYER);
 
-        try (LegacyUiRaster raster = new LegacyUiRaster(W, H, 1f);
+        try (UiRaster raster = new UiRaster(W, H, 1f);
              GameDrawProviders providers = new GameDrawProviders(null, raster.backend()::getMinecraftTypeface)) {
             host.drain();
             int views = GameUiInput.get().views().size();
@@ -108,33 +105,29 @@ class WorkbenchDocumentLifecycleTest {
 
     @Test
     void theDocumentShowsOnlyInTheWorkbenchState() {
-        try (LegacyUiRaster raster = new LegacyUiRaster(W, H, 1f)) {
-            Renderer renderer = mock(Renderer.class);
-            when(renderer.getSkijaBackend()).thenReturn(raster.backend());
-            WorkbenchScreen screen = new WorkbenchScreen(null, UiTestFixtures.emptyInventory(), renderer,
-                mock(UIRenderer.class), mock(InputHandler.class), new CraftingManager());
-            List<String> events = new ArrayList<>();
-            screen.setPresentation(new ScreenPresentation() {
-                boolean shown;
-                @Override public void shown() { shown = true; events.add("shown"); }
-                @Override public void hidden() { shown = false; events.add("hidden"); }
-                @Override public boolean paint(int w, int h) { return shown; }
-                @Override public boolean showing() { return shown; }
-            });
+        WorkbenchScreen screen = new WorkbenchScreen(null, UiTestFixtures.emptyInventory(), mock(InputHandler.class),
+            new CraftingManager());
+        List<String> events = new ArrayList<>();
+        screen.setPresentation(new ScreenPresentation() {
+            boolean shown;
+            @Override public void shown() { shown = true; events.add("shown"); }
+            @Override public void hidden() { shown = false; events.add("hidden"); }
+            @Override public boolean paint(int w, int h) { return shown; }
+            @Override public boolean showing() { return shown; }
+        });
 
-            screen.open(new BlockPos(0, 64, 0));
-            assertTrue(screen.presentationShowing());
-            screen.syncPresentation(GameState.RECIPE_BOOK_UI);   // the recipe book over the table
-            assertFalse(screen.presentationShowing());
-            assertTrue(screen.isVisible(), "the table stays open underneath");
-            screen.syncPresentation(GameState.WORKBENCH_UI);     // Escape back
-            assertTrue(screen.presentationShowing());
-            screen.close();
-            assertFalse(screen.presentationShowing());
-            screen.syncPresentation(GameState.WORKBENCH_UI);     // a closed table never shows
-            assertFalse(screen.presentationShowing());
-            assertEquals(List.of("shown", "hidden", "shown", "hidden"), events);
-        }
+        screen.open(new BlockPos(0, 64, 0));
+        assertTrue(screen.presentationShowing());
+        screen.syncPresentation(GameState.RECIPE_BOOK_UI);   // the recipe book over the table
+        assertFalse(screen.presentationShowing());
+        assertTrue(screen.isVisible(), "the table stays open underneath");
+        screen.syncPresentation(GameState.WORKBENCH_UI);     // Escape back
+        assertTrue(screen.presentationShowing());
+        screen.close();
+        assertFalse(screen.presentationShowing());
+        screen.syncPresentation(GameState.WORKBENCH_UI);     // a closed table never shows
+        assertFalse(screen.presentationShowing());
+        assertEquals(List.of("shown", "hidden", "shown", "hidden"), events);
     }
 
     private static Map<String, Integer> subscribers(GameUiHost host) {

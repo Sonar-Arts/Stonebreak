@@ -13,7 +13,7 @@ import java.util.function.Supplier;
 /**
  * The startup intro's procedural layers (#301, ledger hard visual 8): {@value #OCEAN_ID} draws the ocean
  * bands and caustics, {@value #SONAR_ID} the sonar rings, bubbles and submarine, both from the game's
- * {@link IntroScene} with the legacy scanline primitives, at the window's origin (the element is the
+ * {@link IntroScene} with its scanline primitives ({@code IntroPainter}), at the window's origin (the element is the
  * whole window). The document stacks its logo between the two. No params: the scene is game state.
  * Pure Skia. Without a game (the editor preview) both show one deterministic demo scene: seeded, stepped
  * at 60 Hz to {@value #PREVIEW_SECONDS} s at the element's size.

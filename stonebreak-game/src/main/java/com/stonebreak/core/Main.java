@@ -429,7 +429,7 @@ public class Main {
         player.getCamera().setPitch((float) Math.toDegrees(Math.atan2(dy, Math.hypot(dx, dz))));
     }
 
-    // ─── Dev: -Dstonebreak.autoscreen=<seconds>:<inventory|workbench|chat|f3|recipes|character|creation|terrain> 
+    // ─── Dev: -Dstonebreak.autoscreen=<seconds>:<inventory|workbench|chat|f3|recipes|character|creation|terrain|death> 
 
     private long autoScreenDeadlineNanos = -1;
     private boolean autoScreenDone;
@@ -492,6 +492,9 @@ public class Main {
         } else if (which.equals("creation") || which.equals("terrain")) { // #301: the two creation state documents
             System.out.println("[autoscreen] entering " + which);
             Game.getInstance().setState(which.equals("creation") ? GameState.CHARACTER_CREATION : GameState.TERRAIN_MAPPER);
+        } else if (which.equals("death")) { // #302: the death screen (pair with autopause: pausing while dead)
+            System.out.println("[autoscreen] killing the player");
+            Game.getPlayer().damage(Float.MAX_VALUE);
         } else if (which.equals("f3")) { // #301: the F3 debug overlay document
             System.out.println("[autoscreen] showing the F3 overlay");
             Game.getDebugOverlay().toggleVisibility();

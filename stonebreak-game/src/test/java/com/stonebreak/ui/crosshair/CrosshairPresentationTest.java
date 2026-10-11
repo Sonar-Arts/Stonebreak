@@ -24,7 +24,7 @@ class CrosshairPresentationTest {
     }
 
     @Test
-    void showsOnlyWhileVisibleAndFallsBackWhenTheDocumentDoesNotPaint() {
+    void showsOnlyWhileVisibleAndReportsWhenTheDocumentDoesNotPaint() {
         Crosshair crosshair = new Crosshair();
         Recording doc = new Recording();
         crosshair.setPresentation(doc);
@@ -37,7 +37,7 @@ class CrosshairPresentationTest {
         assertEquals(List.of("shown", "paint", "hidden"), doc.calls, "one show per change, one hide");
 
         crosshair.sync(true);
-        doc.paints = false; // refused or failed: the legacy renderer draws
+        doc.paints = false; // refused or failed: no crosshair this frame
         assertFalse(crosshair.paint(1920, 1080));
         assertFalse(crosshair.showing());
     }

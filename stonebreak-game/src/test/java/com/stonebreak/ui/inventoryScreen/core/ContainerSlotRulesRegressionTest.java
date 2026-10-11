@@ -70,7 +70,7 @@ class ContainerSlotRulesRegressionTest {
         screen.handlePointer(PointerFrame.idle(x, y), W, H);
     }
 
-    /** Where the workbench draws main slot {@code i} (WorkbenchRenderCoordinator). */
+    /** Where the workbench draws main slot {@code i} (the legacy layout, which the document reproduces). */
     private static int[] drawnMain(InventoryLayout l, int i) {
         int pitch = InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding();
         return new int[]{l.inventorySectionStartX + InventoryLayoutCalculator.getSlotPadding() + (i % 9) * pitch,

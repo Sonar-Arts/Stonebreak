@@ -16,7 +16,7 @@ import java.util.Map;
 /**
  * The candidate side of the intro's fidelity gate (#301): the shipped {@code ui/documents/intro.sbui} on
  * a {@link DocumentStage}, its providers and {@code stonebreak:screen.intro} data reading the same
- * {@link IntroFixtures} scene as {@link LegacyIntroCapture}. Not a test class.
+ * {@link IntroFixtures} scene as the frozen legacy captures. Not a test class.
  */
 public final class DocumentIntroCapture implements MigrationGate.Renderer {
 

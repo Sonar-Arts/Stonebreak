@@ -40,15 +40,6 @@ public final class GameShutdown {
         if (Game.getWorld() != null) {
             Game.getWorld().cleanup();
         }
-        if (game.getPauseMenu() != null) {
-            game.getPauseMenu().cleanup();
-        }
-        if (game.getStatisticsScreen() != null) {
-            game.getStatisticsScreen().cleanup();
-        }
-        if (game.getGlossaryScreen() != null) {
-            game.getGlossaryScreen().cleanup();
-        }
         if (game.getFocusBattleScreen() != null) {
             game.getFocusBattleScreen().cleanup();
         }

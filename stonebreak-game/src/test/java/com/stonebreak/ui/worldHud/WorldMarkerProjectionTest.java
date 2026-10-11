@@ -1,6 +1,5 @@
 package com.stonebreak.ui.worldHud;
 
-import com.stonebreak.rendering.UI.components.WorldMarker;
 import org.joml.Matrix4f;
 import org.junit.jupiter.api.Test;
 

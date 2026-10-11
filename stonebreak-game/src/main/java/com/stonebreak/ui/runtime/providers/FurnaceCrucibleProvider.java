@@ -4,7 +4,7 @@ import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.UiRect;
 import com.openmason.engine.ui.runtime.paint.UiPaintHost;
-import com.stonebreak.ui.LegacyUiClock;
+import com.stonebreak.ui.UiWallClock;
 import com.stonebreak.ui.furnace.core.FurnaceLayout;
 import com.stonebreak.ui.furnace.renderers.CruciblePainter;
 import io.github.humbleui.skija.Canvas;
@@ -16,7 +16,7 @@ import io.github.humbleui.skija.Canvas;
  *
  * <ul>
  *   <li>{@value #BOWL_ID}: the chutes to the three slots and the bowl (glow, lava, bubbles,
- *       flames), animated on {@link LegacyUiClock}.</li>
+ *       flames), animated on {@link UiWallClock}.</li>
  *   <li>{@value #RINGS_ID}: the cook-progress and fuel rings.</li>
  * </ul>
  *
@@ -60,7 +60,7 @@ public final class FurnaceCrucibleProvider implements UiPaintHost.UiDrawProvider
             CruciblePainter.paintRings(canvas, s, number(p, "progress", 0f), fuel);
         } else {
             boolean cooking = p.get("cooking") instanceof UiValue.Bool b && b.value();
-            CruciblePainter.paintBowl(canvas, s, fuel, cooking || fuel > 0f, (float) LegacyUiClock.seconds());
+            CruciblePainter.paintBowl(canvas, s, fuel, cooking || fuel > 0f, (float) UiWallClock.seconds());
         }
     }
 

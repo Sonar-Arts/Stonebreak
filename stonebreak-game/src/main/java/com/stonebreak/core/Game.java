@@ -553,10 +553,6 @@ public class Game {
         return screens.settingsMenu();
     }
 
-    public com.stonebreak.ui.multiplayerMenu.MultiplayerMenu getMultiplayerMenu() {
-        return screens.multiplayerMenu();
-    }
-
     public com.stonebreak.ui.multiplayerMenu.HostWorldScreen getHostWorldScreen() {
         return screens.hostWorldScreen();
     }

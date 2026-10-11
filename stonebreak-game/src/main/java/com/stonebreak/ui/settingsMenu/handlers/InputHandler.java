@@ -10,8 +10,8 @@ import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
 
 /**
- * Keyboard dispatch for the settings menu. Category navigation, per-category
- * setting navigation, Shift-modified value nudges, Enter/Escape actions.
+ * Keyboard rules of the settings menu, one key press at a time ({@link #key}): category navigation,
+ * per-category setting navigation, Shift-modified value nudges, Enter/Escape actions.
  */
 public final class InputHandler {
 
@@ -19,74 +19,17 @@ public final class InputHandler {
     private final Settings settings;
     private final ActionHandler actionHandler;
 
-    private boolean escapePressed;
-    private boolean enterPressed;
-
     public InputHandler(StateManager stateManager, Settings settings, ActionHandler actionHandler) {
         this.stateManager = stateManager;
         this.settings = settings;
         this.actionHandler = actionHandler;
     }
 
-    public void handleInput(long window) {
-        // While the keep/revert popup is up it owns the keyboard: Enter keeps,
-        // Escape reverts; everything else is suppressed so the menu stays modal.
-        if (stateManager.isUiScaleConfirmActive()) {
-            handleConfirmationKeys(window);
-            return;
-        }
-        handleCategoryNavigation(window);
-        handleSettingNavigation(window);
-        handleValueAdjustment(window);
-        handleEnter(window);
-        handleEscape(window);
-    }
-
-    private void handleConfirmationKeys(long window) {
-        boolean enterDown = pressed(window, GLFW_KEY_ENTER);
-        if (enterDown && !enterPressed) actionHandler.confirmUiScale();
-        enterPressed = enterDown;
-
-        boolean escDown = pressed(window, GLFW_KEY_ESCAPE);
-        if (escDown && !escapePressed) actionHandler.revertUiScale();
-        escapePressed = escDown;
-    }
-
-    private void handleCategoryNavigation(long window) {
-        boolean shift = isShiftHeld(window);
-        if (shift) return; // Shift+arrows adjusts values, not category
-        if (pressed(window, GLFW_KEY_LEFT) || pressed(window, GLFW_KEY_A)) {
-            stateManager.navigateToPreviousCategory();
-        }
-        if (pressed(window, GLFW_KEY_RIGHT) || pressed(window, GLFW_KEY_D)) {
-            stateManager.navigateToNextCategory();
-        }
-    }
-
-    private void handleSettingNavigation(long window) {
-        if (pressed(window, GLFW_KEY_UP) || pressed(window, GLFW_KEY_W)) {
-            stateManager.navigateToPreviousSettingInCategory();
-        }
-        if (pressed(window, GLFW_KEY_DOWN) || pressed(window, GLFW_KEY_S)) {
-            stateManager.navigateToNextSettingInCategory();
-        }
-    }
-
-    private void handleValueAdjustment(long window) {
-        if (!isShiftHeld(window)) return;
-        if (pressed(window, GLFW_KEY_LEFT) || pressed(window, GLFW_KEY_A)) {
-            adjustSelectedSettingValue(-1);
-        }
-        if (pressed(window, GLFW_KEY_RIGHT) || pressed(window, GLFW_KEY_D)) {
-            adjustSelectedSettingValue(1);
-        }
-    }
-
     /**
-     * One key press by the polled rules (#299: a UI document delivers keys as events, so each
-     * press and OS repeat is one step): Left/A and Right/D change category (Shift: adjust the
-     * selected value), Up/W and Down/S move the row, Enter activates, Escape goes back; while
-     * the UI-scale confirmation is up only Enter (keep) and Escape (revert) act.
+     * One key press (the document delivers keys as events, so each press and OS repeat is one
+     * step): Left/A and Right/D change category (Shift: adjust the selected value), Up/W and
+     * Down/S move the row, Enter activates, Escape goes back; while the UI-scale confirmation is
+     * up only Enter (keep) and Escape (revert) act.
      */
     public void key(int key, boolean shift) {
         if (stateManager.isUiScaleConfirmActive()) {
@@ -115,36 +58,20 @@ public final class InputHandler {
         }
     }
 
-    private void handleEnter(long window) {
-        boolean down = pressed(window, GLFW_KEY_ENTER);
-        if (down && !enterPressed) {
-            enter();
-        }
-        enterPressed = down;
-    }
-
     private void enter() {
-        {
-            CategoryState.SettingType[] settingsArr = stateManager.getSelectedCategory().getSettings();
-            CategoryState.SettingType current;
-            if (stateManager.getSelectedSettingInCategory() < settingsArr.length) {
-                current = settingsArr[stateManager.getSelectedSettingInCategory()];
-            } else {
-                int idx = stateManager.getSelectedSettingInCategory() - settingsArr.length;
-                current = (idx == 0) ? CategoryState.SettingType.APPLY : CategoryState.SettingType.BACK;
-            }
-            if (current == CategoryState.SettingType.RESOLUTION && stateManager.getResolutionButton().isOpen()) {
-                confirmResolutionSelection();
-            } else {
-                actionHandler.executeSelectedAction();
-            }
+        CategoryState.SettingType[] settingsArr = stateManager.getSelectedCategory().getSettings();
+        CategoryState.SettingType current;
+        if (stateManager.getSelectedSettingInCategory() < settingsArr.length) {
+            current = settingsArr[stateManager.getSelectedSettingInCategory()];
+        } else {
+            int idx = stateManager.getSelectedSettingInCategory() - settingsArr.length;
+            current = (idx == 0) ? CategoryState.SettingType.APPLY : CategoryState.SettingType.BACK;
         }
-    }
-
-    private void handleEscape(long window) {
-        boolean down = pressed(window, GLFW_KEY_ESCAPE);
-        if (down && !escapePressed) actionHandler.goBack();
-        escapePressed = down;
+        if (current == CategoryState.SettingType.RESOLUTION && stateManager.getResolutionButton().isOpen()) {
+            confirmResolutionSelection();
+        } else {
+            actionHandler.executeSelectedAction();
+        }
     }
 
     // ─────────────────────────────────────────────── Value adjust
@@ -259,15 +186,5 @@ public final class InputHandler {
     private void confirmResolutionSelection() {
         settings.setResolutionByIndex(stateManager.getSelectedResolutionIndex());
         stateManager.getResolutionButton().close();
-    }
-
-    // ─────────────────────────────────────────────── Helpers
-
-    private static boolean pressed(long window, int key) {
-        return com.stonebreak.input.PolledKeys.isDown(window, key);
-    }
-
-    private static boolean isShiftHeld(long window) {
-        return pressed(window, GLFW_KEY_LEFT_SHIFT) || pressed(window, GLFW_KEY_RIGHT_SHIFT);
     }
 }

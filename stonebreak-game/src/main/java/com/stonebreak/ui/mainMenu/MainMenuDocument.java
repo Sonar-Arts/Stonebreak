@@ -8,7 +8,7 @@ import com.stonebreak.ui.runtime.screens.PresentedDocument;
 
 /**
  * The main menu as the shipped document {@value MainMenu#DOCUMENT_ID} (#299), shown while the game is
- * in MAIN_MENU. Each paint first advances the title animation (as the legacy {@code render} did) and
+ * in MAIN_MENU. Each paint first advances the title animation and
  * lets the UI host publish it, so the logo, splash and shake drawn are this frame's.
  */
 public final class MainMenuDocument extends PresentedDocument {

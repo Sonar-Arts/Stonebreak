@@ -41,8 +41,7 @@ public final class MTextureRegistry {
      * to the default-state texture.
      *
      * <p>This is the one image every item slot draws for an SBO item, with its
-     * alpha (#330): hotbar, legacy screens via {@code ItemIconRenderer}, and the
-     * {@code stonebreak:item-icon} document provider.
+     * alpha (#330), through the {@code stonebreak:item-icon} document provider.
      */
     public static MTexture getForSboItem(com.stonebreak.items.ItemType itemType, String state) {
         if (itemType == null) return null;

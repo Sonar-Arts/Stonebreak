@@ -23,8 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class MultiplayerContractsTest {
 
     private static final class Services implements GameUiHost.Services {
-        HostWorldScreen host = new HostWorldScreen(null);
-        JoinWorldScreen join = new JoinWorldScreen(null);
+        HostWorldScreen host = new HostWorldScreen();
+        JoinWorldScreen join = new JoinWorldScreen();
 
         @Override public void resume() { }
         @Override public void openStatistics() { }

@@ -27,18 +27,16 @@ import com.stonebreak.ui.focusBattle.elements.ResultPanel;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
 import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
 
 /**
  * The focus battle HUD's #301 fidelity cases: a headless {@link FocusBattleScreen} bound to a
- * {@link FakeBattleView} and driven through the snapshot gallery's scenes (the same frames on both sides: every
- * window and layer animates deterministically on C1), the camera over the monk's shoulder, and the window rects as
- * the geometry oracle. Not a test class.
+ * {@link FakeBattleView} and driven through the snapshot gallery's scenes (the frames the frozen captures were taken
+ * at: every window and layer animates deterministically on C1), and the camera over the monk's shoulder. Not a test
+ * class.
  */
 public final class BattleHudFixtures {
 
@@ -194,23 +192,5 @@ public final class BattleHudFixtures {
         int row = Integer.parseInt(scene.substring("hover-row".length()));
         float[] r = FocusBattleLayout.commandRowRect(row, w, h, Settings.getInstance().getUiScale());
         return new float[]{r[0] + r[2] / 2f, r[1] + r[3] / 2f};
-    }
-
-    /** The window rects as SkijaFocusBattleRenderer.paintHud places them. */
-    public static Map<String, float[]> rects(FocusBattleScreen screen, int w, int h) {
-        float ui = Settings.getInstance().getUiScale();
-        float s = FocusBattleLayout.effectiveScale(w, h, ui);
-        var a = screen.animState();
-        float[] help = FocusBattleLayout.helpStripRect(w, h, ui);
-        float out = com.openmason.engine.ui.masonry.MColor.clamp01(a.bottomHudSlideOut) * (h - help[1] + 8f * s);
-        Map<String, float[]> m = new LinkedHashMap<>();
-        m.put("mode", FocusBattleLayout.modeTagRect(w, h, ui));
-        m.put("enemy", FocusBattleLayout.offset(FocusBattleLayout.enemyPlateRect(w, h, ui), a.enemyShakeX, a.enemyShakeY));
-        m.put("party", FocusBattleLayout.offset(FocusBattleLayout.partyWindowRect(w, h, ui), a.partyShakeX,
-            a.partyShakeY + out));
-        if (screen.view().outcome() == BattleOutcome.NONE) {
-            m.put("command", FocusBattleLayout.offset(FocusBattleLayout.commandWindowRect(w, h, ui), 0f, out));
-        }
-        return m;
     }
 }

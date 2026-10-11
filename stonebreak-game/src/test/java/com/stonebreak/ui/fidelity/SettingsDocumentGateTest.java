@@ -1,6 +1,7 @@
 package com.stonebreak.ui.fidelity;
 
 import com.openmason.engine.ui.fidelity.FidelityCase;
+import com.openmason.engine.ui.fidelity.FrozenCaptures;
 import com.openmason.engine.ui.fidelity.GeometryRule;
 import com.openmason.engine.ui.fidelity.MigrationGate;
 import com.openmason.engine.ui.fidelity.PixelTolerance;
@@ -10,6 +11,7 @@ import com.stonebreak.config.Settings;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,19 +19,35 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The settings migration gate (#299): the shipped document against the legacy screen's committed
- * cases at {@code FLOAT_EXACT} geometry and {@code EXACT} pixels, with the same hit regions and
+ * The settings migration gate (#299): the shipped document against the legacy screen's frozen
+ * captures at {@code FLOAT_EXACT} geometry and {@code EXACT} pixels, with the same hit regions and
  * presses. Plus the interactions the pixels cannot show, run against the real menu: a dropdown
  * opened and chosen from, closed by a press elsewhere, a slider dragged, the wheel, the keys.
  */
 @Tag("regression")
 class SettingsDocumentGateTest {
 
+    /**
+     * Every frozen settings capture: every category, the scrolled list, open dropdowns, the UI-scale
+     * confirmation and the hover looks ({@link SettingsFixtures}).
+     */
+    static List<FidelityCase> cases() {
+        List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("settings", List.of("general", "quality"),
+            FidelityCase.STANDARD));
+        for (String v : List.of("quality-scrolled", "performance", "advanced", "extras", "audio", "general-open",
+                "general-open-hover-item2", "advanced-open", "general-confirm", "general-confirm-hover-keep",
+                "general-hover-category2", "general-hover-row0", "general-hover-apply", "general-hover-back",
+                "audio-hover-row2")) {
+            out.add(new FidelityCase("settings", v, FidelityCase.STANDARD.get(0)));
+        }
+        return out;
+    }
+
     @Test
     void theSettingsScreenPassesTheMigrationGate() throws Exception {
         DeathDocumentGateTest.requireLua();
         MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.EXACT)
-            .run("settings", LegacySettingsBaselineTest.cases(), new LegacySettingsCapture(),
+            .run("settings", cases(), FrozenCaptures.forTests("settings").replay(),
                 new DocumentSettingsCapture());
         GateAssert.passed(r);
     }

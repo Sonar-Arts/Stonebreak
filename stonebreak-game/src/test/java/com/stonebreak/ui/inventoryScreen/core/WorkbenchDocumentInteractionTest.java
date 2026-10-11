@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import com.openmason.engine.cenda.CendaLua;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.ui.fidelity.LegacyUiRaster;
+import com.stonebreak.ui.fidelity.UiRaster;
 import com.stonebreak.ui.inventoryScreen.core.ContainerParity.Step;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
 import com.stonebreak.ui.runtime.GameUiDocuments;
@@ -22,12 +22,12 @@ import org.junit.jupiter.api.Test;
 
 /**
  * #300 acceptance 2 for the crafting table: every press through the shipped workbench document yields
- * the same validated outcome as the legacy mouse path. One script (left, shift, right, middle,
- * right-drag sweeps, crafting batches onto the cursor, shift-crafting, Craft All, Sort, the bare panel,
- * outside the panel, a double click) runs against two identical tables: as the legacy screen's polled
- * frames, and as pointer events on the document. After every step the inventory, the 3x3 grid, the
- * output, the cursor stack and the world drops must be the same, the document must show exactly that,
- * and steps that craft nothing must conserve every item.
+ * the same validated outcome as the table's rules driven directly. One script (left, shift, right,
+ * middle, right-drag sweeps, crafting batches onto the cursor, shift-crafting, Craft All, Sort, the bare
+ * panel, outside the panel, a double click) runs against two identical tables: straight into the rules
+ * at the legacy geometry ({@link ContainerParity#rules}), and as pointer events on the document. After
+ * every step the inventory, the 3x3 grid, the output, the cursor stack and the world drops must be the
+ * same, the document must show exactly that, and steps that craft nothing must conserve every item.
  */
 @Tag("regression")
 class WorkbenchDocumentInteractionTest {
@@ -72,7 +72,7 @@ class WorkbenchDocumentInteractionTest {
         12, "carried=-");
 
     private static Map<String, float[]> legacyRects() {
-        try (LegacyUiRaster ignored = new LegacyUiRaster(W, H, 1f)) {
+        try (UiRaster ignored = new UiRaster(W, H, 1f)) {
             return WorkbenchFixtures.rects(W, H, true);
         }
     }
@@ -110,7 +110,7 @@ class WorkbenchDocumentInteractionTest {
                 Step step = SCRIPT.get(i).getKey();
                 int before = total(legacyTable, legacy) + dropped(legacyDrops);
                 sink[0] = legacyDrops;
-                ContainerParity.legacy(legacy, rects, step, W, H);
+                ContainerParity.rules(legacy, rects, step, W, H);
                 sink[0] = docDrops;
                 ContainerParity.document(doc.view, doc::centreOrPoint, step, doc::settle);
                 String what = "after step " + i + " " + step;

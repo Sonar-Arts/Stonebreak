@@ -437,18 +437,17 @@ disabled changes: **0 px differ**.
 screen goes through:
 - **Open.** `DocumentScreenHost.open(id, Options)` loads the shipped export `ui/documents/<id>.sbui` (game
   classpath) through `GameUiDocuments.openBound` (activation, asset and input gates, derived graph Lua, code-behind)
-  and joins it to the game window's input stack. An empty result means "keep the legacy screen": nothing ships for
-  the id, it is rolled back (`DocumentScreenPolicy`: `-Dstonebreak.ui.legacy=<id,...>|all`, or `setOverride` at
-  runtime), or a gate refused it (logged, plus a red chat line; never a blank screen). Shared rows of shipped screens
+  and joins it to the game window's input stack. An empty result means the screen cannot show: nothing ships for
+  the id (`ShippedDocuments`), a world-scoped screen outside a world, or a gate refused it (logged, plus a red chat
+  line). There is no legacy fallback since #302: the document is the screen's only presentation. Shared rows of shipped screens
   live under `ui/shared/<ns>/<path><ext>` (the editor's "Deploy to game" writes both).
 - **Order.** `Options.layer` (`UiLayer` SCREEN < HUD < OVERLAY < TOOLTIP < CURSOR) places the screen in the one
-  ordered stack (`GameUiInput.views()`) that is both the draw order and, reversed, the input order. Legacy screens
-  and the legacy HUD are always beneath document screens.
+  ordered stack (`GameUiInput.views()`) that is both the draw order and, reversed, the input order.
 - **Frame.** `frame()` advances each screen by `UiFrameClock` (the `ui` clock by frame time, the `game` clock by
   the simulated time the world stepped) and runs its scripts; `render(...)` draws them; `FrameRenderer` calls both.
 - **Close and navigate (C4).** `ui.close()`, `ui.navigate(target, args)` and `requestClose` only queue;
   `endFrame()` performs them after the frame was drawn, so nothing is torn down underneath the dispatch that asked.
-  Navigation opens the target's document when it has one, else a `LegacyNavigation` target (`resume`, `pause`,
+  Navigation opens the target's document when it has one, else a `StateNavigation` target (`resume`, `pause`,
   `settings`, `statistics`, `glossary`, `main_menu`, `world_select`, `multiplayer`), and replaces the asking screen
   unless `args.push` is true. Unknown targets return false (the script gets an error).
 - **Owner-painted screens.** `Options.ownerPaints` keeps a screen in the stack (frames, scripts, input) but out

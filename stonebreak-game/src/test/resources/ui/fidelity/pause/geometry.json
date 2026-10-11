@@ -1,0 +1,309 @@
+{
+  "screen" : "pause",
+  "units" : "framebuffer pixels; rect = [x, y, width, height], origin top-left",
+  "cases" : {
+    "pause-field-offline_1920x1080_s1" : {
+      "rects" : {
+        "glossary" : [ 780.0, 540.0, 360.0, 50.0 ],
+        "panel" : [ 700.0, 260.0, 520.0, 560.0 ],
+        "quit" : [ 780.0, 680.0, 360.0, 50.0 ],
+        "resume" : [ 780.0, 400.0, 360.0, 50.0 ],
+        "settings" : [ 780.0, 610.0, 360.0, 50.0 ],
+        "statistics" : [ 780.0, 470.0, 360.0, 50.0 ]
+      },
+      "hits" : {
+        "glossary" : [ 780.0, 540.0, 360.0, 50.0 ],
+        "quit" : [ 780.0, 680.0, 360.0, 50.0 ],
+        "resume" : [ 780.0, 400.0, 360.0, 50.0 ],
+        "settings" : [ 780.0, 610.0, 360.0, 50.0 ],
+        "statistics" : [ 780.0, 470.0, 360.0, 50.0 ]
+      },
+      "actions" : {
+        "glossary" : "stonebreak:screen.pause.glossary",
+        "quit" : "stonebreak:screen.pause.quit",
+        "resume" : "stonebreak:screen.pause.resume",
+        "settings" : "stonebreak:screen.pause.settings",
+        "statistics" : "stonebreak:screen.pause.statistics"
+      }
+    },
+    "pause-field-offline_1280x720_s0_75" : {
+      "rects" : {
+        "glossary" : [ 505.0, 360.0, 270.0, 37.5 ],
+        "panel" : [ 445.0, 150.0, 390.0, 420.0 ],
+        "quit" : [ 505.0, 465.0, 270.0, 37.5 ],
+        "resume" : [ 505.0, 255.0, 270.0, 37.5 ],
+        "settings" : [ 505.0, 412.5, 270.0, 37.5 ],
+        "statistics" : [ 505.0, 307.5, 270.0, 37.5 ]
+      },
+      "hits" : {
+        "glossary" : [ 505.0, 360.0, 270.0, 37.5 ],
+        "quit" : [ 505.0, 465.0, 270.0, 37.5 ],
+        "resume" : [ 505.0, 255.0, 270.0, 37.5 ],
+        "settings" : [ 505.0, 412.5, 270.0, 37.5 ],
+        "statistics" : [ 505.0, 307.5, 270.0, 37.5 ]
+      },
+      "actions" : {
+        "glossary" : "stonebreak:screen.pause.glossary",
+        "quit" : "stonebreak:screen.pause.quit",
+        "resume" : "stonebreak:screen.pause.resume",
+        "settings" : "stonebreak:screen.pause.settings",
+        "statistics" : "stonebreak:screen.pause.statistics"
+      }
+    },
+    "pause-field-offline_3840x2160_s2" : {
+      "rects" : {
+        "glossary" : [ 1560.0, 1080.0, 720.0, 100.0 ],
+        "panel" : [ 1400.0, 520.0, 1040.0, 1120.0 ],
+        "quit" : [ 1560.0, 1360.0, 720.0, 100.0 ],
+        "resume" : [ 1560.0, 800.0, 720.0, 100.0 ],
+        "settings" : [ 1560.0, 1220.0, 720.0, 100.0 ],
+        "statistics" : [ 1560.0, 940.0, 720.0, 100.0 ]
+      },
+      "hits" : {
+        "glossary" : [ 1560.0, 1080.0, 720.0, 100.0 ],
+        "quit" : [ 1560.0, 1360.0, 720.0, 100.0 ],
+        "resume" : [ 1560.0, 800.0, 720.0, 100.0 ],
+        "settings" : [ 1560.0, 1220.0, 720.0, 100.0 ],
+        "statistics" : [ 1560.0, 940.0, 720.0, 100.0 ]
+      },
+      "actions" : {
+        "glossary" : "stonebreak:screen.pause.glossary",
+        "quit" : "stonebreak:screen.pause.quit",
+        "resume" : "stonebreak:screen.pause.resume",
+        "settings" : "stonebreak:screen.pause.settings",
+        "statistics" : "stonebreak:screen.pause.statistics"
+      }
+    },
+    "pause-field-offline_1921x1081_s1_25" : {
+      "rects" : {
+        "glossary" : [ 735.5, 540.5, 450.0, 62.5 ],
+        "panel" : [ 635.5, 190.5, 650.0, 700.0 ],
+        "quit" : [ 735.5, 715.5, 450.0, 62.5 ],
+        "resume" : [ 735.5, 365.5, 450.0, 62.5 ],
+        "settings" : [ 735.5, 628.0, 450.0, 62.5 ],
+        "statistics" : [ 735.5, 453.0, 450.0, 62.5 ]
+      },
+      "hits" : {
+        "glossary" : [ 735.5, 540.5, 450.0, 62.5 ],
+        "quit" : [ 735.5, 715.5, 450.0, 62.5 ],
+        "resume" : [ 735.5, 365.5, 450.0, 62.5 ],
+        "settings" : [ 735.5, 628.0, 450.0, 62.5 ],
+        "statistics" : [ 735.5, 453.0, 450.0, 62.5 ]
+      },
+      "actions" : {
+        "glossary" : "stonebreak:screen.pause.glossary",
+        "quit" : "stonebreak:screen.pause.quit",
+        "resume" : "stonebreak:screen.pause.resume",
+        "settings" : "stonebreak:screen.pause.settings",
+        "statistics" : "stonebreak:screen.pause.statistics"
+      }
+    },
+    "pause-field-online_1920x1080_s1" : {
+      "rects" : {
+        "glossary" : [ 780.0, 505.0, 360.0, 50.0 ],
+        "panel" : [ 700.0, 260.0, 520.0, 560.0 ],
+        "quit" : [ 780.0, 715.0, 360.0, 50.0 ],
+        "resume" : [ 780.0, 365.0, 360.0, 50.0 ],
+        "resync" : [ 780.0, 645.0, 360.0, 50.0 ],
+        "settings" : [ 780.0, 575.0, 360.0, 50.0 ],
+        "statistics" : [ 780.0, 435.0, 360.0, 50.0 ]
+      },
+      "hits" : {
+        "glossary" : [ 780.0, 505.0, 360.0, 50.0 ],
+        "quit" : [ 780.0, 715.0, 360.0, 50.0 ],
+        "resume" : [ 780.0, 365.0, 360.0, 50.0 ],
+        "resync" : [ 780.0, 645.0, 360.0, 50.0 ],
+        "settings" : [ 780.0, 575.0, 360.0, 50.0 ],
+        "statistics" : [ 780.0, 435.0, 360.0, 50.0 ]
+      },
+      "actions" : {
+        "glossary" : "stonebreak:screen.pause.glossary",
+        "quit" : "stonebreak:screen.pause.quit",
+        "resume" : "stonebreak:screen.pause.resume",
+        "resync" : "stonebreak:network.resync",
+        "settings" : "stonebreak:screen.pause.settings",
+        "statistics" : "stonebreak:screen.pause.statistics"
+      }
+    },
+    "pause-field-online_1280x720_s0_75" : {
+      "rects" : {
+        "glossary" : [ 505.0, 333.75, 270.0, 37.5 ],
+        "panel" : [ 445.0, 150.0, 390.0, 420.0 ],
+        "quit" : [ 505.0, 491.25, 270.0, 37.5 ],
+        "resume" : [ 505.0, 228.75, 270.0, 37.5 ],
+        "resync" : [ 505.0, 438.75, 270.0, 37.5 ],
+        "settings" : [ 505.0, 386.25, 270.0, 37.5 ],
+        "statistics" : [ 505.0, 281.25, 270.0, 37.5 ]
+      },
+      "hits" : {
+        "glossary" : [ 505.0, 333.75, 270.0, 37.5 ],
+        "quit" : [ 505.0, 491.25, 270.0, 37.5 ],
+        "resume" : [ 505.0, 228.75, 270.0, 37.5 ],
+        "resync" : [ 505.0, 438.75, 270.0, 37.5 ],
+        "settings" : [ 505.0, 386.25, 270.0, 37.5 ],
+        "statistics" : [ 505.0, 281.25, 270.0, 37.5 ]
+      },
+      "actions" : {
+        "glossary" : "stonebreak:screen.pause.glossary",
+        "quit" : "stonebreak:screen.pause.quit",
+        "resume" : "stonebreak:screen.pause.resume",
+        "resync" : "stonebreak:network.resync",
+        "settings" : "stonebreak:screen.pause.settings",
+        "statistics" : "stonebreak:screen.pause.statistics"
+      }
+    },
+    "pause-field-online_3840x2160_s2" : {
+      "rects" : {
+        "glossary" : [ 1560.0, 1010.0, 720.0, 100.0 ],
+        "panel" : [ 1400.0, 520.0, 1040.0, 1120.0 ],
+        "quit" : [ 1560.0, 1430.0, 720.0, 100.0 ],
+        "resume" : [ 1560.0, 730.0, 720.0, 100.0 ],
+        "resync" : [ 1560.0, 1290.0, 720.0, 100.0 ],
+        "settings" : [ 1560.0, 1150.0, 720.0, 100.0 ],
+        "statistics" : [ 1560.0, 870.0, 720.0, 100.0 ]
+      },
+      "hits" : {
+        "glossary" : [ 1560.0, 1010.0, 720.0, 100.0 ],
+        "quit" : [ 1560.0, 1430.0, 720.0, 100.0 ],
+        "resume" : [ 1560.0, 730.0, 720.0, 100.0 ],
+        "resync" : [ 1560.0, 1290.0, 720.0, 100.0 ],
+        "settings" : [ 1560.0, 1150.0, 720.0, 100.0 ],
+        "statistics" : [ 1560.0, 870.0, 720.0, 100.0 ]
+      },
+      "actions" : {
+        "glossary" : "stonebreak:screen.pause.glossary",
+        "quit" : "stonebreak:screen.pause.quit",
+        "resume" : "stonebreak:screen.pause.resume",
+        "resync" : "stonebreak:network.resync",
+        "settings" : "stonebreak:screen.pause.settings",
+        "statistics" : "stonebreak:screen.pause.statistics"
+      }
+    },
+    "pause-field-online_1921x1081_s1_25" : {
+      "rects" : {
+        "glossary" : [ 735.5, 496.75, 450.0, 62.5 ],
+        "panel" : [ 635.5, 190.5, 650.0, 700.0 ],
+        "quit" : [ 735.5, 759.25, 450.0, 62.5 ],
+        "resume" : [ 735.5, 321.75, 450.0, 62.5 ],
+        "resync" : [ 735.5, 671.75, 450.0, 62.5 ],
+        "settings" : [ 735.5, 584.25, 450.0, 62.5 ],
+        "statistics" : [ 735.5, 409.25, 450.0, 62.5 ]
+      },
+      "hits" : {
+        "glossary" : [ 735.5, 496.75, 450.0, 62.5 ],
+        "quit" : [ 735.5, 759.25, 450.0, 62.5 ],
+        "resume" : [ 735.5, 321.75, 450.0, 62.5 ],
+        "resync" : [ 735.5, 671.75, 450.0, 62.5 ],
+        "settings" : [ 735.5, 584.25, 450.0, 62.5 ],
+        "statistics" : [ 735.5, 409.25, 450.0, 62.5 ]
+      },
+      "actions" : {
+        "glossary" : "stonebreak:screen.pause.glossary",
+        "quit" : "stonebreak:screen.pause.quit",
+        "resume" : "stonebreak:screen.pause.resume",
+        "resync" : "stonebreak:network.resync",
+        "settings" : "stonebreak:screen.pause.settings",
+        "statistics" : "stonebreak:screen.pause.statistics"
+      }
+    },
+    "pause-battle-offline_1920x1080_s1" : {
+      "rects" : {
+        "glossary" : [ 780.0, 540.0, 360.0, 50.0 ],
+        "panel" : [ 700.0, 260.0, 520.0, 560.0 ],
+        "quit" : [ 780.0, 680.0, 360.0, 50.0 ],
+        "resume" : [ 780.0, 400.0, 360.0, 50.0 ],
+        "settings" : [ 780.0, 610.0, 360.0, 50.0 ],
+        "statistics" : [ 780.0, 470.0, 360.0, 50.0 ]
+      },
+      "hits" : {
+        "glossary" : [ 780.0, 540.0, 360.0, 50.0 ],
+        "quit" : [ 780.0, 680.0, 360.0, 50.0 ],
+        "resume" : [ 780.0, 400.0, 360.0, 50.0 ],
+        "settings" : [ 780.0, 610.0, 360.0, 50.0 ],
+        "statistics" : [ 780.0, 470.0, 360.0, 50.0 ]
+      },
+      "actions" : {
+        "glossary" : "stonebreak:screen.pause.glossary",
+        "quit" : "stonebreak:screen.pause.quit",
+        "resume" : "stonebreak:screen.pause.resume",
+        "settings" : "stonebreak:screen.pause.settings",
+        "statistics" : "stonebreak:screen.pause.statistics"
+      }
+    },
+    "pause-field-offline-hover-quit_1920x1080_s1" : {
+      "rects" : {
+        "glossary" : [ 780.0, 540.0, 360.0, 50.0 ],
+        "panel" : [ 700.0, 260.0, 520.0, 560.0 ],
+        "quit" : [ 780.0, 680.0, 360.0, 50.0 ],
+        "resume" : [ 780.0, 400.0, 360.0, 50.0 ],
+        "settings" : [ 780.0, 610.0, 360.0, 50.0 ],
+        "statistics" : [ 780.0, 470.0, 360.0, 50.0 ]
+      },
+      "hits" : {
+        "glossary" : [ 780.0, 540.0, 360.0, 50.0 ],
+        "quit" : [ 780.0, 680.0, 360.0, 50.0 ],
+        "resume" : [ 780.0, 400.0, 360.0, 50.0 ],
+        "settings" : [ 780.0, 610.0, 360.0, 50.0 ],
+        "statistics" : [ 780.0, 470.0, 360.0, 50.0 ]
+      },
+      "actions" : {
+        "glossary" : "stonebreak:screen.pause.glossary",
+        "quit" : "stonebreak:screen.pause.quit",
+        "resume" : "stonebreak:screen.pause.resume",
+        "settings" : "stonebreak:screen.pause.settings",
+        "statistics" : "stonebreak:screen.pause.statistics"
+      }
+    },
+    "pause-field-offline-hover-resume_1920x1080_s1" : {
+      "rects" : {
+        "glossary" : [ 780.0, 540.0, 360.0, 50.0 ],
+        "panel" : [ 700.0, 260.0, 520.0, 560.0 ],
+        "quit" : [ 780.0, 680.0, 360.0, 50.0 ],
+        "resume" : [ 780.0, 400.0, 360.0, 50.0 ],
+        "settings" : [ 780.0, 610.0, 360.0, 50.0 ],
+        "statistics" : [ 780.0, 470.0, 360.0, 50.0 ]
+      },
+      "hits" : {
+        "glossary" : [ 780.0, 540.0, 360.0, 50.0 ],
+        "quit" : [ 780.0, 680.0, 360.0, 50.0 ],
+        "resume" : [ 780.0, 400.0, 360.0, 50.0 ],
+        "settings" : [ 780.0, 610.0, 360.0, 50.0 ],
+        "statistics" : [ 780.0, 470.0, 360.0, 50.0 ]
+      },
+      "actions" : {
+        "glossary" : "stonebreak:screen.pause.glossary",
+        "quit" : "stonebreak:screen.pause.quit",
+        "resume" : "stonebreak:screen.pause.resume",
+        "settings" : "stonebreak:screen.pause.settings",
+        "statistics" : "stonebreak:screen.pause.statistics"
+      }
+    },
+    "pause-field-online-hover-resync_1921x1081_s1_25" : {
+      "rects" : {
+        "glossary" : [ 735.5, 496.75, 450.0, 62.5 ],
+        "panel" : [ 635.5, 190.5, 650.0, 700.0 ],
+        "quit" : [ 735.5, 759.25, 450.0, 62.5 ],
+        "resume" : [ 735.5, 321.75, 450.0, 62.5 ],
+        "resync" : [ 735.5, 671.75, 450.0, 62.5 ],
+        "settings" : [ 735.5, 584.25, 450.0, 62.5 ],
+        "statistics" : [ 735.5, 409.25, 450.0, 62.5 ]
+      },
+      "hits" : {
+        "glossary" : [ 735.5, 496.75, 450.0, 62.5 ],
+        "quit" : [ 735.5, 759.25, 450.0, 62.5 ],
+        "resume" : [ 735.5, 321.75, 450.0, 62.5 ],
+        "resync" : [ 735.5, 671.75, 450.0, 62.5 ],
+        "settings" : [ 735.5, 584.25, 450.0, 62.5 ],
+        "statistics" : [ 735.5, 409.25, 450.0, 62.5 ]
+      },
+      "actions" : {
+        "glossary" : "stonebreak:screen.pause.glossary",
+        "quit" : "stonebreak:screen.pause.quit",
+        "resume" : "stonebreak:screen.pause.resume",
+        "resync" : "stonebreak:network.resync",
+        "settings" : "stonebreak:screen.pause.settings",
+        "statistics" : "stonebreak:screen.pause.statistics"
+      }
+    }
+  }
+}

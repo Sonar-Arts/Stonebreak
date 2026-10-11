@@ -1,13 +1,13 @@
 package com.stonebreak.ui.characterScreen;
 
-import com.stonebreak.input.InputHandler;
+import com.openmason.engine.ui.masonry.MFonts;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 
 /**
- * Facade for the Character Screen.
- * Mirrors InventoryScreen's delegation model: facade → controller → render coordinator.
+ * Facade for the Character Screen: the {@link CharacterController} holds the sheet's state and rules,
+ * the shipped document {@value #DOCUMENT_ID} (#301) draws it and takes the pointer and the wheel.
  */
 public class CharacterScreen {
 
@@ -15,27 +15,19 @@ public class CharacterScreen {
   public static final String DOCUMENT_ID = "character_sheet";
 
   private final CharacterController controller;
-  private final CharacterRenderCoordinator coordinator;
   private final com.stonebreak.ui.runtime.screens.PresentationSlot presentation =
       new com.stonebreak.ui.runtime.screens.PresentationSlot();
 
-  public CharacterScreen(Player player, Renderer renderer, InputHandler inputHandler) {
-    this(player.getCharacterStats(), renderer, inputHandler);
+  public CharacterScreen(Player player, Renderer renderer) {
+    this(player.getCharacterStats(), renderer);
   }
 
-  /** A sheet over {@code stats} (tests: no player). */
-  public CharacterScreen(CharacterStats stats, Renderer renderer, InputHandler inputHandler) {
-    this.controller = new CharacterController();
-    this.coordinator = new CharacterRenderCoordinator(renderer, inputHandler, stats, controller);
-    this.controller.setRenderCoordinator(coordinator);
+  /** A sheet over {@code stats} (tests: no player); its text is measured with the renderer's UI fonts. */
+  public CharacterScreen(CharacterStats stats, Renderer renderer) {
+    this.controller = new CharacterController(stats, new MFonts(renderer.getSkijaBackend()));
   }
 
-  /** The legacy renderer and the tab renderers' view state (the document's seams, #301). */
-  public CharacterRenderCoordinator coordinator() {
-    return coordinator;
-  }
-
-  /** Installs (or, with null, removes) the document presentation; the legacy renderer is the default. */
+  /** Installs (or, with null, removes) the document presentation. */
   public void setPresentation(com.stonebreak.ui.runtime.screens.ScreenPresentation p) {
     presentation.install(p);
   }
@@ -47,7 +39,7 @@ public class CharacterScreen {
         state == com.stonebreak.core.GameState.CHARACTER_SHEET_UI && controller.isVisible()));
   }
 
-  /** True while the document, not the legacy renderer, shows the sheet. */
+  /** True while the document shows the sheet. */
   public boolean presentationShowing() {
     return presentation.showing();
   }
@@ -66,22 +58,11 @@ public class CharacterScreen {
     return controller.isVisible();
   }
 
+  /** Publishes the sheet as of this frame, then paints its document. */
   public void render(int screenWidth, int screenHeight) {
-    if (presentation.showing()) {
-      com.stonebreak.ui.runtime.GameUiHost host = com.stonebreak.ui.runtime.GameUiHost.get();
-      if (host != null) host.characterSheet().poll(); // the sheet as of this frame
-      if (presentation.paint(screenWidth, screenHeight)) return;
-    }
-    controller.render(screenWidth, screenHeight);
-  }
-
-  public void handleMouseInput(int screenWidth, int screenHeight) {
-    if (presentation.showing()) return; // the document takes the pointer (#301)
-    controller.handleMouseInput(screenWidth, screenHeight);
-  }
-
-  public void handleScroll(float deltaY) {
-    if (presentation.showing()) return; // and the wheel
-    controller.handleScroll(deltaY);
+    if (!presentation.showing()) return;
+    com.stonebreak.ui.runtime.GameUiHost host = com.stonebreak.ui.runtime.GameUiHost.get();
+    if (host != null) host.characterSheet().poll();
+    presentation.paint(screenWidth, screenHeight);
   }
 }

@@ -12,8 +12,8 @@ import io.github.humbleui.types.Rect;
 /**
  * The main menu's scene behind the title and buttons, as {@link MainMenuStage} says it is: the dirt
  * backdrop with its tint, the space scene, the shockwave revealing one under the other, and the
- * shockwave rings. Drawn by the legacy renderer and by the {@code stonebreak:menu-stage} document
- * provider (#299) alike, so the two cannot drift. Owns the space scene's cached bake.
+ * shockwave rings. Drawn by the {@code stonebreak:menu-stage} document provider (#299). Owns the
+ * space scene's cached bake.
  */
 public final class MainMenuBackdrop implements AutoCloseable {
 

@@ -10,7 +10,6 @@ import com.openmason.engine.ui.data.UiHost;
 import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.ui.chat.ChatMessage;
 import com.stonebreak.ui.chat.ChatSystem;
-import com.stonebreak.ui.chat.SkijaChatRenderer;
 import com.stonebreak.ui.chat.chatSystem.commands.ChatCommand;
 import com.stonebreak.ui.chat.emoji.ChatEmoji;
 import com.stonebreak.ui.chat.emoji.ChatEmojiSystem;
@@ -190,7 +189,7 @@ public final class ChatContracts {
         return new UiValue.Obj(m);
     }
 
-    /** The visible lines, faded and coloured exactly as {@code SkijaChatRenderer.drawMessages}, bottom to top. */
+    /** The visible lines, faded and coloured exactly as the legacy renderer drew them, bottom to top. */
     static List<UiValue> lines(ChatSystem c) {
         if (c == null) {
             return List.of();
@@ -208,14 +207,14 @@ public final class ChatContracts {
             boolean divider = open && previousId != -1L && previousId != msg.getMessageId();
             Map<String, UiValue> m = new LinkedHashMap<>();
             m.put("line", UiValue.of(Integer.toHexString(System.identityHashCode(msg))));
-            m.put("color", CrosshairContracts.hex(SkijaChatRenderer.argb(msg.getColor(), alpha)));
+            m.put("color", CrosshairContracts.hex(argb(msg.getColor(), alpha)));
             m.put("shadow", CrosshairContracts.hex(open ? TRANSPARENT
-                : SkijaChatRenderer.withAlpha(MStyle.TEXT_SHADOW, alpha * 0.6f)));
+                : withAlpha(MStyle.TEXT_SHADOW, alpha * 0.6f)));
             m.put("fill", CrosshairContracts.hex(open
-                ? SkijaChatRenderer.withAlpha(MStyle.PANEL_FILL_DEEP, alpha * 0.35f) : TRANSPARENT));
+                ? withAlpha(MStyle.PANEL_FILL_DEEP, alpha * 0.35f) : TRANSPARENT));
             m.put("divider", UiValue.of(divider));
             m.put("dividerColor", CrosshairContracts.hex(divider
-                ? SkijaChatRenderer.withAlpha(MStyle.PANEL_HIGHLIGHT, alpha * 0.45f) : TRANSPARENT));
+                ? withAlpha(MStyle.PANEL_HIGHLIGHT, alpha * 0.45f) : TRANSPARENT));
             m.put("runs", runs(msg.getText()));
             bottomUp.add(new UiValue.Obj(m));
             previousId = msg.getMessageId();
@@ -333,4 +332,22 @@ public final class ChatContracts {
         return a.get(k) instanceof UiValue.Num n ? n.value() : 0;
     }
 
+    /** A message colour at {@code alphaScale} (ARGB), each channel rounded and clamped. */
+    static int argb(float[] rgba, float alphaScale) {
+        int a = clamp255(Math.round(rgba[3] * alphaScale * 255f));
+        int r = clamp255(Math.round(rgba[0] * 255f));
+        int g = clamp255(Math.round(rgba[1] * 255f));
+        int b = clamp255(Math.round(rgba[2] * 255f));
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    /** {@code argb} with its alpha scaled by {@code alphaScale}, rounded and clamped. */
+    static int withAlpha(int argb, float alphaScale) {
+        int a = clamp255(Math.round(((argb >>> 24) & 0xFF) * alphaScale));
+        return (a << 24) | (argb & 0xFFFFFF);
+    }
+
+    private static int clamp255(int v) {
+        return v < 0 ? 0 : (v > 255 ? 255 : v);
+    }
 }

@@ -23,6 +23,22 @@ public final class IntroConfig {
 
     public static int siMin1(float value) { return Math.max(1, Math.round(value * scale)); }
 
+    /** The logo image's pixel size ({@code /ui/shared/stonebreak/ui/images/sonar_arts_retro.png}). */
+    public static final int LOGO_WIDTH = 1200;
+    public static final int LOGO_HEIGHT = 324;
+    private static final float LOGO_Y_PERCENT = 0.18f;
+
+    /**
+     * Where the logo goes on a {@code screenWidth × screenHeight} window at the intro's scale:
+     * {@code {x, y, width, height, shadowOffset}} in device px (the intro document places its logo and
+     * drop shadow from these numbers, #301).
+     */
+    public static float[] logoPlacement(int screenWidth, int screenHeight) {
+        float scaledW = LOGO_WIDTH * scale;
+        float scaledH = LOGO_HEIGHT * scale;
+        return new float[]{(screenWidth - scaledW) / 2f, screenHeight * LOGO_Y_PERCENT, scaledW, scaledH, s(4)};
+    }
+
     public static final float SUBMARINE_DURATION = 1.8f;
     public static final float HOLD_DURATION = 1.2f;
     public static final float FADE_OUT_DURATION = 1.0f;

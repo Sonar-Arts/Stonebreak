@@ -7,8 +7,6 @@ import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.UiRect;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.network.MultiplayerSession;
-import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.ui.fidelity.DocumentStage;
 import com.stonebreak.ui.fidelity.RecordingServices;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
@@ -25,9 +23,9 @@ import static org.mockito.Mockito.mock;
 
 /**
  * The candidate side of the recipe book's gate (#301): {@code ui/documents/recipe_book.sbui} opened as the
- * game opens it, bound to a real {@link RecipeScreen} in the fixture's state (its actions run the legacy
- * rules), with the game's item-icon and elm providers (no block atlas: block icons stay blank, as on the
- * legacy raster). Not a test class.
+ * game opens it, bound to a real {@link RecipeScreen} in the fixture's state (its actions run the book's
+ * rules), with the game's item-icon and elm providers (no block atlas: block icons stay blank, as in the
+ * frozen legacy captures). Not a test class.
  */
 public final class DocumentRecipeBookCapture implements MigrationGate.Renderer {
 
@@ -41,9 +39,9 @@ public final class DocumentRecipeBookCapture implements MigrationGate.Renderer {
         return new DocumentRecipeBookCapture(GameUiDocuments.readScreen(RecipeScreen.DOCUMENT_ID));
     }
 
-    /** A recipe book screen whose GL collaborators are mocks, open in {@code variant}'s state. */
+    /** A recipe book screen open in {@code variant}'s state. */
     public static RecipeScreen screen(String variant) {
-        RecipeScreen screen = new RecipeScreen(mock(UIRenderer.class), mock(InputHandler.class), mock(Renderer.class));
+        RecipeScreen screen = new RecipeScreen(mock(InputHandler.class));
         RecipeBookFixtures.prepare(screen.state(), variant);
         return screen;
     }

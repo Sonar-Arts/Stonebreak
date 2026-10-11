@@ -1,16 +1,12 @@
 package com.stonebreak.ui.worldHud;
 
-import com.stonebreak.rendering.UI.components.StealthHudRenderer;
-import com.stonebreak.rendering.UI.components.WorldMarker;
-import com.stonebreak.rendering.UI.components.WorldMarker.Kind;
+import com.stonebreak.ui.worldHud.WorldMarker.Kind;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
- * World HUD fixture frames (#301): projected markers as the legacy renderers collect them, at
+ * World HUD fixture frames (#301): projected markers as the collectors gather them, at
  * fractional window positions relative to the viewport, plus stealth states. Not a test class.
  */
 public final class WorldHudFixtures {
@@ -19,7 +15,7 @@ public final class WorldHudFixtures {
     }
 
     /** One frame of the world HUD. */
-    public record Frame(List<WorldMarker> markers, StealthHudRenderer.State stealth) {
+    public record Frame(List<WorldMarker> markers, StealthHud.State stealth) {
     }
 
     public static final List<String> VARIANTS = List.of("texts", "prey", "prey-empty", "stealth", "entering",
@@ -33,19 +29,19 @@ public final class WorldHudFixtures {
     /** {@code variant} on a {@code w × h} window (anchors as fractions of it, so every viewport shows them). */
     public static Frame frame(String variant, int w, int h) {
         List<WorldMarker> m = new ArrayList<>();
-        StealthHudRenderer.State stealth = StealthHudRenderer.State.NONE;
+        StealthHud.State stealth = StealthHud.State.NONE;
         switch (variant) {
             case "texts" -> texts(m, w, h);
             case "prey" -> prey(m, w, h, 0.63f);
             case "prey-empty" -> prey(m, w, h, 0f);
-            case "stealth" -> stealth = new StealthHudRenderer.State("STEALTH", StealthHudRenderer.ACTIVE_COLOR, false, 0f);
-            case "entering" -> stealth = new StealthHudRenderer.State("ENTERING STEALTH…",
-                StealthHudRenderer.ENTERING_COLOR, true, 0.42f);
-            case "cooling" -> stealth = new StealthHudRenderer.State("", 0, true, 0.9f);
+            case "stealth" -> stealth = new StealthHud.State("STEALTH", StealthHud.ACTIVE_COLOR, false, 0f);
+            case "entering" -> stealth = new StealthHud.State("ENTERING STEALTH…",
+                StealthHud.ENTERING_COLOR, true, 0.42f);
+            case "cooling" -> stealth = new StealthHud.State("", 0, true, 0.9f);
             case "mixed" -> {
                 texts(m, w, h);
                 prey(m, w, h, 0.37f);
-                stealth = new StealthHudRenderer.State("STEALTH", StealthHudRenderer.ACTIVE_COLOR, true, 0.15f);
+                stealth = new StealthHud.State("STEALTH", StealthHud.ACTIVE_COLOR, true, 0.15f);
             }
             default -> throw new IllegalArgumentException("world HUD variant " + variant);
         }
@@ -72,25 +68,5 @@ public final class WorldHudFixtures {
         m.add(new WorldMarker("trap:1", Kind.TRAP, w * 0.45f + 0.5f, h * 0.7f + 0.25f, "", 0f, 0xC8E08A28, 0, 0f,
             5f * (0.5f + 0.5f * 0.47f)));
         m.add(new WorldMarker("trap:2", Kind.TRAP, w * 0.58f, h * 0.72f, "", 0f, 0xDC58B858, 0, 0f, 5f));
-    }
-
-    /**
-     * The gate's geometry oracle: every marker's anchor by row index, the stealth label's centre and
-     * baseline (window centre, 64 px down) and the re-entry bar (160 x 8, 72 px down), as the legacy
-     * renderers place them.
-     */
-    public static Map<String, float[]> anchors(Frame f, int w) {
-        Map<String, float[]> out = new LinkedHashMap<>();
-        for (int i = 0; i < f.markers().size(); i++) {
-            out.put("m" + i, new float[]{f.markers().get(i).x(), f.markers().get(i).y(), 0f, 0f});
-        }
-        float cx = w * 0.5f;
-        if (!f.stealth().label().isEmpty()) {
-            out.put("stealth-label", new float[]{cx, 64f, 0f, 0f});
-        }
-        if (f.stealth().cooling()) {
-            out.put("reentry-bar", new float[]{cx - 80f, 72f, 160f, 8f});
-        }
-        return out;
     }
 }

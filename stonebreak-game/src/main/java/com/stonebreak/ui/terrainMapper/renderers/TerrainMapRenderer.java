@@ -2,7 +2,6 @@ package com.stonebreak.ui.terrainMapper.renderers;
 
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
-import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.terrainMapper.TerrainMapperLayout;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
 import com.stonebreak.ui.terrainMapper.managers.TerrainPreviewCache;
@@ -27,15 +26,9 @@ public final class TerrainMapRenderer {
         this.state = state;
     }
 
-    public void render(MasonryUI ui, TerrainMapperLayout layout) {
-        Canvas canvas = ui.canvas();
-        if (canvas == null) return;
-        paint(canvas, layout.map());
-    }
-
     /**
      * The map in {@code mapRect}: background, the cached noise image (clipped), spawn waypoint, hover
-     * crosshair and frame. Shared with the terrain mapper document's {@code stonebreak:terrain-map}
+     * crosshair and frame. Painted by the terrain mapper document's {@code stonebreak:terrain-map}
      * provider (#301).
      */
     public void paint(Canvas canvas, TerrainMapperLayout.Rect mapRect) {

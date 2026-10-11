@@ -6,8 +6,8 @@ import com.stonebreak.world.save.model.WorldData;
 import java.time.LocalDateTime;
 
 /**
- * How the world select screen words its rows and its info card, in one place: the legacy renderer
- * and the UI host's {@code stonebreak:screen.world-select} root (#299) both use it.
+ * How the world select screen words its rows and its info card, in one place: the UI host's
+ * {@code stonebreak:screen.world-select} root (#299) publishes it.
  *
  * <p>ASCII only: the bundled Minecraft typeface has no em dash, ellipsis or middle dot glyphs.
  */

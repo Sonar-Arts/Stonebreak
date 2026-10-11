@@ -16,9 +16,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * The player both sides of the inventory screen's fidelity gate (#300) open: an inventory, a 2x2
- * crafting grid and a character per variant, plus the legacy geometry oracle. Block items only (their
- * icons are both renderers' GL phase, ledger hard visual 2).
+ * The player the inventory screen's fidelity gate (#300) opens (the frozen legacy captures show the
+ * same players): an inventory, a 2x2 crafting grid and a character per variant, plus the legacy
+ * geometry oracle. Block items only (their icons are GL, ledger hard visual 2).
  *
  * <p>Contents: {@code empty} (a fresh level 1 character, no vitals); {@code stocked} (stacks with
  * counts, the hotbar's selected slot 2, one wood in the grid making planks so Craft All shows, a
@@ -78,8 +78,8 @@ public final class InventoryFixtures {
     }
 
     /**
-     * The legacy renderer's geometry at the current UI scale: {@code panel} (all three columns),
-     * {@code tab0..4}, {@code craft0..3}, {@code output}, {@code main0..26}, {@code hot0..8}, the buttons
+     * The legacy renderer's geometry (the frozen captures' oracle) at the current UI scale: {@code panel} (all
+     * three columns), {@code tab0..4}, {@code craft0..3}, {@code output}, {@code main0..26}, {@code hot0..8}, the buttons
      * {@code recipes}, {@code sort} and (while the grid makes something) {@code craftall}, and the left
      * column's {@code equip0..9} and {@code status0..5}.
      */
@@ -110,23 +110,12 @@ public final class InventoryFixtures {
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             out.put("hot" + i, new float[]{gx + i * pitch, l.hotbarRowY, ss, ss});
         }
-        InventoryInputManager buttons = new InventoryInputManager(null, null, null, null);
-        buttons.updateRecipeButtonBoundsForRendering(l);
-        out.put("recipes", new float[]{buttons.getRecipeButtonX(), buttons.getRecipeButtonY(),
-            buttons.getRecipeButtonWidth(), buttons.getRecipeButtonHeight()});
-        buttons.updateSortButtonBoundsForRendering(l);
-        out.put("sort", new float[]{buttons.getSortButtonX(), buttons.getSortButtonY(),
-            buttons.getSortButtonWidth(), buttons.getSortButtonHeight()});
-        if (craftAll) {
-            buttons.updateCraftAllButtonBoundsForRendering(l);
-            out.put("craftall", new float[]{buttons.getCraftAllButtonX(), buttons.getCraftAllButtonY(),
-                buttons.getCraftAllButtonWidth(), buttons.getCraftAllButtonHeight()});
-        }
+        WorkbenchFixtures.buttons(out, l, craftAll);
         leftColumn(out, l3, s);
         return out;
     }
 
-    /** The left column's slots, transcribing InventoryRenderCoordinator.drawLeftColumn's float cursor. */
+    /** The left column's slots, transcribing the legacy renderer's left-column float cursor. */
     private static void leftColumn(Map<String, float[]> out, InventoryLayoutCalculator.InventoryLayout3Col l3, float s) {
         float padX = 12f * s;
         float innerW = l3.leftColW - padX * 2;

@@ -1,0 +1,945 @@
+{
+  "screen" : "settings",
+  "units" : "framebuffer pixels; rect = [x, y, width, height], origin top-left",
+  "cases" : {
+    "settings-general_1920x1080_s1" : {
+      "rects" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
+        "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
+      },
+      "hits" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1"
+      }
+    },
+    "settings-general_1280x720_s0_75" : {
+      "rects" : {
+        "apply" : [ 565.0, 491.25, 300.0, 30.0 ],
+        "back" : [ 565.0, 532.5, 300.0, 30.0 ],
+        "category0" : [ 400.0, 255.0, 112.5, 26.25 ],
+        "category1" : [ 400.0, 285.0, 112.5, 26.25 ],
+        "category2" : [ 400.0, 315.0, 112.5, 26.25 ],
+        "category3" : [ 400.0, 345.0, 112.5, 26.25 ],
+        "category4" : [ 400.0, 375.0, 112.5, 26.25 ],
+        "category5" : [ 400.0, 405.0, 112.5, 26.25 ],
+        "row0" : [ 565.0, 258.75, 300.0, 30.0 ],
+        "row1" : [ 602.5, 311.25, 225.0, 45.0 ],
+        "viewport" : [ 546.25, 228.75, 337.5, 247.5 ]
+      },
+      "hits" : {
+        "apply" : [ 565.0, 491.25, 300.0, 30.0 ],
+        "back" : [ 565.0, 532.5, 300.0, 30.0 ],
+        "category0" : [ 400.0, 255.0, 112.5, 26.25 ],
+        "category1" : [ 400.0, 285.0, 112.5, 26.25 ],
+        "category2" : [ 400.0, 315.0, 112.5, 26.25 ],
+        "category3" : [ 400.0, 345.0, 112.5, 26.25 ],
+        "category4" : [ 400.0, 375.0, 112.5, 26.25 ],
+        "category5" : [ 400.0, 405.0, 112.5, 26.25 ],
+        "row0" : [ 565.0, 258.75, 300.0, 30.0 ],
+        "row1" : [ 602.5, 311.25, 225.0, 45.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1"
+      }
+    },
+    "settings-general_3840x2160_s2" : {
+      "rects" : {
+        "apply" : [ 1720.0, 1430.0, 800.0, 80.0 ],
+        "back" : [ 1720.0, 1540.0, 800.0, 80.0 ],
+        "category0" : [ 1280.0, 800.0, 300.0, 70.0 ],
+        "category1" : [ 1280.0, 880.0, 300.0, 70.0 ],
+        "category2" : [ 1280.0, 960.0, 300.0, 70.0 ],
+        "category3" : [ 1280.0, 1040.0, 300.0, 70.0 ],
+        "category4" : [ 1280.0, 1120.0, 300.0, 70.0 ],
+        "category5" : [ 1280.0, 1200.0, 300.0, 70.0 ],
+        "row0" : [ 1720.0, 810.0, 800.0, 80.0 ],
+        "row1" : [ 1820.0, 950.0, 600.0, 120.0 ],
+        "viewport" : [ 1670.0, 730.0, 900.0, 660.0 ]
+      },
+      "hits" : {
+        "apply" : [ 1720.0, 1430.0, 800.0, 80.0 ],
+        "back" : [ 1720.0, 1540.0, 800.0, 80.0 ],
+        "category0" : [ 1280.0, 800.0, 300.0, 70.0 ],
+        "category1" : [ 1280.0, 880.0, 300.0, 70.0 ],
+        "category2" : [ 1280.0, 960.0, 300.0, 70.0 ],
+        "category3" : [ 1280.0, 1040.0, 300.0, 70.0 ],
+        "category4" : [ 1280.0, 1120.0, 300.0, 70.0 ],
+        "category5" : [ 1280.0, 1200.0, 300.0, 70.0 ],
+        "row0" : [ 1720.0, 810.0, 800.0, 80.0 ],
+        "row1" : [ 1820.0, 950.0, 600.0, 120.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1"
+      }
+    },
+    "settings-general_1921x1081_s1_25" : {
+      "rects" : {
+        "apply" : [ 835.5, 759.25, 500.0, 50.0 ],
+        "back" : [ 835.5, 828.0, 500.0, 50.0 ],
+        "category0" : [ 560.5, 365.5, 187.5, 43.75 ],
+        "category1" : [ 560.5, 415.5, 187.5, 43.75 ],
+        "category2" : [ 560.5, 465.5, 187.5, 43.75 ],
+        "category3" : [ 560.5, 515.5, 187.5, 43.75 ],
+        "category4" : [ 560.5, 565.5, 187.5, 43.75 ],
+        "category5" : [ 560.5, 615.5, 187.5, 43.75 ],
+        "row0" : [ 835.5, 371.75, 500.0, 50.0 ],
+        "row1" : [ 898.0, 459.25, 375.0, 75.0 ],
+        "viewport" : [ 804.25, 321.75, 562.5, 412.5 ]
+      },
+      "hits" : {
+        "apply" : [ 835.5, 759.25, 500.0, 50.0 ],
+        "back" : [ 835.5, 828.0, 500.0, 50.0 ],
+        "category0" : [ 560.5, 365.5, 187.5, 43.75 ],
+        "category1" : [ 560.5, 415.5, 187.5, 43.75 ],
+        "category2" : [ 560.5, 465.5, 187.5, 43.75 ],
+        "category3" : [ 560.5, 515.5, 187.5, 43.75 ],
+        "category4" : [ 560.5, 565.5, 187.5, 43.75 ],
+        "category5" : [ 560.5, 615.5, 187.5, 43.75 ],
+        "row0" : [ 835.5, 371.75, 500.0, 50.0 ],
+        "row1" : [ 898.0, 459.25, 375.0, 75.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1"
+      }
+    },
+    "settings-quality_1920x1080_s1" : {
+      "rects" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 860.0, 485.0, 400.0, 40.0 ],
+        "row2" : [ 860.0, 565.0, 400.0, 40.0 ],
+        "row3" : [ 860.0, 645.0, 400.0, 40.0 ],
+        "row4" : [ 860.0, 725.0, 400.0, 40.0 ],
+        "row5" : [ 860.0, 805.0, 400.0, 40.0 ],
+        "row6" : [ 910.0, 875.0, 300.0, 60.0 ],
+        "row7" : [ 860.0, 965.0, 400.0, 40.0 ],
+        "scrollbar" : [ 1264.0, 370.0, 25.0, 320.0 ],
+        "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
+      },
+      "hits" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 860.0, 485.0, 400.0, 40.0 ],
+        "row2" : [ 860.0, 565.0, 400.0, 40.0 ],
+        "row3" : [ 860.0, 645.0, 400.0, 40.0 ],
+        "row4" : [ 1060.0, 745.0, 0.0, 0.0 ],
+        "row5" : [ 1060.0, 825.0, 0.0, 0.0 ],
+        "row6" : [ 1060.0, 905.0, 0.0, 0.0 ],
+        "row7" : [ 1060.0, 985.0, 0.0, 0.0 ],
+        "scrollbar" : [ 1264.0, 370.0, 25.0, 320.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1",
+        "row2" : "stonebreak:screen.settings.press row2",
+        "row3" : "stonebreak:screen.settings.press row3",
+        "row4" : "stonebreak:screen.settings.press apply",
+        "row5" : "stonebreak:screen.settings.press none",
+        "row6" : "stonebreak:screen.settings.press none",
+        "row7" : "stonebreak:screen.settings.press none",
+        "scrollbar" : "stonebreak:screen.settings.scrollbar"
+      }
+    },
+    "settings-quality_1280x720_s0_75" : {
+      "rects" : {
+        "apply" : [ 565.0, 491.25, 300.0, 30.0 ],
+        "back" : [ 565.0, 532.5, 300.0, 30.0 ],
+        "category0" : [ 400.0, 255.0, 112.5, 26.25 ],
+        "category1" : [ 400.0, 285.0, 112.5, 26.25 ],
+        "category2" : [ 400.0, 315.0, 112.5, 26.25 ],
+        "category3" : [ 400.0, 345.0, 112.5, 26.25 ],
+        "category4" : [ 400.0, 375.0, 112.5, 26.25 ],
+        "category5" : [ 400.0, 405.0, 112.5, 26.25 ],
+        "row0" : [ 565.0, 258.75, 300.0, 30.0 ],
+        "row1" : [ 565.0, 318.75, 300.0, 30.0 ],
+        "row2" : [ 565.0, 378.75, 300.0, 30.0 ],
+        "row3" : [ 565.0, 438.75, 300.0, 30.0 ],
+        "row4" : [ 565.0, 498.75, 300.0, 30.0 ],
+        "row5" : [ 565.0, 558.75, 300.0, 30.0 ],
+        "row6" : [ 602.5, 611.25, 225.0, 45.0 ],
+        "row7" : [ 565.0, 678.75, 300.0, 30.0 ],
+        "scrollbar" : [ 862.75, 233.75, 25.0, 237.5 ],
+        "viewport" : [ 546.25, 228.75, 337.5, 247.5 ]
+      },
+      "hits" : {
+        "apply" : [ 565.0, 491.25, 300.0, 30.0 ],
+        "back" : [ 565.0, 532.5, 300.0, 30.0 ],
+        "category0" : [ 400.0, 255.0, 112.5, 26.25 ],
+        "category1" : [ 400.0, 285.0, 112.5, 26.25 ],
+        "category2" : [ 400.0, 315.0, 112.5, 26.25 ],
+        "category3" : [ 400.0, 345.0, 112.5, 26.25 ],
+        "category4" : [ 400.0, 375.0, 112.5, 26.25 ],
+        "category5" : [ 400.0, 405.0, 112.5, 26.25 ],
+        "row0" : [ 565.0, 258.75, 297.74994, 30.0 ],
+        "row1" : [ 565.0, 318.75, 297.74994, 30.0 ],
+        "row2" : [ 565.0, 378.75, 297.74994, 30.0 ],
+        "row3" : [ 565.0, 438.75, 297.74994, 30.0 ],
+        "row4" : [ 715.0, 513.75, 0.0, 0.0 ],
+        "row5" : [ 715.0, 573.75, 0.0, 0.0 ],
+        "row6" : [ 715.0, 633.75, 0.0, 0.0 ],
+        "row7" : [ 715.0, 693.75, 0.0, 0.0 ],
+        "scrollbar" : [ 862.75, 233.75, 25.0, 237.5 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1",
+        "row2" : "stonebreak:screen.settings.press row2",
+        "row3" : "stonebreak:screen.settings.press row3",
+        "row4" : "stonebreak:screen.settings.press apply",
+        "row5" : "stonebreak:screen.settings.press none",
+        "row6" : "stonebreak:screen.settings.press none",
+        "row7" : "stonebreak:screen.settings.press none",
+        "scrollbar" : "stonebreak:screen.settings.scrollbar"
+      }
+    },
+    "settings-quality_3840x2160_s2" : {
+      "rects" : {
+        "apply" : [ 1720.0, 1430.0, 800.0, 80.0 ],
+        "back" : [ 1720.0, 1540.0, 800.0, 80.0 ],
+        "category0" : [ 1280.0, 800.0, 300.0, 70.0 ],
+        "category1" : [ 1280.0, 880.0, 300.0, 70.0 ],
+        "category2" : [ 1280.0, 960.0, 300.0, 70.0 ],
+        "category3" : [ 1280.0, 1040.0, 300.0, 70.0 ],
+        "category4" : [ 1280.0, 1120.0, 300.0, 70.0 ],
+        "category5" : [ 1280.0, 1200.0, 300.0, 70.0 ],
+        "row0" : [ 1720.0, 810.0, 800.0, 80.0 ],
+        "row1" : [ 1720.0, 970.0, 800.0, 80.0 ],
+        "row2" : [ 1720.0, 1130.0, 800.0, 80.0 ],
+        "row3" : [ 1720.0, 1290.0, 800.0, 80.0 ],
+        "row4" : [ 1720.0, 1450.0, 800.0, 80.0 ],
+        "row5" : [ 1720.0, 1610.0, 800.0, 80.0 ],
+        "row6" : [ 1820.0, 1750.0, 600.0, 120.0 ],
+        "row7" : [ 1720.0, 1930.0, 800.0, 80.0 ],
+        "scrollbar" : [ 2549.0, 735.0, 25.0, 650.0 ],
+        "viewport" : [ 1670.0, 730.0, 900.0, 660.0 ]
+      },
+      "hits" : {
+        "apply" : [ 1720.0, 1430.0, 800.0, 80.0 ],
+        "back" : [ 1720.0, 1540.0, 800.0, 80.0 ],
+        "category0" : [ 1280.0, 800.0, 300.0, 70.0 ],
+        "category1" : [ 1280.0, 880.0, 300.0, 70.0 ],
+        "category2" : [ 1280.0, 960.0, 300.0, 70.0 ],
+        "category3" : [ 1280.0, 1040.0, 300.0, 70.0 ],
+        "category4" : [ 1280.0, 1120.0, 300.0, 70.0 ],
+        "category5" : [ 1280.0, 1200.0, 300.0, 70.0 ],
+        "row0" : [ 1720.0, 810.0, 800.0, 80.0 ],
+        "row1" : [ 1720.0, 970.0, 800.0, 80.0 ],
+        "row2" : [ 1720.0, 1130.0, 800.0, 80.0 ],
+        "row3" : [ 1720.0, 1290.0, 800.0, 80.0 ],
+        "row4" : [ 2120.0, 1490.0, 0.0, 0.0 ],
+        "row5" : [ 2120.0, 1650.0, 0.0, 0.0 ],
+        "row6" : [ 2120.0, 1810.0, 0.0, 0.0 ],
+        "row7" : [ 2120.0, 1970.0, 0.0, 0.0 ],
+        "scrollbar" : [ 2549.0, 735.0, 25.0, 650.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1",
+        "row2" : "stonebreak:screen.settings.press row2",
+        "row3" : "stonebreak:screen.settings.press row3",
+        "row4" : "stonebreak:screen.settings.press apply",
+        "row5" : "stonebreak:screen.settings.press none",
+        "row6" : "stonebreak:screen.settings.press none",
+        "row7" : "stonebreak:screen.settings.press none",
+        "scrollbar" : "stonebreak:screen.settings.scrollbar"
+      }
+    },
+    "settings-quality_1921x1081_s1_25" : {
+      "rects" : {
+        "apply" : [ 835.5, 759.25, 500.0, 50.0 ],
+        "back" : [ 835.5, 828.0, 500.0, 50.0 ],
+        "category0" : [ 560.5, 365.5, 187.5, 43.75 ],
+        "category1" : [ 560.5, 415.5, 187.5, 43.75 ],
+        "category2" : [ 560.5, 465.5, 187.5, 43.75 ],
+        "category3" : [ 560.5, 515.5, 187.5, 43.75 ],
+        "category4" : [ 560.5, 565.5, 187.5, 43.75 ],
+        "category5" : [ 560.5, 615.5, 187.5, 43.75 ],
+        "row0" : [ 835.5, 371.75, 500.0, 50.0 ],
+        "row1" : [ 835.5, 471.75, 500.0, 50.0 ],
+        "row2" : [ 835.5, 571.75, 500.0, 50.0 ],
+        "row3" : [ 835.5, 671.75, 500.0, 50.0 ],
+        "row4" : [ 835.5, 771.75, 500.0, 50.0 ],
+        "row5" : [ 835.5, 871.75, 500.0, 50.0 ],
+        "row6" : [ 898.0, 959.25, 375.0, 75.0 ],
+        "row7" : [ 835.5, 1071.75, 500.0, 50.0 ],
+        "scrollbar" : [ 1345.75, 326.75, 25.0, 402.5 ],
+        "viewport" : [ 804.25, 321.75, 562.5, 412.5 ]
+      },
+      "hits" : {
+        "apply" : [ 835.5, 759.25, 500.0, 50.0 ],
+        "back" : [ 835.5, 828.0, 500.0, 50.0 ],
+        "category0" : [ 560.5, 365.5, 187.5, 43.75 ],
+        "category1" : [ 560.5, 415.5, 187.5, 43.75 ],
+        "category2" : [ 560.5, 465.5, 187.5, 43.75 ],
+        "category3" : [ 560.5, 515.5, 187.5, 43.75 ],
+        "category4" : [ 560.5, 565.5, 187.5, 43.75 ],
+        "category5" : [ 560.5, 615.5, 187.5, 43.75 ],
+        "row0" : [ 835.5, 371.75, 500.0, 50.0 ],
+        "row1" : [ 835.5, 471.75, 500.0, 50.0 ],
+        "row2" : [ 835.5, 571.75, 500.0, 50.0 ],
+        "row3" : [ 835.5, 671.75, 500.0, 50.0 ],
+        "row4" : [ 1085.5, 796.75, 0.0, 0.0 ],
+        "row5" : [ 1085.5, 896.75, 0.0, 0.0 ],
+        "row6" : [ 1085.5, 996.75, 0.0, 0.0 ],
+        "row7" : [ 1085.5, 1096.75, 0.0, 0.0 ],
+        "scrollbar" : [ 1345.75, 326.75, 25.0, 402.5 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1",
+        "row2" : "stonebreak:screen.settings.press row2",
+        "row3" : "stonebreak:screen.settings.press row3",
+        "row4" : "stonebreak:screen.settings.press apply",
+        "row5" : "stonebreak:screen.settings.press none",
+        "row6" : "stonebreak:screen.settings.press none",
+        "row7" : "fired []",
+        "scrollbar" : "stonebreak:screen.settings.scrollbar"
+      }
+    },
+    "settings-quality-scrolled_1920x1080_s1" : {
+      "rects" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 35.0, 400.0, 40.0 ],
+        "row1" : [ 860.0, 115.0, 400.0, 40.0 ],
+        "row2" : [ 860.0, 195.0, 400.0, 40.0 ],
+        "row3" : [ 860.0, 275.0, 400.0, 40.0 ],
+        "row4" : [ 860.0, 355.0, 400.0, 40.0 ],
+        "row5" : [ 860.0, 435.0, 400.0, 40.0 ],
+        "row6" : [ 910.0, 505.0, 300.0, 60.0 ],
+        "row7" : [ 860.0, 595.0, 400.0, 40.0 ],
+        "scrollbar" : [ 1264.0, 370.0, 25.0, 320.0 ],
+        "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
+      },
+      "hits" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 1060.0, 55.0, 0.0, 0.0 ],
+        "row1" : [ 1060.0, 135.0, 0.0, 0.0 ],
+        "row2" : [ 1060.0, 215.0, 0.0, 0.0 ],
+        "row3" : [ 1060.0, 295.0, 0.0, 0.0 ],
+        "row4" : [ 860.0, 365.0, 400.0, 30.0 ],
+        "row5" : [ 860.0, 435.0, 400.0, 40.0 ],
+        "row6" : [ 910.0, 505.0, 300.0, 60.0 ],
+        "row7" : [ 860.0, 595.0, 400.0, 40.0 ],
+        "scrollbar" : [ 1264.0, 370.0, 25.0, 320.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press none",
+        "row1" : "stonebreak:screen.settings.press none",
+        "row2" : "stonebreak:screen.settings.press none",
+        "row3" : "stonebreak:screen.settings.press none",
+        "row4" : "stonebreak:screen.settings.press row4",
+        "row5" : "stonebreak:screen.settings.press row5",
+        "row6" : "stonebreak:screen.settings.press row6",
+        "row7" : "stonebreak:screen.settings.press row7",
+        "scrollbar" : "stonebreak:screen.settings.scrollbar"
+      }
+    },
+    "settings-performance_1920x1080_s1" : {
+      "rects" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 910.0, 395.0, 300.0, 60.0 ],
+        "row1" : [ 860.0, 485.0, 400.0, 40.0 ],
+        "row2" : [ 910.0, 555.0, 300.0, 60.0 ],
+        "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
+      },
+      "hits" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 910.0, 395.0, 300.0, 60.0 ],
+        "row1" : [ 860.0, 485.0, 400.0, 40.0 ],
+        "row2" : [ 910.0, 555.0, 300.0, 60.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1",
+        "row2" : "stonebreak:screen.settings.press row2"
+      }
+    },
+    "settings-advanced_1920x1080_s1" : {
+      "rects" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 860.0, 485.0, 400.0, 40.0 ],
+        "row2" : [ 910.0, 555.0, 300.0, 60.0 ],
+        "row3" : [ 860.0, 645.0, 400.0, 40.0 ],
+        "scrollbar" : [ 1264.0, 370.0, 25.0, 320.0 ],
+        "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
+      },
+      "hits" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 860.0, 485.0, 400.0, 40.0 ],
+        "row2" : [ 910.0, 555.0, 300.0, 60.0 ],
+        "row3" : [ 860.0, 645.0, 400.0, 40.0 ],
+        "scrollbar" : [ 1264.0, 370.0, 25.0, 320.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1",
+        "row2" : "stonebreak:screen.settings.press row2",
+        "row3" : "stonebreak:screen.settings.press row3",
+        "scrollbar" : "stonebreak:screen.settings.scrollbar"
+      }
+    },
+    "settings-extras_1920x1080_s1" : {
+      "rects" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
+        "row2" : [ 860.0, 565.0, 400.0, 40.0 ],
+        "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
+      },
+      "hits" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
+        "row2" : [ 860.0, 565.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1",
+        "row2" : "stonebreak:screen.settings.press row2"
+      }
+    },
+    "settings-audio_1920x1080_s1" : {
+      "rects" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 910.0, 395.0, 300.0, 60.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
+        "row2" : [ 860.0, 565.0, 400.0, 40.0 ],
+        "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
+      },
+      "hits" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 910.0, 395.0, 300.0, 60.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
+        "row2" : [ 860.0, 565.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1",
+        "row2" : "stonebreak:screen.settings.press row2"
+      }
+    },
+    "settings-general-open_1920x1080_s1" : {
+      "rects" : {
+        "item0" : [ 860.0, 445.0, 400.0, 30.0 ],
+        "item1" : [ 860.0, 475.0, 400.0, 30.0 ],
+        "item2" : [ 860.0, 505.0, 400.0, 30.0 ],
+        "item3" : [ 860.0, 535.0, 400.0, 30.0 ],
+        "item4" : [ 860.0, 565.0, 400.0, 30.0 ],
+        "item5" : [ 860.0, 595.0, 400.0, 30.0 ],
+        "item6" : [ 860.0, 625.0, 400.0, 30.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ]
+      },
+      "hits" : {
+        "item0" : [ 860.0, 445.0, 400.0, 29.99997 ],
+        "item1" : [ 860.0, 475.0, 400.0, 29.99997 ],
+        "item2" : [ 860.0, 505.0, 400.0, 29.999939 ],
+        "item3" : [ 860.0, 535.0, 400.0, 29.999939 ],
+        "item4" : [ 860.0, 565.0, 400.0, 29.999939 ],
+        "item5" : [ 860.0, 595.0, 400.0, 29.999939 ],
+        "item6" : [ 860.0, 625.0, 400.0, 29.999939 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "item0" : "stonebreak:screen.settings.press item0",
+        "item1" : "stonebreak:screen.settings.press item1",
+        "item2" : "stonebreak:screen.settings.press item2",
+        "item3" : "stonebreak:screen.settings.press item3",
+        "item4" : "stonebreak:screen.settings.press item4",
+        "item5" : "stonebreak:screen.settings.press item5",
+        "item6" : "stonebreak:screen.settings.press item6",
+        "row0" : "stonebreak:screen.settings.press row0"
+      }
+    },
+    "settings-general-open-hover-item2_1920x1080_s1" : {
+      "rects" : {
+        "item0" : [ 860.0, 445.0, 400.0, 30.0 ],
+        "item1" : [ 860.0, 475.0, 400.0, 30.0 ],
+        "item2" : [ 860.0, 505.0, 400.0, 30.0 ],
+        "item3" : [ 860.0, 535.0, 400.0, 30.0 ],
+        "item4" : [ 860.0, 565.0, 400.0, 30.0 ],
+        "item5" : [ 860.0, 595.0, 400.0, 30.0 ],
+        "item6" : [ 860.0, 625.0, 400.0, 30.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ]
+      },
+      "hits" : {
+        "item0" : [ 860.0, 445.0, 400.0, 29.99997 ],
+        "item1" : [ 860.0, 475.0, 400.0, 29.99997 ],
+        "item2" : [ 860.0, 505.0, 400.0, 29.999939 ],
+        "item3" : [ 860.0, 535.0, 400.0, 29.999939 ],
+        "item4" : [ 860.0, 565.0, 400.0, 29.999939 ],
+        "item5" : [ 860.0, 595.0, 400.0, 29.999939 ],
+        "item6" : [ 860.0, 625.0, 400.0, 29.999939 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "item0" : "stonebreak:screen.settings.press item0",
+        "item1" : "stonebreak:screen.settings.press item1",
+        "item2" : "stonebreak:screen.settings.press item2",
+        "item3" : "stonebreak:screen.settings.press item3",
+        "item4" : "stonebreak:screen.settings.press item4",
+        "item5" : "stonebreak:screen.settings.press item5",
+        "item6" : "stonebreak:screen.settings.press item6",
+        "row0" : "stonebreak:screen.settings.press row0"
+      }
+    },
+    "settings-advanced-open_1920x1080_s1" : {
+      "rects" : {
+        "item0" : [ 860.0, 445.0, 400.0, 30.0 ],
+        "item1" : [ 860.0, 475.0, 400.0, 30.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ]
+      },
+      "hits" : {
+        "item0" : [ 860.0, 445.0, 400.0, 29.99997 ],
+        "item1" : [ 860.0, 475.0, 400.0, 29.99997 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "item0" : "stonebreak:screen.settings.press item0",
+        "item1" : "stonebreak:screen.settings.press item1",
+        "row0" : "stonebreak:screen.settings.press row0"
+      }
+    },
+    "settings-general-confirm_1920x1080_s1" : {
+      "rects" : {
+        "dialog" : [ 730.0, 435.0, 460.0, 210.0 ],
+        "keep" : [ 742.0, 583.0, 210.0, 40.0 ],
+        "revert" : [ 968.0, 583.0, 210.0, 40.0 ]
+      },
+      "hits" : {
+        "keep" : [ 742.0, 583.0, 210.0, 40.0 ],
+        "revert" : [ 968.0, 583.0, 210.0, 40.0 ]
+      },
+      "actions" : {
+        "keep" : "stonebreak:screen.settings.press keep",
+        "revert" : "stonebreak:screen.settings.press revert"
+      }
+    },
+    "settings-general-confirm-hover-keep_1920x1080_s1" : {
+      "rects" : {
+        "dialog" : [ 730.0, 435.0, 460.0, 210.0 ],
+        "keep" : [ 742.0, 583.0, 210.0, 40.0 ],
+        "revert" : [ 968.0, 583.0, 210.0, 40.0 ]
+      },
+      "hits" : {
+        "keep" : [ 742.0, 583.0, 210.0, 40.0 ],
+        "revert" : [ 968.0, 583.0, 210.0, 40.0 ]
+      },
+      "actions" : {
+        "keep" : "stonebreak:screen.settings.press keep",
+        "revert" : "stonebreak:screen.settings.press revert"
+      }
+    },
+    "settings-general-hover-category2_1920x1080_s1" : {
+      "rects" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
+        "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
+      },
+      "hits" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1"
+      }
+    },
+    "settings-general-hover-row0_1920x1080_s1" : {
+      "rects" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
+        "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
+      },
+      "hits" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1"
+      }
+    },
+    "settings-general-hover-apply_1920x1080_s1" : {
+      "rects" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
+        "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
+      },
+      "hits" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1"
+      }
+    },
+    "settings-general-hover-back_1920x1080_s1" : {
+      "rects" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
+        "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
+      },
+      "hits" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1"
+      }
+    },
+    "settings-audio-hover-row2_1920x1080_s1" : {
+      "rects" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 910.0, 395.0, 300.0, 60.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
+        "row2" : [ 860.0, 565.0, 400.0, 40.0 ],
+        "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
+      },
+      "hits" : {
+        "apply" : [ 860.0, 715.0, 400.0, 40.0 ],
+        "back" : [ 860.0, 770.0, 400.0, 40.0 ],
+        "category0" : [ 640.0, 400.0, 150.0, 35.0 ],
+        "category1" : [ 640.0, 440.0, 150.0, 35.0 ],
+        "category2" : [ 640.0, 480.0, 150.0, 35.0 ],
+        "category3" : [ 640.0, 520.0, 150.0, 35.0 ],
+        "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
+        "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
+        "row0" : [ 910.0, 395.0, 300.0, 60.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
+        "row2" : [ 860.0, 565.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "apply" : "stonebreak:screen.settings.press apply",
+        "back" : "stonebreak:screen.settings.press back",
+        "category0" : "stonebreak:screen.settings.press category0",
+        "category1" : "stonebreak:screen.settings.press category1",
+        "category2" : "stonebreak:screen.settings.press category2",
+        "category3" : "stonebreak:screen.settings.press category3",
+        "category4" : "stonebreak:screen.settings.press category4",
+        "category5" : "stonebreak:screen.settings.press category5",
+        "row0" : "stonebreak:screen.settings.press row0",
+        "row1" : "stonebreak:screen.settings.press row1",
+        "row2" : "stonebreak:screen.settings.press row2"
+      }
+    }
+  }
+}

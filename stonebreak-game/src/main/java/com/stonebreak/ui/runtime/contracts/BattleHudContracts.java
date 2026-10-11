@@ -33,7 +33,7 @@ import java.util.concurrent.CompletableFuture;
  * set by its presentation before each paint.
  *
  * <p>Action {@code .pointer {down, x, y, button}}: the document's press or move in window pixels, run through the
- * screen's legacy mouse rules (a failure there ends the battle, as before).
+ * screen's pointer rules (a failure there ends the battle).
  */
 public final class BattleHudContracts {
 
@@ -101,8 +101,8 @@ public final class BattleHudContracts {
         }
     }
 
-    /** As SkijaFocusBattleRenderer.paintHud places its windows. */
-    static UiValue model(FocusBattleScreen screen, int w, int h, com.openmason.engine.ui.masonry.MasonryUI fonts) {
+    /** Where the document places each piece this frame (as the legacy renderer placed its windows). */
+    public static UiValue model(FocusBattleScreen screen, int w, int h, com.openmason.engine.ui.masonry.MasonryUI fonts) {
         Map<String, UiValue> m = new LinkedHashMap<>();
         BattleView view = screen == null ? null : screen.view();
         m.put("bound", UiValue.of(view != null));
@@ -124,7 +124,7 @@ public final class BattleHudContracts {
         m.put("overlays", piece("overlays", new float[]{0, 0, w, h}, w, h, null));
         m.put("topmost", piece("topmost", new float[]{0, 0, w, h}, w, h, null));
 
-        // E4: the help strip (HelpStrip.render): nothing for an empty line
+        // E4: the help strip (the legacy HelpStrip's fit and placement): nothing for an empty line
         float[] r = FocusBattleLayout.offset(help, 0f, out);
         BattleHelpText.Line line = view == null ? BattleHelpText.Line.EMPTY
             : a.helpLine != null ? a.helpLine : BattleHelpText.lineFor(view, screen.menuState());

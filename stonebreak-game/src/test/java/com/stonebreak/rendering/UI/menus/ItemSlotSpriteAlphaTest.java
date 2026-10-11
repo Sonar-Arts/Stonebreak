@@ -19,14 +19,13 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The #330 rule: an SBO item sprite in a slot is drawn with its alpha, from the one shared
- * {@link MTextureRegistry} image, by every path (legacy screens through {@link ItemIconRenderer},
- * the hotbar, the {@code stonebreak:item-icon} document provider). The legacy renderer once built
- * its own {@code OPAQUE} copy, which painted transparent pixels black.
+ * {@link MTextureRegistry} image, which the {@code stonebreak:item-icon} document provider draws.
+ * The old slot renderers once built their own {@code OPAQUE} copy, which painted transparent
+ * pixels black.
  */
 class ItemSlotSpriteAlphaTest {
 
@@ -42,10 +41,9 @@ class ItemSlotSpriteAlphaTest {
             ItemType type = ItemType.getByObjectId(e.objectId());
             if (type == null || !SpriteVoxelizer.isSboBackedItem(type)) continue;
 
-            Image img = ItemIconRenderer.sboItemImage(type, null);
-            assertNotNull(img, e.objectId() + " has no slot sprite");
             MTexture shared = MTextureRegistry.getForSboItem(type, null);
-            assertSame(shared.image(), img, e.objectId() + ": legacy screens must draw the hotbar's image");
+            Image img = shared == null ? null : shared.image();
+            assertNotNull(img, e.objectId() + " has no slot sprite");
             assertNotEquals(ColorAlphaType.OPAQUE, img.getImageInfo().getColorAlphaType(), e.objectId());
             sprites++;
 

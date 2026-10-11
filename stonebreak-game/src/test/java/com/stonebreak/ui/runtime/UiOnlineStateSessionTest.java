@@ -2,7 +2,6 @@ package com.stonebreak.ui.runtime;
 
 import com.openmason.engine.format.omui.UiValue;
 import com.stonebreak.network.MultiplayerSession;
-import com.stonebreak.ui.PauseMenu;
 import com.stonebreak.ui.UiOnlineState;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -10,8 +9,8 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * The online override (#296) reaches both sides of a pause fidelity run: the legacy menu's
- * Resync button and the {@code session.online} value documents bind to.
+ * The online override (#296) reaches both what the UI reads as online ({@link UiOnlineState#isOnline})
+ * and the {@code session.online} value documents bind to (the pause menu's Resync button).
  */
 class UiOnlineStateSessionTest {
 
@@ -21,17 +20,17 @@ class UiOnlineStateSessionTest {
     }
 
     @Test
-    void overrideFeedsTheLegacyMenuAndTheSessionDataRootAlike() {
+    void overrideFeedsTheUiStateAndTheSessionDataRootAlike() {
         assertEquals(UiValue.FALSE, online(MultiplayerSession.Mode.SINGLEPLAYER));
         assertEquals(UiValue.TRUE, online(MultiplayerSession.Mode.JOIN));
 
         UiOnlineState.override(() -> true);
         assertEquals(UiValue.TRUE, online(MultiplayerSession.Mode.SINGLEPLAYER));
-        assertEquals(true, PauseMenu.isResyncButtonVisible());
+        assertEquals(true, UiOnlineState.isOnline());
 
         UiOnlineState.override(() -> false);
         assertEquals(UiValue.FALSE, online(MultiplayerSession.Mode.HOST));
-        assertEquals(false, PauseMenu.isResyncButtonVisible());
+        assertEquals(false, UiOnlineState.isOnline());
     }
 
     private static UiValue online(MultiplayerSession.Mode mode) {

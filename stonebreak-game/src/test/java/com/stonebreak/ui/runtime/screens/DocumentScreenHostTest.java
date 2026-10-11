@@ -29,7 +29,7 @@ class DocumentScreenHostTest {
     private final List<String> opened = new ArrayList<>();
     private final List<UiScriptServices> services = new ArrayList<>();
     private final DocumentScreenHost host = new DocumentScreenHost(
-        new DocumentScreenPolicy(null, Set.of("pause", "settings", "furnace", "broken")::contains), this::open);
+        Set.of("pause", "settings", "furnace", "broken")::contains, this::open);
 
     @AfterEach
     void closeAll() {
@@ -58,13 +58,11 @@ class DocumentScreenHostTest {
     }
 
     @Test
-    void unshippedOrRefusedScreensStayLegacy() {
+    void unshippedOrRefusedScreensDoNotOpen() {
         assertTrue(host.open("inventory", DocumentScreen.Options.screen()).isEmpty(), "no export ships");
         assertTrue(host.open("broken", DocumentScreen.Options.screen()).isEmpty(), "a gate refused it");
         assertEquals(List.of(), opened);
         assertTrue(host.screens().isEmpty());
-        host.policy().setOverride("pause", true);
-        assertTrue(host.open("pause", DocumentScreen.Options.screen()).isEmpty(), "rolled back");
     }
 
     @Test
@@ -121,7 +119,7 @@ class DocumentScreenHostTest {
     void unknownTargetsAreRefusedAndLegacyOnesAccepted() {
         DocumentScreen pause = host.open("pause", DocumentScreen.Options.screen()).orElseThrow();
         assertFalse(services.getFirst().navigate("nowhere", new UiValue.Obj(Map.of())), "the script gets an error");
-        assertTrue(LegacyNavigation.has("glossary"));
+        assertTrue(StateNavigation.has("glossary"));
         assertTrue(host.requestNavigate(null, "glossary", null), "a screen that has not migrated yet");
         assertFalse(pause.isClosing());
     }
@@ -153,7 +151,7 @@ class DocumentScreenHostTest {
     void worldScopedScreensNeverOpenBeforeAWorldRuns() {
         boolean[] world = {false};
         DocumentScreenHost h = new DocumentScreenHost(
-            new DocumentScreenPolicy(null, Set.of("pause", "settings")::contains), this::open, () -> world[0]);
+            Set.of("pause", "settings")::contains, this::open, () -> world[0]);
         try {
             assertTrue(h.open("pause", DocumentScreen.Options.screen()).isEmpty(), "under the intro or a menu");
             assertEquals(List.of(), opened);

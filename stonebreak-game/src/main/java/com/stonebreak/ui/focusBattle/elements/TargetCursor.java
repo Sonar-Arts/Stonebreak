@@ -14,7 +14,7 @@ import com.stonebreak.ui.focusBattle.BattleHudRules;
 import com.stonebreak.ui.focusBattle.BattleMenuState;
 import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
-import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
+import com.stonebreak.ui.focusBattle.BattleHudLayers;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
 import org.joml.Matrix4fc;
@@ -29,7 +29,7 @@ import org.joml.Matrix4fc;
  * <p>{@link #place} is the single source of the cursor's geometry: the painter draws from it and
  * the screen hit-tests mouse clicks against the very same {@link Placement}.
  */
-public final class TargetCursor implements SkijaFocusBattleRenderer.Layer {
+public final class TargetCursor implements BattleHudLayers.Layer {
 
     /** Height of the body point the cursor aims at, as a fraction of the model's height. */
     public static final float ANCHOR_HEIGHT = 0.75f;

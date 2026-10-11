@@ -15,7 +15,7 @@ import java.util.function.Supplier;
 /**
  * {@value #ID}: the main menu's scene behind its title and buttons (#299; ledger hard visual 7): dirt
  * with its tint, the space scene, the shockwave reveal and rings, as the game's {@link MainMenuStage}
- * says, drawn by the same {@link MainMenuBackdrop} as the legacy menu. The element is the whole window
+ * says, drawn by {@link MainMenuBackdrop}. The element is the whole window
  * (inside the screen-shake box: the scene shakes with everything else). No params: the stage is game
  * state, not document state. Pure Skia; without a game (editor preview) it shows the idle dirt.
  */

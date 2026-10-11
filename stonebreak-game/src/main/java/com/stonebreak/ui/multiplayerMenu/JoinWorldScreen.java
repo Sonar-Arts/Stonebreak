@@ -1,63 +1,36 @@
 package com.stonebreak.ui.multiplayerMenu;
 
-import com.stonebreak.ui.LegacyUiClock;
 import com.stonebreak.config.Settings;
-import com.stonebreak.core.Game;
-import com.stonebreak.core.GameState;
 import com.stonebreak.network.MultiplayerSession;
-import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import io.github.humbleui.skija.Canvas;
-import io.github.humbleui.skija.Font;
-import io.github.humbleui.skija.Typeface;
-
-import static org.lwjgl.glfw.GLFW.*;
 
 /**
- * Join screen: enter host:port + username, then connect.
+ * Join screen: enter host:port + username, then connect. Shown as the shipped UI document
+ * {@code join_world}; this keeps the fields' last values, which the UI host publishes, and the rule
+ * its Connect action runs ({@link #connect(String, String, String)}).
  */
 public final class JoinWorldScreen {
-
-    private static final float FIELD_W = 320f;
-    private static final float FIELD_H = 32f;
-    private static final float ACTION_BUTTON_W = 200f;
-    private static final float ACTION_BUTTON_H = 36f;
-
-    private final SkijaUIBackend backend;
-    private final MultiplayerUIPainter painter;
-
-    private Font fontTitle, fontBody, fontInfo;
 
     private String hostText;
     private String portText;
     private String userText;
-    private int focusedField = 0; // 0 host, 1 port, 2 user, -1 none
-    private int hoverButton = -1; // 0 connect, 1 back
     private String statusMessage = "";
-    private long lastBlinkMs = LegacyUiClock.millis();
-    private boolean caretOn = true;
 
-    public JoinWorldScreen(SkijaUIBackend backend) {
-        this.backend = backend;
-        this.painter = new MultiplayerUIPainter(backend);
-    }
-
-    // ── state the UI host publishes and its actions change (#299: the document shares these rules) ──
+    // ── state the UI host publishes and its actions change (#299) ──
 
     public String hostText() { return hostText; }
     public String portText() { return portText; }
     public String userText() { return userText; }
     public String statusMessage() { return statusMessage; }
 
-    /** Sets the fields as typed and which one has focus (-1 none; fixtures). */
-    public void setFields(String host, String port, String user, int focused) {
+    /** Sets the fields as typed (fixtures). */
+    public void setFields(String host, String port, String user) {
         hostText = host;
         portText = port;
         userText = user;
-        focusedField = focused;
     }
 
     /**
-     * Connect with the fields as typed, cut to what the legacy fields accept (host 64, port 5 digits,
+     * Connect with the fields as typed, cut to what the fields accept (host 64, port 5 digits,
      * username 24).
      *
      * @return the status line the screen shows afterwards
@@ -87,120 +60,6 @@ public final class JoinWorldScreen {
         portText = String.valueOf(s.getMultiplayerPort());
         userText = s.getMultiplayerUsername();
         statusMessage = "";
-        focusedField = -1;
-    }
-
-    private void ensureFonts() {
-        if (fontTitle != null) return;
-        Typeface tf = backend.getMinecraftTypeface();
-        fontTitle = new Font(tf, 36f);
-        fontBody  = new Font(tf, 16f);
-        fontInfo  = new Font(tf, 14f);
-    }
-
-    public void render(int w, int h) {
-        if (!backend.isAvailable()) return;
-        ensureFonts();
-        long now = LegacyUiClock.millis();
-        if (now - lastBlinkMs > 500) { caretOn = !caretOn; lastBlinkMs = now; }
-
-        backend.beginFrame(w, h, 1.0f);
-        try {
-            Canvas c = backend.getCanvas();
-            painter.drawBackground(c, w, h);
-            float cx = w / 2f;
-            float cy = h / 2f;
-
-            painter.drawCentered(c, "Join World", cx, cy - 160f, fontTitle, MultiplayerUIPainter.COLOR_TEXT);
-
-            float fx = cx - FIELD_W / 2f;
-            float y = cy - 100f;
-            painter.drawLeft(c, "Host:", fx, y - 8f, fontBody, MultiplayerUIPainter.COLOR_TEXT);
-            painter.drawTextField(c, hostText, focusedField == 0, caretOn, fx, y, FIELD_W, FIELD_H, fontBody);
-
-            y += 60f;
-            painter.drawLeft(c, "Port:", fx, y - 8f, fontBody, MultiplayerUIPainter.COLOR_TEXT);
-            painter.drawTextField(c, portText, focusedField == 1, caretOn, fx, y, FIELD_W, FIELD_H, fontBody);
-
-            y += 60f;
-            painter.drawLeft(c, "Username:", fx, y - 8f, fontBody, MultiplayerUIPainter.COLOR_TEXT);
-            painter.drawTextField(c, userText, focusedField == 2, caretOn, fx, y, FIELD_W, FIELD_H, fontBody);
-
-            float actionsY = y + FIELD_H + 30f;
-            painter.drawButton(c, "Connect", cx - ACTION_BUTTON_W - 10f, actionsY,
-                    ACTION_BUTTON_W, ACTION_BUTTON_H, hoverButton == 0, fontBody);
-            painter.drawButton(c, "Back", cx + 10f, actionsY,
-                    ACTION_BUTTON_W, ACTION_BUTTON_H, hoverButton == 1, fontBody);
-
-            if (!statusMessage.isEmpty()) {
-                painter.drawCentered(c, statusMessage, cx, actionsY + ACTION_BUTTON_H + 28f,
-                        fontInfo, MultiplayerUIPainter.COLOR_TEXT_HI);
-            }
-        } finally {
-            backend.endFrame();
-        }
-    }
-
-    public void handleMouseMove(double mx, double my, int w, int h) {
-        float cx = w / 2f;
-        float cy = h / 2f;
-        float fx = cx - FIELD_W / 2f;
-        float y = cy - 100f;
-        // hover detection for buttons only; field hover not visualized
-        float actionsY = y + 60f * 2 + FIELD_H + 30f;
-        hoverButton = -1;
-        if (painter.hits(mx, my, cx - ACTION_BUTTON_W - 10f, actionsY, ACTION_BUTTON_W, ACTION_BUTTON_H)) hoverButton = 0;
-        else if (painter.hits(mx, my, cx + 10f, actionsY, ACTION_BUTTON_W, ACTION_BUTTON_H))               hoverButton = 1;
-    }
-
-    public void handleMouseClick(double mx, double my, int w, int h, int button, int action) {
-        if (button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS) return;
-        handleMouseMove(mx, my, w, h);
-
-        float cx = w / 2f;
-        float cy = h / 2f;
-        float fx = cx - FIELD_W / 2f;
-        float y = cy - 100f;
-
-        focusedField = -1;
-        if (painter.hits(mx, my, fx, y,             FIELD_W, FIELD_H)) focusedField = 0;
-        else if (painter.hits(mx, my, fx, y + 60f,  FIELD_W, FIELD_H)) focusedField = 1;
-        else if (painter.hits(mx, my, fx, y + 120f, FIELD_W, FIELD_H)) focusedField = 2;
-
-        if (hoverButton == 0) connect();
-        else if (hoverButton == 1) Game.getInstance().setState(GameState.MULTIPLAYER_MENU);
-    }
-
-    public void handleInput(long window) {
-        if (com.stonebreak.input.PolledKeys.isDown(window, GLFW_KEY_ESCAPE)) {
-            Game.getInstance().setState(GameState.MULTIPLAYER_MENU);
-        }
-    }
-
-    public void handleCharInput(char ch) {
-        if (focusedField < 0) return;
-        if (ch < 32 || ch == 127) return;
-        switch (focusedField) {
-            case 0 -> { if (hostText.length() < 64) hostText += ch; }
-            case 1 -> { if (ch >= '0' && ch <= '9' && portText.length() < 5) portText += ch; }
-            case 2 -> { if (userText.length() < 24) userText += ch; }
-        }
-    }
-
-    public void handleKeyInput(int key, int action, int mods) {
-        if (focusedField < 0) return;
-        if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
-        if (key == GLFW_KEY_BACKSPACE) {
-            switch (focusedField) {
-                case 0 -> { if (!hostText.isEmpty()) hostText = hostText.substring(0, hostText.length() - 1); }
-                case 1 -> { if (!portText.isEmpty()) portText = portText.substring(0, portText.length() - 1); }
-                case 2 -> { if (!userText.isEmpty()) userText = userText.substring(0, userText.length() - 1); }
-            }
-        } else if (key == GLFW_KEY_TAB) {
-            focusedField = (focusedField + 1) % 3;
-        } else if (key == GLFW_KEY_ENTER) {
-            focusedField = -1;
-        }
     }
 
     private void connect() {
@@ -227,18 +86,5 @@ public final class JoinWorldScreen {
         } catch (Exception ex) {
             statusMessage = "Connect failed: " + ex.getMessage();
         }
-    }
-
-    /** The legacy painter (fixtures read its layout sink). */
-    public MultiplayerUIPainter painter() { return painter; }
-
-    /** 0 Connect, 1 Back, -1 none. */
-    public int hoveredButton() { return hoverButton; }
-
-    public void dispose() {
-        if (fontTitle != null) { fontTitle.close(); fontTitle = null; }
-        if (fontBody  != null) { fontBody.close();  fontBody  = null; }
-        if (fontInfo  != null) { fontInfo.close();  fontInfo  = null; }
-        painter.dispose();
     }
 }

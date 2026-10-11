@@ -14,7 +14,7 @@ import io.github.humbleui.skija.Typeface;
 import java.util.function.Supplier;
 
 /**
- * {@value #ID}: one piece of the focus battle HUD drawn by its legacy Masonry painters over the bound
+ * {@value #ID}: one piece of the focus battle HUD drawn by its Masonry painters over the bound
  * {@link FocusBattleScreen} (#301): {@code underlays} (screen FX, letterbox), {@code overlays} (target cursor, action
  * banner, timing ring, parry, combo strip, floaters), {@code topmost} (result panel, encounter card) or a window at the
  * element's rect ({@code mode}, {@code enemy}, {@code party}, {@code command} with {@code submenu}). Params: {@code piece},

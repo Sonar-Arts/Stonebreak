@@ -10,7 +10,7 @@ import com.openmason.engine.ui.runtime.UiRect;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.network.MultiplayerSession;
-import com.stonebreak.ui.fidelity.LegacyUiRaster;
+import com.stonebreak.ui.fidelity.UiRaster;
 import com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import com.stonebreak.ui.runtime.GameUiHost;
@@ -31,8 +31,7 @@ import java.util.Map;
  * {@code ui/documents/inventory.sbui}, opened as the game opens it ({@code GameUiDocuments.openBound}
  * against a {@link GameUiHost} whose open container is a real {@link InventoryInputManager} over an
  * {@link InventoryFixtures} player and whose character is that player's, Lua code-behind running, the
- * game's draw providers) and painted on the same {@link LegacyUiRaster} stage as
- * {@link LegacyInventoryCapture}.
+ * game's draw providers) and painted on a {@link UiRaster} stage.
  *
  * <p>Rects are named as in {@link InventoryFixtures#rects}. Not a test class.
  */
@@ -51,7 +50,7 @@ public final class DocumentInventoryCapture implements MigrationGate.Renderer {
 
     /** The document open on a raster stage, bound to a game host whose open container is a real inventory screen. */
     public static final class Stage implements AutoCloseable {
-        public final LegacyUiRaster raster;
+        public final UiRaster raster;
         public final InventoryFixtures.Player3 player;
         public final InventoryInputManager input;
         public final GameUiHost host;
@@ -62,7 +61,7 @@ public final class DocumentInventoryCapture implements MigrationGate.Renderer {
         final float scale;
 
         public Stage(SbuiArchive sbui, int w, int h, float scale, InventoryFixtures.Player3 player) throws Exception {
-            raster = new LegacyUiRaster(w, h, scale);
+            raster = new UiRaster(w, h, scale);
             this.scale = scale;
             this.player = player;
             input = InventoryFixtures.input(player);

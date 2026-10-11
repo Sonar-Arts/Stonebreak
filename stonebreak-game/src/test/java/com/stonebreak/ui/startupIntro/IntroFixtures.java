@@ -7,7 +7,7 @@ import java.util.SplittableRandom;
 
 /**
  * Deterministic intro frames (#301): a seeded {@link IntroScene} entered at the window size and stepped
- * at 60 Hz to a named moment, so the legacy renderer and the intro document show the same scene.
+ * at 60 Hz to a named moment, so the intro document shows the scene the frozen legacy captures show.
  * Not a test class.
  */
 public final class IntroFixtures {
@@ -49,7 +49,7 @@ public final class IntroFixtures {
         return scene(variant, w, h, new int[1]);
     }
 
-    /** Where SonarLogoRenderer draws the logo (shown once the reveal starts): the gate's geometry oracle. */
+    /** Where the logo goes (shown once the reveal starts): the gate's geometry oracle. */
     public static Map<String, float[]> logoRect(IntroScene scene, int w, int h) {
         Map<String, float[]> out = new LinkedHashMap<>();
         out.put("window", new float[]{0f, 0f, w, h});

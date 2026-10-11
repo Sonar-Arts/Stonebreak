@@ -12,7 +12,7 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.HotbarScreen;
-import com.stonebreak.ui.fidelity.LegacyUiRaster;
+import com.stonebreak.ui.fidelity.UiRaster;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import com.stonebreak.ui.runtime.GameUiHost;
 import com.stonebreak.ui.runtime.GameUiScriptServices;
@@ -27,9 +27,8 @@ import java.util.Map;
 /**
  * The candidate side of the HUD's fidelity gate (#300): the shipped export {@code ui/documents/hud.sbui},
  * opened as the game opens it (a {@link GameUiHost} serving a {@link HudFixtures} player and hotbar, Lua
- * running, the game's draw providers with that player for the class gauge) and painted on the same
- * {@link LegacyUiRaster} stage as {@link LegacyHudCapture}. Rects are named as in
- * {@link HudFixtures#rects}. Not a test class.
+ * running, the game's draw providers with that player for the class gauge) and painted on a
+ * {@link UiRaster} stage. Rects are named as in {@link HudFixtures#rects}. Not a test class.
  */
 public final class DocumentHudCapture implements MigrationGate.Renderer {
 
@@ -47,7 +46,7 @@ public final class DocumentHudCapture implements MigrationGate.Renderer {
 
     /** The HUD open on a raster stage. */
     public static final class Stage implements AutoCloseable {
-        public final LegacyUiRaster raster;
+        public final UiRaster raster;
         public final HudFixtures.Hud hud;
         public final GameUiHost host;
         final GameDrawProviders providers;
@@ -56,7 +55,7 @@ public final class DocumentHudCapture implements MigrationGate.Renderer {
         final float scale;
 
         public Stage(SbuiArchive sbui, int w, int h, float scale, HudFixtures.Hud hud) throws Exception {
-            raster = new LegacyUiRaster(w, h, scale);
+            raster = new UiRaster(w, h, scale);
             this.scale = scale;
             this.hud = hud;
             host = new GameUiHost(services(hud), MultiplayerSession.Mode.SINGLEPLAYER);

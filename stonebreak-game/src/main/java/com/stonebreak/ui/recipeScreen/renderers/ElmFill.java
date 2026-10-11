@@ -10,8 +10,8 @@ import io.github.humbleui.types.Rect;
 
 /**
  * The recipe book's elm-wood panes: the {@code Elm_UI.sbt} texture tiled at 4x (whole texels, crisp),
- * clipped to the pane, under a 40 % black overlay; a flat deep fill without the texture. One painter for
- * the legacy renderer and the {@code stonebreak:elm-fill} draw provider (#301).
+ * clipped to the pane, under a 40 % black overlay; a flat deep fill without the texture. Painted by the
+ * {@code stonebreak:elm-fill} draw provider (#301).
  */
 public final class ElmFill {
 

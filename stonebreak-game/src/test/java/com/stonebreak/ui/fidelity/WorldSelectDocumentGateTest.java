@@ -1,6 +1,7 @@
 package com.stonebreak.ui.fidelity;
 
 import com.openmason.engine.ui.fidelity.FidelityCase;
+import com.openmason.engine.ui.fidelity.FrozenCaptures;
 import com.openmason.engine.ui.fidelity.GeometryRule;
 import com.openmason.engine.ui.fidelity.MigrationGate;
 import com.openmason.engine.ui.fidelity.PixelTolerance;
@@ -8,6 +9,7 @@ import com.openmason.engine.ui.masonry.MKeys;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,8 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The world select migration gate (#299): the shipped document against the legacy screen's committed
- * cases at {@code FLOAT_EXACT} geometry and {@code EXACT} pixels, with the same hit regions and host
+ * The world select migration gate (#299): the shipped document against the legacy screen's frozen
+ * captures at {@code FLOAT_EXACT} geometry and {@code EXACT} pixels, with the same hit regions and host
  * actions. Plus what the pixels cannot show: keys, the wheel, the info card following the pointer and
  * the delete confirmation round trip.
  */
@@ -26,6 +28,19 @@ class WorldSelectDocumentGateTest {
     /** GLFW letter keys (MKeys names only the keys widgets use). */
     private static final int KEY_N = 78, KEY_S = 83, KEY_W = 87;
 
+    /** Every frozen world select capture. */
+    static List<FidelityCase> cases() {
+        List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("world-select", List.of("worlds", "many-card7"),
+            FidelityCase.STANDARD));
+        for (String v : List.of("worlds-hover-row1", "worlds-hover-play", "worlds-hover-delete", "worlds-hover-create",
+                "worlds-hover-back", "empty", "empty-hover-play", "many", "card", "card-hover-folder",
+                "card-hover-backup", "card-long", "card-measuring", "card-running", "card-done", "card-failed",
+                "delete", "delete-hover-confirm", "delete-hover-cancel")) {
+            out.add(new FidelityCase("world-select", v, FidelityCase.STANDARD.get(0)));
+        }
+        return out;
+    }
+
     private static FidelityCase at(String variant) {
         return new FidelityCase("world-select", variant, FidelityCase.STANDARD.get(0));
     }
@@ -34,7 +49,7 @@ class WorldSelectDocumentGateTest {
     void theWorldSelectScreenPassesTheMigrationGate() throws Exception {
         DeathDocumentGateTest.requireLua();
         MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.EXACT)
-            .run("world-select", LegacyWorldSelectBaselineTest.cases(), new LegacyWorldSelectCapture(),
+            .run("world-select", cases(), FrozenCaptures.forTests("world-select").replay(),
                 new DocumentWorldSelectCapture());
         GateAssert.passed(r);
     }

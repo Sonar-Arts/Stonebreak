@@ -1131,10 +1131,10 @@ public final class GameUiHost {
         }
 
         @Override
-        public com.stonebreak.rendering.UI.components.MCrosshairRenderer crosshair() {
+        public com.stonebreak.ui.crosshair.CrosshairSettings crosshair() {
             var renderer = Game.getRenderer();
             return renderer == null || renderer.getUIRenderer() == null ? null
-                : renderer.getUIRenderer().getMCrosshairRenderer();
+                : renderer.getUIRenderer().getCrosshairSettings();
         }
 
         @Override

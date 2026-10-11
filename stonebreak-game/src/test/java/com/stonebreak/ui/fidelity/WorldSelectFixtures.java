@@ -1,6 +1,5 @@
 package com.stonebreak.ui.fidelity;
 
-import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import com.stonebreak.ui.worldSelect.managers.WorldBackupService;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
@@ -144,8 +143,8 @@ public final class WorldSelectFixtures {
     }
 
     /** A screen in the variant's state (no hover: the captures hover through their own input). */
-    public static WorldSelectScreen screen(SkijaUIBackend backend, String variant) {
-        WorldSelectScreen s = new WorldSelectScreen(backend, new Worlds(worlds(variant)), new Backups(backup(variant)));
+    public static WorldSelectScreen screen(String variant) {
+        WorldSelectScreen s = new WorldSelectScreen(new Worlds(worlds(variant)), new Backups(backup(variant)));
         WorldStateManager state = s.getStateManager();
         if (variant.startsWith("many")) {
             state.setSelectedIndex(10); // scrolls to 3

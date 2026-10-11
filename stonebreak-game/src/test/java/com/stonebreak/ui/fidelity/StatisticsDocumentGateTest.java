@@ -1,6 +1,7 @@
 package com.stonebreak.ui.fidelity;
 
 import com.openmason.engine.ui.fidelity.FidelityCase;
+import com.openmason.engine.ui.fidelity.FrozenCaptures;
 import com.openmason.engine.ui.fidelity.GeometryRule;
 import com.openmason.engine.ui.fidelity.MigrationGate;
 import com.openmason.engine.ui.fidelity.PixelTolerance;
@@ -10,27 +11,49 @@ import com.stonebreak.ui.statisticsScreen.StatisticsScreen;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The statistics screen migration gate (#299): the shipped {@code ui/documents/statistics.sbui}
- * against the legacy renderer's committed cases at {@code FLOAT_EXACT} geometry and {@code EXACT}
+ * against the legacy renderer's frozen captures at {@code FLOAT_EXACT} geometry and {@code EXACT}
  * pixels, with the same Back hit region and action. Plus: values follow the host live while the
  * screen is open, and the panel ignores clicks that are not on Back.
  */
 @Tag("regression")
 class StatisticsDocumentGateTest {
 
+    /** Every frozen statistics capture. */
+    static List<FidelityCase> cases() {
+        List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("statistics", List.of("played"),
+            FidelityCase.STANDARD));
+        out.add(new FidelityCase("statistics", "fresh", FidelityCase.STANDARD.get(0)));
+        out.add(new FidelityCase("statistics", "played-hover-back", FidelityCase.STANDARD.get(0)));
+        out.add(new FidelityCase("statistics", "played-hover-back", FidelityCase.STANDARD.get(3)));
+        return out;
+    }
+
+    /** Runs {@code r} with the default locale pinned to US English (the captures' separators). */
+    static <T> T inUs(java.util.concurrent.Callable<T> r) throws Exception {
+        Locale previous = Locale.getDefault();
+        Locale.setDefault(Locale.US);
+        try {
+            return r.call();
+        } finally {
+            Locale.setDefault(previous);
+        }
+    }
+
     @Test
     void theShippedStatisticsDocumentPassesTheMigrationGate() throws Exception {
         DeathDocumentGateTest.requireLua();
-        MigrationGate.Report r = LegacyStatisticsBaselineTest.inUs(() ->
+        MigrationGate.Report r = inUs(() ->
             new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.EXACT).run("statistics",
-                LegacyStatisticsBaselineTest.cases(), new LegacyStatisticsCapture(), DocumentStatisticsCapture.shipped()));
+                cases(), FrozenCaptures.forTests("statistics").replay(), DocumentStatisticsCapture.shipped()));
         GateAssert.passed(r);
     }
 
@@ -42,7 +65,7 @@ class StatisticsDocumentGateTest {
                 hd, "fresh")) {
             stage.paint();
             var before = stage.raster.capture();
-            stage.services.stats = StatsRecord.of(LegacyStatisticsCapture.sample());
+            stage.services.stats = StatsRecord.of(DocumentStatisticsCapture.sample());
             stage.settle();
             stage.paint();
             assertNotEquals(before.pixel(1180, 389), stage.raster.capture().pixel(1180, 389),

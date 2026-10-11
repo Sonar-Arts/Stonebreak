@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import com.openmason.engine.cenda.CendaLua;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.ui.fidelity.LegacyUiRaster;
+import com.stonebreak.ui.fidelity.UiRaster;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.inventoryScreen.core.ContainerParity.Step;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
@@ -22,12 +22,12 @@ import org.junit.jupiter.api.Test;
 
 /**
  * #300 acceptance 2 for the inventory screen: every press through the shipped inventory document yields
- * the same validated outcome as the legacy mouse path, including the presses the legacy screen got
- * wrong before #300 (a stack released over a side column or the tab strip now goes back; it used to
- * be dropped into the world). One script runs against two identical players: as the legacy screen's
- * polled frames, and as pointer events on the document. After every step the inventory, the 2x2 grid,
- * the output, the cursor stack and the world drops must be the same, the document must show exactly
- * that, and steps that craft nothing must conserve every item.
+ * the same validated outcome as the screen's rules driven directly, including the presses the legacy
+ * screen got wrong before #300 (a stack released over a side column or the tab strip now goes back; it
+ * used to be dropped into the world). One script runs against two identical players: straight into the
+ * rules at the legacy geometry ({@link ContainerParity#rules}), and as pointer events on the document.
+ * After every step the inventory, the 2x2 grid, the output, the cursor stack and the world drops must be
+ * the same, the document must show exactly that, and steps that craft nothing must conserve every item.
  */
 @Tag("regression")
 class InventoryDocumentInteractionTest {
@@ -66,7 +66,7 @@ class InventoryDocumentInteractionTest {
     );
 
     private static Map<String, float[]> legacyRects() {
-        try (LegacyUiRaster ignored = new LegacyUiRaster(W, H, 1f)) {
+        try (UiRaster ignored = new UiRaster(W, H, 1f)) {
             Map<String, float[]> r = InventoryFixtures.rects(W, H, true);
             // the right column's first row (str), as the document places it: the oracle has no rows
             r.put("str", strRow(r));
@@ -121,7 +121,7 @@ class InventoryDocumentInteractionTest {
                 Step step = SCRIPT.get(i).getKey();
                 int before = total(legacyPlayer, legacy) + dropped(legacyDrops);
                 sink[0] = legacyDrops;
-                ContainerParity.legacy(legacy, rects, step, W, H);
+                ContainerParity.rules(legacy, rects, step, W, H);
                 sink[0] = docDrops;
                 ContainerParity.document(doc.view, doc::centreOrPoint, step, doc::settle);
                 String what = "after step " + i + " " + step;

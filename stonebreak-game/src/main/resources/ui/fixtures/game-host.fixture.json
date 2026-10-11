@@ -2296,124 +2296,244 @@
       "contract": "stonebreak:screen.intro"
     },
     "stonebreak:chat.tab": {
-      "contract": "stonebreak:chat"
+      "contract": "stonebreak:chat",
+      "params": {
+        "tab": "string"
+      }
     },
     "stonebreak:chat.command": {
-      "contract": "stonebreak:chat"
+      "contract": "stonebreak:chat",
+      "params": {
+        "name": "string"
+      }
     },
     "stonebreak:chat.scroll": {
-      "contract": "stonebreak:chat"
+      "contract": "stonebreak:chat",
+      "params": {
+        "delta": "number"
+      }
     },
     "stonebreak:chat.scroll-to": {
-      "contract": "stonebreak:chat"
+      "contract": "stonebreak:chat",
+      "params": {
+        "offset": "number"
+      }
     },
     "stonebreak:chat.emoji-toggle": {
       "contract": "stonebreak:chat"
     },
     "stonebreak:chat.emoji-insert": {
-      "contract": "stonebreak:chat"
+      "contract": "stonebreak:chat",
+      "params": {
+        "emoji": "string"
+      }
     },
     "stonebreak:chat.emoji-favorite": {
-      "contract": "stonebreak:chat"
+      "contract": "stonebreak:chat",
+      "params": {
+        "emoji": "string"
+      }
     },
     "stonebreak:chat.picker-close": {
       "contract": "stonebreak:chat"
     },
     "stonebreak:screen.recipe-book.category": {
-      "contract": "stonebreak:screen.recipe-book"
+      "contract": "stonebreak:screen.recipe-book",
+      "params": {
+        "name": "string"
+      }
     },
     "stonebreak:screen.recipe-book.press": {
-      "contract": "stonebreak:screen.recipe-book"
+      "contract": "stonebreak:screen.recipe-book",
+      "params": {
+        "search": "bool",
+        "cell": "number"
+      }
     },
     "stonebreak:screen.recipe-book.variant": {
-      "contract": "stonebreak:screen.recipe-book"
+      "contract": "stonebreak:screen.recipe-book",
+      "params": {
+        "direction": "number"
+      }
     },
     "stonebreak:screen.recipe-book.wheel": {
-      "contract": "stonebreak:screen.recipe-book"
+      "contract": "stonebreak:screen.recipe-book",
+      "params": {
+        "dy": "number"
+      }
     },
     "stonebreak:screen.terrain-mapper.button": {
-      "contract": "stonebreak:screen.terrain-mapper"
+      "contract": "stonebreak:screen.terrain-mapper",
+      "params": {
+        "name": "string"
+      }
     },
     "stonebreak:screen.terrain-mapper.field": {
-      "contract": "stonebreak:screen.terrain-mapper"
+      "contract": "stonebreak:screen.terrain-mapper",
+      "params": {
+        "field": "string"
+      }
     },
     "stonebreak:screen.terrain-mapper.map-press": {
-      "contract": "stonebreak:screen.terrain-mapper"
+      "contract": "stonebreak:screen.terrain-mapper",
+      "params": {
+        "x": "number",
+        "y": "number"
+      }
     },
     "stonebreak:screen.terrain-mapper.release": {
-      "contract": "stonebreak:screen.terrain-mapper"
+      "contract": "stonebreak:screen.terrain-mapper",
+      "params": {
+        "x": "number",
+        "y": "number"
+      }
     },
     "stonebreak:screen.terrain-mapper.move": {
-      "contract": "stonebreak:screen.terrain-mapper"
+      "contract": "stonebreak:screen.terrain-mapper",
+      "params": {
+        "x": "number",
+        "y": "number"
+      }
     },
     "stonebreak:screen.terrain-mapper.wheel": {
-      "contract": "stonebreak:screen.terrain-mapper"
+      "contract": "stonebreak:screen.terrain-mapper",
+      "params": {
+        "x": "number",
+        "y": "number",
+        "dy": "number"
+      }
     },
     "stonebreak:screen.character-creation.tab": {
-      "contract": "stonebreak:screen.character-creation"
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "tab": "string"
+      }
     },
     "stonebreak:screen.character-creation.nav": {
-      "contract": "stonebreak:screen.character-creation"
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "name": "string"
+      }
     },
     "stonebreak:screen.character-creation.background": {
-      "contract": "stonebreak:screen.character-creation"
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
     },
     "stonebreak:screen.character-creation.ability": {
-      "contract": "stonebreak:screen.character-creation"
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "index": "number",
+        "delta": "number"
+      }
     },
     "stonebreak:screen.character-creation.class": {
-      "contract": "stonebreak:screen.character-creation"
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
     },
     "stonebreak:screen.character-creation.spend": {
-      "contract": "stonebreak:screen.character-creation"
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "index": "number"
+      }
     },
     "stonebreak:screen.character-creation.skill": {
-      "contract": "stonebreak:screen.character-creation"
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
     },
     "stonebreak:screen.character-creation.feat": {
-      "contract": "stonebreak:screen.character-creation"
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
     },
     "stonebreak:screen.character-creation.hair": {
-      "contract": "stonebreak:screen.character-creation"
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
     },
     "stonebreak:screen.character-creation.hat": {
-      "contract": "stonebreak:screen.character-creation"
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
     },
     "stonebreak:screen.character-creation.wheel": {
-      "contract": "stonebreak:screen.character-creation"
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "dy": "number"
+      }
     },
     "stonebreak:screen.character-sheet.tab": {
-      "contract": "stonebreak:screen.character-sheet"
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "tab": "string"
+      }
     },
     "stonebreak:screen.character-sheet.ability": {
-      "contract": "stonebreak:screen.character-sheet"
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "index": "number",
+        "delta": "number"
+      }
     },
     "stonebreak:screen.character-sheet.class": {
-      "contract": "stonebreak:screen.character-sheet"
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "id": "string"
+      }
     },
     "stonebreak:screen.character-sheet.spend": {
-      "contract": "stonebreak:screen.character-sheet"
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "index": "number"
+      }
     },
     "stonebreak:screen.character-sheet.skill": {
-      "contract": "stonebreak:screen.character-sheet"
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "index": "number"
+      }
     },
     "stonebreak:screen.character-sheet.level-filter": {
-      "contract": "stonebreak:screen.character-sheet"
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "direction": "number"
+      }
     },
     "stonebreak:screen.character-sheet.general": {
       "contract": "stonebreak:screen.character-sheet"
     },
     "stonebreak:screen.character-sheet.feat": {
-      "contract": "stonebreak:screen.character-sheet"
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "id": "string"
+      }
     },
     "stonebreak:screen.character-sheet.acquire": {
       "contract": "stonebreak:screen.character-sheet"
     },
     "stonebreak:screen.character-sheet.wheel": {
-      "contract": "stonebreak:screen.character-sheet"
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "dy": "number",
+        "sidebar": "bool"
+      }
     },
     "stonebreak:battle.pointer": {
-      "contract": "stonebreak:battle"
+      "contract": "stonebreak:battle",
+      "params": {
+        "down": "bool",
+        "x": "number",
+        "y": "number",
+        "button": "number"
+      }
     }
   }
 }

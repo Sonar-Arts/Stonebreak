@@ -2,28 +2,20 @@ package com.stonebreak.ui.settingsMenu;
 
 import com.stonebreak.config.Settings;
 import com.stonebreak.core.GameState;
-import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.openmason.engine.ui.masonry.MButton;
 import com.openmason.engine.ui.masonry.MDropdown;
 import com.openmason.engine.ui.masonry.MSlider;
 import com.openmason.engine.ui.masonry.MWidget;
-import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.components.ScrollableSettingsContainer;
 import com.stonebreak.ui.settingsMenu.handlers.ActionHandler;
 import com.stonebreak.ui.settingsMenu.handlers.InputHandler;
-import com.stonebreak.ui.settingsMenu.handlers.MouseHandler;
 import com.stonebreak.ui.settingsMenu.managers.SettingsManager;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
-import com.stonebreak.ui.settingsMenu.renderers.SkijaSettingsRenderer;
 
 /**
- * Facade coordinating the MasonryUI-backed settings screen.
- *
- * Constructed with a {@link SkijaUIBackend} — the same backend used by the
- * main menu and world select. Keeps every screen on a single GL client so
- * the dirt-background corruption that arose from NanoVG↔Skija cohabitation
- * cannot recur here.
+ * Facade coordinating the settings screen: the MasonryUI widgets' state, values and rules. The
+ * shipped document {@code ui/documents/settings.sbui} presents it (#299).
  */
 public final class SettingsMenu {
 
@@ -31,25 +23,19 @@ public final class SettingsMenu {
     private final SettingsManager settingsManager;
     private final ActionHandler actionHandler;
     private final InputHandler inputHandler;
-    private final MouseHandler mouseHandler;
     private final ScrollableSettingsContainer scrollContainer;
-    private final MasonryUI ui;
-    private final SkijaSettingsRenderer renderer;
+    private final SettingsLayout layout;
 
-    public SettingsMenu(SkijaUIBackend skijaBackend) {
+    public SettingsMenu() {
         Settings settings = Settings.getInstance();
 
         this.stateManager = new StateManager(settings);
         this.settingsManager = new SettingsManager(settings);
         this.actionHandler = new ActionHandler(stateManager, settingsManager, settings);
         this.inputHandler = new InputHandler(stateManager, settings, actionHandler);
-        this.mouseHandler = new MouseHandler(stateManager);
 
         this.scrollContainer = new ScrollableSettingsContainer(stateManager);
-        this.ui = new MasonryUI(skijaBackend);
-        this.renderer = new SkijaSettingsRenderer(ui, stateManager, scrollContainer);
-
-        mouseHandler.setScrollableContainer(scrollContainer);
+        this.layout = new SettingsLayout(stateManager, scrollContainer);
 
         stateManager.setCallbacks(
                 actionHandler::applySettings,
@@ -82,42 +68,17 @@ public final class SettingsMenu {
         );
     }
 
-    // ─────────────────────────────────────────────── Input
-
-    public void handleInput(long window) {
-        // Per-frame: auto-revert the UI scale if the confirmation popup times out.
-        actionHandler.tickUiScaleConfirmation();
-        inputHandler.handleInput(window);
-    }
-
-    public void handleMouseMove(double mouseX, double mouseY, int windowWidth, int windowHeight) {
-        mouseHandler.handleMouseMove(mouseX, mouseY, windowWidth, windowHeight);
-    }
-
-    public void handleMouseClick(double mouseX, double mouseY, int windowWidth, int windowHeight, int button, int action) {
-        mouseHandler.handleMouseClick(mouseX, mouseY, windowWidth, windowHeight, button, action);
-    }
-
-    public boolean handleMouseWheel(double mouseX, double mouseY, double scrollDelta) {
-        return mouseHandler.handleMouseWheel(mouseX, mouseY, scrollDelta);
-    }
-
     // ─────────────────────────────────────────────── Public API
 
     public void setPreviousState(GameState state) { stateManager.setPreviousState(state); }
-    public int getSelectedButton() { return stateManager.getSelectedButton(); }
-
-    public void render(int windowWidth, int windowHeight) {
-        renderer.render(windowWidth, windowHeight);
-    }
 
     // ─────────────────────────────────────────────── Document API (#299)
     // The shipped document (ui/documents/settings.sbui) reaches the menu through these, by the
-    // legacy handlers' rules; the menu stays the controller of every widget and value.
+    // menu's own rules; the menu stays the controller of every widget and value.
 
-    /** The per-frame layout (scroll easing, labels, positions) while the document paints instead. */
-    public SkijaSettingsRenderer.Frame layout(int windowWidth, int windowHeight) {
-        return renderer.layout(windowWidth, windowHeight);
+    /** The per-frame layout (scroll easing, labels, positions) while the document shows. */
+    public SettingsLayout.Frame layout(int windowWidth, int windowHeight) {
+        return layout.layout(windowWidth, windowHeight);
     }
 
     /** Per frame: auto-reverts the UI scale when its confirmation times out. */
@@ -128,7 +89,7 @@ public final class SettingsMenu {
     /**
      * A left press on part {@code target} ({@code category<i>}, {@code row<i>}, {@code item<k>} of
      * the open dropdown, {@code apply}, {@code back}, {@code keep}, {@code revert}, or {@code none})
-     * with {@code fraction} = where along a slider's track it landed. The legacy precedence: the
+     * with {@code fraction} = where along a slider's track it landed. The precedence: the
      * confirmation is modal, an open dropdown takes the press (an item selects, its header closes
      * it, anything else just closes it), then categories, rows, Apply and Back.
      *
@@ -227,7 +188,7 @@ public final class SettingsMenu {
 
     /** A wheel tick over the viewport at device px; true when it scrolled. */
     public boolean wheel(float x, float y, float delta) {
-        return mouseHandler.handleMouseWheel(x, y, delta);
+        return scrollContainer.handleMouseWheel(x, y, delta);
     }
 
     /** One key press ({@link InputHandler#key}). */
@@ -237,10 +198,4 @@ public final class SettingsMenu {
 
     public StateManager getStateManager() { return stateManager; }
     public ScrollableSettingsContainer getScrollContainer() { return scrollContainer; }
-    public SkijaSettingsRenderer renderer() { return renderer; }
-
-    public void dispose() {
-        renderer.dispose();
-        ui.dispose();
-    }
 }

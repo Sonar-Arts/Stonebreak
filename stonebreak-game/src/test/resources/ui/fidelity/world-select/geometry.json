@@ -1,0 +1,939 @@
+{
+  "screen" : "world-select",
+  "units" : "framebuffer pixels; rect = [x, y, width, height], origin top-left",
+  "cases" : {
+    "world-select-worlds_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 55.999985 ],
+        "row1" : [ 600.0, 264.80002, 720.0, 55.99997 ],
+        "row2" : [ 600.0, 320.80002, 720.0, 55.99997 ],
+        "row3" : [ 600.0, 376.80002, 720.0, 55.99997 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "stonebreak:screen.world-select.select 1",
+        "row2" : "stonebreak:screen.world-select.select 2",
+        "row3" : "stonebreak:screen.world-select.select 3"
+      }
+    },
+    "world-select-worlds_1280x720_s0_75" : {
+      "rects" : {
+        "back" : [ 371.5, 518.7, 127.5, 33.0 ],
+        "create" : [ 508.0, 518.7, 127.5, 33.0 ],
+        "delete" : [ 644.5, 518.7, 127.5, 33.0 ],
+        "play" : [ 781.0, 518.7, 127.5, 33.0 ],
+        "row0" : [ 370.0, 146.7, 540.0, 42.0 ],
+        "row1" : [ 370.0, 188.7, 540.0, 42.0 ],
+        "row2" : [ 370.0, 230.7, 540.0, 42.0 ],
+        "row3" : [ 370.0, 272.7, 540.0, 42.0 ]
+      },
+      "hits" : {
+        "back" : [ 371.5, 518.7, 127.5, 33.0 ],
+        "create" : [ 508.0, 518.7, 127.5, 33.0 ],
+        "delete" : [ 644.5, 518.7, 127.5, 33.0 ],
+        "play" : [ 781.0, 518.7, 127.5, 33.0 ],
+        "row0" : [ 370.0, 146.7, 540.0, 41.999985 ],
+        "row1" : [ 370.0, 188.7, 540.0, 41.999985 ],
+        "row2" : [ 370.0, 230.7, 540.0, 41.999985 ],
+        "row3" : [ 370.0, 272.7, 540.0, 41.99997 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "stonebreak:screen.world-select.select 1",
+        "row2" : "stonebreak:screen.world-select.select 2",
+        "row3" : "stonebreak:screen.world-select.select 3"
+      }
+    },
+    "world-select-worlds_3840x2160_s2" : {
+      "rects" : {
+        "back" : [ 1204.0, 1409.6, 340.0, 88.0 ],
+        "create" : [ 1568.0, 1409.6, 340.0, 88.0 ],
+        "delete" : [ 1932.0, 1409.6, 340.0, 88.0 ],
+        "play" : [ 2296.0, 1409.6, 340.0, 88.0 ],
+        "row0" : [ 1200.0, 417.6, 1440.0, 112.0 ],
+        "row1" : [ 1200.0, 529.6, 1440.0, 112.0 ],
+        "row2" : [ 1200.0, 641.6, 1440.0, 112.0 ],
+        "row3" : [ 1200.0, 753.6, 1440.0, 112.0 ]
+      },
+      "hits" : {
+        "back" : [ 1204.0, 1409.6, 340.0, 88.0 ],
+        "create" : [ 1568.0, 1409.6, 340.0, 88.0 ],
+        "delete" : [ 1932.0, 1409.6, 340.0, 88.0 ],
+        "play" : [ 2296.0, 1409.6, 340.0, 88.0 ],
+        "row0" : [ 1200.0, 417.6, 1440.0, 111.99997 ],
+        "row1" : [ 1200.0, 529.60004, 1440.0, 111.99994 ],
+        "row2" : [ 1200.0, 641.60004, 1440.0, 111.99994 ],
+        "row3" : [ 1200.0, 753.60004, 1440.0, 111.99994 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "stonebreak:screen.world-select.select 1",
+        "row2" : "stonebreak:screen.world-select.select 2",
+        "row3" : "stonebreak:screen.world-select.select 3"
+      }
+    },
+    "world-select-worlds_1921x1081_s1_25" : {
+      "rects" : {
+        "back" : [ 513.0, 851.41003, 212.5, 55.0 ],
+        "create" : [ 740.5, 851.41003, 212.5, 55.0 ],
+        "delete" : [ 968.0, 851.41003, 212.5, 55.0 ],
+        "play" : [ 1195.5, 851.41003, 212.5, 55.0 ],
+        "row0" : [ 510.5, 231.41, 900.0, 70.0 ],
+        "row1" : [ 510.5, 301.41, 900.0, 70.0 ],
+        "row2" : [ 510.5, 371.41, 900.0, 70.0 ],
+        "row3" : [ 510.5, 441.41, 900.0, 70.0 ]
+      },
+      "hits" : {
+        "back" : [ 513.0, 851.41003, 212.5, 55.0 ],
+        "create" : [ 740.5, 851.41003, 212.5, 55.0 ],
+        "delete" : [ 968.0, 851.41003, 212.5, 55.0 ],
+        "play" : [ 1195.5, 851.41003, 212.5, 55.0 ],
+        "row0" : [ 510.5, 231.41, 900.0, 69.99997 ],
+        "row1" : [ 510.5, 301.41, 900.0, 69.99997 ],
+        "row2" : [ 510.5, 371.41, 900.0, 69.99997 ],
+        "row3" : [ 510.5, 441.41, 900.0, 69.99997 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "stonebreak:screen.world-select.select 1",
+        "row2" : "stonebreak:screen.world-select.select 2",
+        "row3" : "stonebreak:screen.world-select.select 3"
+      }
+    },
+    "world-select-many-card7_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 840.8, 152.0, 30.0 ],
+        "card" : [ 636.0, 648.8, 342.0, 256.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 840.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ],
+        "row4" : [ 600.0, 432.8, 720.0, 56.0 ],
+        "row5" : [ 600.0, 488.8, 720.0, 56.0 ],
+        "row6" : [ 600.0, 544.8, 720.0, 56.0 ],
+        "row7" : [ 600.0, 600.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 687.0, 726.8, 0.0, 0.0 ],
+        "backup" : [ 812.0, 840.8, 152.0, 30.0 ],
+        "create" : [ 869.0, 726.8, 0.0, 0.0 ],
+        "delete" : [ 978.00006, 704.8, 157.99994, 44.0 ],
+        "folder" : [ 650.0, 840.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 55.999985 ],
+        "row1" : [ 600.0, 264.80002, 720.0, 55.99997 ],
+        "row2" : [ 600.0, 320.80002, 720.0, 55.99997 ],
+        "row3" : [ 600.0, 376.80002, 720.0, 55.99997 ],
+        "row4" : [ 600.0, 432.80002, 720.0, 55.99997 ],
+        "row5" : [ 600.0, 488.80002, 720.0, 55.99997 ],
+        "row6" : [ 600.0, 544.80005, 720.0, 55.99994 ],
+        "row7" : [ 600.0, 600.80005, 720.0, 47.999878 ]
+      },
+      "actions" : {
+        "back" : "fired []",
+        "backup" : "stonebreak:screen.world-select.backup",
+        "create" : "fired []",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "folder" : "stonebreak:screen.world-select.open-folder",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 3",
+        "row1" : "stonebreak:screen.world-select.select 4",
+        "row2" : "stonebreak:screen.world-select.select 5",
+        "row3" : "stonebreak:screen.world-select.select 6",
+        "row4" : "stonebreak:screen.world-select.select 7",
+        "row5" : "stonebreak:screen.world-select.select 8",
+        "row6" : "stonebreak:screen.world-select.select 9",
+        "row7" : "stonebreak:screen.world-select.select 10"
+      }
+    },
+    "world-select-many-card7_1280x720_s0_75" : {
+      "rects" : {
+        "back" : [ 371.5, 518.7, 127.5, 33.0 ],
+        "backup" : [ 529.0, 620.7, 114.0, 22.5 ],
+        "card" : [ 397.0, 476.7, 256.5, 192.0 ],
+        "create" : [ 508.0, 518.7, 127.5, 33.0 ],
+        "delete" : [ 644.5, 518.7, 127.5, 33.0 ],
+        "folder" : [ 407.5, 620.7, 114.0, 22.5 ],
+        "play" : [ 781.0, 518.7, 127.5, 33.0 ],
+        "row0" : [ 370.0, 146.7, 540.0, 42.0 ],
+        "row1" : [ 370.0, 188.7, 540.0, 42.0 ],
+        "row2" : [ 370.0, 230.7, 540.0, 42.0 ],
+        "row3" : [ 370.0, 272.7, 540.0, 42.0 ],
+        "row4" : [ 370.0, 314.7, 540.0, 42.0 ],
+        "row5" : [ 370.0, 356.7, 540.0, 42.0 ],
+        "row6" : [ 370.0, 398.7, 540.0, 42.0 ],
+        "row7" : [ 370.0, 440.7, 540.0, 42.0 ]
+      },
+      "hits" : {
+        "back" : [ 435.25, 535.2, 0.0, 0.0 ],
+        "backup" : [ 529.0, 620.7, 114.0, 22.5 ],
+        "create" : [ 571.75, 535.2, 0.0, 0.0 ],
+        "delete" : [ 653.50006, 518.7, 118.49994, 33.0 ],
+        "folder" : [ 407.5, 620.7, 114.0, 22.5 ],
+        "play" : [ 781.0, 518.7, 127.5, 33.0 ],
+        "row0" : [ 370.0, 146.7, 540.0, 41.999985 ],
+        "row1" : [ 370.0, 188.7, 540.0, 41.999985 ],
+        "row2" : [ 370.0, 230.7, 540.0, 41.999985 ],
+        "row3" : [ 370.0, 272.7, 540.0, 41.99997 ],
+        "row4" : [ 370.0, 314.7, 540.0, 41.99997 ],
+        "row5" : [ 370.0, 356.7, 540.0, 41.99997 ],
+        "row6" : [ 370.0, 398.7, 540.0, 41.99997 ],
+        "row7" : [ 370.0, 440.7, 540.0, 35.99997 ]
+      },
+      "actions" : {
+        "back" : "fired []",
+        "backup" : "stonebreak:screen.world-select.backup",
+        "create" : "fired []",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "folder" : "stonebreak:screen.world-select.open-folder",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 3",
+        "row1" : "stonebreak:screen.world-select.select 4",
+        "row2" : "stonebreak:screen.world-select.select 5",
+        "row3" : "stonebreak:screen.world-select.select 6",
+        "row4" : "stonebreak:screen.world-select.select 7",
+        "row5" : "stonebreak:screen.world-select.select 8",
+        "row6" : "stonebreak:screen.world-select.select 9",
+        "row7" : "stonebreak:screen.world-select.select 10"
+      }
+    },
+    "world-select-many-card7_3840x2160_s2" : {
+      "rects" : {
+        "back" : [ 1204.0, 1409.6, 340.0, 88.0 ],
+        "backup" : [ 1624.0, 1681.6, 304.0, 60.0 ],
+        "card" : [ 1272.0, 1297.6, 684.0, 512.0 ],
+        "create" : [ 1568.0, 1409.6, 340.0, 88.0 ],
+        "delete" : [ 1932.0, 1409.6, 340.0, 88.0 ],
+        "folder" : [ 1300.0, 1681.6, 304.0, 60.0 ],
+        "play" : [ 2296.0, 1409.6, 340.0, 88.0 ],
+        "row0" : [ 1200.0, 417.6, 1440.0, 112.0 ],
+        "row1" : [ 1200.0, 529.6, 1440.0, 112.0 ],
+        "row2" : [ 1200.0, 641.6, 1440.0, 112.0 ],
+        "row3" : [ 1200.0, 753.6, 1440.0, 112.0 ],
+        "row4" : [ 1200.0, 865.6, 1440.0, 112.0 ],
+        "row5" : [ 1200.0, 977.6, 1440.0, 112.0 ],
+        "row6" : [ 1200.0, 1089.6, 1440.0, 112.0 ],
+        "row7" : [ 1200.0, 1201.6, 1440.0, 112.0 ]
+      },
+      "hits" : {
+        "back" : [ 1374.0, 1453.6, 0.0, 0.0 ],
+        "backup" : [ 1624.0, 1681.6, 304.0, 60.0 ],
+        "create" : [ 1738.0, 1453.6, 0.0, 0.0 ],
+        "delete" : [ 1956.0001, 1409.6, 315.99988, 88.0 ],
+        "folder" : [ 1300.0, 1681.6, 304.0, 60.0 ],
+        "play" : [ 2296.0, 1409.6, 340.0, 88.0 ],
+        "row0" : [ 1200.0, 417.6, 1440.0, 111.99997 ],
+        "row1" : [ 1200.0, 529.60004, 1440.0, 111.99994 ],
+        "row2" : [ 1200.0, 641.60004, 1440.0, 111.99994 ],
+        "row3" : [ 1200.0, 753.60004, 1440.0, 111.99994 ],
+        "row4" : [ 1200.0, 865.60004, 1440.0, 111.99994 ],
+        "row5" : [ 1200.0, 977.60004, 1440.0, 111.99994 ],
+        "row6" : [ 1200.0, 1089.6001, 1440.0, 111.99988 ],
+        "row7" : [ 1200.0, 1201.6001, 1440.0, 95.999756 ]
+      },
+      "actions" : {
+        "back" : "fired []",
+        "backup" : "stonebreak:screen.world-select.backup",
+        "create" : "fired []",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "folder" : "stonebreak:screen.world-select.open-folder",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 3",
+        "row1" : "stonebreak:screen.world-select.select 4",
+        "row2" : "stonebreak:screen.world-select.select 5",
+        "row3" : "stonebreak:screen.world-select.select 6",
+        "row4" : "stonebreak:screen.world-select.select 7",
+        "row5" : "stonebreak:screen.world-select.select 8",
+        "row6" : "stonebreak:screen.world-select.select 9",
+        "row7" : "stonebreak:screen.world-select.select 10"
+      }
+    },
+    "world-select-many-card7_1921x1081_s1_25" : {
+      "rects" : {
+        "back" : [ 513.0, 851.41003, 212.5, 55.0 ],
+        "backup" : [ 775.5, 651.41003, 190.0, 37.5 ],
+        "card" : [ 555.5, 411.41003, 427.5, 320.0 ],
+        "create" : [ 740.5, 851.41003, 212.5, 55.0 ],
+        "delete" : [ 968.0, 851.41003, 212.5, 55.0 ],
+        "folder" : [ 573.0, 651.41003, 190.0, 37.5 ],
+        "play" : [ 1195.5, 851.41003, 212.5, 55.0 ],
+        "row0" : [ 510.5, 231.41, 900.0, 70.0 ],
+        "row1" : [ 510.5, 301.41, 900.0, 70.0 ],
+        "row2" : [ 510.5, 371.41, 900.0, 70.0 ],
+        "row3" : [ 510.5, 441.41, 900.0, 70.0 ],
+        "row4" : [ 510.5, 511.41, 900.0, 70.0 ],
+        "row5" : [ 510.5, 581.41003, 900.0, 70.0 ],
+        "row6" : [ 510.5, 651.41003, 900.0, 70.0 ],
+        "row7" : [ 510.5, 721.41003, 900.0, 70.0 ]
+      },
+      "hits" : {
+        "back" : [ 513.0, 851.41003, 212.5, 55.0 ],
+        "backup" : [ 775.5, 651.41003, 190.0, 37.5 ],
+        "create" : [ 740.5, 851.41003, 212.5, 55.0 ],
+        "delete" : [ 968.0, 851.41003, 212.5, 55.0 ],
+        "folder" : [ 573.0, 651.41003, 190.0, 37.5 ],
+        "play" : [ 1195.5, 851.41003, 212.5, 55.0 ],
+        "row0" : [ 510.5, 231.41, 900.0, 69.99997 ],
+        "row1" : [ 510.5, 301.41, 900.0, 69.99997 ],
+        "row2" : [ 510.5, 371.41, 900.0, 40.0 ],
+        "row3" : [ 960.5, 476.41, 0.0, 0.0 ],
+        "row4" : [ 960.5, 546.41003, 0.0, 0.0 ],
+        "row5" : [ 960.5, 616.41003, 0.0, 0.0 ],
+        "row6" : [ 960.5, 686.41003, 0.0, 0.0 ],
+        "row7" : [ 510.5, 731.4101, 900.0, 59.999878 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "backup" : "stonebreak:screen.world-select.backup",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "folder" : "stonebreak:screen.world-select.open-folder",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 3",
+        "row1" : "stonebreak:screen.world-select.select 4",
+        "row2" : "stonebreak:screen.world-select.select 5",
+        "row3" : "fired []",
+        "row4" : "fired []",
+        "row5" : "fired []",
+        "row6" : "stonebreak:screen.world-select.backup",
+        "row7" : "stonebreak:screen.world-select.select 10"
+      }
+    },
+    "world-select-worlds-hover-row1_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 55.999985 ],
+        "row1" : [ 600.0, 264.80002, 720.0, 55.99997 ],
+        "row2" : [ 600.0, 320.80002, 720.0, 55.99997 ],
+        "row3" : [ 600.0, 376.80002, 720.0, 55.99997 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "stonebreak:screen.world-select.select 1",
+        "row2" : "stonebreak:screen.world-select.select 2",
+        "row3" : "stonebreak:screen.world-select.select 3"
+      }
+    },
+    "world-select-worlds-hover-play_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 55.999985 ],
+        "row1" : [ 600.0, 264.80002, 720.0, 55.99997 ],
+        "row2" : [ 600.0, 320.80002, 720.0, 55.99997 ],
+        "row3" : [ 600.0, 376.80002, 720.0, 55.99997 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "stonebreak:screen.world-select.select 1",
+        "row2" : "stonebreak:screen.world-select.select 2",
+        "row3" : "stonebreak:screen.world-select.select 3"
+      }
+    },
+    "world-select-worlds-hover-delete_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 55.999985 ],
+        "row1" : [ 600.0, 264.80002, 720.0, 55.99997 ],
+        "row2" : [ 600.0, 320.80002, 720.0, 55.99997 ],
+        "row3" : [ 600.0, 376.80002, 720.0, 55.99997 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "stonebreak:screen.world-select.select 1",
+        "row2" : "stonebreak:screen.world-select.select 2",
+        "row3" : "stonebreak:screen.world-select.select 3"
+      }
+    },
+    "world-select-worlds-hover-create_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 55.999985 ],
+        "row1" : [ 600.0, 264.80002, 720.0, 55.99997 ],
+        "row2" : [ 600.0, 320.80002, 720.0, 55.99997 ],
+        "row3" : [ 600.0, 376.80002, 720.0, 55.99997 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "stonebreak:screen.world-select.select 1",
+        "row2" : "stonebreak:screen.world-select.select 2",
+        "row3" : "stonebreak:screen.world-select.select 3"
+      }
+    },
+    "world-select-worlds-hover-back_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 55.999985 ],
+        "row1" : [ 600.0, 264.80002, 720.0, 55.99997 ],
+        "row2" : [ 600.0, 320.80002, 720.0, 55.99997 ],
+        "row3" : [ 600.0, 376.80002, 720.0, 55.99997 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "stonebreak:screen.world-select.select 1",
+        "row2" : "stonebreak:screen.world-select.select 2",
+        "row3" : "stonebreak:screen.world-select.select 3"
+      }
+    },
+    "world-select-empty_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "fired []",
+        "play" : "fired []"
+      }
+    },
+    "world-select-empty-hover-play_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "fired []",
+        "play" : "fired []"
+      }
+    },
+    "world-select-many_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ],
+        "row4" : [ 600.0, 432.8, 720.0, 56.0 ],
+        "row5" : [ 600.0, 488.8, 720.0, 56.0 ],
+        "row6" : [ 600.0, 544.8, 720.0, 56.0 ],
+        "row7" : [ 600.0, 600.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 55.999985 ],
+        "row1" : [ 600.0, 264.80002, 720.0, 55.99997 ],
+        "row2" : [ 600.0, 320.80002, 720.0, 55.99997 ],
+        "row3" : [ 600.0, 376.80002, 720.0, 55.99997 ],
+        "row4" : [ 600.0, 432.80002, 720.0, 55.99997 ],
+        "row5" : [ 600.0, 488.80002, 720.0, 55.99997 ],
+        "row6" : [ 600.0, 544.80005, 720.0, 55.99994 ],
+        "row7" : [ 600.0, 600.80005, 720.0, 55.99994 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 3",
+        "row1" : "stonebreak:screen.world-select.select 4",
+        "row2" : "stonebreak:screen.world-select.select 5",
+        "row3" : "stonebreak:screen.world-select.select 6",
+        "row4" : "stonebreak:screen.world-select.select 7",
+        "row5" : "stonebreak:screen.world-select.select 8",
+        "row6" : "stonebreak:screen.world-select.select 9",
+        "row7" : "stonebreak:screen.world-select.select 10"
+      }
+    },
+    "world-select-card_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 448.8, 152.0, 30.0 ],
+        "card" : [ 636.0, 256.8, 342.0, 256.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 448.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 448.8, 152.0, 30.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 448.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 47.999954 ],
+        "row1" : [ 960.0, 292.8, 0.0, 0.0 ],
+        "row2" : [ 960.0, 348.8, 0.0, 0.0 ],
+        "row3" : [ 960.0, 404.8, 0.0, 0.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "backup" : "stonebreak:screen.world-select.backup",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "folder" : "stonebreak:screen.world-select.open-folder",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "fired []",
+        "row2" : "fired []",
+        "row3" : "fired []"
+      }
+    },
+    "world-select-card-hover-folder_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 448.8, 152.0, 30.0 ],
+        "card" : [ 636.0, 256.8, 342.0, 256.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 448.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 448.8, 152.0, 30.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 448.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 47.999954 ],
+        "row1" : [ 960.0, 292.8, 0.0, 0.0 ],
+        "row2" : [ 960.0, 348.8, 0.0, 0.0 ],
+        "row3" : [ 960.0, 404.8, 0.0, 0.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "backup" : "stonebreak:screen.world-select.backup",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "folder" : "stonebreak:screen.world-select.open-folder",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "fired []",
+        "row2" : "fired []",
+        "row3" : "fired []"
+      }
+    },
+    "world-select-card-hover-backup_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 448.8, 152.0, 30.0 ],
+        "card" : [ 636.0, 256.8, 342.0, 256.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 448.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 448.8, 152.0, 30.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 448.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 47.999954 ],
+        "row1" : [ 960.0, 292.8, 0.0, 0.0 ],
+        "row2" : [ 960.0, 348.8, 0.0, 0.0 ],
+        "row3" : [ 960.0, 404.8, 0.0, 0.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "backup" : "stonebreak:screen.world-select.backup",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "folder" : "stonebreak:screen.world-select.open-folder",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "fired []",
+        "row2" : "fired []",
+        "row3" : "fired []"
+      }
+    },
+    "world-select-card-long_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 616.8, 152.0, 30.0 ],
+        "card" : [ 636.0, 424.8, 342.0, 256.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 616.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 616.8, 152.0, 30.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 616.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 55.999985 ],
+        "row1" : [ 600.0, 264.80002, 720.0, 55.99997 ],
+        "row2" : [ 600.0, 320.80002, 720.0, 55.99997 ],
+        "row3" : [ 600.0, 376.80002, 720.0, 47.99994 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "backup" : "stonebreak:screen.world-select.backup",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "folder" : "stonebreak:screen.world-select.open-folder",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "stonebreak:screen.world-select.select 1",
+        "row2" : "stonebreak:screen.world-select.select 2",
+        "row3" : "stonebreak:screen.world-select.select 3"
+      }
+    },
+    "world-select-card-measuring_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 560.8, 152.0, 30.0 ],
+        "card" : [ 636.0, 368.8, 342.0, 256.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 560.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 560.8, 152.0, 30.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 560.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 55.999985 ],
+        "row1" : [ 600.0, 264.80002, 720.0, 55.99997 ],
+        "row2" : [ 600.0, 320.80002, 720.0, 47.99994 ],
+        "row3" : [ 960.0, 404.8, 0.0, 0.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "backup" : "stonebreak:screen.world-select.backup",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "folder" : "stonebreak:screen.world-select.open-folder",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "stonebreak:screen.world-select.select 1",
+        "row2" : "stonebreak:screen.world-select.select 2",
+        "row3" : "fired []"
+      }
+    },
+    "world-select-card-running_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 448.8, 152.0, 30.0 ],
+        "card" : [ 636.0, 256.8, 342.0, 256.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 448.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 448.8, 152.0, 30.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 448.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 47.999954 ],
+        "row1" : [ 960.0, 292.8, 0.0, 0.0 ],
+        "row2" : [ 960.0, 348.8, 0.0, 0.0 ],
+        "row3" : [ 960.0, 404.8, 0.0, 0.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "backup" : "fired []",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "folder" : "stonebreak:screen.world-select.open-folder",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "fired []",
+        "row2" : "fired []",
+        "row3" : "fired []"
+      }
+    },
+    "world-select-card-done_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 448.8, 152.0, 30.0 ],
+        "card" : [ 636.0, 256.8, 342.0, 256.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 448.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 448.8, 152.0, 30.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 448.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 47.999954 ],
+        "row1" : [ 960.0, 292.8, 0.0, 0.0 ],
+        "row2" : [ 960.0, 348.8, 0.0, 0.0 ],
+        "row3" : [ 960.0, 404.8, 0.0, 0.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "backup" : "stonebreak:screen.world-select.backup",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "folder" : "stonebreak:screen.world-select.open-folder",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "fired []",
+        "row2" : "fired []",
+        "row3" : "fired []"
+      }
+    },
+    "world-select-card-failed_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 448.8, 152.0, 30.0 ],
+        "card" : [ 636.0, 256.8, 342.0, 256.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 448.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 56.0 ],
+        "row1" : [ 600.0, 264.8, 720.0, 56.0 ],
+        "row2" : [ 600.0, 320.8, 720.0, 56.0 ],
+        "row3" : [ 600.0, 376.8, 720.0, 56.0 ]
+      },
+      "hits" : {
+        "back" : [ 602.0, 704.8, 170.0, 44.0 ],
+        "backup" : [ 812.0, 448.8, 152.0, 30.0 ],
+        "create" : [ 784.0, 704.8, 170.0, 44.0 ],
+        "delete" : [ 966.0, 704.8, 170.0, 44.0 ],
+        "folder" : [ 650.0, 448.8, 152.0, 30.0 ],
+        "play" : [ 1148.0, 704.8, 170.0, 44.0 ],
+        "row0" : [ 600.0, 208.8, 720.0, 47.999954 ],
+        "row1" : [ 960.0, 292.8, 0.0, 0.0 ],
+        "row2" : [ 960.0, 348.8, 0.0, 0.0 ],
+        "row3" : [ 960.0, 404.8, 0.0, 0.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.world-select.back",
+        "backup" : "stonebreak:screen.world-select.backup",
+        "create" : "stonebreak:screen.world-select.create",
+        "delete" : "stonebreak:screen.world-select.delete",
+        "folder" : "stonebreak:screen.world-select.open-folder",
+        "play" : "stonebreak:screen.world-select.play",
+        "row0" : "stonebreak:screen.world-select.select 0",
+        "row1" : "fired []",
+        "row2" : "fired []",
+        "row3" : "fired []"
+      }
+    },
+    "world-select-delete_1920x1080_s1" : {
+      "rects" : {
+        "cancel" : [ 970.0, 578.0, 170.0, 40.0 ],
+        "confirm" : [ 780.0, 578.0, 170.0, 40.0 ],
+        "dialog" : [ 730.0, 440.0, 460.0, 200.0 ]
+      },
+      "hits" : {
+        "cancel" : [ 970.0, 578.0, 170.0, 40.0 ],
+        "confirm" : [ 780.0, 578.0, 170.0, 40.0 ]
+      },
+      "actions" : {
+        "cancel" : "stonebreak:screen.world-select.cancel-delete",
+        "confirm" : "stonebreak:screen.world-select.confirm-delete"
+      }
+    },
+    "world-select-delete-hover-confirm_1920x1080_s1" : {
+      "rects" : {
+        "cancel" : [ 970.0, 578.0, 170.0, 40.0 ],
+        "confirm" : [ 780.0, 578.0, 170.0, 40.0 ],
+        "dialog" : [ 730.0, 440.0, 460.0, 200.0 ]
+      },
+      "hits" : {
+        "cancel" : [ 970.0, 578.0, 170.0, 40.0 ],
+        "confirm" : [ 780.0, 578.0, 170.0, 40.0 ]
+      },
+      "actions" : {
+        "cancel" : "stonebreak:screen.world-select.cancel-delete",
+        "confirm" : "stonebreak:screen.world-select.confirm-delete"
+      }
+    },
+    "world-select-delete-hover-cancel_1920x1080_s1" : {
+      "rects" : {
+        "cancel" : [ 970.0, 578.0, 170.0, 40.0 ],
+        "confirm" : [ 780.0, 578.0, 170.0, 40.0 ],
+        "dialog" : [ 730.0, 440.0, 460.0, 200.0 ]
+      },
+      "hits" : {
+        "cancel" : [ 970.0, 578.0, 170.0, 40.0 ],
+        "confirm" : [ 780.0, 578.0, 170.0, 40.0 ]
+      },
+      "actions" : {
+        "cancel" : "stonebreak:screen.world-select.cancel-delete",
+        "confirm" : "stonebreak:screen.world-select.confirm-delete"
+      }
+    }
+  }
+}

@@ -3,7 +3,6 @@ package com.stonebreak.ui.fidelity;
 import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.masonry.MDropdown;
 import com.stonebreak.config.Settings;
-import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.ui.runtime.contracts.SettingsContract;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
@@ -63,8 +62,8 @@ public final class SettingsFixtures {
     }
 
     /** A menu (values {@link #pin pinned} first) in the variant's state, laid out for {@code w x h}. */
-    public static SettingsMenu menu(SkijaUIBackend backend, String variant, int w, int h) {
-        SettingsMenu m = new SettingsMenu(backend);
+    public static SettingsMenu menu(String variant, int w, int h) {
+        SettingsMenu m = new SettingsMenu();
         StateManager st = m.getStateManager();
         st.setClock(() -> PINNED_MS);
         st.setSelectedCategory(category(variant));

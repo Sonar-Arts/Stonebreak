@@ -31,8 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * #301 additive-layer fixture against {@link HudAnimator}: the battle HUD's party window slides out
- * for the intro cinematic while a hit shakes it, and {@code SkijaFocusBattleRenderer} draws it at
- * {@code (shakeX, shakeY + slide)}. A document reproduces that with a replacing slide clip plus an
+ * for the intro cinematic while a hit shakes it, and the {@code stonebreak:battle} contract places it
+ * at {@code (shakeX, shakeY + slide)}. A document reproduces that with a replacing slide clip plus an
  * <b>additive</b> shake clip, both sampled from the {@code battle} clock (C1) the host sets each
  * frame, never interpolated from the frame clock. The clips are dense key tables of
  * {@code HudAnimator}'s own curves, so this pins the composition and the clock wiring, not the
@@ -42,7 +42,7 @@ class HudShakeCompositeFixtureTest {
 
     private static final float DT = 1f / 60f;
     private static final double KEY_STEP = 1.0 / 240.0;
-    /** The renderer's slide-out distance at scale 1 for this fixture. */
+    /** The bottom HUD's slide-out distance at scale 1 for this fixture. */
     private static final double SLIDE_PX = 100;
     private static final String BATTLE = "battle";
 

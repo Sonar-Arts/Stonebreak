@@ -158,10 +158,14 @@ class UiMigrationLedgerCoverageTest {
         return out;
     }
 
-    /** A test class of that simple name exists and actually runs {@code MigrationGate} (a name alone proves nothing). */
-    static boolean runsMigrationGate(String simpleName) {
+    /**
+     * A test class of that name ({@code ui.fidelity.DeathDocumentGateTest} or its simple name) exists and actually
+     * runs {@code MigrationGate} (a name alone proves nothing).
+     */
+    static boolean runsMigrationGate(String className) {
+        String file = className.substring(className.lastIndexOf('.') + 1) + ".java";
         try (Stream<Path> files = Files.walk(TESTS)) {
-            return files.filter(p -> p.getFileName().toString().equals(simpleName + ".java"))
+            return files.filter(p -> p.getFileName().toString().equals(file))
                 .anyMatch(p -> {
                     try {
                         String src = Files.readString(p);

@@ -2,7 +2,7 @@ package com.stonebreak.ui.chat;
 
 import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.UiRect;
-import com.stonebreak.ui.LegacyUiClock;
+import com.stonebreak.ui.UiWallClock;
 import com.stonebreak.ui.chat.emoji.EmojiType;
 import com.stonebreak.ui.fidelity.DocumentStage;
 import com.stonebreak.ui.runtime.GameUiDocuments;
@@ -26,7 +26,7 @@ class ChatDocumentInteractionTest {
 
     @AfterEach
     void releaseClock() {
-        LegacyUiClock.release();
+        UiWallClock.release();
     }
 
     private static DocumentStage stage(ChatSystem chat, float scale) throws Exception {

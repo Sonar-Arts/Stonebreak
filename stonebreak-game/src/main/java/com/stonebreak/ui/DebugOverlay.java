@@ -2,7 +2,6 @@ package com.stonebreak.ui;
 
 import com.stonebreak.rendering.Renderer;
 import com.openmason.engine.ui.masonry.MStatPanel;
-import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.debug.DebugDiagnostics;
 import com.stonebreak.ui.debug.DebugInfoPanel;
 import com.stonebreak.ui.debug.DebugPanel;
@@ -13,10 +12,10 @@ import com.stonebreak.ui.debug.UiBudgetPanel;
 import com.stonebreak.ui.debug.VramPanel;
 
 /**
- * The F3 debug overlay coordinator: owns the visibility toggle, the MasonryUI
- * surface, the panel rebuild cadences and the on-screen layout. The numbers
- * come from {@link com.stonebreak.ui.debug.DebugPanel} collaborators and the
- * entity wireframes from {@link MobPathWireframeDrawer}.
+ * The F3 debug overlay coordinator: owns the visibility toggle, the panel
+ * rebuild cadences and the {@code debug_overlay} document that shows the
+ * cards. The numbers come from {@link com.stonebreak.ui.debug.DebugPanel}
+ * collaborators and the entity wireframes from {@link MobPathWireframeDrawer}.
  */
 public class DebugOverlay {
     private boolean visible = false;
@@ -29,9 +28,6 @@ public class DebugOverlay {
     private final DebugPanel debugPanel = new DebugInfoPanel(diagnostics, gpuInfo);
     private final UiBudgetPanel uiBudgetPanel = new UiBudgetPanel();
     private final MobPathWireframeDrawer wireframes = new MobPathWireframeDrawer();
-
-    // MasonryUI for the right-side debug panel and left-side resource panel. Lazily built once a Renderer exists.
-    private MasonryUI masonryUI = null;
 
     // Cached panels — rebuilt periodically rather than every frame. Reading
     // MXBeans + GPU snapshot + building MStatPanel structures every frame
@@ -62,7 +58,7 @@ public class DebugOverlay {
     public DebugOverlay() {
     }
 
-    /** Installs (or, with null, removes) the document presentation; the legacy cards are the default. */
+    /** Installs (or, with null, removes) the document presentation; tests install their own before the first sync. */
     public void setPresentation(com.stonebreak.ui.runtime.screens.ScreenPresentation p) {
         installed = true;
         slot.install(p);
@@ -98,25 +94,18 @@ public class DebugOverlay {
     }
 
     /**
-     * Renders the RAM, VRAM, and debug info cards using MasonryUI/Skija.
+     * Publishes the RAM, VRAM, UI budget and debug info cards and paints the F3 document (#301).
      *
      * <p>Called from the main render loop <em>outside</em> the NanoVG UI frame,
-     * because Skija has its own GL state bracketing.
+     * because Skia has its own GL state bracketing.
      */
-    public void renderResourcePanels(com.stonebreak.rendering.Renderer renderer, int sw, int sh) {
-        if (!visible || renderer == null) return;
+    public void renderResourcePanels(int sw, int sh) {
+        if (!visible) return;
         refresh();
         if (slot.showing()) {
             com.stonebreak.ui.runtime.GameUiHost.get().debug().publish(cards);
-            if (slot.paint(sw, sh)) {
-                return; // the F3 document (#301)
-            }
+            slot.paint(sw, sh);
         }
-        if (masonryUI == null) {
-            masonryUI = new MasonryUI(renderer.getSkijaBackend());
-        }
-        if (!masonryUI.isAvailable()) return;
-        paintLegacy(masonryUI, cards, sw, sh);
     }
 
     /** Rebuilds the cards on their cadences (FPS every frame, resources 4 Hz, debug info 20 Hz). */
@@ -144,36 +133,6 @@ public class DebugOverlay {
         if (cards == null || cards.ram() != cachedRamPanel || cards.vram() != cachedVramPanel
                 || cards.uiBudget() != cachedUiBudgetPanel || cards.debug() != cachedDebugPanel) {
             cards = new Cards(cachedRamPanel, cachedVramPanel, cachedUiBudgetPanel, cachedDebugPanel);
-        }
-    }
-
-    /**
-     * The legacy F3 cards: RAM then VRAM (then the UI budgets) stacked 10 px from the top-left, 8 px
-     * apart, 280 px wide; the debug info 10 px from the top-right. Never scaled.
-     */
-    public static void paintLegacy(MasonryUI masonryUI, Cards cards, int sw, int sh) {
-        if (!masonryUI.beginFrame(sw, sh, 1.0f)) return;
-        try {
-            float leftMargin = 10f;
-            float panelWidth = 280f;
-            float gap = 8f;
-            float y = 10f;
-
-            float ramHeight = cards.ram().render(masonryUI, leftMargin, y, panelWidth);
-            y += ramHeight + gap;
-
-            float vramHeight = cards.vram().render(masonryUI, leftMargin, y, panelWidth);
-            if (cards.uiBudget() != null) {
-                cards.uiBudget().render(masonryUI, leftMargin, y + vramHeight + gap, panelWidth);
-            }
-
-            // Right-side debug info panel
-            float rightX = sw - leftMargin - panelWidth;
-            cards.debug().render(masonryUI, rightX, 10f, panelWidth);
-
-            masonryUI.renderOverlays();
-        } finally {
-            masonryUI.endFrame();
         }
     }
 

@@ -9,8 +9,9 @@ import java.util.Map;
  * Presentations of the screens that ARE a game state (main menu, multiplayer, world select, ...):
  * the state controller tells this registry when the state changes ({@link #stateChanged}), so the
  * screen for the new state is shown and the old one hidden, and the frame renderer asks it to
- * {@link #paint} before drawing the legacy screen of that state (#299). A state without a
- * presentation, or one whose document is not showing, keeps its legacy screen. Main thread only.
+ * {@link #paint} that state's screen (#299). A state without a presentation is drawn by the frame
+ * renderer itself (the world, a battle); a menu state whose document is not showing shows nothing.
+ * Main thread only.
  */
 public final class StateScreens {
 
@@ -60,13 +61,13 @@ public final class StateScreens {
         }
     }
 
-    /** @return true when {@code state}'s presentation painted (the legacy screen must not) */
+    /** @return true when {@code state}'s presentation painted */
     public boolean paint(GameState state, int width, int height) {
         ScreenPresentation p = state == current ? byState.get(state) : null;
         return p != null && p.paint(width, height);
     }
 
-    /** True while {@code state}'s presentation, not its legacy screen, is showing. */
+    /** True while {@code state}'s presentation is showing. */
     public boolean showing(GameState state) {
         ScreenPresentation p = state == current ? byState.get(state) : null;
         return p != null && p.showing();

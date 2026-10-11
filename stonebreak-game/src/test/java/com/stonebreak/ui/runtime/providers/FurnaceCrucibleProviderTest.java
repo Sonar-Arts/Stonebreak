@@ -2,7 +2,7 @@ package com.stonebreak.ui.runtime.providers;
 
 import com.openmason.engine.ui.fidelity.FidelityCase;
 import com.openmason.engine.ui.runtime.UiRect;
-import com.stonebreak.ui.fidelity.LegacyUiRaster;
+import com.stonebreak.ui.fidelity.UiRaster;
 import com.stonebreak.ui.furnace.core.FurnaceLayout;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 import org.junit.jupiter.api.Test;
@@ -26,7 +26,7 @@ class FurnaceCrucibleProviderTest {
         List<FidelityCase.Viewport> viewports = new ArrayList<>(FidelityCase.STANDARD);
         viewports.add(new FidelityCase.Viewport(800, 600, 2f));
         for (FidelityCase.Viewport vp : viewports) {
-            try (LegacyUiRaster ignored = new LegacyUiRaster(vp.width(), vp.height(), vp.uiScale())) {
+            try (UiRaster ignored = new UiRaster(vp.width(), vp.height(), vp.uiScale())) {
                 var layout = InventoryLayoutCalculator.calculateWorkbenchLayout(vp.width(), vp.height());
                 FurnaceLayout.Slots legacy = FurnaceLayout.compute(layout);
                 int ss = InventoryLayoutCalculator.getSlotSize();

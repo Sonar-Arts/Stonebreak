@@ -5,7 +5,7 @@ import com.openmason.engine.ui.data.DataCell;
 import com.openmason.engine.ui.data.DataType;
 import com.openmason.engine.ui.data.HostContract;
 import com.openmason.engine.ui.data.UiHost;
-import com.stonebreak.rendering.UI.components.MCrosshairRenderer;
+import com.stonebreak.ui.crosshair.CrosshairSettings;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -17,7 +17,7 @@ import java.util.Map;
  * {@code outline}, and the drawn colours {@code color} (fill) and {@code edge} (outline) as
  * {@code #RRGGBBAA} with the opacity folded in. The values are the ones the game applied
  * ({@code CrosshairConfigurator} at start-up and on settings Apply), read from the
- * {@link MCrosshairRenderer} that keeps them, not the settings being edited.
+ * {@link CrosshairSettings} that keeps them, not the settings being edited.
  */
 public final class CrosshairContracts {
 
@@ -30,7 +30,7 @@ public final class CrosshairContracts {
     /** The game behind the crosshair. */
     public interface Services {
         /** The applied crosshair, or null (no renderer yet: the defaults are shown). */
-        default MCrosshairRenderer crosshair() {
+        default CrosshairSettings crosshair() {
             return null;
         }
     }
@@ -39,7 +39,7 @@ public final class CrosshairContracts {
     record Snapshot(String style, float size, float thickness, float gap, boolean outline, float outlineThickness,
                     int color, int edge) {
 
-        static Snapshot of(MCrosshairRenderer c) {
+        static Snapshot of(CrosshairSettings c) {
             return new Snapshot(c.getStyle().name(), c.getSize(), c.getThickness(), c.getGap(), c.hasOutline(),
                 c.getOutlineThickness(), c.fillArgb(), c.edgeArgb());
         }
@@ -58,8 +58,8 @@ public final class CrosshairContracts {
         }
     }
 
-    /** The renderer's defaults, shown before (or without) a game. */
-    private static final Snapshot DEFAULTS = Snapshot.of(new MCrosshairRenderer(null));
+    /** The default configuration, shown before (or without) a game. */
+    private static final Snapshot DEFAULTS = Snapshot.of(new CrosshairSettings());
 
     private final Services services;
     private final DataCell cell;
@@ -72,7 +72,7 @@ public final class CrosshairContracts {
 
     /** UI thread, once per frame: republishes only after an Apply changed something. */
     public void poll() {
-        MCrosshairRenderer c = services.crosshair();
+        CrosshairSettings c = services.crosshair();
         Snapshot now = c == null ? DEFAULTS : Snapshot.of(c);
         if (!now.equals(last)) {
             last = now;

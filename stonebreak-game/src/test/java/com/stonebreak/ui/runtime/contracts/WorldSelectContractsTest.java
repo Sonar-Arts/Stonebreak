@@ -43,7 +43,7 @@ class WorldSelectContractsTest {
 
     @Test
     void theVisiblePageAndTheThumbFollowTheLegacyMaths() {
-        WorldSelectScreen s = WorldSelectFixtures.screen(null, "many");
+        WorldSelectScreen s = WorldSelectFixtures.screen("many");
         UiValue.Obj v = WorldSelectContracts.value(s, WINDOW);
         UiValue.Arr rows = (UiValue.Arr) v.get("rows");
         assertEquals(8, rows.items().size());
@@ -58,7 +58,7 @@ class WorldSelectContractsTest {
 
     @Test
     void theCardSitsWhereTheLegacyLayoutPutsIt() {
-        WorldSelectScreen s = WorldSelectFixtures.screen(null, "card-running");
+        WorldSelectScreen s = WorldSelectFixtures.screen("card-running");
         UiValue.Obj card = obj(WorldSelectContracts.value(s, WINDOW).get("card"));
         SectionBounds b = WorldSelectLayout.compute(WINDOW[0], WINDOW[1]).cardBounds(0);
         assertEquals(UiValue.of(true), card.get("shown"));
@@ -71,7 +71,7 @@ class WorldSelectContractsTest {
 
     @Test
     void actionsFollowTheLegacyRules() {
-        WorldSelectScreen s = WorldSelectFixtures.screen(null, "worlds");
+        WorldSelectScreen s = WorldSelectFixtures.screen("worlds");
         assertNull(WorldSelectContracts.perform(s, "select", 2));
         assertEquals(2, s.getStateManager().getSelectedIndex());
         assertNotNull(WorldSelectContracts.perform(s, "select", 9), "no such world");
@@ -83,7 +83,7 @@ class WorldSelectContractsTest {
         assertNull(WorldSelectContracts.perform(s, "cancel-delete", 0));
         assertFalse(s.getStateManager().isShowDeleteDialog());
 
-        WorldSelectScreen empty = WorldSelectFixtures.screen(null, "empty");
+        WorldSelectScreen empty = WorldSelectFixtures.screen("empty");
         assertNotNull(WorldSelectContracts.perform(empty, "play", 0), "Play is disabled without a world");
         assertNotNull(WorldSelectContracts.perform(empty, "delete", 0));
         assertNotNull(WorldSelectContracts.perform(null, "back", 0), "no screen showing");
@@ -91,12 +91,12 @@ class WorldSelectContractsTest {
 
     @Test
     void theLegacyWheelScrollsUpOnWheelUp() {
-        WorldSelectScreen s = WorldSelectFixtures.screen(null, "many");
+        WorldSelectScreen s = WorldSelectFixtures.screen("many");
         assertEquals(3, s.getScrollOffset());
-        s.handleMouseWheel(1.0); // GLFW: positive = wheel up
+        s.wheel(1.0); // GLFW: positive = wheel up
         assertEquals(2, s.getScrollOffset());
-        s.handleMouseWheel(-1.0);
-        s.handleMouseWheel(-1.0);
+        s.wheel(-1.0);
+        s.wheel(-1.0);
         assertEquals(4, s.getScrollOffset());
     }
 }

@@ -3,9 +3,8 @@ package com.stonebreak.ui.recipeScreen.core;
 import com.stonebreak.core.Game;
 
 /**
- * Computes the recipe book's outer panel bounds. Sub-pane bounds (sidebar,
- * grid viewport, detail pane) are derived inside the
- * {@code RecipeRenderCoordinator} so geometry stays close to where it's used.
+ * Computes the recipe book's outer panel bounds. The grid inside it is
+ * {@link RecipeGridLayout}'s; the document lays out the other panes.
  */
 public final class PositionCalculator {
 

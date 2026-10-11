@@ -12,7 +12,7 @@ import com.stonebreak.blocks.furnace.FurnaceState;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.network.MultiplayerSession;
-import com.stonebreak.ui.fidelity.LegacyUiRaster;
+import com.stonebreak.ui.fidelity.UiRaster;
 import com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import com.stonebreak.ui.runtime.GameUiHost;
@@ -53,7 +53,7 @@ class FurnaceDocumentLifecycleTest {
         SbuiArchive sbui = GameUiDocuments.readScreen("furnace");
         Inventory inv = UiTestFixtures.emptyInventory();
         inv.setMainInventorySlot(0, new ItemStack(BlockType.IRON_ORE, 10));
-        FurnaceController controller = new FurnaceController(null, inv, null, DocumentFurnaceCapture.smelting(), null);
+        FurnaceController controller = new FurnaceController(null, null, DocumentFurnaceCapture.smelting());
         FurnaceInputManager input = new FurnaceInputManager(null, inv, controller);
         controller.setInputManager(input);
         controller.setSlotSink((p, s) -> { });
@@ -61,7 +61,7 @@ class FurnaceDocumentLifecycleTest {
         boolean[] open = {false};
         GameUiHost host = new GameUiHost(services(input, inv, open), MultiplayerSession.Mode.SINGLEPLAYER);
 
-        try (LegacyUiRaster raster = new LegacyUiRaster(W, H, 1f);
+        try (UiRaster raster = new UiRaster(W, H, 1f);
              GameDrawProviders providers = new GameDrawProviders((t, x, y, s) -> { },
                  raster.backend()::getMinecraftTypeface)) {
             host.drain();

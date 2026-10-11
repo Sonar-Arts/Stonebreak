@@ -15,9 +15,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The recipe book's #301 fidelity cases: a fixed recipe table (block outputs only: block icons are GL on
- * both sides, so a raster capture shows frames and counts), the book's state per variant, and the legacy
- * layout as a geometry oracle. Not a test class.
+ * The recipe book's #301 fidelity cases: a fixed recipe table (block outputs only: block icons are GL, so a
+ * raster capture shows frames and counts), the book's state per variant, and the legacy layout as a
+ * geometry oracle. Not a test class.
  *
  * <p>Variants: {@code empty}, {@code selected} (one variant), {@code variants} (planks, 1 of 2),
  * {@code search} (typed, unfocused), {@code category} (Building), {@code category-empty} (Tools),
@@ -101,7 +101,7 @@ public final class RecipeBookFixtures {
         return out;
     }
 
-    /** The book open on {@code variant}'s state, as the legacy screen and the document both see it. */
+    /** The book open on {@code variant}'s state, as the document sees it (and the frozen captures saw it). */
     public static RecipeBookState state(String variant) {
         RecipeBookState s = new RecipeBookState();
         prepare(s, variant);
@@ -148,7 +148,7 @@ public final class RecipeBookFixtures {
         return variant.startsWith("hover-") ? variant.substring("hover-".length()) : "";
     }
 
-    // ── the legacy layout (RecipeRenderCoordinator.Layout + syncDetailWidgets): the geometry oracle ──
+    // ── the legacy layout (the frozen captures' panes and detail widgets): the geometry oracle ──
 
     /** {panelX, panelY, panelW, panelH, headerX, headerY, headerW, contentY, contentH, sidebarX, gridX, gridW, detailX, perRow, rows} */
     static int[] layout(int w, int h) {

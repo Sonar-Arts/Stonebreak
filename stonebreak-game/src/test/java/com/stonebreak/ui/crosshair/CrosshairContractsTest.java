@@ -3,7 +3,6 @@ package com.stonebreak.ui.crosshair;
 import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.data.DataCell;
 import com.openmason.engine.ui.data.UiHost;
-import com.stonebreak.rendering.UI.components.MCrosshairRenderer;
 import com.stonebreak.ui.runtime.contracts.CrosshairContracts;
 import org.junit.jupiter.api.Test;
 
@@ -20,14 +19,14 @@ class CrosshairContractsTest {
     @Test
     void publishesTheAppliedCrosshairAsDrawn() {
         UiHost host = new UiHost();
-        MCrosshairRenderer applied = CrosshairFixtures.crosshair("custom", null);
+        CrosshairSettings applied = CrosshairFixtures.crosshair("custom");
         CrosshairContracts contracts = new CrosshairContracts(host, new CrosshairContracts.Services() {
             @Override
-            public MCrosshairRenderer crosshair() {
+            public CrosshairSettings crosshair() {
                 return applied;
             }
         });
-        assertEquals(UiValue.of("SIMPLE_CROSS"), read(host).get("style"), "renderer defaults before the first poll");
+        assertEquals(UiValue.of("SIMPLE_CROSS"), read(host).get("style"), "defaults before the first poll");
 
         contracts.poll();
         UiValue.Obj c = read(host);

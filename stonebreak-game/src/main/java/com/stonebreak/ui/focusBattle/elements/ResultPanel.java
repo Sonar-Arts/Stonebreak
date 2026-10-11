@@ -13,7 +13,7 @@ import com.stonebreak.ui.focusBattle.BattleHudAnimState;
 import com.stonebreak.ui.focusBattle.BattleHudRules;
 import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
-import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
+import com.stonebreak.ui.focusBattle.BattleHudLayers;
 import com.openmason.engine.util.easing.EasingFunctions;
 import com.openmason.engine.util.easing.EasingType;
 import io.github.humbleui.skija.Canvas;
@@ -34,7 +34,7 @@ import java.util.List;
  * once fully risen ({@link #interactive}); until then the screen swallows every press, so a confirm
  * mashed at the killing blow cannot pick Retry.
  */
-public final class ResultPanel implements SkijaFocusBattleRenderer.Layer {
+public final class ResultPanel implements BattleHudLayers.Layer {
 
     public static final float DEFEAT_DELAY_SECONDS = 2.0f;
     public static final float RISE_SECONDS = 0.45f;

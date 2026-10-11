@@ -7,11 +7,10 @@ import com.stonebreak.ui.runtime.screens.PresentedDocument;
 
 /**
  * The focus battle HUD as the shipped {@code ui/documents/battle_hud.sbui} (#301), shown while the screen is bound and
- * painted where the legacy HUD was (over the battle's world, under the encounter swirl). Before each paint it sets the
+ * painted over the battle's world, under the encounter swirl. Before each paint it sets the
  * document's two battle clocks, so clips and tweens authored on them follow the battle and never the frame clock:
  * {@value #HUD_CLOCK} is C1 (the HUD clock: the screen's update steps, which slow-motion and pauses already shape)
- * and {@value #SIM_CLOCK} is C2 (the simulation's elapsed seconds). Falls back to the legacy renderer like every
- * {@link PresentedDocument}.
+ * and {@value #SIM_CLOCK} is C2 (the simulation's elapsed seconds).
  */
 public final class BattleHudDocument extends PresentedDocument {
 

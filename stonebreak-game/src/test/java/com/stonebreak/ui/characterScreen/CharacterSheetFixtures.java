@@ -2,7 +2,6 @@ package com.stonebreak.ui.characterScreen;
 
 import com.openmason.engine.ui.fidelity.FidelityCase;
 import com.stonebreak.config.Settings;
-import com.stonebreak.input.InputHandler;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
@@ -11,7 +10,6 @@ import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.feats.FeatRegistry;
 import com.stonebreak.rpg.skills.SkillRegistry;
 import com.stonebreak.ui.TabStripLayout;
-import org.joml.Vector2f;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -66,19 +64,17 @@ public final class CharacterSheetFixtures {
         return "overview";
     }
 
-    /** A sheet over fresh stats, its GL collaborators mocked ({@code mouse}: where the legacy reads the pointer). */
-    public static CharacterScreen screen(SkijaUIBackend backend, Vector2f mouse) {
+    /** A sheet over fresh stats, its text measured with {@code backend}'s fonts. */
+    public static CharacterScreen screen(SkijaUIBackend backend) {
         Renderer renderer = mock(Renderer.class);
         when(renderer.getSkijaBackend()).thenReturn(backend);
-        InputHandler input = mock(InputHandler.class);
-        when(input.getMousePosition()).thenReturn(mouse);
-        CharacterScreen screen = new CharacterScreen(new CharacterStats(null), renderer, input);
+        CharacterScreen screen = new CharacterScreen(new CharacterStats(null), renderer);
         screen.getController().setVisible(true);
         return screen;
     }
 
     public static void prepare(CharacterScreen screen, String variant) {
-        CharacterRenderCoordinator rc = screen.coordinator();
+        CharacterController rc = screen.getController();
         CharacterStats stats = rc.stats();
         var controller = screen.getController();
         String b = base(variant);
@@ -122,18 +118,18 @@ public final class CharacterSheetFixtures {
         }
     }
 
-    /** After the first legacy frame: the scrolls the legacy wheel would reach (the clamp needs that frame). */
+    /** After the document's first poll: the scrolls the wheel reaches (the clamp needs the clip it publishes). */
     public static void scroll(CharacterScreen screen, String variant) {
         if ("classes-scrolled".equals(base(variant))) {
             float s = Settings.getInstance().getUiScale();
-            screen.coordinator().classes().scroll(1f, false, s); // the ability list, one notch
+            screen.getController().classes().scroll(1f, false, s); // the ability list, one notch
         }
     }
 
     /** Named rects of the legacy layout. */
     public static Map<String, float[]> rects(CharacterScreen screen, String variant, int w, int h) {
         float s = Settings.getInstance().getUiScale();
-        float[] p = CharacterRenderCoordinator.panel(w, h, s);
+        float[] p = CharacterController.panel(w, h, s);
         Map<String, float[]> out = new LinkedHashMap<>();
         out.put("panel", p);
         int tabW = TabStripLayout.tabWidth();
@@ -143,7 +139,7 @@ public final class CharacterSheetFixtures {
         for (int i = 0; i < 5; i++) {
             out.put("tab" + i, new float[]{startX + TabStripLayout.stride() * i, tabY, tabW, tabH});
         }
-        CharacterRenderCoordinator rc = screen.coordinator();
+        CharacterController rc = screen.getController();
         switch (screen.getController().getActiveTab()) {
             case OVERVIEW -> {
                 float leftColX = p[0] + 16 * s;

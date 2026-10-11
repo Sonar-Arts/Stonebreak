@@ -24,9 +24,6 @@ public final class CharacterCreationStateManager {
 
     private int selectedClassIndex = -1;
 
-    private float mouseX = 0f;
-    private float mouseY = 0f;
-
     public CharacterCreationStateManager() {
         this.characterStats = new CharacterStats(null);
         this.backToWorldSelectButton = new MButton("World Select")
@@ -55,10 +52,6 @@ public final class CharacterCreationStateManager {
     public int  getSelectedClassIndex()     { return selectedClassIndex; }
     public void setSelectedClassIndex(int i){ this.selectedClassIndex = i; }
 
-    public float getMouseX() { return mouseX; }
-    public float getMouseY() { return mouseY; }
-    public void setMousePosition(float x, float y) { this.mouseX = x; this.mouseY = y; }
-
     /** Discards all progress and resets to the default blank-character state. */
     public void reset() {
         this.characterStats    = new CharacterStats(null);
@@ -67,7 +60,5 @@ public final class CharacterCreationStateManager {
         this.skillScroll       = 0f;
         this.featScroll        = 0f;
         this.selectedClassIndex = -1;
-        this.mouseX            = 0f;
-        this.mouseY            = 0f;
     }
 }

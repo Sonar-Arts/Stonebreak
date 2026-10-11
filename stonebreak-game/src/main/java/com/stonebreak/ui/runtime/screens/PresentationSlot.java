@@ -1,7 +1,7 @@
 package com.stonebreak.ui.runtime.screens;
 
 /**
- * A legacy screen's hook for a {@link ScreenPresentation}: tracks the screen's visibility and tells
+ * A screen's hook for its {@link ScreenPresentation}: tracks the screen's visibility and tells
  * the presentation about real changes only, so every migrated screen keeps its lifecycle with the
  * same three calls ({@link #install}, {@link #setVisible}, {@link #paint}). Main thread only.
  */
@@ -41,12 +41,12 @@ public final class PresentationSlot {
         return visible;
     }
 
-    /** @return true when the presentation painted this call (the legacy renderer must not) */
+    /** @return true when the presentation painted this call */
     public boolean paint(int windowWidth, int windowHeight) {
         return visible && presentation != null && presentation.paint(windowWidth, windowHeight);
     }
 
-    /** True while the presentation, not the legacy screen, is showing. */
+    /** True while the presentation is showing. */
     public boolean showing() {
         return visible && presentation != null && presentation.showing();
     }

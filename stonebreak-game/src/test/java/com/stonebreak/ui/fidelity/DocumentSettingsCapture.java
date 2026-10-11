@@ -14,7 +14,6 @@ import com.stonebreak.ui.runtime.providers.DirtBackdropProvider;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,10 +21,13 @@ import java.util.Map;
 /**
  * The candidate side of the settings gate (#299): the shipped {@code settings} document on a
  * {@link DocumentStage} bound to a {@link SettingsFixtures} menu (values pinned, restored on close).
- * Parts are named as the legacy layout sink names them and found by the document's element names.
+ * Parts are named as the frozen captures name them and found by the document's element names.
  * Not a test class.
  */
 public final class DocumentSettingsCapture implements MigrationGate.Renderer {
+
+    /** Parts that are drawn, not pressed. */
+    static final List<String> PANELS = List.of("viewport", "dialog");
 
     /** A stage plus the pinned values to restore when it closes. */
     static final class Stage extends DocumentStage {
@@ -53,11 +55,12 @@ public final class DocumentSettingsCapture implements MigrationGate.Renderer {
         int h = c.viewport().height();
         RecordingServices services = new RecordingServices();
         services.window = new int[]{w, h};
-        LegacyUiRaster probe = new LegacyUiRaster(w, h, c.viewport().uiScale());
+        // the case's UI scale and pinned clock while the menu lays out
+        UiRaster probe = new UiRaster(w, h, c.viewport().uiScale());
         com.openmason.engine.format.omui.UiValue.Obj before;
         try {
             before = SettingsFixtures.pin();
-            services.settingsMenu = SettingsFixtures.menu(probe.backend(), c.variant(), w, h);
+            services.settingsMenu = SettingsFixtures.menu(c.variant(), w, h);
         } finally {
             probe.close();
         }
@@ -65,7 +68,7 @@ public final class DocumentSettingsCapture implements MigrationGate.Renderer {
         return new Stage(GameUiDocuments.readScreen("settings"), c, services, before);
     }
 
-    /** Legacy part name to the document element that is that part. */
+    /** Frozen capture part name to the document element that is that part. */
     static Map<String, String> elements(StateManager st) {
         Map<String, String> out = new LinkedHashMap<>();
         if (st.isUiScaleConfirmActive()) {
@@ -77,7 +80,7 @@ public final class DocumentSettingsCapture implements MigrationGate.Renderer {
         CategoryState.SettingType[] rows = st.getSelectedCategory().getSettings();
         MDropdown open = st.openDropdown();
         if (open != null) {
-            int r = LegacySettingsCapture.rowOf(st, open);
+            int r = rowOf(st, open);
             out.put("row" + r, "row" + r + "-dropdown");
             for (int k = 0; k < open.items().length; k++) {
                 out.put("item" + k, "row" + r + "-item" + k);
@@ -100,6 +103,16 @@ public final class DocumentSettingsCapture implements MigrationGate.Renderer {
         return out;
     }
 
+    static int rowOf(StateManager st, MWidget w) {
+        CategoryState.SettingType[] s = st.getSelectedCategory().getSettings();
+        for (int i = 0; i < s.length; i++) {
+            if (st.widget(s[i]) == w) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     @Override
     public MigrationGate.Capture render(FidelityCase c) {
         try (Stage stage = stage(c)) {
@@ -120,7 +133,7 @@ public final class DocumentSettingsCapture implements MigrationGate.Renderer {
                 UiRect r = el.rect();
                 float[] rect = {r.x(), r.y(), r.width(), r.height()};
                 rects.put(part, rect);
-                if (!LegacySettingsCapture.PANELS.contains(part)) {
+                if (!PANELS.contains(part)) {
                     pressed.put(name, rect);
                     byElement.put(name, part);
                 }

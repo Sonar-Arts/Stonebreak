@@ -1,6 +1,8 @@
 package com.stonebreak.ui.startupIntro;
 
 import com.openmason.engine.cenda.CendaLua;
+import com.openmason.engine.ui.fidelity.FidelityCase;
+import com.openmason.engine.ui.fidelity.FrozenCaptures;
 import com.openmason.engine.ui.fidelity.GeometryRule;
 import com.openmason.engine.ui.fidelity.MigrationGate;
 import com.openmason.engine.ui.fidelity.PixelTolerance;
@@ -10,6 +12,7 @@ import com.stonebreak.ui.runtime.GameUiDocuments;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -21,11 +24,23 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
 
 /**
  * The startup intro migration gate (#301): the shipped {@code ui/documents/intro.sbui} against the legacy
- * renderer on every committed moment of a seeded timeline (logo geometry {@code FLOAT_EXACT}, pixels
- * {@code EXACT}), plus its skip input and its {@code intro} clock.
+ * renderer's frozen captures on every committed moment of a seeded timeline (logo geometry
+ * {@code FLOAT_EXACT}, pixels {@code EXACT}), plus its skip input and its {@code intro} clock.
  */
 @Tag("regression")
 class IntroDocumentGateTest {
+
+    /**
+     * Every frozen intro capture: a seeded scene at six moments of its timeline at 1920x1080, and the
+     * revealed logo at the other standard viewports (the intro scales itself to fit 1920x1080 and
+     * ignores the UI scale).
+     */
+    static List<FidelityCase> cases() {
+        List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("intro", IntroFixtures.VARIANTS,
+            List.of(FidelityCase.STANDARD.get(0))));
+        out.addAll(FidelityCase.matrix("intro", List.of("t2-4"), FidelityCase.STANDARD.subList(1, 4)));
+        return out;
+    }
 
     static void requireLua() {
         if (!CendaLua.isAvailable()) {
@@ -39,7 +54,7 @@ class IntroDocumentGateTest {
     void theShippedIntroDocumentPassesTheMigrationGate() throws Exception {
         requireLua();
         MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.EXACT)
-            .run("intro", LegacyIntroBaselineTest.cases(), new LegacyIntroCapture(), DocumentIntroCapture.shipped());
+            .run("intro", cases(), FrozenCaptures.forTests("intro").replay(), DocumentIntroCapture.shipped());
         GateAssert.passed(r);
     }
 
