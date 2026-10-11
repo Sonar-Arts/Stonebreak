@@ -9,7 +9,7 @@ public final class StyleValues {
 
     /** Properties whose computed value children inherit when they do not set it (USS set). */
     public static final Set<String> INHERITED = Set.of("color", "font", "font-size", "text-align", "visibility",
-        "pointer-events", "white-space", "line-height");
+        "pointer-events", "white-space", "line-height", "-sb-text-shadow-color");
 
     /** Properties Yoga reads; a change re-pushes the element's layout record. */
     public static final Set<String> LAYOUT = Set.of(

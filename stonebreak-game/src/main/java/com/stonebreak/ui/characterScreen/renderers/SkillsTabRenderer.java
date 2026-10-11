@@ -72,6 +72,16 @@ public class SkillsTabRenderer {
     return false;
   }
 
+  /** A press on the {@code index}-th +1 SP button (#301): invests when points remain. */
+  public boolean invest(CharacterStats stats, int index) {
+    List<SkillDefinition> skills = SkillRegistry.ALL;
+    if (stats.getRemainingSkillPoints() <= 0 || index < 0 || index >= skills.size()) {
+      return false;
+    }
+    stats.investSkillPoint(skills.get(index).id());
+    return true;
+  }
+
   // ─────────────────────────────────────────────── Drawing
 
   private void drawHeader(Canvas canvas, MasonryUI ui, CharacterStats stats,

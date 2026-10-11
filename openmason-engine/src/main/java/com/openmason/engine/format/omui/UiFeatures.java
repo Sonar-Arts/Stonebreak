@@ -136,6 +136,8 @@ public final class UiFeatures {
             Map.entry("-sb-shadow-offset-x", MASONRY),
             Map.entry("-sb-shadow-offset-y", MASONRY),
             Map.entry("-sb-shadow-blur", MASONRY),
+            Map.entry("-sb-text-shadow-color", MASONRY),
+            Map.entry("-sb-tooltip-offset", MASONRY),
             Map.entry("line-height", TEXT));
 
     /**

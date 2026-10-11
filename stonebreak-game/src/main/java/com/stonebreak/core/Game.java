@@ -616,19 +616,6 @@ public class Game {
     }
 
     /**
-     * Gets the game's primary font.
-     * This assumes the font is loaded and available via the Renderer.
-     * @return The Font object, or null if not available.
-     */
-    public Font getFont() {
-        Renderer renderer = services.renderer();
-        if (renderer != null) {
-            return renderer.getFont();
-        }
-        return null;
-    }
-
-    /**
      * Gets the game's texture atlas.
      * This assumes the texture atlas is loaded and available via the Renderer.
      * @return The BlockTextureArray object, or null if not available.

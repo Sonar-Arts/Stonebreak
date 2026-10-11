@@ -28,7 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * under the game's test resources), and may only be {@code migrated} with a {@code **Gate:**} line
  * naming the test class that runs {@code MigrationGate} for it (checked in its source, not just
  * that a file of that name exists). {@code blocked} rows name what they wait for, and
- * {@code retained-bridge} rows the decision that keeps them host code.
+ * {@code retained-bridge}, {@code world-render} and {@code retired} rows the reviewed decision behind
+ * them (#301: kept as host code, classified as non-UI world rendering, or deleted).
  */
 @Tag("regression")
 class UiMigrationLedgerCoverageTest {
@@ -62,7 +63,10 @@ class UiMigrationLedgerCoverageTest {
 
     /** Row statuses, in migration order. */
     private static final Set<String> STATUSES =
-        Set.of("not started", "baselined", "in progress", "migrated", "blocked", "retained-bridge", "n/a");
+        Set.of("not started", "baselined", "in progress", "migrated", "blocked", "retained-bridge", "world-render",
+            "retired", "n/a");
+    /** Statuses that are a decision rather than a migration step: each needs a {@code **Decision:**} line. */
+    private static final Set<String> DECIDED = Set.of("retained-bridge", "world-render", "retired");
     private static final Path BASELINES = Path.of("src/test/resources/ui/fidelity");
     private static final Path TESTS = Path.of("src/test/java");
     private static final Pattern TICKED = Pattern.compile("`([^`]+)`");
@@ -86,10 +90,10 @@ class UiMigrationLedgerCoverageTest {
             if (st.equals("blocked") && !hasLine(row, "**Blocked:**")) {
                 problems.add(e.getKey() + ": 'blocked' needs a **Blocked:** line naming what it waits for");
             }
-            if (st.equals("retained-bridge") && !hasLine(row, "**Decision:**")) {
-                problems.add(e.getKey() + ": 'retained-bridge' needs a **Decision:** line (why, and how it is bridged)");
+            if (DECIDED.contains(st) && !hasLine(row, "**Decision:**")) {
+                problems.add(e.getKey() + ": '" + st + "' needs a **Decision:** line (why, and what happens instead)");
             }
-            if (st.equals("not started") || st.equals("n/a") || st.equals("blocked") || st.equals("retained-bridge")) {
+            if (st.equals("not started") || st.equals("n/a") || st.equals("blocked") || DECIDED.contains(st)) {
                 continue;
             }
             List<String> fidelity = ticked(row, "**Fidelity:**");

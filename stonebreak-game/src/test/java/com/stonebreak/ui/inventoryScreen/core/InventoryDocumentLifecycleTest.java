@@ -109,7 +109,7 @@ class InventoryDocumentLifecycleTest {
         try (LegacyUiRaster raster = new LegacyUiRaster(W, H, 1f)) {
             Renderer renderer = mock(Renderer.class);
             when(renderer.getSkijaBackend()).thenReturn(raster.backend());
-            InventoryScreen screen = new InventoryScreen(UiTestFixtures.emptyInventory(), null, renderer,
+            InventoryScreen screen = new InventoryScreen(UiTestFixtures.emptyInventory(), renderer,
                 mock(UIRenderer.class), mock(InputHandler.class), new CraftingManager(), new CharacterStats(null));
             List<String> events = new ArrayList<>();
             screen.setPresentation(new ScreenPresentation() {

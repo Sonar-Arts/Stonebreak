@@ -101,6 +101,44 @@ public class ClassesTabRenderer {
     }
   }
 
+  // ─────────────────────────────────────────────── The document's seams (#301)
+
+  public String displayedClassId() { return displayedClassId; }
+  public float leftScroll() { return leftScrollOffset; }
+  public float rightScroll() { return rightScrollOffset; }
+
+  /** A press on a class row: shows it, its ability list back at the top. */
+  public void selectClass(String classId) {
+    if (ClassRegistry.findById(classId).isPresent()) {
+      displayedClassId = classId;
+      rightScrollOffset = 0f;
+    }
+  }
+
+  /** A press on the {@code index}-th Spend button: spends when a class is shown and CP remain. */
+  public boolean spend(CharacterStats stats, int index) {
+    if (displayedClassId == null || stats.getRemainingCp() <= 0 || index < 0 || index >= spendButtons.length) {
+      return false;
+    }
+    stats.spendCpOnAbility(displayedClassId + ":" + index);
+    return true;
+  }
+
+  /** The ability list's clip height, for its scroll clamp (the legacy draw remembered it). */
+  public void abilityClipHeight(float h) { lastAbilityClipH = h; }
+
+  /** The wheel over the sidebar ({@code sidebar}) or over the ability list. */
+  public void scroll(float deltaY, boolean sidebar, float scale) {
+    float px = 0f;
+    float mx = sidebar ? SIDEBAR_X_PAD * scale : -1f;
+    handleScroll(deltaY, mx, 0f, px, 0f, scale);
+  }
+
+  /** Greedy word wrap honouring "\n" (the legacy class description), shared with the document. */
+  public static List<String> wrap(Font font, String text, float maxWidth) {
+    return wrapText(font, text, maxWidth);
+  }
+
   // ─────────────────────────────────────────────── Sidebar
 
   private void drawSidebar(Canvas canvas, MasonryUI ui, CharacterStats stats,
@@ -227,7 +265,7 @@ public class ClassesTabRenderer {
   }
 
   /** Greedily wraps {@code text} to fit within {@code maxWidth} pixels, honoring "\n" breaks. */
-  private List<String> wrapText(Font font, String text, float maxWidth) {
+  private static List<String> wrapText(Font font, String text, float maxWidth) {
     List<String> lines = new ArrayList<>();
     if (text == null || text.isEmpty()) {
       return lines;

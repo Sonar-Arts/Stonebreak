@@ -90,4 +90,10 @@ public final class TerrainMapperScreen {
     }
 
     public TerrainMapperStateManager getStateManager() { return state; }
+
+    /** The pointer rules, addressed by target (the terrain mapper document's actions, #301). */
+    public TerrainMouseHandler mouse() { return mouseHandler; }
+
+    /** The shipped document: {@code ui/documents/terrain_mapper.sbui} (#301). */
+    public static final String DOCUMENT_ID = "terrain_mapper";
 }

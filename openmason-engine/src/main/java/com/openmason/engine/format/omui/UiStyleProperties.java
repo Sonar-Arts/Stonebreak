@@ -51,7 +51,7 @@ public final class UiStyleProperties {
             "left", "top", "right", "bottom", "padding-left", "padding-top", "padding-right", "padding-bottom",
             "border-left-width", "border-top-width", "border-right-width", "border-bottom-width", "row-gap",
             "column-gap", "border-radius", "-sb-baseline", "line-height", "font-size", "-sb-shadow-offset-x",
-            "-sb-shadow-offset-y", "-sb-shadow-blur", "translate-x", "translate-y");
+            "-sb-shadow-offset-y", "-sb-shadow-blur", "translate-x", "translate-y", "-sb-tooltip-offset");
 
     private static final Set<String> ALIGN = Set.of("auto", "flex-start", "center", "flex-end", "stretch",
             "baseline", "space-between", "space-around", "space-evenly");
@@ -59,7 +59,7 @@ public final class UiStyleProperties {
     private static final Map<String, Spec> SPECS = new HashMap<>();
 
     /** {@code -sb-symbol} keywords: {@code none} and the Masonry {@code MSymbol}s, lower-case with hyphens. */
-    public static final String[] SYMBOLS = {"none", "chevron-up", "chevron-down", "chevron-left", "chevron-right", "plus", "minus", "cross", "check", "gear", "magnifier", "warning", "info", "star", "heart", "lock", "play", "pause", "arrow-up", "arrow-down", "arrow-left", "arrow-right", "hand-point", "crafting-arrow"};
+    public static final String[] SYMBOLS = {"none", "chevron-up", "chevron-down", "chevron-left", "chevron-right", "plus", "minus", "cross", "check", "gear", "magnifier", "warning", "info", "star", "heart", "lock", "play", "pause", "arrow-up", "arrow-down", "arrow-left", "arrow-right", "hand-point", "crafting-arrow", "smiley", "nav-left", "nav-right"};
 
     static {
         keyword("display", "flex", "none");
@@ -98,7 +98,9 @@ public final class UiStyleProperties {
         // ui-masonry: the house look as style (#297)
         keyword("-sb-surface", "auto", "none", "panel", "container", "button", "button-hover", "button-disabled",
                 "tab", "tab-hover", "tab-active", "hotbar", "panel-deep", "hud",
-                "inset");
+                "inset", "folder-tab", "folder-tab-active", "input-well", "search-field", "search-field-active",
+                "tab-dim", "tab-disabled", "mini-button", "mini-button-hover", "mini-button-disabled", "slot",
+                "dirt", "tip-strip", "filter-bar");
         keyword("-sb-text-effect", "shadow", "none", "title");
         keyword("-sb-pixel-grid", "device", "none");
         keyword("-sb-font-grid", "half", "none");
@@ -113,6 +115,10 @@ public final class UiStyleProperties {
         keyword("-sb-border-align", "inside", "center");
         // ui-masonry (#299): an anti-aliased child clip (the legacy scroll viewport's) at fractional edges
         keyword("-sb-clip", "hard", "antialias");
+        // ui-masonry (#301): the colour of a label's shadow passes, as the legacy world markers draw them
+        plain(Kind.COLOR, "-sb-text-shadow-color");
+        // ui-masonry (#301): on a document's root, how far a pointer tooltip sits from the pointer (default 15)
+        plain(Kind.LENGTH_NO_AUTO, "-sb-tooltip-offset");
         // ui-text (#299): the pitch of a label's lines
         plain(Kind.LENGTH_NO_AUTO, "line-height");
     }

@@ -107,6 +107,9 @@ public final class GameStateController {
         if (game.getInventoryScreen() != null) {
             game.getInventoryScreen().syncPresentation(state);
         }
+        if (game.getCharacterScreen() != null) {
+            game.getCharacterScreen().syncPresentation(state); // #301
+        }
 
         // Tear down any active session when returning to the main menu. In the two-world model
         // singleplayer also runs an integrated server + local client, so tear those down too.

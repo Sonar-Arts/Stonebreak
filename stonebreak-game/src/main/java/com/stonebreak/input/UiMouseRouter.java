@@ -55,7 +55,9 @@ final class UiMouseRouter {
 
         ChatSystem chatSystem = game.getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
-            chatRouter.handleMouseButton(chatSystem, button, action);
+            if (!chatDocumentShowing()) { // the chat document takes the chat's pointer input (#301)
+                chatRouter.handleMouseButton(chatSystem, button, action);
+            }
             return;
         }
 
@@ -155,7 +157,7 @@ final class UiMouseRouter {
         }
 
         ChatSystem chatSystem = game.getChatSystem();
-        if (chatSystem != null && chatSystem.isOpen()) {
+        if (chatSystem != null && chatSystem.isOpen() && !chatDocumentShowing()) {
             chatRouter.onMouseMove(chatSystem);
         }
     }
@@ -185,5 +187,10 @@ final class UiMouseRouter {
         } else if (pauseMenu.isQuitButtonClicked(mouse.x(), mouse.y(), w, h)) {
             PauseMenuActions.quitToMenu(game);
         }
+    }
+
+    private static boolean chatDocumentShowing() {
+        var ui = Game.getInstance().getUIRenderer();
+        return ui != null && ui.getChatDocument().showing();
     }
 }

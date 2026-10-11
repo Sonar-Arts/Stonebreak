@@ -27,7 +27,6 @@ import com.openmason.engine.voxel.mms.mmsIntegration.MmsFaceCullingService;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBORendererAPI;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
 import com.openmason.engine.format.sbo.SBOParseResult;
-import com.stonebreak.ui.Font;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.ui.chat.ChatSystem;
 import org.joml.Matrix4f;
@@ -431,9 +430,6 @@ public class Renderer {
         return configManager.getWindowHeight();
     }
 
-    public Font getFont() {
-        return resourceManager.getFont();
-    }
 
     /**
      * Apply the deferred SBO stamp emitter to MmsAPI.

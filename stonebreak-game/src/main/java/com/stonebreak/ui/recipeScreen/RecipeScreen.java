@@ -1,5 +1,9 @@
 package com.stonebreak.ui.recipeScreen;
 
+import java.util.List;
+
+import com.stonebreak.crafting.Recipe;
+
 import com.stonebreak.core.Game;
 import com.stonebreak.crafting.CraftingManager;
 import com.stonebreak.input.InputHandler;
@@ -22,6 +26,12 @@ import com.stonebreak.ui.recipeScreen.state.RecipeBookState;
  * so callers can interleave block-drop sprites between chrome and tooltips.
  */
 public class RecipeScreen {
+
+    /** The shipped document: {@code ui/documents/recipe_book.sbui} (#301). */
+    public static final String DOCUMENT_ID = "recipe_book";
+
+    private final com.stonebreak.ui.runtime.screens.PresentationSlot presentation =
+            new com.stonebreak.ui.runtime.screens.PresentationSlot();
 
     private final CraftingManager craftingManager;
     private final InputHandler inputHandler;
@@ -66,26 +76,76 @@ public class RecipeScreen {
 
     public void render() {
         if (!state.isVisible()) return;
+        if (paintDocument()) return; // the document (#301)
         coordinator.render(Game.getWindowWidth(), Game.getWindowHeight());
     }
 
     public void renderWithoutTooltips() {
         if (!state.isVisible()) return;
+        if (paintDocument()) return;
         coordinator.renderWithoutTooltips(Game.getWindowWidth(), Game.getWindowHeight());
     }
 
+    /** Publishes the book right before its document paints (the caret blinks on the wall clock). */
+    private boolean paintDocument() {
+        if (!presentation.showing()) return false;
+        com.stonebreak.ui.runtime.GameUiHost host = com.stonebreak.ui.runtime.GameUiHost.get();
+        if (host != null) host.recipeBook().poll();
+        return presentation.paint(Game.getWindowWidth(), Game.getWindowHeight());
+    }
+
     public void renderTooltipsOnly() {
-        if (!state.isVisible()) return;
+        if (!state.isVisible() || presentation.showing()) return; // the document paints its own tooltip
         coordinator.renderTooltipsOnly(Game.getWindowWidth(), Game.getWindowHeight());
     }
 
     public void handleInput() {
+        if (presentation.showing()) {
+            inputHandler.getAndResetScrollY(); // the document takes the pointer and the wheel (#301)
+            return;
+        }
         inputHandlerModule.handleInput();
+    }
+
+    /** Installs (or, with null, removes) the document presentation; the legacy renderer is the default. */
+    public void setPresentation(com.stonebreak.ui.runtime.screens.ScreenPresentation p) {
+        presentation.install(p);
+    }
+
+    /** True while the recipe book document, not the legacy renderer, shows the book. */
+    public boolean presentationShowing() {
+        return presentation.showing();
+    }
+
+    // ── what the document reads and asks (stonebreak:screen.recipe-book, #301) ──
+
+    public RecipeBookState state() {
+        return state;
+    }
+
+    /**
+     * The recipes the grid shows now in a {@code w}x{@code h} window (0: the game's), row by row (the scroll
+     * clamped as the legacy render clamps it).
+     */
+    public List<Recipe> window(int w, int h) {
+        return coordinator.window(filterService.getFilteredRecipes(state.getRecipes(),
+                state.getUiState().getSelectedCategory(), state.getSearchState().getSearchText()), w, h);
+    }
+
+    /** {recipes per row, visible rows} in a {@code w}x{@code h} window (0: the game's). */
+    public int[] gridShape(int w, int h) {
+        return coordinator.gridShape(w, h);
+    }
+
+    /** The legacy click and wheel rules, addressed by target. */
+    public RecipeBookInputHandler intents() {
+        return inputHandlerModule;
     }
 
     public void onOpen() {
         state.show();
         init();
+        com.stonebreak.ui.runtime.GameUiHost.onUiThread(() -> presentation.setVisible(state.isVisible()));
 
         MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
         if (mouseCaptureManager != null) {
@@ -95,6 +155,7 @@ public class RecipeScreen {
 
     public void onClose() {
         state.hide();
+        com.stonebreak.ui.runtime.GameUiHost.onUiThread(() -> presentation.setVisible(false));
 
         MouseCaptureManager mouseCaptureManager = Game.getInstance().getMouseCaptureManager();
         if (mouseCaptureManager != null) {

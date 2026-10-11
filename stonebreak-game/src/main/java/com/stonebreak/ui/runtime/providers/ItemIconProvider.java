@@ -57,7 +57,8 @@ import static org.lwjgl.opengl.GL11.glBindTexture;
  *
  * <p>Optional {@code params}: {@code insetPx} and {@code countMarginPx} replace the inset and the
  * count margin with fixed device pixels. The container screens (furnace, inventory, workbench)
- * never scaled them: 3 px and 2 px at every UI scale (#298).
+ * never scaled them: 3 px and 2 px at every UI scale (#298). {@code countSizePx} fixes the count's font
+ * size in device pixels (the recipe book never scaled its counts, #301).
  */
 public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
 
@@ -160,7 +161,7 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
         }
         if (anchor != null && ref.count() > 1) {
             float margin = pixels(element, "countMarginPx");
-            drawCount(canvas, Integer.toString(ref.count()), anchor, scale,
+            drawCount(canvas, Integer.toString(ref.count()), anchor, scale, pixels(element, "countSizePx"),
                 Float.isNaN(margin) ? COUNT_MARGIN * scale : margin);
         }
     }
@@ -200,8 +201,9 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
         canvas.drawRect(icon, paint);
     }
 
-    private void drawCount(Canvas canvas, String text, Rect anchor, float scale, float margin) {
-        Font f = font(MStyle.FONT_META * scale);
+    /** @param sizePx a fixed device-pixel font size (the unscaled recipe book, #301), or NaN for the scaled meta font */
+    private void drawCount(Canvas canvas, String text, Rect anchor, float scale, float sizePx, float margin) {
+        Font f = font(!Float.isNaN(sizePx) ? sizePx : MStyle.FONT_META * scale);
         if (f == null) {
             return;
         }

@@ -39,7 +39,18 @@ public enum MSymbol {
      * The container screens' crafting arrow ({@link MPainter#craftingArrow}): a shaft and head
      * spanning the whole box, not centred in its square like the others (#300).
      */
-    CRAFTING_ARROW;
+    CRAFTING_ARROW,
+    /**
+     * The chat's emoji-button face (#301): a 1.5 px circle of radius {@code min(w, h) / 2 - 4}, two
+     * 1.3 px dot eyes and a bottom-arc smile, as the legacy chat renderer drew it.
+     */
+    SMILEY,
+    /**
+     * The stone buttons' navigation arrows ({@link MPainter#navArrow}, {@code MButton.Arrow}): a shaft
+     * and open head spanning the box (#301). With {@link #drawWithShadow} they are exactly the
+     * legacy two-pass arrow.
+     */
+    NAV_LEFT, NAV_RIGHT;
 
     /**
      * Draws this symbol centered in the box {@code (x, y, w, h)}. Ignores
@@ -95,6 +106,9 @@ public enum MSymbol {
             case ARROW_RIGHT -> drawArrow(canvas, cx, cy, s, color, 1f, 0f);
             case HAND_POINT -> drawHand(canvas, cx, cy, s, color);
             case CRAFTING_ARROW -> MPainter.craftingArrow(canvas, x, y, w, h, color);
+            case SMILEY -> drawSmiley(canvas, cx, cy, s / 2f - 4f, color);
+            case NAV_LEFT -> MPainter.navArrow(canvas, x, y, w, h, true, color, 0);
+            case NAV_RIGHT -> MPainter.navArrow(canvas, x, y, w, h, false, color, 0);
         }
     }
 
@@ -265,6 +279,26 @@ public enum MSymbol {
     private static void fillRect(Canvas canvas, int color, float x, float y, float w, float h) {
         try (Paint p = new Paint().setColor(color).setAntiAlias(true)) {
             canvas.drawRect(Rect.makeXYWH(x, y, w, h), p);
+        }
+    }
+
+    private static void drawSmiley(Canvas canvas, float cx, float cy, float fr, int color) {
+        try (io.github.humbleui.skija.Paint p = new io.github.humbleui.skija.Paint().setColor(color)
+                .setMode(io.github.humbleui.skija.PaintMode.STROKE).setStrokeWidth(1.5f).setAntiAlias(true)) {
+            canvas.drawCircle(cx, cy, fr, p);
+        }
+        try (io.github.humbleui.skija.Paint p = new io.github.humbleui.skija.Paint().setColor(color).setAntiAlias(true)) {
+            canvas.drawCircle(cx - fr * 0.28f, cy - fr * 0.22f, 1.3f, p);
+            canvas.drawCircle(cx + fr * 0.28f, cy - fr * 0.22f, 1.3f, p);
+        }
+        // the bottom arc of a small oval below the face's centre (0 to 180 degrees from 3 o'clock)
+        float smileW = fr * 0.75f;
+        float smileH = fr * 0.4f;
+        float smileL = cx - smileW / 2f;
+        float smileT = cy + fr * 0.1f;
+        try (io.github.humbleui.skija.Paint p = new io.github.humbleui.skija.Paint().setColor(color)
+                .setMode(io.github.humbleui.skija.PaintMode.STROKE).setStrokeWidth(1.5f).setAntiAlias(true)) {
+            canvas.drawArc(smileL, smileT, smileL + smileW, smileT + smileH, 0f, 180f, false, p);
         }
     }
 }

@@ -93,8 +93,47 @@ public final class CharacterCreationScreen {
         return state.getCharacterStats();
     }
 
+    // ─────────────────────────────────────────────── The document's seams (#301)
+
+    /** The shipped document: {@code ui/documents/character_creation.sbui}. */
+    public static final String DOCUMENT_ID = "character_creation";
+
+    public CharacterCreationStateManager state() { return state; }
+
+    public CharacterCreationActionHandler actions() { return actionHandler; }
+
+    public CharacterCreationMouseHandler mouse() { return mouseHandler; }
+
+    public CharacterCreationLayout layout() { return layout; }
+
+    /** The tab strip in a {@code w}x{@code h} window, measured with this screen's fonts. */
+    public com.stonebreak.ui.characterCreation.renderers.SkijaCharacterCreationRenderer.TabMetric[] tabMetrics(
+            int w, int h) {
+        return com.stonebreak.ui.characterCreation.renderers.SkijaCharacterCreationRenderer.tabMetrics(ui,
+                layout.tabBar(layout.rightPanel(w, h)));
+    }
+
+    /** Clamps the three list scrolls as the legacy renderers do on every frame. */
+    public void clampScrolls() {
+        int i = state.getSelectedClassIndex();
+        var classes = com.stonebreak.rpg.classes.ClassRegistry.ALL;
+        // with no class the ability list is not drawn, so its scroll is left as it is
+        if (i >= 0 && i < classes.size()) {
+            state.setClassScroll(clamp(state.getClassScroll(), classes.get(i).abilities().size() * 64f - 300f));
+        }
+        state.setSkillScroll(clamp(state.getSkillScroll(),
+                com.stonebreak.rpg.skills.SkillRegistry.ALL.size() * (40f + 2f) - 320f));
+        state.setFeatScroll(clamp(state.getFeatScroll(),
+                com.stonebreak.rpg.feats.FeatRegistry.ALL.size() * (54f + 4f) - 320f));
+    }
+
+    private static float clamp(float v, float overflow) {
+        return Math.clamp(v, 0f, Math.max(0f, overflow));
+    }
+
     public void dispose() {
         renderer.dispose();
         ui.dispose();
     }
+
 }

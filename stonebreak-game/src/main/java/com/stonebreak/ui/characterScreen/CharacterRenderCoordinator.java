@@ -124,6 +124,35 @@ public class CharacterRenderCoordinator {
     }
   }
 
+  // ─────────────────────────────────────────────── The document's seams (#301)
+
+  public MasonryUI ui() { return ui; }
+  public CharacterStats stats() { return stats; }
+  public ClassesTabRenderer classes() { return classesRenderer; }
+  public SkillsTabRenderer skills() { return skillsRenderer; }
+  public FeatsTabRenderer feats() { return featsRenderer; }
+
+  /** The Inventory tab: closes the sheet and opens the inventory, as its legacy press did. */
+  public void openInventory() {
+    controller.setVisible(false);
+    Game.getInstance().toggleInventoryScreen();
+  }
+
+  /** An ability tile's [+] ({@code delta > 0}) or [-]. */
+  public void pressAbility(int index, int delta) {
+    if (index < 0 || index >= 6) return;
+    if (delta > 0) stats.incrementAbilityScore(index);
+    else stats.decrementAbilityScore(index);
+  }
+
+  /** The sheet panel in a {@code w}x{@code h} window at UI scale {@code scale}: {x, y, w, h}. */
+  public static float[] panel(int w, int h, float scale) {
+    InventoryLayoutCalculator.InventoryLayout anchor = InventoryLayoutCalculator.calculateLayout(w, h);
+    int pw = Math.round(PANEL_WIDTH * scale);
+    int px = (w - pw) / 2;
+    return new float[]{px, anchor.panelStartY, pw, anchor.inventoryPanelHeight};
+  }
+
   // ─────────────────────────────────────────────── Public entry points
 
   public void render(int screenWidth, int screenHeight) {
@@ -726,7 +755,8 @@ public class CharacterRenderCoordinator {
 
   // ─────────────────────────────────────────────── Icon primitives
 
-  private void drawHeart(Canvas canvas, float x, float y, float s, int color) {
+  /** The vitals heart: two circles and a triangle (shared with {@code stonebreak:pips}, #301). */
+  public static void drawHeart(Canvas canvas, float x, float y, float s, int color) {
     try (Paint fill = new Paint().setColor(color).setAntiAlias(true)) {
       float r  = s * 0.27f;
       float lx = x + r;
@@ -748,7 +778,8 @@ public class CharacterRenderCoordinator {
     }
   }
 
-  private void drawDiamond(Canvas canvas, float x, float y, float s, int color) {
+  /** The mana diamond (shared with {@code stonebreak:pips}, #301). */
+  public static void drawDiamond(Canvas canvas, float x, float y, float s, int color) {
     float cx = x + s / 2f;
     float cy = y + s / 2f;
     try (PathBuilder builder = new PathBuilder();

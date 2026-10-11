@@ -107,6 +107,42 @@ public class FeatsTabRenderer {
     scrollOffset = Math.clamp(scrollOffset + deltaY * 20f, 0f, maxScroll);
   }
 
+  // ─────────────────────────────────────────────── The document's seams (#301)
+
+  public int filterLevel() { return filterLevel; }
+  public boolean filterGeneral() { return filterGeneral; }
+  public String selectedFeatId() { return selectedFeatId; }
+  public float scrollOffset() { return scrollOffset; }
+
+  /** The level filter button: left press {@code +1}, right press {@code -1} (wraps through All). */
+  public void cycleLevel(int direction) {
+    filterLevel = ((filterLevel + direction) % 11 + 11) % 11;
+    levelFilterBtn.setText(filterLevel == 0 ? "Level: All" : "Level: " + filterLevel);
+    selectedFeatId = null;
+    scrollOffset = 0f;
+  }
+
+  public void toggleGeneral() {
+    filterGeneral = !filterGeneral;
+    selectedFeatId = null;
+    scrollOffset = 0f;
+  }
+
+  public void selectFeat(String featId) {
+    if (FeatRegistry.filter(filterLevel, filterGeneral).stream().anyMatch(f -> f.id().equals(featId))) {
+      selectedFeatId = featId;
+    }
+  }
+
+  /** The Acquire button: acquires the selected feat (the legacy press ignored its look). */
+  public boolean acquire(CharacterStats stats) {
+    if (selectedFeatId == null) {
+      return false;
+    }
+    stats.acquireFeat(selectedFeatId);
+    return true;
+  }
+
   // ─────────────────────────────────────────────── Filter bar
 
   private void drawFilterBar(Canvas canvas, MasonryUI ui, float px, float py,

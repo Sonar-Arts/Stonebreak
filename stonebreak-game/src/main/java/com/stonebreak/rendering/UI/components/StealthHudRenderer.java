@@ -11,8 +11,8 @@ import io.github.humbleui.skija.Font;
 
 /**
  * Screen-space HUD for the universal stealth system: a "STEALTH" indicator while entering/active,
- * and a depleting re-entry cooldown bar after stealth breaks. Drawn top-centre, under the
- * crosshair. Skija-backed like {@link QuarryMarkerRenderer}.
+ * and a depleting re-entry cooldown bar after stealth breaks. Drawn top-centre, 64 px from the top
+ * (not under the crosshair). Skija-backed like {@link QuarryMarkerRenderer}.
  */
 public class StealthHudRenderer {
 
@@ -24,13 +24,25 @@ public class StealthHudRenderer {
     private static final float BAR_HEIGHT       = 8f;
     private static final float BAR_GAP          = 8f;
 
-    private static final int ACTIVE_COLOR    = 0xDFAEE3F0; // soft cyan-white
-    private static final int ENTERING_COLOR  = 0x88AEE3F0; // dimmer while entering
+    public static final int ACTIVE_COLOR    = 0xDFAEE3F0; // soft cyan-white
+    public static final int ENTERING_COLOR  = 0x88AEE3F0; // dimmer while entering
     private static final int LABEL_SHADOW    = 0xB0101820;
     private static final int BAR_BG          = 0xC83C3C3C;
     private static final int BAR_FILL        = 0xE06AA8C8;
     private static final int BAR_BORDER      = 0xFF000000;
     private static final int COOLDOWN_LABEL  = 0xCCBFC8CC;
+
+    /**
+     * What the stealth HUD shows (#301): {@code label} ("STEALTH", "ENTERING STEALTH…" or empty) in
+     * {@code labelColor}, and while {@code cooling} the re-entry bar at {@code fraction} (1 → 0).
+     */
+    public record State(String label, int labelColor, boolean cooling, float fraction) {
+        public static final State NONE = new State("", 0, false, 0f);
+
+        public boolean shown() {
+            return !label.isEmpty() || cooling;
+        }
+    }
 
     private SkijaUIBackend backend;
     private MFonts fonts;
@@ -46,18 +58,30 @@ public class StealthHudRenderer {
         this.fonts = new MFonts(backend);
     }
 
-    public void render(int screenW, int screenH) {
-        if (backend == null || !backend.isAvailable() || fonts == null) return;
-
-        Player player = Game.getPlayer();
-        if (player == null) return;
+    /** The local player's stealth HUD state, or {@link State#NONE}. */
+    public static State state(Player player) {
+        if (player == null) return State.NONE;
         StealthController stealth = player.getStealth();
-
         boolean active = stealth.isStealthed();
         boolean entering = stealth.isEntering();
         boolean cooling = stealth.isReentryCoolingDown();
-        if (!active && !entering && !cooling) return;
+        if (!active && !entering && !cooling) return State.NONE;
+        String label = active ? "STEALTH" : entering ? "ENTERING STEALTH…" : "";
+        int color = active ? ACTIVE_COLOR : entering ? ENTERING_COLOR : 0;
+        return new State(label, color, cooling, cooling ? stealth.getReentryRemainingFraction() : 0f);
+    }
 
+    public void render(int screenW, int screenH) {
+        if (backend == null || !backend.isAvailable() || fonts == null) return;
+        State state = state(Game.getPlayer());
+        if (state.shown()) {
+            paint(state, screenW, screenH);
+        }
+    }
+
+    /** Draws {@code state} in one UI frame. */
+    public void paint(State state, int screenW, int screenH) {
+        if (backend == null || !backend.isAvailable() || fonts == null) return;
         backend.beginFrame(screenW, screenH, 1.0f);
         try {
             Canvas canvas = backend.getCanvas();
@@ -66,14 +90,13 @@ public class StealthHudRenderer {
             float cx = screenW * 0.5f;
             Font font = fonts.get(LABEL_FONT_SIZE);
 
-            if ((active || entering) && font != null) {
-                String label = active ? "STEALTH" : "ENTERING STEALTH…";
-                int color = active ? ACTIVE_COLOR : ENTERING_COLOR;
-                MPainter.drawCenteredStringWithShadow(canvas, label, cx, TOP_Y, font, color, LABEL_SHADOW);
+            if (!state.label().isEmpty() && font != null) {
+                MPainter.drawCenteredStringWithShadow(canvas, state.label(), cx, TOP_Y, font, state.labelColor(),
+                    LABEL_SHADOW);
             }
 
-            if (cooling) {
-                float fraction = stealth.getReentryRemainingFraction(); // 1 → 0 as it expires
+            if (state.cooling()) {
+                float fraction = state.fraction(); // 1 → 0 as it expires
                 float barX = cx - BAR_WIDTH * 0.5f;
                 float barY = TOP_Y + BAR_GAP;
                 MPainter.fillRect(canvas, barX, barY, BAR_WIDTH, BAR_HEIGHT, BAR_BG);

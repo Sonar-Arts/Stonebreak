@@ -77,7 +77,8 @@ public final class BackgroundTabRenderer {
         }
     }
 
-    private String formatBonusLine(int[] bonuses) {
+    /** The bonus line of a background row (shared with the document, #301). */
+    public static String formatBonusLine(int[] bonuses) {
         if (bonuses == null) return "No stat changes";
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 6 && i < bonuses.length; i++) {

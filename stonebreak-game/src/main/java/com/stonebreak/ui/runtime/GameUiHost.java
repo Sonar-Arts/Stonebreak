@@ -69,6 +69,41 @@ import java.util.function.Consumer;
  *       ({@link com.stonebreak.ui.runtime.contracts.InventoryContracts}, #300)</td></tr>
  *   <tr><td>{@code stonebreak:hud} 1</td><td>root {@code hud} and collection {@code hearts}: the
  *       HUD around the hotbar ({@link com.stonebreak.ui.runtime.contracts.HudContracts}, #300)</td></tr>
+ *   <tr><td>{@code stonebreak:world.hud} 1</td><td>collection {@code worldMarkers} and root {@code stealth}:
+ *       the world-anchored HUD, published right before it paints
+ *       ({@link com.stonebreak.ui.runtime.contracts.WorldHudContracts}, #301)</td></tr>
+ *   <tr><td>{@code stonebreak:debug} 1</td><td>collection {@code debugCards}: the F3 overlay's cards
+ *       ({@link com.stonebreak.ui.runtime.contracts.DebugContracts}, #301)</td></tr>
+ *   <tr><td>{@code stonebreak:chat} 1</td><td>roots {@code chat}, {@code emojiPicker}, collections
+ *       {@code chatLines}, {@code chatCommands}; {@code stonebreak:chat.tab}, {@code .command},
+ *       {@code .scroll}, {@code .scroll-to}, {@code .emoji-toggle}, {@code .emoji-insert},
+ *       {@code .emoji-favorite}, {@code .picker-close}
+ *       ({@link com.stonebreak.ui.runtime.contracts.ChatContracts}, #301)</td></tr>
+ *   <tr><td>{@code stonebreak:screen.recipe-book} 1</td><td>root {@code recipeBook}, collections
+ *       {@code recipeGrid}, {@code recipeDetail}; {@code stonebreak:screen.recipe-book.category}, {@code .press},
+ *       {@code .variant}, {@code .wheel}
+ *       ({@link com.stonebreak.ui.runtime.contracts.RecipeBookContracts}, #301)</td></tr>
+ *   <tr><td>{@code stonebreak:screen.terrain-mapper} 1</td><td>root {@code terrainMapper};
+ *       {@code stonebreak:screen.terrain-mapper.button}, {@code .field}, {@code .map-press}, {@code .release},
+ *       {@code .move}, {@code .wheel}
+ *       ({@link com.stonebreak.ui.runtime.contracts.TerrainMapperContracts}, #301)</td></tr>
+ *   <tr><td>{@code stonebreak:screen.character-creation} 1</td><td>root {@code characterCreation}, collections
+ *       {@code ccBackgrounds}, {@code ccClasses}, {@code ccAbilities}, {@code ccSkills}, {@code ccFeats},
+ *       {@code ccHair}, {@code ccHats}; {@code stonebreak:screen.character-creation.tab}, {@code .nav},
+ *       {@code .background}, {@code .ability}, {@code .class}, {@code .spend}, {@code .skill}, {@code .feat},
+ *       {@code .hair}, {@code .hat}, {@code .wheel}
+ *       ({@link com.stonebreak.ui.runtime.contracts.CharacterCreationContracts}, #301)</td></tr>
+ *   <tr><td>{@code stonebreak:screen.character-sheet} 1</td><td>root {@code characterSheet};
+ *       {@code stonebreak:screen.character-sheet.tab}, {@code .ability}, {@code .class}, {@code .spend},
+ *       {@code .skill}, {@code .level-filter}, {@code .general}, {@code .feat}, {@code .acquire}, {@code .wheel}
+ *       ({@link com.stonebreak.ui.runtime.contracts.CharacterSheetContracts}, #301)</td></tr>
+ *   <tr><td>{@code stonebreak:battle} 1</td><td>root {@code battleHud}; {@code stonebreak:battle.pointer}
+ *       ({@link com.stonebreak.ui.runtime.contracts.BattleHudContracts}, #301)</td></tr>
+ *   <tr><td>{@code stonebreak:screen.intro} 1</td><td>root {@code intro} (time, phase, reveal, fade,
+ *       scale) and {@code stonebreak:screen.intro.skip}
+ *       ({@link com.stonebreak.ui.runtime.contracts.IntroContracts}, #301)</td></tr>
+ *   <tr><td>{@code stonebreak:crosshair} 1</td><td>root {@code crosshair}: the applied crosshair
+ *       ({@link com.stonebreak.ui.runtime.contracts.CrosshairContracts}, #301)</td></tr>
  *   <tr><td>{@code stonebreak:hotbar} 1</td><td>collection {@code hotbar} ({@code hotbar:0..8}, the
  *       selected one flagged {@code selected}); {@code stonebreak:hotbar.select}</td></tr>
  *   <tr><td>{@code stonebreak:player.vitals} 1</td><td>root {@code vitals}: health, stamina, mana
@@ -171,7 +206,15 @@ public final class GameUiHost {
     public interface Services extends MultiplayerContracts.Services, MainMenuContracts.Services,
             WorldSelectContracts.Services, SettingsMenuContracts.Services,
             com.stonebreak.ui.runtime.contracts.InventoryContracts.Services,
-            com.stonebreak.ui.runtime.contracts.HudContracts.Services {
+            com.stonebreak.ui.runtime.contracts.HudContracts.Services,
+            com.stonebreak.ui.runtime.contracts.CrosshairContracts.Services,
+            com.stonebreak.ui.runtime.contracts.IntroContracts.Services,
+            com.stonebreak.ui.runtime.contracts.ChatContracts.Services,
+            com.stonebreak.ui.runtime.contracts.RecipeBookContracts.Services,
+            com.stonebreak.ui.runtime.contracts.TerrainMapperContracts.Services,
+            com.stonebreak.ui.runtime.contracts.CharacterCreationContracts.Services,
+            com.stonebreak.ui.runtime.contracts.CharacterSheetContracts.Services,
+            com.stonebreak.ui.runtime.contracts.BattleHudContracts.Services {
         void resume();
 
         void openStatistics();
@@ -289,6 +332,16 @@ public final class GameUiHost {
     private final com.stonebreak.ui.runtime.contracts.CraftingContracts crafting;
     private final com.stonebreak.ui.runtime.contracts.InventoryContracts inventoryScreen;
     private final com.stonebreak.ui.runtime.contracts.HudContracts hud;
+    private final com.stonebreak.ui.runtime.contracts.CrosshairContracts crosshair;
+    private final com.stonebreak.ui.runtime.contracts.WorldHudContracts worldHud;
+    private final com.stonebreak.ui.runtime.contracts.IntroContracts intro;
+    private final com.stonebreak.ui.runtime.contracts.ChatContracts chat;
+    private final com.stonebreak.ui.runtime.contracts.RecipeBookContracts recipeBook;
+    private final com.stonebreak.ui.runtime.contracts.TerrainMapperContracts terrainMapper;
+    private final com.stonebreak.ui.runtime.contracts.CharacterCreationContracts characterCreation;
+    private final com.stonebreak.ui.runtime.contracts.CharacterSheetContracts characterSheet;
+    private final com.stonebreak.ui.runtime.contracts.BattleHudContracts battleHud;
+    private final com.stonebreak.ui.runtime.contracts.DebugContracts debug;
     private LoadingRecord lastLoading = LoadingRecord.NONE;
     private final SlotGridSource inventory = new SlotGridSource("main");
     private final SlotGridSource hotbar = new SlotGridSource("hotbar");
@@ -323,9 +376,64 @@ public final class GameUiHost {
             services::openRecipeBook);
         inventoryScreen = new com.stonebreak.ui.runtime.contracts.InventoryContracts(host, services);
         hud = new com.stonebreak.ui.runtime.contracts.HudContracts(host, services);
+        crosshair = new com.stonebreak.ui.runtime.contracts.CrosshairContracts(host, services);
+        worldHud = new com.stonebreak.ui.runtime.contracts.WorldHudContracts(host);
+        intro = new com.stonebreak.ui.runtime.contracts.IntroContracts(host, services);
+        chat = new com.stonebreak.ui.runtime.contracts.ChatContracts(host, services);
+        recipeBook = new com.stonebreak.ui.runtime.contracts.RecipeBookContracts(host, services);
+        terrainMapper = new com.stonebreak.ui.runtime.contracts.TerrainMapperContracts(host, services);
+        characterCreation = new com.stonebreak.ui.runtime.contracts.CharacterCreationContracts(host, services);
+        characterSheet = new com.stonebreak.ui.runtime.contracts.CharacterSheetContracts(host, services);
+        battleHud = new com.stonebreak.ui.runtime.contracts.BattleHudContracts(host, services);
+        debug = new com.stonebreak.ui.runtime.contracts.DebugContracts(host);
         host.data().register("glossaryAbilities", glossary.abilities(), GLOSSARY);
         PROVIDERS.forEach(host::offerProvider);
         registerActions();
+    }
+
+    /** The F3 overlay's cards (#301): published right before the overlay paints. */
+    public com.stonebreak.ui.runtime.contracts.DebugContracts debug() {
+        return debug;
+    }
+
+    /** The focus battle HUD's data (#301): published right before the HUD document paints. */
+    public com.stonebreak.ui.runtime.contracts.BattleHudContracts battleHud() {
+        return battleHud;
+    }
+
+    /** The character sheet's data (#301): also published right before the sheet's document paints. */
+    public com.stonebreak.ui.runtime.contracts.CharacterSheetContracts characterSheet() {
+        return characterSheet;
+    }
+
+    /** Character creation's data (#301). */
+    public com.stonebreak.ui.runtime.contracts.CharacterCreationContracts characterCreation() {
+        return characterCreation;
+    }
+
+    /** The terrain mapper's data (#301). */
+    public com.stonebreak.ui.runtime.contracts.TerrainMapperContracts terrainMapper() {
+        return terrainMapper;
+    }
+
+    /** The recipe book's data (#301): also published right before the book's document paints. */
+    public com.stonebreak.ui.runtime.contracts.RecipeBookContracts recipeBook() {
+        return recipeBook;
+    }
+
+    /** The chat's data (#301): also published right before the chat document paints. */
+    public com.stonebreak.ui.runtime.contracts.ChatContracts chat() {
+        return chat;
+    }
+
+    /** The startup intro's data (#301): also published right before the intro document paints. */
+    public com.stonebreak.ui.runtime.contracts.IntroContracts intro() {
+        return intro;
+    }
+
+    /** The world-anchored HUD's data (#301): the game publishes it right before the HUD paints. */
+    public com.stonebreak.ui.runtime.contracts.WorldHudContracts worldHud() {
+        return worldHud;
     }
 
     /** The game's host, created on first use (the first frame). */
@@ -491,6 +599,14 @@ public final class GameUiHost {
         crafting.poll();
         inventoryScreen.poll();
         hud.poll();
+        crosshair.poll();
+        intro.poll();
+        chat.poll();
+        recipeBook.poll();
+        terrainMapper.poll();
+        characterCreation.poll();
+        characterSheet.poll();
+        battleHud.poll();
         ItemStack held = screen == null ? null : screen.getDragState().draggedItemStack;
         if (!sameStack(held, lastCarried)) {
             lastCarried = held == null || held.isEmpty() ? null : held.copy();
@@ -529,6 +645,7 @@ public final class GameUiHost {
         crafting.clear();
         inventoryScreen.clear();
         hud.clear();
+        worldHud.clear();
         lastVitals = Vitals.NONE;
         vitals.set(Vitals.NONE.value());
         lastStats = StatsRecord.NONE;
@@ -948,6 +1065,76 @@ public final class GameUiHost {
         @Override
         public Player hudPlayer() {
             return Game.getPlayer();
+        }
+
+        @Override
+        public com.stonebreak.ui.chat.ChatSystem chatSystem() {
+            Game game = Game.getInstance();
+            return game == null ? null : game.getChatSystem();
+        }
+
+        @Override
+        public io.github.humbleui.skija.Typeface uiTypeface() {
+            com.stonebreak.rendering.Renderer r = Game.getRenderer();
+            return r == null || r.getSkijaBackend() == null ? null : r.getSkijaBackend().getMinecraftTypeface();
+        }
+
+        @Override
+        public com.stonebreak.ui.focusBattle.FocusBattleScreen focusBattle() {
+            return com.stonebreak.ui.runtime.providers.BattleHudProvider.gameScreen();
+        }
+
+        @Override
+        public com.stonebreak.ui.characterScreen.CharacterScreen characterSheet() {
+            Game game = Game.getInstance();
+            com.stonebreak.ui.characterScreen.CharacterScreen c = game == null ? null : game.getCharacterScreen();
+            return c != null && c.isVisible() && game.getState() == com.stonebreak.core.GameState.CHARACTER_SHEET_UI
+                ? c : null;
+        }
+
+        @Override
+        public com.stonebreak.ui.characterCreation.CharacterCreationScreen characterCreation() {
+            Game game = Game.getInstance();
+            return game == null || game.getState() != com.stonebreak.core.GameState.CHARACTER_CREATION ? null
+                : game.getCharacterCreationScreen();
+        }
+
+        @Override
+        public com.stonebreak.ui.terrainMapper.TerrainMapperScreen terrainMapper() {
+            Game game = Game.getInstance();
+            return game == null || game.getState() != com.stonebreak.core.GameState.TERRAIN_MAPPER ? null
+                : game.getTerrainMapperScreen();
+        }
+
+        @Override
+        public com.stonebreak.ui.recipeScreen.RecipeScreen recipeScreen() {
+            Game game = Game.getInstance();
+            com.stonebreak.ui.recipeScreen.RecipeScreen r = game == null ? null : game.getRecipeBookScreen();
+            return r != null && r.isVisible() ? r : null;
+        }
+
+        @Override
+        public com.stonebreak.ui.startupIntro.IntroScene introScene() {
+            Game game = Game.getInstance();
+            return game == null || game.getStartupIntroScreen() == null ? null : game.getStartupIntroScreen().scene();
+        }
+
+        @Override
+        public String introSkip() {
+            Game game = Game.getInstance();
+            if (game == null || game.getState() != com.stonebreak.core.GameState.STARTUP_INTRO
+                    || game.getStartupIntroScreen() == null) {
+                return "no intro is showing";
+            }
+            game.getStartupIntroScreen().skipToMainMenu();
+            return null;
+        }
+
+        @Override
+        public com.stonebreak.rendering.UI.components.MCrosshairRenderer crosshair() {
+            var renderer = Game.getRenderer();
+            return renderer == null || renderer.getUIRenderer() == null ? null
+                : renderer.getUIRenderer().getMCrosshairRenderer();
         }
 
         @Override

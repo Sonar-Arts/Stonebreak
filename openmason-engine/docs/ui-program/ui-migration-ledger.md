@@ -18,6 +18,9 @@ document with the legacy renderer kept as its rollback.
   missing capability).
 - `retained-bridge`: decided to stay host code, drawn into documents through a host draw provider (or kept outside
   documents). Needs a `**Decision:**` line saying why and how it is bridged.
+- `world-render` (#301): reviewed and classified as non-UI world rendering (3D world-pass geometry or a camera/screen
+  effect of the world view), so it stays in the renderer and is out of the migration. Needs a `**Decision:**` line.
+- `retired` (#301): the legacy code is deleted and nothing replaces it (no visual existed). Needs a `**Decision:**` line.
 - `n/a`: not a legacy surface.
 
 The coverage guard counts a class only when the summary table or a `### row` names it: a mention in the cross-cutting
@@ -130,14 +133,14 @@ These apply to every row unless the row says otherwise.
 
 | id | kind | owner | lifecycle | status |
 |---|---|---|---|---|
-| startup-intro | screen | `ui.startupIntro.SonarArtsIntroScreen` | shell-persistent | not started |
+| startup-intro | screen | `ui.startupIntro.SonarArtsIntroScreen` | shell-persistent | in progress |
 | main-menu | screen | `ui.MainMenu` | shell-persistent | in progress |
 | world-select | screen | `ui.worldSelect.WorldSelectScreen` | shell-persistent | in progress |
 | world-select-info-card | tooltip | `ui.worldSelect.WorldSelectScreen` (card state in `managers.WorldStateManager`) | shell-persistent | in progress |
 | world-select-delete-confirm | dialog | `ui.worldSelect.WorldSelectScreen` | shell-persistent | in progress |
 | world-select-create-dialog | dialog | `ui.worldSelect.WorldSelectScreen` | shell-persistent (unreachable) | n/a |
-| character-creation | screen | `ui.characterCreation.CharacterCreationScreen` | shell-persistent | not started |
-| terrain-mapper | screen | `ui.terrainMapper.TerrainMapperScreen` | shell-persistent | not started |
+| character-creation | screen | `ui.characterCreation.CharacterCreationScreen` | shell-persistent | in progress |
+| terrain-mapper | screen | `ui.terrainMapper.TerrainMapperScreen` | shell-persistent | in progress |
 | loading-screen | screen | `ui.LoadingScreen` + `ui.SkijaLoadingScreenRenderer` | shell-persistent | in progress |
 | settings | screen | `ui.settingsMenu.SettingsMenu` | shell-persistent | in progress |
 | settings-ui-scale-confirm | dialog | `ui.settingsMenu.SettingsMenu` | shell-persistent | in progress |
@@ -156,58 +159,58 @@ These apply to every row unless the row says otherwise.
 | dragged-item-layer | overlay | OR + inventory/workbench/furnace screens | per-frame immediate | in progress |
 | workbench | screen | `ui.workbench.WorkbenchScreen` | per-world | in progress |
 | furnace | screen | `ui.furnace.FurnaceScreen` | per-world | in progress |
-| recipe-book | overlay | `ui.recipeScreen.RecipeScreen` | per-world | not started |
-| recipe-book-tooltip | tooltip | `ui.recipeScreen.RecipeScreen` via OR | per-world | not started |
-| character-sheet | screen | `ui.characterScreen.CharacterScreen` | per-world | not started |
+| recipe-book | overlay | `ui.recipeScreen.RecipeScreen` | per-world | in progress |
+| recipe-book-tooltip | tooltip | `ui.recipeScreen.RecipeScreen` via OR | per-world | in progress |
+| character-sheet | screen | `ui.characterScreen.CharacterScreen` | per-world | in progress |
 | hotbar | hud | `rendering.UI.components.MHotbarRenderer` + `ui.HotbarScreen` | per-world (via InventoryScreen) | in progress |
 | hud-health-hearts | hud | `rendering.UI.components.hotbar.HealthHeartsRenderer` | per-frame immediate | in progress |
 | hud-stamina-mana | hud | `rendering.UI.components.hotbar.StaminaBarRenderer` | per-frame immediate | in progress |
 | hud-class-gauge | hud | `rendering.UI.components.hotbar.{Rage,Quarry,Resonance,Doubt,Momentum}Gauge` + `GaugePanel` | per-frame immediate | in progress |
 | hud-dodge-indicator | hud | `rendering.UI.components.hotbar.DodgeIndicator` | per-frame immediate | in progress |
 | hotbar-item-tooltip | tooltip | `rendering.UI.components.hotbar.HotbarTooltipRenderer` + `ui.HotbarScreen` | per-world | in progress |
-| crosshair | hud | `rendering.UI.components.MCrosshairRenderer` | process-persistent | not started |
-| chat | hud | `ui.chat.ChatSystem` + `ui.chat.SkijaChatRenderer` | process-persistent | not started |
-| chat-emoji-picker | dialog | `ui.chat.emoji.EmojiPickerRenderer` + `ChatEmojiSystem` | process-persistent | not started |
-| debug-overlay | overlay | `ui.DebugOverlay` + `ui.debug.*` | process-persistent | not started |
+| crosshair | hud | `rendering.UI.components.MCrosshairRenderer` | process-persistent | in progress |
+| chat | hud | `ui.chat.ChatSystem` + `ui.chat.SkijaChatRenderer` | process-persistent | in progress |
+| chat-emoji-picker | dialog | `ui.chat.emoji.EmojiPickerRenderer` + `ChatEmojiSystem` | process-persistent | in progress |
+| debug-overlay | overlay | `ui.DebugOverlay` + `ui.debug.*` | process-persistent | in progress |
 | dev-document-overlay | overlay | `ui.runtime.DevDocumentOverlay` (dev only, `-Dstonebreak.uidoc`; a document host, not a legacy screen, #287) | process-persistent | n/a |
-| debug-world-wireframes | custom-renderer | `ui.debug.MobPathWireframeDrawer`, `rendering.UI.rendering.DebugRenderer`, `rendering.emitters.SoundEmitterRenderer` | process-persistent | not started |
-| world-damage-numbers | hud | `rendering.UI.components.DamageNumberRenderer` | singleton | not started |
-| world-quarry-markers | hud | `rendering.UI.components.QuarryMarkerRenderer` | singleton | not started |
-| world-doubt-markers | hud | `rendering.UI.components.DoubtMarkerRenderer` | singleton | not started |
-| world-enemy-awareness | hud | `rendering.UI.components.EnemyAwarenessRenderer` | singleton | not started |
-| world-player-nametags | hud | `rendering.UI.components.PlayerNameTagRenderer` | singleton | not started |
-| stealth-hud | hud | `rendering.UI.components.StealthHudRenderer` | singleton | not started |
-| world-revealed-outline | custom-renderer | `rendering.gameWorld.effects.WorldEffectsRenderer` | process-persistent | not started |
-| effect-underwater-tint | effect | `rendering.UI.components.UnderwaterOverlayRenderer` | process-persistent | not started |
-| effect-dodge-vignette | effect | `rendering.UI.components.DodgeInvincibilityOverlay` | process-persistent | not started |
-| effect-screen-droplets | effect | `rendering.UI.components.ScreenDropletOverlay` | process-persistent | not started |
-| effect-pause-depth-curtain | effect | `rendering.pipeline.DepthCurtainRenderer` | process-persistent | not started |
-| battle-hud | screen | `ui.focusBattle.FocusBattleScreen` + `SkijaFocusBattleRenderer` | shell-persistent, bound per encounter | not started |
-| battle-command-window | hud | `ui.focusBattle.elements.CommandWindow` + `BattleMenuState` | per-encounter | not started |
-| battle-party-status | hud | `ui.focusBattle.elements.PartyStatusWindow` + `StatusChips` | per-encounter | not started |
-| battle-help-strip | hud | `ui.focusBattle.elements.HelpStrip` + `BattleHelpText` | per-encounter | not started |
-| battle-enemy-plate | hud | `ui.focusBattle.elements.EnemyPlate` (MCastBar) | per-encounter | not started |
-| battle-mode-tag | hud | `ui.focusBattle.SkijaFocusBattleRenderer` (MBadge) | per-encounter | not started |
-| battle-action-banner | overlay | `ui.focusBattle.elements.ActionBanner` | per-encounter | not started |
-| battle-target-cursor | overlay | `ui.focusBattle.elements.TargetCursor` | per-encounter | not started |
-| battle-floaters | overlay | `ui.focusBattle.elements.BattleFloaters` | per-encounter | not started |
-| battle-timing-ring | overlay | `ui.focusBattle.timed.TimingRingOverlay` | per-encounter | not started |
-| battle-parry-overlay | overlay | `ui.focusBattle.timed.ParryOverlay` | per-encounter | not started |
-| battle-combo-strip | overlay | `ui.focusBattle.timed.ComboStripOverlay` | per-encounter | not started |
-| battle-screen-fx | effect | `ui.focusBattle.timed.ScreenFxLayer` (MScreenFx) | per-encounter | not started |
-| battle-encounter-card | effect | `ui.focusBattle.elements.EncounterTransition` | per-encounter | not started |
-| battle-encounter-swirl | effect | `ui.focusBattle.intro.EncounterSwirl` + `FrameGrab` | per-FocusBattle | not started |
-| battle-result-panel | dialog | `ui.focusBattle.elements.ResultPanel` (MResultCard) | per-encounter | not started |
-| skija-ui-backend | custom-renderer | `rendering.UI.backend.skija.SkijaUIBackend` + `SkiaContext` | process-persistent | not started |
-| masonry-ui-kit | custom-renderer | `rendering.UI.masonryUI.*` (MasonryUI, MPainter, MStyle, M* widgets) | per-screen instances | not started |
-| mtexture-registry | custom-renderer | `rendering.UI.masonryUI.textures.MTextureRegistry` / `MTexture` | process-static | not started |
-| block-icon-renderer | custom-renderer | `rendering.UI.menus.BlockIconRenderer` | process-persistent | not started |
-| item-icon-renderer | custom-renderer | `rendering.UI.menus.ItemIconRenderer` | process-persistent | not started |
-| entity-preview-renderer | custom-renderer | `rendering.models.entities.EntityRenderer#renderPlayerPreview/renderEntityPreview` | process-persistent | not started |
-| tab-strip-layout | custom-renderer | `ui.TabStripLayout` | static | not started |
-| ability-icon-cache | custom-renderer | `rpg.classes.AbilityIconCache` | process-static | not started |
-| opengl-quad-renderer | custom-renderer | `rendering.UI.components.OpenGLQuadRenderer` + `UIQuadRenderer` | process-persistent (mostly dead) | not started |
-| legacy-stb-font | custom-renderer | `ui.Font` | process-persistent (unused draw path) | not started |
+| debug-world-wireframes | custom-renderer | `ui.debug.MobPathWireframeDrawer`, `rendering.UI.rendering.DebugRenderer`, `rendering.emitters.SoundEmitterRenderer` | process-persistent | world-render |
+| world-damage-numbers | hud | `rendering.UI.components.DamageNumberRenderer` | singleton | in progress |
+| world-quarry-markers | hud | `rendering.UI.components.QuarryMarkerRenderer` | singleton | in progress |
+| world-doubt-markers | hud | `rendering.UI.components.DoubtMarkerRenderer` | singleton | in progress |
+| world-enemy-awareness | hud | `rendering.UI.components.EnemyAwarenessRenderer` | singleton | in progress |
+| world-player-nametags | hud | `rendering.UI.components.PlayerNameTagRenderer` | singleton | in progress |
+| stealth-hud | hud | `rendering.UI.components.StealthHudRenderer` | singleton | in progress |
+| world-revealed-outline | custom-renderer | `rendering.gameWorld.effects.WorldEffectsRenderer` | process-persistent | world-render |
+| effect-underwater-tint | effect | `rendering.UI.components.UnderwaterOverlayRenderer` | process-persistent | world-render |
+| effect-dodge-vignette | effect | `rendering.UI.components.DodgeInvincibilityOverlay` | process-persistent | world-render |
+| effect-screen-droplets | effect | `rendering.UI.components.ScreenDropletOverlay` | process-persistent | world-render |
+| effect-pause-depth-curtain | effect | `rendering.pipeline.DepthCurtainRenderer` | process-persistent | world-render |
+| battle-hud | screen | `ui.focusBattle.FocusBattleScreen` + `SkijaFocusBattleRenderer` | shell-persistent, bound per encounter | in progress |
+| battle-command-window | hud | `ui.focusBattle.elements.CommandWindow` + `BattleMenuState` | per-encounter | in progress |
+| battle-party-status | hud | `ui.focusBattle.elements.PartyStatusWindow` + `StatusChips` | per-encounter | in progress |
+| battle-help-strip | hud | `ui.focusBattle.elements.HelpStrip` + `BattleHelpText` | per-encounter | in progress |
+| battle-enemy-plate | hud | `ui.focusBattle.elements.EnemyPlate` (MCastBar) | per-encounter | in progress |
+| battle-mode-tag | hud | `ui.focusBattle.SkijaFocusBattleRenderer` (MBadge) | per-encounter | in progress |
+| battle-action-banner | overlay | `ui.focusBattle.elements.ActionBanner` | per-encounter | in progress |
+| battle-target-cursor | overlay | `ui.focusBattle.elements.TargetCursor` | per-encounter | in progress |
+| battle-floaters | overlay | `ui.focusBattle.elements.BattleFloaters` | per-encounter | in progress |
+| battle-timing-ring | overlay | `ui.focusBattle.timed.TimingRingOverlay` | per-encounter | in progress |
+| battle-parry-overlay | overlay | `ui.focusBattle.timed.ParryOverlay` | per-encounter | in progress |
+| battle-combo-strip | overlay | `ui.focusBattle.timed.ComboStripOverlay` | per-encounter | in progress |
+| battle-screen-fx | effect | `ui.focusBattle.timed.ScreenFxLayer` (MScreenFx) | per-encounter | in progress |
+| battle-encounter-card | effect | `ui.focusBattle.elements.EncounterTransition` | per-encounter | in progress |
+| battle-encounter-swirl | effect | `ui.focusBattle.intro.EncounterSwirl` + `FrameGrab` | per-FocusBattle | world-render |
+| battle-result-panel | dialog | `ui.focusBattle.elements.ResultPanel` (MResultCard) | per-encounter | in progress |
+| skija-ui-backend | custom-renderer | `rendering.UI.backend.skija.SkijaUIBackend` + `SkiaContext` | process-persistent | retained-bridge |
+| masonry-ui-kit | custom-renderer | `rendering.UI.masonryUI.*` (MasonryUI, MPainter, MStyle, M* widgets) | per-screen instances | retained-bridge |
+| mtexture-registry | custom-renderer | `rendering.UI.masonryUI.textures.MTextureRegistry` / `MTexture` | process-static | retained-bridge |
+| block-icon-renderer | custom-renderer | `rendering.UI.menus.BlockIconRenderer` | process-persistent | retained-bridge |
+| item-icon-renderer | custom-renderer | `rendering.UI.menus.ItemIconRenderer` | process-persistent | retained-bridge |
+| entity-preview-renderer | custom-renderer | `rendering.models.entities.EntityRenderer#renderPlayerPreview/renderEntityPreview` | process-persistent | retained-bridge |
+| tab-strip-layout | custom-renderer | `ui.TabStripLayout` | static | retained-bridge |
+| ability-icon-cache | custom-renderer | `rpg.classes.AbilityIconCache` | process-static | retained-bridge |
+| opengl-quad-renderer | custom-renderer | `rendering.UI.components.OpenGLQuadRenderer` + `UIQuadRenderer` | process-persistent (mostly dead) | retained-bridge |
+| legacy-stb-font | custom-renderer | `ui.Font` | process-persistent (unused draw path) | retired |
 
 Row count: 77. By kind: screen 17, hud 18, custom-renderer 12, overlay 10, dialog 9, effect 7, tooltip 4.
 
@@ -262,6 +265,30 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Custom draw:** procedural Skija drawn as scanline circles, ellipse slices, segmented outlines, a 60-band ocean and caustics (`render/IntroPainter.java:43-110`, `OceanBackgroundRenderer.java:21-56`). The logo uses an `SRC_IN` tinted shadow.
 - **Fixtures:** none.
 - **Performance:** a new `Paint` per primitive. Caustics draw roughly `5×(h/4·s)` rects per frame.
+- **Fidelity:** `intro/intro-complete_1920x1080_s1` `intro/intro-t0-4_1920x1080_s1` `intro/intro-t0_1920x1080_s1` `intro/intro-t1-2_1920x1080_s1` `intro/intro-t2-4_1280x720_s0_75` `intro/intro-t2-4_1920x1080_s1` `intro/intro-t2-4_1921x1081_s1_25` `intro/intro-t2-4_3840x2160_s2` `intro/intro-t3-5_1920x1080_s1`
+- **Migration (#301, in progress):** shipped as `ui/documents/intro.sbui` (`UI/stonebreak/ui/screens/intro.omui`), the
+  STARTUP_INTRO state screen (`ui.startupIntro.IntroDocument`, registered in `GameScreens` and shown at once since the game
+  starts in that state); rollback `-Dstonebreak.ui.legacy=intro`.
+  - **Timeline = host:** the simulation moved unchanged into `ui.startupIntro.IntroScene` (phases, rings + pings, bubbles,
+    reveal, fade; an injectable `RandomGenerator`, `ThreadLocalRandom` in the game), so the legacy renderer
+    (`SonarArtsIntroScreen.paintLegacy`), the document and the providers show one scene. Deterministic for a seed and a
+    sequence of steps (`IntroFixtures`, the first deterministic intro captures).
+  - **Explicit clock:** before each paint `IntroDocument` sizes the scene, publishes `stonebreak:screen.intro` and sets
+    the document's `intro` clock to the scene's time; animations authored in the intro must use that clock.
+  - **Document:** providers `stonebreak:intro-ocean` (bands, caustics) and `stonebreak:intro-sonar` (rings, bubbles,
+    submarine) around the logo Image and its shadow Image (`-sb-tint: #00000096` = the legacy SRC_IN tint), opacity bound
+    to `intro.reveal`, placed from `intro.logo` (`SonarLogoRenderer.placement`, the one float placement rule: nearest
+    sampling picks the legacy texels), and the fade box (`black_alpha` = `IntroConfig.withAlpha`). The logo moved to the
+    shared `ui/shared/stonebreak/ui/images/sonar_arts_retro.png` (the legacy renderer reads it there).
+  - **Engine:** a lone `Image` (no children, background, border, surface, symbol, shadow, focus ring) now carries its
+    opacity and `-sb-tint` on the sprite paint instead of layers (`SpritePainter.withElementPaint`): one draw, as a legacy
+    `drawImageRect` with an alpha paint; layers had parted by 2 levels at partial reveal.
+  - **Input:** Esc/Space/Enter key-down (no repeat) and a left press anywhere request `stonebreak:screen.intro.skip`.
+    Difference: a key already held at launch no longer skips (the legacy edge tracker started false); only a press does.
+  - Providers in the editor preview show a seeded demo scene stepped to 2.5 s.
+- **Gate:** `ui.startupIntro.IntroDocumentGateTest` (9 cases: six moments of the seeded timeline at 1920x1080 incl. a
+  20 % reveal and the fade, the revealed logo at the other standard viewports; logo geometry `FLOAT_EXACT`, pixels
+  `EXACT`, 0 px; skip input; the `intro` clock), `IntroSceneTest` (phases end once near 4 s, pings, seed replay).
 
 ### main-menu
 - **Kind:** screen.
@@ -441,6 +468,36 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Scrolled-out Skills/Feats/ClassAbilities buttons stay clickable.
   - ClassAbilities hit-tests five spend slots regardless of the class.
   - `handleClick` recomputes the layout from `Game.getWindowWidth/Height` rather than its parameters.
+- **Fidelity:** `character-creation/character-creation-ability_1920x1080_s1` `character-creation/character-creation-background_1280x720_s0_75` `character-creation/character-creation-background_1920x1080_s1` `character-creation/character-creation-background_1921x1081_s1_25` `character-creation/character-creation-background_3840x2160_s2` `character-creation/character-creation-classes_1280x720_s0_75` `character-creation/character-creation-classes_1920x1080_s1` `character-creation/character-creation-classes-none_1920x1080_s1` `character-creation/character-creation-classes-scrolled_1920x1080_s1` `character-creation/character-creation-clothing_1920x1080_s1` `character-creation/character-creation-feats_1920x1080_s1` `character-creation/character-creation-feats-owned_1920x1080_s1` `character-creation/character-creation-hover-acquire0_1920x1080_s1` `character-creation/character-creation-hover-back_1920x1080_s1` `character-creation/character-creation-hover-bg1_1920x1080_s1` `character-creation/character-creation-hover-cls2_1920x1080_s1` `character-creation/character-creation-hover-equip1_1920x1080_s1` `character-creation/character-creation-hover-invest2_1920x1080_s1` `character-creation/character-creation-hover-minus4_1920x1080_s1` `character-creation/character-creation-hover-next_1920x1080_s1` `character-creation/character-creation-hover-next_1921x1081_s1_25` `character-creation/character-creation-hover-plus0_1920x1080_s1` `character-creation/character-creation-hover-spend1_1920x1080_s1` `character-creation/character-creation-hover-tab3_1920x1080_s1` `character-creation/character-creation-hover-tile2_1920x1080_s1` `character-creation/character-creation-looks_1920x1080_s1` `character-creation/character-creation-skills_1920x1080_s1` `character-creation/character-creation-skills-scrolled_1920x1080_s1`
+- **Migration (#301, in progress):** shipped as `ui/documents/character_creation.sbui`
+  (`UI/stonebreak/ui/screens/character_creation.omui`); rollback `-Dstonebreak.ui.legacy=character_creation`. A state
+  document (`GameScreens.stateDocument(CHARACTER_CREATION, ...)`); the keyboard stays dead, as before.
+  - **Controller unchanged:** `CharacterCreationScreen` keeps the stats, the three scroll offsets (now clamped once per frame
+    by `clampScrolls()`, the legacy renderers' clamp), Back/Next and join mode (`updateLabelsForMode` from the contract's
+    poll). Every press runs the legacy rule of that control through `CharacterCreationActionHandler` (spending needs
+    points, an acquired feat / equipped cosmetic takes no press).
+  - **Pointer:** one root `pointer-down` (left) addressed by target; the wheel scrolls the active list wherever the pointer
+    is (24 px a notch). Fixed by construction: rows scrolled out of a list's clip no longer take presses (the legacy kept
+    their last bounds live), and Class Abilities no longer hit-tests five spend slots for a two-ability class.
+  - **Data:** `stonebreak:screen.character-creation` 1 (`ui.runtime.contracts.CharacterCreationContracts`): root
+    `characterCreation` (active tab, the window layout in float pixels from `CharacterCreationLayout` +
+    `CharacterModelPreviewRenderer.previewRect`, the tab strip measured with the screen's fonts
+    (`SkijaCharacterCreationRenderer.tabMetrics`), footer/preview labels, point counters, class header, six ability tiles,
+    clamped scrolls) and collections `ccBackgrounds`, `ccClasses`, `ccAbilities`, `ccSkills`, `ccFeats`, `ccHair`,
+    `ccHats`.
+  - **Document:** every pane's inner geometry at the legacy device px (the screen never honoured the UI scale). Providers:
+    `stonebreak:wood-panel` (`WoodPanelFill`, the left panel's tinted elm wood, shared with the legacy renderer),
+    `stonebreak:ability-icon` (class/ability icons through `AbilityIconCache`), `stonebreak:entity-preview` (the orbiting
+    player with hair and hat; GL, replacing the raw-GL pass after the Skija frame). New engine surfaces `tab-dim`,
+    `tab-disabled`, `mini-button(-hover/-disabled)` and `slot` (the item-slot frame on any element). Lists scroll by
+    moving the list inside a clipping box (`top: -scroll`).
+- **Gate:** `ui.characterCreation.fidelity.CharacterCreationDocumentGateTest` (28 cases: Background at every standard
+  viewport; Ability Score, Class Abilities with no class / Berserker (icons, multi-line descriptions) / Monk scrolled,
+  Skills plain and scrolled, Feats unowned and owned, Looks, Clothing at 1920x1080, Class Abilities also at 1280x720;
+  hovers over a tab, Back, Next, a background row, a tile, [+], [-], a class row, Spend, +1 SP, Acquire and Equip;
+  geometry `FLOAT_EXACT`, pixels `EXACT`; the 3D preview is GL and absent on both raster sides),
+  `CharacterCreationDocumentInteractionTest` (background, tabs, [+]/[-], class, Spend, +1 SP, wheel clamp, Acquire,
+  refused while not showing).
 
 ### terrain-mapper
 - **Kind:** screen.
@@ -465,6 +522,30 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Fixtures:** none.
 - **Performance:** the preview rebuild uses a parallel stream but blocks the render thread (`TerrainPreviewCache.java:92-112`) and allocates a new `byte[]` + `Image` per rebuild (≈400k samples at 1080p).
 - **Notes:** a blank seed previews seed 0 but creates a random seed (StateManager :240-241 vs ActionHandler :65-69).
+- **Fidelity:** `terrain-mapper/terrain-mapper-blink-off_1920x1080_s1` `terrain-mapper/terrain-mapper-default_1280x720_s0_75` `terrain-mapper/terrain-mapper-default_1920x1080_s1` `terrain-mapper/terrain-mapper-default_1921x1081_s1_25` `terrain-mapper/terrain-mapper-default_3840x2160_s2` `terrain-mapper/terrain-mapper-error_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-character_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-character_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-create_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-create_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-map_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-map_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-mode3_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-mode3_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-name_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-name_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-spawn_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-spawn_1921x1081_s1_25` `terrain-mapper/terrain-mapper-spawn_1920x1080_s1` `terrain-mapper/terrain-mapper-typed_1920x1080_s1` `terrain-mapper/terrain-mapper-zoomed_1920x1080_s1`
+- **Migration (#301, in progress):** shipped as `ui/documents/terrain_mapper.sbui` (`UI/stonebreak/ui/screens/terrain_mapper.omui`);
+  rollback `-Dstonebreak.ui.legacy=terrain_mapper`. A state document (`GameScreens.stateDocument(TERRAIN_MAPPER, ...)`).
+  - **Controller unchanged:** `TerrainMapperScreen` keeps the keyboard: the document has no text entry, and
+    `MenuInputRouter.keepsKeyboard(TERRAIN_MAPPER)` still routes keys and characters to `TerrainInputHandler`
+    (typing with the field filters, Backspace, Tab, Enter creates, Esc back, Ctrl+V). The seed preview rebuild, world
+    creation and every rule stay; the pointer rules are now addressed by target (`TerrainMouseHandler.pressButton/
+    pressField/pressMap/release/move/wheel`).
+  - **Pointer:** a root `pointer-down` (left) in the legacy precedence (a button, incl. a disabled one, which takes the
+    press and does nothing; a view mode; a field; the map), `pointer-up` (ends a drag; a press that moved < 4 px sets the
+    spawn), every `pointer-move` (drag-pan, the readout) and `wheel` (zoom about the pointer, map only), in window pixels.
+  - **Data:** `stonebreak:screen.terrain-mapper` 1 (`ui.runtime.contracts.TerrainMapperContracts`): root `terrainMapper`
+    (fields as typed/displayed, focus, the caret on `LegacyUiClock`, view modes, spawn state and label, error, readout).
+  - **Document:** `TerrainMapperLayout` in device px (anchored to the window edges; no code-behind layout). The map is the
+    provider `stonebreak:terrain-map` (the legacy `TerrainMapRenderer.paint` over the screen's state: noise raster cache,
+    spawn waypoint, hover crosshair, frame). Fields: a 3 px rounded fill plus a square 1.5 px stroke centred on the edge;
+    the caret after a hidden measuring copy of the typed text. New engine symbols `nav-left`/`nav-right`
+    (`MPainter.navArrow`, the `MButton.Arrow` glyph, two-pass with the house shadow) for the Character button.
+- **Gate:** `ui.terrainMapper.TerrainMapperDocumentGateTest` (21 cases: the default screen at every standard viewport;
+  caret off, typed + seed focused + Biome, spawn set + Temperature, zoomed and panned, an error at 1920x1080; hovers over
+  the map (crosshair + readout), Create, Character, a view mode, the disabled spawn button and a field at 1920x1080@1 and
+  1921x1081@1.25; geometry `FLOAT_EXACT`, pixels `EXACT`, the live map included), `TerrainMapperDocumentInteractionTest`
+  (modes, field focus, map press sets the spawn, spawn buttons incl. disabled, drag pans without a spawn, wheel on/off the
+  map, Create validates, Tab/Enter/typing fall through to the screen, refused when not showing).
 
 ### loading-screen
 - **Kind:** screen.
@@ -1042,10 +1123,46 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Time:** caret on `currentTimeMillis` (`MSearchField.java:77-78`). `update(dt)` ignores dt.
 - **Fixtures:** `ItemCategoryMapperTest`, `PositionCalculatorTest`, `RecipeFilterServiceTest`, `RecipeSearchServiceTest`, `RecipeBookStateTest`.
 - **Performance:** re-filters and copies the full list every render.
+- **Fidelity:** `recipe-book/recipe-book-category_1280x720_s0_75` `recipe-book/recipe-book-category_1920x1080_s1` `recipe-book/recipe-book-category_1921x1081_s1_25` `recipe-book/recipe-book-category_3840x2160_s2` `recipe-book/recipe-book-category-empty_1280x720_s0_75` `recipe-book/recipe-book-category-empty_1920x1080_s1` `recipe-book/recipe-book-category-empty_1921x1081_s1_25` `recipe-book/recipe-book-category-empty_3840x2160_s2` `recipe-book/recipe-book-empty_1280x720_s0_75` `recipe-book/recipe-book-empty_1920x1080_s1` `recipe-book/recipe-book-empty_1921x1081_s1_25` `recipe-book/recipe-book-empty_3840x2160_s2` `recipe-book/recipe-book-hover-cat2_1920x1080_s1` `recipe-book/recipe-book-hover-cat2_1921x1081_s1_25` `recipe-book/recipe-book-hover-cell3_1920x1080_s1` `recipe-book/recipe-book-hover-cell3_1921x1081_s1_25` `recipe-book/recipe-book-hover-in0_1920x1080_s1` `recipe-book/recipe-book-hover-in0_1921x1081_s1_25` `recipe-book/recipe-book-hover-next_1920x1080_s1` `recipe-book/recipe-book-hover-next_1921x1081_s1_25` `recipe-book/recipe-book-hover-out_1920x1080_s1` `recipe-book/recipe-book-hover-out_1921x1081_s1_25` `recipe-book/recipe-book-hover-prev_1920x1080_s1` `recipe-book/recipe-book-hover-prev_1921x1081_s1_25` `recipe-book/recipe-book-scrolled_640x360_s1` `recipe-book/recipe-book-scrolled_801x451_s1_25` `recipe-book/recipe-book-search_1280x720_s0_75` `recipe-book/recipe-book-search_1920x1080_s1` `recipe-book/recipe-book-search_1921x1081_s1_25` `recipe-book/recipe-book-search_3840x2160_s2` `recipe-book/recipe-book-selected_1280x720_s0_75` `recipe-book/recipe-book-selected_1920x1080_s1` `recipe-book/recipe-book-selected_1921x1081_s1_25` `recipe-book/recipe-book-selected_3840x2160_s2` `recipe-book/recipe-book-variants_1280x720_s0_75` `recipe-book/recipe-book-variants_1920x1080_s1` `recipe-book/recipe-book-variants_1921x1081_s1_25` `recipe-book/recipe-book-variants_3840x2160_s2`
+- **Migration (#301, in progress):** shipped as `ui/documents/recipe_book.sbui` (`UI/stonebreak/ui/screens/recipe_book.omui`);
+  rollback `-Dstonebreak.ui.legacy=recipe_book`. A `ContainerDocument` (tooltip delay 0) installed in `GameScreens`; shown on
+  `RecipeScreen.onOpen`, hidden on close; painted where the legacy book drew (`RecipeScreen.render*`) right after publishing
+  the book (the caret blinks on the wall clock), and the legacy tooltip pass stands down while it shows.
+  - **Controller unchanged:** `RecipeScreen` keeps the lifecycle and the keyboard (search typing, Backspace, Enter, Escape
+    deselects), the filters, the variation cycler and the scroll clamp. The legacy click rules are now addressed by target
+    (`RecipeBookInputHandler.pressCategory/pressContent/pressVariant/wheel`).
+  - **Pointer:** the document takes it (the legacy poll drains the wheel and stands down): one root `pointer-down`
+    (left button) in the legacy precedence (variant Prev/Next, a category, then any other press focuses or unfocuses the
+    search and selects the cell under it), and `wheel` (whole rows, `(int) dy`, clamped). A disabled Prev/Next falls
+    through as a plain press, as in the legacy poll. Fixed by construction: presses hit the bounds drawn this frame (the
+    legacy hit-tested the previous frame's), and a press runs once (the legacy poll ran twice per frame).
+  - **Data:** `stonebreak:screen.recipe-book` 1 (`ui.runtime.contracts.RecipeBookContracts`): root `recipeBook` (categories,
+    search text/placeholder/focus/caret, grid columns, detail flags and the variant label), collection `recipeGrid` (the
+    rows the grid shows now, already scrolled and clamped, `tooltip` "Recipe: name"), root `recipeDetail` (`in0..in8`,
+    `out`, each with its item name as `tooltip`). The window comes from `Services.screenSize` (the layout seams take it:
+    `RecipeScreen.window/gridShape(w, h)`, `PositionCalculator.calculatePanelDimensions(w, h)`).
+  - **Document:** the legacy layout in the code-behind (device px: the book never honoured the UI scale). The elm panes
+    are the provider `stonebreak:elm-fill` (`ElmFill.paint`, shared with the legacy renderer), slots the `ItemSlot` widget
+    over `stonebreak:item-icon` (`insetPx 3`, `countMarginPx 2`, `countSizePx 14`: fixed, like the legacy counts). Detail
+    slots never hover (the legacy pane never fed them the pointer): their tooltips sit on a pickable box over a slot that
+    ignores the pointer. The caret is a 2.5 px box after a hidden measuring copy of the text (approximates the legacy
+    1.5 px non-AA stroke; not gated, it blinks on the wall clock). New engine piece: root `-sb-tooltip-offset` (ui-masonry;
+    the book's tooltip sits 15 device px from the pointer at any scale, the container screens' `round(15 x scale)`).
+  - The legacy renderer skips its GL block-icon pass when there is no block texture array (raster captures).
+- **Gate:** `ui.recipeScreen.fidelity.RecipeBookDocumentGateTest` (38 cases: empty, selected, two variants, typed search,
+  a category, an empty category at every standard viewport; a scrolled block table at 640x360@1 and 801x451@1.25; hovers
+  over a category, a cell, a detail input, the output and both variant buttons at 1920x1080@1 and 1921x1081@1.25;
+  geometry `FLOAT_EXACT`, pixels `EXACT`, 0 px; block icons are GL on both sides, so frames and counts are what is
+  compared), `RecipeBookDocumentInteractionTest` (search focus/unfocus, cell select with variants, Next/Prev incl. a
+  disabled Next, categories, wheel rows + clamp, refused while closed).
 
 ### recipe-book-tooltip
 - **Kind:** tooltip. Owner: `RecipeScreen.renderTooltipsOnly` via `OR.renderRecipeBookTooltips` (OR:85-90).
 - **Fixtures:** none.
+- **Fidelity:** `recipe-book/recipe-book-hover-cat2_1920x1080_s1` `recipe-book/recipe-book-hover-cat2_1921x1081_s1_25` `recipe-book/recipe-book-hover-cell3_1920x1080_s1` `recipe-book/recipe-book-hover-cell3_1921x1081_s1_25` `recipe-book/recipe-book-hover-in0_1920x1080_s1` `recipe-book/recipe-book-hover-in0_1921x1081_s1_25` `recipe-book/recipe-book-hover-next_1920x1080_s1` `recipe-book/recipe-book-hover-next_1921x1081_s1_25` `recipe-book/recipe-book-hover-out_1920x1080_s1` `recipe-book/recipe-book-hover-out_1921x1081_s1_25` `recipe-book/recipe-book-hover-prev_1920x1080_s1` `recipe-book/recipe-book-hover-prev_1921x1081_s1_25`
+- **Migration (#301, in progress):** part of `recipe_book.sbui`: the router's pointer tooltip (delay 0) from the slots'
+  `tooltip` ("Recipe: name" on grid cells, the item name on detail slots; empty slots show none), 15 device px from the
+  pointer (`-sb-tooltip-offset`). Gate: the hover cases of `RecipeBookDocumentGateTest`.
 
 ### character-sheet
 - **Kind:** screen.
@@ -1067,6 +1184,33 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Stale hitboxes stay live.
   - "Spend N CP" spends 1.
   - `acquireFeat` ignores the level requirement.
+- **Fidelity:** `character-sheet/character-sheet-classes_1920x1080_s1` `character-sheet/character-sheet-classes-scrolled_1920x1080_s1` `character-sheet/character-sheet-classes-shown_1920x1080_s1` `character-sheet/character-sheet-classes-shown_1921x1081_s1_25` `character-sheet/character-sheet-feats_1920x1080_s1` `character-sheet/character-sheet-feats-filtered_1920x1080_s1` `character-sheet/character-sheet-feats-selected_1280x720_s0_75` `character-sheet/character-sheet-feats-selected_1920x1080_s1` `character-sheet/character-sheet-hover-acquire_1920x1080_s1` `character-sheet/character-sheet-hover-cls1_1920x1080_s1` `character-sheet/character-sheet-hover-feat0_1920x1080_s1` `character-sheet/character-sheet-hover-general_1920x1080_s1` `character-sheet/character-sheet-hover-invest3_1920x1080_s1` `character-sheet/character-sheet-hover-invest3_1921x1081_s1_25` `character-sheet/character-sheet-hover-level_1920x1080_s1` `character-sheet/character-sheet-hover-plus2_1920x1080_s1` `character-sheet/character-sheet-hover-tab0_1920x1080_s1` `character-sheet/character-sheet-hover-tab3_1920x1080_s1` `character-sheet/character-sheet-hover-tile1_1920x1080_s1` `character-sheet/character-sheet-overview_1280x720_s0_75` `character-sheet/character-sheet-overview_1920x1080_s1` `character-sheet/character-sheet-overview_1921x1081_s1_25` `character-sheet/character-sheet-overview_3840x2160_s2` `character-sheet/character-sheet-overview-busy_1920x1080_s1` `character-sheet/character-sheet-skills_1920x1080_s1`
+- **Migration (#301, in progress):** shipped as `ui/documents/character_sheet.sbui`
+  (`UI/stonebreak/ui/screens/character_sheet.omui`); rollback `-Dstonebreak.ui.legacy=character_sheet`. A presented
+  screen shown while the sheet is open in CHARACTER_SHEET_UI (`CharacterScreen.syncPresentation`, from
+  `GameStateController.setState` and on every toggle), painted where the legacy sheet drew (under the HUD document's
+  hotbar, as before) right after publishing the sheet; the legacy click poll and wheel stand down while it shows.
+  - **Controller unchanged:** `CharacterScreen` and its tab renderers keep the stats, the class shown, both class
+    scrolls (the ability list's clamp still uses the clip height, now set by the contract), the feat filters, selection
+    and scroll. The press rules are addressed by target (`ClassesTabRenderer.selectClass/spend/scroll`,
+    `FeatsTabRenderer.cycleLevel/toggleGeneral/selectFeat/acquire`, `SkillsTabRenderer.invest`,
+    `CharacterRenderCoordinator.pressAbility/openInventory`); legacy quirks kept (Spend spends 1, Acquire ignores the
+    level requirement and the button's look). Fixed by construction: stale and scrolled-out hitboxes no longer take
+    presses.
+  - **Data:** `stonebreak:screen.character-sheet` 1 (`ui.runtime.contracts.CharacterSheetContracts`): root
+    `characterSheet` (tab, panel and the shared `TabStripLayout` strip, then one record per tab with what the legacy
+    renderers derived: the Overview column split, level bar and xp text position, vitals; the class rows, wrapped
+    description lines (`ClassesTabRenderer.wrap`), dirt pane and scrollbars; skill rows with their hint strip position;
+    feat filter labels, rows, scrollbar and detail).
+  - **Document:** the legacy scaled metrics (logical px = `k * scale`, `dpx` for the unscaled offsets). Providers
+    `stonebreak:pips` (the HP hearts / MP diamonds, `CharacterRenderCoordinator.drawHeart/drawDiamond`),
+    `stonebreak:ability-icon`, `stonebreak:entity-preview` (the Overview's orbiting player). New engine surfaces `dirt`,
+    `tip-strip`, `filter-bar`.
+- **Gate:** `ui.characterScreen.CharacterSheetDocumentGateTest` (25 cases: Overview at every standard viewport and
+  busy (scores, xp, a feat); Classes empty / Berserker shown (also at 1921x1081@1.25) / Monk; Skills; Feats plain,
+  selected (also at 1280x720@0.75), filtered; hovers over two tabs, a tile, [+], a class row, +1 SP (also at 1.25), a
+  feat row, both filters and Acquire; geometry `FLOAT_EXACT`, pixels `EXACT`; the 3D preview is GL and absent on both
+  raster sides), `CharacterSheetDocumentInteractionTest`.
 
 ### hotbar
 - **Kind:** hud.
@@ -1192,6 +1336,28 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Time / sound / assets:** none.
 - **Custom draw:** inverted DOT colours (Hard visuals #14). A Paint is allocated per primitive.
 - **Fixtures:** `SettingsPersistenceTest` (fields only).
+- **Fidelity:** `crosshair/crosshair-circle-plain_1920x1080_s1` `crosshair/crosshair-circle-plain_1921x1081_s1_25` `crosshair/crosshair-circle_1920x1080_s1` `crosshair/crosshair-circle_1921x1081_s1_25` `crosshair/crosshair-cross-plain_1920x1080_s1` `crosshair/crosshair-cross-plain_1921x1081_s1_25` `crosshair/crosshair-cross_1920x1080_s1` `crosshair/crosshair-cross_1921x1081_s1_25` `crosshair/crosshair-custom-circle_1920x1080_s1` `crosshair/crosshair-custom-circle_1921x1081_s1_25` `crosshair/crosshair-custom_1920x1080_s1` `crosshair/crosshair-custom_1921x1081_s1_25` `crosshair/crosshair-dot-plain_1920x1080_s1` `crosshair/crosshair-dot-plain_1921x1081_s1_25` `crosshair/crosshair-dot_1920x1080_s1` `crosshair/crosshair-dot_1921x1081_s1_25` `crosshair/crosshair-plusdot-plain_1920x1080_s1` `crosshair/crosshair-plusdot-plain_1921x1081_s1_25` `crosshair/crosshair-plusdot_1920x1080_s1` `crosshair/crosshair-plusdot_1921x1081_s1_25` `crosshair/crosshair-square-plain_1920x1080_s1` `crosshair/crosshair-square-plain_1921x1081_s1_25` `crosshair/crosshair-square_1920x1080_s1` `crosshair/crosshair-square_1921x1081_s1_25` `crosshair/crosshair-t-plain_1920x1080_s1` `crosshair/crosshair-t-plain_1921x1081_s1_25` `crosshair/crosshair-t_1920x1080_s1` `crosshair/crosshair-t_1921x1081_s1_25`
+- **Migration (#301, in progress):** shipped as `ui/documents/crosshair.sbui` (`UI/stonebreak/ui/screens/crosshair.omui` in the
+  OM project "Stonebreak Menus"); rollback `-Dstonebreak.ui.legacy=crosshair`. `ui.crosshair.Crosshair` (held by
+  `UIRenderer`) is the presentation slot: `FrameRenderer.syncCrosshair` sets its visibility every frame by the legacy rule
+  (PLAYING, no container screen open) and `UIRenderer.renderCrosshair` paints the document at the legacy crosshair's place
+  in the HUD order, else falls back to `MCrosshairRenderer`. HUD layer, never takes input.
+- **Data:** contract `stonebreak:crosshair` 1 (`ui.runtime.contracts.CrosshairContracts`): the *applied* configuration read
+  from `MCrosshairRenderer` (style, size, thickness, gap, outline, outlineThickness, and the drawn `color`/`edge` with the
+  opacity folded in via `MCrosshairRenderer.fillArgb/edgeArgb`, the one rounding rule for both paths).
+- **Document:** eleven absolute device-pixel elements (`arm1-4` fills, `rim1-4` outlines, `ring`, `ring2`, `dot`) placed by
+  the Lua code-behind from the record and `ui.metrics()` (re-placed on data change or resize). Strokes are
+  `-sb-border-align: center` borders, which go through the same `drawRect`/`drawRRect`→`drawOval` path as the legacy
+  strokes; paint order = legacy draw order (fills, then outlines, then rings, then the dot). The DOT inversion (Hard
+  visual #14) is kept.
+- **Legacy bug fixed:** a gap wider than the size (reachable from settings: size 4-64, gap 0-16, e.g. size 6 gap 16) made
+  `MCrosshairRenderer` throw (`Rect.makeXYWH` negative width) every frame. Legacy `drawRects` now skips rects of no
+  extent, matching the document, which draws no arm whose length is <= 0
+  (`CrosshairDocumentGateTest.armsTheGapSwallowedAreNotDrawn`). Baselines `wide-gap` (nothing drawn) and `t-wide` (bar,
+  no stem); `t-wide` is gated, `wide-gap` is not (no element left to compare geometry on).
+- **Gate:** `ui.crosshair.CrosshairDocumentGateTest` (30 cases: 15 configurations x 1920x1080 and the half-pixel-centred
+  1921x1081, geometry `FLOAT_EXACT` against `CrosshairFixtures.legacyRects`, pixels `EXACT`, 0 px); also
+  `CrosshairContractsTest`, `CrosshairPresentationTest`. Live-verified in game (`-Dstonebreak.autoworld`).
 
 ### chat
 - **Kind:** hud (closed feed + open panel).
@@ -1216,6 +1382,37 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Custom alpha is squared (`SkijaChatRenderer.java:716-722`).
   - Escape that closes chat may also open pause in the same frame (stale edge tracker, UTK:76-91; inferred, verify in-game).
   - Commands that drive UI: `/battle [leave]`, `/battletest [reset|leave]` (`ChatCommandExecutor.java:26-43`).
+- **Fidelity:** `chat/chat-closed_1920x1080_s1` `chat/chat-commands_1920x1080_s1` `chat/chat-ghost_1920x1080_s1` `chat/chat-long-input_1920x1080_s1` `chat/chat-open_1280x720_s0_75` `chat/chat-open_1920x1080_s1` `chat/chat-open_1921x1081_s1_25` `chat/chat-open_3840x2160_s2` `chat/chat-scrolled_1920x1080_s1`
+- **Migration (#301, in progress):** shipped as `ui/documents/chat.sbui` (`UI/stonebreak/ui/screens/chat.omui`); rollback
+  `-Dstonebreak.ui.legacy=chat`. `ui.chat.ChatDocument` (held by `UIRenderer`) is shown in the HUD states
+  (`FrameRenderer.syncCrosshair`) and painted where `SkijaChatRenderer` drew (`UIRenderer.renderChat`), after publishing
+  the chat (lines fade on the wall clock); a closed chat with no lines paints nothing, as before.
+  - **Controller unchanged:** `ChatSystem` keeps the keyboard (ASCII 32-126 editing, max 256, Tab completion + ghost,
+    Ctrl+C/V, Enter, Escape), history, wrapping by 60 characters, commands and every timing. Unicode editing is not added:
+    the game font has no fallback (documents' TextFields must stay `inputFilter: ascii`).
+  - **Pointer:** the document takes it (the legacy `ChatInputRouter` mouse path stands down while it shows,
+    `UiMouseRouter.chatDocumentShowing`): one root `pointer-down` handler in the legacy precedence (scrollbar track/thumb,
+    emoji button, the open picker's star/cell/elsewhere-closes, tabs, command buttons) calls `stonebreak:chat.*` actions;
+    a thumb drag follows `pointer-move` (`.scroll-to`, the legacy ratio and rounding). Wheel scrolling stays legacy.
+    Fixed by construction: the tabs hit where they are drawn (the legacy hit-test used unscaled 70 px tabs vs 80 x scale
+    drawn); the command buttons hit on the button only (legacy also took the 5 px gap below each).
+  - **Data:** `stonebreak:chat` 1 (`ui.runtime.contracts.ChatContracts`): root `chat`, collections `chatLines` (bottom to
+    top, already faded and coloured by `SkijaChatRenderer.argb/withAlpha`, with `runs` split at `[token]`s exactly as
+    `drawMixedLine`) and `chatCommands`, root `emojiPicker`.
+  - **Document:** layout in the code-behind (`Layout.compute` in device px). Lines are laid out upwards
+    (`column-reverse`) so they paint bottom-up: a line's emoji reaches 1.1 px into the line above, whose backdrop covers
+    it. Emoji (static and the animated GIF) are the provider `stonebreak:chat-emoji` (`MPainter.drawImage` of the legacy
+    caches). The input scrolls by layout alone (a wide right-anchored row holding a line at least as wide as the area).
+    New engine pieces: surfaces `folder-tab`, `folder-tab-active`, `input-well` and symbol `smiley` (the legacy renderer
+    now draws through the same `MPainter.folderTab/inputWell` and `MSymbol.SMILEY`), and a `ListView` with an authored
+    `overflow: visible` is a plain unclipped list (it always scrolled and clipped its rows' shadows and AA edges).
+  - Known difference: with the caret blinked off and a long input, the legacy renderer hid a completion ghost whose start
+    landed exactly on the area's right edge; the document clips it at the well instead (needs a long `/` command).
+- **Gate:** `ui.chat.ChatDocumentGateTest` (16 cases: closed fading lines, open, scrolled history, commands tab,
+  ghost text, long input, emoji picker with and without favorites/recents, at 1920x1080; open and picker at every
+  standard viewport; geometry `FLOAT_EXACT`, pixels `EXACT`, 0 px), `ChatDocumentInteractionTest` (tabs at 1.5x,
+  command fill, picker star/insert/close-on-other-press, track step and thumb drag, closed chat never takes the pointer).
+  Live-verified (`-Dstonebreak.autoscreen=<s>:chat`).
 
 ### chat-emoji-picker
 - **Kind:** dialog (popup).
@@ -1228,6 +1425,12 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Layout:** fixed 148 px, **not uiScaled**. Rows never wrap, so the 4-cell General row overflows by about 6 px.
 - **Time:** GIF frame chosen by `currentTimeMillis % total` (`GifAnimationCache.java:27-43`).
 - **Fixtures:** `EmojiAssetsTest` (ids and resources only).
+- **Fidelity:** `chat/chat-picker-empty_1920x1080_s1` `chat/chat-picker_1280x720_s0_75` `chat/chat-picker_1920x1080_s1` `chat/chat-picker_1921x1081_s1_25` `chat/chat-picker_3840x2160_s2`
+- **Migration (#301, in progress):** part of `ui/documents/chat.sbui` (row `chat`): a panel of `ListView` sections (header,
+  "None yet", an 8-column cell grid, separators) placed by the code-behind at the legacy fixed px; cells hover-light and
+  their stars show favorite/hover/idle by class and `:hover`; GIF frames on the legacy wall clock. Any press that is not a
+  star or a cell (the panel's padding included) closes it, as before.
+- **Gate:** `ui.chat.ChatDocumentGateTest` (picker cases), `ChatDocumentInteractionTest`.
 
 ### debug-overlay
 - **Kind:** overlay (F3).
@@ -1253,6 +1456,22 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Time:** wall-clock refresh: resource panels 250 ms, info panel 50 ms.
 - **Fixtures:** none (`MPanelWidgetsRenderTest` covers the widget generically).
 - **Performance:** a boxed `Float` FPS deque every frame.
+- **Fidelity:** `debug-overlay/debug-overlay-cards_1920x1080_s1` `debug-overlay/debug-overlay-with-budgets_1280x720_s0_75` `debug-overlay/debug-overlay-with-budgets_1920x1080_s1` `debug-overlay/debug-overlay-with-budgets_1921x1081_s1_25` `debug-overlay/debug-overlay-with-budgets_3840x2160_s2`
+- **Migration (#301, in progress):** shipped as `ui/documents/debug_overlay.sbui` (`UI/stonebreak/ui/screens/debug_overlay.omui`),
+  an OVERLAY-layer document `DebugOverlay` owns (`sync()` every frame from `FrameRenderer.renderDebugOverlay`, so it opens and
+  closes with F3 in every state, menus and battle included) and paints where the legacy cards were drawn (last); rollback
+  `-Dstonebreak.ui.legacy=debug_overlay`.
+  - **Data:** `stonebreak:debug` 1 (`ui.runtime.contracts.DebugContracts`): collection `debugCards`, each the
+    `MStatPanel` the overlay already builds on its cadences (resources 4 Hz, debug info 20 Hz, FPS mean every frame:
+    unchanged), as title, bar (fraction, colour band, caption), lines (section with `gap`, or label/value) and its
+    `measureHeight` (the stacking rule; the legacy text runs 4 px past it, kept). Published only when a card was rebuilt.
+    `MStatPanel` gained read accessors (`title`, `lines`, `barColor`, ...); `DebugOverlay.paintLegacy` is the legacy draw.
+  - **Document:** cards are a non-clipping `ListView` placed by the code-behind (left column stacked 10 px from the top-left,
+    8 px apart; the debug card 10 px from the top-right), all at fixed device px and `dpx` fonts (MFonts.get, unscaled).
+  - The F-keys (F3-F8, `DebugKeyHandler`) and the world wireframes (row `debug-world-wireframes`, world-render) are
+    unchanged. Live: `-Dstonebreak.autoscreen=<s>:f3`.
+- **Gate:** `ui.debug.DebugOverlayDocumentGateTest` (5 cases: three and four cards, a red and green bar, sections with and
+  without gaps, at every standard viewport; card geometry `FLOAT_EXACT`, pixels `EXACT`, 0 px).
 
 ### debug-world-wireframes
 - **Kind:** custom-renderer.
@@ -1261,6 +1480,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Behaviour-coloured SBE wireframes; route lines lifted 0.25; goal crosses; yellow emitter triangles billboarded toward the **player position**.
   - Drawn after all UI, depth-tested against leftover default-framebuffer depth, so it shows through hotbar slots (depth cleared there) and is masked by the pause curtain.
 - **Fixtures:** none.
+- **Decision:** (#301) world-render. 3D debug geometry in world space (SBE wireframes, route lines, goal crosses, emitter billboards), depth-tested against the scene: it shows *where things are in the world*, which a 2D document cannot express. Stays in `Renderer`/`DebugOverlay.renderWireframes`; the F3 text cards are the `debug-overlay` row. The `DebugRenderer.cleanup` and `SoundEmitterRenderer` VBO leaks stay recorded under Known gaps.
 
 ### world-damage-numbers
 - **Kind:** hud (world-space).
@@ -1269,18 +1489,50 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Layout:** projected `proj×view`, culled when behind or off-screen, no depth test. Font `min(28+1.5·dmg,44)`, not uiScaled.
 - **Time:** `update(Game.getDeltaTime())` called **from the render path** (FR:328), so numbers freeze outside PLAYING. Life 0.75 s, screen-pixel gravity 640 px/s².
 - **Fixtures:** none.
+- **Fidelity:** `world-hud/world-hud-mixed_1280x720_s0_75` `world-hud/world-hud-mixed_1920x1080_s1` `world-hud/world-hud-mixed_1921x1081_s1_25` `world-hud/world-hud-mixed_3840x2160_s2` `world-hud/world-hud-texts_1920x1080_s1`
+- **Migration (#301, in progress):** the six world-space renderers became one document, `ui/documents/world_hud.sbui`
+  (`UI/stonebreak/ui/screens/world_hud.omui`, OM project "Stonebreak Menus"); rollback `-Dstonebreak.ui.legacy=world_hud`.
+  - **One selection rule:** each legacy renderer was split into `collect(vp, w, h, out)` (its unchanged selection,
+    projection and styling, producing `rendering.UI.components.WorldMarker` records) and `paint(markers, w, h)` (its
+    unchanged draw calls, now in `WorldMarkerPaint`); the stealth HUD into `StealthHudRenderer.state(player)` + `paint`.
+    The document and the legacy path show the same collected markers, so the gate compares painting only.
+  - **Owner:** `ui.worldHud.WorldHud` (held by `UIRenderer`), synced every frame by `FrameRenderer.syncCrosshair`
+    (shown in PLAYING with a player); `FrameRenderer.renderWorldSpaceHud` advances the damage numbers (render path, as
+    before) and calls `WorldHud.render`, which publishes `collect(...)` + the stealth state and paints the document right
+    away (bindings apply in the paint's layout: never a frame behind the camera), else falls back to the renderers.
+  - **Data / projection contract:** `stonebreak:world.hud` 1 (`ui.runtime.contracts.WorldHudContracts`): collection
+    `worldMarkers` (identity `marker`; kind, x, y in device px, text, size, color, shadow, fraction, half) in paint
+    order, and root `stealth`. Projection `WorldMarker.project`: player camera `proj x view`, culled behind the camera
+    and outside `|ndc| <= 1`, **no occlusion** (markers read through terrain, as before). Republished only on change.
+  - **Document:** a `ListView` row per marker; each part is placed from the row's anchor by authored offsets (prey
+    diamond 14 dpx rotated 45, name 13 px above, health bar 11 px below; trap sized by `half`), text centred on its
+    anchor with the baseline on it, at `dpx` sizes: these renderers never followed the UI scale (`MFonts.get` is
+    unscaled; the old ledger note "font min(28+1.5 dmg, 44), not uiScaled" holds). New engine style
+    `-sb-text-shadow-color` reproduces `drawCenteredStringWithShadow`'s per-marker shadow colours.
+  - Awareness glyphs and name tags no longer open an empty Skija frame every PLAYING frame (legacy path too).
+- **Gate:** `ui.worldHud.WorldHudDocumentGateTest` (10 cases: every kind, health/no health, arming/armed snares,
+  damage fades and sizes, stealth states, the mixed frame at all standard viewports; anchors `FLOAT_EXACT`, pixels
+  `EXACT`, 0 px; rows follow each published frame); `WorldMarkerProjectionTest`.
 
 ### world-quarry-markers
 - **Kind:** hud (world-space), Ranger only.
 - **Owner:** singleton `QuarryMarkerRenderer`.
 - **Draw:** marked-prey diamond + name + HP bar within vision range; snare square (orange while arming, green when armed) (:64-135).
 - **Fixtures:** none.
+- **Fidelity:** `world-hud/world-hud-mixed_1280x720_s0_75` `world-hud/world-hud-mixed_1920x1080_s1` `world-hud/world-hud-mixed_1921x1081_s1_25` `world-hud/world-hud-mixed_3840x2160_s2` `world-hud/world-hud-prey-empty_1920x1080_s1` `world-hud/world-hud-prey_1920x1080_s1`
+- **Migration (#301, in progress):** part of the world HUD document `ui/documents/world_hud.sbui`
+  (`UI/stonebreak/ui/screens/world_hud.omui`), see row `world-damage-numbers`; rollback `-Dstonebreak.ui.legacy=world_hud`.
+- **Gate:** `ui.worldHud.WorldHudDocumentGateTest` (0 px).
 
 ### world-doubt-markers
 - **Kind:** hud (world-space), Illusionist only.
 - **Owner:** singleton `DoubtMarkerRenderer`.
 - **Draw:** "Doubt n/max", red when Bewildered (:50-84).
 - **Fixtures:** none.
+- **Fidelity:** `world-hud/world-hud-mixed_1280x720_s0_75` `world-hud/world-hud-mixed_1920x1080_s1` `world-hud/world-hud-mixed_1921x1081_s1_25` `world-hud/world-hud-mixed_3840x2160_s2` `world-hud/world-hud-texts_1920x1080_s1`
+- **Migration (#301, in progress):** part of the world HUD document `ui/documents/world_hud.sbui`
+  (`UI/stonebreak/ui/screens/world_hud.omui`), see row `world-damage-numbers`; rollback `-Dstonebreak.ui.legacy=world_hud`.
+- **Gate:** `ui.worldHud.WorldHudDocumentGateTest` (0 px).
 
 ### world-enemy-awareness
 - **Kind:** hud (world-space).
@@ -1290,6 +1542,10 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Network shadows never tick awareness, so this likely never shows for server mobs (two-world trap; `EntityManager.java:98-102`).
   - **Opens a Skija bracket every PLAYING frame** even with no glyphs (:52).
 - **Fixtures:** none.
+- **Fidelity:** `world-hud/world-hud-mixed_1280x720_s0_75` `world-hud/world-hud-mixed_1920x1080_s1` `world-hud/world-hud-mixed_1921x1081_s1_25` `world-hud/world-hud-mixed_3840x2160_s2` `world-hud/world-hud-texts_1920x1080_s1`
+- **Migration (#301, in progress):** part of the world HUD document `ui/documents/world_hud.sbui`
+  (`UI/stonebreak/ui/screens/world_hud.omui`), see row `world-damage-numbers`; rollback `-Dstonebreak.ui.legacy=world_hud`.
+- **Gate:** `ui.worldHud.WorldHudDocumentGateTest` (0 px).
 
 ### world-player-nametags
 - **Kind:** hud (world-space).
@@ -1297,6 +1553,10 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Draw:** `RemotePlayer` names within 48 blocks, 18 px white.
 - **Entry:** gated by `Settings.playerNameTagsEnabled` (default true). Opens a bracket every PLAYING frame, even in singleplayer.
 - **Fixtures:** none.
+- **Fidelity:** `world-hud/world-hud-mixed_1280x720_s0_75` `world-hud/world-hud-mixed_1920x1080_s1` `world-hud/world-hud-mixed_1921x1081_s1_25` `world-hud/world-hud-mixed_3840x2160_s2` `world-hud/world-hud-texts_1920x1080_s1`
+- **Migration (#301, in progress):** part of the world HUD document `ui/documents/world_hud.sbui`
+  (`UI/stonebreak/ui/screens/world_hud.omui`), see row `world-damage-numbers`; rollback `-Dstonebreak.ui.legacy=world_hud`.
+- **Gate:** `ui.worldHud.WorldHudDocumentGateTest` (0 px).
 
 ### stealth-hud
 - **Kind:** hud (screen-space).
@@ -1304,13 +1564,17 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Draw:** "STEALTH" / "ENTERING STEALTH…" at a fixed y=64 top-centre, plus a 160×8 "Re-entry" cooldown bar. The doc comment claims "under the crosshair", which is wrong.
 - **Bindings:** `player.getStealth()`.
 - **Fixtures:** none.
+- **Fidelity:** `world-hud/world-hud-cooling_1920x1080_s1` `world-hud/world-hud-entering_1920x1080_s1` `world-hud/world-hud-mixed_1280x720_s0_75` `world-hud/world-hud-mixed_1920x1080_s1` `world-hud/world-hud-mixed_1921x1081_s1_25` `world-hud/world-hud-mixed_3840x2160_s2` `world-hud/world-hud-stealth_1920x1080_s1`
+- **Migration (#301, in progress):** part of the world HUD document `ui/documents/world_hud.sbui`
+  (`UI/stonebreak/ui/screens/world_hud.omui`), see row `world-damage-numbers`; rollback `-Dstonebreak.ui.legacy=world_hud`.
+- **Gate:** `ui.worldHud.WorldHudDocumentGateTest` (0 px).
 
 ### world-revealed-outline
 - **Kind:** custom-renderer (UI-like world marker drawn in the 3D pass).
 - **Owner:** `rendering/gameWorld/effects/WorldEffectsRenderer.java:79,243-281`.
 - **Draw:** violet wireframe boxes for entities REVEALED by an Illusionist, with depth off, so visible through walls.
-- **Decision for #301:** whether this stays world-pass host code.
 - **Fixtures:** none.
+- **Decision:** (#301) world-render. Violet boxes around REVEALED entities' AABBs, drawn in the 3D pass with depth off (x-ray through walls by design): world-space geometry with perspective edges, not interface. Stays in `WorldEffectsRenderer`.
 
 ### effect-underwater-tint
 - **Kind:** effect.
@@ -1318,11 +1582,16 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Draw:** legacy immediate-mode GL (Hard visuals #10). RGB (0, 0.4, 0.8) at 0.3, fading 3 alpha/s, keyed on `player.isInWater()`.
 - **Time:** `game.getDeltaTime()` from the render path.
 - **Fixtures:** none.
+- **Decision:** (#301) world-render. A camera effect: the whole view tinted while the player is in water, drawn under the HUD. It is how the world looks from inside water, not interface, so it stays host GL. The immediate-mode GL (Hard visuals #10) is renderer modernisation, not a UI migration.
 
 ### effect-dodge-vignette
 - **Kind:** effect. Owner: `DodgeInvincibilityOverlay` (same path as underwater).
 - **Draw:** warm-white edge band at 18 % of the min dimension, alpha 0.45, four gradient trapezoids, 10 alpha/s fade, keyed on `getDodge().isInvincible()`.
 - **Fixtures:** none.
+- **Decision:** (#301) world-render. A screen effect of the world pass, not interface: drawn by `OverlayRenderer` with the
+  underwater tint and droplets (same immediate-mode GL path, same place in the frame, under the HUD), keyed on the dodge's
+  i-frames. It stays with them; moving it would split one effect pass across two pipelines. The immediate-mode GL is
+  renderer modernisation (Hard visuals #10), not a UI migration.
 
 ### effect-screen-droplets
 - **Kind:** effect. Owner: `ScreenDropletOverlay` (same path).
@@ -1330,6 +1599,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Notes:** random spawn. Since #296 the `Random` comes from `LegacyUiClock.random()`, seeded while the clock is
   pinned (`-Dstonebreak.ui.pinclock=<s>[:<seed>]`), so spawns repeat in fixture runs.
 - **Fixtures:** none.
+- **Decision:** (#301) world-render. A lens effect of the camera surfacing from water, drawn under the HUD; not interface. Stays host GL with the underwater tint (same immediate-mode note).
 
 ### effect-pause-depth-curtain
 - **Kind:** effect (depth-only).
@@ -1341,6 +1611,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - With a null player it returns leaving `glColorMask(false)` set (:178-188).
 - **Notes:** the other four curtain methods are dead. Candidate for deletion, which needs an explicit decision.
 - **Fixtures:** none.
+- **Decision:** (#301) world-render. A depth-only pass that draws no pixels: it masks the F3 world wireframes (`debug-world-wireframes`) behind the pause panel, so there is nothing to migrate; it lives and dies with those wireframes. The null-player `glColorMask` leak and the four dead curtain methods remain recorded above.
 
 ### battle-hud
 - **Kind:** screen (HUD shell).
@@ -1373,6 +1644,35 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - `FocusBattleLayout` rects are recomputed and a `new MMenuList` is allocated per call.
   - `MPainter.hudFrame` speckle draws up to 1200 rects (`MPainter.java:165,241-266`), unscaled.
 
+- **Fidelity:** `battle-hud/battle-hud-menu_1920x1080_s1` `battle-hud/battle-hud-menu_1280x720_s0_75` `battle-hud/battle-hud-menu_3840x2160_s2` `battle-hud/battle-hud-menu_1921x1081_s1_25` `battle-hud/battle-hud-aiming_1920x1080_s1` `battle-hud/battle-hud-aiming_1921x1081_s1_25` `battle-hud/battle-hud-combo-parry_1920x1080_s1` `battle-hud/battle-hud-banner_1920x1080_s1` `battle-hud/battle-hud-intro-iris_1920x1080_s1` `battle-hud/battle-hud-intro-card_1920x1080_s1` `battle-hud/battle-hud-victory_1920x1080_s1` `battle-hud/battle-hud-victory_1280x720_s0_75` `battle-hud/battle-hud-defeat_1920x1080_s1` `battle-hud/battle-hud-victory-rising_1920x1080_s1` `battle-hud/battle-hud-telegraph_1920x1080_s1` `battle-hud/battle-hud-statuses_1920x1080_s1` `battle-hud/battle-hud-prompts_1920x1080_s1` `battle-hud/battle-hud-hover-row2_1920x1080_s1`
+- **Migration (#301, in progress):** shipped as `ui/documents/battle_hud.sbui` (`UI/stonebreak/ui/screens/battle_hud.omui`);
+  rollback `-Dstonebreak.ui.legacy=battle_hud`. `ui.focusBattle.BattleHudDocument` (a presented screen shown while the
+  screen is bound) paints where `SkijaFocusBattleRenderer.render` drew, after `FocusBattleScreen.prepareFrame` (the
+  cursor sync, the camera, the animator's scale, floater placement: shared by both paths) and publishing the HUD.
+  - **Controller unchanged:** `FocusBattleScreen` keeps the keyboard in its strict precedence (the document takes no key,
+    so `MenuInputRouter.routeBattleKey` stays the only route), the menu cursor, `HudAnimator`, every window's and layer's
+    own state and C1 animation, and the gameplay rules. The pointer: the document's root forwards presses and moves in
+    window pixels (`stonebreak:battle.pointer`, run under `FocusBattle.guardHud` as before) to the screen's legacy mouse
+    rules; the legacy mouse handlers stand down while the document shows.
+  - **Clocks (#295 follow-up):** the presentation sets the document's `battle` clock to C1 (`FocusBattleScreen.hudClock`,
+    the sum of HUD update steps: slow motion and pauses shape it) and `battle.sim` to C2 (`BattleView.elapsedSeconds`)
+    before every paint, so clips authored on them follow the battle; `HudShakeCompositeFixtureTest` pins an additive
+    shake over a slide on `battle` against `HudAnimator`.
+  - **Data:** `stonebreak:battle` 1 (`ui.runtime.contracts.BattleHudContracts`): root `battleHud`, each piece's rect this
+    frame (`FocusBattleLayout`, moved by the animator's slides and shakes as the legacy renderer moved it), the submenu
+    rect, whether the command window shows, and the help strip.
+  - **Document:** the legacy `paintHud` stack: underlays, mode tag, enemy plate, help strip, party, command window,
+    overlays, topmost. The help strip is the document's own (the `hud` surface, the line fitted with the game font by
+    the host, the cross-fade in its colour); every other piece is the provider `stonebreak:battle-hud` over the
+    screen's painters (`SkijaFocusBattleRenderer.paintGroup`, `FocusBattleScreen.paintPiece`) through a Masonry backend
+    bound to the document's canvas (`BattleCanvasBackend`). Without a battle (the editor preview) it draws the still
+    `BattleHudPreview` battle.
+- **Gate:** `ui.focusBattle.fidelity.BattleHudDocumentGateTest` (18 cases: the open menu at every standard viewport; the
+  snapshot gallery's flow scenes (aiming with banner and floaters, Focus Combo with parry and heal, a banner, the intro
+  iris and name card, victory and defeat panels, the rising panel), a telegraph, low HP with statuses, the timing ring
+  and a hovered row at 1920x1080; aiming also at 1921x1081@1.25, victory at 1280x720@0.75; window rects
+  `FLOAT_EXACT`, pixels `EXACT`; the first golden images of the battle HUD), `BattleHudDocumentInteractionTest`
+  (hover selects, a press enters the target step, the result panel's Retry, keys left to the screen).
 ### battle-command-window
 - **Kind:** hud.
 - **Owner:** `ui.focusBattle.elements.CommandWindow` (two MMenuLists: root + Qi Arts submenu) + `BattleMenuState` cursor and target step.
@@ -1387,6 +1687,9 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Time:** C1 (wake 0.15 s, submenu slide 0.10 s, cursor bob).
 - **Fixtures:** `CommandWindowRenderTest`, `battle/CommandWindowTest`.
 
+- **Fidelity:** `battle-hud/battle-hud-menu_1920x1080_s1` `battle-hud/battle-hud-menu_3840x2160_s2` `battle-hud/battle-hud-hover-row2_1920x1080_s1` `battle-hud/battle-hud-aiming_1920x1080_s1`
+- **Migration (#301, in progress):** part of `ui/documents/battle_hud.sbui`; drawn by its legacy painter through the `stonebreak:battle-hud` provider piece `command` (`FocusBattleScreen.paintPiece`); its state and C1 animation stay in the screen, the document places, moves and stacks it. Replacing the painter with document widgets is follow-up work; the gate holds it either way.
+  Pointer: the document forwards presses and moves to the screen's rules (`stonebreak:battle.pointer`), so rows, hover and the target step behave as before.
 ### battle-party-status
 - **Kind:** hud.
 - **Owner:** `ui.focusBattle.elements.PartyStatusWindow` (MGauge hp/atb/focus, MPipRow qi, MChipRow) + `StatusChips` (cached MBadges).
@@ -1394,6 +1697,8 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Time:** fills on C2; ghost trail, flashes and pip pops on C1. `DamageDealt`, `TurnReady` and `FocusFull` events.
 - **Fixtures:** `PartyStatusWindowRenderTest`.
 
+- **Fidelity:** `battle-hud/battle-hud-menu_1920x1080_s1` `battle-hud/battle-hud-statuses_1920x1080_s1` `battle-hud/battle-hud-aiming_1920x1080_s1`
+- **Migration (#301, in progress):** part of `ui/documents/battle_hud.sbui`; drawn by its legacy painter through the `stonebreak:battle-hud` provider piece `party` (`FocusBattleScreen.paintPiece`); its state and C1 animation stay in the screen, the document places, moves and stacks it. Replacing the painter with document widgets is follow-up work; the gate holds it either way.
 ### battle-help-strip
 - **Kind:** hud.
 - **Owner:** `ui.focusBattle.elements.HelpStrip` (stateless) + `BattleHelpText.lineFor`.
@@ -1404,6 +1709,12 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - "Space" is hard-coded in `BLOCK_HINT`.
 - **Fixtures:** `BattleHelpTextTest`, `EnemyPlateRenderTest`.
 
+- **Fidelity:** `battle-hud/battle-hud-menu_1920x1080_s1` `battle-hud/battle-hud-menu_3840x2160_s2` `battle-hud/battle-hud-aiming_1920x1080_s1` `battle-hud/battle-hud-prompts_1920x1080_s1`
+- **Migration (#301, in progress):** the document's own element in `ui/documents/battle_hud.sbui`: the `hud` surface at the
+  strip's rect (moved with the bottom HUD), the line fitted by the host with the game font (`MFonts.fit`, as
+  `HelpStrip.render`), its baseline `MPainter.baselineFor`, its colour the animator's cross-fade (`MColor.fade`), drawn
+  with the faded house shadow (`MPainter.drawText`); hidden for an empty line. The text still comes from
+  `BattleHelpText` (the animator names the outgoing line during the fade).
 ### battle-enemy-plate
 - **Kind:** hud.
 - **Owner:** `ui.focusBattle.elements.EnemyPlate` (MGauge HP, `MCastBar`, MChipRow).
@@ -1411,16 +1722,22 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Time:** fill and window marker on C2 (synced with the parry brackets via `TimedLayout.parryTimeline`); pulse and ghost on C1.
 - **Fixtures:** `EnemyPlateRenderTest`, `MCastBarTest`.
 
+- **Fidelity:** `battle-hud/battle-hud-menu_1920x1080_s1` `battle-hud/battle-hud-telegraph_1920x1080_s1` `battle-hud/battle-hud-aiming_1920x1080_s1`
+- **Migration (#301, in progress):** part of `ui/documents/battle_hud.sbui`; drawn by its legacy painter through the `stonebreak:battle-hud` provider piece `enemy` (`FocusBattleScreen.paintPiece`); its state and C1 animation stay in the screen, the document places, moves and stacks it. Replacing the painter with document widgets is follow-up work; the gate holds it either way.
 ### battle-mode-tag
 - **Kind:** hud. Static `MBadge("ACTIVE")` (`SkijaFocusBattleRenderer.java:63-64`). Bound to nothing, no animation.
 - **Fixtures:** `EnemyPlateRenderTest`.
 
+- **Fidelity:** `battle-hud/battle-hud-menu_1920x1080_s1` `battle-hud/battle-hud-menu_1280x720_s0_75`
+- **Migration (#301, in progress):** part of `ui/documents/battle_hud.sbui`; drawn by its legacy painter through the `stonebreak:battle-hud` provider piece `mode` (`FocusBattleScreen.paintPiece`); its state and C1 animation stay in the screen, the document places, moves and stacks it. Replacing the painter with document widgets is follow-up work; the gate holds it either way.
 ### battle-action-banner
 - **Kind:** overlay. Owner: `ui.focusBattle.elements.ActionBanner` (MBanner).
 - **Shown:** on `ActionStarted`, held while the actor acts, suppressed in INTRO.
 - **Time:** C1: drop 0.12 s, min hold 0.9 s, fade 0.25 s.
 - **Fixtures:** `ActionBannerTest`, `MBannerTest`.
 
+- **Fidelity:** `battle-hud/battle-hud-banner_1920x1080_s1` `battle-hud/battle-hud-aiming_1920x1080_s1`
+- **Migration (#301, in progress):** part of `ui/documents/battle_hud.sbui`; drawn by its legacy painter through the `stonebreak:battle-hud` provider piece `overlays` (`FocusBattleScreen.paintPiece`); its state and C1 animation stay in the screen, the document places, moves and stacks it. Replacing the painter with document widgets is follow-up work; the gate holds it either way.
 ### battle-target-cursor
 - **Kind:** overlay. Owner: `ui.focusBattle.elements.TargetCursor`.
 - **Shown:** during targeting while the menu is live. `place()` is the single geometry source for paint and hit-test.
@@ -1429,6 +1746,9 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Input:** a click on the body, hand or tag confirms the target.
 - **Fixtures:** `FlowHudRenderTest`, `MWorldMarkerTest`.
 
+- **Fidelity:** `battle-hud/battle-hud-aiming_1920x1080_s1` `battle-hud/battle-hud-aiming_1921x1081_s1_25`
+- **Migration (#301, in progress):** part of `ui/documents/battle_hud.sbui`; drawn by its legacy painter through the `stonebreak:battle-hud` provider piece `overlays` (`FocusBattleScreen.paintPiece`); its state and C1 animation stay in the screen, the document places, moves and stacks it. Replacing the painter with document widgets is follow-up work; the gate holds it either way.
+  A press on the body, hand or tag still confirms through `TargetCursor.place` (the screen's rule).
 ### battle-floaters
 - **Kind:** overlay. Owner: `ui.focusBattle.elements.BattleFloaters` (MFloatingText, cap 24).
 - **Content:** damage, crit, BLOCK, PARRY!, heals, Qi, FOCUS MAX, statuses, rejection reasons.
@@ -1438,6 +1758,9 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Time:** C1, deterministic lanes.
 - **Fixtures:** `BattleFloatersTest`, `MFloatingTextTest`.
 
+- **Fidelity:** `battle-hud/battle-hud-aiming_1920x1080_s1` `battle-hud/battle-hud-combo-parry_1920x1080_s1`
+- **Migration (#301, in progress):** part of `ui/documents/battle_hud.sbui`; drawn by its legacy painter through the `stonebreak:battle-hud` provider piece `overlays` (`FocusBattleScreen.paintPiece`); its state and C1 animation stay in the screen, the document places, moves and stacks it. Replacing the painter with document widgets is follow-up work; the gate holds it either way.
+  Floaters still lock their screen position at the first frame after the event: `FocusBattleScreen.prepareFrame` (both paths) resolves them before the document paints.
 ### battle-timing-ring
 - **Kind:** overlay (Flurry prompt). Owner: `ui.focusBattle.timed.TimingRingOverlay` via `TimedInputLayers`.
 - **Geometry is gameplay** (`TimedLayout.ringScaleAt` :77): radius is exactly 1.0 at the perfect midpoint; bands = press windows; anchored at the archon chest.
@@ -1446,11 +1769,15 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Fixtures:** `TimingRingOverlayTest`, `TimedLayoutTest`, `battle/timed/TimingRingTest`.
 - **Shared draw helpers:** `ui.focusBattle.timed.TimedMotion` (normalised-time easing shapes, no clock) and `TimedStrokes`, used by this row, `battle-parry-overlay` and `battle-screen-fx`; they migrate with whichever of those moves first.
 
+- **Fidelity:** `battle-hud/battle-hud-prompts_1920x1080_s1`
+- **Migration (#301, in progress):** part of `ui/documents/battle_hud.sbui`; drawn by its legacy painter through the `stonebreak:battle-hud` provider piece `overlays` (`FocusBattleScreen.paintPiece`); its state and C1 animation stay in the screen, the document places, moves and stacks it. Replacing the painter with document widgets is follow-up work; the gate holds it either way.
 ### battle-parry-overlay
 - **Kind:** overlay. Owner: `ui.focusBattle.timed.ParryOverlay`, anchored on the monk torso.
 - **Draw:** brackets shut exactly at `windowStart` (C2). Glow `sin(t*30)` on C1. PARRY full-screen flash 0.32 + ring 0.25 s; BLOCK shield 0.45 s; TOO EARLY 0.5 s.
 - **Fixtures:** `ParryOverlayTest`, `battle/timed/ParryWindowTest`.
 
+- **Fidelity:** `battle-hud/battle-hud-combo-parry_1920x1080_s1` `battle-hud/battle-hud-telegraph_1920x1080_s1`
+- **Migration (#301, in progress):** part of `ui/documents/battle_hud.sbui`; drawn by its legacy painter through the `stonebreak:battle-hud` provider piece `overlays` (`FocusBattleScreen.paintPiece`); its state and C1 animation stay in the screen, the document places, moves and stacks it. Replacing the painter with document widgets is follow-up work; the gate holds it either way.
 ### battle-combo-strip
 - **Kind:** overlay. Owner: `ui.focusBattle.timed.ComboStripOverlay` (MPromptStrip), fed from the `TimedInputState` snapshot.
 - **Draw:** arrow symbols plus hard-coded W/A/S/D; stamps; an "n HITS" counter that counts Impacts; timer `1−stepElapsed/stepDuration` (C2).
@@ -1458,6 +1785,8 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Input:** direction PRESS only; mouse inert.
 - **Fixtures:** `ComboStripOverlayTest`, `battle/timed/ComboStringTest`.
 
+- **Fidelity:** `battle-hud/battle-hud-combo-parry_1920x1080_s1`
+- **Migration (#301, in progress):** part of `ui/documents/battle_hud.sbui`; drawn by its legacy painter through the `stonebreak:battle-hud` provider piece `overlays` (`FocusBattleScreen.paintPiece`); its state and C1 animation stay in the screen, the document places, moves and stacks it. Replacing the painter with document widgets is follow-up work; the gate holds it either way.
 ### battle-screen-fx
 - **Kind:** effect. Owner: `ui.focusBattle.timed.ScreenFxLayer` + `MScreenFx`.
 - **Draw:**
@@ -1467,6 +1796,8 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Performance:** `Shader.makeRadialGradient` per call per frame (`MScreenFx.java:147`).
 - **Fixtures:** `ScreenFxLayerTest`, `MScreenFxTest`.
 
+- **Fidelity:** `battle-hud/battle-hud-statuses_1920x1080_s1` `battle-hud/battle-hud-intro-iris_1920x1080_s1` `battle-hud/battle-hud-defeat_1920x1080_s1`
+- **Migration (#301, in progress):** part of `ui/documents/battle_hud.sbui`; drawn by its legacy painter through the `stonebreak:battle-hud` provider piece `underlays` (`FocusBattleScreen.paintPiece`); its state and C1 animation stay in the screen, the document places, moves and stacks it. Replacing the painter with document widgets is follow-up work; the gate holds it either way.
 ### battle-encounter-card
 - **Kind:** effect. Owner: `ui.focusBattle.elements.EncounterTransition`, topmost layer.
 - **Shown:** armed when the first update sees INTRO; replays on retry.
@@ -1474,6 +1805,8 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Time:** C1. The card is timed to the camera intro shot by **hard-coded constants only** (`CARD_IN_SECONDS=1.7`).
 - **Fixtures:** `EncounterTransitionTest`.
 
+- **Fidelity:** `battle-hud/battle-hud-intro-iris_1920x1080_s1` `battle-hud/battle-hud-intro-card_1920x1080_s1`
+- **Migration (#301, in progress):** part of `ui/documents/battle_hud.sbui`; drawn by its legacy painter through the `stonebreak:battle-hud` provider piece `topmost` (`FocusBattleScreen.paintPiece`); its state and C1 animation stay in the screen, the document places, moves and stacks it. Replacing the painter with document widgets is follow-up work; the gate holds it either way.
 ### battle-encounter-swirl
 - **Kind:** effect. Owner: `ui.focusBattle.intro.EncounterSwirl` (one per FocusBattle) + `FrameGrab`.
 - **Entry:** `FocusBattle.afterFieldFrame` (:171-196) → `FrameGrab.backBuffer`: synchronous `glReadPixels` of GL_BACK, CPU flip, alpha forced to FF (`FrameGrab.java:21-45`) → `swirl.begin`.
@@ -1485,6 +1818,9 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Input:** the screen is unbound, so the MIR Escape fallback opens pause and the swirl freezes.
 - **Fixtures:** `EncounterSwirlTest` (timeline, SkSL and null-still paths on CPU raster). `FrameGrab` is untested.
 
+- **Decision:** (#301) world-render. A camera/screen effect of the world view, not UI: the last field frame grabbed from
+  the back buffer (`FrameGrab`) twisted to white by an SkSL effect, painted by `FocusBattle.renderEncounterTransition`
+  over scene and HUD before the battle (and its HUD document) is bound. It stays in the renderer.
 ### battle-result-panel
 - **Kind:** dialog. Owner: `ui.focusBattle.elements.ResultPanel` (MResultCard: stats plus Retry / Explore arena / Return to world).
 - **Timing:** rises after 4.0 s (victory) or 2.0 s (defeat) over 0.45 s; interactive only at full rise; 1 s count-up after it seats; the Time stat from C2 `elapsedSeconds`. Input is gated on the C1 HUD clock (anti-mash).
@@ -1493,6 +1829,9 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Actions:** `retry`, `exploreArena` (free roam with the normal HUD), `returnToWorld` (+ `BattleTestSession.leave`).
 - **Fixtures:** `ResultPanelTest`, `MResultCardTest`.
 
+- **Fidelity:** `battle-hud/battle-hud-victory_1920x1080_s1` `battle-hud/battle-hud-victory_1280x720_s0_75` `battle-hud/battle-hud-defeat_1920x1080_s1` `battle-hud/battle-hud-victory-rising_1920x1080_s1`
+- **Migration (#301, in progress):** part of `ui/documents/battle_hud.sbui`; drawn by its legacy painter through the `stonebreak:battle-hud` provider piece `topmost` (`FocusBattleScreen.paintPiece`); its state and C1 animation stay in the screen, the document places, moves and stacks it. Replacing the painter with document widgets is follow-up work; the gate holds it either way.
+  Its buttons are pressed through the document's pointer forward (`ResultPanel.buttonAt`, interactive only once risen, as before).
 ### skija-ui-backend
 - **Kind:** custom-renderer.
 - **Owner:** `com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend` + `SkiaContext`, built and initialised in `Renderer.java:137-146`.
@@ -1505,6 +1844,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Skija is the subclass seam for the headless tests.
 - **Performance:** a normal PLAYING frame does at least 5 sequential full flushes (crosshair, hotbar A, hotbar C, enemy awareness, name tags), about 10–13 when busy. Each resets 16 texture units.
 - **Fixtures:** `RasterUiFixture`, `BattleRasterFixture` (CPU raster substitutes).
+- **Decision:** (#301) retained-bridge. It is the document host's GPU backend, not a surface: `SkijaUIBackend` = engine `GpuMasonryBackend` + menu assets (#286), and every document paints through it (`UiRenderTarget.gameWindow`, `restoreGLDefaults` sampler guard kept). Legacy screens share it until they retire.
 
 ### masonry-ui-kit
 - **Kind:** custom-renderer.
@@ -1519,6 +1859,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Widgets import the `ui.startupIntro.tween` easing functions.
 - **Battle-only widgets:** MScreenFx, MWorldMarker, MFloatingText, MCastBar, MResultCard, MPromptStrip, MBanner, MKeyHint, MPipRow, MChipRow, MMenuList, MGauge.
 - **Fixtures:** 24 `M*Test` classes in `test/.../rendering/UI/masonryUI/` (render, raster and interaction).
+- **Decision:** (#301) retained-bridge. The Masonry kit moved to the engine (`ui/masonry`, #286) and is the widget implementation documents paint with (`UiPainter`, `MasonryContentMeasurer`); the game-side `rendering.UI.masonryUI` remnants are facades. Legacy-only widgets retire with the last screen that uses them.
 
 ### mtexture-registry
 - **Kind:** custom-renderer.
@@ -1528,6 +1869,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - hotbar SBO icons
   - character creation and recipe book `Elm_UI.sbt`
 - **Fixtures:** none directly.
+- **Decision:** (#301) retained-bridge. Game facade over the engine `MTextureCache`, the single texture owner; documents resolve SBT/OMT/SBO-item images through it (`ResolvedUiAssets`, item-icon provider), so it stays as the asset cache under both paths.
 
 ### block-icon-renderer
 - **Kind:** custom-renderer.
@@ -1542,6 +1884,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Leaves behind:** the unit-1 binding, the depth function, and its matrix uniforms.
 - **Performance:** about 500 `glGet` calls per frame with the inventory open.
 - **Fixtures:** none.
+- **Decision:** (#301) retained-bridge. Documents draw 3D block icons through the `stonebreak:item-icon` provider (`ui.runtime.providers.ItemIconAtlas`), which renders each icon once into an offscreen page with this renderer (`BlockIconPainter.LEGACY`): same shader, view and leaf blending, no depth clear in the world buffer. Hard visual #2 is kept by reuse, not replica.
 
 ### item-icon-renderer
 - **Kind:** custom-renderer.
@@ -1553,6 +1896,10 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Fallback swatches: green or purple.
   - **Each call opens its own Skija frame** (:86-98), so outside an outer frame that is a full flush per icon.
 - **Fixtures:** none.
+- **Decision:** (#301) retained-bridge, kept outside documents. No document calls it: documents draw item icons
+  through `stonebreak:item-icon` (`ItemIconProvider` + `ItemIconAtlas`, the same `MTextureRegistry` sprite rule #330).
+  Its remaining callers are the legacy rollback paths (container screens, the legacy hotbar, `OverlayRenderer`); it is
+  deleted with them when those migrations are signed off.
 
 ### entity-preview-renderer
 - **Kind:** custom-renderer.
@@ -1564,12 +1911,16 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - (`rendering/models/entities/PlayerFigureRenderer.java:145` is a world use)
 - **Draw:** each caller sets the scissor, viewport and orbit camera itself; the renderer supplies a UI lighting rig. There is no shared slot abstraction.
 - **Fixtures:** none.
+- **Decision:** (#301) retained-bridge. Documents show 3D models through the `stonebreak:entity-preview` provider (`ui.runtime.providers.EntityPreviewProvider` on `GlPreviewProvider`), which calls `renderPlayerPreview`/`renderEntityPreview` into a provider target. Hard visual #1 is kept by reuse.
 
 ### tab-strip-layout
 - **Kind:** custom-renderer (shared layout).
 - **Owner:** `com.stonebreak.ui.TabStripLayout`: 5 tabs of 84×28 with a 4 px gap, × uiScale, centred on the screen (not the panel).
 - **Users:** inventory drawing and hit-testing, character screen.
 - **Fixtures:** none.
+- **Decision:** (#301) retained-bridge: host layout, the single source of the strip's integer geometry. The character
+  sheet's contract publishes the strip from it (`CharacterSheetContracts`), the inventory document's code-behind
+  mirrors its rounding (#300), and the legacy screens keep using it; both strips stay pixel-identical across the swap.
 
 ### ability-icon-cache
 - **Kind:** custom-renderer (asset cache).
@@ -1577,6 +1928,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Notes:** `computeIfAbsent` with a null result means a missing icon is re-read and logged every frame.
 - **Users:** GaugePanel, ClassAbilitiesTabRenderer, ClassesTabRenderer.
 - **Fixtures:** none.
+- **Decision:** (#301) retained-bridge. Asset cache read by the `GaugePanel` painters, which documents reach through the `stonebreak:class-gauge` provider (#300); also by the character screens until they migrate. The null re-read per frame stays recorded above.
 
 ### opengl-quad-renderer
 - **Kind:** custom-renderer.
@@ -1586,12 +1938,14 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - `setWindowDimensions` is never called (window size 0×0).
   - The only live use is passing through the depth curtain.
 - **Fixtures:** none.
+- **Decision:** (#301) retained-bridge. Not a surface: a GL helper whose live paths are the flat block icons of `BlockIconRenderer` (`drawFlat2DItemInSlot`, reached by the item-icon provider) and the depth curtain. Its dead `drawQuad`/`drawTexturedQuadUI` go with the final dead-code sweep.
 
 ### legacy-stb-font
 - **Kind:** custom-renderer.
 - **Owner:** `com.stonebreak.ui.Font`: an STB-baked 512² alpha texture of Roboto, `rendering/core/ResourceManager.java:24`.
 - **Notes:** passed into `InventoryScreen` (GS:105) and gating its construction (GS:104), but `drawText` has no caller. Allocated GPU memory with no visual. Retire it explicitly.
 - **Fixtures:** none.
+- **Decision:** (#301) retired. `ui.Font` and its `ResourceManager`/`Renderer`/`Game.getFont` plumbing are deleted; `InventoryScreen` no longer takes it and `GameScreens` no longer gates the inventory and recipe screens on it. It had no draw caller, so nothing visible changed; it freed a 512² alpha texture. The Roboto TTF stays in resources (unused).
 
 ## Coverage method
 

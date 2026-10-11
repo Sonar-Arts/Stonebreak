@@ -6,18 +6,17 @@ import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.openmason.engine.ui.masonry.MFonts;
-import com.openmason.engine.ui.masonry.MPainter;
 import io.github.humbleui.skija.Canvas;
-import io.github.humbleui.skija.Font;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Draws each remote (network) player's username as a billboard label floating above their head.
- * World position is projected to screen space; projection mirrors {@link EnemyAwarenessRenderer}.
- * Only meaningful in multiplayer, where {@link RemotePlayer} figures are present in the entity
- * manager.
+ * World position is projected to screen space by {@link WorldMarker#project}. Only meaningful in
+ * multiplayer, where {@link RemotePlayer} figures are present in the entity manager.
  */
 public class PlayerNameTagRenderer {
 
@@ -47,54 +46,54 @@ public class PlayerNameTagRenderer {
 
     public void render(Matrix4f proj, Matrix4f view, int screenW, int screenH) {
         if (backend == null || !backend.isAvailable() || fonts == null) return;
+        List<WorldMarker> markers = new ArrayList<>();
+        collect(new Matrix4f(proj).mul(view), screenW, screenH, markers);
+        if (!markers.isEmpty()) { // nothing to show: no UI frame (it used to flush one every frame)
+            paint(markers, screenW, screenH);
+        }
+    }
+
+    /**
+     * Remote players' names within 48 blocks of the local player, when name tags are enabled
+     * ({@link WorldMarker.Kind#NAMETAG}, #301).
+     */
+    public void collect(Matrix4f vp, int screenW, int screenH, List<WorldMarker> out) {
         if (!com.stonebreak.config.Settings.getInstance().getPlayerNameTagsEnabled()) return;
 
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return;
 
         Vector3f cameraPos = Game.getPlayer() != null ? Game.getPlayer().getPosition() : null;
+        for (LivingEntity entity : entityManager.getLivingEntities()) {
+            if (!(entity instanceof RemotePlayer remote) || !remote.isAlive()) continue;
 
+            String name = remote.getUsername();
+            if (name == null || name.isEmpty()) continue;
+
+            Vector3f pos = remote.getPosition();
+            if (cameraPos != null && cameraPos.distanceSquared(pos) > MAX_DISTANCE_SQ) continue;
+
+            float[] screen = WorldMarker.project(vp, pos.x,
+                    pos.y + remote.getType().getHeight() + HEAD_OFFSET, pos.z, screenW, screenH);
+            if (screen == null) continue;
+
+            out.add(WorldMarker.text(WorldMarker.id(WorldMarker.Kind.NAMETAG, remote), WorldMarker.Kind.NAMETAG,
+                screen[0], screen[1], name, NAME_FONT_SIZE, NAME_COLOR, NAME_SHADOW));
+        }
+    }
+
+    /** Draws collected {@link WorldMarker.Kind#NAMETAG} markers in one UI frame. */
+    public void paint(List<WorldMarker> markers, int screenW, int screenH) {
+        if (backend == null || !backend.isAvailable()) return;
         backend.beginFrame(screenW, screenH, 1.0f);
         try {
             Canvas canvas = backend.getCanvas();
             if (canvas == null) return;
-
-            Font font = fonts.get(NAME_FONT_SIZE);
-            if (font == null) return;
-
-            Matrix4f vp = new Matrix4f(proj).mul(view);
-            for (LivingEntity entity : entityManager.getLivingEntities()) {
-                if (!(entity instanceof RemotePlayer remote) || !remote.isAlive()) continue;
-
-                String name = remote.getUsername();
-                if (name == null || name.isEmpty()) continue;
-
-                Vector3f pos = remote.getPosition();
-                if (cameraPos != null && cameraPos.distanceSquared(pos) > MAX_DISTANCE_SQ) continue;
-
-                float[] screen = project(vp, pos.x,
-                        pos.y + remote.getType().getHeight() + HEAD_OFFSET, pos.z, screenW, screenH);
-                if (screen == null) continue;
-
-                MPainter.drawCenteredStringWithShadow(canvas, name, screen[0], screen[1],
-                        font, NAME_COLOR, NAME_SHADOW);
+            for (WorldMarker m : markers) {
+                if (m.kind() == WorldMarker.Kind.NAMETAG) WorldMarkerPaint.text(canvas, fonts, m);
             }
         } finally {
             backend.endFrame();
         }
-    }
-
-    /** World position to screen coordinates, or null when behind the camera / off-screen. */
-    private float[] project(Matrix4f vp, float wx, float wy, float wz, int screenW, int screenH) {
-        Vector4f clip = new Vector4f(wx, wy, wz, 1f);
-        vp.transform(clip);
-        if (clip.w <= 0f) return null;
-        float ndcX = clip.x / clip.w;
-        float ndcY = clip.y / clip.w;
-        if (Math.abs(ndcX) > 1f || Math.abs(ndcY) > 1f) return null;
-        return new float[] {
-            (ndcX + 1f) * 0.5f * screenW,
-            (1f - ndcY) * 0.5f * screenH
-        };
     }
 }

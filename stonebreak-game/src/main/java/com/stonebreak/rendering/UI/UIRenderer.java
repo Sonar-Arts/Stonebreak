@@ -26,6 +26,9 @@ public class UIRenderer {
     private ItemIconRenderer itemIconRenderer;
     private BlockIconRenderer blockIconRenderer;
     private MCrosshairRenderer mCrosshairRenderer;
+    private final com.stonebreak.ui.crosshair.Crosshair crosshair = new com.stonebreak.ui.crosshair.Crosshair();
+    private final com.stonebreak.ui.worldHud.WorldHud worldHud = new com.stonebreak.ui.worldHud.WorldHud();
+    private final com.stonebreak.ui.chat.ChatDocument chatDocument = new com.stonebreak.ui.chat.ChatDocument();
     private OpenGLQuadRenderer openGLQuadRenderer;
 
     public UIRenderer() {
@@ -79,6 +82,9 @@ public class UIRenderer {
     // ===== Chat Rendering Delegation =====
 
     public void renderChat(ChatSystem chatSystem, int windowWidth, int windowHeight) {
+        if (chatDocument.paint(() -> chatSystem, windowWidth, windowHeight)) {
+            return; // the chat document (#301)
+        }
         if (skijaChatRenderer != null) {
             skijaChatRenderer.render(chatSystem, windowWidth, windowHeight);
         }
@@ -193,6 +199,9 @@ public class UIRenderer {
      * @param windowHeight Current window height
      */
     public void renderCrosshair(int windowWidth, int windowHeight) {
+        if (crosshair.paint(windowWidth, windowHeight)) {
+            return; // the crosshair document painted it
+        }
         if (mCrosshairRenderer != null) {
             mCrosshairRenderer.renderCrosshair(windowWidth, windowHeight);
         }
@@ -204,6 +213,21 @@ public class UIRenderer {
      */
     public MCrosshairRenderer getMCrosshairRenderer() {
         return mCrosshairRenderer;
+    }
+
+    /** Where the chat is shown: its shipped document, or {@link SkijaChatRenderer} (#301). */
+    public com.stonebreak.ui.chat.ChatDocument getChatDocument() {
+        return chatDocument;
+    }
+
+    /** The world-anchored HUD: its shipped document, or the legacy world-space renderers (#301). */
+    public com.stonebreak.ui.worldHud.WorldHud getWorldHud() {
+        return worldHud;
+    }
+
+    /** Where the crosshair is shown: its shipped document, or {@link MCrosshairRenderer} (#301). */
+    public com.stonebreak.ui.crosshair.Crosshair getCrosshair() {
+        return crosshair;
     }
 
     // ===== Getter Methods =====

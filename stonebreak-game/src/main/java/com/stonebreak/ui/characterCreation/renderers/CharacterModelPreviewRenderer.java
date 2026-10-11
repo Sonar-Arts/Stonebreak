@@ -37,6 +37,17 @@ public final class CharacterModelPreviewRenderer {
     public PreviewRect render(Canvas canvas, MasonryUI ui,
                               float panelX, float panelY, float panelW, float panelH,
                               CharacterStats stats) {
+        PreviewRect r = previewRect(panelX, panelY, panelW, panelH);
+        if (r == null) return null;
+
+        drawInset(canvas, r.x(), r.y(), r.w(), r.h());
+        drawLabels(canvas, ui, panelX + panelW / 2f, r.y() + r.h(), stats);
+
+        return r;
+    }
+
+    /** The preview frame in the panel, or null when the panel is too small (shared with the document, #301). */
+    public static PreviewRect previewRect(float panelX, float panelY, float panelW, float panelH) {
         // Reserve space for the title (top) and the labels (bottom).
         float availableH = panelH - 90f;
         if (availableH <= 0f) return null;
@@ -45,10 +56,6 @@ public final class CharacterModelPreviewRenderer {
         float previewH = availableH * PREVIEW_HEIGHT_RATIO;
         float previewX = panelX + (panelW - previewW) / 2f;
         float previewY = panelY + 40f;
-
-        drawInset(canvas, previewX, previewY, previewW, previewH);
-        drawLabels(canvas, ui, panelX + panelW / 2f, previewY + previewH, stats);
-
         return new PreviewRect(previewX, previewY, previewW, previewH);
     }
 
@@ -77,7 +84,8 @@ public final class CharacterModelPreviewRenderer {
             font, MStyle.TEXT_SECONDARY, MStyle.TEXT_SHADOW);
     }
 
-    private static String capitalize(String s) {
+    /** "No Background" style capitalisation (shared with the document, #301). */
+    public static String capitalize(String s) {
         if (s == null || s.isEmpty()) return s;
         return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }

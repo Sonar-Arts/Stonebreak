@@ -15,11 +15,6 @@ import com.stonebreak.core.window.GameWindow;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
-import com.stonebreak.rendering.UI.components.DoubtMarkerRenderer;
-import com.stonebreak.rendering.UI.components.EnemyAwarenessRenderer;
-import com.stonebreak.rendering.UI.components.PlayerNameTagRenderer;
-import com.stonebreak.rendering.UI.components.QuarryMarkerRenderer;
-import com.stonebreak.rendering.UI.components.StealthHudRenderer;
 import com.stonebreak.ui.DebugOverlay;
 import com.stonebreak.ui.DeathMenu;
 import com.stonebreak.ui.LoadingScreen;
@@ -94,6 +89,8 @@ public final class FrameRenderer {
         Renderer renderer = Game.getRenderer();
         int width = width();
         int height = height();
+
+        syncCrosshair(game, renderer);
 
         // A state whose screen is a shipped document draws that instead of its legacy screen (#299).
         boolean presented = com.stonebreak.ui.runtime.screens.StateScreens.get().paint(game.getState(), width, height);
@@ -372,35 +369,42 @@ public final class FrameRenderer {
         if (player == null) {
             return;
         }
-        int width = width();
-        int height = height();
-        var projection = renderer.getProjectionMatrix();
-        var view = player.getViewMatrix();
-
-        DamageNumberRenderer damageNumbers = DamageNumberRenderer.getInstance();
-        damageNumbers.update(Game.getDeltaTime());
-        damageNumbers.render(projection, view, width, height);
-        QuarryMarkerRenderer.getInstance().render(projection, view, width, height);
-        DoubtMarkerRenderer.getInstance().render(projection, view, width, height);
-        EnemyAwarenessRenderer.getInstance().render(projection, view, width, height);
-        PlayerNameTagRenderer.getInstance().render(projection, view, width, height);
-        StealthHudRenderer.getInstance().render(width, height);
+        // advanced on the render path, so numbers freeze outside PLAYING (legacy behaviour)
+        DamageNumberRenderer.getInstance().update(Game.getDeltaTime());
+        renderer.getUIRenderer().getWorldHud().render(renderer.getProjectionMatrix(), player.getViewMatrix(),
+                width(), height());
     }
 
     private void renderCrosshair(Game game, Renderer renderer) {
+        if (crosshairShown(game)) {
+            renderer.getUIRenderer().renderCrosshair(width(), height());
+        }
+    }
+
+    /** PLAYING with no container screen open: where the crosshair is drawn. */
+    private static boolean crosshairShown(Game game) {
         if (game.getState() != GameState.PLAYING) {
-            return;
+            return false;
         }
         InventoryScreen inventory = game.getInventoryScreen();
         WorkbenchScreen workbench = game.getWorkbenchScreen();
         FurnaceScreen furnace = game.getFurnaceScreen();
-        boolean anyScreenOpen = (inventory != null && inventory.isVisible())
+        return !((inventory != null && inventory.isVisible())
                 || (workbench != null && workbench.isVisible())
-                || (furnace != null && furnace.isVisible());
-        if (anyScreenOpen) {
-            return;
+                || (furnace != null && furnace.isVisible()));
+    }
+
+    /**
+     * The crosshair and world HUD documents open and close with their legacy visibility, in every
+     * state (#301): the crosshair in PLAYING with no container screen, the world HUD in PLAYING.
+     */
+    private static void syncCrosshair(Game game, Renderer renderer) {
+        if (renderer != null && renderer.getUIRenderer() != null) {
+            renderer.getUIRenderer().getCrosshair().sync(crosshairShown(game));
+            renderer.getUIRenderer().getWorldHud().sync(game.getState() == GameState.PLAYING && Game.getPlayer() != null);
+            renderer.getUIRenderer().getChatDocument().sync(HUD_STATES.contains(game.getState())
+                    && game.getChatSystem() != null);
         }
-        renderer.getUIRenderer().renderCrosshair(width(), height());
     }
 
     private void renderInventoryAndHotbar(Game game) {
@@ -507,6 +511,9 @@ public final class FrameRenderer {
 
     private void renderDebugOverlay(Renderer renderer) {
         DebugOverlay debugOverlay = Game.getDebugOverlay();
+        if (debugOverlay != null) {
+            debugOverlay.sync(); // its document opens and closes with F3 (#301)
+        }
         if (debugOverlay == null || !debugOverlay.isVisible()) {
             return;
         }

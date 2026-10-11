@@ -38,6 +38,14 @@ public final class MenuInputRouter {
         return com.stonebreak.ui.runtime.screens.StateScreens.get().showing(state);
     }
 
+    /**
+     * True for a state whose document has no text entry of its own and leaves the keyboard with its legacy
+     * controller (#301: the terrain mapper's fields, Tab, Enter and Esc stay in {@code TerrainInputHandler}).
+     */
+    private static boolean keepsKeyboard(GameState state) {
+        return state == GameState.TERRAIN_MAPPER;
+    }
+
     public MenuInputRouter(GameWindow window) {
         this.window = window;
     }
@@ -58,7 +66,7 @@ public final class MenuInputRouter {
         if (state != GameState.FOCUS_BATTLE) {
             battleKeysDown.clear();
         }
-        boolean consumed = state != null && !documentShowing(state) && switch (state) {
+        boolean consumed = state != null && (!documentShowing(state) || keepsKeyboard(state)) && switch (state) {
             case WORLD_SELECT -> dispatch(game.getWorldSelectScreen(), s -> s.handleKeyInput(key, action, mods));
             case TERRAIN_MAPPER -> dispatch(game.getTerrainMapperScreen(), s -> s.handleKeyInput(key, action, mods));
             case HOST_WORLD_SELECT -> dispatch(game.getHostWorldScreen(), s -> s.handleKeyInput(key, action, mods));
@@ -85,7 +93,7 @@ public final class MenuInputRouter {
 
         Game game = Game.getInstance();
         GameState state = game.getState();
-        boolean consumed = state != null && !documentShowing(state) && switch (state) {
+        boolean consumed = state != null && (!documentShowing(state) || keepsKeyboard(state)) && switch (state) {
             case WORLD_SELECT -> dispatch(game.getWorldSelectScreen(), s -> s.handleCharacterInput(character));
             case TERRAIN_MAPPER -> dispatch(game.getTerrainMapperScreen(), s -> s.handleCharacterInput(character));
             case HOST_WORLD_SELECT -> dispatch(game.getHostWorldScreen(), s -> s.handleCharInput(character));

@@ -239,9 +239,12 @@ public final class UiElement implements Styleable {
     /** Effective property value through every layer (animation on top); the descriptor default when unset. */
     public UiValue prop(String name) {
         UiValue v = animationProps.get(name);
-        if (v == null) {
-            v = localProps.get(name);
-        }
+        return v != null ? v : baseProp(name);
+    }
+
+    /** {@link #prop} without the animation layer: what an animation of the prop composes over (#301). */
+    public UiValue baseProp(String name) {
+        UiValue v = localProps.get(name);
         if (v == null) {
             v = bindingProps.get(name);
         }
@@ -669,7 +672,12 @@ public final class UiElement implements Styleable {
 
     /** A {@code ScrollView} or {@code ListView}, or any element with {@code overflow: scroll}. */
     public boolean isScrollContainer() {
-        return isScrollWidget() || "scroll".equals(computed.keyword("overflow", "visible"));
+        if (isScrollWidget()) {
+            // an authored overflow: visible makes a plain, unclipped list (#301: rows whose shadows, sprites
+            // and anti-aliased edges reach past the list's box); the default still scrolls
+            return !(computed.get("overflow") != null && "visible".equals(computed.keyword("overflow", "visible")));
+        }
+        return "scroll".equals(computed.keyword("overflow", "visible"));
     }
 
     /** A widget that always scrolls ({@code ScrollView}, {@code ListView}). */

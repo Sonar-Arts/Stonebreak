@@ -337,7 +337,11 @@ Per element:
 `stoneSurface` / `hudFrame` do (radii in device px, as the legacy screens never scaled them); any explicit value,
 `none` included, replaces a `Button`'s pseudo-state look, so a component decides its own hover in its sheet.
 `-sb-text-effect` picks a label's `shadow` (default), `none`, or `title` (`MPainter.drawTitleText`: the pause /
-statistics / glossary title stack, layers 2 device px apart). The root's `-sb-pixel-grid: none` lays out and places
+statistics / glossary title stack, layers 2 device px apart). `-sb-text-shadow-color` (#301, inherited) gives the
+`shadow` effect an explicit colour used as given (its own alpha, not faded with the text): the soft +2 px and crisp
++1 px passes of `MPainter.drawCenteredStringWithShadow`, as the world markers and the stealth HUD draw. A root
+`-sb-tooltip-offset` (#301, length or `dpx`) places pointer tooltips that far right and down of the pointer, rounded to
+whole pixels (default `15`, i.e. `round(15 x scale)`; the recipe book's legacy tooltip was `15dpx` at any scale). The root's `-sb-pixel-grid: none` lays out and places
 without snapping (the instance rebuilds its flex tree when the value changes); `device` snaps; absent = the host's
 `UiRuntimeContext.pixelGrid`. Off the grid, an auto line box is the font's real height (not rounded up), so a
 label's baseline is `top + ascent` (`0.75 x font-size` for the game font) at every UI scale (#299). Fonts sit on the

@@ -64,8 +64,8 @@ public class MCrosshairRenderer {
 
         if (ui.beginFrame(windowWidth, windowHeight, 1.0f)) {
             Canvas canvas = ui.canvas();
-            int fill = rgbaToArgb(color[0], color[1], color[2], opacity);
-            int edge = rgbaToArgb(outlineColor[0], outlineColor[1], outlineColor[2], opacity);
+            int fill = fillArgb();
+            int edge = edgeArgb();
 
             switch (style) {
                 case SIMPLE_CROSS -> drawSimpleCross(canvas, cx, cy, fill, edge);
@@ -146,8 +146,13 @@ public class MCrosshairRenderer {
 
     // ─────────────────────────────────────────────── Helpers
 
-    /** Draw filled rects, then stroke the union outline (approximated by stroking each rect). */
+    /**
+     * Draw filled rects, then stroke the union outline (approximated by stroking each rect). A gap at
+     * least as wide as the size leaves arms of no length or less; those are not drawn (a negative
+     * {@code Rect.makeXYWH} extent threw every frame).
+     */
     private void drawRects(Canvas c, float[][] rects, int fill, int edge) {
+        rects = java.util.Arrays.stream(rects).filter(r -> r[2] > 0f && r[3] > 0f).toArray(float[][]::new);
         try (Paint fillP = paint(fill)) {
             for (float[] r : rects) {
                 c.drawRect(Rect.makeXYWH(r[0], r[1], r[2], r[3]), fillP);
@@ -236,6 +241,16 @@ public class MCrosshairRenderer {
     }
 
     // ─────────────────────────────────────────────── Getters
+
+    /** The fill colour as drawn: the RGB colour at the crosshair's opacity (ARGB). */
+    public int fillArgb() {
+        return rgbaToArgb(color[0], color[1], color[2], opacity);
+    }
+
+    /** The outline (edge) colour as drawn, at the crosshair's opacity (ARGB). */
+    public int edgeArgb() {
+        return rgbaToArgb(outlineColor[0], outlineColor[1], outlineColor[2], opacity);
+    }
 
     public CrosshairStyle getStyle()           { return style; }
     public float getSize()                     { return size; }

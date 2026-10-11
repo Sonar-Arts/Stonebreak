@@ -67,6 +67,8 @@ public final class SpritePainter {
     private static final ThreadLocal<Caches> CACHES = ThreadLocal.withInitial(Caches::new);
     /** An image filter the next draws on this thread put on their paint ({@link #withFilter}). */
     private static final ThreadLocal<io.github.humbleui.skija.ImageFilter> FILTER = new ThreadLocal<>();
+    /** An element's own tint and opacity carried onto the sprite paint (a lone Image, #301), or null. */
+    private static final ThreadLocal<float[]> CARRY = new ThreadLocal<>();
     private static final Map<String, Integer> TINTS = new ConcurrentHashMap<>();
     private static final Map<UiElement, Start> STARTS = new WeakHashMap<>();
 
@@ -122,7 +124,14 @@ public final class SpritePainter {
         Caches caches = CACHES.get();
         List<SpriteSlices.Patch> patches = caches.layout(new LayoutKey(sx, sy, sp.w(), sp.h(), sp.slice(), sp.edges(),
             sp.center(), mode, sp.pivotX(), sp.pivotY(), r.x(), r.y(), r.width(), r.height(), kx, ky, nearest && !raw));
-        Paint paint = caches.paint(tint(sp.tint()), (float) Math.min(1, sp.opacity()));
+        int tint = tint(sp.tint());
+        float opacity = (float) Math.min(1, sp.opacity());
+        float[] carry = CARRY.get();
+        if (carry != null) {
+            tint = multiply(tint, Float.floatToRawIntBits(carry[0]));
+            opacity *= carry[1];
+        }
+        Paint paint = caches.paint(tint, opacity);
         io.github.humbleui.skija.ImageFilter filter = FILTER.get();
         if (filter != null) {
             paint.setImageFilter(filter);
@@ -176,6 +185,35 @@ public final class SpritePainter {
             }
             return st.at();
         }
+    }
+
+    /**
+     * Runs {@code draw} with an element's {@code tint} (ARGB, MODULATE) and {@code alpha} on the sprite
+     * paint instead of layers: one draw with a filtered, translucent paint, exactly as a legacy
+     * {@code drawImageRect} with such a paint (#301: the intro's logo and its tinted shadow).
+     */
+    public static void withElementPaint(int tint, float alpha, Runnable draw) {
+        CARRY.set(new float[]{Float.intBitsToFloat(tint), alpha});
+        try {
+            draw.run();
+        } finally {
+            CARRY.remove();
+        }
+    }
+
+    /** Two MODULATE tints as one: per straight ARGB byte, {@code a × b / 255}. */
+    private static int multiply(int a, int b) {
+        if (a == 0xFFFFFFFF) {
+            return b;
+        }
+        if (b == 0xFFFFFFFF) {
+            return a;
+        }
+        int out = 0;
+        for (int shift = 0; shift < 32; shift += 8) {
+            out |= Math.round(((a >>> shift) & 0xFF) * ((b >>> shift) & 0xFF) / 255f) << shift;
+        }
+        return out;
     }
 
     private static int tint(String tint) {

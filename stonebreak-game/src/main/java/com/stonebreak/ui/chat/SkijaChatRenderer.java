@@ -4,6 +4,7 @@ import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.openmason.engine.ui.masonry.MFonts;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MSymbol;
 import com.stonebreak.ui.chat.chatSystem.ChatCommandExecutor;
 import com.stonebreak.ui.chat.chatSystem.commands.ChatCommand;
 import com.stonebreak.ui.chat.emoji.ChatEmoji;
@@ -36,7 +37,7 @@ import java.util.Map;
  */
 public final class SkijaChatRenderer {
 
-    private static final int MAX_VISIBLE_LINES = 10;
+    public static final int MAX_VISIBLE_LINES = 10;
 
     private final SkijaUIBackend backend;
     private final MFonts fonts;
@@ -191,27 +192,7 @@ public final class SkijaChatRenderer {
         float y = L.tabY + yOffset;
         float h = active ? L.tabHeight + 2f : L.tabHeight;
         float w = L.tabWidth;
-        float r = MStyle.PANEL_RADIUS;
-
-        // Top-rounded body. RRect with explicit per-corner radii lets the
-        // bottom edge sit flush against the panel border above.
-        try (Paint fill = new Paint().setColor(active ? MStyle.PANEL_FILL : MStyle.BUTTON_FILL).setAntiAlias(true)) {
-            canvas.drawRRect(
-                    RRect.makeXYWH(x, y, w, h, r, r, 0f, 0f),
-                    fill);
-        }
-
-        // Border traces only top and sides — leaves the bottom edge open so
-        // the active tab "punches through" the panel border above it.
-        try (Paint border = new Paint().setColor(active ? MStyle.TEXT_ACCENT : MStyle.PANEL_BORDER)
-                .setMode(PaintMode.STROKE).setStrokeWidth(active ? 1.5f : 1f).setAntiAlias(true)) {
-            canvas.drawRRect(
-                    RRect.makeXYWH(x + 0.5f, y + 0.5f, w - 1f, h - 1f, r, r, 0f, 0f),
-                    border);
-        }
-
-        // Subtle top highlight — same trick as MPainter.stoneSurface bevel.
-        MPainter.fillRect(canvas, x + 1f, y + 1f, w - 2f, 1f, MStyle.PANEL_HIGHLIGHT);
+        MPainter.folderTab(canvas, x, y, w, h, active); // shared with the chat document (#301)
 
         float s = com.stonebreak.config.Settings.getInstance().getUiScale();
         Font font = fonts.getScaled(MStyle.FONT_META);
@@ -356,18 +337,7 @@ public final class SkijaChatRenderer {
         float y = L.inputY;
         float w = L.inputWidth + 10f;
         float h = L.inputHeight;
-        float r = 3f;
-
-        try (Paint fill = new Paint().setColor(MStyle.SLIDER_TRACK).setAntiAlias(true)) {
-            canvas.drawRRect(RRect.makeXYWH(x, y, w, h, r), fill);
-        }
-        // Inner-shadow strip — same recessed feel as MSearchField.
-        MPainter.fillRect(canvas, x + 1f, y + 1f, w - 2f, 2f, withAlpha(MStyle.PANEL_SHADOW, 0.6f));
-
-        try (Paint border = new Paint().setColor(MStyle.SLIDER_FILL)
-                .setMode(PaintMode.STROKE).setStrokeWidth(1.5f).setAntiAlias(true)) {
-            canvas.drawRRect(RRect.makeXYWH(x + 0.5f, y + 0.5f, w - 1f, h - 1f, r), border);
-        }
+        MPainter.inputWell(canvas, x, y, w, h); // shared with the chat document (#301)
 
         float s = com.stonebreak.config.Settings.getInstance().getUiScale();
         Font font = fonts.getScaled(MStyle.FONT_META);
@@ -417,37 +387,8 @@ public final class SkijaChatRenderer {
                 MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, MStyle.BUTTON_DROP_SHADOW,
                 MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
 
-        // Draw a minimal smiley: two dot eyes + arc mouth using canvas primitives.
-        float cx = bx + bs / 2f;
-        float cy = by + bs / 2f;
-        float fr = bs / 2f - 4f; // face radius
-
         int faceColor = pickerOpen ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
-
-        // Face outline
-        try (Paint p = new Paint().setColor(faceColor).setMode(PaintMode.STROKE)
-                .setStrokeWidth(1.5f).setAntiAlias(true)) {
-            canvas.drawCircle(cx, cy, fr, p);
-        }
-
-        // Eyes — two small filled circles
-        try (Paint p = new Paint().setColor(faceColor).setAntiAlias(true)) {
-            canvas.drawCircle(cx - fr * 0.28f, cy - fr * 0.22f, 1.3f, p);
-            canvas.drawCircle(cx + fr * 0.28f, cy - fr * 0.22f, 1.3f, p);
-        }
-
-        // Smile — bottom arc of a small oval placed below face centre.
-        // sweepAngle 180° starting from 0° (3-o'clock) traces the bottom semicircle.
-        float smileW    = fr * 0.75f;
-        float smileH    = fr * 0.4f;
-        float smileL    = cx - smileW / 2f;
-        float smileT    = cy + fr * 0.1f;
-        float smileR    = smileL + smileW;
-        float smileB    = smileT + smileH;
-        try (Paint p = new Paint().setColor(faceColor).setMode(PaintMode.STROKE)
-                .setStrokeWidth(1.5f).setAntiAlias(true)) {
-            canvas.drawArc(smileL, smileT, smileR, smileB, 0f, 180f, false, p);
-        }
+        MSymbol.SMILEY.draw(canvas, bx, by, bs, bs, faceColor); // shared with the chat document (#301)
     }
 
     private void drawEmojiPicker(Canvas canvas, Layout L, ChatEmojiSystem emojiSystem) {
@@ -713,7 +654,8 @@ public final class SkijaChatRenderer {
         for (int i = 0; i < Math.abs(delta); i++) chat.handleScroll(sign);
     }
 
-    private static int argb(float[] rgba, float alphaScale) {
+    /** A message colour at {@code alphaScale} (ARGB): the one rounding rule of the legacy renderer and the chat document. */
+    public static int argb(float[] rgba, float alphaScale) {
         int a = clamp255(Math.round(rgba[3] * alphaScale * 255f));
         int r = clamp255(Math.round(rgba[0] * 255f));
         int g = clamp255(Math.round(rgba[1] * 255f));
@@ -721,7 +663,8 @@ public final class SkijaChatRenderer {
         return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
-    private static int withAlpha(int argb, float alphaScale) {
+    /** {@code argb} with its alpha scaled by {@code alphaScale}, rounded and clamped (shared with the chat document). */
+    public static int withAlpha(int argb, float alphaScale) {
         int a = clamp255(Math.round(((argb >>> 24) & 0xFF) * alphaScale));
         return (a << 24) | (argb & 0xFFFFFF);
     }

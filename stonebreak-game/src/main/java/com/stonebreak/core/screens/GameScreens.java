@@ -112,10 +112,23 @@ public final class GameScreens {
         worldSelectScreen = new WorldSelectScreen(skija);
         stateDocument(com.stonebreak.core.GameState.WORLD_SELECT, "world_select");
         characterCreationScreen = new CharacterCreationScreen(skija);
+        stateDocument(com.stonebreak.core.GameState.CHARACTER_CREATION, CharacterCreationScreen.DOCUMENT_ID); // #301
         terrainMapperScreen = new TerrainMapperScreen(skija);
+        // The shipped terrain mapper (#301): the screen keeps the keyboard (MenuInputRouter.keepsKeyboard).
+        stateDocument(com.stonebreak.core.GameState.TERRAIN_MAPPER, TerrainMapperScreen.DOCUMENT_ID);
         startupIntroScreen = new SonarArtsIntroScreen(skija);
+        // The shipped intro document (#301); the game starts in STARTUP_INTRO, so show it now.
+        com.stonebreak.ui.runtime.screens.StateScreens.get().register(com.stonebreak.core.GameState.STARTUP_INTRO,
+                new com.stonebreak.ui.startupIntro.IntroDocument(startupIntroScreen,
+                        com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
+        if (com.stonebreak.core.Game.getInstance().getState() == com.stonebreak.core.GameState.STARTUP_INTRO) {
+            com.stonebreak.ui.runtime.screens.StateScreens.get().stateChanged(com.stonebreak.core.GameState.STARTUP_INTRO);
+        }
         // Needs only the backend; the battle coordinator binds/unbinds it per encounter.
         focusBattleScreen = new com.stonebreak.ui.focusBattle.FocusBattleScreen(skija);
+        // The shipped battle HUD document (#301), shown while the screen is bound.
+        focusBattleScreen.setPresentation(new com.stonebreak.ui.focusBattle.BattleHudDocument(focusBattleScreen,
+                com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
     }
 
     /** Shows the shipped document {@code ui/documents/<id>.sbui} whenever the game is in {@code state}. */
@@ -134,8 +147,8 @@ public final class GameScreens {
                                    CraftingManager craftingManager, SmeltingManager smeltingManager) {
         var uiRenderer = renderer.getUIRenderer();
 
-        if (renderer.getFont() != null && game.getBlockTextureArray() != null) {
-            inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer,
+        if (game.getBlockTextureArray() != null) {
+            inventoryScreen = new InventoryScreen(player.getInventory(), renderer,
                     uiRenderer, inputHandler, craftingManager, player.getCharacterStats());
             // The inventory needs the back-reference to drive tooltips and hover state.
             player.getInventory().setInventoryScreen(inventoryScreen);
@@ -148,10 +161,15 @@ public final class GameScreens {
                     com.stonebreak.ui.runtime.screens.DocumentScreen.Options.hud()));
             inventoryScreen.syncPresentation(game.getState());
         } else {
-            logger.error("Skipping InventoryScreen: renderer font or block texture array is missing");
+            logger.error("Skipping InventoryScreen: block texture array is missing");
         }
 
         characterScreen = new CharacterScreen(player, renderer, inputHandler);
+        // The shipped character sheet (#301), shown while the sheet is open.
+        characterScreen.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(
+                CharacterScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                com.stonebreak.ui.runtime.screens.DocumentScreen.Options.screen()));
+        characterScreen.syncPresentation(game.getState());
 
         if (uiRenderer != null) {
             workbenchScreen = new WorkbenchScreen(game, player.getInventory(), renderer, uiRenderer,
@@ -168,10 +186,13 @@ public final class GameScreens {
             logger.error("Skipping WorkbenchScreen and FurnaceScreen: UI renderer is missing");
         }
 
-        if (uiRenderer != null && craftingManager != null && renderer.getFont() != null) {
+        if (uiRenderer != null && craftingManager != null) {
             recipeScreen = new RecipeScreen(uiRenderer, inputHandler, renderer);
+            // The shipped recipe book document (#301), same rules as the container screens.
+            recipeScreen.setPresentation(new com.stonebreak.ui.runtime.screens.ContainerDocument(
+                    RecipeScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
         } else {
-            logger.error("Skipping RecipeScreen: UI renderer, crafting manager or font is missing");
+            logger.error("Skipping RecipeScreen: UI renderer or crafting manager is missing");
         }
     }
 

@@ -7,7 +7,6 @@ import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.ui.Font;
 import com.stonebreak.ui.HotbarScreen;
 import com.stonebreak.ui.inventoryScreen.core.InventoryController;
 import com.stonebreak.ui.inventoryScreen.core.InventoryCraftingManager;
@@ -50,7 +49,7 @@ public class InventoryScreen {
     /**
      * Creates a new inventory screen using modular architecture.
      */
-    public InventoryScreen(Inventory inventory, Font font, Renderer renderer, UIRenderer uiRenderer,
+    public InventoryScreen(Inventory inventory, Renderer renderer, UIRenderer uiRenderer,
                            InputHandler inputHandler, CraftingManager craftingManager,
                            CharacterStats stats) {
         InventoryCraftingManager craftingManagerModule = new InventoryCraftingManager(craftingManager);

@@ -175,6 +175,25 @@ public final class SkijaFocusBattleRenderer {
         for (Layer layer : topmost) layer.paint(ui, canvas, w, h, s, uiScale, view, a, viewProjection);
     }
 
+    // ─────────────────────────────────────────────── The battle HUD document's pieces (#301)
+
+    /** A group of registered layers, painted as {@link #paintHud} paints it. */
+    public enum Group { UNDERLAYS, OVERLAYS, TOPMOST }
+
+    /** Paints one layer group (the document stacks them around its windows). */
+    public void paintGroup(Group group, MasonryUI ui, Canvas canvas, int w, int h, float uiScale, BattleView view,
+                           BattleHudAnimState anim, Matrix4fc viewProjection) {
+        if (canvas == null || view == null) return;
+        BattleHudAnimState a = anim != null ? anim : BattleHudAnimState.NEUTRAL;
+        float s = FocusBattleLayout.effectiveScale(w, h, uiScale);
+        List<Layer> layers = switch (group) {
+            case UNDERLAYS -> underlays;
+            case OVERLAYS -> overlays;
+            case TOPMOST -> topmost;
+        };
+        for (Layer layer : layers) layer.paint(ui, canvas, w, h, s, uiScale, view, a, viewProjection);
+    }
+
     public void dispose() {
         underlays.clear();
         overlays.clear();

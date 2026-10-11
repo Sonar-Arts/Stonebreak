@@ -117,6 +117,56 @@ public final class MPainter {
         }
     }
 
+    /**
+     * The chat's folder tab (#301, from the legacy chat renderer): a top-rounded body (radius
+     * {@link MStyle#PANEL_RADIUS}, flat bottom so it merges with the panel below), a border on the top
+     * and sides only (accent 1.5 px when active, the panel border 1 px otherwise) and a 1 px top
+     * highlight. {@code (x, y, w, h)} is the body: the active tab is drawn 2 px taller and 3 px higher.
+     */
+    public static void folderTab(Canvas canvas, float x, float y, float w, float h, boolean active) {
+        float r = MStyle.PANEL_RADIUS;
+        try (Paint fill = new Paint().setColor(active ? MStyle.PANEL_FILL : MStyle.BUTTON_FILL).setAntiAlias(true)) {
+            canvas.drawRRect(RRect.makeXYWH(x, y, w, h, r, r, 0f, 0f), fill);
+        }
+        try (Paint border = new Paint().setColor(active ? MStyle.TEXT_ACCENT : MStyle.PANEL_BORDER)
+                .setMode(PaintMode.STROKE).setStrokeWidth(active ? 1.5f : 1f).setAntiAlias(true)) {
+            canvas.drawRRect(RRect.makeXYWH(x + 0.5f, y + 0.5f, w - 1f, h - 1f, r, r, 0f, 0f), border);
+        }
+        fillRect(canvas, x + 1f, y + 1f, w - 2f, 1f, MStyle.PANEL_HIGHLIGHT);
+    }
+
+    /**
+     * The chat's recessed input well (#301, from the legacy chat renderer): a dark rounded track
+     * (radius 3), a 2 px inner shadow strip under the top edge and a 1.5 px slider-blue rim.
+     */
+    public static void inputWell(Canvas canvas, float x, float y, float w, float h) {
+        float r = 3f;
+        try (Paint fill = new Paint().setColor(MStyle.SLIDER_TRACK).setAntiAlias(true)) {
+            canvas.drawRRect(RRect.makeXYWH(x, y, w, h, r), fill);
+        }
+        int shadow = Math.round(((MStyle.PANEL_SHADOW >>> 24) & 0xFF) * 0.6f);
+        fillRect(canvas, x + 1f, y + 1f, w - 2f, 2f, (Math.max(0, Math.min(255, shadow)) << 24)
+                | (MStyle.PANEL_SHADOW & 0xFFFFFF));
+        try (Paint border = new Paint().setColor(MStyle.SLIDER_FILL)
+                .setMode(PaintMode.STROKE).setStrokeWidth(1.5f).setAntiAlias(true)) {
+            canvas.drawRRect(RRect.makeXYWH(x + 0.5f, y + 0.5f, w - 1f, h - 1f, r), border);
+        }
+    }
+
+    /**
+     * The search field's well ({@link MSearchField}, #301): a recessed rounded fill (radius 3, lighter
+     * when active) and a rim (slider blue 1.5 px when active, near-black 1 px otherwise).
+     */
+    public static void searchWell(Canvas canvas, float x, float y, float w, float h, boolean active) {
+        try (Paint fill = new Paint().setColor(active ? 0xFF2A2A2A : 0xFF1F1F1F).setAntiAlias(true)) {
+            canvas.drawRRect(RRect.makeXYWH(x, y, w, h, 3f), fill);
+        }
+        try (Paint border = new Paint().setColor(active ? MStyle.SLIDER_FILL : 0xFF0F0F0F)
+                .setMode(PaintMode.STROKE).setStrokeWidth(active ? 1.5f : 1f).setAntiAlias(true)) {
+            canvas.drawRRect(RRect.makeXYWH(x + 0.5f, y + 0.5f, w - 1f, h - 1f, 3f), border);
+        }
+    }
+
     public static void panel(Canvas canvas, float x, float y, float w, float h) {
         stoneSurface(canvas, x, y, w, h, MStyle.PANEL_RADIUS,
                 MStyle.PANEL_FILL, MStyle.PANEL_BORDER,
@@ -510,6 +560,16 @@ public final class MPainter {
         float left = alignedX(font, text, x, align);
         int shadow = MColor.fade(MStyle.TEXT_SHADOW, ((color >>> 24) & 0xFF) / 255f);
         drawStringWithShadow(canvas, text, left, y, font, color, shadow);
+    }
+
+    /**
+     * Text anchored like {@link #drawText} with {@link #drawStringWithShadow}'s passes in an explicit
+     * {@code shadow} colour (used as given, not faded with the text): the world markers' look.
+     */
+    public static void drawTextWithShadow(Canvas canvas, String text, float x, float y, Font font, int color,
+                                          int shadow, Align align) {
+        if (canvas == null || font == null || text == null || text.isEmpty()) return;
+        drawStringWithShadow(canvas, text, alignedX(font, text, x, align), y, font, color, shadow);
     }
 
     /** Text with no shadow, anchored like {@link #drawText}. */

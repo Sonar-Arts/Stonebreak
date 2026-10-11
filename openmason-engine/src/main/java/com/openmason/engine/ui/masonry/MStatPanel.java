@@ -81,6 +81,42 @@ public final class MStatPanel {
         return this;
     }
 
+    // ── read access (#301: the F3 document shows a built panel as data) ──
+
+    public String title() {
+        return title;
+    }
+
+    public boolean hasBar() {
+        return hasBar;
+    }
+
+    public float barFraction() {
+        return barFraction;
+    }
+
+    /** The bar's caption, or null. */
+    public String barCaption() {
+        return barCaption;
+    }
+
+    /** The bar fill's colour at its fraction: green below 60 %, amber below 85 %, red above. */
+    public int barColor() {
+        return barFraction < 0.60f ? BAR_FILL_OK : barFraction < 0.85f ? BAR_FILL_WARN : BAR_FILL_CRIT;
+    }
+
+    /** One section header ({@code value} null) or key/value row, in order. */
+    public record Line(boolean section, String label, String value) {
+    }
+
+    public List<Line> lines() {
+        List<Line> out = new ArrayList<>(entries.size());
+        for (Entry e : entries) {
+            out.add(new Line(e.kind == EntryKind.SECTION, e.label, e.value));
+        }
+        return out;
+    }
+
     /** Total drawn height for a given width. Useful for stacking. */
     public float measureHeight() {
         float h = PADDING + TITLE_SIZE + TITLE_GAP;
@@ -125,9 +161,7 @@ public final class MStatPanel {
             float barX = x + PADDING;
             float barW = width - PADDING * 2;
             MPainter.fillRoundedRect(canvas, barX, cursorY, barW, BAR_HEIGHT, BAR_HEIGHT * 0.5f, BAR_TRACK);
-            int fillColor = barFraction < 0.60f ? BAR_FILL_OK
-                          : barFraction < 0.85f ? BAR_FILL_WARN
-                                                : BAR_FILL_CRIT;
+            int fillColor = barColor();
             float fillW = Math.max(0f, barW * barFraction);
             if (fillW > 0f) {
                 MPainter.fillRoundedRect(canvas, barX, cursorY, fillW, BAR_HEIGHT,

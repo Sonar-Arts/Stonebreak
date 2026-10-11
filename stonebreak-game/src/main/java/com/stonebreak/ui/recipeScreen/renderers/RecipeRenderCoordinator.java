@@ -15,8 +15,6 @@ import com.openmason.engine.ui.masonry.MSearchField;
 import com.openmason.engine.ui.masonry.MStyle;
 import com.openmason.engine.ui.masonry.MTooltip;
 import com.openmason.engine.ui.masonry.MasonryUI;
-import com.openmason.engine.ui.masonry.textures.MTexture;
-import com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry;
 import com.stonebreak.ui.recipeScreen.core.PositionCalculator;
 import com.stonebreak.ui.recipeScreen.core.RecipeBookConstants;
 import com.stonebreak.ui.recipeScreen.logic.RecipeFilterService;
@@ -58,12 +56,9 @@ import static org.lwjgl.opengl.GL11.glScissor;
  */
 public class RecipeRenderCoordinator {
 
-    private static final int  ELM_TINT_OVERLAY = 0x66000000; // dim overlay over Elm_UI fill
     private static final int  GRID_BG          = 0x40000000; // subtle recess for grid viewport
     private static final int  PANEL_FILL       = 0xFF6B6B6B; // fully opaque stone — no bleed
     private static final int  BACKDROP_OVERLAY = 0xE6000000; // ~90% opaque to mask inventory behind
-    private static final int  ELM_TILE_SCALE   = 4;          // 4× upscale of Elm_UI texture pixels
-    private static final String ELM_UI_RESOURCE = "/ui/recipeScreen/Elm_UI.sbt";
 
     private final RecipeBookState state;
     private final RecipeFilterService filterService;
@@ -127,7 +122,7 @@ public class RecipeRenderCoordinator {
 
     public void renderWithoutTooltips(int sw, int sh) {
         state.getUiState().clearHoverStates();
-        layout = computeLayout();
+        layout = computeLayout(sw, sh);
 
         Vector2f mouse = inputHandler.getMousePosition();
         float mx = mouse.x;
@@ -291,7 +286,7 @@ public class RecipeRenderCoordinator {
      * Used by the input handler when handling mouse-wheel scrolling.
      */
     public int maxScrollOffset(int recipeCount) {
-        Layout l = layout != null ? layout : computeLayout();
+        Layout l = layout != null ? layout : computeLayout(0, 0);
         if (l.recipesPerRow <= 0) return 0;
         int totalRows = (recipeCount + l.recipesPerRow - 1) / l.recipesPerRow;
         return Math.max(0, totalRows - l.visibleRows);
@@ -299,6 +294,33 @@ public class RecipeRenderCoordinator {
 
     public void dispose() {
         ui.dispose();
+    }
+
+    /** The grid in a {@code sw}x{@code sh} window (0: the game's): recipes per row and whole rows that fit. */
+    public int[] gridShape(int sw, int sh) {
+        Layout l = computeLayout(sw, sh);
+        return new int[]{l.recipesPerRow, l.visibleRows};
+    }
+
+    /**
+     * The recipes the grid shows now, row by row: {@code filtered} from the scroll offset, which is
+     * first clamped as the legacy render clamps it, in a {@code sw}x{@code sh} window (0: the game's;
+     * #301: what the document's grid shows).
+     */
+    public List<Recipe> window(List<Recipe> filtered, int sw, int sh) {
+        layout = computeLayout(sw, sh);
+        List<Recipe> out = new ArrayList<>();
+        if (filtered.isEmpty()) return out;
+        int scroll = state.getUiState().getScrollOffset();
+        int maxScroll = maxScrollOffset(filtered.size());
+        if (scroll > maxScroll) {
+            state.getUiState().setScrollOffset(maxScroll);
+            scroll = maxScroll;
+        }
+        int start = scroll * layout.recipesPerRow;
+        int end = Math.min(filtered.size(), start + layout.visibleRows * layout.recipesPerRow);
+        for (int i = start; i < end; i++) out.add(filtered.get(i));
+        return out;
     }
 
     // ─────────────────────────────────────────────── Layout
@@ -350,8 +372,10 @@ public class RecipeRenderCoordinator {
         }
     }
 
-    private Layout computeLayout() {
-        PositionCalculator.PanelDimensions p = PositionCalculator.calculatePanelDimensions();
+    private Layout computeLayout(int sw, int sh) {
+        PositionCalculator.PanelDimensions p = sw > 0 && sh > 0
+                ? PositionCalculator.calculatePanelDimensions(sw, sh)
+                : PositionCalculator.calculatePanelDimensions();
         return new Layout(p.x, p.y, p.width, p.height);
     }
 
@@ -527,41 +551,13 @@ public class RecipeRenderCoordinator {
     }
 
     private void drawElmFill(Canvas canvas, float x, float y, float w, float h) {
-        MTexture tex = MTextureRegistry.get(ELM_UI_RESOURCE);
-        if (tex != null) {
-            int tw = tex.width();
-            int th = tex.height();
-            if (tw > 0 && th > 0) {
-                // Render at integer-multiple scale so pixel art stays crisp.
-                float tileW = tw * ELM_TILE_SCALE;
-                float tileH = th * ELM_TILE_SCALE;
-                int save = canvas.save();
-                try {
-                    canvas.clipRect(Rect.makeXYWH(x, y, w, h));
-                    for (float py = y; py < y + h; py += tileH) {
-                        for (float px = x; px < x + w; px += tileW) {
-                            MPainter.drawImage(canvas, tex.image(), px, py, tileW, tileH);
-                        }
-                    }
-                } finally {
-                    canvas.restoreToCount(save);
-                }
-            }
-        } else {
-            try (Paint p = new Paint().setColor(MStyle.PANEL_FILL_DEEP)) {
-                canvas.drawRect(Rect.makeXYWH(x, y, w, h), p);
-            }
-        }
-        // Dark overlay for legibility against the texture
-        try (Paint p = new Paint().setColor(ELM_TINT_OVERLAY)) {
-            canvas.drawRect(Rect.makeXYWH(x, y, w, h), p);
-        }
+        ElmFill.paint(canvas, x, y, w, h); // shared with the recipe book document (#301)
     }
 
     // ─────────────────────────────────────────────── Phase B — block icons (GL)
 
     private void renderBlockIconsInGrid() {
-        if (visibleSlots.isEmpty()) return;
+        if (visibleSlots.isEmpty() || renderer.getBlockTextureArray() == null) return; // no GL blocks (raster captures)
 
         // Scissor the framebuffer to the grid viewport so partial rows clip.
         int sh = com.stonebreak.core.Game.getWindowHeight();
@@ -584,6 +580,7 @@ public class RecipeRenderCoordinator {
     }
 
     private void renderDetailBlockIcons(ItemStack[][] pattern, ItemStack output) {
+        if (renderer.getBlockTextureArray() == null) return;
         int slot = RecipeBookConstants.SLOT_SIZE;
         int inset = 3;
         int icon = slot - inset * 2;

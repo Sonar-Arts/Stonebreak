@@ -429,7 +429,7 @@ public class Main {
         player.getCamera().setPitch((float) Math.toDegrees(Math.atan2(dy, Math.hypot(dx, dz))));
     }
 
-    // ─── Dev: -Dstonebreak.autoscreen=<seconds>:<inventory|workbench> ─────────
+    // ─── Dev: -Dstonebreak.autoscreen=<seconds>:<inventory|workbench|chat|f3|recipes|character|creation|terrain> 
 
     private long autoScreenDeadlineNanos = -1;
     private boolean autoScreenDone;
@@ -482,6 +482,29 @@ public class Main {
             world.setBlockAt(x, y, z, com.stonebreak.blocks.BlockType.WORKBENCH, true);
             System.out.println("[autoscreen] opening a crafting table at " + x + "," + y + "," + z);
             Game.getInstance().openWorkbenchScreen(new com.openmason.engine.util.BlockPos(x, y, z));
+        } else if (which.equals("recipes")) { // #301: the recipe book document (opened from the inventory)
+            System.out.println("[autoscreen] opening the recipe book");
+            Game.getInstance().toggleInventoryScreen();
+            Game.getInstance().openRecipeBookScreen();
+        } else if (which.equals("character")) { // #301: the character sheet document
+            System.out.println("[autoscreen] opening the character sheet");
+            Game.getInstance().toggleCharacterScreen();
+        } else if (which.equals("creation") || which.equals("terrain")) { // #301: the two creation state documents
+            System.out.println("[autoscreen] entering " + which);
+            Game.getInstance().setState(which.equals("creation") ? GameState.CHARACTER_CREATION : GameState.TERRAIN_MAPPER);
+        } else if (which.equals("f3")) { // #301: the F3 debug overlay document
+            System.out.println("[autoscreen] showing the F3 overlay");
+            Game.getDebugOverlay().toggleVisibility();
+        } else if (which.equals("chat")) { // #301: the chat document, open with a line typed and the picker up
+            var chat = Game.getInstance().getChatSystem();
+            System.out.println("[autoscreen] opening the chat");
+            chat.addMessage("<autoscreen> hello [banana] and [problem]");
+            chat.addMessage("Teleported to 120, 64, -38", new float[]{0.6f, 1f, 0.6f, 1f});
+            chat.openChat();
+            for (char ch : "hi [sword]".toCharArray()) {
+                chat.handleCharInput(ch);
+            }
+            chat.toggleEmojiPicker();
         } else {
             System.out.println("[autoscreen] opening the inventory");
             Game.getInstance().toggleInventoryScreen();

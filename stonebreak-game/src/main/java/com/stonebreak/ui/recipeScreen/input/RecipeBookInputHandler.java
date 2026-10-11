@@ -1,5 +1,7 @@
 package com.stonebreak.ui.recipeScreen.input;
 
+import com.stonebreak.ui.recipeScreen.state.PopupState;
+
 import com.stonebreak.crafting.Recipe;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.ui.recipeScreen.logic.RecipeFilterService;
@@ -65,6 +67,54 @@ public class RecipeBookInputHandler {
         } else {
             searchInputHandler.handleKeyInput(key, action);
         }
+    }
+
+    // ── the recipe book document's presses (#301): the legacy click rules, addressed by target ──
+
+    /** A press on a category button. */
+    public void pressCategory(String category) {
+        state.getUiState().setSelectedCategory(category);
+    }
+
+    /** A press anywhere else: focuses the search on the field, unfocuses it elsewhere, then selects a recipe. */
+    public void pressContent(boolean onSearchField, Recipe recipe) {
+        if (onSearchField) {
+            searchInputHandler.activateSearch();
+        } else {
+            searchInputHandler.deactivateSearch();
+        }
+        if (recipe != null) {
+            state.getPopupState().openPopup(recipe, variationService.getRecipeVariations(recipe, state.getRecipes()));
+        }
+    }
+
+    /** A press on Prev ({@code -1}) or Next ({@code 1}); false when the legacy rule would not take it. */
+    public boolean pressVariant(int direction) {
+        PopupState popup = state.getPopupState();
+        if (!popup.isShowingRecipePopup() || popup.isPopupJustOpened() || !popup.hasMultipleVariations()) {
+            return false;
+        }
+        if (direction < 0 && popup.canNavigatePrevious()) {
+            popup.navigatePrevious();
+            return true;
+        }
+        if (direction > 0 && popup.canNavigateNext()) {
+            popup.navigateNext();
+            return true;
+        }
+        return false;
+    }
+
+    /** Wheel by {@code scrollY} (GLFW's sign: up is positive), clamped as the legacy poll clamps. */
+    public void wheel(double scrollY) {
+        if (scrollY == 0 || coordinator == null) return;
+        List<Recipe> filtered = filterService.getFilteredRecipes(
+                state.getRecipes(),
+                state.getUiState().getSelectedCategory(),
+                state.getSearchState().getSearchText());
+        int maxScroll = coordinator.maxScrollOffset(filtered.size());
+        state.getUiState().setScrollOffset(state.getUiState().getScrollOffset() - (int) scrollY);
+        state.getUiState().limitScrollOffset(maxScroll);
     }
 
     private void handleScrolling() {

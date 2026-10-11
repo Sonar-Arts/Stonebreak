@@ -30,8 +30,15 @@ public final class TerrainMapRenderer {
     public void render(MasonryUI ui, TerrainMapperLayout layout) {
         Canvas canvas = ui.canvas();
         if (canvas == null) return;
+        paint(canvas, layout.map());
+    }
 
-        TerrainMapperLayout.Rect mapRect = layout.map();
+    /**
+     * The map in {@code mapRect}: background, the cached noise image (clipped), spawn waypoint, hover
+     * crosshair and frame. Shared with the terrain mapper document's {@code stonebreak:terrain-map}
+     * provider (#301).
+     */
+    public void paint(Canvas canvas, TerrainMapperLayout.Rect mapRect) {
         if (mapRect.width() <= 0 || mapRect.height() <= 0) return;
 
         MPainter.fillRect(canvas, mapRect.x(), mapRect.y(), mapRect.width(), mapRect.height(), 0xFF0E0E0E);

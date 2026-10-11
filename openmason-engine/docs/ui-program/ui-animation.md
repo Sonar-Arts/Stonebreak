@@ -90,8 +90,11 @@ A channel is one (element key, property). Lowest first:
 2. **Transition layer**: a style transition easing the cascade's own change.
 3. **Explicit layer**: the value of the clip, tween, state-machine clip or Timeline scrub that most recently
    claimed the channel.
+4. **Additive layers** (#301): the deltas of animations played with `composite = add`, summed in the order
+   they started on top of whatever 1–3 show.
 
-The element shows (`computedStyle()`) the explicit value if any, else the transition's, else the cascade's.
+The element shows (`computedStyle()`) the explicit value if any, else the transition's, else the cascade's,
+plus every additive delta.
 The animation layers overlay the resolved cascade (`ComputedStyle.overlay`), so a running animation costs no
 selector matching per frame; inherited properties (`color`, `visibility`, …) of children follow the shown
 value.
@@ -106,7 +109,35 @@ value.
 | Reset / release | `release(el, prop)` and fill/stop release hand the channel back **through the property's declared transition**, if any; otherwise the cascade shows at once. |
 | Bindings | The binding keeps updating the cascade underneath any animation; after release its **latest** value shows (`UiAnimationPrecedenceTest`). |
 | Lifecycle | Closing the instance stops everything; a script reload or close stops only that script's animations (owner = its context) and leaves held values; transitions outlive script reloads. An element removed (or dropped by a reload) takes its channels with it (`UiAnimator.forget`): held values and transitions go, and a clip or tween left animating nothing is interrupted, so faded-out chat lines and list rows never accumulate channels and a reused key starts clean. A recycled virtualized list row (#325) does the same for its whole subtree while its elements stay: it shows its cascade at once, the new item's cascade change settles without a transition, and state machines of component instances inside restart. Component instances have their own element keys, so their animations never collide. |
+| Composite | `REPLACE` (default) claims channels as above. `ADD` never claims or interrupts anything and is never taken over: see §4.1. |
 | Events | A clip event at clip time `t` occurs at `t` (once), `t + k·d` (loop) or `t + 2k·d` and `2d − t + 2k·d` (ping-pong: once per forward and once per backward pass). Each sample fires every occurrence crossed since the previous one, in time order, so a frame step longer than the clip fires each crossed event (at most 64 per event per sample). A one-shot that finishes fires events at or past its end; a clock that went backwards fires nothing; seeks skip what lies between. |
+
+### 4.1 Additive composition (#301)
+
+`PlayOptions.composite` / `TweenOptions.composite` (`UiAnimator.Composite`), Lua `composite = "add"` on
+`ui.play`/`ui.tween`, graph prop `composite` on `ui:anim.play`/`ui:anim.tween`. A shake over a slide, a pulse
+over a fade: what `HudAnimator` does by hand (`partyShakeY + slide`).
+
+- Values are **deltas**. A tween's start is the zero delta (or `from`); a blend fades in from zero.
+- `AnimProperty.additive()`: numbers, integers, lengths, opacity and colours. Visibility and discrete
+  properties are refused (a tween throws; a clip track is reported as `ANIMATION_TRACK` and skipped).
+  Deltas are checked for their type only, so a negative opacity or size is a valid delta.
+- `AnimProperty.add(base, delta)`: numbers sum (`scale` too: +0.1 grows by a tenth), integers floor, opacity
+  clamps to [0, 1], colours add per straight-ARGB byte clamped to 255, lengths add in one unit (points, `%`
+  or `dpx`). `auto` and mixed units leave the base unchanged: the sum would need layout metrics. An unset
+  base is the property's neutral (opacity 1, scale 1, translate 0, no colour).
+- The base is what layers 1–3 show, re-read whenever it changes (a binding moving underneath, a cascade
+  change in the same resolve, a held delta each sample). A replacing animation that starts while a shake runs
+  starts from the value beneath the shake, so the shake is never baked in.
+- End: a delta that ends at zero is dropped; a non-zero one holds (fill `hold`) or goes (fill `release`, at
+  once: additive deltas have no transition). A new run of the same clip (or tween) by the same owner
+  replaces that owner's held delta, so a shake replayed on every hit never piles layers up.
+- `release(el, prop)`, `releaseHeld(owner)`, `forget(key)` and owner clearing treat additive layers like the
+  explicit one.
+- Fixtures: `UiAdditiveAnimationTest` (engine), `ScriptAnimationTest.compositeAddStacksAShakeOnASlide` /
+  `aGraphStacksAnAdditiveTweenLikeLua`, and the game's `ui.focusBattle.HudShakeCompositeFixtureTest`: a
+  replacing slide-out plus an additive shake on the `battle` clock match `HudAnimator` frame for frame (a
+  replacing shake would drop the slide).
 
 ## 5. Style transitions
 
@@ -158,8 +189,8 @@ component instance (`UiDocumentInstance.authoringScopes()`), so every button ins
 
 | Call | Meaning |
 | --- | --- |
-| `ui.tween(el, props, dur, easing, {delay, clock, fill, from})` | props are style names or `prop:<name>`; unknown or unfit values are errors |
-| `ui.play(clip, {speed, loop, on_event, clock, blend, fill, at, restart, reduced})` | handle completes at the end (one-shot) |
+| `ui.tween(el, props, dur, easing, {delay, clock, fill, from, composite})` | props are style names or `prop:<name>`; unknown or unfit values are errors |
+| `ui.play(clip, {speed, loop, on_event, clock, blend, fill, at, restart, reduced, composite})` | handle completes at the end (one-shot) |
 | `ui.stop(handle or clipId, "hold"/"end"/"release")` | by clip id: this script context's playbacks of that clip |
 | `ui.seek(target, seconds)`, `ui.speed(target, rate)` | configure a running animation (0 pauses); seeks skip events |
 | `ui.release(el, prop)` | back to the cascade, through its transition |
@@ -216,6 +247,7 @@ The UI Editor's **Timeline** tab (bottom dock) authors the document's clips and 
 | `UiTimeSourcesTest` | paused game vs UI clips, external clocks incl. rewind, refused clocks |
 | `UiStateMachineTest` | interaction machines per component instance, precedence, release to cascade, manual transition then state, arrival, reduced alternate, close |
 | `UiAnimationLifecycleTest` | channels released on remove and reload (no accumulation, reused keys start clean), ping-pong and long-step event crossing, backwards clocks, reduced-motion loops, state machines following edited clips and releasing on removal, colour hex formatting |
+| `UiAdditiveAnimationTest` | additive tweens and clips over the cascade and over replacing animations, sums in order, held deltas following the cascade, no pile-up on replay, unit/colour/opacity rules, refused channels, removal, external clocks |
 | `UiTransformTest` | scale/rotate bounds, hits, overlays, local coordinates, scale 0 |
 | `UiAnimationVisualFixtureTest` | fixed-timestamp screenshots (`anim_t000/025/050/100.png`, `-Dui.visual.write=true`) and identical pixels for differently stepped hosts |
 | `UiStateMachineFormatTest` | round trip, `UNDECLARED_FEATURE`, broken machines, clip value checks |
@@ -225,8 +257,9 @@ The UI Editor's **Timeline** tab (bottom dock) authors the document's clips and 
 
 ## 11. Not done (owned elsewhere)
 
-- **#301**: wiring the battle C1/C2 and intro clocks to external UI clocks; stacked/additive animation layers
-  per channel (today last-writer-wins) for HUD shakes over slides.
+- **#301**: wiring the battle C1/C2 (`battle`, `battle.sim`) and `intro` clocks lands with those screens'
+  migrations (the host calls `clocks().set(...)` from its own time; the fixture above shows the pattern).
+  Additive layers are done (§4.1).
 - **#302**: a state-machine graph view, a value/curve graph editor with in-place bezier handles, a multi-clip
   view, and Python/MCP automation routed through `AnimationCommands`.
 - Legacy screens keep their own animators until they migrate (#297 onward).

@@ -13,13 +13,14 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * Loads {@code /ui/startupIntro/SonarArts_Retro.png} once and draws it centered
+ * Loads {@code /ui/shared/stonebreak/ui/images/sonar_arts_retro.png} once and draws it centered
  * above the submarine, with a drop shadow. Reveal opacity (0..1) is supplied
  * each frame from {@code SonarSystem.largestRadius()}.
  */
 public final class SonarLogoRenderer implements AutoCloseable {
 
-    private static final String RESOURCE_PATH = "/ui/startupIntro/SonarArts_Retro.png";
+    /** The shared UI image the intro document shows too (#301). */
+    private static final String RESOURCE_PATH = "/ui/shared/stonebreak/ui/images/sonar_arts_retro.png";
     private static final float LOGO_Y_PERCENT = 0.18f;
     private static final int SHADOW_ARGB = 0x96000000;
 
@@ -41,18 +42,34 @@ public final class SonarLogoRenderer implements AutoCloseable {
         }
     }
 
+    /** The logo image's pixel size ({@code sonar_arts_retro.png}). */
+    public static final int LOGO_WIDTH = 1200;
+    public static final int LOGO_HEIGHT = 324;
+
+    /**
+     * Where the logo goes on a {@code screenWidth × screenHeight} window at the intro's scale:
+     * {@code {x, y, width, height, shadowOffset}} in device px, float maths exactly as drawn (#301: the
+     * intro document places its logo from these numbers, so nearest sampling picks the same texels).
+     */
+    public static float[] placement(int screenWidth, int screenHeight) {
+        float scale = IntroConfig.scale();
+        float scaledW = LOGO_WIDTH * scale;
+        float scaledH = LOGO_HEIGHT * scale;
+        return new float[]{(screenWidth - scaledW) / 2f, screenHeight * LOGO_Y_PERCENT, scaledW, scaledH,
+            IntroConfig.s(4)};
+    }
+
     public void draw(IntroPainter p, int screenWidth, int screenHeight, float revealAmount) {
         if (revealAmount <= 0f) return;
         ensureLoaded();
         if (logo == null) return;
 
-        float scale = IntroConfig.scale();
-        float scaledW = logo.getWidth() * scale;
-        float scaledH = logo.getHeight() * scale;
-
-        float x = (screenWidth - scaledW) / 2f;
-        float y = screenHeight * LOGO_Y_PERCENT;
-        float shadowOffset = IntroConfig.s(4);
+        float[] at = placement(screenWidth, screenHeight);
+        float scaledW = at[2];
+        float scaledH = at[3];
+        float x = at[0];
+        float y = at[1];
+        float shadowOffset = at[4];
 
         Canvas canvas = p.canvas();
         Rect shadowDst = Rect.makeXYWH(x + shadowOffset, y + shadowOffset, scaledW, scaledH);

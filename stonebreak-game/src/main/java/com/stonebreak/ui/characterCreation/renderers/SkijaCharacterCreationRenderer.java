@@ -5,20 +5,13 @@ import com.openmason.engine.ui.masonry.MButton;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
 import com.openmason.engine.ui.masonry.MasonryUI;
-import com.openmason.engine.ui.masonry.textures.MTexture;
-import com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry;
 import com.stonebreak.ui.characterCreation.CharacterCreationActionHandler;
 import com.stonebreak.ui.characterCreation.CharacterCreationLayout;
 import com.stonebreak.ui.characterCreation.CharacterCreationLayout.Rect;
 import com.stonebreak.ui.characterCreation.CharacterCreationStateManager;
 import com.stonebreak.ui.characterCreation.CharacterCreationTab;
 import io.github.humbleui.skija.Canvas;
-import io.github.humbleui.skija.FilterTileMode;
 import io.github.humbleui.skija.Font;
-import io.github.humbleui.skija.Paint;
-import io.github.humbleui.skija.SamplingMode;
-import io.github.humbleui.skija.Shader;
-import io.github.humbleui.types.RRect;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.sbe.SbeEntityAsset;
@@ -45,9 +38,6 @@ public final class SkijaCharacterCreationRenderer {
 
     private static final int ACTIVE_TAB_FILL = 0xFF7A7A7A;
 
-    // Wood-panel fill reuses the recipe-screen Elm UI texture.
-    private static final String WOOD_PANEL_RESOURCE = "/ui/recipeScreen/Elm_UI.sbt";
-
     private final MasonryUI ui;
     private final CharacterCreationStateManager state;
     private final CharacterCreationLayout layout;
@@ -64,9 +54,6 @@ public final class SkijaCharacterCreationRenderer {
 
     // One MButton per tab for hover tracking and click detection
     private final MButton[] tabButtons = new MButton[CharacterCreationTab.values().length];
-
-    // Wood planks texture shader — lazily built, null until the backend is ready
-    private Shader woodPlanksShader;
 
     // Preview rect (window pixels) captured during the Skija frame, then drawn
     // into with raw GL after the frame closes. Null when no preview this frame.
@@ -149,28 +136,8 @@ public final class SkijaCharacterCreationRenderer {
     // ─────────────────────────────────────────────── Left panel
 
     private void drawLeftPanelContent(Canvas canvas, Rect leftPanel, float mx, float my) {
-        // Tile wood planks texture inside the panel, clipped to its rounded rect
-        ensureWoodPlanksShader();
-        if (woodPlanksShader != null) {
-            int save = canvas.save();
-            canvas.clipRRect(RRect.makeXYWH(
-                leftPanel.x(), leftPanel.y(), leftPanel.width(), leftPanel.height(),
-                MStyle.PANEL_RADIUS), true);
-            try (Paint p = new Paint().setShader(woodPlanksShader)) {
-                canvas.save();
-                canvas.translate(leftPanel.x(), leftPanel.y());
-                canvas.scale(4f, 4f);
-                canvas.drawRect(io.github.humbleui.types.Rect.makeXYWH(
-                    0, 0, leftPanel.width() / 4f, leftPanel.height() / 4f), p);
-                canvas.restore();
-            }
-            // Dark tint so the cylinder and text remain legible
-            try (Paint tint = new Paint().setColor(0xAA000000)) {
-                canvas.drawRect(io.github.humbleui.types.Rect.makeXYWH(
-                    leftPanel.x(), leftPanel.y(), leftPanel.width(), leftPanel.height()), tint);
-            }
-            canvas.restoreToCount(save);
-        }
+        // Wood planks inside the panel, clipped to its rounded rect, tinted (shared with the document, #301)
+        WoodPanelFill.paint(canvas, leftPanel.x(), leftPanel.y(), leftPanel.width(), leftPanel.height());
 
         Font titleFont = ui.fonts().get(MStyle.FONT_ITEM);
         float titleX   = leftPanel.centerX();
@@ -280,21 +247,17 @@ public final class SkijaCharacterCreationRenderer {
         return playerBounds;
     }
 
-    private void ensureWoodPlanksShader() {
-        if (woodPlanksShader != null) return;
-        // Reuse the recipe-screen Elm UI texture (registry-cached, shared).
-        MTexture planks = MTextureRegistry.get(WOOD_PANEL_RESOURCE);
-        if (planks == null || planks.image() == null) return;
-        woodPlanksShader = planks.image().makeShader(
-            FilterTileMode.REPEAT, FilterTileMode.REPEAT, SamplingMode.DEFAULT, null);
-    }
-
     // ─────────────────────────────────────────────── Tab bar
 
-    private void drawTabBar(Canvas canvas, Rect tabBar, float mx, float my) {
+    /** One tab of the strip: left edge, width, label font size and baseline below the strip's top. */
+    public record TabMetric(float x, float width, float fontSize, float baseline) {}
+
+    /**
+     * The tab strip in {@code tabBar}: tabs sized to their FONT_META labels (+24, at most {@value #TAB_W}),
+     * shrunk together to fit, labels shrunk to fit their tab. Shared with the document (#301).
+     */
+    public static TabMetric[] tabMetrics(MasonryUI ui, Rect tabBar) {
         CharacterCreationTab[] tabs = CharacterCreationTab.values();
-        float startX = tabBar.x() + 8f;
-        // Allocate room by label width so Clothing does not crowd the longer labels.
         Font labelFont = ui.fonts().get(MStyle.FONT_META);
         float[] widths = new float[tabs.length];
         float totalWidth = 0f;
@@ -304,12 +267,25 @@ public final class SkijaCharacterCreationRenderer {
         }
         float available = tabBar.width() - 16f - (tabs.length - 1) * TAB_GAP;
         float fit = Math.min(1f, available / totalWidth);
-        float nextX = startX;
+        TabMetric[] out = new TabMetric[tabs.length];
+        float nextX = tabBar.x() + 8f;
+        for (int i = 0; i < tabs.length; i++) {
+            float tabW = widths[i] * fit;
+            float labelWidth = MPainter.measureWidth(labelFont, tabs[i].displayName());
+            float fontSize = MStyle.FONT_META * Math.min(1f, Math.max(1f, tabW - 12f) / Math.max(1f, labelWidth));
+            out[i] = new TabMetric(nextX, tabW, fontSize, TAB_H * 0.5f + fontSize * 0.38f);
+            nextX += tabW + TAB_GAP;
+        }
+        return out;
+    }
+
+    private void drawTabBar(Canvas canvas, Rect tabBar, float mx, float my) {
+        CharacterCreationTab[] tabs = CharacterCreationTab.values();
+        TabMetric[] metrics = tabMetrics(ui, tabBar);
         for (int i = 0; i < tabs.length; i++) {
             CharacterCreationTab tab = tabs[i];
-            float tabW = widths[i] * fit;
-            float tx = nextX;
-            nextX += tabW + TAB_GAP;
+            float tabW = metrics[i].width();
+            float tx = metrics[i].x();
             float ty = tabBar.y();
 
             tabButtons[i].bounds(tx, ty, tabW, TAB_H);
@@ -327,11 +303,10 @@ public final class SkijaCharacterCreationRenderer {
                 MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
                 MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
 
-            float labelWidth = MPainter.measureWidth(labelFont, tab.displayName());
-            float fontSize = MStyle.FONT_META * Math.min(1f, Math.max(1f, tabW - 12f) / Math.max(1f, labelWidth));
+            float fontSize = metrics[i].fontSize();
             Font font = ui.fonts().get(fontSize);
             int tabColor = active ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
-            float textY  = ty + TAB_H * 0.5f + fontSize * 0.38f;
+            float textY  = ty + metrics[i].baseline();
             MPainter.drawCenteredStringWithShadow(canvas, tab.displayName(),
                 tx + tabW / 2f, textY, font, tabColor, MStyle.TEXT_SHADOW);
         }
@@ -405,6 +380,5 @@ public final class SkijaCharacterCreationRenderer {
     }
 
     public void dispose() {
-        if (woodPlanksShader != null) { woodPlanksShader.close(); woodPlanksShader = null; }
     }
 }

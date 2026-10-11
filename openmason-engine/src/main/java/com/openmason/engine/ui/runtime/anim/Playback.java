@@ -31,6 +31,8 @@ abstract class Playback {
     final String clock;
     final UiAnimator.Fill fill;
     final double blend;
+    /** REPLACE claims its channels; ADD stacks a delta on top of them (#301). */
+    UiAnimator.Composite composite = UiAnimator.Composite.REPLACE;
     final List<Slot> slots = new ArrayList<>();
     double baseElapsed;
     double since;
@@ -81,15 +83,36 @@ abstract class Playback {
     /** Total length in this animation's own time, or infinity for loops. */
     abstract double length();
 
-    /** Writes {@code value} to a live slot, cross-faded from what was shown during the blend-in. */
+    boolean additive() {
+        return composite == UiAnimator.Composite.ADD;
+    }
+
+    /** Clip id for {@link Channel.Add#source}; null for a tween. */
+    String source() {
+        return null;
+    }
+
+    /**
+     * Writes {@code value} to a live slot, cross-faded from what was shown during the blend-in
+     * (an additive animation blends in from the zero delta).
+     */
     void write(Slot slot, UiValue value, double elapsed, UiAnimator animator) {
-        if (slot.lost || slot.channel.owner != this) {
+        if (slot.lost) {
+            return;
+        }
+        Channel.Add add = additive() ? slot.channel.add(this) : null;
+        if (additive() ? add == null : slot.channel.owner != this) {
             return;
         }
         if (blend > 0 && elapsed < blend && !jumpToEnd) {
             float f = UiEasing.EASE_IN_OUT.curve().apply((float) Math.max(0, elapsed / blend));
-            value = slot.channel.property.mix(slot.blendFrom, value, f);
+            UiValue from = add != null ? slot.channel.property.zero(value) : slot.blendFrom;
+            value = slot.channel.property.mix(from, value, f);
         }
-        animator.writeExplicit(slot.channel, value);
+        if (add != null) {
+            animator.writeAdd(slot.channel, add, value);
+        } else {
+            animator.writeExplicit(slot.channel, value);
+        }
     }
 }

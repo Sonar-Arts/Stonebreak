@@ -52,6 +52,11 @@ final class ClipPlayback extends Playback {
         this.loop = loop == null ? clip.loop() : loop;
     }
 
+    @Override
+    String source() {
+        return clip.id();
+    }
+
     /** Clip-local time at {@code elapsed}: clamped (once), wrapped (loop) or reflected (ping-pong). */
     double local(double elapsed) {
         double d = clip.duration();

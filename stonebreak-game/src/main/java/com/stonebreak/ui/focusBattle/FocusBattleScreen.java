@@ -76,7 +76,14 @@ import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
  */
 public final class FocusBattleScreen {
 
+    /** The shipped document: {@code ui/documents/battle_hud.sbui} (#301). */
+    public static final String DOCUMENT_ID = "battle_hud";
+
     private final SkijaFocusBattleRenderer renderer;
+    private final com.stonebreak.ui.runtime.screens.PresentationSlot presentation =
+            new com.stonebreak.ui.runtime.screens.PresentationSlot();
+    /** C1: the HUD clock, the sum of every {@link #update} step since bind (the document's {@code battle} clock). */
+    private double hudClock;
     private final SkijaFocusBattleRenderer.Windows windows = new SkijaFocusBattleRenderer.Windows();
     private final BattleMenuState menu = new BattleMenuState();
     private final BattleHudAnimState anim = new BattleHudAnimState();
@@ -135,6 +142,8 @@ public final class FocusBattleScreen {
         targetCursor.setStage(layout);
         transition.reset();
         result.reset();
+        hudClock = 0;
+        com.stonebreak.ui.runtime.GameUiHost.onUiThread(() -> presentation.setVisible(true));
     }
 
     /** Detach; the screen renders nothing until bound again. */
@@ -152,6 +161,7 @@ public final class FocusBattleScreen {
         timed.setStage(null);
         timed.reset();
         targetCursor.setStage(null);
+        com.stonebreak.ui.runtime.GameUiHost.onUiThread(() -> presentation.setVisible(false));
     }
 
     public boolean isBound() { return view != null; }
@@ -188,6 +198,7 @@ public final class FocusBattleScreen {
         if (view == null) return;
         syncMenu();
         float step = Math.max(0f, dt);
+        hudClock += step;
         List<BattleEvent> events = freshEvents();
         animator.update(step, view, menu, events);
         windows.update(step, view, menu, events);
@@ -215,6 +226,21 @@ public final class FocusBattleScreen {
      */
     public void render(int windowWidth, int windowHeight, Matrix4fc viewProjection) {
         if (view == null) return;
+        prepareFrame(windowWidth, windowHeight, viewProjection);
+        if (presentation.showing()) {
+            com.stonebreak.ui.runtime.GameUiHost host = com.stonebreak.ui.runtime.GameUiHost.get();
+            if (host != null) host.battleHud().poll(); // this frame's windows, motion and help line
+            if (presentation.paint(windowWidth, windowHeight)) return;
+        }
+        renderer.render(windowWidth, windowHeight, view, menu, anim, viewProjection);
+    }
+
+    /**
+     * What every frame does before the HUD paints, document or legacy: keep the cursor in step, remember the
+     * camera, size the animator, and place new floaters at the camera they first meet.
+     */
+    public void prepareFrame(int windowWidth, int windowHeight, Matrix4fc viewProjection) {
+        if (view == null) return;
         syncMenu();
         hasViewProjection = viewProjection != null;
         if (hasViewProjection) lastViewProjection.set(viewProjection);
@@ -222,7 +248,69 @@ public final class FocusBattleScreen {
         animator.setHudScale(FocusBattleLayout.effectiveScale(windowWidth, windowHeight, uiScale));
         // Floaters take their screen position from the first camera they meet, drawn or not.
         floaters.resolvePending(windowWidth, windowHeight, uiScale, viewProjection);
-        renderer.render(windowWidth, windowHeight, view, menu, anim, viewProjection);
+    }
+
+    // ─────────────────────────────────────────────── The document's seams (#301)
+
+    /** Installs (or, with null, removes) the document presentation; the legacy renderer is the default. */
+    public void setPresentation(com.stonebreak.ui.runtime.screens.ScreenPresentation p) {
+        presentation.install(p);
+    }
+
+    /** True while the document, not the legacy renderer, shows the HUD (it then takes the pointer). */
+    public boolean presentationShowing() {
+        return presentation.showing();
+    }
+
+    /** The bound battle, or null. */
+    public BattleView view() { return view; }
+
+    /** C1, the HUD clock (seconds of HUD updates since bind). */
+    public double hudClock() { return hudClock; }
+
+    /** The camera of the last frame, or null. */
+    public Matrix4fc lastViewProjection() { return hasViewProjection ? lastViewProjection : null; }
+
+    /**
+     * Paints one piece of the HUD as {@link SkijaFocusBattleRenderer#paintHud} paints it: {@code underlays},
+     * {@code overlays}, {@code topmost} (window-sized), or a window at {@code rect} ({@code mode}, {@code enemy},
+     * {@code party}, {@code command} with the submenu at {@code submenu}).
+     */
+    public void paintPiece(String piece, com.openmason.engine.ui.masonry.MasonryUI ui,
+                           io.github.humbleui.skija.Canvas canvas, int w, int h, float[] rect, float[] submenu) {
+        if (view == null || canvas == null) return;
+        float uiScale = Settings.getInstance().getUiScale();
+        float s = FocusBattleLayout.effectiveScale(w, h, uiScale);
+        Matrix4fc vp = lastViewProjection();
+        switch (piece) {
+            case "underlays" -> renderer.paintGroup(SkijaFocusBattleRenderer.Group.UNDERLAYS, ui, canvas, w, h, uiScale,
+                    view, anim, vp);
+            case "overlays" -> renderer.paintGroup(SkijaFocusBattleRenderer.Group.OVERLAYS, ui, canvas, w, h, uiScale,
+                    view, anim, vp);
+            case "topmost" -> renderer.paintGroup(SkijaFocusBattleRenderer.Group.TOPMOST, ui, canvas, w, h, uiScale,
+                    view, anim, vp);
+            case "mode" -> windows.modeTag.scale(s).bounds(rect[0], rect[1], rect[2], rect[3]).render(ui);
+            case "enemy" -> windows.enemy.render(ui, rect, view, s);
+            case "party" -> windows.party.render(ui, rect, view, s);
+            case "command" -> {
+                if (view.outcome() == BattleOutcome.NONE) {
+                    windows.command.render(ui, rect, submenu, view, menu, s, anim.commandWake, anim.submenuSlideIn);
+                }
+            }
+            default -> { }
+        }
+    }
+
+    /**
+     * The document's pointer, in window pixels: a press ({@code down}) or a move, run through the legacy rules
+     * in their precedence (the document forwards; the screen decides).
+     */
+    public void documentPointer(boolean down, float x, float y, int windowWidth, int windowHeight, int button) {
+        if (down) {
+            click(x, y, windowWidth, windowHeight, button, GLFW_PRESS);
+        } else {
+            move(x, y, windowWidth, windowHeight);
+        }
     }
 
     // ─────────────────────────────────────────────── Keyboard
@@ -360,6 +448,12 @@ public final class FocusBattleScreen {
     /** GLFW mouse button event in UI coordinates. Returns true when consumed. */
     public boolean handleMouseClick(double x, double y, int windowWidth, int windowHeight, int button, int action) {
         if (view == null) return false;
+        if (presentation.showing()) return true; // the document takes the pointer and forwards it (#301)
+        return click(x, y, windowWidth, windowHeight, button, action);
+    }
+
+    private boolean click(double x, double y, int windowWidth, int windowHeight, int button, int action) {
+        if (view == null) return false;
         syncMenu();
         if (button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS) return true;
         float px = (float) x, py = (float) y;
@@ -393,6 +487,11 @@ public final class FocusBattleScreen {
     }
 
     public void handleMouseMove(double x, double y, int windowWidth, int windowHeight) {
+        if (view == null || presentation.showing()) return;
+        move(x, y, windowWidth, windowHeight);
+    }
+
+    private void move(double x, double y, int windowWidth, int windowHeight) {
         if (view == null) return;
         syncMenu();
         if (battleOver()) {

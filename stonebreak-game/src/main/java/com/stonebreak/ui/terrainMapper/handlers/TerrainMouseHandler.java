@@ -119,15 +119,74 @@ public final class TerrainMouseHandler {
     // ─────────────────────────────────────────────── Wheel
 
     public void handleMouseWheel(double mouseX, double mouseY, double delta) {
-        if (delta == 0.0) return;
-        float mx = (float) mouseX;
-        float my = (float) mouseY;
         // Reconstruct the layout against the current window size. The caller
         // (Main's scroll callback) already has the GLFW context for the
         // dimensions; we just pull them from Game for consistency.
-        TerrainMapperLayout layout = new TerrainMapperLayout(
-                com.stonebreak.core.Game.getWindowWidth(),
+        wheel(mouseX, mouseY, delta, com.stonebreak.core.Game.getWindowWidth(),
                 com.stonebreak.core.Game.getWindowHeight());
+    }
+
+    // ─────────────────────────────────────────────── The document's pointer (#301)
+
+    /**
+     * A press on a named control: {@code back}, {@code character}, {@code create}, {@code simulate},
+     * {@code spawn}, {@code center} or {@code mode:<VisualizerKind>}. A disabled button takes the press
+     * and does nothing, as its legacy hit-test did. @return false for an unknown name
+     */
+    public boolean pressButton(String name) {
+        if (name.startsWith("mode:")) {
+            for (MCategoryButton<VisualizerKind> mode : state.getModeButtons()) {
+                if (mode.tag().name().equals(name.substring(5))) {
+                    mode.click();
+                    return true;
+                }
+            }
+            return false;
+        }
+        var button = switch (name) {
+            case "back" -> state.getBackButton();
+            case "character" -> state.getCharacterButton();
+            case "create" -> state.getCreateButton();
+            case "simulate" -> state.getSimulateSeedButton();
+            case "spawn" -> state.getSetSpawnButton();
+            case "center" -> state.getCenterOnSpawnButton();
+            default -> null;
+        };
+        if (button == null) return false;
+        button.click();
+        return true;
+    }
+
+    /** A press on a text field: it takes the keyboard. */
+    public void pressField(ActiveField field) {
+        state.setActiveField(field);
+    }
+
+    /** A left press on the map at window pixel {@code (x, y)}: unfocuses the fields, starts a drag. */
+    public void pressMap(float x, float y) {
+        state.setActiveField(ActiveField.NONE);
+        state.beginDrag(x, y);
+        pendingSpawnSet = true;
+        pressStartX = x;
+        pressStartY = y;
+    }
+
+    /** The left button came up anywhere: ends a drag; a press that barely moved sets the spawn. */
+    public void release(float x, float y, int windowWidth, int windowHeight) {
+        handleMouseClick(x, y, windowWidth, windowHeight, GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
+    }
+
+    /** The pointer moved: pans while dragging and refreshes the map readout. */
+    public void move(float x, float y, int windowWidth, int windowHeight) {
+        handleMouseMove(x, y, windowWidth, windowHeight);
+    }
+
+    /** The wheel at window pixel {@code (x, y)}: zooms about it, on the map only. */
+    public void wheel(double mouseX, double mouseY, double delta, int windowWidth, int windowHeight) {
+        if (delta == 0.0) return;
+        float mx = (float) mouseX;
+        float my = (float) mouseY;
+        TerrainMapperLayout layout = new TerrainMapperLayout(windowWidth, windowHeight);
         TerrainMapperLayout.Rect map = layout.map();
         if (!map.contains(mx, my)) return;
         float factor = delta > 0
