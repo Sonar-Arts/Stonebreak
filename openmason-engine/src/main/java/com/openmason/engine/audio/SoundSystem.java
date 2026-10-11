@@ -140,6 +140,9 @@ public class SoundSystem {
      * whatever track is currently playing, unlike SFX volume which is baked in at play-call time.
      */
     public void setMusicVolume(float volume) {
+        if (Float.isNaN(volume)) {
+            return; // keep the current volume: a NaN gain would silence music for good
+        }
         this.musicVolume = Math.max(0f, Math.min(1f, volume));
         musicChannel.setGain(this.musicVolume * volumeController.getEffectiveVolume());
     }

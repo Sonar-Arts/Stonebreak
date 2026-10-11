@@ -76,4 +76,19 @@ class CoverageBlenderTest {
         assertEquals(5f, CoverageBlender.pointToSegmentDistance(3, 4, 0, 0, 0, 0), 1e-6);    // zero length
         assertEquals(0f, CoverageBlender.pointToSegmentDistance(4, 4, 0, 0, 8, 8), 1e-6);    // on the line
     }
+
+    /** Transparent paint used to blend to nothing at partial coverage, so soft-edged erasing did nothing. */
+    @Tag("regression")
+    @Test
+    void transparentPaintErasesTheCoveredFractionOfAlpha() {
+        int clear = 0x00000000;
+        int[] half = PixelCanvas.unpackRGBA(CoverageBlender.blendWithCoverage(clear, RED, 0.5f));
+        assertEquals(255, half[0], "colour is kept, only alpha is removed");
+        assertEquals(128, half[3]);
+
+        assertEquals(RED, CoverageBlender.blendWithCoverage(clear, RED, 0.0f));
+        assertEquals(clear, CoverageBlender.blendWithCoverage(clear, RED, 1.0f));
+        assertEquals(clear, CoverageBlender.blendWithCoverage(clear, PixelCanvas.packRGBA(9, 9, 9, 1), 0.9f),
+                "an alpha that rounds to zero becomes fully clear");
+    }
 }

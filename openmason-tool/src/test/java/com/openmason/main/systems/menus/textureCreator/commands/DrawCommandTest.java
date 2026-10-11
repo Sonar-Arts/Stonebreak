@@ -1,6 +1,8 @@
 package com.openmason.main.systems.menus.textureCreator.commands;
 
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
+import com.openmason.main.systems.menus.textureCreator.selection.RectangularSelection;
+import com.openmason.main.systems.menus.textureCreator.selection.SelectionManager;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -81,5 +83,70 @@ class DrawCommandTest {
     static void paint(PixelCanvas canvas, DrawCommand command, int x, int y, int color) {
         command.recordPixelChange(x, y, canvas.getPixel(x, y), color);
         canvas.setPixel(x, y, color);
+    }
+
+    /** Undo used to write through the selection made after the edit, leaving the rest of the stroke behind. */
+    @Tag("regression")
+    @Test
+    void undoAndRedoIgnoreASelectionMadeAfterTheEdit() {
+        PixelCanvas canvas = new PixelCanvas(6, 1);
+        SelectionManager selection = new SelectionManager();
+        canvas.setSelectionManager(selection);
+        DrawCommand command = new DrawCommand(canvas, "Pencil");
+        for (int x = 0; x < 6; x++) {
+            paint(canvas, command, x, 0, RED);
+        }
+
+        selection.setActiveSelection(new RectangularSelection(0, 0, 1, 0));
+        command.undo();
+        assertArrayEquals(new int[6], canvas.getPixels());
+        command.execute();
+        assertArrayEquals(new int[]{RED, RED, RED, RED, RED, RED}, canvas.getPixels());
+    }
+
+    /** Tools record before the canvas rejects a write; replaying those without the selection would paint them. */
+    @Tag("regression")
+    @Test
+    void writesTheSelectionRejectedAreNeverReplayed() {
+        PixelCanvas canvas = new PixelCanvas(6, 1);
+        SelectionManager selection = new SelectionManager();
+        canvas.setSelectionManager(selection);
+        selection.setActiveSelection(new RectangularSelection(2, 0, 3, 0));
+        DrawCommand command = new DrawCommand(canvas, "Fill");
+        for (int x = 0; x < 6; x++) {
+            paint(canvas, command, x, 0, RED);
+        }
+        int[] painted = {0, 0, RED, RED, 0, 0};
+        assertArrayEquals(painted, canvas.getPixels());
+
+        selection.clearSelection();
+        command.undo();
+        assertArrayEquals(new int[6], canvas.getPixels());
+        command.execute();
+        assertArrayEquals(painted, canvas.getPixels());
+    }
+
+    /** The executeCommand path: the first execute is the edit and still honours the selection. */
+    @Tag("regression")
+    @Test
+    void firstExecuteRespectsTheSelectionAndLaterRedosReplayIt() {
+        PixelCanvas canvas = new PixelCanvas(4, 1);
+        SelectionManager selection = new SelectionManager();
+        canvas.setSelectionManager(selection);
+        selection.setActiveSelection(new RectangularSelection(1, 0, 1, 0));
+        DrawCommand command = new DrawCommand(canvas, "Delete");
+        for (int x = 0; x < 4; x++) {
+            command.recordPixelChange(x, 0, 0, GREEN);
+        }
+
+        command.execute();
+        int[] edited = {0, GREEN, 0, 0};
+        assertArrayEquals(edited, canvas.getPixels());
+
+        selection.setActiveSelection(new RectangularSelection(3, 0, 3, 0));
+        command.undo();
+        assertArrayEquals(new int[4], canvas.getPixels());
+        command.execute();
+        assertArrayEquals(edited, canvas.getPixels());
     }
 }

@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -65,30 +64,49 @@ class PencilEraserToolTest {
         assertEquals(9, countNot(canvas, CLEAR), "a 1px Bresenham line touches one pixel per major-axis step");
     }
 
+    /**
+     * A size-N brush is a hard pixel disc N pixels across (the slider says "N px").
+     * It used to fade its edge so size 2 painted one pixel and size 3 half-painted
+     * its neighbours.
+     */
+    @Tag("regression")
     @Test
-    void largeBrushPaintsASolidSymmetricDiscWithSoftEdges() {
-        PixelCanvas canvas = new PixelCanvas(15, 15);
+    void brushSizesPaintHardPixelDiscsThatManyPixelsAcross() {
+        assertEquals(String.join("\n",
+                ".....",
+                ".##..",
+                ".##..",
+                ".....",
+                "....."), paintedShape(2), "size 2 is a 2x2 block on the hovered pixel's top-left corner");
+        assertEquals(String.join("\n",
+                ".....",
+                "..#..",
+                ".###.",
+                "..#..",
+                "....."), paintedShape(3), "size 3 is a plus");
+        assertEquals(String.join("\n",
+                ".###.",
+                "#####",
+                "#####",
+                "#####",
+                ".###."), paintedShape(5), "size 5 is a square without its corners");
+    }
+
+    /** Paint one size-N dab at (2, 2) of a 5x5 canvas; '#' = exactly RED, '.' = untouched, '?' = blended. */
+    private static String paintedShape(int size) {
+        PixelCanvas canvas = new PixelCanvas(5, 5);
         PencilTool pencil = new PencilTool();
-        pencil.setBrushSize(5);
-
-        pencil.onMouseDown(7, 7, RED, canvas, null);
-
-        // Radius 2: every pixel within distance 1.5 is full coverage.
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                assertEquals(RED, canvas.getPixel(7 + dx, 7 + dy));
+        pencil.setBrushSize(size);
+        pencil.onMouseDown(2, 2, RED, canvas, null);
+        StringBuilder out = new StringBuilder();
+        for (int y = 0; y < 5; y++) {
+            if (y > 0) out.append('\n');
+            for (int x = 0; x < 5; x++) {
+                int c = canvas.getPixel(x, y);
+                out.append(c == RED ? '#' : c == CLEAR ? '.' : '?');
             }
         }
-        // Far corner of the bounding box is untouched.
-        assertEquals(CLEAR, canvas.getPixel(4, 4));
-        assertEquals(CLEAR, canvas.getPixel(10, 10));
-        // Edge pixels are blended, and the disc is 4-way symmetric.
-        int edge = canvas.getPixel(9, 7);
-        assertNotEquals(CLEAR, edge);
-        assertNotEquals(RED, edge);
-        assertEquals(edge, canvas.getPixel(5, 7));
-        assertEquals(edge, canvas.getPixel(7, 9));
-        assertEquals(edge, canvas.getPixel(7, 5));
+        return out.toString();
     }
 
     @Test
@@ -126,21 +144,28 @@ class PencilEraserToolTest {
         assertEquals(36, count(canvas, BLUE));
     }
 
+    /** The eraser used to clear only the centre at size 3: a half-covered transparent dab blended to nothing. */
+    @Tag("regression")
     @Test
-    void largeEraserClearsItsFullCoverageDisc() {
+    void eraserClearsItsWholeDisc() {
         PixelCanvas canvas = new PixelCanvas(15, 15);
         canvas.fill(BLUE);
         EraserTool eraser = new EraserTool();
+
+        eraser.setBrushSize(3);
+        eraser.onMouseDown(3, 3, 0, canvas, null);
+        assertEquals(CLEAR, canvas.getPixel(3, 3));
+        assertEquals(CLEAR, canvas.getPixel(2, 3));
+        assertEquals(CLEAR, canvas.getPixel(4, 3));
+        assertEquals(CLEAR, canvas.getPixel(3, 2));
+        assertEquals(CLEAR, canvas.getPixel(3, 4));
+        assertEquals(BLUE, canvas.getPixel(2, 2), "size 3 is a plus: corners stay");
+        assertEquals(225 - 5, count(canvas, BLUE));
+
         eraser.setBrushSize(5);
-
-        eraser.onMouseDown(7, 7, 0, canvas, null);
-
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                assertEquals(CLEAR, canvas.getPixel(7 + dx, 7 + dy));
-            }
-        }
-        assertEquals(BLUE, canvas.getPixel(4, 4));
+        eraser.onMouseDown(10, 10, 0, canvas, null);
+        assertEquals(225 - 5 - 21, count(canvas, BLUE));
+        assertEquals(BLUE, canvas.getPixel(8, 8));
     }
 
     @Test

@@ -14,12 +14,15 @@ import java.util.List;
  * Provides shared brush drawing logic following DRY principle.
  * All brush-based tools (Pencil, Eraser, etc.) can use this helper.
  *
- * Brush shape: Circular/round brush for smooth, natural drawing.
+ * Brush shape: hard-edged pixel disc, brush size pixels across.
  * Respects all constraints: selection bounds, cube net validation, undo recording.
  *
  * @author Open Mason Team
  */
 public class BrushDrawingHelper {
+
+    /** How far inside the ideal disc edge a pixel centre must lie to be painted. */
+    private static final float BRUSH_EDGE_SHRINK = 0.1f;
 
     /**
      * Draw a circular brush stroke at the specified position.
@@ -44,30 +47,32 @@ public class BrushDrawingHelper {
             return;
         }
 
-        // Draw circular brush with smooth edge falloff
-        float radius = (brushSize - 1) / 2.0f;
+        // Hard pixel disc, brushSize pixels across: a pixel is painted when its
+        // centre lies inside the disc. Odd sizes centre on the hovered pixel, even
+        // sizes on its top-left corner (so size 2 is a 2x2 block, not one pixel).
+        // The 0.1 px shrink gives the usual pixel-art shapes: size 3 is a plus,
+        // sizes 4 and 5 are squares without their corners.
+        float radius = brushSize / 2.0f;
+        float reach = radius - BRUSH_EDGE_SHRINK;
+        float discCenterX = brushSize % 2 == 1 ? centerX : centerX - 0.5f;
+        float discCenterY = brushSize % 2 == 1 ? centerY : centerY - 0.5f;
 
-        // Expand bounding box by 1 pixel to catch partial-coverage edge pixels
-        int minX = (int) Math.floor(centerX - radius) - 1;
-        int maxX = (int) Math.ceil(centerX + radius) + 1;
-        int minY = (int) Math.floor(centerY - radius) - 1;
-        int maxY = (int) Math.ceil(centerY + radius) + 1;
+        int minX = (int) Math.floor(discCenterX - radius);
+        int maxX = (int) Math.ceil(discCenterX + radius);
+        int minY = (int) Math.floor(discCenterY - radius);
+        int maxY = (int) Math.ceil(discCenterY + radius);
 
         for (int y = minY; y <= maxY; y++) {
             for (int x = minX; x <= maxX; x++) {
-                float dx = x - centerX;
-                float dy = y - centerY;
-                float distance = (float) Math.sqrt(dx * dx + dy * dy);
-
-                // Smooth falloff at brush edge: full inside, fade over 1px at boundary
-                float brushCoverage = CoverageBlender.smoothstep(radius + 0.5f, radius - 0.5f, distance);
-
-                if (brushCoverage > 0.0f) {
-                    setPixelWithCoverage(x, y, color, brushCoverage, canvas, command);
+                float dx = x - discCenterX;
+                float dy = y - discCenterY;
+                if (dx * dx + dy * dy <= reach * reach) {
+                    setPixelWithCoverage(x, y, color, 1.0f, canvas, command);
                 }
             }
         }
     }
+
 
     /**
      * Draw a line with brush strokes between two points (for smooth dragging).

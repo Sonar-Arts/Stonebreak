@@ -64,13 +64,15 @@ public class PasteCommand implements Command {
                     // If skipTransparentPixels is false, paste all pixels including transparent ones
                     int[] rgba = PixelCanvas.unpackRGBA(newColor);
                     if (!skipTransparentPixels || rgba[3] > 0) { // Skip transparent pixels if preference enabled
-                        // Record change
-                        int key = targetY * targetCanvas.getWidth() + targetX;
-                        pixelChanges.put(key, new int[]{oldColor, newColor});
-
-                        // Apply change
                         targetCanvas.setPixel(targetX, targetY, newColor);
-                        pixelsPasted++;
+
+                        // Record only writes the selection/mask let through, so undo
+                        // and redo can replay them exactly without constraints.
+                        if (targetCanvas.getPixel(targetX, targetY) == newColor) {
+                            int key = targetY * targetCanvas.getWidth() + targetX;
+                            pixelChanges.put(key, new int[]{oldColor, newColor});
+                            pixelsPasted++;
+                        }
                     }
                 }
             }
@@ -87,7 +89,7 @@ public class PasteCommand implements Command {
             return;
         }
 
-        // Restore old colors
+        // Restore old colors, unclipped by whatever is selected now
         for (Map.Entry<Integer, int[]> entry : pixelChanges.entrySet()) {
             int key = entry.getKey();
             int[] colors = entry.getValue();
@@ -96,7 +98,7 @@ public class PasteCommand implements Command {
             int x = key % targetCanvas.getWidth();
             int y = key / targetCanvas.getWidth();
 
-            targetCanvas.setPixel(x, y, oldColor);
+            targetCanvas.restorePixel(x, y, oldColor);
         }
 
         logger.debug("Undid paste operation");
@@ -121,7 +123,7 @@ public class PasteCommand implements Command {
             int x = key % targetCanvas.getWidth();
             int y = key / targetCanvas.getWidth();
 
-            targetCanvas.setPixel(x, y, newColor);
+            targetCanvas.restorePixel(x, y, newColor);
         }
 
         logger.debug("Redid paste operation");

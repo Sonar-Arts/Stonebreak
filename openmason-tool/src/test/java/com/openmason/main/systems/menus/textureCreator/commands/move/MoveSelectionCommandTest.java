@@ -132,4 +132,22 @@ class MoveSelectionCommandTest {
         assertNull(MoveSelectionCommand.create(canvas, selections, selection, snapshot,
                 TransformationState.identity(), image, TransformedSelectionRegion.fromImage(image), false, false));
     }
+
+    /** The description named the parts of the transform that did NOT change. */
+    @Test
+    @Tag("regression")
+    void descriptionNamesOnlyThePartsThatChange() {
+        String moved = translate(new RectangularSelection(1, 1, 2, 2), 4, 3, false).getDescription();
+        assertEquals("Transform selection - move (4.0, 3.0)", moved);
+
+        RectangularSelection selection = new RectangularSelection(1, 1, 2, 2);
+        selections.setActiveSelection(selection);
+        SelectionSnapshot snapshot = SelectionSnapshot.capture(canvas, selection);
+        boolean[] mask = snapshot.mask().clone();
+        TransformedImage image = new TransformedImage(snapshot.bounds(), snapshot.pixels().clone(), mask, 4);
+        String rotated = MoveSelectionCommand.create(canvas, selections, selection, snapshot,
+                new TransformationState(0, 0, 1, 1, 90), image,
+                TransformedSelectionRegion.fromImage(image), false, false).getDescription();
+        assertEquals("Transform selection - rotate 90.0 deg", rotated);
+    }
 }

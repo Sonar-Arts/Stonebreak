@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.textureCreator.canvas;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -105,22 +106,55 @@ class CanvasShapeMasksTest {
         assertFalse(mask.isEditable(-1, 0));
     }
 
+    /** The edge walk used to mark row y=8, one row into the face below (floor of an exact 8.0 edge). */
+    @Tag("regression")
     @Test
     void uvSubRegionStaysInsideItsQuadrant() {
         // Top-right quadrant of a 16x16 canvas, local unit square.
         PolygonShapeMask mask = PolygonShapeMask.fromUVRegion(16, 16, 0.5f, 0f, 1f, 0.5f,
                 new float[]{0, 1, 1, 0}, new float[]{0, 0, 1, 1});
-        // Row y=8 (the shared boundary with the quadrant below) is deliberately not
-        // asserted: the edge walk currently marks it too (reported separately).
         for (int y = 0; y < 16; y++) {
             for (int x = 0; x < 16; x++) {
-                if (y < 8) {
-                    assertEquals(x >= 8, mask.isEditable(x, y), "(" + x + "," + y + ")");
-                } else if (y > 8) {
-                    assertFalse(mask.isEditable(x, y), "(" + x + "," + y + ")");
-                } else {
-                    assertFalse(x < 8 && mask.isEditable(x, y), "(" + x + "," + y + ")");
+                assertEquals(x >= 8 && y < 8, mask.isEditable(x, y), "(" + x + "," + y + ")");
+            }
+        }
+    }
+
+    /** Interior right/bottom edges on exact pixel boundaries: the face is exactly its cells. */
+    @Tag("regression")
+    @Test
+    void adjacentFacesOfACubeNetNeverOverlap() {
+        // Four 4x4 faces tiling an 8x8 canvas; each must own exactly its 16 pixels.
+        float[] unitX = {0, 1, 1, 0};
+        float[] unitY = {0, 0, 1, 1};
+        PolygonShapeMask[] faces = {
+                PolygonShapeMask.fromUVRegion(8, 8, 0f, 0f, 0.5f, 0.5f, unitX, unitY),
+                PolygonShapeMask.fromUVRegion(8, 8, 0.5f, 0f, 1f, 0.5f, unitX, unitY),
+                PolygonShapeMask.fromUVRegion(8, 8, 0f, 0.5f, 0.5f, 1f, unitX, unitY),
+                PolygonShapeMask.fromUVRegion(8, 8, 0.5f, 0.5f, 1f, 1f, unitX, unitY),
+        };
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                int owners = 0;
+                for (PolygonShapeMask face : faces) {
+                    if (face.isEditable(x, y)) owners++;
                 }
+                assertEquals(1, owners, "pixel (" + x + "," + y + ") must belong to exactly one face");
+            }
+        }
+    }
+
+    /** A triangle whose diagonal runs through pixel corners only marks the cells inside it. */
+    @Tag("regression")
+    @Test
+    void diagonalThroughPixelCornersDoesNotSpillAcrossIt() {
+        // Lower-left triangle of a 4x4 square: (0,0) -> (4,4) -> (0,4).
+        PolygonShapeMask mask = new PolygonShapeMask(8, 8,
+                new float[]{0, 4, 0}, new float[]{0, 4, 4});
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                boolean expected = y < 4 && x <= y;
+                assertEquals(expected, mask.isEditable(x, y), "(" + x + "," + y + ")");
             }
         }
     }

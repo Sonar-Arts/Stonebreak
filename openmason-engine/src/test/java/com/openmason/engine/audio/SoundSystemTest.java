@@ -150,6 +150,17 @@ class SoundSystemTest {
         assertEquals(0f, alGetSourcef(musicSource(), AL_GAIN), EPS);
     }
 
+    @Tag("regression")
+    @Test
+    void nanMusicVolumeKeepsTheCurrentVolume() {
+        sound.loadMusic("theme", stereo(MUSIC_FRAMES));
+        sound.playMusic("theme");
+        sound.setMusicVolume(0.4f);
+        sound.setMusicVolume(Float.NaN);
+        assertEquals(0.4f, sound.getMusicVolume(), EPS);
+        assertEquals(0.4f * sound.getMasterVolume(), alGetSourcef(musicSource(), AL_GAIN), EPS);
+    }
+
     @Test
     void musicPlaybackEndsAndCanBeStopped() {
         sound.loadMusic("short", stereo(1000));

@@ -1,6 +1,8 @@
 package com.openmason.main.systems.menus.textureCreator.commands;
 
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
+import com.openmason.main.systems.menus.textureCreator.selection.RectangularSelection;
+import com.openmason.main.systems.menus.textureCreator.selection.SelectionManager;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -116,5 +118,26 @@ class PasteCommandTest {
         while (history.redo()) { }
         assertArrayEquals(pasted, target.getPixels());
         assertEquals("Paste at (1, 2)", new PasteCommand(target, clip(1, 1, RED), 1, 2, null, false).getDescription());
+    }
+
+    /** Undo/redo used to go through the current selection, so they skipped whatever it excluded. */
+    @Tag("regression")
+    @Test
+    void undoAndRedoAreNotClippedByTheCurrentSelection() {
+        PixelCanvas target = new PixelCanvas(4, 1);
+        SelectionManager selection = new SelectionManager();
+        target.setSelectionManager(selection);
+        selection.setActiveSelection(new RectangularSelection(1, 0, 2, 0));
+        PasteCommand paste = new PasteCommand(target, clip(4, 1, RED), 0, 0, null, false);
+
+        paste.execute();
+        int[] pasted = {0, RED, RED, 0};
+        assertArrayEquals(pasted, target.getPixels(), "the paste itself honours the selection");
+
+        selection.setActiveSelection(new RectangularSelection(3, 0, 3, 0));
+        paste.undo();
+        assertArrayEquals(new int[4], target.getPixels());
+        paste.execute();
+        assertArrayEquals(pasted, target.getPixels(), "redo replays what was pasted, nothing more");
     }
 }

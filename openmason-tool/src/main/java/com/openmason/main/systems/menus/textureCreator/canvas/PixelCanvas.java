@@ -129,6 +129,24 @@ public class PixelCanvas {
     }
 
     /**
+     * Write a pixel recorded by undo history, ignoring the shape mask and the
+     * selection. Undo/redo must put back exactly the pixels an edit changed,
+     * whatever is selected now; edits themselves go through {@link #setPixel}.
+     *
+     * @param x pixel X coordinate
+     * @param y pixel Y coordinate
+     * @param color pixel color (RGBA packed as int)
+     */
+    public void restorePixel(int x, int y, int color) {
+        if (!isValidCoordinate(x, y)) {
+            return;
+        }
+        pixels[y * width + x] = color;
+        modificationVersion++;
+        notifyChangeListeners(x, y, 1, 1);
+    }
+
+    /**
      * Fill entire canvas with a color.
      *
      * @param color fill color (RGBA packed as int)

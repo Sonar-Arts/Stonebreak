@@ -1,5 +1,6 @@
 package com.openmason.engine.audio;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -80,17 +81,28 @@ class VolumeControllerTest {
         }
     }
 
-    /**
-     * Documents current behaviour (reported, not fixed): the clamp is
-     * {@code max(0, min(1, x))}, and both {@code Math.min} and {@code Math.max} propagate NaN, so a
-     * NaN volume is stored as-is and every subsequent AL_GAIN becomes NaN (OpenAL rejects it with
-     * AL_INVALID_VALUE, so sounds keep their previous gain).
-     */
+    /** NaN used to pass the min/max clamp and poison every later AL_GAIN; it now keeps the old value. */
+    @Tag("regression")
     @Test
-    void nanVolumeIsNotClampedCurrentBehaviour() {
+    void nanVolumeKeepsThePreviousSetting() {
         VolumeController v = new VolumeController();
+        v.setMasterVolume(0.6f);
+        v.setEnvironmentGain(0.5f);
+
         v.setMasterVolume(Float.NaN);
-        assertTrue(Float.isNaN(v.getMasterVolume()));
-        assertTrue(Float.isNaN(v.getEffectiveVolume()));
+        v.setEnvironmentGain(Float.NaN);
+
+        assertEquals(0.6f, v.getMasterVolume(), 1e-6f);
+        assertEquals(0.5f, v.getEnvironmentGain(), 1e-6f);
+        assertEquals(0.3f, v.getEffectiveVolume(), 1e-6f);
+    }
+
+    @Test
+    void infinitiesClampToTheRangeEnds() {
+        VolumeController v = new VolumeController();
+        v.setMasterVolume(Float.POSITIVE_INFINITY);
+        assertEquals(1.0f, v.getMasterVolume());
+        v.setMasterVolume(Float.NEGATIVE_INFINITY);
+        assertEquals(0.0f, v.getMasterVolume());
     }
 }

@@ -263,4 +263,36 @@ class OMTRoundTripTest {
             }
         }
     }
+
+    /** Saving used to write straight over the target, so a mid-write failure destroyed the project. */
+    @Test
+    @Tag("regression")
+    void aSaveThatFailsPartWayLeavesTheExistingFileUntouched() throws IOException {
+        LayerManager layers = new LayerManager(4, 4);
+        layers.getLayer(0).getCanvas().fill(0xFF808080);
+        Path file = dir.resolve("keep.omt");
+        assertTrue(new OMTSerializer().save(layers, file.toString()));
+        byte[] before = Files.readAllBytes(file);
+
+        // A material texture that cannot be encoded fails after the manifest and layers are written.
+        PixelCanvas unencodable = new PixelCanvas(2, 2) {
+            @Override
+            public byte[] getPixelsAsRGBABytes() {
+                return null;
+            }
+        };
+        layers.getLayer(0).getCanvas().fill(0xFF0000FF);
+        boolean saved = new OMTSerializer().save(layers, List.of(),
+                List.of(new OMTFormat.MaterialInfo(0, "Broken", "OPAQUE", OMTFormat.generateMaterialFilename(0))),
+                Map.of(0, unencodable), file.toString());
+
+        assertFalse(saved);
+        assertArrayEquals(before, Files.readAllBytes(file), "the previous save must survive");
+        try (var entries = Files.list(dir)) {
+            assertEquals(List.of(file), entries.toList(), "no temp file is left behind");
+        }
+        LayerManager reloaded = new OMTDeserializer().load(file.toString());
+        assertNotNull(reloaded);
+        assertEquals(0xFF808080, reloaded.getLayer(0).getCanvas().getPixel(0, 0));
+    }
 }

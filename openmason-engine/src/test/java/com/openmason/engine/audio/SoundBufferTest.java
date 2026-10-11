@@ -157,17 +157,41 @@ class SoundBufferTest {
         assertTrue(pool.isSoundLoaded("step"));
     }
 
-    /**
-     * Documents current behaviour (reported, not fixed): re-adding a name replaces the pool
-     * without deleting the previous sources, so they outlive {@link SoundBuffer#cleanup()}.
-     * Callers (ResolvedSoundEvents, the tool's SoundPreviewService) guard with isSoundLoaded.
-     */
+    /** Re-adding a name used to orphan the previous sources and buffer past cleanup(). */
+    @Tag("regression")
     @Test
-    void readdingANameOrphansThePreviousSourcesCurrentBehaviour() {
-        pool.addSound("a", buffer());
+    void readdingANameFreesThePreviousSourcesAndBuffer() {
+        int firstBuffer = buffer();
+        pool.addSound("a", firstBuffer);
         Integer[] first = pool.getSources("a");
-        pool.addSound("a", buffer());
+        alSourcePlay(first[0]);
+
+        int secondBuffer = buffer();
+        assertTrue(pool.addSound("a", secondBuffer));
+
+        assertFalse(alIsBuffer(firstBuffer), "the replaced buffer must be deleted");
+        assertTrue(alIsBuffer(secondBuffer));
+        assertEquals(POOL, pool.getSources("a").length);
+        assertEquals(secondBuffer, alGetSourcei(pool.getSources("a")[0], AL_BUFFER));
+
+        // OpenAL Soft recycles freed source names, so liveness is checked after
+        // cleanup(): the old pool must not outlive it.
         pool.cleanup();
-        for (int s : first) assertTrue(alIsSource(s), "old sources are leaked");
+        for (int s : first) assertFalse(alIsSource(s), "source " + s + " outlived cleanup()");
+    }
+
+    @Test
+    void readdingTheSameBufferUnderItsOwnNameKeepsTheBuffer() {
+        int buf = buffer();
+        pool.addSound("a", buf);
+        Integer[] first = pool.getSources("a");
+
+        assertTrue(pool.addSound("a", buf));
+
+        assertTrue(alIsBuffer(buf), "the buffer is still in use and must survive");
+        assertEquals(POOL, pool.getSources("a").length);
+        assertEquals(buf, alGetSourcei(pool.getSources("a")[0], AL_BUFFER));
+        pool.cleanup();
+        for (int s : first) assertFalse(alIsSource(s), "source " + s + " outlived cleanup()");
     }
 }
