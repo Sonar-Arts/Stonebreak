@@ -228,27 +228,19 @@ public class BrushDrawingHelper {
         if (symmetryState != null && symmetryState.isActive() &&
             symmetryState.isEnabledForTool(toolClassName)) {
 
-            // Get mirrored start point
-            List<SymmetryHelper.Point2i> startMirrors = SymmetryHelper.calculateMirrorPoints(
-                x0, y0,
+            // Mirror both endpoints with the same transform. Pairing the per-point
+            // mirror lists by index went wrong when one endpoint lay on an axis
+            // (its mirror is omitted there, shifting or dropping the pairs).
+            List<SymmetryHelper.Point2i[]> mirroredSegments = SymmetryHelper.calculateMirrorSegments(
+                x0, y0, x1, y1,
                 symmetryState.getMode(),
                 canvas.getWidth(), canvas.getHeight(),
                 symmetryState.getAxisOffsetX(), symmetryState.getAxisOffsetY()
             );
 
-            // Get mirrored end point
-            List<SymmetryHelper.Point2i> endMirrors = SymmetryHelper.calculateMirrorPoints(
-                x1, y1,
-                symmetryState.getMode(),
-                canvas.getWidth(), canvas.getHeight(),
-                symmetryState.getAxisOffsetX(), symmetryState.getAxisOffsetY()
-            );
-
-            // Draw mirrored lines (skip index 0 which is the original)
-            for (int i = 1; i < startMirrors.size() && i < endMirrors.size(); i++) {
-                SymmetryHelper.Point2i start = startMirrors.get(i);
-                SymmetryHelper.Point2i end = endMirrors.get(i);
-                drawBrushLine(start.x(), start.y(), end.x(), end.y(), color, canvas, command, brushSize);
+            for (SymmetryHelper.Point2i[] segment : mirroredSegments) {
+                drawBrushLine(segment[0].x(), segment[0].y(), segment[1].x(), segment[1].y(),
+                        color, canvas, command, brushSize);
             }
         }
     }

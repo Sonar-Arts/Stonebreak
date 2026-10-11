@@ -1,6 +1,7 @@
 package com.openmason.main.systems.project;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -22,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * before scenes existed must load cleanly, report no scene, and round-trip without
  * growing a scene node it never had.
  */
+@Tag("regression")
 class OMPSceneReferenceTest {
 
     @TempDir

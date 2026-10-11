@@ -34,6 +34,17 @@ public class AudioLoader {
         }
     }
 
+    private final PcmUploader uploader;
+
+    public AudioLoader() {
+        this(AudioLoader::uploadToOpenAL);
+    }
+
+    /** Test seam: decodes as usual but hands the PCM to {@code uploader} instead of OpenAL. */
+    AudioLoader(PcmUploader uploader) {
+        this.uploader = uploader;
+    }
+
     public LoadResult loadSound(String name, String resourcePath) {
         logger.debug("Loading sound '{}' from resource path: {}", name, resourcePath);
 
@@ -186,7 +197,7 @@ public class AudioLoader {
     }
 
     /**
-     * Decodes {@code is} to 16-bit PCM and uploads it to a new OpenAL buffer.
+     * Decodes {@code is} to 16-bit PCM and uploads it to a new buffer via {@link #uploader}.
      *
      * @param forceMono when true, downmixes to mono (required for the 3D-positional SFX sources
      *                  in {@link SoundBuffer}); when false, preserves up to 2 channels (music,
@@ -194,65 +205,94 @@ public class AudioLoader {
      */
     private LoadResult decodeToBuffer(String name, InputStream is, String path, boolean forceMono) {
         try {
-            try (BufferedInputStream bis = new BufferedInputStream(is);
-                 AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(bis)) {
-                AudioFormat format = audioInputStream.getFormat();
+            DecodedPcm pcm = decodePcm(is, forceMono);
 
-                logger.debug("Sound '{}' original format: {}", name, format);
+            logger.debug("Sound '{}' converted: {} channels, {} Hz, {} bytes",
+                    name, pcm.channels(), pcm.sampleRate(), pcm.data().length);
 
-                int targetChannels = forceMono ? 1 : Math.min(format.getChannels(), 2);
-                if (forceMono && format.getChannels() > 1) {
-                    logger.debug("Converting {}-channel audio to MONO for 3D positional audio", format.getChannels());
-                }
+            ByteBuffer audioBuffer = BufferUtils.createByteBuffer(pcm.data().length);
+            audioBuffer.put(pcm.data());
+            audioBuffer.flip();
 
-                AudioFormat targetFormat = new AudioFormat(
-                    AudioFormat.Encoding.PCM_SIGNED,
-                    format.getSampleRate(),
-                    16,
-                    targetChannels,
-                    targetChannels * 2,    // Frame size: channels * 2 bytes
-                    format.getSampleRate(),
-                    false
-                );
+            return uploader.upload(name, audioBuffer, pcm.channels(), pcm.sampleRate());
 
-                try (AudioInputStream pcmStream = AudioSystem.getAudioInputStream(targetFormat, audioInputStream)) {
-                    byte[] audioData = pcmStream.readAllBytes();
-                    ByteBuffer audioBuffer = BufferUtils.createByteBuffer(audioData.length);
-                    audioBuffer.put(audioData);
-                    audioBuffer.flip();
-
-                    int channels = targetFormat.getChannels();
-                    int sampleRate = (int) targetFormat.getSampleRate();
-
-                    logger.debug("Sound '{}' converted: {} channels, {} Hz, {} bytes",
-                            name, channels, sampleRate, audioData.length);
-
-                    int alFormat = channels == 1 ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16;
-
-                    int bufferPointer = alGenBuffers();
-                    alBufferData(bufferPointer, alFormat, audioBuffer, sampleRate);
-
-                    int error = alGetError();
-                    if (error != AL_NO_ERROR) {
-                        String errorMsg = "OpenAL error loading buffer: " + error;
-                        logger.error(errorMsg);
-                        return LoadResult.failure(errorMsg);
-                    }
-
-                    logger.debug("Successfully loaded sound: {} ({} channels, {} Hz)", name, channels, sampleRate);
-                    return LoadResult.success(bufferPointer);
-                }
-
-            } catch (UnsupportedAudioFileException e) {
-                String errorMsg = "Unsupported audio file format: " + path;
-                logger.error(errorMsg, e);
-                return LoadResult.failure(errorMsg);
-            }
-
+        } catch (UnsupportedAudioFileException e) {
+            String errorMsg = "Unsupported audio file format: " + path;
+            logger.error(errorMsg, e);
+            return LoadResult.failure(errorMsg);
         } catch (IOException e) {
             String errorMsg = "Error loading sound " + path + ": " + e.getMessage();
             logger.error(errorMsg, e);
             return LoadResult.failure(errorMsg);
         }
+    }
+
+    /** Decoded 16-bit signed little-endian PCM, interleaved when {@code channels == 2}. */
+    record DecodedPcm(byte[] data, int channels, int sampleRate) {
+    }
+
+    /**
+     * Decodes any Java Sound-readable stream to 16-bit signed little-endian PCM at the source
+     * sample rate. Pure (no OpenAL); {@code is} is wrapped and closed by the decoder.
+     *
+     * @param forceMono true downmixes to one channel, false keeps up to two
+     */
+    static DecodedPcm decodePcm(InputStream is, boolean forceMono)
+            throws IOException, UnsupportedAudioFileException {
+        try (BufferedInputStream bis = new BufferedInputStream(is);
+             AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(bis)) {
+            AudioFormat format = audioInputStream.getFormat();
+
+            logger.debug("Sound original format: {}", format);
+
+            int targetChannels = forceMono ? 1 : Math.min(format.getChannels(), 2);
+            if (forceMono && format.getChannels() > 1) {
+                logger.debug("Converting {}-channel audio to MONO for 3D positional audio", format.getChannels());
+            }
+
+            AudioFormat targetFormat = new AudioFormat(
+                AudioFormat.Encoding.PCM_SIGNED,
+                format.getSampleRate(),
+                16,
+                targetChannels,
+                targetChannels * 2,    // Frame size: channels * 2 bytes
+                format.getSampleRate(),
+                false
+            );
+
+            try (AudioInputStream pcmStream = AudioSystem.getAudioInputStream(targetFormat, audioInputStream)) {
+                byte[] audioData = pcmStream.readAllBytes();
+                return new DecodedPcm(audioData, targetFormat.getChannels(), (int) targetFormat.getSampleRate());
+            }
+        }
+    }
+
+    /** Hands decoded PCM to the audio backend: the seam that keeps decoding testable without a device. */
+    @FunctionalInterface
+    interface PcmUploader {
+        LoadResult upload(String name, ByteBuffer pcm, int channels, int sampleRate);
+    }
+
+    /** Production {@link PcmUploader}: creates an OpenAL buffer on the current context. */
+    static LoadResult uploadToOpenAL(String name, ByteBuffer pcm, int channels, int sampleRate) {
+        int alFormat = channels == 1 ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16;
+
+        // alGetError reports the first error since it was last read, by ANY caller: clear a stale
+        // one first so an unrelated earlier mistake can't fail (and leak) this valid upload.
+        alGetError();
+
+        int bufferPointer = alGenBuffers();
+        alBufferData(bufferPointer, alFormat, pcm, sampleRate);
+
+        int error = alGetError();
+        if (error != AL_NO_ERROR) {
+            alDeleteBuffers(bufferPointer);
+            String errorMsg = "OpenAL error loading buffer: " + error;
+            logger.error(errorMsg);
+            return LoadResult.failure(errorMsg);
+        }
+
+        logger.debug("Successfully loaded sound: {} ({} channels, {} Hz)", name, channels, sampleRate);
+        return LoadResult.success(bufferPointer);
     }
 }

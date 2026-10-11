@@ -55,6 +55,7 @@ public final class KeyCodeTranslator {
             case GLFW.GLFW_KEY_MINUS -> ImGuiKey.Minus;
             case GLFW.GLFW_KEY_KP_ADD -> ImGuiKey.KeypadAdd;
             case GLFW.GLFW_KEY_KP_SUBTRACT -> ImGuiKey.KeypadSubtract;
+            case GLFW.GLFW_KEY_KP_DECIMAL -> ImGuiKey.KeypadDecimal;
             case GLFW.GLFW_KEY_KP_ENTER -> ImGuiKey.KeypadEnter;
             case GLFW.GLFW_KEY_LEFT_CONTROL -> ImGuiKey.LeftCtrl;
             case GLFW.GLFW_KEY_RIGHT_CONTROL -> ImGuiKey.RightCtrl;

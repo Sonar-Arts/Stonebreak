@@ -1,6 +1,7 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import com.openmason.engine.format.sbo.SBOFormat;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -14,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * must be lossless without any rendering. (The section's constructor and data
  * methods are headless by design — no ImGui/GL calls.)
  */
+@Tag("regression")
 class SBORecipeSectionDataTest {
 
     @Test

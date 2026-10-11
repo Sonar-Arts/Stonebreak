@@ -86,12 +86,16 @@ final class TransformMath {
         }
 
         Rectangle sourceBounds = snapshot.bounds();
-        // Transform pixel center corners (where actual corner pixels are)
+        // Transform the outer pixel EDGES of the selection. (Mapping the corner pixel
+        // centres and padding by half a pixel under-covers by (scale - 1) / 2 per side
+        // when upscaling, which dropped the outer row/column of odd-sized selections.)
+        // The edge box is a superset of every destination pixel whose centre samples
+        // the source; unused border pixels are cropped below.
         double[][] corners = new double[][]{
-                mapLocalToCanvas(0.5, 0.5, snapshot, transform),
-                mapLocalToCanvas(sourceBounds.width - 0.5, 0.5, snapshot, transform),
-                mapLocalToCanvas(sourceBounds.width - 0.5, sourceBounds.height - 0.5, snapshot, transform),
-                mapLocalToCanvas(0.5, sourceBounds.height - 0.5, snapshot, transform)
+                mapLocalToCanvas(0.0, 0.0, snapshot, transform),
+                mapLocalToCanvas(sourceBounds.width, 0.0, snapshot, transform),
+                mapLocalToCanvas(sourceBounds.width, sourceBounds.height, snapshot, transform),
+                mapLocalToCanvas(0.0, sourceBounds.height, snapshot, transform)
         };
 
         double minX = Double.POSITIVE_INFINITY;
@@ -105,12 +109,6 @@ final class TransformMath {
             minY = Math.min(minY, corner[1]);
             maxY = Math.max(maxY, corner[1]);
         }
-
-        // Expand by 0.5 pixels since corners are pixel centers, not edges
-        minX -= 0.5;
-        maxX += 0.5;
-        minY -= 0.5;
-        maxY += 0.5;
 
         int canvasWidth = snapshot.canvasWidth();
         int canvasHeight = snapshot.canvasHeight();

@@ -4,6 +4,7 @@ import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.main.systems.menus.mainHub.model.ProjectTemplate;
 import com.openmason.main.systems.menus.mainHub.services.TemplateService;
 import com.openmason.main.systems.rendering.model.io.omo.OMODeserializer;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -31,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The New Biome template writes its starter models headlessly and opens Log.
  */
+@Tag("integration")
 class TemplateScaffolderTest {
 
     private static final List<String> BIOME_MODELS = List.of("Log", "Planks", "Stairs", "Leaves", "Sapling", "Grass");

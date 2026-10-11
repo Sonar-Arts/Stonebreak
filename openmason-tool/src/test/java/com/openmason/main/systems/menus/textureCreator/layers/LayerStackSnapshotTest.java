@@ -1,11 +1,13 @@
 package com.openmason.main.systems.menus.textureCreator.layers;
 
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@Tag("regression")
 class LayerStackSnapshotTest {
 
     private static final int RED = PixelCanvas.packRGBA(255, 0, 0, 255);

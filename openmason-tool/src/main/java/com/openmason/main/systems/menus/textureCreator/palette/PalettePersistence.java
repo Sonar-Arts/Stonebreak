@@ -16,7 +16,8 @@ import java.util.Map;
  * Loads and saves the saved-palettes library through
  * {@link PreferencesManager} as a single JSON property:
  * {@code {"active":"Default","palettes":{"Default":["FF0000FF",...]}}}.
- * Colors serialize as RRGGBBAA hex (same convention as the color history).
+ * Colors serialize as the packed int in hex, i.e. AABBGGRR (same convention as
+ * the color history), so {@code "FF0000FF"} is opaque red.
  *
  * Migrates the legacy single-palette comma-separated property
  * ({@code texture.editor.palette}) into a "Default" palette on first load.
@@ -25,11 +26,45 @@ public final class PalettePersistence {
 
     private static final Logger logger = LoggerFactory.getLogger(PalettePersistence.class);
 
-    private final PreferencesManager preferences;
+    /**
+     * The two preference properties this class reads and writes. Production code
+     * backs it with {@link PreferencesManager}; tests use an in-memory store so
+     * nothing touches the real preferences file.
+     */
+    interface Store {
+        /** Saved-palettes library JSON, or null if never persisted. */
+        String palettesJson();
+
+        void setPalettesJson(String json);
+
+        /** Legacy single comma-separated palette (empty if none). */
+        List<Integer> legacyPalette();
+    }
+
+    private final Store store;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public PalettePersistence(PreferencesManager preferences) {
-        this.preferences = preferences;
+        this(new Store() {
+            @Override
+            public String palettesJson() {
+                return preferences.getTextureEditorPalettesJson();
+            }
+
+            @Override
+            public void setPalettesJson(String json) {
+                preferences.setTextureEditorPalettesJson(json);
+            }
+
+            @Override
+            public List<Integer> legacyPalette() {
+                return preferences.getTextureEditorPalette();
+            }
+        });
+    }
+
+    PalettePersistence(Store store) {
+        this.store = store;
     }
 
     /**
@@ -41,7 +76,7 @@ public final class PalettePersistence {
         Map<String, List<Integer>> palettes = new LinkedHashMap<>();
         String active = PaletteLibrary.DEFAULT_PALETTE_NAME;
 
-        String json = preferences.getTextureEditorPalettesJson();
+        String json = store.palettesJson();
         if (json != null && !json.isBlank()) {
             try {
                 JsonNode root = mapper.readTree(json);
@@ -68,7 +103,7 @@ public final class PalettePersistence {
 
         // Legacy migration: single comma-separated palette property
         if (palettes.isEmpty()) {
-            List<Integer> legacy = preferences.getTextureEditorPalette();
+            List<Integer> legacy = store.legacyPalette();
             if (!legacy.isEmpty()) {
                 palettes.put(PaletteLibrary.DEFAULT_PALETTE_NAME, legacy);
                 logger.info("Migrated legacy single palette ({} colors)", legacy.size());
@@ -90,7 +125,7 @@ public final class PalettePersistence {
                     colors.add(String.format("%08X", color));
                 }
             }
-            preferences.setTextureEditorPalettesJson(mapper.writeValueAsString(root));
+            store.setPalettesJson(mapper.writeValueAsString(root));
         } catch (Exception e) {
             logger.error("Failed to save palettes", e);
         }

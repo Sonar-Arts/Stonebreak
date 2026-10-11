@@ -257,10 +257,13 @@ public class PixelCanvas {
             return 0x00000000; // Fully transparent
         }
 
-        int outR = (int) ((srcRGBA[0] * srcAlpha + dstRGBA[0] * dstAlpha * (1.0f - srcAlpha)) / outAlpha);
-        int outG = (int) ((srcRGBA[1] * srcAlpha + dstRGBA[1] * dstAlpha * (1.0f - srcAlpha)) / outAlpha);
-        int outB = (int) ((srcRGBA[2] * srcAlpha + dstRGBA[2] * dstAlpha * (1.0f - srcAlpha)) / outAlpha);
-        int outA = (int) (outAlpha * 255.0f);
+        // Round, not truncate: truncation shifted a translucent colour's RGB
+        // by one level when painted onto transparency, and darkened a colour
+        // painted over itself.
+        int outR = Math.round((srcRGBA[0] * srcAlpha + dstRGBA[0] * dstAlpha * (1.0f - srcAlpha)) / outAlpha);
+        int outG = Math.round((srcRGBA[1] * srcAlpha + dstRGBA[1] * dstAlpha * (1.0f - srcAlpha)) / outAlpha);
+        int outB = Math.round((srcRGBA[2] * srcAlpha + dstRGBA[2] * dstAlpha * (1.0f - srcAlpha)) / outAlpha);
+        int outA = Math.round(outAlpha * 255.0f);
 
         return packRGBA(outR, outG, outB, outA);
     }

@@ -190,7 +190,7 @@ public final class MortarPainter {
         return lines.size() * lineH;
     }
 
-    private static List<String> wrap(String s, Font font, float maxWidth, int maxLines) {
+    static List<String> wrap(String s, Font font, float maxWidth, int maxLines) {
         List<String> lines = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         for (String word : s.trim().split("\\s+")) {
@@ -225,7 +225,7 @@ public final class MortarPainter {
         canvas.restore();
     }
 
-    private static String ellipsize(String s, Font font, float maxWidth) {
+    static String ellipsize(String s, Font font, float maxWidth) {
         if (font.measureTextWidth(s) <= maxWidth) {
             return s;
         }

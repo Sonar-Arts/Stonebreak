@@ -1,5 +1,6 @@
 package com.openmason.main.systems.mcp.approval;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -10,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+@Tag("integration")
 class McpApprovalGateTest {
 
     private static ApprovalGate.ApprovalRequest request(long timeoutMs) {

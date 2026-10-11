@@ -19,6 +19,7 @@ import com.openmason.main.systems.uiEditor.service.UiRecoveryService;
 import com.openmason.main.systems.uiEditor.view.UiEditorContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -41,6 +42,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * call never applies late, exports report what the real game host would say, and deploy ships
  * the screen and its shared assets into the game's layout without clobbering.
  */
+@Tag("regression")
+@Tag("integration")
 class UiAgentHardeningTest {
 
     private final ObjectMapper mapper = new ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_NULL);

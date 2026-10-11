@@ -12,6 +12,7 @@ import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.services.StatusService;
 import com.openmason.main.systems.stateHandling.ModelState;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -27,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** JSON → ExportParameters → serializer → parser round trips, headless. */
+@Tag("regression")
 class AssetExportBuilderTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();

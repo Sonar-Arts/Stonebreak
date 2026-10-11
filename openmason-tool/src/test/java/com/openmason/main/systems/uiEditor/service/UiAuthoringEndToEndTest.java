@@ -22,6 +22,7 @@ import com.stonebreak.ui.runtime.GameUiResources;
 import io.github.humbleui.skija.Typeface;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -42,6 +43,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Author a screen with editor commands, save the OMUI, export the SBUI, load it the way the game
  * does, and check the canvas geometry the designer relies on (#293 validation).
  */
+@Tag("regression")
+@Tag("integration")
 class UiAuthoringEndToEndTest {
 
     private static Typeface typeface;

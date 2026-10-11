@@ -1,6 +1,7 @@
 package com.openmason.main.systems.project;
 
 import com.openmason.main.systems.layout.Workspace;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -16,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The .omp UI Editor node (#293; 1.4 adds detached + settings): round trip, and older projects untouched. */
+@Tag("regression")
 class OMPUiEditorReferenceTest {
 
     @TempDir

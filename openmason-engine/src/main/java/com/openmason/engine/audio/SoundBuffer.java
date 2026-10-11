@@ -28,6 +28,10 @@ public class SoundBuffer {
 
         Integer[] soundSources = new Integer[sourcesPerSound];
 
+        // Clear a stale error left by an unrelated earlier AL call; the per-source check below
+        // would otherwise blame it on this sound and abort a valid registration.
+        alGetError();
+
         for (int i = 0; i < sourcesPerSound; i++) {
             int sourcePointer = alGenSources();
             alSourcei(sourcePointer, AL_BUFFER, bufferPointer);
@@ -54,7 +58,8 @@ public class SoundBuffer {
             int error = alGetError();
             if (error != AL_NO_ERROR) {
                 logger.error("OpenAL error creating source {} for {}: {}", i, name, error);
-                // Clean up any sources created so far
+                // Clean up any sources created so far, including this one
+                alDeleteSources(sourcePointer);
                 for (int j = 0; j < i; j++) {
                     alDeleteSources(soundSources[j]);
                 }

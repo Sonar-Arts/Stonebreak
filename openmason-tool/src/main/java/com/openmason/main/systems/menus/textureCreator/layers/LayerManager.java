@@ -89,8 +89,12 @@ public class LayerManager {
 
         Layer removed = layers.remove(index);
 
-        // Adjust active layer index
-        if (activeLayerIndex >= layers.size()) {
+        // Adjust active layer index. Removing a layer BELOW the active one shifts
+        // it down a slot, so the index must follow or a different layer becomes
+        // active.
+        if (index < activeLayerIndex) {
+            activeLayerIndex--;
+        } else if (activeLayerIndex >= layers.size()) {
             activeLayerIndex = layers.size() - 1;
         } else if (activeLayerIndex == index && activeLayerIndex > 0) {
             activeLayerIndex--;
@@ -120,9 +124,14 @@ public class LayerManager {
         Layer layer = layers.remove(fromIndex);
         layers.add(toIndex, layer);
 
-        // Update active layer index if it was the moved layer
+        // Keep the SAME layer active: follow the moved layer, or shift by one
+        // when the move jumped over the active layer.
         if (activeLayerIndex == fromIndex) {
             activeLayerIndex = toIndex;
+        } else if (fromIndex < activeLayerIndex && activeLayerIndex <= toIndex) {
+            activeLayerIndex--;
+        } else if (toIndex <= activeLayerIndex && activeLayerIndex < fromIndex) {
+            activeLayerIndex++;
         }
 
         compositeCacheDirty = true;
@@ -340,7 +349,7 @@ public class LayerManager {
 
                     // Apply layer opacity to pixel alpha
                     int[] rgba = PixelCanvas.unpackRGBA(srcPixel);
-                    rgba[3] = (int) (rgba[3] * opacity);
+                    rgba[3] = Math.round(rgba[3] * opacity); // same rounding as mergeLayerDown
                     int adjustedPixel = PixelCanvas.packRGBA(rgba[0], rgba[1], rgba[2], rgba[3]);
 
                     // Blend with destination
@@ -388,7 +397,7 @@ public class LayerManager {
 
                     // Apply layer opacity to pixel alpha
                     int[] rgba = PixelCanvas.unpackRGBA(srcPixel);
-                    rgba[3] = (int) (rgba[3] * opacity);
+                    rgba[3] = Math.round(rgba[3] * opacity); // same rounding as mergeLayerDown
                     int adjustedPixel = PixelCanvas.packRGBA(rgba[0], rgba[1], rgba[2], rgba[3]);
 
                     // Blend with destination
