@@ -337,7 +337,7 @@ public class TextureCreatorImGui {
 
     /**
      * Set callback for View → Reset Layout (rebuilds the default dock layout).
-     * Wired by the window hosting the dockspace (TextureEditorWindow).
+     * Wired by the workspace hosting the dockspace (TextureEditorWorkspace).
      */
     public void setOnResetLayout(Runnable callback) {
         menuBarRenderer.setOnResetLayout(callback);
@@ -401,7 +401,7 @@ public class TextureCreatorImGui {
 
     /**
      * Process dropped files (PNG and OMT).
-     * Called from TextureEditorWindow when processing pending file drops.
+     * Called from TextureEditorWorkspace when processing pending file drops.
      *
      * @param filePaths array of file paths to process
      */
@@ -486,14 +486,14 @@ public class TextureCreatorImGui {
     }
 
     /**
-     * Render windowed menu bar (for use at top of TextureEditorWindow).
+     * Render windowed menu bar (top of the Texture workspace's toolbar).
      */
     public void renderWindowedMenuBar() {
         windowedMenuBarRenderer.render();
     }
 
     /**
-     * Render windowed toolbar (for use below menu bar in TextureEditorWindow).
+     * Render windowed toolbar (below the menu bar in the Texture workspace's toolbar).
      */
     public void renderWindowedToolbar() {
         panelRenderer.renderToolOptionsBar();
@@ -501,7 +501,7 @@ public class TextureCreatorImGui {
 
     /**
      * Render the fixed left chrome columns (Color panel + splitter + tools
-     * strip). Called by TextureEditorWindow before submitting the dockspace.
+     * strip). Called by TextureEditorWorkspace before submitting the dockspace.
      *
      * @param height pixel height of the column row
      */
@@ -510,7 +510,7 @@ public class TextureCreatorImGui {
     }
 
     /**
-     * Render the status bar strip (for use below the dockspace in TextureEditorWindow).
+     * Render the status bar strip (below the dockspace in TextureEditorWorkspace).
      */
     public void renderStatusBar() {
         if (statusBarPanel != null) {
@@ -519,16 +519,23 @@ public class TextureCreatorImGui {
     }
 
     /**
-     * Render windowed panels and dialogs (for use below dockspace in TextureEditorWindow).
+     * Centre this editor's modals on the viewport of the current window: the window holding the
+     * Texture workspace (the main window, or the workspace's own window when popped out). Called
+     * from inside that window, before {@link #renderWindowedPanels()}.
      */
-    public void renderWindowedPanels() {
-        panelRenderer.renderAllPanels();
-        // Inside the popped-out editor host window: modals centre on ITS viewport,
-        // not the main window (a current window is active here, so getWindowViewport
-        // is safe and returns the editor's OS-window viewport).
+    public void anchorDialogsToCurrentWindow() {
         ImGuiViewport hostVp = ImGui.getWindowViewport();
         dialogRefCenterX = hostVp.getPosX() + hostVp.getSizeX() / 2.0f;
         dialogRefCenterY = hostVp.getPosY() + hostVp.getSizeY() / 2.0f;
+    }
+
+    /**
+     * Render the workspace's docked panels and dialogs (after the window holding the Texture
+     * workspace submitted its dockspace). Modals centre where
+     * {@link #anchorDialogsToCurrentWindow()} last put them.
+     */
+    public void renderWindowedPanels() {
+        panelRenderer.renderAllPanels();
         renderDialogs();
 
         // Render closeable windows

@@ -89,7 +89,10 @@ public final class TextureEditorLayoutBuilder {
         }
 
         imgui.internal.ImGui.dockBuilderRemoveNode(dockspaceId);
-        imgui.internal.ImGui.dockBuilderAddNode(dockspaceId, imgui.flag.ImGuiDockNodeFlags.None);
+        // DockSpace flag: the node is a host-submitted dockspace, not a floating dock node. Without it
+        // the rebuilt node is updated as a floating node at the next NewFrame, and the workspace
+        // window's DockSpace() call then trips "Cannot call DockSpace() twice a frame" (popped out).
+        imgui.internal.ImGui.dockBuilderAddNode(dockspaceId, imgui.internal.flag.ImGuiDockNodeFlags.DockSpace);
         imgui.internal.ImGui.dockBuilderSetNodeSize(dockspaceId, width, height);
 
         ImInt right = new ImInt();

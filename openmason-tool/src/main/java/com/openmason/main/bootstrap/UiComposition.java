@@ -14,7 +14,7 @@ import com.openmason.main.systems.menus.textureCreator.IFaceTextureGPUService;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.textureCreator.TexturePreviewPipeline;
 import com.openmason.main.systems.menus.scriptingWindow.ScriptingWindow;
-import com.openmason.main.systems.menus.windows.TextureEditorWindow;
+import com.openmason.main.systems.menus.textureCreator.TextureEditorWorkspace;
 import com.openmason.main.systems.project.OMPFormat;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
 import com.openmason.main.systems.scene.SceneViewerImGuiInterface;
@@ -66,7 +66,7 @@ public final class UiComposition {
     private ViewportImGuiInterface viewportInterface;
     private SceneViewerImGuiInterface sceneViewerInterface;
     private TextureCreatorImGui textureCreatorInterface;
-    private TextureEditorWindow textureEditorWindow;
+    private TextureEditorWorkspace textureEditorWorkspace;
     private ScriptingWindow scriptingWindow;
     private AnimationEditorImGui animationEditor;
     private TexturePreviewPipeline texturePreviewPipeline;
@@ -87,7 +87,7 @@ public final class UiComposition {
     public ViewportImGuiInterface viewportInterface() { return viewportInterface; }
     public SceneViewerImGuiInterface sceneViewerInterface() { return sceneViewerInterface; }
     public TextureCreatorImGui textureCreatorInterface() { return textureCreatorInterface; }
-    public TextureEditorWindow textureEditorWindow() { return textureEditorWindow; }
+    public TextureEditorWorkspace textureEditorWorkspace() { return textureEditorWorkspace; }
     public ScriptingWindow scriptingWindow() { return scriptingWindow; }
     public AnimationEditorImGui animationEditor() { return animationEditor; }
     public TexturePreviewPipeline texturePreviewPipeline() { return texturePreviewPipeline; }
@@ -222,7 +222,7 @@ public final class UiComposition {
             }
 
             textureCreatorInterface = TextureCreatorImGui.createDefault();
-            textureEditorWindow = new TextureEditorWindow(textureCreatorInterface);
+            textureEditorWorkspace = new TextureEditorWorkspace(textureCreatorInterface);
             scriptingWindow = new ScriptingWindow(mainInterface);
 
             // Point the texture editor's save/open dialogs at the open project's root
@@ -235,6 +235,8 @@ public final class UiComposition {
             wireAnimationEditor();
 
             wireUiEditor(sceneRoot);
+            // The Texture Editor is the third workspace tab, present while it is open.
+            mainInterface.addWorkspaceDock(com.openmason.main.systems.layout.Workspace.TEXTURE, textureEditorWorkspace);
 
             // Load custom keybinds AFTER both viewport and texture editor are initialized
             loadCustomKeybinds();

@@ -6,7 +6,7 @@ import imgui.flag.ImGuiStyleVar;
 
 /**
  * Scoped Aseprite-style dark restyle for the texture editor. Pushed at the
- * start of {@code TextureEditorWindow.render()} and popped at the end — all
+ * start of each {@code TextureEditorWorkspace} pass and popped at its end — all
  * docked editor panels render inside that scope, so the editor gets its flat
  * dark look without touching the global Open Mason theme. Accent colors
  * (Header/Button) are intentionally left to the active theme.

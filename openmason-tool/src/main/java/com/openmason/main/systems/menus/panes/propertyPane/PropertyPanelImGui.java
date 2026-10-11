@@ -135,7 +135,7 @@ public class PropertyPanelImGui {
 
         // Configure window flags to prevent main window scrollbar
         // NoScrollbar prevents the window itself from having scrollbars
-        // The child region will handle scrolling instead (like TextureEditorWindow)
+        // The child region will handle scrolling instead
         int windowFlags = ImGuiWindowFlags.NoScrollbar;
 
         if (ImGui.begin(WINDOW_TITLE, windowFlags)) {

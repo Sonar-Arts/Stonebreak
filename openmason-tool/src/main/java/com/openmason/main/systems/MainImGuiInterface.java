@@ -397,7 +397,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
         if (!isWorkspaceShown(com.openmason.main.systems.layout.Workspace.MODELING)) {
             // Scene is neither the main window's front tab nor a visible window of its own: its
-            // panels stay docked but hidden (the UI workspace draws its own).
+            // panels stay docked but hidden (the UI and Texture workspaces draw their own).
             aboutDialog.render();
             dockLayout.tickCenterTabFocus();
             if (fileMenuHandler != null && fileMenuHandler.getHomeScreenDialog() != null) {
@@ -845,17 +845,18 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      * property panel's "Edit Texture" button do.
      */
     public interface TextureEditorPresenter {
-        /** Show the texture editor window (no-op if already visible). */
+        /** Open the Texture workspace tab and bring it forward (raises its window when popped out). */
         void show();
 
         /**
-         * Close the texture editor window, flushing pending canvas edits to the
+         * Close the Texture workspace tab, flushing pending canvas edits to the
          * face texture, closing any active face region and auto-saving the
-         * model — the same path the window's own close button takes.
+         * model — the same path the tab's own close button takes (#331 moves the
+         * MCP to document tabs inside the editor instead).
          */
         void close();
 
-        /** Whether the texture editor window is currently shown. */
+        /** Whether the Texture workspace tab is open. */
         boolean isVisible();
 
         /**
@@ -1016,6 +1017,15 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         if (fileMenuHandler != null) {
             fileMenuHandler.setUiHooks(hooks);
         }
+    }
+
+    /**
+     * Adds another workspace tab (the Texture Editor) behind the main window's tab strip; call
+     * after {@link #setUiWorkspace}. Its tab shows while the workspace state has it open.
+     */
+    public void addWorkspaceDock(com.openmason.main.systems.layout.Workspace ws,
+                                 com.openmason.main.systems.layout.WorkspaceDock dock) {
+        dockLayout.addWorkspace(ws, dock);
     }
 
     /**

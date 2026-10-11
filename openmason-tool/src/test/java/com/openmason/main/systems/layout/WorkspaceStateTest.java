@@ -10,7 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** The main window's Scene | UI tabs: switching, popping tabs out, and the one-tab-stays rule. */
+/**
+ * The main window's Scene | UI | Texture tabs: switching, popping tabs out, the one-tab-stays rule,
+ * and the closable Texture tab's open/close lifecycle.
+ */
 class WorkspaceStateTest {
 
     @Test
@@ -81,5 +84,96 @@ class WorkspaceStateTest {
 
         s.restore(Workspace.UI, List.of(Workspace.MODELING));
         assertEquals(2, fired.size(), "an unchanged restore does not notify");
+    }
+
+    @Test
+    void theTextureTabOnlyExistsWhileOpen() {
+        WorkspaceState s = new WorkspaceState();
+        assertFalse(s.isOpen(Workspace.TEXTURE), "a fresh session has no Texture tab");
+        assertTrue(Workspace.TEXTURE.closable());
+        assertFalse(Workspace.MODELING.closable() || Workspace.UI.closable());
+        assertFalse(s.canDetach(Workspace.TEXTURE));
+        s.set(Workspace.TEXTURE);
+        assertEquals(Workspace.MODELING, s.current(), "a closed tab cannot be brought forward");
+        assertFalse(s.detach(Workspace.TEXTURE));
+
+        s.open(Workspace.TEXTURE);
+        assertTrue(s.isOpen(Workspace.TEXTURE));
+        assertEquals(Workspace.TEXTURE, s.current(), "opening brings the tab to the front");
+
+        assertTrue(s.close(Workspace.TEXTURE));
+        assertFalse(s.isOpen(Workspace.TEXTURE));
+        assertEquals(Workspace.MODELING, s.current());
+        assertFalse(s.close(Workspace.TEXTURE), "closing twice changes nothing");
+        assertFalse(s.close(Workspace.UI), "fixed tabs never close");
+        assertTrue(s.isOpen(Workspace.UI));
+    }
+
+    @Test
+    void anOpenTextureTabCountsTowardTheOneTabStaysRule() {
+        WorkspaceState s = new WorkspaceState();
+        s.open(Workspace.TEXTURE);
+        assertTrue(s.detach(Workspace.MODELING));
+        assertTrue(s.detach(Workspace.UI), "Texture keeps the main window occupied");
+        assertEquals(Workspace.TEXTURE, s.current());
+        assertFalse(s.canDetach(Workspace.TEXTURE));
+
+        s.close(Workspace.TEXTURE);
+        assertFalse(s.isDetached(Workspace.MODELING), "closing the last main-window tab docks Scene back");
+        assertTrue(s.isDetached(Workspace.UI));
+        assertEquals(Workspace.MODELING, s.current());
+    }
+
+    @Test
+    void theEditorOnlyEndsWhenExplicitlyClosedAndReopensInTheMainWindow() {
+        WorkspaceState s = new WorkspaceState();
+        s.open(Workspace.TEXTURE);
+        assertTrue(s.detach(Workspace.TEXTURE));
+        assertTrue(s.takeFocusRequest(Workspace.TEXTURE));
+        assertEquals(Workspace.MODELING, s.current());
+
+        s.attach(Workspace.TEXTURE, true); // its popped-out window's close button
+        assertTrue(s.isOpen(Workspace.TEXTURE), "closing the window does not end the editor");
+        assertFalse(s.isDetached(Workspace.TEXTURE));
+        assertEquals(Workspace.TEXTURE, s.current(), "it lands back at the front of the main window");
+
+        s.detach(Workspace.TEXTURE);
+        assertTrue(s.close(Workspace.TEXTURE)); // the popped-out tab button's close icon
+        assertFalse(s.isDetached(Workspace.TEXTURE));
+        assertFalse(s.takeFocusRequest(Workspace.TEXTURE), "no stale focus request for a closed tab");
+
+        s.open(Workspace.TEXTURE);
+        assertFalse(s.isDetached(Workspace.TEXTURE), "a reopened editor always starts in the main window");
+        assertEquals(Workspace.TEXTURE, s.current());
+    }
+
+    @Test
+    void reopeningAnOpenTabRaisesIt() {
+        WorkspaceState s = new WorkspaceState();
+        s.open(Workspace.TEXTURE);
+        s.set(Workspace.UI);
+        s.open(Workspace.TEXTURE); // e.g. "Edit Texture" while the tab is open behind UI
+        assertEquals(Workspace.TEXTURE, s.current());
+        s.detach(Workspace.TEXTURE);
+        s.takeFocusRequest(Workspace.TEXTURE);
+        s.open(Workspace.TEXTURE);
+        assertTrue(s.takeFocusRequest(Workspace.TEXTURE), "a popped-out editor raises its window");
+    }
+
+    @Test
+    void restoreNeverOpensOrClosesTheEditor() {
+        WorkspaceState s = new WorkspaceState();
+        s.restore(Workspace.TEXTURE, List.of(Workspace.TEXTURE));
+        assertFalse(s.isOpen(Workspace.TEXTURE));
+        assertEquals(Workspace.MODELING, s.current(), "a closed front tab falls back to Scene");
+        assertTrue(s.detached().isEmpty(), "a closed tab in the record is ignored");
+
+        s.open(Workspace.TEXTURE);
+        assertFalse(s.isDetached(Workspace.TEXTURE));
+
+        s.restore(Workspace.UI, List.of(Workspace.TEXTURE, Workspace.MODELING));
+        assertTrue(s.isOpen(Workspace.TEXTURE), "a restore never closes an open editor");
+        assertEquals(Set.of(Workspace.TEXTURE, Workspace.MODELING), s.detached());
+        assertEquals(Workspace.UI, s.current());
     }
 }
