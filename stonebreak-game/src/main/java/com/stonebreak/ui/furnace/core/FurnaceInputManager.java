@@ -4,16 +4,17 @@ import com.stonebreak.core.Game;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
+import com.stonebreak.ui.inventoryScreen.handlers.PointerFrame;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
-import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
 
 /**
  * Handles mouse input for the furnace screen: clicking furnace slots,
  * drag-and-drop into furnace, and normal inventory drag-and-drop.
  */
-public class FurnaceInputManager {
+public class FurnaceInputManager implements ContainerSlotInput {
 
     protected final InputHandler inputHandler;
     protected final Inventory inventory;
@@ -25,8 +26,11 @@ public class FurnaceInputManager {
     private long lastClickTimeMs = 0L;
     private float lastClickX = 0f, lastClickY = 0f;
 
+    /** Drops a carried stack at the player's feet; tests observe it. */
+    private java.util.function.Consumer<InventoryDragDropHandler.DragState> worldDrop =
+        InventoryDragDropHandler::dropEntireStackIntoWorld;
+
     // Right-click drag state
-    private boolean rightDragActive = false;
     private final java.util.Set<Integer> rightDragVisitedSlots = new java.util.HashSet<>();
 
     public FurnaceInputManager(InputHandler inputHandler, Inventory inventory,
@@ -41,19 +45,22 @@ public class FurnaceInputManager {
         return dragState;
     }
 
-    public void handleMouseInput(int screenWidth, int screenHeight) {
+    /**
+     * One frame of pointer input, synthesized at a slot by the furnace document (#289,
+     * {@link ContainerSlotInput}): every rule below runs from it.
+     */
+    @Override
+    public void handlePointer(PointerFrame pointer, int screenWidth, int screenHeight) {
         InventoryLayoutCalculator.InventoryLayout layout =
                 InventoryLayoutCalculator.calculateWorkbenchLayout(screenWidth, screenHeight);
 
-        Vector2f mousePos = inputHandler.getMousePosition();
-        float mouseX = mousePos.x;
-        float mouseY = mousePos.y;
-        boolean shiftDown = inputHandler.isKeyDown(GLFW.GLFW_KEY_LEFT_SHIFT) ||
-                           inputHandler.isKeyDown(GLFW.GLFW_KEY_RIGHT_SHIFT);
+        float mouseX = pointer.x();
+        float mouseY = pointer.y();
+        boolean shiftDown = pointer.shift();
 
-        boolean leftPressed = inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-        boolean rightPressed = inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
-        boolean rightDown = inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+        boolean leftPressed = pointer.leftPressed();
+        boolean rightPressed = pointer.rightPressed();
+        boolean rightDown = pointer.rightDown();
 
         if (leftPressed) {
             if (shiftDown) {
@@ -61,7 +68,9 @@ public class FurnaceInputManager {
             } else {
                 handleLeftClick(mouseX, mouseY, layout);
             }
-            inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            if (inputHandler != null) {
+                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            }
         } else if (rightDown && dragState.isDragging()) {
             handleRightDrag(mouseX, mouseY, layout);
         } else if (rightPressed) {
@@ -71,9 +80,64 @@ public class FurnaceInputManager {
         }
 
         if (!rightDown) {
-            rightDragActive = false;
             rightDragVisitedSlots.clear();
         }
+    }
+
+    @Override
+    public float[] slotOrigin(String slot, int screenWidth, int screenHeight) {
+        if (slot == null) {
+            return null;
+        }
+        InventoryLayoutCalculator.InventoryLayout layout =
+                InventoryLayoutCalculator.calculateWorkbenchLayout(screenWidth, screenHeight);
+        FurnaceLayout.Slots f = FurnaceLayout.compute(layout);
+        int ss = InventoryLayoutCalculator.getSlotSize();
+        int pad = InventoryLayoutCalculator.getSlotPadding();
+        switch (slot) {
+            case "outside" -> {
+                return new float[]{OUTSIDE, OUTSIDE};
+            }
+            case "ingredient" -> {
+                return new float[]{f.ingredientX, f.ingredientY};
+            }
+            case "fuel" -> {
+                return new float[]{f.fuelX, f.fuelY};
+            }
+            case "output" -> {
+                return new float[]{f.outputX, f.outputY};
+            }
+            case "panel" -> {
+                // the panel's top-left inner corner: inside the panel, on no slot (a held stack
+                // goes back where it came from instead of into the world)
+                float half = ss / 2f;
+                return new float[]{layout.panelStartX + 1 - half, layout.panelStartY + 1 - half};
+            }
+            default -> { }
+        }
+        int colon = slot.indexOf(':');
+        if (colon < 0) {
+            return null;
+        }
+        int i;
+        try {
+            i = Integer.parseInt(slot.substring(colon + 1));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        return switch (slot.substring(0, colon)) {
+            case "main" -> i < 0 || i >= Inventory.MAIN_INVENTORY_SIZE ? null : new float[]{
+                layout.inventorySectionStartX + pad + (i % Inventory.MAIN_INVENTORY_COLS) * (ss + pad),
+                layout.mainInvContentStartY + pad + (i / Inventory.MAIN_INVENTORY_COLS) * (ss + pad)};
+            case "hotbar" -> i < 0 || i >= Inventory.HOTBAR_SIZE ? null : new float[]{
+                layout.inventorySectionStartX + pad + i * (ss + pad), layout.hotbarRowY};
+            default -> null;
+        };
+    }
+
+    @Override
+    public float slotSize() {
+        return InventoryLayoutCalculator.getSlotSize();
     }
 
     /* ── Left-click ──────────────────────────────────────── */
@@ -131,26 +195,28 @@ public class FurnaceInputManager {
                                   InventoryLayoutCalculator.InventoryLayout layout) {
         FurnaceSlot slot = hitTestFurnaceSlots(mouseX, mouseY, layout);
         if (slot == null) return;
+        shiftClickSlot(slot.id);
+    }
 
-        if (slot.id == FurnaceController.SLOT_OUTPUT) {
-            // Move output to inventory
-            ItemStack out = controller.getOutputSlot();
-            if (!out.isEmpty()) {
-                if (!inventory.addItem(out.copy())) {
-                    com.stonebreak.player.Player player = Game.getPlayer();
-                    if (player != null)
-                        com.stonebreak.util.DropUtil.dropItemFromPlayer(player, out.copy());
-                }
-                controller.setOutputSlot(new ItemStack(0, 0));
-            }
-        } else {
-            // Move ingredient/fuel to inventory
-            ItemStack item = getFurnaceSlot(slot.id);
-            if (!item.isEmpty()) {
-                inventory.addItem(item.copy());
-                setFurnaceSlot(slot.id, new ItemStack(0, 0));
+    /**
+     * Moves a furnace slot's stack into the inventory. Only what fits moves:
+     * an ingredient/fuel remainder stays in its slot; output overflow keeps its
+     * drop-at-feet behaviour, but only the overflow is dropped (#319 — the old
+     * code cleared the slot regardless, deleting the remainder, and dropped the
+     * whole output stack after a partial add, duplicating it).
+     */
+    void shiftClickSlot(int slotId) {
+        ItemStack item = getFurnaceSlot(slotId);
+        if (item.isEmpty()) return;
+        ItemStack remainder = FurnaceShiftTransfer.intoInventory(item, inventory);
+        if (slotId == FurnaceController.SLOT_OUTPUT && !remainder.isEmpty()) {
+            com.stonebreak.player.Player player = Game.getPlayer();
+            if (player != null) {
+                com.stonebreak.util.DropUtil.dropItemFromPlayer(player, remainder);
+                remainder = new ItemStack(0, 0);
             }
         }
+        setFurnaceSlot(slotId, remainder);
     }
 
     /* ── Right-click (drop one) ──────────────────────────── */
@@ -478,6 +544,39 @@ public class FurnaceInputManager {
         return false;
     }
 
+    /**
+     * The furnace this screen showed is gone (its block was broken): a stack taken from one of its
+     * slots can no longer go back there, so the carried stack goes to the inventory, else the
+     * world. Never into a furnace slot: that state is dead.
+     */
+    void returnCarriedToPlayer() {
+        if (!dragState.isDragging()) return;
+        if (dragState.draggedItemOriginalSlotIndex < 3000) {
+            InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory, new ItemStack[0], null);
+        }
+        intoInventoryOrWorld();
+    }
+
+    /**
+     * Whatever of the carried stack fits goes into the inventory; only the rest is dropped. (Adding
+     * part of it and then dropping the whole stack duplicated the part that fit.)
+     */
+    private void intoInventoryOrWorld() {
+        if (!dragState.isDragging()) return;
+        ItemStack rest = FurnaceShiftTransfer.intoInventory(dragState.draggedItemStack, inventory);
+        if (rest.isEmpty()) {
+            dragState.clear();
+        } else {
+            dragState.draggedItemStack = rest;
+            worldDrop.accept(dragState);
+        }
+    }
+
+    /** Test seam: where stacks dropped into the world go. */
+    void setWorldDrop(java.util.function.Consumer<InventoryDragDropHandler.DragState> drop) {
+        this.worldDrop = drop;
+    }
+
     public void handleCloseWithDraggedItems() {
         if (!dragState.isDragging()) return;
 
@@ -497,14 +596,8 @@ public class FurnaceInputManager {
             InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory, new ItemStack[0], null);
         }
 
-        // Try adding to any available inventory space
-        if (dragState.isDragging()) {
-            if (inventory.addItem(dragState.draggedItemStack)) {
-                dragState.clear();
-            } else {
-                InventoryDragDropHandler.dropEntireStackIntoWorld(dragState);
-            }
-        }
+        // Then any inventory space; only what does not fit is dropped
+        intoInventoryOrWorld();
     }
 
     record FurnaceSlot(int id, int x, int y) {}

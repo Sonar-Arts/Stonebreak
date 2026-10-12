@@ -1,7 +1,7 @@
 package com.stonebreak.ui.terrainMapper.managers;
 
-import com.stonebreak.rendering.UI.masonryUI.MButton;
-import com.stonebreak.rendering.UI.masonryUI.MCategoryButton;
+import com.openmason.engine.ui.masonry.MButton;
+import com.openmason.engine.ui.masonry.MCategoryButton;
 import com.stonebreak.ui.terrainMapper.components.TerrainMapViewport;
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
@@ -14,14 +14,12 @@ import java.util.Random;
 
 /**
  * All mutable state for the terrain mapper screen. Pure state plus widget
- * references — no rendering, no input dispatch, no business actions. Handlers
- * and renderers collaborate around this object.
+ * references — no rendering, no input dispatch, no business actions. Handlers,
+ * the map renderer and the UI host collaborate around this object.
  *
- * Name + seed are stored as plain Strings (matching the Skija world-select
- * pattern) rather than a NanoVG-backed {@code TextInputField}; the sidebar
- * renderer draws the field and the input handler mutates the string
- * directly. Keeps the screen on a single Skija path and avoids pulling a
- * NanoVG frame into the MasonryUI contract.
+ * Name + seed are stored as plain Strings rather than a NanoVG-backed
+ * {@code TextInputField}; the document shows the fields and the input
+ * handler mutates the strings directly.
  */
 public final class TerrainMapperStateManager {
 

@@ -1,64 +1,39 @@
 package com.stonebreak.ui.saveChanges;
 
-import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
+import com.stonebreak.ui.runtime.screens.PresentationSlot;
+import com.stonebreak.ui.runtime.screens.ScreenPresentation;
 
 /**
  * Modal "Save changes?" confirmation shown when the player tries to leave the
  * inventory/character sheet while holding unspent point allocations.
  *
  * <p>Yes commits the allocations; No discards them (reverting to the state the
- * screen opened with); pressing nothing and pressing Escape dismisses the
- * dialog and stays in the panel. Input is routed by the input layer; this class
- * only owns visibility, hover state and hit-tests, mirroring {@code PauseMenu}.
+ * screen opened with); Escape dismisses the dialog and stays in the panel. Visibility
+ * stays here; it shows as the shipped UI document {@value #DOCUMENT_ID}
+ * ({@link #setPresentation}), whose buttons run {@code stonebreak:screen.save-changes.yes/no}.
  */
 public class SaveChangesDialog {
 
-    private final SkijaSaveChangesDialogRenderer skijaRenderer;
+    /** The shipped document's screen id ({@code ui/documents/save_changes.sbui}). */
+    public static final String DOCUMENT_ID = "save_changes";
 
-    private boolean visible = false;
-    private boolean yesHovered = false;
-    private boolean noHovered = false;
+    private final PresentationSlot presentation = new PresentationSlot();
 
-    public SaveChangesDialog(SkijaUIBackend skijaBackend) {
-        this.skijaRenderer = new SkijaSaveChangesDialogRenderer(skijaBackend);
-    }
-
+    /** Paints the dialog's presentation. */
     public void render(int windowWidth, int windowHeight) {
-        if (!visible) return;
-        skijaRenderer.render(windowWidth, windowHeight, yesHovered, noHovered);
+        presentation.paint(windowWidth, windowHeight);
     }
 
     public boolean isVisible() {
-        return visible;
+        return presentation.isVisible();
     }
 
     public void setVisible(boolean visible) {
-        this.visible = visible;
-        if (!visible) {
-            yesHovered = false;
-            noHovered = false;
-        }
+        presentation.setVisible(visible);
     }
 
-    public boolean isYesButtonClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        return visible && skijaRenderer.hitYes(mouseX, mouseY, windowWidth, windowHeight);
-    }
-
-    public boolean isNoButtonClicked(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        return visible && skijaRenderer.hitNo(mouseX, mouseY, windowWidth, windowHeight);
-    }
-
-    public void updateHover(float mouseX, float mouseY, int windowWidth, int windowHeight) {
-        if (!visible) {
-            yesHovered = false;
-            noHovered = false;
-            return;
-        }
-        yesHovered = isYesButtonClicked(mouseX, mouseY, windowWidth, windowHeight);
-        noHovered  = isNoButtonClicked(mouseX, mouseY, windowWidth, windowHeight);
-    }
-
-    public void cleanup() {
-        if (skijaRenderer != null) skijaRenderer.dispose();
+    /** Installs (or, with null, removes) the presentation. */
+    public void setPresentation(ScreenPresentation p) {
+        presentation.install(p);
     }
 }

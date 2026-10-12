@@ -1,0 +1,2748 @@
+{
+  "contracts": {
+    "session": "stonebreak:session",
+    "furnace": "stonebreak:furnace",
+    "settings": "stonebreak:settings",
+    "inventory": "stonebreak:inventory",
+    "carried": "stonebreak:inventory",
+    "hotbar": "stonebreak:hotbar",
+    "vitals": "stonebreak:player.vitals",
+    "stats": "stonebreak:player.stats",
+    "loading": "stonebreak:screen.loading",
+    "mainMenu": "stonebreak:screen.main-menu",
+    "hostWorld": "stonebreak:screen.host-world",
+    "joinWorld": "stonebreak:screen.join-world",
+    "glossary": "stonebreak:screen.glossary",
+    "glossaryAbilities": "stonebreak:screen.glossary",
+    "worldSelect": "stonebreak:screen.world-select",
+    "settingsMenu": "stonebreak:screen.settings",
+    "crafting": "stonebreak:crafting",
+    "craftOutput": "stonebreak:crafting",
+    "character": "stonebreak:player.character",
+    "hud": "stonebreak:hud",
+    "hearts": "stonebreak:hud",
+    "crosshair": "stonebreak:crosshair",
+    "worldMarkers": "stonebreak:world.hud",
+    "stealth": "stonebreak:world.hud",
+    "intro": "stonebreak:screen.intro",
+    "chat": "stonebreak:chat",
+    "chatLines": "stonebreak:chat",
+    "chatCommands": "stonebreak:chat",
+    "emojiPicker": "stonebreak:chat",
+    "debugCards": "stonebreak:debug",
+    "recipeBook": "stonebreak:screen.recipe-book",
+    "recipeGrid": "stonebreak:screen.recipe-book",
+    "recipeDetail": "stonebreak:screen.recipe-book",
+    "terrainMapper": "stonebreak:screen.terrain-mapper",
+    "modelSetup": "stonebreak:screen.model-setup",
+    "characterCreation": "stonebreak:screen.character-creation",
+    "ccBackgrounds": "stonebreak:screen.character-creation",
+    "ccClasses": "stonebreak:screen.character-creation",
+    "ccAbilities": "stonebreak:screen.character-creation",
+    "ccSkills": "stonebreak:screen.character-creation",
+    "ccFeats": "stonebreak:screen.character-creation",
+    "ccHair": "stonebreak:screen.character-creation",
+    "ccHats": "stonebreak:screen.character-creation",
+    "characterSheet": "stonebreak:screen.character-sheet",
+    "battleHud": "stonebreak:battle"
+  },
+  "data": {
+    "session": {
+      "mode": "singleplayer",
+      "online": false,
+      "hosting": false
+    },
+    "furnace": {
+      "open": true,
+      "lit": true,
+      "progress": 0.5,
+      "fuel": 0.75,
+      "ingredientSlot": {
+        "item": 9,
+        "objectId": "stonebreak:iron_ore",
+        "name": "Iron Ore",
+        "count": 12,
+        "state": "",
+        "maxStack": 64
+      },
+      "fuelSlot": {
+        "item": 0,
+        "objectId": "",
+        "name": "",
+        "count": 0,
+        "state": "",
+        "maxStack": 0
+      },
+      "outputSlot": {
+        "item": 0,
+        "objectId": "",
+        "name": "",
+        "count": 0,
+        "state": "",
+        "maxStack": 0
+      },
+      "cooking": true
+    },
+    "carried": {
+      "item": 0,
+      "objectId": "",
+      "name": "",
+      "count": 0,
+      "state": "",
+      "maxStack": 0
+    },
+    "loading": {
+      "stage": "Generating spawn area",
+      "detail": "Chunks 37/81",
+      "progress": 0.5,
+      "percent": "50%"
+    },
+    "mainMenu": {
+      "splash": "Now with more dirt!",
+      "splashScale": 1,
+      "titleX": 0,
+      "titleY": 0,
+      "titleScale": 1,
+      "titleRotation": 0,
+      "shakeX": 0,
+      "shakeY": 0
+    },
+    "hostWorld": {
+      "worlds": [
+        {
+          "id": "Alpha",
+          "index": 0,
+          "name": "Alpha",
+          "selected": true
+        },
+        {
+          "id": "Beta Base",
+          "index": 1,
+          "name": "Beta Base",
+          "selected": false
+        },
+        {
+          "id": "Gamma",
+          "index": 2,
+          "name": "Gamma",
+          "selected": false
+        }
+      ],
+      "selected": 0,
+      "port": "25565",
+      "status": "",
+      "empty": false
+    },
+    "joinWorld": {
+      "host": "play.example.net",
+      "port": "25565",
+      "username": "Steve",
+      "status": ""
+    },
+    "glossary": {
+      "observedText": "3 / 4 observed",
+      "observedFraction": 0.75,
+      "name": "Cow",
+      "badge": "12 defeated",
+      "defeated": true,
+      "discovered": true,
+      "cycler": true,
+      "chip": "Angus  2/3",
+      "preview": {
+        "entity": "COW",
+        "variant": "Angus"
+      },
+      "unlocked": true,
+      "attributes": {
+        "str": {
+          "value": "8 (-1)",
+          "fraction": 0.4
+        },
+        "dex": {
+          "value": "4 (-3)",
+          "fraction": 0.2
+        },
+        "con": {
+          "value": "5 (-3)",
+          "fraction": 0.25
+        },
+        "int": {
+          "value": "2 (-4)",
+          "fraction": 0.1
+        },
+        "wis": {
+          "value": "3 (-4)",
+          "fraction": 0.15
+        },
+        "cha": {
+          "value": "4 (-3)",
+          "fraction": 0.2
+        }
+      },
+      "derived": {
+        "hp": "12",
+        "spd": "0.4",
+        "atk": "0"
+      },
+      "weaknessKnown": true,
+      "weaknessName": "BLEED",
+      "weaknessText": "Thick hide, but deep cuts keep bleeding long after the blow.",
+      "hasAbilities": true,
+      "entries": [
+        {
+          "id": "COW",
+          "index": 0,
+          "name": "Cow",
+          "sub": "3/4 variants",
+          "observed": true,
+          "complete": false,
+          "selected": true
+        },
+        {
+          "id": "SHEEP",
+          "index": 1,
+          "name": "Sheep",
+          "sub": "1/3 variants",
+          "observed": true,
+          "complete": false,
+          "selected": false
+        },
+        {
+          "id": "CHICKEN",
+          "index": 2,
+          "name": "Chicken",
+          "sub": "1/1 variants",
+          "observed": true,
+          "complete": true,
+          "selected": false
+        },
+        {
+          "id": "GOOSE",
+          "index": 3,
+          "name": "Goose",
+          "sub": "Not yet observed",
+          "observed": false,
+          "complete": false,
+          "selected": false
+        }
+      ]
+    },
+    "stats": {
+      "present": true,
+      "entitiesKilled": 1234,
+      "killsCow": 12,
+      "killsSheep": 7,
+      "killsChicken": 1203,
+      "damageDealt": 4567.25,
+      "totalDistance": 15432.5,
+      "distanceWalked": 9876.4,
+      "distanceSprinted": 4321,
+      "distanceInAir": 512.75,
+      "timeInAir": 3725,
+      "text": {
+        "entitiesKilled": "1,234",
+        "killsCow": "12",
+        "killsSheep": "7",
+        "killsChicken": "1,203",
+        "damageDealt": "4567.3",
+        "totalDistance": "15.43 km",
+        "distanceWalked": "9.88 km",
+        "distanceSprinted": "4.32 km",
+        "distanceInAir": "512.8 m",
+        "timeInAir": "1h 2m 5s"
+      }
+    },
+    "vitals": {
+      "present": true,
+      "health": 16,
+      "maxHealth": 20,
+      "stamina": 80,
+      "maxStamina": 100,
+      "mana": 35,
+      "maxMana": 50,
+      "level": 3,
+      "xp": 120,
+      "xpNext": 200,
+      "dead": false
+    },
+    "settings": {
+      "windowWidth": 1920,
+      "windowHeight": 1080,
+      "vsyncEnabled": false,
+      "maxFps": 144,
+      "masterVolume": 0.5,
+      "musicVolume": 0.5,
+      "musicEnabled": true,
+      "armModelType": "REGULAR",
+      "selectedHat": "NONE",
+      "selectedHair": "NONE",
+      "crosshairStyle": "SIMPLE_CROSS",
+      "crosshairSize": 16,
+      "crosshairThickness": 2,
+      "crosshairGap": 4,
+      "crosshairOpacity": 1,
+      "crosshairColorR": 1,
+      "crosshairColorG": 1,
+      "crosshairColorB": 1,
+      "crosshairOutline": true,
+      "leafTransparency": true,
+      "waterShaderEnabled": true,
+      "cloudsEnabled": true,
+      "godRaysEnabled": true,
+      "shadowsEnabled": true,
+      "playerNameTagsEnabled": true,
+      "shadowQuality": "MEDIUM",
+      "shadowDistance": 96,
+      "smoothLightingEnabled": true,
+      "renderDistance": 8,
+      "lodDistance": 16,
+      "lodEnabled": true,
+      "lodQuality": "MEDIUM",
+      "uiScale": 1,
+      "uiTextScale": 1,
+      "reducedMotion": false
+    },
+    "worldSelect": {
+      "rows": [
+        {
+          "id": "Alpha",
+          "index": 0,
+          "name": "Alpha",
+          "meta": "Last played 3/14/2026   -   Seed: 12345",
+          "size": "4.2 MB",
+          "selected": true,
+          "hovered": false
+        },
+        {
+          "id": "Beta Base",
+          "index": 1,
+          "name": "Beta Base",
+          "meta": "Last played 2/2/2026   -   Seed: -998877",
+          "size": "812 KB",
+          "selected": false,
+          "hovered": false
+        },
+        {
+          "id": "Gamma",
+          "index": 2,
+          "name": "Gamma",
+          "meta": "Seed: 42",
+          "size": "",
+          "selected": false,
+          "hovered": false
+        }
+      ],
+      "empty": false,
+      "hasSelection": true,
+      "titleY": 118.8,
+      "subtitleY": 156.8,
+      "panelY": 184.8,
+      "scrollbar": false,
+      "thumbOffset": 0.0,
+      "thumbHeight": 0.0,
+      "card": {
+        "shown": false,
+        "x": 0.0,
+        "y": 0.0,
+        "title": "",
+        "size": "",
+        "chunks": "",
+        "seed": "",
+        "created": "",
+        "lastPlayed": "",
+        "playTime": "",
+        "backupLabel": "",
+        "backupEnabled": false,
+        "status": "",
+        "statusKind": "",
+        "running": false,
+        "progress": 0.0
+      },
+      "delete": {
+        "shown": false,
+        "line": ""
+      }
+    },
+    "settingsMenu": {
+      "titleY": 312.0,
+      "offset": 0.0,
+      "categories": [
+        {
+          "id": "GENERAL",
+          "index": 0,
+          "name": "General",
+          "selected": true
+        },
+        {
+          "id": "QUALITY",
+          "index": 1,
+          "name": "Quality",
+          "selected": false
+        },
+        {
+          "id": "PERFORMANCE",
+          "index": 2,
+          "name": "Performance",
+          "selected": false
+        },
+        {
+          "id": "ADVANCED",
+          "index": 3,
+          "name": "Advanced",
+          "selected": false
+        },
+        {
+          "id": "EXTRAS",
+          "index": 4,
+          "name": "Extras",
+          "selected": false
+        },
+        {
+          "id": "AUDIO",
+          "index": 5,
+          "name": "Audio",
+          "selected": false
+        }
+      ],
+      "rows": [
+        {
+          "id": "RESOLUTION",
+          "index": 0,
+          "kind": "dropdown",
+          "label": "Resolution: 1920x1080",
+          "fraction": 0.0,
+          "open": false,
+          "items": [
+            {
+              "id": "item0",
+              "text": "1024x768",
+              "current": false
+            },
+            {
+              "id": "item1",
+              "text": "1280x720",
+              "current": false
+            },
+            {
+              "id": "item2",
+              "text": "1366x768",
+              "current": false
+            },
+            {
+              "id": "item3",
+              "text": "1600x900",
+              "current": false
+            },
+            {
+              "id": "item4",
+              "text": "1920x1080",
+              "current": true
+            },
+            {
+              "id": "item5",
+              "text": "2560x1440",
+              "current": false
+            },
+            {
+              "id": "item6",
+              "text": "3840x2160",
+              "current": false
+            }
+          ]
+        },
+        {
+          "id": "UI_SCALE",
+          "index": 1,
+          "kind": "slider",
+          "label": "UI Scale: 1.0x",
+          "fraction": 0.3333,
+          "open": false,
+          "items": []
+        }
+      ],
+      "scrollbar": false,
+      "thumbTop": 0.0,
+      "thumbHeight": 0.0,
+      "confirm": {
+        "shown": false,
+        "pending": "",
+        "countdown": ""
+      }
+    },
+    "craftOutput": {
+      "slot": "craft-output",
+      "item": 5,
+      "objectId": "stonebreak:wood_planks",
+      "name": "Wood Planks",
+      "count": 4,
+      "state": "",
+      "maxStack": 64,
+      "selected": false
+    },
+    "character": {
+      "present": true,
+      "level": 3,
+      "levelText": "Level 3",
+      "xp": 40,
+      "xpNext": 200,
+      "xpText": "40 / 200 xp",
+      "xpFraction": 0.2,
+      "hp": {
+        "value": 17,
+        "max": 20,
+        "text": "17/20",
+        "fraction": 0.85
+      },
+      "mp": {
+        "value": 6,
+        "max": 10,
+        "text": "6/10",
+        "fraction": 0.6
+      },
+      "sp": {
+        "value": 30,
+        "max": 40,
+        "text": "30/40",
+        "fraction": 0.75
+      },
+      "str": {
+        "score": 14,
+        "text": "14 (+2)",
+        "fraction": 0.4666666666666667
+      },
+      "dex": {
+        "score": 12,
+        "text": "12 (+1)",
+        "fraction": 0.4
+      },
+      "con": {
+        "score": 13,
+        "text": "13 (+1)",
+        "fraction": 0.43333333333333335
+      },
+      "int": {
+        "score": 10,
+        "text": "10 (+0)",
+        "fraction": 0.3333333333333333
+      },
+      "wis": {
+        "score": 8,
+        "text": "8 (-1)",
+        "fraction": 0.26666666666666666
+      },
+      "cha": {
+        "score": 11,
+        "text": "11 (+0)",
+        "fraction": 0.36666666666666664
+      }
+    },
+    "hud": {
+      "present": true,
+      "heartSize": 28,
+      "stamina": {
+        "shown": true,
+        "fraction": 0.75
+      },
+      "mana": {
+        "shown": false,
+        "fraction": 0
+      },
+      "dodge": {
+        "ready": true,
+        "fraction": 1,
+        "text": "Dodge: Ready"
+      },
+      "classId": "",
+      "tooltip": {
+        "shown": true,
+        "text": "Wood",
+        "alpha": 1,
+        "slot": 0
+      },
+      "hearts": 10
+    },
+    "crosshair": {
+      "style": "SIMPLE_CROSS",
+      "size": 16,
+      "thickness": 2,
+      "gap": 4,
+      "outline": true,
+      "outlineThickness": 1,
+      "color": "#FFFFFFFF",
+      "edge": "#000000FF"
+    },
+    "stealth": {
+      "shown": true,
+      "label": "STEALTH",
+      "color": "#AEE3F0DF",
+      "cooling": true,
+      "fraction": 0.4
+    },
+    "intro": {
+      "time": 2.4,
+      "phase": "hold",
+      "reveal": 1,
+      "fade": 0,
+      "scale": 1,
+      "logo": {
+        "x": 360,
+        "y": 194.4,
+        "width": 1200,
+        "height": 324,
+        "shadowX": 364,
+        "shadowY": 198.4
+      }
+    },
+    "chat": {
+      "open": true,
+      "tab": "chat",
+      "display": "hello [banana]_",
+      "input": "hello [banana]",
+      "ghost": "",
+      "scroll": 0,
+      "maxScroll": 0,
+      "commandScroll": 0,
+      "maxCommandScroll": 4,
+      "commandCount": 3,
+      "pickerOpen": true
+    },
+    "emojiPicker": {
+      "sections": [
+        {
+          "section": "favorites",
+          "label": "Favorites",
+          "empty": false,
+          "emojis": [
+            {
+              "emoji": "sword",
+              "favorite": true
+            }
+          ]
+        },
+        {
+          "section": "recent",
+          "label": "Recent",
+          "empty": true,
+          "emojis": []
+        },
+        {
+          "section": "general",
+          "label": "General",
+          "empty": false,
+          "emojis": [
+            {
+              "emoji": "banana",
+              "favorite": false
+            },
+            {
+              "emoji": "sword",
+              "favorite": true
+            },
+            {
+              "emoji": "swords_crossed",
+              "favorite": false
+            },
+            {
+              "emoji": "problem",
+              "favorite": false
+            }
+          ]
+        },
+        {
+          "section": "abilities",
+          "label": "Abilities",
+          "empty": false,
+          "emojis": [
+            {
+              "emoji": "rage",
+              "favorite": false
+            },
+            {
+              "emoji": "rampage",
+              "favorite": false
+            },
+            {
+              "emoji": "skull_crusher",
+              "favorite": false
+            }
+          ]
+        }
+      ]
+    },
+    "recipeBook": {
+      "categories": [
+        {
+          "category": "All",
+          "selected": true
+        },
+        {
+          "category": "Building",
+          "selected": false
+        },
+        {
+          "category": "Tools",
+          "selected": false
+        },
+        {
+          "category": "Food",
+          "selected": false
+        },
+        {
+          "category": "Decorative",
+          "selected": false
+        }
+      ],
+      "searchText": "",
+      "searchDisplay": "Search recipes...",
+      "searchEmpty": true,
+      "searchActive": false,
+      "caretOn": false,
+      "columns": 13,
+      "hasSelection": true,
+      "variants": true,
+      "variantLabel": "Variant 1 / 2",
+      "canPrev": false,
+      "canNext": true
+    },
+    "recipeDetail": {
+      "in0": {
+        "slot": "in0",
+        "item": 0,
+        "objectId": "",
+        "name": "",
+        "count": 0,
+        "state": "",
+        "maxStack": 0,
+        "selected": false,
+        "tooltip": ""
+      },
+      "in1": {
+        "slot": "in1",
+        "item": 0,
+        "objectId": "",
+        "name": "",
+        "count": 0,
+        "state": "",
+        "maxStack": 0,
+        "selected": false,
+        "tooltip": ""
+      },
+      "in2": {
+        "slot": "in2",
+        "item": 0,
+        "objectId": "",
+        "name": "",
+        "count": 0,
+        "state": "",
+        "maxStack": 0,
+        "selected": false,
+        "tooltip": ""
+      },
+      "in3": {
+        "slot": "in3",
+        "item": 0,
+        "objectId": "",
+        "name": "",
+        "count": 0,
+        "state": "",
+        "maxStack": 0,
+        "selected": false,
+        "tooltip": ""
+      },
+      "in4": {
+        "slot": "in4",
+        "item": 4,
+        "objectId": "stonebreak:wood",
+        "name": "Wood",
+        "count": 1,
+        "state": "",
+        "maxStack": 64,
+        "selected": false,
+        "tooltip": "Wood"
+      },
+      "in5": {
+        "slot": "in5",
+        "item": 0,
+        "objectId": "",
+        "name": "",
+        "count": 0,
+        "state": "",
+        "maxStack": 0,
+        "selected": false,
+        "tooltip": ""
+      },
+      "in6": {
+        "slot": "in6",
+        "item": 0,
+        "objectId": "",
+        "name": "",
+        "count": 0,
+        "state": "",
+        "maxStack": 0,
+        "selected": false,
+        "tooltip": ""
+      },
+      "in7": {
+        "slot": "in7",
+        "item": 0,
+        "objectId": "",
+        "name": "",
+        "count": 0,
+        "state": "",
+        "maxStack": 0,
+        "selected": false,
+        "tooltip": ""
+      },
+      "in8": {
+        "slot": "in8",
+        "item": 0,
+        "objectId": "",
+        "name": "",
+        "count": 0,
+        "state": "",
+        "maxStack": 0,
+        "selected": false,
+        "tooltip": ""
+      },
+      "out": {
+        "slot": "out",
+        "item": 19,
+        "objectId": "stonebreak:wood_planks",
+        "name": "Wood Planks",
+        "count": 4,
+        "state": "",
+        "maxStack": 64,
+        "selected": false,
+        "tooltip": "Wood Planks"
+      }
+    },
+    "terrainMapper": {
+      "name": "",
+      "nameDisplay": "Enter a name...",
+      "nameEmpty": true,
+      "seed": "1234567",
+      "seedDisplay": "1234567",
+      "seedEmpty": false,
+      "field": "name",
+      "caretOn": true,
+      "nameFocused": true,
+      "seedFocused": false,
+      "nameCaret": true,
+      "seedCaret": false,
+      "generators": [
+        {
+          "gen": "STANDARD",
+          "label": "Standard Generation",
+          "selected": true,
+          "warn": false,
+          "y": 228
+        },
+        {
+          "gen": "DIFFUSION",
+          "label": "DaedalusTGM-Exp",
+          "selected": false,
+          "warn": true,
+          "y": 268
+        }
+      ],
+      "modes": [
+        {
+          "mode": "HEIGHT",
+          "label": "Height",
+          "selected": true,
+          "x": 20,
+          "y": 340,
+          "w": 137
+        },
+        {
+          "mode": "CONTINENTALNESS",
+          "label": "Continentalness",
+          "selected": false,
+          "x": 163,
+          "y": 340,
+          "w": 137
+        },
+        {
+          "mode": "EROSION",
+          "label": "Erosion",
+          "selected": false,
+          "x": 20,
+          "y": 380,
+          "w": 137
+        },
+        {
+          "mode": "PEAKS_VALLEYS",
+          "label": "Peaks & Valleys",
+          "selected": false,
+          "x": 163,
+          "y": 380,
+          "w": 137
+        },
+        {
+          "mode": "TEMPERATURE",
+          "label": "Temperature",
+          "selected": false,
+          "x": 20,
+          "y": 420,
+          "w": 137
+        },
+        {
+          "mode": "MOISTURE",
+          "label": "Moisture",
+          "selected": false,
+          "x": 163,
+          "y": 420,
+          "w": 137
+        },
+        {
+          "mode": "BIOME",
+          "label": "Biome",
+          "selected": false,
+          "x": 20,
+          "y": 460,
+          "w": 137
+        }
+      ],
+      "hasModes": true,
+      "genCaption": 204,
+      "modeCaption": 316,
+      "spawnCaption": 508,
+      "spawnY": 532,
+      "centerY": 572,
+      "spawnSet": false,
+      "spawnLabel": "Click map to set spawn",
+      "createEnabled": true,
+      "createDisabled": false,
+      "warning": "WARNING! DaedalusTGM-Exp is experimental and starts local model services on first use",
+      "error": "",
+      "modeLabel": "Mode: Height   ·   Terrain: Standard Generation",
+      "hover": "(137, -61) = 33 blocks"
+    },
+    "modelSetup": {
+      "open": true,
+      "logo": {
+        "x": 795.5,
+        "y": 40,
+        "w": 328.98,
+        "h": 84
+      },
+      "title": "Setting up the terrain model",
+      "subtitle": "DaedalusTGM-Exp v4  -  set up once, later launches skip this",
+      "steps": [
+        {
+          "step": "GPU",
+          "title": "Checking graphics card",
+          "detail": "NVIDIA RTX PRO 6000",
+          "status": "done",
+          "dim": false,
+          "failed": false,
+          "skipped": false,
+          "bar": false,
+          "fraction": 0,
+          "icon": {
+            "status": "done",
+            "angle": 0
+          }
+        },
+        {
+          "step": "UV",
+          "title": "Getting package manager",
+          "detail": "already installed",
+          "status": "skipped",
+          "dim": true,
+          "failed": false,
+          "skipped": true,
+          "bar": false,
+          "fraction": 0,
+          "icon": {
+            "status": "skipped",
+            "angle": 0
+          }
+        },
+        {
+          "step": "ENVIRONMENT",
+          "title": "Installing Python environment",
+          "detail": "1.84 GB of 4.37 GB downloaded",
+          "status": "running",
+          "dim": false,
+          "failed": false,
+          "skipped": false,
+          "bar": true,
+          "fraction": 0.42,
+          "icon": {
+            "status": "running",
+            "angle": 120
+          }
+        },
+        {
+          "step": "VERIFY",
+          "title": "Checking the model on the GPU",
+          "detail": "waiting",
+          "status": "pending",
+          "dim": true,
+          "failed": false,
+          "skipped": false,
+          "bar": false,
+          "fraction": 0,
+          "icon": {
+            "status": "pending",
+            "angle": 0
+          }
+        },
+        {
+          "step": "KERNELS",
+          "title": "Compiling GPU kernels",
+          "detail": "waiting",
+          "status": "pending",
+          "dim": true,
+          "failed": false,
+          "skipped": false,
+          "bar": false,
+          "fraction": 0,
+          "icon": {
+            "status": "pending",
+            "angle": 0
+          }
+        }
+      ],
+      "lines": [
+        {
+          "line": "activity",
+          "text": "> Downloading torch (846.1MiB)",
+          "tone": "activity",
+          "small": true,
+          "gap": false
+        },
+        {
+          "line": "elapsed",
+          "text": "Elapsed 1:23  -  you can keep playing with standard terrain meanwhile",
+          "tone": "faint",
+          "small": true,
+          "gap": false
+        }
+      ],
+      "buttons": [
+        {
+          "id": "continue",
+          "label": "Continue in background"
+        }
+      ]
+    },
+    "characterCreation": {
+      "tab": "BACKGROUND",
+      "pane": "BACKGROUND",
+      "layout": {
+        "left": [
+          0,
+          0,
+          672,
+          1008
+        ],
+        "right": [
+          672,
+          0,
+          1248,
+          1008
+        ],
+        "footer": [
+          0,
+          1008,
+          1920,
+          72
+        ],
+        "tabBar": [
+          672,
+          8,
+          1248,
+          40
+        ],
+        "content": [
+          672,
+          52,
+          1248,
+          956
+        ],
+        "talentBar": [
+          680,
+          60,
+          1232,
+          30
+        ],
+        "talentContent": [
+          672,
+          96,
+          1248,
+          912
+        ],
+        "preview": [
+          100.8,
+          40,
+          470.4,
+          716
+        ],
+        "hasPreview": true,
+        "gridX": 477,
+        "lvlX": 668.8
+      },
+      "tabs": [
+        {
+          "tab": "BACKGROUND",
+          "label": "Background",
+          "x": 680.0,
+          "width": 104.0,
+          "fontSize": 14,
+          "baseline": 23.32,
+          "active": true
+        },
+        {
+          "tab": "ABILITY_SCORE",
+          "label": "Ability Score",
+          "x": 788.0,
+          "width": 128.0,
+          "fontSize": 14,
+          "baseline": 23.32,
+          "active": false
+        },
+        {
+          "tab": "TALENTS",
+          "label": "Talents",
+          "x": 920.0,
+          "width": 80.0,
+          "fontSize": 14,
+          "baseline": 23.32,
+          "active": false
+        },
+        {
+          "tab": "LOOKS",
+          "label": "Looks",
+          "x": 1004.0,
+          "width": 64.0,
+          "fontSize": 14,
+          "baseline": 23.32,
+          "active": false
+        },
+        {
+          "tab": "CLOTHING",
+          "label": "Clothing",
+          "x": 1072.0,
+          "width": 88.0,
+          "fontSize": 14,
+          "baseline": 23.32,
+          "active": false
+        }
+      ],
+      "talents": [
+        {
+          "sub": "CLASS_ABILITIES",
+          "label": "Class Abilities",
+          "x": 0.0,
+          "w": 408.6667,
+          "selected": true
+        },
+        {
+          "sub": "SKILLS",
+          "label": "Skills",
+          "x": 410.6667,
+          "w": 408.6667,
+          "selected": false
+        },
+        {
+          "sub": "FEATS",
+          "label": "Feats",
+          "x": 821.3333,
+          "w": 410.6667,
+          "selected": false
+        }
+      ],
+      "talentBaseline": 19.9,
+      "undoDisabled": true,
+      "backLabel": "World Select",
+      "nextLabel": "Terrain Mapper",
+      "classLabel": "Class: Adventurer",
+      "backgroundLabel": "Background: Adventurer",
+      "ap": "AP Remaining: 5",
+      "cp": "CP Remaining: 99",
+      "sp": "SP Remaining: 5",
+      "fp": "FP Remaining: 1",
+      "className": "Select a class",
+      "classDesc": "Click a class on the left to view its abilities.",
+      "noClass": true,
+      "tiles": [
+        {
+          "tile": "t0",
+          "abbrev": "STR",
+          "score": "10",
+          "mod": "+0",
+          "bonus": "",
+          "bonusUp": false,
+          "minusEnabled": true,
+          "plusEnabled": true
+        },
+        {
+          "tile": "t1",
+          "abbrev": "DEX",
+          "score": "10",
+          "mod": "+0",
+          "bonus": "",
+          "bonusUp": false,
+          "minusEnabled": true,
+          "plusEnabled": true
+        },
+        {
+          "tile": "t2",
+          "abbrev": "CON",
+          "score": "10",
+          "mod": "+0",
+          "bonus": "",
+          "bonusUp": false,
+          "minusEnabled": true,
+          "plusEnabled": true
+        },
+        {
+          "tile": "t3",
+          "abbrev": "INT",
+          "score": "10",
+          "mod": "+0",
+          "bonus": "",
+          "bonusUp": false,
+          "minusEnabled": true,
+          "plusEnabled": true
+        },
+        {
+          "tile": "t4",
+          "abbrev": "WIS",
+          "score": "10",
+          "mod": "+0",
+          "bonus": "",
+          "bonusUp": false,
+          "minusEnabled": true,
+          "plusEnabled": true
+        },
+        {
+          "tile": "t5",
+          "abbrev": "CHA",
+          "score": "10",
+          "mod": "+0",
+          "bonus": "",
+          "bonusUp": false,
+          "minusEnabled": true,
+          "plusEnabled": true
+        }
+      ],
+      "classScroll": 0,
+      "skillScroll": 0,
+      "featScroll": 0
+    },
+    "characterSheet": {
+      "tab": "OVERVIEW",
+      "open": true,
+      "panel": {
+        "x": 660,
+        "y": 288,
+        "w": 600,
+        "h": 504
+      },
+      "tabs": [
+        {
+          "tab": "inventory",
+          "label": "Inventory",
+          "rect": {
+            "x": 786,
+            "y": 260,
+            "w": 84,
+            "h": 28
+          },
+          "active": false
+        },
+        {
+          "tab": "character",
+          "label": "Character",
+          "rect": {
+            "x": 874,
+            "y": 260,
+            "w": 84,
+            "h": 28
+          },
+          "active": true
+        },
+        {
+          "tab": "talents",
+          "label": "Talents",
+          "rect": {
+            "x": 962,
+            "y": 260,
+            "w": 84,
+            "h": 28
+          },
+          "active": false
+        }
+      ],
+      "tabBaseline": 19.32,
+      "talents": {
+        "slots": [
+          {
+            "sub": "class-abilities",
+            "label": "Class Abilities",
+            "x": 10.0,
+            "w": 191.3333,
+            "selected": true
+          },
+          {
+            "sub": "skills",
+            "label": "Skills",
+            "x": 203.3333,
+            "w": 191.3333,
+            "selected": false
+          },
+          {
+            "sub": "feats",
+            "label": "Feats",
+            "x": 396.6667,
+            "w": 193.3333,
+            "selected": false
+          }
+        ],
+        "baseline": 18.9
+      },
+      "overview": {
+        "left": {
+          "x": 676,
+          "y": 308,
+          "w": 228,
+          "h": 170
+        },
+        "rightX": 916,
+        "rightW": 328,
+        "contentY": 308,
+        "classLine": "Class: Adventurer",
+        "featLines": [
+          {
+            "line": "0",
+            "text": "(None)",
+            "dim": true
+          }
+        ],
+        "currencies": [
+          {
+            "line": "cp",
+            "text": "CP: 99"
+          },
+          {
+            "line": "sp",
+            "text": "SP: 99"
+          },
+          {
+            "line": "fp",
+            "text": "FP: 99"
+          },
+          {
+            "line": "ap",
+            "text": "AP: 27"
+          }
+        ],
+        "levelText": "Level 1",
+        "levelBaseline": 319.9,
+        "bar": {
+          "x": 916,
+          "y": 326,
+          "w": 328,
+          "h": 10
+        },
+        "barFill": 0,
+        "xpText": "0 / 200 xp",
+        "xpX": 1157,
+        "abilitiesY": 342,
+        "tiles": [
+          {
+            "tile": "t0",
+            "abbrev": "STR",
+            "score": "10",
+            "mod": "+0",
+            "minusEnabled": true,
+            "plusEnabled": true
+          },
+          {
+            "tile": "t1",
+            "abbrev": "DEX",
+            "score": "10",
+            "mod": "+0",
+            "minusEnabled": true,
+            "plusEnabled": true
+          },
+          {
+            "tile": "t2",
+            "abbrev": "CON",
+            "score": "10",
+            "mod": "+0",
+            "minusEnabled": true,
+            "plusEnabled": true
+          },
+          {
+            "tile": "t3",
+            "abbrev": "INT",
+            "score": "10",
+            "mod": "+0",
+            "minusEnabled": true,
+            "plusEnabled": true
+          },
+          {
+            "tile": "t4",
+            "abbrev": "WIS",
+            "score": "10",
+            "mod": "+0",
+            "minusEnabled": true,
+            "plusEnabled": true
+          },
+          {
+            "tile": "t5",
+            "abbrev": "CHA",
+            "score": "10",
+            "mod": "+0",
+            "minusEnabled": true,
+            "plusEnabled": true
+          }
+        ],
+        "barsY": 532,
+        "hearts": {
+          "shape": "heart",
+          "count": 10,
+          "filled": 10,
+          "size": 13,
+          "gap": 2,
+          "color": "#CC2222FF",
+          "dim": "#551111FF"
+        },
+        "hpText": "20/20",
+        "mana": {
+          "shape": "diamond",
+          "count": 10,
+          "filled": 0,
+          "size": 11,
+          "gap": 2,
+          "color": "#334466FF",
+          "dim": "#334466FF"
+        },
+        "slotSize": 34
+      }
+    },
+    "battleHud": {
+      "bound": true,
+      "window": {
+        "w": 1920,
+        "h": 1080
+      },
+      "mode": {
+        "rect": {
+          "x": 24,
+          "y": 24,
+          "w": 144,
+          "h": 39
+        },
+        "params": {
+          "piece": "mode",
+          "w": 1920,
+          "h": 1080
+        }
+      },
+      "enemy": {
+        "rect": {
+          "x": 615,
+          "y": 24,
+          "w": 690,
+          "h": 147
+        },
+        "params": {
+          "piece": "enemy",
+          "w": 1920,
+          "h": 1080
+        }
+      },
+      "party": {
+        "rect": {
+          "x": 1251,
+          "y": 846,
+          "w": 645,
+          "h": 210
+        },
+        "params": {
+          "piece": "party",
+          "w": 1920,
+          "h": 1080
+        }
+      },
+      "command": {
+        "rect": {
+          "x": 24,
+          "y": 741,
+          "w": 375,
+          "h": 315
+        },
+        "params": {
+          "piece": "command",
+          "w": 1920,
+          "h": 1080,
+          "submenu": {
+            "x": 399,
+            "y": 837,
+            "w": 354,
+            "h": 180
+          }
+        }
+      },
+      "commandShown": true,
+      "underlays": {
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "w": 1920,
+          "h": 1080
+        },
+        "params": {
+          "piece": "underlays",
+          "w": 1920,
+          "h": 1080
+        }
+      },
+      "overlays": {
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "w": 1920,
+          "h": 1080
+        },
+        "params": {
+          "piece": "overlays",
+          "w": 1920,
+          "h": 1080
+        }
+      },
+      "topmost": {
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "w": 1920,
+          "h": 1080
+        },
+        "params": {
+          "piece": "topmost",
+          "w": 1920,
+          "h": 1080
+        }
+      },
+      "help": {
+        "shown": true,
+        "rect": {
+          "x": 24,
+          "y": 687,
+          "w": 1872,
+          "h": 42
+        },
+        "text": "Strike: a quick blow that builds Focus.",
+        "color": "#F7F7F2FF",
+        "size": 21,
+        "baseline": 28.56,
+        "inset": 18
+      }
+    }
+  },
+  "editable": {
+    "settings": {
+      "commit": "stonebreak:settings.apply"
+    }
+  },
+  "collections": {
+    "inventory": {
+      "identity": "slot",
+      "items": [
+        {
+          "slot": "main:0",
+          "item": 3,
+          "objectId": "stonebreak:stone",
+          "name": "Stone",
+          "count": 64,
+          "state": "",
+          "maxStack": 64,
+          "selected": false
+        },
+        {
+          "slot": "main:1",
+          "item": 2,
+          "objectId": "stonebreak:dirt",
+          "name": "Dirt",
+          "count": 23,
+          "state": "",
+          "maxStack": 64,
+          "selected": false
+        },
+        {
+          "slot": "main:2",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        }
+      ]
+    },
+    "glossaryAbilities": {
+      "identity": "id",
+      "items": [
+        {
+          "id": "COW:0",
+          "text": "Milkable: right-click with a bucket"
+        },
+        {
+          "id": "COW:1",
+          "text": "Herd instinct: flees with nearby cows when one is struck"
+        }
+      ]
+    },
+    "hotbar": {
+      "identity": "slot",
+      "items": [
+        {
+          "slot": "hotbar:0",
+          "item": 4,
+          "objectId": "stonebreak:wood",
+          "name": "Wood",
+          "count": 10,
+          "state": "",
+          "maxStack": 64,
+          "selected": true
+        },
+        {
+          "slot": "hotbar:1",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        }
+      ]
+    },
+    "crafting": {
+      "identity": "slot",
+      "items": [
+        {
+          "slot": "craft:0",
+          "item": 4,
+          "objectId": "stonebreak:wood",
+          "name": "Wood",
+          "count": 1,
+          "state": "",
+          "maxStack": 64,
+          "selected": false
+        },
+        {
+          "slot": "craft:1",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:2",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:3",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:4",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:5",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:6",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:7",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "craft:8",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        }
+      ]
+    },
+    "hearts": {
+      "identity": "heart",
+      "items": [
+        {
+          "heart": "heart:0",
+          "state": "full"
+        },
+        {
+          "heart": "heart:1",
+          "state": "full"
+        },
+        {
+          "heart": "heart:2",
+          "state": "full"
+        },
+        {
+          "heart": "heart:3",
+          "state": "full"
+        },
+        {
+          "heart": "heart:4",
+          "state": "full"
+        },
+        {
+          "heart": "heart:5",
+          "state": "full"
+        },
+        {
+          "heart": "heart:6",
+          "state": "full"
+        },
+        {
+          "heart": "heart:7",
+          "state": "half"
+        },
+        {
+          "heart": "heart:8",
+          "state": "empty"
+        },
+        {
+          "heart": "heart:9",
+          "state": "empty"
+        }
+      ]
+    },
+    "worldMarkers": {
+      "identity": "marker",
+      "items": [
+        {
+          "marker": "damage:1",
+          "kind": "damage",
+          "x": 620,
+          "y": 470,
+          "text": "12",
+          "size": 44,
+          "color": "#FFFFFFFF",
+          "shadow": "#1A1A1A99",
+          "fraction": 0,
+          "half": 0
+        },
+        {
+          "marker": "prey:1",
+          "kind": "prey",
+          "x": 960,
+          "y": 560,
+          "text": "Ice Archon",
+          "size": 14,
+          "color": "#FFFFFFFF",
+          "shadow": "#1A1A1A99",
+          "fraction": 0.63,
+          "half": 0
+        },
+        {
+          "marker": "trap:1",
+          "kind": "trap",
+          "x": 880,
+          "y": 700,
+          "text": "",
+          "size": 0,
+          "color": "#E08A28C8",
+          "shadow": "#00000000",
+          "fraction": 0,
+          "half": 5
+        },
+        {
+          "marker": "doubt:1",
+          "kind": "doubt",
+          "x": 1100,
+          "y": 380,
+          "text": "Doubt 2/5",
+          "size": 14,
+          "color": "#C9B8F0FF",
+          "shadow": "#15151599",
+          "fraction": 0,
+          "half": 0
+        },
+        {
+          "marker": "awareness:1",
+          "kind": "awareness",
+          "x": 1340,
+          "y": 330,
+          "text": "!",
+          "size": 22,
+          "color": "#E0473CFF",
+          "shadow": "#101010CC",
+          "fraction": 0,
+          "half": 0
+        },
+        {
+          "marker": "nametag:1",
+          "kind": "nametag",
+          "x": 420,
+          "y": 320,
+          "text": "Builder_42",
+          "size": 18,
+          "color": "#FFFFFFFF",
+          "shadow": "#101010CC",
+          "fraction": 0,
+          "half": 0
+        }
+      ]
+    },
+    "chatLines": {
+      "identity": "line",
+      "items": [
+        {
+          "line": "l0",
+          "color": "#FFFFFFFF",
+          "shadow": "#00000000",
+          "fill": "#4E4E4E59",
+          "divider": false,
+          "dividerColor": "#00000000",
+          "runs": [
+            {
+              "run": "0",
+              "text": "<Player> hello ",
+              "emoji": ""
+            },
+            {
+              "run": "1",
+              "text": "",
+              "emoji": "banana"
+            }
+          ]
+        },
+        {
+          "line": "l1",
+          "color": "#99FF99FF",
+          "shadow": "#00000000",
+          "fill": "#4E4E4E59",
+          "divider": true,
+          "dividerColor": "#FFFFFF19",
+          "runs": [
+            {
+              "run": "0",
+              "text": "Teleported to 120, 64, -38",
+              "emoji": ""
+            }
+          ]
+        },
+        {
+          "line": "l2",
+          "color": "#FFCC54FF",
+          "shadow": "#00000000",
+          "fill": "#4E4E4E59",
+          "divider": true,
+          "dividerColor": "#FFFFFF19",
+          "runs": [
+            {
+              "run": "0",
+              "text": "Welcome to Stonebreak!",
+              "emoji": ""
+            }
+          ]
+        }
+      ]
+    },
+    "chatCommands": {
+      "identity": "command",
+      "items": [
+        {
+          "command": "fly",
+          "label": "/fly",
+          "description": "Enable or disable flight"
+        },
+        {
+          "command": "help",
+          "label": "/help",
+          "description": "Lists all available commands"
+        },
+        {
+          "command": "spawn",
+          "label": "/spawn",
+          "description": "Spawn a mob in front of you"
+        }
+      ]
+    },
+    "debugCards": {
+      "identity": "card",
+      "items": [
+        {
+          "card": "ram",
+          "column": "left",
+          "title": "RAM (JVM)",
+          "height": 137,
+          "bar": true,
+          "barFraction": 0.42,
+          "barColor": "#50C878FF",
+          "barCaption": "1.62 GB / 3.73 GB",
+          "lines": [
+            {
+              "line": "0",
+              "section": true,
+              "gap": true,
+              "label": "Heap Pools",
+              "value": ""
+            },
+            {
+              "line": "1",
+              "section": false,
+              "gap": false,
+              "label": "ZGC Young",
+              "value": "812.4 MB"
+            },
+            {
+              "line": "2",
+              "section": false,
+              "gap": false,
+              "label": "ZGC Old",
+              "value": "905.1 MB"
+            },
+            {
+              "line": "3",
+              "section": true,
+              "gap": true,
+              "label": "GC",
+              "value": ""
+            },
+            {
+              "line": "4",
+              "section": false,
+              "gap": false,
+              "label": "Collections",
+              "value": "214"
+            }
+          ]
+        },
+        {
+          "card": "debug",
+          "column": "right",
+          "title": "Debug",
+          "height": 121,
+          "bar": true,
+          "barFraction": 0.3,
+          "barColor": "#50C878FF",
+          "barCaption": "FPS 144",
+          "lines": [
+            {
+              "line": "0",
+              "section": true,
+              "gap": true,
+              "label": "Player",
+              "value": ""
+            },
+            {
+              "line": "1",
+              "section": false,
+              "gap": false,
+              "label": "Position",
+              "value": "120.52, 64.00, -38.11"
+            },
+            {
+              "line": "2",
+              "section": false,
+              "gap": false,
+              "label": "Biome",
+              "value": "Snowy Peaks"
+            }
+          ]
+        }
+      ]
+    },
+    "recipeGrid": {
+      "identity": "slot",
+      "items": [
+        {
+          "slot": "cell:0",
+          "item": 19,
+          "objectId": "stonebreak:wood_planks",
+          "name": "Wood Planks",
+          "count": 4,
+          "state": "",
+          "maxStack": 64,
+          "selected": false,
+          "tooltip": "Recipe: Wood Planks"
+        },
+        {
+          "slot": "cell:1",
+          "item": 2,
+          "objectId": "stonebreak:dirt",
+          "name": "Dirt",
+          "count": 1,
+          "state": "",
+          "maxStack": 64,
+          "selected": false,
+          "tooltip": "Recipe: Dirt"
+        },
+        {
+          "slot": "cell:2",
+          "item": 3,
+          "objectId": "stonebreak:stone",
+          "name": "Stone",
+          "count": 1,
+          "state": "",
+          "maxStack": 64,
+          "selected": false,
+          "tooltip": "Recipe: Stone"
+        },
+        {
+          "slot": "cell:3",
+          "item": 7,
+          "objectId": "stonebreak:sand",
+          "name": "Sand",
+          "count": 2,
+          "state": "",
+          "maxStack": 64,
+          "selected": false,
+          "tooltip": "Recipe: Sand"
+        },
+        {
+          "slot": "cell:4",
+          "item": 1,
+          "objectId": "stonebreak:grass",
+          "name": "Grass",
+          "count": 1,
+          "state": "",
+          "maxStack": 64,
+          "selected": false,
+          "tooltip": "Recipe: Grass"
+        }
+      ]
+    },
+    "ccBackgrounds": {
+      "identity": "id",
+      "items": [
+        {
+          "id": "adventurer",
+          "name": "Adventurer",
+          "description": "A wanderer ready for anything.",
+          "bonus": "No stat changes",
+          "selected": true
+        },
+        {
+          "id": "mercenary",
+          "name": "Mercenary",
+          "description": "Steel and coin.",
+          "bonus": "STR +1",
+          "selected": false
+        }
+      ]
+    },
+    "ccClasses": {
+      "identity": "id",
+      "items": [
+        {
+          "id": "berserker",
+          "index": 0,
+          "name": "Berserker",
+          "icon": {
+            "path": "/ui/abilities/berserker/Rage.png"
+          },
+          "hasIcon": true,
+          "selected": false
+        },
+        {
+          "id": "monk",
+          "index": 1,
+          "name": "Monk",
+          "icon": {
+            "path": ""
+          },
+          "hasIcon": false,
+          "selected": false
+        }
+      ]
+    },
+    "ccAbilities": {
+      "identity": "key",
+      "items": [
+        {
+          "key": "berserker:0",
+          "index": 0,
+          "name": "Rampage",
+          "description": "Charge forward.",
+          "icon": {
+            "path": "/ui/abilities/berserker/Rampage.png"
+          },
+          "hasIcon": true,
+          "label": "Spend 1 CP (0)",
+          "canSpend": true,
+          "rule": false
+        }
+      ]
+    },
+    "ccSkills": {
+      "identity": "id",
+      "items": [
+        {
+          "id": "acrobatics",
+          "name": "Acrobatics",
+          "level": "Lvl: 0",
+          "canInvest": true
+        }
+      ]
+    },
+    "ccFeats": {
+      "identity": "id",
+      "items": [
+        {
+          "id": "double_jump",
+          "name": "Double Jump",
+          "description": "Jump again in mid-air.",
+          "acquired": false,
+          "canAfford": true,
+          "rule": false
+        }
+      ]
+    },
+    "ccHair": {
+      "identity": "id",
+      "items": [
+        {
+          "id": "NONE",
+          "name": "None",
+          "equipped": true,
+          "rule": true
+        },
+        {
+          "id": "MALE_HAIR_1",
+          "name": "Short Hair",
+          "equipped": false,
+          "rule": false
+        }
+      ]
+    },
+    "ccHats": {
+      "identity": "id",
+      "items": [
+        {
+          "id": "NONE",
+          "name": "None",
+          "equipped": true,
+          "rule": true
+        },
+        {
+          "id": "TOP_HAT",
+          "name": "Top Hat",
+          "equipped": false,
+          "rule": false
+        }
+      ]
+    }
+  },
+  "actions": {
+    "stonebreak:screen.pause.resume": {
+      "contract": "stonebreak:screen.pause"
+    },
+    "stonebreak:screen.pause.statistics": {
+      "contract": "stonebreak:screen.pause"
+    },
+    "stonebreak:screen.pause.glossary": {
+      "contract": "stonebreak:screen.pause"
+    },
+    "stonebreak:screen.pause.settings": {
+      "contract": "stonebreak:screen.pause"
+    },
+    "stonebreak:screen.pause.quit": {
+      "contract": "stonebreak:screen.pause"
+    },
+    "stonebreak:screen.death.respawn": {
+      "contract": "stonebreak:screen.death"
+    },
+    "stonebreak:screen.save-changes.yes": {
+      "contract": "stonebreak:screen.save-changes"
+    },
+    "stonebreak:screen.save-changes.no": {
+      "contract": "stonebreak:screen.save-changes"
+    },
+    "stonebreak:screen.save-changes.cancel": {
+      "contract": "stonebreak:screen.save-changes"
+    },
+    "stonebreak:screen.statistics.back": {
+      "contract": "stonebreak:screen.statistics"
+    },
+    "stonebreak:screen.glossary.back": {
+      "contract": "stonebreak:screen.glossary"
+    },
+    "stonebreak:screen.main-menu.singleplayer": {
+      "contract": "stonebreak:screen.main-menu"
+    },
+    "stonebreak:screen.main-menu.multiplayer": {
+      "contract": "stonebreak:screen.main-menu"
+    },
+    "stonebreak:screen.main-menu.settings": {
+      "contract": "stonebreak:screen.main-menu"
+    },
+    "stonebreak:screen.main-menu.quit": {
+      "contract": "stonebreak:screen.main-menu"
+    },
+    "stonebreak:screen.main-menu.title": {
+      "contract": "stonebreak:screen.main-menu"
+    },
+    "stonebreak:screen.multiplayer.host": {
+      "contract": "stonebreak:screen.multiplayer"
+    },
+    "stonebreak:screen.multiplayer.join": {
+      "contract": "stonebreak:screen.multiplayer"
+    },
+    "stonebreak:screen.multiplayer.back": {
+      "contract": "stonebreak:screen.multiplayer"
+    },
+    "stonebreak:screen.host-world.select": {
+      "contract": "stonebreak:screen.host-world",
+      "params": {
+        "index": "int"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.host-world.start": {
+      "contract": "stonebreak:screen.host-world",
+      "params": {
+        "port": "string"
+      },
+      "result": {
+        "status": ""
+      }
+    },
+    "stonebreak:screen.host-world.back": {
+      "contract": "stonebreak:screen.host-world"
+    },
+    "stonebreak:screen.join-world.connect": {
+      "contract": "stonebreak:screen.join-world",
+      "params": {
+        "host": "string",
+        "port": "string",
+        "username": "string"
+      },
+      "result": {
+        "status": "Connecting to play.example.net:25565 ...",
+        "username": "Steve"
+      }
+    },
+    "stonebreak:screen.join-world.back": {
+      "contract": "stonebreak:screen.join-world"
+    },
+    "stonebreak:screen.glossary.select": {
+      "contract": "stonebreak:screen.glossary",
+      "params": {
+        "index": "int"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.glossary.cycle": {
+      "contract": "stonebreak:screen.glossary",
+      "params": {
+        "delta": "int"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:network.resync": {
+      "contract": "stonebreak:network.resync",
+      "result": {
+        "audited": 12
+      }
+    },
+    "stonebreak:settings.set-live": {
+      "contract": "stonebreak:settings",
+      "params": {
+        "field": "string",
+        "value": "any"
+      }
+    },
+    "stonebreak:settings.keep-ui-scale": {
+      "contract": "stonebreak:settings"
+    },
+    "stonebreak:settings.revert-ui-scale": {
+      "contract": "stonebreak:settings"
+    },
+    "stonebreak:inventory.slot-click": {
+      "contract": "stonebreak:inventory",
+      "params": {
+        "slot": "string",
+        "button": "int",
+        "shift": "bool"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:inventory.slot-press": {
+      "contract": "stonebreak:inventory",
+      "params": {
+        "slot": "string",
+        "button": "int",
+        "shift": "bool"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:inventory.slot-drag": {
+      "contract": "stonebreak:inventory",
+      "params": {
+        "slot": "string",
+        "button": "int"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:inventory.slot-release": {
+      "contract": "stonebreak:inventory",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:inventory.sort": {
+      "contract": "stonebreak:inventory",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:inventory.craft-all": {
+      "contract": "stonebreak:inventory",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:inventory.close": {
+      "contract": "stonebreak:inventory"
+    },
+    "stonebreak:hotbar.select": {
+      "contract": "stonebreak:hotbar",
+      "params": {
+        "index": "int"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.select": {
+      "contract": "stonebreak:screen.world-select",
+      "params": {
+        "index": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.hover": {
+      "contract": "stonebreak:screen.world-select",
+      "params": {
+        "index": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.wheel": {
+      "contract": "stonebreak:screen.world-select",
+      "params": {
+        "dy": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.move": {
+      "contract": "stonebreak:screen.world-select",
+      "params": {
+        "delta": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.hover-card": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.activate": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.play": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.create": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.delete": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.confirm-delete": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.cancel-delete": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.back": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.open-folder": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.world-select.backup": {
+      "contract": "stonebreak:screen.world-select",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.press": {
+      "contract": "stonebreak:screen.settings",
+      "params": {
+        "target": "string",
+        "fraction": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.drag": {
+      "contract": "stonebreak:screen.settings",
+      "params": {
+        "fraction": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.scrollbar": {
+      "contract": "stonebreak:screen.settings",
+      "params": {
+        "x": "number",
+        "y": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.scrollbar-drag": {
+      "contract": "stonebreak:screen.settings",
+      "params": {
+        "y": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.release": {
+      "contract": "stonebreak:screen.settings",
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.wheel": {
+      "contract": "stonebreak:screen.settings",
+      "params": {
+        "x": "number",
+        "y": "number",
+        "dy": "number"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:screen.settings.key": {
+      "contract": "stonebreak:screen.settings",
+      "params": {
+        "key": "int",
+        "shift": "bool"
+      },
+      "reentrancy": "parallel"
+    },
+    "stonebreak:crafting.recipes": {
+      "contract": "stonebreak:crafting"
+    },
+    "stonebreak:screen.inventory.tab": {
+      "contract": "stonebreak:screen.inventory",
+      "params": {
+        "tab": "string"
+      }
+    },
+    "stonebreak:screen.intro.skip": {
+      "contract": "stonebreak:screen.intro"
+    },
+    "stonebreak:chat.tab": {
+      "contract": "stonebreak:chat",
+      "params": {
+        "tab": "string"
+      }
+    },
+    "stonebreak:chat.command": {
+      "contract": "stonebreak:chat",
+      "params": {
+        "name": "string"
+      }
+    },
+    "stonebreak:chat.scroll": {
+      "contract": "stonebreak:chat",
+      "params": {
+        "delta": "number"
+      }
+    },
+    "stonebreak:chat.scroll-to": {
+      "contract": "stonebreak:chat",
+      "params": {
+        "offset": "number"
+      }
+    },
+    "stonebreak:chat.emoji-toggle": {
+      "contract": "stonebreak:chat"
+    },
+    "stonebreak:chat.emoji-insert": {
+      "contract": "stonebreak:chat",
+      "params": {
+        "emoji": "string"
+      }
+    },
+    "stonebreak:chat.emoji-favorite": {
+      "contract": "stonebreak:chat",
+      "params": {
+        "emoji": "string"
+      }
+    },
+    "stonebreak:chat.picker-close": {
+      "contract": "stonebreak:chat"
+    },
+    "stonebreak:screen.recipe-book.category": {
+      "contract": "stonebreak:screen.recipe-book",
+      "params": {
+        "name": "string"
+      }
+    },
+    "stonebreak:screen.recipe-book.press": {
+      "contract": "stonebreak:screen.recipe-book",
+      "params": {
+        "search": "bool",
+        "cell": "number"
+      }
+    },
+    "stonebreak:screen.recipe-book.variant": {
+      "contract": "stonebreak:screen.recipe-book",
+      "params": {
+        "direction": "number"
+      }
+    },
+    "stonebreak:screen.recipe-book.wheel": {
+      "contract": "stonebreak:screen.recipe-book",
+      "params": {
+        "dy": "number"
+      }
+    },
+    "stonebreak:screen.terrain-mapper.button": {
+      "contract": "stonebreak:screen.terrain-mapper",
+      "params": {
+        "name": "string"
+      }
+    },
+    "stonebreak:screen.terrain-mapper.field": {
+      "contract": "stonebreak:screen.terrain-mapper",
+      "params": {
+        "field": "string"
+      }
+    },
+    "stonebreak:screen.terrain-mapper.map-press": {
+      "contract": "stonebreak:screen.terrain-mapper",
+      "params": {
+        "x": "number",
+        "y": "number"
+      }
+    },
+    "stonebreak:screen.terrain-mapper.release": {
+      "contract": "stonebreak:screen.terrain-mapper",
+      "params": {
+        "x": "number",
+        "y": "number"
+      }
+    },
+    "stonebreak:screen.terrain-mapper.move": {
+      "contract": "stonebreak:screen.terrain-mapper",
+      "params": {
+        "x": "number",
+        "y": "number"
+      }
+    },
+    "stonebreak:screen.terrain-mapper.wheel": {
+      "contract": "stonebreak:screen.terrain-mapper",
+      "params": {
+        "x": "number",
+        "y": "number",
+        "dy": "number"
+      }
+    },
+    "stonebreak:screen.model-setup.press": {
+      "contract": "stonebreak:screen.model-setup",
+      "params": {
+        "id": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.tab": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "tab": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.talent": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "sub": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.nav": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "name": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.background": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.ability": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "index": "number",
+        "delta": "number"
+      }
+    },
+    "stonebreak:screen.character-creation.class": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.spend": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "index": "number"
+      }
+    },
+    "stonebreak:screen.character-creation.skill": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.feat": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.hair": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.hat": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.wheel": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "dy": "number"
+      }
+    },
+    "stonebreak:screen.character-sheet.tab": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "tab": "string"
+      }
+    },
+    "stonebreak:screen.character-sheet.talent": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "sub": "string"
+      }
+    },
+    "stonebreak:screen.character-sheet.ability": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "index": "number",
+        "delta": "number"
+      }
+    },
+    "stonebreak:screen.character-sheet.class": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "id": "string"
+      }
+    },
+    "stonebreak:screen.character-sheet.spend": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "index": "number"
+      }
+    },
+    "stonebreak:screen.character-sheet.skill": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "index": "number"
+      }
+    },
+    "stonebreak:screen.character-sheet.level-filter": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "direction": "number"
+      }
+    },
+    "stonebreak:screen.character-sheet.general": {
+      "contract": "stonebreak:screen.character-sheet"
+    },
+    "stonebreak:screen.character-sheet.feat": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "id": "string"
+      }
+    },
+    "stonebreak:screen.character-sheet.acquire": {
+      "contract": "stonebreak:screen.character-sheet"
+    },
+    "stonebreak:screen.character-sheet.wheel": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "dy": "number",
+        "sidebar": "bool"
+      }
+    },
+    "stonebreak:battle.pointer": {
+      "contract": "stonebreak:battle",
+      "params": {
+        "down": "bool",
+        "x": "number",
+        "y": "number",
+        "button": "number"
+      }
+    }
+  }
+}

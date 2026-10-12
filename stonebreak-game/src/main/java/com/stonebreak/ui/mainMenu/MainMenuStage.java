@@ -1,7 +1,7 @@
 package com.stonebreak.ui.mainMenu;
 
-import com.stonebreak.ui.startupIntro.tween.EasingFunctions;
-import com.stonebreak.ui.startupIntro.tween.EasingType;
+import com.openmason.engine.util.easing.EasingFunctions;
+import com.openmason.engine.util.easing.EasingType;
 
 /**
  * Drives the hidden title interaction on the main menu: a first click shakes

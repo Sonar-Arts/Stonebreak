@@ -1,6 +1,6 @@
 package com.stonebreak.ui.terrainMapper.handlers;
 
-import com.stonebreak.rendering.UI.masonryUI.MClipboard;
+import com.openmason.engine.ui.masonry.MClipboard;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
 
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE;
@@ -13,10 +13,10 @@ import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
 import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
 
 /**
- * Keyboard and character input for the terrain mapper. All per-frame key
- * polling is gone — we route through the GLFW key callback so Tab / Enter /
- * Escape fire exactly once per press. Character input is straight passthrough
- * to the active text field via {@link TerrainMapperStateManager}.
+ * Keyboard and character input for the terrain mapper, from the GLFW key and
+ * character callbacks, so Tab / Enter / Escape fire exactly once per press.
+ * Character input is straight passthrough to the active text field via
+ * {@link TerrainMapperStateManager}.
  */
 public final class TerrainInputHandler {
 
@@ -27,9 +27,6 @@ public final class TerrainInputHandler {
         this.state = state;
         this.actions = actions;
     }
-
-    /** Kept for parity with other screens; no per-frame keyboard polling needed. */
-    public void handleInput(long window) { /* no-op */ }
 
     public void handleCharacterInput(char character) {
         state.appendToActiveField(character);

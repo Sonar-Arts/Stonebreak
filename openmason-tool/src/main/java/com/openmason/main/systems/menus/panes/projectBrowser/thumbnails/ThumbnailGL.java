@@ -70,7 +70,7 @@ final class ThumbnailGL {
         }
     }
 
-    private static int uploadFromImage(BufferedImage source, int size) {
+    static int uploadFromImage(BufferedImage source, int size) {
         BufferedImage scaled = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = scaled.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,

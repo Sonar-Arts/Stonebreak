@@ -2,17 +2,17 @@ package com.stonebreak.ui.focusBattle.elements;
 
 import com.stonebreak.battle.api.BattlePhase;
 import com.stonebreak.battle.api.BattleView;
-import com.stonebreak.rendering.UI.masonryUI.MColor;
-import com.stonebreak.rendering.UI.masonryUI.MKeyHint;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MScreenFx;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MColor;
+import com.openmason.engine.ui.masonry.MKeyHint;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MScreenFx;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.focusBattle.BattleHudAnimState;
 import com.stonebreak.ui.focusBattle.BattlePalette;
-import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
-import com.stonebreak.ui.startupIntro.tween.EasingFunctions;
-import com.stonebreak.ui.startupIntro.tween.EasingType;
+import com.stonebreak.ui.focusBattle.BattleHudLayers;
+import com.openmason.engine.util.easing.EasingFunctions;
+import com.openmason.engine.util.easing.EasingType;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
 import org.joml.Matrix4fc;
@@ -29,7 +29,7 @@ import java.util.Locale;
  * ran out or the player skipped it) whatever is still showing fades in {@link #SKIP_FADE_SECONDS}
  * and the element goes inert until the next {@link #reset}.
  */
-public final class EncounterTransition implements SkijaFocusBattleRenderer.Layer {
+public final class EncounterTransition implements BattleHudLayers.Layer {
 
     public static final float FLASH_SECONDS = 0.3f;
     public static final float WIPE_SECONDS = 0.8f;

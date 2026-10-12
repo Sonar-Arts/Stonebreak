@@ -3,7 +3,9 @@ package com.openmason.main.systems.menus.panes.projectBrowser;
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry;
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetType;
 import com.openmason.main.systems.menus.panes.projectBrowser.AssetEditorDetacher;
+import com.openmason.main.systems.menus.textureCreator.TextureCreatorController;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorState;
+import com.openmason.main.systems.menus.textureCreator.TextureDocument;
 import com.openmason.main.systems.project.ProjectService;
 import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.services.StatusService;
@@ -18,6 +20,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -178,31 +182,55 @@ class ProjectBrowserControllerDeleteTest {
         assertFalse(modelState.hasUnsavedChanges(), "no detach -> no unsaved flag");
     }
 
+    /** A texture editor with one untitled document per path, each attached to that file. */
+    private static TextureCreatorController texturesOn(String... paths) {
+        TextureCreatorController textures = new TextureCreatorController(new TextureCreatorState());
+        for (String path : paths) {
+            textures.newTexture(new TextureCreatorState.CanvasSize(4, 4));
+            textures.getState().setCurrentFilePath(path);
+            textures.getState().setIsProjectFile(true);
+        }
+        return textures;
+    }
+
     @Test
     void omtDetachAfterSuccessfulDeleteBlanksPathKeepsDirty() throws IOException {
         AssetEntry entry = writeEntry("backing.omt", AssetType.OMT);
-        TextureCreatorState textureState = new TextureCreatorState();
-        textureState.setCurrentFilePath(entry.pathString());
-        textureState.setIsProjectFile(true);
-        textureState.markAsModified();
+        TextureCreatorController textures = texturesOn(entry.pathString());
+        TextureDocument doc = textures.getActiveDocument();
 
-        new AssetEditorDetacher().afterDelete(entry, true, null, textureState);
+        new AssetEditorDetacher().afterDelete(entry, true, null, textures);
 
-        assertFalse(textureState.hasFilePath(), "blank path -> saveProject routes to Save Project As");
-        assertFalse(textureState.isProjectFile());
-        assertTrue(textureState.hasUnsavedChanges(), "in-memory copy stays dirty; unsavedChanges not cleared");
+        assertNull(doc.getFilePath(), "blank path -> saveProject routes to Save Project As");
+        assertFalse(doc.isProjectFile());
+        assertTrue(doc.hasUnsavedChanges(), "in-memory copy is the only one left: flagged unsaved");
+    }
+
+    @Test
+    void omtDetachReachesEveryTabOnTheFileNotJustTheActiveOne() throws IOException {
+        AssetEntry entry = writeEntry("backing.omt", AssetType.OMT);
+        TextureCreatorController textures = texturesOn(entry.pathString(), temp.resolve("kept.omt").toString());
+        TextureDocument onDeleted = textures.getDocuments().get(0);
+        TextureDocument kept = textures.getDocuments().get(1);
+        assertSame(kept, textures.getActiveDocument(), "the deleted file's tab is in the background");
+
+        new AssetEditorDetacher().afterDelete(entry, true, null, textures);
+
+        assertNull(onDeleted.getFilePath());
+        assertTrue(onDeleted.hasUnsavedChanges());
+        assertTrue(kept.isProjectFile(), "a tab on another file stays attached");
+        assertFalse(kept.hasUnsavedChanges());
     }
 
     @Test
     void omtDetachSkipsNonMatchingPath() throws IOException {
         AssetEntry entry = writeEntry("other.omt", AssetType.OMT);
-        TextureCreatorState textureState = new TextureCreatorState();
-        textureState.setCurrentFilePath(temp.resolve("kept.omt").toString());
+        TextureCreatorController textures = texturesOn(temp.resolve("kept.omt").toString());
 
-        new AssetEditorDetacher().afterDelete(entry, true, null, textureState);
+        new AssetEditorDetacher().afterDelete(entry, true, null, textures);
 
-        assertTrue(textureState.hasFilePath(), "editor on a different file stays attached");
-        assertFalse(textureState.hasUnsavedChanges(), "no detach -> no unsaved flag");
+        assertTrue(textures.getState().hasFilePath(), "editor on a different file stays attached");
+        assertFalse(textures.getState().hasUnsavedChanges(), "no detach -> no unsaved flag");
     }
 
     @Test
@@ -210,14 +238,13 @@ class ProjectBrowserControllerDeleteTest {
         AssetEntry entry = writeEntry("backing.omo", AssetType.OMO);
         ModelState modelState = new ModelState();
         modelState.setCurrentOMOFilePath(entry.pathString());
-        TextureCreatorState textureState = new TextureCreatorState();
-        textureState.setCurrentFilePath(entry.pathString());
+        TextureCreatorController textures = texturesOn(entry.pathString());
 
-        new AssetEditorDetacher().afterDelete(entry, false, modelState, textureState);
+        new AssetEditorDetacher().afterDelete(entry, false, modelState, textures);
 
         assertTrue(modelState.hasOMOFile(), "failed delete leaves the model editor attached");
-        assertTrue(textureState.hasFilePath(), "failed delete leaves the texture editor attached");
+        assertTrue(textures.getState().hasFilePath(), "failed delete leaves the texture editor attached");
         assertFalse(modelState.hasUnsavedChanges(), "failed delete flags nothing");
-        assertFalse(textureState.hasUnsavedChanges(), "failed delete flags nothing");
+        assertFalse(textures.getState().hasUnsavedChanges(), "failed delete flags nothing");
     }
 }

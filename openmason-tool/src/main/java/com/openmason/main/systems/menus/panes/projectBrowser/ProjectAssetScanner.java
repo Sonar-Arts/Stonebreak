@@ -24,7 +24,8 @@ public class ProjectAssetScanner {
     public enum AssetType {
         OMO(".OMO Model", ".omo"),
         OMT(".OMT Texture", ".omt"),
-        OMSC(".OMSC Scene", ".omsc");
+        OMSC(".OMSC Scene", ".omsc"),
+        OMUI(".OMUI UI Document", ".omui");
 
         private final String label;
         private final String extension;
@@ -106,6 +107,21 @@ public class ProjectAssetScanner {
                 });
             } catch (IOException e) {
                 logger.warn("Failed to scan the Scenes folder: {}", scenesDir, e);
+            }
+        }
+
+        // UI documents live under UI/ by convention (#293), nested by namespace and path.
+        Path uiDir = root.resolve(com.openmason.main.systems.project.ProjectLayout.UI_DIR);
+        if (Files.isDirectory(uiDir)) {
+            try (Stream<Path> files = Files.walk(uiDir, 8)) {
+                files.filter(Files::isRegularFile).forEach(file -> {
+                    AssetEntry entry = toEntry(file);
+                    if (entry != null && entry.type() == AssetType.OMUI) {
+                        entries.add(entry);
+                    }
+                });
+            } catch (IOException e) {
+                logger.warn("Failed to scan the UI folder: {}", uiDir, e);
             }
         }
 

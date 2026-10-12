@@ -27,7 +27,7 @@ class FocusBattleGuardTest {
     }
 
     @Test void aBooleanReturningExpressionLambdaIsJustARunnableToTheRenderGuard() {
-        // The exact call shape the mouse router uses: handleMouseClick(...) returns boolean.
+        // A boolean-returning call such as handleMouseClick(...) is just a Runnable to the render guard.
         AtomicInteger calls = new AtomicInteger();
         FocusBattle.guardHud("click", () -> click(calls));
         assertEquals(1, calls.get());

@@ -43,9 +43,11 @@ public class ColorUtils {
             r1 = c; g1 = 0; b1 = x;
         }
 
-        int r = (int)((r1 + m) * 255);
-        int g = (int)((g1 + m) * 255);
-        int b = (int)((b1 + m) * 255);
+        // Round, not truncate: rgbToHsv -> hsvToRgb must return the exact
+        // input (truncation dropped ~2/3 of all colours by one level).
+        int r = Math.round((r1 + m) * 255);
+        int g = Math.round((g1 + m) * 255);
+        int b = Math.round((b1 + m) * 255);
 
         // Clamp to valid range
         r = Math.max(0, Math.min(255, r));

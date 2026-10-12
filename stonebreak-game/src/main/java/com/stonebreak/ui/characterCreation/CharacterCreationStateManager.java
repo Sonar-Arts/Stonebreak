@@ -1,8 +1,8 @@
 package com.stonebreak.ui.characterCreation;
 
 import com.stonebreak.player.CharacterStats;
-import com.stonebreak.rendering.UI.masonryUI.MButton;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MButton;
+import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.rpg.TalentSubTab;
 
 /**

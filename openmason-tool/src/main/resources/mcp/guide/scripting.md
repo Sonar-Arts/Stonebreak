@@ -59,12 +59,20 @@ print(om.summary())                      # stdout comes back in the result
   editor); files are written only if the whole script succeeds. Live runs need
   an absolute save path — load the result with `anim_load`.
 - Query: `om.summary()`, `p.info()`, `c.info()`
+- UI documents (`om.ui`, live tool only): `p = om.ui.create("Box", name="panel",
+  style={"width": 400})`, `om.ui.create("Label", parent=p, props={"text": "Hi"})`,
+  `b = om.ui.add_instance(component_id, parent=p)`, `om.ui.set_prop(b.inner("label"),
+  "text", "Go")` (override), `set_style/set_classes/bind/add_rule/set_token/...` — the
+  `ui_ops` ops as methods. Queued and validated per call; applied to the active UI
+  document (or `om.ui.use(doc)`) as ONE undo step when the script succeeds.
+  Reads (`om.ui.tree()`, `om.ui.get(key)`) see the document before the queued ops.
 
 ## Undo: two histories
 Model edits (parts, geometry, `om.tex` pixels) are ONE entry in the model
 history; `om.canvas` edits are ONE entry in the texture editor's OWN history.
 A mixed script produces one entry in each — `undo {domain:"model"}` AND
-`undo {domain:"texture"}` are both needed to fully revert it.
+`undo {domain:"texture"}` are both needed to fully revert it. `om.ui` edits are one
+step in the UI document's own History (`ui_undo`).
 
 ## texture_* / canvas_* ops (JSON twin)
 - `texture_create {part, faces, size:[w,h], color?, name?}` (faces: [ids] /

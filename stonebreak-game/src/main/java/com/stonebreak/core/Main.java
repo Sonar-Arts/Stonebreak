@@ -107,11 +107,14 @@ public class Main {
         long handle = window.handle();
 
         glfwSetKeyCallback(handle, (win, key, scancode, action, mods) -> inputRouter.onKey(key, action, mods));
+        // UI documents see letter keys by their layout label (Ctrl+Z on QWERTZ is the key labelled Z).
+        com.stonebreak.ui.runtime.GameUiInput.get().setKeyTranslator(
+                key -> com.stonebreak.ui.runtime.LayoutKeys.translate(key, 0));
         glfwSetCharCallback(handle, (win, codepoint) -> inputRouter.onCharacter(codepoint));
         glfwSetMouseButtonCallback(handle, (win, button, action, mods) ->
                 inputRouter.onMouseButton(button, action, mods));
         glfwSetCursorPosCallback(handle, (win, x, y) -> inputRouter.onMouseMove(x, y));
-        glfwSetScrollCallback(handle, (win, xOffset, yOffset) -> inputRouter.onScroll(yOffset));
+        glfwSetScrollCallback(handle, (win, xOffset, yOffset) -> inputRouter.onScroll(xOffset, yOffset));
 
         glfwSetFramebufferSizeCallback(handle, (win, w, h) -> window.onFramebufferResized(w, h));
         // Window (screen-coordinate) size can change independently of the framebuffer on
@@ -122,6 +125,10 @@ public class Main {
         glfwSetWindowPosCallback(handle, (win, x, y) -> window.refreshMonitorHz());
 
         glfwSetWindowFocusCallback(handle, (win, focused) -> {
+            if (!focused) {
+                // Releases made while unfocused never arrive: end UI drags, captures and held keys now (#288).
+                com.stonebreak.ui.runtime.GameUiInput.get().windowFocusLost();
+            }
             var mouseCapture = Game.getInstance().getMouseCaptureManager();
             if (mouseCapture == null) {
                 return;
@@ -178,11 +185,13 @@ public class Main {
             Game.getInstance().update();
             maybeAutoStartWorld();
             maybeAutoView();
+            maybeAutoPause();
             Game.displayDebugInfo();
             inputRouter.pollActiveScreen();
 
             frameRenderer.renderFrame();
             maybeAutoFurnace();
+            maybeAutoScreen();
             maybeAutoTorch();
             maybeAutoBattle();
             maybeAutoScreenshot();
@@ -420,6 +429,91 @@ public class Main {
         player.getCamera().setPitch((float) Math.toDegrees(Math.atan2(dy, Math.hypot(dx, dz))));
     }
 
+    // ─── Dev: -Dstonebreak.autoscreen=<seconds>:<inventory|workbench|chat|f3|recipes|character|creation|terrain|death> 
+
+    private long autoScreenDeadlineNanos = -1;
+    private boolean autoScreenDone;
+
+    /**
+     * Development shortcut paired with {@code stonebreak.autoworld} (#300): N seconds after the world is
+     * entered, opens the inventory screen, or places a crafting table in front of the player and opens
+     * it, through the game's own paths, so the container documents can be screenshotted from a script.
+     * Inert unless the property is set.
+     */
+    private void maybeAutoScreen() {
+        if (autoScreenDone) {
+            return;
+        }
+        String spec = System.getProperty("stonebreak.autoscreen");
+        if (spec == null || spec.isBlank()) {
+            autoScreenDone = true;
+            return;
+        }
+        if (Game.getInstance().getState() != GameState.PLAYING) {
+            return;
+        }
+        String[] parts = spec.split(":");
+        if (autoScreenDeadlineNanos < 0) {
+            double seconds = 5;
+            try {
+                seconds = Double.parseDouble(parts[0].trim());
+            } catch (NumberFormatException ignored) {
+                // keep default
+            }
+            autoScreenDeadlineNanos = System.nanoTime() + (long) (seconds * 1e9);
+            return;
+        }
+        if (System.nanoTime() < autoScreenDeadlineNanos) {
+            return;
+        }
+        autoScreenDone = true;
+        String which = parts.length > 1 ? parts[1].trim() : "inventory";
+        if (which.equals("workbench")) {
+            var world = Game.getWorld();
+            var player = Game.getPlayer();
+            if (world == null || player == null) {
+                System.err.println("[autoscreen] world/player not ready");
+                return;
+            }
+            org.joml.Vector3f pos = player.getPosition();
+            int x = (int) Math.floor(pos.x) + 2;
+            int y = (int) Math.floor(pos.y);
+            int z = (int) Math.floor(pos.z);
+            world.setBlockAt(x, y, z, com.stonebreak.blocks.BlockType.WORKBENCH, true);
+            System.out.println("[autoscreen] opening a crafting table at " + x + "," + y + "," + z);
+            Game.getInstance().openWorkbenchScreen(new com.openmason.engine.util.BlockPos(x, y, z));
+        } else if (which.equals("recipes")) { // #301: the recipe book document (opened from the inventory)
+            System.out.println("[autoscreen] opening the recipe book");
+            Game.getInstance().toggleInventoryScreen();
+            Game.getInstance().openRecipeBookScreen();
+        } else if (which.equals("character")) { // #301: the character sheet document
+            System.out.println("[autoscreen] opening the character sheet");
+            Game.getInstance().toggleCharacterScreen();
+        } else if (which.equals("creation") || which.equals("terrain")) { // #301: the two creation state documents
+            System.out.println("[autoscreen] entering " + which);
+            Game.getInstance().setState(which.equals("creation") ? GameState.CHARACTER_CREATION : GameState.TERRAIN_MAPPER);
+        } else if (which.equals("death")) { // #302: the death screen (pair with autopause: pausing while dead)
+            System.out.println("[autoscreen] killing the player");
+            Game.getPlayer().damage(Float.MAX_VALUE);
+        } else if (which.equals("f3")) { // #301: the F3 debug overlay document
+            System.out.println("[autoscreen] showing the F3 overlay");
+            Game.getDebugOverlay().toggleVisibility();
+        } else if (which.equals("chat")) { // #301: the chat document, open with a line typed and the picker up
+            var chat = Game.getInstance().getChatSystem();
+            System.out.println("[autoscreen] opening the chat");
+            chat.addMessage("<autoscreen> hello [banana] and [problem]");
+            chat.addMessage("Teleported to 120, 64, -38", new float[]{0.6f, 1f, 0.6f, 1f});
+            chat.openChat();
+            for (char ch : "hi [sword]".toCharArray()) {
+                chat.handleCharInput(ch);
+            }
+            chat.toggleEmojiPicker();
+        } else {
+            System.out.println("[autoscreen] opening the inventory");
+            Game.getInstance().toggleInventoryScreen();
+        }
+    }
+
     // ─── Dev: -Dstonebreak.autofurnace=<seconds> ─────────────────────────────
 
     private long autoFurnaceDeadlineNanos = -1;
@@ -636,6 +730,55 @@ public class Main {
         autoBattleSkipIntro = parts.length > 1 && parts[1].trim().equalsIgnoreCase("skipintro");
     }
 
+    // ─── Dev: -Dstonebreak.autopause=<seconds>[:online] ─────────────────────────
+
+    private long autoPauseDeadlineNanos = -1;
+    private boolean autoPauseDone;
+
+    /**
+     * Fidelity captures of the pause menu (#296): N seconds after the world is entered, opens the
+     * pause menu; {@code :online} lays it out as in a host/join session (six buttons, Resync World;
+     * documents see {@code session.online = true}) without touching the network ({@code UiOnlineState}). Pair with
+     * {@code -Dstonebreak.autoscreenshot} (a later deadline) and {@code -Dstonebreak.ui.pinclock}.
+     * Inert unless the property is set.
+     */
+    private void maybeAutoPause() {
+        if (autoPauseDone) {
+            return;
+        }
+        String spec = System.getProperty("stonebreak.autopause");
+        if (spec == null || spec.isBlank()) {
+            autoPauseDone = true;
+            return;
+        }
+        if (autoPauseDeadlineNanos < 0) {
+            if (Game.getInstance().getState() != GameState.PLAYING) {
+                return;
+            }
+            double seconds = 3;
+            try {
+                seconds = Double.parseDouble(spec.split(":")[0].trim());
+            } catch (NumberFormatException ignored) {
+                // keep default
+            }
+            autoPauseDeadlineNanos = System.nanoTime() + (long) (seconds * 1e9);
+            return;
+        }
+        if (System.nanoTime() < autoPauseDeadlineNanos) {
+            return;
+        }
+        autoPauseDone = true;
+        if (spec.trim().endsWith(":online")) {
+            com.stonebreak.ui.UiOnlineState.override(() -> true);
+        }
+        com.stonebreak.ui.PauseMenu menu = Game.getInstance().getPauseMenu();
+        if (Game.getInstance().getState() == GameState.PLAYING && menu != null && !menu.isVisible()) {
+            Game.getInstance().togglePauseMenu();
+        }
+        System.out.println("[autopause] pause menu open: " + (menu != null && menu.isVisible())
+            + (spec.trim().endsWith(":online") ? " (online layout)" : ""));
+    }
+
     // ─── Dev: -Dstonebreak.autoscreenshot=<seconds>:<file.png>[:quit] ──────────
 
     private long autoShotDeadlineNanos = -1;
@@ -666,7 +809,10 @@ public class Main {
         // buffer still holds the rendered world behind the pause menu.
         // Arm on the first PLAYING frame; afterwards shoot on schedule whatever
         // UI state stray focus/keys may have toggled (the world is still drawn).
-        if (autoShotDeadlineNanos < 0 && state != GameState.PLAYING) {
+        // -Dstonebreak.autoscreenshot.anystate=true arms on the first frame of any state (the main
+        // menu with a -Dstonebreak.uidoc overlay needs no world).
+        boolean anyState = Boolean.getBoolean("stonebreak.autoscreenshot.anystate");
+        if (autoShotDeadlineNanos < 0 && state != GameState.PLAYING && !anyState) {
             return;
         }
         String[] parts = spec.split(":");
@@ -781,6 +927,16 @@ public class Main {
             logger.error("Error cleaning up CBRResourceManager", e);
         }
         Game.logDetailedMemoryInfo("After CBR cleanup");
+
+        // UI document screens (their Masonry handles) and the draw providers' GL textures (item
+        // icon atlas, model previews) go before the renderer and its Skija backend.
+        try {
+            com.stonebreak.ui.runtime.screens.DocumentScreenHost.ifCreated()
+                    .ifPresent(com.stonebreak.ui.runtime.screens.DocumentScreenHost::closeAll);
+            com.stonebreak.ui.runtime.providers.GameDrawProviders.shutdown();
+        } catch (Exception e) {
+            logger.error("Error cleaning up UI document screens and draw providers", e);
+        }
 
         if (renderer != null) {
             renderer.cleanup();

@@ -147,9 +147,7 @@ class FlowSnapshotGalleryTest {
         else frames(screen, view, 0.4f);
         BattleRasterFixture fx = new BattleRasterFixture(W, H);
         fx.canvas.clear(clear);
-        screen.renderer().paintHud(fx.ui, fx.canvas, W, H, UI, view, screen.menuState(), screen.animState(),
-                shoulderCamera());
-        return fx;
+        return fx.paintHud(screen, UI, shoulderCamera());
     }
 
     @Test

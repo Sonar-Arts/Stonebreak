@@ -1,0 +1,90 @@
+{
+  "screen" : "statistics",
+  "units" : "framebuffer pixels; rect = [x, y, width, height], origin top-left",
+  "cases" : {
+    "statistics-played_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 780.0, 750.0, 360.0, 50.0 ],
+        "panel" : [ 700.0, 250.0, 520.0, 580.0 ]
+      },
+      "hits" : {
+        "back" : [ 780.0, 750.0, 360.0, 50.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.statistics.back"
+      }
+    },
+    "statistics-played_1280x720_s0_75" : {
+      "rects" : {
+        "back" : [ 505.0, 517.5, 270.0, 37.5 ],
+        "panel" : [ 445.0, 142.5, 390.0, 435.0 ]
+      },
+      "hits" : {
+        "back" : [ 505.0, 517.5, 270.0, 37.5 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.statistics.back"
+      }
+    },
+    "statistics-played_3840x2160_s2" : {
+      "rects" : {
+        "back" : [ 1560.0, 1500.0, 720.0, 100.0 ],
+        "panel" : [ 1400.0, 500.0, 1040.0, 1160.0 ]
+      },
+      "hits" : {
+        "back" : [ 1560.0, 1500.0, 720.0, 100.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.statistics.back"
+      }
+    },
+    "statistics-played_1921x1081_s1_25" : {
+      "rects" : {
+        "back" : [ 735.5, 803.0, 450.0, 62.5 ],
+        "panel" : [ 635.5, 178.0, 650.0, 725.0 ]
+      },
+      "hits" : {
+        "back" : [ 735.5, 803.0, 450.0, 62.5 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.statistics.back"
+      }
+    },
+    "statistics-fresh_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 780.0, 750.0, 360.0, 50.0 ],
+        "panel" : [ 700.0, 250.0, 520.0, 580.0 ]
+      },
+      "hits" : {
+        "back" : [ 780.0, 750.0, 360.0, 50.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.statistics.back"
+      }
+    },
+    "statistics-played-hover-back_1920x1080_s1" : {
+      "rects" : {
+        "back" : [ 780.0, 750.0, 360.0, 50.0 ],
+        "panel" : [ 700.0, 250.0, 520.0, 580.0 ]
+      },
+      "hits" : {
+        "back" : [ 780.0, 750.0, 360.0, 50.0 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.statistics.back"
+      }
+    },
+    "statistics-played-hover-back_1921x1081_s1_25" : {
+      "rects" : {
+        "back" : [ 735.5, 803.0, 450.0, 62.5 ],
+        "panel" : [ 635.5, 178.0, 650.0, 725.0 ]
+      },
+      "hits" : {
+        "back" : [ 735.5, 803.0, 450.0, 62.5 ]
+      },
+      "actions" : {
+        "back" : "stonebreak:screen.statistics.back"
+      }
+    }
+  }
+}

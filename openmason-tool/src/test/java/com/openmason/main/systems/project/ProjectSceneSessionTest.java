@@ -1,6 +1,7 @@
 package com.openmason.main.systems.project;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -26,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * service no-ops it — the live-object restore is not what is under test here, the scene
  * hand-off around it is.
  */
+@Tag("regression")
 class ProjectSceneSessionTest {
 
     @TempDir

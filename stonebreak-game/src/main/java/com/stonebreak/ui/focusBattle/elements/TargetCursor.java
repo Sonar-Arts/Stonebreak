@@ -4,17 +4,17 @@ import com.stonebreak.battle.api.BattleStageLayout;
 import com.stonebreak.battle.api.BattleView;
 import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.CombatantView;
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MSymbol;
-import com.stonebreak.rendering.UI.masonryUI.MWorldMarker;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MSymbol;
+import com.openmason.engine.ui.masonry.MWorldMarker;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.focusBattle.BattleHudAnimState;
 import com.stonebreak.ui.focusBattle.BattleHudRules;
 import com.stonebreak.ui.focusBattle.BattleMenuState;
 import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
-import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
+import com.stonebreak.ui.focusBattle.BattleHudLayers;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
 import org.joml.Matrix4fc;
@@ -29,7 +29,7 @@ import org.joml.Matrix4fc;
  * <p>{@link #place} is the single source of the cursor's geometry: the painter draws from it and
  * the screen hit-tests mouse clicks against the very same {@link Placement}.
  */
-public final class TargetCursor implements SkijaFocusBattleRenderer.Layer {
+public final class TargetCursor implements BattleHudLayers.Layer {
 
     /** Height of the body point the cursor aims at, as a fraction of the model's height. */
     public static final float ANCHOR_HEIGHT = 0.75f;

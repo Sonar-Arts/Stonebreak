@@ -1,5 +1,7 @@
 package com.stonebreak.rendering.UI.backend.skija;
 
+import com.openmason.engine.ui.rendering.GpuMasonryBackend;
+import com.openmason.engine.ui.rendering.UiRenderTarget;
 import com.stonebreak.rendering.UI.backend.UIBackend;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Data;
@@ -11,33 +13,27 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * Skija-backed {@link UIBackend}. Wraps a {@link SkiaContext} and exposes the
- * active {@link Canvas} plus shared assets (typeface, dirt texture) that the
- * Stonebreak menus reuse across frames.
+ * Stonebreak's Skija {@link UIBackend}: the engine's {@link GpuMasonryBackend} drawing into the
+ * game window ({@link UiRenderTarget#gameWindow}, legacy reset-to-baseline GL policy), plus the
+ * menu assets the Stonebreak screens reuse across frames (typeface, dirt texture, logo). Game
+ * resources are read here because only this module can open them.
  */
 /*
  * Not final: headless widget tests substitute a CPU-raster canvas by overriding
  * getCanvas()/isAvailable()/getMinecraftTypeface() without ever calling initialize().
  */
-public class SkijaUIBackend implements UIBackend {
+public class SkijaUIBackend extends GpuMasonryBackend implements UIBackend {
 
-    private final SkiaContext context = new SkiaContext();
-
-    private Typeface minecraftTypeface;
     private Image dirtTexture;
     private Image stonebreakLogo;
 
-    private boolean inFrame;
-    private int frameDepth;  // nesting depth for nested begin/end pairs
-    private Canvas currentCanvas;
-
     public void initialize(int width, int height) {
-        context.init(width, height);
+        initialize(UiRenderTarget.gameWindow(Math.max(1, width), Math.max(1, height), 1f));
         loadAssets();
     }
 
     private void loadAssets() {
-        minecraftTypeface = loadTypeface("/fonts/Minecraft.ttf");
+        setTypeface(loadTypeface("/fonts/Minecraft.ttf"));
         dirtTexture = loadImage("/ui/mainMenu/Dirt.png");
         stonebreakLogo = loadImage("/ui/mainMenu/Stonebreak_Logo.png");
     }
@@ -71,58 +67,25 @@ public class SkijaUIBackend implements UIBackend {
     }
 
     @Override
-    public void beginFrame(int width, int height, float pixelRatio) {
-        if (!context.isInitialized()) return;
-        if (width != context.getWidth() || height != context.getHeight()) {
-            context.resize(width, height);
-        }
-        frameDepth++;
-        if (frameDepth == 1) {
-            currentCanvas = context.beginPaint();
-        }
-        inFrame = true;
-    }
-
-    @Override
-    public void endFrame() {
-        if (!inFrame || frameDepth == 0) return;
-        frameDepth--;
-        if (frameDepth == 0) {
-            context.endPaint();
-            currentCanvas = null;
-            inFrame = false;
-        }
-    }
-
-    @Override
-    public void resize(int width, int height) {
-        context.resize(width, height);
-    }
-
-    @Override
     public void dispose() {
         if (dirtTexture != null) { dirtTexture.close(); dirtTexture = null; }
         if (stonebreakLogo != null) { stonebreakLogo.close(); stonebreakLogo = null; }
-        if (minecraftTypeface != null) { minecraftTypeface.close(); minecraftTypeface = null; }
-        context.dispose();
+        super.dispose();
     }
 
+    /** Active canvas for the current frame. Throws if no frame is in progress. */
     @Override
-    public boolean isAvailable() {
-        return context.isInitialized();
-    }
-
-    /**
-     * Active canvas for the current frame. Throws if no frame is in progress.
-     */
     public Canvas getCanvas() {
-        if (!inFrame || currentCanvas == null) {
-            throw new IllegalStateException("No active Skija frame");
-        }
-        return currentCanvas;
+        return super.getCanvas();
     }
 
-    public Typeface getMinecraftTypeface() { return minecraftTypeface; }
+    /** Masonry text uses the game font; test fixtures override {@link #getMinecraftTypeface()}. */
+    @Override
+    public Typeface typeface() {
+        return getMinecraftTypeface();
+    }
+
+    public Typeface getMinecraftTypeface() { return super.typeface(); }
 
     public Image getDirtTexture() { return dirtTexture; }
 

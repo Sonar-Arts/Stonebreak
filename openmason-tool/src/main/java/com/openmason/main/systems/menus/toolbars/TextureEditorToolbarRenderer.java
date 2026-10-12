@@ -7,7 +7,6 @@ import com.openmason.main.systems.menus.textureCreator.selection.SelectionManage
 import com.openmason.main.systems.menus.textureCreator.tools.*;
 import com.openmason.main.systems.menus.textureCreator.tools.grabber.GrabberTool;
 import com.openmason.main.systems.menus.textureCreator.tools.move.MoveToolController;
-import com.openmason.main.systems.menus.textureCreator.tools.paste.PasteTool;
 import imgui.ImGui;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +31,6 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
     private final SkijaToolStripRenderer skijaStrip = new SkijaToolStripRenderer();
     private MoveToolController moveToolInstance; // Reference to move tool for configuration
     private SelectionBrushTool selectionBrushTool; // Reference to brush tool for configuration
-    private PasteTool pasteToolInstance; // Reference to paste tool for programmatic activation
     private ShapeTool shapeToolInstance; // Reference to shape tool for configuration
 
     /**
@@ -59,10 +57,6 @@ public class TextureEditorToolbarRenderer extends BaseToolbarRenderer {
         tools.add(new RectangleSelectionTool());
         selectionBrushTool = new SelectionBrushTool();
         tools.add(selectionBrushTool);
-
-        // Create paste tool instance for programmatic activation (Ctrl+V)
-        // Note: NOT added to tools list - it's activated automatically, not manually selected
-        pasteToolInstance = new PasteTool();
 
         // Set default tool
         currentTool = tools.get(0); // Grabber

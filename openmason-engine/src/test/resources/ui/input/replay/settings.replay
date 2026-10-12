@@ -1,0 +1,61 @@
+# #288 input replay: one session through a menu, a text field, a modal dialog, a scroll list
+# and a controller. Coordinates are viewport pixels (640x360, UI scale 1.25); @key = centre.
+
+# Pointer: hover, click, a press that wanders off, and empty space.
+move @play
+down @play
+up @play
+down @options
+up @quit
+down 600 340
+up 600 340
+
+# Keyboard: Tab and arrows, focus indication, Enter clicks; arrows do not wrap.
+key TAB
+key TAB
+key UP
+key UP
+key ENTER
+key TAB shift
+
+# The text field: click, type (one rejected character), invalid commit, fix, commit, revert.
+down @name
+up @name
+text Steve1
+key ENTER
+key BACKSPACE
+key ENTER
+text x
+key ESCAPE
+key ESCAPE
+
+# Quit opens a modal: focus moves in, clicks outside are blocked, Escape closes and restores.
+down @quit
+up @quit
+down @play
+up @play
+key TAB
+key ESCAPE
+key TAB
+
+# A held key across focus loss; a stale repeat.
+hold DOWN
+focus-lost
+release DOWN
+repeat ENTER
+
+# The scroll list: wheel over it, then a controller walking into it and confirming.
+move @list
+wheel @list 1
+pad DPAD_RIGHT down
+pad DPAD_RIGHT up
+pad DPAD_DOWN down
+tick 0.3
+tick 0.2
+tick 0.1
+pad DPAD_DOWN up
+pad A down
+tick 1
+pad A up
+leave
+screen-closed

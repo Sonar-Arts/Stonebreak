@@ -56,7 +56,8 @@ public final class ScriptExecutor {
     /**
      * Compact result for all frontends. {@code summary} is present on success;
      * {@code opsTrace} only when requested; {@code files} lists any .omanim
-     * clips the script wrote.
+     * clips the script wrote; {@code ui} is the {@code om.ui} batch result
+     * (one UI undo step) when the script edited a UI document.
      */
     public record ScriptResult(
             boolean ok,
@@ -64,10 +65,16 @@ public final class ScriptExecutor {
             ModelSummary summary,
             String stdout,
             List<ObjectNode> opsTrace,
-            List<String> files) {
+            List<String> files,
+            java.util.Map<String, Object> ui) {
+
+        public ScriptResult(boolean ok, ScriptError error, ModelSummary summary, String stdout,
+                            List<ObjectNode> opsTrace, List<String> files) {
+            this(ok, error, summary, stdout, opsTrace, files, null);
+        }
 
         public static ScriptResult failure(ScriptError error) {
-            return new ScriptResult(false, error, null, null, null, null);
+            return new ScriptResult(false, error, null, null, null, null, null);
         }
     }
 
@@ -120,13 +127,24 @@ public final class ScriptExecutor {
      */
     public ScriptResult run(ModelDocument doc, CanvasSurface canvas,
                             ScriptSource src, RunOptions opts) {
+        return run(doc, canvas, null, src, opts);
+    }
+
+    /**
+     * @param ui the live UI editor for {@code om.ui}, or null (om.ui then raises a
+     *           teaching error)
+     */
+    public ScriptResult run(ModelDocument doc, CanvasSurface canvas,
+                            com.openmason.main.systems.scripting.commands.UiScriptCommands.Target ui,
+                            ScriptSource src, RunOptions opts) {
         return switch (src.language()) {
-            case JSON_OPS -> runJson(doc, canvas, src, opts);
-            case PYTHON -> runPython(doc, canvas, src, opts);
+            case JSON_OPS -> runJson(doc, canvas, ui, src, opts);
+            case PYTHON -> runPython(doc, canvas, ui, src, opts);
         };
     }
 
     private ScriptResult runJson(ModelDocument doc, CanvasSurface canvas,
+                                 com.openmason.main.systems.scripting.commands.UiScriptCommands.Target ui,
                                  ScriptSource src, RunOptions opts) {
         OpBatchExecutor batch = new OpBatchExecutor(mapper);
         JsonNode root;
@@ -142,6 +160,7 @@ public final class ScriptExecutor {
         }
 
         ModelCommands cmds = new ModelCommands(doc, mapper, opts.baseDir(), canvas);
+        cmds.ui().attach(ui);
         try {
             batch.execute(root, cmds);
         } catch (OpBatchException e) {
@@ -152,6 +171,7 @@ public final class ScriptExecutor {
     }
 
     private ScriptResult runPython(ModelDocument doc, CanvasSurface canvas,
+                                   com.openmason.main.systems.scripting.commands.UiScriptCommands.Target ui,
                                    ScriptSource src, RunOptions opts) {
         if (pythonRunner == null) {
             return ScriptResult.failure(new ScriptError(
@@ -163,6 +183,7 @@ public final class ScriptExecutor {
                     "run against a scratch document instead, or use a JSON op batch", null, null));
         }
         ModelCommands cmds = new ModelCommands(doc, mapper, opts.baseDir(), canvas);
+        cmds.ui().attach(ui);
         try {
             String stdout = pythonRunner.run(cmds, src.source(), opts.timeoutMs());
             return success(cmds, stdout, opts);
@@ -177,17 +198,26 @@ public final class ScriptExecutor {
     private ScriptResult success(ModelCommands cmds, String stdout, RunOptions opts) {
         // Deferred file output (.omanim saves, canvas PNG exports) flushes only
         // now, after the script succeeded — a failing script never writes files.
+        // The om.ui batch goes first: it is one undoable step and is rolled back if a
+        // file flush after it fails, so a failed run never leaves a half-applied edit.
+        java.util.Map<String, Object> ui;
+        try {
+            ui = cmds.ui().flush();
+        } catch (CommandException e) {
+            return ScriptResult.failure(new ScriptError(e.getMessage(), e.hint(), null, null));
+        }
         List<String> files = new java.util.ArrayList<>();
         try {
             files.addAll(cmds.anim().flushSaves());
             files.addAll(cmds.canvas().flushExports());
         } catch (CommandException e) {
+            cmds.ui().rollback();
             return ScriptResult.failure(new ScriptError(e.getMessage(), e.hint(), null, null));
         }
         return new ScriptResult(
                 true, null, cmds.summary(),
                 stdout == null || stdout.isEmpty() ? null : stdout,
                 opts.includeTrace() ? cmds.opsTrace() : null,
-                files.isEmpty() ? null : files);
+                files.isEmpty() ? null : files, ui);
     }
 }

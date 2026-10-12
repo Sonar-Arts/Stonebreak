@@ -207,11 +207,4 @@ public class ChatMessageManager {
             chatHistory.remove(0);
         }
     }
-
-    /**
-     * Get chat history (past 20 messages)
-     */
-    public List<ChatMessage> getChatHistory() {
-        return new ArrayList<>(chatHistory);
-    }
 }

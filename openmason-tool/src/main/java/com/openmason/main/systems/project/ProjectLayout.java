@@ -1,5 +1,7 @@
 package com.openmason.main.systems.project;
 
+import com.openmason.engine.ui.assets.ProjectAssetSource;
+import com.openmason.engine.ui.assets.ProjectFolder;
 import com.openmason.main.AppPaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,12 +23,27 @@ public final class ProjectLayout {
     /** Subfolder holding a project's {@code .omsc} scenes. */
     public static final String SCENES_DIR = "Scenes";
 
+    /**
+     * Subfolder where shared UI assets are placed by convention ({@code UI/<namespace>/<path><ext>})
+     * when extracted from a document or imported from an SBUI. Assets elsewhere in the project
+     * still resolve through the project-relative hints UI documents record.
+     */
+    public static final String UI_DIR = "UI";
+
     private ProjectLayout() {
         throw new UnsupportedOperationException("Utility class");
     }
 
     public static Path scenesDir(Path projectRoot) {
         return projectRoot == null ? null : projectRoot.resolve(SCENES_DIR);
+    }
+
+    /**
+     * Shared UI asset source for a project: what UI documents resolve their shared textures,
+     * components, scripts, fonts and sounds through in the editor. Null without a project.
+     */
+    public static ProjectAssetSource uiAssetSource(Path projectRoot) {
+        return projectRoot == null ? null : new ProjectAssetSource(new ProjectFolder(projectRoot), UI_DIR + "/");
     }
 
     /** Scenes folder for the project owning the given {@code .omp}, or null. */

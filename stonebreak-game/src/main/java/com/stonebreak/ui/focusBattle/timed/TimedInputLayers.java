@@ -2,7 +2,7 @@ package com.stonebreak.ui.focusBattle.timed;
 
 import com.stonebreak.battle.api.BattleStageLayout;
 import com.stonebreak.battle.api.BattleView;
-import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
+import com.stonebreak.ui.focusBattle.BattleHudLayers;
 
 /**
  * The timed-input HUD in one object: E9 timing ring, E12 parry feedback, E10 combo strip and E14
@@ -30,15 +30,15 @@ public final class TimedInputLayers {
     private final ParryOverlay parryOverlay = new ParryOverlay();
     private final ComboStripOverlay comboOverlay = new ComboStripOverlay();
 
-    private final SkijaFocusBattleRenderer.Layer screenFx =
+    private final BattleHudLayers.Layer screenFx =
             (ui, canvas, w, h, s, raw, view, anim, vp) -> ScreenFxLayer.paint(canvas, w, h, s, view, state);
-    private final SkijaFocusBattleRenderer.Layer timingRing =
+    private final BattleHudLayers.Layer timingRing =
             (ui, canvas, w, h, s, raw, view, anim, vp) ->
                     ringOverlay.paint(ui, canvas, w, h, s, view, state, layout(), vp, gradeWords);
-    private final SkijaFocusBattleRenderer.Layer parry =
+    private final BattleHudLayers.Layer parry =
             (ui, canvas, w, h, s, raw, view, anim, vp) ->
                     parryOverlay.paint(ui, canvas, w, h, s, view, state, layout(), vp, guardWords);
-    private final SkijaFocusBattleRenderer.Layer comboStrip =
+    private final BattleHudLayers.Layer comboStrip =
             (ui, canvas, w, h, s, raw, view, anim, vp) -> comboOverlay.paint(ui, w, h, s, raw);
 
     /** @param layout the stage the ring and parry brackets anchor to; null pins them to their fallbacks */
@@ -46,13 +46,13 @@ public final class TimedInputLayers {
         this.layout = layout;
     }
 
-    /** Registers the underlay and the three overlays with the HUD renderer. Call once. */
-    public void install(SkijaFocusBattleRenderer renderer) {
-        if (renderer == null) return;
-        renderer.addUnderlay(screenFx);
-        renderer.addOverlay(timingRing);
-        renderer.addOverlay(parry);
-        renderer.addOverlay(comboStrip);
+    /** Registers the underlay and the three overlays with the HUD layers. Call once. */
+    public void install(BattleHudLayers layers) {
+        if (layers == null) return;
+        layers.addUnderlay(screenFx);
+        layers.addOverlay(timingRing);
+        layers.addOverlay(parry);
+        layers.addOverlay(comboStrip);
     }
 
     /** Once per frame, after the battle model's update: consumes {@code view.frameEvents()}. */
@@ -100,10 +100,10 @@ public final class TimedInputLayers {
     public TimingRingOverlay timingRing() { return ringOverlay; }
     public ComboStripOverlay comboStrip() { return comboOverlay; }
 
-    public SkijaFocusBattleRenderer.Layer screenFxLayer() { return screenFx; }
-    public SkijaFocusBattleRenderer.Layer timingRingLayer() { return timingRing; }
-    public SkijaFocusBattleRenderer.Layer parryLayer() { return parry; }
-    public SkijaFocusBattleRenderer.Layer comboStripLayer() { return comboStrip; }
+    public BattleHudLayers.Layer screenFxLayer() { return screenFx; }
+    public BattleHudLayers.Layer timingRingLayer() { return timingRing; }
+    public BattleHudLayers.Layer parryLayer() { return parry; }
+    public BattleHudLayers.Layer comboStripLayer() { return comboStrip; }
 
     private BattleStageLayout layout() { return layout; }
 }

@@ -3,15 +3,15 @@ package com.stonebreak.ui.settingsMenu.handlers;
 import static org.lwjgl.glfw.GLFW.*;
 
 import com.stonebreak.config.Settings;
-import com.stonebreak.rendering.UI.masonryUI.MDropdown;
-import com.stonebreak.rendering.UI.masonryUI.MSlider;
+import com.openmason.engine.ui.masonry.MDropdown;
+import com.openmason.engine.ui.masonry.MSlider;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
 
 /**
- * Keyboard dispatch for the settings menu. Category navigation, per-category
- * setting navigation, Shift-modified value nudges, Enter/Escape actions.
+ * Keyboard rules of the settings menu, one key press at a time ({@link #key}): category navigation,
+ * per-category setting navigation, Shift-modified value nudges, Enter/Escape actions.
  */
 public final class InputHandler {
 
@@ -19,93 +19,59 @@ public final class InputHandler {
     private final Settings settings;
     private final ActionHandler actionHandler;
 
-    private boolean escapePressed;
-    private boolean enterPressed;
-
     public InputHandler(StateManager stateManager, Settings settings, ActionHandler actionHandler) {
         this.stateManager = stateManager;
         this.settings = settings;
         this.actionHandler = actionHandler;
     }
 
-    public void handleInput(long window) {
-        // While the keep/revert popup is up it owns the keyboard: Enter keeps,
-        // Escape reverts; everything else is suppressed so the menu stays modal.
+    /**
+     * One key press (the document delivers keys as events, so each press and OS repeat is one
+     * step): Left/A and Right/D change category (Shift: adjust the selected value), Up/W and
+     * Down/S move the row, Enter activates, Escape goes back; while the UI-scale confirmation is
+     * up only Enter (keep) and Escape (revert) act.
+     */
+    public void key(int key, boolean shift) {
         if (stateManager.isUiScaleConfirmActive()) {
-            handleConfirmationKeys(window);
+            if (key == GLFW_KEY_ENTER) actionHandler.confirmUiScale();
+            else if (key == GLFW_KEY_ESCAPE) actionHandler.revertUiScale();
             return;
         }
-        handleCategoryNavigation(window);
-        handleSettingNavigation(window);
-        handleValueAdjustment(window);
-        handleEnter(window);
-        handleEscape(window);
-    }
-
-    private void handleConfirmationKeys(long window) {
-        boolean enterDown = pressed(window, GLFW_KEY_ENTER);
-        if (enterDown && !enterPressed) actionHandler.confirmUiScale();
-        enterPressed = enterDown;
-
-        boolean escDown = pressed(window, GLFW_KEY_ESCAPE);
-        if (escDown && !escapePressed) actionHandler.revertUiScale();
-        escapePressed = escDown;
-    }
-
-    private void handleCategoryNavigation(long window) {
-        boolean shift = isShiftHeld(window);
-        if (shift) return; // Shift+arrows adjusts values, not category
-        if (pressed(window, GLFW_KEY_LEFT) || pressed(window, GLFW_KEY_A)) {
-            stateManager.navigateToPreviousCategory();
-        }
-        if (pressed(window, GLFW_KEY_RIGHT) || pressed(window, GLFW_KEY_D)) {
-            stateManager.navigateToNextCategory();
-        }
-    }
-
-    private void handleSettingNavigation(long window) {
-        if (pressed(window, GLFW_KEY_UP) || pressed(window, GLFW_KEY_W)) {
+        boolean left = key == GLFW_KEY_LEFT || key == GLFW_KEY_A;
+        boolean right = key == GLFW_KEY_RIGHT || key == GLFW_KEY_D;
+        if (left || right) {
+            if (shift) {
+                adjustSelectedSettingValue(left ? -1 : 1);
+            } else if (left) {
+                stateManager.navigateToPreviousCategory();
+            } else {
+                stateManager.navigateToNextCategory();
+            }
+        } else if (key == GLFW_KEY_UP || key == GLFW_KEY_W) {
             stateManager.navigateToPreviousSettingInCategory();
-        }
-        if (pressed(window, GLFW_KEY_DOWN) || pressed(window, GLFW_KEY_S)) {
+        } else if (key == GLFW_KEY_DOWN || key == GLFW_KEY_S) {
             stateManager.navigateToNextSettingInCategory();
+        } else if (key == GLFW_KEY_ENTER) {
+            enter();
+        } else if (key == GLFW_KEY_ESCAPE) {
+            actionHandler.goBack();
         }
     }
 
-    private void handleValueAdjustment(long window) {
-        if (!isShiftHeld(window)) return;
-        if (pressed(window, GLFW_KEY_LEFT) || pressed(window, GLFW_KEY_A)) {
-            adjustSelectedSettingValue(-1);
+    private void enter() {
+        CategoryState.SettingType[] settingsArr = stateManager.getSelectedCategory().getSettings();
+        CategoryState.SettingType current;
+        if (stateManager.getSelectedSettingInCategory() < settingsArr.length) {
+            current = settingsArr[stateManager.getSelectedSettingInCategory()];
+        } else {
+            int idx = stateManager.getSelectedSettingInCategory() - settingsArr.length;
+            current = (idx == 0) ? CategoryState.SettingType.APPLY : CategoryState.SettingType.BACK;
         }
-        if (pressed(window, GLFW_KEY_RIGHT) || pressed(window, GLFW_KEY_D)) {
-            adjustSelectedSettingValue(1);
+        if (current == CategoryState.SettingType.RESOLUTION && stateManager.getResolutionButton().isOpen()) {
+            confirmResolutionSelection();
+        } else {
+            actionHandler.executeSelectedAction();
         }
-    }
-
-    private void handleEnter(long window) {
-        boolean down = pressed(window, GLFW_KEY_ENTER);
-        if (down && !enterPressed) {
-            CategoryState.SettingType[] settingsArr = stateManager.getSelectedCategory().getSettings();
-            CategoryState.SettingType current;
-            if (stateManager.getSelectedSettingInCategory() < settingsArr.length) {
-                current = settingsArr[stateManager.getSelectedSettingInCategory()];
-            } else {
-                int idx = stateManager.getSelectedSettingInCategory() - settingsArr.length;
-                current = (idx == 0) ? CategoryState.SettingType.APPLY : CategoryState.SettingType.BACK;
-            }
-            if (current == CategoryState.SettingType.RESOLUTION && stateManager.getResolutionButton().isOpen()) {
-                confirmResolutionSelection();
-            } else {
-                actionHandler.executeSelectedAction();
-            }
-        }
-        enterPressed = down;
-    }
-
-    private void handleEscape(long window) {
-        boolean down = pressed(window, GLFW_KEY_ESCAPE);
-        if (down && !escapePressed) actionHandler.goBack();
-        escapePressed = down;
     }
 
     // ─────────────────────────────────────────────── Value adjust
@@ -220,15 +186,5 @@ public final class InputHandler {
     private void confirmResolutionSelection() {
         settings.setResolutionByIndex(stateManager.getSelectedResolutionIndex());
         stateManager.getResolutionButton().close();
-    }
-
-    // ─────────────────────────────────────────────── Helpers
-
-    private static boolean pressed(long window, int key) {
-        return glfwGetKey(window, key) == GLFW_PRESS;
-    }
-
-    private static boolean isShiftHeld(long window) {
-        return pressed(window, GLFW_KEY_LEFT_SHIFT) || pressed(window, GLFW_KEY_RIGHT_SHIFT);
     }
 }

@@ -22,6 +22,8 @@ public final class CoverageBlender {
      *
      * <p>The paint color's alpha is scaled by the coverage fraction, then
      * standard alpha-over compositing is applied against the destination.
+     * Fully transparent paint is an erase instead: it removes the covered
+     * fraction of the destination's alpha.
      *
      * @param paintColor    the color being painted (RGBA packed)
      * @param existingColor the current pixel color (RGBA packed)
@@ -36,8 +38,18 @@ public final class CoverageBlender {
             return paintColor;
         }
 
-        // Scale paint alpha by coverage
         int[] paintRGBA = PixelCanvas.unpackRGBA(paintColor);
+
+        // Fully transparent paint erases: alpha-over with alpha 0 would change
+        // nothing, so instead remove the covered fraction of the existing alpha.
+        if (paintRGBA[3] == 0) {
+            int[] existingRGBA = PixelCanvas.unpackRGBA(existingColor);
+            int remainingAlpha = Math.round(existingRGBA[3] * (1.0f - coverage));
+            return remainingAlpha == 0 ? 0x00000000
+                    : PixelCanvas.packRGBA(existingRGBA[0], existingRGBA[1], existingRGBA[2], remainingAlpha);
+        }
+
+        // Scale paint alpha by coverage
         int scaledAlpha = Math.round(paintRGBA[3] * coverage);
         if (scaledAlpha <= 0) {
             return existingColor;

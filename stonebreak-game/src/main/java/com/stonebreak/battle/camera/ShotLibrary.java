@@ -5,7 +5,7 @@ import com.stonebreak.battle.camera.CameraShot.Motion;
 import com.stonebreak.battle.camera.CameraShot.Staging;
 import com.stonebreak.battle.camera.CameraShot.Subject;
 import com.stonebreak.battle.camera.ShotSequence.AdvanceOn;
-import com.stonebreak.ui.startupIntro.tween.EasingType;
+import com.openmason.engine.util.easing.EasingType;
 
 import java.util.ArrayList;
 import java.util.EnumMap;

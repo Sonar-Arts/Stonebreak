@@ -8,13 +8,12 @@ import com.stonebreak.battle.api.EnemyAction;
 import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.api.StatusView;
 import com.stonebreak.battle.api.TelegraphView;
-import com.stonebreak.rendering.UI.masonryUI.MCastBar;
-import com.stonebreak.rendering.UI.masonryUI.MColor;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.ui.focusBattle.BattleHelpText;
+import com.openmason.engine.ui.masonry.MCastBar;
+import com.openmason.engine.ui.masonry.MColor;
+import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
-import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
+import com.stonebreak.ui.focusBattle.BattleHudLayers;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -24,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** The enemy plate (E5) with its ATB / cast bar (E6), the help strip (E4) and the mode tag (E13). */
+/** The enemy plate (E5) with its ATB / cast bar (E6), and the mode tag (E13). */
 class EnemyPlateRenderTest {
 
     private static final int W = 520;
@@ -240,45 +239,13 @@ class EnemyPlateRenderTest {
         assertEquals(0f, plate.castBar().pulseAmount(), 0f, "a cancelled windup has nothing to parry");
     }
 
-    // ── E4 + E13 ─────────────────────────────────────────────────────────────
-
-    @Test
-    void theHelpStripDrawsOneLineAndNothingWhenEmpty() {
-        float[] strip = {10f, 50f, 500f, 28f};
-        BattleRasterFixture empty = new BattleRasterFixture(W, H);
-        HelpStrip.render(empty.ui, strip, BattleHelpText.Line.EMPTY, SCALE, 1f);
-        assertEquals(0, empty.countPainted(0, 0, W, H), "an empty line draws no frame at all");
-
-        BattleHelpText.Line line = new BattleHelpText.Line("A single focused blow.", false);
-        BattleRasterFixture help = new BattleRasterFixture(W, H);
-        HelpStrip.render(help.ui, strip, line, SCALE, 1f);
-        BattleRasterFixture warn = new BattleRasterFixture(W, H);
-        HelpStrip.render(warn.ui, strip, new BattleHelpText.Line(line.text(), true), SCALE, 1f);
-        BattleRasterFixture faded = new BattleRasterFixture(W, H);
-        HelpStrip.render(faded.ui, strip, line, SCALE, 0f);
-
-        assertTrue(help.countPainted(strip) > 12_000);
-        assertTrue(help.countExactly(MStyle.TEXT_PRIMARY, 10, 50, 510, 78) > 100);
-        assertTrue(warn.countExactly(MStyle.TEXT_WARN, 10, 50, 510, 78) > 100, "a refusal reads in the warning colour");
-        assertEquals(0, faded.countExactly(MStyle.TEXT_PRIMARY, 10, 50, 510, 78), "fade 0 hides the text");
-        assertTrue(faded.countPainted(strip) > 12_000, "but keeps the frame");
-    }
-
-    @Test
-    void longHelpTextShrinksToStayInsideTheStrip() {
-        float[] strip = {10f, 50f, 260f, 28f};
-        BattleRasterFixture fx = new BattleRasterFixture(W, H);
-        HelpStrip.render(fx.ui, strip, new BattleHelpText.Line("Three rapid strikes. Time each hit on the ring.", false),
-                SCALE, 1f);
-        assertEquals(0, fx.countPainted((int) (strip[0] + strip[2]) + 6, 0, W, H),
-                "no glyph escapes past the strip's right edge");
-    }
+    // ── E13 ─────────────────────────────────────────────────────────────────
 
     @Test
     void theModeTagIsALibraryBadgeWithALiveDot() {
         float[] tag = {16f, 16f, 96f, 26f};
         BattleRasterFixture fx = new BattleRasterFixture(W, H);
-        new SkijaFocusBattleRenderer.Windows().modeTag.scale(SCALE).bounds(tag[0], tag[1], tag[2], tag[3]).render(fx.ui);
+        new BattleHudLayers.Windows().modeTag.scale(SCALE).bounds(tag[0], tag[1], tag[2], tag[3]).render(fx.ui);
         assertTrue(fx.countPainted(tag) > 2000);
         assertTrue(fx.countExactly(BattlePalette.ATB, (int) tag[0], (int) tag[1], (int) (tag[0] + tag[2] / 2f),
                 (int) (tag[1] + tag[3])) > 10, "the cyan live dot");

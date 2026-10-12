@@ -13,6 +13,9 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -88,31 +91,21 @@ public class OMTSerializer {
             // Build OMT document structure
             OMTFormat.Document document = buildDocument(layerManager, faceMappings, materials);
 
-            // Write to ZIP archive
-            try (FileOutputStream fos = new FileOutputStream(filePath);
-                 ZipOutputStream zos = new ZipOutputStream(fos)) {
-
-                // Write manifest.json
-                writeManifest(zos, document);
-
-                // Write layer PNG files
-                List<Layer> layers = layerManager.getLayers();
-                for (int i = 0; i < layers.size(); i++) {
-                    Layer layer = layers.get(i);
-                    String layerFilename = OMTFormat.generateLayerFilename(i);
-                    writeLayerPNG(zos, layer, layerFilename);
+            // Write the archive to a temp file beside the target and move it into
+            // place, so a failure part-way (e.g. a PNG encode error) leaves the
+            // existing project untouched instead of truncated.
+            Path targetPath = Path.of(filePath).toAbsolutePath();
+            Path tempFile = Files.createTempFile(targetPath.getParent(), "omt_", ".tmp");
+            try {
+                try (OutputStream fos = Files.newOutputStream(tempFile);
+                     ZipOutputStream zos = new ZipOutputStream(fos)) {
+                    writeArchive(zos, document, layerManager, materialTextures);
                 }
-
-                // Write material texture PNGs
-                for (OMTFormat.MaterialInfo materialInfo : document.materials()) {
-                    PixelCanvas texture = materialTextures.get(materialInfo.materialId());
-                    if (texture != null) {
-                        writeMaterialPNG(zos, texture, materialInfo.textureFile());
-                    } else {
-                        logger.warn("No texture data for material {} ({}), skipping PNG",
-                                materialInfo.materialId(), materialInfo.name());
-                    }
-                }
+                Files.move(tempFile, targetPath,
+                        StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException | RuntimeException e) {
+                Files.deleteIfExists(tempFile);
+                throw e;
             }
 
             logger.info("Saved .OMT file: {} ({} face mappings, {} materials)",
@@ -122,6 +115,28 @@ public class OMTSerializer {
         } catch (IOException e) {
             logger.error("Error saving .OMT file: {}", filePath, e);
             return false;
+        }
+    }
+
+    /** Write the manifest, every layer PNG and the material texture PNGs. */
+    private void writeArchive(ZipOutputStream zos, OMTFormat.Document document,
+                              LayerManager layerManager, Map<Integer, PixelCanvas> materialTextures)
+            throws IOException {
+        writeManifest(zos, document);
+
+        List<Layer> layers = layerManager.getLayers();
+        for (int i = 0; i < layers.size(); i++) {
+            writeLayerPNG(zos, layers.get(i), OMTFormat.generateLayerFilename(i));
+        }
+
+        for (OMTFormat.MaterialInfo materialInfo : document.materials()) {
+            PixelCanvas texture = materialTextures.get(materialInfo.materialId());
+            if (texture != null) {
+                writeMaterialPNG(zos, texture, materialInfo.textureFile());
+            } else {
+                logger.warn("No texture data for material {} ({}), skipping PNG",
+                        materialInfo.materialId(), materialInfo.name());
+            }
         }
     }
 

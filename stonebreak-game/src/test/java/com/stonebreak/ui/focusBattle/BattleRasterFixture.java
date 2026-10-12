@@ -1,15 +1,20 @@
 package com.stonebreak.ui.focusBattle;
 
+import com.openmason.engine.format.omui.UiValue;
+import com.stonebreak.config.Settings;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.stonebreak.ui.runtime.contracts.BattleHudContracts;
+import com.openmason.engine.ui.masonry.MasonryUI;
 import io.github.humbleui.skija.Bitmap;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Data;
 import io.github.humbleui.skija.FontMgr;
 import io.github.humbleui.skija.ImageInfo;
 import io.github.humbleui.skija.Typeface;
+import org.joml.Matrix4fc;
 
 import java.io.InputStream;
+import java.util.List;
 
 /**
  * CPU-raster MasonryUI for the battle HUD's pixel tests — the same seam as the widget library's
@@ -41,6 +46,67 @@ public final class BattleRasterFixture {
         canvas = new Canvas(bitmap);
         canvas.clear(BACKGROUND);
         ui = new MasonryUI(new RasterBackend(canvas));
+    }
+
+    /** The battle HUD document's stack of {@code stonebreak:battle-hud} pieces, bottom to top. */
+    private static final List<String> PIECES = List.of("underlays", "mode", "enemy", "party", "command", "overlays",
+            "topmost");
+
+    /**
+     * Paints {@code screen}'s HUD as the game does (#301): the screen prepares the frame at {@code camera},
+     * then every {@code stonebreak:battle-hud} piece is painted in the {@code battle_hud} document's stacking
+     * order at the rect the {@code stonebreak:battle} contract publishes for it. The help strip is the
+     * document's own text and is not drawn here. {@code uiScale} is the user's UI scale for this paint.
+     */
+    public BattleRasterFixture paintHud(FocusBattleScreen screen, float uiScale, Matrix4fc camera) {
+        Settings settings = Settings.getInstance();
+        float previous = settings.getUiScale();
+        settings.setUiScale(uiScale);
+        try {
+            screen.prepareFrame(width, height, camera);
+            UiValue.Obj model = (UiValue.Obj) BattleHudContracts.model(screen, width, height, null);
+            boolean commandShown = model.get("commandShown") instanceof UiValue.Bool b && b.value();
+            for (String piece : PIECES) {
+                if (piece.equals("command") && !commandShown) continue;
+                UiValue.Obj p = (UiValue.Obj) model.get(piece);
+                UiValue.Obj params = (UiValue.Obj) p.get("params");
+                float[] submenu = params.get("submenu") instanceof UiValue.Obj sub ? rect(sub) : null;
+                screen.paintPiece(piece, ui, canvas, width, height, rect((UiValue.Obj) p.get("rect")), submenu);
+            }
+        } finally {
+            settings.setUiScale(previous);
+        }
+        return this;
+    }
+
+    /**
+     * The help strip the {@code stonebreak:battle} contract gives the document for {@code screen} this
+     * frame ({@code shown}, {@code rect}, {@code text}, {@code color}, {@code size}, ...), its line fitted
+     * with this fixture's game font. The document draws the strip itself.
+     */
+    public UiValue.Obj helpModel(FocusBattleScreen screen, float uiScale) {
+        Settings settings = Settings.getInstance();
+        float previous = settings.getUiScale();
+        settings.setUiScale(uiScale);
+        try {
+            return (UiValue.Obj) ((UiValue.Obj) BattleHudContracts.model(screen, width, height, ui)).get("help");
+        } finally {
+            settings.setUiScale(previous);
+        }
+    }
+
+    /** {@code color} (#RRGGBBAA) of a {@link #helpModel}: its alpha byte. */
+    public static int helpAlpha(UiValue.Obj help) {
+        String c = ((UiValue.Str) help.get("color")).value();
+        return Integer.parseInt(c.substring(7, 9), 16);
+    }
+
+    private static float[] rect(UiValue.Obj r) {
+        return new float[]{num(r, "x"), num(r, "y"), num(r, "w"), num(r, "h")};
+    }
+
+    private static float num(UiValue.Obj o, String k) {
+        return o.get(k) instanceof UiValue.Num n ? (float) n.value() : 0f;
     }
 
     /** Pixels in the region that differ from the cleared background. */

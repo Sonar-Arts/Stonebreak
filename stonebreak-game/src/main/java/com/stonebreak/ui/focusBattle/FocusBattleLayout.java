@@ -1,7 +1,7 @@
 package com.stonebreak.ui.focusBattle;
 
 import com.stonebreak.battle.api.BattleMenu;
-import com.stonebreak.rendering.UI.masonryUI.MMenuList;
+import com.openmason.engine.ui.masonry.MMenuList;
 
 import java.util.Collections;
 

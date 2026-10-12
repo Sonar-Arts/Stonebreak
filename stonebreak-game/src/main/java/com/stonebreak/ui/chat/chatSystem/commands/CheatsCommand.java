@@ -32,14 +32,8 @@ public class CheatsCommand implements ChatCommand {
         try {
             int value = Integer.parseInt(args[0]);
             switch (value) {
-                case 1 -> {
-                    Game.getInstance().applyCheatsToCurrentWorld(true);
-                    messageManager.addMessage("Cheats enabled!", ChatColors.GREEN);
-                }
-                case 0 -> {
-                    Game.getInstance().applyCheatsToCurrentWorld(false);
-                    messageManager.addMessage("Cheats disabled!", ChatColors.ORANGE);
-                }
+                case 1 -> apply(true, messageManager);
+                case 0 -> apply(false, messageManager);
                 default -> showUsage(messageManager);
             }
         } catch (NumberFormatException e) {
@@ -48,10 +42,17 @@ public class CheatsCommand implements ChatCommand {
     }
 
     private void handleToggleMode(ChatMessageManager messageManager) {
-        boolean currentState = Game.getInstance().isCheatsEnabled();
-        Game.getInstance().applyCheatsToCurrentWorld(!currentState);
+        apply(!Game.getInstance().isCheatsEnabled(), messageManager);
+    }
 
-        if (!currentState) {
+    /** Cheats are a per-world setting owned by the server; only the host may change them. */
+    private void apply(boolean enabled, ChatMessageManager messageManager) {
+        if (!Game.getInstance().applyCheatsToCurrentWorld(enabled)) {
+            messageManager.addMessage("Cheats are server-controlled — only the host can change them.",
+                ChatColors.RED);
+            return;
+        }
+        if (enabled) {
             messageManager.addMessage("Cheats enabled!", ChatColors.GREEN);
         } else {
             messageManager.addMessage("Cheats disabled!", ChatColors.ORANGE);

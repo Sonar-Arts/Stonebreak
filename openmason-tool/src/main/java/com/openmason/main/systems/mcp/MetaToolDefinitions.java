@@ -56,7 +56,8 @@ public final class MetaToolDefinitions {
                         + "face_textures, bones, attachments, animation, scripting (the Python om "
                         + "cheatsheet), texture_editor (summoning the editor, layers, noise, "
                         + "tex_describe/tex_paint_grid text pixel art), recipes (workflows like "
-                        + "'build a quadruped mob'). Read "
+                        + "'build a quadruped mob'), assets, saving, ui_editor (UI documents: keys, "
+                        + "overrides, ui_ops, Preview). Read "
                         + "overview once per session; other topics on demand.",
                 McpSchema.of(mapper)
                         .enumStr("topic", "Guide topic (default overview)",

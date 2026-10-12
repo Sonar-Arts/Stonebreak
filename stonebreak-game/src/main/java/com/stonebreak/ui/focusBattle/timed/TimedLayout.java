@@ -7,8 +7,8 @@ import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.CombatantView;
 import com.stonebreak.battle.api.PromptView;
 import com.stonebreak.battle.api.TelegraphView;
-import com.stonebreak.rendering.UI.masonryUI.MColor;
-import com.stonebreak.rendering.UI.masonryUI.MWorldMarker;
+import com.openmason.engine.ui.masonry.MColor;
+import com.openmason.engine.ui.masonry.MWorldMarker;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 

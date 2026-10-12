@@ -7,11 +7,9 @@ import com.stonebreak.core.GameState;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.characterScreen.CharacterScreen;
 import com.stonebreak.ui.chat.ChatSystem;
-import com.stonebreak.ui.furnace.FurnaceScreen;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
-import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 
 import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
 import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
@@ -28,9 +26,9 @@ import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
  *   <li>{@link UiToggleKeyHandler} — Escape/E/C/T/Q UI toggles</li>
  *   <li>{@link GameplayKeyHandler} — movement, flight, abilities, breaking, hotbar keys</li>
  *   <li>{@link DebugKeyHandler} — F3–F8 development keys</li>
- *   <li>{@link UiMouseRouter} — click/hover routing to active UI surfaces</li>
+ *   <li>{@link UiMouseRouter} — click routing to active UI surfaces</li>
  *   <li>{@link WorldMouseHandler} — attack/use clicks that reach the world</li>
- *   <li>{@link ChatInputRouter} — everything routed to an open chat</li>
+ *   <li>{@link ChatInputRouter} — keys routed to an open chat</li>
  *   <li>{@link HotbarSelector} — hotbar slot selection (keys + scroll)</li>
  * </ul>
  */
@@ -50,8 +48,8 @@ public class InputHandler {
         this.uiToggleKeys = new UiToggleKeyHandler(keys);
         this.gameplayKeys = new GameplayKeyHandler(window, keys, mouse, hotbar);
         this.debugKeys = new DebugKeyHandler(keys);
-        this.chatRouter = new ChatInputRouter(keys, mouse);
-        this.mouseRouter = new UiMouseRouter(mouse, chatRouter, new WorldMouseHandler());
+        this.chatRouter = new ChatInputRouter(keys);
+        this.mouseRouter = new UiMouseRouter(new WorldMouseHandler());
     }
 
     /**
@@ -91,7 +89,7 @@ public class InputHandler {
             uiToggleKeys.pollItemDrop();
             debugKeys.poll();
 
-            // Now check which UI, if any, has primary input focus.
+            // The in-game screens' documents take their own pointer input (#298-#301).
             Game game = Game.getInstance();
             GameState state = game.getState();
 
@@ -99,28 +97,6 @@ public class InputHandler {
             if (state == GameState.RECIPE_BOOK_UI && recipeScreen != null && recipeScreen.isVisible()) {
                 recipeScreen.handleInput();
                 return;
-            }
-            WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
-            if (state == GameState.WORKBENCH_UI && workbenchScreen != null && workbenchScreen.isVisible()) {
-                workbenchScreen.handleInput(this);
-                return;
-            }
-            if (state == GameState.FURNACE_UI) {
-                FurnaceScreen furnaceScreen = game.getFurnaceScreen();
-                if (furnaceScreen != null && furnaceScreen.isVisible()) {
-                    furnaceScreen.handleInput(this);
-                    return;
-                }
-            }
-            InventoryScreen inventoryScreen = game.getInventoryScreen();
-            if (state == GameState.INVENTORY_UI && inventoryScreen != null && inventoryScreen.isVisible()) {
-                inventoryScreen.handleMouseInput(Game.getWindowWidth(), Game.getWindowHeight());
-            }
-            if (state == GameState.CHARACTER_SHEET_UI) {
-                CharacterScreen characterScreen = game.getCharacterScreen();
-                if (characterScreen != null && characterScreen.isVisible()) {
-                    characterScreen.handleMouseInput(Game.getWindowWidth(), Game.getWindowHeight());
-                }
             }
 
             // Movement and world actions only while actually playing.
@@ -154,8 +130,10 @@ public class InputHandler {
 
         RecipeScreen recipeScreen = game.getRecipeBookScreen();
         if (recipeScreen != null && recipeScreen.isVisible()) {
-            return; // RecipeScreen consumes via getAndResetScrollY()
+            return; // its document takes the wheel; RecipeScreen drops the stored value
         }
+        // An open inventory, crafting table or character sheet keeps the hotbar from cycling (the
+        // character sheet's document takes the wheel).
         InventoryScreen inventoryScreen = game.getInventoryScreen();
         if (inventoryScreen != null && inventoryScreen.isVisible()) {
             return;
@@ -166,7 +144,6 @@ public class InputHandler {
         }
         CharacterScreen characterScreen = game.getCharacterScreen();
         if (characterScreen != null && characterScreen.isVisible()) {
-            characterScreen.handleScroll((float) yOffset);
             return;
         }
 
@@ -181,10 +158,9 @@ public class InputHandler {
         return mouse.getAndResetScroll();
     }
 
-    /** Updates the UI-space cursor position and hover states (called from Main's cursor callback). */
+    /** Updates the UI-space cursor position (called from Main's cursor callback). */
     public void updateMousePosition(float xpos, float ypos) {
         mouse.setPosition(xpos, ypos);
-        mouseRouter.onMouseMove();
     }
 
     // ── Mouse state polling (used by UI screens) ─────────────────────────
@@ -216,15 +192,9 @@ public class InputHandler {
 
     // ── Key/char callback routing ────────────────────────────────────────
 
-    /** Routes character input to whichever text consumer is active (world select, chat, recipe search). */
+    /** Routes character input to whichever text consumer is active (chat, recipe search). */
     public void handleCharacterInput(char character) {
         Game game = Game.getInstance();
-
-        WorldSelectScreen worldSelectScreen = game.getWorldSelectScreen();
-        if (worldSelectScreen != null && game.getState() == GameState.WORLD_SELECT) {
-            worldSelectScreen.handleCharacterInput(character);
-            return;
-        }
 
         ChatSystem chatSystem = game.getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
@@ -238,15 +208,9 @@ public class InputHandler {
         }
     }
 
-    /** Routes key events to whichever text consumer is active (world select, chat, recipe search). */
+    /** Routes key events to whichever text consumer is active (chat, recipe search). */
     public void handleKeyInput(int key, int action, int mods) {
         Game game = Game.getInstance();
-
-        WorldSelectScreen worldSelectScreen = game.getWorldSelectScreen();
-        if (worldSelectScreen != null && game.getState() == GameState.WORLD_SELECT) {
-            worldSelectScreen.handleKeyInput(key, action, mods);
-            return;
-        }
 
         ChatSystem chatSystem = game.getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {

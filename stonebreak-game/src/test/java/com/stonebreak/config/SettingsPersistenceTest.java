@@ -57,6 +57,9 @@ class SettingsPersistenceTest {
         s.setLastJoinHost("example.test");
         s.setMultiplayerUsername("Tester");
         s.setUiScale(1.5f);
+        s.setReducedMotion(true);
+        s.setUiTextScale(1.25f);
+        s.setUiBindings(java.util.Map.of("ui.submit", java.util.List.of("key:69+exact", "pad:0")));
         return s;
     }
 
@@ -96,6 +99,9 @@ class SettingsPersistenceTest {
         assertEquals(expected.getLastJoinHost(), actual.getLastJoinHost());
         assertEquals(expected.getMultiplayerUsername(), actual.getMultiplayerUsername());
         assertEquals(expected.getUiScale(), actual.getUiScale(), EPS);
+        assertEquals(expected.isReducedMotion(), actual.isReducedMotion());
+        assertEquals(expected.getUiTextScale(), actual.getUiTextScale(), EPS);
+        assertEquals(expected.getUiBindings(), actual.getUiBindings());
     }
 
     @Test
@@ -126,7 +132,7 @@ class SettingsPersistenceTest {
     @Test
     void serialisedTreeHasOneFieldPerSetting() {
         ObjectNode tree = fullyPopulated().toJson();
-        assertEquals(36, tree.size());
+        assertEquals(39, tree.size());
         assertTrue(tree.has("windowWidth"));
         assertTrue(tree.has("uiScale"));
         assertTrue(tree.has("multiplayerUsername"));
@@ -259,5 +265,22 @@ class SettingsPersistenceTest {
         settings.setSelectedHair(" ");
         assertEquals("TOP_HAT", settings.getSelectedHat());
         assertEquals("NONE", settings.getSelectedHair());
+    }
+
+    /** #288: accessibility preferences and remapped UI bindings persist; defaults write no bindings. */
+    @Test
+    void uiAccessibilitySettingsPersistAndClamp() throws Exception {
+        Settings defaults = new Settings();
+        assertTrue(!defaults.toJson().has("uiBindings"), "unremapped bindings are not written");
+        Settings loaded = new Settings();
+        loaded.apply(MAPPER.readTree("""
+            {"reducedMotion": true, "uiTextScale": 9, "uiBindings": {"ui.cancel": ["key:66", 5], "x": 3}}
+            """));
+        assertTrue(loaded.isReducedMotion());
+        assertEquals(3.0f, loaded.getUiTextScale(), EPS);
+        assertEquals(java.util.Map.of("ui.cancel", java.util.List.of("key:66")), loaded.getUiBindings(),
+            "non-text entries and non-array actions are dropped");
+        var map = com.openmason.engine.ui.runtime.input.UiActionMap.fromWire(loaded.getUiBindings());
+        assertEquals(com.openmason.engine.ui.runtime.input.UiAction.CANCEL, map.actionForKey(66, 0));
     }
 }

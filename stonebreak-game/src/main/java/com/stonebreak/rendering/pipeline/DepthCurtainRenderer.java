@@ -19,8 +19,7 @@ import static org.lwjgl.opengl.GL11.*;
  * This creates proper depth values for block drop occlusion without visual interference.
  * 
  * Depth curtains are invisible quads that write to the depth buffer but not the color buffer,
- * effectively "blocking" 3D objects from appearing behind UI elements like inventory panels,
- * hotbar, pause menu, etc.
+ * effectively "blocking" 3D objects from appearing behind UI elements (the pause menu).
  */
 public class DepthCurtainRenderer {
     
@@ -29,129 +28,11 @@ public class DepthCurtainRenderer {
     private final int windowHeight;
     private final Matrix4f projectionMatrix;
     
-    // UI screen dimensions (matching InventoryScreen calculations)
-    private static final int SLOT_SIZE = 40;
-    private static final int SLOT_PADDING = 5;
-    private static final int TITLE_HEIGHT = 30;
-    private static final int CRAFTING_GRID_SIZE = 2;
-    private static final int MAIN_INVENTORY_COLS = 9; // Inventory.MAIN_INVENTORY_COLS
-    private static final int MAIN_INVENTORY_ROWS = 3; // Inventory.MAIN_INVENTORY_ROWS
-    private static final int HOTBAR_SIZE = 9; // Inventory.HOTBAR_SIZE
-    private static final int HOTBAR_Y_OFFSET = 20;
-    
     public DepthCurtainRenderer(ShaderProgram shaderProgram, int windowWidth, int windowHeight, Matrix4f projectionMatrix) {
         this.shaderProgram = shaderProgram;
         this.windowWidth = windowWidth;
         this.windowHeight = windowHeight;
         this.projectionMatrix = projectionMatrix;
-    }
-    
-    /**
-     * Renders an invisible depth curtain to occlude block drops behind inventory UI.
-     * This creates proper depth values for block drop occlusion without visual interference.
-     */
-    public void renderInventoryDepthCurtain() {
-        // Save current GL state
-        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        
-        // Set up depth curtain rendering state
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_ALWAYS);     // Always pass depth test (renders over world)
-        glDepthMask(true);          // Write to depth buffer (this is key!)
-        glDisable(GL_BLEND);        // No blending needed for invisible quad
-        glColorMask(false, false, false, false); // Don't write to color buffer (invisible)
-        
-        // Set up orthographic projection for screen-space rendering
-        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
-        Matrix4f identityView = new Matrix4f().identity();
-        Matrix4f modelMatrix = new Matrix4f().identity();
-        
-        // Bind shader and set uniforms
-        shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", orthoProjection);
-        shaderProgram.setUniform("viewMatrix", identityView);
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        
-        // Calculate inventory panel dimensions (EXACTLY match InventoryScreen calculations)
-        int baseInventoryPanelWidth = MAIN_INVENTORY_COLS * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        int craftingGridVisualWidth = CRAFTING_GRID_SIZE * SLOT_SIZE + (CRAFTING_GRID_SIZE - 1) * SLOT_PADDING;
-        int craftingElementsTotalWidth = craftingGridVisualWidth + SLOT_SIZE + SLOT_PADDING + SLOT_SIZE; // grid + space + arrow + space + output
-        int craftingSectionHeight = CRAFTING_GRID_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING + SLOT_SIZE;
-        
-        int totalInventoryRows = MAIN_INVENTORY_ROWS + 1; // main rows + hotbar row
-        int mainAndHotbarHeight = totalInventoryRows * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        
-        int inventoryPanelWidth = Math.max(baseInventoryPanelWidth, craftingElementsTotalWidth + SLOT_PADDING * 2);
-        int inventoryPanelHeight = mainAndHotbarHeight + TITLE_HEIGHT + craftingSectionHeight + SLOT_PADDING * 2;
-        
-        int panelStartX = (windowWidth - inventoryPanelWidth) / 2;
-        int panelStartY = (windowHeight - inventoryPanelHeight) / 2;
-        
-        // Create depth curtain quad covering the inventory area
-        int bufferPadding = 10;
-        float left = panelStartX - bufferPadding;
-        float right = panelStartX + inventoryPanelWidth + bufferPadding;
-        float top = panelStartY - bufferPadding;
-        float bottom = panelStartY + inventoryPanelHeight + bufferPadding;
-        
-        renderDepthQuad(left, right, top, bottom, 0.0f);
-        
-        // Restore GL state
-        restoreGLState(blendWasEnabled);
-        shaderProgram.unbind();
-    }
-    
-    /**
-     * Renders an invisible depth curtain to occlude block drops behind hotbar UI.
-     * This creates proper depth values for block drop occlusion without visual interference.
-     * Used when only the hotbar is visible (not the full inventory screen).
-     */
-    public void renderHotbarDepthCurtain() {
-        // Save current GL state
-        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        
-        // Set up depth curtain rendering state
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_ALWAYS);     // Always pass depth test (renders over world)
-        glDepthMask(true);          // Write to depth buffer (this is key!)
-        glDisable(GL_BLEND);        // No blending needed for invisible quad
-        glColorMask(false, false, false, false); // Don't write to color buffer (invisible)
-        
-        // Set up orthographic projection for screen-space rendering
-        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
-        Matrix4f identityView = new Matrix4f().identity();
-        Matrix4f modelMatrix = new Matrix4f().identity();
-        
-        // Bind shader and set uniforms
-        shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", orthoProjection);
-        shaderProgram.setUniform("viewMatrix", identityView);
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        
-        // Calculate hotbar dimensions (match InventoryScreen.renderHotbar calculations)
-        int hotbarWidth = HOTBAR_SIZE * (SLOT_SIZE + SLOT_PADDING) + SLOT_PADDING;
-        int hotbarHeight = SLOT_SIZE + SLOT_PADDING * 2;
-        
-        int hotbarStartX = (windowWidth - hotbarWidth) / 2;
-        int hotbarStartY = windowHeight - SLOT_SIZE - HOTBAR_Y_OFFSET - SLOT_PADDING; // Background starts above slots
-        
-        // Create depth curtain quad covering the hotbar area
-        float left = hotbarStartX;
-        float right = hotbarStartX + hotbarWidth;
-        float top = hotbarStartY;
-        float bottom = hotbarStartY + hotbarHeight;
-        
-        renderDepthQuad(left, right, top, bottom, 0.0f);
-        
-        // Restore GL state
-        restoreGLState(blendWasEnabled);
-        shaderProgram.unbind();
     }
     
     /**
@@ -266,158 +147,6 @@ public class DepthCurtainRenderer {
     }
     
     /**
-     * Renders an invisible depth curtain to occlude block drops behind recipe book UI.
-     * This creates proper depth values for block drop occlusion without visual interference.
-     */
-    public void renderRecipeBookDepthCurtain() {
-        // Save current GL state
-        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        
-        // Aggressive OpenGL state setup for bulletproof depth writing
-        glDisable(GL_BLEND);        // Absolutely no blending
-        glEnable(GL_DEPTH_TEST);    // Force enable depth testing
-        glDepthFunc(GL_ALWAYS);     // ALWAYS pass depth test (renders over everything)
-        glDepthMask(true);          // FORCE write to depth buffer
-        glColorMask(false, false, false, false); // Invisible (no color writing)
-        glDisable(GL_CULL_FACE);    // Disable culling to ensure all faces render
-        
-        // Set up orthographic projection for screen-space rendering
-        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
-        Matrix4f identityView = new Matrix4f().identity();
-        Matrix4f modelMatrix = new Matrix4f().identity();
-        
-        // Bind shader and set uniforms
-        shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", orthoProjection);
-        shaderProgram.setUniform("viewMatrix", identityView);
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        
-        // Aggressive full-coverage depth curtain to eliminate all block drop leakage
-        int ultraBuffer = 50; // Massive buffer to handle any edge cases
-        float left = -ultraBuffer;
-        float right = windowWidth + ultraBuffer;
-        float top = -ultraBuffer;
-        float bottom = windowHeight + ultraBuffer;
-        
-        // Use multiple depth values to create thick depth barrier
-        float[] depthLayers = {-0.999f, -0.99f, -0.9f, 0.0f, 0.1f}; // Multiple near-plane depths
-        
-        // Render multiple depth layers for bulletproof coverage
-        for (float depthValue : depthLayers) {
-            renderDepthQuad(left, right, top, bottom, depthValue);
-        }
-        
-        // Restore GL state for normal 3D rendering
-        glColorMask(true, true, true, true);  // Re-enable color writing
-        glDepthFunc(GL_LESS);                 // Restore normal 3D depth function
-        glDepthMask(true);                    // Restore normal depth writing
-        glEnable(GL_CULL_FACE);               // Re-enable face culling
-        
-        if (blendWasEnabled) {
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        }
-        
-        shaderProgram.unbind();
-    }
-    
-    /**
-     * Renders an invisible depth curtain to occlude block drops behind workbench UI.
-     * This creates proper depth values for block drop occlusion without visual interference.
-     */
-    public void renderWorkbenchDepthCurtain() {
-        // Save current GL state
-        boolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        
-        // Set up depth curtain rendering state
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_ALWAYS);     // Always pass depth test (renders over world)
-        glDepthMask(true);          // Write to depth buffer (this is key!)
-        glDisable(GL_BLEND);        // No blending needed for invisible quad
-        glColorMask(false, false, false, false); // Don't write to color buffer (invisible)
-        
-        // Set up orthographic projection for screen-space rendering
-        Matrix4f orthoProjection = new Matrix4f().ortho(0, windowWidth, windowHeight, 0, -1, 1);
-        Matrix4f identityView = new Matrix4f().identity();
-        Matrix4f modelMatrix = new Matrix4f().identity();
-        
-        // Bind shader and set uniforms
-        shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", orthoProjection);
-        shaderProgram.setUniform("viewMatrix", identityView);
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
-        shaderProgram.setUniform("u_useSolidColor", true);
-        shaderProgram.setUniform("u_isText", false);
-        shaderProgram.setUniform("u_color", new org.joml.Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        
-        // Workbench dimensions are calculated dynamically based on content
-        // Use a conservative full-screen approach with some padding since workbench size varies
-        int bufferPadding = 50; // Larger buffer for dynamic sizing
-        float left = bufferPadding;
-        float right = windowWidth - bufferPadding;
-        float top = bufferPadding;
-        float bottom = windowHeight - bufferPadding;
-        
-        renderDepthQuad(left, right, top, bottom, 0.0f);
-        
-        // Restore GL state
-        restoreGLState(blendWasEnabled);
-        shaderProgram.unbind();
-    }
-    
-    /**
-     * Helper method to render a depth quad in screen space coordinates.
-     */
-    private void renderDepthQuad(float left, float right, float top, float bottom, float depth) {
-        float[] vertices = {
-            left,  top,    depth,  // Top-left
-            right, top,    depth,  // Top-right
-            right, bottom, depth,  // Bottom-right
-            left,  bottom, depth   // Bottom-left
-        };
-        
-        int[] indices = {
-            0, 1, 2,  // First triangle
-            2, 3, 0   // Second triangle
-        };
-        
-        // Create temporary VAO for the depth curtain
-        int vao = GL30.glGenVertexArrays();
-        int vbo = GL20.glGenBuffers();
-        int ebo = GL20.glGenBuffers();
-        
-        GL30.glBindVertexArray(vao);
-        
-        // Upload vertex data
-        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
-        FloatBuffer vertexBuffer = BufferUtils.createFloatBuffer(vertices.length);
-        vertexBuffer.put(vertices).flip();
-        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, vertexBuffer, GL20.GL_STATIC_DRAW);
-        
-        // Upload index data
-        GL20.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, ebo);
-        IntBuffer indexBuffer = BufferUtils.createIntBuffer(indices.length);
-        indexBuffer.put(indices).flip();
-        GL20.glBufferData(GL20.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL20.GL_STATIC_DRAW);
-        
-        // Set up vertex attributes (position only)
-        GL20.glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
-        GL20.glEnableVertexAttribArray(0);
-        
-        // Render the invisible depth curtain
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-        
-        // Clean up temporary resources
-        GL30.glBindVertexArray(0);
-        GL20.glDeleteBuffers(vbo);
-        GL20.glDeleteBuffers(ebo);
-        GL30.glDeleteVertexArrays(vao);
-    }
-    
-    /**
      * Helper method to render a depth quad in world space coordinates.
      */
     private void renderWorldSpaceDepthQuad(float[] vertices) {
@@ -457,20 +186,6 @@ public class DepthCurtainRenderer {
         GL20.glDeleteBuffers(vbo);
         GL20.glDeleteBuffers(ebo);
         GL30.glDeleteVertexArrays(vao);
-    }
-    
-    /**
-     * Restores OpenGL state after depth curtain rendering.
-     */
-    private void restoreGLState(boolean blendWasEnabled) {
-        glColorMask(true, true, true, true);  // Re-enable color writing
-        glDepthFunc(GL_ALWAYS);               // Keep UI depth function
-        glDepthMask(false);                   // Restore UI depth mask (don't write)
-        
-        if (blendWasEnabled) {
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        }
     }
     
     /**

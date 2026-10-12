@@ -159,6 +159,28 @@ public class ToolCoordinator {
     }
 
     /**
+     * Before the active texture document changes or closes: a floating move or paste is committed
+     * into the document it belongs to (pixels stay where the user put them, one undo entry there),
+     * so nothing carries over into the next document. The selection stays with its document.
+     */
+    public void settlePendingTransform() {
+        DrawingTool tool = getCurrentTool();
+        if (tool instanceof MoveToolController moveTool && moveTool.isMouseCaptured()) {
+            moveTool.forceReleaseMouse();
+        }
+        if (pasteCoordinator != null && pasteCoordinator.isPasteSessionActive()) {
+            pasteCoordinator.commitPaste();
+        } else if (tool instanceof MoveToolController moveTool && moveTool.isActive()) {
+            var pendingCmd = moveTool.getPendingCommand();
+            if (pendingCmd != null && pendingCmd.hasChanges()) {
+                handleEnterKey();
+            } else {
+                moveTool.cancelAndReset(controller.getActiveLayerCanvas());
+            }
+        }
+    }
+
+    /**
      * Handle Escape key for tool cancel.
      * Extracted from main UI to keep tool-specific logic in tool coordinator.
      */

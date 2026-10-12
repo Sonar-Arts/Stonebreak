@@ -23,12 +23,17 @@ public class SoundSystem {
     private float musicVolume = 1.0f;
 
     private SoundSystem() {
-        this.openALContext = new OpenALContext();
-        this.audioLoader = new AudioLoader();
+        this(new OpenALContext(), new AudioLoader(), new AudioListener());
+    }
+
+    /** Test seam: a non-singleton system over caller-supplied (e.g. loopback or fake) collaborators. */
+    SoundSystem(OpenALContext openALContext, AudioLoader audioLoader, AudioListener audioListener) {
+        this.openALContext = openALContext;
+        this.audioLoader = audioLoader;
         this.soundBuffer = new SoundBuffer(4); // 4 sources per sound for overlapping playback
         this.volumeController = new VolumeController();
         this.soundPlayer = new SoundPlayer(soundBuffer, volumeController);
-        this.audioListener = new AudioListener();
+        this.audioListener = audioListener;
         this.audioDiagnostics = new AudioDiagnostics(openALContext, soundBuffer);
         this.musicChannel = new MusicChannel();
     }
@@ -46,7 +51,34 @@ public class SoundSystem {
         }
     }
 
+    /**
+     * True once OpenAL has a current context. Without one (no audio device, failed init) every
+     * AL call aborts with "No ALCapabilities instance has been set" — and the first such call
+     * permanently breaks LWJGL's AL dispatch for the JVM — so loads, listener updates and
+     * diagnostics become no-ops instead. Playback needs no check: nothing is ever registered.
+     */
+    private boolean audioAvailable() {
+        return openALContext.isInitialized();
+    }
+
+    /** Skips a load when there is no device, still honouring the "stream is closed" contract. */
+    private boolean skipWithoutDevice(String kind, String name, java.io.InputStream stream) {
+        if (audioAvailable()) {
+            return false;
+        }
+        logger.debug("OpenAL unavailable; skipping {} '{}'", kind, name);
+        if (stream != null) {
+            try {
+                stream.close();
+            } catch (java.io.IOException ignored) {
+                // nothing useful to do for an unread stream
+            }
+        }
+        return true;
+    }
+
     public void loadSound(String name, String resourcePath) {
+        if (skipWithoutDevice("sound", name, null)) return;
         AudioLoader.LoadResult result = audioLoader.loadSound(name, resourcePath);
         registerLoadResult(name, result);
     }
@@ -57,6 +89,7 @@ public class SoundSystem {
      * own module/classloader). The stream is closed by this method.
      */
     public void loadSound(String name, java.io.InputStream stream) {
+        if (skipWithoutDevice("sound", name, stream)) return;
         AudioLoader.LoadResult result = audioLoader.loadSound(name, stream);
         registerLoadResult(name, result);
     }
@@ -75,6 +108,7 @@ public class SoundSystem {
      * positional SFX). The stream is closed by this method.
      */
     public void loadMusic(String name, java.io.InputStream stream) {
+        if (skipWithoutDevice("music", name, stream)) return;
         AudioLoader.LoadResult result = audioLoader.loadMusic(name, stream);
         if (result.success) {
             musicChannel.addTrack(name, result.buffer);
@@ -106,6 +140,9 @@ public class SoundSystem {
      * whatever track is currently playing, unlike SFX volume which is baked in at play-call time.
      */
     public void setMusicVolume(float volume) {
+        if (Float.isNaN(volume)) {
+            return; // keep the current volume: a NaN gain would silence music for good
+        }
         this.musicVolume = Math.max(0f, Math.min(1f, volume));
         musicChannel.setGain(this.musicVolume * volumeController.getEffectiveVolume());
     }
@@ -194,6 +231,7 @@ public class SoundSystem {
     }
 
     public void setListenerPosition(float x, float y, float z) {
+        if (!audioAvailable()) return;
         audioListener.setListenerPosition(x, y, z);
     }
 
@@ -203,6 +241,7 @@ public class SoundSystem {
      * @param up The up direction vector
      */
     public void setListenerOrientation(org.joml.Vector3f forward, org.joml.Vector3f up) {
+        if (!audioAvailable()) return;
         audioListener.setListenerOrientation(forward, up);
     }
 
@@ -214,6 +253,7 @@ public class SoundSystem {
      * @param up The camera up vector
      */
     public void setListenerFromCamera(org.joml.Vector3f position, org.joml.Vector3f front, org.joml.Vector3f up) {
+        if (!audioAvailable()) return;
         audioListener.setListenerFromCamera(position, front, up);
     }
 
@@ -222,6 +262,10 @@ public class SoundSystem {
     }
 
     public void testBasicFunctionality() {
+        if (!audioAvailable()) {
+            System.out.println("OpenAL is not initialized (no audio device); sound is disabled");
+            return;
+        }
         audioDiagnostics.testBasicFunctionality();
         // Note: Sound playing removed to prevent audio before world is loaded
         // Use testSoundPlayback() method if you need to test sound playback specifically
@@ -245,6 +289,10 @@ public class SoundSystem {
      */
     public void diagnoseOpenAL3D() {
         System.out.println("🔍 OPENAL DIAGNOSIS:");
+        if (!audioAvailable()) {
+            System.out.println("  OpenAL is not initialized (no audio device); sound is disabled");
+            return;
+        }
 
         // Check distance model
         int distanceModel = org.lwjgl.openal.AL10.alGetInteger(org.lwjgl.openal.AL10.AL_DISTANCE_MODEL);

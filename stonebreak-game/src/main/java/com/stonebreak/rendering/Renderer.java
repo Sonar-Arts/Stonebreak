@@ -16,9 +16,7 @@ import com.stonebreak.rendering.gameWorld.WorldRenderer;
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
 import com.stonebreak.rendering.UI.UIRenderer;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
 import com.stonebreak.rendering.UI.components.OverlayRenderer;
-import com.stonebreak.rendering.UI.components.QuarryMarkerRenderer;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
@@ -27,7 +25,6 @@ import com.openmason.engine.voxel.mms.mmsIntegration.MmsFaceCullingService;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBORendererAPI;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
 import com.openmason.engine.format.sbo.SBOParseResult;
-import com.stonebreak.ui.Font;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.ui.chat.ChatSystem;
 import org.joml.Matrix4f;
@@ -134,6 +131,8 @@ public class Renderer {
                                                  configManager.getProjectionMatrix());
         uiRenderer.initializeBlockIconRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, configManager.getWindowHeight());
 
+        com.openmason.engine.ui.masonry.MasonryEnvironment.installClipboard(
+                new com.stonebreak.rendering.UI.backend.skija.GlfwClipboard());
         skijaBackend = new SkijaUIBackend();
         try {
             skijaBackend.initialize(configManager.getWindowWidth(), configManager.getWindowHeight());
@@ -144,16 +143,6 @@ public class Renderer {
             // rather than crashing the game over a non-fatal UI backend failure.
             logger.error("[Renderer] Skija backend init failed", t);
         }
-
-        // Skija-backed UI renderers (chat panel) need the backend; init now
-        // that it exists. UIRenderer.init() ran earlier and only set up NanoVG.
-        uiRenderer.initializeSkijaRenderers(skijaBackend);
-        DamageNumberRenderer.getInstance().setBackend(skijaBackend);
-        QuarryMarkerRenderer.getInstance().setBackend(skijaBackend);
-        com.stonebreak.rendering.UI.components.DoubtMarkerRenderer.getInstance().setBackend(skijaBackend);
-        com.stonebreak.rendering.UI.components.EnemyAwarenessRenderer.getInstance().setBackend(skijaBackend);
-        com.stonebreak.rendering.UI.components.PlayerNameTagRenderer.getInstance().setBackend(skijaBackend);
-        com.stonebreak.rendering.UI.components.StealthHudRenderer.getInstance().setBackend(skijaBackend);
 
         debugRenderer = new DebugRenderer(resourceManager.getShaderProgram(), configManager.getProjectionMatrix());
         
@@ -174,8 +163,7 @@ public class Renderer {
                                          blockRenderer, playerArmRenderer, entityRenderer, dropRenderer,
                                          animatedBlockRenderer);
         
-        overlayRenderer = new OverlayRenderer(uiRenderer.getBlockIconRenderer(), 
-                                             uiRenderer.getItemIconRenderer());
+        overlayRenderer = new OverlayRenderer();
     }
     
     /**
@@ -429,9 +417,6 @@ public class Renderer {
         return configManager.getWindowHeight();
     }
 
-    public Font getFont() {
-        return resourceManager.getFont();
-    }
 
     /**
      * Apply the deferred SBO stamp emitter to MmsAPI.
@@ -513,52 +498,11 @@ public class Renderer {
     // ============ OVERLAY RENDERER METHODS ============
     
     /**
-     * Renders all overlay UI elements that appear above other UI.
-     * This method should be called after all other UI rendering is complete.
-     */
-    public void renderOverlay(Game game, int windowWidth, int windowHeight) {
-        if (overlayRenderer != null) {
-            overlayRenderer.renderOverlay(game, windowWidth, windowHeight);
-        }
-    }
-    
-    /**
      * Get the overlay renderer instance.
      * @return OverlayRenderer instance
      */
     public OverlayRenderer getOverlayRenderer() {
         return overlayRenderer;
-    }
-    
-    /**
-     * Renders an item icon on the overlay layer (above all other UI).
-     * This should be used for icons that need to appear above other UI elements.
-     */
-    public void renderOverlayItemIcon(float x, float y, float w, float h, com.stonebreak.items.Item item) {
-        if (overlayRenderer != null) {
-            overlayRenderer.renderItemIcon(x, y, w, h, item, blockTextureArray);
-        }
-    }
-    
-    /**
-     * Renders an item icon for a block type on the overlay layer (above all other UI).
-     * This should be used for icons that need to appear above other UI elements.
-     */
-    public void renderOverlayItemIcon(float x, float y, float w, float h, int blockTypeId) {
-        if (overlayRenderer != null) {
-            overlayRenderer.renderItemIcon(x, y, w, h, blockTypeId, blockTextureArray);
-        }
-    }
-    
-    /**
-     * Renders a 3D block icon on the overlay layer (above all other UI).
-     * This should be used for icons that need to appear above other UI elements.
-     */
-    public void renderOverlayBlockIcon(com.stonebreak.blocks.BlockType type, int screenSlotX, int screenSlotY, int screenSlotWidth, int screenSlotHeight) {
-        if (overlayRenderer != null) {
-            overlayRenderer.renderBlockIcon(type, screenSlotX, screenSlotY, screenSlotWidth, screenSlotHeight,
-                                          resourceManager.getShaderProgram(), blockTextureArray);
-        }
     }
     
     // ============ END OVERLAY RENDERER METHODS ============
@@ -711,12 +655,6 @@ public class Renderer {
         }
         if (animatedBlockRenderer != null) {
             animatedBlockRenderer.cleanup();
-        }
-
-        // Cleanup pause menu
-        PauseMenu pauseMenu = Game.getInstance().getPauseMenu();
-        if (pauseMenu != null) {
-            pauseMenu.cleanup();
         }
     }
 

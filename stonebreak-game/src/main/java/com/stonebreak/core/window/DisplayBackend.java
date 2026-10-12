@@ -45,7 +45,9 @@ public final class DisplayBackend {
             // Open Kernel Module build; still unfixed on the 595 branch.
             "595.91.07",
             // Open Kernel Module build; still unfixed on the 595 branch.
-            "595.99.02"
+            "595.99.02",
+            // Open Kernel Module build; still unfixed on the 595 branch.
+            "595.104.02"
     );
 
     /**
@@ -68,6 +70,9 @@ public final class DisplayBackend {
      */
     public static void initialize() {
         GLFWErrorCallback.createPrint(System.err).set();
+        // Insurance, before the driver loads: NVIDIA threaded optimization garbles Skia GPU paints
+        // (seen in Open Mason). Opt out with -Dstonebreak.gl.threaded=true.
+        com.openmason.engine.rendering.gl.GlDriverThreading.disableThreadedDispatch("stonebreak.gl.threaded");
 
         boolean pinnedX11 = selectBackend();
         if (!glfwInit()) {

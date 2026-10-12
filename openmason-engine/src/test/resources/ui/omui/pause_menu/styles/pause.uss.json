@@ -1,0 +1,30 @@
+{
+  "id": "pause",
+  "variables": {
+    "--accent": "#C8A050"
+  },
+  "customStates": [
+    "selected"
+  ],
+  "rules": [
+    {
+      "selector": ".panel",
+      "style": {
+        "background-color": "#00000078"
+      }
+    },
+    {
+      "selector": "#panel > Label.title",
+      "style": {
+        "color": "var(--accent)",
+        "font-size": 32
+      }
+    },
+    {
+      "selector": "Instance .danger:hover, Instance .danger:selected",
+      "style": {
+        "-sb-tint": "#FF8080FF"
+      }
+    }
+  ]
+}

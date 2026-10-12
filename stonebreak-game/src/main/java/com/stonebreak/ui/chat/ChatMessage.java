@@ -1,5 +1,7 @@
 package com.stonebreak.ui.chat;
 
+import com.stonebreak.ui.UiWallClock;
+
 public class ChatMessage {
     private final String text;
     private final long timestamp;
@@ -20,7 +22,7 @@ public class ChatMessage {
 
     public ChatMessage(String text, float[] color, long messageId) {
         this.text = text;
-        this.timestamp = System.currentTimeMillis();
+        this.timestamp = UiWallClock.millis();
         this.color = color.clone();
         this.fadeStartTime = MESSAGE_DISPLAY_TIME - MESSAGE_FADE_TIME;
         this.messageId = messageId;
@@ -39,7 +41,7 @@ public class ChatMessage {
     }
     
     public float getAge() {
-        return (System.currentTimeMillis() - timestamp) / 1000.0f;
+        return (UiWallClock.millis() - timestamp) / 1000.0f;
     }
     
     public float getAlpha() {

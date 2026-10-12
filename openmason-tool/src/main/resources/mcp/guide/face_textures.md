@@ -39,6 +39,7 @@ Sessionless (open/commit are gone) — each call edits the GPU texture directly.
 - Undo: model domain — a whole script run is ONE entry (painted pixels
   included; failure rolls back everything), each one-shot tool call one step.
 - The texture editor canvas is a separate surface: `om.canvas`/`canvas_*` +
-  the `tex_*` tools, with its own history (`undo` domain:"texture"). You can
-  summon it for a face with `tex_open_editor {face_id}` — layers, noise,
+  the `tex_*` tools, each open texture with its own history (`undo`
+  domain:"texture"). You can open a face as an editor tab with
+  `tex_open_editor {face_id}` — layers, noise,
   outline, selection, symmetry; see topic `texture_editor`.

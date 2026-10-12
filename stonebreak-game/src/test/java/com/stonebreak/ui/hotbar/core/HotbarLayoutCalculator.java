@@ -1,0 +1,240 @@
+package com.stonebreak.ui.hotbar.core;
+
+import com.stonebreak.items.Inventory;
+import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
+
+/**
+ * The hotbar's geometry as the retired hotbar renderer laid it out (slot sizing shared with the inventory):
+ * the oracle the HUD fixtures ({@code HudFixtures}) check the HUD document against. Not a test class.
+ */
+public class HotbarLayoutCalculator {
+
+    private static final int HOTBAR_Y_OFFSET = 50;               // distance from the bottom
+    private static final float CORNER_RADIUS_LARGE = 8.0f;       // hotbar background
+    private static final float PADDING_LARGE = 16.0f;
+    private static final float PADDING_MEDIUM = 12.0f;
+    private static final float PADDING_SMALL = 8.0f;
+
+    /**
+     * Layout data class for hotbar positioning and dimensions.
+     */
+    public static class HotbarLayout {
+        public final int startX, startY, width, height;
+        public final int backgroundX, backgroundY, backgroundWidth, backgroundHeight;
+        public final int slotCount;
+
+        public HotbarLayout(int startX, int startY, int width, int height,
+                           int backgroundX, int backgroundY, int backgroundWidth, int backgroundHeight,
+                           int slotCount) {
+            this.startX = startX;
+            this.startY = startY;
+            this.width = width;
+            this.height = height;
+            this.backgroundX = backgroundX;
+            this.backgroundY = backgroundY;
+            this.backgroundWidth = backgroundWidth;
+            this.backgroundHeight = backgroundHeight;
+            this.slotCount = slotCount;
+        }
+    }
+
+    /**
+     * Position data class for individual slot positioning.
+     */
+    public static class SlotPosition {
+        public final int x, y, width, height;
+        public final int centerX, centerY;
+
+        public SlotPosition(int x, int y, int width, int height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.centerX = x + width / 2;
+            this.centerY = y + height / 2;
+        }
+    }
+
+    /**
+     * Calculates the complete hotbar layout for the given screen dimensions.
+     */
+    public static HotbarLayout calculateLayout(int screenWidth, int screenHeight) {
+        float uiScale = com.stonebreak.config.Settings.getInstance().getUiScale();
+        int scaledHotbarYOffset = Math.round(HOTBAR_Y_OFFSET * uiScale);
+        int slotSize = InventoryLayoutCalculator.getSlotSize();
+        int slotPadding = InventoryLayoutCalculator.getSlotPadding();
+
+        // Calculate hotbar dimensions
+        int slotCount = Inventory.HOTBAR_SIZE;
+        int hotbarContentWidth = slotCount * slotSize + (slotCount - 1) * slotPadding;
+        int hotbarContentHeight = slotSize;
+
+        // Calculate background dimensions with padding
+        int backgroundPadding = Math.round(PADDING_SMALL * uiScale);
+        int backgroundWidth = hotbarContentWidth + (backgroundPadding * 2);
+        int backgroundHeight = hotbarContentHeight + (backgroundPadding * 2);
+
+        // Center horizontally, position at bottom with offset
+        int backgroundX = (screenWidth - backgroundWidth) / 2;
+        int backgroundY = screenHeight - backgroundHeight - scaledHotbarYOffset;
+
+        // Content starts inside the background padding
+        int contentStartX = backgroundX + backgroundPadding;
+        int contentStartY = backgroundY + backgroundPadding;
+
+        return new HotbarLayout(
+            contentStartX, contentStartY, hotbarContentWidth, hotbarContentHeight,
+            backgroundX, backgroundY, backgroundWidth, backgroundHeight,
+            slotCount
+        );
+    }
+
+    /**
+     * Calculates the position of a specific hotbar slot.
+     */
+    public static SlotPosition calculateSlotPosition(int slotIndex, HotbarLayout layout) {
+        if (slotIndex < 0 || slotIndex >= layout.slotCount) {
+            throw new IllegalArgumentException("Slot index out of bounds: " + slotIndex);
+        }
+
+        int slotSize = InventoryLayoutCalculator.getSlotSize();
+        int slotPadding = InventoryLayoutCalculator.getSlotPadding();
+
+        int slotX = layout.startX + slotIndex * (slotSize + slotPadding);
+        int slotY = layout.startY;
+
+        return new SlotPosition(slotX, slotY, slotSize, slotSize);
+    }
+
+    /**
+     * Checks if a point is within a specific hotbar slot.
+     */
+    public static boolean isPointInSlot(float mouseX, float mouseY, int slotIndex, HotbarLayout layout) {
+        SlotPosition pos = calculateSlotPosition(slotIndex, layout);
+        return mouseX >= pos.x && mouseX <= pos.x + pos.width &&
+               mouseY >= pos.y && mouseY <= pos.y + pos.height;
+    }
+
+    /**
+     * Gets the slot index at the given coordinates, or -1 if none.
+     */
+    public static int getSlotIndexAt(float mouseX, float mouseY, HotbarLayout layout) {
+        for (int i = 0; i < layout.slotCount; i++) {
+            if (isPointInSlot(mouseX, mouseY, i, layout)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Calculates tooltip position above the selected slot.
+     */
+    public static TooltipPosition calculateTooltipPosition(int slotIndex, HotbarLayout layout,
+                                                         float tooltipWidth, float tooltipHeight,
+                                                         int screenWidth) {
+        SlotPosition slotPos = calculateSlotPosition(slotIndex, layout);
+
+        // Center tooltip above the slot
+        float tooltipX = slotPos.centerX - tooltipWidth / 2.0f;
+        float tooltipY = layout.backgroundY - tooltipHeight - PADDING_MEDIUM;
+
+        // Keep tooltip within screen bounds
+        if (tooltipX < PADDING_MEDIUM) {
+            tooltipX = PADDING_MEDIUM;
+        }
+        if (tooltipX + tooltipWidth > screenWidth - PADDING_MEDIUM) {
+            tooltipX = screenWidth - tooltipWidth - PADDING_MEDIUM;
+        }
+
+        return new TooltipPosition((int)tooltipX, (int)tooltipY, (int)tooltipWidth, (int)tooltipHeight);
+    }
+
+    /**
+     * Position data class for tooltip positioning.
+     */
+    public static class TooltipPosition {
+        public final int x, y, width, height;
+
+        public TooltipPosition(int x, int y, int width, int height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
+    }
+
+    // ==================== GETTER METHODS ====================
+
+    public static int getSlotSize() {
+        return InventoryLayoutCalculator.getSlotSize();
+    }
+
+    public static int getSlotPadding() {
+        return InventoryLayoutCalculator.getSlotPadding();
+    }
+
+    public static int getHotbarYOffset() {
+        return HOTBAR_Y_OFFSET;
+    }
+
+    /**
+     * Calculates the minimum screen width required for optimal hotbar display.
+     */
+    public static int getMinimumRecommendedWidth() {
+        return Inventory.HOTBAR_SIZE * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) +
+               (int)(PADDING_LARGE * 4);
+    }
+
+    /**
+     * Calculates the minimum screen height required for optimal hotbar display.
+     */
+    public static int getMinimumRecommendedHeight() {
+        return InventoryLayoutCalculator.getSlotSize() + HOTBAR_Y_OFFSET + (int)(PADDING_LARGE * 2);
+    }
+
+    /**
+     * Determines if the current screen size supports the hotbar layout comfortably.
+     */
+    public static boolean isScreenSizeAdequate(int screenWidth, int screenHeight) {
+        return screenWidth >= getMinimumRecommendedWidth() &&
+               screenHeight >= getMinimumRecommendedHeight();
+    }
+
+    /**
+     * Calculates responsive scale factor for smaller screens.
+     */
+    public static float calculateScaleFactor(int screenWidth, int screenHeight) {
+        if (isScreenSizeAdequate(screenWidth, screenHeight)) {
+            return 1.0f;
+        }
+
+        float widthScale = (float) screenWidth / getMinimumRecommendedWidth();
+        float heightScale = (float) screenHeight / getMinimumRecommendedHeight();
+        return Math.max(0.7f, Math.min(widthScale, heightScale)); // Don't scale below 70%
+    }
+
+    /**
+     * Gets the visual theme-compatible corner radius for hotbar elements.
+     */
+    public static float getCornerRadius() {
+        return CORNER_RADIUS_LARGE;
+    }
+
+    /**
+     * Calculates item icon size based on slot size and padding.
+     */
+    public static int calculateIconSize() {
+        int slotSize = InventoryLayoutCalculator.getSlotSize();
+        int iconPadding = Math.max(2, slotSize / 12);
+        return slotSize - (iconPadding * 2);
+    }
+
+    /**
+     * Calculates item icon padding for consistent positioning.
+     */
+    public static int calculateIconPadding() {
+        int slotSize = InventoryLayoutCalculator.getSlotSize();
+        return Math.max(2, slotSize / 12);
+    }
+}

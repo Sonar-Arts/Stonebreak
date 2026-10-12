@@ -25,9 +25,7 @@ public class InventorySlotManager {
     public boolean tryPickUpFromMainInventory(float mouseX, float mouseY,
                                              InventoryLayoutCalculator.InventoryLayout layout,
                                              InventoryDragDropHandler.DragState dragState) {
-        // Calculate main inventory centering within the panel (same as rendering)
-        int inventoryWidth = Inventory.MAIN_INVENTORY_COLS * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) - InventoryLayoutCalculator.getSlotPadding();
-        int inventoryStartX = layout.panelStartX + (layout.inventoryPanelWidth - inventoryWidth) / 2;
+        int inventoryStartX = InventoryLayoutCalculator.gridStartX(layout);
 
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
             int row = i / Inventory.MAIN_INVENTORY_COLS;
@@ -53,9 +51,7 @@ public class InventorySlotManager {
     public boolean tryPickUpFromHotbar(float mouseX, float mouseY,
                                       InventoryLayoutCalculator.InventoryLayout layout,
                                       InventoryDragDropHandler.DragState dragState) {
-        // Calculate hotbar centering within the panel (same as rendering)
-        int hotbarWidth = Inventory.HOTBAR_SIZE * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) - InventoryLayoutCalculator.getSlotPadding();
-        int hotbarStartX = layout.panelStartX + (layout.inventoryPanelWidth - hotbarWidth) / 2;
+        int hotbarStartX = InventoryLayoutCalculator.gridStartX(layout);
 
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             int slotX = hotbarStartX + i * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
@@ -265,9 +261,7 @@ public class InventorySlotManager {
      */
     public boolean tryShiftClickMainInventoryToHotbar(float mouseX, float mouseY,
                                                        InventoryLayoutCalculator.InventoryLayout layout) {
-        // Calculate main inventory centering within the panel (same as rendering)
-        int inventoryWidth = Inventory.MAIN_INVENTORY_COLS * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) - InventoryLayoutCalculator.getSlotPadding();
-        int inventoryStartX = layout.panelStartX + (layout.inventoryPanelWidth - inventoryWidth) / 2;
+        int inventoryStartX = InventoryLayoutCalculator.gridStartX(layout);
 
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
             int row = i / Inventory.MAIN_INVENTORY_COLS;
@@ -303,9 +297,7 @@ public class InventorySlotManager {
      */
     public boolean tryShiftClickHotbarToMainInventory(float mouseX, float mouseY,
                                                        InventoryLayoutCalculator.InventoryLayout layout) {
-        // Calculate hotbar centering within the panel (same as rendering)
-        int hotbarWidth = Inventory.HOTBAR_SIZE * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) - InventoryLayoutCalculator.getSlotPadding();
-        int hotbarStartX = layout.panelStartX + (layout.inventoryPanelWidth - hotbarWidth) / 2;
+        int hotbarStartX = InventoryLayoutCalculator.gridStartX(layout);
 
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             int slotX = hotbarStartX + i * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
@@ -405,9 +397,7 @@ public class InventorySlotManager {
     public boolean tryDropOneToMainInventory(float mouseX, float mouseY,
                                             InventoryLayoutCalculator.InventoryLayout layout,
                                             InventoryDragDropHandler.DragState dragState) {
-        // Calculate main inventory centering within the panel (same as rendering)
-        int inventoryWidth = Inventory.MAIN_INVENTORY_COLS * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) - InventoryLayoutCalculator.getSlotPadding();
-        int inventoryStartX = layout.panelStartX + (layout.inventoryPanelWidth - inventoryWidth) / 2;
+        int inventoryStartX = InventoryLayoutCalculator.gridStartX(layout);
 
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
             final int slotIndex = i; // Make effectively final for lambda
@@ -429,9 +419,7 @@ public class InventorySlotManager {
     public boolean tryDropOneToHotbar(float mouseX, float mouseY,
                                      InventoryLayoutCalculator.InventoryLayout layout,
                                      InventoryDragDropHandler.DragState dragState) {
-        // Calculate hotbar centering within the panel (same as rendering)
-        int hotbarWidth = Inventory.HOTBAR_SIZE * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding()) - InventoryLayoutCalculator.getSlotPadding();
-        int hotbarStartX = layout.panelStartX + (layout.inventoryPanelWidth - hotbarWidth) / 2;
+        int hotbarStartX = InventoryLayoutCalculator.gridStartX(layout);
 
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             final int slotIndex = i; // Make effectively final for lambda
@@ -479,10 +467,7 @@ public class InventorySlotManager {
         if (!dragState.isDragging()) return false;
 
         // Main inventory (slot IDs 0..MAIN_INVENTORY_SIZE-1)
-        int inventoryWidth = Inventory.MAIN_INVENTORY_COLS
-                * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding())
-                - InventoryLayoutCalculator.getSlotPadding();
-        int inventoryStartX = layout.panelStartX + (layout.inventoryPanelWidth - inventoryWidth) / 2;
+        int inventoryStartX = InventoryLayoutCalculator.gridStartX(layout);
 
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
             int row = i / Inventory.MAIN_INVENTORY_COLS;
@@ -504,10 +489,7 @@ public class InventorySlotManager {
         }
 
         // Hotbar (slot IDs 27..35)
-        int hotbarWidth = Inventory.HOTBAR_SIZE
-                * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding())
-                - InventoryLayoutCalculator.getSlotPadding();
-        int hotbarStartX = layout.panelStartX + (layout.inventoryPanelWidth - hotbarWidth) / 2;
+        int hotbarStartX = InventoryLayoutCalculator.gridStartX(layout);
 
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             int slotX = hotbarStartX + i * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
@@ -590,6 +572,57 @@ public class InventorySlotManager {
         }
     }
 
+    /**
+     * Top-left of a slot by address ({@code main:<i>}, {@code hotbar:<i>}, {@code craft:<i>},
+     * {@code craft-output}) in {@code layout} — the same geometry the hit tests above use, so a
+     * pointer synthesized there (#289) lands on that slot. Null for an unknown address.
+     */
+    public int[] slotOrigin(String slot, InventoryLayoutCalculator.InventoryLayout layout) {
+        int ss = InventoryLayoutCalculator.getSlotSize();
+        int pad = InventoryLayoutCalculator.getSlotPadding();
+        if ("craft-output".equals(slot)) {
+            return new int[]{layout.outputSlotX, layout.outputSlotY};
+        }
+        int colon = slot == null ? -1 : slot.indexOf(':');
+        if (colon < 0) {
+            return null;
+        }
+        int i;
+        try {
+            i = Integer.parseInt(slot.substring(colon + 1));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        switch (slot.substring(0, colon)) {
+            case "main" -> {
+                if (i < 0 || i >= Inventory.MAIN_INVENTORY_SIZE) {
+                    return null;
+                }
+                int startX = InventoryLayoutCalculator.gridStartX(layout);
+                return new int[]{startX + (i % Inventory.MAIN_INVENTORY_COLS) * (ss + pad),
+                    layout.mainInvContentStartY + pad + (i / Inventory.MAIN_INVENTORY_COLS) * (ss + pad)};
+            }
+            case "hotbar" -> {
+                if (i < 0 || i >= Inventory.HOTBAR_SIZE) {
+                    return null;
+                }
+                int startX = InventoryLayoutCalculator.gridStartX(layout);
+                return new int[]{startX + i * (ss + pad), layout.hotbarRowY};
+            }
+            case "craft" -> {
+                int size = craftingManager.getCraftingGridSize();
+                if (i < 0 || i >= size * size) {
+                    return null;
+                }
+                return new int[]{layout.craftingElementsStartX + (i % size) * (ss + pad),
+                    layout.craftingGridStartY + (i / size) * (ss + pad)};
+            }
+            default -> {
+                return null;
+            }
+        }
+    }
+
     private boolean isMouseOverSlot(float mouseX, float mouseY, int slotX, int slotY) {
         return mouseX >= slotX && mouseX <= slotX + InventoryLayoutCalculator.getSlotSize() &&
                mouseY >= slotY && mouseY <= slotY + InventoryLayoutCalculator.getSlotSize();
@@ -600,7 +633,9 @@ public class InventorySlotManager {
                                         boolean isCraftingSlot,
                                         InventoryDragDropHandler.DragState dragState) {
         if (targetSlot.isEmpty()) {
-            ItemStack newItem = new ItemStack(dragState.draggedItemStack.getItem(), 1);
+            // keep the state (water bucket, tool wear): one of this stack, not a fresh item (#300)
+            ItemStack newItem = new ItemStack(dragState.draggedItemStack.getItem(), 1,
+                                              dragState.draggedItemStack.getState());
             slotSetter.accept(newItem);
             dragState.draggedItemStack.decrementCount(1);
             if (dragState.draggedItemStack.isEmpty()) {

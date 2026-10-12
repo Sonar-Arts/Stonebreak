@@ -7,8 +7,8 @@ import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
  *
  * <p>Crucible sits at the center of the upper furnace section.
  * Ingredient slot is at 12 o'clock, fuel at 6 o'clock, output at 3 o'clock.
- * Shared between the renderer and the input manager so hit-testing and
- * drawing never drift apart.
+ * Shared between the input manager's slot addresses and the crucible draw
+ * provider so hit-testing and drawing never drift apart.
  */
 public final class FurnaceLayout {
 
@@ -52,17 +52,34 @@ public final class FurnaceLayout {
         // 3*(SLOT_SIZE+SLOT_PADDING) + SLOT_PADDING).
         float titleY    = layout.panelStartY + ppad + th + sp;
         int   sectionTop = (int) titleY;
-        int   sectionHeight = 3 * (ss + pad) + pad;
+        int   sectionHeight = bandHeight(ss, pad);
 
         float centerX = layout.panelStartX + layout.inventoryPanelWidth / 2f;
         float centerY = sectionTop + sectionHeight / 2f;
+        return around(centerX, centerY, ss, pad, com.stonebreak.config.Settings.getInstance().getUiScale());
+    }
 
+    /** Height of the band the crucible and its three slots sit in: three slot rows and their gaps. */
+    public static int bandHeight(int ss, int pad) {
+        return 3 * (ss + pad) + pad;
+    }
+
+    /**
+     * The radial geometry around a crucible centre, as the {@code stonebreak:furnace-crucible} draw
+     * provider places it (centre of its element); {@link #compute} derives the centre from the panel
+     * layout.
+     *
+     * @param ss      slot side, device px
+     * @param pad     slot padding, device px
+     * @param uiScale scale of the absolute chute gap
+     */
+    public static Slots around(float centerX, float centerY, int ss, int pad, float uiScale) {
         // Distance from crucible center to slot center. Vertical extent
         // becomes 2*radius + ss = 3*ss + 2*pad, matching the reserved band.
         float radius = ss + pad;
         // Leave a clear ~12px chute between the crucible rim and each slot edge
         // (scaled so the gap stays proportional at non-default UI scales).
-        float chute = 12f * com.stonebreak.config.Settings.getInstance().getUiScale();
+        float chute = 12f * uiScale;
         float crucibleRadius = radius - ss / 2f - chute;
         if (crucibleRadius < chute) crucibleRadius = chute;
 

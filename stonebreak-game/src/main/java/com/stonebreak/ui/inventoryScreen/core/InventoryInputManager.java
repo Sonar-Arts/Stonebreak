@@ -3,17 +3,21 @@ package com.stonebreak.ui.inventoryScreen.core;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.core.Game;
-import com.stonebreak.rpg.CharacterPanelTab;
+import com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
+import com.stonebreak.ui.inventoryScreen.handlers.PointerFrame;
 import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Manages all input handling for the inventory screen.
- * Follows Single Responsibility Principle by handling only input logic.
+ * The inventory screen's slot rules, and — through a few layout/drop hooks — those of every screen
+ * built on it (the crafting table's {@link WorkbenchInputManager}). The pointer dispatch lives only
+ * here so each crafting/inventory interaction reaches every screen: subclasses supply
+ * {@link #layoutFor} and {@link #placeDraggedItem}, never their own copy of {@link #handlePointer}
+ * (issue #317). The screens' buttons and tabs are the documents' own: they reach {@link #craftAll}
+ * and {@link #sort} as host actions, never through a pointer frame.
  */
-public class InventoryInputManager {
+public class InventoryInputManager implements ContainerSlotInput {
 
     protected final InputHandler inputHandler;
     protected final Inventory inventory;
@@ -24,6 +28,9 @@ public class InventoryInputManager {
     // Screen dimensions (updated each frame for drag release)
     protected int lastScreenWidth, lastScreenHeight;
 
+    // Pointer of the frame being handled
+    private float pointerX, pointerY;
+
     // Double-click detection
     private static final long DOUBLE_CLICK_THRESHOLD_MS = 350L;
     private static final float DOUBLE_CLICK_RADIUS = 40f;
@@ -31,24 +38,7 @@ public class InventoryInputManager {
     private float lastClickX = 0f, lastClickY = 0f;
 
     // Right-click drag state
-    private boolean rightDragActive = false;
     private final java.util.Set<Integer> rightDragVisitedSlots = new java.util.HashSet<>();
-
-    // Recipe button properties
-    private float recipeButtonX, recipeButtonY, recipeButtonWidth, recipeButtonHeight;
-
-    // Craft All button properties
-    private float craftAllButtonX, craftAllButtonY, craftAllButtonWidth, craftAllButtonHeight;
-
-    // Sort button properties. Only InventoryRenderCoordinator calls
-    // updateSortButtonBoundsForRendering — the workbench screen never does,
-    // so these stay at 0 there and the button is un-clickable, keeping
-    // sorting an inventory-screen-only feature (same trick Craft All uses).
-    private float sortButtonX, sortButtonY, sortButtonWidth, sortButtonHeight;
-
-    // Tab bounds (mirroring InventoryRenderCoordinator tab geometry)
-    private float charTabX, charTabY, charTabWidth, charTabHeight;
-    private float talentsTabX;
 
     public InventoryInputManager(InputHandler inputHandler,
                                 Inventory inventory,
@@ -61,24 +51,28 @@ public class InventoryInputManager {
         this.dragState = new InventoryDragDropHandler.DragState();
     }
 
-    public void handleMouseInput(int screenWidth, int screenHeight) {
-        InventoryLayoutCalculator.InventoryLayout layout =
-            InventoryLayoutCalculator.calculateThreeColumnLayout(screenWidth, screenHeight).center;
+    /**
+     * One frame of pointer input, synthesized at a slot by the screen's document (#289,
+     * {@link ContainerSlotInput}): every rule below runs from it.
+     */
+    @Override
+    public final void handlePointer(PointerFrame pointer, int screenWidth, int screenHeight) {
+        InventoryLayoutCalculator.InventoryLayout layout = layoutFor(screenWidth, screenHeight);
 
-        Vector2f mousePos = inputHandler.getMousePosition();
-        float mouseX = mousePos.x;
-        float mouseY = mousePos.y;
+        float mouseX = pointer.x();
+        float mouseY = pointer.y();
+        this.pointerX = mouseX;
+        this.pointerY = mouseY;
         this.lastScreenWidth = screenWidth;
         this.lastScreenHeight = screenHeight;
-        boolean shiftDown = inputHandler.isKeyDown(GLFW.GLFW_KEY_LEFT_SHIFT) ||
-                           inputHandler.isKeyDown(GLFW.GLFW_KEY_RIGHT_SHIFT);
+        boolean shiftDown = pointer.shift();
 
-        boolean leftMouseButtonPressed = inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-        boolean rightMouseButtonPressed = inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
-        boolean rightMouseButtonDown = inputHandler.isMouseButtonDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+        boolean leftMouseButtonPressed = pointer.leftPressed();
+        boolean rightMouseButtonPressed = pointer.rightPressed();
+        boolean rightMouseButtonDown = pointer.rightDown();
 
         // Middle click: balance the crafting grid when aimed at a cell, otherwise sort.
-        if (tryHandleMiddleClick(mouseX, mouseY, layout)) {
+        if (tryHandleMiddleClick(pointer.middlePressed(), mouseX, mouseY, layout)) {
             return;
         }
 
@@ -97,20 +91,60 @@ public class InventoryInputManager {
         }
     }
 
+    @Override
+    public float[] slotOrigin(String slot, int screenWidth, int screenHeight) {
+        if ("outside".equals(slot)) {
+            return new float[]{OUTSIDE, OUTSIDE};
+        }
+        if ("panel".equals(slot)) {
+            // just inside the slot panel's top-left corner, which no slot, button or tab covers
+            InventoryLayoutCalculator.InventoryLayout layout = layoutFor(screenWidth, screenHeight);
+            float half = slotSize() / 2f;
+            return new float[]{layout.panelStartX + 1 - half, layout.panelStartY + 1 - half};
+        }
+        int[] o = slotManager.slotOrigin(slot, layoutFor(screenWidth, screenHeight));
+        return o == null ? null : new float[]{o[0], o[1]};
+    }
+
+    @Override
+    public float slotSize() {
+        return InventoryLayoutCalculator.getSlotSize();
+    }
+
+    /** Where the pointer of the frame being handled is. */
+    protected Vector2f pointerPosition() {
+        return new Vector2f(pointerX, pointerY);
+    }
+
+    /**
+     * The slot layout this screen's clicks are hit-tested against — the same layout its document
+     * draws. The inventory screen uses the centre column of its three-column layout.
+     */
+    protected InventoryLayoutCalculator.InventoryLayout layoutFor(int screenWidth, int screenHeight) {
+        return InventoryLayoutCalculator.calculateThreeColumnLayout(screenWidth, screenHeight).center;
+    }
+
     /**
      * Middle-click helper shared by the inventory and workbench screens: balances
      * the crafting grid when aimed at a cell, otherwise sorts the inventory.
      * Consumes the press so it does not leak into further handling. Returns true
      * when a middle-click was processed.
      */
-    protected boolean tryHandleMiddleClick(float mouseX, float mouseY,
+    protected boolean tryHandleMiddleClick(boolean middlePressed, float mouseX, float mouseY,
                                            InventoryLayoutCalculator.InventoryLayout layout) {
-        if (!inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)) {
+        if (!middlePressed) {
             return false;
         }
         handleMiddleClick(mouseX, mouseY, layout);
-        inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_MIDDLE);
+        consumePress(GLFW.GLFW_MOUSE_BUTTON_MIDDLE);
         return true;
+    }
+
+    /** Marks the real button press handled, so nothing else acts on it this frame. */
+    protected final void consumePress(int button) {
+        if (inputHandler != null) {
+            inputHandler.consumeMouseButtonPress(button);
+        }
     }
 
     private void handleMiddleClick(float mouseX, float mouseY,
@@ -128,7 +162,7 @@ public class InventoryInputManager {
                                   InventoryLayoutCalculator.InventoryLayout layout) {
         if (shiftDown) {
             handleShiftClickTransfer(mouseX, mouseY, layout);
-            inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             return;
         }
 
@@ -136,58 +170,25 @@ public class InventoryInputManager {
         // output slot, then check for double-click gather before placing.
         if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
             if (tryCraftOntoDraggedStack(mouseX, mouseY, layout)) {
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
             if (isDoubleClick(mouseX, mouseY)) {
                 handleDoubleClickGather();
                 recordClick(mouseX, mouseY);
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
-            placeDraggedItem(lastScreenWidth, lastScreenHeight);
-            inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            placeDraggedItem(layout);
+            consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             return;
         }
 
         if (dragState.draggedItemStack == null) {
-            // Check character-group tabs (above panel) before slot interactions
-            if (isCharTabClicked(mouseX, mouseY, layout)) {
-                Game.getInstance().switchToCharacter();
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                return;
-            }
-            if (isTalentsTabClicked(mouseX, mouseY, layout)) {
-                Game.getInstance().openCharacterTab(CharacterPanelTab.TALENTS);
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                return;
-            }
-
-            // Check recipe button first
-            if (isRecipeButtonClicked(mouseX, mouseY, layout)) {
-                Game.getInstance().openRecipeBookScreen();
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                return;
-            }
-
-            // Check craft all button
-            if (isCraftAllButtonClicked(mouseX, mouseY, layout)) {
-                handleCraftAll();
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                return;
-            }
-
-            // Check sort button
-            if (isSortButtonClicked(mouseX, mouseY, layout)) {
-                handleSort();
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                return;
-            }
-
             // Try to pick up item
             if (tryPickUpItem(mouseX, mouseY, layout)) {
                 recordClick(mouseX, mouseY);
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             }
         }
     }
@@ -198,7 +199,7 @@ public class InventoryInputManager {
         if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
             boolean placedOne = tryHandleRightClickDropSingle(mouseX, mouseY, layout);
             if (placedOne) {
-                inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+                consumePress(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
             }
         }
     }
@@ -210,84 +211,28 @@ public class InventoryInputManager {
         // Otherwise: dragging in progress — wait for the second left-click (handled in handleLeftClick)
     }
 
-    private boolean isRecipeButtonClicked(float mouseX, float mouseY,
-                                         InventoryLayoutCalculator.InventoryLayout layout) {
-        updateRecipeButtonBounds(layout);
-        return mouseX >= recipeButtonX && mouseX <= recipeButtonX + recipeButtonWidth &&
-               mouseY >= recipeButtonY && mouseY <= recipeButtonY + recipeButtonHeight;
+    @Override
+    public ItemStack[] craftingSlots() {
+        return craftingManager.getCraftingInputSlots();
     }
 
-    private void updateRecipeButtonBounds(InventoryLayoutCalculator.InventoryLayout layout) {
-        // Scale button width as a proportion of the panel width for better responsiveness
-        float panelWidthRatio = 0.25f; // Button takes up 25% of panel width
-        recipeButtonWidth = Math.max(80, (int)(layout.inventoryPanelWidth * panelWidthRatio));
-        recipeButtonHeight = InventoryLayoutCalculator.getSlotSize();
-
-        // Position button to the right of the output slot with proper spacing
-        int spacingAfterOutput = InventoryLayoutCalculator.getSlotPadding() * 2;
-        recipeButtonX = layout.outputSlotX + InventoryLayoutCalculator.getSlotSize() + spacingAfterOutput;
-        recipeButtonY = layout.outputSlotY;
+    @Override
+    public ItemStack craftingOutput() {
+        return craftingManager.getCraftingOutputSlot();
     }
 
-    private boolean isCraftAllButtonClicked(float mouseX, float mouseY,
-                                           InventoryLayoutCalculator.InventoryLayout layout) {
-        updateCraftAllButtonBounds(layout);
-        return mouseX >= craftAllButtonX && mouseX <= craftAllButtonX + craftAllButtonWidth &&
-               mouseY >= craftAllButtonY && mouseY <= craftAllButtonY + craftAllButtonHeight;
+    /** The Craft All button's rule, for UI documents (#289). */
+    @Override
+    public boolean craftAll() {
+        handleCraftAll();
+        return true;
     }
 
-    private void updateCraftAllButtonBounds(InventoryLayoutCalculator.InventoryLayout layout) {
-        // Make button width smaller for compact layout
-        craftAllButtonWidth = Math.max(70, InventoryLayoutCalculator.getSlotSize() * 1.5f);
-        craftAllButtonHeight = InventoryLayoutCalculator.getSlotSize() / 2;
-
-        // Position button below the output slot
-        craftAllButtonX = layout.outputSlotX + (InventoryLayoutCalculator.getSlotSize() - craftAllButtonWidth) / 2;
-        craftAllButtonY = layout.outputSlotY + InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding();
-    }
-
-    private boolean isSortButtonClicked(float mouseX, float mouseY,
-                                       InventoryLayoutCalculator.InventoryLayout layout) {
-        updateSortButtonBounds(layout);
-        return mouseX >= sortButtonX && mouseX <= sortButtonX + sortButtonWidth &&
-               mouseY >= sortButtonY && mouseY <= sortButtonY + sortButtonHeight;
-    }
-
-    private void updateSortButtonBounds(InventoryLayoutCalculator.InventoryLayout layout) {
-        sortButtonWidth = Math.max(70, InventoryLayoutCalculator.getSlotSize() * 1.5f);
-        sortButtonHeight = InventoryLayoutCalculator.getSlotSize() / 2f;
-
-        int gridWidth = Inventory.MAIN_INVENTORY_COLS *
-            (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding())
-            - InventoryLayoutCalculator.getSlotPadding();
-
-        // Right-aligned above the main-inventory grid.
-        sortButtonX = layout.inventorySectionStartX + gridWidth - sortButtonWidth;
-        sortButtonY = layout.mainInvContentStartY - sortButtonHeight - InventoryLayoutCalculator.getSlotPadding();
-    }
-
-    private boolean isCharTabClicked(float mouseX, float mouseY,
-                                     InventoryLayoutCalculator.InventoryLayout layout) {
-        updateCharTabBounds(layout);
-        return mouseX >= charTabX && mouseX <= charTabX + charTabWidth
-                && mouseY >= charTabY && mouseY <= charTabY + charTabHeight;
-    }
-
-    private void updateCharTabBounds(InventoryLayoutCalculator.InventoryLayout layout) {
-        charTabWidth  = com.stonebreak.ui.TabStripLayout.tabWidth();
-        charTabHeight = com.stonebreak.ui.TabStripLayout.tabHeight();
-        int stride = com.stonebreak.ui.TabStripLayout.stride();
-        int startX = com.stonebreak.ui.TabStripLayout.startX(lastScreenWidth);
-        charTabX    = startX + stride;
-        charTabY    = com.stonebreak.ui.TabStripLayout.tabY(layout.panelStartY);
-        talentsTabX = startX + stride * 2;
-    }
-
-    private boolean isTalentsTabClicked(float mouseX, float mouseY,
-                                        InventoryLayoutCalculator.InventoryLayout layout) {
-        updateCharTabBounds(layout);
-        return mouseX >= talentsTabX && mouseX <= talentsTabX + charTabWidth
-            && mouseY >= charTabY     && mouseY <= charTabY + charTabHeight;
+    /** The Sort button's rule (never mid-drag), for UI documents (#289). */
+    @Override
+    public boolean sort() {
+        handleSort();
+        return true;
     }
 
     private void handleCraftAll() {
@@ -299,7 +244,7 @@ public class InventoryInputManager {
     }
 
     private void handleSort() {
-        if (dragState.isDragging()) return; // defensive; unreachable via handleLeftClick anyway
+        if (dragState.isDragging()) return; // never mid-drag: it would re-populate the drag's source slot
         inventory.sortInventory();
     }
 
@@ -422,7 +367,6 @@ public class InventoryInputManager {
 
     private void handleRightDrag(float mouseX, float mouseY,
                                  InventoryLayoutCalculator.InventoryLayout layout) {
-        rightDragActive = true;
         boolean placed = slotManager.tryRightDragDepositToSlot(
                 mouseX, mouseY, layout, dragState, rightDragVisitedSlots);
         if (placed) {
@@ -431,27 +375,34 @@ public class InventoryInputManager {
     }
 
     private void clearRightDrag() {
-        rightDragActive = false;
         rightDragVisitedSlots.clear();
     }
 
-    private void placeDraggedItem(int screenWidth, int screenHeight) {
-        Vector2f mousePos = inputHandler.getMousePosition();
+    /**
+     * Places (or swaps/stacks) the held stack into the slot under the cursor, falling back to
+     * its original slot or a world drop. Screens with a different grid override this to use
+     * their own drop handler.
+     */
+    protected void placeDraggedItem(InventoryLayoutCalculator.InventoryLayout layout) {
+        Vector2f mousePos = pointerPosition();
         InventoryDragDropHandler.placeDraggedItem(dragState, inventory,
                                                 craftingManager.getCraftingInputSlots(),
-                                                mousePos, screenWidth, screenHeight,
+                                                mousePos, layout,
+                                                isOutsidePanel(mousePos.x, mousePos.y, lastScreenWidth, lastScreenHeight),
                                                 craftingManager::updateCraftingOutput);
     }
 
-    private void handleFailedDrop() {
-        InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory,
-                                                        craftingManager.getCraftingInputSlots(),
-                                                        craftingManager::updateCraftingOutput);
-        if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
-            InventoryDragDropHandler.dropEntireStackIntoWorld(dragState);
-        } else {
-            clearDraggedItemState();
-        }
+    /**
+     * Whether a point is beyond everything the inventory screen draws: all three columns and the
+     * tab strip above them. Only there does a stack that landed on no slot go into the world; on
+     * the side columns or a tab it goes back where it came from.
+     */
+    protected boolean isOutsidePanel(float x, float y, int screenWidth, int screenHeight) {
+        InventoryLayoutCalculator.InventoryLayout3Col l =
+            InventoryLayoutCalculator.calculateThreeColumnLayout(screenWidth, screenHeight);
+        int top = com.stonebreak.ui.TabStripLayout.tabY(l.panelStartY);
+        return x < l.panelStartX || x > l.panelStartX + l.totalPanelWidth
+            || y < top || y > l.panelStartY + l.totalPanelHeight;
     }
 
     private void clearDraggedItemState() {
@@ -460,44 +411,6 @@ public class InventoryInputManager {
 
     public InventoryDragDropHandler.DragState getDragState() {
         return dragState;
-    }
-
-    public float getRecipeButtonX() { return recipeButtonX; }
-    public float getRecipeButtonY() { return recipeButtonY; }
-    public float getRecipeButtonWidth() { return recipeButtonWidth; }
-    public float getRecipeButtonHeight() { return recipeButtonHeight; }
-
-    public float getCraftAllButtonX() { return craftAllButtonX; }
-    public float getCraftAllButtonY() { return craftAllButtonY; }
-    public float getCraftAllButtonWidth() { return craftAllButtonWidth; }
-    public float getCraftAllButtonHeight() { return craftAllButtonHeight; }
-
-    public float getSortButtonX() { return sortButtonX; }
-    public float getSortButtonY() { return sortButtonY; }
-    public float getSortButtonWidth() { return sortButtonWidth; }
-    public float getSortButtonHeight() { return sortButtonHeight; }
-
-    /**
-     * Updates recipe button bounds for rendering. Should be called before rendering the button.
-     */
-    public void updateRecipeButtonBoundsForRendering(InventoryLayoutCalculator.InventoryLayout layout) {
-        updateRecipeButtonBounds(layout);
-    }
-
-    /**
-     * Updates craft all button bounds for rendering. Should be called before rendering the button.
-     */
-    public void updateCraftAllButtonBoundsForRendering(InventoryLayoutCalculator.InventoryLayout layout) {
-        updateCraftAllButtonBounds(layout);
-    }
-
-    /**
-     * Updates sort button bounds for rendering. Should be called before rendering the button.
-     * Only called from InventoryRenderCoordinator — deliberately not wired into the workbench
-     * screen, so the button's hit-box stays 0x0 there (see field comment above).
-     */
-    public void updateSortButtonBoundsForRendering(InventoryLayoutCalculator.InventoryLayout layout) {
-        updateSortButtonBounds(layout);
     }
 
     /**

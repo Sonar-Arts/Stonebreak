@@ -9,7 +9,7 @@ public class VolumeController {
      * @param volume Volume level (0.0 = silent, 1.0 = normal volume)
      */
     public void setMasterVolume(float volume) {
-        this.masterVolume = Math.max(0.0f, Math.min(1.0f, volume));
+        this.masterVolume = clampUnit(volume, masterVolume);
     }
 
     /**
@@ -26,7 +26,7 @@ public class VolumeController {
      * audio while the listener is underwater. 1.0 = no ducking.
      */
     public void setEnvironmentGain(float gain) {
-        this.environmentGain = Math.max(0.0f, Math.min(1.0f, gain));
+        this.environmentGain = clampUnit(gain, environmentGain);
     }
 
     public float getEnvironmentGain() {
@@ -36,5 +36,16 @@ public class VolumeController {
     /** Combined gain actually applied to sources: master volume times environmental ducking. */
     public float getEffectiveVolume() {
         return masterVolume * environmentGain;
+    }
+
+    /**
+     * Clamp to [0, 1]. NaN keeps {@code current}: min/max pass NaN through, and one
+     * NaN gain would poison every later source gain (OpenAL rejects it).
+     */
+    private static float clampUnit(float value, float current) {
+        if (Float.isNaN(value)) {
+            return current;
+        }
+        return Math.max(0.0f, Math.min(1.0f, value));
     }
 }

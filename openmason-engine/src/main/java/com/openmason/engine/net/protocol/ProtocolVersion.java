@@ -16,8 +16,10 @@ public final class ProtocolVersion {
      *  4 = entity appearance-variant channel (EntityShearC2S, EntityVariantS2C — the
      *  handshake is exact-equality, so 3 peers can never join a 4 world and choke on
      *  an unknown packet id).
-     *  5 = per-block crafting-table grids (WorkbenchSlotsC2S — issue #307). */
-    public static final int CURRENT = 5;
+     *  5 = per-block crafting-table grids (WorkbenchSlotsC2S — issue #307).
+     *  6 = server-authoritative per-world cheats flag (CheatsSetC2S, CheatsStateS2C —
+     *  issue #318). */
+    public static final int CURRENT = 6;
 
     private ProtocolVersion() {}
 }

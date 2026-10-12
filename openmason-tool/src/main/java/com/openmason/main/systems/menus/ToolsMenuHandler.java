@@ -21,6 +21,7 @@ public class ToolsMenuHandler {
     private Runnable openTextureEditorCallback;
     private Runnable openAnimationEditorCallback;
     private Runnable openScriptingWindowCallback;
+    private Runnable openUiEditorCallback;
     private SBOExportWindow sboExportWindow;
     private SBEExportWindow sbeExportWindow;
     private SBOEditorWindow sboEditorWindow;
@@ -48,6 +49,11 @@ public class ToolsMenuHandler {
      */
     public void setOpenScriptingWindowCallback(Runnable callback) {
         this.openScriptingWindowCallback = callback;
+    }
+
+    /** Set the callback that brings the UI workspace forward (its tab, or its own window when popped out). */
+    public void setOpenUiEditorCallback(Runnable callback) {
+        this.openUiEditorCallback = callback;
     }
 
     /**
@@ -127,6 +133,10 @@ public class ToolsMenuHandler {
             if (openScriptingWindowCallback != null) {
                 openScriptingWindowCallback.run();
             }
+        }
+
+        if (openUiEditorCallback != null && ImGui.menuItem("UI Editor")) {
+            openUiEditorCallback.run();
         }
 
         ImGui.separator();

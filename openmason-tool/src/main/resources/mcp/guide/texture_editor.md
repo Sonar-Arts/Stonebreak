@@ -1,21 +1,33 @@
 # Texture Editor (canvas, layers, filters — driven remotely)
 
-The texture editor is a layered pixel canvas. You can summon it yourself; the
-user does not have to open it.
+The texture editor is a layered pixel canvas with document tabs: every open
+texture — a .omt project, a new canvas, or a model face — is its own tab with
+its own layers, undo history, selection and view. You can open textures
+yourself; the user does not have to. You never close the editor itself (that
+is the user's call), only documents.
 
-## Session
-1. `tex_open_editor {face_id}` — open a model face exactly like the property
-   panel's "Edit Texture" button: material created if missing, GPU pixels
-   loaded, canvas masked to the face polygon, edits live-preview on the model.
-   `tex_open_editor {width, height}` starts a fresh standalone canvas;
-   no args just shows the window.
-2. Paint with the `tex_*` tools below (all target the ACTIVE layer and honour
-   the face mask + selection, like the mouse does).
-3. `tex_flush` pushes edits to the model (then `viewport_capture`);
-   `tex_close_editor` flushes, ends the face session and auto-saves the .omo.
-`tex_editor_status` tells you window visibility, face session, canvas, tool,
-symmetry and selection at any time. `.omt` projects: `tex_load_project` /
-`tex_save_project`.
+## Documents
+1. `tex_open_editor {face_id}` — open a model face as a tab exactly like the
+   property panel's "Edit Texture" button: material created if missing, GPU
+   pixels loaded, canvas masked to the face polygon, edits live-preview on the
+   model. A face that is already open is just focused (its layers kept).
+   `tex_open_editor {width, height}` opens a new untitled canvas tab;
+   `tex_load_project {file_path}` opens a .omt as a tab (focuses it if open).
+   No args just shows the editor. The opened tab becomes ACTIVE.
+2. Paint with the `tex_*` tools below. They act on the ACTIVE tab's active
+   layer and honour its face mask + selection, like the mouse does. Pass
+   `document: "<id>"` to work on another open tab without switching to it.
+3. `tex_flush` pushes the active face tab's edits to the model (then
+   `viewport_capture`). `tex_save_project {document}` saves any tab (re-saves
+   its .omt, or `file_path` / the Save Sheet for an untitled one).
+   `tex_close_document {document}` closes a tab: a face tab flushes and
+   auto-saves the .omo; a texture with unsaved changes needs `save:true`
+   (save, then close — it stays open if the save is declined or fails;
+   optional `file_path`; to overwrite a file use tex_save_project first) or
+   `discard:true`.
+`tex_editor_status` lists the open documents (`id`, title, `face`|`texture`,
+path, dirty, size, face id, active) and describes the active one (face
+session, canvas, tool, symmetry, selection).
 
 ## Reading without vision — `tex_describe`
 Returns the canvas as a glyph grid (one glyph per colour, `.` transparent)

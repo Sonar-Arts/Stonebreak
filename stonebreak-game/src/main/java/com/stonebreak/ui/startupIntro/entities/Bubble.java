@@ -3,7 +3,7 @@ package com.stonebreak.ui.startupIntro.entities;
 import com.stonebreak.ui.startupIntro.IntroConfig;
 import com.stonebreak.ui.startupIntro.render.IntroPainter;
 
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.random.RandomGenerator;
 
 /**
  * Rising bubble particle. Port of Bubble.cs.
@@ -17,10 +17,9 @@ public final class Bubble {
     private final float phase;
     private float opacity;
 
-    public Bubble(float x, float y) {
+    public Bubble(float x, float y, RandomGenerator rng) {
         this.x = x;
         this.y = y;
-        ThreadLocalRandom rng = ThreadLocalRandom.current();
         this.radius = IntroConfig.s(3) + rng.nextFloat() * IntroConfig.s(8);
         this.speed = IntroConfig.s(40) + rng.nextFloat() * IntroConfig.s(60);
         this.opacity = 0.4f + rng.nextFloat() * 0.4f;

@@ -4,10 +4,7 @@ import com.stonebreak.blocks.furnace.FurnaceState;
 import com.stonebreak.blocks.furnace.FurnaceStateRegistry;
 import com.stonebreak.core.Game;
 import com.stonebreak.crafting.SmeltingManager;
-import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.ui.HotbarScreen;
-import com.stonebreak.ui.furnace.renderers.FurnaceRenderCoordinator;
 import com.openmason.engine.util.BlockPos;
 
 /**
@@ -19,11 +16,8 @@ import com.openmason.engine.util.BlockPos;
 public class FurnaceController {
 
     private final Game game;
-    private final Inventory inventory;
-    private final HotbarScreen hotbarScreen;
     private FurnaceInputManager inputManager;
     private final SmeltingManager smeltingManager;
-    private FurnaceRenderCoordinator renderCoordinator;
 
     /** The furnace block currently bound to the UI. Null when no UI is open. */
     private FurnaceState state;
@@ -32,7 +26,12 @@ public class FurnaceController {
     /** Last slot snapshot sent to the server, for the per-frame dirty check. */
     private String lastSentSlots;
 
-    private ItemStack hoveredItemStack;
+    /** Where slot snapshots go: the server, through the multiplayer session. */
+    private SlotSink slotSink = (pos, slots) ->
+        com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(pos.x(), pos.y(), pos.z(), slots);
+
+    /** Where the bound furnace's block is checked; tests substitute it. */
+    private java.util.function.Predicate<BlockPos> furnaceAt = FurnaceController::worldHasFurnace;
 
     // ── Furnace slot identifiers (for input manager) ─────────
     public static final int SLOT_INGREDIENT = 0;
@@ -40,23 +39,23 @@ public class FurnaceController {
     public static final int SLOT_OUTPUT     = 2;
 
     public FurnaceController(Game game,
-                             Inventory inventory,
                              FurnaceInputManager inputManager,
-                             SmeltingManager smeltingManager,
-                             FurnaceRenderCoordinator renderCoordinator) {
+                             SmeltingManager smeltingManager) {
         this.game = game;
-        this.inventory = inventory;
         this.inputManager = inputManager;
         this.smeltingManager = smeltingManager;
-        this.renderCoordinator = renderCoordinator;
-        this.hotbarScreen = new HotbarScreen(inventory);
         this.visible = false;
     }
 
     /** Bind the UI to the furnace block at {@code pos} and show it. */
     public void open(BlockPos pos) {
         FurnaceStateRegistry registry = game.getFurnaceRegistry();
-        this.state = (registry != null) ? registry.getOrCreate(pos) : new FurnaceState(pos);
+        bind((registry != null) ? registry.getOrCreate(pos) : new FurnaceState(pos));
+    }
+
+    /** Shows the UI bound to {@code furnace}; {@link #open} resolves it from the registry. */
+    void bind(FurnaceState furnace) {
+        this.state = furnace;
         this.visible = true;
         // Echoes keep arriving while the UI is closed (every cook tick), and the first one
         // leaves a pre-echo snapshot that nothing consumes. It is not an edit of ours: left in
@@ -65,13 +64,20 @@ public class FurnaceController {
         // Baseline for the slot dirty check: the state as it stands when the UI opens is
         // already what the server knows (streamed/echoed), so don't re-send it.
         this.lastSentSlots = state.encodeSlots();
+        // UI documents bound to `furnace` follow this state by notification (#289).
+        com.stonebreak.ui.runtime.GameUiHost.ifPresent(h -> h.furnaceOpened(furnace));
     }
 
     public void close() {
         if (inputManager != null) inputManager.handleCloseWithDraggedItems();
+        // A carried stack may just have gone back into a furnace slot. Ship that
+        // to the server now: once `state` is null the per-frame dirty check never
+        // runs again, and the next echo would overwrite the restore (#320).
+        if (state != null) syncSlots();
         // Do NOT dump contents or clear state — the registry owns it and keeps ticking.
         this.visible = false;
         this.state = null;
+        com.stonebreak.ui.runtime.GameUiHost.ifPresent(com.stonebreak.ui.runtime.GameUiHost::furnaceClosed);
     }
 
     public boolean isVisible() {
@@ -79,7 +85,10 @@ public class FurnaceController {
     }
 
     public void update(float deltaTime) {
-        hotbarScreen.update(deltaTime);
+        if (visible && state != null && !isFurnaceStillThere()) {
+            abandonBrokenFurnace();
+            return;
+        }
         // Smelting is ticked by the AUTHORITATIVE (server-world) FurnaceStateRegistry; this
         // UI is bound to the client display registry, updated by BlockStateS2C echoes.
 
@@ -93,83 +102,83 @@ public class FurnaceController {
         // clicked output). So when an echo landed since the last frame, first flush any edit
         // made before it (the pre-echo snapshot), then adopt the echoed slots as the baseline.
         if (visible && state != null) {
-            String preEcho = state.consumePreEchoSlots();
-            if (preEcho != null) {
-                if (!preEcho.equals(lastSentSlots)) {
-                    sendSlots(preEcho);
-                }
-                lastSentSlots = state.encodeSlots();
+            syncSlots();
+        }
+    }
+
+    private static boolean worldHasFurnace(BlockPos p) {
+        com.stonebreak.world.World world = Game.getWorld();
+        // no world to check against: leave the UI alone
+        return world == null || world.getBlockAt(p.x(), p.y(), p.z()) == com.stonebreak.blocks.BlockType.FURNACE;
+    }
+
+    private boolean isFurnaceStillThere() {
+        return furnaceAt.test(state.getPos());
+    }
+
+    /**
+     * The furnace was broken (by another player) while this UI was open. The server already dropped
+     * the contents it knew about, so the displayed slots are dead: detach from them first, so no
+     * later edit or snapshot can reach that furnace again, then give the player back only the stack
+     * on the cursor (inventory first, the world for what does not fit), and close.
+     */
+    void abandonBrokenFurnace() {
+        this.state = null;
+        if (inputManager != null) {
+            inputManager.returnCarriedToPlayer();
+        }
+        if (game != null) {
+            game.closeFurnaceScreen();
+        } else {
+            close();
+        }
+    }
+
+    /** Test seam: what counts as the furnace still standing. */
+    void setFurnaceAt(java.util.function.Predicate<BlockPos> test) {
+        this.furnaceAt = test;
+    }
+
+    /** Sends the slot snapshot if it changed since the last send (see {@link #update}). */
+    private void syncSlots() {
+        String preEcho = state.consumePreEchoSlots();
+        if (preEcho != null) {
+            if (!preEcho.equals(lastSentSlots)) {
+                sendSlots(preEcho);
             }
-            String slots = state.encodeSlots();
-            if (!slots.equals(lastSentSlots)) {
-                sendSlots(slots);
-            }
+            lastSentSlots = state.encodeSlots();
+        }
+        String slots = state.encodeSlots();
+        if (!slots.equals(lastSentSlots)) {
+            sendSlots(slots);
         }
     }
 
     private void sendSlots(String slots) {
         lastSentSlots = slots;
-        com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(
-            state.getPos().x(), state.getPos().y(), state.getPos().z(), slots);
+        slotSink.send(state.getPos(), slots);
     }
 
-    /* ── Input / rendering delegates ─────────────────────── */
+    /** Receives slot snapshots bound for the server. */
+    @FunctionalInterface
+    interface SlotSink {
+        void send(BlockPos pos, String slots);
+    }
 
-    public void handleInput(int screenWidth, int screenHeight) {
-        if (!visible) return;
-        inputManager.handleMouseInput(screenWidth, screenHeight);
+    /** Test seam: capture slot snapshots instead of sending them. */
+    void setSlotSink(SlotSink sink) {
+        this.slotSink = sink;
     }
 
     public void handleCloseRequest() {
         game.closeFurnaceScreen();
     }
 
-    public void render(int screenWidth, int screenHeight) {
-        if (!visible || renderCoordinator == null) return;
-        renderCoordinator.render(screenWidth, screenHeight);
-    }
-
-    public void renderWithoutTooltips(int screenWidth, int screenHeight) {
-        if (!visible || renderCoordinator == null) return;
-        renderCoordinator.renderWithoutTooltips(screenWidth, screenHeight);
-    }
-
-    public void renderTooltipsOnly(int screenWidth, int screenHeight) {
-        if (!visible || renderCoordinator == null) return;
-        renderCoordinator.renderTooltipsOnly(screenWidth, screenHeight);
-    }
-
-    public void renderDraggedItemOnly(int screenWidth, int screenHeight) {
-        if (!visible || renderCoordinator == null) return;
-        renderCoordinator.renderDraggedItemOnly(screenWidth, screenHeight);
-    }
-
-    public void renderHotbar(int screenWidth, int screenHeight) {
-        if (renderCoordinator != null) {
-            renderCoordinator.renderHotbar(screenWidth, screenHeight);
-        }
-    }
-
-    public void renderHotbarWithoutTooltips(int screenWidth, int screenHeight) {
-        if (renderCoordinator != null) {
-            renderCoordinator.renderHotbarWithoutTooltips(screenWidth, screenHeight);
-        }
-    }
-
-    public void renderHotbarTooltipsOnly(int screenWidth, int screenHeight) {
-        if (renderCoordinator != null) {
-            renderCoordinator.renderHotbarTooltipsOnly(screenWidth, screenHeight);
-        }
-    }
-
     /* ── Accessors ───────────────────────────────────────── */
 
-    public HotbarScreen getHotbarScreen() { return hotbarScreen; }
-    public ItemStack getHoveredItemStack() { return hoveredItemStack; }
-    public void setHoveredItemStack(ItemStack itemStack) { this.hoveredItemStack = itemStack; }
-
-    public void setRenderCoordinator(FurnaceRenderCoordinator renderCoordinator) {
-        this.renderCoordinator = renderCoordinator;
+    /** Slot rules addressed by slot, for UI documents (#289). */
+    public FurnaceInputManager getInputManager() {
+        return inputManager;
     }
 
     public void setInputManager(FurnaceInputManager inputManager) {

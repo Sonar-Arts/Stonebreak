@@ -126,7 +126,9 @@ public final class ClientWorldBuilder {
             MultiplayerSession.restoreLocalPlayer(player);
             adoptServerClock();
 
-            waitForSpawnChunk(buildGeneration, renderWorld, spawn);
+            // Wait under where the player really is: a restored player arrives at their saved position,
+            // not at the world spawn the handshake carries.
+            waitForSpawnChunk(buildGeneration, renderWorld, player != null ? player.getPosition() : spawn);
 
             // The session may have died (disconnect to menu) or been superseded while we waited:
             // entering PLAYING from this stale thread would resurrect gameplay with no session.

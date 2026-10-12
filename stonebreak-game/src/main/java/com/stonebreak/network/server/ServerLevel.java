@@ -128,17 +128,19 @@ public final class ServerLevel {
 
         PlayerData playerData = existing ? lr.getPlayerData() : null;
 
+        // The WORLD spawn: where new players appear and where everyone respawns. A returning player
+        // still arrives where they saved (their restored PlayerData moves them there); that position
+        // is never the world spawn, or every death respawned at the last save spot (#302).
         Vector3f spawn;
-        if (playerData != null && playerData.getPosition() != null) {
-            // Loaded player restore: their saved position is authoritative — don't move it.
-            spawn = new Vector3f(playerData.getPosition());
-        } else if (worldData != null && worldData.hasExplicitSpawn() && worldData.getSpawnPosition() != null) {
+        if (worldData != null && worldData.hasExplicitSpawn() && worldData.getSpawnPosition() != null) {
             // Saved / user-chosen spawn: keep the column, but snap it onto the real (carved)
             // surface so a pre-issue-#250 saved pit doesn't drop the player. A chosen spawn is
             // deliberately never moved elsewhere.
             Vector3f saved = worldData.getSpawnPosition();
-            int x = Math.round(saved.x);
-            int z = Math.round(saved.z);
+            // the column that holds the saved point (round would move a block-centred x.5 spawn
+            // one block on every load)
+            int x = (int) Math.floor(saved.x);
+            int z = (int) Math.floor(saved.z);
             int height = world.terrain().getFinalTerrainHeightAt(x, z);
             Vector3f candidate = new Vector3f(x, height + 1, z);
             pregenSpawnArea(world, candidate);
@@ -150,10 +152,11 @@ public final class ServerLevel {
         }
         world.setSpawnPosition(spawn);
 
-        // The located spawn is a fresh-world choice; persist it so respawns stay put. The save
-        // service was initialized before spawn resolution, so refresh its WorldData reference
-        // (initialize doubles as a refresh — see registerLocalPlayer).
-        if (worldData != null && !worldData.hasExplicitSpawn() && playerData == null) {
+        // The located spawn is a fresh-world choice (or, for a world saved before spawns were
+        // persisted, a first one); persist it so respawns stay put. The save service was
+        // initialized before spawn resolution, so refresh its WorldData reference (initialize
+        // doubles as a refresh — see registerLocalPlayer).
+        if (worldData != null && !worldData.hasExplicitSpawn()) {
             worldData = new WorldData.Builder(worldData).spawnPosition(spawn).hasExplicitSpawn(true).build();
             save.initialize(worldData, null, world);
         }
@@ -297,6 +300,21 @@ public final class ServerLevel {
     public SaveService saveService() { return saveService; }
     public WorldData worldData() { return worldData; }
     public Vector3f spawn() { return new Vector3f(spawn); }
+
+    /** The world's persisted cheats flag (issue #318) — the authority every client mirrors. */
+    public boolean cheatsEnabled() { return worldData.isCheatsEnabled(); }
+
+    /**
+     * Set the world's cheats flag. Updates this level's {@link WorldData} and the save
+     * service's running copy (which carries the accumulated play time) so the flag persists
+     * with the next save.
+     */
+    public void setCheatsEnabled(boolean enabled) {
+        worldData = worldData.withCheatsEnabled(enabled);
+        if (saveService != null) {
+            saveService.updateWorldData(d -> d.withCheatsEnabled(enabled));
+        }
+    }
 
     /** Loaded player data for an integrated server, or null for a fresh world / dedicated boot. */
     public PlayerData loadedPlayerData() { return loadedPlayerData; }

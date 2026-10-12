@@ -134,7 +134,7 @@ public class HandItemRenderer {
         bindArray();
         // Cross meshes have no per-vertex alpha flag — force alpha test for
         // flowers; harmless for opaque-textured models like the door.
-        shaderProgram.setUniform("u_forceAlphaTest", blockType.isFlower());
+        shaderProgram.setUniform("u_forceAlphaTest", sboHandMeshRegistry.isCutoutMesh(blockType));
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

@@ -1,5 +1,6 @@
 package com.stonebreak.ui.chat.emoji;
 
+import com.stonebreak.ui.UiWallClock;
 import io.github.humbleui.skija.Image;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
@@ -33,7 +34,7 @@ public final class GifAnimationCache {
         for (GifFrame f : frames) totalMs += f.durationMs();
         if (totalMs <= 0) return frames.get(0).image();
 
-        long elapsed = System.currentTimeMillis() % totalMs;
+        long elapsed = UiWallClock.millis() % totalMs;
         long acc = 0;
         for (GifFrame f : frames) {
             acc += f.durationMs();

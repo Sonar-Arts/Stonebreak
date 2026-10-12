@@ -63,6 +63,10 @@ public final class McpToolRegistryFactory {
         SceneEditingService sceneEditor = new SceneEditingService(mainInterface);
         new SceneToolDefinitions(sceneEditor, writes, mapper).registerAll(registry);
 
+        // UI Editor (#324): documents, inspection, op batches (one undo step each), preview, files.
+        new UiToolDefinitions(UiEditingService.forInterface(mainInterface, writes, mapper), mapper)
+                .registerAll(registry);
+
         com.openmason.main.systems.scripting.mcp.ScriptingService scripting =
                 new com.openmason.main.systems.scripting.mcp.ScriptingService(mainInterface, mapper);
         new com.openmason.main.systems.scripting.mcp.ScriptingToolDefinitions(scripting, mapper)

@@ -183,7 +183,9 @@ public class ShortcutKey {
             throw new IllegalArgumentException("Keybind string cannot be null or empty");
         }
 
-        String[] parts = keybindString.split("\\+");
+        // Split on '+' separators only: a '+' that ends the string is part of the
+        // key name ("Numpad +", "Ctrl+Numpad +"), not a separator.
+        String[] parts = keybindString.trim().split("\\+(?=.)");
         if (parts.length == 0) {
             throw new IllegalArgumentException("Invalid keybind format: " + keybindString);
         }

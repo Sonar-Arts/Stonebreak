@@ -1,20 +1,17 @@
 package com.stonebreak.ui.worldSelect;
 
-import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.ui.worldSelect.managers.WorldBackupService;
 import com.stonebreak.ui.worldSelect.managers.WorldStateManager;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
-import com.stonebreak.ui.worldSelect.handlers.WorldInputHandler;
-import com.stonebreak.ui.worldSelect.handlers.WorldMouseHandler;
 import com.stonebreak.ui.worldSelect.handlers.WorldActionHandler;
-import com.stonebreak.ui.worldSelect.renderers.SkijaWorldSelectRenderer;
 
 import java.util.List;
 
 /**
  * Simplified WorldSelectScreen implementation following SOLID principles.
  * Serves as a facade that coordinates all modular components for world selection,
- * creation, and management functionality.
+ * creation, and management functionality. The shipped document
+ * {@code ui/documents/world_select.sbui} presents it (#299).
  */
 public class WorldSelectScreen {
 
@@ -23,31 +20,25 @@ public class WorldSelectScreen {
     private final WorldDiscoveryManager discoveryManager;
     private final WorldBackupService backupService;
     private final WorldActionHandler actionHandler;
-    private final WorldInputHandler inputHandler;
-    private final WorldMouseHandler mouseHandler;
-    private final SkijaWorldSelectRenderer skijaRenderer;
 
     // ===== CONSTRUCTOR =====
 
     /**
-     * Creates a new WorldSelectScreen backed by the Skija UI renderer.
+     * Creates a new WorldSelectScreen over the save folder.
      */
-    public WorldSelectScreen(SkijaUIBackend skijaBackend) {
+    public WorldSelectScreen() {
+        this(new WorldDiscoveryManager(), new WorldBackupService());
+    }
+
+    /** Test seam (#299 fidelity fixtures): worlds and backups from somewhere other than the save folder. */
+    public WorldSelectScreen(WorldDiscoveryManager discoveryManager, WorldBackupService backupService) {
         // Initialize managers
         this.stateManager = new WorldStateManager();
-        this.discoveryManager = new WorldDiscoveryManager();
-        this.backupService = new WorldBackupService();
+        this.discoveryManager = discoveryManager;
+        this.backupService = backupService;
 
         // Initialize action handler
         this.actionHandler = new WorldActionHandler(stateManager, discoveryManager, backupService);
-
-        // Initialize input handlers
-        this.inputHandler = new WorldInputHandler(stateManager, actionHandler);
-        this.mouseHandler = new WorldMouseHandler(stateManager, actionHandler, inputHandler);
-
-        // Skija-backed renderer
-        this.skijaRenderer = new SkijaWorldSelectRenderer(skijaBackend, stateManager, discoveryManager,
-                inputHandler, backupService);
 
         initializeCallbacks();
         refreshWorlds();
@@ -62,52 +53,6 @@ public class WorldSelectScreen {
             this::onWorldLoaded,
             this::onRefreshWorlds
         );
-    }
-
-    // ===== INPUT HANDLING =====
-
-    /**
-     * Handles all keyboard input for the world select screen.
-     */
-    public void handleInput(long window) {
-        inputHandler.handleInput(window);
-    }
-
-    /**
-     * Handles character input for text fields in dialogs.
-     */
-    public void handleCharacterInput(char character) {
-        inputHandler.handleCharacterInput(character);
-    }
-
-    /**
-     * Handles key input events for special key handling.
-     */
-    public void handleKeyInput(int key, int action, int mods) {
-        inputHandler.handleKeyInput(key, action, mods);
-    }
-
-    // ===== MOUSE HANDLING =====
-
-    /**
-     * Handles mouse movement for hover effects.
-     */
-    public void handleMouseMove(double x, double y, int width, int height) {
-        mouseHandler.handleMouseMove(x, y, width, height);
-    }
-
-    /**
-     * Handles mouse click events.
-     */
-    public void handleMouseClick(double x, double y, int width, int height, int button, int action) {
-        mouseHandler.handleMouseClick(x, y, width, height, button, action);
-    }
-
-    /**
-     * Handles mouse wheel scrolling.
-     */
-    public void handleMouseWheel(double yOffset) {
-        mouseHandler.handleMouseWheel(yOffset);
     }
 
     // ===== WORLD MANAGEMENT =====
@@ -133,38 +78,127 @@ public class WorldSelectScreen {
         actionHandler.loadWorld(worldName);
     }
 
-    // ===== DIALOG MANAGEMENT =====
+    // ===== DOCUMENT ACTIONS (#299) =====
+    // The shipped document (ui/documents/world_select.sbui) reaches the screen through these.
+
+    /** Advances the info card's open/close delays: once a frame while the document shows. */
+    public void tick(long nowMs) {
+        stateManager.tickCard(nowMs);
+    }
+
+    /** A click on the world at {@code index} (into the whole list): selects it. */
+    public boolean selectWorld(int index) {
+        if (stateManager.isAnyDialogOpen() || index < 0 || index >= stateManager.getWorldList().size()) {
+            return false;
+        }
+        stateManager.setSelectedIndex(index);
+        return true;
+    }
 
     /**
-     * Opens the create world dialog.
+     * Where the pointer rests: the world row at {@code index} (-1 for none) or, with
+     * {@code overCard}, the open info card, which keeps it open and lights its row.
      */
-    public void openCreateDialog() {
+    public void hover(int index, boolean overCard) {
+        long now = System.currentTimeMillis();
+        if (stateManager.isAnyDialogOpen()) {
+            stateManager.setHoveredIndex(-1);
+            return;
+        }
+        if (overCard && stateManager.isCardOpen()) {
+            stateManager.setHoveredIndex(stateManager.getCardIndex());
+            stateManager.updateCardHover(-1, true, now);
+            return;
+        }
+        stateManager.setHoveredIndex(index);
+        stateManager.updateCardHover(stateManager.getHoveredIndex(), false, now);
+    }
+
+    /**
+     * A mouse wheel tick ({@code yOffset} as GLFW reports it): one row per tick. A wheel-up tick is a
+     * positive {@code yOffset} and scrolls toward the top of the list.
+     */
+    public void wheel(double yOffset) {
+        if (!stateManager.isAnyDialogOpen()) {
+            stateManager.scroll(yOffset);
+        }
+    }
+
+    /** Up/W ({@code -1}) and Down/S ({@code +1}). */
+    public void moveSelection(int delta) {
+        if (stateManager.isAnyDialogOpen()) return;
+        if (delta < 0) stateManager.moveSelectionUp();
+        else if (delta > 0) stateManager.moveSelectionDown();
+    }
+
+    /** Enter/Space: plays the selection, or goes to world creation when there are no worlds. */
+    public void activate() {
+        if (stateManager.isAnyDialogOpen()) return;
+        if (stateManager.hasWorlds()) {
+            actionHandler.loadSelectedWorld();
+        } else {
+            actionHandler.openCreateWorldDialog();
+        }
+    }
+
+    public boolean hasSelection() {
+        return stateManager.getSelectedWorld() != null;
+    }
+
+    public boolean playSelected() {
+        if (stateManager.isAnyDialogOpen() || !hasSelection()) return false;
+        actionHandler.loadSelectedWorld();
+        return true;
+    }
+
+    /** Create World (and N): on to character creation, then the terrain mapper. */
+    public void createWorld() {
         actionHandler.openCreateWorldDialog();
     }
 
-    /**
-     * Closes the create world dialog.
-     */
-    public void closeCreateDialog() {
-        actionHandler.closeCreateWorldDialog();
+    public boolean requestDelete() {
+        if (stateManager.isAnyDialogOpen() || !hasSelection()) return false;
+        actionHandler.requestDeleteSelectedWorld();
+        return true;
     }
 
-    // ===== RENDERING =====
+    public boolean confirmDelete() {
+        if (!stateManager.isShowDeleteDialog()) return false;
+        actionHandler.confirmDeleteWorld();
+        return true;
+    }
 
-    /**
-     * Renders the complete world select screen via the Skija backend. The
-     * renderer brackets its own GL state — the caller does not need to begin
-     * or end a NanoVG frame around this call.
-     */
-    public void render(int width, int height) {
-        // The hover card opens and closes on a delay, so its state machine has to advance
-        // even on frames where the cursor produced no move events.
-        stateManager.tickCard(System.currentTimeMillis());
-        skijaRenderer.render(width, height);
+    public boolean cancelDelete() {
+        if (!stateManager.isShowDeleteDialog()) return false;
+        actionHandler.cancelDeleteWorld();
+        return true;
+    }
+
+    public void back() {
+        actionHandler.returnToMainMenu();
+    }
+
+    /** The info card's Open Folder. */
+    public boolean openCardFolder() {
+        String world = stateManager.getCardWorld();
+        if (world == null) return false;
+        actionHandler.openWorldFolder(world);
+        return true;
+    }
+
+    /** The info card's Back Up (refused while that world's backup runs). */
+    public boolean backupCardWorld() {
+        String world = stateManager.getCardWorld();
+        if (world == null || backupService.isRunning(world)) return false;
+        actionHandler.backupWorld(world);
+        return true;
+    }
+
+    public WorldBackupService getBackupService() {
+        return backupService;
     }
 
     public void dispose() {
-        if (skijaRenderer != null) skijaRenderer.dispose();
         if (discoveryManager != null) discoveryManager.dispose();
         if (backupService != null) backupService.shutdown();
     }
@@ -214,35 +248,12 @@ public class WorldSelectScreen {
         return stateManager.getHoveredIndex();
     }
 
-    /**
-     * Checks if the create world dialog is currently open.
-     */
-    public boolean isShowCreateDialog() {
-        return stateManager.isShowCreateDialog();
-    }
-
-    /**
-     * Gets the current world name input text.
-     */
-    public String getNewWorldName() {
-        return stateManager.getNewWorldName();
-    }
-
-    /**
-     * Gets the current seed input text.
-     */
-    public String getNewWorldSeed() {
-        return stateManager.getNewWorldSeed();
-    }
-
     // ===== CALLBACK HANDLERS =====
 
     /**
      * Handles returning to the main menu.
      */
     private void onReturnToMainMenu() {
-        // Reset input state when leaving screen
-        inputHandler.resetInputState();
         stateManager.reset();
     }
 
@@ -250,8 +261,6 @@ public class WorldSelectScreen {
      * Handles world loading completion.
      */
     private void onWorldLoaded() {
-        // Reset input state when transitioning to world
-        inputHandler.resetInputState();
         stateManager.reset();
     }
 
@@ -284,7 +293,6 @@ public class WorldSelectScreen {
      */
     public void reset() {
         stateManager.reset();
-        inputHandler.resetInputState();
         refreshWorlds();
     }
 

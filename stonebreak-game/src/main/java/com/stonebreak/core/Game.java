@@ -76,7 +76,8 @@ public class Game {
 
 
     // Cheat system
-    private final CheatState cheats = new CheatState(services, worldSession);
+    private final CheatState cheats = new CheatState(
+        com.stonebreak.network.MultiplayerSession::requestServerCheatsSet);
 
     // Window dimensions and handle
     private long window;
@@ -155,6 +156,11 @@ public class Game {
         ChatSystem chatSystem = new ChatSystem();
         chatSystem.addMessage("Welcome to Stonebreak!", new float[]{1.0f, 1.0f, 0.0f, 1.0f});
         services.setChatSystem(chatSystem);
+        // UI scripting and layout have no fallback (#292): hand-shake at launch and say so in-game.
+        for (String problem : com.openmason.engine.ui.script.UiNativeHealth.check().problems()) {
+            chatSystem.addMessage(problem + " - rebuild: openmason-engine/cenda/build-kernels.sh",
+                new float[]{1.0f, 0.35f, 0.35f, 1.0f});
+        }
 
         services.setSoundEmitterManager(new com.stonebreak.audio.emitters.SoundEmitterManager());
 
@@ -585,10 +591,6 @@ public class Game {
         return screens.settingsMenu();
     }
 
-    public com.stonebreak.ui.multiplayerMenu.MultiplayerMenu getMultiplayerMenu() {
-        return screens.multiplayerMenu();
-    }
-
     public com.stonebreak.ui.multiplayerMenu.HostWorldScreen getHostWorldScreen() {
         return screens.hostWorldScreen();
     }
@@ -645,19 +647,6 @@ public class Game {
      */
     public static com.stonebreak.audio.MusicManager getMusicManager() {
         return getInstance().services.musicManager();
-    }
-
-    /**
-     * Gets the game's primary font.
-     * This assumes the font is loaded and available via the Renderer.
-     * @return The Font object, or null if not available.
-     */
-    public Font getFont() {
-        Renderer renderer = services.renderer();
-        if (renderer != null) {
-            return renderer.getFont();
-        }
-        return null;
     }
 
     /**
@@ -752,9 +741,9 @@ public class Game {
         cheats.setEnabled(enabled);
     }
 
-    /** Delegates to {@link CheatState#applyToCurrentWorld(boolean)}. */
-    public void applyCheatsToCurrentWorld(boolean enabled) {
-        cheats.applyToCurrentWorld(enabled);
+    /** Delegates to {@link CheatState#applyToCurrentWorld(boolean)}; false = not allowed. */
+    public boolean applyCheatsToCurrentWorld(boolean enabled) {
+        return cheats.applyToCurrentWorld(enabled);
     }
 
     /** Delegates to {@link CheatState#isEnabled()}. */

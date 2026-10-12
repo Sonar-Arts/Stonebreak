@@ -1,11 +1,10 @@
 package com.stonebreak.rendering.core;
 
-import com.stonebreak.ui.Font;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
 
 /**
- * Owns the shared world shader program and the UI font.
+ * Owns the shared world shader program.
  *
  * <p>The shader's GLSL lives in {@code resources/shaders/world/}, like every other
  * renderer's; this class only compiles it and registers its uniforms.</p>
@@ -15,13 +14,11 @@ public class ResourceManager {
     private static final String FRAGMENT_SHADER = "/shaders/world/world.frag";
 
     private ShaderProgram shaderProgram;
-    private Font font;
 
     public ResourceManager() {
     }
 
     public void initialize(int textureAtlasSize) {
-        font = new Font("fonts/Roboto-VariableFont_wdth,wght.ttf", 24f);
     }
 
     public void initializeShaderProgram() {
@@ -119,16 +116,9 @@ public class ResourceManager {
         return shaderProgram;
     }
     
-    public Font getFont() {
-        return font;
-    }
-    
     public void cleanup() {
         if (shaderProgram != null) {
             shaderProgram.cleanup();
-        }
-        if (font != null) {
-            font.cleanup();
         }
     }
 }

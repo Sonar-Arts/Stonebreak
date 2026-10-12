@@ -1,0 +1,72 @@
+{
+  "screen" : "death",
+  "units" : "framebuffer pixels; rect = [x, y, width, height], origin top-left",
+  "cases" : {
+    "death-dead_1920x1080_s1" : {
+      "rects" : {
+        "respawn" : [ 780.0, 560.0, 360.0, 50.0 ]
+      },
+      "hits" : {
+        "respawn" : [ 780.0, 560.0, 360.0, 50.0 ]
+      },
+      "actions" : {
+        "respawn" : "stonebreak:screen.death.respawn"
+      }
+    },
+    "death-dead_1280x720_s0_75" : {
+      "rects" : {
+        "respawn" : [ 505.0, 375.0, 270.0, 37.5 ]
+      },
+      "hits" : {
+        "respawn" : [ 505.0, 375.0, 270.0, 37.5 ]
+      },
+      "actions" : {
+        "respawn" : "stonebreak:screen.death.respawn"
+      }
+    },
+    "death-dead_3840x2160_s2" : {
+      "rects" : {
+        "respawn" : [ 1560.0, 1120.0, 720.0, 100.0 ]
+      },
+      "hits" : {
+        "respawn" : [ 1560.0, 1120.0, 720.0, 100.0 ]
+      },
+      "actions" : {
+        "respawn" : "stonebreak:screen.death.respawn"
+      }
+    },
+    "death-dead_1921x1081_s1_25" : {
+      "rects" : {
+        "respawn" : [ 735.5, 565.5, 450.0, 62.5 ]
+      },
+      "hits" : {
+        "respawn" : [ 735.5, 565.5, 450.0, 62.5 ]
+      },
+      "actions" : {
+        "respawn" : "stonebreak:screen.death.respawn"
+      }
+    },
+    "death-dead-hover-respawn_1920x1080_s1" : {
+      "rects" : {
+        "respawn" : [ 780.0, 560.0, 360.0, 50.0 ]
+      },
+      "hits" : {
+        "respawn" : [ 780.0, 560.0, 360.0, 50.0 ]
+      },
+      "actions" : {
+        "respawn" : "stonebreak:screen.death.respawn"
+      }
+    },
+    "death-dead-hover-respawn_1921x1081_s1_25" : {
+      "rects" : {
+        "respawn" : [ 735.5, 565.5, 450.0, 62.5 ]
+      },
+      "hits" : {
+        "respawn" : [ 735.5, 565.5, 450.0, 62.5 ]
+      },
+      "actions" : {
+        "respawn" : "stonebreak:screen.death.respawn"
+      }
+    }
+  }
+}

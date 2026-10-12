@@ -10,7 +10,7 @@ import com.stonebreak.battle.api.StatusView;
 import com.stonebreak.battle.api.TimedGrade;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
-import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
+import com.stonebreak.ui.focusBattle.BattleHudLayers;
 import io.github.humbleui.skija.Data;
 import io.github.humbleui.skija.EncoderPNG;
 import io.github.humbleui.skija.Image;
@@ -217,7 +217,7 @@ class TimedSnapshotGalleryTest {
         fx.canvas.drawImageRect(backdrop, Rect.makeXYWH(0, 0, W, H));
         float s = FocusBattleLayout.effectiveScale(W, H, TimedScenes.UI_SCALE);
         TimedInputLayers l = scene.layers();
-        for (SkijaFocusBattleRenderer.Layer layer : List.of(l.screenFxLayer(), l.timingRingLayer(),
+        for (BattleHudLayers.Layer layer : List.of(l.screenFxLayer(), l.timingRingLayer(),
                 l.parryLayer(), l.comboStripLayer())) {
             layer.paint(fx.ui, fx.canvas, W, H, s, TimedScenes.UI_SCALE, scene.view(), null, scene.camera());
         }

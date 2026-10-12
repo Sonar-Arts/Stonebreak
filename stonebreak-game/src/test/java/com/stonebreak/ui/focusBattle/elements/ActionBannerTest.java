@@ -7,7 +7,7 @@ import com.stonebreak.battle.api.BattlePhase;
 import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.EnemyAction;
 import com.stonebreak.battle.api.FakeBattleView;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;

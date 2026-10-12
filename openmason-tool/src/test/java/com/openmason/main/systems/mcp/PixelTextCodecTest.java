@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Text rendering of pixel buffers: glyph grid, legend, stats, and the round trip back. */
 @Tag("unit")
+@Tag("regression")
 class PixelTextCodecTest {
 
     private static final int RED = PixelTextCodec.pack(255, 0, 0, 255);

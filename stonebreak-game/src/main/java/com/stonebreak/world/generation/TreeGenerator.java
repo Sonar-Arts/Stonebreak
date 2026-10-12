@@ -10,6 +10,7 @@ import com.stonebreak.world.chunk.utils.ChunkPosition;
 import com.stonebreak.world.generation.features.FeaturePlacer;
 import com.stonebreak.world.generation.features.FeatureQueue;
 import com.stonebreak.world.generation.features.QueuedFeature;
+import com.stonebreak.world.generation.trees.CypressTree;
 import com.stonebreak.world.generation.trees.ElmTree;
 import com.stonebreak.world.generation.trees.PineTree;
 import com.stonebreak.world.generation.trees.RegularTree;
@@ -67,6 +68,17 @@ public final class TreeGenerator {
         scheduleOrPlace(world, queue, "elm_tree", worldX, worldYBase, worldZ,
             ElmTree.LEAF_RADIUS,
             w -> ElmTree.place(w, worldX, worldYBase, worldZ));
+    }
+
+    public static void generateCypressTree(World world, FeatureQueue queue, Chunk originChunk,
+                                           int localX, int worldYBase, int localZ) {
+        int worldX = originChunk.getWorldX(localX);
+        int worldZ = originChunk.getWorldZ(localZ);
+        if (worldYBase + CypressTree.MAX_HEIGHT >= WorldConfiguration.WORLD_HEIGHT) return;
+
+        scheduleOrPlace(world, queue, "cypress_tree", worldX, worldYBase, worldZ,
+            CypressTree.LEAF_RADIUS,
+            w -> CypressTree.place(w, worldX, worldYBase, worldZ));
     }
 
     // ---------------------------------------------------------------------------------------

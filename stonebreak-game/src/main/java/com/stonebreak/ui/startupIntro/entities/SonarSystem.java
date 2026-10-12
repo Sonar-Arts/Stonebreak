@@ -6,7 +6,7 @@ import com.stonebreak.ui.startupIntro.render.IntroPainter;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.random.RandomGenerator;
 
 /**
  * Manages a set of expanding sonar rings emanating from screen center. Direct
@@ -20,8 +20,10 @@ public final class SonarSystem {
     private final float centerY;
     private final float maxRadius;
     private float spawnTimer;
+    private final RandomGenerator random;
 
-    public SonarSystem(int screenWidth, int screenHeight) {
+    public SonarSystem(int screenWidth, int screenHeight, RandomGenerator random) {
+        this.random = random;
         this.centerX = screenWidth * 0.5f;
         this.centerY = screenHeight * 0.5f;
         this.maxRadius = Math.max(screenWidth, screenHeight) * 0.8f;
@@ -52,7 +54,7 @@ public final class SonarSystem {
                 centerX, centerY,
                 IntroConfig.SONAR_GREEN,
                 maxRadius,
-                ThreadLocalRandom.current().nextFloat()
+                random.nextFloat()
         ));
     }
 

@@ -58,7 +58,7 @@ public final class ForestDensityField {
         return t * ELM_PEAK_PROB;
     }
 
-    private static float sampleLattice(int worldX, int worldZ, int spacing,
+    static float sampleLattice(int worldX, int worldZ, int spacing,
                                        String feature, DeterministicRandom rng) {
         int x0 = Math.floorDiv(worldX, spacing);
         int z0 = Math.floorDiv(worldZ, spacing);

@@ -237,7 +237,7 @@ class ShotValidatorTest {
         BattleStageLayout l = closeLayout();
         AnchoredPoint centre = mid(0f, 1.4f, 0f);
         CameraShot.Builder orbit = shot("T", Motion.ORBIT).eye(mid(-7f, 1.4f, 0f)).target(centre).fov(60f)
-                .duration(6f).easing(com.stonebreak.ui.startupIntro.tween.EasingType.Linear).crossesLine().subject(Subject.BOTH);
+                .duration(6f).easing(com.openmason.engine.util.easing.EasingType.Linear).crossesLine().subject(Subject.BOTH);
         assertTrue(new ShotValidator(l).check(orbit.sweep(360f).build(), true).isEmpty(),
                 "two instants on the line out of thirteen samples");
         // A quarter turn that ends ON the line has no such excuse.

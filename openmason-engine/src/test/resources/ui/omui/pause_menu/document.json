@@ -1,0 +1,131 @@
+{
+  "root": {
+    "id": "root",
+    "name": "root",
+    "type": "Box",
+    "style": {
+      "align-items": "center",
+      "height": "100%",
+      "justify-content": "center",
+      "width": "100%"
+    },
+    "dataSource": "session",
+    "children": [
+      {
+        "id": "panel",
+        "name": "panel",
+        "type": "Box",
+        "classes": [
+          "panel"
+        ],
+        "style": {
+          "align-items": "center",
+          "background-image": "stonebreak:ui/textures/panel",
+          "flex-direction": "column",
+          "height": 560,
+          "justify-content": "center",
+          "padding-top": 50,
+          "row-gap": 20,
+          "width": 520
+        },
+        "children": [
+          {
+            "id": "title",
+            "name": "title",
+            "type": "Label",
+            "classes": [
+              "title"
+            ],
+            "props": {
+              "text": "Game Paused"
+            }
+          },
+          {
+            "id": "resume",
+            "name": "resume",
+            "type": "Instance",
+            "classes": [
+              "menu-button"
+            ],
+            "instance": {
+              "component": "stonebreak:ui/components/stone_button",
+              "params": {
+                "label": "Resume Game"
+              }
+            }
+          },
+          {
+            "id": "statistics",
+            "name": "statistics",
+            "type": "Instance",
+            "classes": [
+              "menu-button"
+            ],
+            "instance": {
+              "component": "stonebreak:ui/components/stone_button",
+              "params": {
+                "label": "Statistics"
+              }
+            }
+          },
+          {
+            "id": "resync",
+            "name": "resync",
+            "type": "Instance",
+            "bindings": [
+              {
+                "target": "style:display",
+                "path": ".online",
+                "converter": "display_if"
+              }
+            ],
+            "instance": {
+              "component": "stonebreak:ui/components/stone_button",
+              "params": {
+                "label": "Resync"
+              }
+            }
+          },
+          {
+            "id": "quit",
+            "name": "quit",
+            "type": "Instance",
+            "classes": [
+              "menu-button"
+            ],
+            "instance": {
+              "component": "stonebreak:ui/components/stone_button",
+              "params": {
+                "label": "Quit to Menu"
+              },
+              "overrides": [
+                {
+                  "target": "button",
+                  "addClasses": [
+                    "danger"
+                  ]
+                }
+              ],
+              "slots": {
+                "icon": [
+                  {
+                    "id": "quit_icon",
+                    "type": "Image",
+                    "props": {
+                      "source": "stonebreak:ui/textures/panel"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "styleSheets": [
+    "stonebreak:ui/themes/stone",
+    "pause"
+  ],
+  "codeBehind": "pause"
+}

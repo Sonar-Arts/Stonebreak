@@ -44,6 +44,33 @@ public class FileMenuHandler {
     private UIVisibilityState uiVisibilityState;
     private RecentProjectsService recentProjectsService;
 
+    /**
+     * What a project save, exit or Home needs from the UI workspace (#293), supplied by the app so
+     * this handler need not know the editor. The UI documents' own New/Open/Save/Export live in
+     * the UI workspace's toolbar, not this menu.
+     */
+    public interface UiMenuHooks {
+
+        boolean anyDirty();
+
+        /**
+         * Saves every UI document with unsaved work (and the editor's view state of the rest)
+         * that has, or can derive, a location.
+         *
+         * @return one line per document that was not saved (empty when all were)
+         */
+        java.util.List<String> saveAllInPlace();
+
+        /** Drops open UI documents without asking (the user chose to discard). */
+        void discardAll();
+    }
+
+    private UiMenuHooks uiHooks;
+
+    public void setUiHooks(UiMenuHooks hooks) {
+        this.uiHooks = hooks;
+    }
+
     public FileMenuHandler(ModelState modelState, ModelOperationService modelOperations,
                            FileDialogService fileDialogService, StatusService statusService) {
         this.modelState = modelState;
@@ -97,7 +124,12 @@ public class FileMenuHandler {
         this.exitCallback = exitCallback;
         unsavedChangesDialog.setCallbacks(
                 () -> { saveProject(); exitCallback.run(); },
-                exitCallback,
+                () -> {
+                    if (uiHooks != null) {
+                        uiHooks.discardAll(); // "Don't Save" also drops UI recovery snapshots
+                    }
+                    exitCallback.run();
+                },
                 () -> logger.debug("Exit cancelled by user")
         );
     }
@@ -263,7 +295,7 @@ public class FileMenuHandler {
     public void requestHomeScreen() {
         boolean projectUnsaved = projectService != null && projectService.hasUnsavedChanges();
         boolean modelUnsaved = modelState.isModelLoaded() && modelState.hasUnsavedChanges();
-        homeScreenDialog.show(projectUnsaved || modelUnsaved || isSceneDirty());
+        homeScreenDialog.show(projectUnsaved || modelUnsaved || isSceneDirty() || isUiDirty());
     }
 
     /**
@@ -318,7 +350,11 @@ public class FileMenuHandler {
                 && projectService.hasCurrentProject()
                 && projectService.hasUnsavedChanges();
         boolean modelUnsaved = modelState.isModelLoaded() && modelState.hasUnsavedChanges();
-        return projectUnsaved || modelUnsaved || isSceneDirty();
+        return projectUnsaved || modelUnsaved || isSceneDirty() || isUiDirty();
+    }
+
+    private boolean isUiDirty() {
+        return uiHooks != null && uiHooks.anyDirty();
     }
 
     private boolean isSceneDirty() {
@@ -341,7 +377,7 @@ public class FileMenuHandler {
 
         boolean success = projectService.saveProject(viewport, modelState, uiVisibilityState);
         if (success) {
-            statusService.updateStatus("Project saved: " + projectService.getCurrentProjectName());
+            statusService.updateStatus("Project saved: " + projectService.getCurrentProjectName() + uiSaveSuffix());
             addToRecentProjects(projectService.getCurrentProjectName(), projectService.getCurrentProjectPath());
         } else {
             statusService.updateStatus("Failed to save project");
@@ -366,7 +402,8 @@ public class FileMenuHandler {
             boolean success = projectService.saveProjectAs(filePath, viewport, modelState,
                     uiVisibilityState, null);
             if (success) {
-                statusService.updateStatus("Project saved as: " + projectService.getCurrentProjectName());
+                statusService.updateStatus("Project saved as: " + projectService.getCurrentProjectName()
+                        + uiSaveSuffix());
                 addToRecentProjects(projectService.getCurrentProjectName(), projectService.getCurrentProjectPath());
                 notifyProjectPathChanged();
             } else {
@@ -395,6 +432,17 @@ public class FileMenuHandler {
         if (onSaveOpenScene != null) {
             onSaveOpenScene.run();
         }
+        uiSaveFailures = uiHooks != null ? uiHooks.saveAllInPlace() : java.util.List.of();
+    }
+
+    /** UI documents the last project save could not save, shown with its status (never silently). */
+    private java.util.List<String> uiSaveFailures = java.util.List.of();
+
+    private String uiSaveSuffix() {
+        if (uiSaveFailures == null || uiSaveFailures.isEmpty()) {
+            return "";
+        }
+        return " - but " + uiSaveFailures.size() + " UI document(s) were NOT saved: " + String.join("; ", uiSaveFailures);
     }
 
     /**

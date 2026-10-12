@@ -42,6 +42,11 @@ public class PanelRenderingCoordinator {
     // Windowed mode flag - when true, skip fullscreen dockspace creation
     private boolean windowedMode = false;
 
+    // Document tabs above the canvas, and what the empty state offers when no texture is open
+    private com.openmason.main.systems.menus.textureCreator.panels.DocumentTabStrip documentTabs;
+    private Runnable onNewTexture = () -> { };
+    private Runnable onOpenTexture = () -> { };
+
     // Previous-frame visibility, to focus these windows when they (re)open —
     // surfaces them even if they were docked behind another window
     private boolean noiseFilterWasVisible = false;
@@ -247,11 +252,55 @@ public class PanelRenderingCoordinator {
         }
     }
 
+    /** The document tab strip drawn at the top of the Canvas panel. */
+    public void setDocumentTabs(com.openmason.main.systems.menus.textureCreator.panels.DocumentTabStrip tabs) {
+        this.documentTabs = tabs;
+    }
+
+    /** What the Canvas panel's "no texture open" state offers. */
+    public void setEmptyStateActions(Runnable onNew, Runnable onOpen) {
+        this.onNewTexture = onNew != null ? onNew : () -> { };
+        this.onOpenTexture = onOpen != null ? onOpen : () -> { };
+    }
+
+    /** Centred "No texture open" with New / Open buttons in place of the canvas. */
+    private void renderEmptyCanvasState() {
+        String title = "No texture open";
+        String hint = "Open a texture, or Edit Texture on a model face.";
+        float buttonW = 130f;
+        float availX = ImGui.getContentRegionAvailX();
+        float blockH = ImGui.getTextLineHeightWithSpacing() * 2 + ImGui.getFrameHeightWithSpacing() + 12f;
+        ImGui.setCursorPosY(ImGui.getCursorPosY() + Math.max(0f, (ImGui.getContentRegionAvailY() - blockH) / 2f));
+        ImGui.setCursorPosX(ImGui.getCursorPosX() + Math.max(0f, (availX - ImGui.calcTextSize(title).x) / 2f));
+        ImGui.text(title);
+        float hintX = ImGui.getCursorPosX() + Math.max(0f, (availX - ImGui.calcTextSize(hint).x) / 2f);
+        ImGui.setCursorPosX(hintX);
+        ImGui.textDisabled(hint);
+        ImGui.dummy(0, 8f);
+        float rowX = ImGui.getCursorPosX() + Math.max(0f, (availX - buttonW * 2 - ImGui.getStyle().getItemSpacingX()) / 2f);
+        ImGui.setCursorPosX(rowX);
+        if (ImGui.button("New Texture...", buttonW, 0)) {
+            onNewTexture.run();
+        }
+        ImGui.sameLine();
+        if (ImGui.button("Open Project...", buttonW, 0)) {
+            onOpenTexture.run();
+        }
+    }
+
     /**
      * Render canvas panel with builder pattern.
      */
     private void renderCanvasPanel() {
         if (ImGui.begin("Canvas")) {
+            if (documentTabs != null) {
+                documentTabs.render();
+            }
+            if (!controller.hasOpenDocument()) {
+                renderEmptyCanvasState();
+                ImGui.end();
+                return;
+            }
             PixelCanvas composited = controller.getCompositedCanvas();
             PixelCanvas active = controller.getActiveLayerCanvas();
             PixelCanvas background = controller.getBackgroundCanvas();
@@ -312,7 +361,11 @@ public class PanelRenderingCoordinator {
                     imgui.flag.ImGuiCond.FirstUseEver);
 
             if (ImGui.begin("Layers", windowState.getShowLayersPanel())) {
-                layerPanel.render(controller.getLayerManager(), controller.getCommandHistory());
+                if (controller.hasOpenDocument()) {
+                    layerPanel.render(controller.getLayerManager(), controller.getCommandHistory());
+                } else {
+                    ImGui.textDisabled("No texture open");
+                }
             }
             ImGui.end();
         }

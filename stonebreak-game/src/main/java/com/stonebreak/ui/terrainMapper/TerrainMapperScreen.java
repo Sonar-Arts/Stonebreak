@@ -1,21 +1,17 @@
 package com.stonebreak.ui.terrainMapper;
 
-import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
 import com.stonebreak.ui.terrainMapper.handlers.TerrainActionHandler;
 import com.stonebreak.ui.terrainMapper.handlers.TerrainInputHandler;
 import com.stonebreak.ui.terrainMapper.handlers.TerrainMouseHandler;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
-import com.stonebreak.ui.terrainMapper.renderers.SkijaTerrainMapperRenderer;
+import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
 
 /**
  * Facade for the terrain mapper screen. Builds the modular components
- * (state → handlers → renderer), wires the button callbacks, and exposes
- * the input/render surface that {@code Main} and {@code Game} consume.
- *
- * Mirrors the shape of {@code SettingsMenu} and {@code WorldSelectScreen}
- * so every MasonryUI-backed screen in the game follows the same lifecycle.
+ * (state → handlers) and wires the button callbacks. The shipped document
+ * {@value #DOCUMENT_ID} presents it and sends its pointer input to {@link #mouse()};
+ * the keyboard stays here, routed by {@code MenuInputRouter} (#301).
  */
 public final class TerrainMapperScreen {
 
@@ -23,16 +19,12 @@ public final class TerrainMapperScreen {
     private final TerrainActionHandler actionHandler;
     private final TerrainInputHandler inputHandler;
     private final TerrainMouseHandler mouseHandler;
-    private final MasonryUI ui;
-    private final SkijaTerrainMapperRenderer renderer;
 
-    public TerrainMapperScreen(SkijaUIBackend skijaBackend) {
+    public TerrainMapperScreen() {
         this.state = new TerrainMapperStateManager();
         this.actionHandler = new TerrainActionHandler(state, new WorldDiscoveryManager());
         this.inputHandler = new TerrainInputHandler(state, actionHandler);
-        this.mouseHandler = new TerrainMouseHandler(state, actionHandler);
-        this.ui = new MasonryUI(skijaBackend);
-        this.renderer = new SkijaTerrainMapperRenderer(ui, state);
+        this.mouseHandler = new TerrainMouseHandler(state);
 
         wireCallbacks();
     }
@@ -46,11 +38,7 @@ public final class TerrainMapperScreen {
         state.getCenterOnSpawnButton().onClick(actionHandler::centerOnSpawn);
     }
 
-    // ─────────────────────────────────────────────── Input
-
-    public void handleInput(long window) {
-        inputHandler.handleInput(window);
-    }
+    // ─────────────────────────────────────────────── Keyboard (the document leaves it here)
 
     public void handleCharacterInput(char character) {
         inputHandler.handleCharacterInput(character);
@@ -60,29 +48,17 @@ public final class TerrainMapperScreen {
         inputHandler.handleKeyInput(key, action, mods);
     }
 
-    public void handleMouseMove(double x, double y, int windowWidth, int windowHeight) {
-        mouseHandler.handleMouseMove(x, y, windowWidth, windowHeight);
-    }
-
-    public void handleMouseClick(double x, double y, int windowWidth, int windowHeight,
-                                 int button, int action) {
-        mouseHandler.handleMouseClick(x, y, windowWidth, windowHeight, button, action);
-    }
-
-    public void handleMouseWheel(double x, double y, double delta) {
-        mouseHandler.handleMouseWheel(x, y, delta);
-    }
-
     // ─────────────────────────────────────────────── Lifecycle
 
-    public void render(int windowWidth, int windowHeight) {
-        renderer.render(windowWidth, windowHeight);
-    }
-
     public void dispose() {
-        renderer.dispose();
-        ui.dispose();
+        state.dispose();
     }
 
     public TerrainMapperStateManager getStateManager() { return state; }
+
+    /** The pointer rules, addressed by target (the terrain mapper document's actions, #301). */
+    public TerrainMouseHandler mouse() { return mouseHandler; }
+
+    /** The shipped document: {@code ui/documents/terrain_mapper.sbui} (#301). */
+    public static final String DOCUMENT_ID = "terrain_mapper";
 }

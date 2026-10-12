@@ -257,6 +257,27 @@ public final class IntegratedServer {
         System.out.println("[SERVER] World time set to " + ticks + " by " + sp.username());
     }
 
+    /**
+     * C2S: /cheats — set the world's cheats flag (issue #318). Host-only, like /timeset: the
+     * flag is a per-world setting persisted by {@link ServerLevel}, and remote peers must not
+     * unlock cheats on someone else's world. A refused request gets the authoritative state
+     * echoed back so the sender converges. Applied flags broadcast to every client.
+     */
+    private void handleCheatsSet(ServerPlayer sp, com.stonebreak.network.packet.world.CheatsSetC2S cs) {
+        ServerLevel level = ctx.serverLevel();
+        if (level == null) {
+            return;
+        }
+        if (!sp.isLocal()) {
+            sp.send(new com.stonebreak.network.packet.world.CheatsStateS2C(level.cheatsEnabled()), false);
+            return;
+        }
+        level.setCheatsEnabled(cs.enabled());
+        ctx.broadcast(new com.stonebreak.network.packet.world.CheatsStateS2C(cs.enabled()), false);
+        System.out.println("[SERVER] Cheats " + (cs.enabled() ? "enabled" : "disabled")
+            + " by " + sp.username());
+    }
+
     /** Authoritative time sample for TimeSyncS2C, or null before the level is booted. */
     private TimeSyncS2C currentTimeSync() {
         ServerLevel level = ctx.serverLevel();
@@ -319,6 +340,7 @@ public final class IntegratedServer {
                 }
             }
             case com.stonebreak.network.packet.world.TimeSetC2S ts -> handleTimeSet(sp, ts);
+            case com.stonebreak.network.packet.world.CheatsSetC2S cs -> handleCheatsSet(sp, cs);
             case PlayerStateC2S ps -> playerHandler.handlePlayerState(sp, ps, ctx);
             case PlayerHeldItemC2S h -> playerHandler.handleHeldItem(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
@@ -420,6 +442,11 @@ public final class IntegratedServer {
         TimeSyncS2C timeSync = currentTimeSync();
         if (timeSync != null) {
             sp.send(timeSync, false);
+        }
+        // The world's saved cheats flag — restores it on the client (issue #318).
+        ServerLevel level = ctx.serverLevel();
+        if (level != null) {
+            sp.send(new com.stonebreak.network.packet.world.CheatsStateS2C(level.cheatsEnabled()), false);
         }
 
         // 2. Roster bootstrap: every player already present.

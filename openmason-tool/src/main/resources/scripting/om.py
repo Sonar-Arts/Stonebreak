@@ -638,6 +638,234 @@ def material(name, tint=None, emissive=False, layer=None):
     return name
 
 
+# ---------------------------------------------------------------- UI documents (om.ui, #324)
+
+_UNSET = object()
+
+
+class UiRef(str):
+    """An element created by this script: its "$alias" (a str), usable as a key in any om.ui
+    call. ref.inner("label") addresses an element inside a component instance."""
+
+    def inner(self, path):
+        return UiRef(self + "/" + path)
+
+
+class _Ui:
+    """Edit the active UI document (or om.ui.use(doc)). Calls queue ops of the ui_ops format;
+    they are validated as you go and applied as ONE undo step when the script succeeds, so a
+    failing script changes nothing. Keys: element ids ("panel"), "quit/label" inside an
+    instance (= an override), or the UiRef a create returned."""
+
+    def __init__(self):
+        self._n = 0
+
+    def _queue(self, name, fields):
+        op = {"op": name}
+        for k, v in fields.items():
+            if v is not _UNSET:
+                op[k] = v
+        _b.uiQueue(_json.dumps(op))
+        return op
+
+    def _made(self, name, as_, fields):
+        if as_ is None or as_ is _UNSET:
+            self._n += 1
+            as_ = "_e%d" % self._n
+        fields["as"] = as_
+        self._queue(name, fields)
+        return UiRef("$" + as_)
+
+    # -- target / meta
+    def use(self, doc):
+        """Edit document `doc` (id, file name or title) instead of the active one."""
+        _b.uiUse(doc)
+
+    def label(self, text):
+        """History label for this run's undo step."""
+        _b.uiLabel(text)
+
+    def pending(self):
+        """The queued batch, exactly as ui_ops would receive it."""
+        return _json.loads(_b.uiPending())
+
+    def op(self, op):
+        """Queue any ui_ops op dict (returns a UiRef when it has "as")."""
+        op = dict(op)
+        name = op.pop("op")
+        if "as" in op:
+            return self._made(name, op.pop("as"), op)
+        self._queue(name, op)
+
+    # -- reads (the document as it is before the queued ops)
+    def documents(self):
+        return _json.loads(_b.uiRead("documents", None, False))
+
+    def tree(self, internals=False):
+        return _json.loads(_b.uiRead("tree", None, internals))
+
+    def get(self, key, computed=False):
+        return _json.loads(_b.uiRead("get", key, computed))
+
+    # -- structure
+    def create(self, type, parent=_UNSET, index=_UNSET, slot=_UNSET, before=_UNSET, after=_UNSET,
+               id=_UNSET, name=_UNSET, classes=_UNSET, props=_UNSET, style=_UNSET,
+               data_source=_UNSET, bindings=_UNSET, as_=_UNSET):
+        return self._made("create", as_, dict(type=type, parent=parent, index=index, slot=slot,
+            before=before, after=after, id=id, name=name, classes=classes, props=props, style=style,
+            data_source=data_source, bindings=bindings))
+
+    def add_instance(self, component, parent=_UNSET, index=_UNSET, slot=_UNSET, before=_UNSET,
+                     after=_UNSET, name=_UNSET, params=_UNSET, as_=_UNSET):
+        return self._made("add_instance", as_, dict(component=component, parent=parent, index=index,
+            slot=slot, before=before, after=after, name=name, params=params))
+
+    def delete(self, keys):
+        self._queue("delete", dict(keys=keys))
+
+    def move(self, keys, parent=_UNSET, index=_UNSET, slot=_UNSET, before=_UNSET, after=_UNSET):
+        self._queue("move", dict(keys=keys, parent=parent, index=index, slot=slot, before=before,
+            after=after))
+
+    def duplicate(self, keys, as_=_UNSET):
+        return self._made("duplicate", as_, dict(keys=keys))
+
+    def wrap(self, keys, type, as_=_UNSET):
+        return self._made("wrap", as_, dict(keys=keys, type=type))
+
+    def reorder(self, key, delta=_UNSET, to=_UNSET):
+        self._queue("reorder", dict(key=key, delta=delta, to=to))
+
+    def rename(self, key, name):
+        self._queue("rename", dict(key=key, name=name))
+
+    # -- element fields (keys inside an instance become overrides)
+    def set_prop(self, keys, prop, value):
+        self._queue("set_prop", dict(keys=keys, prop=prop, value=value))
+
+    def clear_prop(self, keys, prop):
+        self._queue("clear_prop", dict(keys=keys, prop=prop))
+
+    def set_style(self, keys, style):
+        """style: {"width": 400, "color": "#fff", "padding-top": None (removes)}"""
+        self._queue("set_style", dict(keys=keys, style=style))
+
+    def clear_style(self, keys, properties):
+        if isinstance(properties, str):
+            properties = [properties]
+        self._queue("clear_style", dict(keys=keys, properties=properties))
+
+    def set_classes(self, keys, classes=_UNSET, add=_UNSET, remove=_UNSET):
+        self._queue("set_classes", dict(keys=keys, classes=classes, add=add, remove=remove))
+
+    def set_data_source(self, key, path):
+        self._queue("set_data_source", dict(key=key, path=path))
+
+    def bind(self, key, target, path, mode=_UNSET, converter=_UNSET):
+        self._queue("bind", dict(key=key, target=target, path=path, mode=mode, converter=converter))
+
+    def unbind(self, key, target):
+        self._queue("unbind", dict(key=key, target=target))
+
+    def set_param(self, key, param, value):
+        self._queue("set_param", dict(key=key, param=param, value=value))
+
+    def reset_override(self, keys):
+        self._queue("reset_override", dict(keys=keys))
+
+    # -- document
+    def set_display_name(self, name):
+        self._queue("set_display_name", dict(name=name))
+
+    def set_host_api(self, id, version, optional=False):
+        """Declare host contract `id` at `version` (None removes it): data roots and actions need it."""
+        self._queue("set_host_api", dict(id=id, version=version, optional=optional))
+
+    def set_provider(self, id, version, optional=False):
+        """Declare host draw provider `id` at `version` (None removes it)."""
+        self._queue("set_provider", dict(id=id, version=version, optional=optional))
+
+    def add_sheet(self, id):
+        self._queue("add_sheet", dict(id=id))
+
+    def attach_sheet(self, id, attached=True):
+        self._queue("attach_sheet", dict(id=id, attached=attached))
+
+    def move_sheet(self, id, delta):
+        self._queue("move_sheet", dict(id=id, delta=delta))
+
+    def add_rule(self, sheet, selector, style=_UNSET):
+        self._queue("add_rule", dict(sheet=sheet, selector=selector, style=style))
+
+    def set_rule(self, sheet, rule, selector=_UNSET, style=_UNSET):
+        self._queue("set_rule", dict(sheet=sheet, rule=rule, selector=selector, style=style))
+
+    def remove_rule(self, sheet, rule):
+        self._queue("remove_rule", dict(sheet=sheet, rule=rule))
+
+    def move_rule(self, sheet, rule, delta):
+        self._queue("move_rule", dict(sheet=sheet, rule=rule, delta=delta))
+
+    def set_token(self, sheet, name, value):
+        self._queue("set_token", dict(sheet=sheet, name=name, value=value))
+
+    def set_script(self, id, source):
+        self._queue("set_script", dict(id=id, source=source))
+
+    def set_code_behind(self, module):
+        self._queue("set_code_behind", dict(module=module))
+
+    def put_clip(self, clip):
+        self._queue("put_clip", dict(clip=clip))
+
+    def remove_clip(self, id):
+        self._queue("remove_clip", dict(id=id))
+
+    def put_state_machine(self, machine):
+        self._queue("put_state_machine", dict(machine=machine))
+
+    def remove_state_machine(self, id):
+        self._queue("remove_state_machine", dict(id=id))
+
+    # -- behavior graphs (wire JSON, see describe_api ui_editor)
+    def put_graph(self, graph):
+        self._queue("put_graph", dict(graph=graph))
+
+    def remove_graph(self, id):
+        self._queue("remove_graph", dict(id=id))
+
+    # -- dependency table (textures, sprites, fonts, sounds, shared scripts / sheets)
+    def add_dependency(self, path=_UNSET, id=_UNSET, kind=_UNSET, embed=_UNSET, optional=_UNSET,
+                       fallback=_UNSET, requires=_UNSET, license=_UNSET):
+        """path: a project file (UI/stonebreak/ui/textures/panel.sbt), or id + kind found in the
+        project / the game's packaged assets. embed=True snapshots it into the document."""
+        self._queue("add_dependency", dict(path=path, id=id, kind=kind, embed=embed, optional=optional,
+            fallback=fallback, requires=requires, license=license))
+
+    def set_dependency(self, id, optional=_UNSET, fallback=_UNSET, requires=_UNSET, license=_UNSET):
+        self._queue("set_dependency", dict(id=id, optional=optional, fallback=fallback,
+            requires=requires, license=license))
+
+    def remove_dependency(self, id, force=_UNSET):
+        self._queue("remove_dependency", dict(id=id, force=force))
+
+    def embed_dependency(self, id):
+        self._queue("embed_dependency", dict(id=id))
+
+    def refresh_dependency(self, id):
+        self._queue("refresh_dependency", dict(id=id))
+
+    def extract_dependency(self, id, collision=_UNSET):
+        """collision: "fail" (default), "keep_project" or "replace"."""
+        self._queue("extract_dependency", dict(id=id, collision=collision))
+
+    def relink_dependency(self, id, path):
+        self._queue("relink_dependency", dict(id=id, path=path))
+
+
+ui = _Ui()
+
+
 def summary():
     """Whole-model digest: totals, bbox, per-part rows."""
     return _json.loads(_b.summaryJson())
@@ -680,6 +908,13 @@ Animate:  c = om.anim.clip("idle", duration=2.0, fps=30, loop=True)
           c.layer(type="overlay", mask=[arm_l, arm_r], priority=1)
           c.save("idle.omanim")                 # written only if the script succeeds
 Loops:    import math; [om.box(f"leg{i}", at=(math.cos(i*math.pi/2)*3, 1, math.sin(i*math.pi/2)*3)) for i in range(4)]
+UI docs:  p = om.ui.create("Box", name="panel", style={"width": 400, "row-gap": 12})   # active UI document
+          t = om.ui.create("Label", parent=p, props={"text": "Paused"}, classes=["title"])
+          b = om.ui.add_instance("stonebreak:ui/components/stone_button", parent=p)
+          om.ui.set_prop(b.inner("label"), "text", "Resume")     # inside an instance = override
+          om.ui.add_sheet("hud"); om.ui.add_rule("hud", "#panel", {"background-color": "#203040"})
+          om.ui.tree(); om.ui.get("panel"); om.ui.use("stonebreak:ui/hud")   # one undo step on success
+          om.ui.add_dependency(path="UI/stonebreak/ui/textures/panel.sbt")     # + put_graph/put_state_machine
 """
 
 # Install as the `om` module so user scripts `import om`.
@@ -688,7 +923,7 @@ _om.__doc__ = HELP
 for _k in ("FaceSelection", "Part", "Clip", "anim", "Texture", "tex", "canvas", "OmError",
            "box", "cube", "cylinder",
            "sphere", "cone", "pyramid", "plane", "wedge", "torus", "hemisphere",
-           "cross", "sprite", "part", "parts", "mirror", "material", "summary",
+           "cross", "sprite", "part", "parts", "mirror", "material", "summary", "ui", "UiRef",
            "help", "HELP", "math"):
     setattr(_om, _k, globals()[_k])
 _sys.modules["om"] = _om

@@ -5,9 +5,9 @@ import com.stonebreak.battle.api.BattleOutcome;
 import com.stonebreak.battle.api.BattleView;
 import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.CombatantView;
-import com.stonebreak.rendering.UI.masonryUI.MColor;
-import com.stonebreak.ui.startupIntro.tween.EasingFunctions;
-import com.stonebreak.ui.startupIntro.tween.EasingType;
+import com.openmason.engine.ui.masonry.MColor;
+import com.openmason.engine.util.easing.EasingFunctions;
+import com.openmason.engine.util.easing.EasingType;
 
 import java.util.List;
 

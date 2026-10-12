@@ -1,0 +1,67 @@
+{
+  "format": "omui-sprites",
+  "version": 1,
+  "texture": "t:tex/ui",
+  "width": 32,
+  "height": 16,
+  "sprites": [
+    {
+      "name": "button",
+      "x": 0,
+      "y": 0,
+      "w": 16,
+      "h": 8,
+      "logicalWidth": 32,
+      "logicalHeight": 16,
+      "pivotX": 0,
+      "pivotY": 1,
+      "slice": {
+        "left": 3,
+        "top": 2,
+        "right": 3,
+        "bottom": 2
+      },
+      "edges": "tile",
+      "center": "hidden",
+      "scale": "nine-slice",
+      "sampling": "linear",
+      "tint": "#FF8000C0",
+      "opacity": 0.5
+    },
+    {
+      "name": "button_hover",
+      "x": 0,
+      "y": 8,
+      "w": 16,
+      "h": 8
+    },
+    {
+      "name": "spin",
+      "x": 16,
+      "y": 0,
+      "w": 8,
+      "h": 8,
+      "frames": [
+        {
+          "x": 16,
+          "y": 0,
+          "duration": 0.1
+        },
+        {
+          "x": 24,
+          "y": 0,
+          "duration": 0.25
+        }
+      ],
+      "loop": "ping-pong"
+    }
+  ],
+  "skins": [
+    {
+      "name": "stone",
+      "normal": "button",
+      "hover": "button_hover"
+    }
+  ],
+  "x-custom": "kept"
+}

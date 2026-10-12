@@ -1,8 +1,13 @@
 package com.stonebreak.ui.characterCreation;
 
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MasonryUI;
+import io.github.humbleui.skija.Font;
+
 /**
- * Pure layout math. Given a window size, computes panel rectangles shared by
- * every renderer and mouse handler so hit-testing and drawing stay in lockstep.
+ * Pure layout math. Given a window size, computes the panel rectangles, the tab strip and the
+ * preview frame the UI host publishes to the shipped document (#301).
  */
 public final class CharacterCreationLayout {
 
@@ -20,6 +25,14 @@ public final class CharacterCreationLayout {
     static final float LEFT_PANEL_RATIO = 0.35f;
     static final float TAB_BAR_HEIGHT   = 40f;
     static final float TAB_BAR_TOP_PAD  = 8f;
+
+    private static final float TAB_W   = 150f;
+    private static final float TAB_H   = 36f;
+    private static final float TAB_GAP = 4f;
+
+    // Preview frame fills most of the panel width, sized tall for a full body.
+    private static final float PREVIEW_WIDTH_RATIO = 0.70f;
+    private static final float PREVIEW_HEIGHT_RATIO = 0.78f; // fraction of available height
 
     public Rect leftPanel(int w, int h) {
         float pw = Math.max(1, w);
@@ -57,5 +70,51 @@ public final class CharacterCreationLayout {
             rightPanel.width(),
             rightPanel.bottom() - contentY
         );
+    }
+
+    /** One tab of the strip: left edge, width, label font size and baseline below the strip's top. */
+    public record TabMetric(float x, float width, float fontSize, float baseline) {}
+
+    /**
+     * The tab strip in {@code tabBar}: tabs sized to their FONT_META labels (+24, at most {@value #TAB_W}),
+     * shrunk together to fit, labels shrunk to fit their tab.
+     */
+    public static TabMetric[] tabMetrics(MasonryUI ui, Rect tabBar) {
+        CharacterCreationTab[] tabs = CharacterCreationTab.values();
+        Font labelFont = ui.fonts().get(MStyle.FONT_META);
+        float[] widths = new float[tabs.length];
+        float totalWidth = 0f;
+        for (int i = 0; i < tabs.length; i++) {
+            widths[i] = Math.min(TAB_W, MPainter.measureWidth(labelFont, tabs[i].displayName()) + 24f);
+            totalWidth += widths[i];
+        }
+        float available = tabBar.width() - 16f - (tabs.length - 1) * TAB_GAP;
+        float fit = Math.min(1f, available / totalWidth);
+        TabMetric[] out = new TabMetric[tabs.length];
+        float nextX = tabBar.x() + 8f;
+        for (int i = 0; i < tabs.length; i++) {
+            float tabW = widths[i] * fit;
+            float labelWidth = MPainter.measureWidth(labelFont, tabs[i].displayName());
+            float fontSize = MStyle.FONT_META * Math.min(1f, Math.max(1f, tabW - 12f) / Math.max(1f, labelWidth));
+            out[i] = new TabMetric(nextX, tabW, fontSize, TAB_H * 0.5f + fontSize * 0.38f);
+            nextX += tabW + TAB_GAP;
+        }
+        return out;
+    }
+
+    /** Preview rect in window pixels: {x, y, w, h}. */
+    public record PreviewRect(float x, float y, float w, float h) {}
+
+    /** The 3D preview's frame in the left panel, or null when the panel is too small. */
+    public static PreviewRect previewRect(float panelX, float panelY, float panelW, float panelH) {
+        // Reserve space for the title (top) and the labels (bottom).
+        float availableH = panelH - 90f;
+        if (availableH <= 0f) return null;
+
+        float previewW = panelW * PREVIEW_WIDTH_RATIO;
+        float previewH = availableH * PREVIEW_HEIGHT_RATIO;
+        float previewX = panelX + (panelW - previewW) / 2f;
+        float previewY = panelY + 40f;
+        return new PreviewRect(previewX, previewY, previewW, previewH);
     }
 }

@@ -3,7 +3,7 @@ package com.stonebreak.ui.debug;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.UI.masonryUI.MStatPanel;
+import com.openmason.engine.ui.masonry.MStatPanel;
 import com.stonebreak.world.World;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import org.joml.Vector3f;

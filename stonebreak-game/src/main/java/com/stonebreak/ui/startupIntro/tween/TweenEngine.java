@@ -1,5 +1,7 @@
 package com.stonebreak.ui.startupIntro.tween;
 
+import com.openmason.engine.util.easing.EasingType;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;

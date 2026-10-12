@@ -3,7 +3,7 @@ package com.stonebreak.ui.debug;
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
 import com.openmason.engine.vram.VramPlan;
 import com.openmason.engine.vram.VramPlans;
-import com.stonebreak.rendering.UI.masonryUI.MStatPanel;
+import com.openmason.engine.ui.masonry.MStatPanel;
 
 import static com.stonebreak.ui.debug.DebugFormat.formatBytes;
 import static com.stonebreak.ui.debug.DebugFormat.shortCategoryName;

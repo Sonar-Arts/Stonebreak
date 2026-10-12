@@ -158,6 +158,9 @@ final class UiToggleKeyHandler {
             return;
         }
 
+        if (overlayOwnsScreen(game)) {
+            return;
+        }
         ChatSystem chatSystem = game.getChatSystem();
         if (chatSystem != null && chatSystem.isOpen()) {
             return;
@@ -177,6 +180,20 @@ final class UiToggleKeyHandler {
         game.toggleInventoryScreen();
     }
 
+    /**
+     * The pause menu or the death menu is up: E and C must not open a screen underneath it (it would
+     * unpause the world and, as a UI document, take the clicks meant for the menu above it, #300).
+     */
+    private static boolean overlayOwnsScreen(Game game) {
+        if (game.getState() == GameState.PAUSED
+                || (game.getPauseMenu() != null && game.getPauseMenu().isVisible())
+                || (game.getDeathMenu() != null && game.getDeathMenu().isVisible())) {
+            return true;
+        }
+        Player player = Game.getPlayer();
+        return player != null && player.isDead();
+    }
+
     /** C toggles the character sheet; closes an open inventory first so the two never stack. */
     void pollCharacterToggle() {
         if (!pressed(GLFW_KEY_C) || battleOwnsToggles()) {
@@ -189,6 +206,9 @@ final class UiToggleKeyHandler {
         }
         if (game.getState() == GameState.CHARACTER_SHEET_UI) {
             game.toggleCharacterScreen();
+            return;
+        }
+        if (overlayOwnsScreen(game)) {
             return;
         }
 

@@ -1,0 +1,79 @@
+# Builds the Cenda native library (kernels + the mandatory Lua and Yoga UI hosts) on every
+# supported platform, runs its native tests, then proves the Java side loads it through the ABI
+# handshake and runs the UI scripting suites against it (#292). The UI suites fail, never skip,
+# without the library, so a platform that cannot build or load it turns this job red.
+name: cenda-native
+
+on:
+  push:
+    paths:
+      - "openmason-engine/cenda/**"
+      - "openmason-engine/src/main/java/com/openmason/engine/cenda/**"
+      - "openmason-engine/src/main/java/com/openmason/engine/ui/**"
+      - "openmason-engine/src/main/resources/com/openmason/engine/ui/**"
+      - "openmason-engine/src/main/java/com/openmason/engine/format/omui/**"
+      - "openmason-engine/src/test/java/com/openmason/engine/ui/**"
+      - "openmason-engine/src/test/resources/ui/**"
+      - ".github/workflows/cenda-native.yml"
+  pull_request:
+    paths:
+      - "openmason-engine/cenda/**"
+      - "openmason-engine/src/main/java/com/openmason/engine/cenda/**"
+      - "openmason-engine/src/main/java/com/openmason/engine/ui/**"
+      - "openmason-engine/src/main/java/com/openmason/engine/format/omui/**"
+      - "openmason-engine/src/test/java/com/openmason/engine/ui/**"
+      - "openmason-engine/src/test/resources/ui/**"
+      - ".github/workflows/cenda-native.yml"
+  workflow_dispatch:
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (release)
+        working-directory: openmason-engine/cenda
+        # FETCHCONTENT_BASE_DIR overrides the preset's $HOME cache, which Windows runners lack.
+        run: cmake --preset release -DFETCHCONTENT_BASE_DIR="${{ runner.temp }}/cenda-deps"
+
+      - name: Build
+        working-directory: openmason-engine/cenda
+        run: cmake --build --preset release --parallel
+
+      - name: Native tests (lua_host, flex_host, kernels)
+        working-directory: openmason-engine/cenda
+        timeout-minutes: 10
+        run: ctest --preset release
+
+      - name: Skija runtime libraries (Linux)
+        # libskija.so links libEGL/libGL even for CPU raster surfaces; the bare runner has neither.
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libegl1 libgl1 libfontconfig1
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Java handshake + UI scripting suites
+        # Engine only: the Lua/flex FFM bindings, the script runtime and its samples.
+        run: >
+          mvn -B -q -pl openmason-engine test
+          -Dtest='CendaLua*Test,CendaFlexTest,UiNativeHealthTest,Script*Test,MinigameBenchmarkTest,UiApiSurfaceTest'
+          -Dsurefire.failIfNoSpecifiedTests=false
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-${{ matrix.os }}
+          path: openmason-engine/target/surefire-reports/

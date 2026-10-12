@@ -151,7 +151,7 @@ public class SBOMeshProcessor {
         // (a stair has ten), so anything past the sixth face used to be clamped
         // into the bottom bucket and culled away by the block underneath.
         SBONormalComputer.ProcessedMesh processed = SBONormalComputer.compute(
-                meshData.vertices(),
+                groundedVertices(meshData),
                 meshData.texCoords(),
                 meshData.indices()
         );
@@ -162,6 +162,23 @@ public class SBOMeshProcessor {
         // past 5), and must not borrow the geometric MMS face's layer.
         return buildBlockStamp(blockType, stateName, processed, meshData.triangleToFaceId(),
                 uvProvider, layerProvider);
+    }
+
+    /**
+     * A pane or X model (sapling, flower) stands on the cell floor: an export
+     * that baked a part offset into its vertices would otherwise float. Every
+     * other model keeps its authored position.
+     */
+    private static float[] groundedVertices(ParsedMeshData meshData) {
+        float[] verts = meshData.vertices();
+        if (!SBOPlanarGeometry.isPlanar(meshData)) return verts;
+        float dy = SBOPlanarGeometry.groundOffsetY(meshData);
+        if (Math.abs(dy) < 1e-4f) return verts;
+        float[] shifted = verts.clone();
+        for (int i = 1; i < shifted.length; i += 3) {
+            shifted[i] += dy;
+        }
+        return shifted;
     }
 
     /**

@@ -6,7 +6,7 @@ import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.player.combat.QuarryController;
 import com.stonebreak.player.combat.ranger.RangerAbilityController;
 import com.stonebreak.player.combat.ranger.RangerHudText;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
+import com.openmason.engine.ui.masonry.MStyle;
 
 /**
  * Ranger Quarry gauge — header with the current Quarry and Study count, three discrete

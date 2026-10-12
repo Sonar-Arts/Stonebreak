@@ -13,7 +13,7 @@ import com.stonebreak.battle.api.TelegraphView;
 import com.stonebreak.battle.api.TimedGrade;
 import com.stonebreak.ui.focusBattle.BattleRasterFixture;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
-import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
+import com.stonebreak.ui.focusBattle.BattleHudLayers;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
@@ -103,7 +103,7 @@ final class TimedScenes {
         BattleRasterFixture fx = new BattleRasterFixture(w, h);
         if (clearColor != null) fx.canvas.clear(clearColor);
         float s = FocusBattleLayout.effectiveScale(w, h, UI_SCALE);
-        for (SkijaFocusBattleRenderer.Layer layer : List.of(layers.screenFxLayer(), layers.timingRingLayer(),
+        for (BattleHudLayers.Layer layer : List.of(layers.screenFxLayer(), layers.timingRingLayer(),
                 layers.parryLayer(), layers.comboStripLayer())) {
             // The timed layers never read the HUD animator's state, so they are painted without one.
             layer.paint(fx.ui, fx.canvas, w, h, s, UI_SCALE, view, null, vp);

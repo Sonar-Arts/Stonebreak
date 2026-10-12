@@ -79,6 +79,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
     /** The Scene Viewer, once composed; null in headless/snapshot construction. */
     private com.openmason.main.systems.scene.SceneViewerImGuiInterface sceneViewer;
+    private com.openmason.main.systems.uiEditor.view.UiEditorWorkspace uiEditor;
 
     private PreferencesWindow preferencesWindow; // Initialized after components
     private SBOExportWindow sboExportWindow; // Initialized after components
@@ -391,7 +392,19 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      */
     public void render() {
         dockLayout.render(toolbarRenderer::render);
+        dockLayout.renderDetached();
         menuBarCoordinator.render();
+
+        if (!isWorkspaceShown(com.openmason.main.systems.layout.Workspace.MODELING)) {
+            // Scene is neither the main window's front tab nor a visible window of its own: its
+            // panels stay docked but hidden (the UI and Texture workspaces draw their own).
+            aboutDialog.render();
+            dockLayout.tickCenterTabFocus();
+            if (fileMenuHandler != null && fileMenuHandler.getHomeScreenDialog() != null) {
+                fileMenuHandler.getHomeScreenDialog().render();
+            }
+            return;
+        }
 
         if (uiVisibilityState.getShowModelBrowser().get()) {
             renderProjectBrowser();
@@ -457,6 +470,20 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         }
     }
 
+    private java.util.function.Consumer<java.nio.file.Path> openUiDocumentCallback;
+
+    /** Set by the app: opens a .omui in the UI Editor workspace. */
+    public void setOpenUiDocumentCallback(java.util.function.Consumer<java.nio.file.Path> callback) {
+        this.openUiDocumentCallback = callback;
+    }
+
+    @Override
+    public void onUiDocumentSelected(com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry entry) {
+        if (openUiDocumentCallback != null) {
+            openUiDocumentCallback.accept(entry.path());
+        }
+    }
+
     /** A scene was clicked in the browser; the app-level handler opens it. */
     @Override
     public void onSceneSelected(com.openmason.main.systems.menus.panes.projectBrowser.events.SceneSelectedEvent event) {
@@ -489,7 +516,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         }
         boolean deleted = projectBrowserImGui.getController().deleteAsset(entry);
         assetEditorDetacher.afterDelete(entry, deleted, getModelState(),
-                textureCreatorImGui != null ? textureCreatorImGui.getState() : null);
+                textureCreatorImGui != null ? textureCreatorImGui.getController() : null);
     }
 
     /**
@@ -675,6 +702,15 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         return sceneViewer;
     }
 
+    public void setUiEditor(com.openmason.main.systems.uiEditor.view.UiEditorWorkspace uiEditor) {
+        this.uiEditor = uiEditor;
+    }
+
+    /** The UI Editor workspace (#293; open UI documents, their runtimes), or null before composition. */
+    public com.openmason.main.systems.uiEditor.view.UiEditorWorkspace getUiEditor() {
+        return uiEditor;
+    }
+
     // Convenience methods for backward compatibility
 
     public void createNewModel() {
@@ -803,28 +839,24 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     }
 
     /**
-     * Window-level control of the texture editor (show / hide / visibility),
-     * owned by the application shell. Lets external drivers such as the MCP
-     * server summon or dismiss the editor exactly as the Tools menu and the
-     * property panel's "Edit Texture" button do.
+     * The application shell's side of the texture editor, for external drivers such as the MCP
+     * server. Drivers work on documents (the editor's controller opens, focuses and closes them);
+     * the shell only makes sure the Texture workspace is on screen. Closing the workspace is the
+     * user's alone (its tab's close button or menu), so there is deliberately no close here.
      */
     public interface TextureEditorPresenter {
-        /** Show the texture editor window (no-op if already visible). */
+        /**
+         * Bring the Texture workspace forward, opening its tab first when it is not open (raises
+         * its window when popped out). Never closes anything.
+         */
         void show();
 
-        /**
-         * Close the texture editor window, flushing pending canvas edits to the
-         * face texture, closing any active face region and auto-saving the
-         * model — the same path the window's own close button takes.
-         */
-        void close();
-
-        /** Whether the texture editor window is currently shown. */
+        /** Whether the Texture workspace tab is open. */
         boolean isVisible();
 
         /**
-         * Push pending canvas edits to the face's GPU texture without closing
-         * the editor (no-op when no face session is active).
+         * Push the active face document's pending canvas edits to its GPU texture (no-op for a
+         * standalone texture).
          */
         void flush();
     }
@@ -964,6 +996,59 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      * Reset all editor state to defaults for a fresh session.
      * Called when creating a new blank project from the hub.
      */
+    private com.openmason.main.systems.layout.WorkspaceState workspaceState;
+
+    /**
+     * Installs the UI workspace (#293): its dockspace behind the main window's {@code Scene | UI}
+     * tabs (or its own window when popped out), the Tools menu entry, and the project-level save
+     * hooks (Save Project saves UI documents too).
+     */
+    public void setUiWorkspace(com.openmason.main.systems.layout.WorkspaceState state,
+                               com.openmason.main.systems.layout.WorkspaceDock dock,
+                               com.openmason.main.systems.menus.FileMenuHandler.UiMenuHooks hooks) {
+        this.workspaceState = state;
+        dockLayout.setUiWorkspace(state, dock);
+        toolsMenuHandler.setOpenUiEditorCallback(() -> state.set(com.openmason.main.systems.layout.Workspace.UI));
+        if (fileMenuHandler != null) {
+            fileMenuHandler.setUiHooks(hooks);
+        }
+    }
+
+    /**
+     * Adds another workspace tab (the Texture Editor) behind the main window's tab strip; call
+     * after {@link #setUiWorkspace}. Its tab shows while the workspace state has it open.
+     */
+    public void addWorkspaceDock(com.openmason.main.systems.layout.Workspace ws,
+                                 com.openmason.main.systems.layout.WorkspaceDock dock) {
+        dockLayout.addWorkspace(ws, dock);
+    }
+
+    /**
+     * Whether {@code ws}'s panels should draw this frame: it is the main window's front tab or a
+     * popped-out window showing its contents. Valid once this frame's {@link #render()} ran.
+     */
+    public boolean isWorkspaceShown(com.openmason.main.systems.layout.Workspace ws) {
+        return dockLayout.isShown(ws);
+    }
+
+    public com.openmason.main.systems.layout.WorkspaceState getWorkspaceState() {
+        return workspaceState;
+    }
+
+    /** The project service's UI Editor session seams (v1.3 node). */
+    public void setUiEditorSessionHooks(
+            java.util.function.Supplier<com.openmason.main.systems.project.OMPFormat.UiEditorReference> supplier,
+            java.util.function.Consumer<com.openmason.main.systems.project.OMPFormat.UiEditorReference> hook) {
+        projectLifecycle.setUiEditorSessionHooks(supplier, hook);
+    }
+
+    /** The UI Editor's open documents or workspace changed: the project may need saving. */
+    public void notifyUiEditorSessionChanged() {
+        if (projectLifecycle.getProjectService() != null) {
+            projectLifecycle.getProjectService().uiSessionChanged();
+        }
+    }
+
     public void setOnProjectSessionReset(Runnable callback) {
         projectLifecycle.setOnProjectSessionReset(callback);
     }

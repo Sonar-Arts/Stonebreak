@@ -22,6 +22,9 @@ public class PolygonShapeMask implements CanvasShapeMask {
 
     private static final Logger logger = LoggerFactory.getLogger(PolygonShapeMask.class);
 
+    /** Float slack for "on a pixel boundary" (UV maths rarely lands on exact integers). */
+    private static final float BOUNDARY_EPSILON = 1e-4f;
+
     private final int width;
     private final int height;
     private final boolean[] mask;
@@ -224,7 +227,7 @@ public class PolygonShapeMask implements CanvasShapeMask {
         float length = Math.max(Math.abs(dx), Math.abs(dy));
 
         if (length < 1e-6f) {
-            markPixel((int) Math.floor(x0), (int) Math.floor(y0));
+            markEdgeSample(x0, y0);
             return;
         }
 
@@ -236,11 +239,44 @@ public class PolygonShapeMask implements CanvasShapeMask {
         float x = x0;
         float y = y0;
         for (int s = 0; s <= steps; s++) {
-            markPixel((int) Math.floor(x), (int) Math.floor(y));
+            markEdgeSample(x, y);
             x += stepX;
             y += stepY;
         }
     }
+
+    /**
+     * Mark the pixel an edge sample falls in. A sample exactly on a pixel
+     * boundary (a face edge at x = 8.0, say) only touches the cells on either
+     * side; it marks those whose centre is inside the polygon and nothing else,
+     * so a face never spills one row/column into its neighbour. Cells an edge
+     * actually crosses are marked by its off-boundary samples.
+     */
+    private void markEdgeSample(float x, float y) {
+        int[] xs = boundaryCells(x);
+        int[] ys = boundaryCells(y);
+        if (xs.length == 1 && ys.length == 1) {
+            markPixel(xs[0], ys[0]);
+            return;
+        }
+        for (int cy : ys) {
+            for (int cx : xs) {
+                if (isPointInPolygon(cx + 0.5f, cy + 0.5f)) {
+                    markPixel(cx, cy);
+                }
+            }
+        }
+    }
+
+    /** The cell(s) a coordinate falls in: two when it sits on a cell boundary. */
+    private static int[] boundaryCells(float v) {
+        int nearest = Math.round(v);
+        if (Math.abs(v - nearest) < BOUNDARY_EPSILON) {
+            return new int[]{nearest - 1, nearest};
+        }
+        return new int[]{(int) Math.floor(v)};
+    }
+
 
     /**
      * Mark a pixel in the mask and coverage map with bounds checking.

@@ -1,0 +1,188 @@
+{
+  "screen" : "main-menu",
+  "units" : "framebuffer pixels; rect = [x, y, width, height], origin top-left",
+  "cases" : {
+    "main-menu-idle_1920x1080_s1" : {
+      "rects" : {
+        "logo" : [ 685.8473, 350.0, 548.30554, 140.0 ],
+        "multiplayer" : [ 760.0, 570.0, 400.0, 40.0 ],
+        "quit" : [ 760.0, 670.0, 400.0, 40.0 ],
+        "settings" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "singleplayer" : [ 760.0, 520.0, 400.0, 40.0 ]
+      },
+      "hits" : {
+        "logo" : [ 685.8473, 350.0, 548.30554, 140.0 ],
+        "multiplayer" : [ 760.0, 570.0, 400.0, 40.0 ],
+        "quit" : [ 760.0, 670.0, 400.0, 40.0 ],
+        "settings" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "singleplayer" : [ 760.0, 520.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "logo" : "stonebreak:screen.main-menu.title",
+        "multiplayer" : "stonebreak:screen.main-menu.multiplayer",
+        "quit" : "stonebreak:screen.main-menu.quit",
+        "settings" : "stonebreak:screen.main-menu.settings",
+        "singleplayer" : "stonebreak:screen.main-menu.singleplayer"
+      }
+    },
+    "main-menu-idle_1280x720_s0_75" : {
+      "rects" : {
+        "logo" : [ 434.38544, 217.5, 411.22906, 105.0 ],
+        "multiplayer" : [ 490.0, 382.5, 300.0, 30.0 ],
+        "quit" : [ 490.0, 457.5, 300.0, 30.0 ],
+        "settings" : [ 490.0, 420.0, 300.0, 30.0 ],
+        "singleplayer" : [ 490.0, 345.0, 300.0, 30.0 ]
+      },
+      "hits" : {
+        "logo" : [ 434.38544, 217.5, 411.22906, 105.0 ],
+        "multiplayer" : [ 490.0, 382.5, 300.0, 30.0 ],
+        "quit" : [ 490.0, 457.5, 300.0, 30.0 ],
+        "settings" : [ 490.0, 420.0, 300.0, 30.0 ],
+        "singleplayer" : [ 490.0, 345.0, 300.0, 30.0 ]
+      },
+      "actions" : {
+        "logo" : "stonebreak:screen.main-menu.title",
+        "multiplayer" : "stonebreak:screen.main-menu.multiplayer",
+        "quit" : "stonebreak:screen.main-menu.quit",
+        "settings" : "stonebreak:screen.main-menu.settings",
+        "singleplayer" : "stonebreak:screen.main-menu.singleplayer"
+      }
+    },
+    "main-menu-idle_3840x2160_s2" : {
+      "rects" : {
+        "logo" : [ 1371.6946, 700.0, 1096.6111, 280.0 ],
+        "multiplayer" : [ 1520.0, 1140.0, 800.0, 80.0 ],
+        "quit" : [ 1520.0, 1340.0, 800.0, 80.0 ],
+        "settings" : [ 1520.0, 1240.0, 800.0, 80.0 ],
+        "singleplayer" : [ 1520.0, 1040.0, 800.0, 80.0 ]
+      },
+      "hits" : {
+        "logo" : [ 1371.6946, 700.0, 1096.6111, 280.0 ],
+        "multiplayer" : [ 1520.0, 1140.0, 800.0, 80.0 ],
+        "quit" : [ 1520.0, 1340.0, 800.0, 80.0 ],
+        "settings" : [ 1520.0, 1240.0, 800.0, 80.0 ],
+        "singleplayer" : [ 1520.0, 1040.0, 800.0, 80.0 ]
+      },
+      "actions" : {
+        "logo" : "stonebreak:screen.main-menu.title",
+        "multiplayer" : "stonebreak:screen.main-menu.multiplayer",
+        "quit" : "stonebreak:screen.main-menu.quit",
+        "settings" : "stonebreak:screen.main-menu.settings",
+        "singleplayer" : "stonebreak:screen.main-menu.singleplayer"
+      }
+    },
+    "main-menu-idle_1921x1081_s1_25" : {
+      "rects" : {
+        "logo" : [ 617.8091, 303.0, 685.38184, 175.0 ],
+        "multiplayer" : [ 710.5, 578.0, 500.0, 50.0 ],
+        "quit" : [ 710.5, 703.0, 500.0, 50.0 ],
+        "settings" : [ 710.5, 640.5, 500.0, 50.0 ],
+        "singleplayer" : [ 710.5, 515.5, 500.0, 50.0 ]
+      },
+      "hits" : {
+        "logo" : [ 617.8091, 303.0, 685.38184, 175.0 ],
+        "multiplayer" : [ 710.5, 578.0, 500.0, 50.0 ],
+        "quit" : [ 710.5, 703.0, 500.0, 50.0 ],
+        "settings" : [ 710.5, 640.5, 500.0, 50.0 ],
+        "singleplayer" : [ 710.5, 515.5, 500.0, 50.0 ]
+      },
+      "actions" : {
+        "logo" : "stonebreak:screen.main-menu.title",
+        "multiplayer" : "stonebreak:screen.main-menu.multiplayer",
+        "quit" : "stonebreak:screen.main-menu.quit",
+        "settings" : "stonebreak:screen.main-menu.settings",
+        "singleplayer" : "stonebreak:screen.main-menu.singleplayer"
+      }
+    },
+    "main-menu-idle-hover-singleplayer_1920x1080_s1" : {
+      "rects" : {
+        "logo" : [ 685.8473, 350.0, 548.30554, 140.0 ],
+        "multiplayer" : [ 760.0, 570.0, 400.0, 40.0 ],
+        "quit" : [ 760.0, 670.0, 400.0, 40.0 ],
+        "settings" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "singleplayer" : [ 760.0, 520.0, 400.0, 40.0 ]
+      },
+      "hits" : {
+        "logo" : [ 685.8473, 350.0, 548.30554, 140.0 ],
+        "multiplayer" : [ 760.0, 570.0, 400.0, 40.0 ],
+        "quit" : [ 760.0, 670.0, 400.0, 40.0 ],
+        "settings" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "singleplayer" : [ 760.0, 520.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "logo" : "stonebreak:screen.main-menu.title",
+        "multiplayer" : "stonebreak:screen.main-menu.multiplayer",
+        "quit" : "stonebreak:screen.main-menu.quit",
+        "settings" : "stonebreak:screen.main-menu.settings",
+        "singleplayer" : "stonebreak:screen.main-menu.singleplayer"
+      }
+    },
+    "main-menu-idle-hover-quit_1920x1080_s1" : {
+      "rects" : {
+        "logo" : [ 685.8473, 350.0, 548.30554, 140.0 ],
+        "multiplayer" : [ 760.0, 570.0, 400.0, 40.0 ],
+        "quit" : [ 760.0, 670.0, 400.0, 40.0 ],
+        "settings" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "singleplayer" : [ 760.0, 520.0, 400.0, 40.0 ]
+      },
+      "hits" : {
+        "logo" : [ 685.8473, 350.0, 548.30554, 140.0 ],
+        "multiplayer" : [ 760.0, 570.0, 400.0, 40.0 ],
+        "quit" : [ 760.0, 670.0, 400.0, 40.0 ],
+        "settings" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "singleplayer" : [ 760.0, 520.0, 400.0, 40.0 ]
+      },
+      "actions" : {
+        "logo" : "stonebreak:screen.main-menu.title",
+        "multiplayer" : "stonebreak:screen.main-menu.multiplayer",
+        "quit" : "stonebreak:screen.main-menu.quit",
+        "settings" : "stonebreak:screen.main-menu.settings",
+        "singleplayer" : "stonebreak:screen.main-menu.singleplayer"
+      }
+    },
+    "main-menu-shake_1920x1080_s1" : {
+      "rects" : {
+        "logo" : [ 685.8473, 350.0, 548.30554, 140.0 ],
+        "multiplayer" : [ 760.0, 570.0, 400.0, 40.0 ],
+        "quit" : [ 760.0, 670.0, 400.0, 40.0 ],
+        "settings" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "singleplayer" : [ 760.0, 520.0, 400.0, 40.0 ]
+      },
+      "hits" : { },
+      "actions" : { }
+    },
+    "main-menu-reveal_1920x1080_s1" : {
+      "rects" : {
+        "logo" : [ 685.8473, 350.0, 548.30554, 140.0 ],
+        "multiplayer" : [ 760.0, 570.0, 400.0, 40.0 ],
+        "quit" : [ 760.0, 670.0, 400.0, 40.0 ],
+        "settings" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "singleplayer" : [ 760.0, 520.0, 400.0, 40.0 ]
+      },
+      "hits" : { },
+      "actions" : { }
+    },
+    "main-menu-space_1920x1080_s1" : {
+      "rects" : {
+        "logo" : [ 685.8473, 350.0, 548.30554, 140.0 ],
+        "multiplayer" : [ 760.0, 570.0, 400.0, 40.0 ],
+        "quit" : [ 760.0, 670.0, 400.0, 40.0 ],
+        "settings" : [ 760.0, 620.0, 400.0, 40.0 ],
+        "singleplayer" : [ 760.0, 520.0, 400.0, 40.0 ]
+      },
+      "hits" : { },
+      "actions" : { }
+    },
+    "main-menu-space_1921x1081_s1_25" : {
+      "rects" : {
+        "logo" : [ 617.8091, 303.0, 685.38184, 175.0 ],
+        "multiplayer" : [ 710.5, 578.0, 500.0, 50.0 ],
+        "quit" : [ 710.5, 703.0, 500.0, 50.0 ],
+        "settings" : [ 710.5, 640.5, 500.0, 50.0 ],
+        "singleplayer" : [ 710.5, 515.5, 500.0, 50.0 ]
+      },
+      "hits" : { },
+      "actions" : { }
+    }
+  }
+}

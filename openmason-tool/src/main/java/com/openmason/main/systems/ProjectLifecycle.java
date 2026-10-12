@@ -123,6 +123,14 @@ public final class ProjectLifecycle {
         }
     }
 
+    /** Forwards the UI Editor session seams (v1.3 node) to the project service. */
+    public void setUiEditorSessionHooks(Supplier<OMPFormat.UiEditorReference> saveSupplier,
+                                        Consumer<OMPFormat.UiEditorReference> restoreHook) {
+        if (projectService != null) {
+            projectService.setUiEditorSessionHooks(saveSupplier, restoreHook);
+        }
+    }
+
     /**
      * Set the recent projects service for tracking project open/save in the hub.
      */

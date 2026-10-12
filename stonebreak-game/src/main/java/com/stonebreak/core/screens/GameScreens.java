@@ -20,7 +20,6 @@ import com.stonebreak.ui.glossaryScreen.GlossaryScreen;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.multiplayerMenu.HostWorldScreen;
 import com.stonebreak.ui.multiplayerMenu.JoinWorldScreen;
-import com.stonebreak.ui.multiplayerMenu.MultiplayerMenu;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
 import com.stonebreak.ui.saveChanges.SaveChangesDialog;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
@@ -50,7 +49,6 @@ public final class GameScreens {
     private SaveChangesDialog saveChangesDialog;
     private MainMenu mainMenu;
     private SettingsMenu settingsMenu;
-    private MultiplayerMenu multiplayerMenu;
     private HostWorldScreen hostWorldScreen;
     private JoinWorldScreen joinWorldScreen;
     private LoadingScreen loadingScreen;
@@ -78,58 +76,117 @@ public final class GameScreens {
     public void createShellScreens(Renderer renderer) {
         var skija = renderer.getSkijaBackend();
 
-        pauseMenu = new PauseMenu(skija);
-        saveChangesDialog = new SaveChangesDialog(skija);
-        statisticsScreen = new StatisticsScreen(skija);
-        glossaryScreen = new GlossaryScreen(skija);
-        deathMenu = new DeathMenu(skija);
-        mainMenu = new MainMenu(skija);
-        settingsMenu = new SettingsMenu(skija);
-        multiplayerMenu = new MultiplayerMenu(skija);
-        hostWorldScreen = new HostWorldScreen(skija);
-        joinWorldScreen = new JoinWorldScreen(skija);
-        loadingScreen = new LoadingScreen(skija);
-        worldSelectScreen = new WorldSelectScreen(skija);
+        pauseMenu = new PauseMenu();
+        // The shipped OMUI/SBUI pause screen (#297).
+        pauseMenu.setPresentation(new com.stonebreak.ui.pauseMenu.PauseDocument(
+                com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
+        statisticsScreen = new StatisticsScreen();
+        statisticsScreen.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(
+                StatisticsScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                com.stonebreak.ui.runtime.screens.DocumentScreen.Options.screen()));
+        glossaryScreen = new GlossaryScreen();
+        glossaryScreen.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(
+                GlossaryScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                com.stonebreak.ui.runtime.screens.DocumentScreen.Options.screen()));
+        saveChangesDialog = new SaveChangesDialog();
+        saveChangesDialog.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(
+                SaveChangesDialog.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                com.stonebreak.ui.runtime.screens.DocumentScreen.Options.screen()));
+        deathMenu = new DeathMenu();
+        // The shipped OMUI/SBUI death screen (#299).
+        deathMenu.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(DeathMenu.DOCUMENT_ID,
+                com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                com.stonebreak.ui.runtime.screens.DocumentScreen.Options.screen()));
+        mainMenu = new MainMenu();
+        com.stonebreak.ui.runtime.screens.StateScreens.get().register(com.stonebreak.core.GameState.MAIN_MENU,
+                new com.stonebreak.ui.mainMenu.MainMenuDocument(mainMenu,
+                        com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
+        settingsMenu = new SettingsMenu();
+        stateDocument(com.stonebreak.core.GameState.SETTINGS, "settings");
+        hostWorldScreen = new HostWorldScreen();
+        joinWorldScreen = new JoinWorldScreen();
+        // Screens that are a game state: their shipped documents follow the state (#299).
+        stateDocument(com.stonebreak.core.GameState.MULTIPLAYER_MENU, "multiplayer");
+        stateDocument(com.stonebreak.core.GameState.HOST_WORLD_SELECT, "host_world");
+        stateDocument(com.stonebreak.core.GameState.JOIN_WORLD_SCREEN, "join_world");
+        loadingScreen = new LoadingScreen();
+        loadingScreen.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(
+                LoadingScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                com.stonebreak.ui.runtime.screens.DocumentScreen.Options.menu()));
+        worldSelectScreen = new WorldSelectScreen();
+        stateDocument(com.stonebreak.core.GameState.WORLD_SELECT, "world_select");
         characterCreationScreen = new CharacterCreationScreen(skija);
-        terrainMapperScreen = new TerrainMapperScreen(skija);
-        startupIntroScreen = new SonarArtsIntroScreen(skija);
-        modelSetupScreen = new com.stonebreak.ui.modelSetup.ModelSetupScreen(skija);
+        stateDocument(com.stonebreak.core.GameState.CHARACTER_CREATION, CharacterCreationScreen.DOCUMENT_ID); // #301
+        modelSetupScreen = new com.stonebreak.ui.modelSetup.ModelSetupScreen();
+        // The terrain model's launch setup (Daedalus): its shipped document follows MODEL_SETUP.
+        stateDocument(com.stonebreak.core.GameState.MODEL_SETUP, com.stonebreak.ui.modelSetup.ModelSetupScreen.DOCUMENT_ID);
+        terrainMapperScreen = new TerrainMapperScreen();
+        // The shipped terrain mapper (#301): the screen keeps the keyboard (MenuInputRouter routes it).
+        stateDocument(com.stonebreak.core.GameState.TERRAIN_MAPPER, TerrainMapperScreen.DOCUMENT_ID);
+        startupIntroScreen = new SonarArtsIntroScreen();
+        // The shipped intro document (#301); the game starts in STARTUP_INTRO, so show it now.
+        com.stonebreak.ui.runtime.screens.StateScreens.get().register(com.stonebreak.core.GameState.STARTUP_INTRO,
+                new com.stonebreak.ui.startupIntro.IntroDocument(startupIntroScreen,
+                        com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
+        if (com.stonebreak.core.Game.getInstance().getState() == com.stonebreak.core.GameState.STARTUP_INTRO) {
+            com.stonebreak.ui.runtime.screens.StateScreens.get().stateChanged(com.stonebreak.core.GameState.STARTUP_INTRO);
+        }
         // Needs only the backend; the battle coordinator binds/unbinds it per encounter.
         focusBattleScreen = new com.stonebreak.ui.focusBattle.FocusBattleScreen(skija);
+        // The shipped battle HUD document (#301), shown while the screen is bound.
+        focusBattleScreen.setPresentation(new com.stonebreak.ui.focusBattle.BattleHudDocument(focusBattleScreen,
+                com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
+    }
+
+    /** Shows the shipped document {@code ui/documents/<id>.sbui} whenever the game is in {@code state}. */
+    private static void stateDocument(com.stonebreak.core.GameState state, String id) {
+        com.stonebreak.ui.runtime.screens.StateScreens.get().register(state,
+                new com.stonebreak.ui.runtime.screens.PresentedDocument(id,
+                        com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                        com.stonebreak.ui.runtime.screens.DocumentScreen.Options.menu()));
     }
 
     /**
-     * Builds the screens that need a live player. Each is skipped with a warning if its
-     * dependencies are missing rather than failing the whole world load.
+     * Builds the screens that need a live player. The recipe book is skipped with a warning when
+     * there is no crafting manager rather than failing the whole world load.
      */
     public void createWorldScreens(Game game, Player player, Renderer renderer, InputHandler inputHandler,
                                    CraftingManager craftingManager, SmeltingManager smeltingManager) {
-        var uiRenderer = renderer.getUIRenderer();
+        inventoryScreen = new InventoryScreen(player.getInventory(), inputHandler, craftingManager);
+        // The inventory needs the back-reference to drive tooltips and hover state.
+        player.getInventory().setInventoryScreen(inventoryScreen);
+        // The shipped inventory screen (#300).
+        inventoryScreen.setPresentation(new com.stonebreak.ui.runtime.screens.ContainerDocument(
+                InventoryScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
+        // ... and the gameplay HUD around the hotbar (informational: it never takes input).
+        inventoryScreen.setHudPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(
+                InventoryScreen.HUD_DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                com.stonebreak.ui.runtime.screens.DocumentScreen.Options.hud()));
+        inventoryScreen.syncPresentation(game.getState());
 
-        if (renderer.getFont() != null && game.getBlockTextureArray() != null) {
-            inventoryScreen = new InventoryScreen(player.getInventory(), renderer.getFont(), renderer,
-                    uiRenderer, inputHandler, craftingManager, player.getCharacterStats());
-            // The inventory needs the back-reference to drive tooltips and hover state.
-            player.getInventory().setInventoryScreen(inventoryScreen);
+        characterScreen = new CharacterScreen(player, renderer);
+        // The shipped character sheet (#301), shown while the sheet is open.
+        characterScreen.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(
+                CharacterScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                com.stonebreak.ui.runtime.screens.DocumentScreen.Options.screen()));
+        characterScreen.syncPresentation(game.getState());
+
+        workbenchScreen = new WorkbenchScreen(game, player.getInventory(), inputHandler, craftingManager);
+        furnaceScreen = new FurnaceScreen(game, player.getInventory(), inputHandler, smeltingManager);
+        // The shipped OMUI/SBUI furnace screen (#298).
+        furnaceScreen.setPresentation(new com.stonebreak.ui.furnace.FurnaceDocument(
+                com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
+        // The shipped workbench screen (#300), same rules.
+        workbenchScreen.setPresentation(new com.stonebreak.ui.runtime.screens.ContainerDocument(
+                WorkbenchScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
+
+        if (craftingManager != null) {
+            recipeScreen = new RecipeScreen(inputHandler);
+            // The shipped recipe book document (#301), same rules as the container screens.
+            recipeScreen.setPresentation(new com.stonebreak.ui.runtime.screens.ContainerDocument(
+                    RecipeScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
         } else {
-            logger.error("Skipping InventoryScreen: renderer font or block texture array is missing");
-        }
-
-        characterScreen = new CharacterScreen(player, renderer, inputHandler);
-
-        if (uiRenderer != null) {
-            workbenchScreen = new WorkbenchScreen(game, player.getInventory(), renderer, uiRenderer,
-                    inputHandler, craftingManager);
-            furnaceScreen = new FurnaceScreen(game, player.getInventory(), renderer, uiRenderer,
-                    inputHandler, smeltingManager);
-        } else {
-            logger.error("Skipping WorkbenchScreen and FurnaceScreen: UI renderer is missing");
-        }
-
-        if (uiRenderer != null && craftingManager != null && renderer.getFont() != null) {
-            recipeScreen = new RecipeScreen(uiRenderer, inputHandler, renderer);
-        } else {
-            logger.error("Skipping RecipeScreen: UI renderer, crafting manager or font is missing");
+            logger.error("Skipping RecipeScreen: crafting manager is missing");
         }
     }
 
@@ -159,10 +216,6 @@ public final class GameScreens {
 
     public SettingsMenu settingsMenu() {
         return settingsMenu;
-    }
-
-    public MultiplayerMenu multiplayerMenu() {
-        return multiplayerMenu;
     }
 
     public HostWorldScreen hostWorldScreen() {

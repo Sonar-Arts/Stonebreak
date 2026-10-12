@@ -16,5 +16,6 @@ public enum BiomeType {
     BADLANDS,
     MEADOW,
     /** Open sea floor: every submerged column in Standard, the ocean ids in DaedalusTGM-Exp. Appended last: ordinals of existing biomes stay put. */
-    OCEAN
+    OCEAN,
+    SWAMP
 }

@@ -24,9 +24,16 @@ public class SoundBuffer {
     }
 
     public boolean addSound(String name, int bufferPointer) {
+        // Re-registering a name replaces it: free the previous sources and buffer
+        // first, or nothing would reference them and they would outlive cleanup().
+        releaseSound(name, bufferPointer);
         soundBuffers.put(name, bufferPointer);
 
         Integer[] soundSources = new Integer[sourcesPerSound];
+
+        // Clear a stale error left by an unrelated earlier AL call; the per-source check below
+        // would otherwise blame it on this sound and abort a valid registration.
+        alGetError();
 
         for (int i = 0; i < sourcesPerSound; i++) {
             int sourcePointer = alGenSources();
@@ -54,7 +61,8 @@ public class SoundBuffer {
             int error = alGetError();
             if (error != AL_NO_ERROR) {
                 logger.error("OpenAL error creating source {} for {}: {}", i, name, error);
-                // Clean up any sources created so far
+                // Clean up any sources created so far, including this one
+                alDeleteSources(sourcePointer);
                 for (int j = 0; j < i; j++) {
                     alDeleteSources(soundSources[j]);
                 }
@@ -96,6 +104,28 @@ public class SoundBuffer {
 
     public Map<String, Integer[]> getAllSources() {
         return new HashMap<>(sources);
+    }
+
+    /**
+     * Delete a registered sound's sources, then its buffer unless it is
+     * {@code keepBuffer} (re-adding the same buffer under its own name). Sources
+     * go first: OpenAL refuses to delete a buffer a source still has attached.
+     */
+    private void releaseSound(String name, int keepBuffer) {
+        Integer[] oldSources = sources.remove(name);
+        if (oldSources != null) {
+            for (Integer source : oldSources) {
+                if (source != null) {
+                    alSourceStop(source);
+                    alDeleteSources(source);
+                }
+            }
+        }
+        sourceIndexes.remove(name);
+        Integer oldBuffer = soundBuffers.remove(name);
+        if (oldBuffer != null && oldBuffer != keepBuffer) {
+            alDeleteBuffers(oldBuffer);
+        }
     }
 
     public void cleanup() {

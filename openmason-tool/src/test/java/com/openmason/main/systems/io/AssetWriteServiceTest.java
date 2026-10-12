@@ -4,6 +4,7 @@ import com.openmason.main.systems.io.AssetWriteService.WriteOutcome;
 import com.openmason.main.systems.io.AssetWriteService.WriteRequest;
 import com.openmason.main.systems.threading.MainThreadExecutor;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -21,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@Tag("integration")
 class AssetWriteServiceTest {
 
     @TempDir
@@ -73,6 +75,11 @@ class AssetWriteServiceTest {
         assertTrue(e.getMessage().startsWith("file_exists"));
         assertTrue(AssetWriteService.mustAsk(target(WriteRoot.GAME_RESOURCES, false), req(true),
                 WritePolicy.ASK_NEVER_IN_PROJECT));
+
+        // NEVER_ASK: overwrites and game resources write silently (the sandbox still bounds them)
+        assertFalse(AssetWriteService.mustAsk(target(WriteRoot.PROJECT, true), req(false), WritePolicy.NEVER_ASK));
+        assertFalse(AssetWriteService.mustAsk(target(WriteRoot.GAME_RESOURCES, true), req(false),
+                WritePolicy.NEVER_ASK));
     }
 
     @Test

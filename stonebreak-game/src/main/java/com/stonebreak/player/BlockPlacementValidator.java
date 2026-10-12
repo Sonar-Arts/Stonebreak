@@ -4,6 +4,7 @@ import org.joml.Vector3f;
 import org.joml.Vector3i;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
+import com.stonebreak.world.growth.SaplingGrowthSystem;
 
 /**
  * Handles validation and collision detection for block placement operations.
@@ -83,6 +84,12 @@ public class BlockPlacementValidator implements IBlockPlacementService {
      */
     private boolean isValidPlacementLocation(Vector3i blockPos, BlockType blockType) {
         BlockType existingBlock = world.getBlockAt(blockPos.x, blockPos.y, blockPos.z);
+
+        // Saplings root only in soil, and only grow from it (SaplingGrowthSystem).
+        if (SaplingGrowthSystem.isSapling(blockType)
+                && !SaplingGrowthSystem.isSoil(world.getBlockAt(blockPos.x, blockPos.y - 1, blockPos.z))) {
+            return false;
+        }
 
         // Can place in air or water (replacing water)
         if (existingBlock == BlockType.AIR || existingBlock == BlockType.WATER) {

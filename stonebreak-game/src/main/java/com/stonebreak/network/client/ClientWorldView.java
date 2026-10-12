@@ -476,6 +476,14 @@ public final class ClientWorldView {
         }
     }
 
+    /** /cheats intent: ask the server to set the world's cheats flag. */
+    public void sendCheatsSet(boolean enabled) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(new com.stonebreak.network.packet.world.CheatsSetC2S(enabled), false);
+        }
+    }
+
     /** Snow-layer intent for a layer change with no block change (see {@code SnowLayerC2S}). */
     public void sendSnowLayer(int x, int y, int z, int layers) {
         ClientConnection conn = connection;
@@ -629,6 +637,8 @@ public final class ClientWorldView {
                 }
             }
             case TimeSyncS2C ts -> handleTimeSync(ts);
+            case com.stonebreak.network.packet.world.CheatsStateS2C cs ->
+                Game.getInstance().setCheatsEnabled(cs.enabled());
             default -> { /* unexpected clientbound packet — ignore */ }
         }
     }

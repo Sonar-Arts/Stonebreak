@@ -1,8 +1,7 @@
 package com.stonebreak.ui.terrainMapper.renderers;
 
-import com.stonebreak.rendering.UI.masonryUI.MPainter;
-import com.stonebreak.rendering.UI.masonryUI.MStyle;
-import com.stonebreak.rendering.UI.masonryUI.MasonryUI;
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.ui.terrainMapper.TerrainMapperLayout;
 import com.stonebreak.ui.terrainMapper.components.TerrainMapViewport;
 import com.stonebreak.ui.terrainMapper.managers.PreviewSnapshot;
@@ -16,6 +15,8 @@ import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.types.Rect;
+
+import java.util.function.Function;
 
 /**
  * Draws the preview viewport. Nothing here ever blocks on terrain: it asks
@@ -39,11 +40,14 @@ public final class TerrainMapRenderer {
         this.state = state;
     }
 
-    public void render(MasonryUI ui, TerrainMapperLayout layout) {
-        Canvas canvas = ui.canvas();
-        if (canvas == null) return;
-
-        TerrainMapperLayout.Rect mapRect = layout.map();
+    /**
+     * The map in {@code mapRect}: background, the published preview layers (reprojected and clipped),
+     * the status line, spawn waypoint, hover crosshair and frame. Painted by the terrain mapper
+     * document's {@code stonebreak:terrain-map} provider (#301).
+     *
+     * @param fonts a font at an unscaled size (the legacy {@code MFonts.get}); may return null
+     */
+    public void paint(Canvas canvas, TerrainMapperLayout.Rect mapRect, Function<Float, Font> fonts) {
         if (mapRect.width() <= 0 || mapRect.height() <= 0) return;
 
         TerrainPreviewLoader loader = state.getPreviewLoader();
@@ -57,8 +61,11 @@ public final class TerrainMapRenderer {
         state.applyPendingSeed();
         if (state.getSelectedGenerator() == null) {
             // Nothing to preview until a generator is picked — and nothing started for one.
-            MPainter.drawCenteredString(canvas, "Choose a terrain generator", mapRect.centerX(),
-                    mapRect.y() + mapRect.height() / 2f, ui.fonts().get(MStyle.FONT_ITEM), MStyle.TEXT_SECONDARY);
+            Font font = fonts.apply(MStyle.FONT_ITEM);
+            if (font != null) {
+                MPainter.drawCenteredString(canvas, "Choose a terrain generator", mapRect.centerX(),
+                        mapRect.y() + mapRect.height() / 2f, font, MStyle.TEXT_SECONDARY);
+            }
             MPainter.strokeRect(canvas, mapRect.x(), mapRect.y(), mapRect.width(), mapRect.height(),
                     MStyle.PANEL_BORDER, 2f);
             return;
@@ -76,7 +83,7 @@ public final class TerrainMapRenderer {
         if (snapshot != null) {
             drawSnapshot(canvas, mapRect, snapshot);
         }
-        drawStatus(canvas, ui, mapRect, loader, snapshot);
+        drawStatus(canvas, fonts, mapRect, loader, snapshot);
 
         if (state.hasSpawnPoint()) {
             drawSpawnWaypoint(canvas, mapRect);
@@ -141,7 +148,7 @@ public final class TerrainMapRenderer {
      * and tucked into the top-left corner once there are pixels, so a background resample
      * doesn't paint over the terrain the user is reading.
      */
-    private void drawStatus(Canvas canvas, MasonryUI ui, TerrainMapperLayout.Rect mapRect,
+    private void drawStatus(Canvas canvas, Function<Float, Font> fonts, TerrainMapperLayout.Rect mapRect,
                             TerrainPreviewLoader loader, PreviewSnapshot snapshot) {
         String message = loader.statusMessage();
         if (message == null) return;
@@ -150,11 +157,13 @@ public final class TerrainMapRenderer {
                 ? MStyle.TEXT_ERROR
                 : MStyle.TEXT_SECONDARY;
         if (snapshot == null) {
-            Font font = ui.fonts().get(MStyle.FONT_ITEM);
+            Font font = fonts.apply(MStyle.FONT_ITEM);
+            if (font == null) return;
             MPainter.drawCenteredString(canvas, message, mapRect.centerX(),
                     mapRect.y() + mapRect.height() / 2f, font, color);
         } else {
-            Font font = ui.fonts().get(MStyle.FONT_META);
+            Font font = fonts.apply(MStyle.FONT_META);
+            if (font == null) return;
             MPainter.drawStringWithShadow(canvas, message, mapRect.x() + 12f, mapRect.y() + 22f,
                     font, color, MStyle.TEXT_SHADOW);
         }

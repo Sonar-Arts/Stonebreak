@@ -255,6 +255,7 @@ public final class AssetWriteService {
     static boolean mustAsk(WriteTarget target, WriteRequest req, WritePolicy policy) {
         return switch (policy) {
             case ASK_ALWAYS -> true;
+            case NEVER_ASK -> false;
             case ASK_RISKY -> target.exists() || target.insideGame();
             case ASK_NEVER_IN_PROJECT -> {
                 if (target.insideGame()) {

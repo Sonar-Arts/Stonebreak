@@ -41,6 +41,9 @@ public class LayerPanelRenderer {
     // Thumbnail cache with version-based invalidation
     private final LayerThumbnailCache thumbnailCache = new LayerThumbnailCache();
 
+    /** The layer stack the cached thumbnails belong to (they are keyed by index + canvas version). */
+    private LayerManager thumbnailsFor;
+
     /**
      * Create layer panel renderer.
      */
@@ -58,6 +61,11 @@ public class LayerPanelRenderer {
         if (layerManager == null) {
             ImGui.text("No layer manager");
             return;
+        }
+        if (layerManager != thumbnailsFor) {
+            // Another texture (document switch / open): index + version keys would collide.
+            thumbnailCache.invalidateAll();
+            thumbnailsFor = layerManager;
         }
 
         // Cap the content to a compact column so the toolbar, cards and sliders

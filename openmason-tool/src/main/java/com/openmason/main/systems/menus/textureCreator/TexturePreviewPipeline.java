@@ -18,8 +18,14 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This avoids per-pixel GPU calls by coalescing all changes within a frame into
  * a single partial texture upload.
+ *
+ * <p>Only the active document is listened to, and only a face document uploads (to its own
+ * face's material). The pending dirty region always belongs to the document it was collected
+ * on: switching tabs or closing a document flushes that document first, so its pixels never
+ * land in another face's texture. Documents closed because the model changed are dropped
+ * without a flush — their material ids may already name the new model's textures.
  */
-public class TexturePreviewPipeline implements CanvasChangeListener {
+public class TexturePreviewPipeline implements CanvasChangeListener, TextureCreatorController.DocumentListener {
 
     private static final Logger logger = LoggerFactory.getLogger(TexturePreviewPipeline.class);
 
@@ -33,8 +39,9 @@ public class TexturePreviewPipeline implements CanvasChangeListener {
     private int dirtyMaxY;
     private boolean hasDirtyRegion;
 
-    // Currently registered canvas (for re-registration on layer switch)
+    // Currently registered canvas (for re-registration on layer switch) and its document
     private PixelCanvas registeredCanvas;
+    private TextureDocument registeredDocument;
 
     private boolean enabled = true;
 
@@ -49,6 +56,7 @@ public class TexturePreviewPipeline implements CanvasChangeListener {
         this.controller = controller;
         this.modelRenderer = modelRenderer;
         resetDirtyRegion();
+        controller.addDocumentListener(this);
 
         logger.info("TexturePreviewPipeline initialized");
     }
@@ -98,22 +106,31 @@ public class TexturePreviewPipeline implements CanvasChangeListener {
             return;
         }
 
-        // Ensure listener is attached to the correct active layer canvas
+        // Upload what was collected on the registered document, then follow the active one
+        uploadPending();
         ensureListenerRegistration();
+    }
 
+    /** Uploads the pending dirty region from the document it was collected on. */
+    private void uploadPending() {
         if (!hasDirtyRegion) {
+            return;
+        }
+        TextureDocument document = registeredDocument;
+        if (document == null) {
+            resetDirtyRegion();
             return;
         }
 
         // Resolve the target GPU texture ID
-        int targetTextureId = resolveTargetTextureId();
+        int targetTextureId = resolveTargetTextureId(document);
         if (targetTextureId <= 0) {
             resetDirtyRegion();
             return;
         }
 
         // Get the composited canvas (all visible layers merged)
-        PixelCanvas composited = controller.getCompositedCanvas();
+        PixelCanvas composited = document.getLayerManager().compositeLayersToCanvas();
         if (composited == null) {
             resetDirtyRegion();
             return;
@@ -141,6 +158,35 @@ public class TexturePreviewPipeline implements CanvasChangeListener {
     }
 
     // =========================================================================
+    // DOCUMENT EVENTS
+    // =========================================================================
+
+    @Override
+    public void activated(TextureDocument document) {
+        // Finish the previous document's pending edits, then listen to the new one at once so a
+        // full-canvas notification right after opening a face is not missed.
+        if (enabled && modelRenderer != null) {
+            uploadPending();
+        } else {
+            resetDirtyRegion();
+        }
+        ensureListenerRegistration();
+    }
+
+    @Override
+    public void closing(TextureDocument document, TextureCreatorController.CloseReason reason) {
+        if (document != registeredDocument) {
+            return;
+        }
+        if (reason == TextureCreatorController.CloseReason.MODEL_CHANGED || !enabled || modelRenderer == null) {
+            resetDirtyRegion();
+        } else {
+            uploadPending();
+        }
+        unregisterFromCurrentCanvas();
+    }
+
+    // =========================================================================
     // LISTENER REGISTRATION
     // =========================================================================
 
@@ -149,16 +195,21 @@ public class TexturePreviewPipeline implements CanvasChangeListener {
      * Re-registers if the active layer has changed.
      */
     private void ensureListenerRegistration() {
-        PixelCanvas activeCanvas = getActiveLayerCanvas();
+        TextureDocument document = controller.hasOpenDocument() ? controller.getActiveDocument() : null;
+        PixelCanvas activeCanvas = document != null ? getActiveLayerCanvas() : null;
         if (activeCanvas == null) {
             unregisterFromCurrentCanvas();
             return;
         }
 
-        if (activeCanvas != registeredCanvas) {
+        if (activeCanvas != registeredCanvas || document != registeredDocument) {
+            if (document != registeredDocument) {
+                resetDirtyRegion(); // anything left belongs to the old document and was flushed or dropped
+            }
             unregisterFromCurrentCanvas();
             activeCanvas.addChangeListener(this);
             registeredCanvas = activeCanvas;
+            registeredDocument = document;
         }
     }
 
@@ -170,6 +221,7 @@ public class TexturePreviewPipeline implements CanvasChangeListener {
             registeredCanvas.removeChangeListener(this);
             registeredCanvas = null;
         }
+        registeredDocument = null;
     }
 
     /**
@@ -197,13 +249,13 @@ public class TexturePreviewPipeline implements CanvasChangeListener {
      *
      * @return the target GPU texture ID, or -1 if no upload should occur
      */
-    private int resolveTargetTextureId() {
-        if (!controller.isFaceRegionActive()) {
+    private int resolveTargetTextureId(TextureDocument document) {
+        if (!document.isFace()) {
             // Standalone editing — do not push to the 3D model
             return -1;
         }
 
-        int materialId = controller.getFaceRegionMaterialId();
+        int materialId = document.face().materialId();
         if (materialId >= 0) {
             FaceTextureManager ftm = modelRenderer.getFaceTextureManager();
             MaterialDefinition material = ftm.getMaterial(materialId);
@@ -244,6 +296,7 @@ public class TexturePreviewPipeline implements CanvasChangeListener {
      * Dispose of the pipeline, unregistering all listeners.
      */
     public void dispose() {
+        controller.removeDocumentListener(this);
         unregisterFromCurrentCanvas();
         resetDirtyRegion();
         logger.info("TexturePreviewPipeline disposed");

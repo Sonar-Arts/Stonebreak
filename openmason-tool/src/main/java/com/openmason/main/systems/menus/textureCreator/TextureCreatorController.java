@@ -17,155 +17,330 @@ import com.openmason.main.systems.menus.textureCreator.selection.SelectionRegion
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Texture creator controller - coordinates all texture creator operations.
+ *
+ * <p>The editor holds any number of open {@link TextureDocument}s (one per document tab) and
+ * works on the <em>active</em> one: every accessor below ({@link #getLayerManager()},
+ * {@link #getCommandHistory()}, {@link #getCanvasState()}, the face-region queries, undo/redo...)
+ * answers for it, and {@link TextureCreatorState} is re-bound to it on every switch. With no
+ * document open an unlisted placeholder stands in, so readers never see null; the panels show
+ * an empty state instead of its canvas ({@link #hasOpenDocument()}).
+ *
+ * <p>Opening a texture never replaces another one: {@link #newTexture}, {@link #loadProject},
+ * {@link #importTexture} and {@link #openFaceRegion} add a document (or focus the one already
+ * showing that file / face). Only {@link #closeDocuments} removes documents; saving or
+ * discarding unsaved work first is the caller's job.
  */
 public class TextureCreatorController {
 
     private static final Logger logger = LoggerFactory.getLogger(TextureCreatorController.class);
 
+    /** Why documents are closing; listeners decide on flushes and saves from it. */
+    public enum CloseReason {
+        /** The user closed tabs (or an agent closed a document). */
+        USER,
+        /** The Texture workspace tab was closed. */
+        WORKSPACE_CLOSED,
+        /** A different model was loaded: face documents point at textures that are gone. */
+        MODEL_CHANGED
+    }
+
+    /** Document lifecycle events, all on the main thread. */
+    public interface DocumentListener {
+        /** {@code document} became the active one (the placeholder when the last one closed). */
+        default void activated(TextureDocument document) {
+        }
+
+        /** {@code document} is about to close (still listed, still holding its pixels). */
+        default void closing(TextureDocument document, CloseReason reason) {
+        }
+
+        /** One {@link #closeDocuments} call finished; {@code documents} are gone. */
+        default void closed(List<TextureDocument> documents, CloseReason reason) {
+        }
+    }
+
     private final TextureCreatorState state;
-    private final CanvasState canvasState;
-    private LayerManager layerManager; // Not final - can be replaced when creating new texture
-    private final CommandHistory commandHistory;
+    private final List<TextureDocument> documents = new ArrayList<>();
+    private final TextureDocument placeholder;
+    private TextureDocument active;
     private final TextureExporter exporter;
     private final TextureImporter importer;
     private final ClipboardManager clipboard;
+    private final List<java.util.function.Consumer<java.nio.file.Path>> saveListeners =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final List<DocumentListener> documentListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
 
-    // Face-region editing state
-    private boolean faceRegionActive = false;
-    private int faceRegionMaterialId = -1;
-    private UVRegion faceRegionUV;
-    private CanvasShapeMask faceRegionMask;
-    private CanvasShapeMask canvasBaseMask; // Base mask before face-region editing (restored on close)
+    /** Runs before the active document changes (the UI settles a pending move/paste into it). */
+    private Runnable beforeSwitch = () -> { };
+
+    /** Pixels staged by prepareBlankCanvas / prepareCanvasFromPixels for the next face opened. */
+    private LayerManager stagedFaceLayers;
+
+    private int nextDocumentNumber = 1;
+    private int nextUntitledNumber = 1;
 
     /**
-     * Create texture creator controller.
+     * Create texture creator controller (no documents open).
      *
      * @param state texture creator state
      */
     public TextureCreatorController(TextureCreatorState state) {
         this.state = state;
-        this.canvasState = new CanvasState();
-
-        // Initialize canvas size
         TextureCreatorState.CanvasSize size = state.getCurrentCanvasSize();
-        this.layerManager = new LayerManager(size.getWidth(), size.getHeight());
+        this.placeholder = new TextureDocument("none", "No Texture",
+                new LayerManager(size.getWidth(), size.getHeight()));
+        this.active = placeholder;
+        state.bindDocument(placeholder);
 
-        this.commandHistory = new CommandHistory();
         this.exporter = new TextureExporter();
         this.importer = new TextureImporter();
         this.clipboard = new ClipboardManager();
 
-        logger.info("Texture creator controller initialized: {}", size.getDisplayName());
+        logger.info("Texture creator controller initialized");
+    }
+
+    // ── Documents ────────────────────────────────────────────────────────
+
+    /** The open documents in tab order (a copy). */
+    public List<TextureDocument> getDocuments() {
+        return List.copyOf(documents);
+    }
+
+    /** True when at least one document is open (otherwise the placeholder is active). */
+    public boolean hasOpenDocument() {
+        return !documents.isEmpty();
+    }
+
+    /** The document on screen: the active open one, or the placeholder when none is open. */
+    public TextureDocument getActiveDocument() {
+        return active;
+    }
+
+    /** The open document with this id, or null. */
+    public TextureDocument findDocument(String id) {
+        if (id == null) {
+            return null;
+        }
+        for (TextureDocument d : documents) {
+            if (d.id().equals(id)) {
+                return d;
+            }
+        }
+        return null;
+    }
+
+    /** The open face document painting {@code faceId} (or {@code materialId} when no face id is known). */
+    public TextureDocument findFaceDocument(int faceId, int materialId) {
+        for (TextureDocument d : documents) {
+            if (d.isBoundTo(faceId, materialId)) {
+                return d;
+            }
+        }
+        return null;
+    }
+
+    /** The open document showing {@code filePath}, or null. */
+    public TextureDocument findDocumentByPath(String filePath) {
+        if (filePath == null || filePath.isBlank()) {
+            return null;
+        }
+        java.nio.file.Path wanted = normalize(filePath);
+        for (TextureDocument d : documents) {
+            if (d.getFilePath() != null && normalize(d.getFilePath()).equals(wanted)) {
+                return d;
+            }
+        }
+        return null;
+    }
+
+    /** Make {@code document} (an open one) the active document. */
+    public void activate(TextureDocument document) {
+        if (document == null || document == active) {
+            return;
+        }
+        if (!documents.contains(document)) {
+            throw new IllegalArgumentException("Not an open texture document: " + document);
+        }
+        switchTo(document);
     }
 
     /**
-     * Create a new texture with specified dimensions.
+     * The active document, opening a fresh untitled 16x16 one first when none is open (Tools →
+     * Texture Editor, an agent opening the editor without naming a texture).
+     */
+    public TextureDocument ensureDocument() {
+        if (documents.isEmpty()) {
+            newTexture(new TextureCreatorState.CanvasSize(16, 16));
+        }
+        return active;
+    }
+
+    /**
+     * Closes documents as they are — unsaved work is lost, so prompting is the caller's job.
+     * Listeners hear {@code closing} for each and one {@code closed} for the batch; when the
+     * active document closes, its right-hand neighbour (else the left one, else the placeholder)
+     * becomes active.
+     */
+    public void closeDocuments(java.util.Collection<TextureDocument> toClose, CloseReason reason) {
+        List<TextureDocument> closing = new ArrayList<>();
+        for (TextureDocument d : toClose) {
+            if (documents.contains(d) && !closing.contains(d)) {
+                closing.add(d);
+            }
+        }
+        if (closing.isEmpty()) {
+            return;
+        }
+        if (closing.contains(active)) {
+            beforeSwitch.run(); // settle a pending move/paste while its document still exists
+        }
+        for (TextureDocument d : closing) {
+            for (DocumentListener l : documentListeners) {
+                l.closing(d, reason);
+            }
+        }
+        TextureDocument next = active;
+        if (closing.contains(active)) {
+            int index = documents.indexOf(active);
+            next = null;
+            for (int i = index + 1; i < documents.size() && next == null; i++) {
+                if (!closing.contains(documents.get(i))) {
+                    next = documents.get(i);
+                }
+            }
+            for (int i = index - 1; i >= 0 && next == null; i--) {
+                if (!closing.contains(documents.get(i))) {
+                    next = documents.get(i);
+                }
+            }
+        }
+        for (TextureDocument d : closing) {
+            unbindFace(d);
+            documents.remove(d);
+        }
+        if (next != active) {
+            setActive(next != null ? next : placeholder);
+        }
+        logger.info("Closed {} texture document(s) ({})", closing.size(), reason);
+        for (DocumentListener l : documentListeners) {
+            l.closed(List.copyOf(closing), reason);
+        }
+    }
+
+    /** Closes every open document (see {@link #closeDocuments}). */
+    public void closeAll(CloseReason reason) {
+        closeDocuments(getDocuments(), reason);
+    }
+
+    /** Closes every face document (see {@link #closeDocuments}). */
+    public void closeFaceDocuments(CloseReason reason) {
+        closeDocuments(documents.stream().filter(TextureDocument::isFace).toList(), reason);
+    }
+
+    public void addDocumentListener(DocumentListener listener) {
+        documentListeners.add(java.util.Objects.requireNonNull(listener, "listener"));
+    }
+
+    public void removeDocumentListener(DocumentListener listener) {
+        documentListeners.remove(listener);
+    }
+
+    /**
+     * Runs before the active document changes or closes, while it is still active: the UI
+     * commits a floating move/paste into the document it belongs to.
+     */
+    public void setBeforeDocumentSwitch(Runnable hook) {
+        this.beforeSwitch = hook != null ? hook : () -> { };
+    }
+
+    private void switchTo(TextureDocument document) {
+        beforeSwitch.run();
+        setActive(document);
+    }
+
+    private void setActive(TextureDocument document) {
+        this.active = document;
+        state.bindDocument(document);
+        for (DocumentListener l : documentListeners) {
+            l.activated(document);
+        }
+    }
+
+    /**
+     * Lists and activates a new document; {@code untitled} ones take the next "Untitled-N" name
+     * (documents that get a file or a face binding at once do not use up a number).
+     */
+    private TextureDocument addDocument(LayerManager layers, boolean untitled) {
+        String name = untitled ? "Untitled-" + nextUntitledNumber++ : "Untitled";
+        TextureDocument doc = new TextureDocument("t" + nextDocumentNumber++, name, layers);
+        documents.add(doc);
+        switchTo(doc);
+        return doc;
+    }
+
+    private static java.nio.file.Path normalize(String path) {
+        try {
+            return java.nio.file.Path.of(path).toAbsolutePath().normalize();
+        } catch (RuntimeException e) {
+            return java.nio.file.Path.of(path);
+        }
+    }
+
+    // ── Opening textures ─────────────────────────────────────────────────
+
+    /**
+     * Open a new blank texture with the given dimensions as its own document.
      *
      * @param canvasSize canvas size
+     * @return the new (active) document
      */
-    public void newTexture(TextureCreatorState.CanvasSize canvasSize) {
-        // TODO: Warn if unsaved changes
-
-        // Update state
-        state.setCurrentCanvasSize(canvasSize);
-        state.setCurrentFilePath(null);
-        state.setUnsavedChanges(false);
-
-        // Create new layer manager with correct canvas size
-        // This automatically creates a default "Background" layer
-        this.layerManager = new LayerManager(canvasSize.getWidth(), canvasSize.getHeight());
-
-        // Clear command history
-        commandHistory.clear();
-
-        // Reset canvas view
-        canvasState.resetView();
-
-        logger.info("Created new texture: {}", canvasSize.getDisplayName());
+    public TextureDocument newTexture(TextureCreatorState.CanvasSize canvasSize) {
+        // A new layer manager creates its default "Background" layer
+        TextureDocument doc = addDocument(new LayerManager(canvasSize.getWidth(), canvasSize.getHeight()), true);
+        logger.info("Created new texture {}: {}", doc.id(), canvasSize.getDisplayName());
+        return doc;
     }
 
     /**
-     * Fully reset all editor state. Called when opening a new or different project
-     * so that stale canvas, layers, history, clipboard, and face-region state from
-     * the previous session do not carry over.
-     */
-    public void resetAll() {
-        // Close face-region editing if active
-        if (faceRegionActive) {
-            closeFaceRegion();
-        }
-
-        // Reset to default canvas
-        TextureCreatorState.CanvasSize size = new TextureCreatorState.CanvasSize(16, 16);
-        state.setCurrentCanvasSize(size);
-        state.setCurrentFilePath(null);
-        state.setUnsavedChanges(false);
-        state.setIsProjectFile(false);
-        state.getSelectionManager().clearSelection();
-
-        this.layerManager = new LayerManager(size.getWidth(), size.getHeight());
-        commandHistory.clear();
-        clipboard.clear();
-        canvasState.resetView();
-
-        logger.info("Texture editor state fully reset");
-    }
-
-    /**
-     * Create a new blank canvas with arbitrary dimensions and an opaque fill color.
-     * Used when opening a face for editing that has no existing texture —
-     * the canvas must match the GPU texture so the preview pipeline uploads correct data.
+     * Stage a blank canvas with an opaque fill colour for the next face opened
+     * ({@link #openFaceRegion}): used when the face has no texture yet, so the canvas must match
+     * the GPU texture the preview pipeline uploads into.
      *
      * @param width     canvas width in pixels
      * @param height    canvas height in pixels
      * @param fillColor RGBA fill color (use {@link PixelCanvas#packRGBA})
      */
     public void prepareBlankCanvas(int width, int height, int fillColor) {
-        state.setCurrentCanvasSize(new TextureCreatorState.CanvasSize(width, height));
-        state.setCurrentFilePath(null);
-        state.setUnsavedChanges(false);
-
-        this.layerManager = new LayerManager(width, height);
-        commandHistory.clear();
-
-        // Auto-assign shape mask for known layouts
-        applyAutoShapeMask(width, height);
-
-        // Fill the background layer to match the blank GPU texture
-        PixelCanvas canvas = getActiveLayerCanvas();
-        if (canvas != null) {
-            canvas.fill(fillColor);
+        LayerManager layers = new LayerManager(width, height);
+        applyAutoShapeMask(layers);
+        Layer background = layers.getActiveLayer();
+        if (background != null) {
+            background.getCanvas().fill(fillColor);
         }
-
-        canvasState.resetView();
-        logger.info("Prepared blank canvas: {}x{}", width, height);
+        stagedFaceLayers = layers;
+        logger.info("Prepared blank face canvas: {}x{}", width, height);
     }
 
     /**
-     * Prepare the canvas with existing pixel data read back from a GPU texture.
-     * Used when opening a face whose material already has texture data (e.g. loaded from .OMO)
-     * so the texture editor shows the current pixels instead of a blank canvas.
+     * Stage existing pixel data read back from a GPU texture for the next face opened
+     * ({@link #openFaceRegion}), so the editor shows the face's current pixels. Opening a face
+     * whose document is already open replaces that document's pixels (the resize dialog).
      *
      * @param width      texture width in pixels
      * @param height     texture height in pixels
      * @param rgbaPixels RGBA byte array (4 bytes per pixel, row-major)
      */
     public void prepareCanvasFromPixels(int width, int height, byte[] rgbaPixels) {
-        state.setCurrentCanvasSize(new TextureCreatorState.CanvasSize(width, height));
-        state.setCurrentFilePath(null);
-        state.setUnsavedChanges(false);
-
-        this.layerManager = new LayerManager(width, height);
-        commandHistory.clear();
-
-        // Auto-assign shape mask for known layouts
-        applyAutoShapeMask(width, height);
-
-        PixelCanvas canvas = getActiveLayerCanvas();
-        if (canvas != null && rgbaPixels != null) {
-            int[] pixels = canvas.getPixels();
+        LayerManager layers = new LayerManager(width, height);
+        applyAutoShapeMask(layers);
+        Layer background = layers.getActiveLayer();
+        if (background != null && rgbaPixels != null) {
+            int[] pixels = background.getCanvas().getPixels();
             int pixelCount = Math.min(pixels.length, rgbaPixels.length / 4);
             for (int i = 0; i < pixelCount; i++) {
                 int offset = i * 4;
@@ -176,93 +351,152 @@ public class TextureCreatorController {
                 pixels[i] = PixelCanvas.packRGBA(r, g, b, a);
             }
         }
-
-        canvasState.resetView();
-        logger.info("Prepared canvas from existing texture: {}x{}", width, height);
+        stagedFaceLayers = layers;
+        logger.info("Prepared face canvas from existing texture: {}x{}", width, height);
     }
 
     /**
-     * Save project to .OMT file (preserves all layers and project state).
+     * The canvas size {@link #openFaceRegion} will give this face's document: the staged canvas,
+     * else the face's open document, else 16x16. Face masks are built against it.
+     */
+    public int[] faceCanvasSize(int faceId, int materialId) {
+        if (stagedFaceLayers != null) {
+            return new int[]{stagedFaceLayers.getCanvasWidth(), stagedFaceLayers.getCanvasHeight()};
+        }
+        TextureDocument open = findFaceDocument(faceId, materialId);
+        if (open != null) {
+            return new int[]{open.getLayerManager().getCanvasWidth(), open.getLayerManager().getCanvasHeight()};
+        }
+        return new int[]{16, 16};
+    }
+
+    /** Drops a staged face canvas (the face it was prepared for could not be opened). */
+    public void discardPreparedCanvas() {
+        stagedFaceLayers = null;
+    }
+
+    /**
+     * Save the active document to a .OMT file (preserves all layers and project state).
      *
      * @param filePath output file path
      * @return true if save succeeded
      */
     public boolean saveProject(String filePath) {
-        boolean success = exporter.exportToOMT(layerManager, filePath);
+        return saveDocument(active, filePath);
+    }
+
+    /**
+     * Save {@code document} to a .OMT file. The document then belongs to that file and is clean.
+     *
+     * @return true if save succeeded
+     */
+    public boolean saveDocument(TextureDocument document, String filePath) {
+        boolean success = exporter.exportToOMT(document.getLayerManager(), filePath);
 
         if (success) {
-            state.setCurrentFilePath(filePath);
-            state.setIsProjectFile(true);
-            state.markAsSaved();
-            logger.info("Saved project to: {}", filePath);
+            if (!document.isFace()) {
+                // A face document stays bound to its face; the .omt is a copy.
+                document.setFilePath(filePath);
+                document.setProjectFile(true);
+            }
+            document.setUnsavedChanges(false);
+            logger.info("Saved texture {} to: {}", document.id(), filePath);
+            for (java.util.function.Consumer<java.nio.file.Path> l : saveListeners) {
+                try {
+                    l.accept(java.nio.file.Path.of(filePath));
+                } catch (RuntimeException e) {
+                    logger.warn("Texture save listener failed: {}", e.getMessage());
+                }
+            }
         }
 
         return success;
     }
 
     /**
-     * Load project from .OMT file (restores all layers and project state).
-     *
-     * @param filePath input file path
-     * @return true if load succeeded
+     * Called with the file after every successful .OMT save, whichever path saved it (menu,
+     * shortcut, MCP). The UI editor refreshes the documents that use the texture (#294).
      */
-    public boolean loadProject(String filePath) {
-        LayerManager loadedManager = importer.importFromOMT(filePath);
-
-        if (loadedManager == null) {
-            logger.error("Failed to load project from: {}", filePath);
-            return false;
-        }
-
-        // Replace the entire layer manager with the loaded one
-        this.layerManager = loadedManager;
-
-        // Update state
-        state.setCurrentCanvasSize(new TextureCreatorState.CanvasSize(
-                loadedManager.getCanvasWidth(), loadedManager.getCanvasHeight()));
-        state.setCurrentFilePath(filePath);
-        state.setIsProjectFile(true);
-        state.markAsSaved();
-
-        // Clear command history since we're loading a new project
-        commandHistory.clear();
-
-        logger.info("Loaded project from: {} with {} layers", filePath, loadedManager.getLayerCount());
-        return true;
+    public void addSaveListener(java.util.function.Consumer<java.nio.file.Path> listener) {
+        saveListeners.add(java.util.Objects.requireNonNull(listener, "listener"));
     }
 
     /**
-     * Export texture to PNG file (flattens all visible layers).
+     * Open a .OMT project as a document tab, or focus the tab already showing that file (its
+     * edits, saved or not, are kept — the file is not re-read).
+     *
+     * @param filePath input file path
+     * @return true if the project is now the active document
+     */
+    public boolean loadProject(String filePath) {
+        return openProject(filePath) != null;
+    }
+
+    /**
+     * {@link #loadProject} returning the document.
+     *
+     * @return the active document showing the file, or null when it could not be read
+     */
+    public TextureDocument openProject(String filePath) {
+        TextureDocument existing = findDocumentByPath(filePath);
+        if (existing != null && existing.isProjectFile()) {
+            activate(existing);
+            return existing;
+        }
+
+        LayerManager loadedManager = importer.importFromOMT(filePath);
+        if (loadedManager == null) {
+            logger.error("Failed to load project from: {}", filePath);
+            return null;
+        }
+
+        TextureDocument doc = addDocument(loadedManager, false);
+        doc.setFilePath(filePath);
+        doc.setProjectFile(true);
+        doc.setUnsavedChanges(false);
+
+        logger.info("Loaded project {} from: {} with {} layers", doc.id(), filePath, loadedManager.getLayerCount());
+        return doc;
+    }
+
+    /**
+     * {@code document}'s file is gone (deleted from the project browser): it keeps its pixels
+     * but no longer has a file, so the next Save asks where, and it is flagged unsaved.
+     */
+    public void detachFromFile(TextureDocument document) {
+        document.setFilePath(null);
+        document.setProjectFile(false);
+        document.setUnsavedChanges(true);
+    }
+
+    /**
+     * Export the active document to a PNG file (flattens all visible layers).
      *
      * @param filePath output file path
      * @return true if export succeeded
      */
     public boolean exportTexture(String filePath) {
-        // Composite all layers
-        PixelCanvas composite = layerManager.compositeLayersToCanvas();
+        return exportDocument(active, filePath);
+    }
 
-        // Export to PNG
+    /** Export {@code document}'s visible layers as a PNG; the document's file and dirty state are untouched. */
+    public boolean exportDocument(TextureDocument document, String filePath) {
+        PixelCanvas composite = document.getLayerManager().compositeLayersToCanvas();
         boolean success = exporter.exportToPNG(composite, filePath);
-
         if (success) {
-            // Note: We DON'T update currentFilePath or mark as saved for exports
-            // Exports are separate from the project file
-            logger.info("Exported texture to: {}", filePath);
+            logger.info("Exported texture {} to: {}", document.id(), filePath);
         }
-
         return success;
     }
 
     /**
-     * Import texture from PNG file with specified target canvas size.
-     * Creates a new canvas (replaces current) with the target size.
+     * Import a PNG as a new document of the given canvas size (the image is resized to it).
      *
      * @param filePath input file path
-     * @param targetSize target canvas size (16x16 or 64x48)
+     * @param targetSize target canvas size
      * @return true if import succeeded
      */
     public boolean importTexture(String filePath, TextureCreatorState.CanvasSize targetSize) {
-        // Import and resize to target canvas size
         PixelCanvas imported = importer.importFromPNGResized(filePath, targetSize.getWidth(), targetSize.getHeight());
 
         if (imported == null) {
@@ -270,41 +504,28 @@ public class TextureCreatorController {
             return false;
         }
 
-        // Update state with new canvas size
-        state.setCurrentCanvasSize(targetSize);
-        state.setCurrentFilePath(filePath);
-        state.setIsProjectFile(false); // PNG import is not a project file
-        state.markAsModified();
+        LayerManager layers = new LayerManager(targetSize.getWidth(), targetSize.getHeight());
+        applyAutoShapeMask(layers);
+        layers.renameLayer(0, "Imported");
+        layers.getLayer(0).getCanvas().copyFrom(imported);
 
-        // Create new layer manager with target canvas size
-        // This replaces the entire canvas (similar to newTexture)
-        this.layerManager = new LayerManager(targetSize.getWidth(), targetSize.getHeight());
+        TextureDocument doc = addDocument(layers, false);
+        doc.setFilePath(filePath);
+        doc.setProjectFile(false); // PNG import is not a project file
+        doc.setUnsavedChanges(true);
 
-        // Auto-assign shape mask for known layouts
-        applyAutoShapeMask(targetSize.getWidth(), targetSize.getHeight());
-
-        // Replace the default "Background" layer with imported content
-        layerManager.renameLayer(0, "Imported");
-        Layer backgroundLayer = layerManager.getLayer(0);
-        backgroundLayer.getCanvas().copyFrom(imported);
-
-        // Clear command history
-        commandHistory.clear();
-
-        // Reset canvas view
-        canvasState.resetView();
-
-        logger.info("Imported texture from: {} to {} canvas", filePath, targetSize.getDisplayName());
+        logger.info("Imported texture {} from: {} to {} canvas", doc.id(), filePath, targetSize.getDisplayName());
         return true;
     }
+
+    // ── Active document ──────────────────────────────────────────────────
 
     /**
      * Undo last operation.
      */
     public void undo() {
-        if (commandHistory.undo()) {
-            layerManager.markCompositeDirty();
-            state.markAsModified();
+        if (active.getCommandHistory().undo()) {
+            notifyModified(active);
             logger.debug("Undo performed");
         }
     }
@@ -313,35 +534,25 @@ public class TextureCreatorController {
      * Redo last undone operation.
      */
     public void redo() {
-        if (commandHistory.redo()) {
-            layerManager.markCompositeDirty();
-            state.markAsModified();
+        if (active.getCommandHistory().redo()) {
+            notifyModified(active);
             logger.debug("Redo performed");
         }
     }
 
-    /**
-     * Get the canvas state.
-     * @return canvas state
-     */
+    /** The active document's view (zoom/pan). */
     public CanvasState getCanvasState() {
-        return canvasState;
+        return active.getCanvasState();
     }
 
-    /**
-     * Get the layer manager.
-     * @return layer manager
-     */
+    /** The active document's layers. */
     public LayerManager getLayerManager() {
-        return layerManager;
+        return active.getLayerManager();
     }
 
-    /**
-     * Get the command history.
-     * @return command history
-     */
+    /** The active document's undo history. */
     public CommandHistory getCommandHistory() {
-        return commandHistory;
+        return active.getCommandHistory();
     }
 
     /**
@@ -365,7 +576,7 @@ public class TextureCreatorController {
      * @return composited canvas
      */
     public PixelCanvas getCompositedCanvas() {
-        return layerManager.compositeLayersToCanvas();
+        return active.getLayerManager().compositeLayersToCanvas();
     }
 
     /**
@@ -373,7 +584,7 @@ public class TextureCreatorController {
      * @return active layer canvas, or null if no active layer
      */
     public PixelCanvas getActiveLayerCanvas() {
-        Layer activeLayer = layerManager.getActiveLayer();
+        Layer activeLayer = active.getLayerManager().getActiveLayer();
         return activeLayer != null ? activeLayer.getCanvas() : null;
     }
 
@@ -383,11 +594,12 @@ public class TextureCreatorController {
      * @return background canvas (all layers except active), or null if no active layer
      */
     public PixelCanvas getBackgroundCanvas() {
-        Layer activeLayer = layerManager.getActiveLayer();
+        LayerManager layers = active.getLayerManager();
+        Layer activeLayer = layers.getActiveLayer();
         if (activeLayer == null) {
             return null;
         }
-        return layerManager.compositeLayersExcluding(activeLayer);
+        return layers.compositeLayersExcluding(activeLayer);
     }
 
     /**
@@ -395,12 +607,17 @@ public class TextureCreatorController {
      * This marks the composite cache as dirty so it will be regenerated.
      */
     public void notifyLayerModified() {
-        layerManager.markCompositeDirty();
-        state.markAsModified();
+        notifyModified(active);
+    }
+
+    /** {@link #notifyLayerModified()} for any document (agents may edit one that is not on screen). */
+    public void notifyModified(TextureDocument document) {
+        document.getLayerManager().markCompositeDirty();
+        document.setUnsavedChanges(true);
     }
 
     /**
-     * Get the clipboard manager.
+     * Get the clipboard manager (shared by every document).
      * @return clipboard manager
      */
     public ClipboardManager getClipboard() {
@@ -418,7 +635,7 @@ public class TextureCreatorController {
             return;
         }
 
-        Layer activeLayer = layerManager.getActiveLayer();
+        Layer activeLayer = active.getLayerManager().getActiveLayer();
         if (activeLayer == null) {
             logger.warn("No active layer to copy from");
             return;
@@ -439,7 +656,7 @@ public class TextureCreatorController {
             return;
         }
 
-        Layer activeLayer = layerManager.getActiveLayer();
+        Layer activeLayer = active.getLayerManager().getActiveLayer();
         if (activeLayer == null) {
             logger.warn("No active layer to cut from");
             return;
@@ -455,7 +672,7 @@ public class TextureCreatorController {
 
         // Execute command if changes were made
         if (cutCommand.hasChanges()) {
-            commandHistory.executeCommand(cutCommand);
+            active.getCommandHistory().executeCommand(cutCommand);
             notifyLayerModified();
         }
     }
@@ -480,7 +697,7 @@ public class TextureCreatorController {
             return;
         }
 
-        Layer activeLayer = layerManager.getActiveLayer();
+        Layer activeLayer = active.getLayerManager().getActiveLayer();
         if (activeLayer == null) {
             logger.warn("No active layer to delete selection from");
             return;
@@ -511,7 +728,7 @@ public class TextureCreatorController {
 
         // Only execute if pixels were changed
         if (deleteCommand.hasChanges()) {
-            commandHistory.executeCommand(deleteCommand);
+            active.getCommandHistory().executeCommand(deleteCommand);
             notifyLayerModified();
             logger.info("Deleted {} pixels from selection", pixelsDeleted);
         } else {
@@ -521,45 +738,71 @@ public class TextureCreatorController {
 
     // ── Face-region editing ──────────────────────────────────────────────
 
+    /** {@link #openFaceRegion(int, int, UVRegion, CanvasShapeMask, float, float)} without a face id. */
+    public TextureDocument openFaceRegion(int materialId, UVRegion uvRegion, CanvasShapeMask mask,
+                                          float viewportWidth, float viewportHeight) {
+        return openFaceRegion(-1, materialId, uvRegion, mask, viewportWidth, viewportHeight);
+    }
+
     /**
-     * Open the texture editor focused on a specific face's UV region.
+     * Open a model face as a face document focused on its UV region, or focus the face's document
+     * when it is already open.
      *
-     * <p>Sets up face-region editing mode: applies the shape mask to the
-     * active layer's canvas (composing with any existing base mask),
-     * frames the view on the UV region, and records the material context
-     * for real-time preview integration.
+     * <p>The document's pixels come from the canvas staged by {@link #prepareBlankCanvas} /
+     * {@link #prepareCanvasFromPixels} (replacing an already-open face document's pixels and
+     * history — the resize dialog), else the open document keeps its own, else a blank 16x16.
+     * The face mask is composed onto the active layer's mask, pixels outside it are cleared, the
+     * view frames the UV region and the face's material receives the document's real-time preview.
      *
+     * @param faceId         model face, or -1 when unknown (the material then identifies the face)
      * @param materialId     material ID the face belongs to
      * @param uvRegion       the face's UV region within the material texture
      * @param mask           shape mask defining the paintable area (nullable for full-rect faces)
      * @param viewportWidth  available viewport width in screen pixels
      * @param viewportHeight available viewport height in screen pixels
+     * @return the face's (now active) document
      */
-    public void openFaceRegion(int materialId, UVRegion uvRegion, CanvasShapeMask mask,
-                                float viewportWidth, float viewportHeight) {
-        this.faceRegionActive = true;
-        this.faceRegionMaterialId = materialId;
-        this.faceRegionUV = uvRegion;
-        this.faceRegionMask = mask;
+    public TextureDocument openFaceRegion(int faceId, int materialId, UVRegion uvRegion, CanvasShapeMask mask,
+                                          float viewportWidth, float viewportHeight) {
+        LayerManager staged = stagedFaceLayers;
+        stagedFaceLayers = null;
 
-        // Apply the face mask to the active layer canvas, composing with
-        // any existing base mask (e.g., cube net mask)
-        PixelCanvas activeCanvas = getActiveLayerCanvas();
-        if (activeCanvas != null) {
-            this.canvasBaseMask = activeCanvas.getShapeMask();
-
-            if (canvasBaseMask != null && mask != null) {
-                activeCanvas.setShapeMask(new CompositeShapeMask(canvasBaseMask, mask));
-            } else {
-                activeCanvas.setShapeMask(mask != null ? mask : canvasBaseMask);
+        TextureDocument doc = findFaceDocument(faceId, materialId);
+        if (doc == null) {
+            if (staged == null) {
+                logger.warn("Face {} opened without a prepared canvas; starting from a blank 16x16", faceId);
+                staged = new LayerManager(16, 16);
+                applyAutoShapeMask(staged);
+            }
+            doc = addDocument(staged, false);
+        } else {
+            activate(doc);
+            unbindFace(doc);
+            if (staged != null) {
+                doc.setLayerManager(staged);
+                doc.getCommandHistory().clear();
+                doc.getSelectionManager().clearSelection();
             }
         }
+        doc.setUnsavedChanges(false);
+
+        // Compose the face mask onto the active layer's own mask (e.g. a cube net mask)
+        PixelCanvas activeCanvas = getActiveLayerCanvas();
+        CanvasShapeMask baseMask = null;
+        if (activeCanvas != null) {
+            baseMask = activeCanvas.getShapeMask();
+            if (baseMask != null && mask != null) {
+                activeCanvas.setShapeMask(new CompositeShapeMask(baseMask, mask));
+            } else {
+                activeCanvas.setShapeMask(mask != null ? mask : baseMask);
+            }
+        }
+        doc.setFace(new TextureDocument.FaceBinding(faceId, materialId, uvRegion, mask, baseMask));
 
         // Frame the view on the face's UV region
-        int canvasWidth = layerManager.getCanvasWidth();
-        int canvasHeight = layerManager.getCanvasHeight();
-        canvasState.frameTo(uvRegion.u0(), uvRegion.v0(), uvRegion.u1(), uvRegion.v1(),
-                            canvasWidth, canvasHeight, viewportWidth, viewportHeight);
+        LayerManager layers = doc.getLayerManager();
+        doc.getCanvasState().frameTo(uvRegion.u0(), uvRegion.v0(), uvRegion.u1(), uvRegion.v1(),
+                layers.getCanvasWidth(), layers.getCanvasHeight(), viewportWidth, viewportHeight);
 
         // Clear non-editable pixels to transparent so the base texture
         // doesn't bleed into non-paintable areas on the canvas
@@ -577,66 +820,66 @@ public class TextureCreatorController {
                     }
                 }
             }
-        }
-
-        // Force a full GPU upload so the preview pipeline pushes the canvas
-        // contents to the new target texture on the next flush
-        if (activeCanvas != null) {
+            // Force a full GPU upload so the preview pipeline pushes the canvas
+            // contents to the face's texture on the next flush
             activeCanvas.notifyFullCanvasDirty();
         }
+        layers.markCompositeDirty();
 
-        logger.info("Opened face region: materialId={}, uv=({},{})→({},{}), mask={}",
-            materialId, uvRegion.u0(), uvRegion.v0(), uvRegion.u1(), uvRegion.v1(),
+        logger.info("Opened face region {}: face={}, materialId={}, uv=({},{})→({},{}), mask={}",
+            doc.id(), faceId, materialId, uvRegion.u0(), uvRegion.v0(), uvRegion.u1(), uvRegion.v1(),
             mask != null ? "active" : "none");
+        return doc;
     }
 
     /**
-     * Close face-region editing mode, restoring the base canvas mask.
+     * Close the active document when it is a face document (its listeners flush it to the model
+     * and save the model). Does nothing for a standalone texture.
      */
     public void closeFaceRegion() {
-        // Restore the base mask (e.g., cube net mask) that was active before face-region mode
-        PixelCanvas activeCanvas = getActiveLayerCanvas();
-        if (activeCanvas != null) {
-            activeCanvas.setShapeMask(canvasBaseMask);
+        if (active.isFace()) {
+            closeDocuments(List.of(active), CloseReason.USER);
         }
+    }
 
-        this.faceRegionActive = false;
-        this.faceRegionMaterialId = -1;
-        this.faceRegionUV = null;
-        this.faceRegionMask = null;
-        this.canvasBaseMask = null;
-
-        // Reset view to show full canvas
-        canvasState.resetView();
-
-        logger.info("Closed face region editing");
+    /** Restores the canvas mask a face binding replaced and forgets the binding. */
+    private void unbindFace(TextureDocument doc) {
+        TextureDocument.FaceBinding face = doc.face();
+        if (face == null) {
+            return;
+        }
+        Layer layer = doc.getLayerManager().getActiveLayer();
+        if (layer != null) {
+            layer.getCanvas().setShapeMask(face.baseMask());
+        }
+        doc.setFace(null);
     }
 
     /**
      * Check if face-region editing mode is active.
      *
-     * @return true if editing a specific face region
+     * @return true if the active document is a face document
      */
     public boolean isFaceRegionActive() {
-        return faceRegionActive;
+        return active.isFace();
     }
 
     /**
      * Get the material ID of the face being edited.
      *
-     * @return material ID, or -1 if not in face-region mode
+     * @return material ID, or -1 if the active document is not a face document
      */
     public int getFaceRegionMaterialId() {
-        return faceRegionMaterialId;
+        return active.isFace() ? active.face().materialId() : -1;
     }
 
     /**
      * Get the UV region of the face being edited.
      *
-     * @return UV region, or null if not in face-region mode
+     * @return UV region, or null if the active document is not a face document
      */
     public UVRegion getFaceRegionUV() {
-        return faceRegionUV;
+        return active.isFace() ? active.face().uvRegion() : null;
     }
 
     /**
@@ -651,7 +894,8 @@ public class TextureCreatorController {
      * @return true if the import succeeded and pixels were applied
      */
     public boolean importTextureToFaceRegion(String filePath) {
-        if (!faceRegionActive || faceRegionUV == null) {
+        UVRegion faceRegionUV = getFaceRegionUV();
+        if (faceRegionUV == null) {
             logger.warn("Cannot import to face region: no face region active");
             return false;
         }
@@ -668,6 +912,7 @@ public class TextureCreatorController {
             return false;
         }
 
+        LayerManager layerManager = active.getLayerManager();
         int canvasWidth = layerManager.getCanvasWidth();
         int canvasHeight = layerManager.getCanvasHeight();
 
@@ -716,7 +961,7 @@ public class TextureCreatorController {
         }
 
         if (importCommand.hasChanges()) {
-            commandHistory.executeCommand(importCommand);
+            active.getCommandHistory().executeCommand(importCommand);
             notifyLayerModified();
             logger.info("Imported PNG to face region: {} pixels applied from {}", pixelsApplied, filePath);
             return true;
@@ -729,7 +974,7 @@ public class TextureCreatorController {
     // ── Shape mask auto-assignment ──────────────────────────────────────
 
     /**
-     * Apply an automatic shape mask based on canvas dimensions.
+     * Apply an automatic shape mask to a fresh layer stack based on its dimensions.
      *
      * <p>Currently recognizes:
      * <ul>
@@ -737,15 +982,12 @@ public class TextureCreatorController {
      * </ul>
      *
      * <p>For unrecognized dimensions, no mask is applied (all pixels editable).
-     *
-     * @param width  canvas width in pixels
-     * @param height canvas height in pixels
      */
-    private void applyAutoShapeMask(int width, int height) {
-        CanvasShapeMask autoMask = CubeNetShapeMask.createIfApplicable(width, height);
-        PixelCanvas canvas = getActiveLayerCanvas();
-        if (canvas != null) {
-            canvas.setShapeMask(autoMask);
+    private static void applyAutoShapeMask(LayerManager layers) {
+        CanvasShapeMask autoMask = CubeNetShapeMask.createIfApplicable(layers.getCanvasWidth(), layers.getCanvasHeight());
+        Layer layer = layers.getActiveLayer();
+        if (layer != null) {
+            layer.getCanvas().setShapeMask(autoMask);
         }
     }
 }

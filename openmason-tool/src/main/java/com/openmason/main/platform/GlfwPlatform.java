@@ -22,6 +22,8 @@ public final class GlfwPlatform {
      */
     public void initialize() {
         GLFWErrorCallback.createPrint(System.err).set();
+        // Before the driver loads: NVIDIA threaded optimization garbles the UI editor's Skia canvas.
+        com.openmason.engine.rendering.gl.GlDriverThreading.disableThreadedDispatch("openmason.gl.threaded");
         boolean pinnedX11 = preferX11PlatformForViewports();
         if (!glfwInit()) {
             // glfwPlatformSupported() only reports compile-time support, so pinning
