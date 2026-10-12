@@ -38,7 +38,7 @@ class FurnaceAbandonTest {
     @BeforeEach
     void setUp() {
         inventory = emptyInventory();
-        controller = new FurnaceController(null, inventory, null, null, null);
+        controller = new FurnaceController(null, null, null);
         input = new FurnaceInputManager(null, inventory, controller);
         controller.setInputManager(input);
         controller.setSlotSink((pos, slots) -> sent.add(slots));

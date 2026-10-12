@@ -3,6 +3,7 @@ package com.openmason.main.systems.uiEditor.view;
 import com.openmason.engine.format.omui.OmuiReader;
 import com.openmason.main.systems.uiEditor.document.UiEditorDocument;
 import com.openmason.main.systems.uiEditor.service.UiDocumentTemplates;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Save Project saves the UI documents and the UI editor's state with them. */
+@Tag("integration")
 class UiProjectSaveTest {
 
     @TempDir

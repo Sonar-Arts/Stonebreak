@@ -32,10 +32,10 @@ import java.util.Optional;
  *
  * <ul>
  *   <li><b>Open</b> - {@link #open(String, DocumentScreen.Options)} opens the shipped export
- *       {@code ui/documents/<id>.sbui} through {@code GameUiDocuments.openBound} (activation,
- *       asset and input gates) unless the screen is rolled back ({@link DocumentScreenPolicy}).
- *       An empty result means "use the legacy screen": not shipped, rolled back, or refused (the
- *       refusal is logged and shown as a red chat line, never a blank screen).</li>
+ *       {@code ui/documents/<id>.sbui} ({@link ShippedDocuments}) through
+ *       {@code GameUiDocuments.openBound} (activation, asset and input gates). An empty result
+ *       means the screen cannot show: not shipped, or refused (the refusal is logged and shown as
+ *       a red chat line).</li>
  *   <li><b>Order</b> - the one ordered stack in {@link GameUiInput#views()} (by {@link UiLayer},
  *       then open order) is both the draw order ({@link #render}) and, reversed, the input order.</li>
  *   <li><b>Frame</b> - {@link #frame()} advances every screen by the shared
@@ -45,13 +45,13 @@ import java.util.Optional;
  *       {@link #requestClose} only queue; {@link #endFrame()} performs them after the frame was
  *       drawn, so no script state or scope is ever torn down underneath the dispatch that asked
  *       (C4). Navigation opens the target's document when it has one, else a
- *       {@link LegacyNavigation} target, and replaces the asking screen unless {@code push: true}.</li>
+ *       {@link StateNavigation} target, and replaces the asking screen unless {@code push: true}.</li>
  *   <li><b>Pointer</b> - while a screen that {@code releasesPointer} is open the cursor stays
  *       free ({@code MouseCaptureManager}); the capture state is refreshed on every open/close.</li>
  *   <li><b>World</b> - {@code perWorld} screens close when the player leaves the world.</li>
  *   <li><b>Locale</b> - each shipped screen's input gate is re-polled every frame (cheap: only a
  *       locale or tree change re-evaluates); a screen the window can no longer serve closes with
- *       a refusal report and its {@code onClosed} runs, so the caller can fall back to legacy.</li>
+ *       a refusal report and its {@code onClosed} runs.</li>
  * </ul>
  *
  * <p>Main thread only, except {@link #worldLeft()}.
@@ -70,7 +70,7 @@ public final class DocumentScreenHost {
 
     private static volatile DocumentScreenHost instance;
 
-    private final DocumentScreenPolicy policy;
+    private final java.util.function.Predicate<String> shipped;
     private final Opener opener;
     private final java.util.function.BooleanSupplier inWorld;
     private final List<DocumentScreen> screens = new ArrayList<>();
@@ -78,13 +78,17 @@ public final class DocumentScreenHost {
     private final Deque<Runnable> pending = new ArrayDeque<>();
     private volatile boolean worldLeft;
 
-    public DocumentScreenHost(DocumentScreenPolicy policy, Opener opener) {
-        this(policy, opener, () -> true);
+    public DocumentScreenHost(java.util.function.Predicate<String> shipped, Opener opener) {
+        this(shipped, opener, () -> true);
     }
 
-    /** @param inWorld whether a world is running: {@code perWorld} screens never open outside one */
-    public DocumentScreenHost(DocumentScreenPolicy policy, Opener opener, java.util.function.BooleanSupplier inWorld) {
-        this.policy = policy;
+    /**
+     * @param shipped whether a document ships for a screen id
+     * @param inWorld whether a world is running: {@code perWorld} screens never open outside one
+     */
+    public DocumentScreenHost(java.util.function.Predicate<String> shipped, Opener opener,
+                              java.util.function.BooleanSupplier inWorld) {
+        this.shipped = shipped;
         this.opener = opener;
         this.inWorld = inWorld;
     }
@@ -96,7 +100,7 @@ public final class DocumentScreenHost {
             synchronized (DocumentScreenHost.class) {
                 h = instance;
                 if (h == null) {
-                    h = new DocumentScreenHost(DocumentScreenPolicy.fromSystem(), DocumentScreenHost::openShipped,
+                    h = new DocumentScreenHost(ShippedDocuments::shipped, DocumentScreenHost::openShipped,
                         DocumentScreenHost::worldRunning);
                     MultiplayerSession.addModeListener(h::sessionChanged);
                     instance = h;
@@ -128,24 +132,21 @@ public final class DocumentScreenHost {
         return renderer == null ? null : renderer.getSkijaBackend();
     }
 
-    public DocumentScreenPolicy policy() {
-        return policy;
-    }
 
     // ── open ───────────────────────────────────────────────────────────────
 
     /**
      * Opens the document screen {@code id}, or returns the already open one.
      *
-     * @return empty when the legacy screen must be used: no shipped document, rolled back, or
-     *         refused by a gate (reported in the log and chat)
+     * @return empty when the screen cannot show: no shipped document, no world for a world-scoped
+     *         screen, or refused by a gate (reported in the log and chat)
      */
     public Optional<DocumentScreen> open(String id, DocumentScreen.Options options) {
         Optional<DocumentScreen> open = find(id);
         if (open.isPresent()) {
             return open;
         }
-        if (!policy.useDocument(id)) {
+        if (!shipped.test(id)) {
             return Optional.empty();
         }
         if (options.perWorld() && !inWorld.getAsBoolean()) {
@@ -155,6 +156,9 @@ public final class DocumentScreenHost {
         DocumentScreen screen = new DocumentScreen(id, options);
         UiDocumentView view;
         try {
+            // The game's data as of now, not as of the last frame: a screen opening on a state change
+            // binds (and its code-behind reads) what the screen it replaces just set up (#299).
+            com.stonebreak.ui.runtime.GameUiHost.ifPresent(com.stonebreak.ui.runtime.GameUiHost::drain);
             view = opener.open(id, services(screen), options.layer());
         } catch (Exception | LinkageError e) {
             reportRefusal(id, e);
@@ -250,6 +254,15 @@ public final class DocumentScreenHost {
         return find(id).isPresent();
     }
 
+    /**
+     * Where screen {@code id} sits in the input stack, bottom to top ({@link GameUiInput#views()}), or -1 when
+     * it is not open. Owners that paint their own screens ({@code ownerPaints}) paint in this order, so the
+     * screen that takes the clicks is the one drawn on top.
+     */
+    public int stackIndex(String id) {
+        return find(id).map(s -> GameUiInput.get().views().indexOf(s.view())).orElse(-1);
+    }
+
     /** Open screens, oldest first. */
     public List<DocumentScreen> screens() {
         return List.copyOf(screens);
@@ -282,14 +295,14 @@ public final class DocumentScreenHost {
     /**
      * Queues navigation from {@code from} (null: from no screen) to {@code target}.
      *
-     * @return false when {@code target} is neither a document screen nor a legacy target
+     * @return false when {@code target} is neither a document screen nor a {@link StateNavigation} target
      */
     public boolean requestNavigate(DocumentScreen from, String target, UiValue.Obj args) {
         if (target == null || target.isBlank()) {
             return false;
         }
-        boolean document = policy.useDocument(target);
-        if (!document && !LegacyNavigation.has(target)) {
+        boolean document = shipped.test(target);
+        if (!document && !StateNavigation.has(target)) {
             return false;
         }
         boolean push = args != null && args.get("push") instanceof UiValue.Bool b && b.value();
@@ -304,7 +317,7 @@ public final class DocumentScreenHost {
                     return;
                 }
             }
-            LegacyNavigation.go(target, args);
+            StateNavigation.go(target, args);
         });
         return true;
     }
@@ -367,8 +380,8 @@ public final class DocumentScreenHost {
 
     /**
      * Paints one screen now, as one Masonry frame: what {@link #render} does per screen, and what
-     * the owner of an {@link DocumentScreen.Options#ownerPaints ownerPaints} screen calls where its
-     * legacy screen used to draw. A screen that throws is closed at frame end.
+     * the owner of an {@link DocumentScreen.Options#ownerPaints ownerPaints} screen calls where the
+     * screen belongs in its frame. A screen that throws is closed at frame end.
      *
      * @return false when nothing was painted (closed, or no backend)
      */
@@ -461,7 +474,7 @@ public final class DocumentScreenHost {
     }
 
     private static void reportRefusal(String id, Throwable e) {
-        LOGGER.error("[ui-screen] cannot open {}; keeping the legacy screen", id, e);
+        LOGGER.error("[ui-screen] cannot open {}", id, e);
         try {
             Game game = Game.getInstance();
             ChatSystem chat = game == null ? null : game.getChatSystem();

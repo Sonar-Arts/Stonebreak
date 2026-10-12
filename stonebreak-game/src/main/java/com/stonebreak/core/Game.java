@@ -591,10 +591,6 @@ public class Game {
         return screens.settingsMenu();
     }
 
-    public com.stonebreak.ui.multiplayerMenu.MultiplayerMenu getMultiplayerMenu() {
-        return screens.multiplayerMenu();
-    }
-
     public com.stonebreak.ui.multiplayerMenu.HostWorldScreen getHostWorldScreen() {
         return screens.hostWorldScreen();
     }
@@ -651,19 +647,6 @@ public class Game {
      */
     public static com.stonebreak.audio.MusicManager getMusicManager() {
         return getInstance().services.musicManager();
-    }
-
-    /**
-     * Gets the game's primary font.
-     * This assumes the font is loaded and available via the Renderer.
-     * @return The Font object, or null if not available.
-     */
-    public Font getFont() {
-        Renderer renderer = services.renderer();
-        if (renderer != null) {
-            return renderer.getFont();
-        }
-        return null;
     }
 
     /**

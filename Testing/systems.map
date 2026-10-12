@@ -31,6 +31,7 @@ shaders	stonebreak-game	com/stonebreak/rendering/core/**/*Test
 shadow	openmason-engine	com/openmason/engine/rendering/shadow/**/*Test
 sky	openmason-engine	com/openmason/engine/rendering/sky/**/*Test
 ui-program	openmason-engine	com/openmason/engine/ui/**/*Test
+audio	openmason-engine	com/openmason/engine/audio/**/*Test
 
 # ---- game ----
 audio	stonebreak-game	com/stonebreak/audio/**/*Test

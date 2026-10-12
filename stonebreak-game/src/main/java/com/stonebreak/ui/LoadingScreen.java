@@ -1,46 +1,44 @@
 package com.stonebreak.ui;
 
 import java.nio.file.Path;
-import java.util.List;
-import java.util.ArrayList;
 import java.util.function.Consumer;
-import org.lwjgl.glfw.GLFW;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
-import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 
+/**
+ * The world loading screen. Show/hide, the LOADING state and the load's phase tracker stay here; it
+ * shows as the shipped UI document {@value #DOCUMENT_ID} ({@link #setPresentation}), to which the UI
+ * host publishes the phase, its detail line and the bar's progress.
+ */
 public class LoadingScreen {
+
+    /** The shipped document's screen id ({@code ui/documents/loading.sbui}). */
+    public static final String DOCUMENT_ID = "loading";
+
     /** Per-profile phase durations from past loads; sits beside settings.json. */
     private static final Path LOAD_TIMINGS_FILE = Path.of("loading-timings.properties");
 
-    private final SkijaLoadingScreenRenderer renderer;
-    private final LoadProgressTracker tracker = new LoadProgressTracker(LOAD_TIMINGS_FILE, System::nanoTime);
-    /** Taken once per frame in {@link #render} so every getter the renderer calls agrees. */
-    private LoadProgressTracker.Snapshot snapshot = new LoadProgressTracker.Snapshot(null, null, 0.0, 0.0);
-    private volatile boolean visible = false;
-    private String errorMessage = null;
-    private boolean hasError = false;
+    /** How fast the drawn fill closes the gap to the real progress, per second. */
+    private static final float BAR_CATCH_UP_RATE = 8f;
 
-    // Error state fields — read by SkijaLoadingScreenRenderer to style the error panel.
-    // Defaults hold when no error is active (errorSeverity=INFO, empty lists, null strings).
-    private ErrorSeverity errorSeverity = ErrorSeverity.INFO;
-    private String errorCode = null;
-    private List<String> recoveryActions = new ArrayList<>();
-    private List<String> diagnosticInfo = new ArrayList<>();
+    private final com.stonebreak.ui.runtime.screens.PresentationSlot presentation =
+            new com.stonebreak.ui.runtime.screens.PresentationSlot();
+    // Reported from generation threads; read by the render thread and the UI host.
+    private final LoadProgressTracker tracker;
+    /** Taken once per frame ({@link #refreshSnapshot}) so every getter agrees within a frame. */
+    private volatile LoadProgressTracker.Snapshot snapshot = new LoadProgressTracker.Snapshot(null, null, 0.0, 0.0);
+    /** The fill as drawn, eased toward the tracker's progress so phase changes don't snap. */
+    private float displayedProgress;
+    private long lastFrameNanos;
 
-    /**
-     * Error severity levels for enhanced error reporting.
-     */
-    public enum ErrorSeverity {
-        INFO,
-        WARNING,
-        ERROR,
-        CRITICAL
+    public LoadingScreen() {
+        this(new LoadProgressTracker(LOAD_TIMINGS_FILE, System::nanoTime));
     }
 
-    public LoadingScreen(SkijaUIBackend backend) {
-        this.renderer = new SkijaLoadingScreenRenderer(backend);
+    /** @param tracker the load's phase tracker (fixtures pass one on a fixed clock and store) */
+    public LoadingScreen(LoadProgressTracker tracker) {
+        this.tracker = tracker;
     }
 
     /**
@@ -50,19 +48,31 @@ public class LoadingScreen {
      */
     public void show() {
         Game game = Game.getInstance();
-        boolean loadInProgress = visible && tracker.isRunning() && game.getState() == GameState.LOADING;
+        boolean loadInProgress = isVisible() && tracker.isRunning() && game.getState() == GameState.LOADING;
         if (!loadInProgress) {
-            tracker.start();
-            this.errorMessage = null;
-            this.hasError = false;
+            showProgress();
         }
-        this.visible = true;
+        presentation.setVisible(true);
         game.setState(GameState.LOADING);
+    }
+
+    /** Starts timing a new load and shows, without entering LOADING (fixtures; the game calls {@link #show}). */
+    public void showProgress() {
+        tracker.start();
+        snapshot = tracker.snapshot();
+        displayedProgress = 0f;
+        lastFrameNanos = 0L;
+        presentation.setVisible(true);
+    }
+
+    /** Stops showing without touching the game state (the game already left LOADING another way). */
+    public void dismiss() {
+        presentation.setVisible(false);
     }
 
     public void hide() {
         tracker.finish();
-        this.visible = false;
+        presentation.setVisible(false);
         Game gameInstance = Game.getInstance();
         gameInstance.setState(GameState.PLAYING);
     }
@@ -74,96 +84,72 @@ public class LoadingScreen {
     public static void report(Consumer<LoadProgressTracker> update) {
         Game game = Game.getInstance();
         LoadingScreen screen = game != null ? game.getLoadingScreen() : null;
-        if (screen != null && screen.visible) {
+        if (screen != null && screen.isVisible()) {
             update.accept(screen.tracker);
         }
     }
 
+    /** The tracker itself (fixtures drive phases through it). */
+    public LoadProgressTracker tracker() {
+        return tracker;
+    }
+
     public boolean isVisible() {
-        return visible;
+        return presentation.isVisible();
+    }
+
+    /** Installs (or, with null, removes) the presentation. */
+    public void setPresentation(com.stonebreak.ui.runtime.screens.ScreenPresentation p) {
+        presentation.install(p);
     }
 
     /**
-     * Checks if there is currently an error being displayed.
+     * Takes this frame's snapshot and eases the drawn fill toward it. Called once per frame before
+     * the UI host publishes the screen (and again by {@link #render}; a second call in the same
+     * frame only re-reads the tracker).
      */
-    public boolean hasError() {
-        return hasError;
+    public void refreshSnapshot() {
+        snapshot = tracker.snapshot();
+        float target = (float) snapshot.fraction();
+        long now = System.nanoTime();
+        float dt = lastFrameNanos == 0L ? 0f : (now - lastFrameNanos) / 1_000_000_000f;
+        lastFrameNanos = now;
+        if (target < displayedProgress) {
+            displayedProgress = target; // a new load started
+        } else {
+            displayedProgress += (target - displayedProgress) * Math.min(1f, dt * BAR_CATCH_UP_RATE);
+        }
     }
 
-    /**
-     * Gets the current error message, if any.
-     */
-    public String getErrorMessage() {
-        return errorMessage;
-    }
-    
-    /**
-     * Gets the current error severity.
-     */
-    public ErrorSeverity getErrorSeverity() {
-        return errorSeverity;
-    }
-    
-    /**
-     * Gets the current error code.
-     */
-    public String getErrorCode() {
-        return errorCode;
-    }
-    
-    /**
-     * Gets recovery actions for the current error.
-     */
-    public List<String> getRecoveryActions() {
-        return new ArrayList<>(recoveryActions);
-    }
-    
-    /**
-     * Gets diagnostic information for the current error.
-     */
-    public List<String> getDiagnosticInfo() {
-        return new ArrayList<>(diagnosticInfo);
+    /** Takes this frame's snapshot with the drawn fill caught up to it (fixtures: no easing). */
+    public void settleProgress() {
+        refreshSnapshot();
+        displayedProgress = (float) snapshot.fraction();
     }
 
-    /**
-     * Returns the running phase's name (package-private for the Skija renderer).
-     */
-    String getCurrentStageName() {
-        return snapshot.phase() != null ? snapshot.phase().displayName() : "Preparing world";
+    /** The running phase's name (published by the UI host). */
+    public String getCurrentStageName() {
+        LoadProgressTracker.Snapshot s = snapshot;
+        return s.phase() != null ? s.phase().displayName() : "Preparing world";
     }
 
-    /**
-     * Returns the running phase's detail line, e.g. "Chunks 37/81", or null.
-     */
-    String getCurrentSubStage() {
+    /** The running phase's detail line, e.g. "Chunks 37/81", or null. */
+    public String getCurrentSubStage() {
         return snapshot.detail();
     }
 
-    /**
-     * Returns the normalized progress value (0-1) for the progress bar.
-     */
-    float getProgress() {
-        return (float) snapshot.fraction();
+    /** The bar's fill (0-1) as drawn: the tracker's progress, eased. */
+    public float getProgress() {
+        return displayedProgress;
     }
 
-    /**
-     * Renders this loading screen using the Skija backend.
-     */
+    /** Paints the loading screen's presentation. */
     public void render(int windowWidth, int windowHeight) {
-        snapshot = tracker.snapshot();
-        renderer.render(this, windowWidth, windowHeight);
+        presentation.paint(windowWidth, windowHeight);
     }
-    
-    /**
-     * Handles input for the loading screen, primarily for error recovery.
-     */
-    public void handleInput(long window) {
-        if (hasError) {
-            boolean escPressed = com.stonebreak.input.PolledKeys.isDown(window, GLFW.GLFW_KEY_ESCAPE);
-            if (escPressed) {
-                System.out.println("LoadingScreen: ESC pressed during error, returning to main menu");
-                Game.getInstance().setState(GameState.MAIN_MENU);
-            }
-        }
+
+    /** The progress bar's percentage text. */
+    public static String percentText(float progress) {
+        return String.format("%d%%", (int) (progress * 100));
     }
 }

@@ -204,9 +204,9 @@ public class OMTFormat {
      */
     public static boolean hasValidExtension(String filename) {
         if (filename == null || filename.trim().isEmpty()) {
-            return true;
+            return false;
         }
-        return !filename.toLowerCase().endsWith(FILE_EXTENSION);
+        return filename.toLowerCase().endsWith(FILE_EXTENSION);
     }
 
     /**
@@ -219,7 +219,7 @@ public class OMTFormat {
         if (filename == null || filename.trim().isEmpty()) {
             throw new IllegalArgumentException("Filename cannot be null or empty");
         }
-        if (hasValidExtension(filename)) {
+        if (!hasValidExtension(filename)) {
             return filename + FILE_EXTENSION;
         }
         return filename;

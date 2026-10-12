@@ -9,6 +9,7 @@ import com.stonebreak.battle.api.EnemyAction;
 import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.api.StatusView;
 import com.stonebreak.battle.api.TelegraphView;
+import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.masonry.MStyle;
 import io.github.humbleui.skija.Data;
 import io.github.humbleui.skija.EncoderPNG;
@@ -22,6 +23,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,8 +31,10 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The assembled HUD on a CPU canvas: which elements are visible when, that each one lands in the
- * rect the layout (and therefore the mouse hit-test) says it does, and the Wave-2 layer hooks.
+ * The assembled HUD on a CPU canvas, composed from the {@code stonebreak:battle-hud} pieces as the
+ * battle HUD document stacks them ({@link BattleRasterFixture#paintHud}): which elements are visible
+ * when, that each one lands in the rect the layout (and therefore the mouse hit-test) says it does,
+ * the Wave-2 layer hooks, and the help strip line the document is given.
  */
 class FocusBattleHudRenderTest {
 
@@ -38,15 +42,31 @@ class FocusBattleHudRenderTest {
     private static final int H = 720;
     private static final float UI_SCALE = 1f;
 
-    private static BattleRasterFixture hud(FakeBattleView view, BattleMenuState menu, BattleHudAnimState anim) {
-        BattleRasterFixture fx = new BattleRasterFixture(W, H);
-        new SkijaFocusBattleRenderer(null).paintHud(fx.ui, fx.canvas, W, H, UI_SCALE, view, menu, anim, null);
-        return fx;
+    /** A screen bound to {@code view} at rest (its menu synced to the view), adjusted by {@code setup}. */
+    private static FocusBattleScreen restingScreen(FakeBattleView view, Consumer<FocusBattleScreen> setup) {
+        FocusBattleScreen screen = new FocusBattleScreen(null);
+        screen.bind(view, null, FakeBattleView.crucibleLayout(), null);
+        screen.prepareFrame(W, H, null); // the menu meets the view's window state before setup moves it
+        setup.accept(screen);
+        return screen;
+    }
+
+    private static BattleRasterFixture hud(FakeBattleView view, Consumer<FocusBattleScreen> setup) {
+        return new BattleRasterFixture(W, H).paintHud(restingScreen(view, setup), UI_SCALE, null);
+    }
+
+    private static BattleRasterFixture hud(FakeBattleView view) {
+        return hud(view, s -> { });
+    }
+
+    private static void openQiArts(FocusBattleScreen screen) {
+        screen.menuState().selectRoot(FocusBattleLayout.qiArtsRowIndex());
+        screen.menuState().openSubmenu();
     }
 
     @Test
     void theAlwaysOnElementsPaintIntoTheirLayoutRects() {
-        BattleRasterFixture fx = hud(new FakeBattleView(), new BattleMenuState(), null);
+        BattleRasterFixture fx = hud(new FakeBattleView());
         assertTrue(fx.countPainted(FocusBattleLayout.partyWindowRect(W, H, UI_SCALE)) > 30_000, "E3");
         assertTrue(fx.countPainted(FocusBattleLayout.enemyPlateRect(W, H, UI_SCALE)) > 30_000, "E5");
         assertTrue(fx.countPainted(FocusBattleLayout.modeTagRect(W, H, UI_SCALE)) > 1500, "E13");
@@ -61,16 +81,14 @@ class FocusBattleHudRenderTest {
     void theCommandWindowAndHelpAppearWithTheTurn() {
         FakeBattleView view = new FakeBattleView();
         view.commandWindowOpen = true;
-        BattleRasterFixture fx = hud(view, new BattleMenuState(), null);
+        BattleRasterFixture fx = hud(view);
         assertTrue(fx.countPainted(FocusBattleLayout.commandWindowRect(W, H, UI_SCALE)) > 30_000, "E1");
-        assertTrue(fx.countPainted(FocusBattleLayout.helpStripRect(W, H, UI_SCALE)) > 20_000, "E4");
+        assertTrue(help(restingScreen(view, s -> { })).get("shown") instanceof UiValue.Bool b && b.value(),
+                "E4: the document is given a line to show");
         assertEquals(0, fx.countPainted(FocusBattleLayout.submenuRect(W, H, UI_SCALE)) > 5000 ? 1 : 0,
                 "E2 stays closed until opened");
 
-        BattleMenuState menu = new BattleMenuState();
-        menu.selectRoot(FocusBattleLayout.qiArtsRowIndex());
-        menu.openSubmenu();
-        BattleRasterFixture open = hud(view, menu, null);
+        BattleRasterFixture open = hud(view, FocusBattleHudRenderTest::openQiArts);
         assertTrue(open.countPainted(FocusBattleLayout.submenuRect(W, H, UI_SCALE)) > 20_000, "E2");
     }
 
@@ -78,43 +96,39 @@ class FocusBattleHudRenderTest {
     void slidesMoveTheBottomWindowsWithoutTouchingTheTop() {
         FakeBattleView view = new FakeBattleView();
         view.commandWindowOpen = true;
-        BattleRasterFixture rest = hud(view, new BattleMenuState(), null);
+        BattleRasterFixture rest = hud(view);
 
         // The command window never slides away. Waking (0) it still fills its rect, veiled like the
         // static state; awake (1) the veil is gone and the cursor row is lit.
         float[] cmd = FocusBattleLayout.commandWindowRect(W, H, UI_SCALE);
-        BattleHudAnimState waking = new BattleHudAnimState();
-        waking.commandWake = 0f;
-        BattleRasterFixture veiled = hud(view, new BattleMenuState(), waking);
+        BattleRasterFixture veiled = hud(view, s -> s.animState().commandWake = 0f);
         assertTrue(veiled.countPainted(cmd) > 30_000, "E1 stays in its rect while it wakes");
         assertTrue(veiled.diff(rest, cmd) > 10_000, "and is veiled until it has woken");
 
         FakeBattleView resting = new FakeBattleView();
-        BattleRasterFixture staticState = hud(resting, new BattleMenuState(), null);
+        BattleRasterFixture staticState = hud(resting);
         assertTrue(staticState.countPainted(cmd) > 30_000, "between turns E1 is still there");
         assertTrue(staticState.diff(rest, cmd) > 10_000, "in its static look: veiled, no cursor");
 
-        BattleHudAnimState out = new BattleHudAnimState();
-        out.bottomHudSlideOut = 1f;
-        BattleRasterFixture cinematic = hud(view, new BattleMenuState(), out);
+        BattleRasterFixture cinematic = hud(view, s -> s.animState().bottomHudSlideOut = 1f);
         assertEquals(0, cinematic.countPainted(0, H / 2, W, H), "the whole bottom HUD leaves for the cinematics");
         assertEquals(0, cinematic.diff(rest, 0, 0, W, H / 3), "the enemy plate stays put");
     }
 
     @Test
-    void layersPaintInsideTheSameFrameInOrder() {
+    void layersPaintAroundTheWindowsInOrder() {
         List<String> order = new ArrayList<>();
-        SkijaFocusBattleRenderer renderer = new SkijaFocusBattleRenderer(null);
-        renderer.addUnderlay((ui, c, w, h, s, raw, v, a, vp) -> {
+        FocusBattleScreen screen = restingScreen(new FakeBattleView(), s -> { });
+        BattleHudLayers layers = screen.layers();
+        layers.addUnderlay((ui, c, w, h, s, raw, v, a, vp) -> {
             order.add("under");
             MPainter.fillRect(c, 0f, 0f, w, h, 0xFF000000);
         });
-        renderer.addOverlay((ui, c, w, h, s, raw, v, a, vp) -> {
+        layers.addOverlay((ui, c, w, h, s, raw, v, a, vp) -> {
             order.add("over");
             assertEquals(FocusBattleLayout.effectiveScale(w, h, raw), s, 1e-6f);
         });
-        BattleRasterFixture fx = new BattleRasterFixture(W, H);
-        renderer.paintHud(fx.ui, fx.canvas, W, H, UI_SCALE, new FakeBattleView(), null, null, null);
+        BattleRasterFixture fx = new BattleRasterFixture(W, H).paintHud(screen, UI_SCALE, null);
 
         assertEquals(List.of("under", "over"), order);
         // The underlay's black is covered by the opaque parts of the windows drawn after it.
@@ -122,22 +136,18 @@ class FocusBattleHudRenderTest {
         assertTrue(fx.countExactly(0xFF000000, (int) party[0] + 12, (int) party[1] + 12,
                 (int) (party[0] + party[2]) - 12, (int) (party[1] + party[3]) - 12)
                 < (party[2] - 24) * (party[3] - 24), "windows draw over underlays");
-        renderer.dispose();
+        screen.cleanup();
     }
 
     @Test
     void theHudSurvivesEveryResolutionAndScale() {
         FakeBattleView view = new FakeBattleView();
         view.commandWindowOpen = true;
-        BattleMenuState menu = new BattleMenuState();
-        menu.selectRoot(FocusBattleLayout.qiArtsRowIndex());
-        menu.openSubmenu();
         int[][] windows = {{1024, 600}, {1920, 1080}};
         for (int[] win : windows) {
             for (float scale : new float[]{0.75f, 2f}) {
-                BattleRasterFixture fx = new BattleRasterFixture(win[0], win[1]);
-                new SkijaFocusBattleRenderer(null).paintHud(fx.ui, fx.canvas, win[0], win[1], scale, view, menu,
-                        null, null);
+                BattleRasterFixture fx = new BattleRasterFixture(win[0], win[1])
+                        .paintHud(restingScreen(view, FocusBattleHudRenderTest::openQiArts), scale, null);
                 assertTrue(fx.countPainted(FocusBattleLayout.commandWindowRect(win[0], win[1], scale)) > 5000,
                         win[0] + "x" + win[1] + " @" + scale);
             }
@@ -154,11 +164,64 @@ class FocusBattleHudRenderTest {
         both.prompt = resting.prompt;
         both.commandWindowOpen = true;
         float[] cmd = FocusBattleLayout.commandWindowRect(W, H, UI_SCALE);
-        assertEquals(0, hud(both, new BattleMenuState(), null).diff(hud(resting, new BattleMenuState(), null), cmd),
+        assertEquals(0, hud(both).diff(hud(resting), cmd),
                 "no cursor, veiled: identical to the resting window");
         assertTrue(!BattleHudRules.menuLive(both), "a prompt outranks the menu");
         both.prompt = null;
         assertTrue(BattleHudRules.menuLive(both));
+    }
+
+    // ── E4: the help strip line the document is given ───────────────────────
+
+    private static UiValue.Obj help(FocusBattleScreen screen) {
+        return new BattleRasterFixture(W, H).helpModel(screen, UI_SCALE);
+    }
+
+    private static FocusBattleScreen showing(BattleHelpText.Line line, float fade) {
+        FakeBattleView view = new FakeBattleView();
+        view.commandWindowOpen = true;
+        return restingScreen(view, s -> {
+            s.animState().helpLine = line;
+            s.animState().helpFade = fade;
+        });
+    }
+
+    @Test
+    void theHelpStripShowsOneLineAndNothingWhenEmpty() {
+        assertEquals(UiValue.FALSE, help(showing(BattleHelpText.Line.EMPTY, 1f)).get("shown"),
+                "an empty line shows no strip at all");
+
+        BattleHelpText.Line line = new BattleHelpText.Line("A single focused blow.", false);
+        UiValue.Obj shown = help(showing(line, 1f));
+        assertEquals(UiValue.TRUE, shown.get("shown"));
+        assertEquals(UiValue.of(line.text()), shown.get("text"));
+        assertEquals(UiValue.of(hex(MStyle.TEXT_PRIMARY)), shown.get("color"));
+        assertEquals(UiValue.of(hex(MStyle.TEXT_WARN)),
+                help(showing(new BattleHelpText.Line(line.text(), true), 1f)).get("color"),
+                "a refusal reads in the warning colour");
+        UiValue.Obj faded = help(showing(line, 0f));
+        assertEquals(UiValue.TRUE, faded.get("shown"), "fade 0 keeps the strip");
+        assertEquals(0, BattleRasterFixture.helpAlpha(faded), "but hides the text");
+    }
+
+    @Test
+    void longHelpTextShrinksToStayInsideTheStrip() {
+        BattleRasterFixture fx = new BattleRasterFixture(W, H);
+        BattleHelpText.Line line = new BattleHelpText.Line(
+                "Three rapid strikes. Time each hit on the ring. ".repeat(4).trim(), false);
+        UiValue.Obj model = fx.helpModel(showing(line, 1f), UI_SCALE);
+        float size = (float) ((UiValue.Num) model.get("size")).value();
+        UiValue.Obj rect = (UiValue.Obj) model.get("rect");
+        float width = (float) ((UiValue.Num) rect.get("w")).value();
+        float inset = (float) ((UiValue.Num) model.get("inset")).value();
+        assertTrue(size < MStyle.FONT_META, "the line shrinks");
+        assertTrue(MPainter.measureWidth(fx.ui.fonts().get(size), line.text()) <= width - 2f * inset,
+                "no glyph escapes past the strip's right edge");
+    }
+
+    private static String hex(int argb) {
+        return String.format("#%02X%02X%02X%02X", (argb >>> 16) & 0xFF, (argb >>> 8) & 0xFF, argb & 0xFF,
+                (argb >>> 24) & 0xFF);
     }
 
     // ── the screen owns and drives the windows ───────────────────────────────
@@ -192,7 +255,7 @@ class FocusBattleHudRenderTest {
         assertEquals(0f, screen.partyWindow().hpGauge().flashStrength(), 0f, "the monk was not hit");
         assertEquals(1f, screen.partyWindow().qiPips().spendAmount(), 1e-6f);
         assertEquals(1f, screen.partyWindow().atbGauge().flashStrength(), 1e-6f);
-        assertSame(screen.renderer().windows().enemy, screen.enemyPlate(), "the renderer draws the screen's windows");
+        assertSame(screen.layers().windows().enemy, screen.enemyPlate(), "the pieces draw the screen's windows");
 
         // The same event list republished by the model must not fire anything twice.
         screen.update(0.2f);
@@ -226,7 +289,7 @@ class FocusBattleHudRenderTest {
         // Frames come from the library: near-black border, no private glass or neon border colours.
         FakeBattleView view = new FakeBattleView();
         view.commandWindowOpen = true;
-        BattleRasterFixture fx = hud(view, new BattleMenuState(), null);
+        BattleRasterFixture fx = hud(view);
         float[] party = FocusBattleLayout.partyWindowRect(W, H, UI_SCALE);
         assertTrue(fx.countExactly(MStyle.HUD_BORDER, (int) party[0], (int) party[1], (int) (party[0] + party[2]),
                 (int) (party[1] + party[3])) > 800, "the stone frame's near-black border");
@@ -335,8 +398,7 @@ class FocusBattleHudRenderTest {
                     fx.canvas.clear(background);
                     BattleRasterFixture blank = new BattleRasterFixture(size[0], size[1]);
                     blank.canvas.clear(background);
-                    screen.renderer().paintHud(fx.ui, fx.canvas, size[0], size[1], UI_SCALE, views.get(e.getKey()),
-                            screen.menuState(), screen.animState(), null);
+                    fx.paintHud(screen, UI_SCALE, null);
                     assertTrue(fx.diff(blank) > 60_000, e.getKey() + " paints a HUD");
                     if (out != null && !out.isBlank()) {
                         Path dir = Files.createDirectories(Path.of(out));

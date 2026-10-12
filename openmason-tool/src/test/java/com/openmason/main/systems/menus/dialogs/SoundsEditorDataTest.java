@@ -2,6 +2,7 @@ package com.openmason.main.systems.menus.dialogs;
 
 import com.openmason.engine.format.sound.SoundData;
 import com.openmason.engine.format.sound.SoundDef;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -24,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * save-blocking states. (The editor's constructor and data methods are
  * headless by design — no ImGui/GL/OpenAL calls.)
  */
+@Tag("regression")
 class SoundsEditorDataTest {
 
     private static final byte[] WAV_A = "RIFF-sample-A".getBytes(StandardCharsets.UTF_8);

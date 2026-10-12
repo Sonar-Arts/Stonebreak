@@ -242,6 +242,16 @@ public class TerrainGenerationSystem implements TerrainGenerator {
         return seed;
     }
 
+    /**
+     * Bumped from the default {@code "standard"} when submerged columns became OCEAN: nodes
+     * sampled before that carry the old sea floor. Scoped to Standard so DaedalusTGM-Exp
+     * worlds, whose terrain did not change, keep their nodes.
+     */
+    @Override
+    public String lodCacheTag() {
+        return "standard:ocean";
+    }
+
     /** True when the fused native generator owns terrain for this system (test/diagnostic hook). */
     boolean isFusedGenerationActive() {
         return fusedGenCtx != 0L;
@@ -377,13 +387,14 @@ public class TerrainGenerationSystem implements TerrainGenerator {
      * carved away exposes stone and plants nothing, exactly as a carved top grows no tree;
      * a submerged cell plants nothing either.
      *
-     * @param cellHeights  sampled surface height per cell (world Y), {@code [ix*cells+iz]}
-     * @param cellSurface  sampled surface block per cell, {@code [ix*cells+iz]}
+     * @param cellHeights      sampled surface height per cell, {@code [ix*cells+iz]}
+     * @param cellWaterLevels  sampled water level per cell, {@code [ix*cells+iz]}
+     * @param cellSurface      sampled surface block per cell, {@code [ix*cells+iz]}
      * @return packed spots ({@code FastLodChunkData.packTreeSpot}); empty when none
      */
     @Override
     public int[] probeCellTrees(int chunkX, int chunkZ, int cellsPerAxis, int cellSize,
-                                int[] cellHeights, BlockType[] cellSurface) {
+                                int[] cellHeights, int[] cellWaterLevels, BlockType[] cellSurface) {
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
         int[] out = new int[8];
@@ -393,7 +404,7 @@ public class TerrainGenerationSystem implements TerrainGenerator {
                 int cell = ix * cellsPerAxis + iz;
                 BlockType surface = cellSurface[cell];
                 // probeTree only ever plants on these two; skip the biome lookup otherwise.
-                if (cellHeights[cell] < SEA_LEVEL + Y_OFFSET
+                if (cellWaterLevels[cell] > cellHeights[cell]
                         || (surface != BlockType.GRASS && surface != BlockType.SNOWY_DIRT)) {
                     continue;
                 }
@@ -719,22 +730,14 @@ public class TerrainGenerationSystem implements TerrainGenerator {
         }
     }
 
-    /** The column profile in world Y, for the shared feature passes. Lifts the arrays in place. */
-    private static ColumnProfile liftedProfile(int[] heights, int[] waterLevels, BiomeType[] biomes) {
-        for (int i = 0; i < heights.length; i++) {
-            heights[i] += Y_OFFSET;
-            waterLevels[i] = StandardTerrain.lift(waterLevels[i]);
-        }
-        return new ColumnProfile(heights, biomes, waterLevels);
-    }
-
     /**
      * Mixes dirt and clay into the sand of every {@link BiomeType#OCEAN} column's floor
      * ({@link OceanFloor}). A pass over the finished storage rather than a branch of
      * {@link #determineBlockType}: the fused kernel's surface table holds one block per biome,
      * so both paths lay sand and both get the same mix here, which keeps them byte-identical.
-     * A floor that is not sand (carved, or anything else) is left alone. {@code heights} are
-     * the Standard frame; the storage is lifted by {@code Y_OFFSET}.
+     * A floor that is not sand (carved, or anything else) is left alone.
+     *
+     * @param heights Standard-frame column heights (before {@link #liftedProfile})
      */
     private void paintOceanFloor(CcoBlockStorage storage, int chunkX, int chunkZ,
                                  int[] heights, BiomeType[] biomes) {
@@ -754,6 +757,15 @@ public class TerrainGenerationSystem implements TerrainGenerator {
                 }
             }
         }
+    }
+
+    /** The column profile in world Y, for the shared feature passes. Lifts the arrays in place. */
+    private static ColumnProfile liftedProfile(int[] heights, int[] waterLevels, BiomeType[] biomes) {
+        for (int i = 0; i < heights.length; i++) {
+            heights[i] += Y_OFFSET;
+            waterLevels[i] = StandardTerrain.lift(waterLevels[i]);
+        }
+        return new ColumnProfile(heights, biomes, waterLevels);
     }
 
     /**

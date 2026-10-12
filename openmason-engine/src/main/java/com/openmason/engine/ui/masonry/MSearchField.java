@@ -22,12 +22,7 @@ import io.github.humbleui.types.Rect;
  */
 public final class MSearchField extends MWidget {
 
-    private static final int FILL          = 0xFF1F1F1F; // recessed dark
-    private static final int FILL_ACTIVE   = 0xFF2A2A2A;
-    private static final int BORDER        = 0xFF0F0F0F;
-    private static final int BORDER_ACTIVE = MStyle.SLIDER_FILL;
     private static final int CARET_COLOR   = MStyle.TEXT_PRIMARY;
-    private static final float RADIUS      = 3f;
     private static final float PAD_X       = 10f;
 
     private String text = "";
@@ -49,15 +44,9 @@ public final class MSearchField extends MWidget {
         Canvas canvas = ui.canvas();
         if (canvas == null) return;
 
-        // Background fill (slightly lighter when focused to confirm input).
-        try (Paint fill = new Paint().setColor(active ? FILL_ACTIVE : FILL).setAntiAlias(true)) {
-            canvas.drawRRect(RRect.makeXYWH(x, y, width, height, RADIUS), fill);
-        }
-        // Border accent on focus.
-        try (Paint border = new Paint().setColor(active ? BORDER_ACTIVE : BORDER)
-                .setMode(PaintMode.STROKE).setStrokeWidth(active ? 1.5f : 1f).setAntiAlias(true)) {
-            canvas.drawRRect(RRect.makeXYWH(x + 0.5f, y + 0.5f, width - 1f, height - 1f, RADIUS), border);
-        }
+        // Background fill (slightly lighter when focused) and border accent on focus: the
+        // shared well, also the documents' -sb-surface: search-field(-active) (#301).
+        MPainter.searchWell(canvas, x, y, width, height, active);
 
         Font font = ui.fonts().get(fontSize);
         boolean empty = text.isEmpty();

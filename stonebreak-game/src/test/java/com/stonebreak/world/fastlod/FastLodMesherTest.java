@@ -384,13 +384,13 @@ class FastLodMesherTest {
             int[] heights = filled(level.heightCount(), 80);
             BlockType[] surface = new BlockType[level.cellCount()];
             Arrays.fill(surface, BlockType.GRASS);
+            int[] dry = filled(level.cellCount(), TerrainTile.NO_WATER);
             FastLodKey key = FastLodKey.of(level, 0, 0, true, true);
-            int[] noWater = filled(level.cellCount(), WorldConfiguration.NO_WATER);
-            MmsMeshData bare = mesher.build(new FastLodChunkData(key, heights, noWater, surface, null, null, null,
+            MmsMeshData bare = mesher.build(new FastLodChunkData(key, heights, dry, surface, null, null, null,
                 new int[0])).mesh();
-            MmsMeshData treed = mesher.build(new FastLodChunkData(key, heights, noWater, surface, null, null, null,
+            MmsMeshData treed = mesher.build(new FastLodChunkData(key, heights, dry, surface, null, null, null,
                 new int[]{spots[0]})).mesh();
-            MmsMeshData both = mesher.build(new FastLodChunkData(key, heights, noWater, surface, null, null, null,
+            MmsMeshData both = mesher.build(new FastLodChunkData(key, heights, dry, surface, null, null, null,
                 spots)).mesh();
 
             assertEquals(2 * 9, (both.getVertexCount() - bare.getVertexCount()) / 4,

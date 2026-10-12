@@ -18,6 +18,18 @@ final class ElementKinds {
     static final String PLAY = "ui:anim.play";
     static final List<String> EASINGS = List.of("linear", "ease-in", "ease-out", "ease-in-out", "step");
     static final List<String> FILLS = List.of("hold", "release");
+    static final List<String> COMPOSITES = List.of("replace", "add");
+
+    private static PropSpec composite() {
+        return PropSpec.choice("composite", "replace", COMPOSITES,
+            "replace takes the property over; add stacks the values as deltas on what is shown (a shake over a slide)");
+    }
+
+    /** {@code , composite = "add"} or nothing at the default, so older graphs compile to the same Lua. */
+    private static String compositeOpt(Emit e) {
+        String c = e.prop("composite");
+        return c == null || "replace".equals(c) ? "" : ", composite = " + e.quote(c);
+    }
 
     private ElementKinds() {
     }
@@ -88,13 +100,14 @@ final class ElementKinds {
                 .prop(PropSpec.required("property", PropSpec.Kind.STYLE_PROPERTY, "style property (opacity, translate-y, color, ...)"))
                 .prop(PropSpec.choice("easing", "linear", EASINGS, "easing curve"))
                 .prop(PropSpec.optional("wait", PropSpec.Kind.BOOL, UiValue.TRUE, "continue after it completes"))
+                .prop(composite())
                 .ports(Ports.statement(PortSpec.optional("value", PortType.ANY, "target value"),
                     in("duration", PortType.NUMBER, 0.25, "seconds"), in("delay", PortType.NUMBER, 0, "seconds")))
                 .latent((ctx, n) -> KindContext.bool(n, "wait", true))
                 .statement(e -> {
                     String call = "ui.tween(" + e.element("target") + ", { [" + e.quote(e.prop("property")) + "] = "
                         + e.in("value") + " }, " + e.in("duration") + ", " + e.quote(e.prop("easing")) + ", { delay = "
-                        + e.in("delay") + " })";
+                        + e.in("delay") + compositeOpt(e) + " })";
                     e.line(e.bool("wait", true) ? "ui.await(" + call + ")" : call);
                 })
                 .build(),
@@ -106,6 +119,7 @@ final class ElementKinds {
                 .prop(PropSpec.optional("wait", PropSpec.Kind.BOOL, UiValue.FALSE, "continue after it ends"))
                 .prop(PropSpec.optional("clock", PropSpec.Kind.IDENT, UiValue.of("ui"), "ui, game or a host clock"))
                 .prop(PropSpec.choice("fill", "hold", FILLS, "what the end leaves: hold the values or release them"))
+                .prop(composite())
                 .ports(Ports.statement(in("speed", PortType.NUMBER, 1, "playback speed"),
                     in("blend", PortType.NUMBER, 0, "seconds to cross-fade from what is shown")))
                 .latent((ctx, n) -> KindContext.bool(n, "wait", false))
@@ -119,7 +133,7 @@ final class ElementKinds {
                         + (loop == null || "clip".equals(loop) ? "" : ", loop = " + e.quote(loop))
                         + (clock == null || clock.isEmpty() || "ui".equals(clock) ? "" : ", clock = " + e.quote(clock))
                         + (fill == null || "hold".equals(fill) ? "" : ", fill = " + e.quote(fill))
-                        + ("0".equals(blend) ? "" : ", blend = " + blend) + " }";
+                        + ("0".equals(blend) ? "" : ", blend = " + blend) + compositeOpt(e) + " }";
                     String call = "ui.play(" + e.quote(e.prop("clip")) + ", " + opts + ")";
                     e.line(e.bool("wait", false) ? "ui.await(" + call + ")" : call);
                 })

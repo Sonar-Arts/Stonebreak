@@ -10,7 +10,7 @@ import com.openmason.engine.ui.masonry.MStyle;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.focusBattle.BattleHudAnimState;
 import com.stonebreak.ui.focusBattle.BattlePalette;
-import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
+import com.stonebreak.ui.focusBattle.BattleHudLayers;
 import com.openmason.engine.util.easing.EasingFunctions;
 import com.openmason.engine.util.easing.EasingType;
 import io.github.humbleui.skija.Canvas;
@@ -29,7 +29,7 @@ import java.util.Locale;
  * ran out or the player skipped it) whatever is still showing fades in {@link #SKIP_FADE_SECONDS}
  * and the element goes inert until the next {@link #reset}.
  */
-public final class EncounterTransition implements SkijaFocusBattleRenderer.Layer {
+public final class EncounterTransition implements BattleHudLayers.Layer {
 
     public static final float FLASH_SECONDS = 0.3f;
     public static final float WIPE_SECONDS = 0.8f;

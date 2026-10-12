@@ -27,6 +27,7 @@ import com.openmason.engine.ui.runtime.style.ComputedStyle;
 import com.openmason.engine.ui.runtime.style.StyleValues;
 import io.github.humbleui.skija.BlendMode;
 import io.github.humbleui.skija.Canvas;
+import io.github.humbleui.skija.ClipMode;
 import io.github.humbleui.skija.ColorFilter;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Matrix33;
@@ -266,7 +267,8 @@ public final class UiPainter {
             return;
         }
         int saved = canvas.getSaveCount();
-        if (opacity < 1f) {
+        boolean lone = loneImage(el, s);
+        if (opacity < 1f && !lone) {
             try (Paint p = new Paint().setAlphaf(opacity)) {
                 canvas.saveLayer(null, p);
             }
@@ -276,7 +278,13 @@ public final class UiPainter {
             canvas.concat(matrix(el.localTransform())); // scale/rotate about the centre, with the subtree
         }
         if (!s.hidden()) {
-            paintSelf(ui, masonry, canvas, el, scale);
+            if (lone) {
+                UiValue tint = s.get("-sb-tint");
+                SpritePainter.withElementPaint(tint == null ? 0xFFFFFFFF : StyleValues.color(tint, 0xFFFFFFFF), opacity,
+                    () -> paintSelf(ui, masonry, canvas, el, scale));
+            } else {
+                paintSelf(ui, masonry, canvas, el, scale);
+            }
         }
         List<UiElement> children = el.children();
         if (!children.isEmpty()) {
@@ -284,7 +292,8 @@ public final class UiPainter {
             if (clip) {
                 canvas.save();
                 UiRect r = el.rect();
-                canvas.clipRect(Rect.makeXYWH(r.x(), r.y(), r.width(), r.height()));
+                canvas.clipRect(Rect.makeXYWH(r.x(), r.y(), r.width(), r.height()), ClipMode.INTERSECT,
+                    "antialias".equals(s.keyword("-sb-clip", "hard")));
             }
             for (UiElement c : children) {
                 if (!order.isLifted(c)) {
@@ -301,6 +310,21 @@ public final class UiPainter {
         canvas.restoreToCount(saved);
     }
 
+    /**
+     * An {@code Image} that paints exactly one sprite draw (no children, background, surface, symbol,
+     * border, shadow or focus ring): its opacity and {@code -sb-tint} ride on that draw's paint instead
+     * of layers, so a fading image composites as a legacy {@code drawImageRect} with an alpha paint did
+     * (#301). A layer rounds twice and parts from it by a level or two.
+     */
+    private static boolean loneImage(UiElement el, ComputedStyle s) {
+        return "Image".equals(el.type()) && el.children().isEmpty() && !el.isScrollContainer()
+            && s.get("background-color") == null && s.get("background-image") == null
+            && s.get("border-color") == null && s.get("-sb-shadow-color") == null
+            && "none".equals(s.keyword("-sb-symbol", "none"))
+            && ("auto".equals(s.keyword("-sb-surface", "auto")) || "none".equals(s.keyword("-sb-surface", "auto")))
+            && !el.hasState(UiElement.FOCUS_VISIBLE);
+    }
+
     /** Skia's row-major 3×3 of a 2D affine transform. */
     static Matrix33 matrix(UiTransform t) {
         return new Matrix33(t.a(), t.c(), t.tx(), t.b(), t.d(), t.ty(), 0, 0, 1);
@@ -313,7 +337,7 @@ public final class UiPainter {
             return;
         }
         int saved = canvas.getSaveCount();
-        UiValue tintValue = s.get("-sb-tint");
+        UiValue tintValue = loneImage(el, s) ? null : s.get("-sb-tint"); // a lone image carries it on its paint
         if (tintValue != null) {
             int tint = StyleValues.color(tintValue, 0xFFFFFFFF);
             if (tint != 0xFFFFFFFF) {
@@ -323,7 +347,12 @@ public final class UiPainter {
                 }
             }
         }
-        float radius = (float) s.number("border-radius", 0) * scale;
+        float radius = s.length("border-radius").px(scale, 0);
+        // an Image's shadow rides on the image's own paint, exactly as a legacy drawImageRect with an
+        // image-filter paint (a filtered layer samples differently); anything else shadows via a layer
+        boolean imageShadow = "Image".equals(el.type()) && s.get("background-color") == null
+            && s.get("background-image") == null;
+        int shadowLayer = imageShadow ? -1 : dropShadow(canvas, s, scale);
         UiValue bg = s.get("background-color");
         boolean styledBackground = bg != null || assetRef(s.get("background-image")) != null;
         if (bg != null) {
@@ -336,6 +365,10 @@ public final class UiPainter {
         String surface = s.keyword("-sb-surface", "auto");
         if (!"auto".equals(surface)) {
             surface(canvas, surface, r);
+        }
+        String symbol = s.keyword("-sb-symbol", "none");
+        if (!"none".equals(symbol)) {
+            symbol(canvas, symbol, r, s);
         }
         switch (el.type()) {
             case "Button" -> {
@@ -353,7 +386,13 @@ public final class UiPainter {
             case "Image" -> {
                 UiImage img = host.image(el, assetRef(el.prop("source")));
                 if (img != null) {
-                    image(ui, canvas, el, img, r, s, scale);
+                    if (imageShadow && s.get("-sb-shadow-color") != null) {
+                        try (io.github.humbleui.skija.ImageFilter f = shadowFilter(s, scale)) {
+                            SpritePainter.withFilter(f, () -> image(ui, canvas, el, img, r, s, scale));
+                        }
+                    } else {
+                        image(ui, canvas, el, img, r, s, scale);
+                    }
                 }
             }
             case "ItemSlot" -> {
@@ -375,8 +414,38 @@ public final class UiPainter {
             MPainter.strokeRoundedRect(canvas, r.x() - g, r.y() - g, r.width() + 2 * g, r.height() + 2 * g,
                 radius + g, MStyle.TEXT_ACCENT, g);
         }
+        if (shadowLayer >= 0) {
+            canvas.restoreToCount(shadowLayer);
+        }
         status(canvas, el, r, scale);
         canvas.restoreToCount(saved);
+    }
+
+    /**
+     * {@code -sb-shadow-color} (+ offsets and blur sigma, logical or {@code dpx}): the element's own
+     * paint goes through a Skia drop shadow, as the legacy logo was drawn (#299).
+     *
+     * @return the save count to restore after the element's own paint, or -1 without a shadow
+     */
+    private static int dropShadow(Canvas canvas, ComputedStyle s, float scale) {
+        UiValue color = s.get("-sb-shadow-color");
+        if (color == null) {
+            return -1;
+        }
+        int count = canvas.getSaveCount();
+        try (io.github.humbleui.skija.ImageFilter f = shadowFilter(s, scale);
+             Paint p = new Paint().setImageFilter(f)) {
+            canvas.saveLayer(null, p);
+        }
+        return count;
+    }
+
+    private static io.github.humbleui.skija.ImageFilter shadowFilter(ComputedStyle s, float scale) {
+        float dx = s.length("-sb-shadow-offset-x").px(scale, 0);
+        float dy = s.length("-sb-shadow-offset-y").px(scale, 0);
+        float sigma = s.length("-sb-shadow-blur").px(scale, 0);
+        return io.github.humbleui.skija.ImageFilter.makeDropShadow(dx, dy, sigma, sigma,
+            StyleValues.color(s.get("-sb-shadow-color"), 0), null);
     }
 
     // ── text fields (#288) ──────────────────────────────────────────────────
@@ -462,8 +531,13 @@ public final class UiPainter {
                 }
                 float cx = g.left() - scroll + m.measure().advance(lines[line], caret - start);
                 float top = g.top() + line * g.lineHeight();
-                MPainter.fillRect(canvas, Math.round(cx), top + scale, Math.max(1f, 1.5f * scale),
-                    g.lineHeight() - 2 * scale, MStyle.TEXT_PRIMARY);
+                if ("underscore".equals(s.keyword("-sb-caret", "bar"))) {
+                    // the legacy fields appended "_" to the text: the glyph right after the caret
+                    MPainter.drawString(canvas, "_", cx, g.baseline(line), font, color);
+                } else {
+                    MPainter.fillRect(canvas, Math.round(cx), top + scale, Math.max(1f, 1.5f * scale),
+                        g.lineHeight() - 2 * scale, MStyle.TEXT_PRIMARY);
+                }
             }
         }
         canvas.restoreToCount(saved);
@@ -519,7 +593,12 @@ public final class UiPainter {
         if (t.fromFocus()) {
             MTooltip.draw(masonry, t.text(), t.x(), t.y() + 4f * scale, (int) w, (int) h);
         } else {
-            MTooltip.draw(masonry, t.text(), t.x() + 15f * scale, t.y() + 15f * scale, (int) w, (int) h);
+            // whole pixels from the pointer, as the legacy container screens placed it (#300); a root
+            // -sb-tooltip-offset overrides the 15 (the recipe book's was 15 device px at any scale, #301)
+            StyleValues.Length o = ui.root() == null ? StyleValues.Length.UNSET
+                : ui.root().computedStyle().length("-sb-tooltip-offset");
+            float off = Math.round(o.kind() == StyleValues.Length.Kind.UNSET ? 15f * scale : o.px(scale, 0));
+            MTooltip.draw(masonry, t.text(), t.x() + off, t.y() + off, (int) w, (int) h);
         }
     }
 
@@ -539,21 +618,33 @@ public final class UiPainter {
             return;
         }
         String effect = s.keyword("-sb-text-effect", "shadow");
+        UiValue shadow = s.get("-sb-text-shadow-color");
         switch (s.keyword("text-align", "left")) {
-            case "center" -> labelText(canvas, effect, str, r.x() + r.width() / 2f, baseline, font, color,
+            case "center" -> labelText(canvas, effect, shadow, str, r.x() + r.width() / 2f, baseline, font, color,
                 MPainter.Align.CENTER);
-            case "right" -> labelText(canvas, effect, str, r.right(), baseline, font, color, MPainter.Align.RIGHT);
-            default -> labelText(canvas, effect, str, r.x(), baseline, font, color, MPainter.Align.LEFT);
+            case "right" -> labelText(canvas, effect, shadow, str, r.right(), baseline, font, color, MPainter.Align.RIGHT);
+            default -> labelText(canvas, effect, shadow, str, r.x(), baseline, font, color, MPainter.Align.LEFT);
         }
     }
 
-    /** One run of label text in its {@code -sb-text-effect}: the house shadow, none, or the title stack. */
-    private static void labelText(Canvas canvas, String effect, String str, float x, float baseline, Font font, int color,
-                             MPainter.Align align) {
+    /**
+     * One run of label text in its {@code -sb-text-effect}: the house shadow, none, or the title stack.
+     * An explicit {@code -sb-text-shadow-color} (#301) replaces the house shadow's colour as given (its own
+     * alpha, not faded with the text): the soft +2 px and crisp +1 px passes of the legacy world markers.
+     */
+    private static void labelText(Canvas canvas, String effect, UiValue shadow, String str, float x, float baseline,
+                                  Font font, int color, MPainter.Align align) {
         switch (effect) {
             case "none" -> MPainter.drawTextPlain(canvas, str, x, baseline, font, color, align);
             case "title" -> MPainter.drawTitleText(canvas, str, x, baseline, font, color, align);
-            default -> MPainter.drawText(canvas, str, x, baseline, font, color, align);
+            default -> {
+                if (shadow != null) {
+                    MPainter.drawTextWithShadow(canvas, str, x, baseline, font, color, StyleValues.color(shadow, 0),
+                        align);
+                } else {
+                    MPainter.drawText(canvas, str, x, baseline, font, color, align);
+                }
+            }
         }
     }
 
@@ -567,6 +658,57 @@ public final class UiPainter {
             case "panel" -> MPainter.panel(canvas, r.x(), r.y(), r.width(), r.height());
             case "container" -> MPainter.containerPanel(canvas, r.x(), r.y(), r.width(), r.height());
             case "hud" -> MPainter.hudFrame(canvas, r.x(), r.y(), r.width(), r.height());
+            case "inset" -> MPainter.inset(canvas, r.x(), r.y(), r.width(), r.height());
+            // the chat's folder tabs and input well (#301), at the legacy chat's device-px radii
+            case "folder-tab" -> MPainter.folderTab(canvas, r.x(), r.y(), r.width(), r.height(), false);
+            case "folder-tab-active" -> MPainter.folderTab(canvas, r.x(), r.y(), r.width(), r.height(), true);
+            case "input-well" -> MPainter.inputWell(canvas, r.x(), r.y(), r.width(), r.height());
+            case "search-field" -> MPainter.searchWell(canvas, r.x(), r.y(), r.width(), r.height(), false);
+            case "search-field-active" -> MPainter.searchWell(canvas, r.x(), r.y(), r.width(), r.height(), true);
+            case "hotbar" -> // the gameplay hotbar's frame (#300): dark translucent stone, radius 8
+                MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), 8f,
+                    0xC8282828, 0xFF505050, 0x22FFFFFF, 0x44000000, 0x78000000,
+                    MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
+            case "panel-deep" -> // a stone panel on the deep fill: the hotbar's item-name tooltip (#300)
+                MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), MStyle.PANEL_RADIUS,
+                    MStyle.PANEL_FILL_DEEP, MStyle.PANEL_BORDER, MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW,
+                    MStyle.PANEL_DROP_SHADOW, MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
+            case "tab", "tab-hover", "tab-active", "tab-dim", "tab-disabled" -> {
+                // the inventory/character sheet tab strip: a button without the drop shadow (#300); also the
+                // character screens' list rows and row buttons: hovered-unselected rows dim, disabled (#301)
+                int fill = switch (surface) {
+                    case "tab-active" -> 0xFF7A7A7A;
+                    case "tab-hover" -> MStyle.BUTTON_FILL_HI;
+                    case "tab-dim" -> 0xFF3C3C3C;
+                    case "tab-disabled" -> MStyle.BUTTON_FILL_DIS;
+                    default -> MStyle.BUTTON_FILL;
+                };
+                MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), MStyle.BUTTON_RADIUS,
+                    fill, MStyle.BUTTON_BORDER, MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
+                    MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
+            }
+            case "mini-button", "mini-button-hover", "mini-button-disabled" -> {
+                // the ability score tiles' [-]/[+]: radius 2, no drop shadow (#301)
+                int fill = switch (surface) {
+                    case "mini-button-hover" -> MStyle.BUTTON_FILL_HI;
+                    case "mini-button-disabled" -> MStyle.BUTTON_FILL_DIS;
+                    default -> MStyle.BUTTON_FILL;
+                };
+                MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), 2f,
+                    fill, MStyle.BUTTON_BORDER, MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
+                    MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
+            }
+            // the character sheet's earthy ability pane, its skill hint strip and the feat filter bar (#301)
+            case "dirt" -> MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), MStyle.PANEL_RADIUS,
+                0xBF5C4033, 0xFF2A1A0A, MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW, 0, 0x38000000, 0x1A7A5A2A);
+            case "tip-strip" -> MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), 3f,
+                0xCC1A1A1A, 0xFF141414, 0x1AFFFFFF, 0x1A000000, 0, 0, 0);
+            case "filter-bar" -> MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), MStyle.PANEL_RADIUS,
+                0xBF3C3C3C, MStyle.PANEL_BORDER, MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW, 0,
+                MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
+            // the item slot's recessed frame (MItemSlot) on any element: the ability score tiles (#301)
+            case "slot" -> MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), 3f,
+                0xFF252525, 0xFF151515, 0x55000000, 0x1AFFFFFF, 0, MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
             case "button", "button-hover", "button-disabled" -> {
                 int fill = switch (surface) {
                     case "button-hover" -> MStyle.BUTTON_FILL_HI;
@@ -582,14 +724,34 @@ public final class UiPainter {
         }
     }
 
+    /**
+     * {@code -sb-symbol}: a Masonry vector symbol centred in the element's box, in its {@code color},
+     * with the house 1 px shadow unless {@code -sb-text-effect: none} (#299).
+     */
+    private static void symbol(Canvas canvas, String name, UiRect r, ComputedStyle s) {
+        MSymbol sym;
+        try {
+            sym = MSymbol.valueOf(name.toUpperCase(java.util.Locale.ROOT).replace('-', '_'));
+        } catch (IllegalArgumentException e) {
+            return; // the validator reports unknown keywords
+        }
+        int color = s.color("color", MStyle.TEXT_PRIMARY);
+        if ("none".equals(s.keyword("-sb-text-effect", "shadow"))) {
+            sym.draw(canvas, r.x(), r.y(), r.width(), r.height(), color);
+        } else {
+            sym.drawWithShadow(canvas, r.x(), r.y(), r.width(), r.height(), color, MStyle.TEXT_SHADOW);
+        }
+    }
+
     /** Wrapped, truncated or rich label text ({@code ui-text}): the measurer's cached lines. */
     private void lines(Canvas canvas, UiElement el, UiRect r, ComputedStyle s, float scale, int color,
                        float baseline) {
         TextLayout.Result layout = text.labelLayout(el, r.width(), scale);
         Font base = text.font(el, scale);
-        float lineHeight = (float) Math.ceil(base.getMetrics().getDescent() - base.getMetrics().getAscent());
+        float lineHeight = text.linePitch(el, base, scale);
         String align = s.keyword("text-align", "left");
         String effect = s.keyword("-sb-text-effect", "shadow");
+        UiValue shadow = s.get("-sb-text-shadow-color");
         int alpha = color >>> 24;
         for (int i = 0; i < layout.lineCount(); i++) {
             TextLayout.Line line = layout.lines().get(i);
@@ -606,7 +768,7 @@ public final class UiPainter {
                     ? (((st.color() >>> 24) * alpha / 255) << 24) | (st.color() & 0xFFFFFF)
                     : color;
                 Font f = text.font(el, scale, st.bold(), st.italic());
-                labelText(canvas, effect, run.text(), x + run.x(), y, f, c, MPainter.Align.LEFT);
+                labelText(canvas, effect, shadow, run.text(), x + run.x(), y, f, c, MPainter.Align.LEFT);
                 if (st.underline() && !run.text().isBlank()) {
                     float t = Math.max(1f, f.getSize() * 0.07f);
                     MPainter.fillRect(canvas, x + run.x(), y + Math.max(1f, f.getSize() * 0.1f), run.width(), t, c);
@@ -683,7 +845,13 @@ public final class UiPainter {
             return;
         }
         if (l == t && t == rt && rt == b) {
-            MPainter.strokeRoundedRect(canvas, r.x(), r.y(), r.width(), r.height(), radius, color, l);
+            if ("center".equals(s.keyword("-sb-border-align", "inside"))) {
+                // centred on the edge, as a legacy canvas.drawRect stroke (#299)
+                MPainter.strokeRoundedRect(canvas, r.x() - l / 2f, r.y() - l / 2f, r.width() + l, r.height() + l,
+                    radius, color, l);
+            } else {
+                MPainter.strokeRoundedRect(canvas, r.x(), r.y(), r.width(), r.height(), radius, color, l);
+            }
             return;
         }
         MPainter.fillRect(canvas, r.x(), r.y(), r.width(), t, color);
@@ -705,8 +873,7 @@ public final class UiPainter {
     }
 
     private static float px(ComputedStyle s, String property, float scale) {
-        StyleValues.Length l = s.length(property);
-        return l.kind() == StyleValues.Length.Kind.POINTS ? l.value() * scale : 0;
+        return s.length(property).px(scale, 0);
     }
 
     private static String assetRef(UiValue v) {

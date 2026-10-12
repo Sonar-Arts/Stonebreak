@@ -67,7 +67,7 @@ public final class BiomeSelector {
         return flatland(s);
     }
 
-    /** Frozen seas are ice fields; every other sea is OCEAN (as DaedalusTGM-Exp maps its ocean ids). */
+    /** Mirrors DaedalusTGM-Exp's ocean ids: frozen_ocean is ice fields, every other sea is OCEAN. */
     private BiomeType ocean(MultiNoiseSample s) {
         return s.temperature() < T_FREEZING ? BiomeType.ICE_FIELDS : BiomeType.OCEAN;
     }

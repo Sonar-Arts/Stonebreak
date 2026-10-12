@@ -191,6 +191,12 @@ public final class StateConverter {
             } catch (IllegalArgumentException ignored) {}
         });
         player.getEntityDiscoveries().restore(variantsRestored, weaknessesRestored);
+
+        // Saved while dead (quit or crashed from the death screen): come back respawned rather than
+        // alive at 0 health where you died. Last, so full health is the restored character's maximum.
+        if (data.getHealth() <= 0f) {
+            player.respawn();
+        }
     }
 
     /**

@@ -337,9 +337,54 @@ Per element:
 `stoneSurface` / `hudFrame` do (radii in device px, as the legacy screens never scaled them); any explicit value,
 `none` included, replaces a `Button`'s pseudo-state look, so a component decides its own hover in its sheet.
 `-sb-text-effect` picks a label's `shadow` (default), `none`, or `title` (`MPainter.drawTitleText`: the pause /
-statistics / glossary title stack, layers 2 device px apart). The root's `-sb-pixel-grid: none` lays out and places
+statistics / glossary title stack, layers 2 device px apart). `-sb-text-shadow-color` (#301, inherited) gives the
+`shadow` effect an explicit colour used as given (its own alpha, not faded with the text): the soft +2 px and crisp
++1 px passes of `MPainter.drawCenteredStringWithShadow`, as the world markers and the stealth HUD draw. A root
+`-sb-tooltip-offset` (#301, length or `dpx`) places pointer tooltips that far right and down of the pointer, rounded to
+whole pixels (default `15`, i.e. `round(15 x scale)`; the recipe book's legacy tooltip was `15dpx` at any scale). The root's `-sb-pixel-grid: none` lays out and places
 without snapping (the instance rebuilds its flex tree when the value changes); `device` snaps; absent = the host's
-`UiRuntimeContext.pixelGrid`. The pause document uses all three and matches the legacy renderer pixel for pixel
+`UiRuntimeContext.pixelGrid`. Off the grid, an auto line box is the font's real height (not rounded up), so a
+label's baseline is `top + ascent` (`0.75 x font-size` for the game font) at every UI scale (#299). Fonts sit on the
+house half-pixel grid (`MFonts`, what the Masonry-widget screens drew with) unless the root says `-sb-font-grid: none`:
+then text is exactly `font-size x scale`, as legacy screens that built `new Font(tf, size * scale)` drew (statistics).
+
+More of the house look as style (#299, all `ui-masonry` unless noted):
+- **`Ndpx` lengths**: device pixels the UI scale never multiplies, for box geometry only (size, position, margin,
+  padding, border widths, gaps, `border-radius`, `-sb-baseline`, `line-height`). Legacy screens drew 1 px rules,
+  4 px shadows and 3 px radii at every scale; `height: "1dpx"` says so instead of a script dividing by the scale.
+- **`-sb-baseline`**: a label's first baseline as a distance from its top (logical px, `dpx` or `%` of its height),
+  instead of the font's ascent. Masonry widgets placed text at `y + h/2 + 0.35 x size` from unsnapped sizes while
+  drawing with snapped fonts; an explicit baseline reproduces that at every scale. A label whose box starts at its
+  baseline (`-sb-baseline: 0`) stacks like the legacy text cursor did.
+- **`line-height`** (`ui-text`, inherited): the pitch of a label's lines (each line box that tall, text centred in it);
+  absent = the font's line height.
+- **`-sb-symbol`**: a house vector symbol (`lock`, `check`, `warning`, `star`, `chevron-left`, ... = `MSymbol`)
+  centred in the element's box, in its `color`, with the 1 px house shadow unless `-sb-text-effect: none`.
+- **`-sb-surface: inset`**: the recessed dark well (`MPainter.inset`, the glossary's panes).
+- **`-sb-surface: tab | tab-hover | tab-active`** (#300): the inventory/character tab strip, a button surface without
+  the drop shadow (`tab-active` = the selected tab's lighter fill; a sheet keeps it on `:hover` too).
+  **`hotbar`**: the gameplay hotbar's dark translucent frame (radius 8). **`panel-deep`**: a stone panel on the deep
+  fill (the hotbar's item-name tooltip).
+- **`-sb-symbol: crafting-arrow`** (#300): the container screens' crafting arrow (`MPainter.craftingArrow`), spanning
+  the whole box rather than centred in its square; with `-sb-text-effect: none` it has no shadow, as the legacy
+  screens drew it.
+- **`-sb-shadow-color`** (+ `-sb-shadow-offset-x/-y`, `-sb-shadow-blur` = sigma, logical or `dpx`): a Skia drop
+  shadow under the element's own paint. On an `Image` without a background it rides on the image's paint, exactly
+  as a legacy `drawImageRect` with an image-filter paint (the menu logo); otherwise the element paints into a
+  filtered layer.
+- **`-sb-sampling: nearest-raw`**: Skia's own nearest sampling and exact patch geometry, as a legacy
+  `drawImageRect` call, without the #328 tie bias (so game and preview may break pixel-centre ties apart). Plain
+  PNG textures decode premultiplied by the codec, as `Image.makeFromEncoded` does, so translucent edges round the
+  same as legacy draws (`MTexturePngDecodeTest`).
+- **`font-size: Ndpx`**: text the UI scale never enlarges (the loading screen draws in device pixels).
+- **Text fields** (#299): `-sb-baseline` places a single-line `TextField`'s baseline too; `-sb-caret: underscore`
+  draws the legacy "_" caret after the text instead of the bar; `-sb-border-align: center` strokes a uniform border
+  centred on the edge (a legacy `canvas.drawRect` stroke) instead of inside it.
+- **`-sb-clip: antialias`** (#299): an element that clips its children (`overflow: hidden`, scroll containers)
+  clips with anti-aliased edges, as the Masonry scroll viewport does; the default `hard` clip snaps to pixels.
+- Elements of zero width or height do not paint themselves (their children still do): give text its natural height
+  and place it with `-sb-baseline`. Layout borders take room (Yoga): a pill's 1 px rim that must not move its text is
+  an absolutely placed overlay child. The pause document uses all three and matches the legacy renderer pixel for pixel
 (`PauseDocumentGateTest`).
 
 | Widget | Look |
@@ -365,7 +410,8 @@ element). A frame is `layout(w, h, uiScale, pixelRatio)` (layout, then input and
 `prepareProviders()` (the providers' GL phase, outside any Skia frame) → the host opens its Masonry frame →
 `paint(masonry)` → the host closes it. `render(...)` = `layout` + `paint` inside an already-open frame, for hosts
 whose providers need no GL phase. The painter draws carets, selections, focus rings, status symbols and the tooltip
-from the router.
+from the router (a pointer tooltip sits `round(15 x scale)` px right of and below the pointer, whole pixels as the
+legacy container screens placed it, #300).
 
 **Missing providers are loud.** An `ItemSlot`/`DrawProvider` whose `provider` id the host does not know paints a
 magenta placeholder with a warning symbol and reports `MISSING_DRAW_PROVIDER` once per element; a provider that
@@ -391,18 +437,17 @@ disabled changes: **0 px differ**.
 screen goes through:
 - **Open.** `DocumentScreenHost.open(id, Options)` loads the shipped export `ui/documents/<id>.sbui` (game
   classpath) through `GameUiDocuments.openBound` (activation, asset and input gates, derived graph Lua, code-behind)
-  and joins it to the game window's input stack. An empty result means "keep the legacy screen": nothing ships for
-  the id, it is rolled back (`DocumentScreenPolicy`: `-Dstonebreak.ui.legacy=<id,...>|all`, or `setOverride` at
-  runtime), or a gate refused it (logged, plus a red chat line; never a blank screen). Shared rows of shipped screens
+  and joins it to the game window's input stack. An empty result means the screen cannot show: nothing ships for
+  the id (`ShippedDocuments`), a world-scoped screen outside a world, or a gate refused it (logged, plus a red chat
+  line). There is no legacy fallback since #302: the document is the screen's only presentation. Shared rows of shipped screens
   live under `ui/shared/<ns>/<path><ext>` (the editor's "Deploy to game" writes both).
 - **Order.** `Options.layer` (`UiLayer` SCREEN < HUD < OVERLAY < TOOLTIP < CURSOR) places the screen in the one
-  ordered stack (`GameUiInput.views()`) that is both the draw order and, reversed, the input order. Legacy screens
-  and the legacy HUD are always beneath document screens.
+  ordered stack (`GameUiInput.views()`) that is both the draw order and, reversed, the input order.
 - **Frame.** `frame()` advances each screen by `UiFrameClock` (the `ui` clock by frame time, the `game` clock by
   the simulated time the world stepped) and runs its scripts; `render(...)` draws them; `FrameRenderer` calls both.
 - **Close and navigate (C4).** `ui.close()`, `ui.navigate(target, args)` and `requestClose` only queue;
   `endFrame()` performs them after the frame was drawn, so nothing is torn down underneath the dispatch that asked.
-  Navigation opens the target's document when it has one, else a `LegacyNavigation` target (`resume`, `pause`,
+  Navigation opens the target's document when it has one, else a `StateNavigation` target (`resume`, `pause`,
   `settings`, `statistics`, `glossary`, `main_menu`, `world_select`, `multiplayer`), and replaces the asking screen
   unless `args.push` is true. Unknown targets return false (the script gets an error).
 - **Owner-painted screens.** `Options.ownerPaints` keeps a screen in the stack (frames, scripts, input) but out

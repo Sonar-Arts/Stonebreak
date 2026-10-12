@@ -41,45 +41,43 @@ public class SettingsManager {
     }
     
     /**
-     * Applies crosshair-related settings to the crosshair renderer.
+     * Applies crosshair-related settings to the applied crosshair configuration.
      */
     public void applyCrosshairSettings() {
         Game game = Game.getInstance();
         if (game != null && game.getRenderer() != null && game.getRenderer().getUIRenderer() != null) {
-            var crosshairRenderer = game.getRenderer().getUIRenderer().getMCrosshairRenderer();
-            if (crosshairRenderer != null) {
-                applyCrosshairStyle(crosshairRenderer);
-                applyCrosshairProperties(crosshairRenderer);
+            var crosshair = game.getRenderer().getUIRenderer().getCrosshairSettings();
+            applyCrosshairStyle(crosshair);
+            applyCrosshairProperties(crosshair);
 
-                System.out.println("Applied crosshair settings: style=" + settings.getCrosshairStyle() +
-                                 ", size=" + settings.getCrosshairSize());
-            }
+            System.out.println("Applied crosshair settings: style=" + settings.getCrosshairStyle() +
+                             ", size=" + settings.getCrosshairSize());
         }
     }
 
     /**
-     * Applies the crosshair style to the renderer.
+     * Applies the crosshair style.
      */
-    private void applyCrosshairStyle(com.stonebreak.rendering.UI.components.MCrosshairRenderer crosshairRenderer) {
+    private void applyCrosshairStyle(com.stonebreak.ui.crosshair.CrosshairSettings crosshair) {
         try {
-            var styleEnum = com.stonebreak.rendering.UI.components.MCrosshairRenderer.CrosshairStyle
+            var styleEnum = com.stonebreak.ui.crosshair.CrosshairSettings.CrosshairStyle
                 .valueOf(settings.getCrosshairStyle());
-            crosshairRenderer.setStyle(styleEnum);
+            crosshair.setStyle(styleEnum);
         } catch (IllegalArgumentException e) {
             System.err.println("Invalid crosshair style: " + settings.getCrosshairStyle());
         }
     }
 
     /**
-     * Applies crosshair visual properties to the renderer.
+     * Applies crosshair visual properties.
      */
-    private void applyCrosshairProperties(com.stonebreak.rendering.UI.components.MCrosshairRenderer crosshairRenderer) {
-        crosshairRenderer.setSize(settings.getCrosshairSize());
-        crosshairRenderer.setThickness(settings.getCrosshairThickness());
-        crosshairRenderer.setGap(settings.getCrosshairGap());
-        crosshairRenderer.setOpacity(settings.getCrosshairOpacity());
-        crosshairRenderer.setColor(settings.getCrosshairColorR(), settings.getCrosshairColorG(), settings.getCrosshairColorB());
-        crosshairRenderer.setOutline(settings.getCrosshairOutline());
+    private void applyCrosshairProperties(com.stonebreak.ui.crosshair.CrosshairSettings crosshair) {
+        crosshair.setSize(settings.getCrosshairSize());
+        crosshair.setThickness(settings.getCrosshairThickness());
+        crosshair.setGap(settings.getCrosshairGap());
+        crosshair.setOpacity(settings.getCrosshairOpacity());
+        crosshair.setColor(settings.getCrosshairColorR(), settings.getCrosshairColorG(), settings.getCrosshairColorB());
+        crosshair.setOutline(settings.getCrosshairOutline());
     }
     
     /**

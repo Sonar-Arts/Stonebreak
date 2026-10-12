@@ -1,6 +1,7 @@
 package com.openmason.main.systems.menus.dialogs;
 
 import com.openmason.engine.format.sbo.SBOFormat;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -13,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * Data side of the SBO editor's Tool tab and the mining index — no ImGui
  * frame needed: load → save conversion, validation, and index aggregation.
  */
+@Tag("regression")
 class SBOToolSectionDataTest {
 
     private static SBOFormat.ToolData pick() {

@@ -22,14 +22,18 @@ import java.util.Map;
 /**
  * The candidate side of the pause menu's fidelity gate (#297): the shipped export
  * {@code ui/documents/pause.sbui}, opened exactly as the game opens it ({@code GameUiDocuments.openBound}
- * against a {@link GameUiHost}, Lua code-behind running) and painted on the same {@link LegacyUiRaster}
- * stage as {@link LegacyPauseCapture}. Variants are the legacy ones: {@code field} paints the document
- * twice per frame, as {@code PauseMenu.render} is still called twice over the world; {@code battle} once.
+ * against a {@link GameUiHost}, Lua code-behind running) and painted on a {@link UiRaster}
+ * stage, as the frozen legacy captures were. Variants are {@code <where>-<session>[-hover-<button>]}:
+ * {@code field} paints the document twice per frame, as {@code PauseMenu.render} is called twice over
+ * the world (two stacked scrims, ledger hard visual 13); {@code battle} once; {@code offline} has five
+ * buttons, {@code online} six (Resync World).
  *
  * <p>Reports each button's rect (the component instance named after the legacy part), where the
  * document's own hit test answers for it, and which host action a click on it reaches. Not a test class.
  */
 public final class DocumentPauseCapture implements MigrationGate.Renderer {
+
+    public static final List<String> BUTTONS = List.of("resume", "statistics", "glossary", "settings", "resync", "quit");
 
     private final SbuiArchive shipped;
 
@@ -68,7 +72,7 @@ public final class DocumentPauseCapture implements MigrationGate.Renderer {
 
     /** The document open on a raster stage, bound to a recording game host. */
     static final class Stage implements AutoCloseable {
-        final LegacyUiRaster raster;
+        final UiRaster raster;
         final RecordingServices services = new RecordingServices();
         final GameUiHost host;
         final UiDocumentView view;
@@ -76,7 +80,7 @@ public final class DocumentPauseCapture implements MigrationGate.Renderer {
         final float scale;
 
         Stage(SbuiArchive sbui, int w, int h, float scale, boolean online) throws Exception {
-            raster = new LegacyUiRaster(w, h, scale);
+            raster = new UiRaster(w, h, scale);
             this.scale = scale;
             host = new GameUiHost(services, online ? MultiplayerSession.Mode.HOST : MultiplayerSession.Mode.SINGLEPLAYER);
             view = GameUiDocuments.openBound(sbui, Map.of(), raster.backend()::getMinecraftTypeface, Map.of(),
@@ -143,7 +147,7 @@ public final class DocumentPauseCapture implements MigrationGate.Renderer {
     private static Map<String, float[]> rects(Stage stage) {
         Map<String, float[]> out = new LinkedHashMap<>();
         put(out, "panel", stage.view.instance().q("#panel"));
-        for (String b : LegacyPauseCapture.BUTTONS) {
+        for (String b : BUTTONS) {
             UiElement el = stage.button(b);
             if (el != null && !el.isCollapsed()) {
                 put(out, b, el);
@@ -159,27 +163,16 @@ public final class DocumentPauseCapture implements MigrationGate.Renderer {
         }
     }
 
-    /** Where the document's hit test answers for each button, probed like the legacy capture. */
+    /** Where the document's hit test answers for each button ({@link DocumentStage#probeRegion}). */
     private static Map<String, float[]> hits(Stage stage, Map<String, float[]> rects, int w, int h) {
         Map<String, float[]> out = new LinkedHashMap<>();
-        for (String b : LegacyPauseCapture.BUTTONS) {
+        for (String b : BUTTONS) {
             float[] r = rects.get(b);
             if (r == null) {
                 continue;
             }
             UiElement button = stage.button(b);
-            LegacyPauseCapture.HitProbe probe = (x, y) -> within(stage.view.instance().hitTest(x, y), button);
-            float cx = r[0] + r[2] / 2f;
-            float cy = r[1] + r[3] / 2f;
-            if (!probe.at(cx, cy)) {
-                out.put(b, new float[]{cx, cy, 0, 0});
-                continue;
-            }
-            float x0 = LegacyPauseCapture.edge(probe, cx, cy, -1, 0, w, h);
-            float x1 = LegacyPauseCapture.edge(probe, cx, cy, 1, 0, w, h);
-            float y0 = LegacyPauseCapture.edge(probe, cx, cy, 0, -1, w, h);
-            float y1 = LegacyPauseCapture.edge(probe, cx, cy, 0, 1, w, h);
-            out.put(b, new float[]{x0, y0, x1 - x0, y1 - y0});
+            out.put(b, DocumentStage.probeRegion((x, y) -> within(stage.view.instance().hitTest(x, y), button), r, w, h));
         }
         return out;
     }
@@ -196,7 +189,7 @@ public final class DocumentPauseCapture implements MigrationGate.Renderer {
     /** The host action each displayed button's click reaches (exactly one per click). */
     private static Map<String, String> actions(Stage stage, Map<String, float[]> rects) {
         Map<String, String> out = new LinkedHashMap<>();
-        for (String b : LegacyPauseCapture.BUTTONS) {
+        for (String b : BUTTONS) {
             float[] r = rects.get(b);
             if (r == null) {
                 continue;

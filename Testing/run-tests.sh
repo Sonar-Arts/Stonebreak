@@ -9,25 +9,39 @@ HARNESS="$HERE/harness.py"
 LIST=0
 UPDATE_BASELINE=0
 VERBOSE=0
+REPORT=""
 SCOPE_WORDS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
       cat <<'EOF'
-Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose]
+Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose] [--report FILE]
                                  all | integration | regression | <system> [<system>...]
+
+  --report FILE   also write the result as Markdown (for a PR comment), even
+                  when the build fails before any test runs
 EOF
       exit 2
       ;;
     --list)           LIST=1; shift ;;
     --update-baseline) UPDATE_BASELINE=1; shift ;;
     --verbose)        VERBOSE=1; shift ;;
+    --report)
+      if [[ $# -lt 2 || "$2" == -* ]]; then
+        echo "--report needs a file path" >&2
+        exit 2
+      fi
+      REPORT="$2"; shift 2 ;;
+    --report=*)       REPORT="${1#--report=}"; shift ;;
     -*)
       echo "Unknown flag: $1" >&2
       cat >&2 <<'EOF'
-Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose]
+Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose] [--report FILE]
                                  all | integration | regression | <system> [<system>...]
+
+  --report FILE   also write the result as Markdown (for a PR comment), even
+                  when the build fails before any test runs
 EOF
       exit 2
       ;;
@@ -37,8 +51,11 @@ done
 
 if [[ "$LIST" -eq 0 && ${#SCOPE_WORDS[@]} -eq 0 ]]; then
   cat <<'EOF'
-Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose]
+Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose] [--report FILE]
                                  all | integration | regression | <system> [<system>...]
+
+  --report FILE   also write the result as Markdown (for a PR comment), even
+                  when the build fails before any test runs
 EOF
   exit 2
 fi
@@ -52,6 +69,11 @@ fi
 IFS=','
 SCOPE="${SCOPE_WORDS[*]}"
 unset IFS
+
+# Resolve the report path now: the summarizer runs after `cd "$ROOT"`.
+if [[ -n "$REPORT" && "$REPORT" != /* ]]; then
+  REPORT="$PWD/$REPORT"
+fi
 
 # ── JDK resolution ──────────────────────────────────────────────────
 CAND=""
@@ -146,6 +168,9 @@ fi
 if [[ "$MVN_EXIT" -ne 0 ]]; then
   tail -n 40 "$MVN_LOG"
   echo "build/infra failure (mvn exit $MVN_EXIT) — full log: $MVN_LOG"
+  if [[ -n "$REPORT" ]]; then
+    python3 "$HARNESS" infra-report --scope "$SCOPE" --report "$REPORT" --log "$MVN_LOG" --exit "$MVN_EXIT"
+  fi
   echo "RESULT: FAIL"
   exit 2
 fi
@@ -153,8 +178,11 @@ fi
 # ── Hand off to summarizer ──────────────────────────────────────────
 echo "mvn log: $MVN_LOG"
 
+SUMMARIZE_ARGS=(summarize --scope "$SCOPE")
 if [[ "$UPDATE_BASELINE" -eq 1 ]]; then
-  exec python3 "$HARNESS" summarize --scope "$SCOPE" --update-baseline
-else
-  exec python3 "$HARNESS" summarize --scope "$SCOPE"
+  SUMMARIZE_ARGS+=(--update-baseline)
 fi
+if [[ -n "$REPORT" ]]; then
+  SUMMARIZE_ARGS+=(--report "$REPORT")
+fi
+exec python3 "$HARNESS" "${SUMMARIZE_ARGS[@]}"

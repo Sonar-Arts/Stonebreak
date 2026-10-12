@@ -82,24 +82,27 @@ public interface TerrainGenerator {
                        VegetationGenerator.TreeSample[] outTrees);
 
     /**
-     * {@link #sampleColumns} without the carve, for FastLOD's coarsest levels: heights are the
-     * raw terrain height and surfaces the uncarved top, and no trees are sampled. Generators
-     * with no cheaper uncarved path report the carved columns.
+     * {@link #sampleColumns} without the cave carve: heights are the raw terrain height and
+     * surfaces the biome's surface block, so no carved surface profile is built. For FastLOD's
+     * coarse uncarved levels ({@code FastLodQuality#carves}), where that profile — a carve-mask
+     * build of every chunk the grid touches — is nearly all of a node's cost. No tree samples.
+     * The footprint rule of {@link #sampleColumns} applies unchanged.
      */
-    default void sampleRawColumns(int worldX0, int worldZ0, int count, int stride,
-                                  int[] outHeights, int[] outWaterLevels, BlockType[] outSurface) {
-        sampleColumns(worldX0, worldZ0, count, stride, outHeights, outWaterLevels, outSurface, null);
-    }
+    void sampleRawColumns(int worldX0, int worldZ0, int count, int stride,
+                          int[] outHeights, int[] outWaterLevels, BlockType[] outSurface);
 
     /**
-     * Every tree the generator plants inside a coarse FastLOD node, packed by
-     * {@code FastLodChunkData.packTreeSpot}. {@code cellHeights} are world Y. Empty when the
-     * generator cannot probe its trees.
+     * Every tree the real generator plants inside a coarse FastLOD node, for drawing past the
+     * finest band: each column of each cell probed against the cell's biome and sampled
+     * surface block. A submerged cell, or one whose surface no tree grows on, plants nothing.
+     *
+     * @param cellHeights      sampled surface height per cell, {@code [ix*cells+iz]}
+     * @param cellWaterLevels  sampled water level per cell, {@code [ix*cells+iz]}
+     * @param cellSurface      sampled surface block per cell, {@code [ix*cells+iz]}
+     * @return packed spots ({@code FastLodChunkData.packTreeSpot}); empty when none
      */
-    default int[] probeCellTrees(int chunkX, int chunkZ, int cellsPerAxis, int cellSize,
-                                 int[] cellHeights, BlockType[] cellSurface) {
-        return new int[0];
-    }
+    int[] probeCellTrees(int chunkX, int chunkZ, int cellsPerAxis, int cellSize,
+                         int[] cellHeights, int[] cellWaterLevels, BlockType[] cellSurface);
 
     /** Terrain blocks for a chunk; features are populated later, once neighbours exist. */
     TerrainResult generateTerrainOnly(int chunkX, int chunkZ);

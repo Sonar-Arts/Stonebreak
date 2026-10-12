@@ -14,30 +14,19 @@ import com.stonebreak.core.GameState;
 import com.stonebreak.core.window.GameWindow;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
-import com.stonebreak.rendering.UI.components.DoubtMarkerRenderer;
-import com.stonebreak.rendering.UI.components.EnemyAwarenessRenderer;
-import com.stonebreak.rendering.UI.components.PlayerNameTagRenderer;
-import com.stonebreak.rendering.UI.components.QuarryMarkerRenderer;
-import com.stonebreak.rendering.UI.components.StealthHudRenderer;
+import com.stonebreak.ui.worldHud.DamageNumbers;
 import com.stonebreak.ui.DebugOverlay;
 import com.stonebreak.ui.DeathMenu;
 import com.stonebreak.ui.LoadingScreen;
-import com.stonebreak.ui.MainMenu;
 import com.stonebreak.ui.PauseMenu;
-import com.stonebreak.ui.characterCreation.CharacterCreationScreen;
 import com.stonebreak.ui.characterScreen.CharacterScreen;
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.ui.furnace.FurnaceScreen;
 import com.stonebreak.ui.glossaryScreen.GlossaryScreen;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
-import com.stonebreak.ui.settingsMenu.SettingsMenu;
-import com.stonebreak.ui.startupIntro.SonarArtsIntroScreen;
 import com.stonebreak.ui.statisticsScreen.StatisticsScreen;
-import com.stonebreak.ui.terrainMapper.TerrainMapperScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
-import com.stonebreak.ui.worldSelect.WorldSelectScreen;
 import com.stonebreak.world.World;
 
 import static org.lwjgl.opengl.GL11.*;
@@ -95,53 +84,13 @@ public final class FrameRenderer {
         int width = width();
         int height = height();
 
-        switch (game.getState()) {
-            case STARTUP_INTRO -> {
-                SonarArtsIntroScreen intro = game.getStartupIntroScreen();
-                if (intro != null) intro.render(width, height);
-            }
-            case MODEL_SETUP -> {
-                var setupScreen = game.getModelSetupScreen();
-                if (setupScreen != null) setupScreen.render(width, height);
-            }
-            case MAIN_MENU -> {
-                MainMenu mainMenu = game.getMainMenu();
-                if (mainMenu != null) mainMenu.render(width, height);
-            }
-            case WORLD_SELECT -> {
-                WorldSelectScreen worldSelect = game.getWorldSelectScreen();
-                if (worldSelect != null) worldSelect.render(width, height);
-            }
-            case CHARACTER_CREATION -> {
-                CharacterCreationScreen creation = game.getCharacterCreationScreen();
-                if (creation != null) {
-                    creation.updateLabelsForMode();
-                    creation.render(width, height);
-                }
-            }
-            case TERRAIN_MAPPER -> {
-                TerrainMapperScreen terrainMapper = game.getTerrainMapperScreen();
-                if (terrainMapper != null) terrainMapper.render(width, height);
-            }
-            case LOADING -> {
-                LoadingScreen loading = game.getLoadingScreen();
-                if (loading != null) loading.render(width, height);
-            }
-            case SETTINGS -> {
-                SettingsMenu settings = game.getSettingsMenu();
-                if (settings != null) settings.render(width, height);
-            }
-            case MULTIPLAYER_MENU -> {
-                if (game.getMultiplayerMenu() != null) game.getMultiplayerMenu().render(width, height);
-            }
-            case HOST_WORLD_SELECT -> {
-                if (game.getHostWorldScreen() != null) game.getHostWorldScreen().render(width, height);
-            }
-            case JOIN_WORLD_SCREEN -> {
-                if (game.getJoinWorldScreen() != null) game.getJoinWorldScreen().render(width, height);
-            }
-            case FOCUS_BATTLE -> renderFocusBattle(game, renderer);
-            default -> renderInGame(game, renderer);
+        syncCrosshair(game, renderer);
+
+        // A state whose screen is a shipped document (the shell menus, #299) draws it here.
+        boolean presented = com.stonebreak.ui.runtime.screens.StateScreens.get().paint(game.getState(), width, height);
+
+        if (!presented) {
+            renderStateScreen(game, renderer, width, height);
         }
 
         renderDocumentScreens(renderer, width, height);
@@ -151,10 +100,26 @@ public final class FrameRenderer {
         com.stonebreak.ui.runtime.screens.DocumentScreenHost.get().endFrame();
     }
 
+    /** The loading screen, the battle or the world for the in-game states. */
+    private void renderStateScreen(Game game, Renderer renderer, int width, int height) {
+        switch (game.getState()) {
+            case LOADING -> {
+                LoadingScreen loading = game.getLoadingScreen();
+                if (loading != null) loading.render(width, height);
+            }
+            // Only their documents (StateScreens, painted above) show these states.
+            case STARTUP_INTRO, MODEL_SETUP, MAIN_MENU, WORLD_SELECT, CHARACTER_CREATION, TERRAIN_MAPPER, SETTINGS,
+                 MULTIPLAYER_MENU, HOST_WORLD_SELECT, JOIN_WORLD_SCREEN -> { }
+            case FOCUS_BATTLE -> renderFocusBattle(game, renderer);
+            default -> renderInGame(game, renderer);
+        }
+    }
+
     /**
      * UI document screens (#297 onward) and the {@code -Dstonebreak.uidoc} developer overlay
-     * (#287), bottom to top in the one stack input is also routed through. Legacy screens and the
-     * legacy HUD are always beneath them.
+     * (#287), bottom to top in the one stack input is also routed through. Documents their screens
+     * paint ({@code ownerPaints}: every {@code PresentedDocument}) are drawn at those screens' places
+     * in the frame instead, not here.
      */
     private void renderDocumentScreens(Renderer renderer, int width, int height) {
         var host = com.stonebreak.ui.runtime.screens.DocumentScreenHost.get();
@@ -179,7 +144,7 @@ public final class FrameRenderer {
         }
         devScreenTried = true;
         if (host.open(devScreen, com.stonebreak.ui.runtime.screens.DocumentScreen.Options.screen()).isEmpty()) {
-            logger.warn("[uiscreen] {} did not open as a document (not shipped, rolled back or refused)", devScreen);
+            logger.warn("[uiscreen] {} did not open as a document (not shipped or refused)", devScreen);
         }
     }
 
@@ -206,7 +171,6 @@ public final class FrameRenderer {
 
         renderGameUI(game, renderer);
         renderFullscreenMenus(game);
-        renderer.renderOverlay(game, width(), height());
         renderModalMenus(game, renderer);
         // A requested Focus battle begins here: this finished field frame becomes the freeze-frame
         // its encounter transition twists away.
@@ -371,35 +335,42 @@ public final class FrameRenderer {
         if (player == null) {
             return;
         }
-        int width = width();
-        int height = height();
-        var projection = renderer.getProjectionMatrix();
-        var view = player.getViewMatrix();
-
-        DamageNumberRenderer damageNumbers = DamageNumberRenderer.getInstance();
-        damageNumbers.update(Game.getDeltaTime());
-        damageNumbers.render(projection, view, width, height);
-        QuarryMarkerRenderer.getInstance().render(projection, view, width, height);
-        DoubtMarkerRenderer.getInstance().render(projection, view, width, height);
-        EnemyAwarenessRenderer.getInstance().render(projection, view, width, height);
-        PlayerNameTagRenderer.getInstance().render(projection, view, width, height);
-        StealthHudRenderer.getInstance().render(width, height);
+        // advanced on the render path, so numbers freeze outside PLAYING
+        DamageNumbers.getInstance().update(Game.getDeltaTime());
+        renderer.getUIRenderer().getWorldHud().render(renderer.getProjectionMatrix(), player.getViewMatrix(),
+                width(), height());
     }
 
     private void renderCrosshair(Game game, Renderer renderer) {
+        if (crosshairShown(game)) {
+            renderer.getUIRenderer().renderCrosshair(width(), height());
+        }
+    }
+
+    /** PLAYING with no container screen open: where the crosshair is drawn. */
+    private static boolean crosshairShown(Game game) {
         if (game.getState() != GameState.PLAYING) {
-            return;
+            return false;
         }
         InventoryScreen inventory = game.getInventoryScreen();
         WorkbenchScreen workbench = game.getWorkbenchScreen();
         FurnaceScreen furnace = game.getFurnaceScreen();
-        boolean anyScreenOpen = (inventory != null && inventory.isVisible())
+        return !((inventory != null && inventory.isVisible())
                 || (workbench != null && workbench.isVisible())
-                || (furnace != null && furnace.isVisible());
-        if (anyScreenOpen) {
-            return;
+                || (furnace != null && furnace.isVisible()));
+    }
+
+    /**
+     * The crosshair, world HUD and chat documents open and close with their visibility, in every
+     * state (#301): the crosshair in PLAYING with no container screen, the world HUD in PLAYING.
+     */
+    private static void syncCrosshair(Game game, Renderer renderer) {
+        if (renderer != null && renderer.getUIRenderer() != null) {
+            renderer.getUIRenderer().getCrosshair().sync(crosshairShown(game));
+            renderer.getUIRenderer().getWorldHud().sync(game.getState() == GameState.PLAYING && Game.getPlayer() != null);
+            renderer.getUIRenderer().getChatDocument().sync(HUD_STATES.contains(game.getState())
+                    && game.getChatSystem() != null);
         }
-        renderer.getUIRenderer().renderCrosshair(width(), height());
     }
 
     private void renderInventoryAndHotbar(Game game) {
@@ -409,8 +380,7 @@ public final class FrameRenderer {
         int width = width();
         int height = height();
 
-        // The recipe book takes the foreground; draw only the hotbar underneath so hover
-        // detection over the inventory grid doesn't run.
+        // The recipe book takes the foreground; draw only the hotbar underneath.
         if (state == GameState.RECIPE_BOOK_UI) {
             if (inventory != null) {
                 inventory.renderHotbar(width, height);
@@ -418,9 +388,7 @@ public final class FrameRenderer {
             return;
         }
 
-        // Furnace and workbench are drawn exclusively by renderFullscreenMenus (outside the UI frame
-        // bracket). Drawing them here as well double-renders, and the second Skija pass covers the GL
-        // block-texture icons from the first.
+        // Furnace and workbench are drawn exclusively by renderFullscreenMenus.
         if (state == GameState.FURNACE_UI || state == GameState.WORKBENCH_UI) {
             return;
         }
@@ -472,51 +440,66 @@ public final class FrameRenderer {
         }
     }
 
-    /** Menus that float above the world in any in-game state, plus the pause menu's depth curtain. */
+    /**
+     * Menus that float above the world in any in-game state, plus the pause menu's depth curtain. They paint in
+     * the order their documents opened (the input stack's), so the menu that takes the clicks is the one on top:
+     * the pause menu (and the statistics or glossary opened from it) over a death screen when paused while dead,
+     * the death screen over the pause menu when the player dies while paused online.
+     */
     private void renderModalMenus(Game game, Renderer renderer) {
         if (renderer == null) {
             return;
         }
         int width = width();
         int height = height();
+        java.util.List<ModalMenu> menus = new java.util.ArrayList<>(4);
 
         PauseMenu pauseMenu = game.getPauseMenu();
         if (pauseMenu != null && pauseMenu.isVisible()) {
-            pauseMenu.render(width, height);
-            renderer.getUIRenderer().renderPauseMenuDepthCurtain();
+            menus.add(new ModalMenu(com.stonebreak.ui.pauseMenu.PauseDocument.ID, () -> {
+                pauseMenu.render(width, height);
+                renderer.getUIRenderer().renderPauseMenuDepthCurtain();
+            }));
         }
-
         StatisticsScreen statistics = game.getStatisticsScreen();
         if (statistics != null && statistics.isVisible()) {
-            statistics.render(width, height);
+            menus.add(new ModalMenu(StatisticsScreen.DOCUMENT_ID, () -> statistics.render(width, height)));
         }
-
         GlossaryScreen glossary = game.getGlossaryScreen();
         if (glossary != null && glossary.isVisible()) {
-            glossary.render(width, height);
+            menus.add(new ModalMenu(GlossaryScreen.DOCUMENT_ID, () -> glossary.render(width, height)));
         }
-
         DeathMenu deathMenu = game.getDeathMenu();
         if (deathMenu != null && deathMenu.isVisible()) {
-            deathMenu.render(width, height);
+            menus.add(new ModalMenu(DeathMenu.DOCUMENT_ID, () -> deathMenu.render(width, height)));
         }
-
         com.stonebreak.ui.saveChanges.SaveChangesDialog saveDialog = game.getSaveChangesDialog();
         if (saveDialog != null && saveDialog.isVisible()) {
-            saveDialog.render(width, height);
+            menus.add(new ModalMenu(com.stonebreak.ui.saveChanges.SaveChangesDialog.DOCUMENT_ID,
+                    () -> saveDialog.render(width, height)));
         }
+
+        com.stonebreak.ui.runtime.screens.DocumentScreenHost host = com.stonebreak.ui.runtime.screens.DocumentScreenHost.get();
+        menus.sort(java.util.Comparator.comparingInt(m -> host.stackIndex(m.id()))); // stable: ties keep this order
+        menus.forEach(m -> m.paint().run());
+    }
+
+    /** One modal menu: its document id and how its owner paints it. */
+    private record ModalMenu(String id, Runnable paint) {
     }
 
     private void renderDebugOverlay(Renderer renderer) {
         DebugOverlay debugOverlay = Game.getDebugOverlay();
+        if (debugOverlay != null) {
+            debugOverlay.sync(); // its document opens and closes with F3 (#301)
+        }
         if (debugOverlay == null || !debugOverlay.isVisible()) {
             return;
         }
         debugOverlay.renderWireframes(renderer);
         if (renderer != null) {
-            // All debug panels (left RAM/VRAM + right debug info) are MasonryUI/Skija —
-            // a single GL bracket covers them.
-            debugOverlay.renderResourcePanels(renderer, width(), height());
+            // All debug panels (left RAM/VRAM + right debug info) are one document.
+            debugOverlay.renderResourcePanels(width(), height());
         }
     }
 

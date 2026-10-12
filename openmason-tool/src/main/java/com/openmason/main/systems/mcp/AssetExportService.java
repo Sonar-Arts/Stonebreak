@@ -342,14 +342,15 @@ public final class AssetExportService {
         }
         TextureEditingService.ProjectSnapshot s = textures.projectSnapshot();
         if (s.faceRegionActive()) {
-            throw new IllegalArgumentException("face_region_active: the texture editor is editing a model "
-                    + "face, not a standalone texture — pass params.omt, or tex_close_editor and "
-                    + "tex_load_project a .omt first");
+            throw new IllegalArgumentException("face_region_active: the active texture tab is a model "
+                    + "face, not a standalone texture — pass params.omt, or make a .omt tab active "
+                    + "(tex_load_project focuses an open one) first");
         }
         if (s.path() != null && !s.dirty()) {
             return new OmtOnDisk(Path.of(s.path()), null);
         }
-        AssetWriteService.Writer writer = p -> textures.saveProject(p.toString());
+        String document = textures.resolveDocumentId(); // the writer runs later: pin the texture now
+        AssetWriteService.Writer writer = p -> textures.inDocument(document, () -> textures.saveProject(p.toString()));
         WriteOutcome saved = s.path() != null
                 ? writes.saveInPlace(WriteKind.OMT, s.path(), writer)
                 : writes.save(WriteRequest.of(WriteKind.OMT, null, false, false, "texture")

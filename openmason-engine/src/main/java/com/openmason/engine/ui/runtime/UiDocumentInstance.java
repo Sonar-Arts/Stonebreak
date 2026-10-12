@@ -154,6 +154,8 @@ public final class UiDocumentInstance implements AutoCloseable {
     private FlexLayoutTree flex;
     /** The grid {@link #flex} was created with ({@link #pixelGrid()} at that time). */
     private float flexGrid = Float.NaN;
+    /** {@link #exactFonts()} when {@link #flex} was created: a change re-measures every label. */
+    private boolean flexExactFonts;
     private UiElement[] byFlexNode = new UiElement[16];
     private boolean orderDirty;
     private boolean structureChanged;
@@ -868,8 +870,11 @@ public final class UiDocumentInstance implements AutoCloseable {
 
     private boolean ensureFlexTree() {
         float grid = pixelGrid();
-        if (flex != null && grid != flexGrid) {
-            flex.close(); // the root changed -sb-pixel-grid: Yoga's grid is fixed per tree
+        boolean exactFonts = exactFonts();
+        if (flex != null && (grid != flexGrid || exactFonts != flexExactFonts)) {
+            // the root changed -sb-pixel-grid (Yoga's grid is fixed per tree) or -sb-font-grid
+            // (every label measures anew)
+            flex.close();
             flex = null;
         }
         if (flex != null) {
@@ -881,8 +886,18 @@ public final class UiDocumentInstance implements AutoCloseable {
         CendaFlex.require();
         flex = CendaFlex.newTree(grid);
         flexGrid = grid;
+        flexExactFonts = exactFonts;
         createFlexNodes(root);
         return true;
+    }
+
+    /**
+     * Whether this document sizes text at exact {@code font-size x scale} (the root's
+     * {@code -sb-font-grid: none}, as legacy screens that built {@code new Font(tf, size * scale)}
+     * drew) rather than on the house half-pixel font grid ({@code MFonts}, the default).
+     */
+    public boolean exactFonts() {
+        return root != null && root.computed != null && "none".equals(root.computed.keyword("-sb-font-grid", null));
     }
 
     /**
@@ -972,8 +987,7 @@ public final class UiDocumentInstance implements AutoCloseable {
     }
 
     private static float lengthPx(ComputedStyle style, String property, float scale) {
-        StyleValues.Length l = style.length(property);
-        return l.kind() == StyleValues.Length.Kind.POINTS ? l.value() * scale : 0;
+        return style.length(property).px(scale, 0);
     }
 
     /**
@@ -1025,8 +1039,8 @@ public final class UiDocumentInstance implements AutoCloseable {
         // instead (paint and hits still share the same rects).
         boolean wasFree = placingFree;
         placingFree |= subpixelAnimation && el.animatesTranslation();
-        float tx = placeSnap(dx + (float) el.computed.number("translate-x", 0) * scale);
-        float ty = placeSnap(dy + (float) el.computed.number("translate-y", 0) * scale);
+        float tx = placeSnap(dx + el.computed.length("translate-x").px(scale, 0));
+        float ty = placeSnap(dy + el.computed.length("translate-y").px(scale, 0));
         UiRect next = tx == 0 && ty == 0 ? l : new UiRect(l.x() + tx, l.y() + ty, l.width(), l.height());
         el.rect = next;
         el.transform = ownTransform(el, next);

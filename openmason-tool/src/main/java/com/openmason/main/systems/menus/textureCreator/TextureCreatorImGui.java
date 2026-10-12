@@ -81,6 +81,9 @@ public class TextureCreatorImGui {
     // Drag-and-drop handler for processing dropped files
     private final DragDropHandler dragDropHandler;
 
+    // Document tabs: closing unsaved textures asks first
+    private final com.openmason.main.systems.menus.textureCreator.dialogs.CloseTextureDocumentsDialog closeDocumentsDialog;
+
     // Face texture resize dialog (wired in after viewport is available)
     private FaceTextureResizeDialog faceTextureResizeDialog;
 
@@ -148,6 +151,10 @@ public class TextureCreatorImGui {
         toolCoordinator.setDependencies(controller, pasteCoordinator);
         wireUpComponents(toolbarPanel);
         registerKeyboardShortcuts();
+
+        this.closeDocumentsDialog = new com.openmason.main.systems.menus.textureCreator.dialogs.CloseTextureDocumentsDialog(
+                controller, fileOperations::saveDocumentNow);
+        wireDocuments(toolbarPanel);
 
         logger.info("Texture Creator UI initialized with coordinator architecture");
     }
@@ -268,6 +275,56 @@ public class TextureCreatorImGui {
     }
 
     /**
+     * Multi-document wiring: a pending move/paste settles into its own document before a switch,
+     * the selection tools follow the active document's selection, and the Canvas panel shows the
+     * document tabs (or the empty state).
+     */
+    private void wireDocuments(TextureEditorToolbarRenderer toolbarPanel) {
+        controller.setBeforeDocumentSwitch(toolCoordinator::settlePendingTransform);
+        controller.addDocumentListener(new TextureCreatorController.DocumentListener() {
+            @Override
+            public void activated(TextureDocument document) {
+                toolbarPanel.setSelectionManager(document.getSelectionManager());
+            }
+        });
+        panelRenderer.setDocumentTabs(new com.openmason.main.systems.menus.textureCreator.panels.DocumentTabStrip(
+                controller, closeDocumentsDialog));
+        panelRenderer.setEmptyStateActions(newTextureDialog::show, fileOperations::openProject);
+        Runnable closeActive = () -> {
+            if (controller.hasOpenDocument()) {
+                requestCloseDocuments(java.util.List.of(controller.getActiveDocument()));
+            }
+        };
+        menuBarRenderer.setOnCloseDocument(closeActive);
+        windowedMenuBarRenderer.setOnCloseDocument(closeActive);
+    }
+
+    /**
+     * Ask about every unsaved texture before the Texture workspace closes (Save / Don't Save /
+     * Cancel each), then run {@code proceed}; nothing to ask about runs it at once.
+     *
+     * @return true when nothing needed asking (the caller may close right away); false while the
+     *         dialog is asking — {@code proceed} then runs once the user is done, never on Cancel
+     */
+    public boolean confirmCloseAll(Runnable proceed) {
+        boolean anyUnsaved = controller.getDocuments().stream().anyMatch(TextureDocument::needsSavePrompt);
+        if (!anyUnsaved) {
+            return true;
+        }
+        closeDocumentsDialog.request(controller.getDocuments(), proceed);
+        return false;
+    }
+
+    /**
+     * Close {@code documents} the way their tabs do: unsaved standalone textures ask first.
+     *
+     * @return true when they closed at once, false while the dialog is asking
+     */
+    public boolean requestCloseDocuments(java.util.List<TextureDocument> documents) {
+        return closeDocumentsDialog.request(documents, null);
+    }
+
+    /**
      * Inject SymmetryState into all tools that support symmetry.
      */
     private void injectSymmetryStateIntoTools(TextureEditorToolbarRenderer toolbarPanel) {
@@ -337,7 +394,7 @@ public class TextureCreatorImGui {
 
     /**
      * Set callback for View → Reset Layout (rebuilds the default dock layout).
-     * Wired by the window hosting the dockspace (TextureEditorWindow).
+     * Wired by the workspace hosting the dockspace (TextureEditorWorkspace).
      */
     public void setOnResetLayout(Runnable callback) {
         menuBarRenderer.setOnResetLayout(callback);
@@ -401,7 +458,7 @@ public class TextureCreatorImGui {
 
     /**
      * Process dropped files (PNG and OMT).
-     * Called from TextureEditorWindow when processing pending file drops.
+     * Called from TextureEditorWorkspace when processing pending file drops.
      *
      * @param filePaths array of file paths to process
      */
@@ -418,6 +475,7 @@ public class TextureCreatorImGui {
         }
 
         if (!pngFiles.isEmpty()) {
+            controller.ensureDocument(); // a drop with no texture open lands in a fresh one
             int successCount = dragDropHandler.processDroppedPNGFiles(
                 pngFiles.toArray(new String[0]), controller.getLayerManager());
             if (successCount > 0) {
@@ -450,7 +508,13 @@ public class TextureCreatorImGui {
         }
 
         if (!omtFiles.isEmpty()) {
-            omtImportDialog.show(omtFiles.get(0));
+            if (controller.hasOpenDocument()) {
+                omtImportDialog.show(omtFiles.get(0)); // flatten / import layers into this texture
+            } else {
+                for (String omt : omtFiles) {
+                    controller.loadProject(omt); // nothing to import into: open them as textures
+                }
+            }
         }
     }
 
@@ -486,14 +550,14 @@ public class TextureCreatorImGui {
     }
 
     /**
-     * Render windowed menu bar (for use at top of TextureEditorWindow).
+     * Render windowed menu bar (top of the Texture workspace's toolbar).
      */
     public void renderWindowedMenuBar() {
         windowedMenuBarRenderer.render();
     }
 
     /**
-     * Render windowed toolbar (for use below menu bar in TextureEditorWindow).
+     * Render windowed toolbar (below the menu bar in the Texture workspace's toolbar).
      */
     public void renderWindowedToolbar() {
         panelRenderer.renderToolOptionsBar();
@@ -501,7 +565,7 @@ public class TextureCreatorImGui {
 
     /**
      * Render the fixed left chrome columns (Color panel + splitter + tools
-     * strip). Called by TextureEditorWindow before submitting the dockspace.
+     * strip). Called by TextureEditorWorkspace before submitting the dockspace.
      *
      * @param height pixel height of the column row
      */
@@ -510,7 +574,7 @@ public class TextureCreatorImGui {
     }
 
     /**
-     * Render the status bar strip (for use below the dockspace in TextureEditorWindow).
+     * Render the status bar strip (below the dockspace in TextureEditorWorkspace).
      */
     public void renderStatusBar() {
         if (statusBarPanel != null) {
@@ -519,16 +583,23 @@ public class TextureCreatorImGui {
     }
 
     /**
-     * Render windowed panels and dialogs (for use below dockspace in TextureEditorWindow).
+     * Centre this editor's modals on the viewport of the current window: the window holding the
+     * Texture workspace (the main window, or the workspace's own window when popped out). Called
+     * from inside that window, before {@link #renderWindowedPanels()}.
      */
-    public void renderWindowedPanels() {
-        panelRenderer.renderAllPanels();
-        // Inside the popped-out editor host window: modals centre on ITS viewport,
-        // not the main window (a current window is active here, so getWindowViewport
-        // is safe and returns the editor's OS-window viewport).
+    public void anchorDialogsToCurrentWindow() {
         ImGuiViewport hostVp = ImGui.getWindowViewport();
         dialogRefCenterX = hostVp.getPosX() + hostVp.getSizeX() / 2.0f;
         dialogRefCenterY = hostVp.getPosY() + hostVp.getSizeY() / 2.0f;
+    }
+
+    /**
+     * Render the workspace's docked panels and dialogs (after the window holding the Texture
+     * workspace submitted its dockspace). Modals centre where
+     * {@link #anchorDialogsToCurrentWindow()} last put them.
+     */
+    public void renderWindowedPanels() {
+        panelRenderer.renderAllPanels();
         renderDialogs();
 
         // Render closeable windows
@@ -547,6 +618,7 @@ public class TextureCreatorImGui {
      */
     private void renderDialogs() {
         newTextureDialog.setReferenceViewportCenter(dialogRefCenterX, dialogRefCenterY);
+        closeDocumentsDialog.setReferenceViewportCenter(dialogRefCenterX, dialogRefCenterY);
         importPNGDialog.setReferenceViewportCenter(dialogRefCenterX, dialogRefCenterY);
         omtImportDialog.setReferenceViewportCenter(dialogRefCenterX, dialogRefCenterY);
         exportFormatDialog.setReferenceViewportCenter(dialogRefCenterX, dialogRefCenterY);
@@ -555,6 +627,7 @@ public class TextureCreatorImGui {
         omtImportDialog.render();
         exportFormatDialog.render();
         aboutDialog.render();
+        closeDocumentsDialog.render();
     }
 
     public TextureCreatorState getState() {
@@ -669,8 +742,11 @@ public class TextureCreatorImGui {
         // Check all texture editor categories for matching keybinds. Scoped to the
         // "texture" context: the scene viewer and viewport reuse these category names
         // (scene "Selection" binds Escape/Ctrl+A), and must not fire in this window.
-        String[] categories = {"File Operations", "Window", "Edit", "Clipboard",
-                               "Selection", "View", "Tools"};
+        // With no texture open only New/Open/Save and window toggles apply; the rest would act on
+        // the invisible placeholder.
+        String[] categories = controller.hasOpenDocument()
+                ? new String[]{"File Operations", "Window", "Edit", "Clipboard", "Selection", "View", "Tools"}
+                : new String[]{"File Operations", "Window"};
 
         for (String category : categories) {
             for (com.openmason.main.systems.keybinds.KeybindAction action :

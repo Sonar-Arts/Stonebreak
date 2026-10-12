@@ -9,40 +9,38 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * The pause menu keeps its lifecycle while a {@link PauseMenu.Presentation} (#297: the shipped UI
- * document) draws it: shown/hidden follow real visibility changes only, every {@code render} call
- * reaches the presentation (the field pause is composited twice), and a presentation that cannot
- * paint falls back to the legacy renderer for that call.
+ * document) draws it: shown/hidden follow real visibility changes only, and every {@code render}
+ * call reaches the presentation (the field pause is composited twice).
  */
 class PauseMenuPresentationTest {
 
     private static final class Recorder implements PauseMenu.Presentation {
         final List<String> events = new ArrayList<>();
-        boolean paints = true;
 
         @Override public void shown() { events.add("shown"); }
         @Override public void hidden() { events.add("hidden"); }
         @Override public boolean paint(int w, int h) {
             events.add("paint " + w + "x" + h);
-            return paints;
+            return true;
         }
     }
 
     @Test
     void visibilityChangesReachThePresentationOnce() {
-        PauseMenu menu = new PauseMenu(null);
+        PauseMenu menu = new PauseMenu();
         Recorder r = new Recorder();
         menu.setPresentation(r);
         menu.setVisible(true);
         menu.setVisible(true);
-        menu.toggleVisibility();
         menu.setVisible(false);
-        menu.toggleVisibility();
+        menu.setVisible(false);
+        menu.setVisible(true);
         assertEquals(List.of("shown", "hidden", "shown"), r.events);
     }
 
     @Test
     void installingWhileVisibleShowsAndReplacingHidesTheOldOne() {
-        PauseMenu menu = new PauseMenu(null);
+        PauseMenu menu = new PauseMenu();
         menu.setVisible(true);
         Recorder first = new Recorder();
         Recorder second = new Recorder();
@@ -54,7 +52,7 @@ class PauseMenuPresentationTest {
 
     @Test
     void everyRenderCallPaintsAndHiddenMenusPaintNothing() {
-        PauseMenu menu = new PauseMenu(null);
+        PauseMenu menu = new PauseMenu();
         Recorder r = new Recorder();
         menu.setPresentation(r);
         menu.render(1920, 1080); // hidden: nothing
@@ -62,16 +60,5 @@ class PauseMenuPresentationTest {
         menu.render(1920, 1080); // the in-game UI pass
         menu.render(1920, 1080); // the modal pass: the field pause is drawn twice
         assertEquals(List.of("shown", "paint 1920x1080", "paint 1920x1080"), r.events);
-    }
-
-    @Test
-    void aPresentationThatCannotPaintFallsBackToTheLegacyRenderer() {
-        PauseMenu menu = new PauseMenu(null); // no backend: the legacy renderer draws nothing, safely
-        Recorder r = new Recorder();
-        r.paints = false;
-        menu.setPresentation(r);
-        menu.setVisible(true);
-        menu.render(800, 600);
-        assertEquals(List.of("shown", "paint 800x600"), r.events);
     }
 }

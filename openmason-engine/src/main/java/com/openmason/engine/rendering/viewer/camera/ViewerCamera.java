@@ -32,8 +32,8 @@ public class ViewerCamera implements com.openmason.engine.rendering.api.IRenderC
     // Projection parameters
     private float fov = 45.0f;
     private float aspectRatio = 1.0f;
-    private final float nearPlane = 0.1f;
     private final float farPlane = 1000.0f;  // Increased from 100.0f to support infinite grid rendering
+    private float appliedNearPlane = Float.NaN;
 
     // Matrices
     private final Matrix4f viewMatrix = new Matrix4f();
@@ -138,7 +138,7 @@ public class ViewerCamera implements com.openmason.engine.rendering.api.IRenderC
      * @return Projection matrix
      */
     public Matrix4f getProjectionMatrix() {
-        if (projectionMatrixDirty) {
+        if (projectionMatrixDirty || nearPlane() != appliedNearPlane) {
             updateProjectionMatrix();
         }
         return projectionMatrix;
@@ -151,7 +151,7 @@ public class ViewerCamera implements com.openmason.engine.rendering.api.IRenderC
         if (viewMatrixDirty) {
             updateViewMatrix();
         }
-        if (projectionMatrixDirty) {
+        if (projectionMatrixDirty || nearPlane() != appliedNearPlane) {
             updateProjectionMatrix();
         }
     }
@@ -172,13 +172,25 @@ public class ViewerCamera implements com.openmason.engine.rendering.api.IRenderC
      * Updates the projection matrix.
      */
     private void updateProjectionMatrix() {
+        appliedNearPlane = nearPlane();
         projectionMatrix.identity().perspective(
             CameraMath.toRadians(fov),
             aspectRatio,
-            nearPlane,
+            appliedNearPlane,
             farPlane
         );
         projectionMatrixDirty = false;
+    }
+
+    /**
+     * Near clip distance for the current view. In arc-ball mode it follows the orbit
+     * distance so a close zoom does not clip the model it is orbiting; otherwise 0.1.
+     */
+    float nearPlane() {
+        if (currentMode != CameraMode.ARCBALL) {
+            return CameraMath.MAX_NEAR_PLANE;
+        }
+        return CameraMath.nearPlaneForDistance(arcballController.getDistance());
     }
 
     /**

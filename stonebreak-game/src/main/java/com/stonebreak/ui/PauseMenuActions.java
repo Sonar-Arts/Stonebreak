@@ -7,10 +7,9 @@ import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 
 /**
- * What each pause-menu button does, in one place: the legacy click handler
- * ({@code UiMouseRouter}) and the UI host's {@code stonebreak:screen.pause.*} and
- * {@code stonebreak:network.resync} actions (#289) both call these, so a migrated pause screen
- * runs exactly the rules the old one did.
+ * What each pause-menu button does, in one place: the UI host's {@code stonebreak:screen.pause.*}
+ * and {@code stonebreak:network.resync} actions (#289) call these, as do the documents' navigation
+ * targets ({@code StateNavigation}).
  */
 public final class PauseMenuActions {
 

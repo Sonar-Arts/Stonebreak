@@ -1,11 +1,11 @@
 package com.stonebreak.ui.inventoryScreen.handlers;
 
 /**
- * A container screen's slot rules, addressed by slot instead of by pixel (#289). The legacy
- * screens keep owning every rule (pick up, place, stack, swap, split, right-drag distribution,
+ * A container screen's slot rules, addressed by slot instead of by pixel (#289). The screens'
+ * controllers own every rule (pick up, place, stack, swap, split, right-drag distribution,
  * double-click gather, shift transfer, crafting); this seam only lets a caller ask where a slot
- * sits in the screen's own layout and then feed a pointer frame there, so UI documents and the
- * legacy mouse path run the same code.
+ * sits in the screen's own layout and then feed a pointer frame there, which is how the UI
+ * documents run them.
  *
  * <p>Slot addresses: {@code main:<0-26>}, {@code hotbar:<0-8>}, {@code craft:<i>},
  * {@code craft-output}, {@code ingredient}, {@code fuel}, {@code output} (furnace),
@@ -39,6 +39,16 @@ public interface ContainerSlotInput {
     /** Runs the screen's Craft All rule; false when the screen has none. */
     default boolean craftAll() {
         return false;
+    }
+
+    /** The screen's crafting grid, read in place (row-major), or null when it has none (#300). */
+    default com.stonebreak.items.ItemStack[] craftingSlots() {
+        return null;
+    }
+
+    /** What the crafting grid makes now, or null. */
+    default com.stonebreak.items.ItemStack craftingOutput() {
+        return null;
     }
 
     /** Runs the screen's Sort rule; false when the screen has none. */

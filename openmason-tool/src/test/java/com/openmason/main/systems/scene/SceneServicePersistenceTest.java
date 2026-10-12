@@ -10,6 +10,7 @@ import com.openmason.engine.rendering.viewer.scene.ModelHandle;
 import com.openmason.engine.rendering.viewer.scene.ModelSource;
 import com.openmason.engine.rendering.viewer.scene.OmoModelLoader;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -31,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * toggles, the author/description metadata, and — the data-safety case — placements
  * whose model could not be loaded.
  */
+@Tag("regression")
 class SceneServicePersistenceTest {
 
     @TempDir

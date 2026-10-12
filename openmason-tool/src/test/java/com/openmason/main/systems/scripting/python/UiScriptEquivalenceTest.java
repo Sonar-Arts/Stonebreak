@@ -20,6 +20,7 @@ import com.openmason.main.systems.uiEditor.view.UiEditorContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -39,6 +40,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * ops (#324): both go through one validator and one executor, and a script's edits land as one
  * undo step only when the script succeeds.
  */
+@Tag("regression")
+@Tag("integration")
 class UiScriptEquivalenceTest {
 
     private static final Path PAUSE = Path.of("../openmason-engine/src/test/resources/ui/omui/pause_menu.omui");

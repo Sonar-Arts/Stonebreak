@@ -31,7 +31,7 @@ class FurnaceShiftClickTest {
     void setUp() {
         inventory = new Inventory();
         maxStack = new ItemStack(STONE, 1).getMaxStackSize();
-        FurnaceController controller = new FurnaceController(null, inventory, null, null, null);
+        FurnaceController controller = new FurnaceController(null, null, null);
         input = new FurnaceInputManager(null, inventory, controller);
         controller.setInputManager(input);
         controller.setSlotSink((pos, slots) -> { });

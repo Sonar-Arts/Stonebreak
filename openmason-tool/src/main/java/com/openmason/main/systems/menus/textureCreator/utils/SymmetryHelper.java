@@ -98,6 +98,67 @@ public class SymmetryHelper {
     }
 
     /**
+     * Calculate the mirrored copies of a line segment for a symmetry mode.
+     *
+     * <p>Each mirror transform of the mode is applied to <em>both</em> endpoints, so
+     * a segment that starts on an axis keeps its pairing (unlike pairing the
+     * per-point lists of {@link #calculateMirrorPoints}, which drop on-axis points
+     * and would then match a vertical mirror with a horizontal one). The original
+     * segment is not included, and copies identical to the original or to an
+     * earlier copy are skipped so partial-coverage pixels are never blended twice.
+     *
+     * @return mirrored segments as {@code {start, end}} pairs (original excluded)
+     */
+    public static List<Point2i[]> calculateMirrorSegments(int x0, int y0, int x1, int y1,
+                                                          SymmetryState.SymmetryMode mode,
+                                                          int canvasWidth, int canvasHeight,
+                                                          int offsetX, int offsetY) {
+        List<Point2i[]> segments = new ArrayList<>();
+        if (mode == null || mode == SymmetryState.SymmetryMode.NONE) {
+            return segments;
+        }
+
+        float centerX = getAxisCenterX(canvasWidth, offsetX);
+        float centerY = getAxisCenterY(canvasHeight, offsetY);
+        int mx0 = Math.round(2 * centerX - x0);
+        int mx1 = Math.round(2 * centerX - x1);
+        int my0 = Math.round(2 * centerY - y0);
+        int my1 = Math.round(2 * centerY - y1);
+
+        Point2i[] original = {new Point2i(x0, y0), new Point2i(x1, y1)};
+        switch (mode) {
+            case HORIZONTAL -> addSegment(segments, original, new Point2i(x0, my0), new Point2i(x1, my1));
+            case VERTICAL -> addSegment(segments, original, new Point2i(mx0, y0), new Point2i(mx1, y1));
+            case QUADRANT -> {
+                addSegment(segments, original, new Point2i(mx0, y0), new Point2i(mx1, y1));
+                addSegment(segments, original, new Point2i(x0, my0), new Point2i(x1, my1));
+                addSegment(segments, original, new Point2i(mx0, my0), new Point2i(mx1, my1));
+            }
+            default -> {
+                // NONE handled above
+            }
+        }
+        return segments;
+    }
+
+    private static void addSegment(List<Point2i[]> segments, Point2i[] original, Point2i start, Point2i end) {
+        if (sameSegment(original, start, end)) {
+            return;
+        }
+        for (Point2i[] existing : segments) {
+            if (sameSegment(existing, start, end)) {
+                return;
+            }
+        }
+        segments.add(new Point2i[]{start, end});
+    }
+
+    private static boolean sameSegment(Point2i[] segment, Point2i start, Point2i end) {
+        return (segment[0].equals(start) && segment[1].equals(end))
+                || (segment[0].equals(end) && segment[1].equals(start));
+    }
+
+    /**
      * Get the axis center X coordinate with offset.
      */
     public static float getAxisCenterX(int canvasWidth, int offsetX) {

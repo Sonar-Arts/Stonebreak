@@ -1,6 +1,6 @@
 package com.stonebreak.ui.chat;
 
-import com.stonebreak.ui.LegacyUiClock;
+import com.stonebreak.ui.UiWallClock;
 
 public class ChatMessage {
     private final String text;
@@ -22,7 +22,7 @@ public class ChatMessage {
 
     public ChatMessage(String text, float[] color, long messageId) {
         this.text = text;
-        this.timestamp = LegacyUiClock.millis();
+        this.timestamp = UiWallClock.millis();
         this.color = color.clone();
         this.fadeStartTime = MESSAGE_DISPLAY_TIME - MESSAGE_FADE_TIME;
         this.messageId = messageId;
@@ -41,7 +41,7 @@ public class ChatMessage {
     }
     
     public float getAge() {
-        return (LegacyUiClock.millis() - timestamp) / 1000.0f;
+        return (UiWallClock.millis() - timestamp) / 1000.0f;
     }
     
     public float getAlpha() {

@@ -25,14 +25,17 @@
 - The describe tools speak 0xRRGGBBAA / flat [r,g,b,a] — conversion is done
   for you; only raw canvas access needs the ABGR caution.
 
-## Editor session lifecycle
-- tex_* tools operate on the texture editor's open canvas — call
-  tex_open_editor first (face mode: tex_open_editor {face_id}); tex_editor_status
-  tells you the current state. model_face_* tools work WITHOUT the editor.
-- om.canvas.* script ops likewise require the editor open; om.tex works on
-  the live viewport only (headless runs get a teaching error).
-- Closing the texture editor flushes + auto-saves; don't leave a face region
-  open when you're done (tex_close_editor).
+## Editor documents
+- The texture editor is multi-document: every texture / model face is its own
+  tab with its own undo history. tex_open_editor / tex_load_project open (or
+  focus) a tab; tex_* tools act on the ACTIVE tab unless given `document`
+  (ids from tex_editor_status). model_face_* tools work WITHOUT the editor.
+- om.canvas.* script ops need a texture open and act on the tab active when
+  the run starts; om.tex works on the live viewport only (headless runs get a
+  teaching error).
+- tex_save_project {document} saves a tab; tex_close_document closes one
+  (a face tab flushes + saves the model; an unsaved texture needs save:true
+  or discard:true). You can't close the editor itself — that is the user's call.
 
 ## File vs GPU truth
 - asset_* tools read the SBO/SBE FILES; model_* / tex_* tools read the LIVE

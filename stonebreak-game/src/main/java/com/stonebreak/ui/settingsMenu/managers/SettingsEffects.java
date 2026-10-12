@@ -6,8 +6,8 @@ import org.joml.Vector3f;
 
 /**
  * The settings whose change takes effect immediately, before Apply, and what "immediately"
- * does for each. Shared by the legacy settings menu and the {@code stonebreak:settings}
- * UI-document contract (#289), so a migrated settings screen behaves exactly like the old one.
+ * does for each. Shared by the settings menu's handlers and the {@code stonebreak:settings}
+ * UI-document contract (#289), so both behave alike.
  * Each method assumes the value is already stored in {@link com.stonebreak.config.Settings};
  * persistence still waits for Apply.
  */

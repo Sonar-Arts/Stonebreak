@@ -2,6 +2,7 @@ package com.openmason.main.systems.menus.textureCreator.coordinators;
 
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorController;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorState;
+import com.openmason.main.systems.menus.textureCreator.TextureDocument;
 import com.openmason.main.systems.menus.textureCreator.dialogs.ImportPNGDialog;
 import com.openmason.main.systems.menus.textureCreator.imports.ImportAction;
 import com.openmason.main.systems.menus.textureCreator.imports.ImportStrategyResolver;
@@ -47,7 +48,7 @@ public class FileOperationsCoordinator {
     }
 
     /**
-     * Open project file (.OMT).
+     * Open project file (.OMT) as a document tab (or focus its tab when it is already open).
      */
     public void openProject() {
         fileDialogService.showOpenOMTDialog(filePath -> {
@@ -66,42 +67,55 @@ public class FileOperationsCoordinator {
     }
 
     /**
-     * Save project to current file path.
-     * If no file path exists, delegates to saveProjectAs().
+     * Save the active texture to its .OMT, or ask where (Save As) when it has none.
      */
     public void saveProject() {
-        if (state.hasFilePath() && state.isProjectFile()) {
-            // Save directly to existing file
-            String filePath = state.getCurrentFilePath();
-            logger.info("Saving project to: {}", filePath);
-
-            try {
-                boolean success = controller.saveProject(filePath);
-                if (success) {
-                    logger.info("Successfully saved project");
-                } else {
-                    logger.error("Failed to save project");
-                }
-            } catch (Exception e) {
-                logger.error("Failed to save project: {}", filePath, e);
-            }
-        } else {
-            // Show Save As dialog
-            saveProjectAs();
+        if (!controller.hasOpenDocument()) {
+            return;
         }
+        saveDocumentNow(controller.getActiveDocument());
     }
 
     /**
-     * Save project as (always shows dialog).
+     * Save the active texture as a new .OMT (always shows the dialog).
      */
     public void saveProjectAs() {
+        if (!controller.hasOpenDocument()) {
+            return;
+        }
+        saveDocumentAs(controller.getActiveDocument());
+    }
+
+    /**
+     * Save {@code document} in place when it has a .OMT, else through Save As. The file dialog is
+     * modal, so on return the outcome is known.
+     *
+     * @return true when the document is clean afterwards (false: the save failed or the user
+     *         backed out of the dialog)
+     */
+    public boolean saveDocumentNow(TextureDocument document) {
+        String path = document.projectPath();
+        if (path == null) {
+            saveDocumentAs(document);
+            return !document.hasUnsavedChanges();
+        }
+        logger.info("Saving texture {} to: {}", document.id(), path);
+        try {
+            if (!controller.saveDocument(document, path)) {
+                logger.error("Failed to save texture {}", document.id());
+            }
+        } catch (Exception e) {
+            logger.error("Failed to save texture {}: {}", document.id(), path, e);
+        }
+        return !document.hasUnsavedChanges();
+    }
+
+    /** Save As for one document (the one active when the command started, whatever is active later). */
+    private void saveDocumentAs(TextureDocument document) {
         fileDialogService.showSaveOMTDialog(filePath -> {
-            logger.info("Save project as: {}", filePath);
+            logger.info("Save texture {} as: {}", document.id(), filePath);
             try {
-                boolean success = controller.saveProject(filePath);
-                if (success) {
-                    logger.info("Save project as succeeded: {}", filePath);
-                } else {
+                if (!controller.saveDocument(document, filePath)) {
                     logger.error("Save project as failed: {}", filePath);
                 }
             } catch (Exception e) {
@@ -115,7 +129,8 @@ public class FileOperationsCoordinator {
      * <ul>
      *   <li>If face-region editing is active, the PNG is resized to fit the face
      *       and stamped onto the active canvas (respecting the face mask).</li>
-     *   <li>Otherwise, detects PNG dimensions and auto-imports or shows a dialog.</li>
+     *   <li>Otherwise, detects PNG dimensions and auto-imports (or shows a dialog) into a new
+     *       document tab.</li>
      * </ul>
      *
      * @param importPNGDialog dialog to show for non-standard sizes
@@ -214,10 +229,11 @@ public class FileOperationsCoordinator {
      * Export as PNG (flattened image).
      */
     public void exportPNG() {
+        TextureDocument document = controller.getActiveDocument();
         fileDialogService.showSavePNGDialog(filePath -> {
             logger.info("Export as PNG: {}", filePath);
             try {
-                boolean success = controller.exportTexture(filePath);
+                boolean success = controller.exportDocument(document, filePath);
                 if (success) {
                     logger.info("Export as PNG succeeded: {}", filePath);
                 } else {
@@ -233,10 +249,11 @@ public class FileOperationsCoordinator {
      * Export as OMT (project copy).
      */
     public void exportOMT() {
+        TextureDocument document = controller.getActiveDocument();
         fileDialogService.showSaveOMTDialog(filePath -> {
             logger.info("Export as OMT: {}", filePath);
             try {
-                boolean success = controller.saveProject(filePath);
+                boolean success = controller.saveDocument(document, filePath);
                 if (success) {
                     logger.info("Export as OMT succeeded: {}", filePath);
                 } else {

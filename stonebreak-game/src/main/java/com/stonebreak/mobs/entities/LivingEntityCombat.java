@@ -5,7 +5,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.LivingEntity.DamageSource;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.UI.components.DamageNumberRenderer;
+import com.stonebreak.ui.worldHud.DamageNumbers;
 
 /**
  * Combat component of a {@link LivingEntity}: authoritative damage application (i-frames,
@@ -85,7 +85,7 @@ final class LivingEntityCombat {
         Vector3f position = owner.position;
         if (owner.isNetworkShadow()) {
             if (owner.getNetworkId() >= 0 && amount > 0f) {
-                DamageNumberRenderer.getInstance().spawn(
+                DamageNumbers.getInstance().spawn(
                     position.x, position.y + owner.height * 0.9f, position.z, amount);
                 // Predicted hurt voice, like the predicted damage number: the
                 // authoritative entity lives in the headless server world, so
@@ -109,7 +109,7 @@ final class LivingEntityCombat {
         // being rendered. Authoritative entities live in the headless server world, where
         // this would emit a duplicate of the client's predicted number from the tick thread.
         if (Game.getWorld() == owner.world) {
-            DamageNumberRenderer.getInstance().spawn(
+            DamageNumbers.getInstance().spawn(
                 position.x, position.y + owner.height * 0.9f, position.z, effectiveAmount);
             // Data-driven voice: plays only when the entity's SBE declares a
             // hurt/death sound event (SBE 1.4+); silent otherwise.

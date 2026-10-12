@@ -10,7 +10,7 @@ import org.joml.Vector2f;
  * from {@link InventoryInputManager} so every crafting/inventory interaction — right-drag
  * distribution, double-click gather, Craft All, Sort, shift-click, middle-click balance — works
  * on the 3x3 grid exactly as on the inventory's 2x2 (issue #317). This class only supplies the
- * workbench layout, its drop handler, and the absence of the character tab strip.
+ * workbench layout and its drop handler.
  */
 public class WorkbenchInputManager extends InventoryInputManager {
 
@@ -24,12 +24,6 @@ public class WorkbenchInputManager extends InventoryInputManager {
     @Override
     protected InventoryLayoutCalculator.InventoryLayout layoutFor(int screenWidth, int screenHeight) {
         return InventoryLayoutCalculator.calculateWorkbenchLayout(screenWidth, screenHeight);
-    }
-
-    /** The workbench screen has no Inventory/Character/... tab strip. */
-    @Override
-    protected boolean hasCharacterTabs() {
-        return false;
     }
 
     @Override

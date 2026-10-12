@@ -41,7 +41,7 @@ class UiMasonryStyleTest {
 
     @Test
     void thePropertiesAreKnownCheckedAndGatedByUiMasonry() {
-        for (String p : new String[]{"-sb-surface", "-sb-text-effect", "-sb-pixel-grid"}) {
+        for (String p : new String[]{"-sb-surface", "-sb-text-effect", "-sb-pixel-grid", "-sb-font-grid"}) {
             assertEquals(UiFeatures.MASONRY, UiFeatures.forStyle(p, UiValue.of("none")), p);
             assertNull(UiStyleProperties.problem(p, UiValue.of("none")), p);
         }
@@ -69,6 +69,82 @@ class UiMasonryStyleTest {
                     assertEquals(1f, host.ui().pixelGrid());
                 }
             }
+        }
+    }
+
+    @Test
+    void offTheGridLineBoxesAreExactAndFontGridNoneSizesTextExactly() {
+        assumeTrue(CendaFlex.isAvailable(), "Cenda library with the retained flex ABI not built");
+        // #299: 15 px text at 0.75. Legacy renderers place baselines directly, so off the pixel grid
+        // the line box is the font's real height; -sb-font-grid: none drops the house half-pixel font
+        // grid too (screens that built new Font(tf, size * scale)).
+        String[][] cases = {{"none", "none"}, {"none", "half"}, {"device", "half"}};
+        for (String[] c : cases) {
+            OmuiArchive doc = screen("t:ui/text", box("root").style("width", "100%").style("height", "100%")
+                .style("-sb-pixel-grid", c[0]).style("-sb-font-grid", c[1]).kids(label("row", "Cows")
+                    .style("position", "absolute").style("top", 3.75).style("font-size", 15)));
+            try (RasterDocHost host = new RasterDocHost(doc, UiRuntimeContext.basic(), W, H).render(0.75f)) {
+                var row = host.ui().find("row");
+                float size = host.text.font(row, 0.75f).getSize();
+                float h = row.rect().height();
+                String id = c[0] + "/" + c[1];
+                assertEquals(c[1].equals("none") ? 11.25f : 11.5f, size, 1e-4f, id + " font size");
+                assertEquals(c[0].equals("none") ? size : (float) Math.ceil(size), h, 1e-4f, id + " line box");
+                if (c[0].equals("none")) {
+                    assertEquals(row.rect().y() + 0.75f * size,
+                        row.rect().y() + host.text.baseline(row, row.rect().width(), h, 0.75f), 1e-4f,
+                        id + " baseline = top + ascent");
+                }
+            }
+        }
+    }
+
+    @Test
+    void deviceLengthsAreValidOnBoxGeometryOnlyAndNeedUiMasonry() {
+        assertNull(UiStyleProperties.problem("height", UiValue.of("1dpx")));
+        assertNull(UiStyleProperties.problem("border-radius", UiValue.of("3dpx")));
+        assertNull(UiStyleProperties.problem("margin-left", UiValue.of("-4.5dpx")));
+        assertNull(UiStyleProperties.problem("font-size", UiValue.of("12dpx")), "unscaled legacy text");
+        assertNull(UiStyleProperties.problem("translate-x", UiValue.of("2dpx")), "device-pixel motion (the menu shake)");
+        assertNotNull(UiStyleProperties.problem("transform-origin-x", UiValue.of("2dpx")));
+        assertNotNull(UiStyleProperties.problem("opacity", UiValue.of("1dpx")));
+        assertNull(UiStyleProperties.problem("-sb-sampling", UiValue.of("nearest-raw")));
+        assertEquals(UiFeatures.MASONRY, UiFeatures.forStyle("-sb-sampling", UiValue.of("nearest-raw")));
+        assertNull(UiFeatures.forStyle("-sb-sampling", UiValue.of("nearest")));
+        assertNotNull(UiStyleProperties.problem("height", UiValue.of("dpx")));
+        assertEquals(UiFeatures.MASONRY, UiFeatures.forStyle("height", UiValue.of("1dpx")));
+        assertNull(UiFeatures.forStyle("height", UiValue.of(1)));
+    }
+
+    @Test
+    void deviceLengthsIgnoreTheUiScale() {
+        assumeTrue(CendaFlex.isAvailable(), "Cenda library with the retained flex ABI not built");
+        // #299: legacy screens draw 1 px separators and 4 px shadow offsets at every UI scale.
+        OmuiArchive doc = screen("t:ui/dpx", box("root").style("width", "100%").style("height", "100%")
+            .style("-sb-pixel-grid", "none").kids(
+                box("rule").style("position", "absolute").style("left", "10dpx").style("top", 20)
+                    .style("width", 40).style("height", "1dpx"),
+                box("frame").style("position", "absolute").style("left", 0).style("top", 0).style("width", 30)
+                    .style("height", 30).style("padding-left", "3dpx").kids(box("inner").style("height", 5))));
+        try (RasterDocHost host = new RasterDocHost(doc, UiRuntimeContext.basic(), W, H).render(2f)) {
+            UiRect rule = host.ui().find("rule").rect();
+            assertEquals(10f, rule.x(), 1e-4f, "left: 10dpx");
+            assertEquals(40f, rule.y(), 1e-4f, "top: 20 x 2");
+            assertEquals(80f, rule.width(), 1e-4f);
+            assertEquals(1f, rule.height(), 1e-4f, "height: 1dpx at scale 2");
+            assertEquals(3f, host.ui().find("inner").rect().x(), 1e-4f, "padding-left: 3dpx");
+        }
+    }
+
+    @Test
+    void deviceFontSizesIgnoreTheUiScale() {
+        assumeTrue(CendaFlex.isAvailable(), "Cenda library with the retained flex ABI not built");
+        OmuiArchive doc = screen("t:ui/dpxfont", box("root").style("width", "100%").style("height", "100%")
+            .style("-sb-pixel-grid", "none").kids(label("fixed", "Loading").style("font-size", "24dpx"),
+                label("scaled", "Loading").style("font-size", 24)));
+        try (RasterDocHost host = new RasterDocHost(doc, UiRuntimeContext.basic(), W, H).render(2f)) {
+            assertEquals(24f, host.text.font(host.ui().find("fixed"), 2f).getSize(), 1e-4f);
+            assertEquals(48f, host.text.font(host.ui().find("scaled"), 2f).getSize(), 1e-4f);
         }
     }
 

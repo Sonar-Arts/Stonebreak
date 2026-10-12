@@ -13,7 +13,9 @@ import imgui.type.ImBoolean;
  * A workspace tab popped out of the main window: a standalone, WM-decorated OS window (the
  * Texture Editor's treatment, so KWin owns drag/resize/close and nothing shakes under XWayland)
  * hosting the workspace's toolbar and the same dockspace the main window uses, so every panel
- * keeps its place whichever window holds it. Closing the window docks the tab back.
+ * keeps its place whichever window holds it. Closing the window docks the tab back; a
+ * {@link Workspace#closable() closable} tab (the Texture Editor) also comes to the front there,
+ * since only its tab's own close button ends it.
  */
 public final class DetachedWorkspaceWindow {
 
@@ -59,13 +61,14 @@ public final class DetachedWorkspaceWindow {
                 ImGui.setNextWindowPos(main.getCenterX() - DEFAULT_W / 2f, main.getCenterY() - DEFAULT_H / 2f,
                         ImGuiCond.FirstUseEver);
             }
-            ImGui.setNextWindowSize(DEFAULT_W, DEFAULT_H, ImGuiCond.FirstUseEver);
+            ImGui.setNextWindowSize(Math.max(DEFAULT_W, workspace.minWidth()),
+                    Math.max(DEFAULT_H, workspace.minHeight()), ImGuiCond.FirstUseEver);
         }
         boolean raise = state.takeFocusRequest(workspace);
         if (raise) {
             ImGui.setNextWindowFocus();
         }
-        ImGui.setNextWindowSizeConstraints(720f, 480f, Float.MAX_VALUE, Float.MAX_VALUE);
+        ImGui.setNextWindowSizeConstraints(workspace.minWidth(), workspace.minHeight(), Float.MAX_VALUE, Float.MAX_VALUE);
         ImGui.setNextWindowClass(windowClass);
         open.set(true);
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 4f, 2f);
@@ -86,7 +89,9 @@ public final class DetachedWorkspaceWindow {
         }
         ImGui.end();
         if (!open.get()) {
-            state.attach(workspace, false); // closing the window docks the tab back behind the front one
+            // Closing the window docks the tab back: behind the front tab, or for a closable tab (still
+            // open, it was not closed) in front, so the editor visibly lands back in the main window.
+            state.attach(workspace, workspace.closable());
         }
         return visible;
     }

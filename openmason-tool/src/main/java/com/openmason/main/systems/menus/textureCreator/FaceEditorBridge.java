@@ -17,12 +17,13 @@ import org.slf4j.LoggerFactory;
  *   <li>Reads the face's {@link FaceTextureMapping} from the {@link IFaceTextureManager}</li>
  *   <li>Resolves the material's texture ID via {@link MaterialDefinition}</li>
  *   <li>Creates a {@link PolygonShapeMask} defining the paintable area</li>
- *   <li>Opens the texture editor zoomed/panned to the face's UV region via
- *       {@link TextureCreatorController#openFaceRegion}</li>
+ *   <li>Opens (or focuses) the face's own document tab, zoomed/panned to the face's UV
+ *       region, via {@link TextureCreatorController#openFaceRegion}</li>
  * </ol>
  *
  * <p>This class is stateless — it performs a one-shot coordination between the
- * viewport and the texture editor. The controller holds the ongoing editing state.
+ * viewport and the texture editor. The face's {@link TextureDocument} holds the ongoing
+ * editing state; other open textures are never touched.
  *
  * @see TextureCreatorController
  * @see PolygonShapeMask
@@ -62,15 +63,11 @@ public class FaceEditorBridge {
                                        int faceId,
                                        float[] polygonXCoords, float[] polygonYCoords,
                                        float viewportWidth, float viewportHeight) {
-        // Close any stale face region from a previous model/face
-        if (controller.isFaceRegionActive()) {
-            controller.closeFaceRegion();
-        }
-
         // 1. Read face mapping
         FaceTextureMapping mapping = faceTextureManager.getFaceMapping(faceId);
         if (mapping == null) {
             logger.warn("No texture mapping found for face {}", faceId);
+            controller.discardPreparedCanvas();
             return false;
         }
 
@@ -81,6 +78,7 @@ public class FaceEditorBridge {
         MaterialDefinition material = faceTextureManager.getMaterial(materialId);
         if (material == null) {
             logger.warn("No material found for materialId {} (face {})", materialId, faceId);
+            controller.discardPreparedCanvas();
             return false;
         }
 
@@ -88,9 +86,11 @@ public class FaceEditorBridge {
             faceId, material.name(), materialId, material.textureId(),
             uvRegion.u0(), uvRegion.v0(), uvRegion.u1(), uvRegion.v1());
 
-        // 3. Create face boundary mask from polygon vertices mapped to canvas space
-        int canvasWidth = controller.getLayerManager().getCanvasWidth();
-        int canvasHeight = controller.getLayerManager().getCanvasHeight();
+        // 3. Create face boundary mask from polygon vertices mapped to the canvas the face
+        //    document will show: the staged one, else the open face document's, else the default
+        int[] size = controller.faceCanvasSize(faceId, materialId);
+        int canvasWidth = size[0];
+        int canvasHeight = size[1];
 
         PolygonShapeMask mask = PolygonShapeMask.fromUVRegion(
             canvasWidth, canvasHeight,
@@ -99,7 +99,7 @@ public class FaceEditorBridge {
         );
 
         // 4. Open the texture editor focused on this face's region
-        controller.openFaceRegion(materialId, uvRegion, mask, viewportWidth, viewportHeight);
+        controller.openFaceRegion(faceId, materialId, uvRegion, mask, viewportWidth, viewportHeight);
 
         logger.info("Face {} opened for editing in texture editor", faceId);
         return true;
@@ -120,22 +120,33 @@ public class FaceEditorBridge {
     public boolean openRectFaceForEditing(IFaceTextureManager faceTextureManager,
                                            int faceId,
                                            float viewportWidth, float viewportHeight) {
-        // Close any stale face region from a previous model/face
-        if (controller.isFaceRegionActive()) {
-            controller.closeFaceRegion();
-        }
-
         FaceTextureMapping mapping = faceTextureManager.getFaceMapping(faceId);
         if (mapping == null) {
             logger.warn("No texture mapping found for face {}", faceId);
+            controller.discardPreparedCanvas();
             return false;
         }
 
         UVRegion uvRegion = mapping.uvRegion();
-        controller.openFaceRegion(mapping.materialId(), uvRegion, null,
+        controller.openFaceRegion(faceId, mapping.materialId(), uvRegion, null,
                                    viewportWidth, viewportHeight);
 
         logger.info("Rectangular face {} opened for editing", faceId);
+        return true;
+    }
+
+    /**
+     * Focus the face's document when it is already open and still painting {@code materialId}
+     * (the face's current material), keeping its layers and undo history.
+     *
+     * @return true when such a document was open and is now active
+     */
+    public boolean focusOpenFaceDocument(int faceId, int materialId) {
+        TextureDocument doc = controller.findFaceDocument(faceId, materialId);
+        if (doc == null || doc.face().materialId() != materialId) {
+            return false;
+        }
+        controller.activate(doc);
         return true;
     }
 
@@ -166,14 +177,15 @@ public class FaceEditorBridge {
     }
 
     /**
-     * Close face editing and return to full canvas mode.
+     * Close the active face document (flushed to the model and the model saved by the
+     * controller's listeners).
      */
     public void closeFaceEditing() {
         controller.closeFaceRegion();
     }
 
     /**
-     * @return true if the texture editor is currently focused on a face region
+     * @return true if the active document is a face document
      */
     public boolean isFaceRegionActive() {
         return controller.isFaceRegionActive();

@@ -17,7 +17,7 @@ import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.focusBattle.BattleHudAnimState;
 import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
-import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
+import com.stonebreak.ui.focusBattle.BattleHudLayers;
 import io.github.humbleui.skija.Canvas;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
@@ -36,7 +36,7 @@ import java.util.List;
  * constantly, and a number that re-projected every frame would teleport with each cut. When its
  * body is off-screen it starts from its owner's HUD window instead.
  */
-public final class BattleFloaters implements SkijaFocusBattleRenderer.Layer {
+public final class BattleFloaters implements BattleHudLayers.Layer {
 
     public static final int MAX_LIVE = MFloatingText.DEFAULT_CAP;
     /** Body height the world anchor sits at (chest/head, where the eye already is on a hit). */

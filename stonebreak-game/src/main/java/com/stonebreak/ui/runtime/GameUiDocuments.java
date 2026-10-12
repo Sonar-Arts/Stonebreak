@@ -33,7 +33,7 @@ import com.openmason.engine.ui.script.UiScriptRuntime;
 import com.openmason.engine.ui.script.UiScriptServices;
 import com.openmason.engine.ui.script.UiScripts;
 import com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry;
-import com.stonebreak.ui.runtime.screens.DocumentScreenPolicy;
+import com.stonebreak.ui.runtime.screens.ShippedDocuments;
 import com.stonebreak.ui.runtime.screens.UiLayer;
 import io.github.humbleui.skija.Typeface;
 
@@ -246,7 +246,7 @@ public final class GameUiDocuments {
 
     /** The shipped export of screen {@code id}, read with the runtime's stale-cache policy. */
     public static SbuiArchive readScreen(String id) throws IOException {
-        String path = DocumentScreenPolicy.resourcePath(id);
+        String path = ShippedDocuments.resourcePath(id);
         byte[] bytes;
         try (java.io.InputStream in = GameUiDocuments.class.getResourceAsStream("/" + path)) {
             if (in == null) {

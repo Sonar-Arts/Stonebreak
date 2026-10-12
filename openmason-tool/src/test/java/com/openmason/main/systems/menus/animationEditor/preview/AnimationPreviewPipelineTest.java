@@ -6,6 +6,7 @@ import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
 import com.openmason.main.systems.menus.animationEditor.AnimTestModels;
 import com.openmason.main.systems.menus.animationEditor.data.AnimationClip;
 import org.joml.Vector3f;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -21,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * and around a save, modelling edits made while the editor is open survive,
  * and auto-key can claim an edit instead.
  */
+@Tag("regression")
 class AnimationPreviewPipelineTest {
 
     private static PartTransform at(ModelPartManager pm, String id, float x) {

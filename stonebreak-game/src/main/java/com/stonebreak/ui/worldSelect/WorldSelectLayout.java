@@ -1,9 +1,8 @@
 package com.stonebreak.ui.worldSelect;
 
 /**
- * Single source of truth for world-select screen geometry. Both the Skija
- * renderer and the mouse hit-tester read coordinates from this class so they
- * cannot drift out of sync.
+ * Single source of truth for world-select screen geometry: the UI host's
+ * {@code stonebreak:screen.world-select} root publishes it to the document.
  *
  * Coordinates are computed lazily for a given (windowWidth, windowHeight)
  * pair via {@link #compute(int, int)}.
@@ -213,44 +212,7 @@ public final class WorldSelectLayout {
         return new SectionBounds(x, y, cardWidth, cardHeight);
     }
 
-    /** "Open Folder" button inside the card. */
-    public SectionBounds cardOpenFolderBounds(SectionBounds card) {
-        return new SectionBounds(card.x + cardPadding, cardButtonRowY(card),
-                cardButtonWidth(card), cardButtonHeight);
-    }
-
-    /** "Back Up" button inside the card. */
-    public SectionBounds cardBackupBounds(SectionBounds card) {
-        float w = cardButtonWidth(card);
-        return new SectionBounds(card.x + cardPadding + w + cardButtonGap, cardButtonRowY(card),
-                w, cardButtonHeight);
-    }
-
-    private float cardButtonWidth(SectionBounds card) {
-        return (card.width - cardPadding * 2f - cardButtonGap) / 2f;
-    }
-
-    private float cardButtonRowY(SectionBounds card) {
-        // Buttons sit one line above the bottom padding, leaving that line for the status text
-        return card.getBottom() - cardPadding - cardLineHeight - cardButtonHeight;
-    }
-
     private static float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(value, max));
-    }
-
-    public boolean hitItem(double mouseX, double mouseY, int rowsVisible, int scrollOffset, int totalItems, int[] outIndex) {
-        if (mouseX < listX || mouseX > listX + listWidth) return false;
-        if (mouseY < listY || mouseY > listY + listHeight) return false;
-        int row = (int) ((mouseY - listY) / itemHeight);
-        if (row < 0 || row >= rowsVisible) return false;
-        int index = row + scrollOffset;
-        if (index < 0 || index >= totalItems) return false;
-        outIndex[0] = index;
-        return true;
-    }
-
-    public boolean hitRect(double mouseX, double mouseY, float x, float y, float w, float h) {
-        return mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
     }
 }

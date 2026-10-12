@@ -3,6 +3,7 @@ package com.openmason.main.systems.mcp;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -16,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Exercises the eyeglass end-to-end against the real shipped game assets. */
+@Tag("integration")
 class AssetLensServiceTest {
 
     private static AssetLensService service() {

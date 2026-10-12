@@ -75,8 +75,8 @@ public final class FlexStyleMapper {
                 offset + FlexRecord.PADDING + e, masks);
             length(style.length(edge), scale, true, FlexRecord.LEN_POS << e, rec, offset + FlexRecord.POS + e, masks);
             Length border = style.length("border-" + edge + "-width");
-            if (border.kind() == Length.Kind.POINTS) {
-                rec[offset + FlexRecord.BORDER + e] = border.value() * scale; // Yoga borders have no percent
+            if (border.isFixed()) {
+                rec[offset + FlexRecord.BORDER + e] = border.px(scale, 0); // Yoga borders have no percent
             }
         }
         length(style.length("row-gap"), scale, false, FlexRecord.LEN_GAP_ROW, rec, offset + FlexRecord.GAP_ROW, masks);
@@ -108,6 +108,7 @@ public final class FlexStyleMapper {
                                int[] masks) {
         switch (l.kind()) {
             case POINTS -> rec[index] = l.value() * scale;
+            case DEVICE -> rec[index] = l.value();
             case PERCENT -> {
                 rec[index] = l.value();
                 masks[0] |= bit;

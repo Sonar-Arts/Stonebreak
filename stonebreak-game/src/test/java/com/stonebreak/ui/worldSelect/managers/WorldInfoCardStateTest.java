@@ -203,15 +203,4 @@ class WorldInfoCardStateTest {
         state.tickCard(OPEN);
         assertNull(state.getCardWorld(), "a card must never name a row past the end of the list");
     }
-
-    // ===== BUTTON HOVER =====
-
-    @Test
-    void cardButtonHoverIsClearedWhenTheCardCloses() {
-        openCardOn(2);
-        state.setHoveredCardButton("card-backup");
-        assertEquals("card-backup", state.getHoveredCardButton());
-        state.closeCard();
-        assertNull(state.getHoveredCardButton(), "a closed card has no hovered button");
-    }
 }

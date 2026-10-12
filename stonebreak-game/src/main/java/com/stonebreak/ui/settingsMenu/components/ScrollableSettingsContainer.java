@@ -2,7 +2,6 @@ package com.stonebreak.ui.settingsMenu.components;
 
 import com.openmason.engine.ui.masonry.MScrollContainer;
 import com.openmason.engine.ui.masonry.MScrollMath;
-import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.settingsMenu.config.CategoryState;
 import com.stonebreak.ui.settingsMenu.config.SettingsConfig;
 import com.stonebreak.ui.settingsMenu.managers.StateManager;
@@ -12,8 +11,8 @@ import com.stonebreak.ui.settingsMenu.managers.StateManager;
  * category layout (items stacked vertically with fixed spacing) and routes
  * mouse-wheel events to the active category's scroll math.
  *
- * The actual per-widget positioning + render happens in
- * {@link com.stonebreak.ui.settingsMenu.renderers.SkijaSettingsRenderer};
+ * The per-widget positioning happens in
+ * {@link com.stonebreak.ui.settingsMenu.SettingsLayout};
  * this class only owns the clip viewport and scroll math coupling.
  */
 public final class ScrollableSettingsContainer {
@@ -60,11 +59,6 @@ public final class ScrollableSettingsContainer {
         container.bounds(viewportX, viewportY, viewportW, viewportH);
     }
 
-    public void render(MasonryUI ui, Runnable contentPainter) {
-        if (container == null) return;
-        container.render(ui, contentPainter);
-    }
-
     public boolean handleMouseWheel(float mouseX, float mouseY, float scrollDelta) {
         return container != null && container.handleWheel(mouseX, mouseY, scrollDelta);
     }
@@ -93,4 +87,13 @@ public final class ScrollableSettingsContainer {
         return math != null ? math.offset() : 0f;
     }
     public float getItemSpacing() { return itemSpacing; }
+
+    /** True when device point ({@code x}, {@code y}) is inside the clipped viewport. */
+    public boolean contains(float x, float y) { return container != null && container.contains(x, y); }
+
+    /** The scrollbar's press area ({@code x, y, w, h}), or null when nothing scrolls. */
+    public float[] scrollbarHitBounds() { return container != null ? container.scrollbarHitBounds() : null; }
+
+    /** The drawn scrollbar thumb ({@code x, y, w, h}), or null when nothing scrolls. */
+    public float[] thumbBounds() { return container != null ? container.thumbBounds() : null; }
 }

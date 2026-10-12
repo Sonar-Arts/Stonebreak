@@ -296,8 +296,9 @@ public final class FastLodManager {
         scannedQuality = quality;
         // Settled only when nothing is pending either: a job that lands (or fails
         // to upload) after this scan must be followed by one more scan, which the
-        // gate allows because this flag stays false. A node waiting out its retry
-        // backoff is pending too: settling past it would never retry it.
+        // gate allows because this flag stays false. A node waiting out a failure
+        // backoff is skipped above, not missing, so it holds the gate open too —
+        // otherwise its retry would never be scheduled.
         ringSettled = missing.isEmpty() && held == 0 && inFlight.isEmpty() && readyToUpload.isEmpty()
                 && backoff.isEmpty();
         if (missing.isEmpty()) return;

@@ -222,6 +222,12 @@ public class InventoryLayoutCalculator {
     public static int getTitleHeight() { return Math.round(TITLE_HEIGHT * uiScale()); }
     public static int getPanelPadding() { return Math.round(PANEL_PADDING * uiScale()); }
     public static int getCraftingGridSize() { return CRAFTING_GRID_SIZE; }
+
+    /**
+     * Left edge of the first main-inventory / hotbar slot: where every screen draws the grid, and
+     * therefore where every pick-up, place, split and shift-click rule hit-tests it.
+     */
+    public static int gridStartX(InventoryLayout layout) { return layout.inventorySectionStartX + getSlotPadding(); }
     public static int getWorkbenchCraftingGridSize() { return WORKBENCH_CRAFTING_GRID_SIZE; }
     public static int getCraftingInputSlotsCount() { return CRAFTING_GRID_SIZE * CRAFTING_GRID_SIZE; }
     public static int getWorkbenchCraftingInputSlotsCount() { return WORKBENCH_CRAFTING_GRID_SIZE * WORKBENCH_CRAFTING_GRID_SIZE; }

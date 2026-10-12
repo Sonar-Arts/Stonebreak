@@ -7,8 +7,8 @@ import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
  *
  * <p>Crucible sits at the center of the upper furnace section.
  * Ingredient slot is at 12 o'clock, fuel at 6 o'clock, output at 3 o'clock.
- * Shared between the renderer and the input manager so hit-testing and
- * drawing never drift apart.
+ * Shared between the input manager's slot addresses and the crucible draw
+ * provider so hit-testing and drawing never drift apart.
  */
 public final class FurnaceLayout {
 
@@ -65,9 +65,9 @@ public final class FurnaceLayout {
     }
 
     /**
-     * The radial geometry around a crucible centre: shared by the legacy renderer (centre from the
-     * panel layout) and the {@code stonebreak:furnace-crucible} draw provider (centre of its element),
-     * so both draw the same pixels for the same centre.
+     * The radial geometry around a crucible centre, as the {@code stonebreak:furnace-crucible} draw
+     * provider places it (centre of its element); {@link #compute} derives the centre from the panel
+     * layout.
      *
      * @param ss      slot side, device px
      * @param pad     slot padding, device px

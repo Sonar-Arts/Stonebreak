@@ -7,11 +7,19 @@ package com.openmason.engine.rendering.viewer.camera;
 public final class CameraMath {
 
     // Camera constraints
-    public static final float MIN_DISTANCE = 2.0f;
+    // Models are authored in block units (1 block = 1 unit, 1 pixel = 1/16), so the
+    // orbit must reach well under a pixel to inspect detail up close.
+    public static final float MIN_DISTANCE = 0.05f;
     public static final float MAX_DISTANCE = 100.0f;
     public static final float MIN_PITCH = -89.0f;
     public static final float MAX_PITCH = 89.0f;
     public static final float ZOOM_SENSITIVITY = 1.08f;
+
+    // Near clip plane: a fixed fraction of the orbit distance, capped at the old fixed
+    // 0.1 so normal zoom levels keep their depth precision.
+    public static final float MAX_NEAR_PLANE = 0.1f;
+    public static final float MIN_NEAR_PLANE = 0.001f;
+    public static final float NEAR_PLANE_DISTANCE_RATIO = 0.05f;
 
     // FOV constraints
     public static final float MIN_FOV = 10.0f;
@@ -40,6 +48,16 @@ public final class CameraMath {
      */
     public static float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    /**
+     * Near clip distance for an orbit camera at the given distance from its target.
+     *
+     * @param distance Orbit distance
+     * @return Near plane distance, in [MIN_NEAR_PLANE, MAX_NEAR_PLANE]
+     */
+    public static float nearPlaneForDistance(float distance) {
+        return clamp(distance * NEAR_PLANE_DISTANCE_RATIO, MIN_NEAR_PLANE, MAX_NEAR_PLANE);
     }
 
     /**

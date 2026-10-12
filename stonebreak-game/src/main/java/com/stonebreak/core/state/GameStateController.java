@@ -92,6 +92,12 @@ public final class GameStateController {
             }
         }
 
+        // Leaving LOADING by any route other than LoadingScreen.hide() (a failed build, a disconnect):
+        // the loading screen stops showing, so its document never lingers in the input stack (#299).
+        if (stateChanged && previousGameState == GameState.LOADING && game.getLoadingScreen() != null) {
+            game.getLoadingScreen().dismiss();
+        }
+
         // Entering gameplay from any menu/UI state: drop residual mouse button
         // state so the click that closed the menu (or a release swallowed by a
         // menu-routed callback) can't trigger attacks/block breaking on its own.
@@ -115,6 +121,19 @@ public final class GameStateController {
         }
         if (state == GameState.JOIN_WORLD_SCREEN && game.getJoinWorldScreen() != null) {
             game.getJoinWorldScreen().onShow();
+        }
+        // The documents of screens that are a state follow it (after the screens' onShow refreshes, #299).
+        com.stonebreak.ui.runtime.screens.StateScreens.get().stateChanged(state);
+        // Container screens that stay open under another state (the recipe book over a crafting
+        // table) show their document only in their own state (#300).
+        if (game.getWorkbenchScreen() != null) {
+            game.getWorkbenchScreen().syncPresentation(state);
+        }
+        if (game.getInventoryScreen() != null) {
+            game.getInventoryScreen().syncPresentation(state);
+        }
+        if (game.getCharacterScreen() != null) {
+            game.getCharacterScreen().syncPresentation(state); // #301
         }
 
         // Tear down any active session when returning to the main menu. In the two-world model
@@ -413,7 +432,7 @@ public final class GameStateController {
         RecipeScreen recipeScreen = game.getRecipeBookScreen();
         if (recipeScreen != null && currentState == GameState.RECIPE_BOOK_UI) {
             recipeScreen.onClose();
-            setState(previousGameState);
+            setState(returnStateFromRecipeBook());
         }
     }
 
@@ -493,6 +512,23 @@ public final class GameStateController {
         if (action != null) {
             action.run();
         }
+    }
+
+    /**
+     * Where closing the recipe book goes: the screen it was opened over, unless that screen closed in
+     * the meantime (a crafting table broken by another player abandons its screen while the book is up,
+     * #300). Returning to WORKBENCH_UI with no table open left the world paused with nothing drawn.
+     */
+    private GameState returnStateFromRecipeBook() {
+        if (previousGameState == GameState.WORKBENCH_UI
+                && (game.getWorkbenchScreen() == null || !game.getWorkbenchScreen().isVisible())) {
+            return GameState.PLAYING;
+        }
+        if (previousGameState == GameState.INVENTORY_UI
+                && (game.getInventoryScreen() == null || !game.getInventoryScreen().isVisible())) {
+            return GameState.PLAYING;
+        }
+        return previousGameState;
     }
 
 }

@@ -95,7 +95,7 @@ public final class FastLodSampler {
                 }
             }
             treeSpots = terrain.probeCellTrees(key.chunkX(), key.chunkZ(), cellsPerAxis, cellSize,
-                    cellHeights, surface);
+                    cellHeights, waterLevels, surface);
         }
 
         return new FastLodChunkData(key, heights, waterLevels, surface, trees,

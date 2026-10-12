@@ -420,16 +420,19 @@ local function make_ui(ctx, env, info)
     end
 
     -- Animation through the host sampler (#295): never waits on scripts.
-    -- opts: delay, clock ("ui" | "game" | a host clock), fill ("hold" | "release"), from = { prop = value }
+    -- opts: delay, clock ("ui" | "game" | a host clock), fill ("hold" | "release"), from = { prop = value },
+    --       composite ("replace" | "add": targets are deltas stacked on what is shown)
     function ui.tween(el, props, duration, easing, opts)
         return new_handle(ctx, (call("tween", key_of(el, 1), props, duration or 0.25, easing or "linear", opts or {})),
             "anim")
     end
-    -- opts: speed, loop, on_event, clock, blend (s), fill, at (s), restart (false keeps a running one), reduced (clip)
+    -- opts: speed, loop, on_event, clock, blend (s), fill, at (s), restart (false keeps a running one), reduced (clip),
+    --       composite ("replace" | "add": key values are deltas stacked on what is shown)
     function ui.play(clip, opts)
         opts = opts or {}
         local hd = new_handle(ctx, (call("play", clip, { speed = opts.speed, loop = opts.loop, clock = opts.clock,
-            blend = opts.blend, fill = opts.fill, at = opts.at, restart = opts.restart, reduced = opts.reduced })),
+            blend = opts.blend, fill = opts.fill, at = opts.at, restart = opts.restart, reduced = opts.reduced,
+            composite = opts.composite })),
             "anim")
         if type(opts.on_event) == "function" then
             ctx.anim_events[hd.token] = opts.on_event

@@ -117,9 +117,7 @@ public final class MortarRegion implements AutoCloseable {
             return MortarFrameResult.NONE;
         }
 
-        for (Entry e : entries) {
-            states.computeIfAbsent(e.id, k -> new PartState()).touchedThisFrame = true;
-        }
+        prepareStates();
 
         float scale = theme.scale;
         panel.draw(width * scale, height * scale, canvas -> {
@@ -138,39 +136,58 @@ public final class MortarRegion implements AutoCloseable {
         // Hit-test against this frame's rects using the panel's invisible button.
         boolean regionHovered = ImGui.isItemHovered();
         boolean regionActive = ImGui.isItemActive();
-        String hoveredId = null;
-        if (regionHovered) {
-            float localX = panel.getItemRelativeMouseX() / scale;
-            float localY = panel.getItemRelativeMouseY() / scale;
-            // Iterate in reverse so later (topmost) parts win overlaps.
-            for (int i = entries.size() - 1; i >= 0; i--) {
-                Entry e = entries.get(i);
-                if (e.contains(localX, localY)) {
-                    hoveredId = e.id;
-                    break;
-                }
-            }
-        }
+        String hoveredId = regionHovered
+                ? hitTest(panel.getItemRelativeMouseX() / scale, panel.getItemRelativeMouseY() / scale)
+                : null;
+        boolean hit = hoveredId != null;
+        return finishFrame(hoveredId, regionActive,
+                hit && ImGui.isMouseClicked(ImGuiMouseButton.Left),
+                hit && ImGui.isMouseDoubleClicked(ImGuiMouseButton.Left),
+                hit && ImGui.isMouseClicked(ImGuiMouseButton.Right));
+    }
 
-        String clickedId = null;
-        String doubleClickedId = null;
-        String rightClickedId = null;
-        if (hoveredId != null) {
-            if (ImGui.isMouseClicked(ImGuiMouseButton.Left)) {
-                clickedId = hoveredId;
-            }
-            if (ImGui.isMouseDoubleClicked(ImGuiMouseButton.Left)) {
-                doubleClickedId = hoveredId;
-            }
-            if (ImGui.isMouseClicked(ImGuiMouseButton.Right)) {
-                rightClickedId = hoveredId;
+    /** Ensure every queued part has a state (so paint can read it) and mark it live this frame. */
+    void prepareStates() {
+        for (Entry e : entries) {
+            states.computeIfAbsent(e.id, k -> new PartState()).touchedThisFrame = true;
+        }
+    }
+
+    /**
+     * The topmost queued part containing the logical point (edges inclusive),
+     * or null. Later parts win overlaps.
+     */
+    String hitTest(float localX, float localY) {
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            Entry e = entries.get(i);
+            if (e.contains(localX, localY)) {
+                return e.id;
             }
         }
+        return null;
+    }
+
+    /**
+     * Turn this frame's hit-test and mouse-button samples into the input
+     * outcome, retarget every queued part's animation, and evict states for
+     * parts that were not queued. Clicks only count over a part.
+     */
+    MortarFrameResult finishFrame(String hoveredId, boolean regionActive,
+                                  boolean leftClicked, boolean leftDoubleClicked, boolean rightClicked) {
+        boolean hit = hoveredId != null;
+        String clickedId = hit && leftClicked ? hoveredId : null;
+        String doubleClickedId = hit && leftDoubleClicked ? hoveredId : null;
+        String rightClickedId = hit && rightClicked ? hoveredId : null;
 
         retarget(hoveredId, regionActive);
         evictUntouched();
 
         return new MortarFrameResult(hoveredId, clickedId, doubleClickedId, rightClickedId);
+    }
+
+    /** The live animated state for {@code id}, or null once evicted. */
+    PartState stateOf(String id) {
+        return states.get(id);
     }
 
     /** Advance every live part's animation by {@code dt} seconds. */

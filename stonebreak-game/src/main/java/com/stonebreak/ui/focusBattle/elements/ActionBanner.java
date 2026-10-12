@@ -11,7 +11,7 @@ import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.focusBattle.BattleHudAnimState;
 import com.stonebreak.ui.focusBattle.BattlePalette;
 import com.stonebreak.ui.focusBattle.FocusBattleLayout;
-import com.stonebreak.ui.focusBattle.SkijaFocusBattleRenderer;
+import com.stonebreak.ui.focusBattle.BattleHudLayers;
 import io.github.humbleui.skija.Canvas;
 import org.joml.Matrix4fc;
 
@@ -26,7 +26,7 @@ import java.util.List;
  * <p>The plate's hairline is the acting side's accent, gold for the Focus Combo, so the side reads
  * from the colour before the name does. Nothing shows during the intro.
  */
-public final class ActionBanner implements SkijaFocusBattleRenderer.Layer {
+public final class ActionBanner implements BattleHudLayers.Layer {
 
     public static final float DROP_SECONDS = MBanner.DEFAULT_IN_SECONDS;
     public static final float MIN_HOLD_SECONDS = MBanner.DEFAULT_MIN_HOLD_SECONDS;

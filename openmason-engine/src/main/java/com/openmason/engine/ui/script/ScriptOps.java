@@ -608,7 +608,8 @@ final class ScriptOps {
         UiValue.Obj opts = obj(a, 4);
         double delay = opts.get("delay") instanceof UiValue.Num d ? d.value() : 0;
         Map<String, UiValue> from = opts.get("from") instanceof UiValue.Obj f ? f.fields() : Map.of();
-        UiAnimator.TweenOptions o = new UiAnimator.TweenOptions(delay, clock(opts), fill(opts), from, bezier);
+        UiAnimator.TweenOptions o = new UiAnimator.TweenOptions(delay, clock(opts), fill(opts), from, bezier,
+            composite(opts));
         return rt.animator.tween(ctx, key, props.fields(), num(a, 2), easing, o, rt.animListener(ctx));
     }
 
@@ -633,7 +634,8 @@ final class ScriptOps {
         double blend = opts.get("blend") instanceof UiValue.Num b ? b.value() : 0;
         double at = opts.get("at") instanceof UiValue.Num t ? t.value() : 0;
         boolean restart = !(opts.get("restart") instanceof UiValue.Bool r) || r.value();
-        UiAnimator.PlayOptions o = new UiAnimator.PlayOptions(clock(opts), speed, loop, blend, fill(opts), at, restart);
+        UiAnimator.PlayOptions o = new UiAnimator.PlayOptions(clock(opts), speed, loop, blend, fill(opts), at, restart,
+            composite(opts));
         return rt.animator.play(ctx, clip, ctx::keyOf, o, rt.animListener(ctx));
     }
 
@@ -663,6 +665,18 @@ final class ScriptOps {
             case "hold" -> UiAnimator.Fill.HOLD;
             case "release" -> UiAnimator.Fill.RELEASE;
             default -> throw new IllegalArgumentException("fill must be hold or release");
+        };
+    }
+
+    /** {@code opts.composite}: "replace" (default) or "add" (#301). */
+    private static UiAnimator.Composite composite(UiValue.Obj opts) {
+        if (!(opts.get("composite") instanceof UiValue.Str c)) {
+            return UiAnimator.Composite.REPLACE;
+        }
+        return switch (c.value()) {
+            case "replace" -> UiAnimator.Composite.REPLACE;
+            case "add" -> UiAnimator.Composite.ADD;
+            default -> throw new IllegalArgumentException("composite must be replace or add");
         };
     }
 

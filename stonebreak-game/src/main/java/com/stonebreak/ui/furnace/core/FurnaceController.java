@@ -4,10 +4,7 @@ import com.stonebreak.blocks.furnace.FurnaceState;
 import com.stonebreak.blocks.furnace.FurnaceStateRegistry;
 import com.stonebreak.core.Game;
 import com.stonebreak.crafting.SmeltingManager;
-import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.ui.HotbarScreen;
-import com.stonebreak.ui.furnace.renderers.FurnaceRenderCoordinator;
 import com.openmason.engine.util.BlockPos;
 
 /**
@@ -19,11 +16,8 @@ import com.openmason.engine.util.BlockPos;
 public class FurnaceController {
 
     private final Game game;
-    private final Inventory inventory;
-    private final HotbarScreen hotbarScreen;
     private FurnaceInputManager inputManager;
     private final SmeltingManager smeltingManager;
-    private FurnaceRenderCoordinator renderCoordinator;
 
     /** The furnace block currently bound to the UI. Null when no UI is open. */
     private FurnaceState state;
@@ -39,24 +33,17 @@ public class FurnaceController {
     /** Where the bound furnace's block is checked; tests substitute it. */
     private java.util.function.Predicate<BlockPos> furnaceAt = FurnaceController::worldHasFurnace;
 
-    private ItemStack hoveredItemStack;
-
     // ── Furnace slot identifiers (for input manager) ─────────
     public static final int SLOT_INGREDIENT = 0;
     public static final int SLOT_FUEL       = 1;
     public static final int SLOT_OUTPUT     = 2;
 
     public FurnaceController(Game game,
-                             Inventory inventory,
                              FurnaceInputManager inputManager,
-                             SmeltingManager smeltingManager,
-                             FurnaceRenderCoordinator renderCoordinator) {
+                             SmeltingManager smeltingManager) {
         this.game = game;
-        this.inventory = inventory;
         this.inputManager = inputManager;
         this.smeltingManager = smeltingManager;
-        this.renderCoordinator = renderCoordinator;
-        this.hotbarScreen = new HotbarScreen(inventory);
         this.visible = false;
     }
 
@@ -98,7 +85,6 @@ public class FurnaceController {
     }
 
     public void update(float deltaTime) {
-        hotbarScreen.update(deltaTime);
         if (visible && state != null && !isFurnaceStillThere()) {
             abandonBrokenFurnace();
             return;
@@ -184,64 +170,11 @@ public class FurnaceController {
         this.slotSink = sink;
     }
 
-    /* ── Input / rendering delegates ─────────────────────── */
-
-    public void handleInput(int screenWidth, int screenHeight) {
-        if (!visible) return;
-        inputManager.handleMouseInput(screenWidth, screenHeight);
-    }
-
     public void handleCloseRequest() {
         game.closeFurnaceScreen();
     }
 
-    public void render(int screenWidth, int screenHeight) {
-        if (!visible || renderCoordinator == null) return;
-        renderCoordinator.render(screenWidth, screenHeight);
-    }
-
-    public void renderWithoutTooltips(int screenWidth, int screenHeight) {
-        if (!visible || renderCoordinator == null) return;
-        renderCoordinator.renderWithoutTooltips(screenWidth, screenHeight);
-    }
-
-    public void renderTooltipsOnly(int screenWidth, int screenHeight) {
-        if (!visible || renderCoordinator == null) return;
-        renderCoordinator.renderTooltipsOnly(screenWidth, screenHeight);
-    }
-
-    public void renderDraggedItemOnly(int screenWidth, int screenHeight) {
-        if (!visible || renderCoordinator == null) return;
-        renderCoordinator.renderDraggedItemOnly(screenWidth, screenHeight);
-    }
-
-    public void renderHotbar(int screenWidth, int screenHeight) {
-        if (renderCoordinator != null) {
-            renderCoordinator.renderHotbar(screenWidth, screenHeight);
-        }
-    }
-
-    public void renderHotbarWithoutTooltips(int screenWidth, int screenHeight) {
-        if (renderCoordinator != null) {
-            renderCoordinator.renderHotbarWithoutTooltips(screenWidth, screenHeight);
-        }
-    }
-
-    public void renderHotbarTooltipsOnly(int screenWidth, int screenHeight) {
-        if (renderCoordinator != null) {
-            renderCoordinator.renderHotbarTooltipsOnly(screenWidth, screenHeight);
-        }
-    }
-
     /* ── Accessors ───────────────────────────────────────── */
-
-    public HotbarScreen getHotbarScreen() { return hotbarScreen; }
-    public ItemStack getHoveredItemStack() { return hoveredItemStack; }
-    public void setHoveredItemStack(ItemStack itemStack) { this.hoveredItemStack = itemStack; }
-
-    public void setRenderCoordinator(FurnaceRenderCoordinator renderCoordinator) {
-        this.renderCoordinator = renderCoordinator;
-    }
 
     /** Slot rules addressed by slot, for UI documents (#289). */
     public FurnaceInputManager getInputManager() {

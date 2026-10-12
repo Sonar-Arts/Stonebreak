@@ -1,12 +1,23 @@
 package com.stonebreak.ui.furnace.core;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openmason.engine.ui.fidelity.GeometryComparator;
+import com.openmason.engine.ui.fidelity.GeometryRule;
+import com.stonebreak.config.Settings;
 import com.stonebreak.ui.furnace.core.FurnaceLayout.Slots;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 import com.stonebreak.ui.support.Resolutions;
@@ -85,5 +96,35 @@ class FurnaceLayoutTest {
             assertTrue(s.slotSize > 0,
                 size + ": furnace slot size must be positive");
         }
+    }
+
+    /** The layout maths agree with the committed legacy oracle, exactly (same integer maths). */
+    @Test
+    void layoutRectsMatchTheCommittedLegacyOracle() throws IOException {
+        Path oracle = Path.of("../openmason-engine/src/test/resources/ui/fixtures/legacy-geometry.json");
+        assumeTrue(Files.isRegularFile(oracle), "engine fixture not next to this module");
+        float previous = Settings.getInstance().getUiScale();
+        int compared = 0;
+        try {
+            for (JsonNode c : new ObjectMapper().readTree(oracle.toFile()).get("cases")) {
+                if (!c.get("screen").asText().equals("furnace")) {
+                    continue;
+                }
+                int w = c.get("framebuffer").get(0).asInt();
+                int h = c.get("framebuffer").get(1).asInt();
+                Settings.getInstance().setUiScale((float) c.get("uiScale").asDouble());
+                Map<String, float[]> want = new LinkedHashMap<>();
+                c.get("rects").properties().forEach(e -> want.put(e.getKey(), new float[]{
+                    (float) e.getValue().get(0).asDouble(), (float) e.getValue().get(1).asDouble(),
+                    (float) e.getValue().get(2).asDouble(), (float) e.getValue().get(3).asDouble()}));
+                GeometryComparator.GeometryReport r = GeometryComparator.compare(want,
+                    DocumentFurnaceCapture.layoutRects(w, h), w, h, GeometryRule.FLOAT_EXACT);
+                assertTrue(r.passed(), w + "x" + h + ": " + r.summary());
+                compared++;
+            }
+        } finally {
+            Settings.getInstance().setUiScale(previous);
+        }
+        assertTrue(compared >= 5, "furnace cases in the oracle: " + compared);
     }
 }

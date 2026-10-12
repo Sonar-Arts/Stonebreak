@@ -26,6 +26,7 @@ import com.stonebreak.ui.runtime.GameUiResources;
 import io.github.humbleui.skija.Typeface;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -42,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * edits to sheets are undoable document steps, "Edit texture" finds the right file (SBTs through
  * their layered OMT) and a texture save repaints every document that shares it.
  */
+@Tag("integration")
 class UiImageAssetsTest {
 
     private static final int RED = 0xFFFF0000;

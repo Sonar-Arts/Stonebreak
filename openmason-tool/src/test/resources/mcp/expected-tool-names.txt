@@ -106,7 +106,7 @@ select_part
 set_part_geometry
 set_part_visibility
 subdivide_edge
-tex_close_editor
+tex_close_document
 tex_describe
 tex_editor_status
 tex_ellipse

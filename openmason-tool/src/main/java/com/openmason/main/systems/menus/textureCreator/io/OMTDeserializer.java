@@ -78,7 +78,7 @@ public class OMTDeserializer {
             return null;
         }
 
-        if (OMTFormat.hasValidExtension(filePath)) {
+        if (!OMTFormat.hasValidExtension(filePath)) {
             logger.error("File does not have .omt extension: {}", filePath);
             return null;
         }
@@ -485,7 +485,7 @@ public class OMTDeserializer {
             return false;
         }
 
-        if (OMTFormat.hasValidExtension(filePath)) {
+        if (!OMTFormat.hasValidExtension(filePath)) {
             return false;
         }
 

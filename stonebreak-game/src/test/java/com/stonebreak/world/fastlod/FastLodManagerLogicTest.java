@@ -98,7 +98,7 @@ class FastLodManagerLogicTest {
             int[] outHeights = inv.getArgument(4);
             BlockType[] outSurface = inv.getArgument(6);
             for (int i = 0; i < count * count; i++) {
-                outHeights[i] = 80;
+                outHeights[i] = 336;
                 if (outSurface != null) outSurface[i] = BlockType.GRASS;
             }
             return null;

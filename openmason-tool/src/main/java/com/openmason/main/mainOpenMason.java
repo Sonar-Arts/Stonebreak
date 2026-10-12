@@ -18,7 +18,7 @@ import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.menus.animationEditor.AnimationEditorImGui;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.textureCreator.TexturePreviewPipeline;
-import com.openmason.main.systems.menus.windows.TextureEditorWindow;
+import com.openmason.main.systems.menus.textureCreator.TextureEditorWorkspace;
 import com.openmason.main.systems.skija.SkijaContext;
 import com.openmason.main.systems.skija.SkijaTestPanel;
 import com.openmason.main.systems.uiPreview.MasonryPreviewPanel;
@@ -59,7 +59,7 @@ public class mainOpenMason {
     private final com.openmason.main.systems.layout.CenterTabTracker centerTabTracker =
             new com.openmason.main.systems.layout.CenterTabTracker();
     private TextureCreatorImGui textureCreatorInterface;
-    private TextureEditorWindow textureEditorWindow;
+    private TextureEditorWorkspace textureEditorWorkspace;
     private com.openmason.main.systems.menus.scriptingWindow.ScriptingWindow scriptingWindow;
     private com.openmason.main.systems.assistant.AssistantController assistantController;
     private AnimationEditorImGui animationEditor;
@@ -165,6 +165,7 @@ public class mainOpenMason {
             MainThreadExecutor.drain();
             if (++frame == 3) {
                 devOpenUiEditor();
+                devOpenTextureEditor();
             }
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -217,8 +218,7 @@ public class mainOpenMason {
 
                     @Override
                     public void showTextureEditor() {
-                        showTextureEditor = true;
-                        textureEditorWindow.show();
+                        openTextureEditor();
                     }
                 });
         try {
@@ -230,7 +230,7 @@ public class mainOpenMason {
             viewportInterface = composition.viewportInterface();
             sceneViewerInterface = composition.sceneViewerInterface();
             textureCreatorInterface = composition.textureCreatorInterface();
-            textureEditorWindow = composition.textureEditorWindow();
+            textureEditorWorkspace = composition.textureEditorWorkspace();
             scriptingWindow = composition.scriptingWindow();
             animationEditor = composition.animationEditor();
             texturePreviewPipeline = composition.texturePreviewPipeline();
@@ -306,22 +306,17 @@ public class mainOpenMason {
                 }
             });
         }
-        if (mainInterface != null && textureEditorWindow != null) {
+        if (mainInterface != null && textureEditorWorkspace != null) {
             mainInterface.setTextureEditorPresenter(new MainImGuiInterface.TextureEditorPresenter() {
                 @Override
                 public void show() {
-                    showTextureEditor = true;
-                    textureEditorWindow.show();
-                }
-
-                @Override
-                public void close() {
-                    closeTextureEditor();
+                    openTextureEditor();
                 }
 
                 @Override
                 public boolean isVisible() {
-                    return showTextureEditor && textureEditorWindow.isVisible();
+                    return showTextureEditor && workspaceState != null
+                            && workspaceState.isOpen(com.openmason.main.systems.layout.Workspace.TEXTURE);
                 }
 
                 @Override
@@ -385,14 +380,16 @@ public class mainOpenMason {
             }
         }
 
-        if (showTextureEditor) {
-            safeRender(() -> {
-                textureEditorWindow.render();
-
-                if (!textureEditorWindow.isVisible()) {
-                    onTextureEditorClosed();
-                }
-            }, "Texture Editor");
+        // The Texture tab's docked panels and dialogs (its toolbar and body were drawn with the
+        // window holding it); closing the tab runs the editor's tear-down.
+        if (textureEditorWorkspace != null) {
+            boolean textureShown = showModelEditor && showTextureEditor && mainInterface != null
+                    && mainInterface.isWorkspaceShown(com.openmason.main.systems.layout.Workspace.TEXTURE);
+            safeRender(() -> textureEditorWorkspace.renderPanels(textureShown), "Texture Editor");
+            if (showTextureEditor && workspaceState != null
+                    && !workspaceState.isOpen(com.openmason.main.systems.layout.Workspace.TEXTURE)) {
+                onTextureEditorClosed();
+            }
         }
 
         if (animationEditor != null && animationEditor.isVisible()) {
@@ -493,6 +490,31 @@ public class mainOpenMason {
     /**
      * Transition to main interface from home screen.
      */
+    /**
+     * Dev hook for live runs: {@code -Dopenmason.texeditor=<project.omp>[,<texture.omt>]} opens the
+     * project (when given) and the Texture Editor tab, with the texture loaded; add
+     * {@code -Dopenmason.texeditor.detached=true} to pop the tab out into its own window.
+     */
+    private void devOpenTextureEditor() {
+        String spec = System.getProperty("openmason.texeditor");
+        if (spec == null || mainInterface == null || textureCreatorInterface == null) {
+            return;
+        }
+        String[] parts = spec.split(",", 2);
+        transitionToMainInterface();
+        if (!parts[0].isBlank()) {
+            mainInterface.openProjectFromHub(parts[0].trim());
+        }
+        if (parts.length > 1 && !parts[1].isBlank()
+                && !textureCreatorInterface.getController().loadProject(parts[1].trim())) {
+            logger.warn("openmason.texeditor: could not open {}", parts[1].trim());
+        }
+        openTextureEditor();
+        if (Boolean.getBoolean("openmason.texeditor.detached")) {
+            workspaceState.detach(com.openmason.main.systems.layout.Workspace.TEXTURE);
+        }
+    }
+
     /**
      * Dev hook for live runs: {@code -Dopenmason.uieditor=<project.omp>[,<document.omui|.sbui>]}
      * opens the project, brings the UI Editor workspace to the front and opens the document.
@@ -641,33 +663,27 @@ public class mainOpenMason {
     }
 
     /**
-     * Tear-down that runs once the texture editor window has gone away — either
-     * the user closed it or {@link #closeTextureEditor()} was called. Flushes
-     * pending canvas edits to the face's GPU texture BEFORE closing the region
-     * (closeFaceRegion clears the material ID, so a later flush would target
-     * the wrong texture), clears the viewport highlight and auto-saves the
-     * .OMO so per-face texture edits are persisted.
+     * Tear-down that runs once the texture editor's tab has gone away (the user closed it; unsaved
+     * textures were saved or discarded first, see {@code TextureEditorWorkspace.confirmClose}):
+     * every document closes. The controller's listeners flush face documents to their textures,
+     * clear the viewport highlight and save the .OMO when face edits were open.
      */
     private void onTextureEditorClosed() {
         showTextureEditor = false;
-        boolean wasFaceEdit = textureCreatorInterface.getController().isFaceRegionActive();
-        if (texturePreviewPipeline != null) {
-            texturePreviewPipeline.flush();
-        }
-        textureCreatorInterface.getController().closeFaceRegion();
-        mainInterface.getPropertyPanel().clearEditingFace();
-        if (wasFaceEdit && mainInterface.getModelOperations() != null) {
-            mainInterface.getModelOperations().saveModel();
-        }
+        textureCreatorInterface.getController().closeAll(
+                com.openmason.main.systems.menus.textureCreator.TextureCreatorController.CloseReason.WORKSPACE_CLOSED);
     }
 
-    /** Programmatic close of the texture editor (MCP): same path as the window's X. */
-    private void closeTextureEditor() {
-        if (!showTextureEditor) {
+    /**
+     * Opens the Texture Editor's workspace tab and brings it forward (its own window again when it
+     * was closed from one).
+     */
+    private void openTextureEditor() {
+        if (workspaceState == null) {
             return;
         }
-        textureEditorWindow.hide();
-        onTextureEditorClosed();
+        showTextureEditor = true;
+        workspaceState.open(com.openmason.main.systems.layout.Workspace.TEXTURE);
     }
 
     /**
@@ -677,8 +693,8 @@ public class mainOpenMason {
         showHomeScreen = true;
         showModelEditor = false;
         showTextureEditor = false;
-        if (textureEditorWindow != null) {
-            textureEditorWindow.hide();
+        if (workspaceState != null) {
+            workspaceState.close(com.openmason.main.systems.layout.Workspace.TEXTURE);
         }
         if (animationEditor != null) {
             animationEditor.hide();

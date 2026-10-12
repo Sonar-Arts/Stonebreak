@@ -95,6 +95,31 @@ public final class UiAnimator {
         }
     }
 
+    /**
+     * How an animation's values combine with what the channel shows (#301).
+     */
+    public enum Composite implements WireEnum {
+        /** Claim the channel: the newest replacing animation wins (the default). */
+        REPLACE("replace"),
+        /**
+         * Stack a delta on top of whatever the channel shows (cascade, transition or replacing
+         * animation), summed with other additive animations in the order they started. Only
+         * {@link AnimProperty#additive()} channels; a shake over a slide, a pulse over a fade.
+         */
+        ADD("add");
+
+        private final String wire;
+
+        Composite(String wire) {
+            this.wire = wire;
+        }
+
+        @Override
+        public String wire() {
+            return wire;
+        }
+    }
+
     /** Receives completions and clip events; called from {@link #sample}, {@link #play} or {@link #stop}. */
     public interface Listener {
         Listener NONE = (token, stopped) -> {
@@ -114,14 +139,21 @@ public final class UiAnimator {
      * @param fill    what the end leaves
      * @param at      clip time to start from
      * @param restart false: a running playback of the same clip by the same owner keeps going
+     * @param composite REPLACE (default) or ADD: the clip's key values are deltas stacked on what is shown
      */
     public record PlayOptions(String clock, double speed, LoopMode loop, double blend, Fill fill, double at,
-                              boolean restart) {
+                              boolean restart, Composite composite) {
         public static final PlayOptions DEFAULTS = new PlayOptions(UiClocks.UI, 1, null, 0, Fill.HOLD, 0, true);
+
+        public PlayOptions(String clock, double speed, LoopMode loop, double blend, Fill fill, double at,
+                           boolean restart) {
+            this(clock, speed, loop, blend, fill, at, restart, Composite.REPLACE);
+        }
 
         public PlayOptions {
             clock = clock == null ? UiClocks.UI : clock;
             fill = fill == null ? Fill.HOLD : fill;
+            composite = composite == null ? Composite.REPLACE : composite;
             if (!(speed >= 0) || !Double.isFinite(speed)) {
                 throw new IllegalArgumentException("speed must be a finite number >= 0");
             }
@@ -130,19 +162,25 @@ public final class UiAnimator {
         }
 
         public PlayOptions withLoop(LoopMode l) {
-            return new PlayOptions(clock, speed, l, blend, fill, at, restart);
+            return new PlayOptions(clock, speed, l, blend, fill, at, restart, composite);
         }
 
         public PlayOptions withBlend(double b) {
-            return new PlayOptions(clock, speed, loop, b, fill, at, restart);
+            return new PlayOptions(clock, speed, loop, b, fill, at, restart, composite);
+        }
+
+        public PlayOptions withComposite(Composite c) {
+            return new PlayOptions(clock, speed, loop, blend, fill, at, restart, c);
         }
     }
 
     /**
-     * @param from   start values by property (else what each channel shows)
-     * @param bezier a custom timing curve overriding the tween's easing, or null
+     * @param from      start values by property (else what each channel shows; the zero delta for ADD)
+     * @param bezier    a custom timing curve overriding the tween's easing, or null
+     * @param composite REPLACE (default) or ADD: targets are deltas stacked on what is shown
      */
-    public record TweenOptions(double delay, String clock, Fill fill, Map<String, UiValue> from, UiBezier bezier) {
+    public record TweenOptions(double delay, String clock, Fill fill, Map<String, UiValue> from, UiBezier bezier,
+                               Composite composite) {
         public static final TweenOptions DEFAULTS = new TweenOptions(0, UiClocks.UI, Fill.HOLD, Map.of());
 
         public TweenOptions {
@@ -150,10 +188,19 @@ public final class UiAnimator {
             clock = clock == null ? UiClocks.UI : clock;
             fill = fill == null ? Fill.HOLD : fill;
             from = from == null ? Map.of() : Map.copyOf(from);
+            composite = composite == null ? Composite.REPLACE : composite;
+        }
+
+        public TweenOptions(double delay, String clock, Fill fill, Map<String, UiValue> from, UiBezier bezier) {
+            this(delay, clock, fill, from, bezier, Composite.REPLACE);
         }
 
         public TweenOptions(double delay, String clock, Fill fill, Map<String, UiValue> from) {
             this(delay, clock, fill, from, null);
+        }
+
+        public TweenOptions withComposite(Composite c) {
+            return new TweenOptions(delay, clock, fill, from, bezier, c);
         }
     }
 
@@ -163,6 +210,8 @@ public final class UiAnimator {
     private final List<Playback> running = new ArrayList<>();
     private final List<Transition> transitions = new ArrayList<>();
     private final List<Playback> scratch = new ArrayList<>();
+    /** Channels whose additive deltas are all held: re-applied each sample over the changing cascade. */
+    private final java.util.Set<Channel> heldAdds = new java.util.LinkedHashSet<>();
     private final boolean[] done = new boolean[1];
     /**
      * Animation tokens live above 2^40 so they never collide with the action and timer tokens a
@@ -222,14 +271,16 @@ public final class UiAnimator {
         boolean reduced = ui.preferences().reducedMotion();
         TweenPlayback p = new TweenPlayback(nextToken++, owner, listener == null ? Listener.NONE : listener, o.clock(),
             o.fill(), easing, o.bezier());
+        p.composite = o.composite();
         for (Map.Entry<String, UiValue> e : targets.entrySet()) {
             AnimProperty ap = property(e.getKey(), el);
             UiValue to = resolve(el, e.getValue());
-            String problem = ap.problem(to, el.descriptor());
+            String problem = p.additive() ? ap.deltaProblem(to) : ap.problem(to, el.descriptor());
             if (problem != null) {
                 throw new IllegalArgumentException(e.getKey() + ": " + problem);
             }
-            UiValue from = o.from().containsKey(e.getKey()) ? resolve(el, o.from().get(e.getKey())) : shown(el, ap);
+            UiValue from = o.from().containsKey(e.getKey()) ? resolve(el, o.from().get(e.getKey()))
+                : p.additive() ? ap.zero(to) : underlying(el, ap);
             double d = Math.max(0, duration);
             double delay = o.delay();
             if (reduced) {
@@ -269,7 +320,8 @@ public final class UiAnimator {
         ui.resolveStyles();
         ClipPlayback p = new ClipPlayback(nextToken++, owner, listener == null ? Listener.NONE : listener, o.clock(),
             o.fill(), o.blend(), clip, o.loop());
-        for (ClipTrack t : resolveTracks(clip, keyOf, true)) {
+        p.composite = o.composite();
+        for (ClipTrack t : resolveTracks(clip, keyOf, true, p.additive())) {
             p.slots.add(new ClipPlayback.TrackSlot(channel(t.key, t.property), t.keys));
         }
         p.jumpToEnd = ui.preferences().reducedMotion();
@@ -285,6 +337,12 @@ public final class UiAnimator {
      * cannot play are reported. {@code var()} key values resolve against the element now.
      */
     List<ClipTrack> resolveTracks(UiAnimationClip clip, UnaryOperator<String> keyOf, boolean report) {
+        return resolveTracks(clip, keyOf, report, false);
+    }
+
+    /** {@link #resolveTracks}; with {@code additive}, key values are checked as deltas (#301). */
+    List<ClipTrack> resolveTracks(UiAnimationClip clip, UnaryOperator<String> keyOf, boolean report,
+                                  boolean additive) {
         List<ClipTrack> out = new ArrayList<>();
         for (AnimTrack track : clip.tracks()) {
             String key = keyOf.apply(track.target());
@@ -304,7 +362,7 @@ public final class UiAnimator {
                     keys = List.of();
                 }
                 for (AnimKey k : keys) {
-                    String p = ap.problem(k.value(), el.descriptor());
+                    String p = additive ? ap.deltaProblem(k.value()) : ap.problem(k.value(), el.descriptor());
                     if (p != null) {
                         problem = track.property() + " key at " + k.time() + " s: " + p;
                         break;
@@ -432,7 +490,31 @@ public final class UiAnimator {
                 end(owner, true, false);
             }
         }
+        dropAdds(ch, null, 0);
         releaseChannel(ch, true);
+    }
+
+    /**
+     * Removes the additive layers of {@code ch} held by {@code holder} (null = every one) except
+     * those of the running animation {@code keep}; running ones lose the channel and are
+     * interrupted when left with none.
+     */
+    private void dropAdds(Channel ch, Object holder, long keep) {
+        for (int i = ch.adds.size() - 1; i >= 0; i--) {
+            Channel.Add a = ch.adds.get(i);
+            if (holder != null && !holder.equals(a.holder) || a.owner != null && a.owner.token == keep) {
+                continue;
+            }
+            ch.adds.remove(i);
+            Playback p = a.owner;
+            if (p != null) {
+                lose(p, ch);
+                if (!p.alive()) {
+                    end(p, true, false);
+                }
+            }
+        }
+        trackHeld(ch);
     }
 
     /**
@@ -442,12 +524,23 @@ public final class UiAnimator {
      */
     public void releaseHeld(Object owner, long keep) {
         List<Channel> held = new ArrayList<>();
+        List<Channel> added = new ArrayList<>();
         for (Map<String, Channel> byTarget : channels.values()) {
             for (Channel ch : byTarget.values()) {
                 if (ch.holder != null && ch.holder.equals(owner) && (ch.owner == null || ch.owner.token != keep)) {
                     held.add(ch);
                 }
+                for (Channel.Add a : ch.adds) {
+                    if (owner.equals(a.holder) && (a.owner == null || a.owner.token != keep)) {
+                        added.add(ch);
+                        break;
+                    }
+                }
             }
+        }
+        for (Channel ch : added) {
+            dropAdds(ch, owner, keep);
+            apply(ch);
         }
         for (Channel ch : held) {
             Playback p = ch.owner;
@@ -488,6 +581,17 @@ public final class UiAnimator {
                     orphaned.add(p);
                 }
             }
+            for (Channel.Add a : List.copyOf(ch.adds)) {
+                if (a.owner != null) {
+                    Playback ap = a.owner;
+                    lose(ap, ch);
+                    if (!ap.alive() && !orphaned.contains(ap)) {
+                        orphaned.add(ap);
+                    }
+                }
+            }
+            ch.adds.clear();
+            heldAdds.remove(ch);
             ch.explicit = null;
             ch.holder = null;
             if (el != null && ch.property.isStyle()) {
@@ -563,6 +667,12 @@ public final class UiAnimator {
             }
             scratch.clear();
         }
+        if (!heldAdds.isEmpty()) {
+            // Held deltas sit on a cascade that bindings and scripts keep changing underneath.
+            for (Channel ch : List.copyOf(heldAdds)) {
+                apply(ch);
+            }
+        }
         for (int i = transitions.size() - 1; i >= 0; i--) {
             Transition t = transitions.get(i);
             UiValue v = t.sample(clocks.now(UiClocks.UI), done);
@@ -591,21 +701,31 @@ public final class UiAnimator {
             if (ap == null) {
                 continue;
             }
+            transitionBase(el, ap, before, after);
             Channel ch = existing(el.key(), ap.target());
-            UiStyleSheet.StyleTransition t = after.transition(p);
-            if (!transitions(ap, t)) {
-                if (ch != null && ch.transition != null) {
-                    cancelTransition(ch);
-                }
-                continue;
+            if (ch != null && !ch.adds.isEmpty()) {
+                apply(ch); // additive deltas follow the new cascade value at once
             }
-            UiValue to = after.get(p);
-            if (ch != null && ch.transition != null && Objects.equals(ch.transition.to, to)) {
-                continue; // already heading there
-            }
-            UiValue from = ch != null && ch.transition != null ? ch.transitionValue : before.get(p);
-            startTransition(ch != null ? ch : channel(el.key(), ap), from, to, t);
         }
+    }
+
+    /** Starts, keeps or cancels the transition of one changed cascade property. */
+    private void transitionBase(UiElement el, AnimProperty ap, ComputedStyle before, ComputedStyle after) {
+        String p = ap.name();
+        Channel ch = existing(el.key(), ap.target());
+        UiStyleSheet.StyleTransition t = after.transition(p);
+        if (!transitions(ap, t)) {
+            if (ch != null && ch.transition != null) {
+                cancelTransition(ch);
+            }
+            return;
+        }
+        UiValue to = after.get(p);
+        if (ch != null && ch.transition != null && Objects.equals(ch.transition.to, to)) {
+            return; // already heading there
+        }
+        UiValue from = ch != null && ch.transition != null ? ch.transitionValue : before.get(p);
+        startTransition(ch != null ? ch : channel(el.key(), ap), from, to, t);
     }
 
     private static boolean transitions(AnimProperty ap, UiStyleSheet.StyleTransition t) {
@@ -649,7 +769,11 @@ public final class UiAnimator {
         p.rebase(now, at, speed);
         List<Playback> interrupted = new ArrayList<>();
         for (Playback.Slot s : p.slots) {
-            s.blendFrom = s.channel.display() != null ? s.channel.display() : shown(ui.find(s.channel.key),
+            if (p.additive()) {
+                claimAdd(s.channel, p);
+                continue;
+            }
+            s.blendFrom = s.channel.display() != null ? s.channel.display() : underlying(ui.find(s.channel.key),
                 s.channel.property);
             Playback prev = s.channel.owner;
             if (prev != null && prev != p) {
@@ -671,7 +795,20 @@ public final class UiAnimator {
         return p.token;
     }
 
-    private static void lose(Playback p, Channel ch) {
+    /**
+     * Stacks a new additive layer of {@code p} on top of {@code ch}. A delta the same holder's
+     * earlier run of the same source left held is replaced, so a shake replayed on every hit
+     * never piles up layers.
+     */
+    private void claimAdd(Channel ch, Playback p) {
+        String source = p.source();
+        ch.adds.removeIf(a -> a.owner == null && Objects.equals(a.holder, p.owner) && Objects.equals(a.source,
+            source));
+        ch.adds.add(new Channel.Add(p, source));
+        heldAdds.remove(ch);
+    }
+
+    private void lose(Playback p, Channel ch) {
         for (Playback.Slot s : p.slots) {
             if (s.channel == ch) {
                 s.lost = true;
@@ -679,6 +816,27 @@ public final class UiAnimator {
         }
         if (ch.owner == p) {
             ch.owner = null;
+        }
+        Channel.Add a = ch.add(p);
+        if (a != null) {
+            ch.adds.remove(a);
+            trackHeld(ch);
+        }
+    }
+
+    /** Keeps {@link #heldAdds} = channels whose additive layers are all held (no playback rewrites them). */
+    private void trackHeld(Channel ch) {
+        boolean held = !ch.adds.isEmpty();
+        for (Channel.Add a : ch.adds) {
+            if (a.owner != null) {
+                held = false;
+                break;
+            }
+        }
+        if (held) {
+            heldAdds.add(ch);
+        } else {
+            heldAdds.remove(ch);
         }
     }
 
@@ -690,7 +848,9 @@ public final class UiAnimator {
         running.remove(p);
         p.ended = true;
         for (Playback.Slot s : p.slots) {
-            if (!s.lost && s.channel.owner == p) {
+            if (p.additive()) {
+                endAdd(s.channel, p, release);
+            } else if (!s.lost && s.channel.owner == p) {
                 s.channel.owner = null;
                 if (release) {
                     releaseChannel(s.channel, true);
@@ -700,11 +860,31 @@ public final class UiAnimator {
         p.listener.finished(p.token, stopped);
     }
 
+    /** An additive animation ended: its delta is dropped (released, or zero) or held. */
+    private void endAdd(Channel ch, Playback p, boolean release) {
+        Channel.Add a = ch.add(p);
+        if (a == null) {
+            return;
+        }
+        if (release || ch.property.isZero(a.value)) {
+            ch.adds.remove(a);
+        } else {
+            a.owner = null;
+        }
+        trackHeld(ch);
+        apply(ch);
+    }
+
     private void detach(Playback p) {
         p.ended = true;
         for (Playback.Slot s : p.slots) {
             if (s.channel.owner == p) {
                 s.channel.owner = null;
+            }
+            Channel.Add a = s.channel.add(p);
+            if (a != null) {
+                a.owner = null;
+                trackHeld(s.channel);
             }
         }
     }
@@ -732,11 +912,19 @@ public final class UiAnimator {
         apply(ch);
     }
 
+    void writeAdd(Channel ch, Channel.Add add, UiValue value) {
+        add.value = value;
+        apply(ch);
+    }
+
     /** Pushes what {@code ch} shows to its element; drops empty channels. */
     private void apply(Channel ch) {
         UiElement el = ui.find(ch.key);
         if (el != null) {
             UiValue v = ch.display();
+            if (!ch.adds.isEmpty()) {
+                v = ch.withAdds(v != null ? v : cascade(el, ch.property));
+            }
             String name = ch.property.name();
             if (ch.property.isStyle()) {
                 if (v == null) {
@@ -749,6 +937,9 @@ public final class UiAnimator {
             } else {
                 el.setAnimatedProp(name, v);
             }
+        }
+        if (ch.empty()) {
+            heldAdds.remove(ch);
         }
         if (ch.empty() || el == null) {
             Map<String, Channel> byTarget = channels.get(ch.key);
@@ -789,6 +980,27 @@ public final class UiAnimator {
                 + " (style properties, or prop:<name> of the widget)");
         }
         return ap;
+    }
+
+    /**
+     * What {@code el} shows for {@code ap} beneath any additive layers: what a replacing animation
+     * starts or blends from, so a shake running at that moment is not baked into it.
+     */
+    private UiValue underlying(UiElement el, AnimProperty ap) {
+        Channel ch = el == null ? null : existing(el.key(), ap.target());
+        if (ch == null || ch.adds.isEmpty()) {
+            return shown(el, ap);
+        }
+        return ch.display() != null ? ch.display() : cascade(el, ap);
+    }
+
+    /** The cascade's (non-animated) value of {@code ap} on {@code el}, or null when nothing sets it. */
+    private static UiValue cascade(UiElement el, AnimProperty ap) {
+        if (ap.isStyle()) {
+            return el.baseStyle().get(ap.name());
+        }
+        UiValue v = el.baseProp(ap.name());
+        return v == UiValue.NULL ? null : v;
     }
 
     /** What {@code el} shows for {@code ap} now (after any animation), or null. */

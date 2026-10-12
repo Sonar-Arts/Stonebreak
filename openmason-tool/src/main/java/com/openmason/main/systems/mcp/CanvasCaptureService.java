@@ -42,16 +42,31 @@ public final class CanvasCaptureService {
      * @param layerIndex layer to capture, or {@code null} for the visible composite
      */
     public McpImageContent capture(int maxSize, Integer layerIndex) {
+        return capture(maxSize, layerIndex, null);
+    }
+
+    /**
+     * @param documentId open texture document to capture, or {@code null} for the active one
+     */
+    public McpImageContent capture(int maxSize, Integer layerIndex, String documentId) {
         int target = Math.clamp(maxSize, MIN_SIZE, MAX_SIZE);
-        BufferedImage canvas = await(MainThreadExecutor.submit(() -> readCanvas(layerIndex)));
+        BufferedImage canvas = await(MainThreadExecutor.submit(() -> readCanvas(layerIndex, documentId)));
         BufferedImage scaled = McpImageCodec.upscaleNearest(canvas, target);
         // Oversized canvases (e.g. a large imported texture) still get capped.
         scaled = McpImageCodec.downscale(scaled, target);
         return new McpImageContent(McpImageCodec.encodePngBase64(scaled), "image/png");
     }
 
-    private BufferedImage readCanvas(Integer layerIndex) {
-        LayerManager lm = requireController().getLayerManager();
+    private BufferedImage readCanvas(Integer layerIndex, String documentId) {
+        TextureCreatorController c = requireController();
+        com.openmason.main.systems.menus.textureCreator.TextureDocument doc =
+                documentId != null ? c.findDocument(documentId) : (c.hasOpenDocument() ? c.getActiveDocument() : null);
+        if (doc == null) {
+            throw new IllegalStateException(documentId != null
+                    ? "No open texture document '" + documentId + "' — see tex_editor_status"
+                    : "No texture is open in the texture editor — tex_open_editor or tex_load_project first");
+        }
+        LayerManager lm = doc.getLayerManager();
         PixelCanvas source;
         if (layerIndex == null) {
             source = lm.compositeLayersToCanvas();

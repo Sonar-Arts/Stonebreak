@@ -135,7 +135,7 @@ public class PropertyPanelImGui {
 
         // Configure window flags to prevent main window scrollbar
         // NoScrollbar prevents the window itself from having scrollbars
-        // The child region will handle scrolling instead (like TextureEditorWindow)
+        // The child region will handle scrolling instead
         int windowFlags = ImGuiWindowFlags.NoScrollbar;
 
         if (ImGui.begin(WINDOW_TITLE, windowFlags)) {
@@ -286,9 +286,15 @@ public class PropertyPanelImGui {
         return faceMaterialSection.openFaceForEditing(faceId);
     }
 
+    /** Outline {@code faceId} in the viewport as the face being texture-edited. */
+    public void setEditingFace(int faceId) {
+        if (viewportConnector != null) {
+            viewportConnector.setEditingFaceIndex(faceId);
+        }
+    }
+
     /**
-     * Clear the editing face highlight in the viewport overlay.
-     * Should be called when the texture editor window closes.
+     * Clear the editing face highlight in the viewport overlay (no face document is active).
      */
     public void clearEditingFace() {
         if (viewportConnector != null) {

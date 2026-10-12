@@ -10,10 +10,9 @@ import io.github.humbleui.skija.PathBuilder;
 
 /**
  * The furnace's crucible art (ledger hard visual 9): chutes, heat-ramp bowl, lava clipped to a
- * 36-gon, bubbles, bézier flame tongues and the cook/fuel progress rings. One painter for the
- * legacy screen ({@link FurnaceRenderCoordinator}) and the UI document's
- * {@code stonebreak:furnace-crucible} draw provider, so both draw the same pixels from the same
- * {@link FurnaceLayout.Slots} geometry and values.
+ * 36-gon, bubbles, bézier flame tongues and the cook/fuel progress rings, painted by the UI
+ * document's {@code stonebreak:furnace-crucible} draw provider from the {@link FurnaceLayout.Slots}
+ * geometry and values.
  */
 public final class CruciblePainter {
 
@@ -27,7 +26,7 @@ public final class CruciblePainter {
      * animated flames and bubbles. Drawn before the slot frames, which sit on the chutes' ends.
      *
      * @param fuelRatio fuel left in the burning unit, 0..1
-     * @param lit       whether the crucible glows (the legacy screen: cooking, or fuel left)
+     * @param lit       whether the crucible glows (cooking, or fuel left)
      * @param t         animation time, seconds
      */
     public static void paintBowl(Canvas canvas, FurnaceLayout.Slots s, float fuelRatio, boolean lit, float t) {

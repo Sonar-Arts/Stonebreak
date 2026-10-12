@@ -34,7 +34,8 @@ import java.util.concurrent.Executors;
  * {@code run_model_ops} MCP tools, now with a human front-end and a shared
  * script library ({@code ~/.openmason/scripts/} + bundled examples).
  *
- * <p>Window mechanics copy {@link com.openmason.main.systems.menus.windows.TextureEditorWindow}:
+ * <p>Window mechanics copy the former standalone Texture Editor window (now
+ * {@link com.openmason.main.systems.layout.DetachedWorkspaceWindow}):
  * WM-decorated pop-out (viewport flag overrides), centered first open, no
  * nested ImGui docking — a fixed library | editor / output layout with
  * draggable splitters is more predictable for this window.

@@ -1,53 +1,36 @@
 package com.stonebreak.ui.recipeScreen.input;
 
+import com.stonebreak.ui.recipeScreen.state.PopupState;
+
 import com.stonebreak.crafting.Recipe;
-import com.stonebreak.input.InputHandler;
+import com.stonebreak.ui.recipeScreen.core.RecipeGridLayout;
 import com.stonebreak.ui.recipeScreen.logic.RecipeFilterService;
 import com.stonebreak.ui.recipeScreen.logic.RecipeVariationService;
-import com.stonebreak.ui.recipeScreen.renderers.RecipeRenderCoordinator;
 import com.stonebreak.ui.recipeScreen.state.RecipeBookState;
-import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 
 /**
- * Translates raw input events into state changes on the recipe book.
- *
- * Hit-testing is delegated to {@link RecipeRenderCoordinator} so this class
- * doesn't duplicate the renderer's layout math. It owns only flow:
- * scrolling, click prioritization, search/key forwarding.
+ * Translates input into state changes on the recipe book: the document's presses addressed by
+ * target, the wheel (clamped against {@link RecipeGridLayout}), and search/key forwarding.
  */
 public class RecipeBookInputHandler {
     private final RecipeBookState state;
-    private final InputHandler inputHandler;
     private final SearchInputHandler searchInputHandler;
     private final PopupInputHandler popupInputHandler;
     private final RecipeFilterService filterService;
     private final RecipeVariationService variationService;
-    private RecipeRenderCoordinator coordinator;
+    private final RecipeGridLayout grid;
 
-    public RecipeBookInputHandler(RecipeBookState state, InputHandler inputHandler,
-                                  RecipeFilterService filterService,
-                                  RecipeVariationService variationService) {
+    public RecipeBookInputHandler(RecipeBookState state, RecipeFilterService filterService,
+                                  RecipeVariationService variationService, RecipeGridLayout grid) {
         this.state = state;
-        this.inputHandler = inputHandler;
         this.filterService = filterService;
         this.variationService = variationService;
+        this.grid = grid;
         this.searchInputHandler = new SearchInputHandler(state.getSearchState(), state.getUiState());
-        this.popupInputHandler  = new PopupInputHandler(state.getPopupState(), inputHandler);
-    }
-
-    /** Wired after construction once the coordinator exists (avoids cyclic init). */
-    public void setCoordinator(RecipeRenderCoordinator coordinator) {
-        this.coordinator = coordinator;
-        this.popupInputHandler.setCoordinator(coordinator);
-    }
-
-    public void handleInput() {
-        if (!state.isVisible() || coordinator == null) return;
-        handleScrolling();
-        handleMouseClicks();
+        this.popupInputHandler  = new PopupInputHandler(state.getPopupState());
     }
 
     public void handleCharacterInput(char character) {
@@ -67,51 +50,51 @@ public class RecipeBookInputHandler {
         }
     }
 
-    private void handleScrolling() {
-        double scrollY = inputHandler.getAndResetScrollY();
-        if (scrollY == 0) return;
+    // ── the recipe book document's presses (#301), addressed by target ──
 
-        List<Recipe> filtered = filterService.getFilteredRecipes(
-                state.getRecipes(),
-                state.getUiState().getSelectedCategory(),
-                state.getSearchState().getSearchText());
-
-        int maxScroll = coordinator.maxScrollOffset(filtered.size());
-        int newOffset = state.getUiState().getScrollOffset() - (int) scrollY;
-        state.getUiState().setScrollOffset(newOffset);
-        state.getUiState().limitScrollOffset(maxScroll);
+    /** A press on a category button. */
+    public void pressCategory(String category) {
+        state.getUiState().setSelectedCategory(category);
     }
 
-    private void handleMouseClicks() {
-        if (!inputHandler.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) return;
-
-        Vector2f mouse = inputHandler.getMousePosition();
-
-        // Detail-pane variation buttons take priority so a click between
-        // detail-pane and grid (rare) goes to the variant cycler.
-        if (popupInputHandler.handleVariationClick(mouse)) return;
-
-        // Category sidebar
-        String clickedCategory = coordinator.categoryAt(mouse.x, mouse.y);
-        if (clickedCategory != null) {
-            state.getUiState().setSelectedCategory(clickedCategory);
-            inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-            return;
-        }
-
-        // Search field — focus / unfocus
-        if (coordinator.searchClicked(mouse.x, mouse.y)) {
+    /** A press anywhere else: focuses the search on the field, unfocuses it elsewhere, then selects a recipe. */
+    public void pressContent(boolean onSearchField, Recipe recipe) {
+        if (onSearchField) {
             searchInputHandler.activateSearch();
         } else {
             searchInputHandler.deactivateSearch();
         }
-
-        // Recipe in the grid → load detail pane
-        Recipe clicked = coordinator.recipeAt(mouse.x, mouse.y);
-        if (clicked != null) {
-            List<Recipe> variations = variationService.getRecipeVariations(clicked, state.getRecipes());
-            state.getPopupState().openPopup(clicked, variations);
-            inputHandler.consumeMouseButtonPress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+        if (recipe != null) {
+            state.getPopupState().openPopup(recipe, variationService.getRecipeVariations(recipe, state.getRecipes()));
         }
+    }
+
+    /** A press on Prev ({@code -1}) or Next ({@code 1}); false when the book does not take it. */
+    public boolean pressVariant(int direction) {
+        PopupState popup = state.getPopupState();
+        if (!popup.isShowingRecipePopup() || popup.isPopupJustOpened() || !popup.hasMultipleVariations()) {
+            return false;
+        }
+        if (direction < 0 && popup.canNavigatePrevious()) {
+            popup.navigatePrevious();
+            return true;
+        }
+        if (direction > 0 && popup.canNavigateNext()) {
+            popup.navigateNext();
+            return true;
+        }
+        return false;
+    }
+
+    /** Wheel by {@code scrollY} (GLFW's sign: up is positive), clamped to the grid's last window. */
+    public void wheel(double scrollY) {
+        if (scrollY == 0) return;
+        List<Recipe> filtered = filterService.getFilteredRecipes(
+                state.getRecipes(),
+                state.getUiState().getSelectedCategory(),
+                state.getSearchState().getSearchText());
+        int maxScroll = grid.maxScrollOffset(filtered.size());
+        state.getUiState().setScrollOffset(state.getUiState().getScrollOffset() - (int) scrollY);
+        state.getUiState().limitScrollOffset(maxScroll);
     }
 }

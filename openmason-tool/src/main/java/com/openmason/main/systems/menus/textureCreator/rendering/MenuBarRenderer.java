@@ -40,6 +40,7 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
     private Runnable onNoiseFilterToggle;
     private Runnable onSymmetryToggle;
     private Runnable onDeselectAll;
+    private Runnable onCloseDocument;
     private Runnable onLayersPanelToggle;
     private Runnable onColorPanelToggle;
     private Runnable onResetLayout;
@@ -122,6 +123,11 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
      */
     public void setOnDeselectAll(Runnable callback) {
         this.onDeselectAll = callback;
+    }
+
+    /** File → Close Texture: closes the active document tab (unsaved changes ask first). */
+    public void setOnCloseDocument(Runnable callback) {
+        this.onCloseDocument = callback;
     }
 
     /**
@@ -255,6 +261,13 @@ public class MenuBarRenderer extends BaseMenuBarRenderer {
                     fileOperations.exportOMT();
                 }
                 ImGui.endMenu();
+            }
+
+            ImGui.separator();
+
+            if (ImGui.menuItem("Close Texture", "", false,
+                    onCloseDocument != null && controller.hasOpenDocument())) {
+                onCloseDocument.run();
             }
 
             ImGui.separator();

@@ -6,11 +6,15 @@ Driven by run-tests.sh; can also be used standalone. Stdlib only.
 Subcommands:
   list                          print the system catalog (validates the registry)
   resolve   --scope SCOPE       emit MODULES/TESTS (or GROUPS) lines for the runner
-  summarize --scope SCOPE [--update-baseline]
+  summarize --scope SCOPE [--update-baseline] [--report FILE]
                                 parse surefire XML reports, print the concise
                                 stats table, diff against the baseline, set the
                                 exit code (0 green, 1 failures/regressions,
-                                2 infra error)
+                                2 infra error); --report also writes the result
+                                as Markdown for pasting into a PR comment
+  infra-report --scope SCOPE --report FILE --log MVN_LOG --exit N
+                                write the Markdown report for a run whose build
+                                failed before any test result existed
 
 SCOPE is "all", "integration", "regression", or comma-separated system names
 from systems.map.
@@ -24,6 +28,7 @@ macOS: ~/Library/Application Support/stonebreak-tests) and is only written via
 import argparse
 import os
 import re
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from datetime import date
@@ -274,6 +279,104 @@ def parse_reports(modules):
     return (cases, failures) if found_any else (None, None)
 
 
+# ---------------------------------------------------------------- markdown
+
+def git_revision():
+    """`<short sha>` plus ` (+N uncommitted)` for a dirty tree; '?' outside git."""
+    def git(*argv):
+        return subprocess.run(
+            ["git", *argv], cwd=ROOT, capture_output=True, text=True, check=True
+        ).stdout
+    try:
+        sha = git("rev-parse", "--short", "HEAD").strip()
+        branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
+        dirty = len([l for l in git("status", "--porcelain").splitlines() if l.strip()])
+    except (OSError, subprocess.CalledProcessError):
+        return "?"
+    return f"`{branch}` @ `{sha}`" + (f" (+{dirty} uncommitted)" if dirty else "")
+
+
+def md_escape(text):
+    """Keep a free-form message from breaking a table cell or list item."""
+    return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace("|", "\\|").replace("`", "'").replace("\n", " "))
+
+
+def md_list_block(title, items, limit=200):
+    """A collapsed <details> list; GitHub renders it, and long lists stay short."""
+    if not items:
+        return []
+    shown = items[:limit]
+    lines = ["", f"<details><summary>{title} ({len(items)})</summary>", ""]
+    lines += [f"- `{item}`" for item in shown]
+    if len(items) > limit:
+        lines.append(f"- ... and {len(items) - limit} more")
+    lines += ["", "</details>"]
+    return lines
+
+
+def write_markdown(path, result):
+    """Render one run as a PR-comment-sized Markdown document."""
+    verdict = "PASS" if result["exit_code"] == 0 else "FAIL"
+    icon = "\u2705" if verdict == "PASS" else "\u274c"
+    t = result["totals"]
+    lines = [
+        f"## {icon} Stonebreak tests: {verdict}",
+        "",
+        f"**Scope:** `{result['scope']}` &nbsp; **Revision:** {git_revision()}"
+        f" &nbsp; **Date:** {date.today().isoformat()}",
+        "",
+    ]
+    if result.get("infra"):
+        lines += [
+            f"The build failed before tests could run (mvn exit {result['infra']['exit']}).",
+            "",
+            "```",
+            *result["infra"]["tail"],
+            "```",
+        ]
+    else:
+        lines += [
+            f"**{t['runs']}** tests &middot; **{t['passed']}** passed &middot;"
+            f" **{t['failed']}** failed &middot; **{t['skipped']}** skipped"
+            f" &middot; {t['time']:.1f}s",
+            "",
+            "| System | Tests | Pass | Fail | Skip | Time |",
+            "|---|--:|--:|--:|--:|--:|",
+        ]
+        for name, row in result["rows"]:
+            mark = " \u274c" if row["failed"] else ""
+            lines.append(
+                f"| {name}{mark} | {row['runs']} | {row['passed']} | {row['failed']}"
+                f" | {row['skipped']} | {row['time']:.1f}s |"
+            )
+        if result["failures"]:
+            lines += ["", f"### Failures ({len(result['failures'])})", ""]
+            lines += [f"- `{f['case']}`: {md_escape(f['msg'])}" for f in result["failures"]]
+        diff = result.get("baseline")
+        if diff is not None:
+            lines += ["", "### Baseline diff", ""]
+            if diff.get("missing"):
+                lines.append("No baseline recorded on this machine yet.")
+            else:
+                lines.append(
+                    f"new failures: **{len(result['failures'])}** &middot;"
+                    f" newly skipped: **{len(diff['newly_skipped'])}** &middot;"
+                    f" disappeared: **{len(diff['disappeared'])}** &middot;"
+                    f" new tests: **+{diff['new_tests']}**"
+                )
+                lines += md_list_block("Newly skipped", diff["newly_skipped"])
+                lines += md_list_block("Disappeared", diff["disappeared"])
+        else:
+            lines += ["", "_Baseline diff runs on the `all` scope only._"]
+        lines += md_list_block("Skipped tests", result["skipped_cases"])
+    lines += ["", f"<sub>Generated by `Testing/run-tests.sh {result['scope']}`</sub>", ""]
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(lines))
+    return out
+
+
 # ---------------------------------------------------------------- commands
 
 def cmd_list(_args):
@@ -323,20 +426,22 @@ def cmd_summarize(args):
 
     print(f"{'SYSTEM':<14} {'TESTS':>6} {'PASS':>6} {'FAIL':>6} {'SKIP':>6} {'TIME':>8}")
     totals = {"runs": 0, "skipped": 0, "failed": 0, "time": 0.0}
+    rows = []
     for system in [s for s in systems if s in stats] + (
         ["(unmapped)"] if "(unmapped)" in stats else []
     ):
         row = stats[system]
-        passed = row["runs"] - row["failed"] - row["skipped"]
+        row["passed"] = row["runs"] - row["failed"] - row["skipped"]
+        rows.append((system, row))
         print(
-            f"{system:<14} {row['runs']:>6} {passed:>6} {row['failed']:>6}"
+            f"{system:<14} {row['runs']:>6} {row['passed']:>6} {row['failed']:>6}"
             f" {row['skipped']:>6} {row['time']:>7.1f}s"
         )
         for key in totals:
             totals[key] += row[key]
-    passed = totals["runs"] - totals["failed"] - totals["skipped"]
+    totals["passed"] = totals["runs"] - totals["failed"] - totals["skipped"]
     print(
-        f"{'TOTAL':<14} {totals['runs']:>6} {passed:>6} {totals['failed']:>6}"
+        f"{'TOTAL':<14} {totals['runs']:>6} {totals['passed']:>6} {totals['failed']:>6}"
         f" {totals['skipped']:>6} {totals['time']:>7.1f}s"
     )
 
@@ -347,12 +452,14 @@ def cmd_summarize(args):
 
     exit_code = 1 if failures else 0
     green = not failures
+    diff = None
 
     # Baseline handling — full runs only (scoped runs can't see the whole suite).
     if args.scope == "all":
         ignore = load_skip_ignore()
         baseline = load_baseline()
         if baseline is None:
+            diff = {"missing": True}
             print(f"\nBASELINE: none yet at {baseline_path()}"
                   + (" — writing one now" if args.update_baseline and green else
                      " — run with --update-baseline on a green run to create it"))
@@ -369,6 +476,8 @@ def cmd_summarize(args):
                 if cases.get((cls, m), {"runs": 0})["runs"] < inv
             ]
             new_tests = sum(1 for key in cases if key not in baseline)
+            diff = {"newly_skipped": sorted(newly_skipped),
+                    "disappeared": sorted(disappeared), "new_tests": new_tests}
             print(f"\nBASELINE vs {baseline_path()}")
             print(
                 f"  new failures: {len(failures)}   newly skipped: {len(newly_skipped)}"
@@ -391,8 +500,29 @@ def cmd_summarize(args):
     else:
         print("\n(baseline diff runs on 'all' scope only)")
 
+    if args.report:
+        result = {
+            "scope": args.scope, "exit_code": exit_code, "totals": totals, "rows": rows,
+            "failures": failures, "baseline": diff,
+            "skipped_cases": sorted(
+                f"{cls}#{m}" for (cls, m), rec in cases.items() if rec["skipped"]
+            ),
+        }
+        print(f"report: {write_markdown(args.report, result)}")
+
     print(f"RESULT: {'PASS' if exit_code == 0 else 'FAIL'}")
     sys.exit(exit_code)
+
+
+def cmd_infra_report(args):
+    """Markdown for a run that died in the build: the reviewer still gets a verdict."""
+    try:
+        tail = Path(args.log).read_text(errors="replace").splitlines()[-40:]
+    except OSError:
+        tail = [f"(mvn log unavailable: {args.log})"]
+    result = {"scope": args.scope, "exit_code": 2, "totals": None,
+              "infra": {"exit": args.exit, "tail": tail}}
+    print(f"report: {write_markdown(args.report, result)}")
 
 
 def main():
@@ -404,8 +534,19 @@ def main():
     p_sum = sub.add_parser("summarize")
     p_sum.add_argument("--scope", required=True)
     p_sum.add_argument("--update-baseline", action="store_true")
+    p_sum.add_argument("--report", metavar="FILE", help="also write the result as Markdown")
+    p_infra = sub.add_parser("infra-report")
+    p_infra.add_argument("--scope", required=True)
+    p_infra.add_argument("--report", metavar="FILE", required=True)
+    p_infra.add_argument("--log", required=True)
+    p_infra.add_argument("--exit", type=int, required=True)
     args = parser.parse_args()
-    {"list": cmd_list, "resolve": cmd_resolve, "summarize": cmd_summarize}[args.command](args)
+    {
+        "list": cmd_list,
+        "resolve": cmd_resolve,
+        "summarize": cmd_summarize,
+        "infra-report": cmd_infra_report,
+    }[args.command](args)
 
 
 if __name__ == "__main__":

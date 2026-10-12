@@ -3,8 +3,8 @@
 A screen leaves the legacy path only when its document is proven to look, lay out and behave like the
 screen it replaces (#282). This page defines what "proven" means and the tools that check it:
 
-1. **Pinned legacy baselines**: committed PNGs of today's renderers.
-2. **The migration gate**: a document capture vs the legacy capture, in geometry and pixels.
+1. **Frozen legacy captures**: committed PNGs plus geometry of the legacy renderers, recorded before #302 deleted them.
+2. **The migration gate**: a document capture vs the frozen legacy capture, in geometry, pixels and input.
 3. **Ledger bookkeeping**: a row's status needs evidence.
 4. **Runtime budgets**: soft and hard limits on every open document, in the game and in the preview.
 
@@ -19,14 +19,14 @@ A capture is only comparable when everything it depends on is fixed:
 | Framebuffer, UI scale, pixel ratio | `FidelityCase.Viewport`. Pixel ratio is 1 everywhere: no DPI handling exists (ledger). |
 | Font | The bundled `/fonts/Minecraft.ttf`, loaded from the classpath |
 | Renderer | Skia CPU raster (N32, untagged), no GL. The `SkijaUIBackend` subclass seam, as in `BattleRasterFixture`. |
-| Backdrop | An opaque 64 px checkerboard (`LegacyUiRaster.CHECK_A/B`), so a translucent scrim's strength shows in every pixel |
-| Time and randomness | `com.stonebreak.ui.LegacyUiClock`, pinned at 1.25 s, seed 296 |
+| Backdrop | An opaque 64 px checkerboard (`UiRaster.CHECK_A/B`), so a translucent scrim's strength shows in every pixel |
+| Time and randomness | `com.stonebreak.ui.UiWallClock`, pinned at 1.25 s, seed 296 |
 | State | The case's variant: online or offline, lit or unlit, hovered element, and so on |
 
-### `LegacyUiClock`: the legacy screens' one time and randomness seam
+### `UiWallClock`: the one time and randomness seam of UI presentation
 
-The legacy screens read the wall clock in about a dozen places and drew from unseeded `Random`s, so no two
-captures matched. These presentation reads now go through `LegacyUiClock`:
+The hand-drawn screens read the wall clock in about a dozen places and drew from unseeded `Random`s, so no two
+captures matched (#296). The presentation reads that feed the documents go through `UiWallClock`:
 
 - `seconds()`: furnace crucible animation
 - `millis()`: chat fade and expiry, GIF emoji frames, caret blinks (host/join, world select, terrain mapper),
@@ -91,51 +91,32 @@ appears in the baseline within the radius *and* its baseline value appears in th
 One-way matching passed a deleted outline or focus ring, since the backdrop showing where it vanished is
 always within reach in the baseline.
 
-## 3. Committed legacy baselines
+## 3. Frozen legacy captures (#302)
 
-They live under `stonebreak-game/src/test/resources/ui/fidelity/<screen>/`. Regenerate them after an intended
-legacy change with `-Dui.fidelity.write=true`, and review the PNG diff before committing.
+Every migrated screen's legacy output lives under `stonebreak-game/src/test/resources/ui/fidelity/<screen>/`: one
+baseline PNG per case and one `geometry.json` holding each case's named rects, hit regions and actions. #302
+recorded them from the live legacy renderers (`FrozenCaptures.record`) just before deleting those renderers; the
+PNGs came out byte-identical to the baselines committed in #296-#301.
 
-| Screen | Test | Cases |
-| --- | --- | --- |
-| pause | `ui.fidelity.LegacyPauseBaselineTest` | `field-offline` and `field-online` at the 4 standard viewports; `battle-offline` (one scrim), `field-offline-hover-quit` and `field-online-hover-resync` |
-| furnace | `ui.fidelity.LegacyFurnaceBaselineTest` | `unlit` and `lit` (fuel 75 %, cook 60 %) at the 4 standard viewports; `unlit` 800x600@2 (overflow); `lit-hover-main0` |
-
-The tests also pin facts a migration must keep:
-
-- **Field vs battle pause.** The field pause is composited twice (about 72 %), the battle pause once (about
-  47 %).
-- **Hover isolation.** Hovering one button changes only that button.
-- **Lit furnace.** Lighting the furnace changes only the crucible band.
-- **Geometry.** The rects the renderers actually draw (pause: `SkijaPauseMenuRenderer.setLayoutSink`; no layout
-  maths is copied into the capture) equal the committed oracle (`ui/fixtures/legacy-geometry.json`) exactly.
-  The oracle test fails, never skips, when it cannot find the engine fixture.
-- **Input.** `LegacyPauseCapture` reports each button's hit region by probing `PauseMenu`'s own bounds checks
-  and the action id `UiMouseRouter` fires for it (`stonebreak:screen.pause.*`, `stonebreak:network.resync`).
-
-Furnace slots are empty in the baselines. Item icons are the renderer's GL phase (ledger hard visual 2), which
-a CPU raster cannot draw. Icon fidelity belongs to #298's host draw provider.
-
-The legacy `MigrationGate.Renderer`s are `LegacyPauseCapture` and `LegacyFurnaceCapture`. #297 and #298 plug
-their document renderer in as the candidate:
+`ui.fidelity.FrozenCaptures.forTests("<screen>").replay()` serves them back as a `MigrationGate.Renderer`, and every
+`*DocumentGateTest` passes it as the legacy side:
 
 ```java
-MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT,
-        c -> PixelTolerance.assetScale(c.viewport().uiScale(), assetRects(c)))
-    .run("pause", LegacyPauseBaselineTest.cases(), new LegacyPauseCapture(), documentCapture);
-assertTrue(r.passed(), r.table());
+MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.EXACT)
+    .run("death", cases(), FrozenCaptures.forTests("death").replay(), DocumentDeathCapture.shipped());
+GateAssert.passed(r);
 ```
 
-**Pause (#297)** runs it: `ui.fidelity.PauseDocumentGateTest` with `DocumentPauseCapture` (the shipped
-`ui/documents/pause.sbui` opened through `GameUiDocuments.openBound` on the same `LegacyUiRaster`, painted twice for
-`field` and once for `battle`, hover by a real pointer move, actions by real clicks against a recording
-`GameUiHost`). All 12 cases (incl. `field-offline-hover-resume`, #297) pass at `FLOAT_EXACT` + `EXACT`: 0 pixels differ, worst channel delta 0.
+Floats are stored in their shortest round-tripping form, so a replayed rect is bit-identical to the recorded one
+and `FLOAT_EXACT` still means exact (`FrozenCapturesTest`). A case with no frozen PNG or geometry fails loudly.
 
-**After the legacy renderer is deleted** (`migrated`), `MigrationGate` can no longer run against it. The gate
-then becomes the candidate against the legacy baselines committed while both existed, at `EXACT` (or the
-`assetScale` contract at fractional scales), not `RASTER_DRIFT`. Never regenerate those PNGs from the candidate
-with the write flag: they are the legacy oracle, and rewriting them from the new renderer makes the gate compare
-the document with itself.
+The frozen captures are the legacy oracle. **Never re-record or overwrite them from a document**: that makes the gate
+compare the document with itself. An intended visual change to a document is a reviewed edit of the affected
+baselines (and their `geometry.json` entries), recorded in the screen's ledger row.
+
+The case lists live in the gate tests (or the screen's `*Fixtures`). The facts the old baseline tests pinned
+(field pause about 72 % vs battle pause 47 %, hover isolation, the lit crucible band, hit regions equal to the
+drawn controls) are all inside the frozen captures, so the gates keep enforcing them.
 
 ## 4. The ledger gate
 

@@ -130,6 +130,8 @@ public final class GameLoop {
                 return false;
             }
             case LOADING -> {
+                // One progress snapshot per frame, ahead of the UI host's publish and the paint.
+                if (game.getLoadingScreen() != null) game.getLoadingScreen().refreshSnapshot();
                 return false;
             }
             case PLAYING -> {
@@ -138,14 +140,9 @@ public final class GameLoop {
                     hasInitializedMouseCaptureAfterLoading = true;
                 }
             }
-            case WORKBENCH_UI -> {
-                if (workbenchScreen != null && workbenchScreen.isVisible()) {
-                    workbenchScreen.update(deltaTime);
-                }
-                if (inventoryScreen != null && inventoryScreen.isVisible()) {
-                    inventoryScreen.update(deltaTime);
-                }
-            }
+            // WORKBENCH_UI, INVENTORY_UI and CHARACTER_SHEET_UI: updateGameWorld ticks the inventory
+            // and workbench screens once per frame (updating them here too ran them twice, #300).
+            case WORKBENCH_UI, INVENTORY_UI, CHARACTER_SHEET_UI -> { }
             case PAUSED -> {
                 if (inventoryScreen != null && inventoryScreen.isVisible()) {
                     inventoryScreen.update(deltaTime);
@@ -159,11 +156,6 @@ public final class GameLoop {
                 }
                 return false;
             }
-            case INVENTORY_UI, CHARACTER_SHEET_UI -> {
-                if (inventoryScreen != null && inventoryScreen.isVisible()) {
-                    inventoryScreen.update(deltaTime);
-                }
-            }
             case RECIPE_BOOK_UI -> {
                 if (recipeScreen != null) {
                     recipeScreen.update(deltaTime);
@@ -173,9 +165,6 @@ public final class GameLoop {
                 FurnaceScreen furnaceScreen = game.getFurnaceScreen();
                 if (furnaceScreen != null && furnaceScreen.isVisible()) {
                     furnaceScreen.update(deltaTime);
-                }
-                if (inventoryScreen != null && inventoryScreen.isVisible()) {
-                    inventoryScreen.update(deltaTime);
                 }
             }
             // No per-frame character screen update needed; world continues to run.
@@ -242,8 +231,11 @@ public final class GameLoop {
         if (player != null) {
             player.update();
 
-            if (player.isDead() && deathMenu != null && !deathMenu.isVisible()) {
-                deathMenu.setVisible(true);
+            // The death menu follows the player both ways: one left up by quitting while dead must
+            // not outlive the death into the next session (it kept the cursor free and the world
+            // unclickable under no visible menu, #302).
+            if (deathMenu != null && player.isDead() != deathMenu.isVisible()) {
+                deathMenu.setVisible(player.isDead());
                 if (mouseCaptureManager != null) {
                     mouseCaptureManager.updateCaptureState();
                 }

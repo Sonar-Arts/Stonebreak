@@ -397,7 +397,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
         if (!isWorkspaceShown(com.openmason.main.systems.layout.Workspace.MODELING)) {
             // Scene is neither the main window's front tab nor a visible window of its own: its
-            // panels stay docked but hidden (the UI workspace draws its own).
+            // panels stay docked but hidden (the UI and Texture workspaces draw their own).
             aboutDialog.render();
             dockLayout.tickCenterTabFocus();
             if (fileMenuHandler != null && fileMenuHandler.getHomeScreenDialog() != null) {
@@ -516,7 +516,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         }
         boolean deleted = projectBrowserImGui.getController().deleteAsset(entry);
         assetEditorDetacher.afterDelete(entry, deleted, getModelState(),
-                textureCreatorImGui != null ? textureCreatorImGui.getState() : null);
+                textureCreatorImGui != null ? textureCreatorImGui.getController() : null);
     }
 
     /**
@@ -839,28 +839,24 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     }
 
     /**
-     * Window-level control of the texture editor (show / hide / visibility),
-     * owned by the application shell. Lets external drivers such as the MCP
-     * server summon or dismiss the editor exactly as the Tools menu and the
-     * property panel's "Edit Texture" button do.
+     * The application shell's side of the texture editor, for external drivers such as the MCP
+     * server. Drivers work on documents (the editor's controller opens, focuses and closes them);
+     * the shell only makes sure the Texture workspace is on screen. Closing the workspace is the
+     * user's alone (its tab's close button or menu), so there is deliberately no close here.
      */
     public interface TextureEditorPresenter {
-        /** Show the texture editor window (no-op if already visible). */
+        /**
+         * Bring the Texture workspace forward, opening its tab first when it is not open (raises
+         * its window when popped out). Never closes anything.
+         */
         void show();
 
-        /**
-         * Close the texture editor window, flushing pending canvas edits to the
-         * face texture, closing any active face region and auto-saving the
-         * model — the same path the window's own close button takes.
-         */
-        void close();
-
-        /** Whether the texture editor window is currently shown. */
+        /** Whether the Texture workspace tab is open. */
         boolean isVisible();
 
         /**
-         * Push pending canvas edits to the face's GPU texture without closing
-         * the editor (no-op when no face session is active).
+         * Push the active face document's pending canvas edits to its GPU texture (no-op for a
+         * standalone texture).
          */
         void flush();
     }
@@ -1016,6 +1012,15 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         if (fileMenuHandler != null) {
             fileMenuHandler.setUiHooks(hooks);
         }
+    }
+
+    /**
+     * Adds another workspace tab (the Texture Editor) behind the main window's tab strip; call
+     * after {@link #setUiWorkspace}. Its tab shows while the workspace state has it open.
+     */
+    public void addWorkspaceDock(com.openmason.main.systems.layout.Workspace ws,
+                                 com.openmason.main.systems.layout.WorkspaceDock dock) {
+        dockLayout.addWorkspace(ws, dock);
     }
 
     /**

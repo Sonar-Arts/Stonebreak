@@ -36,16 +36,53 @@ public final class TextureToolDefinitions {
         this.mapper = mapper;
     }
 
+    /**
+     * Tools that act on one texture document: they take an optional {@code document} id
+     * (see tex_editor_status) and default to the active document.
+     */
+    private static final java.util.Set<String> DOCUMENT_TOOLS = java.util.Set.of(
+            "tex_get_canvas_info", "tex_get_region", "tex_list_layers", "canvas_capture",
+            "tex_set_pixels", "tex_fill", "tex_close_document", "tex_save_project",
+            "tex_layer_add", "tex_layer_remove", "tex_layer_duplicate", "tex_layer_move",
+            "tex_layer_set", "tex_layer_merge_down", "tex_line", "tex_rect", "tex_ellipse",
+            "tex_flood", "tex_noise", "tex_outline", "tex_paint_grid", "tex_set_selection",
+            "tex_describe", "tex_export_png");
+
     public void registerAll(McpToolRegistry registry) {
+        registerTools(tool -> registry.register(DOCUMENT_TOOLS.contains(tool.name()) ? documentScoped(tool) : tool));
+    }
+
+    /** Adds the optional {@code document} argument and runs the handler against that document. */
+    private McpTool documentScoped(McpTool tool) {
+        com.fasterxml.jackson.databind.node.ObjectNode schema = tool.inputSchema().deepCopy();
+        com.fasterxml.jackson.databind.node.ObjectNode props = schema.has("properties")
+                ? (com.fasterxml.jackson.databind.node.ObjectNode) schema.get("properties")
+                : schema.putObject("properties");
+        props.putObject("document").put("type", "string")
+                .put("description", "Document id; default: active tab");
+        McpTool.Handler handler = tool.handler();
+        return new McpTool(tool.name(), tool.description(), schema,
+                args -> editor.inDocument(McpArgs.optString(args, "document"), () -> {
+                    try {
+                        return handler.call(args);
+                    } catch (RuntimeException e) {
+                        throw e;
+                    } catch (Exception e) {
+                        throw new IllegalStateException(e.getMessage(), e);
+                    }
+                }));
+    }
+
+    private void registerTools(java.util.function.Consumer<McpTool> registry) {
         // ---------- Read ----------
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_get_canvas_info",
                 "Get the texture editor canvas info: dimensions, layer count, active layer, undo/redo availability.",
                 schema().build(),
                 args -> editor.getCanvasInfo()));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_get_region",
                 "Read a rectangular region of the active layer as a flat [r,g,b,a, ...] array, "
                         + "row-major from (x,y). Use w=h=1 for a single pixel.",
@@ -58,13 +95,13 @@ public final class TextureToolDefinitions {
                         reqInt(args, "x"), reqInt(args, "y"),
                         reqInt(args, "w"), reqInt(args, "h"))));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_list_layers",
                 "List all layers in the texture project (index, name, visibility, opacity, active flag).",
                 schema().build(),
                 args -> editor.listLayers()));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "canvas_capture",
                 "Capture the texture editor canvas as a PNG image — the visible layer composite, "
                         + "or one layer via 'layer'. Nearest-neighbor upscaled by a whole factor "
@@ -76,11 +113,12 @@ public final class TextureToolDefinitions {
                         .build(),
                 args -> capture.capture(
                         McpArgs.optInt(args, "max_size", CanvasCaptureService.DEFAULT_MAX_SIZE),
-                        args.hasNonNull("layer") ? reqInt(args, "layer") : null)));
+                        args.hasNonNull("layer") ? reqInt(args, "layer") : null,
+                        McpArgs.optString(args, "document"))));
 
         // ---------- Mutate: pixel-level drawing ----------
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_set_pixels",
                 "Per-pixel write (single or bulk) to the active layer. 'pixels' is a flat int array "
                         + "[x,y,r,g,b,a, x,y,r,g,b,a, ...] (6 values per pixel), one undo step. For "
@@ -89,7 +127,7 @@ public final class TextureToolDefinitions {
                 pixelsArraySchema(),
                 args -> editor.setPixels(parsePixels(args.get("pixels")))));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_fill",
                 "Fill with a solid RGBA color: the whole active layer, or just 'rect' [x,y,w,h] "
                         + "when given. color [0,0,0,0] clears to transparent. For shapes/flood "
@@ -116,7 +154,7 @@ public final class TextureToolDefinitions {
 
         // ---------- Resize ----------
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_resize_face_texture",
                 "Resize the GPU texture of the face currently open in the texture editor. "
                         + "Nearest-neighbor rescale, UVs unchanged (normalized within material). "
@@ -131,21 +169,22 @@ public final class TextureToolDefinitions {
 
         // ---------- Editor window / session ----------
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_editor_status",
-                "Texture editor status: window visible?, active face session (material id, face UV "
-                        + "region in canvas px), canvas info, current tool, symmetry mode, selection.",
+                "Texture editor status: open?, document tabs (id, title, face|texture, path, dirty, "
+                        + "size, face id) and the active one; for it: face session (material, UV region "
+                        + "px), canvas, tool, symmetry, selection.",
                 schema().build(),
                 args -> editor.getEditorStatus()));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_open_editor",
-                "Summon the texture editor window — no need for the user to open it. With face_id: "
-                        + "open that model face for editing exactly like the property panel's "
-                        + "'Edit Texture' button (creates its material if needed, loads its pixels, "
-                        + "masks the canvas to the face polygon, live-previews edits on the model). "
-                        + "With width+height: start a fresh standalone canvas. With neither: just "
-                        + "show the window. Every tex_* tool then targets this canvas.",
+                "Open a texture as a document tab (opens the editor if closed; never closes it). "
+                        + "face_id: that model face like the 'Edit Texture' button (material created, "
+                        + "pixels loaded, masked to the face, live preview on the model); an open face "
+                        + "tab is just focused. width+height: new untitled tab. Neither: show the editor "
+                        + "(new 16x16 tab if none). The tab becomes active; tex_* tools target the active "
+                        + "tab unless given 'document'.",
                 schema()
                         .intg("face_id", "Model face to edit (see model_face_list_textures)")
                         .intg("width", "Standalone canvas width (with height)")
@@ -156,64 +195,71 @@ public final class TextureToolDefinitions {
                         args.hasNonNull("width") ? reqInt(args, "width") : null,
                         args.hasNonNull("height") ? reqInt(args, "height") : null)));
 
-        registry.register(new McpTool(
-                "tex_close_editor",
-                "Close the texture editor window the way its X button does: flushes canvas edits "
-                        + "to the face texture, ends the face session, and auto-saves the model.",
-                schema().build(),
-                args -> editor.closeEditor()));
+        registry.accept(new McpTool(
+                "tex_close_document",
+                "Close a document tab (default: active); the editor itself stays open. A face tab "
+                        + "flushes to the model and saves it. An unsaved texture needs save=true (saved "
+                        + "like tex_save_project, closed only if that succeeds) or discard=true.",
+                schema().str("file_path", "With save: target .omt path")
+                        .bool("save", "Save unsaved changes first, then close")
+                        .bool("discard", "Close even with unsaved changes, dropping them").build(),
+                this::closeDocument));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_flush",
                 "Push pending canvas edits to the face's GPU texture now (keeps the editor open). "
                         + "Use before viewport_capture to see edits on the model.",
                 schema().build(),
                 args -> editor.flushToModel()));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_load_project",
-                "Load a .omt texture project (layers + palette) into the editor and show it.",
+                "Open a .omt texture project (layers + palette) as a document tab and show the "
+                        + "editor; a tab already showing that file is focused instead (its edits kept).",
                 schema().str("file_path", "Absolute .omt path").required("file_path").build(),
                 args -> editor.loadProject(reqString(args, "file_path"))));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_save_project",
-                "Save the editor's layer stack as a .omt texture project. Without file_path: "
-                        + "re-save the open .omt, or open the in-app Save Sheet. Paths must be inside "
-                        + "a writable root (see save_targets); risky writes ask the user.",
+                "Save a document tab as a .omt. Without file_path: re-save its .omt, or ask in the "
+                        + "Save Sheet. Paths must be in a writable root (save_targets).",
                 savePathSchema("Target .omt path: absolute, project:<rel>, or a bare name").build(),
-                args -> saveOrInPlace(com.openmason.main.systems.io.WriteKind.OMT, args,
-                        editor.currentProjectPath(), "texture",
-                        p -> editor.saveProject(p.toString()))));
+                args -> {
+                    // The writer runs later on the main thread: pin the document now.
+                    String doc = editor.resolveDocumentId();
+                    return saveOrInPlace(com.openmason.main.systems.io.WriteKind.OMT, args,
+                            editor.currentProjectPath(), "texture",
+                            p -> editor.inDocument(doc, () -> editor.saveProject(p.toString())));
+                }));
 
         // ---------- Layers ----------
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_layer_add",
                 "Add an empty layer on top (becomes active). One undo step. Returns the layer list.",
                 schema().str("name", "Layer name (default 'Layer N')").build(),
                 args -> editor.addLayer(McpArgs.optString(args, "name"))));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_layer_remove",
                 "Remove the layer at index (refuses to remove the last layer). One undo step.",
                 schema().intg("index", "Layer index").required("index").build(),
                 args -> editor.removeLayer(reqInt(args, "index"))));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_layer_duplicate",
                 "Duplicate the layer at index (copy inserted above it). One undo step.",
                 schema().intg("index", "Layer index").required("index").build(),
                 args -> editor.duplicateLayer(reqInt(args, "index"))));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_layer_move",
                 "Reorder: move the layer at 'from' to position 'to' (0 = bottom). One undo step.",
                 schema().intg("from", "Current index").intg("to", "Target index")
                         .required("from", "to").build(),
                 args -> editor.moveLayer(reqInt(args, "from"), reqInt(args, "to"))));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_layer_set",
                 "Update a layer's name / visibility / opacity (0..1) and/or make it the active "
                         + "paint target. Layers composite bottom→top with straight alpha-over "
@@ -232,7 +278,7 @@ public final class TextureToolDefinitions {
                         McpArgs.optString(args, "name"),
                         McpArgs.optFloatBoxed(args, "opacity"))));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_layer_merge_down",
                 "Merge layer 'index' onto the layer below it (alpha-over at its opacity) and "
                         + "remove it. One undo step.",
@@ -241,7 +287,7 @@ public final class TextureToolDefinitions {
 
         // ---------- Mutate: shapes / filters on the active layer ----------
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_line",
                 "1-px Bresenham line from (x0,y0) to (x1,y1) on the active layer.",
                 rgbaSchema()
@@ -255,7 +301,7 @@ public final class TextureToolDefinitions {
                             reqInt(args, "x1"), reqInt(args, "y1"), c[0], c[1], c[2], c[3]);
                 }));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_rect",
                 "Rectangle [x,y,w,h] on the active layer — filled, or a 1-px outline (filled=false).",
                 rgbaSchema()
@@ -273,7 +319,7 @@ public final class TextureToolDefinitions {
                             : editor.rectOutline(r[0], r[1], r[2], r[3], c[0], c[1], c[2], c[3]);
                 }));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_ellipse",
                 "Ellipse inscribed in [x,y,w,h] on the active layer — filled, or a 1-px ring.",
                 rgbaSchema()
@@ -289,7 +335,7 @@ public final class TextureToolDefinitions {
                             McpArgs.optBool(args, "filled", true));
                 }));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_flood",
                 "4-connected flood fill from (x,y) on the active layer; the face mask and "
                         + "selection bound the fill exactly like the bucket tool.",
@@ -302,7 +348,7 @@ public final class TextureToolDefinitions {
                     return editor.flood(reqInt(args, "x"), reqInt(args, "y"), c[0], c[1], c[2], c[3]);
                 }));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_noise",
                 "Apply the editor's procedural noise filter to the active layer (honours the "
                         + "selection). Noise perturbs existing RGB and keeps alpha — fill first; "
@@ -331,7 +377,7 @@ public final class TextureToolDefinitions {
                         (float) McpArgs.optDouble(args, "spread", 0.5),
                         (float) McpArgs.optDouble(args, "edge_softness", 0.0))));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_outline",
                 "Auto-outline the active layer's opaque silhouette. inside=false (default) grows "
                         + "a 1-px border into transparent neighbours; inside=true recolours the "
@@ -345,7 +391,7 @@ public final class TextureToolDefinitions {
                 args -> editor.outline(McpArgs.optBool(args, "inside", false),
                         args.hasNonNull("color") ? reqRgba(args) : null)));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_paint_grid",
                 "Paint pixel art from text: 'rows' is a list of equal-length glyph strings, "
                         + "'legend' maps each glyph to a colour ('#rrggbb', '#rrggbbaa' or 'r,g,b[,a]'). "
@@ -366,14 +412,14 @@ public final class TextureToolDefinitions {
 
         // ---------- Selection / symmetry / interactive tool ----------
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_set_selection",
                 "Set a rectangular selection [x,y,w,h] that constrains every later paint op "
                         + "(fill, noise, flood, grid...), or clear it by omitting rect.",
                 schema().intArr("rect", "[x,y,w,h]; omit to clear").build(),
                 args -> editor.setSelection(McpArgs.optIntArray(args, "rect"))));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_set_symmetry",
                 "Configure the editor's mirror-painting symmetry for the user's interactive "
                         + "brush strokes: mode none|horizontal|vertical|quadrant, axis offsets in px "
@@ -389,7 +435,7 @@ public final class TextureToolDefinitions {
                         args.hasNonNull("offset_y") ? reqInt(args, "offset_y") : null,
                         args.hasNonNull("show_axes") ? McpArgs.reqBool(args, "show_axes") : null)));
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_set_tool",
                 "Select the toolbar tool the USER will paint with (Pencil, Eraser, Fill, Line, "
                         + "Shapes, Color Picker, selection tools...) and/or the current paint colour. "
@@ -407,7 +453,7 @@ public final class TextureToolDefinitions {
 
         // ---------- Describe (vision-free read) ----------
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_describe",
                 "Read pixel art as TEXT for models without vision: a glyph grid with row/column "
                         + "rulers (one glyph per colour, '.' = transparent), a legend (glyph → "
@@ -428,7 +474,7 @@ public final class TextureToolDefinitions {
 
         // ---------- Export ----------
 
-        registry.register(new McpTool(
+        registry.accept(new McpTool(
                 "tex_export_png",
                 "Flatten visible layers and export a PNG. file_path: absolute, exports:<rel>, "
                         + "project:<rel> or a bare name (lands in the exports root); omit to ask "
@@ -440,7 +486,48 @@ public final class TextureToolDefinitions {
                                 McpArgs.optString(args, "file_path"),
                                 McpArgs.optBool(args, "prompt", false),
                                 McpArgs.optBool(args, "overwrite", false), "texture"),
-                        p -> editor.exportPng(p.toString()))));
+                        exportWriter())));
+    }
+
+    /**
+     * tex_close_document: optionally save the tab first (same routing as tex_save_project), and
+     * close it only when nothing unsaved would be lost.
+     */
+    private Object closeDocument(JsonNode args) {
+        boolean save = McpArgs.optBool(args, "save", false);
+        boolean discard = McpArgs.optBool(args, "discard", false);
+        if (save && discard) {
+            throw new IllegalArgumentException("save and discard are mutually exclusive");
+        }
+        if (!save) {
+            return editor.closeDocument(discard);
+        }
+        String doc = editor.resolveDocumentId();
+        TextureEditingService.ProjectSnapshot snap = editor.projectSnapshot();
+        Object saved = null;
+        if (!snap.faceRegionActive() && snap.dirty()) {
+            saved = saveOrInPlace(com.openmason.main.systems.io.WriteKind.OMT, args, snap.path(), "texture",
+                    p -> editor.inDocument(doc, () -> editor.saveProject(p.toString())));
+            if (saved instanceof com.openmason.main.systems.io.AssetWriteService.WriteOutcome o && !o.ok()) {
+                java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+                out.put("closed", false);
+                out.put("save", o);
+                return out; // declined / failed: the tab stays open with its changes
+            }
+        }
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("closed", true);
+        if (saved != null) {
+            out.put("save", saved);
+        }
+        out.put("editor", editor.closeDocument(false));
+        return out;
+    }
+
+    /** PNG export writer pinned to the document targeted now (the writer runs later). */
+    private com.openmason.main.systems.io.AssetWriteService.Writer exportWriter() {
+        String doc = editor.resolveDocumentId();
+        return p -> editor.inDocument(doc, () -> editor.exportPng(p.toString()));
     }
 
     private McpSchema savePathSchema(String pathDescription) {

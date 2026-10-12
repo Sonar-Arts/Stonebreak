@@ -90,6 +90,24 @@ class ScriptAnimationTest {
     }
 
     @Test
+    void compositeAddStacksAShakeOnASlide() {
+        OmuiArchive doc = ScriptRig.withCode(stage(), """
+            function on_open(ui)
+              ui.play("slide")
+              ui.tween(ui.q("#panel"), { ["translate-x"] = 6 }, 0.5, "linear", { composite = "add" })
+              ui.play("slide", { composite = "add", restart = false })  -- same clip+owner already runs: kept
+            end
+            """);
+        try (ScriptRig rig = new ScriptRig(doc)) {
+            rig.frame(0.25);
+            assertEquals(25 + 3, num(rig, "panel", "translate-x"), 1e-6, "slide 25 + half of the +6 tween");
+            rig.frame(0.25);
+            assertEquals(50 + 6, num(rig, "panel", "translate-x"), 1e-6);
+            assertTrue(rig.rt.diagnostics().isEmpty(), rig.rt.diagnostics().toString());
+        }
+    }
+
+    @Test
     void tweensTakeFromFillAndClockOptions() {
         OmuiArchive doc = ScriptRig.withCode(stage(), """
             function on_open(ui)
@@ -177,6 +195,23 @@ class ScriptAnimationTest {
             rig.frame(0);
             assertEquals("hidden", rig.text("out"), "the awaited state change completed");
             assertEquals(0, num(rig, "panel", "opacity"), 1e-6);
+        }
+    }
+
+    @Test
+    void aGraphStacksAnAdditiveTweenLikeLua() {
+        OmuiArchive doc = stage().withGraph(new GraphBuilder("add")
+            .node("on_go", "ui:event.click", "target", "go")
+            .node("play", "ui:anim.play", "clip", "slide")
+            .node("nudge", "ui:anim.tween", "target", "panel", "property", "translate-x", "composite", "add",
+                "wait", false, "=value", 6, "=duration", 0.5)
+            .link("on_go.then", "play.exec").link("play.then", "nudge.exec")
+            .build());
+        try (ScriptRig rig = new ScriptRig(doc)) {
+            assertTrue(rig.rt.diagnostics().isEmpty(), rig.rt.diagnostics().toString());
+            rig.click("go");
+            rig.frame(0.25);
+            assertEquals(25 + 3, num(rig, "panel", "translate-x"), 1e-6, "the same sum as the Lua test");
         }
     }
 

@@ -11,6 +11,7 @@ import com.openmason.main.systems.scripting.doc.FakeCanvasSurface;
 import com.openmason.main.systems.scripting.doc.FakeFacePixelStore;
 import com.openmason.main.systems.scripting.doc.HeadlessModelDocument;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -24,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * GraalPy engine tests. The first context in a JVM takes a few seconds to
  * warm up; the engine is shared so later tests are fast.
  */
+@Tag("integration")
 class PythonScriptEngineTest {
 
     private static PythonScriptEngine engine;

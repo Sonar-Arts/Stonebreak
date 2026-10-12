@@ -3,9 +3,8 @@ package com.stonebreak.ui.recipeScreen.core;
 import com.stonebreak.core.Game;
 
 /**
- * Computes the recipe book's outer panel bounds. Sub-pane bounds (sidebar,
- * grid viewport, detail pane) are derived inside the
- * {@code RecipeRenderCoordinator} so geometry stays close to where it's used.
+ * Computes the recipe book's outer panel bounds. The grid inside it is
+ * {@link RecipeGridLayout}'s; the document lays out the other panes.
  */
 public final class PositionCalculator {
 
@@ -28,8 +27,11 @@ public final class PositionCalculator {
     }
 
     public static PanelDimensions calculatePanelDimensions() {
-        int sw = Game.getWindowWidth();
-        int sh = Game.getWindowHeight();
+        return calculatePanelDimensions(Game.getWindowWidth(), Game.getWindowHeight());
+    }
+
+    /** The panel in a {@code sw}x{@code sh} window. */
+    public static PanelDimensions calculatePanelDimensions(int sw, int sh) {
         int width  = Math.min(RecipeBookConstants.PANEL_MAX_WIDTH,  sw - RecipeBookConstants.PANEL_MIN_MARGIN);
         int height = Math.min(RecipeBookConstants.PANEL_MAX_HEIGHT, sh - RecipeBookConstants.PANEL_MIN_MARGIN);
         int x = (sw - width)  / 2;

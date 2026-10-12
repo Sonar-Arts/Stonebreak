@@ -116,6 +116,26 @@ public final class MScrollContainer {
         return draggingThumb;
     }
 
+    /**
+     * Where a press grabs the scrollbar ({@code x, y, w, h}, with its sideways slop), or null when
+     * nothing scrolls: the area {@link #handleMousePress} answers for.
+     */
+    public float[] scrollbarHitBounds() {
+        if (!math.isScrollNeeded()) return null;
+        float sbX = x + width - scrollbarWidth - inset;
+        return new float[]{sbX - GRAB_SLOP, y + inset, scrollbarWidth + inset + GRAB_SLOP * 2f, height - inset * 2f};
+    }
+
+    /** The drawn thumb ({@code x, y, w, h}), or null when nothing scrolls. */
+    public float[] thumbBounds() {
+        if (!math.isScrollNeeded()) return null;
+        float sbX = x + width - scrollbarWidth - inset;
+        float sbY = y + inset;
+        float sbH = height - inset * 2f;
+        float thumbH = thumbHeight(sbH);
+        return new float[]{sbX + 2f, thumbTop(sbY, sbH, thumbH), scrollbarWidth - 4f, thumbH};
+    }
+
     private void applyThumbDrag(float mouseY, float sbY, float sbH, float thumbH) {
         float travel = sbH - thumbH;
         if (travel <= 0f) return;

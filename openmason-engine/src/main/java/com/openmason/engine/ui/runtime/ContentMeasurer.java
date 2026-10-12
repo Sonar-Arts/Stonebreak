@@ -33,8 +33,8 @@ public interface ContentMeasurer {
      * real glyphs.
      */
     default TextLineMetrics textLine(UiElement element, float scale) {
-        float size = (float) element.computedStyle().number("font-size", 18) * scale
-            * element.owner().preferences().textScale();
+        var fs = element.computedStyle().length("font-size");
+        float size = fs.px(scale, 18 * scale) * element.owner().preferences().textScale();
         return TextLineMetrics.approximate(size);
     }
 

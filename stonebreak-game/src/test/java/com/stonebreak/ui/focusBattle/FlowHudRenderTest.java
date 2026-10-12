@@ -10,6 +10,7 @@ import com.stonebreak.battle.api.BattleScreenHost;
 import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.ComboDirection;
 import com.stonebreak.battle.api.FakeBattleView;
+import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.masonry.MGauge;
 import com.openmason.engine.ui.masonry.MPipRow;
 import com.openmason.engine.ui.masonry.MStyle;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
 import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
@@ -76,11 +78,9 @@ class FlowHudRenderTest {
         for (int i = 0; i < Math.round(seconds / DT); i++) frame();
     }
 
-    /** The whole HUD as the screen would draw it, on a CPU canvas. */
+    /** The whole HUD as the document stacks its pieces, on a CPU canvas. */
     private BattleRasterFixture hud(Matrix4f camera) {
-        BattleRasterFixture fx = new BattleRasterFixture(W, H);
-        screen.renderer().paintHud(fx.ui, fx.canvas, W, H, UI, view, screen.menuState(), screen.animState(), camera);
-        return fx;
+        return new BattleRasterFixture(W, H).paintHud(screen, UI, camera);
     }
 
     /** Over the monk's shoulder: the Archon mid-screen. */
@@ -333,6 +333,8 @@ class FlowHudRenderTest {
         float[] help = FocusBattleLayout.helpStripRect(W, H, UI);
         float[] party = FocusBattleLayout.partyWindowRect(W, H, UI);
         assertEquals(0, hud(null).countPainted(help), "help strip out");
+        assertTrue(((UiValue.Num) ((UiValue.Obj) new BattleRasterFixture(W, H).helpModel(screen, UI).get("rect"))
+                .get("y")).value() >= H, "the document's help strip slides out with them");
         assertEquals(0, hud(null).countPainted((int) party[0], (int) party[1], (int) (party[0] + party[2]),
                 (int) (party[1] + party[3] * 0.4f)), "party window out");
 
@@ -345,20 +347,26 @@ class FlowHudRenderTest {
         assertTrue(partyMidSlide > 0 && partyMidSlide < partyBack, "having slid there, not popped");
     }
 
+    /** The help strip's line as the document is given it this frame. */
+    private UiValue.Obj help() {
+        return new BattleRasterFixture(W, H).helpModel(screen, UI);
+    }
+
     @Test
     void theHelpLineCrossFades() {
         view.commandWindowOpen = true;
         run(0.5f);
-        float[] help = FocusBattleLayout.helpStripRect(W, H, UI);
-        BattleRasterFixture strike = hud(null);
+        UiValue.Obj strike = help();
         screen.menuState().moveDown();
         run(HudAnimator.HELP_FADE_OUT_SECONDS + DT);
-        BattleRasterFixture between = hud(null);
+        UiValue.Obj between = help();
         run(HudAnimator.HELP_FADE_IN_SECONDS + DT);
-        BattleRasterFixture flurry = hud(null);
-        assertTrue(flurry.diff(strike, help) > 400, "a different sentence");
-        assertTrue(between.diff(strike, help) > 200 && between.diff(flurry, help) > 200,
-                "with a moment in between where neither is fully there");
+        UiValue.Obj flurry = help();
+        assertNotEquals(strike.get("text"), flurry.get("text"), "a different sentence");
+        int full = BattleRasterFixture.helpAlpha(flurry);
+        assertEquals(full, BattleRasterFixture.helpAlpha(strike), "both settled lines fully there");
+        int mid = BattleRasterFixture.helpAlpha(between);
+        assertTrue(mid < full, "with a moment in between where neither is fully there (alpha " + mid + ")");
     }
 
     @Test

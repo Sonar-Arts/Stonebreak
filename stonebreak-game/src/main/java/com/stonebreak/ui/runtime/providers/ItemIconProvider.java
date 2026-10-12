@@ -57,7 +57,8 @@ import static org.lwjgl.opengl.GL11.glBindTexture;
  *
  * <p>Optional {@code params}: {@code insetPx} and {@code countMarginPx} replace the inset and the
  * count margin with fixed device pixels. The container screens (furnace, inventory, workbench)
- * never scaled them: 3 px and 2 px at every UI scale (#298).
+ * never scaled them: 3 px and 2 px at every UI scale (#298). {@code countSizePx} fixes the count's font
+ * size in device pixels (the recipe book never scaled its counts, #301).
  */
 public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
 
@@ -79,6 +80,7 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
     private float fontSize;
     private boolean prepareFailed;
 
+    /** @param atlas the shared block icon atlas, or null on a GL-free stage (block icons paint nothing) */
     public ItemIconProvider(ItemIconAtlas atlas, Supplier<Typeface> typeface) {
         this.atlas = atlas;
         this.typeface = typeface;
@@ -107,7 +109,7 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
 
     @Override
     public void prepare(UiElement element, UiRect rect, float scale) {
-        if (prepareFailed) {
+        if (prepareFailed || atlas == null) {
             return;
         }
         ItemRef ref = ItemRef.of(element);
@@ -159,7 +161,7 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
         }
         if (anchor != null && ref.count() > 1) {
             float margin = pixels(element, "countMarginPx");
-            drawCount(canvas, Integer.toString(ref.count()), anchor, scale,
+            drawCount(canvas, Integer.toString(ref.count()), anchor, scale, pixels(element, "countSizePx"),
                 Float.isNaN(margin) ? COUNT_MARGIN * scale : margin);
         }
     }
@@ -173,7 +175,7 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
     private void drawIcon(Canvas canvas, ItemRef ref, Rect icon) {
         Item item = ref.item();
         if (item instanceof BlockType block) {
-            ItemIconAtlas.Icon cell = prepareFailed ? null : atlas.find(block, (int) icon.getWidth());
+            ItemIconAtlas.Icon cell = prepareFailed || atlas == null ? null : atlas.find(block, (int) icon.getWidth());
             Image page = cell == null ? null
                 : GlTextureImages.borrow(canvas, cell.texture(), cell.pageSize(), cell.pageSize(), true);
             if (page == null) {
@@ -199,8 +201,9 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
         canvas.drawRect(icon, paint);
     }
 
-    private void drawCount(Canvas canvas, String text, Rect anchor, float scale, float margin) {
-        Font f = font(MStyle.FONT_META * scale);
+    /** @param sizePx a fixed device-pixel font size (the unscaled recipe book, #301), or NaN for the scaled meta font */
+    private void drawCount(Canvas canvas, String text, Rect anchor, float scale, float sizePx, float margin) {
+        Font f = font(!Float.isNaN(sizePx) ? sizePx : MStyle.FONT_META * scale);
         if (f == null) {
             return;
         }
@@ -226,6 +229,9 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
     }
 
     private Font font(float size) {
+        // MFonts' half-pixel grid: every legacy slot drew its count with MFonts.getScaled, so at a scale
+        // whose meta size is off the grid (0.85x: 11.9 -> 12, 1.8x: 25.2 -> 25) the digits match it (#300)
+        size = Math.round(Math.max(6f, size) * 2f) / 2f;
         if (font != null && fontSize == size) {
             return font;
         }

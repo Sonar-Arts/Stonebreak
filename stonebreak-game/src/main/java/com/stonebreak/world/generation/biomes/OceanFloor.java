@@ -3,7 +3,7 @@ package com.stonebreak.world.generation.biomes;
 import com.stonebreak.blocks.BlockType;
 
 /**
- * The {@link BiomeType#OCEAN} sea floor: 97% sand, 2% dirt, 1% clay,
+ * The {@link BiomeType#OCEAN} sea floor, shared by both generators: 97% sand, 2% dirt, 1% clay,
  * picked per column from a hash of the world seed and the column, so every column always gets
  * the same block whatever order chunks generate in.
  */

@@ -134,6 +134,113 @@ public record AnimProperty(String target, Interp interp, boolean motion, boolean
         };
     }
 
+    // ── additive composition (#301) ─────────────────────────────────────────
+
+    /**
+     * True when an additive animation ({@link UiAnimator.Composite#ADD}) can stack on this channel:
+     * numbers, integers, lengths, opacity and colours. Visibility and discrete values cannot add.
+     */
+    public boolean additive() {
+        return switch (interp) {
+            case NUMBER, INTEGER, LENGTH, OPACITY, COLOR -> true;
+            case VISIBILITY, DISCRETE -> false;
+        };
+    }
+
+    /**
+     * The delta that adds nothing, in the unit of {@code other}: 0 for every number (also
+     * {@code scale}: an additive scale of +0.1 grows by a tenth), {@code 0%}/{@code 0dpx}/0 for
+     * lengths, transparent black for colours.
+     */
+    public UiValue zero(UiValue other) {
+        return switch (interp) {
+            case NUMBER, INTEGER, OPACITY -> UiValue.of(0);
+            case LENGTH -> {
+                StyleValues.Length l = StyleValues.length(other);
+                yield l.kind() == StyleValues.Length.Kind.PERCENT ? UiValue.of("0%")
+                    : l.kind() == StyleValues.Length.Kind.DEVICE ? UiValue.of("0dpx") : UiValue.of(0);
+            }
+            case COLOR -> UiValue.of("#00000000");
+            case VISIBILITY, DISCRETE -> other == null ? UiValue.NULL : other;
+        };
+    }
+
+    /** True when {@code delta} adds nothing (0, {@code 0%}/{@code 0dpx}, transparent black; -0 counts). */
+    public boolean isZero(UiValue delta) {
+        if (delta == null) {
+            return true;
+        }
+        return switch (interp) {
+            case NUMBER, INTEGER, OPACITY -> delta instanceof UiValue.Num n && n.value() == 0;
+            case LENGTH -> {
+                StyleValues.Length l = StyleValues.length(delta);
+                yield (l.kind() == StyleValues.Length.Kind.POINTS || l.kind() == StyleValues.Length.Kind.PERCENT
+                    || l.kind() == StyleValues.Length.Kind.DEVICE) && l.value() == 0;
+            }
+            case COLOR -> isColor(delta) && StyleValues.color(delta, 1) == 0;
+            case VISIBILITY, DISCRETE -> false;
+        };
+    }
+
+    /**
+     * {@code base + delta}. A null base (a property nothing sets) is its {@link #neutral} value. Numbers
+     * sum ({@link Interp#INTEGER} floors), opacity sums clamped to [0, 1], colours add per straight
+     * ARGB byte clamped to 255. Lengths add only in one unit (points, {@code %} or {@code dpx}; a
+     * plain number counts as points); {@code auto}, mixed units and non-additive channels leave the
+     * base unchanged, since the sum would need the layout's metrics.
+     */
+    public UiValue add(UiValue base, UiValue delta) {
+        if (delta == null || !additive()) {
+            return base;
+        }
+        if (base == null) {
+            // What an unset property shows: opacity 1, scale 1, translate 0, no colour.
+            base = interp == Interp.COLOR ? UiValue.of("#00000000") : neutral(delta);
+        }
+        return switch (interp) {
+            case NUMBER -> base instanceof UiValue.Num a && delta instanceof UiValue.Num b
+                ? UiValue.of(a.value() + b.value()) : base;
+            case INTEGER -> base instanceof UiValue.Num a && delta instanceof UiValue.Num b
+                ? UiValue.of(Math.floor(a.value() + b.value())) : base;
+            case OPACITY -> base instanceof UiValue.Num a && delta instanceof UiValue.Num b
+                ? UiValue.of(Math.max(0, Math.min(1, a.value() + b.value()))) : base;
+            case LENGTH -> addLength(base, delta);
+            case COLOR -> isColor(base) && isColor(delta) ? addColor(base, delta) : base;
+            case VISIBILITY, DISCRETE -> base;
+        };
+    }
+
+    private static UiValue addLength(UiValue base, UiValue delta) {
+        if (base instanceof UiValue.Num x && delta instanceof UiValue.Num y) {
+            return UiValue.of(x.value() + y.value()); // binary64, like mix()
+        }
+        StyleValues.Length a = StyleValues.length(base);
+        StyleValues.Length b = StyleValues.length(delta);
+        if (a.kind() != b.kind()) {
+            return base;
+        }
+        return switch (a.kind()) {
+            case POINTS -> UiValue.of((double) a.value() + b.value());
+            case PERCENT -> UiValue.of(percent((double) a.value() + b.value()));
+            case DEVICE -> {
+                double v = Math.round(((double) a.value() + b.value()) * 1e4) / 1e4;
+                yield UiValue.of((v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v)) + "dpx");
+            }
+            case UNSET, AUTO -> base;
+        };
+    }
+
+    private static UiValue addColor(UiValue base, UiValue delta) {
+        int ca = StyleValues.color(base, 0);
+        int cb = StyleValues.color(delta, 0);
+        int argb = 0;
+        for (int shift = 0; shift < 32; shift += 8) {
+            int sum = ((ca >>> shift) & 0xFF) + ((cb >>> shift) & 0xFF);
+            argb |= Math.min(255, sum) << shift;
+        }
+        return hex(argb);
+    }
+
     private static double lerp(double a, double b, float f) {
         return a + (b - a) * f;
     }
@@ -146,6 +253,10 @@ public record AnimProperty(String target, Interp interp, boolean motion, boolean
         StyleValues.Length b = StyleValues.length(to);
         if (a.kind() == StyleValues.Length.Kind.PERCENT && b.kind() == StyleValues.Length.Kind.PERCENT) {
             return UiValue.of(percent(lerp(a.value(), b.value(), f)));
+        }
+        if (a.kind() == StyleValues.Length.Kind.DEVICE && b.kind() == StyleValues.Length.Kind.DEVICE) {
+            double v = Math.round(lerp(a.value(), b.value(), f) * 1e4) / 1e4;
+            return UiValue.of((v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v)) + "dpx");
         }
         return from; // auto or mixed units: discrete
     }
@@ -194,6 +305,26 @@ public record AnimProperty(String target, Interp interp, boolean motion, boolean
     /** The value a key track of this channel shows at clip time {@code t}, exactly as playback samples it. */
     public UiValue sample(java.util.List<com.openmason.engine.format.omui.UiAnimationClip.AnimKey> keys, double t) {
         return keys.isEmpty() ? null : ClipPlayback.sampleTrack(this, keys, t);
+    }
+
+    /**
+     * @return null when {@code delta} can be an additive delta of this channel, else the problem.
+     *     Deltas are checked for their type only: a negative opacity or size is a valid delta.
+     */
+    public String deltaProblem(UiValue delta) {
+        if (!additive()) {
+            return "cannot add (composite add takes numbers, lengths, opacity and colours)";
+        }
+        boolean ok = switch (interp) {
+            case NUMBER, INTEGER, OPACITY -> delta instanceof UiValue.Num;
+            case LENGTH -> delta instanceof UiValue.Num || switch (StyleValues.length(delta).kind()) {
+                case PERCENT, DEVICE -> true;
+                default -> false;
+            };
+            case COLOR -> isColor(delta) && UiStyleProperties.problem("color", delta) == null;
+            case VISIBILITY, DISCRETE -> false;
+        };
+        return ok ? null : "a " + interp.name().toLowerCase(java.util.Locale.ROOT) + " delta cannot be " + delta;
     }
 
     /** @return null when {@code value} suits this channel on {@code widget}, else the problem */
