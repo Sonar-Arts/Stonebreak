@@ -24,6 +24,7 @@ import com.stonebreak.world.generation.features.CactusGenerator;
 import com.stonebreak.world.generation.features.LimestoneGenerator;
 import com.stonebreak.world.generation.features.OreGenerator;
 import com.stonebreak.world.generation.features.SurfaceDecorationGenerator;
+import com.stonebreak.world.generation.features.SwampPoolGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator;
 import com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.heightmap.CarveMaskKey;
@@ -61,6 +62,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
     private final BiomeManager biomeManager;
     private final OreGenerator oreGenerator;
     private final LimestoneGenerator limestoneGenerator;
+    private final SwampPoolGenerator swampPoolGenerator;
     private final VegetationGenerator vegetationGenerator;
     private final CactusGenerator cactusGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
@@ -108,6 +110,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         this.heightMapGenerator = new HeightMapGenerator(tileSource);
         this.biomeManager = new BiomeManager(tileSource);
         this.oreGenerator = new OreGenerator(deterministicRandom, heightMapGenerator, seed);
+        this.swampPoolGenerator = new SwampPoolGenerator(deterministicRandom);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
         this.cactusGenerator = new CactusGenerator(deterministicRandom);
         this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, seed);
@@ -861,6 +864,8 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         oreGenerator.generate(ctx);
         // After ores: limestone only replaces stone, so it never eats a vein.
         limestoneGenerator.generate(ctx);
+        // Before vegetation: cypress trees may root in the pools.
+        swampPoolGenerator.generate(ctx);
         vegetationGenerator.generate(ctx);
         cactusGenerator.generate(ctx);
         decorationGenerator.generate(ctx);
@@ -946,7 +951,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
             case OCEAN -> BlockType.SAND;         // placement mixes in dirt and clay: surfaceBlockAt
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SAND;
             case PLAINS, MEADOW -> BlockType.GRASS;
-            case SWAMP -> BlockType.SWAMPY_GRASS;  // Standard Generation's biome; the model has no swamp id
+            case SWAMP -> BlockType.SWAMPY_GRASS;
             case SNOWY_PLAINS, TAIGA, TUNDRA -> BlockType.SNOWY_DIRT;
             case STONY_PEAKS -> BlockType.STONE;
             case ICE_FIELDS -> BlockType.ICE;
