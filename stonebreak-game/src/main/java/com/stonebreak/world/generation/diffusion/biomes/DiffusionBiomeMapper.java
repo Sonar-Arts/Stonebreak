@@ -105,7 +105,10 @@ final class DiffusionBiomeMapper {
             // red_desert (DaedalusTGM-Exp id 205): a WHOLE desert the model decided is red, one decision per
             // desert (terrain_slm generator.red_desert_cells), so red sand never comes in patches.
             case 205 -> BiomeType.RED_SAND_DESERT;
-            case 6, 29, 108 -> BiomeType.MEADOW;  // swamp, meadow, forest_sparse
+            // swamp: warm dense / non-tropical rain forest on lowland (biomes.py). Was MEADOW, which hid the
+            // model's swamps entirely (2026-10-11); SWAMP brings swampy grass, pools and cypress.
+            case 6 -> BiomeType.SWAMP;
+            case 29, 108 -> BiomeType.MEADOW;     // meadow, forest_sparse
             case 15, 16 -> BiomeType.TAIGA;       // taiga, snowy_taiga
             // savanna: warm semi-arid grassland with sparse trees. Was RED_SAND_DESERT, which drew thin
             // orange cactus strips wherever a climate gradient passed through the savanna band (2026-09-28).

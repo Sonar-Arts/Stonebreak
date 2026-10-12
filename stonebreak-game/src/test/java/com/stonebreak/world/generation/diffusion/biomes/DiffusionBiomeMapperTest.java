@@ -30,6 +30,7 @@ class DiffusionBiomeMapperTest {
         assertEquals(BiomeType.STONY_PEAKS, DiffusionBiomeMapper.map((short) 19, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.BADLANDS, DiffusionBiomeMapper.map((short) 26, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.MEADOW, DiffusionBiomeMapper.map((short) 29, WELL_ABOVE_SHORE, NO_WATER));
+        assertEquals(BiomeType.SWAMP, DiffusionBiomeMapper.map((short) 6, WELL_ABOVE_SHORE, NO_WATER));    // swamp
         assertEquals(BiomeType.TUNDRA, DiffusionBiomeMapper.map((short) 31, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.ICE_FIELDS, DiffusionBiomeMapper.map((short) 33, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.STONY_PEAKS, DiffusionBiomeMapper.map((short) 35, WELL_ABOVE_SHORE, NO_WATER));
@@ -39,7 +40,6 @@ class DiffusionBiomeMapperTest {
     void mapsSparseAndAliasVariantsToTheirBaseBiome() {
         assertEquals(BiomeType.PLAINS, DiffusionBiomeMapper.map((short) 8, WELL_ABOVE_SHORE, NO_WATER));   // forest
         assertEquals(BiomeType.PLAINS, DiffusionBiomeMapper.map((short) 23, WELL_ABOVE_SHORE, NO_WATER));  // jungle
-        assertEquals(BiomeType.MEADOW, DiffusionBiomeMapper.map((short) 6, WELL_ABOVE_SHORE, NO_WATER));   // swamp
         assertEquals(BiomeType.MEADOW, DiffusionBiomeMapper.map((short) 108, WELL_ABOVE_SHORE, NO_WATER)); // forest_sparse
         assertEquals(BiomeType.TAIGA, DiffusionBiomeMapper.map((short) 16, WELL_ABOVE_SHORE, NO_WATER));   // snowy_taiga
         assertEquals(BiomeType.MEADOW, DiffusionBiomeMapper.map((short) 115, WELL_ABOVE_SHORE, NO_WATER));       // taiga_sparse: snow-free
