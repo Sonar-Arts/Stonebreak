@@ -5,6 +5,7 @@ import com.stonebreak.audio.MobSounds;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.weapon.DamageType;
 import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.ai.MobAI;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
@@ -228,6 +229,11 @@ public abstract class LivingEntity extends Entity {
         damage(amount, source, null, true);
     }
 
+    /** Damage of an explicit {@link DamageType} (e.g. a weapon's), resisted per {@link EntityType#resistance}. */
+    public void damage(float amount, DamageSource source, DamageType type) {
+        damage(amount, source, type, null, true);
+    }
+
     /**
      * Authoritative damage application; see {@link LivingEntityCombat#damage}.
      *
@@ -238,7 +244,13 @@ public abstract class LivingEntity extends Entity {
      *                          credited for their kills
      */
     public void damage(float amount, DamageSource source, Vector3f attackerPos, boolean creditLocalPlayer) {
-        combat.damage(amount, source, attackerPos, creditLocalPlayer);
+        damage(amount, source, source.defaultDamageType(), attackerPos, creditLocalPlayer);
+    }
+
+    /** As {@link #damage(float, DamageSource, Vector3f, boolean)}, with an explicit damage type. */
+    public void damage(float amount, DamageSource source, DamageType type,
+                       Vector3f attackerPos, boolean creditLocalPlayer) {
+        combat.damage(amount, source, type, attackerPos, creditLocalPlayer);
     }
 
     /** Applies already-multiplied damage to health via {@link Entity#damage} (may trigger death). */
@@ -518,6 +530,16 @@ public abstract class LivingEntity extends Entity {
          */
         public boolean isMagical() {
             return this == ARCANE;
+        }
+
+        /** Damage type of a hit from this source when the caller names none. */
+        public DamageType defaultDamageType() {
+            return switch (this) {
+                case ARROW -> DamageType.PIERCING;
+                case FIRE -> DamageType.FIRE;
+                case ARCANE -> DamageType.ARCANE;
+                default -> DamageType.UNTYPED;
+            };
         }
     }
 }

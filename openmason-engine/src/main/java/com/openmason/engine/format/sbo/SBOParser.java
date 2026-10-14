@@ -353,6 +353,8 @@ public class SBOParser {
 
         SBOFormat.ToolData tool = parseTool(root);
 
+        SBOFormat.WeaponData weapon = parseWeapon(root);
+
         return new SBOFormat.Document(
                 root.get("version").asText(),
                 root.get("objectId").asText(),
@@ -373,8 +375,31 @@ public class SBOParser {
                 fuel,
                 sounds,
                 drops,
-                tool
+                tool,
+                weapon
         );
+    }
+
+    /**
+     * Reads the optional 1.10+ {@code weapon} section. Returns {@code null} when
+     * the key is absent or the section is invalid (logged), so a malformed
+     * weapon degrades to "not a weapon" rather than failing the whole SBO.
+     */
+    static SBOFormat.WeaponData parseWeapon(com.fasterxml.jackson.databind.JsonNode root) {
+        if (!root.has("weapon") || root.get("weapon").isNull() || !root.get("weapon").isObject()) {
+            return null;
+        }
+        var w = root.get("weapon");
+        try {
+            return new SBOFormat.WeaponData(
+                    w.has("group") ? w.get("group").asText() : "",
+                    w.has("damageType") ? w.get("damageType").asText() : "",
+                    w.has("damage") ? (float) w.get("damage").asDouble() : -1f,
+                    w.has("swingSeconds") ? (float) w.get("swingSeconds").asDouble() : 0f);
+        } catch (IllegalArgumentException ex) {
+            logger.warn("Ignoring invalid weapon block in manifest: {}", ex.getMessage());
+            return null;
+        }
     }
 
     /**

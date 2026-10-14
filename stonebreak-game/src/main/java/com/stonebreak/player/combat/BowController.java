@@ -1,8 +1,9 @@
 package com.stonebreak.player.combat;
 
 /**
- * Manages bow draw state. Hold right-click draws the bow over DRAW_DURATION seconds;
- * release fires an arrow whose speed scales with how long it was drawn.
+ * Manages bow draw state. Hold right-click draws the bow over DRAW_DURATION seconds
+ * (divided by the archer's draw-speed multiplier); release fires an arrow whose speed
+ * scales with how far it was drawn.
  */
 public class BowController {
 
@@ -13,15 +14,18 @@ public class BowController {
 
     private boolean drawing;
     private float drawTime;
+    private float drawSpeedMultiplier = 1.0f;
 
-    public void startDrawing() {
+    /** Starts a draw; {@code speedMultiplier} > 1 draws faster (e.g. a higher Ranged proficiency). */
+    public void startDrawing(float speedMultiplier) {
         drawing = true;
         drawTime = 0.0f;
+        drawSpeedMultiplier = Math.max(0.1f, speedMultiplier);
     }
 
     public void update(float deltaTime) {
         if (!drawing) return;
-        drawTime = Math.min(drawTime + deltaTime, DRAW_DURATION);
+        drawTime = Math.min(drawTime + deltaTime * drawSpeedMultiplier, DRAW_DURATION);
     }
 
     /** Returns true if the arrow should fire (held long enough). Resets state either way. */

@@ -3,6 +3,7 @@ package com.stonebreak.ui;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.Item;
+import com.stonebreak.items.weapon.WeaponTooltip;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.ui.hotbar.styling.HotbarTheme;
 
@@ -53,7 +54,7 @@ public class HotbarScreen {
      */
     public void displayItemTooltip(Item item) {
         if (item != null && (!(item instanceof BlockType) || item != BlockType.AIR)) {
-            this.selectedItemName = item.getName();
+            this.selectedItemName = WeaponTooltip.text(item);
             this.tooltipTimer = TOOLTIP_DISPLAY_DURATION + TOOLTIP_FADE_DURATION;
             this.tooltipAlpha = 1.0f;
         } else {

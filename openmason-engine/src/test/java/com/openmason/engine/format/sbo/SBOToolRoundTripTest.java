@@ -57,7 +57,7 @@ class SBOToolRoundTripTest {
         assertTrue(new SBOSerializer().export(params, omo, out));
 
         SBOFormat.Document doc = new SBOParser().parseRaw(Path.of(out)).manifest();
-        assertEquals("1.9", doc.version());
+        assertEquals(SBOFormat.FORMAT_VERSION, doc.version());
         assertTrue(doc.hasTool());
         assertEquals(stonePickaxe(), doc.tool());
     }

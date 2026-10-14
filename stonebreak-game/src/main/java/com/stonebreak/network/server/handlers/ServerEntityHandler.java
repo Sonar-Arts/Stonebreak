@@ -1,6 +1,7 @@
 package com.stonebreak.network.server.handlers;
 
 import com.openmason.engine.net.protocol.codec.EntityDeltaCodec;
+import com.stonebreak.items.weapon.DamageType;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
@@ -274,11 +275,12 @@ public final class ServerEntityHandler {
         amount = Math.min(amount, MAX_DAMAGE_AMOUNT);
 
         LivingEntity.DamageSource source = decodeSource(pkt.sourceOrdinal());
+        DamageType type = decodeType(pkt.typeOrdinal(), source);
         // Never credit through the local-player path (on the server thread that would be
         // the HOST's player object regardless of attacker). Credit routes back to the
         // actual attacker via KillCreditS2C — uniform for host (Local channel) and remotes.
         float healthBefore = le.getHealth();
-        le.damage(amount, source, new Vector3f(sp.x(), sp.y(), sp.z()), false);
+        le.damage(amount, source, type, new Vector3f(sp.x(), sp.y(), sp.z()), false);
         float dealt = healthBefore - Math.max(0f, le.getHealth());
         if (dealt > 0f) {
             boolean killed = !le.isAlive();
@@ -442,6 +444,12 @@ public final class ServerEntityHandler {
 
     private static float clamp(float v, float min, float max) {
         return Math.max(min, Math.min(max, v));
+    }
+
+    /** Damage type from the wire; out of range falls back to the source's default type. */
+    private static DamageType decodeType(byte ordinal, LivingEntity.DamageSource source) {
+        DamageType[] values = DamageType.values();
+        return ordinal >= 0 && ordinal < values.length ? values[ordinal] : source.defaultDamageType();
     }
 
     private static LivingEntity.DamageSource decodeSource(byte ordinal) {

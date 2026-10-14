@@ -51,7 +51,7 @@ class JsonPlayerSerializerTest {
             .worldName("SaveWorld")
             .selectedClassId("ranger")
             .spentAbilityCp(Map.of("str", 2))
-            .skillLevels(Map.of("mining", 3))
+            .skillLevels(Map.of("mining", 3, "proficiency.one_handed", 2))
             .acquiredFeatIds(Set.of("featA", "featB"))
             .abilityScores(new int[]{8, 14, 12, 16, 10, 11})
             .remainingCp(5)
@@ -90,7 +90,7 @@ class JsonPlayerSerializerTest {
         // RPG / character progression
         assertEquals("ranger", deserialized.getSelectedClassId());
         assertEquals(Map.of("str", 2), deserialized.getSpentAbilityCp());
-        assertEquals(Map.of("mining", 3), deserialized.getSkillLevels());
+        assertEquals(Map.of("mining", 3, "proficiency.one_handed", 2), deserialized.getSkillLevels());
         assertEquals(Set.of("featA", "featB"), deserialized.getAcquiredFeatIds());
 
         // Ability scores

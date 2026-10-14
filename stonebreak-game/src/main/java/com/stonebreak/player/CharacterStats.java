@@ -1,8 +1,11 @@
 package com.stonebreak.player;
 
+import com.stonebreak.items.weapon.WeaponGroup;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.classes.PlayerClassDefinition;
 import com.stonebreak.rpg.feats.FeatRegistry;
+import com.stonebreak.rpg.proficiency.ProficiencyRank;
+import com.stonebreak.rpg.proficiency.WeaponProficiency;
 
 import java.util.ArrayList;
 import java.util.ArrayDeque;
@@ -331,6 +334,10 @@ public class CharacterStats {
     if (remainingSp <= 0) {
       return;
     }
+    Optional<WeaponGroup> group = WeaponProficiency.groupOf(skillId);
+    if (group.isPresent() && !WeaponProficiency.canRaise(getProficiency(group.get()), level)) {
+      return;
+    }
     remainingSp--;
     skillLevels.merge(skillId, 1, Integer::sum);
     undoHistory.addLast(new UndoOp(UndoKind.SP, skillId, -1, null));
@@ -339,6 +346,24 @@ public class CharacterStats {
   /** Returns the current level of the given skill (0 if never invested). */
   public int getSkillLevel(String skillId) {
     return skillLevels.getOrDefault(skillId, 0);
+  }
+
+  /** Rank in the given weapon group, derived from its proficiency skill level. */
+  public ProficiencyRank getProficiency(WeaponGroup group) {
+    return ProficiencyRank.fromLevel(getSkillLevel(WeaponProficiency.skillId(group)));
+  }
+
+  /**
+   * Sets a weapon proficiency rank directly, spending no SP and recording no undo
+   * (debug / future class grants).
+   */
+  public void setProficiency(WeaponGroup group, ProficiencyRank rank) {
+    String id = WeaponProficiency.skillId(group);
+    if (rank == ProficiencyRank.UNTRAINED) {
+      skillLevels.remove(id);
+    } else {
+      skillLevels.put(id, rank.ordinal());
+    }
   }
 
   public int getRemainingSkillPoints() {

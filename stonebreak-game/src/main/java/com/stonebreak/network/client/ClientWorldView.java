@@ -533,11 +533,13 @@ public final class ClientWorldView {
 
     /** Local hit on a replicated entity: forward the damage intent to the authoritative server. */
     public void sendEntityDamage(int targetNetworkId, float amount,
-                                 com.stonebreak.mobs.entities.LivingEntity.DamageSource source) {
+                                 com.stonebreak.mobs.entities.LivingEntity.DamageSource source,
+                                 com.stonebreak.items.weapon.DamageType type) {
         if (connection == null || targetNetworkId < 0 || amount <= 0f) {
             return;
         }
-        connection.send(new EntityDamageC2S(targetNetworkId, amount, (byte) source.ordinal()), false);
+        connection.send(new EntityDamageC2S(targetNetworkId, amount, (byte) source.ordinal(),
+                (byte) type.ordinal()), false);
     }
 
     /** Local shear on a replicated sheep: forward the shear intent to the authoritative server. */

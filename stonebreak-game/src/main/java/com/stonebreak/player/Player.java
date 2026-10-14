@@ -3,6 +3,9 @@ package com.stonebreak.player;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
+import com.stonebreak.items.weapon.WeaponGroup;
+import com.stonebreak.items.weapon.WeaponRules;
+import com.stonebreak.items.weapon.WeaponStats;
 import com.stonebreak.player.combat.BowController;
 import com.stonebreak.player.combat.ManaController;
 import com.stonebreak.player.combat.RageTier;
@@ -242,11 +245,17 @@ public class Player {
     // Attack animation
     public boolean isAttacking() { return c.attack.isAttacking(); }
     public void startAttackAnimation() { c.attack.startAttackAnimation(); }
+    /** Starts a weapon swing if the previous one has finished; false while on cooldown. */
+    public boolean tryStartAttackSwing() { return c.attack.tryBeginSwing(getAttackSwingSeconds()); }
     public float getAttackAnimationProgress() { return c.attack.getAnimationProgress(); }
     public float getRawAttackAnimationProgress() { return c.attack.getRawAnimationProgress(); }
 
     // Bow draw
     public BowController getBowController() { return c.bow; }
+    /** Starts drawing the bow at the player's Ranged proficiency speed. */
+    public void startBowDraw() {
+        c.bow.startDrawing(c.characterStats.getProficiency(WeaponGroup.RANGED).attackSpeedMultiplier());
+    }
     public boolean isDrawingBow() { return c.bow.isDrawing(); }
     public float getBowDrawProgress() { return c.bow.getDrawProgress(); }
     public String getBowSboState() { return c.bow.getBowSboState(); }
@@ -344,13 +353,23 @@ public class Player {
     /** Envelope tracker for the attack overlay animation (time + fade weight). */
     public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return bodyAnimation.getAttackOverlay(); }
 
-    /** Returns the melee damage for the player's currently held item (1.0 for bare fist). */
-    public float getAttackDamage() {
+    /** Melee stats of the held item ({@link WeaponStats#UNARMED} for an empty hand or non-weapon). */
+    public WeaponStats getHeldWeapon() {
         ItemStack held = inventory.getSelectedHotbarSlot();
         if (!held.isEmpty() && held.getItem() instanceof ItemType itemType) {
-            return itemType.getDamage();
+            return WeaponRules.statsFor(itemType);
         }
-        return 1.0f;
+        return WeaponStats.UNARMED;
+    }
+
+    /**
+     * Seconds between swings with the held weapon at the player's proficiency rank in its
+     * group, before transient speed bonuses such as Rage.
+     */
+    public float getAttackSwingSeconds() {
+        WeaponStats weapon = getHeldWeapon();
+        return weapon.swingSeconds()
+            / c.characterStats.getProficiency(weapon.group()).attackSpeedMultiplier();
     }
 
     /** Multiplier applied to melee damage from the Berserker's Rage tier (T1+ grants increased damage). */
@@ -367,7 +386,8 @@ public class Player {
      * combat resolution so Berserker bonuses apply uniformly regardless of caller.
      */
     public void attackEntity(LivingEntity target) {
-        float damageDealt = getAttackDamage() * getMeleeDamageMultiplier();
+        WeaponStats weapon = getHeldWeapon();
+        float damageDealt = weapon.damage() * getMeleeDamageMultiplier();
 
         // Stealth opener: striking an unaware enemy leaves it flat-footed (so the crit roll below,
         // and any follow-up hit within the window, gains bonus crit chance).
@@ -388,7 +408,7 @@ public class Player {
             damageDealt *= c.rogueAbilities.onCritLanded(this, target);
         }
 
-        target.damage(damageDealt, LivingEntity.DamageSource.PLAYER);
+        target.damage(damageDealt, LivingEntity.DamageSource.PLAYER, weapon.damageType());
         c.berserkerAbilities.getRage().onMeleeHitDealt();
         c.rangerAbilities.onPlayerMeleeHit(this, target);
         c.stealth.onAttack(this); // attacking breaks stealth instantly

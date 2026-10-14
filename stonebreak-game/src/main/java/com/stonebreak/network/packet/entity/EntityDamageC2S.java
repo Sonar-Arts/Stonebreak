@@ -12,8 +12,10 @@ import io.netty.buffer.ByteBuf;
  * @param targetNetworkId network id of the entity that was hit
  * @param amount          damage the client computed (melee/ability/projectile); server-clamped
  * @param sourceOrdinal   ordinal of {@code LivingEntity.DamageSource} (server allow-lists it)
+ * @param typeOrdinal     ordinal of {@code DamageType}, resisted per target type (server range-checks it)
  */
-public record EntityDamageC2S(int targetNetworkId, float amount, byte sourceOrdinal) implements Packet {
+public record EntityDamageC2S(int targetNetworkId, float amount, byte sourceOrdinal, byte typeOrdinal)
+        implements Packet {
 
     public static final PacketCodec<EntityDamageC2S> CODEC = new PacketCodec<>() {
         @Override
@@ -21,11 +23,12 @@ public record EntityDamageC2S(int targetNetworkId, float amount, byte sourceOrdi
             out.writeInt(p.targetNetworkId());
             out.writeFloat(p.amount());
             out.writeByte(p.sourceOrdinal());
+            out.writeByte(p.typeOrdinal());
         }
 
         @Override
         public EntityDamageC2S decode(ByteBuf in) {
-            return new EntityDamageC2S(in.readInt(), in.readFloat(), in.readByte());
+            return new EntityDamageC2S(in.readInt(), in.readFloat(), in.readByte(), in.readByte());
         }
     };
 }

@@ -473,10 +473,11 @@ public final class MultiplayerSession {
      * entity — forwards the damage intent to the authoritative server via the local client.
      */
     public static void onLocalEntityDamage(Entity target, float amount,
-                                           com.stonebreak.mobs.entities.LivingEntity.DamageSource source) {
+                                           com.stonebreak.mobs.entities.LivingEntity.DamageSource source,
+                                           com.stonebreak.items.weapon.DamageType type) {
         ClientWorldView c = getClient();
         if (c != null && target != null && target.getNetworkId() >= 0) {
-            c.sendEntityDamage(target.getNetworkId(), amount, source);
+            c.sendEntityDamage(target.getNetworkId(), amount, source, type);
         }
     }
 

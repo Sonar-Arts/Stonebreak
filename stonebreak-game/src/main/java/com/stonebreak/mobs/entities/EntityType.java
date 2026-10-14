@@ -1,5 +1,12 @@
 package com.stonebreak.mobs.entities;
 
+import com.stonebreak.items.weapon.DamageType;
+
+import java.util.EnumMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 /**
  * Enumeration of all entity types that can exist in the game world.
  * Each type defines properties specific to that entity category.
@@ -7,21 +14,24 @@ package com.stonebreak.mobs.entities;
 public enum EntityType {
     // Living creatures (adjusted to match new model proportions)
     // Parameters: displayName, EntityAttributes(STR,DEX,CON,INT,WIS,CHA), height, width, length, legHeight, sbeObjectId,
-    //              weakness, weaknessDescription, textureVariants, specialAbilities
+    //              weakness, weaknessDescription, textureVariants, specialAbilities,
+    //              resistances (damage multiplier per DamageType; absent = 1.0, <1 resists, >1 weak)
     COW("Cow",
         new EntityAttributes(8, 4, 5, 2, 3, 4),
         0.4f, 1.1f, 1.3f, 0.62f, "stonebreak:cow",
         LivingEntity.DamageSource.BLEED,
         "Thick hide resists blows, but bleeds heavily once cut.",
         new String[]{"Default", "Angus", "Highland"},
-        new String[0]),
+        new String[0],
+        Map.of(DamageType.BLUNT, 0.75f, DamageType.SLASHING, 1.25f)),
     SHEEP("Sheep",
         new EntityAttributes(5, 6, 4, 2, 3, 6),
         0.55f, 0.875f, 1.075f, 0.55f, "stonebreak:Sheep",
         LivingEntity.DamageSource.FIRE,
         "Dry wool catches fire instantly.",
         new String[]{"Default", "Sheared"},
-        new String[0]),
+        new String[0],
+        Map.of(DamageType.BLUNT, 0.75f, DamageType.FIRE, 1.5f)),
     // legHeight is 0: the SB_Chicken.sbe model's origin sits at the feet, so the
     // entity position (placed at groundSurface + legHeight) must rest on the
     // ground itself. height covers the body+head bulk for collision.
@@ -31,7 +41,8 @@ public enum EntityType {
         LivingEntity.DamageSource.ARROW,
         "A small, fragile frame — one clean arrow does it.",
         new String[]{"Default"},
-        new String[0]),
+        new String[0],
+        Map.of(DamageType.PIERCING, 1.25f)),
     // legHeight is 0 for the same reason as the chicken: the SB_Goose.sbe origin
     // sits at the feet, so the entity rests directly on the ground surface.
     // No appearance variants and no one-shot clips (the flying clip loops).
@@ -41,7 +52,8 @@ public enum EntityType {
         LivingEntity.DamageSource.ARROW,
         "Quick and flighty — an arrow brings it down mid-honk.",
         new String[]{"Default"},
-        new String[0]),
+        new String[0],
+        Map.of(DamageType.PIERCING, 1.25f)),
     // Hostile. Height/width are the in-game size: Goblin rescales the ~2.25-block
     // authored model (feet at its origin, so legHeight 0) by Goblin.MODEL_SCALE.
     // Looks vary by loadout (weapon + socket cosmetics), not by texture variant.
@@ -51,7 +63,8 @@ public enum EntityType {
         LivingEntity.DamageSource.FIRE,
         "Scrawny and quick; its rags go up like kindling.",
         new String[]{"Default"},
-        new String[]{"Dagger", "Bow", "Patty Smacker"}),
+        new String[]{"Dagger", "Bow", "Patty Smacker"},
+        Map.of(DamageType.FIRE, 1.25f)),
 
     // Drop entities (small, physics-based items)
     BLOCK_DROP("Block Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false, null),
@@ -96,7 +109,8 @@ public enum EntityType {
     private final boolean isLiving;
     private final String sbeObjectId; // SBE asset object id, or null if not SBE-driven
     private final String armorType;   // Quarry reveal descriptor (display-only)
-    private final String resistances; // Quarry reveal descriptor (display-only)
+    private final String resistances; // Quarry reveal descriptor
+    private final Map<DamageType, Float> resistanceMultipliers;
 
     // Entity attributes (null for non-living types using legacy literal constructor)
     private final EntityAttributes attributes;
@@ -135,6 +149,7 @@ public enum EntityType {
         this.sbeObjectId = sbeObjectId;
         this.armorType = armorType;
         this.resistances = resistances;
+        this.resistanceMultipliers = Map.of();
         this.attributes = null;
         this.weakness = null;
         this.weaknessDescription = null;
@@ -153,7 +168,8 @@ public enum EntityType {
                LivingEntity.DamageSource weakness,
                String weaknessDescription,
                String[] textureVariants,
-               String[] specialAbilities) {
+               String[] specialAbilities,
+               Map<DamageType, Float> resistanceMultipliers) {
         this.displayName = displayName;
         this.maxHealth = attributes.deriveMaxHealth();
         this.moveSpeed = attributes.deriveMoveSpeed();
@@ -164,7 +180,9 @@ public enum EntityType {
         this.isLiving = true;
         this.sbeObjectId = sbeObjectId;
         this.armorType = "Unarmored";
-        this.resistances = "None";
+        this.resistanceMultipliers = new EnumMap<>(DamageType.class);
+        this.resistanceMultipliers.putAll(resistanceMultipliers);
+        this.resistances = describe(this.resistanceMultipliers);
         this.attributes = attributes;
         this.weakness = weakness;
         this.weaknessDescription = weaknessDescription;
@@ -284,10 +302,23 @@ public enum EntityType {
     }
 
     /**
-     * Gets the elemental resistance descriptor revealed by the Ranger's Quarry study (display-only).
+     * Gets the resistance descriptor revealed by the Ranger's Quarry study, e.g.
+     * {@code "Blunt x0.75, Slashing x1.25"}.
      */
     public String getResistances() {
         return resistances;
+    }
+
+    /** Damage multiplier for hits of {@code type}: below 1 resists, above 1 is a weakness. */
+    public float resistance(DamageType type) {
+        return resistanceMultipliers.getOrDefault(type, 1.0f);
+    }
+
+    private static String describe(Map<DamageType, Float> multipliers) {
+        if (multipliers.isEmpty()) return "None";
+        return multipliers.entrySet().stream()
+            .map(e -> String.format(Locale.ROOT, "%s x%.2f", e.getKey().getDisplayName(), e.getValue()))
+            .collect(Collectors.joining(", "));
     }
 
     /**

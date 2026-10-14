@@ -60,9 +60,14 @@ final class WorldMouseHandler {
         }
     }
 
-    /** Left press: swing, and strike the first living entity under the crosshair. Block breaking is continuous, handled per-frame. */
+    /**
+     * Left press: swing, and strike the first living entity under the crosshair. Does nothing
+     * while the previous swing is still cooling down. Block breaking is continuous, handled per-frame.
+     */
     private void handleAttack(Player player) {
-        player.startAttackAnimation();
+        if (!player.tryStartAttackSwing()) {
+            return;
+        }
         EntityManager em = Game.getEntityManager();
         if (em != null) {
             LivingEntity target = player.getRaycastEngine().raycastEntity(em.getLivingEntities());
@@ -78,7 +83,7 @@ final class WorldMouseHandler {
 
         // Bow → start drawing (no attack swing).
         if (!held.isEmpty() && held.getItem() == ItemType.BOW) {
-            player.getBowController().startDrawing();
+            player.startBowDraw();
             return;
         }
 

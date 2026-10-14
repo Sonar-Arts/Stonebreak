@@ -2,6 +2,7 @@ package com.stonebreak.mobs.entities;
 
 import org.joml.Vector3f;
 import com.stonebreak.core.Game;
+import com.stonebreak.items.weapon.DamageType;
 import com.stonebreak.mobs.entities.LivingEntity.DamageSource;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.player.Player;
@@ -81,24 +82,26 @@ final class LivingEntityCombat {
      *                          server passes false for remote attackers so the host isn't
      *                          credited for their kills
      */
-    void damage(float amount, DamageSource source, Vector3f attackerPos, boolean creditLocalPlayer) {
+    void damage(float amount, DamageSource source, DamageType type,
+                Vector3f attackerPos, boolean creditLocalPlayer) {
         Vector3f position = owner.position;
+        float resistance = owner.getType().resistance(type);
         if (owner.isNetworkShadow()) {
             if (owner.getNetworkId() >= 0 && amount > 0f) {
                 DamageNumbers.getInstance().spawn(
-                    position.x, position.y + owner.height * 0.9f, position.z, amount);
+                    position.x, position.y + owner.height * 0.9f, position.z, amount * resistance);
                 // Predicted hurt voice, like the predicted damage number: the
                 // authoritative entity lives in the headless server world, so
                 // this shadow is the only place the local player can hear it.
                 // Plays only when the entity's SBE declares a hurt event.
                 com.stonebreak.audio.EntitySounds.playAt(owner,
                     com.stonebreak.audio.EntitySounds.EVENT_HURT);
-                MultiplayerSession.onLocalEntityDamage(owner, amount, source);
+                MultiplayerSession.onLocalEntityDamage(owner, amount, source, type);
             }
             return;
         }
         if (!owner.alive || invulnerable) return;
-        float effectiveAmount = amount * owner.getIncomingDamageMultiplier(source);
+        float effectiveAmount = amount * owner.getIncomingDamageMultiplier(source) * resistance;
         if (source == DamageSource.ARCANE) {
             effectiveAmount *= owner.statusEffects().consumeSpellmark();
         }
