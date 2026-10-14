@@ -1121,15 +1121,6 @@
           "fontSize": 14,
           "baseline": 23.32,
           "active": false
-        },
-        {
-          "tab": "CLOTHING",
-          "label": "Clothing",
-          "x": 1072.0,
-          "width": 88.0,
-          "fontSize": 14,
-          "baseline": 23.32,
-          "active": false
         }
       ],
       "talents": [

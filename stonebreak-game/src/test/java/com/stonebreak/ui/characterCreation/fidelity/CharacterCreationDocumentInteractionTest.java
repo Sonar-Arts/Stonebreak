@@ -42,8 +42,8 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_TAB;
 
 /**
  * The character creation document's presses (#301) run the legacy rules through the screen's own actions:
- * tabs, background rows, ability [-]/[+], class rows, Spend CP, +1 SP, Acquire, Equip on the Looks (hair) and
- * Clothing (hats) lists, and the wheel scrolls the active list (clamped as the screen clamps it each frame).
+ * tabs, background rows, ability [-]/[+], class rows, Spend CP, +1 SP, Acquire, Equip on the Looks tab's hair and
+ * hat lists, and the wheel scrolls the active list (clamped as the screen clamps it each frame).
  * Escape asks before leaving and Tab does nothing (#302).
  */
 @Tag("regression")
@@ -143,12 +143,12 @@ class CharacterCreationDocumentInteractionTest {
     }
 
     /**
-     * Looks equips hair and Clothing equips hats, never the other way round; the equipped cosmetic shows no
+     * the Looks tab's hair list equips hair and its hat list hats, never the other way round; the equipped cosmetic shows no
      * Equip button, and its action ignores a press. {@link PlayerLooks} is stood in so nothing reaches the
      * settings file or the player model.
      */
     @Test
-    void looksEquipsHairAndClothingEquipsHats() throws Exception {
+    void looksEquipsHairAndHatsFromTheirOwnLists() throws Exception {
         String[] hair = {"MALE_HAIR_1"};
         String[] hat = {"TOP_HAT"};
         List<String> equipped = new ArrayList<>();
@@ -178,16 +178,14 @@ class CharacterCreationDocumentInteractionTest {
                 click(stage, "equip0");
                 assertEquals(List.of("hair MALE_HAIR_2", "hair NONE"), equipped);
 
-                click(stage, "tab4");
-                assertEquals(CharacterCreationTab.CLOTHING, screen.state().getActiveTab());
-                // rows: No Hat, Top Hat (equipped)
-                assertTrue(DocumentCharacterCreationCapture.element(stage, "equip1").isCollapsed(),
+                // the hat list, beside the hair: No Hat, Top Hat (equipped)
+                assertTrue(DocumentCharacterCreationCapture.element(stage, "hat1").isCollapsed(),
                     "the equipped hat has no Equip button");
-                click(stage, "equip0");
-                assertFalse(DocumentCharacterCreationCapture.element(stage, "equip1").isCollapsed());
-                click(stage, "equip1");
+                click(stage, "hat0");
+                assertFalse(DocumentCharacterCreationCapture.element(stage, "hat1").isCollapsed());
+                click(stage, "hat1");
                 assertEquals(List.of("hair MALE_HAIR_2", "hair NONE", "hat NONE", "hat TOP_HAT"), equipped,
-                    "the Clothing list equips hats only");
+                    "the hat list equips hats only");
 
                 UiScope scope = stage.host.host().openScope("stonebreak:ui/screens/test", null, p -> { });
                 CallSite site = scope.site("t", CallSite.Origin.SCRIPT);

@@ -24,7 +24,7 @@ import java.util.Map;
  * without a selection, scrolled lists) and the legacy layout as the geometry oracle. Not a test class.
  *
  * <p>Variants: {@code background}, {@code ability}, {@code classes-none}, {@code classes}, {@code classes-scrolled},
- * {@code skills}, {@code skills-scrolled}, {@code feats}, {@code feats-owned}, {@code looks}, {@code clothing}; {@code hover-<target>}
+ * {@code skills}, {@code skills-scrolled}, {@code feats}, {@code feats-owned}, {@code looks} (hair and hats side by side); {@code hover-<target>}
  * over the state that shows it: {@code tab3}, {@code next}, {@code back}, {@code undo}, {@code bg1}, {@code tile2},
  * {@code plus0}, {@code minus4}, {@code talent1}, {@code cls2}, {@code spend1}, {@code invest2}, {@code acquire0},
  * {@code equip1}. Class, skill and feat states are the Talents tab on that sub-tab.
@@ -35,7 +35,7 @@ public final class CharacterCreationFixtures {
     }
 
     public static final List<String> STATES = List.of("ability", "classes-none", "classes", "classes-scrolled", "skills",
-        "skills-scrolled", "skills-weapons", "feats", "feats-owned", "looks", "clothing");
+        "skills-scrolled", "skills-weapons", "feats", "feats-owned", "looks");
     public static final List<String> HOVERS = List.of("hover-tab3", "hover-next", "hover-back", "hover-undo",
         "hover-bg1", "hover-tile2", "hover-plus0", "hover-minus4", "hover-talent1", "hover-cls2", "hover-spend1",
         "hover-invest2", "hover-mode1", "hover-train0", "hover-acquire0", "hover-equip1");
@@ -109,7 +109,6 @@ public final class CharacterCreationFixtures {
                 if ("feats-owned".equals(variant)) a.onAcquireFeat(FeatRegistry.ALL.get(0).id());
             }
             case "looks" -> s.setActiveTab(CharacterCreationTab.LOOKS);
-            case "clothing" -> s.setActiveTab(CharacterCreationTab.CLOTHING);
             default -> throw new IllegalArgumentException(variant);
         }
     }
@@ -193,21 +192,28 @@ public final class CharacterCreationFixtures {
                     out.put("acquire" + i, new float[]{listX + rowW - 100f, c.y() + 36f + i * 58f + 13f, 100f, 28f});
                 }
             }
-            case "looks", "clothing" -> {
-                boolean looks = "looks".equals(base(variant));
-                var options = looks ? com.stonebreak.player.PlayerLooks.HAIR_OPTIONS
-                    : com.stonebreak.player.PlayerLooks.HAT_OPTIONS;
-                String equipped = looks ? com.stonebreak.player.PlayerLooks.getSelectedHairId()
-                    : com.stonebreak.player.PlayerLooks.getSelectedHatId();
-                for (int i = 0; i < options.size(); i++) {
-                    if (options.get(i).id().equalsIgnoreCase(equipped)) continue; // "Equipped", no button
-                    out.put("equip" + i, new float[]{listX + rowW - 100f, c.y() + 36f + i * 58f + 13f, 100f, 28f});
-                }
+            case "looks" -> {
+                // two columns, each half the content: hair ("equipN") on the left, hats ("hatN") on the right
+                float colW = c.width() / 2f;
+                cosmetics(out, "equip", com.stonebreak.player.PlayerLooks.HAIR_OPTIONS,
+                    com.stonebreak.player.PlayerLooks.getSelectedHairId(), c.x() + colW - 16f, c.y());
+                cosmetics(out, "hat", com.stonebreak.player.PlayerLooks.HAT_OPTIONS,
+                    com.stonebreak.player.PlayerLooks.getSelectedHatId(), c.right() - 16f, c.y());
             }
             default -> {
             }
         }
         return out;
+    }
+
+    /** One cosmetic list's Equip buttons, right-aligned to {@code right}; the equipped row shows none. */
+    private static void cosmetics(Map<String, float[]> out, String kind,
+                                  List<com.stonebreak.player.PlayerLooks.CosmeticOption> options, String equipped,
+                                  float right, float top) {
+        for (int i = 0; i < options.size(); i++) {
+            if (options.get(i).id().equalsIgnoreCase(equipped)) continue; // "Equipped", no button
+            out.put(kind + i, new float[]{right - 100f, top + 36f + i * 58f + 13f, 100f, 28f});
+        }
     }
 
     /**

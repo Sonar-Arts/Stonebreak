@@ -132,8 +132,8 @@ public final class DocumentCharacterCreationCapture implements MigrationGate.Ren
             case "mode" -> doc.qAll(".mode-btn").get(i);
             case "train" -> shown(doc.qAll(".train"), i);
             case "acquire" -> shown(doc.qAll(".acquire"), i);
-            case "equip" -> doc.qAll((doc.find("pane_looks").isCollapsed() ? "#pane-CLOTHING" : "#pane-LOOKS")
-                + " .equip").get(i);
+            case "equip" -> doc.qAll(".hair .equip").get(i);
+            case "hat" -> doc.qAll(".hats .equip").get(i);
             default -> throw new IllegalArgumentException(name);
         };
     }
