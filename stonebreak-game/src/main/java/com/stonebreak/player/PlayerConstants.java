@@ -260,4 +260,18 @@ public final class PlayerConstants {
     public static final float CALTROP_DURATION       = 75f;  // seconds before an untriggered cluster expires
     public static final float CALTROP_COOLDOWN       = 14f;
     public static final float CALTROP_CONTACT_RADIUS = 0.6f; // blocks — contact distance that trips a cluster
+
+    // ── Class talent trees ────────────────────────────────────────────────────
+    /** Ranks needed in lower tiers (core abilities + all paths) to open tier I..IV. */
+    public static final int[] CLASS_TREE_TIER_GATES    = {0, 5, 15, 30};
+    public static final int   TALENT_MAX_RANK_PASSIVE  = 8;
+    public static final int   TALENT_MAX_RANK_ABILITY  = 10; // also core abilities
+    public static final int   TALENT_MAX_RANK_MODIFIER = 5;
+    public static final int   TALENT_MAX_RANK_CAPSTONE = 1;
+    public static final int   MULTICLASS_PENALTY       = 1;  // extra CP per rank per class beyond the 2nd
+
+    // ── Weapon training ───────────────────────────────────────────────────────
+    public static final int   WTP_CLASS_RANKS_PER_POINT = 5;
+    public static final int   WTP_MAX_PER_CLASS         = Integer.MAX_VALUE;
+    public static final int   WTP_STARTING_GRANT        = 1;
 }

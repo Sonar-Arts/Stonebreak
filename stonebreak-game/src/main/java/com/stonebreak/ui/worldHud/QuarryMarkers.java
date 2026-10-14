@@ -47,7 +47,7 @@ public class QuarryMarkers {
     public void collect(Matrix4f vp, int screenW, int screenH, List<WorldMarker> out) {
         Player player = Game.getPlayer();
         if (player == null) return;
-        if (!RangerAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+        if (!player.getCharacterStats().hasClass(RangerAbilityController.CLASS_ID)) return;
 
         QuarryController quarry = player.getRangerAbilities().getQuarry();
         SnareAbility snare = player.getRangerAbilities().getSnare();

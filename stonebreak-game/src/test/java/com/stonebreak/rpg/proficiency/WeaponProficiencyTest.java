@@ -4,7 +4,10 @@ import com.stonebreak.items.weapon.WeaponGroup;
 import com.stonebreak.player.CharacterStats;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -12,9 +15,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Weapon proficiency ranks ride on the skill system: SP raises a group's rank one
- * step at a time, Expert and Master wait for their character level, Master is the
- * cap, undo refunds, and the rank survives the creation-JSON round trip.
+ * Weapon proficiency ranks are stored as skills but bought with Weapon Training Points:
+ * WTP comes from class ranks (per class) plus a starting grant, SP can no longer buy a
+ * rank, Expert and Master wait for their character level, Master is the cap, undo
+ * refunds, and the rank survives the creation-JSON round trip.
  */
 class WeaponProficiencyTest {
 
@@ -51,42 +55,93 @@ class WeaponProficiencyTest {
         }
     }
 
-    @Test
-    void skillPointsRaiseTheRankUntilTheLevelGate() {
+    /** A level-{@code level} character with {@code cp} CP to spend and nothing invested. */
+    private static CharacterStats withCp(int cp, int level) {
         CharacterStats cs = new CharacterStats(null);
-        cs.investSkillPoint(ONE_HANDED);
-        assertEquals(ProficiencyRank.TRAINED, cs.getProficiency(WeaponGroup.ONE_HANDED));
+        cs.restore(null, List.of(), Map.of(), Map.of(), Set.of(), cp, 0, 0,
+                new int[]{10, 10, 10, 10, 10, 10}, 0, level, 0);
+        return cs;
+    }
 
+    private static void addRanks(CharacterStats cs, String key, int n) {
+        for (int i = 0; i < n; i++) {
+            assertTrue(cs.addRank(key), "rank " + (i + 1) + " of " + key);
+        }
+    }
+
+    @Test
+    void skillPointsCannotRaiseProficiency() {
+        CharacterStats cs = new CharacterStats(null);
         int sp = cs.getRemainingSkillPoints();
-        cs.investSkillPoint(ONE_HANDED); // Expert needs level 5
+        cs.investSkillPoint(ONE_HANDED);
+        assertEquals(ProficiencyRank.UNTRAINED, cs.getProficiency(WeaponGroup.ONE_HANDED));
+        assertEquals(sp, cs.getRemainingSkillPoints(), "SP must not buy proficiency");
+    }
+
+    @Test
+    void theStartingGrantTrainsOneGroup() {
+        CharacterStats cs = new CharacterStats(null);
+        assertEquals(1, cs.getRemainingWtp());
+        assertTrue(cs.trainWeapon(WeaponGroup.ONE_HANDED));
         assertEquals(ProficiencyRank.TRAINED, cs.getProficiency(WeaponGroup.ONE_HANDED));
-        assertEquals(sp, cs.getRemainingSkillPoints(), "a refused raise must not spend SP");
+        assertEquals(0, cs.getRemainingWtp());
+        assertFalse(cs.trainWeapon(WeaponGroup.RANGED), "no WTP left");
+        assertEquals(ProficiencyRank.UNTRAINED, cs.getProficiency(WeaponGroup.RANGED));
+    }
+
+    @Test
+    void wtpComesFromRanksCountedPerClass() {
+        CharacterStats cs = withCp(20, 1);
+        addRanks(cs, "berserker:0", 4);
+        assertEquals(1, cs.earnedWtp(), "4 ranks earn nothing beyond the starting grant");
+        addRanks(cs, "berserker:0", 1);
+        assertEquals(2, cs.earnedWtp(), "5 ranks earn one");
+        addRanks(cs, "rogue:0", 4);
+        assertEquals(2, cs.earnedWtp(), "5 + 4 in two classes is 1 earned, not 1.8");
+    }
+
+    @Test
+    void trainingRespectsTheLevelGate() {
+        CharacterStats cs = withCp(20, 1);
+        addRanks(cs, "berserker:0", 5); // 2 WTP
+        assertTrue(cs.trainWeapon(WeaponGroup.ONE_HANDED));
+        assertEquals(1, cs.getRemainingWtp());
+        assertFalse(cs.canTrainWeapon(WeaponGroup.ONE_HANDED), "Expert needs level 5");
+        assertFalse(cs.trainWeapon(WeaponGroup.ONE_HANDED));
+        assertEquals(1, cs.getRemainingWtp(), "a refused raise must not spend WTP");
 
         cs.addXp(800); // level 1 -> 5
         assertEquals(ProficiencyRank.EXPERT.minCharacterLevel(), cs.getLevel());
-        cs.investSkillPoint(ONE_HANDED);
+        assertTrue(cs.trainWeapon(WeaponGroup.ONE_HANDED));
         assertEquals(ProficiencyRank.EXPERT, cs.getProficiency(WeaponGroup.ONE_HANDED));
     }
 
     @Test
     void masterIsTheCap() {
-        CharacterStats cs = new CharacterStats(null);
-        cs.addXp(100_000);
+        CharacterStats cs = withCp(20, 20);
+        addRanks(cs, "berserker:0", 10);
         cs.setProficiency(WeaponGroup.TWO_HANDED, ProficiencyRank.MASTER);
-        int sp = cs.getRemainingSkillPoints();
-        cs.investSkillPoint(WeaponProficiency.skillId(WeaponGroup.TWO_HANDED));
+        assertFalse(cs.trainWeapon(WeaponGroup.TWO_HANDED));
         assertEquals(ProficiencyRank.MASTER, cs.getProficiency(WeaponGroup.TWO_HANDED));
-        assertEquals(sp, cs.getRemainingSkillPoints());
     }
 
     @Test
-    void undoRefundsAProficiencyPoint() {
+    void undoRefundsATrainingPoint() {
         CharacterStats cs = new CharacterStats(null);
-        int sp = cs.getRemainingSkillPoints();
-        cs.investSkillPoint(ONE_HANDED);
+        cs.trainWeapon(WeaponGroup.ONE_HANDED);
         assertTrue(cs.undoLastAllocation());
         assertEquals(ProficiencyRank.UNTRAINED, cs.getProficiency(WeaponGroup.ONE_HANDED));
-        assertEquals(sp, cs.getRemainingSkillPoints());
+        assertEquals(1, cs.getRemainingWtp());
+    }
+
+    @Test
+    void overdrawnLegacyProficiencyClampsAndBlocksTraining() {
+        CharacterStats cs = new CharacterStats(null);
+        cs.setProficiency(WeaponGroup.RANGED, ProficiencyRank.TRAINED);
+        cs.setProficiency(WeaponGroup.UNARMED, ProficiencyRank.TRAINED); // 2 spent, 1 earned
+        assertEquals(0, cs.getRemainingWtp());
+        assertFalse(cs.canTrainWeapon(WeaponGroup.ONE_HANDED));
+        assertEquals(ProficiencyRank.TRAINED, cs.getProficiency(WeaponGroup.RANGED), "ranks are not stripped");
     }
 
     @Test

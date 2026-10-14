@@ -32,14 +32,14 @@ public final class MomentumGauge implements ClassGauge {
 
         panel.space(GaugePanel.LINE_GAP);
         var stats = player.getCharacterStats();
-        if (stats.getSpentCp(RogueAbilityController.SHADOW_STEP_KEY) > 0) {
+        if (stats.getRank(RogueAbilityController.SHADOW_STEP_KEY) > 0) {
             String state = rogue.getShadowStep().isOnCooldown()
                     ? String.format("%.0fs", rogue.getShadowStep().getCooldownRemaining())
                     : (rogue.getShadowStep().canActivate(player) ? "Ready" : "No target");
             int color = "Ready".equals(state) ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
             panel.line(null, "Shadow Step: " + state, color, GaugePanel.LINE_GAP);
         }
-        if (stats.getSpentCp(RogueAbilityController.CALTROP_KEY) > 0) {
+        if (stats.getRank(RogueAbilityController.CALTROP_KEY) > 0) {
             String state = rogue.getCaltrops().isOnCooldown()
                     ? String.format("%.0fs", rogue.getCaltrops().getCooldownRemaining())
                     : "Ready";

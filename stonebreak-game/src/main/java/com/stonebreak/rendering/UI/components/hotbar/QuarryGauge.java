@@ -61,10 +61,10 @@ public final class QuarryGauge implements ClassGauge {
 
         panel.space(GaugePanel.LINE_GAP);
         var stats = player.getCharacterStats();
-        if (stats.getSpentCp(RangerAbilityController.SNARE_KEY) > 0) {
+        if (stats.getRank(RangerAbilityController.SNARE_KEY) > 0) {
             panel.line(SNARE_ICON_PATH, RangerHudText.snareStatus(ranger.getSnare()), MStyle.TEXT_PRIMARY, GaugePanel.LINE_GAP);
         }
-        if (stats.getSpentCp(RangerAbilityController.CULLING_SHOT_KEY) > 0) {
+        if (stats.getRank(RangerAbilityController.CULLING_SHOT_KEY) > 0) {
             panel.line(CULLING_SHOT_ICON_PATH, RangerHudText.cullingShotStatus(ranger.getCullingShot()), MStyle.TEXT_PRIMARY, 0f);
         }
     }

@@ -199,6 +199,7 @@ public class Game {
             com.stonebreak.player.CharacterStats live = player.getCharacterStats();
             live.restore(
                 pending.getSelectedClassId(),
+                new java.util.ArrayList<>(pending.getClassInvestmentOrder()),
                 new java.util.HashMap<>(pending.getSpentAbilityCp()),
                 new java.util.HashMap<>(pending.getSkillLevels()),
                 new java.util.HashSet<>(pending.getAcquiredFeatIds()),

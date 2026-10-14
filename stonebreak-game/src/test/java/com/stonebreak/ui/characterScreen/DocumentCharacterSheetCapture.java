@@ -116,6 +116,8 @@ public final class DocumentCharacterSheetCapture implements MigrationGate.Render
             case "talent" -> doc.qAll(".talent-slot").get(i);
             case "cls" -> doc.qAll(".cls-face").get(i);
             case "invest" -> shown(doc.qAll(".invest"), i);
+            case "mode" -> doc.qAll(".mode-btn").get(i);
+            case "train" -> shown(doc.qAll(".train"), i);
             case "feat" -> doc.qAll(".feat-row").get(i);
             case "level" -> stage.q("#level-filter");
             case "general" -> stage.q("#general-filter");

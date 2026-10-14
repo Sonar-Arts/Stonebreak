@@ -96,11 +96,11 @@ public class RangerAbilityController {
 
     private boolean isUnlocked(Player player, String abilityKey) {
         CharacterStats stats = player.getCharacterStats();
-        return CLASS_ID.equals(stats.getSelectedClassId()) && stats.getSpentCp(abilityKey) > 0;
+        return stats.getRank(abilityKey) > 0;
     }
 
     private boolean isRangerSelected(Player player) {
-        return CLASS_ID.equals(player.getCharacterStats().getSelectedClassId());
+        return player.getCharacterStats().hasClass(CLASS_ID);
     }
 
     public QuarryController getQuarry() { return quarry; }

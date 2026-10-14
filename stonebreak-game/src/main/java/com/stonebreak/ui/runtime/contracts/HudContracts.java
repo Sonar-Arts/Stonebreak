@@ -107,7 +107,10 @@ public final class HudContracts {
     private Snapshot snapshot(Player p, HotbarScreen hotbar) {
         float maxStamina = p.getMaxStamina();
         String classId = p.getCharacterStats() == null ? "" : Objects.toString(p.getCharacterStats().getSelectedClassId(), "");
-        boolean mana = ArcanistAbilityController.CLASS_ID.equals(classId) && p.getMaxMana() > 0;
+        // Arcanist as primary (even before its first rank) or as any multiclass
+        boolean mana = (ArcanistAbilityController.CLASS_ID.equals(classId)
+            || p.getCharacterStats() != null && p.getCharacterStats().hasClass(ArcanistAbilityController.CLASS_ID))
+            && p.getMaxMana() > 0;
         float dodge = p.getDodge() == null ? 1f : Math.max(0f, Math.min(1f, p.getDodge().getCooldownProgress()));
         boolean tip = hotbar != null && hotbar.shouldShowTooltip() && hotbar.getTooltipText() != null;
         return new Snapshot(true, heartSize, (int) Math.ceil(p.getMaxHealth() / 2.0f), maxStamina > 0,

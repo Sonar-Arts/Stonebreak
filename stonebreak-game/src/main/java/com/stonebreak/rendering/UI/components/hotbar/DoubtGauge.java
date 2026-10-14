@@ -24,11 +24,11 @@ public final class DoubtGauge implements ClassGauge {
 
         panel.space(GaugePanel.LINE_GAP);
         var stats = player.getCharacterStats();
-        if (stats.getSpentCp(IllusionistAbilityController.MIRRORED_DECEIT_KEY) > 0) {
+        if (stats.getRank(IllusionistAbilityController.MIRRORED_DECEIT_KEY) > 0) {
             panel.line(null, IllusionistHudText.mirroredDeceitStatus(illusionist.getMirroredDeceit()),
                     MStyle.TEXT_PRIMARY, GaugePanel.LINE_GAP);
         }
-        if (stats.getSpentCp(IllusionistAbilityController.FRACTURE_KEY) > 0) {
+        if (stats.getRank(IllusionistAbilityController.FRACTURE_KEY) > 0) {
             panel.line(null, IllusionistHudText.fractureStatus(illusionist.getFracture()),
                     MStyle.TEXT_PRIMARY, 0f);
         }

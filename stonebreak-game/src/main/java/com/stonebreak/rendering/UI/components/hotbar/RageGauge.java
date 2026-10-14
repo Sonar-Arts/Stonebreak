@@ -48,10 +48,10 @@ public final class RageGauge implements ClassGauge {
 
         panel.space(GaugePanel.LINE_GAP);
         var stats = player.getCharacterStats();
-        if (stats.getSpentCp(BerserkerAbilityController.RAMPAGE_KEY) > 0) {
+        if (stats.getRank(BerserkerAbilityController.RAMPAGE_KEY) > 0) {
             panel.line(RAMPAGE_ICON_PATH, BerserkerTierText.rampageBonus(tier), MStyle.TEXT_PRIMARY, GaugePanel.LINE_GAP);
         }
-        if (stats.getSpentCp(BerserkerAbilityController.SKULL_CRUSHER_KEY) > 0) {
+        if (stats.getRank(BerserkerAbilityController.SKULL_CRUSHER_KEY) > 0) {
             panel.line(SKULL_CRUSHER_ICON_PATH, BerserkerTierText.skullCrusherBonus(tier), MStyle.TEXT_PRIMARY, 0f);
         }
     }

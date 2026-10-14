@@ -9,7 +9,10 @@ import com.openmason.engine.ui.data.HostContract;
 import com.openmason.engine.ui.data.UiHost;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.PlayerLooks;
+import com.stonebreak.items.weapon.WeaponGroup;
+import com.stonebreak.rpg.SkillListMode;
 import com.stonebreak.rpg.TalentSubTab;
+import com.stonebreak.rpg.proficiency.WeaponTraining;
 import com.stonebreak.rpg.backgrounds.BackgroundDefinition;
 import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
 import com.stonebreak.rpg.classes.ClassAbility;
@@ -39,20 +42,22 @@ import java.util.concurrent.CompletableFuture;
  * sub-tab bar and the content under it, the preview frame: float window pixels, as {@link CharacterCreationLayout}
  * computes them), {@code tabs} (label geometry measured with the game font), the sub-tab bar's {@code talents}
  * (slot x/width within the bar, as MTabBar splits it) and {@code talentBaseline}, footer labels and {@code undoDisabled}, the preview labels, the four point counters, the class
- * header, the six ability {@code tiles} and the three clamped scroll offsets. Collections {@code ccBackgrounds},
- * {@code ccClasses}, {@code ccAbilities} (the selected class's), {@code ccSkills}, {@code ccFeats}, {@code ccHair},
- * {@code ccHats}.
+ * header, the six ability {@code tiles}, the three clamped scroll offsets and the Skills pane's list
+ * ({@code isGeneral} / {@code isWeapons}, {@code wtpHint}). Collections {@code ccBackgrounds},
+ * {@code ccClasses}, {@code ccAbilities} (the selected class's), {@code ccSkills}, {@code ccWeapons} (one per weapon
+ * group, v3), {@code ccFeats}, {@code ccHair}, {@code ccHats}.
  *
  * <p>Actions: {@code .tab {tab}}, {@code .talent {sub}} (a {@link TalentSubTab} name), {@code .nav {name}}
  * (back / next / undo: the last point allocation), {@code .background {id}},
  * {@code .ability {index, delta}}, {@code .class {id}}, {@code .spend {index}}, {@code .skill {id}},
+ * {@code .skill-mode {mode}} (general, weapons), {@code .train {id}} (a weapon group name, spends WTP),
  * {@code .feat {id}}, {@code .hair {id}}, {@code .hat {id}}, {@code .wheel {dy}}; each refuses unless the screen
  * is showing, and runs the click rule of that control (spending needs points, an equipped cosmetic or an
  * acquired feat takes no press).
  */
 public final class CharacterCreationContracts {
 
-    public static final HostContract CREATION = HostContract.of("stonebreak:screen.character-creation", 2);
+    public static final HostContract CREATION = HostContract.of("stonebreak:screen.character-creation", 3);
 
     private static final String[] ABBREV = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
     /** The Talents sub-tab bar (MTabBar, labels unscaled): inset, height, the gap above the pane under it. */
@@ -81,7 +86,8 @@ public final class CharacterCreationContracts {
         "tiles", DataType.list(DataType.object("tile", DataType.string(), "abbrev", DataType.string(),
             "score", DataType.string(), "mod", DataType.string(), "bonus", DataType.string(),
             "bonusUp", DataType.bool(), "minusEnabled", DataType.bool(), "plusEnabled", DataType.bool()), "tile"),
-        "classScroll", DataType.number(), "skillScroll", DataType.number(), "featScroll", DataType.number());
+        "classScroll", DataType.number(), "skillScroll", DataType.number(), "featScroll", DataType.number(),
+        "isGeneral", DataType.bool(), "isWeapons", DataType.bool(), "wtpHint", DataType.string());
     static final DataType.ListOf BACKGROUNDS = DataType.list(DataType.object("id", DataType.string(),
         "name", DataType.string(), "description", DataType.string(), "bonus", DataType.string(),
         "selected", DataType.bool()), "id");
@@ -94,6 +100,9 @@ public final class CharacterCreationContracts {
         "rule", DataType.bool()), "key");
     static final DataType.ListOf SKILLS = DataType.list(DataType.object("id", DataType.string(),
         "name", DataType.string(), "level", DataType.string(), "canInvest", DataType.bool()), "id");
+    static final DataType.ListOf WEAPONS = DataType.list(DataType.object("id", DataType.string(),
+        "name", DataType.string(), "rank", DataType.string(), "note", DataType.string(), "gated", DataType.bool(),
+        "canTrain", DataType.bool()), "id");
     static final DataType.ListOf FEATS = DataType.list(DataType.object("id", DataType.string(),
         "name", DataType.string(), "description", DataType.string(), "acquired", DataType.bool(),
         "canAfford", DataType.bool(), "rule", DataType.bool()), "id");
@@ -126,6 +135,7 @@ public final class CharacterCreationContracts {
         list(ui, "ccClasses", CLASSES);
         list(ui, "ccAbilities", ABILITIES);
         list(ui, "ccSkills", SKILLS);
+        list(ui, "ccWeapons", WEAPONS);
         list(ui, "ccFeats", FEATS);
         list(ui, "ccHair", COSMETICS);
         list(ui, "ccHats", COSMETICS);
@@ -200,6 +210,24 @@ public final class CharacterCreationContracts {
             }
             return null;
         });
+        action(ui, "skill-mode", DataType.object("mode", DataType.string()), (c, a) -> {
+            switch (str(a, "mode")) {
+                case "general" -> c.actions().onSelectSkillMode(SkillListMode.GENERAL);
+                case "weapons" -> c.actions().onSelectSkillMode(SkillListMode.WEAPONS);
+                default -> {
+                    return "no such skill list";
+                }
+            }
+            return null;
+        });
+        action(ui, "train", id, (c, a) -> {
+            WeaponGroup group = WeaponTraining.group(str(a, "id"));
+            if (group == null) {
+                return "no such weapon group";
+            }
+            c.actions().onTrainWeapon(group);
+            return null;
+        });
         action(ui, "feat", id, (c, a) -> {
             CharacterStats s = c.getCharacterStats();
             if (s.getRemainingFeatPoints() > 0 && !s.hasFeat(str(a, "id"))) {
@@ -245,6 +273,7 @@ public final class CharacterCreationContracts {
         publish("ccClasses", classes(c));
         publish("ccAbilities", abilities(c));
         publish("ccSkills", skills(stats));
+        publish("ccWeapons", weapons(stats));
         publish("ccFeats", feats(stats));
         publish("ccHair", cosmetics(PlayerLooks.HAIR_OPTIONS, PlayerLooks.getSelectedHairId()));
         publish("ccHats", cosmetics(PlayerLooks.HAT_OPTIONS, PlayerLooks.getSelectedHatId()));
@@ -323,7 +352,10 @@ public final class CharacterCreationContracts {
             + (bgId != null ? capitalize(bgId) : "No Background")));
         m.put("ap", UiValue.of("AP Remaining: " + stats.getRemainingAp()));
         m.put("cp", UiValue.of("CP Remaining: " + stats.getRemainingCp()));
-        m.put("sp", UiValue.of("SP Remaining: " + stats.getRemainingSkillPoints()));
+        // the Skills pane's header follows its list: SP for general skills, the Weapon Training grant for weapons
+        boolean weapons = st != null && st.getSkillMode() == SkillListMode.WEAPONS;
+        m.put("sp", UiValue.of(weapons ? "WTP Remaining: " + stats.getRemainingWtp()
+            : "SP Remaining: " + stats.getRemainingSkillPoints() + "    WTP: " + stats.getRemainingWtp()));
         m.put("fp", UiValue.of("FP Remaining: " + stats.getRemainingFeatPoints()));
 
         int sel = st == null ? -1 : st.getSelectedClassIndex();
@@ -353,6 +385,9 @@ public final class CharacterCreationContracts {
         m.put("tiles", new UiValue.Arr(tiles));
         m.put("classScroll", UiValue.of(st == null ? 0 : st.getClassScroll()));
         m.put("skillScroll", UiValue.of(st == null ? 0 : st.getSkillScroll()));
+        m.put("isGeneral", UiValue.of(!weapons));
+        m.put("isWeapons", UiValue.of(weapons));
+        m.put("wtpHint", UiValue.of(WeaponTraining.hint()));
         m.put("featScroll", UiValue.of(st == null ? 0 : st.getFeatScroll()));
         return new UiValue.Obj(m);
     }
@@ -389,10 +424,11 @@ public final class CharacterCreationContracts {
         List<UiValue> out = new ArrayList<>();
         for (int i = 0; i < abilities.size(); i++) {
             ClassAbility a = abilities.get(i);
-            int spent = stats.getSpentCp(cls.id() + ":" + i);
-            out.add(obj("key", cls.id() + ":" + i, "index", i, "name", a.name(), "description", a.description(),
+            String key = ClassRegistry.coreKey(cls.id(), i);
+            out.add(obj("key", key, "index", i, "name", a.name(), "description", a.description(),
                 "icon", icon(a.iconPath()), "hasIcon", a.iconPath() != null,
-                "label", "Spend " + a.cpCost() + " CP (" + spent + ")", "canSpend", stats.getRemainingCp() > 0,
+                "label", "Spend " + stats.getCpCostPerRank(cls.id()) + " CP (" + stats.getRank(key) + ")",
+                "canSpend", stats.canAddRank(key),
                 "rule", i < abilities.size() - 1));
         }
         return out;
@@ -403,6 +439,18 @@ public final class CharacterCreationContracts {
         for (SkillDefinition s : SkillRegistry.ALL) {
             out.add(obj("id", s.id(), "name", s.name(), "level", "Lvl: " + (stats == null ? 0 : stats.getSkillLevel(s.id())),
                 "canInvest", stats != null && stats.getRemainingSkillPoints() > 0));
+        }
+        return out;
+    }
+
+    private static List<UiValue> weapons(CharacterStats stats) {
+        List<UiValue> out = new ArrayList<>();
+        if (stats == null) {
+            return out;
+        }
+        for (WeaponTraining.Row w : WeaponTraining.rows(stats)) {
+            out.add(obj("id", w.group().name(), "name", w.name(), "rank", w.rank(), "note", w.note(),
+                "gated", w.gated(), "canTrain", w.canTrain()));
         }
         return out;
     }

@@ -64,11 +64,20 @@ public final class CharacterCreationActionHandler {
     }
 
     public void onSpendCp(String key) {
-        state.getCharacterStats().spendCpOnAbility(key);
+        state.getCharacterStats().addRank(key);
     }
 
     public void onInvestSkill(String skillId) {
         state.getCharacterStats().investSkillPoint(skillId);
+    }
+
+    public void onSelectSkillMode(com.stonebreak.rpg.SkillListMode mode) {
+        state.setSkillMode(mode);
+    }
+
+    /** Spends the starting (or earned) WTP on one proficiency rank. */
+    public void onTrainWeapon(com.stonebreak.items.weapon.WeaponGroup group) {
+        state.getCharacterStats().trainWeapon(group);
     }
 
     public void onAcquireFeat(String featId) {

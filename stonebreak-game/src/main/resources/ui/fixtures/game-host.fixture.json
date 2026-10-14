@@ -40,6 +40,7 @@
     "ccClasses": "stonebreak:screen.character-creation",
     "ccAbilities": "stonebreak:screen.character-creation",
     "ccSkills": "stonebreak:screen.character-creation",
+    "ccWeapons": "stonebreak:screen.character-creation",
     "ccFeats": "stonebreak:screen.character-creation",
     "ccHair": "stonebreak:screen.character-creation",
     "ccHats": "stonebreak:screen.character-creation",
@@ -1162,7 +1163,7 @@
       "backgroundLabel": "Background: Adventurer",
       "ap": "AP Remaining: 5",
       "cp": "CP Remaining: 99",
-      "sp": "SP Remaining: 5",
+      "sp": "SP Remaining: 3    WTP: 1",
       "fp": "FP Remaining: 1",
       "className": "Select a class",
       "classDesc": "Click a class on the left to view its abilities.",
@@ -1231,7 +1232,10 @@
       ],
       "classScroll": 0,
       "skillScroll": 0,
-      "featScroll": 0
+      "featScroll": 0,
+      "isGeneral": true,
+      "isWeapons": false,
+      "wtpHint": "Earn 1 WTP per 5 ranks in each class. Any class's ranks train any weapon."
     },
     "characterSheet": {
       "tab": "OVERVIEW",
@@ -2134,6 +2138,19 @@
         }
       ]
     },
+    "ccWeapons": {
+      "identity": "id",
+      "items": [
+        {
+          "id": "ONE_HANDED",
+          "name": "One-Handed Weapons",
+          "rank": "Untrained",
+          "note": "Next: Trained (x1.00 speed)",
+          "gated": false,
+          "canTrain": true
+        }
+      ]
+    },
     "ccFeats": {
       "identity": "id",
       "items": [
@@ -2649,6 +2666,18 @@
         "id": "string"
       }
     },
+    "stonebreak:screen.character-creation.skill-mode": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "mode": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.train": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
+    },
     "stonebreak:screen.character-creation.feat": {
       "contract": "stonebreak:screen.character-creation",
       "params": {
@@ -2698,16 +2727,28 @@
         "id": "string"
       }
     },
-    "stonebreak:screen.character-sheet.spend": {
+    "stonebreak:screen.character-sheet.rank": {
       "contract": "stonebreak:screen.character-sheet",
       "params": {
-        "index": "number"
+        "key": "string"
       }
     },
     "stonebreak:screen.character-sheet.skill": {
       "contract": "stonebreak:screen.character-sheet",
       "params": {
         "index": "number"
+      }
+    },
+    "stonebreak:screen.character-sheet.skill-mode": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "mode": "string"
+      }
+    },
+    "stonebreak:screen.character-sheet.train": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "group": "string"
       }
     },
     "stonebreak:screen.character-sheet.level-filter": {

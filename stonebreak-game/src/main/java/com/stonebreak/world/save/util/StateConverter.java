@@ -63,6 +63,7 @@ public final class StateConverter {
             .selectedHotbarSlot(inventory.getSelectedSlot())
             .worldName(worldName)
             .selectedClassId(cs.getSelectedClassId())
+            .classInvestmentOrder(cs.getClassInvestmentOrder())
             .spentAbilityCp(new HashMap<>(cs.getSpentAbilityCp()))
             .skillLevels(new HashMap<>(cs.getSkillLevels()))
             .acquiredFeatIds(new HashSet<>(cs.getAcquiredFeatIds()))
@@ -165,6 +166,7 @@ public final class StateConverter {
         CharacterStats cs = player.getCharacterStats();
         cs.restore(
             data.getSelectedClassId(),
+            data.getClassInvestmentOrder(),
             new HashMap<>(data.getSpentAbilityCp()),
             new HashMap<>(data.getSkillLevels()),
             new HashSet<>(data.getAcquiredFeatIds()),

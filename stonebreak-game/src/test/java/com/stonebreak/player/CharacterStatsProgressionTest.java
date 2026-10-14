@@ -99,7 +99,7 @@ class CharacterStatsProgressionTest {
         // Only 1 CP at level 1: the second spend is a no-op.
         cs.spendCpOnAbility("ranger:0");
         assertEquals(0, cs.getRemainingCp());
-        assertEquals(1, cs.getSpentCp("ranger:0"));
+        assertEquals(1, cs.getRank("ranger:0"));
     }
 
     // ─────────────────────────────── Grandfathered saves
@@ -107,7 +107,7 @@ class CharacterStatsProgressionTest {
     @Test
     void restoreKeepsStoredLegacyPoolsRegardlessOfLevel() {
         CharacterStats cs = stats();
-        cs.restore(null, java.util.Map.of(), java.util.Map.of(), java.util.Set.of(),
+        cs.restore(null, java.util.List.of(), java.util.Map.of(), java.util.Map.of(), java.util.Set.of(),
             100, 100, 100, new int[]{10, 10, 10, 10, 10, 10}, 27, 1, 0);
         // A level-1 character that was saved with 100 of each keeps them.
         assertEquals(100, cs.getRemainingCp());
@@ -135,7 +135,7 @@ class CharacterStatsProgressionTest {
 
         assertTrue(cs.undoLastAllocation());
         assertEquals(1, cs.getRemainingCp());
-        assertEquals(0, cs.getSpentCp("ranger:0"));
+        assertEquals(0, cs.getRank("ranger:0"));
         assertNull(cs.getSelectedClassId());
         assertFalse(cs.canUndo());
     }
@@ -240,7 +240,7 @@ class CharacterStatsProgressionTest {
         cs.restoreRpgState(baseline);
         assertFalse(cs.hasChangedSince(baseline));
         assertEquals(0, cs.getRemainingCp());
-        assertEquals(1, cs.getSpentCp("ranger:0"));
+        assertEquals(1, cs.getRank("ranger:0"));
         assertEquals(1, cs.getSkillLevel("mining"));
         assertEquals(0, cs.getSkillLevel("alchemy"));
         assertTrue(cs.hasFeat("tough"));

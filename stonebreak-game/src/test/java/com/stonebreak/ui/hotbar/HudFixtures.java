@@ -135,7 +135,8 @@ public final class HudFixtures {
         if (p.getMaxStamina() > 0) {
             float y = topRow - 6 - 8;
             out.put("stamina", new float[]{l.backgroundX, y, l.backgroundWidth, 8});
-            if (p.getMaxMana() > 0 && ArcanistAbilityController.CLASS_ID.equals(p.getCharacterStats().getSelectedClassId())) {
+            if (p.getMaxMana() > 0 && (ArcanistAbilityController.CLASS_ID.equals(p.getCharacterStats().getSelectedClassId())
+                    || p.getCharacterStats().hasClass(ArcanistAbilityController.CLASS_ID))) {
                 out.put("mana", new float[]{l.backgroundX, y - 6 - 8, l.backgroundWidth, 8});
             }
         }

@@ -160,6 +160,6 @@ public class StealthController {
     }
 
     private static StealthConfig config(Player player) {
-        return StealthConfig.forClass(player.getCharacterStats().getSelectedClassId());
+        return StealthConfig.forClass(player.getCharacterStats());
     }
 }

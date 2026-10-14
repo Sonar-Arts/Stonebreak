@@ -8,14 +8,21 @@ import com.openmason.engine.ui.data.HostContract;
 import com.openmason.engine.ui.data.UiHost;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
+import com.stonebreak.items.weapon.WeaponGroup;
 import com.stonebreak.player.CharacterStats;
+import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.rpg.CharacterPanelTab;
+import com.stonebreak.rpg.SkillListMode;
 import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.rpg.classes.ClassAbility;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.classes.PlayerClassDefinition;
+import com.stonebreak.rpg.classes.TalentNode;
+import com.stonebreak.rpg.classes.TalentNodeType;
+import com.stonebreak.rpg.classes.TalentPath;
 import com.stonebreak.rpg.feats.FeatDefinition;
 import com.stonebreak.rpg.feats.FeatRegistry;
+import com.stonebreak.rpg.proficiency.WeaponTraining;
 import com.stonebreak.rpg.skills.SkillDefinition;
 import com.stonebreak.rpg.skills.SkillRegistry;
 import com.stonebreak.ui.TabStripLayout;
@@ -23,6 +30,7 @@ import com.stonebreak.ui.characterScreen.CharacterController;
 import com.stonebreak.ui.characterScreen.CharacterScreen;
 import com.stonebreak.ui.characterScreen.ClassesTab;
 import com.stonebreak.ui.characterScreen.FeatsTab;
+import com.stonebreak.ui.characterScreen.SkillsTab;
 import io.github.humbleui.skija.Font;
 
 import java.util.ArrayList;
@@ -33,7 +41,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The in-game character sheet ({@code stonebreak:screen.character-sheet} 2: #301, v2 the Talents tab). {@link CharacterScreen}'s
+ * The in-game character sheet ({@code stonebreak:screen.character-sheet} 3: #301, v2 the Talents tab, v3 the class talent trees and weapon training). {@link CharacterScreen}'s
  * controller and its tab states are the sheet's state (stats, the class shown, scrolls, feat filters and selection);
  * the document shows them. One root {@code characterSheet}: the pane shown ({@code tab}: OVERVIEW, or the Talents
  * tab's CLASSES / SKILLS / FEATS), the {@code panel}, the shared tab strip (Inventory / Character / Talents) in window
@@ -44,13 +52,14 @@ import java.util.concurrent.CompletableFuture;
  *
  * <p>Actions: {@code .tab {tab}} (inventory, character, talents), {@code .talent {sub}} (class-abilities, skills,
  * feats), {@code .ability {index, delta}},
- * {@code .class {id}}, {@code .spend {index}}, {@code .skill {index}}, {@code .level-filter {direction}},
- * {@code .general}, {@code .feat {id}}, {@code .acquire}, {@code .wheel {dy, sidebar}}; each refuses unless the sheet
- * is showing and runs that control's rule.
+ * {@code .class {id}}, {@code .rank {key}} (one rank of a talent-tree node), {@code .skill {index}},
+ * {@code .skill-mode {mode}} (general, weapons), {@code .train {group}} (a {@link WeaponGroup} name),
+ * {@code .level-filter {direction}}, {@code .general}, {@code .feat {id}}, {@code .acquire},
+ * {@code .wheel {dy, sidebar}}; each refuses unless the sheet is showing and runs that control's rule.
  */
 public final class CharacterSheetContracts {
 
-    public static final HostContract SHEET = HostContract.of("stonebreak:screen.character-sheet", 2);
+    public static final HostContract SHEET = HostContract.of("stonebreak:screen.character-sheet", 3);
 
     private static final String[] ABBREV = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
     private static final String[] TAB_KEYS = {"inventory", "character", "talents"};
@@ -115,12 +124,30 @@ public final class CharacterSheetContracts {
             c.getController().classes().selectClass(str(a, "id"));
             return null;
         });
-        action(ui, "spend", index, (c, a) -> {
-            c.getController().classes().spend(c.getController().stats(), (int) num(a, "index"));
+        action(ui, "rank", DataType.object("key", DataType.string()), (c, a) -> {
+            c.getController().classes().addRank(c.getController().stats(), str(a, "key"));
             return null;
         });
         action(ui, "skill", index, (c, a) -> {
             c.getController().skills().invest(c.getController().stats(), (int) num(a, "index"));
+            return null;
+        });
+        action(ui, "skill-mode", DataType.object("mode", DataType.string()), (c, a) -> {
+            switch (str(a, "mode")) {
+                case "general" -> c.getController().skills().setMode(SkillListMode.GENERAL);
+                case "weapons" -> c.getController().skills().setMode(SkillListMode.WEAPONS);
+                default -> {
+                    return "no such skill list";
+                }
+            }
+            return null;
+        });
+        action(ui, "train", DataType.object("group", DataType.string()), (c, a) -> {
+            WeaponGroup group = WeaponTraining.group(str(a, "group"));
+            if (group == null) {
+                return "no such weapon group";
+            }
+            c.getController().skills().train(c.getController().stats(), group);
             return null;
         });
         action(ui, "level-filter", DataType.object("direction", DataType.number()), (c, a) -> {
@@ -209,7 +236,7 @@ public final class CharacterSheetContracts {
         switch (pane) {
             case "OVERVIEW" -> m.put("overview", overview(stats, p, s, meta));
             case "CLASSES" -> m.put("classes", classes(rc.classes(), stats, p, s, meta));
-            case "SKILLS" -> m.put("skills", skills(stats, s));
+            case "SKILLS" -> m.put("skills", skills(rc.skills(), stats, s));
             case "FEATS" -> m.put("feats", feats(rc.feats(), stats, p, s));
             default -> {
             }
@@ -276,6 +303,7 @@ public final class CharacterSheetContracts {
         o.put("currencies", new UiValue.Arr(List.of(
             obj("line", "cp", "text", "CP: " + stats.getRemainingCp()),
             obj("line", "sp", "text", "SP: " + stats.getRemainingSkillPoints()),
+            obj("line", "wtp", "text", "WTP: " + stats.getRemainingWtp()),
             obj("line", "fp", "text", "FP: " + stats.getRemainingFeatPoints()),
             obj("line", "ap", "text", "AP: " + stats.getRemainingAp()))));
         // the level widget
@@ -315,18 +343,24 @@ public final class CharacterSheetContracts {
         return new UiValue.Obj(o);
     }
 
+    private static final String[] TIER_NUMERALS = {"I", "II", "III", "IV"};
+
     private static UiValue classes(ClassesTab r, CharacterStats stats, float[] p, float s, Font meta) {
         Map<String, UiValue> o = new LinkedHashMap<>();
         String shown = r.displayedClassId();
         float btnH = 22f * s;
         float btnG = 2f * s;
         float clipH = ClassesTab.SIDEBAR_CLIP_H * s;
+        // the sidebar doubles as the investment list: ranks per class, and the multiclass price when it is penalised
         List<UiValue> rows = new ArrayList<>();
         for (PlayerClassDefinition cls : ClassRegistry.ALL) {
-            int cp = cls.id() == null ? 0 : stats.getTotalCpSpentForClass(cls.id());
+            int ranks = stats.getClassRanks(cls.id());
+            int cost = stats.getCpCostPerRank(cls.id());
+            boolean penalty = ranks > 0 && cost > 1;
             rows.add(obj("id", cls.id(), "name", cls.name(), "icon", obj("path", cls.iconPath() == null ? ""
                 : cls.iconPath()), "hasIcon", cls.iconPath() != null, "selected", cls.id().equals(shown),
-                "hasPoints", cp > 0, "cp", cp > 0 ? cp + " CP" : ""));
+                "hasPoints", ranks > 0, "penalty", penalty,
+                "cp", ranks == 0 ? "" : penalty ? ranks + "r x" + cost : ranks + "r"));
         }
         o.put("rows", new UiValue.Arr(rows));
         o.put("leftScroll", UiValue.of(r.leftScroll()));
@@ -351,32 +385,132 @@ public final class CharacterSheetContracts {
         o.put("ruleY", UiValue.of(ruleY));
         o.put("dirtY", UiValue.of(dirtY));
         o.put("dirtH", UiValue.of(dirtH));
-        float clip2 = Math.max(0f, dirtH - 35f * s);
+        // the tree's header: CP and this class's price per rank, then the tier gates
+        float clip2 = Math.max(0f, dirtH - (TREE_HEADER_H + 7f) * s);
         r.abilityClipHeight(clip2); // the scroll clamp's view height
         o.put("abilityClipH", UiValue.of(clip2));
-        o.put("cp", UiValue.of("CP Available: " + stats.getRemainingCp()));
-        List<UiValue> abilities = new ArrayList<>();
+        o.put("cp", UiValue.of("CP Available: " + stats.getRemainingCp()
+            + cls.map(c -> "   Cost: " + stats.getCpCostPerRank(c.id()) + " CP per rank").orElse("")));
+        o.put("tiers", UiValue.of(cls.map(c -> tierGates(stats, c)).orElse("")));
+        List<UiValue> tree = new ArrayList<>();
+        float treeH = 0f;
         if (cls.isPresent()) {
-            List<ClassAbility> list = cls.get().abilities();
-            for (int i = 0; i < list.size(); i++) {
-                ClassAbility a = list.get(i);
-                abilities.add(obj("key", cls.get().id() + ":" + i, "name", a.name(), "description", a.description(),
-                    "icon", obj("path", a.iconPath() == null ? "" : a.iconPath()), "hasIcon", a.iconPath() != null,
-                    "label", "Spend " + a.cpCost() + " CP (" + stats.getSpentCp(cls.get().id() + ":" + i) + ")",
-                    "canSpend", stats.getRemainingCp() > 0, "rule", i < list.size() - 1));
+            float wrapW = cw - 24f * s;
+            for (UiValue row : treeRows(stats, cls.get(), meta, wrapW, s)) {
+                tree.add(row);
+                treeH += (float) ((UiValue.Num) ((UiValue.Obj) row).get("h")).value();
             }
-            o.put("rightBar", scrollbar(dirtY + 28f * s, clip2, r.rightScroll(), list.size() * 64f * s));
+            o.put("rightBar", scrollbar(dirtY + TREE_HEADER_H * s, clip2, r.rightScroll(), treeH));
         } else {
             o.put("rightBar", scrollbar(0, 0, 0, 0));
         }
-        o.put("abilities", new UiValue.Arr(abilities));
+        r.treeContentHeight(treeH);
+        o.put("abilities", new UiValue.Arr(tree));
         o.put("rightScroll", UiValue.of(r.rightScroll()));
         return new UiValue.Obj(o);
     }
 
-    private static UiValue skills(CharacterStats stats, float s) {
+    /** The dirt pane's header above the tree (CP line, tier-gate line, rule): the tree's clip top, logical px. */
+    static final float TREE_HEADER_H = 50f;
+
+    /** The type marker's colour per node type (the core passive shares PASSIVE's). */
+    private static String badgeColor(String type) {
+        return switch (type) {
+            case "passive" -> "#4F8A4FFF";
+            case "ability" -> "#4A6FA5FF";
+            case "modifier" -> "#A5783AFF";
+            case "capstone" -> "#94489EFF";
+            default -> "#00000000";
+        };
+    }
+
+    /** "Tier II 3/5   Tier III 3/15   Tier IV 3/30", each gate reading "open" once met (the pixel font has no "·"). */
+    private static String tierGates(CharacterStats stats, PlayerClassDefinition cls) {
+        int[] gates = PlayerConstants.CLASS_TREE_TIER_GATES;
+        List<String> parts = new ArrayList<>();
+        for (int t = 1; t < gates.length; t++) {
+            int below = 0;
+            for (String k : ClassRegistry.keysOf(cls)) {
+                if (ClassRegistry.tierOf(k) < t) below += stats.getRank(k);
+            }
+            parts.add("Tier " + TIER_NUMERALS[t] + " " + (below >= gates[t] ? "open" : below + "/" + gates[t]));
+        }
+        return String.join("   ", parts);
+    }
+
+    /**
+     * The tree as one list: a "Core" section (the always-on passive, then the core abilities), then each path's
+     * section and its four nodes from Tier I to IV. Rows differ in height ({@code h}, device px): a title line,
+     * wrapped description lines and, on a node that can't take a rank, its lock reason.
+     */
+    private static List<UiValue> treeRows(CharacterStats stats, PlayerClassDefinition cls, Font meta, float wrapW,
+                                          float s) {
+        List<UiValue> rows = new ArrayList<>();
+        rows.add(section(cls.id() + ":core", "Core", "Always active while you have a rank in "
+            + cls.name() + "; core abilities are Tier I.", meta, wrapW, s));
+        rows.add(node(cls.id() + ":passive", "P", "passive", cls.corePassive().name(), "Always active",
+            cls.corePassive().description(), null, false, false, meta, wrapW, s));
+        for (int i = 0; i < cls.abilities().size(); i++) {
+            ClassAbility a = cls.abilities().get(i);
+            rows.add(rankable(stats, ClassRegistry.coreKey(cls.id(), i), TalentNodeType.ABILITY, a.name(),
+                a.description(), meta, wrapW, s));
+        }
+        for (int p = 0; p < cls.paths().size(); p++) {
+            TalentPath path = cls.paths().get(p);
+            rows.add(section(cls.id() + ":path" + p, path.name(), path.focus(), meta, wrapW, s));
+            for (TalentNode n : path.nodes()) {
+                rows.add(rankable(stats, n.key(), n.type(), n.name(), n.description(), meta, wrapW, s));
+            }
+        }
+        return rows;
+    }
+
+    private static UiValue rankable(CharacterStats stats, String key, TalentNodeType type, String name,
+                                    String description, Font meta, float wrapW, float s) {
+        int rank = stats.getRank(key);
+        int max = ClassRegistry.maxRankOf(key);
+        String lock = stats.lockReason(key);
+        boolean maxed = rank >= max;
+        return node(key, type.name().substring(0, 1), type.name().toLowerCase(java.util.Locale.ROOT), name,
+            rank + "/" + max, description, maxed ? null : lock, true, lock == null, meta, wrapW, s);
+    }
+
+    private static UiValue section(String key, String name, String focus, Font meta, float wrapW, float s) {
+        List<UiValue> lines = wrapped(meta, focus, wrapW);
+        return obj("key", key, "section", true, "node", false, "badge", "", "badgeColor", badgeColor(""), "name", name,
+            "meta", "",
+            "lines", new UiValue.Arr(lines), "lock", "", "hasLock", false, "lockTop", 0f, "rankable", false,
+            "canAdd", false, "locked", false, "h", (24f + lines.size() * 16f + 6f) * s);
+    }
+
+    private static UiValue node(String key, String badge, String type, String name, String meta, String description,
+                                String lock, boolean rankable, boolean canAdd, Font font, float wrapW, float s) {
+        List<UiValue> lines = wrapped(font, description, wrapW);
+        float lockTop = 22f + lines.size() * 16f;
+        boolean hasLock = lock != null;
+        return obj("key", key, "section", false, "node", true, "badge", badge, "badgeColor", badgeColor(type), "name", name,
+            "meta", meta, "lines", new UiValue.Arr(lines), "lock", hasLock ? lock : "", "hasLock", hasLock,
+            "lockTop", lockTop * s, "rankable", rankable, "canAdd", canAdd, "locked", rankable && !canAdd,
+            "h", (lockTop + (hasLock ? 16f : 0f) + 10f) * s);
+    }
+
+    private static List<UiValue> wrapped(Font font, String text, float width) {
+        List<UiValue> lines = new ArrayList<>();
+        List<String> wrapped = ClassesTab.wrap(font, text, width);
+        for (int i = 0; i < wrapped.size(); i++) {
+            lines.add(obj("line", String.valueOf(i), "text", wrapped.get(i)));
+        }
+        return lines;
+    }
+
+    private static UiValue skills(SkillsTab tab, CharacterStats stats, float s) {
         Map<String, UiValue> o = new LinkedHashMap<>();
-        o.put("sp", UiValue.of("SP Available: " + stats.getRemainingSkillPoints()));
+        boolean weapons = tab.mode() == SkillListMode.WEAPONS;
+        o.put("mode", UiValue.of(weapons ? "weapons" : "general"));
+        o.put("isGeneral", UiValue.of(!weapons));
+        o.put("isWeapons", UiValue.of(weapons));
+        o.put("sp", UiValue.of(weapons ? "WTP Available: " + stats.getRemainingWtp()
+            : "SP Available: " + stats.getRemainingSkillPoints()));
         List<UiValue> rows = new ArrayList<>();
         List<SkillDefinition> all = SkillRegistry.ALL;
         for (int i = 0; i < all.size(); i++) {
@@ -387,6 +521,13 @@ public final class CharacterSheetContracts {
                 "tipTop", (450f * s - 34f * s) - (48f * s + i * (24f * s))));
         }
         o.put("rows", new UiValue.Arr(rows));
+        List<UiValue> weaponRows = new ArrayList<>();
+        for (WeaponTraining.Row w : WeaponTraining.rows(stats)) {
+            weaponRows.add(obj("group", w.group().name(), "name", w.name(), "rank", w.rank(), "note", w.note(),
+                "gated", w.gated(), "canTrain", w.canTrain()));
+        }
+        o.put("weapons", new UiValue.Arr(weaponRows));
+        o.put("wtpHint", UiValue.of(WeaponTraining.hint()));
         return new UiValue.Obj(o);
     }
 

@@ -54,7 +54,7 @@ public class IllusionistAbilityController {
 
     private boolean isUnlocked(Player player, String abilityKey) {
         CharacterStats stats = player.getCharacterStats();
-        return CLASS_ID.equals(stats.getSelectedClassId()) && stats.getSpentCp(abilityKey) > 0;
+        return stats.getRank(abilityKey) > 0;
     }
 
     public DoubtController getDoubt() { return doubt; }

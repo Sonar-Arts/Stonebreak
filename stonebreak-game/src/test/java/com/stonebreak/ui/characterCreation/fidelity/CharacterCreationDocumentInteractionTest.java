@@ -9,7 +9,10 @@ import com.openmason.engine.ui.runtime.UiRect;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.PlayerLooks;
 import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
+import com.stonebreak.items.weapon.WeaponGroup;
+import com.stonebreak.rpg.SkillListMode;
 import com.stonebreak.rpg.TalentSubTab;
+import com.stonebreak.rpg.proficiency.ProficiencyRank;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.feats.FeatRegistry;
 import com.stonebreak.rpg.skills.SkillRegistry;
@@ -88,7 +91,7 @@ class CharacterCreationDocumentInteractionTest {
                 int cp = stats.getRemainingCp();
                 click(stage, "spend1");
                 assertEquals(cp - 1, stats.getRemainingCp());
-                assertEquals(1, stats.getSpentCp(ClassRegistry.ALL.get(0).id() + ":1"));
+                assertEquals(1, stats.getRank(ClassRegistry.ALL.get(0).id() + ":1"));
 
                 click(stage, "talent1");
                 assertEquals(TalentSubTab.SKILLS, screen.state().getTalentSubTab());
@@ -103,6 +106,16 @@ class CharacterCreationDocumentInteractionTest {
                 assertEquals(SkillRegistry.ALL.size() * 42f - 320f, screen.state().getSkillScroll(), 1e-4,
                     "ten notches down, clamped at the list's end");
 
+                // the Weapons list: the starting WTP trains one group, then every Train is dead
+                click(stage, "mode1");
+                assertEquals(SkillListMode.WEAPONS, screen.state().getSkillMode());
+                click(stage, "train1");
+                assertEquals(ProficiencyRank.TRAINED, stats.getProficiency(WeaponGroup.values()[1]));
+                click(stage, "train2");
+                assertEquals(ProficiencyRank.UNTRAINED, stats.getProficiency(WeaponGroup.values()[2]), "no WTP left");
+                click(stage, "mode0");
+                assertEquals(SkillListMode.GENERAL, screen.state().getSkillMode());
+
                 click(stage, "talent2");
                 assertEquals(TalentSubTab.FEATS, screen.state().getTalentSubTab());
                 click(stage, "acquire0");
@@ -112,11 +125,14 @@ class CharacterCreationDocumentInteractionTest {
                 click(stage, "undo");
                 assertFalse(stats.hasFeat(FeatRegistry.ALL.get(0).id()), "the feat comes off first");
                 click(stage, "undo");
+                assertEquals(ProficiencyRank.UNTRAINED, stats.getProficiency(WeaponGroup.values()[1]),
+                    "then the weapon training");
+                click(stage, "undo");
                 assertEquals(level, stats.getSkillLevel(skill), "then the skill point");
                 while (stats.canUndo()) {
                     click(stage, "undo");
                 }
-                assertEquals(0, stats.getSpentCp(ClassRegistry.ALL.get(0).id() + ":1"), "and the class ability's CP");
+                assertEquals(0, stats.getRank(ClassRegistry.ALL.get(0).id() + ":1"), "and the class ability's CP");
                 int[] scores = stats.getAbilityScores();
                 click(stage, "undo"); // disabled: takes the press, changes nothing
                 assertEquals(java.util.Arrays.toString(scores), java.util.Arrays.toString(stats.getAbilityScores()));

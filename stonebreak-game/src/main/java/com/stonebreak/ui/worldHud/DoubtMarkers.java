@@ -39,7 +39,7 @@ public class DoubtMarkers {
     public void collect(Matrix4f vp, int screenW, int screenH, List<WorldMarker> out) {
         Player player = Game.getPlayer();
         if (player == null) return;
-        if (!IllusionistAbilityController.CLASS_ID.equals(player.getCharacterStats().getSelectedClassId())) return;
+        if (!player.getCharacterStats().hasClass(IllusionistAbilityController.CLASS_ID)) return;
 
         DoubtController doubt = player.getIllusionistAbilities().getDoubt();
         for (LivingEntity target : doubt.getAllDoubted()) {

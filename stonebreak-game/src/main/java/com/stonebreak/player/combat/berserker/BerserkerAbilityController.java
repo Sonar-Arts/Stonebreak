@@ -50,7 +50,7 @@ public class BerserkerAbilityController {
 
     private boolean isUnlocked(Player player, String abilityKey) {
         CharacterStats stats = player.getCharacterStats();
-        return CLASS_ID.equals(stats.getSelectedClassId()) && stats.getSpentCp(abilityKey) > 0;
+        return stats.getRank(abilityKey) > 0;
     }
 
     public RageController getRage() { return rage; }

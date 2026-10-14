@@ -11,8 +11,10 @@ import java.util.Optional;
 /**
  * Weapon proficiencies are skills: each {@link WeaponGroup} has a skill id
  * ({@code proficiency.one_handed}, ...) whose level is the ordinal of its
- * {@link ProficiencyRank}. That reuses SP investment, undo, snapshots, saves and
- * multiplayer sync, and an absent level (old saves) reads as Untrained.
+ * {@link ProficiencyRank}. That reuses skill storage, snapshots, saves and multiplayer
+ * sync, and an absent level (old saves) reads as Untrained. The currency is not SP:
+ * ranks are bought with Weapon Training Points ({@code CharacterStats.trainWeapon}),
+ * earned from class-tree ranks.
  */
 public final class WeaponProficiency {
 

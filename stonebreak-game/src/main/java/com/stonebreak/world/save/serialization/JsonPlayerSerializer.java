@@ -13,6 +13,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -78,6 +79,15 @@ public class JsonPlayerSerializer {
             json.append("  \"characterClass\": \"").append(JsonParsingUtil.escapeJson(classId)).append("\",\n");
         } else {
             json.append("  \"characterClass\": null,\n");
+        }
+        if (player.getClassInvestmentOrder() != null) {
+            json.append("  \"classInvestmentOrder\": [");
+            List<String> order = player.getClassInvestmentOrder();
+            for (int i = 0; i < order.size(); i++) {
+                if (i > 0) json.append(", ");
+                json.append("\"").append(JsonParsingUtil.escapeJson(order.get(i))).append("\"");
+            }
+            json.append("],\n");
         }
         json.append("  \"remainingCp\": ").append(player.getRemainingCp()).append(",\n");
         json.append("  \"remainingSp\": ").append(player.getRemainingSkillPoints()).append(",\n");
@@ -241,6 +251,7 @@ public class JsonPlayerSerializer {
             builder.remainingCp(JsonParsingUtil.extractInt(json, "remainingCp", 100));
             builder.remainingSp(JsonParsingUtil.extractInt(json, "remainingSp", 100));
             builder.remainingFp(JsonParsingUtil.extractInt(json, "remainingFp", 100));
+            builder.classInvestmentOrder(JsonParsingUtil.extractStringListOrNull(json, "classInvestmentOrder"));
             builder.spentAbilityCp(JsonParsingUtil.extractStringIntMap(json, "spentAbilityCp"));
             builder.skillLevels(JsonParsingUtil.extractStringIntMap(json, "skillLevels"));
             builder.acquiredFeatIds(JsonParsingUtil.extractStringSet(json, "acquiredFeats"));

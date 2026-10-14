@@ -3,6 +3,7 @@ package com.stonebreak.ui.characterCreation;
 import com.stonebreak.player.CharacterStats;
 import com.openmason.engine.ui.masonry.MButton;
 import com.openmason.engine.ui.masonry.MStyle;
+import com.stonebreak.rpg.SkillListMode;
 import com.stonebreak.rpg.TalentSubTab;
 
 /**
@@ -28,6 +29,7 @@ public final class CharacterCreationStateManager {
     private int selectedClassIndex = -1;
 
     private TalentSubTab talentSubTab = TalentSubTab.CLASS_ABILITIES;
+    private SkillListMode skillMode = SkillListMode.GENERAL;
 
     private float mouseX = 0f;
     private float mouseY = 0f;
@@ -66,6 +68,10 @@ public final class CharacterCreationStateManager {
     public TalentSubTab getTalentSubTab()             { return talentSubTab; }
     public void         setTalentSubTab(TalentSubTab t) { this.talentSubTab = t; }
 
+    /** The Skills pane's list: general skills (SP) or weapon training (WTP). */
+    public SkillListMode getSkillMode()                 { return skillMode; }
+    public void          setSkillMode(SkillListMode m)  { if (m != null) this.skillMode = m; }
+
     public float getMouseX() { return mouseX; }
     public float getMouseY() { return mouseY; }
     public void setMousePosition(float x, float y) { this.mouseX = x; this.mouseY = y; }
@@ -79,6 +85,7 @@ public final class CharacterCreationStateManager {
         this.featScroll        = 0f;
         this.selectedClassIndex = -1;
         this.talentSubTab       = TalentSubTab.CLASS_ABILITIES;
+        this.skillMode          = SkillListMode.GENERAL;
         this.mouseX            = 0f;
         this.mouseY            = 0f;
     }

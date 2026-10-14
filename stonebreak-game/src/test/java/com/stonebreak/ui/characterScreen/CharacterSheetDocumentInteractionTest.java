@@ -2,8 +2,11 @@ package com.stonebreak.ui.characterScreen;
 
 import com.openmason.engine.format.sbui.SbuiArchive;
 import com.openmason.engine.ui.runtime.UiRect;
+import com.stonebreak.items.weapon.WeaponGroup;
 import com.stonebreak.player.CharacterStats;
+import com.stonebreak.rpg.proficiency.ProficiencyRank;
 import com.stonebreak.rpg.CharacterPanelTab;
+import com.stonebreak.rpg.SkillListMode;
 import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.feats.FeatRegistry;
@@ -69,13 +72,19 @@ class CharacterSheetDocumentInteractionTest {
                 click(stage, "cls2");
                 assertEquals(ClassRegistry.ALL.get(2).id(), screen.getController().classes().displayedClassId());
                 int cp = stats.getRemainingCp();
-                UiRect spend = stage.view.instance().qAll(".spend").get(2 * 3).rect();
-                stage.clickAt(spend.x() + 5, spend.y() + 5);
-                assertEquals(cp - 1, stats.getRemainingCp(), "Spend CP on the fourth ability");
-                assertEquals(1, stats.getSpentCp(ClassRegistry.ALL.get(2).id() + ":3"));
+                // tree rows: Core section, core passive, then the core abilities; each row has + twins
+                UiRect rank = stage.view.instance().qAll(".rank-btn").get(2 * 5).rect();
+                stage.clickAt(rank.x() + 5, rank.y() + 5);
+                assertEquals(cp - 1, stats.getRemainingCp(), "a rank in the fourth core ability");
+                assertEquals(1, stats.getRank(ClassRegistry.ALL.get(2).id() + ":3"));
+                stage.host.characterSheet().poll();
+                stage.settle();
+                UiRect locked = stage.view.instance().qAll(".rank-btn").get(2 * 5 + 1).rect();
+                stage.clickAt(locked.x() + 5, locked.y() + 5);
+                assertEquals(1, stats.getRank(ClassRegistry.ALL.get(2).id() + ":3"), "no CP left: the + is dead");
 
-                // the wheel reaches the class list over the sidebar and the ability list elsewhere; both
-                // fit their clips with the shipped registries, so the legacy clamp keeps them at the top
+                // the wheel reaches the class list over the sidebar and the tree elsewhere; the class list
+                // fits its clip, the tree (core plus three paths) overflows it and scrolls
                 UiRect side = DocumentCharacterSheetCapture.element(stage, "cls0").rect();
                 stage.view.input().wheel(side.x() + 5, side.y() + 5, 0, 3, 0);
                 stage.settle();
@@ -83,7 +92,7 @@ class CharacterSheetDocumentInteractionTest {
                 UiRect panel = stage.q("#panel").rect();
                 stage.view.input().wheel(panel.x() + panel.width() - 50, panel.y() + 200, 0, 1, 0);
                 stage.settle();
-                assertEquals(0f, screen.getController().classes().rightScroll());
+                assertTrue(screen.getController().classes().rightScroll() > 0f);
 
                 click(stage, "talent1");
                 assertEquals(TalentSubTab.SKILLS, controller.getTalentSubTab());
@@ -91,6 +100,16 @@ class CharacterSheetDocumentInteractionTest {
                 int level = stats.getSkillLevel(skill);
                 click(stage, "invest4");
                 assertEquals(level + 1, stats.getSkillLevel(skill));
+
+                click(stage, "mode1");
+                assertEquals(SkillListMode.WEAPONS, controller.skills().mode());
+                click(stage, "train2");
+                assertEquals(ProficiencyRank.TRAINED, stats.getProficiency(WeaponGroup.values()[2]),
+                    "the starting WTP trains a group");
+                click(stage, "train0");
+                assertEquals(ProficiencyRank.UNTRAINED, stats.getProficiency(WeaponGroup.values()[0]), "no WTP left");
+                click(stage, "mode0");
+                assertEquals(SkillListMode.GENERAL, controller.skills().mode());
 
                 click(stage, "talent2");
                 assertEquals(TalentSubTab.FEATS, controller.getTalentSubTab());

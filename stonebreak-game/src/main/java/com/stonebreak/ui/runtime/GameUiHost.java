@@ -89,15 +89,17 @@ import java.util.function.Consumer;
  *       {@code stonebreak:screen.terrain-mapper.button}, {@code .field}, {@code .map-press}, {@code .release},
  *       {@code .move}, {@code .wheel}
  *       ({@link com.stonebreak.ui.runtime.contracts.TerrainMapperContracts}, #301)</td></tr>
- *   <tr><td>{@code stonebreak:screen.character-creation} 2</td><td>root {@code characterCreation}, collections
- *       {@code ccBackgrounds}, {@code ccClasses}, {@code ccAbilities}, {@code ccSkills}, {@code ccFeats},
- *       {@code ccHair}, {@code ccHats}; {@code stonebreak:screen.character-creation.tab}, {@code .nav},
- *       {@code .background}, {@code .ability}, {@code .class}, {@code .spend}, {@code .skill}, {@code .feat},
+ *   <tr><td>{@code stonebreak:screen.character-creation} 3</td><td>root {@code characterCreation}, collections
+ *       {@code ccBackgrounds}, {@code ccClasses}, {@code ccAbilities}, {@code ccSkills}, {@code ccWeapons},
+ *       {@code ccFeats}, {@code ccHair}, {@code ccHats}; {@code stonebreak:screen.character-creation.tab},
+ *       {@code .nav}, {@code .background}, {@code .ability}, {@code .class}, {@code .spend}, {@code .skill},
+ *       {@code .skill-mode}, {@code .train}, {@code .feat},
  *       {@code .hair}, {@code .hat}, {@code .wheel}
  *       ({@link com.stonebreak.ui.runtime.contracts.CharacterCreationContracts}, #301)</td></tr>
- *   <tr><td>{@code stonebreak:screen.character-sheet} 2</td><td>root {@code characterSheet};
- *       {@code stonebreak:screen.character-sheet.tab}, {@code .ability}, {@code .class}, {@code .spend},
- *       {@code .skill}, {@code .level-filter}, {@code .general}, {@code .feat}, {@code .acquire}, {@code .wheel}
+ *   <tr><td>{@code stonebreak:screen.character-sheet} 3</td><td>root {@code characterSheet};
+ *       {@code stonebreak:screen.character-sheet.tab}, {@code .ability}, {@code .class}, {@code .rank},
+ *       {@code .skill}, {@code .skill-mode}, {@code .train}, {@code .level-filter}, {@code .general}, {@code .feat},
+ *       {@code .acquire}, {@code .wheel}
  *       ({@link com.stonebreak.ui.runtime.contracts.CharacterSheetContracts}, #301)</td></tr>
  *   <tr><td>{@code stonebreak:battle} 1</td><td>root {@code battleHud}; {@code stonebreak:battle.pointer}
  *       ({@link com.stonebreak.ui.runtime.contracts.BattleHudContracts}, #301)</td></tr>
