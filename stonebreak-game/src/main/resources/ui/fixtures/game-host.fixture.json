@@ -38,7 +38,7 @@
     "characterCreation": "stonebreak:screen.character-creation",
     "ccBackgrounds": "stonebreak:screen.character-creation",
     "ccClasses": "stonebreak:screen.character-creation",
-    "ccAbilities": "stonebreak:screen.character-creation",
+    "ccTree": "stonebreak:screen.character-creation",
     "ccSkills": "stonebreak:screen.character-creation",
     "ccWeapons": "stonebreak:screen.character-creation",
     "ccFeats": "stonebreak:screen.character-creation",
@@ -1228,6 +1228,36 @@
       "isWeapons": false,
       "wtpHint": "Earn 1 WTP per 5 ranks in each class. Any class's ranks train any weapon."
     },
+    "ccTree": {
+      "mastery": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "fill": 0,
+        "label": "",
+        "notches": []
+      },
+      "tiers": [],
+      "rows": [],
+      "links": [],
+      "nodes": [],
+      "contentH": 0,
+      "clipW": 0,
+      "clipH": 0,
+      "detail": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "name": "",
+        "kind": "",
+        "rank": "",
+        "description": "",
+        "status": "",
+        "ok": false
+      }
+    },
     "characterSheet": {
       "tab": "OVERVIEW",
       "open": true,
@@ -2100,24 +2130,6 @@
         }
       ]
     },
-    "ccAbilities": {
-      "identity": "key",
-      "items": [
-        {
-          "key": "berserker:0",
-          "index": 0,
-          "name": "Rampage",
-          "description": "Charge forward.",
-          "icon": {
-            "path": "/ui/abilities/berserker/Rampage.png"
-          },
-          "hasIcon": true,
-          "label": "Spend 1 CP (0)",
-          "canSpend": true,
-          "rule": false
-        }
-      ]
-    },
     "ccSkills": {
       "identity": "id",
       "items": [
@@ -2645,10 +2657,16 @@
         "id": "string"
       }
     },
-    "stonebreak:screen.character-creation.spend": {
+    "stonebreak:screen.character-creation.rank": {
       "contract": "stonebreak:screen.character-creation",
       "params": {
-        "index": "number"
+        "key": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.hover": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "key": "string"
       }
     },
     "stonebreak:screen.character-creation.skill": {
@@ -2719,6 +2737,12 @@
       }
     },
     "stonebreak:screen.character-sheet.rank": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "key": "string"
+      }
+    },
+    "stonebreak:screen.character-sheet.hover": {
       "contract": "stonebreak:screen.character-sheet",
       "params": {
         "key": "string"

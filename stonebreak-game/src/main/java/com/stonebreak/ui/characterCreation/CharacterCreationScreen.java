@@ -77,10 +77,9 @@ public final class CharacterCreationScreen {
     /** Clamps the three list scrolls to their lists' overflow (once a frame, by the UI host). */
     public void clampScrolls() {
         int i = state.getSelectedClassIndex();
-        var classes = com.stonebreak.rpg.classes.ClassRegistry.ALL;
-        // with no class the ability list is not drawn, so its scroll is left as it is
-        if (i >= 0 && i < classes.size()) {
-            state.setClassScroll(clamp(state.getClassScroll(), classes.get(i).abilities().size() * 64f - 300f));
+        // with no class the tree is not drawn, so its scroll is left as it is
+        if (i >= 0 && i < com.stonebreak.rpg.classes.ClassRegistry.ALL.size()) {
+            state.setClassScroll(clamp(state.getClassScroll(), state.getClassTreeOverflow()));
         }
         state.setSkillScroll(clamp(state.getSkillScroll(),
                 com.stonebreak.rpg.skills.SkillRegistry.ALL.size() * (40f + 2f) - 320f));

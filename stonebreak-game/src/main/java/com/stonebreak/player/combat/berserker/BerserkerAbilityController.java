@@ -11,8 +11,8 @@ import com.stonebreak.player.interaction.RaycastEngine;
  * resource that fuels them. Mirrors the controller-per-concern pattern used elsewhere
  * on {@link Player} (e.g. {@code AttackController}, {@code BowController}).
  *
- * <p>Casting an ability requires the Berserker class to be selected and its CP slot to be
- * unlocked; the active Rage tier is captured and consumed at the moment of casting, and
+ * <p>Casting an ability requires it to be unlocked: a rank in a Berserker path that grants it
+ * ({@link CharacterStats#hasAbility}); the active Rage tier is captured and consumed at the moment of casting, and
  * abilities scale their effects off that captured tier (per the Berserker design).</p>
  */
 public class BerserkerAbilityController {
@@ -50,7 +50,7 @@ public class BerserkerAbilityController {
 
     private boolean isUnlocked(Player player, String abilityKey) {
         CharacterStats stats = player.getCharacterStats();
-        return stats.getRank(abilityKey) > 0;
+        return stats.hasAbility(abilityKey);
     }
 
     public RageController getRage() { return rage; }

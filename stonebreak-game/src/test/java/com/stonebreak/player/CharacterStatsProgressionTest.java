@@ -78,7 +78,7 @@ class CharacterStatsProgressionTest {
     @Test
     void unspentPointsAccumulateAcrossLevels() {
         CharacterStats cs = stats();
-        cs.spendCpOnAbility("ranger:0");
+        cs.spendCpOnAbility("ranger:p0:0");
         cs.investSkillPoint("mining");
         cs.acquireFeat("someFeat");
 
@@ -95,11 +95,11 @@ class CharacterStatsProgressionTest {
     @Test
     void spendingStopsWhenThePoolIsEmpty() {
         CharacterStats cs = stats();
-        cs.spendCpOnAbility("ranger:0");
+        cs.spendCpOnAbility("ranger:p0:0");
         // Only 1 CP at level 1: the second spend is a no-op.
-        cs.spendCpOnAbility("ranger:0");
+        cs.spendCpOnAbility("ranger:p0:0");
         assertEquals(0, cs.getRemainingCp());
-        assertEquals(1, cs.getRank("ranger:0"));
+        assertEquals(1, cs.getRank("ranger:p0:0"));
     }
 
     // ─────────────────────────────── Grandfathered saves
@@ -128,14 +128,14 @@ class CharacterStatsProgressionTest {
     void undoReversesACpSpendAndRestoresTheClass() {
         CharacterStats cs = stats();
         assertFalse(cs.canUndo());
-        cs.spendCpOnAbility("ranger:0");
+        cs.spendCpOnAbility("ranger:p0:0");
         assertTrue(cs.canUndo());
         assertEquals(0, cs.getRemainingCp());
         assertEquals("ranger", cs.getSelectedClassId());
 
         assertTrue(cs.undoLastAllocation());
         assertEquals(1, cs.getRemainingCp());
-        assertEquals(0, cs.getRank("ranger:0"));
+        assertEquals(0, cs.getRank("ranger:p0:0"));
         assertNull(cs.getSelectedClassId());
         assertFalse(cs.canUndo());
     }
@@ -198,8 +198,8 @@ class CharacterStatsProgressionTest {
     @Test
     void undoRefundsAllocationsMadeByADecrementChain() {
         CharacterStats cs = stats();
-        cs.spendCpOnAbility("ranger:0");
-        cs.spendCpOnAbility("ranger:0"); // only one succeeds at level 1
+        cs.spendCpOnAbility("ranger:p0:0");
+        cs.spendCpOnAbility("ranger:p0:0"); // only one succeeds at level 1
         cs.undoLastAllocation();
         assertEquals(1, cs.getRemainingCp());
         assertFalse(cs.canUndo());
@@ -223,15 +223,15 @@ class CharacterStatsProgressionTest {
     @Test
     void snapshotRestoreDiscardsSessionChanges() {
         CharacterStats cs = stats();
-        cs.spendCpOnAbility("ranger:0");
+        cs.spendCpOnAbility("ranger:p0:0");
         cs.investSkillPoint("mining");
         cs.acquireFeat("tough");
         cs.incrementAbilityScore(0);
         CharacterStats.RpgSnapshot baseline = cs.snapshotRpgState();
 
-        cs.spendCpOnAbility("ranger:0");
-        cs.spendCpOnAbility("ranger:0");
-        cs.spendCpOnAbility("ranger:0");
+        cs.spendCpOnAbility("ranger:p0:0");
+        cs.spendCpOnAbility("ranger:p0:0");
+        cs.spendCpOnAbility("ranger:p0:0");
         cs.investSkillPoint("alchemy");
         cs.acquireFeat("quick");
         cs.incrementAbilityScore(1);
@@ -240,7 +240,7 @@ class CharacterStatsProgressionTest {
         cs.restoreRpgState(baseline);
         assertFalse(cs.hasChangedSince(baseline));
         assertEquals(0, cs.getRemainingCp());
-        assertEquals(1, cs.getRank("ranger:0"));
+        assertEquals(1, cs.getRank("ranger:p0:0"));
         assertEquals(1, cs.getSkillLevel("mining"));
         assertEquals(0, cs.getSkillLevel("alchemy"));
         assertTrue(cs.hasFeat("tough"));

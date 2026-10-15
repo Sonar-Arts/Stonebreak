@@ -15,7 +15,6 @@ import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.rpg.proficiency.WeaponTraining;
 import com.stonebreak.rpg.backgrounds.BackgroundDefinition;
 import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
-import com.stonebreak.rpg.classes.ClassAbility;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.classes.PlayerClassDefinition;
 import com.stonebreak.rpg.feats.FeatDefinition;
@@ -23,6 +22,7 @@ import com.stonebreak.rpg.feats.FeatRegistry;
 import com.stonebreak.rpg.skills.SkillDefinition;
 import com.stonebreak.rpg.skills.SkillRegistry;
 import com.stonebreak.ui.characterCreation.CharacterCreationLayout;
+import com.stonebreak.ui.classTree.ClassTreeModel;
 import com.stonebreak.ui.characterCreation.CharacterCreationScreen;
 import com.stonebreak.ui.characterCreation.CharacterCreationStateManager;
 import com.stonebreak.ui.characterCreation.CharacterCreationTab;
@@ -35,7 +35,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Character creation ({@code stonebreak:screen.character-creation} 2: #301, v2 the Daedalus Talents tab and Undo). {@link CharacterCreationScreen}
+ * Character creation ({@code stonebreak:screen.character-creation} 4: #301, v2 the Daedalus Talents tab and Undo, v3
+ * weapon training, v4 the Grim Dawn style class tree). {@link CharacterCreationScreen}
  * stays the controller (its stats, the scroll offsets, every rule, Back/Next and join mode); the document shows
  * it. Root {@code characterCreation}: the active {@code tab} and the {@code pane} shown (the tab, or inside Talents
  * its sub-tab: CLASS_ABILITIES / SKILLS / FEATS), the window {@code layout} (panels, tab strip, content, the Talents
@@ -44,12 +45,14 @@ import java.util.concurrent.CompletableFuture;
  * (slot x/width within the bar, as MTabBar splits it) and {@code talentBaseline}, footer labels and {@code undoDisabled}, the preview labels, the four point counters, the class
  * header, the six ability {@code tiles}, the three clamped scroll offsets and the Skills pane's list
  * ({@code isGeneral} / {@code isWeapons}, {@code wtpHint}). Collections {@code ccBackgrounds},
- * {@code ccClasses}, {@code ccAbilities} (the selected class's), {@code ccSkills}, {@code ccWeapons} (one per weapon
- * group, v3), {@code ccFeats}, {@code ccHair}, {@code ccHats}.
+ * {@code ccClasses}, {@code ccSkills}, {@code ccWeapons} (one per weapon
+ * group, v3), {@code ccFeats}, {@code ccHair}, {@code ccHats}; cell {@code ccTree} (v4: the selected class's talent
+ * tree, a {@link ClassTreeModel}).
  *
  * <p>Actions: {@code .tab {tab}}, {@code .talent {sub}} (a {@link TalentSubTab} name), {@code .nav {name}}
  * (back / next / undo: the last point allocation), {@code .background {id}},
- * {@code .ability {index, delta}}, {@code .class {id}}, {@code .spend {index}}, {@code .skill {id}},
+ * {@code .ability {index, delta}}, {@code .class {id}}, {@code .rank {key}} (one rank of the shown class's tree
+ * node), {@code .hover {key}} (the node under the pointer, "" for none), {@code .skill {id}},
  * {@code .skill-mode {mode}} (general, weapons), {@code .train {id}} (a weapon group name, spends WTP),
  * {@code .feat {id}}, {@code .hair {id}}, {@code .hat {id}}, {@code .wheel {dy}}; each refuses unless the screen
  * is showing, and runs the click rule of that control (spending needs points, an equipped cosmetic or an
@@ -57,7 +60,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class CharacterCreationContracts {
 
-    public static final HostContract CREATION = HostContract.of("stonebreak:screen.character-creation", 3);
+    public static final HostContract CREATION = HostContract.of("stonebreak:screen.character-creation", 4);
 
     private static final String[] ABBREV = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
     /** The Talents sub-tab bar (MTabBar, labels unscaled): inset, height, the gap above the pane under it. */
@@ -94,10 +97,6 @@ public final class CharacterCreationContracts {
     static final DataType.ListOf CLASSES = DataType.list(DataType.object("id", DataType.string(),
         "index", DataType.integer(), "name", DataType.string(), "icon", ICON, "hasIcon", DataType.bool(),
         "selected", DataType.bool()), "id");
-    static final DataType.ListOf ABILITIES = DataType.list(DataType.object("key", DataType.string(),
-        "index", DataType.integer(), "name", DataType.string(), "description", DataType.string(), "icon", ICON,
-        "hasIcon", DataType.bool(), "label", DataType.string(), "canSpend", DataType.bool(),
-        "rule", DataType.bool()), "key");
     static final DataType.ListOf SKILLS = DataType.list(DataType.object("id", DataType.string(),
         "name", DataType.string(), "level", DataType.string(), "canInvest", DataType.bool()), "id");
     static final DataType.ListOf WEAPONS = DataType.list(DataType.object("id", DataType.string(),
@@ -124,6 +123,8 @@ public final class CharacterCreationContracts {
 
     private final Services services;
     private final DataCell state;
+    private final DataCell tree;
+    private UiValue lastTree;
     private final Map<String, DataCollection> lists = new LinkedHashMap<>();
     private final Map<String, List<UiValue>> last = new LinkedHashMap<>();
     private UiValue lastState;
@@ -133,7 +134,7 @@ public final class CharacterCreationContracts {
         state = ui.data().register("characterCreation", new DataCell(STATE, state(null, 1920, 1080)), CREATION);
         list(ui, "ccBackgrounds", BACKGROUNDS);
         list(ui, "ccClasses", CLASSES);
-        list(ui, "ccAbilities", ABILITIES);
+        tree = ui.data().register("ccTree", new DataCell(DataType.ANY, ClassTreeModel.empty()), CREATION);
         list(ui, "ccSkills", SKILLS);
         list(ui, "ccWeapons", WEAPONS);
         list(ui, "ccFeats", FEATS);
@@ -196,12 +197,19 @@ public final class CharacterCreationContracts {
             }
             return "no such class";
         });
-        action(ui, "spend", DataType.object("index", DataType.number()), (c, a) -> {
+        action(ui, "rank", DataType.object("key", DataType.string()), (c, a) -> {
             int sel = c.state().getSelectedClassIndex();
-            if (sel < 0 || sel >= ClassRegistry.ALL.size() || c.getCharacterStats().getRemainingCp() <= 0) {
-                return null; // no class or no CP: no spend button takes the press
+            String key = str(a, "key");
+            if (sel < 0 || sel >= ClassRegistry.ALL.size()
+                || !ClassRegistry.ALL.get(sel).id().equals(ClassRegistry.classIdOf(key))) {
+                return null; // a node of no class, or of a class not shown: no press lands on it
             }
-            c.actions().onSpendCp(ClassRegistry.ALL.get(sel).id() + ":" + (int) num(a, "index"));
+            c.state().setClassTreeSelected(key);
+            c.actions().onSpendCp(key); // refused by the rules when the node can't take a rank
+            return null;
+        });
+        action(ui, "hover", DataType.object("key", DataType.string()), (c, a) -> {
+            c.state().setClassTreeHovered(str(a, "key"));
             return null;
         });
         action(ui, "skill", id, (c, a) -> {
@@ -271,7 +279,11 @@ public final class CharacterCreationContracts {
         CharacterStats stats = c == null ? null : c.getCharacterStats();
         publish("ccBackgrounds", backgrounds(stats));
         publish("ccClasses", classes(c));
-        publish("ccAbilities", abilities(c));
+        UiValue t = tree(c, w, h);
+        if (!t.equals(lastTree)) {
+            lastTree = t;
+            tree.set(t);
+        }
         publish("ccSkills", skills(stats));
         publish("ccWeapons", weapons(stats));
         publish("ccFeats", feats(stats));
@@ -413,25 +425,27 @@ public final class CharacterCreationContracts {
         return out;
     }
 
-    private static List<UiValue> abilities(CharacterCreationScreen c) {
+    /** The class tree's area: the Talents pane right of the class list, under the class header (window px). */
+    public static final float TREE_LEFT = 172f;
+    public static final float TREE_TOP = 78f;
+    public static final float TREE_RIGHT = 12f;
+    public static final float TREE_BOTTOM = 8f;
+
+    /** The selected class's tree, in the Talents pane's tree area (unscaled, as the rest of this screen). */
+    public static UiValue tree(CharacterCreationScreen c, int w, int h) {
         int sel = c == null ? -1 : c.state().getSelectedClassIndex();
         if (sel < 0 || sel >= ClassRegistry.ALL.size()) {
-            return List.of();
+            return ClassTreeModel.empty();
         }
-        CharacterStats stats = c.getCharacterStats();
-        PlayerClassDefinition cls = ClassRegistry.ALL.get(sel);
-        List<ClassAbility> abilities = cls.abilities();
-        List<UiValue> out = new ArrayList<>();
-        for (int i = 0; i < abilities.size(); i++) {
-            ClassAbility a = abilities.get(i);
-            String key = ClassRegistry.coreKey(cls.id(), i);
-            out.add(obj("key", key, "index", i, "name", a.name(), "description", a.description(),
-                "icon", icon(a.iconPath()), "hasIcon", a.iconPath() != null,
-                "label", "Spend " + stats.getCpCostPerRank(cls.id()) + " CP (" + stats.getRank(key) + ")",
-                "canSpend", stats.canAddRank(key),
-                "rule", i < abilities.size() - 1));
-        }
-        return out;
+        CharacterCreationLayout layout = c.layout();
+        CharacterCreationLayout.Rect right = layout.rightPanel(w, h);
+        CharacterCreationLayout.Rect content = layout.tabContent(right, layout.tabBar(right));
+        float paneH = content.bottom() - (content.y() + TALENT_BAR_PAD + TALENT_BAR_H + TALENT_CONTENT_GAP);
+        UiValue.Obj t = (UiValue.Obj) ClassTreeModel.build(c.getCharacterStats(), ClassRegistry.ALL.get(sel),
+            c.state().getClassTreeFocus(), 1f, content.width() - TREE_LEFT - TREE_RIGHT,
+            paneH - TREE_TOP - TREE_BOTTOM);
+        c.state().setClassTreeOverflow((float) (num(t, "contentH") - num(t, "clipH")));
+        return t;
     }
 
     private static List<UiValue> skills(CharacterStats stats) {

@@ -13,7 +13,7 @@ import java.util.List;
  * rules its presses run (#301: the {@code stonebreak:screen.character-sheet} actions).
  *
  * <p>Left sidebar: scrollable list of all classes, with the ranks invested in each. Right area:
- * the shown class's description and its scrollable talent tree (core, then three paths).
+ * the shown class's description and its talent tree ({@link com.stonebreak.ui.classTree.ClassTreeModel}).
  */
 public class ClassesTab {
 
@@ -25,6 +25,9 @@ public class ClassesTab {
   private float leftScrollOffset  = 0f;
   private float rightScrollOffset = 0f;
   private String displayedClassId = null;
+  /** The tree node under the pointer, and the last one clicked: the detail panel's subject (hover first). */
+  private String hoveredKey = null;
+  private String selectedKey = null;
 
   /** The tree's clip height and content height as last laid out; the scroll clamp's extent. */
   private float lastAbilityClipH = 365f;
@@ -39,21 +42,34 @@ public class ClassesTab {
     if (ClassRegistry.findById(classId).isPresent()) {
       displayedClassId = classId;
       rightScrollOffset = 0f;
+      hoveredKey = null;
+      selectedKey = null;
     }
   }
 
-  /** A press on a tree node's + button: one rank, if the node belongs to the class shown and can take it. */
+  /** A press on a tree node: focuses it and adds one rank, if it belongs to the class shown and can take it. */
   public boolean addRank(CharacterStats stats, String key) {
     if (displayedClassId == null || !displayedClassId.equals(ClassRegistry.classIdOf(key))) {
       return false;
     }
+    selectedKey = key;
     return stats.addRank(key);
+  }
+
+  /** The pointer over a tree node ({@code key}), or off every node (null or empty). */
+  public void hover(String key) {
+    hoveredKey = key == null || key.isEmpty() ? null : key;
+  }
+
+  /** The node the detail panel describes: the hovered one, else the last one clicked; null for the core passive. */
+  public String focusKey() {
+    return hoveredKey != null ? hoveredKey : selectedKey;
   }
 
   /** The tree's clip height, for its scroll clamp. */
   public void abilityClipHeight(float h) { lastAbilityClipH = h; }
 
-  /** The tree's laid-out content height (rows differ in height), for its scroll clamp. */
+  /** The tree grid's laid-out content height, for its scroll clamp. */
   public void treeContentHeight(float h) { lastTreeContentH = h; }
 
   /** The wheel over the sidebar ({@code sidebar}) or over the ability list. */

@@ -72,19 +72,34 @@ class CharacterSheetDocumentInteractionTest {
                 click(stage, "cls2");
                 assertEquals(ClassRegistry.ALL.get(2).id(), screen.getController().classes().displayedClassId());
                 int cp = stats.getRemainingCp();
-                // tree rows: Core section, core passive, then the core abilities; each row has + twins
-                UiRect rank = stage.view.instance().qAll(".rank-btn").get(2 * 5).rect();
-                stage.clickAt(rank.x() + 5, rank.y() + 5);
-                assertEquals(cp - 1, stats.getRemainingCp(), "a rank in the fourth core ability");
-                assertEquals(1, stats.getRank(ClassRegistry.ALL.get(2).id() + ":3"));
+                // tree nodes: the core passive, the two core abilities, then each path's four
+                String monk = ClassRegistry.ALL.get(2).id();
+                UiRect ability = stage.view.instance().qAll(".tn").get(1).rect();
+                stage.clickAt(ability.x() + 5, ability.y() + 5);
+                assertEquals(cp, stats.getRemainingCp(), "a core ability is not bought");
                 stage.host.characterSheet().poll();
                 stage.settle();
-                UiRect locked = stage.view.instance().qAll(".rank-btn").get(2 * 5 + 1).rect();
-                stage.clickAt(locked.x() + 5, locked.y() + 5);
-                assertEquals(1, stats.getRank(ClassRegistry.ALL.get(2).id() + ":3"), "no CP left: the + is dead");
+                UiRect rank = stage.view.instance().qAll(".tn").get(3).rect();
+                stage.clickAt(rank.x() + 5, rank.y() + 5);
+                assertEquals(cp - 1, stats.getRemainingCp(), "a rank in the first path's Tier I");
+                assertEquals(1, stats.getRank(monk + ":p0:0"));
+                assertTrue(stats.hasAbility(monk + ":0"), "which unlocks the path's ability");
+                stage.host.characterSheet().poll();
+                stage.settle();
+                stage.clickAt(rank.x() + 5, rank.y() + 5);
+                assertEquals(1, stats.getRank(monk + ":p0:0"), "no CP left: the node takes no rank");
+                assertEquals(monk + ":p0:0", controller.classes().focusKey(), "the clicked node fills the detail panel");
+                // the pointer over another node shows that one instead, and off the nodes the clicked one again
+                UiRect passive = stage.view.instance().qAll(".tn").get(0).rect();
+                stage.view.input().pointerMove(passive.x() + 5, passive.y() + 5);
+                stage.settle();
+                assertEquals(monk + ":passive", controller.classes().focusKey());
+                stage.view.input().pointerMove(passive.x() - 120, passive.y() + 5);
+                stage.settle();
+                assertEquals(monk + ":p0:0", controller.classes().focusKey());
 
-                // the wheel reaches the class list over the sidebar and the tree elsewhere; the class list
-                // fits its clip, the tree (core plus three paths) overflows it and scrolls
+                // the wheel reaches the class list over the sidebar and the tree elsewhere; both fit their clips
+                // (the grid is core plus three rows of four), so neither moves
                 UiRect side = DocumentCharacterSheetCapture.element(stage, "cls0").rect();
                 stage.view.input().wheel(side.x() + 5, side.y() + 5, 0, 3, 0);
                 stage.settle();
@@ -92,7 +107,7 @@ class CharacterSheetDocumentInteractionTest {
                 UiRect panel = stage.q("#panel").rect();
                 stage.view.input().wheel(panel.x() + panel.width() - 50, panel.y() + 200, 0, 1, 0);
                 stage.settle();
-                assertTrue(screen.getController().classes().rightScroll() > 0f);
+                assertEquals(0f, screen.getController().classes().rightScroll());
 
                 click(stage, "talent1");
                 assertEquals(TalentSubTab.SKILLS, controller.getTalentSubTab());

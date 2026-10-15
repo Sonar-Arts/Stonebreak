@@ -89,7 +89,7 @@ public class RogueAbilityController {
 
     private boolean isUnlocked(Player player, String abilityKey) {
         CharacterStats stats = player.getCharacterStats();
-        return stats.getRank(abilityKey) > 0;
+        return stats.hasAbility(abilityKey);
     }
 
     private boolean isRogueSelected(Player player) {

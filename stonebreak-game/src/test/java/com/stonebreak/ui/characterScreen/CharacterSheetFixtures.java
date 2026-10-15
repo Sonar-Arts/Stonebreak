@@ -98,18 +98,18 @@ public final class CharacterSheetFixtures {
             case "classes-shown" -> {
                 talents(controller, TalentSubTab.CLASS_ABILITIES);
                 rc.classes().selectClass(ClassRegistry.ALL.get(0).id());
-                rc.classes().addRank(stats, ClassRegistry.coreKey(ClassRegistry.ALL.get(0).id(), 0));
+                rc.classes().addRank(stats, ClassRegistry.pathKey(ClassRegistry.ALL.get(0).id(), 0, 0));
             }
             case "classes-scrolled" -> {
                 talents(controller, TalentSubTab.CLASS_ABILITIES);
-                rc.classes().selectClass(ClassRegistry.ALL.get(2).id()); // Monk: five core abilities
-                rc.classes().addRank(stats, ClassRegistry.coreKey(ClassRegistry.ALL.get(2).id(), 4));
+                rc.classes().selectClass(ClassRegistry.ALL.get(2).id()); // Monk: placeholder abilities
+                rc.classes().addRank(stats, ClassRegistry.pathKey(ClassRegistry.ALL.get(2).id(), 1, 0));
             }
             case "classes-multi" -> {
                 // three classes at level 6: Ranger and Rogue at 1 CP per rank, Berserker in the penalised third slot
                 talents(controller, TalentSubTab.CLASS_ABILITIES);
                 stats.addXp(1050);
-                for (String key : List.of("ranger:0", "ranger:0", "rogue:0", "berserker:0")) {
+                for (String key : List.of("ranger:p0:0", "ranger:p0:0", "rogue:p0:0", "berserker:p0:0")) {
                     stats.addRank(key);
                 }
                 rc.classes().selectClass("berserker");

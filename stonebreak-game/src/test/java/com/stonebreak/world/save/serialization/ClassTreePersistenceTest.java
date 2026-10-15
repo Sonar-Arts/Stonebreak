@@ -15,6 +15,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Saves carry the multiclass investment order next to the ranks and proficiency; saves that
@@ -40,7 +41,7 @@ class ClassTreePersistenceTest {
         PlayerData data = PlayerData.builder()
                 .selectedClassId("rogue")
                 .classInvestmentOrder(List.of("rogue", "ranger", "arcanist"))
-                .spentAbilityCp(Map.of("rogue:0", 5, "rogue:p0:0", 1, "ranger:0", 1, "arcanist:1", 2))
+                .spentAbilityCp(Map.of("rogue:p1:0", 5, "rogue:p0:0", 1, "ranger:p0:0", 1, "arcanist:p1:0", 2))
                 .skillLevels(Map.of(WeaponProficiency.skillId(WeaponGroup.RANGED), 1))
                 .remainingCp(3)
                 .level(12)
@@ -58,7 +59,7 @@ class ClassTreePersistenceTest {
     void oldSavesRebuildTheOrderAndCp() {
         String legacy = new String(serializer.serialize(PlayerData.builder()
                 .selectedClassId("ranger")
-                .spentAbilityCp(Map.of("berserker:0", 1, "ranger:0", 1, "ranger:1", 1, "rogue:0", 1))
+                .spentAbilityCp(Map.of("berserker:p0:0", 1, "ranger:p0:0", 1, "ranger:p1:0", 1, "rogue:p0:0", 1))
                 .remainingCp(100)
                 .level(10)
                 .build()), StandardCharsets.UTF_8);
@@ -71,5 +72,20 @@ class ClassTreePersistenceTest {
         assertEquals("ranger", cs.getSelectedClassId());
         // ranger 2 ranks x1 + berserker 1 x1 + rogue 1 x2 = 5 of the 10 CP granted by level 10
         assertEquals(CharacterStats.grantedCp(10) - 5, cs.getRemainingCp());
+    }
+
+    @Test
+    void savesWithBoughtCoreAbilitiesAreRefunded() {
+        PlayerData data = PlayerData.builder()
+                .selectedClassId("ranger")
+                .classInvestmentOrder(List.of("ranger"))
+                .spentAbilityCp(Map.of("ranger:0", 1, "ranger:p1:0", 1))
+                .remainingCp(0)
+                .level(2)
+                .build();
+        CharacterStats cs = load(serializer.deserialize(serializer.serialize(data)));
+        assertEquals(0, cs.getRank("ranger:0"), "core abilities take no ranks now");
+        assertEquals(1, cs.getRemainingCp(), "the core rank's CP comes back");
+        assertTrue(cs.hasAbility("ranger:0"), "Trapper still grants Snare");
     }
 }

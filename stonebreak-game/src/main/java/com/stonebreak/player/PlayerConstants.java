@@ -265,7 +265,7 @@ public final class PlayerConstants {
     /** Ranks needed in lower tiers (core abilities + all paths) to open tier I..IV. */
     public static final int[] CLASS_TREE_TIER_GATES    = {0, 5, 15, 30};
     public static final int   TALENT_MAX_RANK_PASSIVE  = 8;
-    public static final int   TALENT_MAX_RANK_ABILITY  = 10; // also core abilities
+    public static final int   TALENT_MAX_RANK_ABILITY  = 10; // path ability nodes (core abilities take no ranks)
     public static final int   TALENT_MAX_RANK_MODIFIER = 5;
     public static final int   TALENT_MAX_RANK_CAPSTONE = 1;
     public static final int   MULTICLASS_PENALTY       = 1;  // extra CP per rank per class beyond the 2nd

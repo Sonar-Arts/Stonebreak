@@ -46,11 +46,11 @@ public final class ResonanceGauge implements ClassGauge {
         var stats = player.getCharacterStats();
         // Spell status lines turn gold while Overloaded — the next cast is the empowered one
         int spellColor = overloaded ? MStyle.TEXT_ACCENT : MStyle.TEXT_PRIMARY;
-        if (stats.getRank(ArcanistAbilityController.LEYLINE_BREACH_KEY) > 0) {
+        if (stats.hasAbility(ArcanistAbilityController.LEYLINE_BREACH_KEY)) {
             panel.line(null, ArcanistHudText.spellStatus("Leyline Breach", arcanist.getLeylineBreach()),
                     spellColor, GaugePanel.LINE_GAP);
         }
-        if (stats.getRank(ArcanistAbilityController.NULL_SPIKE_KEY) > 0) {
+        if (stats.hasAbility(ArcanistAbilityController.NULL_SPIKE_KEY)) {
             panel.line(null, ArcanistHudText.spellStatus("Null Spike", arcanist.getNullSpike()),
                     spellColor, 0f);
         }

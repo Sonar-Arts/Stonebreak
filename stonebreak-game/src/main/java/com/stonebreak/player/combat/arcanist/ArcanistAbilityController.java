@@ -11,7 +11,7 @@ import com.stonebreak.player.combat.magic.SpellCast;
  * {@link com.stonebreak.player.combat.berserker.BerserkerAbilityController} and
  * {@link com.stonebreak.player.combat.ranger.RangerAbilityController}.
  *
- * <p>Casting requires the Arcanist class to be selected, the spell's CP slot unlocked,
+ * <p>Casting requires the spell to be unlocked (a rank in an Arcanist path that grants it),
  * and enough mana. Every cast goes through the single {@link #castSpell} path, so
  * Resonance tracking (school changes, Overloaded discharge, same-school penalties) can
  * never be bypassed, and a blocked cast never advances Resonance or burns mana.</p>
@@ -67,7 +67,7 @@ public class ArcanistAbilityController {
 
     private boolean isUnlocked(Player player, String abilityKey) {
         CharacterStats stats = player.getCharacterStats();
-        return stats.getRank(abilityKey) > 0;
+        return stats.hasAbility(abilityKey);
     }
 
     public ResonanceTracker getResonance() { return resonance; }

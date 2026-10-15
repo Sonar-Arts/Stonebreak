@@ -1,5 +1,6 @@
 package com.stonebreak.ui.characterCreation.fidelity;
 
+import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.fidelity.FidelityCase;
 import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
 import com.stonebreak.rpg.classes.ClassRegistry;
@@ -13,6 +14,7 @@ import com.stonebreak.ui.characterCreation.CharacterCreationTab;
 import com.stonebreak.items.weapon.WeaponGroup;
 import com.stonebreak.rpg.SkillListMode;
 import com.stonebreak.rpg.TalentSubTab;
+import com.stonebreak.ui.runtime.contracts.CharacterCreationContracts;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -26,7 +28,8 @@ import java.util.Map;
  * <p>Variants: {@code background}, {@code ability}, {@code classes-none}, {@code classes}, {@code classes-scrolled},
  * {@code skills}, {@code skills-scrolled}, {@code feats}, {@code feats-owned}, {@code looks} (hair and hats side by side); {@code hover-<target>}
  * over the state that shows it: {@code tab3}, {@code next}, {@code back}, {@code undo}, {@code bg1}, {@code tile2},
- * {@code plus0}, {@code minus4}, {@code talent1}, {@code cls2}, {@code spend1}, {@code invest2}, {@code acquire0},
+ * {@code plus0}, {@code minus4}, {@code talent1}, {@code cls2}, {@code node5} (a class tree node), {@code invest2},
+ * {@code acquire0},
  * {@code equip1}. Class, skill and feat states are the Talents tab on that sub-tab.
  */
 public final class CharacterCreationFixtures {
@@ -37,7 +40,7 @@ public final class CharacterCreationFixtures {
     public static final List<String> STATES = List.of("ability", "classes-none", "classes", "classes-scrolled", "skills",
         "skills-scrolled", "skills-weapons", "feats", "feats-owned", "looks");
     public static final List<String> HOVERS = List.of("hover-tab3", "hover-next", "hover-back", "hover-undo",
-        "hover-bg1", "hover-tile2", "hover-plus0", "hover-minus4", "hover-talent1", "hover-cls2", "hover-spend1",
+        "hover-bg1", "hover-tile2", "hover-plus0", "hover-minus4", "hover-talent1", "hover-cls2", "hover-node5",
         "hover-invest2", "hover-mode1", "hover-train0", "hover-acquire0", "hover-equip1");
 
     public static List<FidelityCase> cases() {
@@ -54,6 +57,10 @@ public final class CharacterCreationFixtures {
         return out;
     }
 
+    private static float num(UiValue.Obj o, String key) {
+        return (float) ((UiValue.Num) o.get(key)).value();
+    }
+
     public static String hover(String variant) {
         return variant.startsWith("hover-") ? variant.substring("hover-".length()) : "";
     }
@@ -65,7 +72,7 @@ public final class CharacterCreationFixtures {
             return variant;
         }
         if (t.startsWith("tile") || t.startsWith("plus") || t.startsWith("minus")) return "ability";
-        if (t.startsWith("cls") || t.startsWith("spend") || t.startsWith("talent")) return "classes";
+        if (t.startsWith("cls") || t.startsWith("node") || t.startsWith("talent")) return "classes";
         if (t.startsWith("invest")) return "skills";
         if (t.startsWith("mode") || t.startsWith("train")) return "skills-weapons";
         if (t.startsWith("acquire")) return "feats";
@@ -86,11 +93,11 @@ public final class CharacterCreationFixtures {
             case "ability" -> s.setActiveTab(CharacterCreationTab.ABILITY_SCORE);
             case "classes-none" -> talents(s, TalentSubTab.CLASS_ABILITIES);
             case "classes", "classes-scrolled" -> {
-                // Berserker: icons and multi-line descriptions; Monk: five abilities, enough to scroll
+                // Berserker: ability icons and a Tier I rank that unlocks Rampage; Monk: placeholder abilities
                 int cls = "classes-scrolled".equals(variant) ? 2 : 0;
                 talents(s, TalentSubTab.CLASS_ABILITIES);
                 a.onSelectClass(cls);
-                a.onSpendCp(ClassRegistry.ALL.get(cls).id() + ":0");
+                a.onSpendCp(ClassRegistry.pathKey(ClassRegistry.ALL.get(cls).id(), 0, 0));
                 if ("classes-scrolled".equals(variant)) s.setClassScroll(13f);
             }
             case "skills", "skills-scrolled" -> {
@@ -161,13 +168,15 @@ public final class CharacterCreationFixtures {
                 for (int i = 0; i < ClassRegistry.ALL.size(); i++) {
                     out.put("cls" + i, new float[]{c.x() + 8f, c.y() + 32f + i * 38f, 144f, 36f});
                 }
-                int sel = s.getSelectedClassIndex();
-                if (sel >= 0) {
-                    float cx = c.x() + 172f;
-                    float cw = c.width() - 184f;
-                    for (int i = 0; i < ClassRegistry.ALL.get(sel).abilities().size(); i++) {
-                        out.put("spend" + i, new float[]{cx + cw - 110f, c.y() + 78f + i * 64f - s.getClassScroll() + 20f,
-                            110f, 24f});
+                // the class tree's nodes: the shared tree model's grid, placed in the pane's tree area and scrolled
+                if (s.getSelectedClassIndex() >= 0) {
+                    UiValue.Obj tree = (UiValue.Obj) CharacterCreationContracts.tree(screen, w, h);
+                    List<UiValue> nodes = ((UiValue.Arr) tree.get("nodes")).items();
+                    for (int i = 0; i < nodes.size(); i++) {
+                        UiValue.Obj n = (UiValue.Obj) nodes.get(i);
+                        float size = num(n, "size");
+                        out.put("node" + i, new float[]{c.x() + CharacterCreationContracts.TREE_LEFT + num(n, "x"),
+                            c.y() + CharacterCreationContracts.TREE_TOP + num(n, "y") - s.getClassScroll(), size, size});
                     }
                 }
             }

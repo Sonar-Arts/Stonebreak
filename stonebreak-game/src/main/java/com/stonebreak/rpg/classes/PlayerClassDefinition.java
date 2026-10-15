@@ -5,8 +5,9 @@ import java.util.List;
 
 /**
  * Immutable definition of a player class and its talent tree: an always-on core passive, the
- * core abilities (tier I, keyed {@code "<id>:<index>"}) and exactly {@link #PATHS} specialization
- * paths of four tiers each (keyed {@code "<id>:p<path>:<tier>"}).
+ * core abilities (keyed {@code "<id>:<index>"}; not bought, each unlocked by a rank in any path that
+ * grants it) and exactly {@link #PATHS} specialization paths of four tiers each (keyed
+ * {@code "<id>:p<path>:<tier>"}).
  *
  * @param iconPath classpath resource path to a small icon shown next to the class name in
  *                 class-select UIs (e.g. {@code /ui/abilities/berserker/Rage.png}), or
@@ -29,6 +30,12 @@ public record PlayerClassDefinition(
     if (paths.size() != PATHS) {
       throw new IllegalArgumentException(id + ": a class needs " + PATHS + " paths, got " + paths.size());
     }
+    for (TalentPath path : paths) {
+      if (path.ability() >= abilities.size()) {
+        throw new IllegalArgumentException(id + ": path " + path.name() + " grants core ability " + path.ability()
+            + " of " + abilities.size());
+      }
+    }
   }
 
   /**
@@ -47,7 +54,7 @@ public record PlayerClassDefinition(
       ));
     }
     return new PlayerClassDefinition(id, name, "Placeholder description.", abs, null,
-        placeholderPassive(), placeholderPaths(id));
+        placeholderPassive(), placeholderPaths(id, abilityCount));
   }
 
   /** A stand-in core passive for classes whose tree is not designed yet. */
@@ -55,8 +62,11 @@ public record PlayerClassDefinition(
     return new CorePassive("Placeholder Passive", "Placeholder passive description.", null);
   }
 
-  /** Three stand-in paths, each PASSIVE, ABILITY, MODIFIER, CAPSTONE from Tier I to IV. */
-  public static List<TalentPath> placeholderPaths(String id) {
+  /**
+   * Three stand-in paths, each PASSIVE, ABILITY, MODIFIER, CAPSTONE from Tier I to IV, granting the class's
+   * {@code abilityCount} core abilities in turn (path {@code p} grants ability {@code p % abilityCount}).
+   */
+  public static List<TalentPath> placeholderPaths(String id, int abilityCount) {
     TalentNodeType[] order = TalentNodeType.values();
     List<TalentPath> paths = new ArrayList<>(PATHS);
     for (int p = 0; p < PATHS; p++) {
@@ -66,7 +76,7 @@ public record PlayerClassDefinition(
         nodes.add(new TalentNode(ClassRegistry.pathKey(id, p, t), "Placeholder Node",
             "Placeholder node description.", type, t, type.defaultMaxRank(), null));
       }
-      paths.add(new TalentPath("Placeholder Path " + (p + 1), "Placeholder focus.", nodes));
+      paths.add(new TalentPath("Placeholder Path " + (p + 1), "Placeholder focus.", p % abilityCount, nodes));
     }
     return paths;
   }

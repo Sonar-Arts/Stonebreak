@@ -28,6 +28,11 @@ public final class CharacterCreationStateManager {
 
     private int selectedClassIndex = -1;
 
+    /** The class tree: the node under the pointer, the last one clicked, and how far its grid overflows its clip. */
+    private String classTreeHovered = null;
+    private String classTreeSelected = null;
+    private float classTreeOverflow = 0f;
+
     private TalentSubTab talentSubTab = TalentSubTab.CLASS_ABILITIES;
     private SkillListMode skillMode = SkillListMode.GENERAL;
 
@@ -63,7 +68,25 @@ public final class CharacterCreationStateManager {
     public void  setFeatScroll(float v)     { this.featScroll = v; }
 
     public int  getSelectedClassIndex()     { return selectedClassIndex; }
-    public void setSelectedClassIndex(int i){ this.selectedClassIndex = i; }
+
+    /** Shows class {@code i}: its tree back at the top, nothing hovered or clicked in it yet. */
+    public void setSelectedClassIndex(int i) {
+        this.selectedClassIndex = i;
+        this.classScroll = 0f;
+        this.classTreeHovered = null;
+        this.classTreeSelected = null;
+    }
+
+    /** The pointer over a tree node ({@code key}), or off every node (null or empty). */
+    public void setClassTreeHovered(String key) { this.classTreeHovered = key == null || key.isEmpty() ? null : key; }
+    public void setClassTreeSelected(String key) { this.classTreeSelected = key; }
+
+    /** The node the tree's detail panel describes: the hovered one, else the last one clicked; null: the passive. */
+    public String getClassTreeFocus() { return classTreeHovered != null ? classTreeHovered : classTreeSelected; }
+
+    /** How far the tree grid's content overflows its clip (the class scroll's extent), as last laid out. */
+    public float getClassTreeOverflow()        { return classTreeOverflow; }
+    public void  setClassTreeOverflow(float v) { this.classTreeOverflow = v; }
 
     public TalentSubTab getTalentSubTab()             { return talentSubTab; }
     public void         setTalentSubTab(TalentSubTab t) { this.talentSubTab = t; }
@@ -84,6 +107,9 @@ public final class CharacterCreationStateManager {
         this.skillScroll       = 0f;
         this.featScroll        = 0f;
         this.selectedClassIndex = -1;
+        this.classTreeHovered   = null;
+        this.classTreeSelected  = null;
+        this.classTreeOverflow  = 0f;
         this.talentSubTab       = TalentSubTab.CLASS_ABILITIES;
         this.skillMode          = SkillListMode.GENERAL;
         this.mouseX            = 0f;

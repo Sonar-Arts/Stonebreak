@@ -4,6 +4,7 @@ import com.stonebreak.items.weapon.WeaponGroup;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.classes.PlayerClassDefinition;
 import com.stonebreak.rpg.classes.TalentNode;
+import com.stonebreak.rpg.classes.TalentPath;
 import com.stonebreak.rpg.feats.FeatRegistry;
 import com.stonebreak.rpg.proficiency.ProficiencyRank;
 import com.stonebreak.rpg.proficiency.WeaponProficiency;
@@ -318,9 +319,29 @@ public class CharacterStats {
     return true;
   }
 
-  /** Former name of {@link #addRank}: buys one rank of a core ability. */
+  /** Former name of {@link #addRank}: buys one rank of a tree node (core abilities take none). */
   public void spendCpOnAbility(String key) {
     addRank(key);
+  }
+
+  /**
+   * True when core ability {@code abilityKey} ({@code "<classId>:<index>"}) is unlocked: some path that grants it
+   * holds a rank. Abilities are never bought; the paths a player invests in decide which they have.
+   */
+  public boolean hasAbility(String abilityKey) {
+    for (TalentPath path : ClassRegistry.pathsGranting(abilityKey)) {
+      for (TalentNode n : path.nodes()) {
+        if (getRank(n.key()) > 0) return true;
+      }
+    }
+    return false;
+  }
+
+  /** "Bloodletter or Frenzy": the paths that grant a core ability, for its lock text. */
+  private static String grantingPathNames(String abilityKey) {
+    List<String> names = ClassRegistry.pathsGranting(abilityKey).stream().map(TalentPath::name).toList();
+    return names.size() <= 1 ? String.join("", names)
+        : String.join(", ", names.subList(0, names.size() - 1)) + " or " + names.getLast();
   }
 
   public boolean canAddRank(String key) {
@@ -332,6 +353,7 @@ public class CharacterStats {
    * e.g. "Needs 15 ranks in Tiers I–II", "Needs Open Veins", "Not enough CP (costs 2)".
    */
   public String lockReason(String key) {
+    if (ClassRegistry.isAbilityKey(key)) return "Comes with " + grantingPathNames(key);
     if (!ClassRegistry.isValidKey(key)) return "Unknown talent";
     if (getRank(key) >= ClassRegistry.maxRankOf(key)) return "Max rank";
     String classId = ClassRegistry.classIdOf(key);
@@ -395,12 +417,12 @@ public class CharacterStats {
     return true;
   }
 
-  /** Ranks the class holds in tiers strictly below {@code tier} (core abilities are tier I). */
+  /** Ranks the class holds in path tiers strictly below {@code tier}. */
   private int ranksBelowTier(String classId, int tier) {
     int sum = 0;
     for (Map.Entry<String, Integer> e : spentAbilityCp.entrySet()) {
-      if (classId.equals(ClassRegistry.classIdOf(e.getKey()))
-          && ClassRegistry.tierOf(e.getKey()) < tier) {
+      int t = ClassRegistry.tierOf(e.getKey());
+      if (classId.equals(ClassRegistry.classIdOf(e.getKey())) && t >= 0 && t < tier) {
         sum += e.getValue();
       }
     }
@@ -418,7 +440,7 @@ public class CharacterStats {
     return getRank(key);
   }
 
-  /** Total ranks across the class's core abilities and paths. */
+  /** Total ranks across the class's paths. */
   public int getClassRanks(String classId) {
     String prefix = classId + ":";
     return spentAbilityCp.entrySet().stream()
@@ -469,6 +491,18 @@ public class CharacterStats {
   /** Primary class follows the investment order; with no ranks it keeps {@code fallback}. */
   private void syncPrimaryClass(String fallback) {
     selectedClassId = classInvestmentOrder.isEmpty() ? fallback : classInvestmentOrder.get(0);
+  }
+
+  /**
+   * Data from before core abilities came from paths held ranks in them ({@code "<classId>:<index>"}): drops those
+   * ranks, lets a class left with none leave the investment order, and refunds their CP at the re-derived prices.
+   */
+  private void dropCoreAbilityRanks() {
+    if (spentAbilityCp.keySet().stream().allMatch(ClassRegistry::isPathKey)) return;
+    int before = derivedSpentCp();
+    spentAbilityCp.keySet().removeIf(k -> !ClassRegistry.isPathKey(k));
+    classInvestmentOrder.removeIf(id -> getClassRanks(id) == 0);
+    remainingCp += before - derivedSpentCp();
   }
 
   /** Every class with ranks: {@code selectedClassId} first if invested, then registry order. */
@@ -711,6 +745,7 @@ public class CharacterStats {
             this.classInvestmentOrder.addAll(rebuildInvestmentOrder());
             this.remainingCp = Math.max(0, grantedCp(this.level) - derivedSpentCp());
         }
+        dropCoreAbilityRanks();
         syncPrimaryClass(classId);
         if (player != null) player.updateDerivedStats();
     }
@@ -843,6 +878,7 @@ public class CharacterStats {
         List<String> order = extractStringList(s, "classOrder");
         this.classInvestmentOrder.clear();
         this.classInvestmentOrder.addAll(order != null ? order : rebuildInvestmentOrder());
+        dropCoreAbilityRanks();
         syncPrimaryClass(this.selectedClassId);
 
         if (player != null) player.updateDerivedStats();

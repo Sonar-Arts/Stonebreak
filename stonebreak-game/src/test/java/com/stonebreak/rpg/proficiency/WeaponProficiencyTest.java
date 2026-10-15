@@ -92,18 +92,18 @@ class WeaponProficiencyTest {
     @Test
     void wtpComesFromRanksCountedPerClass() {
         CharacterStats cs = withCp(20, 1);
-        addRanks(cs, "berserker:0", 4);
+        addRanks(cs, "berserker:p0:0", 4);
         assertEquals(1, cs.earnedWtp(), "4 ranks earn nothing beyond the starting grant");
-        addRanks(cs, "berserker:0", 1);
+        addRanks(cs, "berserker:p0:0", 1);
         assertEquals(2, cs.earnedWtp(), "5 ranks earn one");
-        addRanks(cs, "rogue:0", 4);
+        addRanks(cs, "rogue:p0:0", 4);
         assertEquals(2, cs.earnedWtp(), "5 + 4 in two classes is 1 earned, not 1.8");
     }
 
     @Test
     void trainingRespectsTheLevelGate() {
         CharacterStats cs = withCp(20, 1);
-        addRanks(cs, "berserker:0", 5); // 2 WTP
+        addRanks(cs, "berserker:p0:0", 5); // 2 WTP
         assertTrue(cs.trainWeapon(WeaponGroup.ONE_HANDED));
         assertEquals(1, cs.getRemainingWtp());
         assertFalse(cs.canTrainWeapon(WeaponGroup.ONE_HANDED), "Expert needs level 5");
@@ -119,7 +119,8 @@ class WeaponProficiencyTest {
     @Test
     void masterIsTheCap() {
         CharacterStats cs = withCp(20, 20);
-        addRanks(cs, "berserker:0", 10);
+        addRanks(cs, "berserker:p0:0", 8);
+        addRanks(cs, "berserker:p1:0", 2);
         cs.setProficiency(WeaponGroup.TWO_HANDED, ProficiencyRank.MASTER);
         assertFalse(cs.trainWeapon(WeaponGroup.TWO_HANDED));
         assertEquals(ProficiencyRank.MASTER, cs.getProficiency(WeaponGroup.TWO_HANDED));

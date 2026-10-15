@@ -42,7 +42,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_TAB;
 
 /**
  * The character creation document's presses (#301) run the legacy rules through the screen's own actions:
- * tabs, background rows, ability [-]/[+], class rows, Spend CP, +1 SP, Acquire, Equip on the Looks tab's hair and
+ * tabs, background rows, ability [-]/[+], class rows, class tree nodes, +1 SP, Acquire, Equip on the Looks tab's hair and
  * hat lists, and the wheel scrolls the active list (clamped as the screen clamps it each frame).
  * Escape asks before leaving and Tab does nothing (#302).
  */
@@ -88,10 +88,18 @@ class CharacterCreationDocumentInteractionTest {
                 assertEquals(TalentSubTab.CLASS_ABILITIES, screen.state().getTalentSubTab());
                 click(stage, "cls0");
                 assertEquals(0, screen.state().getSelectedClassIndex());
+                // the tree: a core ability takes no press; the starting CP buys a Tier I path node (the second path's,
+                // after the passive, the core abilities and the first path), which unlocks that path's ability
+                String berserker = ClassRegistry.ALL.get(0).id();
                 int cp = stats.getRemainingCp();
-                click(stage, "spend1");
+                click(stage, "node1");
+                assertEquals(cp, stats.getRemainingCp(), "core abilities are not bought");
+                String tierOne = ClassRegistry.pathKey(berserker, 1, 0);
+                click(stage, "node" + (1 + ClassRegistry.ALL.get(0).abilities().size() + 4));
                 assertEquals(cp - 1, stats.getRemainingCp());
-                assertEquals(1, stats.getRank(ClassRegistry.ALL.get(0).id() + ":1"));
+                assertEquals(1, stats.getRank(tierOne));
+                assertTrue(stats.hasAbility(ClassRegistry.coreKey(berserker, 1)), "Wrecker unlocks Skull Crusher");
+                assertFalse(stats.hasAbility(ClassRegistry.coreKey(berserker, 0)));
 
                 click(stage, "talent1");
                 assertEquals(TalentSubTab.SKILLS, screen.state().getTalentSubTab());
@@ -132,7 +140,7 @@ class CharacterCreationDocumentInteractionTest {
                 while (stats.canUndo()) {
                     click(stage, "undo");
                 }
-                assertEquals(0, stats.getRank(ClassRegistry.ALL.get(0).id() + ":1"), "and the class ability's CP");
+                assertEquals(0, stats.getRank(tierOne), "and the tree node's CP");
                 int[] scores = stats.getAbilityScores();
                 click(stage, "undo"); // disabled: takes the press, changes nothing
                 assertEquals(java.util.Arrays.toString(scores), java.util.Arrays.toString(stats.getAbilityScores()));
