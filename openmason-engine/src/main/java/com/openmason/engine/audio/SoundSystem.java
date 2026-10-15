@@ -268,20 +268,6 @@ public class SoundSystem {
         }
         audioDiagnostics.testBasicFunctionality();
         // Note: Sound playing removed to prevent audio before world is loaded
-        // Use testSoundPlayback() method if you need to test sound playback specifically
-    }
-
-    /**
-     * Tests sound playback functionality - only call this when appropriate (e.g., in-game).
-     * This method actually plays a sound, unlike testBasicFunctionality().
-     */
-    public void testSoundPlayback() {
-        if (soundBuffer.isSoundLoaded("blockpickup")) {
-            System.out.println("Testing sound playback with blockpickup...");
-            playSound("blockpickup");
-        } else {
-            System.err.println("Cannot test sound playback - blockpickup sound not loaded");
-        }
     }
 
     /**
@@ -298,11 +284,13 @@ public class SoundSystem {
         int distanceModel = org.lwjgl.openal.AL10.alGetInteger(org.lwjgl.openal.AL10.AL_DISTANCE_MODEL);
         System.out.println("  Distance Model: " + distanceModel + " (AL_INVERSE_DISTANCE_CLAMPED=" + org.lwjgl.openal.AL10.AL_INVERSE_DISTANCE_CLAMPED + ")");
 
-        // Check if we have a blockpickup source to examine
-        Integer[] sources = soundBuffer.getSources("blockpickup");
-        if (sources != null && sources.length > 0) {
-            int source = sources[0];
-            System.out.println("  Examining source " + source + " for 'blockpickup':");
+        // Examine the first loaded sound that has sources
+        java.util.Map.Entry<String, Integer[]> sample = soundBuffer.getAllSources().entrySet().stream()
+                .filter(e -> e.getValue() != null && e.getValue().length > 0)
+                .findFirst().orElse(null);
+        if (sample != null) {
+            int source = sample.getValue()[0];
+            System.out.println("  Examining source " + source + " for '" + sample.getKey() + "':");
 
             // Check source properties
             float refDist = org.lwjgl.openal.AL10.alGetSourcef(source, org.lwjgl.openal.AL10.AL_REFERENCE_DISTANCE);
@@ -321,7 +309,7 @@ public class SoundSystem {
             System.out.println("    Listener Position: (" + listenerPos.get(0) + ", " + listenerPos.get(1) + ", " + listenerPos.get(2) + ")");
 
         } else {
-            System.out.println("  No blockpickup sources found for examination");
+            System.out.println("  No loaded sound sources found for examination");
         }
 
         int error = org.lwjgl.openal.AL10.alGetError();

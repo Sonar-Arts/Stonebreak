@@ -217,18 +217,32 @@ class SoundSystemTest {
             sound.diagnoseOpenAL3D();
         });
         assertTrue(out.contains("Loaded sound buffers: [blockpickup]"), out);
-        assertTrue(out.contains("Blockpickup sound is properly loaded"), out);
+        assertTrue(out.contains("  - 'blockpickup' sources=yes"), out);
+        assertTrue(out.contains("for 'blockpickup':"), out);
         assertTrue(out.contains("OpenAL is functioning correctly"), out);
         assertTrue(out.contains("Max Distance: 50.0"), out);
         assertTrue(out.contains("No OpenAL errors detected"), out);
     }
 
     @Test
-    void diagnosticsListWhatIsLoadedWhenThePickupSoundIsMissing() {
+    void diagnosticsDoNotExpectAnyParticularSound() {
         sound.loadSound("other", stereo(10));
-        String err = captureStderr(sound::testBasicFunctionality);
-        assertTrue(err.contains("Blockpickup sound failed to load"), err);
-        assertTrue(err.contains("  - 'other'"), err);
+        String out = captureStdout(() -> {
+            sound.testBasicFunctionality();
+            sound.diagnoseOpenAL3D();
+        });
+        assertTrue(out.contains("  - 'other' sources=yes"), out);
+        assertTrue(out.contains("for 'other':"), out);
+    }
+
+    @Test
+    void diagnosticsReportWhenNothingIsLoaded() {
+        String out = captureStdout(() -> {
+            sound.testBasicFunctionality();
+            sound.diagnoseOpenAL3D();
+        });
+        assertTrue(out.contains("No sounds loaded yet"), out);
+        assertTrue(out.contains("No loaded sound sources found for examination"), out);
     }
 
     @Test
@@ -251,18 +265,6 @@ class SoundSystemTest {
             r.run();
         } finally {
             System.setOut(old);
-        }
-        return buf.toString(StandardCharsets.UTF_8);
-    }
-
-    private static String captureStderr(Runnable r) {
-        PrintStream old = System.err;
-        ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        System.setErr(new PrintStream(buf, true, StandardCharsets.UTF_8));
-        try {
-            r.run();
-        } finally {
-            System.setErr(old);
         }
         return buf.toString(StandardCharsets.UTF_8);
     }

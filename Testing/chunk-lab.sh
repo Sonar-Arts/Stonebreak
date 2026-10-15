@@ -7,7 +7,7 @@
 #   label     ledger name for this iteration (baseline, compact16, plan-v2, ...)
 #   --gl      also open a hidden GL context and upload through the real region arenas
 #   --baseline  copy this run's ledger to tier<N>/baseline.json afterwards
-#   -D...     forwarded to the JVM (e.g. -Dstonebreak.mesh.vertexformat=compact16,
+#   -D...     forwarded to the JVM (e.g. -Dopenmason.mesh.vertexformat=compact16,
 #             -Dlab.cearl=/path/plan.CEARL, -Dstonebreak.mesher.backend=java)
 #
 # Ledgers land in "Dev Working/bench/chunk-lab/tier<N>/<label>.json" (gitignored).

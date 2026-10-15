@@ -60,6 +60,39 @@ class NativeLibraryExtractorTest {
     }
 
     @Test
+    void theCacheDirectoryIsNamedAfterTheApplicationNotTheGame() {
+        String explicit = System.clearProperty("cenda.natives.cache");
+        String app = System.clearProperty("openmason.app.name");
+        try {
+            Path root = NativeLibraryExtractor.cacheRoot();
+            assertEquals(Path.of("openmason", "natives"), root.subpath(root.getNameCount() - 2, root.getNameCount()));
+
+            System.setProperty("openmason.app.name", "Stonebreak");
+            root = NativeLibraryExtractor.cacheRoot();
+            assertEquals(Path.of("Stonebreak", "natives"), root.subpath(root.getNameCount() - 2, root.getNameCount()));
+
+            System.setProperty("openmason.app.name", "../escape");
+            root = NativeLibraryExtractor.cacheRoot();
+            assertEquals(Path.of("openmason", "natives"), root.subpath(root.getNameCount() - 2, root.getNameCount()),
+                    "a name that is not a plain directory name falls back to the default");
+
+            System.setProperty("cenda.natives.cache", "/tmp/explicit-cache");
+            assertEquals(Path.of("/tmp/explicit-cache"), NativeLibraryExtractor.cacheRoot());
+        } finally {
+            restore("cenda.natives.cache", explicit);
+            restore("openmason.app.name", app);
+        }
+    }
+
+    private static void restore(String key, String value) {
+        if (value == null) {
+            System.clearProperty(key);
+        } else {
+            System.setProperty(key, value);
+        }
+    }
+
+    @Test
     void aMissingResourceIsNull(@TempDir Path cache) throws IOException {
         assertNull(NativeLibraryExtractor.extract("natives/none/lib.so", "lib.so", r -> null, cache));
     }

@@ -56,8 +56,9 @@ public class AudioLoader {
 
         try (InputStream finalIs = is) {
             if (finalIs == null) {
-                logger.warn("InputStream is NULL for path: {} — trying alternatives", resourcePath);
-                return tryAlternativePaths(name);
+                String errorMsg = "Sound resource not found: " + resourcePath;
+                logger.error(errorMsg);
+                return LoadResult.failure(errorMsg);
             }
 
             return loadSoundFromStream(name, finalIs, resourcePath);
@@ -124,14 +125,15 @@ public class AudioLoader {
         logger.trace("ClassLoader: {}", getClass().getClassLoader());
 
         try {
-            java.net.URL resourceUrl = getClass().getResource("/sounds/");
-            logger.trace("Sounds directory URL: {}", resourceUrl);
+            int slash = resourcePath.lastIndexOf('/');
+            java.net.URL resourceUrl = getClass().getResource(slash > 0 ? resourcePath.substring(0, slash + 1) : "/");
+            logger.trace("Resource directory URL: {}", resourceUrl);
 
             if (resourceUrl != null) {
-                java.io.File soundsDir = new java.io.File(resourceUrl.toURI());
-                if (soundsDir.exists() && soundsDir.isDirectory()) {
-                    logger.trace("Contents of sounds directory: {}",
-                            java.util.Arrays.toString(soundsDir.list()));
+                java.io.File resourceDir = new java.io.File(resourceUrl.toURI());
+                if (resourceDir.exists() && resourceDir.isDirectory()) {
+                    logger.trace("Contents of resource directory: {}",
+                            java.util.Arrays.toString(resourceDir.list()));
                 }
             }
         } catch (URISyntaxException | SecurityException e) {
@@ -163,32 +165,6 @@ public class AudioLoader {
         }
 
         return is;
-    }
-
-    private LoadResult tryAlternativePaths(String name) {
-        logger.debug("Trying alternative sound paths for '{}'", name);
-        String[] alternativePaths = {
-            "/sounds/GrassWalk.wav",
-            "sounds/GrassWalk.wav",
-            "/GrassWalk.wav",
-            "GrassWalk.wav"
-        };
-
-        for (String altPath : alternativePaths) {
-            logger.trace("Trying: {}", altPath);
-            InputStream altIs = findResourceInputStream(altPath);
-
-            try (InputStream finalAltIs = altIs) {
-                if (finalAltIs != null) {
-                    logger.debug("Found sound at: {}", altPath);
-                    return loadSoundFromStream(name, finalAltIs, altPath);
-                }
-            } catch (Exception e) {
-                logger.trace("Error trying {}: {}", altPath, e.getMessage());
-            }
-        }
-
-        return LoadResult.failure("Could not find sound file at any path!");
     }
 
     private LoadResult loadSoundFromStream(String name, InputStream is, String path) {

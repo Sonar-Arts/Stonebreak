@@ -1,5 +1,7 @@
 package com.openmason.engine.ui.rendering;
 
+import com.openmason.engine.util.EngineProperties;
+
 import static org.lwjgl.opengl.GL33C.*;
 
 /**
@@ -19,7 +21,7 @@ public final class GlBaseline {
     /** Texture units Skia may have touched; the game's renderers use 0..8. */
     static final int RESET_TEXTURE_UNITS = 16;
 
-    private static final boolean SAMPLER_DEBUG = Boolean.getBoolean("stonebreak.skia.debug");
+    private static final boolean SAMPLER_DEBUG = EngineProperties.flag("skia.debug");
 
     private GlBaseline() {
     }

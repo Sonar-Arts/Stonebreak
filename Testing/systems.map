@@ -31,6 +31,7 @@ shadow	openmason-engine	com/openmason/engine/rendering/shadow/**/*Test
 sky	openmason-engine	com/openmason/engine/rendering/sky/**/*Test
 ui-program	openmason-engine	com/openmason/engine/ui/**/*Test
 audio	openmason-engine	com/openmason/engine/audio/**/*Test
+boundaries	openmason-engine	com/openmason/engine/boundary/**/*Test
 
 # ---- game ----
 audio	stonebreak-game	com/stonebreak/audio/**/*Test
@@ -63,3 +64,4 @@ scripting	openmason-tool	com/openmason/main/systems/scripting/**/*Test
 viewport	openmason-tool	com/openmason/main/systems/viewport/**/*Test
 scene	openmason-tool	com/openmason/main/systems/scene/**/*Test,com/openmason/main/systems/project/**/*Test
 tool-model	openmason-tool	com/openmason/main/systems/skeleton/**/*Test,com/openmason/main/systems/rendering/**/*Test
+boundaries	openmason-tool	com/openmason/main/boundary/**/*Test

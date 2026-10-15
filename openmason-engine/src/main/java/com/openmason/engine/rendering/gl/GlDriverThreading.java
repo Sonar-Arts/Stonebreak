@@ -53,7 +53,7 @@ public final class GlDriverThreading {
 
     /**
      * @param optOutProperty system property that, when {@code true}, keeps the driver default
-     *                       (e.g. {@code stonebreak.gl.threaded})
+     *                       (e.g. {@code myapp.gl.threaded})
      */
     public static Outcome disableThreadedDispatch(String optOutProperty) {
         Outcome o = apply(System.getProperty("os.name", "").toLowerCase().contains("linux"),

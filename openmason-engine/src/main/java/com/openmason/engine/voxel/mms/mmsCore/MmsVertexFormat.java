@@ -1,5 +1,6 @@
 package com.openmason.engine.voxel.mms.mmsCore;
 
+import com.openmason.engine.util.EngineProperties;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL33;
@@ -12,7 +13,7 @@ import java.nio.ByteBuffer;
  * decoder ({@link MmsMeshData} getters, {@link MmsMeshValidator}) and GL
  * binder ({@link MmsRenderableHandle#setupVertexAttributes()},
  * {@code MmsChunkRegion.rebuildVao}) goes through, so a format is selected in
- * exactly one place: {@code -Dstonebreak.mesh.vertexformat=legacy40|compact20}.
+ * exactly one place: {@code -Dopenmason.mesh.vertexformat=legacy40|compact20}.
  *
  * <p>Every format presents the SAME five shader attributes at the same
  * locations (vec3 position, vec2 texCoord, vec3 normal, vec4 aFlags, float
@@ -80,12 +81,13 @@ public enum MmsVertexFormat {
     /**
      * The shipped default. Promoted from LEGACY40 on 2026-08-20 after the chunk
      * footprint lab (Testing/chunk-lab.sh) measured 172 → 16 bytes per cube
-     * face with pixel-identical output; {@code -Dstonebreak.mesh.vertexformat=
+     * face with pixel-identical output; {@code -Dopenmason.mesh.vertexformat=
      * legacy40|compact20} selects the older layouts.
      */
     public static final MmsVertexFormat DEFAULT = QUAD16;
 
-    private static final String PROPERTY = "stonebreak.mesh.vertexformat";
+    private static final String KEY = "mesh.vertexformat";
+    private static final String PROPERTY = "openmason.mesh.vertexformat";
     private static volatile MmsVertexFormat active;
 
     private final int stride;
@@ -155,7 +157,7 @@ public enum MmsVertexFormat {
             synchronized (MmsVertexFormat.class) {
                 f = active;
                 if (f == null) {
-                    String name = System.getProperty(PROPERTY, DEFAULT.name()).trim().toUpperCase();
+                    String name = EngineProperties.get(KEY, DEFAULT.name()).trim().toUpperCase();
                     try {
                         f = valueOf(name);
                     } catch (IllegalArgumentException e) {
