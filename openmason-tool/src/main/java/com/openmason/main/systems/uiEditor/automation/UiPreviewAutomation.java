@@ -1,5 +1,7 @@
 package com.openmason.main.systems.uiEditor.automation;
 
+import com.openmason.main.systems.target.TargetUi;
+import com.openmason.engine.ui.hosting.UiDocuments;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.openmason.engine.ui.data.FixtureHost;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
@@ -13,7 +15,6 @@ import com.openmason.main.systems.uiEditor.document.UiEditorDocument;
 import com.openmason.main.systems.uiEditor.service.UiSnapshot;
 import com.openmason.main.systems.uiEditor.view.DesignerRuntime;
 import com.openmason.main.systems.uiEditor.view.DocumentViewState;
-import com.stonebreak.ui.runtime.GameUiDocuments;
 import io.github.humbleui.skija.Typeface;
 
 import java.awt.image.BufferedImage;
@@ -72,7 +73,7 @@ public final class UiPreviewAutomation {
     private DesignerRuntime runtime(UiEditorDocument d) {
         DesignerRuntime rt = ui.context().runtime(d);
         if (rt == null) {
-            throw new IllegalStateException("The UI runtime is unavailable (the game font failed to load)");
+            throw new IllegalStateException("The UI runtime is unavailable (the UI font failed to load)");
         }
         return rt;
     }
@@ -202,8 +203,9 @@ public final class UiPreviewAutomation {
             return img != null ? img
                 : UiSnapshot.render(rt.view(), tf, f.width(), f.height(), f.uiScale(), f.pixelRatio());
         }
-        try (UiDocumentView view = GameUiDocuments.open(d.archive(), ui.context().project.sources(), () -> tf,
-            com.stonebreak.ui.runtime.GameUiProviders.skiaOnly())) {
+        try (UiDocumentView view = UiDocuments.open(d.archive(),
+            UiDocuments.withFallback(ui.context().project.sources(), TargetUi.packagedAssets()), TargetUi.textures(),
+            () -> tf, TargetUi.previewProviders())) {
             UiDocumentInstance inst = view.instance();
             inst.setMetrics(new com.openmason.engine.ui.runtime.UiMetrics(f.width(), f.height(), f.uiScale(),
                 f.pixelRatio()));

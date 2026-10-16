@@ -4,7 +4,7 @@ import com.stonebreak.mobs.sbe.OverlayAnimState;
 import com.stonebreak.mobs.sbe.PlayerAttackAnimation;
 import com.stonebreak.mobs.sbe.PlayerGaitClock;
 import com.stonebreak.mobs.sbe.PlayerStateMapping;
-import com.stonebreak.mobs.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
 import org.joml.Vector3f;
 
 /**

@@ -1,8 +1,8 @@
 package com.stonebreak.rendering.player;
 
+import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.stonebreak.core.Game;
-import com.stonebreak.mobs.sbe.SbeEntityAsset;
-import com.stonebreak.mobs.sbe.SbeEntityLoader;
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.mobs.sbe.PlayerStateMapping;
 import com.stonebreak.mobs.entities.EntityType;
@@ -28,7 +28,7 @@ final class FirstPersonArmRenderer {
         if (unavailable) return false;
         if (asset == null) {
             try {
-                asset = SbeEntityLoader.load(FirstPersonArmPose.RESOURCE);
+                asset = GameSbeAssets.load(FirstPersonArmPose.RESOURCE);
                 renderer.initialize();
             } catch (RuntimeException e) {
                 unavailable = true;

@@ -3,8 +3,9 @@ package com.openmason.main.systems.rendering.core;
 import com.openmason.engine.format.omt.OMTArchive;
 import com.openmason.engine.format.omt.OMTReader;
 import com.openmason.engine.format.sbt.SBTParser;
-import com.stonebreak.rendering.player.items.voxelization.VoxelData;
-import com.stonebreak.rendering.player.items.voxelization.VoxelMesh;
+import com.openmason.engine.rendering.sprite.SpriteVoxels;
+import com.openmason.engine.rendering.sprite.VoxelData;
+import com.openmason.engine.rendering.sprite.VoxelMesh;
 import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
 import org.slf4j.Logger;
@@ -18,7 +19,6 @@ import java.io.ByteArrayInputStream;
 import java.nio.FloatBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,24 +28,18 @@ import static org.lwjgl.opengl.GL20.*;
 
 /**
  * Renders a .SBT texture in the viewport by voxelising every visible pixel
- * of the embedded OMT (mirroring the game's {@code SpriteVoxelizer}
- * geometry) and drawing each voxel with its own solid colour.
+ * of the embedded OMT and drawing each voxel with its own solid colour.
  *
- * <p>This deliberately reuses {@link VoxelMesh} / {@link VoxelData} from the
- * game module so the resulting voxel layout, voxel size, and depth match
- * what the player sees holding the same SBT in-game. The colour palette
- * step is skipped — Open Mason renders colours directly per voxel via a
- * shader uniform, the same approach {@link ItemRenderer} uses.
+ * <p>The voxels come from the engine's {@link SpriteVoxels} — the same code the
+ * game's held items use (#381) — so the layout, voxel size and depth match what
+ * the player sees holding the same SBT in-game. The colour palette step is
+ * skipped — Open Mason renders colours directly per voxel via a shader uniform,
+ * the same approach {@link ItemRenderer} uses.
  */
 public class SBTRenderer implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(SBTRenderer.class);
 
-    // Geometry constants — must match SpriteVoxelizer for visual parity.
-    private static final float VOXEL_SIZE = 0.02f;
-    private static final float SPRITE_SCALE = 0.02f;
-    private static final float DEPTH = 0.08f;
-    private static final float VERTICAL_OFFSET = 0.3f;
 
     private final FloatBuffer matrixBuffer = BufferUtils.createFloatBuffer(16);
     private final Map<String, CachedSprite> cache = new HashMap<>();
@@ -145,11 +139,14 @@ public class SBTRenderer implements AutoCloseable {
             if (image == null) {
                 return null;
             }
-            List<VoxelData> voxels = new ArrayList<>();
-            int[] colors = voxeliseImage(image, voxels);
+            List<VoxelData> voxels = SpriteVoxels.voxelize(image, argb -> 0.0f);
+            int[] colors = new int[voxels.size()];
+            for (int i = 0; i < colors.length; i++) {
+                colors[i] = voxels.get(i).getOriginalRGBA();
+            }
 
             VoxelMesh mesh = new VoxelMesh();
-            mesh.createMesh(voxels, VOXEL_SIZE);
+            mesh.createMesh(voxels, SpriteVoxels.VOXEL_SIZE);
 
             CachedSprite fresh = new CachedSprite(mesh, colors, mtime);
             cache.put(key, fresh);
@@ -182,43 +179,6 @@ public class SBTRenderer implements AutoCloseable {
             g2d.dispose();
         }
         return canvas;
-    }
-
-    /**
-     * Walk the image and emit one voxel per non-transparent pixel, mirroring
-     * {@code SpriteVoxelizer.voxelizeSprite}. Returns the per-voxel colour
-     * array in the same order the voxels are added to {@code voxels}.
-     */
-    private int[] voxeliseImage(BufferedImage sprite, List<VoxelData> voxels) {
-        int width = sprite.getWidth();
-        int height = sprite.getHeight();
-        float startX = -(width * SPRITE_SCALE) / 2.0f;
-        float startY = -(height * SPRITE_SCALE) / 2.0f;
-
-        List<Integer> colors = new ArrayList<>();
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int rgba = sprite.getRGB(x, y);
-                int alpha = (rgba >> 24) & 0xFF;
-                if (alpha < 10) continue;
-
-                int red = (rgba >> 16) & 0xFF;
-                int green = (rgba >> 8) & 0xFF;
-                int blue = rgba & 0xFF;
-                int finalAlpha = alpha == 0 ? 255 : alpha;
-                int finalRGBA = (finalAlpha << 24) | (red << 16) | (green << 8) | blue;
-
-                float voxelX = startX + (x * SPRITE_SCALE);
-                float voxelY = startY + ((height - 1 - y) * SPRITE_SCALE) + VERTICAL_OFFSET;
-                float voxelZ = (y * width + x) * 0.0001f;
-
-                voxels.add(new VoxelData(voxelX, voxelY, voxelZ, 0.0f, finalRGBA, x, y));
-                colors.add(finalRGBA);
-            }
-        }
-        int[] arr = new int[colors.size()];
-        for (int i = 0; i < arr.length; i++) arr[i] = colors.get(i);
-        return arr;
     }
 
     private static long readMtime(Path file) {

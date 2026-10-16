@@ -555,7 +555,7 @@ public class ViewportRenderPipeline implements ViewerPass {
                 if (socketFrame == null) continue; // socket deleted — stale preview
                 Matrix4f model = new Matrix4f(transformState.getTransformMatrix()).mul(socketFrame);
                 var geometry = entry.getValue().asset()
-                        .geometryFor(com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT);
+                        .geometryFor(com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT);
                 attachmentPreviewRenderer.render(geometry, model, viewMatrix, projectionMatrix);
             }
         } catch (Exception e) {

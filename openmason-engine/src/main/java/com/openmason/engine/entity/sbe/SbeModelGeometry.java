@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.sbe;
+package com.openmason.engine.entity.sbe;
 
 import java.util.List;
 import java.util.Map;

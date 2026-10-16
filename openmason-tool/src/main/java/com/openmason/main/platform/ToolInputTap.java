@@ -35,7 +35,8 @@ public final class ToolInputTap {
             }
             // documents see letter keys of the active layout (C8): Ctrl+Z on a QWERTZ keyboard is
             // the key labelled Z, as in the game window; ImGui keeps its own physical-key view
-            int layoutKey = com.stonebreak.ui.runtime.LayoutKeys.translate(key, scancode);
+            int layoutKey = com.openmason.engine.ui.runtime.input.LayoutKeys.translate(key, scancode,
+                    org.lwjgl.glfw.GLFW::glfwGetKeyName);
             for (Listener l : LISTENERS) {
                 l.key(layoutKey, action, mods);
             }

@@ -1,5 +1,6 @@
 package com.openmason.main.systems.uiEditor.view;
 
+import com.openmason.main.systems.target.TargetUi;
 import com.openmason.engine.format.omui.UiNode;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.UiElement;
@@ -7,7 +8,6 @@ import com.openmason.main.systems.uiEditor.document.UiEditorDocument;
 import com.openmason.main.systems.uiEditor.document.UiTree;
 import com.openmason.main.systems.uiEditor.service.UiDocumentService;
 import com.openmason.main.systems.uiEditor.service.UiProjectContext;
-import com.stonebreak.ui.runtime.GameUiResources;
 import io.github.humbleui.skija.Typeface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -258,10 +258,10 @@ public final class UiEditorContext implements AutoCloseable {
     public Typeface typeface() {
         if (typeface == null && !typefaceFailed) {
             try {
-                typeface = GameUiResources.loadTypeface();
+                typeface = TargetUi.loadTypeface();
             } catch (Exception e) {
                 typefaceFailed = true;
-                logger.error("UI editor: cannot load the game font", e);
+                logger.error("UI editor: cannot load the UI font", e);
             }
         }
         return typeface;

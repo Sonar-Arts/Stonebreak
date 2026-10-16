@@ -1,9 +1,9 @@
 package com.stonebreak.battle;
 
+import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.stonebreak.battle.stage.BattleStageLayouts;
 import com.stonebreak.mobs.sbe.AnimState;
-import com.stonebreak.mobs.sbe.SbeEntityAsset;
-import com.stonebreak.mobs.sbe.SbeEntityLoader;
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
 import com.stonebreak.rendering.models.entities.SbePoseSolver;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class BattleReachTest {
 
-    private static final SbeEntityAsset MONK = SbeEntityLoader.load("/sbe/Mobs/SB_Player.sbe");
+    private static final SbeEntityAsset MONK = GameSbeAssets.load("/sbe/Mobs/SB_Player.sbe");
 
     /** Forward (authored −Z) reach of the farthest-forward of the given sockets at a clip time. */
     private static float reach(BattleClip clip, float time, String... sockets) {

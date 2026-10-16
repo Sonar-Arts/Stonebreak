@@ -1,5 +1,7 @@
 package com.stonebreak.mobs.sbe;
 
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
+
 /**
  * Plays a complete authored body attack independently of mining/combat pulse timing.
  * Pulses during a punch do not restart it; sustained attacking starts another punch

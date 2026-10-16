@@ -1,12 +1,12 @@
 package com.stonebreak.player;
 
-import com.stonebreak.mobs.sbe.SbeAttachmentPoint;
+import com.stonebreak.mobs.sbe.GameSbeAssets;
+import com.openmason.engine.entity.sbe.SbeAttachmentPoint;
 import com.stonebreak.mobs.sbe.EntityAttachments;
 import java.util.List;
 import java.util.stream.Stream;
-import com.stonebreak.mobs.sbe.SbeEntityAsset;
-import com.stonebreak.mobs.sbe.SbeEntityLoader;
-import com.stonebreak.mobs.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.sbe.SbeModelGeometry;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
@@ -53,7 +53,7 @@ class PlayerLooksTest {
     void everyHatAssetDecodesFromTheClasspath() {
         for (PlayerLooks.CosmeticOption option : allOptions()) {
             if (option.resourcePath() == null) continue;
-            SbeEntityAsset asset = SbeEntityLoader.loadAttachableResource(option.resourcePath());
+            SbeEntityAsset asset = GameSbeAssets.loadAttachableResource(option.resourcePath());
             assertNotNull(asset.geometryFor(SbeEntityAsset.DEFAULT_VARIANT),
                     option.id() + " asset has no default geometry: " + option.resourcePath());
         }
@@ -61,7 +61,7 @@ class PlayerLooksTest {
 
     @Test
     void playerModelHasEverySocketOptionsMountTo() {
-        SbeEntityAsset player = SbeEntityLoader.loadAttachableResource("/sbe/Mobs/SB_Player.sbe");
+        SbeEntityAsset player = GameSbeAssets.loadAttachableResource("/sbe/Mobs/SB_Player.sbe");
         SbeModelGeometry geometry = player.geometryFor(SbeEntityAsset.DEFAULT_VARIANT);
         assertNotNull(geometry);
         Set<String> playerSockets = new HashSet<>();
@@ -105,7 +105,7 @@ class PlayerLooksTest {
         assertTrue(EntityAttachments.get(player).contains(hat));
         var hair = EntityAttachments.get(player).stream()
                 .filter(a -> a.socketName().equals(PlayerLooks.HAIR_SOCKET)).findFirst().orElseThrow();
-        assertEquals(SbeEntityLoader.loadAttachableResource(PlayerLooks.hairOptionFor("MALE_HAIR_2").resourcePath()),
+        assertEquals(GameSbeAssets.loadAttachableResource(PlayerLooks.hairOptionFor("MALE_HAIR_2").resourcePath()),
                 hair.asset());
         PlayerLooks.applyHat(player, "NONE");
         assertEquals(List.of(hair), EntityAttachments.get(player));

@@ -2,6 +2,9 @@ package com.stonebreak.rendering.player.items.voxelization;
 
 import com.stonebreak.items.ItemType;
 import com.stonebreak.items.registry.ItemRegistry;
+import com.openmason.engine.rendering.sprite.ColorPalette;
+import com.openmason.engine.rendering.sprite.SpriteVoxels;
+import com.openmason.engine.rendering.sprite.VoxelData;
 import com.openmason.engine.format.omt.OMTReader;
 import com.openmason.engine.format.omt.OMTArchive;
 import org.joml.Vector3f;
@@ -43,16 +46,7 @@ public class SpriteVoxelizer {
     private static final Map<SpriteKey, BufferedImage> spriteCache = new HashMap<>();
 
     // Voxel size in world units (each pixel becomes a cube this size)
-    private static final float DEFAULT_VOXEL_SIZE = 0.02f; // Original size
-
-    // Depth of the voxelized sprite (how thick the 3D projection is)
-    private static final float DEFAULT_DEPTH = 0.08f; // 2 voxels deep
-
-    // Scale factor for positioning the voxelized sprite
-    private static final float SPRITE_SCALE = 0.02f; // Original size
-
-    // Vertical offset to raise the tool in the hand
-    private static final float VERTICAL_OFFSET = 0.3f;
+    private static final float DEFAULT_VOXEL_SIZE = SpriteVoxels.VOXEL_SIZE;
 
     /**
      * Converts a 2D item sprite into 3D voxel data using color palette mapping.
@@ -75,65 +69,8 @@ public class SpriteVoxelizer {
             return new ArrayList<>(); // Return empty list if sprite can't be loaded
         }
 
-        List<VoxelData> voxels = new ArrayList<>();
-        int width = sprite.getWidth();
-        int height = sprite.getHeight();
-
-        // Center the sprite around origin
-        float startX = -(width * SPRITE_SCALE) / 2.0f;
-        float startY = -(height * SPRITE_SCALE) / 2.0f;
-
-        // Process each pixel in the sprite
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int rgba = sprite.getRGB(x, y);
-
-                // Extract RGBA components
-                int alpha = (rgba >> 24) & 0xFF;
-                int red = (rgba >> 16) & 0xFF;
-                int green = (rgba >> 8) & 0xFF;
-                int blue = rgba & 0xFF;
-
-                // Debug: Print first few pixels (disabled for production)
-                // if (x < 3 && y < 3) {
-                //     System.out.printf("Pixel (%d,%d): RGBA=(%d,%d,%d,%d) raw=0x%08X%n",
-                //         x, y, red, green, blue, alpha, rgba);
-                // }
-
-                // Skip transparent pixels based on alpha channel
-                // Alpha < 10 is considered fully transparent (threshold for anti-aliasing artifacts)
-                if (alpha < 10) {
-                    continue;
-                }
-
-                // Get palette coordinate for this color
-                int finalAlpha = alpha == 0 ? 255 : alpha;
-                int finalRGBA = (finalAlpha << 24) | (red << 16) | (green << 8) | blue;
-                float paletteCoordinate = colorPalette.getTextureCoordinate(rgba);
-
-                // Calculate voxel position
-                // Flip Y coordinate since image coordinates are top-down
-                float voxelX = startX + (x * SPRITE_SCALE);
-                float voxelY = startY + ((height - 1 - y) * SPRITE_SCALE) + VERTICAL_OFFSET;
-
-                // Create single voxel per pixel with proper Z spacing to avoid z-fighting
-                // Use a small offset based on pixel position to ensure unique Z values
-                float voxelZ = (y * width + x) * 0.0001f; // Tiny offset per pixel
-
-                // Create voxel data with palette coordinate
-                VoxelData voxel = new VoxelData(
-                    voxelX, voxelY, voxelZ,
-                    paletteCoordinate,
-                    finalRGBA,
-                    x, y
-                );
-
-                voxels.add(voxel);
-            }
-        }
-
-        // System.out.println("Voxelization complete for " + itemType.getName() + ": " + voxels.size() + " voxels generated"); // Debug only
-        return voxels;
+        // The generic layout lives in the engine so the editor's .SBT viewport matches it (#381).
+        return SpriteVoxels.voxelize(sprite, colorPalette::getTextureCoordinate);
     }
 
     /**
@@ -156,7 +93,7 @@ public class SpriteVoxelizer {
             return new VoxelizationResult(null, new ArrayList<>());
         }
 
-        ColorPalette palette = new ColorPalette(itemType, sprite);
+        ColorPalette palette = new ColorPalette(itemType.getName(), sprite);
         List<VoxelData> voxels = voxelizeSprite(itemType, state, palette);
 
         return new VoxelizationResult(palette, voxels);

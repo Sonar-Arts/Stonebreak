@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.sbe;
+package com.openmason.engine.entity.sbe;
 
 import org.joml.Vector3f;
 

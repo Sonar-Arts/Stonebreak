@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.sbe;
+package com.openmason.engine.entity.sbe;
 
 /**
  * A single textured quad face of an SBE model part.

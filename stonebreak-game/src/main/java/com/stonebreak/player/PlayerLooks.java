@@ -1,8 +1,8 @@
 package com.stonebreak.player;
 
+import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.stonebreak.config.Settings;
 import com.stonebreak.mobs.sbe.EntityAttachments;
-import com.stonebreak.mobs.sbe.SbeEntityLoader;
 
 import java.util.List;
 
@@ -71,7 +71,7 @@ public final class PlayerLooks {
         EntityAttachments.detach(entityKey, socket);
         if (option.resourcePath() == null) return;
         try {
-            var asset = SbeEntityLoader.loadAttachableResource(option.resourcePath());
+            var asset = GameSbeAssets.loadAttachableResource(option.resourcePath());
             EntityAttachments.attach(entityKey, socket, asset);
         } catch (Exception e) {
             System.err.println("Failed to load cosmetic asset " + option.resourcePath() + ": " + e.getMessage());

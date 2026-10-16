@@ -28,7 +28,7 @@ final class EntityAttachmentRenderer {
      * part are skipped (never drawn at the model origin).
      */
     void render(Object entityKey,
-                com.stonebreak.mobs.sbe.SbeEntityAsset hostAsset,
+                com.openmason.engine.entity.sbe.SbeEntityAsset hostAsset,
                 String variantName, com.stonebreak.mobs.sbe.AnimState anim,
                 Vector3f position, float yawDegrees, Vector3f scale,
                 float headYawDeg, float headPitchDeg,
@@ -47,11 +47,11 @@ final class EntityAttachmentRenderer {
             }
             if (SbeRenderSupport.isTextured(a.asset())) {
                 sbeEntityRenderer.render(a.asset(),
-                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT, null, socket,
+                        com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT, null, socket,
                         viewMatrix, projectionMatrix, world, cameraPos, 0f, 0f);
             } else {
                 sbeEntityRenderer.renderColored(a.asset(),
-                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT, null, socket,
+                        com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT, null, socket,
                         viewMatrix, projectionMatrix, ATTACHMENT_FALLBACK_COLOR, 0f, 0f);
             }
         }

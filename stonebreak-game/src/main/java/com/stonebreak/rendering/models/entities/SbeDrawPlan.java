@@ -1,9 +1,9 @@
 package com.stonebreak.rendering.models.entities;
 
 import com.openmason.engine.rendering.model.IndexedDrawBatch;
-import com.stonebreak.mobs.sbe.SbeFace;
-import com.stonebreak.mobs.sbe.SbeModelGeometry;
-import com.stonebreak.mobs.sbe.SbePart;
+import com.openmason.engine.entity.sbe.SbeFace;
+import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.sbe.SbePart;
 
 import java.util.HashSet;
 import java.util.IdentityHashMap;

@@ -1,5 +1,8 @@
 package com.stonebreak.rendering.player;
 
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.sbe.SbePart;
+import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
@@ -39,7 +42,7 @@ class FirstPersonArmPoseTest {
 
     @Test
     void idleAndImpactKeepTheFistVisibleAndOnTheRight() {
-        var asset = SbeEntityLoader.load(FirstPersonArmPose.RESOURCE);
+        var asset = GameSbeAssets.load(FirstPersonArmPose.RESOURCE);
         var base = FirstPersonArmPose.worldTransform(new Matrix4f(), 0, false, new Matrix4f());
         var idle = point(asset, AnimState.single("idle", 0), base);
         var impact = point(asset, new AnimState("idle", 0, List.of(new AnimState.Overlay("attacking", .38f, 1))), base);
@@ -62,7 +65,7 @@ class FirstPersonArmPoseTest {
 
     @Test
     void exportedArmHasClosedFingerGeometryAndCompatibleClips() {
-        var asset = SbeEntityLoader.load(FirstPersonArmPose.RESOURCE);
+        var asset = GameSbeAssets.load(FirstPersonArmPose.RESOURCE);
         var geometry = asset.geometryFor("Default");
         var names = geometry.parts().stream().map(SbePart::name).collect(Collectors.toSet());
         assertTrue(names.containsAll(List.of("upper_arm", "forearm", "wrist_cuff", "wrist_guard", "fist")));
@@ -73,7 +76,7 @@ class FirstPersonArmPoseTest {
         }
         assertTrue(asset.clipFor("idle").loop());
         assertFalse(asset.clipFor("attacking").loop());
-        assertEquals(SbeEntityLoader.load("/sbe/Mobs/SB_Player.sbe").clipFor("attacking").duration(),
+        assertEquals(GameSbeAssets.load("/sbe/Mobs/SB_Player.sbe").clipFor("attacking").duration(),
                 asset.clipFor("attacking").duration(), 1e-6f, "first/body punches share a clock");
         assertTrue(geometry.indices().length / 3 < 20000, "arm should not include the whole player mesh");
         assertEquals(5, geometry.materials().size());
@@ -82,7 +85,7 @@ class FirstPersonArmPoseTest {
 
     @Test
     void idleLoopsAndPunchReturnsToItsIdlePoseWithoutScalingTheFist() {
-        var asset = SbeEntityLoader.load(FirstPersonArmPose.RESOURCE);
+        var asset = GameSbeAssets.load(FirstPersonArmPose.RESOURCE);
         Map<String, Matrix4f> start = matrices(asset, "idle", 0);
         for (var end : List.of(matrices(asset, "idle", 3.2f), matrices(asset, "attacking", .78f))) {
             start.forEach((name, matrix) -> assertTrue(matrix.equals(end.get(name), 1e-5f), name));

@@ -1,5 +1,6 @@
 package com.stonebreak.mobs.sbe;
 
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;

@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.sbe;
+package com.openmason.engine.entity.sbe;
 
 /**
  * A decoded material texture: tightly-packed RGBA8 pixels ready for GPU upload.

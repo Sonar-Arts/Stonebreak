@@ -1,5 +1,7 @@
 package com.openmason.main.systems.uiEditor.view;
 
+import com.openmason.main.systems.target.TargetUi;
+import com.openmason.engine.ui.hosting.UiDocuments;
 import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.format.omui.UiDiagnostic;
 import com.openmason.engine.format.omui.UiValue;
@@ -17,7 +19,6 @@ import com.openmason.engine.ui.script.UiScripts;
 import com.openmason.main.systems.uiEditor.document.UiEditorDocument;
 import com.openmason.main.systems.uiEditor.service.UiProjectContext;
 import com.openmason.main.systems.uiPreview.MasonryPreview;
-import com.stonebreak.ui.runtime.GameUiDocuments;
 import io.github.humbleui.skija.Typeface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +35,8 @@ import java.util.Set;
 
 /**
  * The engine side of the designer canvas for one document: a live runtime instance of the
- * source, painted through {@link GameUiDocuments} (the game's own context, painter and fonts) on
+ * source, painted through the engine's {@link UiDocuments} (the context and painter the game uses,
+ * the game target's font) on
  * a {@link MasonryPreview}. What the canvas shows is the engine's result, never a recreation.
  *
  * <ul>
@@ -178,13 +180,14 @@ public final class DesignerRuntime implements AutoCloseable {
         assetsStale = false;
         disposeView();
         try {
-            // the game's Skia-only providers (the furnace crucible) draw here too; GL ones stay placeholders
-            view = GameUiDocuments.open(a, project.sources(), () -> typeface, com.stonebreak.ui.runtime.GameUiProviders.skiaOnly());
+            // the game target's Skia-only providers (the furnace crucible) draw here too; GL ones stay placeholders
+            view = UiDocuments.open(a, UiDocuments.withFallback(project.sources(), TargetUi.packagedAssets()),
+                TargetUi.textures(), () -> typeface, TargetUi.previewProviders());
             if (mode == Mode.PREVIEW) {
                 fixtures = fixtures(a);
-                activation = GameUiDocuments.activationGate(view, fixtures.host());
+                activation = UiDocuments.activationGate(view, fixtures.host());
                 // The game's hard limits (#296): a script that would fail in the game fails here first
-                scripts = GameUiDocuments.scripts(view, fixtures.host(), null, services(),
+                scripts = UiDocuments.scripts(view, fixtures.host(), null, services(),
                     UiBudgets.forDocument(a).scriptOptions().withGraphDebug(true));
                 input = new PreviewInput(view.input());
             }

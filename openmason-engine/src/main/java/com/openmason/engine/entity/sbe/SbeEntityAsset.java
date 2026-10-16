@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.sbe;
+package com.openmason.engine.entity.sbe;
 
 import com.openmason.engine.format.oma.ParsedAnimClip;
 import com.openmason.engine.format.sound.SoundData;
@@ -14,7 +14,7 @@ import java.util.Map;
  * of which entity it represents — variant and state names are plain strings
  * keyed by whatever the SBE author chose — so it can back any SBE-driven mob.
  *
- * @param objectId   the SBE manifest object id (e.g. {@code stonebreak:cow})
+ * @param objectId   the SBE manifest object id (e.g. {@code mygame:cow})
  * @param variants   variant name (e.g. {@code Default}) → resolved geometry
  * @param clips      SBE state name (e.g. {@code Idle}) → animation clip
  * @param sounds     the SBE's sound bindings (1.4+), or null when it declares

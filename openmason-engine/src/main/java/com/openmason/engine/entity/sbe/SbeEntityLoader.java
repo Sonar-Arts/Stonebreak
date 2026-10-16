@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.sbe;
+package com.openmason.engine.entity.sbe;
 
 import com.openmason.engine.format.mesh.ParsedFaceMapping;
 import com.openmason.engine.format.mesh.ParsedMaterialData;
@@ -29,14 +29,18 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Generic, entity-blind loader for SBE entity assets.
+ * Generic, entity-blind loader for SBE entity assets (moved from the game, #381).
  *
- * <p>Decodes any {@code .sbe} classpath resource — using the engine's
+ * <p>Decodes any {@code .sbe} resource — using the engine's
  * {@link SBEParser}, {@link OMOReader} and {@link OMAReader} — into a
  * render-ready {@link SbeEntityAsset}, and caches the result by resource path so
  * each file is decoded only once. The loader has no knowledge of which entity an
  * SBE describes; entity-specific glue (which path to load, AI-state → clip-state
  * mapping) lives with the entity.
+ *
+ * <p>Resources are read through the caller's {@link ResourceOpener}: under JPMS the engine cannot
+ * see another module's resources, so the module that owns them passes its own lookup
+ * ({@code MyGame.class::getResourceAsStream}).
  *
  * <p>Decoding is GL-free (textures are decoded to {@code byte[]}), so
  * {@link #load(String)} may be called from any thread; the renderer performs GPU
@@ -48,23 +52,30 @@ public final class SbeEntityLoader {
 
     private static final Map<String, SbeEntityAsset> CACHE = new ConcurrentHashMap<>();
 
+    /** The calling module's resource lookup ({@code Class::getResourceAsStream}); null = absent. */
+    @FunctionalInterface
+    public interface ResourceOpener {
+        InputStream open(String resourcePath) throws IOException;
+    }
+
     private SbeEntityLoader() {
         throw new UnsupportedOperationException("Utility class");
     }
 
     /**
-     * Loads (or returns the cached) SBE entity asset for a classpath resource.
+     * Loads (or returns the cached) SBE entity asset for a resource, cached by path.
      *
-     * @param resourcePath absolute classpath path, e.g. {@code /sbe/Mobs/SB_Cow.sbe}
+     * @param resourcePath absolute resource path, e.g. {@code /sbe/Mobs/Cow.sbe}
+     * @param opener       the owning module's resource lookup
      * @throws IllegalStateException if the resource is missing or cannot be decoded
      */
-    public static SbeEntityAsset load(String resourcePath) {
-        return CACHE.computeIfAbsent(resourcePath, SbeEntityLoader::decode);
+    public static SbeEntityAsset load(String resourcePath, ResourceOpener opener) {
+        return CACHE.computeIfAbsent(resourcePath, k -> decode(k, opener));
     }
 
     /**
      * Loads (or returns the cached) attachable accessory asset from a file on
-     * disk (see {@code EntityAttachments}). Dispatches on extension:
+     * disk (a game's attachment system). Dispatches on extension:
      * <ul>
      *   <li>{@code .omo} — bare model; single-variant, clipless asset</li>
      *   <li>{@code .sbe} — full entity asset (variants + clips); attachments
@@ -88,15 +99,16 @@ public final class SbeEntityLoader {
     }
 
     /**
-     * Classpath twin of {@link #loadAttachable(java.nio.file.Path)}.
+     * Resource twin of {@link #loadAttachable(java.nio.file.Path)}.
      *
-     * @param resourcePath absolute classpath path,
+     * @param resourcePath absolute resource path,
      *                     e.g. {@code /models/accessories/mustache.sbo}
+     * @param opener       the owning module's resource lookup
      * @throws IllegalStateException if the resource is missing or cannot be decoded
      */
-    public static SbeEntityAsset loadAttachableResource(String resourcePath) {
+    public static SbeEntityAsset loadAttachableResource(String resourcePath, ResourceOpener opener) {
         return CACHE.computeIfAbsent(resourcePath, k -> {
-            try (InputStream in = SbeEntityLoader.class.getResourceAsStream(k)) {
+            try (InputStream in = opener.open(k)) {
                 if (in == null) {
                     throw new IllegalStateException("Attachable resource not found: " + k);
                 }
@@ -149,8 +161,8 @@ public final class SbeEntityLoader {
         return decodeOmo(id, new ByteArrayInputStream(omoBytes));
     }
 
-    private static SbeEntityAsset decode(String resourcePath) {
-        try (InputStream in = SbeEntityLoader.class.getResourceAsStream(resourcePath)) {
+    private static SbeEntityAsset decode(String resourcePath, ResourceOpener opener) {
+        try (InputStream in = opener.open(resourcePath)) {
             if (in == null) {
                 throw new IllegalStateException("SBE resource not found: " + resourcePath);
             }

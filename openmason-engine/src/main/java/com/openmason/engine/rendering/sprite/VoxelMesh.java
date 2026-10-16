@@ -1,4 +1,4 @@
-package com.stonebreak.rendering.player.items.voxelization;
+package com.openmason.engine.rendering.sprite;
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL20;

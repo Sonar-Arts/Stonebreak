@@ -109,7 +109,8 @@ public class Main {
         glfwSetKeyCallback(handle, (win, key, scancode, action, mods) -> inputRouter.onKey(key, action, mods));
         // UI documents see letter keys by their layout label (Ctrl+Z on QWERTZ is the key labelled Z).
         com.stonebreak.ui.runtime.GameUiInput.get().setKeyTranslator(
-                key -> com.stonebreak.ui.runtime.LayoutKeys.translate(key, 0));
+                key -> com.openmason.engine.ui.runtime.input.LayoutKeys.translate(key, 0,
+                        org.lwjgl.glfw.GLFW::glfwGetKeyName));
         glfwSetCharCallback(handle, (win, codepoint) -> inputRouter.onCharacter(codepoint));
         glfwSetMouseButtonCallback(handle, (win, button, action, mods) ->
                 inputRouter.onMouseButton(button, action, mods));

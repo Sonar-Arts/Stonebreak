@@ -1,6 +1,5 @@
-package com.stonebreak.rendering.player.items.voxelization;
+package com.openmason.engine.rendering.sprite;
 
-import com.stonebreak.items.ItemType;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -16,7 +15,7 @@ import java.util.*;
  */
 public class ColorPalette {
 
-    private final ItemType itemType;
+    private final String name;
     private final List<Integer> uniqueColors;
     private final Map<Integer, Integer> colorToIndex;
     private int textureId = -1;
@@ -25,8 +24,8 @@ public class ColorPalette {
     /**
      * Creates a color palette from a sprite image.
      */
-    public ColorPalette(ItemType itemType, BufferedImage sprite) {
-        this.itemType = itemType;
+    public ColorPalette(String name, BufferedImage sprite) {
+        this.name = name;
         this.uniqueColors = new ArrayList<>();
         this.colorToIndex = new HashMap<>();
 
@@ -76,7 +75,7 @@ public class ColorPalette {
         }
 
         // Debug output removed - uncomment if needed for debugging
-        // System.out.println("Color palette for " + itemType.getName() + ": " + uniqueColors.size() + " unique colors");
+        // System.out.println("Color palette for " + name + ": " + uniqueColors.size() + " unique colors");
     }
 
     /**
@@ -149,7 +148,7 @@ public class ColorPalette {
             .track(com.openmason.engine.diagnostics.GpuMemoryTracker.Category.PLAYER_GEOMETRY,
                    (long) uniqueColors.size() * 4L);
 
-        System.out.println("Created color palette texture for " + itemType.getName() +
+        System.out.println("Created color palette texture for " + name +
                           " (ID: " + textureId + ", " + uniqueColors.size() + " colors)");
     }
 
@@ -188,10 +187,10 @@ public class ColorPalette {
     }
 
     /**
-     * Gets the item type this palette belongs to.
+     * The name of the sprite this palette was built from (diagnostics).
      */
-    public ItemType getItemType() {
-        return itemType;
+    public String getName() {
+        return name;
     }
 
     /**
@@ -220,7 +219,7 @@ public class ColorPalette {
      */
     public String getDebugInfo() {
         StringBuilder sb = new StringBuilder();
-        sb.append("ColorPalette[").append(itemType.getName()).append("]: ");
+        sb.append("ColorPalette[").append(name).append("]: ");
         sb.append(uniqueColors.size()).append(" colors");
         if (created) {
             sb.append(", textureID=").append(textureId);
