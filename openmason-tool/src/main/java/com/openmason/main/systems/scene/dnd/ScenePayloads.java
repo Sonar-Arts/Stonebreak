@@ -20,8 +20,8 @@ public final class ScenePayloads {
         throw new UnsupportedOperationException("Utility class");
     }
 
-    /** Whether a path can be dropped into a scene as an instance. */
+    /** Whether a path can be dropped into a scene as an instance (an .omo model). */
     public static boolean isPlaceable(String assetPath) {
-        return assetPath != null && assetPath.trim().toLowerCase().endsWith(".omo");
+        return assetPath != null && com.openmason.main.systems.io.BuiltinFileTypes.OMO.matches(assetPath.trim());
     }
 }

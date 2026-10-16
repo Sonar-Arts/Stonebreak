@@ -23,10 +23,11 @@ public class AssetEditorDetacher {
         if (!deleted) {
             return;  // delete failed; editor stays attached
         }
-        switch (entry.type()) {
-            case OMO -> detachModel(entry, modelState);
-            case OMT -> detachTexture(entry, textures);
-            case OMSC -> { }
+        String type = entry.type().id();
+        if (com.openmason.main.systems.io.BuiltinFileTypes.OMO.id().equals(type)) {
+            detachModel(entry, modelState);
+        } else if (com.openmason.main.systems.io.BuiltinFileTypes.OMT.id().equals(type)) {
+            detachTexture(entry, textures);
         }
     }
 

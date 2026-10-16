@@ -136,7 +136,7 @@ class WriteSandboxTest {
 
     @Test
     void kindIdsRoundTrip() {
-        for (WriteKind k : WriteKind.values()) {
+        for (WriteKind k : WriteKind.builtins()) {
             assertEquals(k, WriteKind.fromId(k.id()));
             assertEquals(k, WriteKind.fromId(k.extension()));
         }

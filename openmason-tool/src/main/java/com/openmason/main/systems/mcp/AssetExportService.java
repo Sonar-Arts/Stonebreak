@@ -6,7 +6,7 @@ import com.openmason.engine.format.sbe.SBEFormat;
 import com.openmason.engine.format.sbe.SBESerializer;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOSerializer;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.assets.AssetCatalog;
 import com.openmason.main.systems.assets.AssetEntry;
 import com.openmason.main.systems.io.AssetWriteService;
@@ -58,16 +58,16 @@ public final class AssetExportService {
 
     public enum Kind { SBO, SBE }
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
     private final AssetWriteService writes;
     private final ModelFileService modelFiles;
     private final TextureEditingService textures;
     private final SBOSerializer sboSerializer = new SBOSerializer();
     private final SBESerializer sbeSerializer = new SBESerializer();
 
-    public AssetExportService(MainImGuiInterface mainInterface, AssetWriteService writes,
+    public AssetExportService(EditorServices editorServices, AssetWriteService writes,
                               ModelFileService modelFiles, TextureEditingService textures) {
-        this.mainInterface = mainInterface;
+        this.editorServices = editorServices;
         this.writes = writes;
         this.modelFiles = modelFiles;
         this.textures = textures;
@@ -106,7 +106,7 @@ public final class AssetExportService {
         Path omtPath;
         if (params.hasNonNull("omt")) {
             omtPath = writes.sandbox().resolveExisting(params.get("omt").asText());
-            if (!omtPath.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".omt")) {
+            if (!com.openmason.main.systems.io.BuiltinFileTypes.OMT.matches(omtPath)) {
                 throw new IllegalArgumentException("invalid_params: omt must be a .omt file, got "
                         + omtPath.getFileName());
             }
@@ -219,7 +219,7 @@ public final class AssetExportService {
         boolean dirty = onMain(editor::dirty);
         if (dirty) {
             Map<String, Object> declined = McpApprovals.confirm(
-                    mainInterface != null ? mainInterface.getApprovalGate() : null,
+                    editorServices != null ? editorServices.getApprovalGate() : null,
                     kind.name().toLowerCase(Locale.ROOT) + "_editor_open",
                     "An agent asks to open '" + path.getFileName() + "' in the " + kind + " editor",
                     List.of("File: " + path, "The editor has unsaved changes that will be discarded."),
@@ -309,7 +309,7 @@ public final class AssetExportService {
 
     /** The current model's .omo, saving first (in place or via the Save Sheet) when needed. */
     private OmoOnDisk ensureOmoOnDisk(String ext) {
-        ModelState st = mainInterface != null ? mainInterface.getModelState() : null;
+        ModelState st = editorServices != null ? editorServices.getModelState() : null;
         if (st == null) {
             throw new IllegalStateException("Model editor unavailable — is the UI running?");
         }
@@ -457,9 +457,9 @@ public final class AssetExportService {
             return entry.sourcePath();
         }
         Path p = writes.sandbox().resolveExisting(asset);
-        String ext = kind == Kind.SBO ? ".sbo" : ".sbe";
-        if (!p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(ext)) {
-            throw new IllegalArgumentException("wrong_kind: " + asset + " is not a " + ext + " file");
+        var type = kind == Kind.SBO ? com.openmason.main.systems.io.BuiltinFileTypes.SBO : com.openmason.main.systems.io.BuiltinFileTypes.SBE;
+        if (!type.matches(p)) {
+            throw new IllegalArgumentException("wrong_kind: " + asset + " is not a " + type.extension() + " file");
         }
         return p;
     }
@@ -511,11 +511,11 @@ public final class AssetExportService {
     }
 
     private Editor editor(Kind kind) {
-        if (mainInterface == null) {
+        if (editorServices == null) {
             throw new IllegalStateException("Open Mason UI is not running — the editors are unavailable");
         }
-        return kind == Kind.SBO ? new SboEditor(requireWindow(mainInterface.getSBOEditorWindow(), kind))
-                : new SbeEditor(requireWindow(mainInterface.getSBEEditorWindow(), kind));
+        return kind == Kind.SBO ? new SboEditor(requireWindow(editorServices.getSBOEditorWindow(), kind))
+                : new SbeEditor(requireWindow(editorServices.getSBEEditorWindow(), kind));
     }
 
     private static <W> W requireWindow(W window, Kind kind) {

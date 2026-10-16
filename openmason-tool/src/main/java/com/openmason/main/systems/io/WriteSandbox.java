@@ -202,8 +202,7 @@ public final class WriteSandbox {
         if (rawPath == null || rawPath.isBlank()) {
             throw new IllegalArgumentException("path is empty");
         }
-        String lower = rawPath.toLowerCase(Locale.ROOT);
-        if (!lower.endsWith(".sbo") && !lower.endsWith(".sbe")) {
+        if (!BuiltinFileTypes.SBO.matches(rawPath) && !BuiltinFileTypes.SBE.matches(rawPath)) {
             throw new IllegalArgumentException(
                     "path must point at a .sbo or .sbe file, got: " + rawPath);
         }
@@ -269,8 +268,8 @@ public final class WriteSandbox {
     /** Sanitized {@code .png} file name inside the asset's export dir. */
     public static Path exportPngTarget(String assetId, String requestedName) throws IOException {
         String base = sanitizeFileName(requestedName, "texture");
-        if (!base.toLowerCase(Locale.ROOT).endsWith(".png")) {
-            base = base + ".png";
+        if (!BuiltinFileTypes.PNG.matches(base)) {
+            base = base + BuiltinFileTypes.PNG.extension();
         }
         return exportDir(assetId).resolve(base);
     }

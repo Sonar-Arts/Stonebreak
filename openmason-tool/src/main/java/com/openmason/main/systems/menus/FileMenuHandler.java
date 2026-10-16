@@ -213,13 +213,9 @@ public class FileMenuHandler {
     }
 
     /**
-     * Render the file menu with grouped sections.
+     * Render the file menu's items (inside the open menu; the menu bar draws the menu itself) with grouped sections.
      */
-    public void render() {
-        if (!ImGui.beginMenu("File")) {
-            return;
-        }
-
+    public void renderItems() {
         // --- New / Open ---
         if (ImGui.menuItem("New Model")) {
             modelOperations.newModel();
@@ -284,8 +280,6 @@ public class FileMenuHandler {
         if (ImGui.menuItem("Exit", "Alt+F4")) {
             exitApplication();
         }
-
-        ImGui.endMenu();
     }
 
     /**

@@ -3,7 +3,7 @@ package com.openmason.main.systems.mcp;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openmason.engine.ui.assets.export.ExportMode;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.io.AssetWriteService;
 import com.openmason.main.systems.io.AssetWriteService.WriteOutcome;
 import com.openmason.main.systems.io.AssetWriteService.WriteRequest;
@@ -59,7 +59,7 @@ public final class UiEditingService {
     }
 
     /** The production wiring: the workspace the shell installed, one automation per workspace. */
-    public static UiEditingService forInterface(MainImGuiInterface mainInterface, AssetWriteService writes,
+    public static UiEditingService forInterface(EditorServices editorServices, AssetWriteService writes,
                                                 ObjectMapper mapper) {
         Supplier<UiAutomation> supplier = new Supplier<>() {
             private UiEditorWorkspace bound;
@@ -67,7 +67,7 @@ public final class UiEditingService {
 
             @Override
             public synchronized UiAutomation get() {
-                UiEditorWorkspace ws = mainInterface == null ? null : mainInterface.getUiEditor();
+                UiEditorWorkspace ws = editorServices == null ? null : editorServices.getUiEditor();
                 if (ws == null) {
                     throw new IllegalStateException("The UI Editor is not available (open a project first)");
                 }

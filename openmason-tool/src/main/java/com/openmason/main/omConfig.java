@@ -222,6 +222,26 @@ public class omConfig {
         properties.setProperty(KEY_MAIN_LAYOUT_VERSION, String.valueOf(version));
     }
 
+    /**
+     * The default dock layout version workspace {@code workspaceId} was last given (#379), or -1
+     * when none was recorded under the per-workspace key yet.
+     */
+    public int getWorkspaceLayoutVersion(String workspaceId) {
+        String raw = properties.getProperty("ui.layout.workspace." + workspaceId + ".version");
+        if (raw != null) {
+            try {
+                return Integer.parseInt(raw.trim());
+            } catch (NumberFormatException e) {
+                // corrupt: treated as never recorded
+            }
+        }
+        return -1;
+    }
+
+    public void setWorkspaceLayoutVersion(String workspaceId, int version) {
+        properties.setProperty("ui.layout.workspace." + workspaceId + ".version", String.valueOf(version));
+    }
+
     public String getLastOpenedProjectPath() {
         return properties.getProperty("project.last.opened.path", "");
     }

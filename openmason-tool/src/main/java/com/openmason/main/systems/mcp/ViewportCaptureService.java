@@ -1,6 +1,6 @@
 package com.openmason.main.systems.mcp;
 
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.threading.MainThreadExecutor;
 import org.lwjgl.BufferUtils;
@@ -42,10 +42,10 @@ public final class ViewportCaptureService {
     private static final int MIN_SIZE = 64;
     private static final int MAX_SIZE = 2048;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
 
-    public ViewportCaptureService(MainImGuiInterface mainInterface) {
-        this.mainInterface = mainInterface;
+    public ViewportCaptureService(EditorServices editorServices) {
+        this.editorServices = editorServices;
     }
 
     public McpImageContent capture(int maxSize) {
@@ -57,7 +57,7 @@ public final class ViewportCaptureService {
 
     /** Read the viewport FBO color texture into a BufferedImage (must run on the GL thread). */
     private BufferedImage readFramebuffer() {
-        ViewportController vp = mainInterface.getViewport3D();
+        ViewportController vp = editorServices.getViewport3D();
         if (vp == null || !vp.isInitialized()) {
             throw new IllegalStateException("Viewport not initialized");
         }

@@ -105,6 +105,33 @@ public class ThemeManager {
     }
     
     /**
+     * Registers a plugin's theme (#379) under the community category, recording the plugin as its
+     * source; a theme with the same id already present is left alone.
+     *
+     * @return true when registered
+     */
+    public boolean registerPluginTheme(ThemeDefinition theme, String pluginId) {
+        if (theme == null) {
+            return false;
+        }
+        boolean registered = registry.registerTheme(theme.getId(), theme,
+                ThemeRegistry.ThemeCategory.COMMUNITY, "plugin:" + pluginId);
+        if (!registered) {
+            logger.warn("Plugin {} theme '{}' not registered (duplicate id?)", pluginId, theme.getId());
+        }
+        return registered;
+    }
+
+    /** Removes a plugin's theme again (its plugin was rolled back); the current theme is kept. */
+    public void unregisterPluginTheme(String themeId) {
+        if (currentTheme != null && themeId.equals(currentTheme.getId())) {
+            logger.warn("Theme '{}' is in use; it stays until another theme is chosen", themeId);
+            return;
+        }
+        registry.removeTheme(themeId);
+    }
+
+    /**
      * Register a theme in the system
      */
     public void registerTheme(ThemeDefinition theme) {

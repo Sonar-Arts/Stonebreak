@@ -1,6 +1,5 @@
 package com.openmason.main.systems.menus.textureCreator.rendering;
 
-import com.openmason.main.systems.menus.preferences.PreferencesManager;
 import imgui.ImGui;
 import imgui.flag.ImGuiDir;
 import imgui.type.ImInt;
@@ -27,9 +26,9 @@ import org.slf4j.LoggerFactory;
  * both or dumped freed space into the Tools node).
  *
  * The layout is rebuilt when: no saved layout exists, the saved layout
- * predates {@link #LAYOUT_VERSION} (stamped in preferences so an old
- * imgui.ini can't pin users to a stale arrangement), or the user picks
- * View → Reset Layout.
+ * predates {@link #LAYOUT_VERSION} (the Texture workspace's layout version,
+ * recorded per workspace so an old imgui.ini can't pin users to a stale
+ * arrangement), or the user picks View → Reset Layout.
  */
 public final class TextureEditorLayoutBuilder {
 
@@ -40,47 +39,11 @@ public final class TextureEditorLayoutBuilder {
 
     private static final float RIGHT_COLUMN_RATIO = 0.25f;
 
-    private final PreferencesManager preferences;
-    private boolean resetRequested = false;
-    private boolean appliedThisSession = false;
-
-    public TextureEditorLayoutBuilder(PreferencesManager preferences) {
-        this.preferences = preferences;
-    }
-
-    /** Request a rebuild on the next frame (View → Reset Layout). */
-    public void requestReset() {
-        resetRequested = true;
-    }
-
     /**
-     * Apply the default layout if needed. Call once per frame, immediately
-     * after {@code ImGui.dockSpace()} has submitted the dockspace.
-     *
-     * @return true if the layout was rebuilt this frame
+     * Arranges the default layout; whether that is due is decided by the host's
+     * {@code WorkspaceLayouts} gate (the Texture workspace's layout version is {@link #LAYOUT_VERSION}).
      */
-    public boolean applyIfNeeded(int dockspaceId, float width, float height) {
-        boolean rebuild = resetRequested;
-
-        if (!rebuild && !appliedThisSession) {
-            var node = imgui.internal.ImGui.dockBuilderGetNode(dockspaceId);
-            boolean hasSavedLayout = node != null && node.isSplitNode();
-            boolean versionCurrent = preferences.getTextureEditorLayoutVersion() >= LAYOUT_VERSION;
-            rebuild = !hasSavedLayout || !versionCurrent;
-        }
-
-        appliedThisSession = true;
-        if (!rebuild) {
-            return false;
-        }
-        resetRequested = false;
-
-        build(dockspaceId, width, height);
-        preferences.setTextureEditorLayoutVersion(LAYOUT_VERSION);
-        return true;
-    }
-
-    private void build(int dockspaceId, float width, float height) {
+    public void build(int dockspaceId, float width, float height) {
         logger.info("Building texture editor default layout (version {})", LAYOUT_VERSION);
 
         if (width <= 0 || height <= 0) {

@@ -18,10 +18,12 @@ public final class KnowledgeToolDefinitions {
 
     private final ObjectMapper mapper;
     private final LibalexRecall libalex; // null = not detected
+    private final KnowledgeBase knowledge;
 
-    public KnowledgeToolDefinitions(ObjectMapper mapper, LibalexRecall libalex) {
+    public KnowledgeToolDefinitions(ObjectMapper mapper, LibalexRecall libalex, KnowledgeBase knowledge) {
         this.mapper = mapper;
         this.libalex = libalex;
+        this.knowledge = knowledge;
     }
 
     public void registerAll(McpToolRegistry registry) {
@@ -33,7 +35,7 @@ public final class KnowledgeToolDefinitions {
                         + "art decisions.",
                 McpSchema.of(mapper)
                         .enumStr("topic", "Pack to read in full",
-                                KnowledgeBase.PACKS.toArray(new String[0]))
+                                knowledge.packs().toArray(new String[0]))
                         .str("query", "Search across all packs instead")
                         .intg("limit", "Max matching sections (default 4, max 8)")
                         .build(),
@@ -41,12 +43,12 @@ public final class KnowledgeToolDefinitions {
                     String topic = optString(args, "topic");
                     String query = optString(args, "query");
                     if (topic != null && !topic.isBlank()) {
-                        return KnowledgeBase.pack(topic);
+                        return knowledge.pack(topic);
                     }
                     if (query != null && !query.isBlank()) {
-                        return KnowledgeBase.search(query, optInt(args, "limit", 4));
+                        return knowledge.search(query, optInt(args, "limit", 4));
                     }
-                    return KnowledgeBase.index();
+                    return knowledge.index();
                 }));
 
         if (libalex != null) {

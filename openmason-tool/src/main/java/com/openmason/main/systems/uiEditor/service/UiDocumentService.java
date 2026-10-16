@@ -185,7 +185,7 @@ public final class UiDocumentService {
         }
         String name = abs.getFileName().toString().toLowerCase(Locale.ROOT);
         try {
-            if (name.endsWith(".sbui")) {
+            if (com.openmason.main.systems.io.BuiltinFileTypes.SBUI.matches(name)) {
                 SbuiArchive sbui = SbuiReader.read(abs, SbuiReader.Options.EDITOR).archive();
                 OmuiArchive copy = SbuiImporter.importEditable(sbui).document();
                 return new OpenResult(adopt(new UiEditorDocument(copy, null, UiEditorDocument.Origin.SBUI_COPY, abs)),
@@ -378,7 +378,7 @@ public final class UiDocumentService {
      * wrote it (a git pull, another editor): the save would silently bury that version.
      */
     public String saveAs(UiEditorDocument doc, Path target, boolean overwriteExternal) {
-        if (!target.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(OmuiFormat.FILE_EXTENSION)) {
+        if (!com.openmason.main.systems.io.BuiltinFileTypes.OMUI.matches(target)) {
             target = target.resolveSibling(target.getFileName() + OmuiFormat.FILE_EXTENSION);
         }
         if (!overwriteExternal && changedOnDisk(doc, target)) {
@@ -488,9 +488,9 @@ public final class UiDocumentService {
             return p;
         }
         String name = p.getFileName().toString();
-        String stem = name.endsWith(".omui") ? name.substring(0, name.length() - 5) : name;
+        String stem = com.openmason.main.systems.io.BuiltinFileTypes.OMUI.stripExtension(name);
         for (int i = 2; ; i++) {
-            Path c = p.resolveSibling(stem + "_" + i + ".omui");
+            Path c = p.resolveSibling(stem + "_" + i + com.openmason.main.systems.io.BuiltinFileTypes.OMUI.extension());
             if (!Files.exists(c)) {
                 return c;
             }

@@ -1,5 +1,6 @@
 package com.openmason.main.systems.layout;
 
+import com.openmason.api.workspace.WorkspaceDescriptor;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.ImGuiWindowClass;
@@ -14,7 +15,7 @@ import imgui.type.ImBoolean;
  * Texture Editor's treatment, so KWin owns drag/resize/close and nothing shakes under XWayland)
  * hosting the workspace's toolbar and the same dockspace the main window uses, so every panel
  * keeps its place whichever window holds it. Closing the window docks the tab back; a
- * {@link Workspace#closable() closable} tab (the Texture Editor) also comes to the front there,
+ * {@link WorkspaceDescriptor#closable() closable} tab (the Texture Editor) also comes to the front there,
  * since only its tab's own close button ends it.
  */
 public final class DetachedWorkspaceWindow {
@@ -27,15 +28,15 @@ public final class DetachedWorkspaceWindow {
         void submit(float width, float height);
     }
 
-    private final Workspace workspace;
+    private final WorkspaceDescriptor workspace;
     private final String title;
     private final ImGuiWindowClass windowClass = new ImGuiWindowClass();
     private final ImBoolean open = new ImBoolean(true);
     private boolean wasDetached;
 
-    public DetachedWorkspaceWindow(Workspace workspace) {
+    public DetachedWorkspaceWindow(WorkspaceDescriptor workspace) {
         this.workspace = workspace;
-        this.title = "Open Mason - " + workspace.label() + "###openMasonWorkspaceWindow" + workspace.name();
+        this.title = "Open Mason - " + workspace.label() + "###openMasonWorkspaceWindow" + workspace.id();
         windowClass.setViewportFlagsOverrideClear(ImGuiViewportFlags.NoDecoration | ImGuiViewportFlags.NoTaskBarIcon);
         windowClass.setViewportFlagsOverrideSet(ImGuiViewportFlags.NoAutoMerge);
     }
@@ -48,7 +49,7 @@ public final class DetachedWorkspaceWindow {
      * @return true when the window's contents are visible this frame
      */
     public boolean render(WorkspaceState state, Runnable header, Content content, float[] tearOff) {
-        if (!state.isDetached(workspace)) {
+        if (!state.isDetached(workspace.id())) {
             wasDetached = false;
             return false;
         }
@@ -64,7 +65,7 @@ public final class DetachedWorkspaceWindow {
             ImGui.setNextWindowSize(Math.max(DEFAULT_W, workspace.minWidth()),
                     Math.max(DEFAULT_H, workspace.minHeight()), ImGuiCond.FirstUseEver);
         }
-        boolean raise = state.takeFocusRequest(workspace);
+        boolean raise = state.takeFocusRequest(workspace.id());
         if (raise) {
             ImGui.setNextWindowFocus();
         }
@@ -91,7 +92,7 @@ public final class DetachedWorkspaceWindow {
         if (!open.get()) {
             // Closing the window docks the tab back: behind the front tab, or for a closable tab (still
             // open, it was not closed) in front, so the editor visibly lands back in the main window.
-            state.attach(workspace, workspace.closable());
+            state.attach(workspace.id(), workspace.closable());
         }
         return visible;
     }

@@ -1,5 +1,7 @@
 package com.openmason.main.systems.viewport.viewportRendering;
 
+import com.openmason.api.viewport.ViewportContentFrame;
+import com.openmason.api.viewport.ViewportContentProvider;
 import com.openmason.engine.rendering.viewer.ViewerRenderContext;
 import com.openmason.engine.rendering.viewer.ViewerFrame;
 import com.openmason.engine.rendering.viewer.ViewerPass;
@@ -28,6 +30,9 @@ import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRender
 import org.joml.Matrix4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.List;
+import java.util.function.Supplier;
 
 import static org.lwjgl.opengl.GL11.*;
 
@@ -74,6 +79,10 @@ public class ViewportRenderPipeline implements ViewerPass {
     private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
     private final SBTRenderer sbtRenderer = new SBTRenderer();
+
+    /** Block / item / SBT content, drawn through the content-provider registry (#379). */
+    private final List<ViewportContentProvider> builtinContent;
+    private Supplier<List<ViewportContentProvider>> contentProviders = this::builtinContentProviders;
 
     // Generic Model renderer (.OMO editable models)
     private final GenericModelRenderer modelRenderer;
@@ -140,6 +149,21 @@ public class ViewportRenderPipeline implements ViewerPass {
         this.knifePreviewRenderer = new KnifePreviewRenderer();
         this.toolPreviewRenderer = new ToolPreviewRenderer();
         this.sbtRenderer.initialize();
+        this.builtinContent = List.of(new BlockContent(), new ItemContent(), new SbtContent());
+    }
+
+    /**
+     * The game-asset content this pipeline can draw besides the editable model (a selected block,
+     * item or .SBT sprite); the built-in Stonebreak plugin registers them as viewport content
+     * providers until #382 moves them out of the tool.
+     */
+    public List<ViewportContentProvider> builtinContentProviders() {
+        return builtinContent;
+    }
+
+    /** Where non-model content comes from (the registered viewport content providers). */
+    public void setContentProviders(Supplier<List<ViewportContentProvider>> contentProviders) {
+        this.contentProviders = contentProviders != null ? contentProviders : this::builtinContentProviders;
     }
 
     /**
@@ -262,112 +286,166 @@ public class ViewportRenderPipeline implements ViewerPass {
             logger.trace("Render content - mode: {}, state: {}", renderingState.getMode(), renderingState.getStateDescription());
         }
 
-        // Render based on mode
+        // The editable model draws itself; otherwise the first ready content provider draws.
         if (renderingState.getMode() == RenderingMode.BLOCK_MODEL) {
             // Render editable block model (.OMO)
             renderBlockModel(viewportState, transformState);
-        } else if (renderingState.isBlockReady()) {
-            renderBlock(renderingState, transformState);
-        } else if (renderingState.isItemReady()) {
-            renderItem(renderingState, transformState);
-        } else if (renderingState.isSBTReady()) {
-            renderSBT(renderingState, transformState);
-        } else {
-            // No content to render
-            logger.trace("No content ready for rendering");
+            return;
         }
+        for (ViewportContentProvider provider : contentProviders.get()) {
+            boolean ready;
+            try {
+                ready = provider.ready();
+            } catch (RuntimeException e) {
+                logger.error("Viewport content {} failed its ready check", provider.id(), e);
+                continue;
+            }
+            if (ready) {
+                renderProvider(provider, transformState);
+                return;
+            }
+        }
+        logger.trace("No content ready for rendering");
     }
 
-    /**
-     * Render block content.
-     */
-    private void renderBlock(RenderingState renderingState, TransformState transformState) {
+    /** Binds the matrix shader with this frame's matrices and lets {@code provider} draw. */
+    private void renderProvider(ViewportContentProvider provider, TransformState transformState) {
         try {
             ShaderProgram matrixShader = shaderManager.getShaderProgram(ShaderType.MATRIX);
             float[] vpArray = context.getViewProjectionArray();
+            org.joml.Matrix4f model = transformState.getTransformMatrix();
+            org.joml.Matrix4f view = context.getCamera().getViewMatrix();
 
-            // Set model-view matrix for flat shading before block renderer binds the shader
+            // Model-view matrix for flat shading, set before the content binds the shader again.
             matrixShader.use();
-            org.joml.Matrix4f modelViewMatrix = new org.joml.Matrix4f(context.getCamera().getViewMatrix())
-                    .mul(transformState.getTransformMatrix());
-            matrixShader.setMat4("uViewMatrix", modelViewMatrix);
+            matrixShader.setMat4("uViewMatrix", new org.joml.Matrix4f(view).mul(model));
 
+            provider.render(new ViewportContentFrame() {
+                @Override
+                public ShaderProgram matrixShader() {
+                    return matrixShader;
+                }
+
+                @Override
+                public float[] viewProjection() {
+                    return vpArray;
+                }
+
+                @Override
+                public org.joml.Matrix4f modelMatrix() {
+                    return model;
+                }
+
+                @Override
+                public org.joml.Matrix4f viewMatrix() {
+                    return view;
+                }
+            });
+        } catch (Exception e) {
+            logger.error("Error rendering viewport content {}", provider.id(), e);
+        }
+    }
+
+    /** A selected game block (Stonebreak). */
+    private final class BlockContent implements ViewportContentProvider {
+        @Override
+        public String id() {
+            return "stonebreak.block";
+        }
+
+        @Override
+        public String label() {
+            return "Stonebreak block";
+        }
+
+        @Override
+        public boolean ready() {
+            return renderingState.isBlockReady();
+        }
+
+        @Override
+        public void render(ViewportContentFrame frame) {
+            ShaderProgram shader = frame.matrixShader();
             blockRenderer.renderBlock(
                 renderingState.getSelectedBlock(),
-                matrixShader.getProgramId(),
-                matrixShader.getUniformLocation("uMVPMatrix"),
-                matrixShader.getUniformLocation("uModelMatrix"),
-                vpArray,
-                transformState.getTransformMatrix(),
-                matrixShader.getUniformLocation("uTexture"),
-                matrixShader.getUniformLocation("uUseTexture")
+                shader.getProgramId(),
+                shader.getUniformLocation("uMVPMatrix"),
+                shader.getUniformLocation("uModelMatrix"),
+                frame.viewProjection(),
+                frame.modelMatrix(),
+                shader.getUniformLocation("uTexture"),
+                shader.getUniformLocation("uUseTexture")
             );
-
             logger.trace("Block rendered: {}", renderingState.getSelectedBlock().name());
-
-        } catch (Exception e) {
-            logger.error("Error rendering block", e);
         }
     }
 
-    /**
-     * Render item content.
-     */
-    private void renderItem(RenderingState renderingState, TransformState transformState) {
-        try {
-            ShaderProgram matrixShader = shaderManager.getShaderProgram(ShaderType.MATRIX);
-            float[] vpArray = context.getViewProjectionArray();
+    /** A selected game item (Stonebreak). */
+    private final class ItemContent implements ViewportContentProvider {
+        @Override
+        public String id() {
+            return "stonebreak.item";
+        }
 
-            // Set model-view matrix for flat shading before item renderer binds the shader
-            matrixShader.use();
-            org.joml.Matrix4f modelViewMatrix = new org.joml.Matrix4f(context.getCamera().getViewMatrix())
-                    .mul(transformState.getTransformMatrix());
-            matrixShader.setMat4("uViewMatrix", modelViewMatrix);
+        @Override
+        public String label() {
+            return "Stonebreak item";
+        }
 
+        @Override
+        public boolean ready() {
+            return renderingState.isItemReady();
+        }
+
+        @Override
+        public void render(ViewportContentFrame frame) {
+            ShaderProgram shader = frame.matrixShader();
             itemRenderer.renderItem(
                 renderingState.getSelectedItem(),
-                matrixShader.getProgramId(),
-                matrixShader.getUniformLocation("uMVPMatrix"),
-                matrixShader.getUniformLocation("uModelMatrix"),
-                vpArray,
-                transformState.getTransformMatrix(),
-                    matrixShader.getUniformLocation("uUseTexture")
+                shader.getProgramId(),
+                shader.getUniformLocation("uMVPMatrix"),
+                shader.getUniformLocation("uModelMatrix"),
+                frame.viewProjection(),
+                frame.modelMatrix(),
+                shader.getUniformLocation("uUseTexture")
             );
-
             logger.trace("Item rendered: {}", renderingState.getSelectedItem().name());
-
-        } catch (Exception e) {
-            logger.error("Error rendering item", e);
         }
     }
 
     /**
-     * Render the selected .SBT texture as a voxelized sprite (mirrors the
-     * geometry that {@code SpriteVoxelizer} produces for in-game items).
+     * The selected .SBT texture as a voxelized sprite (mirrors the geometry that
+     * {@code SpriteVoxelizer} produces for in-game items).
      */
-    private void renderSBT(RenderingState renderingState, TransformState transformState) {
-        try {
-            ShaderProgram matrixShader = shaderManager.getShaderProgram(ShaderType.MATRIX);
-            float[] vpArray = context.getViewProjectionArray();
+    private final class SbtContent implements ViewportContentProvider {
+        @Override
+        public String id() {
+            return "stonebreak.sbt";
+        }
 
-            matrixShader.use();
-            org.joml.Matrix4f modelViewMatrix = new org.joml.Matrix4f(context.getCamera().getViewMatrix())
-                    .mul(transformState.getTransformMatrix());
-            matrixShader.setMat4("uViewMatrix", modelViewMatrix);
+        @Override
+        public String label() {
+            return "Stonebreak texture (.SBT)";
+        }
 
+        @Override
+        public boolean ready() {
+            return renderingState.isSBTReady();
+        }
+
+        @Override
+        public void render(ViewportContentFrame frame) {
+            ShaderProgram shader = frame.matrixShader();
             sbtRenderer.renderSBT(
                     renderingState.getSelectedSbtPath(),
-                    matrixShader.getProgramId(),
-                    matrixShader.getUniformLocation("uMVPMatrix"),
-                    matrixShader.getUniformLocation("uModelMatrix"),
-                    vpArray,
-                    transformState.getTransformMatrix(),
-                    matrixShader.getUniformLocation("uUseTexture")
+                    shader.getProgramId(),
+                    shader.getUniformLocation("uMVPMatrix"),
+                    shader.getUniformLocation("uModelMatrix"),
+                    frame.viewProjection(),
+                    frame.modelMatrix(),
+                    shader.getUniformLocation("uUseTexture")
             );
-
             logger.trace("SBT rendered: {}", renderingState.getSelectedSbtPath());
-        } catch (Exception e) {
-            logger.error("Error rendering SBT", e);
         }
     }
 

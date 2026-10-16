@@ -5,7 +5,7 @@ import com.openmason.engine.rendering.model.gmr.uv.FaceTextureManager;
 import com.openmason.engine.rendering.model.gmr.uv.FaceTextureMapping;
 import com.openmason.engine.rendering.model.gmr.uv.FaceTextureSizer;
 import com.openmason.engine.rendering.model.gmr.uv.MaterialDefinition;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.menus.panes.propertyPane.interfaces.IViewportConnector;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
@@ -42,11 +42,11 @@ public final class FaceTextureEditingService {
     private static final Logger logger = LoggerFactory.getLogger(FaceTextureEditingService.class);
     private static final long DEFAULT_TIMEOUT_MS = 10_000;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
     private final OMTTextureLoader textureLoader = new OMTTextureLoader();
 
-    public FaceTextureEditingService(MainImGuiInterface mainInterface) {
-        this.mainInterface = mainInterface;
+    public FaceTextureEditingService(EditorServices editorServices) {
+        this.editorServices = editorServices;
     }
 
     // ===================== Read =====================
@@ -97,7 +97,7 @@ public final class FaceTextureEditingService {
             throw new IllegalArgumentException("No faces supplied to create textures for");
         }
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Create Face Textures (" + specs.size() + " faces)",
+                editorServices, "Create Face Textures (" + specs.size() + " faces)",
                 () -> {
             IViewportConnector connector = requireConnector();
             FaceTextureManager ftm = requireFtm(connector);
@@ -291,7 +291,7 @@ public final class FaceTextureEditingService {
 
     public ResizeResult resize(int faceId, int newWidth, int newHeight) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Resize Face Texture (face " + faceId + ")",
+                editorServices, "Resize Face Texture (face " + faceId + ")",
                 () -> {
             if (newWidth <= 0 || newHeight <= 0 || newWidth > 1024 || newHeight > 1024) {
                 throw new IllegalArgumentException(
@@ -444,7 +444,7 @@ public final class FaceTextureEditingService {
                 byte[] after = t.canvas().getPixelsAsRGBABytes(x, y, w, h);
                 requireConnector().updateTextureRegion(t.gpuTextureId(), x, y, w, h, after);
 
-                ViewportController vp = mainInterface.getViewport3D();
+                ViewportController vp = editorServices.getViewport3D();
                 if (vp != null && vp.getCommandHistory() != null && vp.getModelRenderer() != null) {
                     vp.getCommandHistory().pushCompleted(new FaceTextureRegionCommand(
                             vp.getModelRenderer(), t.gpuTextureId(), x, y, w, h,
@@ -576,7 +576,7 @@ public final class FaceTextureEditingService {
     }
 
     private IViewportConnector requireConnector() {
-        IViewportConnector c = mainInterface.getPropertyPanel().getViewportConnector();
+        IViewportConnector c = editorServices.getPropertyPanel().getViewportConnector();
         if (c == null || !c.isConnected()) {
             throw new IllegalStateException("Viewport is not connected — load a model first");
         }

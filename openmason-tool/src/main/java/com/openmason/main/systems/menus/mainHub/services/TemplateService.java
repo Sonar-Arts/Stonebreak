@@ -7,28 +7,37 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
- * Business logic for template management.
- * Provides template data with filtering and search capabilities.
+ * Business logic for template management: the templates the plugins contributed (#379), with
+ * filtering and search. The built-in ones are {@link #blankTemplate()} (core) and
+ * {@link #newBiomeTemplate()} (the built-in Stonebreak plugin).
  */
 public class TemplateService {
 
     private static final Logger logger = LoggerFactory.getLogger(TemplateService.class);
 
-    private final List<ProjectTemplate> templates;
+    private volatile Supplier<List<ProjectTemplate>> source;
 
+    /** The built-in templates only (no plugin host). */
     public TemplateService() {
-        this.templates = createBuiltInTemplates();
-        logger.info("Initialized TemplateService with {} templates", templates.size());
+        List<ProjectTemplate> builtins = List.of(blankTemplate(), newBiomeTemplate());
+        this.source = () -> builtins;
+    }
+
+    /** Templates come from {@code source} (the registered templates), read on every query. */
+    public void setSource(Supplier<List<ProjectTemplate>> source) {
+        this.source = java.util.Objects.requireNonNull(source, "source");
+        logger.info("Templates now come from the plugin registry");
     }
 
     /**
      * Get all available templates.
      */
     public List<ProjectTemplate> getAllTemplates() {
-        return new ArrayList<>(templates);
+        return new ArrayList<>(source.get());
     }
 
     /**
@@ -40,30 +49,27 @@ public class TemplateService {
         }
 
         String lowerQuery = query.toLowerCase();
-        return templates.stream()
+        return source.get().stream()
                 .filter(t -> t.getName().toLowerCase().contains(lowerQuery) ||
                            t.getDescription().toLowerCase().contains(lowerQuery))
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Create built-in templates for Phase 1.
-     */
-    private List<ProjectTemplate> createBuiltInTemplates() {
-        List<ProjectTemplate> templates = new ArrayList<>();
-
-        // Blank Template - single universal template
-        templates.add(new ProjectTemplate.Builder()
+    /** Blank Template - the universal starting point (core). */
+    public static ProjectTemplate blankTemplate() {
+        return new ProjectTemplate.Builder()
                 .id("blank-template")
                 .name("Blank Template")
                 .description("Start with a blank project. Access all Open Mason tools and create whatever you need.")
                 .category("General")
                 .type(ProjectTemplate.TemplateType.CUSTOM)
                 .metadata("Tools", "All")
-                .build()
-        );
+                .build();
+    }
 
-        templates.add(new ProjectTemplate.Builder()
+    /** A biome's block set (Stonebreak). */
+    public static ProjectTemplate newBiomeTemplate() {
+        return new ProjectTemplate.Builder()
                 .id("new-biome")
                 .name("New Biome")
                 .description("Start a biome's block set: blank Log, Planks, Stairs, Leaves, Sapling and Grass models, "
@@ -79,9 +85,6 @@ public class TemplateService {
                 .model("Sapling", Shape.CROSS)
                 .model("Grass", Shape.CUBE)
                 .openOnCreate("Log")
-                .build()
-        );
-
-        return templates;
+                .build();
     }
 }

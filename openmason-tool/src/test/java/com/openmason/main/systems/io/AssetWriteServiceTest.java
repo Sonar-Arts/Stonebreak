@@ -176,7 +176,7 @@ class AssetWriteServiceTest {
         assertEquals(Boolean.TRUE, roots.get(2).get("present"), "exports root is created lazily, so it is always offered");
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> kinds = (List<Map<String, Object>>) t.get("kinds");
-        assertEquals(WriteKind.values().length, kinds.size());
+        assertEquals(WriteKind.builtins().size(), kinds.size());
         assertEquals("game:sbo/blocks/MyObject.sbo",
                 kinds.stream().filter(k -> "sbo".equals(k.get("kind"))).findFirst().orElseThrow().get("example"));
     }

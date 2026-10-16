@@ -78,6 +78,34 @@ module com.openmason {
     // (org.graalvm.polyglot vs the Truffle host runtime).
     opens com.openmason.main.systems.scripting.python;
 
+    // Plugin host (#379): plugins implement com.openmason.api.OpenMasonPlugin in their own module
+    // ("provides com.openmason.api.OpenMasonPlugin with ...") on the module path.
+    uses com.openmason.api.OpenMasonPlugin;
+
+    // The plugin API...
+    exports com.openmason.api;
+    exports com.openmason.api.files;
+    exports com.openmason.api.knowledge;
+    exports com.openmason.api.lifecycle;
+    exports com.openmason.api.mcp;
+    exports com.openmason.api.menu;
+    exports com.openmason.api.prefs;
+    exports com.openmason.api.viewport;
+    exports com.openmason.api.workspace;
+    // ...and the editor packages its signatures and typical plugins use (MCP tool records and
+    // schema helpers, keybind commands, workspace state, project, scripting, file types, templates).
+    exports com.openmason.main.plugins;
+    exports com.openmason.main.systems.mcp;
+    exports com.openmason.main.systems.mcp.approval;
+    exports com.openmason.main.systems.layout;
+    exports com.openmason.main.systems.keybinds;
+    exports com.openmason.main.systems.project;
+    exports com.openmason.main.systems.scripting;
+    exports com.openmason.main.systems.io;
+    exports com.openmason.main.systems.services;
+    exports com.openmason.main.systems.menus.mainHub.model;
+    exports com.openmason.main.systems.menus.textureCreator.keyboard;
+
     // Export packages for potential future extensions
     exports com.openmason.main;
     exports com.openmason.main.systems;

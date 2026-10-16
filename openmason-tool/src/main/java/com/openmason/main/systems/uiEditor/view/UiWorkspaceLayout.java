@@ -17,33 +17,21 @@ import imgui.type.ImInt;
  * +-----------+-------------------------------------+----------------+
  * </pre>
  *
- * Built when the workspace's dockspace has no saved split yet, or on request (View menu).
+ * Built when the workspace's dockspace has no saved split yet, or on request (its Window menu).
  */
 public final class UiWorkspaceLayout {
 
     /** The dockspace's string id inside the main host window. */
     public static final String DOCKSPACE_ID = "OpenMasonUiDockSpace";
 
-    private boolean resetRequested;
-    private boolean checked;
+    /** The UI workspace's default layout version (see {@code WorkspaceDescriptor.layoutVersion}). */
+    public static final int LAYOUT_VERSION = 1;
 
-    public void requestReset() {
-        resetRequested = true;
-        checked = false;
-    }
-
-    /** Builds the default layout when needed; call right after submitting the dockspace. */
-    public void applyIfNeeded(int dockspaceId, float width, float height) {
-        if (checked) {
-            return;
-        }
-        checked = true;
-        var node = imgui.internal.ImGui.dockBuilderGetNode(dockspaceId);
-        boolean hasSaved = node != null && node.isSplitNode();
-        if (hasSaved && !resetRequested) {
-            return;
-        }
-        resetRequested = false;
+    /**
+     * Arranges the default layout; whether that is due (no saved split, a newer version, a reset)
+     * is decided by the host's {@code WorkspaceLayouts} gate.
+     */
+    public void build(int dockspaceId, float width, float height) {
         imgui.internal.ImGui.dockBuilderRemoveNode(dockspaceId);
         imgui.internal.ImGui.dockBuilderAddNode(dockspaceId, imgui.internal.flag.ImGuiDockNodeFlags.DockSpace);
         imgui.internal.ImGui.dockBuilderSetNodeSize(dockspaceId, width, height);

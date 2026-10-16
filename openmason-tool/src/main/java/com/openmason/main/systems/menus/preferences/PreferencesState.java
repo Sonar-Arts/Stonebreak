@@ -1,83 +1,31 @@
 package com.openmason.main.systems.menus.preferences;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Objects;
 
 /**
- * Manages the state of the unified preferences window, including current page selection.
+ * Manages the state of the unified preferences window: which page (by contributed page id,
+ * #379) is selected.
  */
 public class PreferencesState {
 
-    /**
-     * Available preference pages organized by tool.
-     */
-    public enum PreferencePage {
-        MODEL_EDITOR("Model Editor"),
-        TEXTURE_EDITOR("Texture Editor"),
-        ASSETS("Folders"),
-        KEYBINDS("Keybinds"),
-        ASSISTANT("Assistant"),
-        COMMON("Common");
+    /** The page shown first. */
+    public static final String DEFAULT_PAGE = PreferencesPageRenderer.MODEL_EDITOR;
 
-        private final String displayName;
+    private String currentPage = DEFAULT_PAGE;
 
-        PreferencePage(String displayName) {
-            this.displayName = displayName;
-        }
-
-        public String getDisplayName() {
-            return displayName;
-        }
-    }
-
-    /**
-     * Listener interface for state changes.
-     */
-    @FunctionalInterface
-    public interface StateChangeListener {
-        void onPageChanged(PreferencePage oldPage, PreferencePage newPage);
-    }
-
-    private PreferencePage currentPage = PreferencePage.MODEL_EDITOR;
-    private final List<StateChangeListener> listeners = new ArrayList<>();
-
-    /**
-     * Gets the currently selected page.
-     *
-     * @return the current page
-     */
-    public PreferencePage getCurrentPage() {
+    /** The selected page's id (it may name a page that is not registered; the window falls back). */
+    public String getCurrentPage() {
         return currentPage;
     }
 
-    /**
-     * Sets the current page and notifies listeners if changed.
-     */
-    public void setCurrentPage(PreferencePage newPage) {
-        if (newPage == null) {
-            throw new IllegalArgumentException("Page cannot be null");
-        }
-
-        if (currentPage != newPage) {
-            PreferencePage oldPage = currentPage;
-            currentPage = newPage;
-            notifyListeners(oldPage, newPage);
-        }
-    }
-
-    /**
-     * Notifies all listeners of a page change.
-     */
-    private void notifyListeners(PreferencePage oldPage, PreferencePage newPage) {
-        for (StateChangeListener listener : listeners) {
-            listener.onPageChanged(oldPage, newPage);
-        }
+    public void setCurrentPage(String pageId) {
+        this.currentPage = Objects.requireNonNull(pageId, "pageId");
     }
 
     /**
      * Resets the state to default values.
      */
     public void reset() {
-        setCurrentPage(PreferencePage.MODEL_EDITOR);
+        currentPage = DEFAULT_PAGE;
     }
 }

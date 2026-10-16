@@ -1,5 +1,6 @@
 package com.openmason.main.systems.assets;
 
+import com.openmason.main.systems.io.BuiltinFileTypes;
 import com.openmason.engine.format.sbe.SBEParser;
 import com.openmason.engine.format.sbo.SBOParser;
 import com.openmason.main.systems.menus.dialogs.GameResourceDirs;
@@ -295,8 +296,7 @@ public final class AssetCatalog {
                 try {
                     long size = Files.size(p);
                     long mtime = Files.getLastModifiedTime(p).toMillis();
-                    String lower = p.getFileName().toString().toLowerCase(Locale.ROOT);
-                    if (lower.endsWith(".sbo")) {
+                    if (BuiltinFileTypes.SBO.matches(p)) {
                         SBOParser.RawParse raw = sboParser.parseRaw(p);
                         out.add(new AssetEntry(raw.manifest().objectId(), raw.manifest().objectName(),
                                 AssetEntry.Kind.SBO, lower(raw.manifest().objectType(), "model"),
@@ -317,8 +317,7 @@ public final class AssetCatalog {
     }
 
     private static boolean isAsset(Path p) {
-        String n = p.getFileName().toString().toLowerCase(Locale.ROOT);
-        return Files.isRegularFile(p) && (n.endsWith(".sbo") || n.endsWith(".sbe"));
+        return Files.isRegularFile(p) && (BuiltinFileTypes.SBO.matches(p) || BuiltinFileTypes.SBE.matches(p));
     }
 
     private static String lower(String s, String fallback) {

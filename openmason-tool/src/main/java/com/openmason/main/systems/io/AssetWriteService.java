@@ -1,6 +1,6 @@
 package com.openmason.main.systems.io;
 
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.mcp.approval.ApprovalGate;
 import com.openmason.main.systems.mcp.approval.McpApprovalGate;
 import com.openmason.main.systems.mcp.approval.PromptGate;
@@ -141,13 +141,13 @@ public final class AssetWriteService {
         }
     }
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
     private final WriteSandbox sandbox;
     private final Supplier<WritePolicy> policy;
 
-    public AssetWriteService(MainImGuiInterface mainInterface, WriteSandbox sandbox,
+    public AssetWriteService(EditorServices editorServices, WriteSandbox sandbox,
                              Supplier<WritePolicy> policy) {
-        this.mainInterface = mainInterface;
+        this.editorServices = editorServices;
         this.sandbox = sandbox;
         this.policy = policy;
     }
@@ -301,7 +301,7 @@ public final class AssetWriteService {
         if (MainThreadExecutor.isMainThread()) {
             throw new IllegalStateException("AssetWriteService.save must not run on the main thread");
         }
-        SaveSheetGate gate = mainInterface != null ? mainInterface.getSaveSheetGate() : null;
+        SaveSheetGate gate = editorServices != null ? editorServices.getSaveSheetGate() : null;
         if (gate == null) {
             return SaveSheetResult.UNAVAILABLE;
         }
@@ -328,7 +328,7 @@ public final class AssetWriteService {
         out.put("policyMeaning", policy.get().label());
         out.put("pathGrammar", "absolute | project:<rel> | game:<rel> | exports:<rel> | "
                 + "bare name (kind's default root + sub-folder); the extension is added when missing");
-        out.put("saveSheetAvailable", mainInterface != null && mainInterface.getSaveSheetGate() != null);
+        out.put("saveSheetAvailable", editorServices != null && editorServices.getSaveSheetGate() != null);
         List<Map<String, Object>> roots = new ArrayList<>();
         for (WriteRoot r : WriteRoot.values()) {
             Path p = sandbox.roots().path(r);
@@ -343,7 +343,7 @@ public final class AssetWriteService {
         }
         out.put("roots", roots);
         List<Map<String, Object>> kinds = new ArrayList<>();
-        for (WriteKind k : WriteKind.values()) {
+        for (WriteKind k : saveKinds()) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("kind", k.id());
             row.put("extension", k.extension());
@@ -362,7 +362,7 @@ public final class AssetWriteService {
     public Map<String, Object> promptStatus() {
         Map<String, Object> out = new LinkedHashMap<>();
         boolean pending = false;
-        SaveSheetGate sheet = mainInterface != null ? mainInterface.getSaveSheetGate() : null;
+        SaveSheetGate sheet = editorServices != null ? editorServices.getSaveSheetGate() : null;
         if (sheet != null) {
             PromptGate.Pending<SaveSheetRequest, SaveSheetResult> p = sheet.pending();
             if (p != null) {
@@ -373,7 +373,7 @@ public final class AssetWriteService {
                 out.put("secondsRemaining", sheet.secondsRemaining());
             }
         }
-        ApprovalGate approval = mainInterface != null ? mainInterface.getApprovalGate() : null;
+        ApprovalGate approval = editorServices != null ? editorServices.getApprovalGate() : null;
         if (!pending && approval instanceof McpApprovalGate mag) {
             PromptGate.Pending<ApprovalGate.ApprovalRequest, ApprovalGate.Decision> p = mag.pending();
             if (p != null) {
@@ -411,5 +411,16 @@ public final class AssetWriteService {
 
     private static String capitalize(String s) {
         return s == null || s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    /** The kinds agents can write: the registered file types with a save rule, else the built-ins. */
+    private List<WriteKind> saveKinds() {
+        if (editorServices != null) {
+            FileTypeService types = editorServices.registry().find(FileTypeService.class).orElse(null);
+            if (types != null) {
+                return types.saveKinds();
+            }
+        }
+        return WriteKind.builtins();
     }
 }

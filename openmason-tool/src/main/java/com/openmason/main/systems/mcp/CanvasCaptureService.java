@@ -1,6 +1,6 @@
 package com.openmason.main.systems.mcp;
 
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorController;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
@@ -31,10 +31,10 @@ public final class CanvasCaptureService {
     private static final int MIN_SIZE = 64;
     private static final int MAX_SIZE = 2048;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
 
-    public CanvasCaptureService(MainImGuiInterface mainInterface) {
-        this.mainInterface = mainInterface;
+    public CanvasCaptureService(EditorServices editorServices) {
+        this.editorServices = editorServices;
     }
 
     /**
@@ -94,7 +94,7 @@ public final class CanvasCaptureService {
     }
 
     private TextureCreatorController requireController() {
-        TextureCreatorImGui ui = mainInterface.getTextureCreator();
+        TextureCreatorImGui ui = editorServices.getTextureCreator();
         if (ui == null) throw new IllegalStateException("Texture editor not initialized");
         TextureCreatorController c = ui.getController();
         if (c == null) throw new IllegalStateException("Texture editor controller not available");

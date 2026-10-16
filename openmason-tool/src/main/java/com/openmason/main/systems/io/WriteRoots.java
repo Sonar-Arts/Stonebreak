@@ -1,7 +1,7 @@
 package com.openmason.main.systems.io;
 
 import com.openmason.main.AppPaths;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.menus.dialogs.GameResourceDirs;
 
 import java.nio.file.Files;
@@ -28,10 +28,10 @@ public final class WriteRoots {
     }
 
     /** Production wiring; tolerates a null interface (snapshot-test discipline). */
-    public static WriteRoots forInterface(MainImGuiInterface mainInterface) {
+    public static WriteRoots forInterface(EditorServices editorServices) {
         Supplier<Path> project = () -> {
-            Supplier<String> dir = mainInterface != null
-                    ? mainInterface.getProjectDirectorySupplier() : null;
+            Supplier<String> dir = editorServices != null
+                    ? editorServices.getProjectDirectorySupplier() : null;
             String s = dir != null ? dir.get() : null;
             if (s != null && !s.isBlank()) {
                 return Path.of(s);

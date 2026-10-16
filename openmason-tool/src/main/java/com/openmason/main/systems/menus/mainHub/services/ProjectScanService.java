@@ -22,7 +22,7 @@ import java.util.stream.Stream;
 public class ProjectScanService {
 
     private static final Logger logger = LoggerFactory.getLogger(ProjectScanService.class);
-    private static final String OMP_EXTENSION = ".omp";
+    private static final String OMP_EXTENSION = com.openmason.main.systems.io.BuiltinFileTypes.OMP.extension();
 
     /** One .omp discovered under the base folder. */
     public record ScannedProject(String fileName, Path ompPath, FileTime lastModified) {
