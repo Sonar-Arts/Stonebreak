@@ -298,7 +298,7 @@ public final class UiEditingService {
     /** True when {@code file} lies under the game-resources root (writes there always go through the policy). */
     private boolean insideGame(Path file) {
         try {
-            return writes.sandbox().check(WriteKind.OMUI, file.toAbsolutePath()).insideGame();
+            return writes.sandbox().check(WriteKind.OMUI, file.toAbsolutePath()).insideTarget();
         } catch (IllegalArgumentException outsideRoots) {
             return false; // opened by the author from elsewhere: their own file
         }
@@ -311,15 +311,14 @@ public final class UiEditingService {
 
     /**
      * As {@link #export(String, String, String, boolean, boolean)}; {@code deploy} instead ships the
-     * screen into the game (C14): {@code game:ui/documents/<screen>.sbui} plus the shared project
-     * assets it needs under {@code game:ui/shared/}, through the write policy (game resources ask
-     * the user). An export the real game host would refuse is never deployed.
+     * screen into the game target (C14, #380): the screen plus the shared project assets it needs,
+     * in the target's deploy layout under {@code target:}, through the write policy (game resources
+     * ask the user). An export the real game host would refuse is never deployed.
      */
     public Object export(String doc, String path, String mode, boolean prompt, boolean overwrite, boolean deploy) {
         if (deploy) {
             if (path != null) {
-                throw new IllegalArgumentException("deploy writes to the game's own layout (ui/documents/,"
-                    + " ui/shared/): drop path");
+                throw new IllegalArgumentException("deploy writes to the game target's own layout: drop path");
             }
             return deploy(doc, exportMode(mode), overwrite);
         }
@@ -378,13 +377,18 @@ public final class UiEditingService {
     }
 
     private Object deploy(String doc, ExportMode mode, boolean overwrite) {
-        Path game = writes.sandbox().roots().path(WriteRoot.GAME_RESOURCES);
+        com.openmason.api.target.GameTarget gameTarget = writes.sandbox().roots().target().orElse(null);
+        if (gameTarget == null || gameTarget.uiDeploy() == null) {
+            throw new IllegalStateException("The project has no game target that ships UI documents"
+                + " (File > Game Target); export without deploy instead");
+        }
+        Path game = writes.sandbox().roots().path(WriteRoot.TARGET);
         if (game == null) {
-            throw new IllegalStateException("The game's resource folder is not available to the tool");
+            throw new IllegalStateException("The game target's resource folder is not available to the tool");
         }
         UiGameDeploy.Plan plan = onMain(() -> {
             UiAutomation ui = automation.get();
-            return ui.service().planDeploy(ui.document(doc), mode, game);
+            return ui.service().planDeploy(ui.document(doc), mode, gameTarget, game);
         });
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("screen", plan.screenId());
@@ -401,12 +405,12 @@ public final class UiEditingService {
             out.put("conflicts", plan.conflicts().stream().map(f -> game.relativize(f.target()).toString()).toList());
             return out;
         }
-        String sbuiRel = UiGameDeploy.screenPath(plan.screenId());
+        String sbuiRel = gameTarget.uiDeploy().screenPath(plan.screenId());
         List<String> details = new java.util.ArrayList<>();
         details.add("Deploy UI screen '" + plan.screenId() + "' into the game (" + plan.files().size() + " file(s))");
         plan.files().forEach(f -> details.add((f.conflict() ? "replace " : "write ") + game.relativize(f.target())));
         List<Path> written = new java.util.ArrayList<>();
-        WriteOutcome outcome = writes.save(WriteRequest.of(WriteKind.SBUI, "game:" + sbuiRel, false,
+        WriteOutcome outcome = writes.save(WriteRequest.of(WriteKind.SBUI, WriteRoot.TARGET.prefix() + ":" + sbuiRel, false,
                 overwrite || plan.files().getFirst().conflict(), plan.screenId()).withDetails(details),
             target -> {
                 if (!target.toAbsolutePath().normalize().equals(game.resolve(sbuiRel).toAbsolutePath().normalize())) {

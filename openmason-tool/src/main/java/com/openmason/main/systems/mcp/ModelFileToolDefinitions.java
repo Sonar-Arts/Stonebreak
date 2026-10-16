@@ -36,7 +36,7 @@ public final class ModelFileToolDefinitions {
 
         registry.register(new McpTool(
                 "model_open",
-                "Open a .omo from a writable root (absolute, project:<rel>, game:<rel> or a bare "
+                "Open a .omo from a writable root (absolute, project:<rel>, target:<rel> or a bare "
                         + "name in the project) into the model editor. Unsaved changes trigger the "
                         + "in-tool approval dialog (the user may save first).",
                 McpSchema.of(mapper)

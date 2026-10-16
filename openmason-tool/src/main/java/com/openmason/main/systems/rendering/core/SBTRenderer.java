@@ -28,7 +28,7 @@ import static org.lwjgl.opengl.GL20.*;
 
 /**
  * Renders a .SBT texture in the viewport by voxelising every visible pixel
- * of the embedded OMT (mirroring stonebreak-game's {@code SpriteVoxelizer}
+ * of the embedded OMT (mirroring the game's {@code SpriteVoxelizer}
  * geometry) and drawing each voxel with its own solid colour.
  *
  * <p>This deliberately reuses {@link VoxelMesh} / {@link VoxelData} from the

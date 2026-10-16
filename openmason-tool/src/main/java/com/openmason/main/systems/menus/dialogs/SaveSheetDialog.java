@@ -116,7 +116,8 @@ public final class SaveSheetDialog {
             first = false;
             String label = switch (e.getKey()) {
                 case PROJECT -> "Project";
-                case GAME_RESOURCES -> "Game resources";
+                case TARGET -> sandbox.roots().target().map(t -> t.displayName() + " resources")
+                        .orElse("Game resources");
                 case EXPORTS -> "Exports";
             };
             if (ImGui.radioButton(label + "##root_" + e.getKey().name(), selectedRoot == e.getKey())

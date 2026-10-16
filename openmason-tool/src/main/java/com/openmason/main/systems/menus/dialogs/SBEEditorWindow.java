@@ -4,6 +4,7 @@ import com.openmason.engine.format.sbe.SBEFormat;
 import com.openmason.engine.format.sbe.SBEParser;
 import com.openmason.engine.format.sbe.SBESerializer;
 import com.openmason.main.systems.services.StatusService;
+import com.openmason.main.systems.target.GameTargets;
 import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
@@ -262,7 +263,7 @@ public class SBEEditorWindow {
             ImGui.separator();
         }
         ThemedWidgets.sectionLabel("Identity");
-        if (ImGui.inputTextWithHint("Object ID", "e.g. stonebreak:cow", objectId)) dirty = true;
+        if (ImGui.inputTextWithHint("Object ID", "e.g. " + GameTargets.shared().qualify("cow"), objectId)) dirty = true;
         ImGui.sameLine();
         if (ImGui.smallButton(EditorWidgets.TAKEN_IDS_LABEL + "##sbe_editor_taken")) objectIndexPopup.open();
         if (ImGui.inputTextWithHint("Object Name", "e.g. Cow", objectName))        dirty = true;

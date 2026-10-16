@@ -305,8 +305,8 @@ public final class DesignerRuntime implements AutoCloseable {
 
     /**
      * Preview data: the document's {@code <file>.fixture.json} sidecar, else its archive fixture,
-     * else (a screen written against the game's host contracts) the game's canonical fixture, so
-     * the preview binds the same roots and shapes the game host serves (C15).
+     * else (a screen written against the game target's host contracts) the target's canonical
+     * fixture, so the preview binds the same roots and shapes the game host serves (C15, #380).
      */
     private FixtureHost fixtures(OmuiArchive a) throws java.io.IOException {
         Path file = doc.file();
@@ -316,15 +316,17 @@ public final class DesignerRuntime implements AutoCloseable {
                 return FixtureHost.parse(Files.readAllBytes(sidecar), sidecar.getFileName().toString(), a.manifest());
             }
         }
-        if (a.editor().get(FixtureHost.ARCHIVE_ENTRY) == null && usesGameHost(a)) {
-            return FixtureHost.parse(com.stonebreak.ui.runtime.GameUiHost.fixtureJson(),
-                com.stonebreak.ui.runtime.GameUiHost.FIXTURE_RESOURCE, a.manifest());
+        var target = com.openmason.main.systems.target.GameTargets.shared().active().orElse(null);
+        if (a.editor().get(FixtureHost.ARCHIVE_ENTRY) == null && target != null && target.uiHost() != null
+                && usesHostOf(a, target)) {
+            return FixtureHost.parse(target.uiHost().fixtureJson(), target.uiHost().fixtureName(), a.manifest());
         }
         return FixtureHost.forArchive(a);
     }
 
-    private static boolean usesGameHost(OmuiArchive a) {
-        return a.manifest().hostApis().stream().anyMatch(h -> h.id().startsWith("stonebreak:"));
+    /** True when the document declares a host API in {@code target}'s namespace. */
+    private static boolean usesHostOf(OmuiArchive a, com.openmason.api.target.GameTarget target) {
+        return a.manifest().hostApis().stream().anyMatch(h -> target.owns(h.id()));
     }
 
     private UiScriptServices services() {

@@ -165,7 +165,8 @@ public final class UiAutomation {
         UiDocumentTemplates t = template(template);
         if (documentId == null || !OmuiFormat.LOGICAL_ID.matcher(documentId).matches()) {
             throw new IllegalArgumentException("id '" + documentId + "' is not a document id; ids look like"
-                + " namespace:path, lowercase (stonebreak:ui/screens/main_menu)");
+                + " namespace:path, lowercase ("
+                + com.openmason.main.systems.target.GameTargets.shared().qualify("ui/screens/main_menu") + ")");
         }
         for (UiEditorDocument open : ctx.service.documents()) {
             if (documentId.equals(open.archive().manifest().documentId())) {

@@ -1,6 +1,8 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.io.BuiltinFileTypes;
 import com.openmason.main.systems.services.StatusService;
+import com.openmason.main.systems.target.GameTargets;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.nfd.NFDFilterItem;
@@ -627,7 +629,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSaveSBODialog(SaveSBOCallback callback) {
-        showSaveSBODialog("object.sbo", GameResourceDirs.sboBlocks(), callback);
+        showSaveSBODialog("object.sbo", targetFolder(BuiltinFileTypes.SBO, "block"), callback);
     }
 
     /**
@@ -643,20 +645,25 @@ public class FileDialogService {
     /**
      * Show open SBO (Stonebreak Object) dialog using native file dialog.
      * Starts in the last {@code .sbo} folder the user visited as long as it
-     * lies inside the game resources, otherwise in {@code sbo/blocks}.
+     * lies inside the game target's resources, otherwise in the target's block folder.
      */
     public void showOpenSBODialog(OpenCallback callback) {
-        showOpenDialog(repoDirectoryFor("sbo", GameResourceDirs.sboBlocks()), callback, com.openmason.main.systems.io.BuiltinFileTypes.SBO);
+        showOpenDialog(repoDirectoryFor("sbo", targetFolder(BuiltinFileTypes.SBO, "block")), callback, BuiltinFileTypes.SBO);
+    }
+
+    /** The active game target's folder for {@code type} assets of manifest type {@code subtype}, or null. */
+    private static String targetFolder(com.openmason.api.files.FileType type, String subtype) {
+        return GameTargets.shared().folderPathFor(type.id(), subtype);
     }
 
     /**
      * Repo-routed starting directory for a file type: the last directory used
-     * for that type if it is inside the game resources tree, else the given
+     * for that type if it is inside the game target's resource tree, else the given
      * canonical folder (may be null → NFD default).
      */
     private String repoDirectoryFor(String filterSpec, String canonicalDirectory) {
         String last = resolveDefaultDirectory(new String[]{filterSpec});
-        if (last != null && GameResourceDirs.isInsideResources(last)) {
+        if (last != null && GameTargets.shared().isInsideResources(last)) {
             return last;
         }
         return canonicalDirectory;
@@ -674,7 +681,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSaveSBEDialog(SaveSBECallback callback) {
-        showSaveSBEDialog("entity.sbe", GameResourceDirs.sbeRoot(), callback);
+        showSaveSBEDialog("entity.sbe", targetFolder(BuiltinFileTypes.SBE, null), callback);
     }
 
     /**
@@ -689,10 +696,10 @@ public class FileDialogService {
     /**
      * Show open SBE (Stonebreak Entity) dialog using native file dialog.
      * Starts in the last {@code .sbe} folder the user visited as long as it
-     * lies inside the game resources, otherwise in the {@code sbe} root.
+     * lies inside the game target's resources, otherwise in the target's entity root.
      */
     public void showOpenSBEDialog(OpenCallback callback) {
-        showOpenDialog(repoDirectoryFor("sbe", GameResourceDirs.sbeRoot()), callback, com.openmason.main.systems.io.BuiltinFileTypes.SBE);
+        showOpenDialog(repoDirectoryFor("sbe", targetFolder(BuiltinFileTypes.SBE, null)), callback, BuiltinFileTypes.SBE);
     }
 
     /**

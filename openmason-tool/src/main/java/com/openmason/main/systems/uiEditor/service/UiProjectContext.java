@@ -9,7 +9,7 @@ import com.openmason.engine.ui.assets.AssetSource;
 import com.openmason.engine.ui.assets.ProjectAssetSource;
 import com.openmason.engine.ui.assets.ProjectFolder;
 import com.openmason.main.systems.project.ProjectLayout;
-import com.stonebreak.ui.runtime.GameUiAssets;
+import com.openmason.main.systems.target.GameTargets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,17 +77,23 @@ public final class UiProjectContext {
         return ProjectLayout.uiAssetSource(root());
     }
 
-    /** Sources a document's shared rows resolve through: project first, then the game's packaged root. */
+    /**
+     * Sources a document's shared rows resolve through: project first, then the game target's
+     * packaged UI assets (none without a target that has a UI host, #380).
+     */
     public List<AssetSource> sources() {
         List<AssetSource> out = new ArrayList<>();
         ProjectAssetSource p = projectSource();
         if (p != null) {
             out.add(p);
         }
-        try {
-            out.addAll(GameUiAssets.sources(Map.of()));
-        } catch (IOException e) {
-            logger.warn("Packaged UI assets unavailable: {}", e.getMessage());
+        var host = GameTargets.shared().active().map(com.openmason.api.target.GameTarget::uiHost).orElse(null);
+        if (host != null) {
+            try {
+                out.addAll(host.packagedAssets());
+            } catch (IOException e) {
+                logger.warn("Packaged UI assets unavailable: {}", e.getMessage());
+            }
         }
         return out;
     }
@@ -223,7 +229,7 @@ public final class UiProjectContext {
         return List.copyOf(out);
     }
 
-    /** {@code UI/stonebreak/ui/themes/stone.uss.json} → {@code stonebreak:ui/themes/stone}; null off-convention. */
+    /** {@code UI/<ns>/ui/themes/stone.uss.json} → {@code <ns>:ui/themes/stone}; null off-convention. */
     static String idFor(Path uiDir, Path file) {
         Path abs = file.toAbsolutePath().normalize();
         Path base = uiDir.toAbsolutePath().normalize();

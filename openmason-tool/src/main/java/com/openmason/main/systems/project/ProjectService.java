@@ -4,6 +4,7 @@ import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.stateHandling.UIVisibilityState;
+import com.openmason.main.systems.target.GameTargets;
 import com.openmason.engine.rendering.viewer.camera.ViewerCamera;
 import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.state.RenderingMode;
@@ -36,6 +37,10 @@ public class ProjectService {
     private String currentProjectName;
     private String createdAt;
     private boolean dirty;
+
+    /** The project's game target id (#380), null = none; told to {@link #targets} as it changes. */
+    private String targetId;
+    private final GameTargets targets;
 
     /**
      * Supplies the scene node written on save (v1.2): which .omsc is open and which
@@ -83,8 +88,14 @@ public class ProjectService {
     }
 
     public ProjectService() {
+        this(GameTargets.shared());
+    }
+
+    /** A service reporting its project's target to {@code targets} (tests pass their own). */
+    public ProjectService(GameTargets targets) {
         this.serializer = new OMPSerializer();
         this.deserializer = new OMPDeserializer();
+        this.targets = java.util.Objects.requireNonNull(targets, "targets");
     }
 
     /** Wire the save-side scene state supplier (see field docs). */
@@ -170,7 +181,8 @@ public class ProjectService {
                 ui,
                 null,
                 scene,
-                uiEditorStateSupplier != null ? uiEditorStateSupplier.get() : null
+                uiEditorStateSupplier != null ? uiEditorStateSupplier.get() : null,
+                targetReference()
         );
     }
 
@@ -318,6 +330,7 @@ public class ProjectService {
         this.currentProjectPath = OMPFormat.ensureExtension(filePath);
         this.currentProjectName = projectName != null ? projectName : deriveProjectName(filePath);
         this.createdAt = LocalDateTime.now().format(TIMESTAMP_FORMAT);
+        targets.projectOpened(targetId);
 
         OMPFormat.Document document = extractState(viewport, modelState, uiState, currentProjectName);
         boolean success = serializer.save(document, currentProjectPath);
@@ -350,6 +363,14 @@ public class ProjectService {
         this.currentProjectPath = filePath;
         this.currentProjectName = document.projectName();
         this.createdAt = document.createdAt();
+        // Before the restore: what it reopens (UI documents, scene) may depend on the target.
+        // A pre-1.5 file migrates to the target that claims legacy projects; the next save records it.
+        this.targetId = document.target().resolve(targets.legacyTargetId());
+        targets.projectOpened(targetId);
+        if (targetId != null && targets.find(targetId).isEmpty()) {
+            logger.warn("Project {} targets '{}', which no plugin provides; working without a game target",
+                    filePath, targetId);
+        }
 
         // Idempotent: this is how projects created before scenes existed gain the folder.
         ProjectLayout.ensureScaffold(ProjectLayout.projectRoot(filePath));
@@ -459,6 +480,33 @@ public class ProjectService {
         return currentProjectPath != null && !currentProjectPath.isBlank();
     }
 
+    /** The target node the next save writes (a migrated legacy project records its resolved target). */
+    OMPFormat.TargetReference targetReference() {
+        return OMPFormat.TargetReference.of(targetId);
+    }
+
+    /** The project's game target id, or null for none (#380). */
+    public String getTargetId() {
+        return targetId;
+    }
+
+    /**
+     * Sets the project's game target (null = none). For an open project this is an edit (the
+     * project becomes dirty) and the editor switches target at once; with no project open it
+     * only primes the next {@link #saveProjectAs} (a new project's target).
+     */
+    public void setTargetId(String id) {
+        String next = id == null || id.isBlank() ? null : id;
+        if (java.util.Objects.equals(next, targetId)) {
+            return;
+        }
+        targetId = next;
+        if (hasCurrentProject()) {
+            dirty = true;
+            targets.projectOpened(targetId);
+        }
+    }
+
     /**
      * Clear all project state (no active project).
      * Called when transitioning to a blank/new editor session.
@@ -469,6 +517,8 @@ public class ProjectService {
         this.createdAt = null;
         this.dirty = false;
         this.recordedUiSession = null;
+        this.targetId = null;
+        targets.projectClosed();
         logger.debug("Project state cleared");
     }
 }

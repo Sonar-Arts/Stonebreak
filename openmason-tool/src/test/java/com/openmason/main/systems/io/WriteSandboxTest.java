@@ -1,5 +1,6 @@
 package com.openmason.main.systems.io;
 
+import com.openmason.main.systems.target.TestGameTargets;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -31,7 +33,7 @@ class WriteSandboxTest {
         game = Files.createDirectories(tmp.resolve("game/src/main/resources"));
         Files.createDirectories(game.resolve("sbo/blocks"));
         exports = Files.createDirectories(tmp.resolve("exports"));
-        sandbox = new WriteSandbox(WriteRoots.of(project, game, exports));
+        sandbox = new WriteSandbox(WriteRoots.forTarget(project, TestGameTargets.stonebreakAt(game), exports));
     }
 
     @Test
@@ -44,7 +46,8 @@ class WriteSandboxTest {
 
         WriteTarget sbo = sandbox.resolve(WriteKind.SBO, "SB_Cow");
         assertEquals(real(game).resolve("sbo/blocks"), sbo.path().getParent());
-        assertTrue(sbo.insideGame());
+        assertTrue(sbo.insideTarget());
+        assertTrue(sbo.asksFirst(), "shipped assets ask under the default policy");
     }
 
     @Test
@@ -112,10 +115,46 @@ class WriteSandboxTest {
     void absentRootIsReportedNotGuessed() {
         WriteSandbox noGame = new WriteSandbox(WriteRoots.of(project, null, exports));
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> noGame.resolve(WriteKind.SBO, "SB_Cow"));
+                () -> noGame.resolve(WriteKind.SBO, "target:sbo/blocks/SB_Cow"));
         assertTrue(e.getMessage().startsWith("root_unavailable"), e.getMessage());
         assertTrue(noGame.describeRoots().contains("project:"));
-        assertFalse(noGame.describeRoots().contains("game:"));
+        assertFalse(noGame.describeRoots().contains("target:"));
+    }
+
+    @Test
+    void withoutATargetTargetKindsLandInTheProject() {
+        // A project-only project (#380): no target tree, so a bare .sbo name goes to the project root.
+        WriteSandbox projectOnly = new WriteSandbox(WriteRoots.forTarget(project, null, exports));
+        WriteTarget sbo = projectOnly.resolve(WriteKind.SBO, "Cow");
+        assertEquals(real(project).resolve("Cow.sbo"), sbo.path());
+        assertEquals(WriteRoot.PROJECT, sbo.root());
+        assertFalse(sbo.asksFirst());
+    }
+
+    @Test
+    void bareNamesFollowTheTargetsFolders() {
+        // The save rule names a folder key; each target maps it to its own folder.
+        var other = com.openmason.api.target.GameTarget.builder("other", "Other Game")
+                .resources(com.openmason.api.target.ResourceRoot.at(game))
+                .folders(com.openmason.api.target.AssetFolders.builder()
+                        .subtype("sbo", "block", "assets/blocks").subtype("sbe", "mob", "assets/creatures").build())
+                .writes(new com.openmason.api.target.WriteRules(true, false))
+                .build();
+        WriteSandbox otherSandbox = new WriteSandbox(WriteRoots.forTarget(project, other, exports));
+        assertEquals(real(game).resolve("assets/blocks/Cow.sbo"), otherSandbox.resolve(WriteKind.SBO, "Cow").path());
+        assertEquals(real(game).resolve("assets/creatures/Cow.sbe"), otherSandbox.resolve(WriteKind.SBE, "Cow").path());
+        assertFalse(otherSandbox.resolve(WriteKind.SBO, "Cow").asksFirst(), "this target's writes do not confirm");
+    }
+
+    @Test
+    void readOnlyTargetOffersNoRoot() {
+        var readOnly = TestGameTargets.stonebreakAt(game);
+        readOnly = new com.openmason.api.target.GameTarget(readOnly.id(), readOnly.displayName(),
+                readOnly.defaultNamespace(), readOnly.resources(), readOnly.folders(), readOnly.assetFilePrefix(),
+                com.openmason.api.target.WriteRules.READ_ONLY, readOnly.uiDeploy(), readOnly.uiHost(), null, false);
+        WriteRoots roots = WriteRoots.forTarget(project, readOnly, exports);
+        assertNull(roots.path(WriteRoot.TARGET));
+        assertEquals(WriteRoot.PROJECT, roots.defaultRoot(WriteKind.SBO));
     }
 
     @Test
@@ -140,8 +179,10 @@ class WriteSandboxTest {
             assertEquals(k, WriteKind.fromId(k.id()));
             assertEquals(k, WriteKind.fromId(k.extension()));
         }
-        assertEquals(WriteRoot.GAME_RESOURCES, WriteRoot.fromPrefix("Game"));
-        assertEquals(WriteRoot.GAME_RESOURCES, WriteRoot.fromPrefix("game_resources"));
+        assertEquals(WriteRoot.TARGET, WriteRoot.fromPrefix("target"));
+        // pre-#380 spellings
+        assertEquals(WriteRoot.TARGET, WriteRoot.fromPrefix("Game"));
+        assertEquals(WriteRoot.TARGET, WriteRoot.fromPrefix("game_resources"));
     }
 
     private static Path real(Path p) {

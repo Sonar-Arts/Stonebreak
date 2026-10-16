@@ -65,4 +65,4 @@ viewport	openmason-tool	com/openmason/main/systems/viewport/**/*Test
 scene	openmason-tool	com/openmason/main/systems/scene/**/*Test,com/openmason/main/systems/project/**/*Test
 tool-model	openmason-tool	com/openmason/main/systems/skeleton/**/*Test,com/openmason/main/systems/rendering/**/*Test
 boundaries	openmason-tool	com/openmason/main/boundary/**/*Test
-plugins	openmason-tool	com/openmason/main/plugins/**/*Test,com/openmason/api/**/*Test
+plugins	openmason-tool	com/openmason/main/plugins/**/*Test,com/openmason/api/**/*Test,com/openmason/main/systems/target/**/*Test

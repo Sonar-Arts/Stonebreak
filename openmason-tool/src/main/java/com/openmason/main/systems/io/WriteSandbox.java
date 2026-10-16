@@ -16,11 +16,12 @@ import java.util.Map;
  * and carries the {@link WriteKind}'s extension. Accepted spellings:
  * <ul>
  *   <li>an absolute path,</li>
- *   <li>{@code project:models/x.omo}, {@code game:sbo/blocks/SB_X.sbo},
- *       {@code exports:x.png} — a root prefix plus a relative path,</li>
+ *   <li>{@code project:models/x.omo}, {@code target:<folder>/X.sbo},
+ *       {@code exports:x.png} — a root prefix plus a relative path ({@code game:} is the
+ *       pre-#380 spelling of {@code target:}),</li>
  *   <li>a bare relative path, resolved against the kind's default root; a
- *       single bare name additionally lands in the kind's default sub-folder
- *       ({@code SB_X.sbo} → {@code game:sbo/blocks/SB_X.sbo}).</li>
+ *       single bare name additionally lands in the kind's default sub-folder in the
+ *       active game target ({@code X.sbo} → {@code target:<block folder>/X.sbo}).</li>
  * </ul>
  *
  * <p>The static helpers at the bottom are the former {@code AssetPathGuard}:
@@ -70,12 +71,13 @@ public final class WriteSandbox {
             } else if (colon > 0 && colon < spelled.length() - 1
                     && !Character.isLetter(spelled.charAt(0))) {
                 throw new IllegalArgumentException("unknown root prefix in '" + spelled
-                        + "' — use project:, game: or exports:");
+                        + "' — use project:, target: or exports:");
             } else {
-                Path base = requireRoot(kind.defaultRoot());
+                Path base = requireRoot(roots.defaultRoot(kind));
                 Path rel = Path.of(spelled);
-                if (rel.getNameCount() == 1 && !kind.defaultSubdir().isEmpty()) {
-                    base = base.resolve(kind.defaultSubdir());
+                String subdir = roots.subdir(kind);
+                if (rel.getNameCount() == 1 && !subdir.isEmpty()) {
+                    base = base.resolve(subdir);
                 }
                 candidate = base.resolve(rel);
             }
@@ -92,12 +94,13 @@ public final class WriteSandbox {
         for (Map.Entry<WriteRoot, Path> e : present.entrySet()) {
             Path root = canonicalize(e.getValue());
             if (canonical.startsWith(root)) {
-                return new WriteTarget(kind, canonical, e.getKey(), Files.exists(canonical));
+                return new WriteTarget(kind, canonical, e.getKey(), Files.exists(canonical),
+                        roots.confirms(e.getKey()));
             }
         }
         throw new IllegalArgumentException("path_outside_sandbox: " + absolute
                 + " is not inside any writable root (" + describeRoots(present)
-                + ") — use a project:/game:/exports: path, or pass prompt:true to let the user pick");
+                + ") — use a project:/target:/exports: path, or pass prompt:true to let the user pick");
     }
 
     /**
@@ -226,7 +229,7 @@ public final class WriteSandbox {
             }
         }
         throw new IllegalArgumentException("path_outside_game_resources: " + rawPath
-                + " is not inside the game resource tree — address assets by objectId instead");
+                + " is not inside the game target's resource tree — address assets by objectId instead");
     }
 
     /** Tool-owned export directory for one asset, created on demand. */

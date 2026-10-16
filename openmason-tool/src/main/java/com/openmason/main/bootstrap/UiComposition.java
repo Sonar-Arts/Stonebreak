@@ -37,7 +37,7 @@ public final class UiComposition {
     /** Lifecycle hooks the application shell provides to the composed UI graph. */
     public interface Host {
         /** Project Hub "create" transition (name + directory + template, null when blank). */
-        void createNewProjectFile(String name, String directory, ProjectTemplate template);
+        void createNewProjectFile(String name, String directory, ProjectTemplate template, String targetId);
 
         /** Project Hub "open recent" transition. */
         void openRecentProject(RecentProject project);
@@ -110,6 +110,8 @@ public final class UiComposition {
             projectHubScreen = new ProjectHubScreen(themeManager, omConfig);
             // Templates and themes are plugin contributions (#379).
             projectHubScreen.getTemplateService().setSource(registries.templates()::all);
+            // Game targets (#380): export dialogs, the asset catalog and the write sandbox read them here.
+            com.openmason.main.systems.target.GameTargets.shared().setSource(registries.gameTargets()::all);
             registries.themes().addListener(new com.openmason.api.Contributions.Listener<>() {
                 @Override
                 public void added(com.openmason.main.systems.themes.core.ThemeDefinition theme) {

@@ -164,7 +164,8 @@ final class UiEditorDialogs {
         Path target = validId ? ctx.project.conventionPath(id) : null;
         if (!validId) {
             ThemeColors.push(imgui.flag.ImGuiCol.Text, ThemeColors.Tone.ERROR);
-            ImGui.textWrapped("Ids look like namespace:path, lowercase (stonebreak:ui/screens/main_menu)");
+            ImGui.textWrapped("Ids look like namespace:path, lowercase ("
+                + com.openmason.main.systems.target.GameTargets.shared().qualify("ui/screens/main_menu") + ")");
             ImGui.popStyleColor();
         } else if (target != null) {
             boolean exists = java.nio.file.Files.exists(target);
@@ -256,7 +257,8 @@ final class UiEditorDialogs {
         if (stem.isEmpty()) {
             stem = kind == UiManifest.DocumentKind.COMPONENT ? "component" : "screen";
         }
-        return "stonebreak:ui/" + (kind == UiManifest.DocumentKind.COMPONENT ? "components/" : "screens/") + stem;
+        return com.openmason.main.systems.target.GameTargets.shared().qualify(
+                "ui/" + (kind == UiManifest.DocumentKind.COMPONENT ? "components/" : "screens/") + stem);
     }
 
     // ── close prompt ────────────────────────────────────────────────────────
@@ -390,8 +392,11 @@ final class UiEditorDialogs {
         }
     }
 
-    /** Deploy to the game (C14): ui/documents/<screen>.sbui + shared project assets under ui/shared/. */
+    /** Deploy to the game (C14): the screen + its shared project assets, in the game target's deploy layout. */
     private void deploySection() {
+        if (!com.openmason.main.systems.uiEditor.service.UiDocumentService.canDeploy()) {
+            return; // no game target that ships UI documents: a project-only project (#380)
+        }
         ImGui.separator();
         ImGui.textDisabled("Deploy writes the screen and its shared project assets into the game's resources.");
         if (deployMessage != null) {
@@ -419,7 +424,7 @@ final class UiEditorDialogs {
             return;
         }
         if (ImGui.button("Deploy to Game")) {
-            java.nio.file.Path game = com.openmason.main.systems.menus.dialogs.GameResourceDirs.resourcesRoot();
+            java.nio.file.Path game = com.openmason.main.systems.target.GameTargets.shared().writableRoot();
             if (game == null) {
                 deployMessage = "The game's resource folder was not found next to the tool";
                 deployFailed = true;

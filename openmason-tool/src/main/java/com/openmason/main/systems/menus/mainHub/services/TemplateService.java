@@ -1,6 +1,5 @@
 package com.openmason.main.systems.menus.mainHub.services;
 
-import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory.Shape;
 import com.openmason.main.systems.menus.mainHub.model.ProjectTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,8 +11,8 @@ import java.util.stream.Collectors;
 
 /**
  * Business logic for template management: the templates the plugins contributed (#379), with
- * filtering and search. The built-in ones are {@link #blankTemplate()} (core) and
- * {@link #newBiomeTemplate()} (the built-in Stonebreak plugin).
+ * filtering and search. The core one is {@link #blankTemplate()}; game templates come with their
+ * game target's plugin (Stonebreak's New Biome: {@code StonebreakGameTarget.newBiomeTemplate()}).
  */
 public class TemplateService {
 
@@ -21,9 +20,9 @@ public class TemplateService {
 
     private volatile Supplier<List<ProjectTemplate>> source;
 
-    /** The built-in templates only (no plugin host). */
+    /** The core templates only (no plugin host). */
     public TemplateService() {
-        List<ProjectTemplate> builtins = List.of(blankTemplate(), newBiomeTemplate());
+        List<ProjectTemplate> builtins = List.of(blankTemplate());
         this.source = () -> builtins;
     }
 
@@ -64,27 +63,6 @@ public class TemplateService {
                 .category("General")
                 .type(ProjectTemplate.TemplateType.CUSTOM)
                 .metadata("Tools", "All")
-                .build();
-    }
-
-    /** A biome's block set (Stonebreak). */
-    public static ProjectTemplate newBiomeTemplate() {
-        return new ProjectTemplate.Builder()
-                .id("new-biome")
-                .name("New Biome")
-                .description("Start a biome's block set: blank Log, Planks, Stairs, Leaves, Sapling and Grass models, "
-                        + "ready to shape and texture.")
-                .category("Biome")
-                .type(ProjectTemplate.TemplateType.BLOCK_SET)
-                .metadata("Models", "Log, Planks, Stairs, Leaves, Sapling, Grass")
-                .model("Log", Shape.CUBE)
-                .model("Planks", Shape.CUBE)
-                // The game's own stair shape (all wood stairs share it), without the wood texture.
-                .modelFromGameBlock("Stairs", "SB_Oak_Stairs.sbo")
-                .model("Leaves", Shape.CUBE)
-                .model("Sapling", Shape.CROSS)
-                .model("Grass", Shape.CUBE)
-                .openOnCreate("Log")
                 .build();
     }
 }

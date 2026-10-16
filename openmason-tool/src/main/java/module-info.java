@@ -90,6 +90,7 @@ module com.openmason {
     exports com.openmason.api.mcp;
     exports com.openmason.api.menu;
     exports com.openmason.api.prefs;
+    exports com.openmason.api.target;
     exports com.openmason.api.viewport;
     exports com.openmason.api.workspace;
     // ...and the editor packages its signatures and typical plugins use (MCP tool records and

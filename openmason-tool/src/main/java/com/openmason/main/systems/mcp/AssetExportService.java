@@ -14,7 +14,7 @@ import com.openmason.main.systems.io.AssetWriteService.WriteOutcome;
 import com.openmason.main.systems.io.AssetWriteService.WriteRequest;
 import com.openmason.main.systems.io.WriteKind;
 import com.openmason.main.systems.io.WriteRoot;
-import com.openmason.main.systems.menus.dialogs.GameResourceDirs;
+import com.openmason.main.systems.target.GameTargets;
 import com.openmason.main.systems.menus.dialogs.SBEEditorWindow;
 import com.openmason.main.systems.menus.dialogs.SBOEditorWindow;
 import com.openmason.main.systems.menus.dialogs.validation.NumericIdValidator;
@@ -158,11 +158,10 @@ public final class AssetExportService {
     private Map<String, Object> writeSbo(SBOFormat.ExportParameters p, String filePath, boolean prompt,
                                          boolean overwrite, String sourceDetail,
                                          AssetWriteService.Writer writer) {
-        String folder = GameResourceDirs.sboFolderFor(p.getObjectType().getId());
-        String suggested = GameResourceDirs.suggestedFileName(p.getObjectName(), "sbo", "object.sbo");
+        String suggested = GameTargets.shared().suggestedFileName(p.getObjectName(), "sbo", "object.sbo");
         WriteOutcome out = writes.save(
-                WriteRequest.of(WriteKind.SBO, filePath, prompt, overwrite, suggested)
-                        .withSuggestedRoot(WriteRoot.GAME_RESOURCES, relativeToGame(folder, "sbo/blocks"))
+                suggestTargetFolder(WriteRequest.of(WriteKind.SBO, filePath, prompt, overwrite, suggested),
+                        WriteKind.SBO, p.getObjectType().getId())
                         .withDetails(List.of("Object: " + p.getObjectId() + " (" + p.getObjectType().getId() + ")",
                                 sourceDetail)),
                 writer);
@@ -194,12 +193,11 @@ public final class AssetExportService {
         if (compat != null) {
             throw new IllegalArgumentException("clip_incompatible: " + compat);
         }
-        String folder = GameResourceDirs.sbeFolderFor(p.getEntityType().getId());
-        String suggested = GameResourceDirs.suggestedFileName(p.getObjectName(), "sbe", "entity.sbe");
+        String suggested = GameTargets.shared().suggestedFileName(p.getObjectName(), "sbe", "entity.sbe");
         Path omoPath = omo.path();
         WriteOutcome out = writes.save(
-                WriteRequest.of(WriteKind.SBE, filePath, prompt, overwrite, suggested)
-                        .withSuggestedRoot(WriteRoot.GAME_RESOURCES, relativeToGame(folder, "sbe/Mobs"))
+                suggestTargetFolder(WriteRequest.of(WriteKind.SBE, filePath, prompt, overwrite, suggested),
+                        WriteKind.SBE, p.getEntityType().getId())
                         .withDetails(List.of("Entity: " + p.getObjectId() + " (" + p.getEntityType().getId() + ")",
                                 "Model: " + omoPath.getFileName())),
                 target -> sbeSerializer.export(p, omoPath, target.toString()));
@@ -422,13 +420,23 @@ public final class AssetExportService {
         return null;
     }
 
-    private static String relativeToGame(String absoluteFolder, String fallback) {
-        Path root = GameResourceDirs.resourcesRoot();
-        if (absoluteFolder == null || root == null) {
-            return fallback;
+    /**
+     * Suggests the game target's folder for an asset of manifest type {@code subtype} (#380): the
+     * subtype's folder when it exists in the tree, else the type's base folder. No target (a
+     * project-only project) suggests nothing, so the kind's default root applies.
+     */
+    private WriteRequest suggestTargetFolder(WriteRequest req, WriteKind kind, String subtype) {
+        var roots = writes.sandbox().roots();
+        Path tree = roots.path(WriteRoot.TARGET);
+        var target = roots.target();
+        if (tree == null || target.isEmpty()) {
+            return req;
         }
-        Path p = Path.of(absoluteFolder);
-        return p.startsWith(root) ? root.relativize(p).toString().replace('\\', '/') : fallback;
+        String specific = target.get().folders().folderFor(kind.id(), subtype);
+        String base = target.get().folders().folder(kind.id());
+        String folder = specific != null && java.nio.file.Files.isDirectory(tree.resolve(specific)) ? specific
+                : base != null ? base : roots.subdir(kind);
+        return req.withSuggestedRoot(WriteRoot.TARGET, folder);
     }
 
     private void handToEditor(Kind kind, String path) {
@@ -445,7 +453,8 @@ public final class AssetExportService {
 
     private Path resolveAsset(Kind kind, String asset) {
         if (asset == null || asset.isBlank()) {
-            throw new IllegalArgumentException("asset is required (objectId such as 'stonebreak:cow', or a path)");
+            throw new IllegalArgumentException("asset is required (an objectId such as '"
+                    + GameTargets.shared().qualify("cow") + "', or a path)");
         }
         AssetEntry entry = AssetCatalog.shared().find(asset);
         if (entry != null) {

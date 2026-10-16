@@ -256,9 +256,9 @@ public final class AssetWriteService {
         return switch (policy) {
             case ASK_ALWAYS -> true;
             case NEVER_ASK -> false;
-            case ASK_RISKY -> target.exists() || target.insideGame();
+            case ASK_RISKY -> target.exists() || target.asksFirst();
             case ASK_NEVER_IN_PROJECT -> {
-                if (target.insideGame()) {
+                if (target.asksFirst()) {
                     yield true;
                 }
                 if (target.exists() && !req.overwrite()) {
@@ -284,8 +284,8 @@ public final class AssetWriteService {
             name = target.fileName();
             overwrite = target.exists() ? target.path() : null;
         } else {
-            root = req.suggestedRoot() != null ? req.suggestedRoot() : kind.defaultRoot();
-            subdir = req.suggestedSubdir() != null ? req.suggestedSubdir() : kind.defaultSubdir();
+            root = req.suggestedRoot() != null ? req.suggestedRoot() : sandbox.roots().defaultRoot(kind);
+            subdir = req.suggestedSubdir() != null ? req.suggestedSubdir() : sandbox.roots().subdir(kind);
             String suggested = req.suggestedName();
             name = suggested == null || suggested.isBlank() ? kind.fallbackName() : suggested;
         }
@@ -326,8 +326,17 @@ public final class AssetWriteService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("policy", policy.get().name());
         out.put("policyMeaning", policy.get().label());
-        out.put("pathGrammar", "absolute | project:<rel> | game:<rel> | exports:<rel> | "
-                + "bare name (kind's default root + sub-folder); the extension is added when missing");
+        out.put("pathGrammar", "absolute | project:<rel> | target:<rel> | exports:<rel> | "
+                + "bare name (kind's default root + sub-folder); the extension is added when missing; "
+                + "game:<rel> is an old spelling of target:<rel>");
+        out.put("target", sandbox.roots().target().map(t -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", t.id());
+            row.put("displayName", t.displayName());
+            row.put("namespace", t.defaultNamespace());
+            row.put("folders", t.folders().folders());
+            return (Object) row;
+        }).orElse("none"));
         out.put("saveSheetAvailable", editorServices != null && editorServices.getSaveSheetGate() != null);
         List<Map<String, Object>> roots = new ArrayList<>();
         for (WriteRoot r : WriteRoot.values()) {
@@ -347,10 +356,11 @@ public final class AssetWriteService {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("kind", k.id());
             row.put("extension", k.extension());
-            row.put("defaultRoot", k.defaultRoot().prefix());
-            row.put("defaultSubdir", k.defaultSubdir());
-            row.put("example", k.defaultRoot().prefix() + ":"
-                    + (k.defaultSubdir().isEmpty() ? "" : k.defaultSubdir() + "/")
+            row.put("defaultRoot", sandbox.roots().defaultRoot(k).prefix());
+            String subdir = sandbox.roots().subdir(k);
+            row.put("defaultSubdir", subdir);
+            row.put("example", sandbox.roots().defaultRoot(k).prefix() + ":"
+                    + (subdir.isEmpty() ? "" : subdir + "/")
                     + "My" + capitalize(k.fallbackName()) + k.extension());
             kinds.add(row);
         }

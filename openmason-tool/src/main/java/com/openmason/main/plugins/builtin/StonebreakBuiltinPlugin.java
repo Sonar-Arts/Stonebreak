@@ -13,7 +13,6 @@ import com.openmason.main.systems.mcp.BuiltinMcpTools;
 import com.openmason.main.systems.menus.AssetExportMenuActions;
 import com.openmason.main.systems.menus.dialogs.SBEEditorWindow;
 import com.openmason.main.systems.menus.dialogs.SBOEditorWindow;
-import com.openmason.main.systems.menus.mainHub.services.TemplateService;
 
 import java.util.Set;
 
@@ -21,8 +20,8 @@ import java.util.Set;
  * Everything in the tool that is about Stonebreak's own assets, gathered into one plugin (#379)
  * so #382 can move it into {@code openmason-plugin-stonebreak} unchanged: the .sbo/.sbe/.sbt file
  * types (opened in their editor windows), Tools → Export SBO/SBE and SBO/SBE Editor, the asset
- * export and asset-lens MCP tools, the {@code assets} topic, the block/item/.SBT viewport content
- * and the New Biome template. It only wires tool classes; none of it names a game type directly
+ * export and asset-lens MCP tools, the {@code assets} topic, the block/item/.SBT viewport content,
+ * the New Biome template and the Stonebreak game target (#380). It only wires tool classes; none of it names a game type directly
  * (the boundary ratchet allows no new referrers).
  */
 public final class StonebreakBuiltinPlugin implements OpenMasonPlugin {
@@ -73,6 +72,7 @@ public final class StonebreakBuiltinPlugin implements OpenMasonPlugin {
         if (viewport != null) {
             viewport.builtinContentProviders().forEach(context.viewportContent()::register);
         }
-        context.templates().register(TemplateService.newBiomeTemplate());
+        context.gameTargets().register(StonebreakGameTarget.create());
+        context.templates().register(StonebreakGameTarget.newBiomeTemplate());
     }
 }

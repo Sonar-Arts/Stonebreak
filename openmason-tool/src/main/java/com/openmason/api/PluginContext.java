@@ -9,6 +9,7 @@ import com.openmason.api.mcp.McpToolContribution;
 import com.openmason.api.menu.MenuEntry;
 import com.openmason.api.menu.TopMenu;
 import com.openmason.api.prefs.PreferencePage;
+import com.openmason.api.target.GameTarget;
 import com.openmason.api.viewport.ViewportContentProvider;
 import com.openmason.api.workspace.WorkspaceDescriptor;
 import com.openmason.main.systems.keybinds.KeybindAction;
@@ -66,6 +67,9 @@ public interface PluginContext {
 
     /** Project Hub templates. */
     Registrar<ProjectTemplate> templates();
+
+    /** Games a project can target: resource tree, asset folders, namespace, UI host (#380). */
+    Registrar<GameTarget> gameTargets();
 
     /** Editor colour themes. */
     Registrar<ThemeDefinition> themes();

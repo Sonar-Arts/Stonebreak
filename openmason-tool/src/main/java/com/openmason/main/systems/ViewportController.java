@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 3D viewport controller using modular architecture.
- * Displays models, blocks, and items from stonebreak-game module.
+ * Displays models, plus the game target's blocks and items (Stonebreak's until #382).
  */
 public class ViewportController {
 

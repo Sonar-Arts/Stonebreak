@@ -1,6 +1,8 @@
 package com.openmason.main.systems.io;
 
 import com.openmason.api.files.FileType;
+import com.openmason.api.target.GameTarget;
+import com.openmason.main.systems.target.GameTargets;
 
 import java.util.List;
 import java.util.Locale;
@@ -34,7 +36,7 @@ public final class WriteKind {
         this.defaultRoot = WriteRoot.fromPrefix(type.save().root());
         if (defaultRoot == null) {
             throw new IllegalArgumentException("File type " + type.id() + " saves into unknown root '"
-                    + type.save().root() + "' (project, exports or game)");
+                    + type.save().root() + "' (project, exports or target)");
         }
     }
 
@@ -87,9 +89,26 @@ public final class WriteKind {
         return defaultRoot;
     }
 
-    /** Sub-folder under the default root a bare name lands in ("" = the root itself). */
+    /**
+     * Sub-folder under the default root a bare name lands in ("" = the root itself), resolved
+     * against the active game target ({@link #subdirFor}).
+     */
     public String defaultSubdir() {
-        return type.save().subdir();
+        return subdirFor(defaultRoot == WriteRoot.TARGET ? GameTargets.shared().active().orElse(null) : null);
+    }
+
+    /**
+     * The sub-folder for {@code target}. A save rule into the {@code target} root names one of the
+     * target's asset folder keys ({@code sbo.block}); a key the target does not declare (or no
+     * target) lands in the root itself. A value with a {@code /} is a literal folder.
+     */
+    public String subdirFor(GameTarget target) {
+        String sub = type.save().subdir();
+        if (defaultRoot != WriteRoot.TARGET || sub.isEmpty() || sub.contains("/")) {
+            return sub;
+        }
+        String folder = target == null ? null : target.folders().folder(sub);
+        return folder == null ? "" : folder;
     }
 
     /** Name used when the caller supplies none. */

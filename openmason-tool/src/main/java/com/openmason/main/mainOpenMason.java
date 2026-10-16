@@ -202,8 +202,9 @@ public class mainOpenMason {
         UiComposition composition = new UiComposition(omConfig, window(), centerTabTracker,
                 new UiComposition.Host() {
                     @Override
-                    public void createNewProjectFile(String name, String directory, ProjectTemplate template) {
-                        mainOpenMason.this.createNewProjectFile(name, directory, template);
+                    public void createNewProjectFile(String name, String directory, ProjectTemplate template,
+                                                     String targetId) {
+                        mainOpenMason.this.createNewProjectFile(name, directory, template, targetId);
                     }
 
                     @Override
@@ -584,7 +585,7 @@ public class mainOpenMason {
      * editor on the fresh project. A template's starter models are written beside
      * the .omp and its open-on-create model is loaded into the editor.
      */
-    private void createNewProjectFile(String name, String directory, ProjectTemplate template) {
+    private void createNewProjectFile(String name, String directory, ProjectTemplate template, String targetId) {
         String safeName = (name == null || name.isBlank()) ? "Untitled" : name.trim();
         if (directory == null || directory.isBlank()) {
             // No directory chosen — just open a fresh (unsaved) editor session.
@@ -602,10 +603,12 @@ public class mainOpenMason {
         // save dialog has somewhere sensible to default to.
         com.openmason.main.systems.project.ProjectLayout.ensureScaffold(java.nio.file.Path.of(directory));
         // Template models go down before the pre-save, whose browser refresh then lists them.
-        java.nio.file.Path openModel = TemplateScaffolder.scaffold(template, java.nio.file.Path.of(directory));
+        com.openmason.api.target.GameTarget target =
+                com.openmason.main.systems.target.GameTargets.shared().find(targetId).orElse(null);
+        java.nio.file.Path openModel = TemplateScaffolder.scaffold(template, java.nio.file.Path.of(directory), target);
 
         transitionToMainInterface();
-        boolean saved = mainInterface.saveNewProject(safeName, path);
+        boolean saved = mainInterface.saveNewProject(safeName, path, targetId);
         if (saved && projectHubScreen != null) {
             projectHubScreen.getRecentProjectsService().addProject(safeName, path);
         }

@@ -7,7 +7,6 @@ com.openmason.main.systems.menus.dialogs.validation.NumericIdValidator
 com.openmason.main.systems.menus.panes.projectBrowser.thumbnails.UiThumbnailRenderer
 com.openmason.main.systems.menus.panes.riggingPane.RiggingPaneImGui
 com.openmason.main.systems.project.ProjectService
-com.openmason.main.systems.project.TemplateScaffolder
 com.openmason.main.systems.rendering.core.BlockRenderer
 com.openmason.main.systems.rendering.core.ItemRenderer
 com.openmason.main.systems.rendering.core.SBTRenderer
@@ -16,10 +15,8 @@ com.openmason.main.systems.rendering.model.item.ItemManager
 com.openmason.main.systems.skeleton.AttachmentPreviewStore
 com.openmason.main.systems.uiEditor.automation.UiPreviewAutomation
 com.openmason.main.systems.uiEditor.service.UiGameDeploy
-com.openmason.main.systems.uiEditor.service.UiProjectContext
 com.openmason.main.systems.uiEditor.service.UiSnapshot
 com.openmason.main.systems.uiEditor.view.DesignerRuntime
-com.openmason.main.systems.uiEditor.view.HostContractsSection
 com.openmason.main.systems.uiEditor.view.UiEditorContext
 com.openmason.main.systems.uiPreview.MasonryPreviewPanel
 com.openmason.main.systems.uiPreview.UiDocumentPreviewPanel

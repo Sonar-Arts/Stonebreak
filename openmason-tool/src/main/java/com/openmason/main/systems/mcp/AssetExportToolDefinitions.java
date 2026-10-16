@@ -27,7 +27,7 @@ public final class AssetExportToolDefinitions {
                         + "texture editor's .omt (or params.omt) as a texture-only item instead. Saves the "
                         + ".omo/.omt first if needed. params shape: describe_api topic=saving (objectId/"
                         + "objectName/objectType/gameProperties/states/sounds/drops; missing fields get the "
-                        + "export window's defaults). Target defaults to game:sbo/<type>/ and asks the user; "
+                        + "export window's defaults). Target defaults to target:<type folder>/ and asks the user; "
                         + "the result opens in the SBO editor.",
                 exportSchema("Target .sbo path").build(),
                 args -> service.exportSbo(params(args), optString(args, "file_path"),
@@ -37,7 +37,7 @@ public final class AssetExportToolDefinitions {
                 "sbe_export",
                 "Export the model editor's model as a new .sbe. Saves the .omo first if needed. "
                         + "params shape: describe_api topic=saving (objectId/objectName/entityType/"
-                        + "states/variants/sounds). Target defaults to game:sbe/Mobs/ and asks the user; "
+                        + "states/variants/sounds). Target defaults to target:<type folder>/ and asks the user; "
                         + "the result opens in the SBE editor.",
                 exportSchema("Target .sbe path").build(),
                 args -> service.exportSbe(params(args), optString(args, "file_path"),

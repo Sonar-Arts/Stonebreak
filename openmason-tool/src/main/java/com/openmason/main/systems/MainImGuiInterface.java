@@ -1027,8 +1027,8 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      *
      * @return true if the project file was written
      */
-    public boolean saveNewProject(String projectName, String ompFilePath) {
-        return projectLifecycle.saveNewProject(projectName, ompFilePath);
+    public boolean saveNewProject(String projectName, String ompFilePath, String targetId) {
+        return projectLifecycle.saveNewProject(projectName, ompFilePath, targetId);
     }
 
     public void openProjectFromHub(String ompFilePath) {

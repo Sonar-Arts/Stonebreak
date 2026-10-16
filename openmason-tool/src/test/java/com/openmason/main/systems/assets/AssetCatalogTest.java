@@ -1,5 +1,6 @@
 package com.openmason.main.systems.assets;
 
+import com.openmason.main.systems.target.TestGameTargets;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -17,7 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class AssetCatalogTest {
 
-    private final AssetCatalog catalog = new AssetCatalog();
+    private final AssetCatalog catalog =
+            new AssetCatalog(() -> java.util.Optional.of(TestGameTargets.stonebreak()));
 
     @Test
     void discoversShippedAssets() {

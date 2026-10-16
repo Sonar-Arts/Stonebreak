@@ -226,7 +226,7 @@ public class SBOObjectPickerPopup {
         ImGui.closeCurrentPopup();
     }
 
-    /** "stonebreak:oak_log" -> "oak_log" (lowercase input expected). */
+    /** "ns:oak_log" -> "oak_log" (lowercase input expected). */
     private static String localName(String objectId) {
         int colon = objectId.indexOf(':');
         return colon >= 0 ? objectId.substring(colon + 1) : objectId;

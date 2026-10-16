@@ -15,6 +15,7 @@ import com.openmason.api.mcp.McpToolContribution;
 import com.openmason.api.menu.MenuEntry;
 import com.openmason.api.menu.TopMenu;
 import com.openmason.api.prefs.PreferencePage;
+import com.openmason.api.target.GameTarget;
 import com.openmason.api.viewport.ViewportContentProvider;
 import com.openmason.api.workspace.WorkspaceDescriptor;
 import com.openmason.main.systems.keybinds.KeybindAction;
@@ -47,6 +48,7 @@ public final class EditorRegistries {
     private final Contributions<ViewportContentProvider> viewportContent =
             new Contributions<>("viewport content", ViewportContentProvider::id);
     private final Contributions<ProjectTemplate> templates = new Contributions<>("project template", ProjectTemplate::getId);
+    private final Contributions<GameTarget> gameTargets = new Contributions<>("game target", GameTarget::id);
     private final Contributions<ThemeDefinition> themes = new Contributions<>("theme", ThemeDefinition::getId);
     private final Contributions<LifecycleListener> lifecycle = new Contributions<>("lifecycle listener",
             l -> l.getClass().getName() + "@" + Integer.toHexString(System.identityHashCode(l)));
@@ -106,6 +108,10 @@ public final class EditorRegistries {
         return templates;
     }
 
+    public Contributions<GameTarget> gameTargets() {
+        return gameTargets;
+    }
+
     public Contributions<ThemeDefinition> themes() {
         return themes;
     }
@@ -117,7 +123,7 @@ public final class EditorRegistries {
     /** Every contribution list, for owner-wide operations. */
     public List<Contributions<?>> all() {
         return List.of(workspaces, menus, menuEntries, commands, fileTypes, fileOpeners, mcpTools, guideTopics,
-                knowledgePacks, preferencePages, viewportContent, templates, themes, lifecycle);
+                knowledgePacks, preferencePages, viewportContent, templates, gameTargets, themes, lifecycle);
     }
 
     /**
@@ -215,6 +221,11 @@ public final class EditorRegistries {
             @Override
             public Registrar<ProjectTemplate> templates() {
                 return templates.registrar(owner);
+            }
+
+            @Override
+            public Registrar<GameTarget> gameTargets() {
+                return gameTargets.registrar(owner);
             }
 
             @Override

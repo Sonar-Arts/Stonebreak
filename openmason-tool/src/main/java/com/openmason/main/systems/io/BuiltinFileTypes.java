@@ -52,12 +52,13 @@ public final class BuiltinFileTypes {
             .withSave("project", "Exports/UI", "screen");
 
     // ── stonebreak (built in until #382) ────────────────────────────────────
+    // Saved into the game target's tree; the sub-folder is the target's folder key (#380).
 
     public static final FileType SBO = FileType.of("sbo", "Stonebreak Object", ".sbo")
-            .withSave("game", "sbo/blocks", "object");
+            .withSave("target", "sbo.block", "object");
 
     public static final FileType SBE = FileType.of("sbe", "Stonebreak Entity", ".sbe")
-            .withSave("game", "sbe/Mobs", "entity");
+            .withSave("target", "sbe.mob", "entity");
 
     public static final FileType SBT = FileType.of("sbt", "Stonebreak Texture", ".sbt");
 
