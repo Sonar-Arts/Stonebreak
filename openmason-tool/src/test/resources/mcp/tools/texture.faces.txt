@@ -1,0 +1,8 @@
+model_face_create_textures
+model_face_describe
+model_face_fill
+model_face_get_region
+model_face_list_textures
+model_face_paint_grid
+model_face_resize_texture
+model_face_set_pixels
