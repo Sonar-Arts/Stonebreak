@@ -2,6 +2,7 @@ package com.stonebreak.network.packet.entity;
 
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.PacketCodec;
+import com.stonebreak.mobs.entities.Knockback;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -13,8 +14,10 @@ import io.netty.buffer.ByteBuf;
  * @param amount          damage the client computed (melee/ability/projectile); server-clamped
  * @param sourceOrdinal   ordinal of {@code LivingEntity.DamageSource} (server allow-lists it)
  * @param typeOrdinal     ordinal of {@code DamageType}, resisted per target type (server range-checks it)
+ * @param knockback       extra knockback applied when the hit lands (server-clamped), or null for none
  */
-public record EntityDamageC2S(int targetNetworkId, float amount, byte sourceOrdinal, byte typeOrdinal)
+public record EntityDamageC2S(int targetNetworkId, float amount, byte sourceOrdinal, byte typeOrdinal,
+                              Knockback knockback)
         implements Packet {
 
     public static final PacketCodec<EntityDamageC2S> CODEC = new PacketCodec<>() {
@@ -24,11 +27,26 @@ public record EntityDamageC2S(int targetNetworkId, float amount, byte sourceOrdi
             out.writeFloat(p.amount());
             out.writeByte(p.sourceOrdinal());
             out.writeByte(p.typeOrdinal());
+            Knockback kb = p.knockback();
+            out.writeBoolean(kb != null);
+            if (kb != null) {
+                out.writeFloat(kb.dirX());
+                out.writeFloat(kb.dirZ());
+                out.writeFloat(kb.horizontal());
+                out.writeFloat(kb.vertical());
+            }
         }
 
         @Override
         public EntityDamageC2S decode(ByteBuf in) {
-            return new EntityDamageC2S(in.readInt(), in.readFloat(), in.readByte(), in.readByte());
+            int target = in.readInt();
+            float amount = in.readFloat();
+            byte source = in.readByte();
+            byte type = in.readByte();
+            Knockback kb = in.readBoolean()
+                ? new Knockback(in.readFloat(), in.readFloat(), in.readFloat(), in.readFloat())
+                : null;
+            return new EntityDamageC2S(target, amount, source, type, kb);
         }
     };
 }

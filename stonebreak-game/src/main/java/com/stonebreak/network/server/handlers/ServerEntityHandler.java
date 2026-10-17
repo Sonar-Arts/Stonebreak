@@ -59,6 +59,11 @@ public final class ServerEntityHandler {
     private static final float MAX_DAMAGE_RANGE_SQ = 64f * 64f;
     /** Upper bound on a single client-reported hit, to contain buggy/hostile clients. */
     private static final float MAX_DAMAGE_AMOUNT = 100f;
+    /** Caps on client-carried knockback: the strongest legitimate source (Rampage T3). */
+    private static final float MAX_KNOCKBACK_HORIZONTAL =
+        com.stonebreak.player.PlayerConstants.RAMPAGE_KNOCKBACK_HORIZONTAL;
+    private static final float MAX_KNOCKBACK_VERTICAL =
+        com.stonebreak.player.PlayerConstants.RAMPAGE_KNOCKBACK_VERTICAL;
 
     /** Tolerant shear-range gate — the client raycast owns the precise targeting. */
     private static final float MAX_SHEAR_RANGE_SQ = 8f * 8f;
@@ -284,9 +289,22 @@ public final class ServerEntityHandler {
         float dealt = healthBefore - Math.max(0f, le.getHealth());
         if (dealt > 0f) {
             boolean killed = !le.isAlive();
-            sp.send(new com.stonebreak.network.packet.player.KillCreditS2C(
-                le.getType().ordinal(), dealt, killed, killed ? le.getXpReward() : 0), false);
+            if (!killed) {
+                applyClaimedKnockback(le, pkt.knockback());
+            }
+            sp.send(com.stonebreak.network.packet.player.KillCreditS2C.forHit(le, dealt, killed), false);
         }
+    }
+
+    /** Applies a hit's client-carried knockback, clamped to the strongest legitimate source. */
+    private static void applyClaimedKnockback(LivingEntity le, com.stonebreak.mobs.entities.Knockback kb) {
+        if (kb == null || !Float.isFinite(kb.dirX()) || !Float.isFinite(kb.dirZ())
+                || !(kb.horizontal() >= 0f) || !(kb.vertical() >= 0f)) { // also rejects NaN
+            return;
+        }
+        new com.stonebreak.mobs.entities.Knockback(kb.dirX(), kb.dirZ(),
+            Math.min(kb.horizontal(), MAX_KNOCKBACK_HORIZONTAL),
+            Math.min(kb.vertical(), MAX_KNOCKBACK_VERTICAL)).applyTo(le);
     }
 
     /**
@@ -344,8 +362,7 @@ public final class ServerEntityHandler {
      * forwards the stat/XP grant to the launching player's client.
      */
     public void sendKillCredit(ServerPlayer sp, LivingEntity victim, float dealt, boolean killed) {
-        sp.send(new com.stonebreak.network.packet.player.KillCreditS2C(
-            victim.getType().ordinal(), dealt, killed, killed ? victim.getXpReward() : 0), false);
+        sp.send(com.stonebreak.network.packet.player.KillCreditS2C.forHit(victim, dealt, killed), false);
     }
 
     /** Spawn position must be near the claiming player (zones cast at range get more slack). */

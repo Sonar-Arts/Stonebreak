@@ -150,6 +150,23 @@ public final class ClientEntityHandler {
     }
 
     /**
+     * Hit feedback for a hit the server confirmed ({@code KillCreditS2C}): the damage number
+     * shows the effective amount actually dealt, and the hurt (or death) voice plays on the
+     * shadow if it is still around. Hits the server rejected never get here, so fast
+     * multi-hits into i-frames show nothing.
+     */
+    public void showConfirmedHit(com.stonebreak.network.packet.player.KillCreditS2C k) {
+        com.stonebreak.ui.worldHud.DamageNumbers.getInstance().spawn(k.x(), k.y(), k.z(), k.damageDealt());
+        Entity e = byNetworkId.get(k.targetNetworkId());
+        if (e != null) {
+            // Plays only when the entity's SBE declares the event.
+            com.stonebreak.audio.EntitySounds.playAt(e, k.killed()
+                ? com.stonebreak.audio.EntitySounds.EVENT_DEATH
+                : com.stonebreak.audio.EntitySounds.EVENT_HURT);
+        }
+    }
+
+    /**
      * Applies the authoritative appearance variant of a replicated entity
      * (e.g. a sheared sheep's {@code "Sheared"} SBE variant). Idempotent —
      * the shearing client's predicted swap already set the same value, and

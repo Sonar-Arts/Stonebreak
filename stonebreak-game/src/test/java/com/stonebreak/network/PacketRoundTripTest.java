@@ -99,7 +99,9 @@ class PacketRoundTripTest {
         assertEquals(new ChatMessageS2C(1, "bob", "hi"), roundTrip(ChatMessageS2C.CODEC, new ChatMessageS2C(1, "bob", "hi")));
         assertEquals(new EntitySpawnS2C(9, 1, 1f, 2f, 3f, 90f, "variant"), roundTrip(EntitySpawnS2C.CODEC, new EntitySpawnS2C(9, 1, 1f, 2f, 3f, 90f, "variant")));
         assertEquals(new EntityDespawnS2C(9), roundTrip(EntityDespawnS2C.CODEC, new EntityDespawnS2C(9)));
-        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2), roundTrip(EntityDamageC2S.CODEC, new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2)));
+        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2, null), roundTrip(EntityDamageC2S.CODEC, new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2, null)));
+        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2, new com.stonebreak.mobs.entities.Knockback(0.6f, -0.8f, 9f, 4f)),
+            roundTrip(EntityDamageC2S.CODEC, new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2, new com.stonebreak.mobs.entities.Knockback(0.6f, -0.8f, 9f, 4f))));
         assertEquals(new EntityMoveS2C(9, (short) 1, (short) 2, (short) 3, (short) 900), roundTrip(EntityMoveS2C.CODEC, new EntityMoveS2C(9, (short) 1, (short) 2, (short) 3, (short) 900)));
         assertEquals(new EntityTeleportS2C(9, 1f, 2f, 3f, 90f), roundTrip(EntityTeleportS2C.CODEC, new EntityTeleportS2C(9, 1f, 2f, 3f, 90f)));
         assertEquals(new EntityAnimS2C(9, "Grazing"), roundTrip(EntityAnimS2C.CODEC, new EntityAnimS2C(9, "Grazing")));
@@ -129,8 +131,8 @@ class PacketRoundTripTest {
         assertEquals(new WorkbenchSlotsC2S(10, 64, -5, grid),
             roundTrip(WorkbenchSlotsC2S.CODEC, new WorkbenchSlotsC2S(10, 64, -5, grid)));
         assertEquals(new ChunkResyncRequestC2S(-3, 12), roundTrip(ChunkResyncRequestC2S.CODEC, new ChunkResyncRequestC2S(-3, 12)));
-        assertEquals(new KillCreditS2C(2, 7.5f, true, 15), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(2, 7.5f, true, 15)));
-        assertEquals(new KillCreditS2C(0, 1f, false, 0), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(0, 1f, false, 0)));
+        assertEquals(new KillCreditS2C(2, 7.5f, true, 15, 42, 1f, 65.5f, -3f), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(2, 7.5f, true, 15, 42, 1f, 65.5f, -3f)));
+        assertEquals(new KillCreditS2C(0, 1f, false, 0, 7, 0f, 0f, 0f), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(0, 1f, false, 0, 7, 0f, 0f, 0f)));
         assertEquals(new EntityResyncC2S(), roundTrip(EntityResyncC2S.CODEC, new EntityResyncC2S()));
     }
 
@@ -224,7 +226,7 @@ class PacketRoundTripTest {
         assertEquals(new WelcomeS2C(1, 2L, TerrainGeneratorType.STANDARD, 3f, 4f, 5f), viaRegistry(reg, PLAY, CLIENTBOUND, new WelcomeS2C(1, 2L, TerrainGeneratorType.STANDARD, 3f, 4f, 5f)));
         assertEquals(new BlockChangeC2S(1, 2, 3, (short) 4, (short) 5), viaRegistry(reg, PLAY, SERVERBOUND, new BlockChangeC2S(1, 2, 3, (short) 4, (short) 5)));
         assertEquals(new PlayerLeaveS2C(8), viaRegistry(reg, PLAY, CLIENTBOUND, new PlayerLeaveS2C(8)));
-        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2), viaRegistry(reg, PLAY, SERVERBOUND, new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2)));
+        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2, null), viaRegistry(reg, PLAY, SERVERBOUND, new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2, null)));
         assertEquals(new KeepAliveC2S(42L), viaRegistry(reg, PLAY, SERVERBOUND, new KeepAliveC2S(42L)));
         assertEquals(new DropItemC2S(3, 5), viaRegistry(reg, PLAY, SERVERBOUND, new DropItemC2S(3, 5)));
         assertEquals(new KeepAliveS2C(42L, 17), viaRegistry(reg, PLAY, CLIENTBOUND, new KeepAliveS2C(42L, 17)));

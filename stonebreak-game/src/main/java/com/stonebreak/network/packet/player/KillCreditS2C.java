@@ -15,8 +15,22 @@ import io.netty.buffer.ByteBuf;
  * @param damageDealt       effective damage applied after server-side multipliers
  * @param killed            true when the hit was lethal
  * @param xpReward          XP to grant on a kill (0 otherwise)
+ * @param targetNetworkId   victim's network id, for its hurt/death voice on the client shadow
+ * @param x                 damage-number anchor (victim head height); carried rather than read
+ * @param y                 from the shadow because a lethal hit can despawn it first
+ * @param z
  */
-public record KillCreditS2C(int entityTypeOrdinal, float damageDealt, boolean killed, int xpReward) implements Packet {
+public record KillCreditS2C(int entityTypeOrdinal, float damageDealt, boolean killed, int xpReward,
+                            int targetNetworkId, float x, float y, float z) implements Packet {
+
+    /** Credit for a hit that landed on {@code victim}, anchored at its head. */
+    public static KillCreditS2C forHit(com.stonebreak.mobs.entities.LivingEntity victim,
+                                       float dealt, boolean killed) {
+        org.joml.Vector3f p = victim.getPosition();
+        return new KillCreditS2C(victim.getType().ordinal(), dealt, killed,
+            killed ? victim.getXpReward() : 0, victim.getNetworkId(),
+            p.x, p.y + victim.getHeight() * 0.9f, p.z);
+    }
 
     public static final PacketCodec<KillCreditS2C> CODEC = new PacketCodec<>() {
         @Override
@@ -25,11 +39,16 @@ public record KillCreditS2C(int entityTypeOrdinal, float damageDealt, boolean ki
             out.writeFloat(p.damageDealt());
             out.writeBoolean(p.killed());
             out.writeInt(p.xpReward());
+            out.writeInt(p.targetNetworkId());
+            out.writeFloat(p.x());
+            out.writeFloat(p.y());
+            out.writeFloat(p.z());
         }
 
         @Override
         public KillCreditS2C decode(ByteBuf in) {
-            return new KillCreditS2C(in.readInt(), in.readFloat(), in.readBoolean(), in.readInt());
+            return new KillCreditS2C(in.readInt(), in.readFloat(), in.readBoolean(), in.readInt(),
+                in.readInt(), in.readFloat(), in.readFloat(), in.readFloat());
         }
     };
 }

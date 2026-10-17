@@ -3,6 +3,7 @@ package com.stonebreak.player.combat.berserker;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityManager;
+import com.stonebreak.mobs.entities.Knockback;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.Player;
@@ -148,7 +149,7 @@ public class RampageAbility {
         if (entityManager == null) return;
 
         for (LivingEntity entity : entityManager.getLivingEntities()) {
-            if (!entity.isAlive() || hitEntities.contains(entity)) continue;
+            if (!entity.isPlayerAttackable() || hitEntities.contains(entity)) continue;
 
             Vector3f rel = entity.getPosition().sub(currentPos);
             float longitudinal = rel.dot(direction);
@@ -156,13 +157,18 @@ public class RampageAbility {
 
             if (Math.abs(longitudinal) <= RAMPAGE_HIT_RADIUS && perpendicular.length() <= cleaveHalfWidth) {
                 hitEntities.add(entity);
-                entity.damage(RAMPAGE_DAMAGE, LivingEntity.DamageSource.PLAYER);
-
-                if (tier == RageTier.T3) {
-                    Vector3f knockbackDir = perpendicular.lengthSquared() > 0.0001f
-                        ? new Vector3f(perpendicular).normalize()
-                        : new Vector3f(direction);
-                    entity.applyKnockback(knockbackDir, RAMPAGE_KNOCKBACK_HORIZONTAL, RAMPAGE_KNOCKBACK_VERTICAL);
+                if (tier != RageTier.T3) {
+                    entity.damage(RAMPAGE_DAMAGE, LivingEntity.DamageSource.PLAYER);
+                    continue;
+                }
+                // The knockback rides the damage intent: on a network shadow, writing it to
+                // the copy's velocity would do nothing, since shadows are never simulated.
+                Vector3f knockbackDir = perpendicular.lengthSquared() > 0.0001f
+                    ? new Vector3f(perpendicular).normalize()
+                    : new Vector3f(direction);
+                Knockback knockback = new Knockback(knockbackDir.x, knockbackDir.z,
+                    RAMPAGE_KNOCKBACK_HORIZONTAL, RAMPAGE_KNOCKBACK_VERTICAL);
+                if (entity.damage(RAMPAGE_DAMAGE, LivingEntity.DamageSource.PLAYER, knockback)) {
                     entity.applyStatusEffect(StatusEffectType.STUNNED, RAMPAGE_STAGGER_DURATION, 0f);
                 }
             }

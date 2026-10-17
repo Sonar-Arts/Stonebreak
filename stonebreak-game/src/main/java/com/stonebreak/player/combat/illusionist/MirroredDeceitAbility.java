@@ -156,7 +156,7 @@ public class MirroredDeceitAbility {
         LivingEntity nearest = null;
         float nearestDistSq = 9f; // within ~3 blocks (melee reach)
         for (LivingEntity entity : entityManager.getLivingEntities()) {
-            if (entity == decoy || entity instanceof IllusionDecoy || !entity.isAlive()) continue;
+            if (entity == decoy || entity instanceof IllusionDecoy || !entity.isPlayerAttackable()) continue;
             float distSq = entity.getPosition().distanceSquared(reference);
             if (distSq < nearestDistSq) {
                 nearestDistSq = distSq;

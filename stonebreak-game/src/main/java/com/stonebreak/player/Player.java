@@ -383,9 +383,13 @@ public class Player {
     /**
      * Resolves a melee hit on {@code target}: applies Rage-scaled damage, grants Rage for
      * the hit dealt, and — at Rage T3 — heals the player via lifesteal. Centralizes melee
-     * combat resolution so Berserker bonuses apply uniformly regardless of caller.
+     * combat resolution so Berserker bonuses apply uniformly regardless of caller. Nothing pays
+     * out (Rage, Quarry, stealth break, lifesteal) unless the hit counts.
      */
     public void attackEntity(LivingEntity target) {
+        if (!target.isPlayerAttackable()) {
+            return;
+        }
         WeaponStats weapon = getHeldWeapon();
         float damageDealt = weapon.damage() * getMeleeDamageMultiplier();
 
@@ -408,7 +412,9 @@ public class Player {
             damageDealt *= c.rogueAbilities.onCritLanded(this, target);
         }
 
-        target.damage(damageDealt, LivingEntity.DamageSource.PLAYER, weapon.damageType());
+        if (!target.damage(damageDealt, LivingEntity.DamageSource.PLAYER, weapon.damageType())) {
+            return;
+        }
         c.berserkerAbilities.getRage().onMeleeHitDealt();
         c.rangerAbilities.onPlayerMeleeHit(this, target);
         c.stealth.onAttack(this); // attacking breaks stealth instantly

@@ -225,13 +225,28 @@ public abstract class LivingEntity extends Entity {
         damage(amount, DamageSource.UNKNOWN);
     }
 
-    public void damage(float amount, DamageSource source) {
-        damage(amount, source, null, true);
+    /** @return whether the hit counted (see {@link LivingEntityCombat#damage}) */
+    public boolean damage(float amount, DamageSource source) {
+        return damage(amount, source, null, true);
     }
 
-    /** Damage of an explicit {@link DamageType} (e.g. a weapon's), resisted per {@link EntityType#resistance}. */
-    public void damage(float amount, DamageSource source, DamageType type) {
-        damage(amount, source, type, null, true);
+    /**
+     * Damage of an explicit {@link DamageType} (e.g. a weapon's), resisted per {@link EntityType#resistance}.
+     *
+     * @return whether the hit counted (see {@link LivingEntityCombat#damage})
+     */
+    public boolean damage(float amount, DamageSource source, DamageType type) {
+        return damage(amount, source, type, null, true);
+    }
+
+    /**
+     * Damage plus an extra knockback impulse, applied only when the hit counts. On a network
+     * shadow the knockback rides the damage intent to the server.
+     *
+     * @return whether the hit counted (see {@link LivingEntityCombat#damage})
+     */
+    public boolean damage(float amount, DamageSource source, Knockback knockback) {
+        return combat.damage(amount, source, source.defaultDamageType(), null, true, knockback);
     }
 
     /**
@@ -243,14 +258,14 @@ public abstract class LivingEntity extends Entity {
      *                          server passes false for remote attackers so the host isn't
      *                          credited for their kills
      */
-    public void damage(float amount, DamageSource source, Vector3f attackerPos, boolean creditLocalPlayer) {
-        damage(amount, source, source.defaultDamageType(), attackerPos, creditLocalPlayer);
+    public boolean damage(float amount, DamageSource source, Vector3f attackerPos, boolean creditLocalPlayer) {
+        return damage(amount, source, source.defaultDamageType(), attackerPos, creditLocalPlayer);
     }
 
     /** As {@link #damage(float, DamageSource, Vector3f, boolean)}, with an explicit damage type. */
-    public void damage(float amount, DamageSource source, DamageType type,
-                       Vector3f attackerPos, boolean creditLocalPlayer) {
-        combat.damage(amount, source, type, attackerPos, creditLocalPlayer);
+    public boolean damage(float amount, DamageSource source, DamageType type,
+                          Vector3f attackerPos, boolean creditLocalPlayer) {
+        return combat.damage(amount, source, type, attackerPos, creditLocalPlayer, null);
     }
 
     /** Applies already-multiplied damage to health via {@link Entity#damage} (may trigger death). */
@@ -419,6 +434,12 @@ public abstract class LivingEntity extends Entity {
     protected void applyPlayerKnockback() {
         combat.applyPlayerKnockback();
     }
+
+    /**
+     * Whether the local player's attacks and abilities may target this entity. Hits on a target
+     * that can't take damage must not pay out Rage, lifesteal, Quarry or debuffs.
+     */
+    public boolean isPlayerAttackable() { return isAlive(); }
 
     /**
      * Applies an instantaneous knockback impulse in an arbitrary horizontal direction

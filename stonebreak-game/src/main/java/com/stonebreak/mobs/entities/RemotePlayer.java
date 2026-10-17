@@ -299,6 +299,10 @@ public class RemotePlayer extends LivingEntity {
     @Override
     public void onDamage(float damage, DamageSource source) {}
 
+    /** No PvP yet (#343): remote players have no network id, so hits on them are dropped. */
+    @Override
+    public boolean isPlayerAttackable() { return false; }
+
     @Override
     protected void onDeath() {}
 

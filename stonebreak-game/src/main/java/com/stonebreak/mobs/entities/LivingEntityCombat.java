@@ -72,35 +72,33 @@ final class LivingEntityCombat {
      * Authoritative damage application.
      *
      * <p>On a network shadow this never mutates local state: the authoritative entity lives
-     * on the server, so the hit is forwarded as an {@code EntityDamageC2S} intent and a
-     * predicted damage number is shown for feedback. (Mutating the shadow would also wedge
-     * it permanently invulnerable — shadows never tick, so i-frames would never expire.)
+     * on the server, so the hit is forwarded as an {@code EntityDamageC2S} intent. Damage
+     * numbers and the hurt voice come back with the server's {@code KillCreditS2C}, so hits
+     * the server rejects (i-frames, range) show nothing. (Mutating the shadow would also
+     * wedge it permanently invulnerable — shadows never tick, so i-frames would never expire.)
      *
      * @param attackerPos       authoritative attacker position for knockback direction, or
      *                          null to fall back to the local player's position
      * @param creditLocalPlayer whether PLAYER-source stats/XP credit the local player; the
      *                          server passes false for remote attackers so the host isn't
      *                          credited for their kills
+     * @param knockback         extra knockback carried with the hit, or null for none
+     * @return whether the hit counted: forwarded to the server for a shadow (no network id,
+     *         e.g. a remote player, means it was dropped), applied for a local entity
+     *         (false when dead or invulnerable)
      */
-    void damage(float amount, DamageSource source, DamageType type,
-                Vector3f attackerPos, boolean creditLocalPlayer) {
+    boolean damage(float amount, DamageSource source, DamageType type,
+                   Vector3f attackerPos, boolean creditLocalPlayer, Knockback knockback) {
         Vector3f position = owner.position;
         float resistance = owner.getType().resistance(type);
         if (owner.isNetworkShadow()) {
-            if (owner.getNetworkId() >= 0 && amount > 0f) {
-                DamageNumbers.getInstance().spawn(
-                    position.x, position.y + owner.height * 0.9f, position.z, amount * resistance);
-                // Predicted hurt voice, like the predicted damage number: the
-                // authoritative entity lives in the headless server world, so
-                // this shadow is the only place the local player can hear it.
-                // Plays only when the entity's SBE declares a hurt event.
-                com.stonebreak.audio.EntitySounds.playAt(owner,
-                    com.stonebreak.audio.EntitySounds.EVENT_HURT);
-                MultiplayerSession.onLocalEntityDamage(owner, amount, source, type);
+            if (owner.getNetworkId() < 0 || !(amount > 0f)) {
+                return false;
             }
-            return;
+            MultiplayerSession.onLocalEntityDamage(owner, amount, source, type, knockback);
+            return true;
         }
-        if (!owner.alive || invulnerable) return;
+        if (!owner.alive || invulnerable) return false;
         float effectiveAmount = amount * owner.getIncomingDamageMultiplier(source) * resistance;
         if (source == DamageSource.ARCANE) {
             effectiveAmount *= owner.statusEffects().consumeSpellmark();
@@ -136,6 +134,10 @@ final class LivingEntityCombat {
         }
         lastAttackerPosition = attackerPos;
         owner.onDamage(effectiveAmount, source);
+        if (knockback != null) {
+            knockback.applyTo(owner);
+        }
+        return true;
     }
 
     /**

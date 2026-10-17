@@ -70,7 +70,8 @@ final class WorldMouseHandler {
         }
         EntityManager em = Game.getEntityManager();
         if (em != null) {
-            LivingEntity target = player.getRaycastEngine().raycastEntity(em.getLivingEntities());
+            LivingEntity target = player.getRaycastEngine().raycastEntity(
+                em.getLivingEntities().stream().filter(LivingEntity::isPlayerAttackable).toList());
             if (target != null) {
                 player.attackEntity(target);
             }

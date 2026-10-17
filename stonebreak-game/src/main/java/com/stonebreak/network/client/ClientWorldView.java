@@ -534,12 +534,13 @@ public final class ClientWorldView {
     /** Local hit on a replicated entity: forward the damage intent to the authoritative server. */
     public void sendEntityDamage(int targetNetworkId, float amount,
                                  com.stonebreak.mobs.entities.LivingEntity.DamageSource source,
-                                 com.stonebreak.items.weapon.DamageType type) {
+                                 com.stonebreak.items.weapon.DamageType type,
+                                 com.stonebreak.mobs.entities.Knockback knockback) {
         if (connection == null || targetNetworkId < 0 || amount <= 0f) {
             return;
         }
         connection.send(new EntityDamageC2S(targetNetworkId, amount, (byte) source.ordinal(),
-                (byte) type.ordinal()), false);
+                (byte) type.ordinal(), knockback), false);
     }
 
     /** Local shear on a replicated sheep: forward the shear intent to the authoritative server. */
@@ -619,7 +620,10 @@ public final class ClientWorldView {
             case PlayerLeaveS2C l -> playerHandler.handleLeave(l);
             case PlayerHeldItemS2C h -> playerHandler.handleHeldItem(localPlayerId, h);
             case GiveItemS2C g -> playerHandler.handleGiveItem(g);
-            case com.stonebreak.network.packet.player.KillCreditS2C kc -> playerHandler.handleKillCredit(kc);
+            case com.stonebreak.network.packet.player.KillCreditS2C kc -> {
+                playerHandler.handleKillCredit(kc);
+                entityHandler.showConfirmedHit(kc);
+            }
             case com.stonebreak.network.packet.player.PlayerDataS2C pd -> {
                 restoreBlob = pd.json();
                 restoreReceived = true;
