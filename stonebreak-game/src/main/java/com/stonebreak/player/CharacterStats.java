@@ -86,6 +86,21 @@ public class CharacterStats {
     }
   }
 
+  /**
+   * Sets the level directly (cheat command), resetting progress into it. The point pools move by
+   * the difference in granted points; lowering never takes back points already spent, so a pool
+   * that would go negative stops at 0.
+   */
+  public void setLevel(int newLevel) {
+    newLevel = Math.max(1, newLevel);
+    remainingCp = Math.max(0, remainingCp + grantedCp(newLevel) - grantedCp(level));
+    remainingSp = Math.max(0, remainingSp + grantedSp(newLevel) - grantedSp(level));
+    remainingFp = Math.max(0, remainingFp + grantedFp(newLevel) - grantedFp(level));
+    level = newLevel;
+    xp = 0;
+    if (player != null) player.updateDerivedStats();
+  }
+
   // ─────────────────────────────────────────────── Point currencies
 
   private int remainingCp;
