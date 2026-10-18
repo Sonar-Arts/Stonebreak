@@ -65,6 +65,7 @@ public class SaveService implements AutoCloseable {
     // the server's TimeOfDay (a render-only client's clock is frozen), so it is injected here.
     // Null = fall back to the Game singleton's clock (the pre-two-world / co-located behavior).
     private volatile com.stonebreak.world.TimeOfDay worldTimeSource;
+    private volatile com.stonebreak.world.weather.WeatherState weatherSource;
 
     public SaveService(String worldPath) {
         this.worldPath = Objects.requireNonNull(worldPath, "worldPath");
@@ -133,6 +134,10 @@ public class SaveService implements AutoCloseable {
         if (timeSource != null) {
             updatedWorld = updatedWorld.withWorldTime(timeSource.getTicks());
         }
+        com.stonebreak.world.weather.WeatherState weather = weatherSource;
+        if (weather != null) {
+            updatedWorld = updatedWorld.withWeather((long) weather.seconds(), weather.mode());
+        }
 
         this.worldData = updatedWorld;
         return updatedWorld;
@@ -145,6 +150,11 @@ public class SaveService implements AutoCloseable {
      */
     public void setWorldTimeSource(com.stonebreak.world.TimeOfDay timeOfDay) {
         this.worldTimeSource = timeOfDay;
+    }
+
+    /** Inject the server's weather state, stamped into saves like the world clock. */
+    public void setWeatherSource(com.stonebreak.world.weather.WeatherState weather) {
+        this.weatherSource = weather;
     }
 
     /** Injected clock if present, else the Game singleton's (may be null during early bootstrap). */

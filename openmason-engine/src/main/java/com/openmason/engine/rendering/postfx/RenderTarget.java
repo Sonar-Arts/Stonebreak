@@ -8,7 +8,8 @@ import static org.lwjgl.opengl.GL14.GL_DEPTH_COMPONENT24;
 import static org.lwjgl.opengl.GL30.*;
 
 /**
- * Offscreen framebuffer with an RGBA8 color texture and an optional depth texture.
+ * Offscreen framebuffer with a color texture (RGBA8 unless another internal format is
+ * given) and an optional depth texture.
  *
  * <p>The depth attachment is a texture (not a renderbuffer) so post-processing passes can
  * sample scene depth, e.g. for occlusion masks. All methods must be called on the main
@@ -17,6 +18,7 @@ import static org.lwjgl.opengl.GL30.*;
 public class RenderTarget {
 
     private final boolean withDepthTexture;
+    private final int colorInternalFormat;
 
     private int fboId;
     private int colorTexture;
@@ -25,7 +27,16 @@ public class RenderTarget {
     private int height;
 
     public RenderTarget(int width, int height, boolean withDepthTexture) {
+        this(width, height, withDepthTexture, GL_RGBA8);
+    }
+
+    /**
+     * @param colorInternalFormat e.g. {@code GL_RGBA8}, or {@code GL_RGBA16F} for a buffer
+     *                            that holds HDR or premultiplied values without banding
+     */
+    public RenderTarget(int width, int height, boolean withDepthTexture, int colorInternalFormat) {
         this.withDepthTexture = withDepthTexture;
+        this.colorInternalFormat = colorInternalFormat;
         create(Math.max(1, width), Math.max(1, height));
     }
 
@@ -38,7 +49,7 @@ public class RenderTarget {
 
         colorTexture = glGenTextures();
         glBindTexture(GL_TEXTURE_2D, colorTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, (ByteBuffer) null);
+        glTexImage2D(GL_TEXTURE_2D, 0, colorInternalFormat, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, (ByteBuffer) null);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);

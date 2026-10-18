@@ -8,9 +8,7 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.world.chunk.Chunk;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
 import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL30;
 
 import static org.lwjgl.opengl.GL11.*;
@@ -29,8 +27,7 @@ import static org.lwjgl.opengl.GL11.*;
  *
  * <p>Invoked by {@code WorldRenderer} immediately after the transparent
  * (ice/translucent-solid) pass, before transparent drops — the same
- * compositing slot the old water sub-pass occupied. Follows the engine
- * {@code CloudRenderer} pattern: owns its shader, saves/restores all GL state
+ * compositing slot the old water sub-pass occupied. Owns its shader, saves/restores all GL state
  * it touches. Face culling is disabled so the surface is visible from below
  * ({@code gl_FrontFacing} flips the normal in the fragment shader).
  *
@@ -87,11 +84,8 @@ public class WaterRenderer {
 
     private final ShaderProgram shader;
     private final Matrix4f invProjection = new Matrix4f();
-    private final Vector4f viewport = new Vector4f();
-    private final int[] viewportBuf = new int[4];
-    private int sceneDepthTexture;
-    private int sceneDepthWidth;
-    private int sceneDepthHeight;
+    private final com.stonebreak.rendering.gameWorld.SceneDepthCopy sceneDepth =
+            new com.stonebreak.rendering.gameWorld.SceneDepthCopy();
 
     public WaterRenderer() {
         shader = new ShaderProgram();
@@ -158,6 +152,7 @@ public class WaterRenderer {
      *                          water-sheet buckets (null when LOD/regions off)
      * @param lodStamp          the batcher cycle stamp returned by this frame's
      *                          {@code FastLodRenderPass.render}
+     * @param clouds            this frame's cloud-shadow uniforms
      */
     public void render(List<Chunk> chunksBackToFront, Matrix4f projection, Matrix4f view,
                        Vector3f cameraPos, float time, Vector3f sunDirection,
@@ -165,7 +160,8 @@ public class WaterRenderer {
                        Vector3f fogColor, float fogStart, float fogEnd, boolean fogSpherical,
                        List<LodWaterNode> lodWater,
                        com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher lodBatcher,
-                       int lodStamp) {
+                       int lodStamp,
+                       com.stonebreak.rendering.gameWorld.clouds.CloudUniforms clouds) {
         // Save GL state we touch.
         boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
@@ -199,12 +195,12 @@ public class WaterRenderer {
         int previousActiveTexture = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + SCENE_DEPTH_TEXTURE_UNIT);
         int previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D);
-        copySceneDepth();
+        sceneDepth.copy();
 
         shader.bind();
         shader.setUniform("uProjection", projection);
         shader.setUniform("uInvProjection", invProjection.set(projection).invert());
-        shader.setUniform("uViewport", viewport);
+        shader.setUniform("uViewport", sceneDepth.viewport());
         shader.setUniform("uView", view);
         shader.setUniform("uTime", time);
         shader.setUniform("uWavesEnabled", wavesEnabled);
@@ -216,6 +212,7 @@ public class WaterRenderer {
         shader.setUniform("uSunDirection", sunDirection);
         shader.setUniform("uAmbientLight", ambientLight);
         com.stonebreak.rendering.lighting.DynamicLights.applyTo(shader);
+        clouds.applyTo(shader);
         // Render space, to difference against the render-space mesh position...
         shader.setUniform("uCameraPos",
             com.openmason.engine.rendering.RenderOrigin.toRender(cameraPos, new org.joml.Vector3f()));
@@ -280,33 +277,6 @@ public class WaterRenderer {
         glPolygonOffset(currentOffsetFactor, currentOffsetUnits);
     }
 
-    /**
-     * Copies the current depth buffer (opaque scene only at this point) into
-     * {@link #sceneDepthTexture}, bound on the active unit, (re)allocating it
-     * when the viewport size changes. Also records the viewport for the shader.
-     */
-    private void copySceneDepth() {
-        glGetIntegerv(GL_VIEWPORT, viewportBuf);
-        int w = Math.max(1, viewportBuf[2]);
-        int h = Math.max(1, viewportBuf[3]);
-        viewport.set(viewportBuf[0], viewportBuf[1], w, h);
-        if (sceneDepthTexture == 0) {
-            sceneDepthTexture = glGenTextures();
-        }
-        glBindTexture(GL_TEXTURE_2D, sceneDepthTexture);
-        if (w != sceneDepthWidth || h != sceneDepthHeight) {
-            glTexImage2D(GL_TEXTURE_2D, 0, GL14.GL_DEPTH_COMPONENT24, w, h, 0,
-                    GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, (java.nio.ByteBuffer) null);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL13.GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL13.GL_CLAMP_TO_EDGE);
-            sceneDepthWidth = w;
-            sceneDepthHeight = h;
-        }
-        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, viewportBuf[0], viewportBuf[1], w, h);
-    }
-
     private void drawWaterMeshes(List<Chunk> chunksBackToFront, List<LodWaterNode> lodWater,
                                  com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher lodBatcher,
                                  int lodStamp) {
@@ -355,9 +325,6 @@ public class WaterRenderer {
         if (shader != null) {
             shader.cleanup();
         }
-        if (sceneDepthTexture != 0) {
-            glDeleteTextures(sceneDepthTexture);
-            sceneDepthTexture = 0;
-        }
+        sceneDepth.cleanup();
     }
 }

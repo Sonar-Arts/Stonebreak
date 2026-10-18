@@ -34,6 +34,8 @@ class JsonWorldSerializerTest {
             .totalPlayTimeMillis(3600000L)
             .worldTimeTicks(12000L)
             .cheatsEnabled(true)
+            .weatherSeconds(987654L)
+            .weatherMode(com.stonebreak.world.weather.WeatherMode.STORM)
             .formatVersion(3)
             .build();
 
@@ -49,6 +51,8 @@ class JsonWorldSerializerTest {
         assertEquals(3600000L, deserialized.getTotalPlayTimeMillis());
         assertEquals(12000L, deserialized.getWorldTimeTicks());
         assertTrue(deserialized.isCheatsEnabled());
+        assertEquals(987654L, deserialized.getWeatherSeconds());
+        assertEquals(com.stonebreak.world.weather.WeatherMode.STORM, deserialized.getWeatherMode());
         assertEquals(3, deserialized.getFormatVersion());
     }
 
@@ -82,6 +86,8 @@ class JsonWorldSerializerTest {
 
         assertEquals(6000L, data.getWorldTimeTicks());
         assertFalse(data.isCheatsEnabled());
+        assertEquals(0L, data.getWeatherSeconds());
+        assertEquals(com.stonebreak.world.weather.WeatherMode.AUTO, data.getWeatherMode());
         assertEquals(1, data.getFormatVersion());
         assertFalse(data.hasExplicitSpawn());
         assertEquals(new Vector3f(0f, 100f, 0f), data.getSpawnPosition());
@@ -176,6 +182,8 @@ class JsonWorldSerializerTest {
             .totalPlayTimeMillis(500000L)
             .worldTimeTicks(10000L)
             .cheatsEnabled(true)
+            .weatherSeconds(77L)
+            .weatherMode(com.stonebreak.world.weather.WeatherMode.RAIN)
             .formatVersion(2)
             .build();
 
@@ -189,6 +197,8 @@ class JsonWorldSerializerTest {
         assertEquals(original.getWorldName(), jacksonRead.getWorldName());
         assertEquals(original.getWorldTimeTicks(), jacksonRead.getWorldTimeTicks());
         assertEquals(original.isCheatsEnabled(), jacksonRead.isCheatsEnabled());
+        assertEquals(original.getWeatherSeconds(), jacksonRead.getWeatherSeconds());
+        assertEquals(original.getWeatherMode(), jacksonRead.getWeatherMode());
         assertEquals(original.getCreatedTime(), jacksonRead.getCreatedTime());
         assertEquals(original.getLastPlayed(), jacksonRead.getLastPlayed());
     }

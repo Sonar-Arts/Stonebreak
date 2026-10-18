@@ -120,6 +120,14 @@ class PacketRoundTripTest {
                 roundTrip(com.stonebreak.network.packet.world.CheatsStateS2C.CODEC,
                     new com.stonebreak.network.packet.world.CheatsStateS2C(enabled)));
         }
+        for (com.stonebreak.world.weather.WeatherMode mode : com.stonebreak.world.weather.WeatherMode.values()) {
+            assertEquals(new com.stonebreak.network.packet.world.WeatherSyncS2C(123_456.75, mode),
+                roundTrip(com.stonebreak.network.packet.world.WeatherSyncS2C.CODEC,
+                    new com.stonebreak.network.packet.world.WeatherSyncS2C(123_456.75, mode)));
+            assertEquals(new com.stonebreak.network.packet.world.WeatherSetC2S(mode),
+                roundTrip(com.stonebreak.network.packet.world.WeatherSetC2S.CODEC,
+                    new com.stonebreak.network.packet.world.WeatherSetC2S(mode)));
+        }
         assertEquals(new DropItemC2S(12, 64), roundTrip(DropItemC2S.CODEC, new DropItemC2S(12, 64)));
         assertEquals(new SnowLayerC2S(10, 64, -5, (byte) 8), roundTrip(SnowLayerC2S.CODEC, new SnowLayerC2S(10, 64, -5, (byte) 8)));
         assertEquals(new SnowLayerC2S(0, 0, 0, (byte) 0), roundTrip(SnowLayerC2S.CODEC, new SnowLayerC2S(0, 0, 0, (byte) 0)));
@@ -235,6 +243,12 @@ class PacketRoundTripTest {
             viaRegistry(reg, PLAY, SERVERBOUND, new com.stonebreak.network.packet.world.CheatsSetC2S(true)));
         assertEquals(new com.stonebreak.network.packet.world.CheatsStateS2C(true),
             viaRegistry(reg, PLAY, CLIENTBOUND, new com.stonebreak.network.packet.world.CheatsStateS2C(true)));
+        assertEquals(new com.stonebreak.network.packet.world.WeatherSyncS2C(42.5, com.stonebreak.world.weather.WeatherMode.STORM),
+            viaRegistry(reg, PLAY, CLIENTBOUND,
+                new com.stonebreak.network.packet.world.WeatherSyncS2C(42.5, com.stonebreak.world.weather.WeatherMode.STORM)));
+        assertEquals(new com.stonebreak.network.packet.world.WeatherSetC2S(com.stonebreak.world.weather.WeatherMode.CLEAR),
+            viaRegistry(reg, PLAY, SERVERBOUND,
+                new com.stonebreak.network.packet.world.WeatherSetC2S(com.stonebreak.world.weather.WeatherMode.CLEAR)));
     }
 
     /** Encode/decode through the registry exactly as the pipeline does (id varint + codec). */

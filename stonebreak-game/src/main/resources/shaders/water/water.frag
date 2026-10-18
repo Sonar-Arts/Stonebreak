@@ -55,6 +55,8 @@ uniform mat4 uInvProjection;
 uniform vec4 uViewport; // x, y, width, height
 
 #include "/shaders/lighting/point_lights.glsl"
+#include "/shaders/clouds/cloud_field.glsl"
+#include "/shaders/clouds/cloud_shadow.glsl"
 
 out vec4 fragColor;
 
@@ -216,9 +218,11 @@ void main() {
     vec3 L = normalize(uSunDirection);
 
     float ambient = uAmbientLight * 0.55;
-    float diffuse = max(dot(N, L), 0.0) * 0.6 * uAmbientLight;
+    // Direct sun only: dimmed by whatever cloud lies between it and the water.
+    float sunLight = uAmbientLight * cloudShadow(vWorldPos);
+    float diffuse = max(dot(N, L), 0.0) * 0.6 * sunLight;
     vec3 H = normalize(L + V);
-    float spec = pow(max(dot(N, H), 0.0), 64.0) * 0.6 * uAmbientLight * (0.35 + 0.65 * detail);
+    float spec = pow(max(dot(N, H), 0.0), 64.0) * 0.6 * sunLight * (0.35 + 0.65 * detail);
 
     // White rivulet highlights on falling sheets.
     float streaks = smoothstep(0.60, 0.85, n) * vFalling * 0.30 * uAmbientLight;

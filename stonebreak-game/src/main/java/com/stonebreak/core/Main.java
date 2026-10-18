@@ -248,7 +248,7 @@ public class Main {
         com.stonebreak.network.MultiplayerSession.startSingleplayer(name, seed);
     }
 
-    // ─── Dev: -Dstonebreak.autoview=<x>:<y>:<z>:<yaw>:<pitch> ────────────────
+    // ─── Dev: -Dstonebreak.autoview=<x>:<y|top[+n]>:<z>:<yaw>:<pitch> ────────
     //          -Dstonebreak.autolod=<LOW|MEDIUM|HIGH|ULTRA>[:<lodDistance>]
 
     private boolean autoViewArmed;
@@ -295,10 +295,29 @@ public class Main {
             return;
         }
         player.setSpectator(true);
-        player.setPosition(Float.parseFloat(p[0]), Float.parseFloat(p[1]), Float.parseFloat(p[2]));
+        float x = Float.parseFloat(p[0]);
+        float z = Float.parseFloat(p[2]);
+        float y = p[1].startsWith("top") ? autoViewTopY(x, z, p[1]) : Float.parseFloat(p[1]);
+        player.setPosition(x, y, z);
         player.setVelocity(new org.joml.Vector3f());
         player.getCamera().setYaw(Float.parseFloat(p[3]));
         player.getCamera().setPitch(Float.parseFloat(p[4]));
+    }
+
+    /**
+     * {@code top[+n]}: stand on the highest block of the column (n blocks above it),
+     * re-evaluated every frame so the camera rises as the column streams in.
+     */
+    private static float autoViewTopY(float x, float z, String spec) {
+        float above = spec.length() > 3 ? Float.parseFloat(spec.substring(4)) : 0f;
+        var world = Game.getWorld();
+        int bx = (int) Math.floor(x), bz = (int) Math.floor(z);
+        int top = com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT - 1;
+        while (top > 0 && (world == null
+                || world.getBlockAt(bx, top, bz) == com.stonebreak.blocks.BlockType.AIR)) {
+            top--;
+        }
+        return top + 1 + above;
     }
 
     // ─── Dev: -Dstonebreak.autotorch=<seconds>[:night][:cluster] ─────────────

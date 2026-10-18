@@ -121,6 +121,12 @@ public final class MultiplayerSession {
         return c != null ? c.pendingServerTimeTicks() : null;
     }
 
+    /** Latest authoritative weather sample buffered by the client, or null (see above). */
+    public static com.stonebreak.network.packet.world.WeatherSyncS2C pendingWeatherSync() {
+        ClientWorldView c = getClient();
+        return c != null ? c.pendingWeatherSync() : null;
+    }
+
     /** Last server-measured RTT for the local client in ms, or -1 when unknown / no session. */
     public static int lastRttMs() {
         ClientWorldView c = getClient();
@@ -229,6 +235,22 @@ public final class MultiplayerSession {
             return false;
         }
         c.sendDropItem(itemId, count);
+        return true;
+    }
+
+    /**
+     * Route a /weather to the authoritative server. Returns false when this client has no
+     * authority to change it (a remote JOIN client, or no session), like {@link #requestServerTimeSet}.
+     */
+    public static boolean requestServerWeatherSet(com.stonebreak.world.weather.WeatherMode weatherMode) {
+        if (mode == Mode.JOIN) {
+            return false; // host-only: the server rejects non-local weather sets
+        }
+        ClientWorldView c = getClient();
+        if (c == null || c.isDisconnected()) {
+            return false; // weather lives on the server; with no session there is none to set
+        }
+        c.sendWeatherSet(weatherMode);
         return true;
     }
 

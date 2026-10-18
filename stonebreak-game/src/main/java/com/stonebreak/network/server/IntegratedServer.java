@@ -209,6 +209,7 @@ public final class IntegratedServer {
             keepaliveCounter = 0;
             long now = System.nanoTime();
             TimeSyncS2C timeSync = currentTimeSync();
+            com.stonebreak.network.packet.world.WeatherSyncS2C weatherSync = currentWeatherSync();
             for (ServerPlayer sp : ctx.players()) {
                 if (!sp.isLocal() && now - sp.lastInboundNs() > INBOUND_SILENCE_TIMEOUT_NS) {
                     System.out.println("[SERVER] Kicking " + sp.username() + " (id "
@@ -221,6 +222,9 @@ public final class IntegratedServer {
                 sp.send(new KeepAliveS2C(nonce, sp.rttMs()), false);
                 if (timeSync != null) {
                     sp.send(timeSync, true); // droppable — the next sample self-heals
+                }
+                if (weatherSync != null) {
+                    sp.send(weatherSync, true);
                 }
             }
         }
@@ -276,6 +280,34 @@ public final class IntegratedServer {
         ctx.broadcast(new com.stonebreak.network.packet.world.CheatsStateS2C(cs.enabled()), false);
         System.out.println("[SERVER] Cheats " + (cs.enabled() ? "enabled" : "disabled")
             + " by " + sp.username());
+    }
+
+    /**
+     * C2S: /weather — set the world's weather mode. Host-only, like /timeset. Persists with the
+     * next save (the save service snapshots the level's weather) and broadcasts an immediate
+     * WeatherSyncS2C so every client starts easing toward the new sky at once.
+     */
+    private void handleWeatherSet(ServerPlayer sp, com.stonebreak.network.packet.world.WeatherSetC2S ws) {
+        if (!sp.isLocal()) {
+            return; // remote clients may not change the weather
+        }
+        ServerLevel level = ctx.serverLevel();
+        if (level == null) {
+            return;
+        }
+        level.weather().setMode(ws.mode());
+        ctx.broadcast(currentWeatherSync(), false);
+        System.out.println("[SERVER] Weather set to " + ws.mode() + " by " + sp.username());
+    }
+
+    /** Authoritative weather sample for WeatherSyncS2C, or null before the level is booted. */
+    private com.stonebreak.network.packet.world.WeatherSyncS2C currentWeatherSync() {
+        ServerLevel level = ctx.serverLevel();
+        if (level == null) {
+            return null;
+        }
+        var weather = level.weather();
+        return new com.stonebreak.network.packet.world.WeatherSyncS2C(weather.seconds(), weather.mode());
     }
 
     /** Authoritative time sample for TimeSyncS2C, or null before the level is booted. */
@@ -341,6 +373,7 @@ public final class IntegratedServer {
             }
             case com.stonebreak.network.packet.world.TimeSetC2S ts -> handleTimeSet(sp, ts);
             case com.stonebreak.network.packet.world.CheatsSetC2S cs -> handleCheatsSet(sp, cs);
+            case com.stonebreak.network.packet.world.WeatherSetC2S ws -> handleWeatherSet(sp, ws);
             case PlayerStateC2S ps -> playerHandler.handlePlayerState(sp, ps, ctx);
             case PlayerHeldItemC2S h -> playerHandler.handleHeldItem(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
@@ -442,6 +475,10 @@ public final class IntegratedServer {
         TimeSyncS2C timeSync = currentTimeSync();
         if (timeSync != null) {
             sp.send(timeSync, false);
+        }
+        com.stonebreak.network.packet.world.WeatherSyncS2C weatherSync = currentWeatherSync();
+        if (weatherSync != null) {
+            sp.send(weatherSync, false);
         }
         // The world's saved cheats flag — restores it on the client (issue #318).
         ServerLevel level = ctx.serverLevel();

@@ -42,6 +42,7 @@ public class ChatCommandExecutor {
         registerCommand(new BattleTestCommand());
         registerCommand(new BattleCommand());
         registerCommand(new LevelCommand());
+        registerCommand(new WeatherCommand());
     }
 
     /**

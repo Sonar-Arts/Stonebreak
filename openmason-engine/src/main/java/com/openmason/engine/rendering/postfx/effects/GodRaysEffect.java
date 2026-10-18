@@ -12,6 +12,7 @@ import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
+import static org.lwjgl.opengl.GL13.GL_TEXTURE1;
 import static org.lwjgl.opengl.GL13.glActiveTexture;
 import static org.lwjgl.opengl.GL30.GL_FRAMEBUFFER;
 import static org.lwjgl.opengl.GL30.glBindFramebuffer;
@@ -24,9 +25,9 @@ import static org.lwjgl.opengl.GL30.glBindFramebuffer;
  * Pass B radially blurs the mask toward the sun's projected screen position and composites it
  * additively onto the default framebuffer.</p>
  *
- * <p>Clouds are stamped into the scene depth buffer by a depth-only occlusion pass
- * (see {@code CloudRenderer.renderCloudOcclusion}) after world geometry, so the sun is
- * occluded wherever a cloud crosses in front of it. Water still does not write depth, so
+ * <p>Clouds come in as a transmittance texture ({@link PostFxFrameParams#cloudTexture()}):
+ * the mask is scaled by how much light the cloud in front lets through, so thin cloud dims
+ * the rays and gaps between clouds let shafts through. Water does not write depth, so
  * rays shine through it (accepted behavior). The effect fades out as the sun approaches the
  * screen edge and is skipped entirely when the sun is behind the camera.</p>
  */
@@ -64,6 +65,8 @@ public class GodRaysEffect implements PostProcessingEffect {
         occlusionProgram.createUniform("depthTex");
         occlusionProgram.createUniform("sunUv");
         occlusionProgram.createUniform("aspect");
+        occlusionProgram.createUniform("cloudTex");
+        occlusionProgram.createUniform("hasClouds");
 
         blurProgram = new ShaderProgram();
         blurProgram.createVertexShader(fullscreenVert);
@@ -126,7 +129,13 @@ public class GodRaysEffect implements PostProcessingEffect {
         occlusionProgram.setUniform("depthTex", 0);
         occlusionProgram.setUniform("sunUv", sunUv);
         occlusionProgram.setUniform("aspect", (float) outputWidth / (float) outputHeight);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, params.cloudTexture());
+        occlusionProgram.setUniform("cloudTex", 1);
+        occlusionProgram.setUniform("hasClouds", params.cloudTexture() != 0);
         quad.draw();
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE0);
 
         // Pass B: radial blur, composited additively onto the default framebuffer.
         glBindFramebuffer(GL_FRAMEBUFFER, 0);

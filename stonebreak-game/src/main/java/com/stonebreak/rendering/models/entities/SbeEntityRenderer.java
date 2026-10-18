@@ -561,7 +561,7 @@ public final class SbeEntityRenderer {
     private void applyEnvironmentLighting(com.stonebreak.world.World world, Vector3f position) {
         com.stonebreak.world.TimeOfDay timeOfDay = com.stonebreak.core.Game.getTimeOfDay();
         if (timeOfDay != null) {
-            shader.setFloat("u_ambientLight", timeOfDay.getAmbientLightLevel());
+            shader.setFloat("u_ambientLight", com.stonebreak.rendering.lighting.SceneLight.ambient());
             shader.setVec3("u_sunDirection", timeOfDay.getSunDirection());
         } else {
             shader.setFloat("u_ambientLight", 1.0f);

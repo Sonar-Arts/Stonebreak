@@ -397,6 +397,11 @@ public class Game {
         return battle != null ? battle.time() : getInstance().services.timeOfDay();
     }
 
+    /** The client's synced weather (clouds, rain); null before a world is joined. */
+    public static com.stonebreak.world.weather.ClientWeather getWeather() {
+        return getInstance().services.weather();
+    }
+
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#togglePauseMenu()}. */
     public void togglePauseMenu() {
         stateController.togglePauseMenu();
@@ -859,6 +864,10 @@ public class Game {
 
     public void setTimeOfDay(TimeOfDay timeOfDay) {
         services.setTimeOfDay(timeOfDay);
+    }
+
+    public void setWeather(com.stonebreak.world.weather.ClientWeather weather) {
+        services.setWeather(weather);
     }
 
     // ---- World lifecycle (client render world) ----

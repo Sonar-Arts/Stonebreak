@@ -13,6 +13,8 @@ out vec4 fragColor;
 #include "/shaders/shadow/csm_uniforms.glsl"
 #include "/shaders/lighting/point_lights.glsl"
 #include "/shaders/shadow/csm_functions.glsl"
+#include "/shaders/clouds/cloud_field.glsl"
+#include "/shaders/clouds/cloud_shadow.glsl"
 
 uniform sampler2D texture_sampler;
 // Block texture array — sampled when u_useTextureArray is true.
@@ -122,9 +124,11 @@ void main() {
         // (diffuse + specular); ambient stays so shadows never go black.
         // Player-held geometry (u_playerLight >= 0) renders in arm-local
         // coordinates, so its fragPos is meaningless in light space — skip.
+        // Clouds dim the same direct light: thin cover only partly, storm
+        // towers almost entirely (Beer-Lambert through the column above).
         float shadowFactor = (u_playerLight >= 0.0)
             ? 1.0
-            : csmShadowFactor(fragPos, norm, v_viewDepth);
+            : csmShadowFactor(fragPos, norm, v_viewDepth) * cloudShadow(fragPos);
 
         // Diffuse component (directional sunlight)
         float diff = max(dot(norm, lightDir), 0.0);

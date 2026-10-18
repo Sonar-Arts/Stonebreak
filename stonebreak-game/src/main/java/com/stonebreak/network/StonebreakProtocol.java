@@ -49,6 +49,8 @@ import com.stonebreak.network.packet.world.CheatsSetC2S;
 import com.stonebreak.network.packet.world.CheatsStateS2C;
 import com.stonebreak.network.packet.world.TimeSetC2S;
 import com.stonebreak.network.packet.world.TimeSyncS2C;
+import com.stonebreak.network.packet.world.WeatherSetC2S;
+import com.stonebreak.network.packet.world.WeatherSyncS2C;
 
 import static com.openmason.engine.net.protocol.PacketDirection.CLIENTBOUND;
 import static com.openmason.engine.net.protocol.PacketDirection.SERVERBOUND;
@@ -102,6 +104,7 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 21, EntityShearC2S.class, EntityShearC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 22, WorkbenchSlotsC2S.class, WorkbenchSlotsC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 23, CheatsSetC2S.class, CheatsSetC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 24, WeatherSetC2S.class, WeatherSetC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);
@@ -130,6 +133,7 @@ public final class StonebreakProtocol {
         r.register(PLAY, CLIENTBOUND, 24, NeedsCharacterCreationS2C.class, NeedsCharacterCreationS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 25, EntityVariantS2C.class, EntityVariantS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 26, CheatsStateS2C.class, CheatsStateS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 27, WeatherSyncS2C.class, WeatherSyncS2C.CODEC);
 
         return r;
     }

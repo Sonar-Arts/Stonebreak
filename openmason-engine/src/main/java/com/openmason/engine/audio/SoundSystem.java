@@ -20,6 +20,10 @@ public class SoundSystem {
     private final AudioListener audioListener;
     private final AudioDiagnostics audioDiagnostics;
     private final MusicChannel musicChannel;
+    /** Voices for overlapping long ambience such as thunder. */
+    private static final int AMBIENT_VOICES = 4;
+    private final LoopChannel loopChannel = new LoopChannel();
+    private final AmbientVoices ambientVoices = new AmbientVoices(AMBIENT_VOICES);
     private float musicVolume = 1.0f;
 
     private SoundSystem() {
@@ -153,6 +157,30 @@ public class SoundSystem {
 
     public void playSound(String name) {
         soundPlayer.playSound(name);
+    }
+
+    /**
+     * Plays loaded sound {@code name} as a looping 2D ambience at {@code volume}
+     * (0..1, before master volume), starting it if needed; 0 pauses it. Call
+     * every frame with the current level — the gain applies live.
+     */
+    public void setLoopVolume(String name, float volume) {
+        if (!audioAvailable()) return;
+        loopChannel.setGain(name, soundBuffer.getSoundBuffers().get(name),
+                Math.max(0f, volume) * volumeController.getEffectiveVolume());
+    }
+
+    /**
+     * Plays loaded sound {@code name} once as long 2D ambience (thunder) on a
+     * shared voice pool that never cuts off a louder sound for a fainter one.
+     *
+     * @param volume 0..1, before master volume
+     * @return whether it got a voice
+     */
+    public boolean playAmbient(String name, float volume, float pitch) {
+        if (!audioAvailable()) return false;
+        return ambientVoices.play(soundBuffer.getSoundBuffers().get(name),
+                Math.max(0f, volume) * volumeController.getEffectiveVolume(), pitch);
     }
 
     public void playSoundWithVolume(String name, float volume) {
@@ -352,6 +380,8 @@ public class SoundSystem {
     }
 
     public void cleanup() {
+        loopChannel.cleanup();
+        ambientVoices.cleanup();
         soundBuffer.cleanup();
         musicChannel.cleanup();
         openALContext.cleanup();
