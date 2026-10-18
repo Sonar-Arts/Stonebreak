@@ -472,18 +472,19 @@ def _classify_biome(elev: torch.Tensor, climate: Optional[torch.Tensor], i0: int
     land_mask = land_mask & ~sparse_forest_land
 
     # --- 3G: NO SNOW, DENSE FOREST ---
+    # DaedalusTGM-Exp (2026-10-18): no swamp branch here or in 3H. Swamp as a climate slice drew a ring
+    # of swamp around every jungle (the 20-26 C band of dense forest) and, with no temperature gate on
+    # rainforest, put swamps in cold lowland right next to snow. Swamps are now an overlay
+    # (apply_swamps) on the forest this rule decides.
     dense_land = land_mask & ~has_snow & trees_dense
     # Hot dense = jungle
     jungle_dense = dense_land & hot
     out[jungle_dense] = _BIOME_ID["jungle"]
-    # Warm dense lowland = swamp
-    swamp_mask = dense_land & warm & lowland
-    out[swamp_mask] = _BIOME_ID["swamp"]
     # Cool/cold dense = taiga
-    taiga_dense = dense_land & (cool | cold) & ~jungle_dense & ~swamp_mask
+    taiga_dense = dense_land & (cool | cold) & ~jungle_dense
     out[taiga_dense] = _BIOME_ID["taiga"]
     # Other warm/temperate dense = forest
-    forest_dense = dense_land & ~jungle_dense & ~swamp_mask & ~taiga_dense
+    forest_dense = dense_land & ~jungle_dense & ~taiga_dense
     out[forest_dense] = _BIOME_ID["forest"]
     land_mask = land_mask & ~dense_land
 
@@ -492,14 +493,11 @@ def _classify_biome(elev: torch.Tensor, climate: Optional[torch.Tensor], i0: int
     # Tropical rainforest = jungle
     jungle_rain = rain_land & (hot | (warm & tropical))
     out[jungle_rain] = _BIOME_ID["jungle"]
-    # Lowland wet = swamp
-    swamp_rain = rain_land & ~jungle_rain & lowland
-    out[swamp_rain] = _BIOME_ID["swamp"]
     # Cool/cold rainforest = taiga
-    taiga_rain = rain_land & (cool | cold) & ~jungle_rain & ~swamp_rain
+    taiga_rain = rain_land & (cool | cold) & ~jungle_rain
     out[taiga_rain] = _BIOME_ID["taiga"]
     # Temperate rainforest = forest
-    forest_rain = rain_land & ~jungle_rain & ~swamp_rain & ~taiga_rain
+    forest_rain = rain_land & ~jungle_rain & ~taiga_rain
     out[forest_rain] = _BIOME_ID["forest"]
     land_mask = land_mask & ~rain_land
 
@@ -514,3 +512,86 @@ def _classify_biome(elev: torch.Tensor, climate: Optional[torch.Tensor], i0: int
     out[lowland_bare & ~has_snow] = _BIOME_ID["stony_peaks"]
 
     return out
+
+
+# ============================================================
+# SWAMPS (DaedalusTGM-Exp, 2026-10-18): an overlay on the classified biomes, not a classifier branch
+# ============================================================
+# The classifier's swamp was a slice of climate space (warm dense forest, or any non-tropical lowland
+# rainforest), which drew a band of swamp around every jungle and swamps in cold lowland beside snow.
+# Swamps are now patches of a dedicated noise field inside wet, mild, low, flat forest: more of them
+# where it is wetter, none near the snow line, and their outlines follow the noise, not an isotherm.
+SWAMP_ID = _BIOME_ID["swamp"]
+SWAMP_HOST_IDS = (_BIOME_ID["forest"], _BIOME_ID["forest_sparse"], _BIOME_ID["jungle"])
+SWAMP_MIN_MOISTURE = 0.8      # effective tree moisture: dense forest or wetter
+SWAMP_FULL_MOISTURE = 1.6     # at and above this the patch threshold is at its lowest
+SWAMP_MIN_TEMP_C = 12.0       # noisy mean annual temperature: temperate or warmer
+SWAMP_SNOW_MARGIN_C = 6.0     # the snow test's temperature (+ snow noise) must clear 0 C by this much
+SWAMP_MAX_REGIONAL_M = 200.0  # regional (blurred) elevation, so swamp edges do not trace every hill's contour
+SWAMP_MAX_ELEV_M = 300.0      # column cap (~block 81): trims hilltops inside low basins. A rise-above-regional
+                              # test instead traced every small hill of the detail sampler: lace-patterned swamps
+SWAMP_PATCH_DRY = 0.20        # patch noise threshold at SWAMP_MIN_MOISTURE (~17% of eligible land)
+SWAMP_PATCH_WET = -0.05       # ... and at SWAMP_FULL_MOISTURE (~58%)
+
+_SWAMP_NOISE = FastNoiseLite(seed=31337)
+_SWAMP_NOISE.noise_type = NoiseType.NoiseType_Perlin
+_SWAMP_NOISE.frequency = 1.0 / 320.0  # patches a few hundred blocks across
+_SWAMP_NOISE.fractal_type = FractalType.FractalType_FBm
+_SWAMP_NOISE.fractal_octaves = 3
+_SWAMP_NOISE.fractal_lacunarity = 2.0
+_SWAMP_NOISE.fractal_gain = 0.5
+
+
+def _noise(n: FastNoiseLite, i0: int, j0: int, h: int, w: int, step: int = 1) -> np.ndarray:
+    """One noise field at h x w columns from (i0, j0), `step` apart, with the classifier's coordinate convention."""
+    xx, yy = np.meshgrid(np.arange(w, dtype=np.float32) * step + j0, np.arange(h, dtype=np.float32) * step + i0)
+    return n.gen_from_coords(np.array([xx.ravel(), yy.ravel()], dtype=np.float32)).astype(np.float32).reshape(h, w)
+
+
+def swamp_candidates(elev: torch.Tensor, regional: torch.Tensor, climate: torch.Tensor,
+                     i0: int, j0: int, step: int = 1) -> torch.Tensor:
+    """(H, W) bool: columns where a swamp may be, from climate, elevation and coordinates alone.
+
+    Per column (no neighbourhood), so callers may smooth it over a margin without seams. `elev` and
+    `regional` in metres, `climate` exactly as `_classify_biome` takes it, (i0, j0) its noise origin and
+    `step` the noise coordinates between samples.
+    The host biome is checked separately (apply_swamps)."""
+    h, w = elev.shape
+    dev, dt = elev.device, climate.dtype
+    t = lambda n: torch.from_numpy(_noise(n, i0, j0, h, w, step)).to(device=dev, dtype=dt)
+    # The classifier's own noisy climate, so this agrees with its snow line and forest classes.
+    temp = climate[0] + 0.4 * t(_TEMP_NOISE) + 0.2 * t(_TEMP_NOISE_FINE)
+    precip = torch.clamp(climate[2], min=0.0) * (1.0 + 0.2 * t(_PRECIP_NOISE))
+    snow_temp = temp + 3.0 * t(_SNOW_NOISE) + 2.0 * t(_SNOW_NOISE_FINE)
+    cv = _compute_climate_vars(temp, climate[1], precip, climate[3])
+    moisture = cv['tree_moisture'] * ((cv['growing_season'] - 60.0) / 90.0).clamp(0.0, 1.0)
+
+    wet = ((moisture - SWAMP_MIN_MOISTURE) / (SWAMP_FULL_MOISTURE - SWAMP_MIN_MOISTURE)).clamp(0.0, 1.0)
+    threshold = SWAMP_PATCH_DRY + (SWAMP_PATCH_WET - SWAMP_PATCH_DRY) * wet
+    patch = t(_SWAMP_NOISE) > threshold
+    return (patch & (moisture >= SWAMP_MIN_MOISTURE) & (temp >= SWAMP_MIN_TEMP_C)
+            & (snow_temp >= SWAMP_SNOW_MARGIN_C) & ~cv['hard_frost']
+            & (elev >= 0.0) & (elev < SWAMP_MAX_ELEV_M) & (regional < SWAMP_MAX_REGIONAL_M))
+
+
+def smooth_mask(mask: torch.Tensor, size: int) -> torch.Tensor:
+    """Majority of a size x size window (replicate-padded): removes specks and fills pinholes."""
+    r = size // 2
+    m = torch.nn.functional.pad(mask.float()[None, None], (r, r, r, r), mode="replicate")
+    return torch.nn.functional.avg_pool2d(m, size, stride=1)[0, 0] > 0.5
+
+
+def majority(ids: torch.Tensor, size: int) -> torch.Tensor:
+    """Majority (mode) filter of an (H, W) biome-id map over size x size windows (replicate-padded)."""
+    vals, inv = torch.unique(ids, return_inverse=True)
+    onehot = torch.nn.functional.one_hot(inv.long(), len(vals)).permute(2, 0, 1)[None].float()
+    r = size // 2
+    counts = torch.nn.functional.avg_pool2d(torch.nn.functional.pad(onehot, (r, r, r, r), mode="replicate"), size, stride=1)
+    return vals[counts[0].argmax(0)]
+
+
+def apply_swamps(biome: torch.Tensor, candidates: torch.Tensor) -> torch.Tensor:
+    """Swamp where a candidate column's classified biome is a host (forest, sparse forest, jungle):
+    never on snow, taiga, desert, peaks or sea."""
+    host = torch.isin(biome, torch.tensor(SWAMP_HOST_IDS, device=biome.device, dtype=biome.dtype))
+    return torch.where(candidates & host, torch.full_like(biome, SWAMP_ID), biome)

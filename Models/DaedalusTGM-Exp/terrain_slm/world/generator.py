@@ -809,7 +809,7 @@ class WorldGenerator:
                          LAPSE_REGIONAL_SIGMA_CELLS)[0, 0, m:-m, m:-m]
             climate = torch.stack([c["t0"] - LAPSE_C_PER_M * reg.clamp_min(0.0),
                                    c["tseason"], c["precip"], c["pcv"]])
-            return {"height": height, "logacc": dr["logacc"], "d8": dr.get("d8"), "climate": climate}
+            return {"height": height, "logacc": dr["logacc"], "d8": dr.get("d8"), "climate": climate, "regional": reg}
 
     # ---------------------------------------------------------------- pixels
     def _region(self, ri: int, rj: int) -> torch.Tensor:

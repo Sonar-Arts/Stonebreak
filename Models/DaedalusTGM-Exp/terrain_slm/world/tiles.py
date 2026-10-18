@@ -37,6 +37,8 @@ from terrain_slm.river.scale import NATIVE_M, BlockScale
 from terrain_slm.world.world_config import WorldConfig
 
 PLANES = 6
+#: Majority window (samples) that cleans specks and pinholes out of the swamp overlay (radius 5, far inside BLOCK_MARGIN).
+SWAMP_SMOOTH = 11
 #: At a whole cell (8 native px) or coarser per sample, tiles come from the cells alone.
 OVERVIEW_MIN_PX = CELL_PX
 # D8 class (drow, dcol) -> flow octant (0 = +x, toward +z); class 8 = terminal. Must match data/build.py.
@@ -91,7 +93,8 @@ class TileBuilder:
         field, ctx = gen.river_field(n1, m1, n2, m2)
         cols = gen.river.columns(field, ctx, d)
         elev = gen.scale.to_metres(cols.height.float() + 0.5)  # biomes read mid-block metres
-        lapse_elev = gen.regional_elevation(n1, m1, n2, m2) if REGIONAL_LAPSE else field.carved
+        regional = gen.regional_elevation(n1, m1, n2, m2)
+        lapse_elev = regional if REGIONAL_LAPSE else field.carved
         climate = F.avg_pool2d(gen.climate_native(n1, m1, n2, m2, lapse_elev)[None], d)[0]
         crop = lambda x: x[..., mb:-mb, mb:-mb]
         pad1 = lambda x: x[..., mb - 1 : -(mb - 1), mb - 1 : -(mb - 1)]
@@ -104,13 +107,28 @@ class TileBuilder:
             pre = F.avg_pool2d(field.ground[None, None], d)[0, 0]
             pre = sc.to_metres(torch.floor(sc.to_blocks(pre)).clamp(0, sc.world_height - 1) + 0.5)
             biome = crop(BN.classify(gen.biomenet, pre, climate, i1 - mb, j1 - mb))
+            # The rule over tile + margin (per column but for its 3x3 slope, so the frame's own edge is far outside
+            # the tile).
+            rule_m = B._classify_biome(elev, climate, i1 - mb, j1 - mb, pixel_size_m=NATIVE_M * d,
+                                       elev_padded=F.pad(elev[None, None], (1, 1, 1, 1), mode="replicate")[0, 0])
+            rule = crop(rule_m)
+            ocean_ids = torch.tensor(B.OCEAN_IDS, device=rule.device, dtype=rule.dtype)
             # The sidecar knows land biomes only: sea columns keep the rule classifier's ocean ids (warm /
             # normal / cold / frozen ocean), which the game maps to OCEAN / ICE_FIELDS.
-            rule = B._classify_biome(crop(elev), crop(climate), i1, j1, elev_padded=pad1(elev), pixel_size_m=NATIVE_M * d)
-            ocean = torch.isin(rule, torch.tensor(B.OCEAN_IDS, device=rule.device, dtype=rule.dtype))
-            biome = torch.where(ocean, rule, biome)
+            ocean = torch.isin(rule, ocean_ids)
+            # The sidecar (b4) learnt the old rule's swamp band; swamp now comes only from the overlay below, so its
+            # swamp columns take the rule's biome, cleaned by the majority filters its training targets got (raw,
+            # the rule's per-column slope classes speckle). Not the sidecar's runner-up class: where swamp
+            # dominated its training that was nonsense (snowy slopes at 12 C on block 72).
+            clean = crop(B.majority(B.majority(rule_m, 9), 5))
+            clean = torch.where(torch.isin(clean, ocean_ids), rule, clean)
+            biome = torch.where(ocean, rule, torch.where(biome == B.SWAMP_ID, clean, biome))
         else:
             biome = B._classify_biome(crop(elev), crop(climate), i1, j1, elev_padded=pad1(elev), pixel_size_m=NATIVE_M * d)
+        # Swamp candidates are per column, so smoothing them over tile + margin is request-independent.
+        regional = F.avg_pool2d(regional[None, None], d)[0, 0]
+        swamps = B.smooth_mask(B.swamp_candidates(elev, regional, climate, i1 - mb, j1 - mb), SWAMP_SMOOTH)
+        biome = B.apply_swamps(biome, crop(swamps))
         biome = self._red_deserts(biome, i1, j1, d)
         river = tuple(crop(p).long() for p in (cols.floor, cols.roof, cols.flow))
         return crop(cols.height).long(), biome, crop(cols.water).long(), crop(cols.wet), river
@@ -154,5 +172,10 @@ class TileBuilder:
         crop = lambda x: x[..., 1:-1, 1:-1]
         biome = B._classify_biome(crop(elev_m), crop(pool(c["climate"])), i1, j1, elev_padded=elev_m,
                                   pixel_size_m=NATIVE_M * d)
+        # Swamp noise in block coordinates (lod blocks per sample), so far-zoom swamps sit where tiles put them.
+        lod = d // self.world.downscale
+        swamps = B.swamp_candidates(crop(elev_m), crop(pool(c["regional"][None])[0]), crop(pool(c["climate"])),
+                                    i1 * lod, j1 * lod, step=lod)
+        biome = B.apply_swamps(biome, swamps)
         biome = self._red_deserts(biome, i1, j1, d)
         return crop(hb), biome, crop(hb + 1), crop(wet), (crop(none), crop(none), crop(flow))
