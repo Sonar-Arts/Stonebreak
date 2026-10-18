@@ -38,9 +38,11 @@ def erosion_depth(mask: torch.Tensor, cap: int) -> torch.Tensor:
     return d[0, 0]
 
 
-def ridge_lines(flow_px: torch.Tensor, log_threshold: float, smooth_px: float) -> tuple[torch.Tensor, torch.Tensor]:
+def ridge_lines(flow_px: torch.Tensor, log_threshold: float, smooth_px: float,
+                strength: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
     """Thin centrelines: local maxima of the smoothed flow across its ridge (Hessian NMS),
-    above the threshold. Returns (bool mask, smoothed flow)."""
+    whose `strength` (default: the smoothed flow itself) reaches the threshold. Returns
+    (bool mask, smoothed flow)."""
     s = D.blur(flow_px[None, None], smooth_px)
     sp = F.pad(s, (1, 1, 1, 1), mode="replicate")
     sxx = sp[..., 1:-1, 2:] - 2 * s + sp[..., 1:-1, :-2]
@@ -58,8 +60,39 @@ def ridge_lines(flow_px: torch.Tensor, log_threshold: float, smooth_px: float) -
         return F.grid_sample(s, torch.stack([gx, gy], dim=-1)[None], mode="bilinear",
                              padding_mode="border", align_corners=True)
 
-    ridge = (s >= sample(1.0)) & (s >= sample(-1.0)) & (lam_b < 0) & (s >= log_threshold)
-    return ridge[0, 0], s[0, 0]
+    level = s[0, 0] if strength is None else strength
+    ridge = ((s >= sample(1.0)) & (s >= sample(-1.0)) & (lam_b < 0))[0, 0] & (level >= log_threshold)
+    return ridge, s[0, 0]
+
+
+_RING8 = ((-1, -1), (-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1))   # clockwise
+
+
+def prune_spurs(line: torch.Tensor, k: int) -> torch.Tensor:
+    """Remove dead-end branches shorter than `k` px from a thin bool (H, W) line mask (and
+    segments shorter than about 2k outright): peel endpoints k times, then regrow only from the
+    survivors' endpoints back along the original line, which restores true river ends but not
+    the spurs that joined mid-line. Bounded radius (2k px), so request-independent."""
+    if k <= 0 or not bool(line.any()):
+        return line
+
+    def endpoints(m: torch.Tensor) -> torch.Tensor:
+        # One run of neighbours around the 8-ring (crossing number 1) and at most three of them:
+        # a line's tip, including one that ends in a corner (two neighbours touching each other).
+        ring = [_shift2(m, di, dj, False) for di, dj in _RING8]
+        nb = sum(r.long() for r in ring)
+        runs = sum((~ring[i] & ring[(i + 1) % 8]).long() for i in range(8))
+        return m & ((nb <= 1) | ((runs == 1) & (nb <= 3)))
+
+    kept = line
+    for _ in range(k):
+        kept = kept & ~endpoints(kept)
+    tips = endpoints(kept).float()[None, None]
+    lf = line.float()[None, None]
+    for _ in range(k):
+        tips = F.max_pool2d(tips, 3, 1, 1) * lf * (1.0 - kept.float()[None, None])
+        kept = kept | (tips[0, 0] > 0)
+    return kept
 
 
 class Centrelines:
@@ -68,11 +101,19 @@ class Centrelines:
     Hysteresis (as in Canny edges): a centreline pixel above `log_threshold` is a river; one
     down to `log_threshold - hysteresis` is kept only if it connects to such a stretch, grown
     at most `reach_px` pixels. Flow that hovers at the threshold no longer breaks a river into
-    fragments, and the bounded reach keeps the result request-independent."""
+    fragments, and the bounded reach keeps the result request-independent.
+
+    The smoothing only LOCATES the line; the threshold is tested against the unsmoothed drainage
+    under it. Drainage lines are about three cells wide, and a sigma-8 px blur takes ~0.6 off a
+    lone one's crest, so a river just above the threshold vanished wherever no tributary propped
+    its blurred crest up: rivers that stopped and started again. Cell drainage only grows
+    downstream, so a river tested on it, once started, carries on. A tributary's crest inside a
+    river's (3-cell) drainage band borrows the river's strength, so dead-end branches shorter
+    than `spur_px` are pruned."""
     name = "centrelines"
 
-    def __init__(self, hysteresis: float = 0.7, reach_px: int = 64):
-        self.hysteresis, self.reach_px = hysteresis, reach_px
+    def __init__(self, hysteresis: float = 0.7, reach_px: int = 64, spur_px: int = 12):
+        self.hysteresis, self.reach_px, self.spur_px = hysteresis, reach_px, spur_px
 
     def __call__(self, f: RiverField, ctx: RiverContext) -> RiverField:
         dr = ctx.drainage
@@ -81,8 +122,8 @@ class Centrelines:
         oi = ctx.px_origin[0] - dr.origin[0] * CP
         oj = ctx.px_origin[1] - dr.origin[1] * CP
         h, w = f.ground.shape
-        weak, flow = ridge_lines(up, ctx.cfg.log_threshold - self.hysteresis, ctx.cfg.ridge_smooth_px)
-        line = weak & (flow >= ctx.cfg.log_threshold)
+        weak, flow = ridge_lines(up, ctx.cfg.log_threshold - self.hysteresis, ctx.cfg.ridge_smooth_px, up)
+        line = weak & (up >= ctx.cfg.log_threshold)
         wk = weak.float()[None, None]
         grown = line.float()[None, None]
         for _ in range(self.reach_px):
@@ -90,7 +131,7 @@ class Centrelines:
             if torch.equal(nxt, grown):
                 break
             grown = nxt
-        line = grown[0, 0] > 0
+        line = prune_spurs(grown[0, 0] > 0, self.spur_px)
         f.line, f.flow = line[oi : oi + h, oj : oj + w], flow[oi : oi + h, oj : oj + w]
         return f
 

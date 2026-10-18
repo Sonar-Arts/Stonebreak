@@ -73,6 +73,13 @@ base rather than ever shipping garbage. **Re-scan any new detail checkpoint befo
   threshold. Routing runs over the height plus 3 m of smooth hashed noise (`ROUTE_NOISE_*`) and fills with a
   **per-cell epsilon** (`fill_depressions(epsilon_field=...)`), so paths across plains and filled basins meander
   instead of running as straight canals. ~50 ms per 448-cell window.
+- **One stitched network** (2026-10-18, `generator._stitched_route`): each window's edge is an outlet, so separately
+  routed windows drained the same lowland flats along different paths, and cross-fading their accumulations averaged
+  disagreeing networks -- across the fade bands (3/4 of every axis) each path faded below the threshold in turn. Now
+  every cell is routed by the window whose core owns it (as D8 always was) and each window accumulates over that one
+  shared graph; paths are continuous across seams and windows differ only in how much upstream area they see, which
+  the cross-fade smooths. Cycles can only cross seams (`break_seam_cycles` cuts those edges). Costs ~2 s on a cold
+  first tile (a window now needs its 8 neighbours' routing), nothing in steady state.
 - **Water never rises downstream**, at three levels: `monotone_downstream` in `WaterSurface` (along the connected
   centreline, ordered by flow; a bump across the river's path is cut as a gorge, `extra_incision_blocks` 20), the
   new `MonotoneTop` after `NoSpill`, and the new block stage `MonotoneBlocks` (also caps each column at its downstream
@@ -331,7 +338,7 @@ The planner keeps 9–27% of real fine texture; MaskGIT restores 80–95%, with 
 |---|---|---|
 | relief windows | 448-cell windows, stride 256, sin² fade over 192 cells | LRU 64 |
 | planner windows | 64 cells, stride 32, sin² (exact partition of unity), 1-cell blur hides the patch grid | LRU 4096 |
-| hydro windows | the relief windows' layout; flow/river cross-faded, D8 by core ownership | LRU 64 |
+| hydro windows | the relief windows' layout; routed over one stitched graph (each cell by its core's window), flow/river cross-faded, D8 by core ownership | LRU 64 (+ routes LRU 128) |
 | descriptor windows | 64-cell windows, 32-cell cores, 4-phase checkerboard, core ownership | LRU 8192 |
 | pixel regions | 256 px cores + 64 px apron, cross-faded over 128 px | LRU from `--cache-size` |
 
@@ -350,13 +357,13 @@ block columns (60 m, blocks):
 
 | Stage | Module | What it does |
 |---|---|---|
-| Centrelines | `geometry.py` | Ridge lines of the smoothed drainage field (Hessian non-maximum suppression). **Hysteresis**: above the threshold is a river; down to 0.7 below it continues only if connected to a river stretch (≤ 64 px), so flow hovering at the threshold does not fragment rivers |
+| Centrelines | `geometry.py` | Ridge lines of the smoothed drainage field (Hessian non-maximum suppression). **Hysteresis**: above the threshold is a river; down to 0.7 below it continues only if connected to a river stretch (≤ 64 px), so flow hovering at the threshold does not fragment rivers. The smoothing only locates the line: the threshold is tested on the **unsmoothed** drainage under it (the blur took ~0.6 off a lone river's crest, so rivers just above the threshold blinked on and off), and dead-end spurs < 12 px are pruned |
 | ChannelGeometry | `geometry.py` | Channel sized **in blocks** from flow above the threshold: width 3 + 1.8·excess (3–16 blocks), depth 2 + 0.6·excess (2–6 blocks), whatever band of the curve it crosses |
 | WaterSurface | `geometry.py` | Level = ground under the centreline, smoothed along it, carried straight across the channel (one level per cross-section), spread past the banks |
 | Banks | `banks.py` | `LearnedBanks` (bank model, §11c) when `bank.pt` is present, else `LeveeBanks` (deterministic ring) |
-| BankGuard | `banks.py` | Lifts only bank pixels that would let water out, and records how much (`guard_mean_lift_blocks`) |
+| BankGuard | `banks.py` | Lifts only bank pixels that would let water out -- above the highest water touching them -- and records how much (`guard_mean_lift_blocks`) |
 | UBed | `geometry.py` | U-shaped bed, 1 block deep at the edge, full depth at the centre. Elevation data never records beds, so this is shaped, not learned |
-| NoSpill | `contain.py` | Fixed point: water never stands above adjacent dry ground |
+| NoSpill | `contain.py` | Water never stands above adjacent dry ground; ground below sea level counts as sea water (caps flush with the sea's block). Where the cap leaves < 0.4 m the bed is cut, never dried: a dried pixel capped its neighbour at its bed and dried up to 512 px of river beside one sub-sea-level pit (`incised_px`) |
 | BlockQuantize | `blocks.py` | Metres → blocks through the game's curve (`river/scale.py`, `BlockScale`), beds take the channel floor |
 | FlowOctants | `blocks.py` | Downhill along the continuous water surface; flat reaches use the hydro sidecar's D8 |
 | FlattenAcross | `blocks.py` | Each wet column takes the lowest level walking perpendicular to its flow: sideways surface steps 284 → 39 on a 30 km test square; remaining steps are one-block cascades along the flow |

@@ -311,21 +311,16 @@ def procedural_controls_torch(ci0: int, cj0: int, hc: int, wc: int, seed: int, d
     }
 
 
-def routed_drainage(height: torch.Tensor, precip_mm: torch.Tensor, inflow_logacc: torch.Tensor | None,
-                    flat_noise: torch.Tensor | None = None) -> torch.Tensor:
+def route_window(height: torch.Tensor, precip_mm: torch.Tensor, flat_noise: torch.Tensor | None = None):
     """Route water over one window's coarse height: fill depressions (every land cell gets a
-    descending path to the sea or the window edge), steepest-descent D8, precipitation-weighted
-    accumulation -- the training data's own definition (data/build.py), 3x3-dilated like every
-    model's drainage target. Basins reaching past the window enter through its edge: a ring cell
-    that drains inward also carries `inflow_logacc` (the hydro sidecar's estimate of the
-    upslope area it has) as extra weight. Returns (3, H, W) [log1p(acc), river, D8 class]."""
+    descending path to the sea or the window edge), steepest-descent D8. Returns numpy
+    (recv (H*W,) int64 flat receiver or -1, invalid (H, W) bool ocean, weights (H, W) float64
+    precipitation runoff per cell) -- the training data's own definition (data/build.py)."""
     import numpy as np
-    from terrain_slm.data.build import D8_OFFSETS
     from terrain_slm.data.hydrology.fill import fill_depressions, ocean_mask
-    from terrain_slm.data.hydrology.flow import d8_receivers, flow_accumulation
+    from terrain_slm.data.hydrology.flow import d8_receivers
 
     z = height.detach().double().cpu().numpy()
-    h, w = z.shape
     invalid = ocean_mask(z)
     eps_field = None
     if flat_noise is not None:  # meandering paths across filled flats (fill.epsilon_field)
@@ -334,6 +329,19 @@ def routed_drainage(height: torch.Tensor, precip_mm: torch.Tensor, inflow_logacc
         eps_field = DEFAULT_EPSILON * (1.0 + 0.9 * u)
     recv = d8_receivers(fill_depressions(z, invalid=invalid, epsilon_field=eps_field), invalid)
     weights = np.clip(precip_mm.detach().double().cpu().numpy(), 0.0, None) / 1000.0
+    return recv, invalid, weights
+
+
+def accumulate_drainage(recv, invalid, weights, inflow_logacc: torch.Tensor | None, device) -> torch.Tensor:
+    """Precipitation-weighted accumulation over a receiver graph, 3x3-dilated like every model's
+    drainage target. A ring cell that drains inward also carries `inflow_logacc` (the hydro
+    sidecar's estimate of the upslope area it has beyond the window) as extra weight. Returns
+    (3, H, W) [log1p(acc), river, D8 class]."""
+    import numpy as np
+    from terrain_slm.data.build import D8_OFFSETS
+    from terrain_slm.data.hydrology.flow import flow_accumulation
+
+    h, w = invalid.shape
     idx = np.arange(h * w)
     if inflow_logacc is not None:
         ring = np.zeros((h, w), dtype=bool)
@@ -350,11 +358,43 @@ def routed_drainage(height: torch.Tensor, precip_mm: torch.Tensor, inflow_logacc
     dc = recv[live] % w - idx[live] % w
     for k, (a, b) in enumerate(D8_OFFSETS):
         d8[np.flatnonzero(live)[(dr == a) & (dc == b)]] = k
-    dev = height.device
-    acc_t = torch.from_numpy(acc).float().to(dev)
+    acc_t = torch.from_numpy(acc).float().to(device)
     acc_t = F.max_pool2d(acc_t[None, None], 3, stride=1, padding=1)[0, 0]
     river = (acc_t >= P.RIVER_MIN_UPSLOPE_CELLS).float()
-    return torch.stack([torch.log1p(acc_t), river, torch.from_numpy(d8.reshape(h, w)).float().to(dev)])
+    return torch.stack([torch.log1p(acc_t), river, torch.from_numpy(d8.reshape(h, w)).float().to(device)])
+
+
+def routed_drainage(height: torch.Tensor, precip_mm: torch.Tensor, inflow_logacc: torch.Tensor | None,
+                    flat_noise: torch.Tensor | None = None) -> torch.Tensor:
+    """Route water over one window's coarse height and accumulate it (route_window ->
+    accumulate_drainage): (3, H, W) [log1p(acc), river, D8 class]."""
+    recv, invalid, weights = route_window(height, precip_mm, flat_noise)
+    return accumulate_drainage(recv, invalid, weights, inflow_logacc, height.device)
+
+
+def break_seam_cycles(recv, owner):
+    """Make a stitched receiver graph acyclic. Each window's own routing strictly descends, so a
+    cycle can only run through edges between cells owned by different windows; among the cells
+    Kahn's algorithm cannot drain, those edges are cut (the cell becomes terminal). In place."""
+    import numpy as np
+    n = recv.size
+    for _ in range(4):
+        live = recv >= 0
+        indeg = np.bincount(recv[live], minlength=n)
+        frontier = np.flatnonzero(indeg == 0)
+        done = np.zeros(n, dtype=bool)
+        while frontier.size:
+            done[frontier] = True
+            tgt = recv[frontier]
+            tgt = tgt[tgt >= 0]
+            np.subtract.at(indeg, tgt, 1)
+            frontier = np.unique(tgt[indeg[tgt] == 0])
+        stuck = np.flatnonzero(~done)
+        if stuck.size == 0:
+            return recv
+        cut = stuck[(recv[stuck] >= 0) & (owner[stuck] != owner[recv[stuck].clip(0)])]
+        recv[cut] = -1
+    return recv
 
 
 # ----------------------------------------------------------------------------- generator
@@ -458,6 +498,7 @@ class WorldGenerator:
         self.river_cfg = RiverConfig(log_threshold=self.cfg.river_log_threshold)
         self.scale = BlockScale.game_default(device)
         self._hydro_windows = _LRU(64)
+        self._route_windows = _LRU(128)
         self._relief_windows = _LRU(64)
         self._windows = _LRU(4096)
         self._regions = _LRU(cache_regions)
@@ -745,31 +786,78 @@ class WorldGenerator:
         return d * self.desc_std.view(-1, 1, 1) + self.desc_mean.view(-1, 1, 1)
 
     # ---------------------------------------------------------------- hydrology (cells)
-    def _hydro_window(self, wi: int, wj: int) -> torch.Tensor:
-        """Drainage for one canonical window on the planner's final coarse height:
-        (3, EXT, EXT) = [log1p(upslope cells), river probability, D8 class (as float)].
-        Routed (cfg.routed_drainage) or the hydro sidecar's prediction."""
+    def _hydro_pred(self, wi: int, wj: int) -> torch.Tensor | None:
+        """The hydro sidecar's (3, EXT, EXT) [logacc, river probability, D8 class] for a canonical
+        window, or None without one."""
+        if self.hydro is None:
+            return None
+        ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
+        n = RELIEF_EXT
+        height = self._planner_cells(ci0, cj0, n, n)[0]
+        c = procedural_controls(ci0, cj0, n, n, self.seed, self.device)
+        x = HY.build_input(height[None, None], {k: c[k][None, None] for k in P.CLIMATE_NAMES})
+        with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16, enabled=x.is_cuda):
+            out = self.hydro(x)[0].float()
+        return torch.stack([out[HY.OUT_LOGACC] * P.LOGACC_SCALE, torch.sigmoid(out[HY.OUT_RIVER]),
+                            out[HY.OUT_D8].argmax(0).float()])
+
+    def _route_window(self, wi: int, wj: int):
+        """route_window over one canonical window's planner height (numpy recv, invalid, weights)."""
         def run():
             ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
             n = RELIEF_EXT
             height = self._planner_cells(ci0, cj0, n, n)[0]
             c = procedural_controls(ci0, cj0, n, n, self.seed, self.device)
-            pred = None
-            if self.hydro is not None:
-                x = HY.build_input(height[None, None], {k: c[k][None, None] for k in P.CLIMATE_NAMES})
-                with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16, enabled=x.is_cuda):
-                    out = self.hydro(x)[0].float()
-                pred = torch.stack([out[HY.OUT_LOGACC] * P.LOGACC_SCALE, torch.sigmoid(out[HY.OUT_RIVER]),
-                                    out[HY.OUT_D8].argmax(0).float()])
-            if not self.cfg.routed_drainage and pred is not None:
-                return pred
             # Route over the height plus a few metres of smooth, coordinate-hashed noise: on near-flat
             # plains a steepest-descent path otherwise runs dead straight along the cell grid.
             jit = D.blur(S.white_noise(ci0, cj0, n, n, self.seed, ROUTE_NOISE_STREAM, self.device)[None, None],
                          ROUTE_NOISE_SIGMA)[0, 0]
             jit = jit * (ROUTE_NOISE_M * 2.0 * ROUTE_NOISE_SIGMA * math.sqrt(math.pi))  # std of blurred white noise = 1/(2 sigma sqrt(pi))
-            return routed_drainage(height + jit * (height > 0), c["precip"], None if pred is None else pred[0],
-                                   flat_noise=jit / ROUTE_NOISE_M)
+            return route_window(height + jit * (height > 0), c["precip"], flat_noise=jit / ROUTE_NOISE_M)
+        return self._route_windows.get_or((self.seed, wi, wj), run)
+
+    def _stitched_route(self, wi: int, wj: int):
+        """The receiver graph over window (wi, wj)'s extent with every cell routed by the window whose
+        CORE owns it (the same owner the D8 field uses). Windows route the same ground differently
+        -- each one's edge is an outlet, so filled lowland flats drain wherever that window's edge
+        is nearest -- and cross-fading their separately routed drainage averaged disagreeing river
+        networks: across the fade bands (3/4 of every axis) each path faded below the threshold in
+        turn, and rivers stopped and started. On one shared graph a river's path is continuous
+        across every seam; windows then differ only in how much of its upstream area they see."""
+        import numpy as np
+        n, core, ap = RELIEF_EXT, RELIEF_CORE, RELIEF_APRON
+        ci0, cj0 = wi * core - ap, wj * core - ap
+        recv = np.full(n * n, -1, dtype=np.int64)
+        invalid = np.zeros((n, n), dtype=bool)
+        weights = np.zeros((n, n), dtype=np.float64)
+        owner = np.zeros((n, n), dtype=np.int64)
+        for oi in range(math.floor(ci0 / core), math.floor((ci0 + n - 1) / core) + 1):
+            for oj in range(math.floor(cj0 / core), math.floor((cj0 + n - 1) / core) + 1):
+                r0, r1 = max(ci0, oi * core), min(ci0 + n, (oi + 1) * core)
+                s0, s1 = max(cj0, oj * core), min(cj0 + n, (oj + 1) * core)
+                o_recv, o_inv, o_w = self._route_window(oi, oj)
+                oa, ob = oi * core - ap, oj * core - ap          # owner window's extent origin
+                rr = o_recv.reshape(n, n)[r0 - oa : r1 - oa, s0 - ob : s1 - ob]
+                ta, tb = rr // n + oa - ci0, rr % n + ob - cj0     # receiver in this window's extent
+                inside = (rr >= 0) & (ta >= 0) & (ta < n) & (tb >= 0) & (tb < n)
+                flat = np.where(inside, ta * n + tb, -1)
+                recv.reshape(n, n)[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = flat
+                invalid[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = o_inv[r0 - oa : r1 - oa, s0 - ob : s1 - ob]
+                weights[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = o_w[r0 - oa : r1 - oa, s0 - ob : s1 - ob]
+                owner[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = (oi * 1_000_003 + oj)
+        break_seam_cycles(recv, owner.ravel())
+        return recv, invalid, weights
+
+    def _hydro_window(self, wi: int, wj: int) -> torch.Tensor:
+        """Drainage for one canonical window on the planner's final coarse height:
+        (3, EXT, EXT) = [log1p(upslope cells), river probability, D8 class (as float)].
+        Routed (cfg.routed_drainage, over the stitched graph) or the hydro sidecar's prediction."""
+        def run():
+            pred = self._hydro_pred(wi, wj)
+            if not self.cfg.routed_drainage and pred is not None:
+                return pred
+            recv, invalid, weights = self._stitched_route(wi, wj)
+            return accumulate_drainage(recv, invalid, weights, None if pred is None else pred[0], self.device)
         return self._hydro_windows.get_or((self.seed, wi, wj), run)
 
     def drainage(self, ci0: int, cj0: int, hc: int, wc: int) -> dict:
